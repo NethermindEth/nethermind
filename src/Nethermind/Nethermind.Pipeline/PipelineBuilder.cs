@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Nethermind.Pipeline.Publishers;
 
 namespace Nethermind.Pipeline
 {
@@ -27,6 +28,14 @@ namespace Nethermind.Pipeline
         {
             _lastElement.Emit = element.SubscribeToData;
             return new PipelineBuilder<TSource, TOut>(element, _elements);
+        }
+
+        public IPipelineBuilder<TSource, TOutput> AddPublisher(IWebSocketsPublisher publisher)
+        {
+            _lastElement.Emit = publisher.SubscribeToData;
+            _elements.Push((IPipelineElement) publisher);
+            
+            return this;
         }
         
         public IPipeline Build()

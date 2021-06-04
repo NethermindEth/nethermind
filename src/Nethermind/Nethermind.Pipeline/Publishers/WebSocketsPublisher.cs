@@ -11,12 +11,11 @@ using Nethermind.WebSockets;
 
 namespace Nethermind.Pipeline.Publishers
 {
-    public class WebSocketsPublisher<TIn, TOut> : IPipelineElement<TIn, TOut>, IWebSocketsModule
+    public class WebSocketsPublisher : IPipelineElement, IWebSocketsPublisher, IWebSocketsModule
     {
         private readonly ConcurrentDictionary<string, IWebSocketsClient> _clients = new();
         private readonly IJsonSerializer _jsonSerializer;
         public string Name { private set; get; }
-        public Action<TOut> Emit { private get; set; }
         private readonly ILogger _logger;
 
         public WebSocketsPublisher(string name, IJsonSerializer jsonSerializer, ILogger logger)
@@ -56,7 +55,7 @@ namespace Nethermind.Pipeline.Publishers
             return true; 
         }
         
-        public async void SubscribeToData(TIn data)
+        public async void SubscribeToData<T>(T data)
         {
             try
             {

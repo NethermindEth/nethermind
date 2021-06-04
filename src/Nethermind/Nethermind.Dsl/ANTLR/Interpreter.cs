@@ -229,86 +229,43 @@ namespace Nethermind.Dsl.ANTLR
 
         private void AddPublisher(string publisher, string path)
         {
-            switch (_pipelineSource)
-            {
-                case PipelineSource.Blocks:
-                    AddBlocksPublisher(publisher, path);
-                    break;
-                case PipelineSource.Transactions:
-                    AddTransactionsPublisher(publisher, path);
-                    break;
-                case PipelineSource.PendingTransactions:
-                    AddPendingTransactionsPublisher(publisher, path);
-                    break;
-                case PipelineSource.Events:
-                    AddEventsPublisher(publisher, path);
-                    break;
-            }
+            var webSocketsPublisher = new WebSocketsPublisher(path, _api.EthereumJsonSerializer, _logger);
+            _api.WebSocketsManager.AddModule(webSocketsPublisher);
+
+            AddBlocksPublisher(webSocketsPublisher);
+            AddTransactionsPublisher(webSocketsPublisher);
+            AddPendingTransactionsPublisher(webSocketsPublisher);
+            AddEventsPublisher(webSocketsPublisher);
 
             BuildPipeline();
         }
 
-        private void AddBlocksPublisher(string publisher, string path)
+        private void AddBlocksPublisher(IWebSocketsPublisher publisher)
         {
-            if (publisher.Equals("WebSockets", StringComparison.InvariantCultureIgnoreCase))
-            {
-                if (_blocksPipelineBuilder != null)
-                {
-                    if (_logger.IsInfo) _logger.Info($"Adding block publisher with path: {path}");
-                    var webSocketsPublisher = new WebSocketsPublisher<Block, Block>(path, _api.EthereumJsonSerializer, _logger);
-                    _api.WebSocketsManager.AddModule(webSocketsPublisher);
-                    _blocksPipelineBuilder = _blocksPipelineBuilder.AddElement(webSocketsPublisher);
-                }
-            }
-
-            BuildPipeline();
+            _blocksPipelineBuilder = _blocksPipelineBuilder?.AddPublisher(publisher);
         }
 
-        private void AddTransactionsPublisher(string publisher, string path)
+        private void AddTransactionsPublisher(IWebSocketsPublisher publisher)
         {
-            if (publisher.Equals("WebSockets", StringComparison.InvariantCultureIgnoreCase))
-            {
-                if (_transactionsPipelineBuilder == null) return;
-                var webSocketsPublisher = new WebSocketsPublisher<Transaction, Transaction>(path, _api.EthereumJsonSerializer, _logger);
-                _api.WebSocketsManager.AddModule(webSocketsPublisher);
-                _transactionsPipelineBuilder = _transactionsPipelineBuilder.AddElement(webSocketsPublisher);
-            }
+            _transactionsPipelineBuilder = _transactionsPipelineBuilder?.AddPublisher(publisher);
         }
-        
-        private void AddPendingTransactionsPublisher(string publisher, string path)
-        {
-            if (publisher.Equals("WebSockets", StringComparison.InvariantCultureIgnoreCase))
-            {
-                if (_pendingTransactionsPipelineBuilder == null) return;
-                var webSocketsPublisher = new WebSocketsPublisher<Transaction, Transaction>(path, _api.EthereumJsonSerializer, _logger);
-                _api.WebSocketsManager.AddModule(webSocketsPublisher);
-                _pendingTransactionsPipelineBuilder = _pendingTransactionsPipelineBuilder.AddElement(webSocketsPublisher);
-            }
-        }
-        
-        private void AddEventsPublisher(string publisher, string path)
-        {
-            if (publisher.Equals("WebSockets", StringComparison.InvariantCultureIgnoreCase))
-            {
-                if (_eventsPipelineBuilder == null) return;
-                var webSocketsPublisher = new WebSocketsPublisher<TxReceipt, TxReceipt>(path, _api.EthereumJsonSerializer, _logger);
-                _api.WebSocketsManager.AddModule(webSocketsPublisher);
-                _eventsPipelineBuilder = _eventsPipelineBuilder.AddElement(webSocketsPublisher);
 
-                return;
-            }
+        private void AddPendingTransactionsPublisher(IWebSocketsPublisher publisher)
+        {
+            _pendingTransactionsPipelineBuilder = _pendingTransactionsPipelineBuilder?.AddPublisher(publisher);
         }
-        
+
+        private void AddEventsPublisher(IWebSocketsPublisher publisher)
+        {
+            _eventsPipelineBuilder = _eventsPipelineBuilder?.AddPublisher(publisher);
+        }
+
         private void BuildPipeline()
         {
-            Pipeline = _pipelineSource switch
-            {
-                PipelineSource.Blocks => _blocksPipelineBuilder.Build(),
-                PipelineSource.Transactions => _transactionsPipelineBuilder.Build(),
-                PipelineSource.PendingTransactions => _pendingTransactionsPipelineBuilder.Build(),
-                PipelineSource.Events => _eventsPipelineBuilder.Build(),
-                _ => Pipeline
-            };
+            _blocksPipelineBuilder?.Build();
+            _transactionsPipelineBuilder?.Build();
+            _pendingTransactionsPipelineBuilder?.Build();
+            _eventsPipelineBuilder?.Build();
         }
     }
 }

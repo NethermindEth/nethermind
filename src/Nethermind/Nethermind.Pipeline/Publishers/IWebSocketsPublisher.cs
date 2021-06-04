@@ -13,18 +13,12 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System;
-using System.Threading.Tasks;
-
-namespace Nethermind.WebSockets
+namespace Nethermind.Pipeline.Publishers
 {
-    public interface IWebSocketsClient
+    public interface IWebSocketsPublisher
     {
-        string Id { get; }
-        string Client { get; }
-        Task SendRawAsync(string data);
-        Task SendAsync(WebSocketsMessage message);
-        Task ReceiveAsync(Memory<byte> data);
+        void SubscribeToData<T>(T data);
     }
 }
