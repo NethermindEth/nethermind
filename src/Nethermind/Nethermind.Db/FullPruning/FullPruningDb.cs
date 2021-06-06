@@ -16,6 +16,7 @@
 // 
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Threading;
@@ -59,7 +60,11 @@ namespace Nethermind.Db.FullPruning
             }
         }
 
-        public IBatch StartBatch() => _currentDb.StartBatch();
+        public IBatch StartBatch() => 
+            new DuplicatingBatch(
+                _currentDb.StartBatch(), 
+                _pruningContext?.CloningDb.StartBatch(),
+                _updateDuplicateWriteMetrics);
 
         public void Dispose()
         {
@@ -100,7 +105,7 @@ namespace Nethermind.Db.FullPruning
             cloningDb?.Clear();
         }
 
-        public bool PruningInProgress => _pruningContext is not null;
+        public bool CanStartPruning => _pruningContext is null;
 
         public virtual bool TryStartPruning(out IPruningContext context)
         {
@@ -118,6 +123,7 @@ namespace Nethermind.Db.FullPruning
         }
         
         public string GetPath(string basePath) => _settings.DbPath.GetApplicationResourcePath(basePath);
+        public string InnerDbName => _currentDb.Name;
 
         private void FinishPruning()
         {
@@ -172,6 +178,43 @@ namespace Nethermind.Db.FullPruning
                     CloningDb.Clear();
                 }
                 Metrics.StateDbPruning = 0;
+            }
+        }
+        
+        private class DuplicatingBatch : IBatch
+        {
+            private readonly IBatch _batch;
+            private readonly IBatch? _clonedBatch;
+            private readonly Action? _updateDuplicateWriteMetrics;
+
+            public DuplicatingBatch(
+                IBatch batch, 
+                IBatch? clonedBatch, 
+                Action? updateDuplicateWriteMetrics)
+            {
+                _batch = batch;
+                _clonedBatch = clonedBatch;
+                _updateDuplicateWriteMetrics = updateDuplicateWriteMetrics;
+            }
+
+            public void Dispose()
+            {
+                _batch.Dispose();
+                _clonedBatch?.Dispose();
+            }
+
+            public byte[]? this[byte[] key]
+            {
+                get => _batch[key];
+                set
+                {
+                    _batch[key] = value;
+                    if (_clonedBatch is not null)
+                    {
+                        _clonedBatch[key] = value;
+                        _updateDuplicateWriteMetrics?.Invoke();
+                    }
+                }
             }
         }
     }

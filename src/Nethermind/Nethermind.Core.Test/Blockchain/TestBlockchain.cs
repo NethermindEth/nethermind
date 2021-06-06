@@ -165,10 +165,7 @@ namespace Nethermind.Core.Test.Blockchain
 
             _resetEvent = new SemaphoreSlim(0);
             _suggestedBlockResetEvent = new ManualResetEvent(true);
-            BlockTree.NewHeadBlock += (s, e) =>
-            {
-                _resetEvent.Release(1);
-            };
+            BlockTree.NewHeadBlock += OnNewHeadBlock;
             BlockProducer.LastProducedBlockChanged += (s, e) =>
             {
                 _suggestedBlockResetEvent.Set();
@@ -184,6 +181,11 @@ namespace Nethermind.Core.Test.Blockchain
 
             await AddBlocksOnStart();
             return this;
+        }
+
+        private void OnNewHeadBlock(object? sender, BlockEventArgs e)
+        {
+            _resetEvent.Release(1);
         }
 
         protected virtual Task<IDbProvider> CreateDbProvider() => TestMemDbProvider.InitAsync();
@@ -283,6 +285,10 @@ namespace Nethermind.Core.Test.Blockchain
 
         private async Task<AddTxResult[]> AddBlockInternal(params Transaction[] transactions)
         {
+            // we want it to be last event, so lets re-register
+            BlockTree.NewHeadBlock -= OnNewHeadBlock;
+            BlockTree.NewHeadBlock += OnNewHeadBlock;
+            
             await _oneAtATime.WaitOneAsync(CancellationToken.None);
             AddTxResult[] txResults = transactions.Select(t => TxPool.AddTransaction(t, TxHandlingOptions.None)).ToArray();
             Timestamper.Add(TimeSpan.FromSeconds(1));

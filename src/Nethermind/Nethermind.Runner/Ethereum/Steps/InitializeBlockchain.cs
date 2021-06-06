@@ -212,7 +212,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 getApi.LogManager);
                 
             setApi.TxPoolInfoProvider = new TxPoolInfoProvider(stateReader, txPool);
-            var mainBlockProcessor = setApi.MainBlockProcessor = CreateBlockProcessor();
+            IBlockProcessor mainBlockProcessor = setApi.MainBlockProcessor = CreateBlockProcessor();
 
             BlockchainProcessor blockchainProcessor = new(
                 getApi.BlockTree,
@@ -256,12 +256,17 @@ namespace Nethermind.Runner.Ethereum.Steps
             setApi.FilterManager = new FilterManager(filterStore, mainBlockProcessor, txPool, getApi.LogManager);
             setApi.HealthHintService = CreateHealthHintService();
             
-            InitializeFullPruning(pruningConfig, initConfig, getApi, stateReader);
+            InitializeFullPruning(pruningConfig, initConfig, getApi, mainBlockProcessor, stateReader);
             
             return Task.CompletedTask;
         }
 
-        private static void InitializeFullPruning(IPruningConfig pruningConfig, IInitConfig initConfig, IApiWithStores getApi, IStateReader stateReader)
+        private static void InitializeFullPruning(
+            IPruningConfig pruningConfig,
+            IInitConfig initConfig, 
+            IApiWithStores getApi, 
+            IBlockProcessor mainBlockProcessor, 
+            IStateReader stateReader)
         {
             IPruningTrigger CreateTrigger(string dbPath)
             {

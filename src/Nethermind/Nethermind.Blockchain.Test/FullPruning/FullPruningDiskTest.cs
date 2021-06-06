@@ -24,6 +24,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain.FullPruning;
+using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -92,14 +93,19 @@ namespace Nethermind.Blockchain.Test.FullPruning
             {
                 public EventWaitHandle WaitHandle { get; } = new ManualResetEvent(false); 
                 
-                public FullTestPruner(IFullPruningDb pruningDb, IPruningTrigger pruningTrigger, IBlockTree blockTree, IStateReader stateReader, ILogManager logManager)
+                public FullTestPruner(
+                    IFullPruningDb pruningDb,
+                    IPruningTrigger pruningTrigger, 
+                    IBlockTree blockTree,
+                    IStateReader stateReader,
+                    ILogManager logManager)
                     : base(pruningDb, pruningTrigger, blockTree, stateReader, logManager)
                 {
                 }
 
                 protected override void RunPruning(IPruningContext pruning, BlockHeader header, IPruningContext? oldPruning)
                 {
-                    base.RunPruning(pruning, header);
+                    base.RunPruning(pruning, header, oldPruning);
                     WaitHandle.Set();
                 }
             }
@@ -111,14 +117,16 @@ namespace Nethermind.Blockchain.Test.FullPruning
         {
             using (PruningTestBlockchain chain = await PruningTestBlockchain.Create())
             {
-                HashSet<byte[]> allItems = chain.DbProvider.StateDb.GetAllValues().ToHashSet(Bytes.EqualityComparer);
-
                 chain.PruningTrigger.Prune += Raise.Event();
-                chain.FullPruner.WaitHandle.WaitOne(TimeSpan.FromSeconds(1));
+                await chain.AddBlock(true);
+                HashSet<byte[]> allItems = chain.DbProvider.StateDb.GetAllValues().ToHashSet(Bytes.EqualityComparer);
+                bool pruningFinished = chain.FullPruner.WaitHandle.WaitOne(TimeSpan.FromSeconds(1));
+                
+                pruningFinished.Should().BeTrue();
 
                 await WriteFileStructure(chain);
 
-                chain.DbProvider.StateDb.Innermost.Name.Should().Be("State1");
+                chain.PruningDb.InnerDbName.Should().Be("State1");
 
                 HashSet<byte[]> currentItems = chain.DbProvider.StateDb.GetAllValues().ToHashSet(Bytes.EqualityComparer);
                 currentItems.IsSubsetOf(allItems).Should().BeTrue();

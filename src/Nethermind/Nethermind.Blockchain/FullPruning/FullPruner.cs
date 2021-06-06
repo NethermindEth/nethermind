@@ -20,6 +20,7 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Processing;
 using Nethermind.Core;
 using Nethermind.Db.FullPruning;
 using Nethermind.Logging;
@@ -37,6 +38,7 @@ namespace Nethermind.Blockchain.FullPruning
         private readonly ILogManager _logManager;
         private IPruningContext? _currentPruning;
         private readonly CancellationTokenSource _cancellationTokenSource = new();
+        private int _waitingForBlockProcessed = 0;
 
         public FullPruner(
             IFullPruningDb fullPruningDb, 
@@ -55,23 +57,43 @@ namespace Nethermind.Blockchain.FullPruning
 
         private void OnPrune(object? sender, EventArgs e)
         {
-            if (!_blockTree.IsSyncing() && !_fullPruningDb.PruningInProgress)
+            if (CanRunPruning())
             {
-                long? persistedState = _blockTree.BestState;
-                if (persistedState.HasValue)
+                if (Interlocked.CompareExchange(ref _waitingForBlockProcessed, 1, 0) == 0)
                 {
-                    BlockHeader? header = _blockTree.FindHeader(persistedState.Value);
-                    if (header is not null)
+                    // we don't want to start pruning in the middle of block processing.
+                    _blockTree.NewHeadBlock += OnNewHead;
+                }
+            }
+        }
+
+        private void OnNewHead(object? sender, BlockEventArgs e)
+        {
+            if (CanRunPruning())
+            {
+                if (Interlocked.CompareExchange(ref _waitingForBlockProcessed, 0, 1) == 1)
+                {
+                    _blockTree.NewHeadBlock -= OnNewHead;
+
+                    long? persistedState = _blockTree.BestState;
+                    if (persistedState.HasValue)
                     {
-                        if (_fullPruningDb.TryStartPruning(out IPruningContext pruningContext))
+                        BlockHeader? header = _blockTree.FindHeader(persistedState.Value);
+                        if (header is not null)
                         {
-                            IPruningContext? oldPruning = Interlocked.Exchange(ref _currentPruning, pruningContext);
-                            Task.Run(() => RunPruning(pruningContext, header, oldPruning));
+                            if (_fullPruningDb.TryStartPruning(out IPruningContext pruningContext))
+                            {
+                                IPruningContext? oldPruning = Interlocked.Exchange(ref _currentPruning, pruningContext);
+
+                                Task.Run(() => RunPruning(pruningContext, header, oldPruning));
+                            }
                         }
                     }
                 }
             }
         }
+
+        private bool CanRunPruning() => _fullPruningDb.CanStartPruning && _blockTree.BestState.HasValue;
 
         protected virtual void RunPruning(IPruningContext pruning, BlockHeader header, IPruningContext? oldPruning)
         {
@@ -95,6 +117,7 @@ namespace Nethermind.Blockchain.FullPruning
 
         public void Dispose()
         {
+            _blockTree.NewHeadBlock -= OnNewHead;
             _pruningTrigger.Prune -= OnPrune;
             _currentPruning?.Dispose();
             _cancellationTokenSource.Dispose();
