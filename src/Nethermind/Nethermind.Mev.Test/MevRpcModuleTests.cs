@@ -57,7 +57,7 @@ namespace Nethermind.Mev.Test
             public static string ReverterCode = "0x6080604052348015600f57600080fd5b50607080601d6000396000f3fe6080604052348015600f57600080fd5b506004361060285760003560e01c8063a9cc471814602d575b600080fd5b60336035565b005b600080fdfea2646970667358221220ac9d93061661e50d3b0b8a1c9f153485bf00459e1ef145ec811bf3ea0ccf134564736f6c63430008010033";
             public static string CallableCode = "0x608060405234801561001057600080fd5b50600a60008190555060d2806100276000396000f3fe6080604052348015600f57600080fd5b506004361060325760003560e01c80636d4ce63c146037578063b8e010de146051575b600080fd5b603d6059565b604051604891906079565b60405180910390f35b60576062565b005b60008054905090565b600f600081905550565b6073816092565b82525050565b6000602082019050608c6000830184606c565b92915050565b600081905091905056fea26469706673582212209613531dae74fcbd2a6751a86f2f3206d1c690011593ae904e06996b9b48741664736f6c63430008010033";
             public static string SetableCode = "0x608060405234801561001057600080fd5b5060006040516020016100239190610053565b6040516020818303038152906040528051906020012060008190555061008d565b61004d8161007b565b82525050565b60006020820190506100686000830184610044565b92915050565b600060ff82169050919050565b60006100868261006e565b9050919050565b6101b38061009c6000396000f3fe608060405234801561001057600080fd5b50600436106100365760003560e01c806360fe47b11461003b5780636d4ce63c14610057575b600080fd5b610055600480360381019061005091906100c7565b610075565b005b61005f6100a9565b60405161006c919061010e565b60405180910390f35b8060005460405160200161008a929190610129565b6040516020818303038152906040528051906020012060008190555050565b60008054905090565b6000813590506100c181610166565b92915050565b6000602082840312156100d957600080fd5b60006100e7848285016100b2565b91505092915050565b6100f981610152565b82525050565b6101088161015c565b82525050565b600060208201905061012360008301846100f0565b92915050565b600060408201905061013e60008301856100ff565b61014b60208301846100f0565b9392505050565b6000819050919050565b6000819050919050565b61016f8161015c565b811461017a57600080fd5b5056fea264697066735822122021b03dd7e3fc95090ba786ef57ed585f5dedf3ed6cc518e8a0e276636696330864736f6c63430008010033";
-            public static string SecondCallReverter = "0x608060405234801561001057600080fd5b5060008060006101000a81548160ff02191690831515021790555060c3806100396000396000f3fe6080604052348015600f57600080fd5b506004361060285760003560e01c806374b09d0a14602d575b600080fd5b60336035565b005b6000151560008054906101000a900460ff1615151415606c5760016000806101000a81548160ff021916908315150217905550608b565b6001151560008054906101000a900460ff1615151415608a57600080fd5b5b56fea2646970667358221220ef2ca85a4a8ff8b753ca79a5bc3140e22a84f03ea8a3b08eb67adab4405ba00264736f6c63430008010033";
+            public static string SecondCallReverter = "0x608060405234801561001057600080fd5b5060008060006101000a81548160ff02191690831515021790555060c3806100396000396000f3fe6080604052348015600f57600080fd5b506004361060285760003560e01c806374b09d0a14602d575b600080fd5b60336035565b005b6000151560008054906101000a900460ff1615151415606c5760016000806101000a81548160ff021916908315150217905550608b565b6001151560008054906101000a900460ff1615151415608a57600080fd5b5b56fea2646970667358221220d518f3b8de76fcdfc35ffc1279185c7a06d704b72a27a5fe093e12edde0c7ff164736f6c63430007040033";
 
             // about 25000 gas?
             public static string CoinbaseInvokePay = "0x1b9265b8";
@@ -77,7 +77,7 @@ namespace Nethermind.Mev.Test
             public static string SetableInvokeSet3 = "0x60fe47b10000000000000000000000000000000000000000000000000000000000000003";
             public static uint CallableGetValueAfterSet = 15;
             public static string SetableGetValueAfterSets = "0x5cee8536622f876cddaed0988719d7302da5179cca15d43a35ba328cf0d69380";
-            public static string SecondCallReverterInvokeFail = "0x358AA13c52544ECCEF6B0ADD0f801012ADAD5eE3";
+            public static string SecondCallReverterInvokeFail = "0x74b09d0a";
             
             // WARNING be careful when using PrivateKeyC
             // make sure keys from A to D are funded with test ether
@@ -452,10 +452,13 @@ namespace Nethermind.Mev.Test
             
             Address contractAddress = await Contracts.Deploy(chain, Contracts.SecondCallReverter);
             Transaction revertingOnSecondCallTx1 = Build.A.Transaction.WithGasLimit(4_000_000).WithGasPrice(30ul).WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.SecondCallReverterInvokeFail)).WithValue(0).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-            Transaction revertingOnSecondCallTx2 = Build.A.Transaction.WithGasLimit(4_000_000).WithGasPrice(20ul).WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.SecondCallReverterInvokeFail)).WithValue(0).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            Transaction revertingOnSecondCallTx2 = Build.A.Transaction.WithGasLimit(4_000_000).WithGasPrice(20ul).WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.SecondCallReverterInvokeFail)).WithValue(0).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
 
-            SuccessfullySendBundle(chain, 2, revertingOnSecondCallTx2);
             SuccessfullySendBundle(chain, 2, revertingOnSecondCallTx1);
+            Console.WriteLine(chain.BundlePool.GetBundles(2, UInt256.Zero).Count());
+            SuccessfullySendBundle(chain, 2, revertingOnSecondCallTx2);
+            Console.WriteLine(chain.BundlePool.GetBundles(2, UInt256.Zero).Count());
+
 
             await chain.AddBlock(true);
 
@@ -480,7 +483,6 @@ namespace Nethermind.Mev.Test
         }
         
         [Test]
-        [Ignore("Whole bundle reverting bundle checking not yet implemented")]
         public async Task Should_accept_bundles_in_RevertingTxHashes_where_they_only_fail_if_included_in_block_together()
         {
             var chain = await CreateChain(3);
@@ -488,7 +490,7 @@ namespace Nethermind.Mev.Test
             
             Address contractAddress = await Contracts.Deploy(chain, Contracts.SecondCallReverter);
             Transaction revertingOnSecondCallTx1 = Build.A.Transaction.WithGasLimit(4_000_000).WithGasPrice(30ul).WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.SecondCallReverterInvokeFail)).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-            Transaction revertingOnSecondCallTx2 = Build.A.Transaction.WithGasLimit(4_000_000).WithGasPrice(20ul).WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.SecondCallReverterInvokeFail)).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            Transaction revertingOnSecondCallTx2 = Build.A.Transaction.WithGasLimit(4_000_000).WithGasPrice(20ul).WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.SecondCallReverterInvokeFail)).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
 
             SuccessfullySendBundleWithRevertingTxHashes(chain, 2, new Keccak[] {revertingOnSecondCallTx2.Hash!}, revertingOnSecondCallTx2);
             SuccessfullySendBundleWithRevertingTxHashes(chain, 2, new Keccak[] {revertingOnSecondCallTx1.Hash!}, revertingOnSecondCallTx1);
