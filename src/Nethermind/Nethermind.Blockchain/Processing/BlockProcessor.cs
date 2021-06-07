@@ -210,63 +210,7 @@ namespace Nethermind.Blockchain.Processing
             _stateProvider.StateRoot = branchingPointStateRoot;
             if (_logger.IsTrace) _logger.Trace($"Restored the branch checkpoint - {branchingPointStateRoot} | {_stateProvider.StateRoot}");
         }
-
-        // TODO: block processor pipeline
-        private TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, IBlockTracer blockTracer, IReleaseSpec spec)
-        {
-            void ProcessTransaction(Transaction currentTx, int index)
-            {
-                if ((processingOptions & ProcessingOptions.DoNotVerifyNonce) != 0)
-                {
-                    currentTx.Nonce = _stateProvider.GetNonce(currentTx.SenderAddress);
-                }
-
-                _receiptsTracer.StartNewTxTrace(currentTx);
-                _transactionProcessor.Execute(currentTx, block.Header, _receiptsTracer);
-                _receiptsTracer.EndTxTrace();
-
-                TransactionProcessed?.Invoke(this, new TxProcessedEventArgs(index, currentTx, _receiptsTracer.TxReceipts[index]));
-            }
-
-            _receiptsTracer.SetOtherTracer(blockTracer);
-            _receiptsTracer.StartNewBlockTrace(block);
-
-            IEnumerable<Transaction> transactions = block.GetTransactions(out bool transactionsChangeable);
-
-            if (transactionsChangeable)
-            {
-                int i = 0;
-                LinkedHashSet<Transaction> transactionsForBlock = new(DistinctCompareTx.Instance);
-                foreach (Transaction currentTx in transactions)
-                {
-                    if (!transactionsForBlock.Contains(currentTx))
-                    {
-                        // No more gas available in block
-                        if (currentTx.GasLimit > block.Header.GasLimit - block.GasUsed)
-                        {
-                            break;
-                        }
-
-                        ProcessTransaction(currentTx, i++);
-                        transactionsForBlock.Add(currentTx);
-                    }
-                }
-                block.TrySetTransactions(transactionsForBlock.ToArray());
-                block.Header.TxRoot = new TxTrie(block.Transactions).RootHash;
-
-            }
-            else
-            {
-                for (int i = 0; i < block.Transactions.Length; i++)
-                {
-                    Transaction currentTx = block.Transactions[i];
-                    ProcessTransaction(currentTx, i);
-                }
-            }
-            
-            return _receiptsTracer.TxReceipts!;
-        }
-
+        
         // TODO: block processor pipeline
         private (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer)
         {
@@ -298,7 +242,34 @@ namespace Nethermind.Blockchain.Processing
         protected virtual TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options)
         {
             IReleaseSpec spec = _specProvider.GetSpec(block.Number);
-            TxReceipt[] receipts = ProcessTransactions(block, options, blockTracer, spec);
+            
+            _receiptsTracer.SetOtherTracer(blockTracer);
+            _receiptsTracer.StartNewBlockTrace(block);
+            
+            ITransactionProcessingStrategy strategy;
+            
+            if (block is BlockToProduce {Transactions: not ICollection<Transaction>})
+            {
+                strategy = new ProducingBlockTransactionProcessingStrategy(
+                    _receiptsTracer, 
+                    _transactionProcessor,
+                    _stateProvider, 
+                    _storageProvider, 
+                    options, 
+                    TransactionProcessed);
+            }
+            else
+            {
+                strategy = new TransactionProcessingStrategy(
+                    _receiptsTracer, 
+                    _transactionProcessor, 
+                    _stateProvider, 
+                    _storageProvider, 
+                    options, 
+                    TransactionProcessed);
+            }
+
+            TxReceipt[] receipts = strategy.ProcessTransactions(block, options, blockTracer, spec);
 
             block.Header.ReceiptsRoot = receipts.GetReceiptsRoot(spec, block.ReceiptsRoot);
             ApplyMinerRewards(block, blockTracer, spec);
