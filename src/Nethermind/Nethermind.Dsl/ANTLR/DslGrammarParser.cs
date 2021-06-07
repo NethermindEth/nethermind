@@ -37,8 +37,8 @@ public partial class DslGrammarParser : Parser {
 	protected static PredictionContextCache sharedContextCache = new PredictionContextCache();
 	public const int
 		BOOLEAN_OPERATOR=1, ARITHMETIC_SYMBOL=2, SOURCE=3, WATCH=4, WHERE=5, PUBLISH=6, 
-		AND=7, OR=8, CONTAINS=9, PUBLISH_VALUE=10, WEBSOCKETS=11, LOG_PUBLISHER=12, 
-		WORD=13, BYTECODE=14, DIGIT=15, ADDRESS=16, WS=17;
+		AND=7, OR=8, CONTAINS=9, IS=10, NOT=11, PUBLISH_VALUE=12, WEBSOCKETS=13, 
+		LOG_PUBLISHER=14, WORD=15, BYTECODE=16, DIGIT=17, ADDRESS=18, WS=19;
 	public const int
 		RULE_tree = 0, RULE_expression = 1, RULE_sourceExpression = 2, RULE_watchExpression = 3, 
 		RULE_whereExpression = 4, RULE_publishExpression = 5, RULE_condition = 6, 
@@ -50,12 +50,12 @@ public partial class DslGrammarParser : Parser {
 
 	private static readonly string[] _LiteralNames = {
 		null, null, null, "'SOURCE'", "'WATCH'", "'WHERE'", "'PUBLISH'", "'AND'", 
-		"'OR'", "'CONTAINS'"
+		"'OR'", "'CONTAINS'", "'IS'", "'NOT'"
 	};
 	private static readonly string[] _SymbolicNames = {
 		null, "BOOLEAN_OPERATOR", "ARITHMETIC_SYMBOL", "SOURCE", "WATCH", "WHERE", 
-		"PUBLISH", "AND", "OR", "CONTAINS", "PUBLISH_VALUE", "WEBSOCKETS", "LOG_PUBLISHER", 
-		"WORD", "BYTECODE", "DIGIT", "ADDRESS", "WS"
+		"PUBLISH", "AND", "OR", "CONTAINS", "IS", "NOT", "PUBLISH_VALUE", "WEBSOCKETS", 
+		"LOG_PUBLISHER", "WORD", "BYTECODE", "DIGIT", "ADDRESS", "WS"
 	};
 	public static readonly IVocabulary DefaultVocabulary = new Vocabulary(_LiteralNames, _SymbolicNames);
 
@@ -584,7 +584,7 @@ public partial class DslGrammarParser : Parser {
 
 	private static char[] _serializedATN = {
 		'\x3', '\x608B', '\xA72A', '\x8133', '\xB9ED', '\x417C', '\x3BE7', '\x7786', 
-		'\x5964', '\x3', '\x13', ':', '\x4', '\x2', '\t', '\x2', '\x4', '\x3', 
+		'\x5964', '\x3', '\x15', ':', '\x4', '\x2', '\t', '\x2', '\x4', '\x3', 
 		'\t', '\x3', '\x4', '\x4', '\t', '\x4', '\x4', '\x5', '\t', '\x5', '\x4', 
 		'\x6', '\t', '\x6', '\x4', '\a', '\t', '\a', '\x4', '\b', '\t', '\b', 
 		'\x4', '\t', '\t', '\t', '\x4', '\n', '\t', '\n', '\x3', '\x2', '\a', 
@@ -596,7 +596,7 @@ public partial class DslGrammarParser : Parser {
 		'\a', '\x3', '\b', '\x3', '\b', '\x3', '\b', '\x3', '\b', '\x3', '\t', 
 		'\x3', '\t', '\x3', '\t', '\x3', '\n', '\x3', '\n', '\x3', '\n', '\x3', 
 		'\n', '\x2', '\x2', '\v', '\x2', '\x4', '\x6', '\b', '\n', '\f', '\xE', 
-		'\x10', '\x12', '\x2', '\x3', '\x3', '\x2', '\xF', '\x12', '\x2', '\x36', 
+		'\x10', '\x12', '\x2', '\x3', '\x3', '\x2', '\x11', '\x14', '\x2', '\x36', 
 		'\x2', '\x17', '\x3', '\x2', '\x2', '\x2', '\x4', ' ', '\x3', '\x2', '\x2', 
 		'\x2', '\x6', '\"', '\x3', '\x2', '\x2', '\x2', '\b', '%', '\x3', '\x2', 
 		'\x2', '\x2', '\n', '(', '\x3', '\x2', '\x2', '\x2', '\f', '+', '\x3', 
@@ -614,19 +614,19 @@ public partial class DslGrammarParser : Parser {
 		'\x2', ' ', '\x1D', '\x3', '\x2', '\x2', '\x2', ' ', '\x1E', '\x3', '\x2', 
 		'\x2', '\x2', ' ', '\x1F', '\x3', '\x2', '\x2', '\x2', '!', '\x5', '\x3', 
 		'\x2', '\x2', '\x2', '\"', '#', '\a', '\x5', '\x2', '\x2', '#', '$', '\a', 
-		'\xF', '\x2', '\x2', '$', '\a', '\x3', '\x2', '\x2', '\x2', '%', '&', 
-		'\a', '\x6', '\x2', '\x2', '&', '\'', '\a', '\xF', '\x2', '\x2', '\'', 
+		'\x11', '\x2', '\x2', '$', '\a', '\x3', '\x2', '\x2', '\x2', '%', '&', 
+		'\a', '\x6', '\x2', '\x2', '&', '\'', '\a', '\x11', '\x2', '\x2', '\'', 
 		'\t', '\x3', '\x2', '\x2', '\x2', '(', ')', '\a', '\a', '\x2', '\x2', 
 		')', '*', '\x5', '\xE', '\b', '\x2', '*', '\v', '\x3', '\x2', '\x2', '\x2', 
-		'+', ',', '\a', '\b', '\x2', '\x2', ',', '-', '\a', '\f', '\x2', '\x2', 
-		'-', '.', '\a', '\xF', '\x2', '\x2', '.', '\r', '\x3', '\x2', '\x2', '\x2', 
-		'/', '\x30', '\a', '\xF', '\x2', '\x2', '\x30', '\x31', '\a', '\x3', '\x2', 
-		'\x2', '\x31', '\x32', '\t', '\x2', '\x2', '\x2', '\x32', '\xF', '\x3', 
-		'\x2', '\x2', '\x2', '\x33', '\x34', '\a', '\t', '\x2', '\x2', '\x34', 
-		'\x35', '\x5', '\xE', '\b', '\x2', '\x35', '\x11', '\x3', '\x2', '\x2', 
-		'\x2', '\x36', '\x37', '\a', '\n', '\x2', '\x2', '\x37', '\x38', '\x5', 
-		'\xE', '\b', '\x2', '\x38', '\x13', '\x3', '\x2', '\x2', '\x2', '\x4', 
-		'\x17', ' ',
+		'+', ',', '\a', '\b', '\x2', '\x2', ',', '-', '\a', '\xE', '\x2', '\x2', 
+		'-', '.', '\a', '\x11', '\x2', '\x2', '.', '\r', '\x3', '\x2', '\x2', 
+		'\x2', '/', '\x30', '\a', '\x11', '\x2', '\x2', '\x30', '\x31', '\a', 
+		'\x3', '\x2', '\x2', '\x31', '\x32', '\t', '\x2', '\x2', '\x2', '\x32', 
+		'\xF', '\x3', '\x2', '\x2', '\x2', '\x33', '\x34', '\a', '\t', '\x2', 
+		'\x2', '\x34', '\x35', '\x5', '\xE', '\b', '\x2', '\x35', '\x11', '\x3', 
+		'\x2', '\x2', '\x2', '\x36', '\x37', '\a', '\n', '\x2', '\x2', '\x37', 
+		'\x38', '\x5', '\xE', '\b', '\x2', '\x38', '\x13', '\x3', '\x2', '\x2', 
+		'\x2', '\x4', '\x17', ' ',
 	};
 
 	public static readonly ATN _ATN =
