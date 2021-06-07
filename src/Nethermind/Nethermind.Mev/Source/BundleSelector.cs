@@ -53,14 +53,24 @@ namespace Nethermind.Mev.Source
             long totalGasUsed = 0;
             int numBundles = 0;
 
+            HashSet<Transaction> seenTransactions = new HashSet<Transaction>();
+
             foreach (SimulatedMevBundle simulatedBundle in simulatedBundles.OrderByDescending(bundle => bundle.BundleAdjustedGasPrice))
             {
+                foreach (var transaction in simulatedBundle.Bundle.Transactions)
+                {
+                    if (seenTransactions.Contains(transaction)) yield break;
+                }
                 if (numBundles < _bundleLimit)
                 {
                     if (simulatedBundle.GasUsed <= gasLimit - totalGasUsed)
                     {
                         totalGasUsed += simulatedBundle.GasUsed;
                         numBundles++;
+                        foreach (var transaction in simulatedBundle.Bundle.Transactions)
+                        {
+                            seenTransactions.Add(transaction);
+                        }
                         yield return simulatedBundle.Bundle;
                     }
                 }

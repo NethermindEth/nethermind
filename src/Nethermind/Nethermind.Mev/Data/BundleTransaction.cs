@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -22,6 +23,7 @@ namespace Nethermind.Mev.Data
 {
     public class BundleTransaction : Transaction
     {
-        public Keccak? BundleHash { get; set; }
+        public Keccak BundleHash { get; set; } = Keccak.Zero;
+        public bool CanRevert { get; set; } = true;
     }
 }
