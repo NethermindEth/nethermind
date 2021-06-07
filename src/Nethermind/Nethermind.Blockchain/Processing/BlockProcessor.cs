@@ -239,37 +239,38 @@ namespace Nethermind.Blockchain.Processing
         }
 
         // TODO: block processor pipeline
-        protected virtual TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options)
+        protected virtual TxReceipt[] ProcessBlock(
+            Block block, 
+            IBlockTracer blockTracer, 
+            ProcessingOptions options,
+            ITransactionProcessingStrategy? transactionProcessingStrategy = null)
         {
             IReleaseSpec spec = _specProvider.GetSpec(block.Number);
             
             _receiptsTracer.SetOtherTracer(blockTracer);
             _receiptsTracer.StartNewBlockTrace(block);
-            
-            ITransactionProcessingStrategy strategy;
-            
-            if (block is BlockToProduce {Transactions: not ICollection<Transaction>})
+
+            if (transactionProcessingStrategy == null) 
             {
-                strategy = new ProducingBlockTransactionProcessingStrategy(
-                    _receiptsTracer, 
-                    _transactionProcessor,
-                    _stateProvider, 
-                    _storageProvider, 
-                    options, 
-                    TransactionProcessed);
-            }
-            else
-            {
-                strategy = new TransactionProcessingStrategy(
-                    _receiptsTracer, 
-                    _transactionProcessor, 
-                    _stateProvider, 
-                    _storageProvider, 
-                    options, 
-                    TransactionProcessed);
+                if (block is BlockToProduce {Transactions: not ICollection<Transaction>})
+                {
+                    transactionProcessingStrategy = new ProducingBlockTransactionProcessingStrategy(
+                        _transactionProcessor,
+                        _stateProvider, 
+                        _storageProvider, 
+                        options);
+                }
+                else
+                {
+                    transactionProcessingStrategy = new TransactionProcessingStrategy(
+                        _transactionProcessor, 
+                        _stateProvider, 
+                        _storageProvider, 
+                        options);
+                }
             }
 
-            TxReceipt[] receipts = strategy.ProcessTransactions(block, options, blockTracer, spec);
+            TxReceipt[] receipts = transactionProcessingStrategy.ProcessTransactions(block, options, blockTracer, _receiptsTracer, spec, TransactionProcessed);
 
             block.Header.ReceiptsRoot = receipts.GetReceiptsRoot(spec, block.ReceiptsRoot);
             ApplyMinerRewards(block, blockTracer, spec);

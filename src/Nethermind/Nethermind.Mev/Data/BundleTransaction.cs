@@ -15,17 +15,13 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
-using System.Collections.Generic;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
-using Nethermind.Evm.Tracing;
-using Nethermind.State;
+using Nethermind.Core.Crypto;
 
-namespace Nethermind.Blockchain.Processing
+namespace Nethermind.Mev.Data
 {
-    public interface ITransactionProcessingStrategy
+    public class BundleTransaction : Transaction
     {
-        public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, IBlockTracer blockTracer, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec, EventHandler<TxProcessedEventArgs> TransactionProcessed);
+        private Keccak? BundleHash { get; set; }
     }
 }
