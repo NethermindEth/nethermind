@@ -34,6 +34,7 @@ using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.State.Proofs;
+using Nethermind.TxPool;
 
 namespace Nethermind.Blockchain.Processing
 {
@@ -235,19 +236,21 @@ namespace Nethermind.Blockchain.Processing
             if (transactionsChangeable)
             {
                 int i = 0;
-                LinkedHashSet<Transaction> transactionsForBlock = new();
+                LinkedHashSet<Transaction> transactionsForBlock = new(DistinctCompareTx.Instance);
                 foreach (Transaction currentTx in transactions)
                 {
-                    // No more gas available in block
-                    if (currentTx.GasLimit > block.Header.GasLimit - block.GasUsed)
+                    if (!transactionsForBlock.Contains(currentTx))
                     {
-                        break;
-                    }
+                        // No more gas available in block
+                        if (currentTx.GasLimit > block.Header.GasLimit - block.GasUsed)
+                        {
+                            break;
+                        }
 
-                    ProcessTransaction(currentTx, i++);
-                    transactionsForBlock.Add(currentTx);
+                        ProcessTransaction(currentTx, i++);
+                        transactionsForBlock.Add(currentTx);
+                    }
                 }
-                
                 block.TrySetTransactions(transactionsForBlock.ToArray());
                 block.Header.TxRoot = new TxTrie(block.Transactions).RootHash;
 

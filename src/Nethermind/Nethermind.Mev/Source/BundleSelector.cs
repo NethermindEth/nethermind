@@ -19,35 +19,56 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.VisualBasic;
 using Nethermind.Core;
+using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Mev.Data;
 using Nethermind.Mev.Execution;
 
 namespace Nethermind.Mev.Source
 {
-    public class V1Selector : IBundleSource
+    public class BundleSelector : IBundleSource
     {
         private readonly ISimulatedBundleSource _simulatedBundleSource;
+        private readonly int _bundleLimit;
+        
 
-        public V1Selector(ISimulatedBundleSource simulatedBundleSource)
+        public BundleSelector(
+            ISimulatedBundleSource simulatedBundleSource,
+            int bundleLimit)
         {
             _simulatedBundleSource = simulatedBundleSource;
+            _bundleLimit = bundleLimit;
         }
         
         public async Task<IEnumerable<MevBundle>> GetBundles(BlockHeader parent, UInt256 timestamp, long gasLimit, CancellationToken token = default)
         {
-            SimulatedMevBundle? bestBundle = null;
             IEnumerable<SimulatedMevBundle> simulatedBundles = await _simulatedBundleSource.GetBundles(parent, timestamp, gasLimit, token);
-            foreach (var simulatedBundle in simulatedBundles)
+            return FilterBundles(simulatedBundles, gasLimit);
+        }
+
+        private IEnumerable<MevBundle> FilterBundles(IEnumerable<SimulatedMevBundle> simulatedBundles, long gasLimit)
+        {
+            long totalGasUsed = 0;
+            int numBundles = 0;
+
+            foreach (SimulatedMevBundle simulatedBundle in simulatedBundles.OrderByDescending(bundle => bundle.BundleAdjustedGasPrice))
             {
-                if (bestBundle is null || simulatedBundle.AdjustedGasPrice > bestBundle.AdjustedGasPrice)
+                if (numBundles < _bundleLimit)
                 {
-                    bestBundle = simulatedBundle;
+                    if (simulatedBundle.GasUsed <= gasLimit - totalGasUsed)
+                    {
+                        totalGasUsed += simulatedBundle.GasUsed;
+                        numBundles++;
+                        yield return simulatedBundle.Bundle;
+                    }
+                }
+                else
+                {
+                    yield break;
                 }
             }
-
-            return bestBundle is null ? Enumerable.Empty<MevBundle>() : Enumerable.Repeat(bestBundle.Bundle, 1);
         }
     }
 }

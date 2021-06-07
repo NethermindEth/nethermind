@@ -15,11 +15,22 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-namespace Nethermind.Mev.Test
+using System.Collections.Generic;
+using Nethermind.Mev.Data;
+
+namespace Nethermind.Mev.Source
 {
-    public enum SelectorType
+    public class CompareMevBundleByHash : IComparer<MevBundle>
     {
-        V1,
-        V2,
+        public static readonly CompareMevBundleByHash Default = new();
+        
+        public int Compare(MevBundle? x, MevBundle? y)
+        {
+            if (ReferenceEquals(x, y)) return 0;
+            if (ReferenceEquals(null, y)) return 1;
+            if (ReferenceEquals(null, x)) return -1;
+            
+            return x.Hash.CompareTo(y.Hash);
+        }
     }
 }
