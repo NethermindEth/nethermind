@@ -22,6 +22,6 @@ namespace Nethermind.Mev.Data
 {
     public class BundleTransaction : Transaction
     {
-        private Keccak? BundleHash { get; set; }
+        public Keccak? BundleHash { get; set; }
     }
 }
