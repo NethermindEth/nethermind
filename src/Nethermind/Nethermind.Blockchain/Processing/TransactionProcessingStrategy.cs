@@ -28,52 +28,45 @@ namespace Nethermind.Blockchain.Processing
 {
     public class TransactionProcessingStrategy : ITransactionProcessingStrategy
     {
-        private readonly BlockReceiptsTracer _receiptsTracer;
         private readonly ITransactionProcessor _transactionProcessor;
         private readonly IStateProvider _stateProvider;
         private readonly IStorageProvider _storageProvider;
         private readonly ProcessingOptions _options;
         
-        public event EventHandler<TxProcessedEventArgs> TransactionProcessed;
-
         public TransactionProcessingStrategy(
-            BlockReceiptsTracer receiptsTracer, 
             ITransactionProcessor transactionProcessor, 
             IStateProvider stateProvider,
             IStorageProvider storageProvider, 
-            ProcessingOptions options, 
-            EventHandler<TxProcessedEventArgs> transactionProcessed)
+            ProcessingOptions options)
         {
-            _receiptsTracer = receiptsTracer;
             _transactionProcessor = transactionProcessor;
             _stateProvider = stateProvider;
             _storageProvider = storageProvider;
             _options = options;
-            TransactionProcessed = transactionProcessed;
         }
         
-        public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, IBlockTracer blockTracer, IReleaseSpec spec)
+        public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, IBlockTracer blockTracer, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec, EventHandler<TxProcessedEventArgs> TransactionProcessed)
         {
             for (int i = 0; i < block.Transactions.Length; i++)
             {
                 Transaction currentTx = block.Transactions[i];
-                ProcessTransaction(block, currentTx, i);
+                ProcessTransaction(block, currentTx, i, receiptsTracer, TransactionProcessed);
             }
-            return _receiptsTracer.TxReceipts!;
+            return receiptsTracer.TxReceipts!;
         }
         
-        private void ProcessTransaction(Block block, Transaction currentTx, int index)
+        private void ProcessTransaction(Block block, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, EventHandler<TxProcessedEventArgs> TransactionProcessed)
         {
             if ((_options & ProcessingOptions.DoNotVerifyNonce) != 0)
             {
                 currentTx.Nonce = _stateProvider.GetNonce(currentTx.SenderAddress);
             }
 
-            _receiptsTracer.StartNewTxTrace(currentTx);
-            _transactionProcessor.Execute(currentTx, block.Header, _receiptsTracer);
-            _receiptsTracer.EndTxTrace();
+            receiptsTracer.StartNewTxTrace(currentTx);
+            _transactionProcessor.Execute(currentTx, block.Header, receiptsTracer);
+            receiptsTracer.EndTxTrace();
 
-            TransactionProcessed?.Invoke(this, new TxProcessedEventArgs(index, currentTx, _receiptsTracer.TxReceipts[index]));
+            TransactionProcessed?.Invoke(this, new TxProcessedEventArgs(index, currentTx, receiptsTracer.TxReceipts[index]));
         }
     }
 }

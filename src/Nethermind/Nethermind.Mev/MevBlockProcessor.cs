@@ -31,8 +31,10 @@ namespace Nethermind.Mev
 {
     public class MevBlockProcessor : BlockProcessor, IBeneficiaryBalanceSource
     {
+        private readonly ITransactionProcessor _transactionProcessor;
         private readonly IStateProvider _stateProvider;
-
+        private readonly IStorageProvider _storageProvider;
+        
         public MevBlockProcessor(
             ISpecProvider? specProvider, 
             IBlockValidator? blockValidator, 
@@ -45,12 +47,15 @@ namespace Nethermind.Mev
             ILogManager? logManager) 
             : base(specProvider, blockValidator, rewardCalculator, transactionProcessor, stateProvider, storageProvider, receiptStorage, witnessCollector, logManager)
         {
+            _transactionProcessor = transactionProcessor!;
             _stateProvider = stateProvider!;
+            _storageProvider = storageProvider!;
         }
 
-        protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options)
+        protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options, ITransactionProcessingStrategy? transactionProcessingStrategy = null)
         {
-            TxReceipt[] processBlock = base.ProcessBlock(block, blockTracer, options);
+            ITransactionProcessingStrategy strategy = new ProducingBlockWithBundlesTransactionProcessingStrategy(_transactionProcessor, _stateProvider, _storageProvider, options);
+            TxReceipt[] processBlock = base.ProcessBlock(block, blockTracer, options, strategy);
             BeneficiaryBalance = _stateProvider.GetBalance(block.Header.GasBeneficiary!);
             return processBlock;
         }

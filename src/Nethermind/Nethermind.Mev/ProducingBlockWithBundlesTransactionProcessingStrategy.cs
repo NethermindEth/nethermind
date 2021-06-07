@@ -18,6 +18,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Blockchain.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
@@ -27,16 +28,16 @@ using Nethermind.State;
 using Nethermind.State.Proofs;
 using Nethermind.TxPool;
 
-namespace Nethermind.Blockchain.Processing
+namespace Nethermind.Mev
 {
-    public class ProducingBlockTransactionProcessingStrategy : ITransactionProcessingStrategy
+    public class ProducingBlockWithBundlesTransactionProcessingStrategy : ITransactionProcessingStrategy // WIP
     {
         private readonly ITransactionProcessor _transactionProcessor;
         private readonly IStateProvider _stateProvider;
         private readonly IStorageProvider _storageProvider;
         private readonly ProcessingOptions _options;
         
-        public ProducingBlockTransactionProcessingStrategy(
+        public ProducingBlockWithBundlesTransactionProcessingStrategy(
             ITransactionProcessor transactionProcessor, 
             IStateProvider stateProvider,
             IStorageProvider storageProvider, 
@@ -77,14 +78,14 @@ namespace Nethermind.Blockchain.Processing
         {
             if ((_options & ProcessingOptions.DoNotVerifyNonce) != 0)
             {
-                currentTx.Nonce = _stateProvider.GetNonce(currentTx.SenderAddress);
+                currentTx.Nonce = _stateProvider.GetNonce(currentTx.SenderAddress!);
             }
 
             receiptsTracer.StartNewTxTrace(currentTx);
             _transactionProcessor.Execute(currentTx, block.Header, receiptsTracer);
             receiptsTracer.EndTxTrace();
 
-            TransactionProcessed?.Invoke(this, new TxProcessedEventArgs(index, currentTx, receiptsTracer.TxReceipts[index]));
+            TransactionProcessed?.Invoke(this, new TxProcessedEventArgs(index, currentTx, receiptsTracer.TxReceipts![index]));
         }
     }
 }
