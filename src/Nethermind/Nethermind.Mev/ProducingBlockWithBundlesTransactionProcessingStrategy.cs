@@ -21,9 +21,11 @@ using System.Linq;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
+using Nethermind.Mev.Data;
 using Nethermind.State;
 using Nethermind.State.Proofs;
 using Nethermind.TxPool;
@@ -55,8 +57,49 @@ namespace Nethermind.Mev
 
             int i = 0;
             LinkedHashSet<Transaction> transactionsForBlock = new(DistinctCompareTx.Instance);
+
+            List<BundleTransaction> bundle = new();
+            Keccak? bundleHash = null;
+            
             foreach (Transaction currentTx in transactions)
             {
+                if (bundleHash is null)
+                {
+                    if (currentTx is BundleTransaction bundleTransaction)
+                    {
+                        bundle.Add(bundleTransaction);
+                        bundleHash = bundleTransaction.BundleHash;
+                    }
+                    else
+                    {
+                        // normal processing of transaction
+                    }
+                }
+                else
+                {
+                    if (currentTx is BundleTransaction bundleTransaction)
+                    {
+                        if (bundleTransaction.Hash == bundleHash)
+                        {
+                            bundle.Add(bundleTransaction);
+                        }
+                        else
+                        {
+                            // process bundle(!)
+                            bundle.Clear();
+                            bundleHash = bundleTransaction.Hash;
+                        }
+                    }
+                    else
+                    {
+                        // process bundle(!)
+                        // process current transactions
+                        bundleHash = null;
+                        bundle.Clear();
+                    }
+                }
+
+
                 if (!transactionsForBlock.Contains(currentTx))
                 {
                     // No more gas available in block
