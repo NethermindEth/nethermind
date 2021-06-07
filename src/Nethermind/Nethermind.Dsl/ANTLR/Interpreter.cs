@@ -205,7 +205,7 @@ namespace Nethermind.Dsl.ANTLR
                 "!=" => new PipelineElement<Block, Block>(
                     condition: (b => b.GetType().GetProperty(key)?.GetValue(b)?.ToString() != value),
                     transformData: (b => b)),
-                "IS NOT" => new PipelineElement<Block, Block>(
+                "NOT" => new PipelineElement<Block, Block>(
                     condition: (b => b.GetType().GetProperty(key)?.GetValue(b)?.ToString() != value),
                     transformData: (b => b)),
                 ">" => new PipelineElement<Block, Block>(
@@ -256,7 +256,7 @@ namespace Nethermind.Dsl.ANTLR
                 "==" => new PipelineElement<TxReceipt, TxReceipt>(
                     condition: (t => t.GetType().GetProperty(key)?.GetValue(t)?.ToString() == value),
                     transformData: (t => t)),
-                "IS NOT" => new PipelineElement<TxReceipt, TxReceipt>(
+                "NOT" => new PipelineElement<TxReceipt, TxReceipt>(
                     condition: (t => t.GetType().GetProperty(key)?.GetValue(t)?.ToString() != value),
                     transformData: (t => t)),
                 "!=" => new PipelineElement<TxReceipt, TxReceipt>(
