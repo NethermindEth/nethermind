@@ -159,6 +159,9 @@ namespace Nethermind.Dsl.ANTLR
                 "==" => new PipelineElement<Transaction, Transaction>(
                     condition: (t => t.GetType().GetProperty(key).GetValue(t).ToString() == value),
                     transformData: (t => t)),
+                "NOT" => new PipelineElement<Transaction, Transaction>(
+                    condition: (t => t.GetType().GetProperty(key)?.GetValue(t)?.ToString() != value),
+                    transformData: (t => t)),
                 "!=" => new PipelineElement<Transaction, Transaction>(
                     condition: (t => t.GetType().GetProperty(key)?.GetValue(t)?.ToString() != value),
                     transformData: (t => t)),
@@ -185,10 +188,16 @@ namespace Nethermind.Dsl.ANTLR
         {
             return operation switch
             {
+                "IS" => new PipelineElement<Block, Block>(
+                    condition: (b => b.GetType().GetProperty(key)?.GetValue(b)?.ToString() == value),
+                    transformData: (b => b)),
                 "==" => new PipelineElement<Block, Block>(
                     condition: (b => b.GetType().GetProperty(key)?.GetValue(b)?.ToString() == value),
                     transformData: (b => b)),
                 "!=" => new PipelineElement<Block, Block>(
+                    condition: (b => b.GetType().GetProperty(key)?.GetValue(b)?.ToString() != value),
+                    transformData: (b => b)),
+                "IS NOT" => new PipelineElement<Block, Block>(
                     condition: (b => b.GetType().GetProperty(key)?.GetValue(b)?.ToString() != value),
                     transformData: (b => b)),
                 ">" => new PipelineElement<Block, Block>(
