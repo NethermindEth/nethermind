@@ -4,6 +4,7 @@ using Antlr4.Runtime;
 using Antlr4.Runtime.Tree;
 using Nethermind.Api;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Dsl.Pipeline;
 using Nethermind.Int256;
@@ -151,6 +152,13 @@ namespace Nethermind.Dsl.ANTLR
 
         private PipelineElement<Transaction, Transaction> GetNextTransactionElement(string key, string operation, string value)
         {
+            static bool CheckIfDataContains(Transaction tx, string value)
+            {
+                if (tx.Data == null) return false;
+
+                return tx.Data.ToHexString().Contains(value);
+            }
+            
             return operation switch
             {
                 "IS" => new PipelineElement<Transaction, Transaction>(
@@ -178,7 +186,7 @@ namespace Nethermind.Dsl.ANTLR
                     condition: (t => (UInt256) t.GetType().GetProperty(key)?.GetValue(t) <= UInt256.Parse(value)),
                     transformData: (t => t)),
                 "CONTAINS" => new PipelineElement<Transaction, Transaction>(
-                    condition: (t => (t.GetType().GetProperty(key)?.GetValue(t) as byte[]).ToHexString().Contains(value)),
+                    condition: (t => CheckIfDataContains(t, value)),
                     transformData: (t => t)),
                 _ => null
             };
@@ -218,6 +226,28 @@ namespace Nethermind.Dsl.ANTLR
 
         private PipelineElement<TxReceipt, TxReceipt> GetNextEventElement(string key, string operation, string value)
         {
+            bool CheckEventSignature(TxReceipt receipt, string signature)
+            {
+                Keccak signatureHash = Keccak.Compute(signature);
+
+                if (receipt.Logs == null) return false;
+
+                foreach (var log in receipt.Logs)
+                {
+                    if (log.Topics.Contains(signatureHash))
+                        return true;
+                }
+
+                return false;
+            }
+
+            if (key.Equals("EventSignature", StringComparison.InvariantCultureIgnoreCase) && operation.Equals("IS"))
+            {
+                return new PipelineElement<TxReceipt, TxReceipt>(
+                    condition: (t => CheckEventSignature(t, value)), 
+                    transformData: (t => t));
+            }
+
             return operation switch
             {
                 "IS" => new PipelineElement<TxReceipt, TxReceipt>(
