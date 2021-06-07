@@ -444,7 +444,7 @@ namespace Nethermind.Mev.Test
         }
         
         [Test]
-        [Ignore("Whole bundle reverting bundle checking not yet implemented")]
+        //[Ignore("Whole bundle reverting bundle checking not yet implemented")]
         public async Task Should_reject_second_bundle_where_they_succeed_individually_but_fail_if_in_the_same_block()
         {
             var chain = await CreateChain(3);
