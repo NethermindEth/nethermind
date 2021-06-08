@@ -45,7 +45,8 @@ namespace Nethermind.TxPool
                 
                 AddTxResult result = _txPool.AddTransaction(tx, txHandlingOptions);
 
-                if (result != AddTxResult.OwnNonceAlreadyUsed || (txHandlingOptions & TxHandlingOptions.ManagedNonce) != TxHandlingOptions.ManagedNonce)
+                if (result != AddTxResult.OwnNonceAlreadyUsed && result != AddTxResult.AlreadyKnown
+                    || (txHandlingOptions & TxHandlingOptions.ManagedNonce) != TxHandlingOptions.ManagedNonce)
                 {
                     break;
                 }
