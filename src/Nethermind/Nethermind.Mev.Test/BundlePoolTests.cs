@@ -239,11 +239,17 @@ namespace Nethermind.Mev.Test
             Transaction tx3 = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).TestObject;
             Transaction tx4 = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyD).TestObject;
 
-            MevConfig config = new() {BundlePoolSize = 3};
+            MevConfig config = new() {BundlePoolSize = 4};
             TestContext tc = new(default, config, 1, false);
+            IEnumerable<SimulatedMevBundle> simulatedMevBundles;
+            ISimulatedBundleSource simulatedBundleSource = tc.BundlePool;
+            SemaphoreSlim semaphoreSlim = new SemaphoreSlim(0);
 
-            MevBundle bundle1 = new(3, new[]{tx1});
-            MevBundle bundle2 = new(2, new[]{tx2});
+            simulatedBundleSource.GetBundles(Arg.Any<BlockHeader>(), Arg.Any<UInt256>(), Arg.Any<long>())
+                .Returns(Arg.Any<IEnumerable<SimulatedMevBundle>>()).AndDoes(c => semaphoreSlim.Release());
+            
+            MevBundle bundle1 = new(4, new[]{tx1});
+            MevBundle bundle2 = new(3, new[]{tx2});
             MevBundle bundle3 = new(2, new[]{tx3});
             MevBundle bundle4 = new(2, new[]{tx4});
             
@@ -252,13 +258,31 @@ namespace Nethermind.Mev.Test
             tc.BundlePool.AddBundle(bundle3);
             tc.BundlePool.AddBundle(bundle4);
             
-            MevBundle[] bundles = (tc.BundlePool.GetBundles(2, UInt256.Zero)).ToArray();
-            
-            bundles.Should().NotContain(bundle1);
-            bundles.Should().Contain(bundle2);
-            bundles.Should().Contain(bundle3);
-            bundles.Should().Contain(bundle4);
-            bundles.Length.Should().Be(3);
+            async Task getSimulations(int[] expectedSimulations)
+            {
+                int index = 0;
+                for (int i = 2; i <= 4; i++)
+                {
+                    for (int j = 0; i < expectedSimulations[index]; i++)
+                    {
+                        semaphoreSlim.WaitAsync(TimeSpan.FromMilliseconds(10));
+                    }
+                    simulatedMevBundles = await simulatedBundleSource
+                        .GetBundles(Build.A.BlockHeader.WithNumber(i).TestObject, tc.Timestamper.UnixTime.Seconds,
+                            Int64.MaxValue);
+                    
+                    simulatedMevBundles.Count().Should().Be(expectedSimulations[index++]);
+                }
+            }
+            int head = 1;
+            //MevBundle[] bundles = (tc.BundlePool.GetBundles(2, UInt256.Zero)).ToArray();
+            await getSimulations(new int[] {2, 0, 0});
+            tc.BlockTree.Head.Returns(Build.A.Block.WithNumber(++head).TestObject);
+            await getSimulations(new int[] {0, 1, 0});
+            tc.BlockTree.Head.Returns(Build.A.Block.WithNumber(++head).TestObject);
+            await getSimulations(new int[] {0, 0, 1});
+            tc.BlockTree.Head.Returns(Build.A.Block.WithNumber(++head).TestObject);
+            await getSimulations(new int[] {0, 0, 0});
         }
         
         [Test]
@@ -328,10 +352,16 @@ namespace Nethermind.Mev.Test
                 {
                     BlockTree.Head.Returns(Build.A.Block.WithNumber((long) BlockTreeHead).TestObject);
                 }
+
+                if (timestamper != null)
+                {
+                    Timestamper = timestamper;
+                }
+                
                 BundlePool = new(
                     BlockTree,
                     Simulator,
-                    timestamper ?? new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(DefaultTimestamp)),
+                    Timestamper,
                     config ?? new MevConfig(),
                     LimboLogs.Instance);
 
@@ -354,6 +384,9 @@ namespace Nethermind.Mev.Test
 
             public IBlockTree BlockTree { get; } = Substitute.For<IBlockTree>();
             public BundlePool BundlePool { get; }
+
+            public ITimestamper Timestamper { get; private set; } =
+                 new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(DefaultTimestamp)); 
             
             private MevBundle CreateBundle(long blockNumber, params Transaction[] transactions) => new(blockNumber, transactions);
         }
