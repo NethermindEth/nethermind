@@ -107,7 +107,7 @@ namespace Nethermind.Blockchain.Contracts
             protected virtual object[] CallRaw(CallInfo callInfo, IReadOnlyTransactionProcessor readOnlyTransactionProcessor)
             {
                 var transaction = GenerateTransaction(callInfo);
-                if (readOnlyTransactionProcessor.IsContractDeployed(_contract.ContractAddress))
+                if (_contract.ContractAddress is not null && readOnlyTransactionProcessor.IsContractDeployed(_contract.ContractAddress))
                 {                    
                     var result = CallCore(callInfo, readOnlyTransactionProcessor, transaction);
                     return callInfo.Result = _contract.DecodeReturnData(callInfo.FunctionName, result);
