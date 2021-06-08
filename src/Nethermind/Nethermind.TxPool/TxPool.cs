@@ -225,10 +225,13 @@ namespace Nethermind.TxPool
                     eip1559Txs++;
                 }
             }
-            
-            Metrics.DarkPoolRatioLevel1 = transactionsInBlock == 0 ? 0 : (float)discoveredForHashCache / transactionsInBlock;
-            Metrics.DarkPoolRatioLevel2 = transactionsInBlock == 0 ? 0 : (float)discoveredForPendingTxs / transactionsInBlock;
-            Metrics.Eip1559TransactionsRatio = eip1559Txs == 0 ? 0 : (float)eip1559Txs / transactionsInBlock;
+
+            if (transactionsInBlock != 0)
+            {
+                Metrics.DarkPoolRatioLevel1 = (float)discoveredForHashCache / transactionsInBlock;
+                Metrics.DarkPoolRatioLevel2 = (float)discoveredForPendingTxs / transactionsInBlock;
+                Metrics.Eip1559TransactionsRatio = (float)eip1559Txs / transactionsInBlock;
+            }
         }
 
         public void AddPeer(ITxPoolPeer peer)
