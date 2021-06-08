@@ -51,10 +51,10 @@ namespace Nethermind.Mev.Test
             int beforeValidBundlesReceived = Metrics.ValidBundlesReceived;
             int beforeBundlesSimulated = Metrics.BundlesSimulated;
 
-            bundlePool.AddBundle(new MevBundle(1, new []{new BundleTransaction(Build.A.Transaction.TestObject), new BundleTransaction(Build.A.Transaction.WithNonce(1).TestObject)}, 0, 0, default));
-            bundlePool.AddBundle(new MevBundle(1, new []{new BundleTransaction(Build.A.Transaction.TestObject)}, 0, 0, default));
-            bundlePool.AddBundle(new MevBundle(3, new []{new BundleTransaction(Build.A.Transaction.TestObject)}, 0, 0, default));
-            bundlePool.AddBundle(new MevBundle(4, new []{new BundleTransaction(Build.A.Transaction.TestObject)}, 0, 0, default));
+            bundlePool.AddBundle(new MevBundle(1, new []{Build.A.TypedTransaction<BundleTransaction>().TestObject, Build.A.TypedTransaction<BundleTransaction>().WithNonce(1).TestObject}, 0, 0));
+            bundlePool.AddBundle(new MevBundle(1, new []{Build.A.TypedTransaction<BundleTransaction>().TestObject}, 0, 0));
+            bundlePool.AddBundle(new MevBundle(3, new []{Build.A.TypedTransaction<BundleTransaction>().TestObject}, 0, 0));
+            bundlePool.AddBundle(new MevBundle(4, new []{Build.A.TypedTransaction<BundleTransaction>().TestObject}, 0, 0));
             
             int deltaBundlesReceived = Metrics.BundlesReceived - beforeBundlesReceived;
             int deltaValidBundlesReceived = Metrics.ValidBundlesReceived - beforeValidBundlesReceived;
@@ -74,10 +74,10 @@ namespace Nethermind.Mev.Test
             int beforeValidBundlesReceived = Metrics.ValidBundlesReceived;
             int beforeBundlesSimulated = Metrics.BundlesSimulated;
 
-            bundlePool.AddBundle(new MevBundle(1, new []{new BundleTransaction(Build.A.Transaction.TestObject)}, 5, 0, default)); // invalid
-            bundlePool.AddBundle(new MevBundle(2, new []{new BundleTransaction(Build.A.Transaction.TestObject)}, 0, 0, default)); 
-            bundlePool.AddBundle(new MevBundle(3, new []{new BundleTransaction(Build.A.Transaction.TestObject)}, 0, long.MaxValue, default)); // invalid
-            bundlePool.AddBundle(new MevBundle(4, new []{new BundleTransaction(Build.A.Transaction.TestObject)}, 0, 0, default));
+            bundlePool.AddBundle(new MevBundle(1, new []{Build.A.TypedTransaction<BundleTransaction>().TestObject}, 5, 0)); // invalid
+            bundlePool.AddBundle(new MevBundle(2, new []{Build.A.TypedTransaction<BundleTransaction>().TestObject}, 0, 0)); 
+            bundlePool.AddBundle(new MevBundle(3, new []{Build.A.TypedTransaction<BundleTransaction>().TestObject}, 0, long.MaxValue)); // invalid
+            bundlePool.AddBundle(new MevBundle(4, new []{Build.A.TypedTransaction<BundleTransaction>().TestObject}, 0, 0));
             
             int deltaBundlesReceived = Metrics.BundlesReceived - beforeBundlesReceived;
             int deltaValidBundlesReceived = Metrics.ValidBundlesReceived - beforeValidBundlesReceived;
@@ -95,14 +95,29 @@ namespace Nethermind.Mev.Test
             chain.GasLimitCalculator.GasLimit = 10_000_000;
             
             Address contractAddress = await MevRpcModuleTests.Contracts.Deploy(chain, MevRpcModuleTests.Contracts.CoinbaseCode);
-            Transaction seedContractTx = Build.A.Transaction.WithTo(contractAddress).WithData(Bytes.FromHexString(MevRpcModuleTests.Contracts.CoinbaseDeposit)).WithValue(100000000000).WithNonce(1).WithGasLimit(1_000_000).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
+            BundleTransaction seedContractTx = Build.A.TypedTransaction<BundleTransaction>()
+                .WithTo(contractAddress)
+                .WithData(Bytes.FromHexString(MevRpcModuleTests.Contracts.CoinbaseDeposit))
+                .WithValue(100000000000)
+                .WithNonce(1)
+                .WithGasLimit(1_000_000)
+                .SignedAndResolved(TestItem.PrivateKeyC).TestObject;
+            
             await chain.AddBlock(true, seedContractTx);
 
             //Console.WriteLine((await chain.EthRpcModule.eth_getBalance(contractAddress)).Data!);
 
             UInt256 beforeCoinbasePayments = Metrics.TotalCoinbasePayments;
 
-            Transaction coinbaseTx = Build.A.Transaction.WithGasLimit(MevRpcModuleTests.Contracts.LargeGasLimit).WithData(Bytes.FromHexString(MevRpcModuleTests.Contracts.CoinbaseInvokePay)).WithTo(contractAddress).WithGasPrice(1ul).WithNonce(0).WithValue(0).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            BundleTransaction coinbaseTx = Build.A.TypedTransaction<BundleTransaction>()
+                .WithGasLimit(MevRpcModuleTests.Contracts.LargeGasLimit)
+                .WithData(Bytes.FromHexString(MevRpcModuleTests.Contracts.CoinbaseInvokePay))
+                .WithTo(contractAddress)
+                .WithGasPrice(1ul)
+                .WithNonce(0)
+                .WithValue(0)
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            
             MevRpcModuleTests.SuccessfullySendBundle(chain, 3, coinbaseTx);
             await chain.AddBlock(true);
             
@@ -133,7 +148,7 @@ namespace Nethermind.Mev.Test
             TestBundlePool bundlePool = new(
                 blockTree,
                 Substitute.For<IBundleSimulator>(),
-                new ManualTimestamper(DateTime.MinValue),
+                new ManualTimestamper(DateTimeOffset.UnixEpoch.DateTime),
                 new MevConfig(),
                 LimboLogs.Instance);
             return bundlePool;

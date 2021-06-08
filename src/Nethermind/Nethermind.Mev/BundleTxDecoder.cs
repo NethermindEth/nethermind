@@ -15,18 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
-using System.Linq;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Org.BouncyCastle.Asn1.Cms;
+using Nethermind.Mev.Data;
+using Nethermind.Serialization.Rlp;
 
-namespace Nethermind.Mev.Data
+namespace Nethermind.Mev
 {
-    public class BundleTransaction : Transaction
+    public class BundleTxDecoder : TxDecoder<BundleTransaction>
     {
-        public Keccak BundleHash { get; set; } = Keccak.Zero;
-        public bool CanRevert { get; set; } = false;
-        public BundleTransaction Clone() => (BundleTransaction) MemberwiseClone();
     }
 }

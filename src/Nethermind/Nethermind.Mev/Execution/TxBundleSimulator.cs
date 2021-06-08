@@ -66,9 +66,9 @@ namespace Nethermind.Mev.Execution
             bool success = true;
             for (int i = 0; i < bundle.Transactions.Count; i++)
             {
-                Transaction tx = bundle.Transactions[i];
+                BundleTransaction tx = bundle.Transactions[i];
 
-                if (!bundle.RevertingTxHashes.Contains(tx.Hash))
+                if (!tx.CanRevert)
                 {
                     success &= tracer.TransactionResults[i];
                 }

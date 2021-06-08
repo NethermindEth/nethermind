@@ -56,14 +56,14 @@ namespace Nethermind.Mev
             IEnumerable<Transaction> transactions = block.GetTransactions(out _);
 
             int i = 0;
-            LinkedHashSet<Transaction> transactionsForBlock = new(DistinctCompareTx.Instance);
+            LinkedHashSet<Transaction> transactionsInBlock = new(DistinctCompareTx.Instance);
 
             List<(BundleTransaction, int)> bundleTransactionWithIndex = new();
             Keccak? bundleHash = null;
             
             foreach (Transaction currentTx in transactions)
             {
-                if (!transactionsForBlock.Contains(currentTx))
+                if (!transactionsInBlock.Contains(currentTx))
                 {
                     // No more gas available in block
                     if (currentTx.GasLimit > block.Header.GasLimit - block.GasUsed)
@@ -79,8 +79,7 @@ namespace Nethermind.Mev
                         }
                         else
                         {
-                            ProcessTransaction(block, currentTx, i++, receiptsTracer, TransactionProcessed);
-                            transactionsForBlock.Add(currentTx);
+                            ProcessTransaction(block, transactionsInBlock, currentTx, i++, receiptsTracer, TransactionProcessed);
                         }
                     }
                     else
@@ -93,23 +92,17 @@ namespace Nethermind.Mev
                             }
                             else
                             {
-                                // process bundle(!)
-                                ProcessBundle(block, bundleTransactionWithIndex, receiptsTracer, TransactionProcessed);
-
-                                bundleTransactionWithIndex.Clear();
+                                ProcessBundle(block, transactionsInBlock, bundleTransactionWithIndex, receiptsTracer, TransactionProcessed);
                                 bundleHash = bundleTransaction.Hash;
                             }
                         }
                         else
                         {
-                            // process bundle(!)
-                            ProcessBundle(block, bundleTransactionWithIndex, receiptsTracer, TransactionProcessed);
-
+                            ProcessBundle(block, transactionsInBlock, bundleTransactionWithIndex, receiptsTracer, TransactionProcessed);
                             bundleHash = null;
-                            bundleTransactionWithIndex.Clear();
+                            
                             // process current transactions
-                            ProcessTransaction(block, currentTx, i++, receiptsTracer, TransactionProcessed);
-                            transactionsForBlock.Add(currentTx);
+                            ProcessTransaction(block, transactionsInBlock, currentTx, i++, receiptsTracer, TransactionProcessed);
                         }
                     }
                 }
@@ -117,14 +110,14 @@ namespace Nethermind.Mev
             // if bundle is not clear process it still
             if (bundleTransactionWithIndex.Count > 0)
             {
-                ProcessBundle(block, bundleTransactionWithIndex, receiptsTracer, TransactionProcessed);
+                ProcessBundle(block, transactionsInBlock, bundleTransactionWithIndex, receiptsTracer, TransactionProcessed);
             }
-            block.TrySetTransactions(transactionsForBlock.ToArray());
+            block.TrySetTransactions(transactionsInBlock.ToArray());
             block.Header.TxRoot = new TxTrie(block.Transactions).RootHash;
             return receiptsTracer.TxReceipts!;
         }
         
-        private void ProcessTransaction(Block block, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, EventHandler<TxProcessedEventArgs> TransactionProcessed)
+        private void ProcessTransaction(Block block, ISet<Transaction>? transactionsInBlock, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, EventHandler<TxProcessedEventArgs>? TransactionProcessed)
         {
             if ((_options & ProcessingOptions.DoNotVerifyNonce) != 0)
             {
@@ -135,10 +128,11 @@ namespace Nethermind.Mev
             _transactionProcessor.Execute(currentTx, block.Header, receiptsTracer);
             receiptsTracer.EndTxTrace();
 
+            transactionsInBlock?.Add(currentTx);
             TransactionProcessed?.Invoke(this, new TxProcessedEventArgs(index, currentTx, receiptsTracer.TxReceipts![index]));
         }
 
-        private void ProcessBundle(Block block, List<(BundleTransaction, int)> bundleTransactionWithIndex,
+        private void ProcessBundle(Block block, LinkedHashSet<Transaction> transactionsInBlock, List<(BundleTransaction, int)> bundleTransactionWithIndex,
             BlockReceiptsTracer receiptsTracer, EventHandler<TxProcessedEventArgs> TransactionProcessed)
         { 
             var stateSnapshot = _stateProvider.TakeSnapshot();
@@ -149,13 +143,8 @@ namespace Nethermind.Mev
                 
             foreach (var (currentTx, index) in bundleTransactionWithIndex)
             {
-                if ((_options & ProcessingOptions.DoNotVerifyNonce) != 0)
-                {
-                    currentTx.Nonce = _stateProvider.GetNonce(currentTx.SenderAddress!);
-                }
-                receiptsTracer.StartNewTxTrace(currentTx);
-                _transactionProcessor.Execute(currentTx, block.Header, receiptsTracer);
-                receiptsTracer.EndTxTrace();
+                ProcessTransaction(block, null, currentTx, index, receiptsTracer, null);
+                
                 if (receiptsTracer.LastReceipt!.Error == "reverted" && !currentTx.CanRevert)
                 {
                     _stateProvider.Restore(stateSnapshot);
@@ -167,8 +156,11 @@ namespace Nethermind.Mev
 
             foreach (var eventItem in eventList)
             {
+                transactionsInBlock.Add(eventItem.Transaction);
                 TransactionProcessed?.Invoke(this, eventItem);
             }
+            
+            bundleTransactionWithIndex.Clear();
         }
     }
 }

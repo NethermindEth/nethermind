@@ -103,23 +103,17 @@ namespace Nethermind.Mev.Test
         
             TestContext test = new TestContext(timestamper);
 
-            Transaction[] tx1 = new Transaction[]
-            {
-                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyD).TestObject
-            };
-            Transaction[] tx2 = new Transaction[]
-            {
-                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject
-            };
+            BundleTransaction[] tx1 = {Build.A.TypedTransaction<BundleTransaction>().SignedAndResolved(TestItem.PrivateKeyD).TestObject};
+            BundleTransaction[] tx2 = {Build.A.TypedTransaction<BundleTransaction>().SignedAndResolved(TestItem.PrivateKeyA).TestObject};
             
             MevBundle[] bundles = new []
             {
-                new MevBundle(1, BundleTransaction.ConvertTransactionArray(tx1), 0, 0), //should get added
-                new MevBundle(2, BundleTransaction.ConvertTransactionArray(tx1), timestamp + 5, timestamp), //should not get added, min > max
-                new MevBundle(3, BundleTransaction.ConvertTransactionArray(tx1), timestamp - 5,  timestamp + 5), //should get added
-                new MevBundle(4, BundleTransaction.ConvertTransactionArray(tx1), timestamp + 4000, timestamp + 5000), //should not get added, min time too large
-                new MevBundle(4, BundleTransaction.ConvertTransactionArray(tx2), timestamp, timestamp + 10), //should get added
-                new MevBundle(5, BundleTransaction.ConvertTransactionArray(tx2), timestamp + 1, timestamp + 10) //should not get added, min timestamp too large
+                new MevBundle(1, tx1, 0, 0), //should get added
+                new MevBundle(2, tx1, timestamp + 5, timestamp), //should not get added, min > max
+                new MevBundle(3, tx1, timestamp - 5,  timestamp + 5), //should get added
+                new MevBundle(4, tx1, timestamp + 4000, timestamp + 5000), //should not get added, min time too large
+                new MevBundle(4, tx2, timestamp, timestamp + 10), //should get added
+                new MevBundle(5, tx2, timestamp + 1, timestamp + 10) //should not get added, min timestamp too large
                 
             };
 
@@ -131,22 +125,22 @@ namespace Nethermind.Mev.Test
         public void should_reject_bundle_without_transactions()
         {
            TestContext tc = new();
-           Transaction[] emptyArr = Array.Empty<Transaction>();
-           Transaction[] filledArr = new Transaction[]
+           BundleTransaction[] emptyArr = Array.Empty<BundleTransaction>();
+           BundleTransaction[] filledArr =
            {
-               Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyD).TestObject,
-               Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject
+               Build.A.TypedTransaction<BundleTransaction>().SignedAndResolved(TestItem.PrivateKeyD).TestObject,
+               Build.A.TypedTransaction<BundleTransaction>().SignedAndResolved(TestItem.PrivateKeyA).TestObject
            };
            
            //Adding empty transaction array bundles
-           MevBundle bundleNoTx1 = new MevBundle(10, BundleTransaction.ConvertTransactionArray(emptyArr));
-           MevBundle bundleNoTx2 = new MevBundle(11, BundleTransaction.ConvertTransactionArray(emptyArr));
+           MevBundle bundleNoTx1 = new MevBundle(10, emptyArr);
+           MevBundle bundleNoTx2 = new MevBundle(11, emptyArr);
            tc.BundlePool.AddBundle(bundleNoTx1).Should().BeFalse();
            tc.BundlePool.AddBundle(bundleNoTx2).Should().BeFalse();
            
            //Same bundles with filled transaction array
-           MevBundle updatedBundle1 = new MevBundle(10, BundleTransaction.ConvertTransactionArray(filledArr));
-           MevBundle updatedBundle2 = new MevBundle(11, BundleTransaction.ConvertTransactionArray(filledArr));
+           MevBundle updatedBundle1 = new MevBundle(10, filledArr);
+           MevBundle updatedBundle2 = new MevBundle(11, filledArr);
            tc.BundlePool.AddBundle(updatedBundle1).Should().BeTrue();
            tc.BundlePool.AddBundle(updatedBundle2).Should().BeTrue();
         }
@@ -154,20 +148,20 @@ namespace Nethermind.Mev.Test
         [Test]
         public void should_reject_bundle_on_block_before_head()
         { 
-            Transaction[] filledArr = new Transaction[]
+            BundleTransaction[] filledArr =
             {
-               Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyD).TestObject,
-               Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject
+               Build.A.TypedTransaction<BundleTransaction>().SignedAndResolved(TestItem.PrivateKeyD).TestObject,
+               Build.A.TypedTransaction<BundleTransaction>().SignedAndResolved(TestItem.PrivateKeyA).TestObject
             };
             
             TestContext tc = new TestContext();
             Block block = Build.A.Block.WithNumber(16).TestObject;
             tc.BlockTree.Head.Returns(block);
 
-            MevBundle bundleFalse1 = new MevBundle(10, BundleTransaction.ConvertTransactionArray(filledArr));
-            MevBundle bundleFalse2 = new MevBundle(15, BundleTransaction.ConvertTransactionArray(filledArr));
-            MevBundle bundleFalse3 = new MevBundle(16, BundleTransaction.ConvertTransactionArray(filledArr));
-            MevBundle bundleTrue1 = new MevBundle(17, BundleTransaction.ConvertTransactionArray(filledArr));
+            MevBundle bundleFalse1 = new MevBundle(10,filledArr);
+            MevBundle bundleFalse2 = new MevBundle(15,filledArr);
+            MevBundle bundleFalse3 = new MevBundle(16,filledArr);
+            MevBundle bundleTrue1 = new MevBundle(17, filledArr);
             
             tc.BundlePool.AddBundle(bundleFalse1).Should().BeFalse();
             tc.BundlePool.AddBundle(bundleFalse2).Should().BeFalse();
@@ -184,10 +178,15 @@ namespace Nethermind.Mev.Test
 
             MevBundle replacedBundle = bundles[0];
 
-            Keccak[] txHashes = replacedBundle.Transactions.Select(t => t.Hash!).ToArray();
-            MevBundle replacingBundle = new(replacedBundle.BlockNumber, replacedBundle.Transactions, 10, 100, txHashes);
+            BundleTransaction[] replacingTransactions = replacedBundle.Transactions.Select(t =>
+            {
+                BundleTransaction tx = t.Clone();
+                tx.CanRevert = true;
+                return tx;
+            }).ToArray();
+            
+            MevBundle replacingBundle = new(replacedBundle.BlockNumber, replacingTransactions, 10, 100);
             test.BundlePool.AddBundle(replacingBundle).Should().BeTrue();
-
             test.BundlePool.GetBundles(5, 1).Should().BeEquivalentTo(replacingBundle);
         }
         
@@ -215,7 +214,7 @@ namespace Nethermind.Mev.Test
             TestContext test = new();
             Block block = Build.A.Block.WithNumber(5).TestObject;
             test.BlockTree.Head.Returns(block);
-            MevBundle mevBundle = new MevBundle(6, BundleTransaction.ConvertTransactionArray(new[] {Build.A.Transaction.TestObject}));
+            MevBundle mevBundle = new MevBundle(6, new[] {Build.A.TypedTransaction<BundleTransaction>().TestObject});
             test.BundlePool.AddBundle(mevBundle);
             
             test.Simulator.Received(1).Simulate(mevBundle, block.Header, Arg.Any<CancellationToken>());
@@ -224,18 +223,18 @@ namespace Nethermind.Mev.Test
         [Test]
         public async Task should_remove_simulations_on_eviction()
         {
-            Transaction tx1 = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-            Transaction tx2 = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).TestObject;
-            Transaction tx3 = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).TestObject;
-            Transaction tx4 = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyD).TestObject;
+            BundleTransaction tx1 = Build.A.TypedTransaction<BundleTransaction>().SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            BundleTransaction tx2 = Build.A.TypedTransaction<BundleTransaction>().SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+            BundleTransaction tx3 = Build.A.TypedTransaction<BundleTransaction>().SignedAndResolved(TestItem.PrivateKeyC).TestObject;
+            BundleTransaction tx4 = Build.A.TypedTransaction<BundleTransaction>().SignedAndResolved(TestItem.PrivateKeyD).TestObject;
 
             MevConfig config = new() {BundlePoolSize = 3};
             TestContext tc = new(default, config, 1, false);
 
-            MevBundle bundle1 = new(3, BundleTransaction.ConvertTransactionArray(new[]{tx1}));
-            MevBundle bundle2 = new(2, BundleTransaction.ConvertTransactionArray(new[]{tx2}));
-            MevBundle bundle3 = new(2, BundleTransaction.ConvertTransactionArray(new[]{tx3}));
-            MevBundle bundle4 = new(2, BundleTransaction.ConvertTransactionArray(new[]{tx4}));
+            MevBundle bundle1 = new(3, new[]{tx1});
+            MevBundle bundle2 = new(2, new[]{tx2});
+            MevBundle bundle3 = new(2, new[]{tx3});
+            MevBundle bundle4 = new(2, new[]{tx4});
             
             tc.BundlePool.AddBundle(bundle1);
             tc.BundlePool.AddBundle(bundle2);
@@ -259,11 +258,16 @@ namespace Nethermind.Mev.Test
             chain.GasLimitCalculator.GasLimit = 10_000_000;
             
             Address contractAddress = await MevRpcModuleTests.Contracts.Deploy(chain, MevRpcModuleTests.Contracts.ReverterCode);
-            Transaction revertingBundleTx = Build.A.Transaction.WithGasLimit(MevRpcModuleTests.Contracts.LargeGasLimit).WithGasPrice(500).WithTo(contractAddress).WithData(Bytes.FromHexString(MevRpcModuleTests.Contracts.ReverterInvokeFail)).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
-            Transaction normalBundleTx = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            BundleTransaction revertingBundleTx = Build.A.TypedTransaction<BundleTransaction>()
+                .WithGasLimit(MevRpcModuleTests.Contracts.LargeGasLimit)
+                .WithGasPrice(500).WithTo(contractAddress)
+                .WithData(Bytes.FromHexString(MevRpcModuleTests.Contracts.ReverterInvokeFail))
+                .SignedAndResolved(TestItem.PrivateKeyC).TestObject;
             
-            MevBundle failingBundle = new(2, BundleTransaction.ConvertTransactionArray(new[]{revertingBundleTx}));
-            MevBundle normalBundle = new(2, BundleTransaction.ConvertTransactionArray(new[]{normalBundleTx}));
+            BundleTransaction normalBundleTx = Build.A.TypedTransaction<BundleTransaction>().SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            
+            MevBundle failingBundle = new(2, new[]{revertingBundleTx});
+            MevBundle normalBundle = new(2, new[]{normalBundleTx});
 
             chain.BundlePool.AddBundle(failingBundle);
             chain.BundlePool.AddBundle(normalBundle);
@@ -313,7 +317,7 @@ namespace Nethermind.Mev.Test
         {
             public TestContext(ITimestamper? timestamper = null, IMevConfig? config = null, long? BlockTreeHead = null, bool addTestBundles = true)
             {
-                Transaction CreateTransaction(PrivateKey privateKey) => Build.A.Transaction.SignedAndResolved(privateKey).TestObject;
+                BundleTransaction CreateTransaction(PrivateKey privateKey) => Build.A.TypedTransaction<BundleTransaction>().SignedAndResolved(privateKey).TestObject;
                 if (BlockTreeHead != null)
                 {
                     BlockTree.Head.Returns(Build.A.Block.WithNumber((long) BlockTreeHead).TestObject);
@@ -326,16 +330,16 @@ namespace Nethermind.Mev.Test
                     LimboLogs.Instance);
 
                 if (!addTestBundles) return;
-                Transaction tx1 = CreateTransaction(TestItem.PrivateKeyA);
-                Transaction tx2 = CreateTransaction(TestItem.PrivateKeyB);
-                Transaction tx3 = CreateTransaction(TestItem.PrivateKeyC);
+                BundleTransaction tx1 = CreateTransaction(TestItem.PrivateKeyA);
+                BundleTransaction tx2 = CreateTransaction(TestItem.PrivateKeyB);
+                BundleTransaction tx3 = CreateTransaction(TestItem.PrivateKeyC);
 
                 BundlePool.AddBundle(CreateBundle(4, tx1));
                 BundlePool.AddBundle(CreateBundle(5, tx2));
                 BundlePool.AddBundle(CreateBundle(6, tx2));
-                BundlePool.AddBundle(new MevBundle(9, BundleTransaction.ConvertTransactionArray(new []{tx1}), 0, 0));
-                BundlePool.AddBundle(new MevBundle(9, BundleTransaction.ConvertTransactionArray(new []{tx2}), 10, 100));
-                BundlePool.AddBundle(new MevBundle(9, BundleTransaction.ConvertTransactionArray(new []{tx3}), 5, 50));
+                BundlePool.AddBundle(new MevBundle(9, new []{tx1}, 0, 0));
+                BundlePool.AddBundle(new MevBundle(9, new []{tx2}, 10, 100));
+                BundlePool.AddBundle(new MevBundle(9, new []{tx3}, 5, 50));
                 BundlePool.AddBundle(CreateBundle(12, tx1, tx2, tx3));
                 BundlePool.AddBundle(CreateBundle(15, tx1, tx2));
             }
@@ -345,7 +349,7 @@ namespace Nethermind.Mev.Test
             public IBlockTree BlockTree { get; } = Substitute.For<IBlockTree>();
             public BundlePool BundlePool { get; }
             
-            private MevBundle CreateBundle(long blockNumber, params Transaction[] transactions) => new(blockNumber, BundleTransaction.ConvertTransactionArray(transactions));
+            private MevBundle CreateBundle(long blockNumber, params BundleTransaction[] transactions) => new(blockNumber, transactions);
         }
     }
 }

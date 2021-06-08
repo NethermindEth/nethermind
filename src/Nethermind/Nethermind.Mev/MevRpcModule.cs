@@ -51,6 +51,11 @@ namespace Nethermind.Mev
         private readonly Address? _beneficiaryAddress;
         private readonly ulong _chainId;
 
+        static MevRpcModule()
+        {
+            Rlp.RegisterDecoders(typeof(BundleTxDecoder).Assembly);
+        }
+        
         public MevRpcModule(
             IJsonRpcConfig jsonRpcConfig, 
             IBundlePool bundlePool, 
@@ -71,15 +76,15 @@ namespace Nethermind.Mev
 
         public ResultWrapper<bool> eth_sendBundle(byte[][] transactions, long blockNumber, UInt256? minTimestamp = null, UInt256? maxTimestamp = null, Keccak[]? revertingTxHashes = null)
         {
-            BundleTransaction[] txs = Decode(transactions);
-            MevBundle bundle = new(blockNumber, txs, minTimestamp, maxTimestamp, revertingTxHashes);
+            BundleTransaction[] txs = Decode(transactions, revertingTxHashes?.ToHashSet());
+            MevBundle bundle = new(blockNumber, txs, minTimestamp, maxTimestamp);
             bool result = _bundlePool.AddBundle(bundle);
             return ResultWrapper<bool>.Success(result);
         }
 
-        public ResultWrapper<TxsResults> eth_callBundle(byte[][] transactions, BlockParameter? blockParameter = null, UInt256? timestamp = null)
+        public ResultWrapper<TxsResults> eth_callBundle(byte[][] transactions, BlockParameter? blockParameter = null, UInt256? timestamp = null, Keccak[]? revertingTxHashes = null)
         {
-            BundleTransaction[] txs = Decode(transactions);
+            BundleTransaction[] txs = Decode(transactions, revertingTxHashes?.ToHashSet());
             return CallBundle(txs, blockParameter, timestamp);
         }
 
@@ -117,21 +122,34 @@ namespace Nethermind.Mev
             BundleTransaction[] txs = transactions.Select(txForRpc =>
             {
                 FixCallTx(txForRpc);
-                return new BundleTransaction(txForRpc.ToTransaction(_chainId));
+                return txForRpc.ToTransaction<BundleTransaction>(_chainId);
             }).ToArray();
             
             return CallBundle(txs, blockParameter, timestamp);
         }
         
-        private static BundleTransaction[] Decode(byte[][] transactions)
+        private static BundleTransaction[] Decode(byte[][] transactions, ISet<Keccak>? revertingTxHashes)
         {
-            Transaction[] txs = new Transaction[transactions.Length];
+            revertingTxHashes ??= new HashSet<Keccak>();
+            BundleTransaction[] txs = new BundleTransaction[transactions.Length];
             for (int i = 0; i < transactions.Length; i++)
             {
-                txs[i] = Rlp.Decode<Transaction>(transactions[i]);
+                BundleTransaction bundleTransaction = Rlp.Decode<BundleTransaction>(transactions[i]);
+                Keccak transactionHash = bundleTransaction.Hash!;
+                bundleTransaction.CanRevert = revertingTxHashes.Contains(transactionHash);
+                revertingTxHashes.Remove(transactionHash);
+                
+                txs[i] = bundleTransaction;
+            }
+            
+            if (revertingTxHashes.Count > 0)
+            {
+                throw new ArgumentException(
+                    $"Bundle didn't contain some of revertingTxHashes: [{string.Join(", ", revertingTxHashes.OfType<object>())}]",
+                    nameof(revertingTxHashes));
             }
 
-            return BundleTransaction.ConvertTransactionArray(txs);
+            return txs;
         }
         
         private bool HasStateForBlock(BlockHeader header)
