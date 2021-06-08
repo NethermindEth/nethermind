@@ -242,11 +242,23 @@ namespace Nethermind.Mev.Source
 
         private void RemoveBundlesUpToBlock(long blockNumber)
         {
+            void StopSimulations(IEnumerable<SimulatedMevBundleContext> simulations)
+            {
+                foreach (SimulatedMevBundleContext simulation in simulations)
+                {
+                    StopSimulation(simulation);
+                }
+            }
+            
             IDictionary<long, MevBundle[]> bundlesToRemove = _bundles.GetBucketSnapshot(b => b <= blockNumber);
 
             foreach (KeyValuePair<long, MevBundle[]> bundleBucket in bundlesToRemove)
             {
-                _simulatedBundles.TryRemove(bundleBucket.Key, out _);
+                if (_simulatedBundles.TryRemove(bundleBucket.Key, out var simulations))
+                {
+                    StopSimulations(simulations.Values);
+                }
+
                 foreach (MevBundle mevBundle in bundleBucket.Value)
                 {
                     _bundles.TryRemove(mevBundle);
@@ -270,13 +282,24 @@ namespace Nethermind.Mev.Source
 
                 foreach ((MevBundle Bundle, Keccak BlockHash) key in keys)
                 {
-                    simulations.TryRemove(key, out _);
+                    if (simulations.TryRemove(key, out var simulation))
+                    {
+                        StopSimulation(simulation);
+                    }
                 }
 
                 if (simulations.Count == 0)
                 {
                     _simulatedBundles.Remove(bundle.BlockNumber, out _);
                 }
+            }
+        }
+
+        private void StopSimulation(SimulatedMevBundleContext simulation)
+        {
+            if (!simulation.Task.IsCompleted)
+            {
+                simulation.CancellationTokenSource.Cancel();
             }
         }
 
@@ -294,7 +317,7 @@ namespace Nethermind.Mev.Source
 
                 await Task.WhenAny(Task.WhenAll(resultTasks), token.AsTask());
 
-                var res = resultTasks
+                IEnumerable<SimulatedMevBundle> res = resultTasks
                     .Where(t => t.IsCompletedSuccessfully)
                     .Select(t => t.Result)
                     .Where(t => t.Success)
