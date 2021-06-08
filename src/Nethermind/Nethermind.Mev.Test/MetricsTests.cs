@@ -43,7 +43,7 @@ namespace Nethermind.Mev.Test
         }
 
         [Test]
-        public void Should_count_valid_bundles_correctly()
+        public void Should_count_valid_bundles()
         {
             TestBundlePool bundlePool = CreateTestBundlePool();
 
@@ -66,7 +66,7 @@ namespace Nethermind.Mev.Test
         }
         
         [Test]
-        public void Should_count_invalid_bundles_correctly()
+        public void Should_count_invalid_bundles()
         {
             TestBundlePool bundlePool = CreateTestBundlePool();
 
@@ -89,7 +89,7 @@ namespace Nethermind.Mev.Test
         }
         
         [Test]
-        public async Task Should_count_total_coinbase_payments_correctly()
+        public async Task Should_count_total_coinbase_payments()
         {
             var chain = await MevRpcModuleTests.CreateChain(1);
             chain.GasLimitCalculator.GasLimit = 10_000_000;
@@ -133,7 +133,7 @@ namespace Nethermind.Mev.Test
             TestBundlePool bundlePool = new(
                 blockTree,
                 Substitute.For<IBundleSimulator>(),
-                new ManualTimestamper(DateTime.MinValue),
+                new ManualTimestamper(DateTimeOffset.UnixEpoch.DateTime),
                 new MevConfig(),
                 LimboLogs.Instance);
             return bundlePool;
