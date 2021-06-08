@@ -82,7 +82,7 @@ namespace Nethermind.Evm.Test
 
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
-            BlockReceiptsTracer tracer = BuildTracer(block, tx, withTrace, withTrace);
+            BlockReceiptsTracer tracer = BuildTracer(block, tx, withStateDiff, withTrace);
             Execute(tracer, tx, block);
 
             Assert.AreEqual(StatusCode.Success, tracer.TxReceipts[0].StatusCode);
@@ -101,7 +101,7 @@ namespace Nethermind.Evm.Test
                 : MainnetSpecProvider.ByzantiumBlockNumber - 1; 
             Block block = Build.A.Block.WithNumber(blockNumber).WithTransactions(tx).TestObject;
 
-            BlockReceiptsTracer tracer = BuildTracer(block, tx, withTrace, withTrace);
+            BlockReceiptsTracer tracer = BuildTracer(block, tx, withStateDiff, withTrace);
             Execute(tracer, tx, block);
 
             if (_isEip155Enabled) // we use eip155 check just as a proxy on 658
@@ -124,7 +124,7 @@ namespace Nethermind.Evm.Test
 
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
-            BlockReceiptsTracer tracer = BuildTracer(block, tx, withTrace, withTrace);
+            BlockReceiptsTracer tracer = BuildTracer(block, tx, withStateDiff, withTrace);
             Execute(tracer, tx, block);
 
             Assert.AreEqual(StatusCode.Failure, tracer.TxReceipts[0].StatusCode);
@@ -140,7 +140,7 @@ namespace Nethermind.Evm.Test
 
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
-            BlockReceiptsTracer tracer = BuildTracer(block, tx, withTrace, withTrace);
+            BlockReceiptsTracer tracer = BuildTracer(block, tx, withStateDiff, withTrace);
             Execute(tracer, tx, block);
 
             Assert.AreEqual(StatusCode.Failure, tracer.TxReceipts[0].StatusCode);
@@ -156,7 +156,7 @@ namespace Nethermind.Evm.Test
 
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
-            BlockReceiptsTracer tracer = BuildTracer(block, tx, withTrace, withTrace);
+            BlockReceiptsTracer tracer = BuildTracer(block, tx, withStateDiff, withTrace);
             Execute(tracer, tx, block);
 
             Assert.AreEqual(StatusCode.Failure, tracer.TxReceipts[0].StatusCode);
@@ -172,7 +172,7 @@ namespace Nethermind.Evm.Test
 
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
-            BlockReceiptsTracer tracer = BuildTracer(block, tx, withTrace, withTrace);
+            BlockReceiptsTracer tracer = BuildTracer(block, tx, withStateDiff, withTrace);
             Execute(tracer, tx, block);
 
             Assert.AreEqual(StatusCode.Failure, tracer.TxReceipts[0].StatusCode);
@@ -189,7 +189,28 @@ namespace Nethermind.Evm.Test
 
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
-            BlockReceiptsTracer tracer = BuildTracer(block, tx, withTrace, withTrace);
+            BlockReceiptsTracer tracer = BuildTracer(block, tx, withStateDiff, withTrace);
+            Execute(tracer, tx, block);
+
+            Assert.AreEqual(StatusCode.Failure, tracer.TxReceipts[0].StatusCode);
+        }
+        
+        
+        [TestCase(true, true)]
+        [TestCase(true, false)]
+        [TestCase(false, true)]
+        [TestCase(false, false)]
+        public void Can_handle_quick_fail_when_balance_is_lower_than_fee_cap_times_gas(bool withStateDiff, bool withTrace)
+        {
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled)
+                .WithMaxPriorityFeePerGas(5.GWei())
+                .WithMaxFeePerGas(10.Ether())
+                .WithType(TxType.EIP1559)
+                .WithGasLimit(100000).TestObject;
+
+            Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
+
+            BlockReceiptsTracer tracer = BuildTracer(block, tx, withStateDiff, withTrace);
             Execute(tracer, tx, block);
 
             Assert.AreEqual(StatusCode.Failure, tracer.TxReceipts[0].StatusCode);

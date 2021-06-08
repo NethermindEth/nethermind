@@ -13,15 +13,17 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-namespace Nethermind.TxPool
+namespace Nethermind.Core
 {
-    public class TxPoolConfig : ITxPoolConfig
+    public class BlockReplacementEventArgs : BlockEventArgs
     {
-        public int PeerNotificationThreshold { get; set; } = 5;
-        public int Size { get; set; } = 2048;
-        public uint FutureNonceRetention { get; set; } = 256;
-        public int HashCacheSize { get; set; } = 512 * 1024;
-        public long? GasLimit { get; set; } = null;
+        public Block? PreviousBlock { get; }
+
+        public BlockReplacementEventArgs(Block block, Block? previousBlock = null) : base(block)
+        {
+            PreviousBlock = previousBlock;
+        }
     }
 }

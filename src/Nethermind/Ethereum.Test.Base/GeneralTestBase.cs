@@ -23,6 +23,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Evm;
@@ -96,8 +97,9 @@ namespace Ethereum.Test.Base
 
             BlockHeader header = new(test.PreviousHash, Keccak.OfAnEmptySequenceRlp, test.CurrentCoinbase,
                 test.CurrentDifficulty, test.CurrentNumber, test.CurrentGasLimit, test.CurrentTimestamp, new byte[0]);
+            header.BaseFeePerGas = test.Fork.IsEip1559Enabled ? test.CurrentBaseFee : UInt256.Zero;
             header.StateRoot = test.PostHash;
-            header.Hash = Keccak.Compute("1");
+            header.Hash = header.CalculateHash();
 
             Stopwatch stopwatch = Stopwatch.StartNew();
             transactionProcessor.Execute(test.Transaction, header, txTracer);

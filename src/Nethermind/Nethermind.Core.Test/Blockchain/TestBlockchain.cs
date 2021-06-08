@@ -139,7 +139,6 @@ namespace Nethermind.Core.Test.Blockchain
             TransactionComparerProvider = new TransactionComparerProvider(SpecProvider, BlockTree);
             TxPool = CreateTxPool(txStorage);
 
-            _txWatcher = new OnChainTxWatcher(BlockTree, TxPool, SpecProvider, LimboLogs.Instance);
             _trieStoreWatcher = new TrieStoreBoundaryWatcher(TrieStore, BlockTree, LogManager);
             
 

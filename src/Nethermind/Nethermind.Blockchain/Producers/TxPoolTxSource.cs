@@ -102,14 +102,22 @@ namespace Nethermind.Blockchain.Producers
                 return balance;
             }
 
-            bool HasEnoughFounds(IDictionary<Address, UInt256> balances, Transaction transaction, bool isEip1559Enabled, UInt256 baseFee)
+            bool HasEnoughFounds(IDictionary<Address, UInt256> balances, Transaction transaction, bool eip1559Enabled, UInt256 baseFeePerGas)
             {
                 UInt256 balance = GetRemainingBalance(balances, transaction.SenderAddress!);
-                UInt256 transactionPotentialCost = transaction.CalculateTransactionPotentialCost(isEip1559Enabled, baseFee);
+                UInt256 transactionPotentialCost = transaction.CalculateTransactionPotentialCost(eip1559Enabled, baseFeePerGas);
 
                 if (balance < transactionPotentialCost)
                 {
                     if (_logger.IsDebug) _logger.Debug($"Rejecting transaction - transaction cost ({transactionPotentialCost}) is higher than sender balance ({balance}).");
+                    return false;
+                }
+
+                if (transaction.IsEip1559 && !transaction.IsServiceTransaction && balance < (UInt256)transaction.GasLimit * transaction.MaxFeePerGas)
+                {
+                    if (_logger.IsDebug)
+                        _logger.Debug(
+                                $"Rejecting transaction - MaxFeePerGas({transaction.MaxFeePerGas}) times GasLimit {transaction.GasLimit} is higher than sender balance ({balance}).");
                     return false;
                 }
 
@@ -153,14 +161,9 @@ namespace Nethermind.Blockchain.Producers
                 {
                     if (tx.Nonce < expectedNonce)
                     {
-                        _transactionPool.RemoveTransaction(tx.Hash!, true);    
+                        _transactionPool.RemoveTransaction(tx.Hash!);    
                     }
-                    
-                    if (tx.Nonce > expectedNonce + _transactionPool.FutureNonceRetention)
-                    {
-                        _transactionPool.RemoveTransaction(tx.Hash!);
-                    }
-                    
+
                     if (_logger.IsDebug) _logger.Debug($"Rejecting (invalid nonce - expected {expectedNonce}) {tx.ToShortString()}");
                     continue;
                 }

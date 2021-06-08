@@ -15,17 +15,27 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Core;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using Ethereum.Test.Base;
+using NUnit.Framework;
 
-namespace Nethermind.Blockchain
+namespace Ethereum.Blockchain.Block.Test
 {
-    public class BlockReplacementEventArgs : BlockEventArgs
+    [TestFixture]
+    [Parallelizable(ParallelScope.All)]
+    public class Eip1559Tests : BlockchainTestBase
     {
-        public Block? PreviousBlock { get; }
-
-        public BlockReplacementEventArgs(Block block, Block? previousBlock) : base(block)
+        [TestCaseSource(nameof(LoadTests))]
+        public async Task Test(BlockchainTest test)
         {
-            PreviousBlock = previousBlock;
+            await RunTest(test);
+        }
+
+        public static IEnumerable<BlockchainTest> LoadTests()
+        {
+            var loader = new TestsSourceLoader(new LoadBlockchainTestsStrategy(), "bcEIP1559");
+            return (IEnumerable<BlockchainTest>)loader.LoadTests();      
         }
     }
 }
