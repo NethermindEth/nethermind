@@ -106,7 +106,12 @@ namespace Nethermind.Mev.Test
         public static MevBundle SuccessfullySendBundle(TestMevRpcBlockchain chain, int blockNumber, params BundleTransaction[] txs)
         {
             byte[][] bundleBytes = txs.Select(t => Rlp.Encode(t).Bytes).ToArray();
-            ResultWrapper<bool> resultOfBundle = chain.MevRpcModule.eth_sendBundle(bundleBytes, blockNumber);
+            List<Keccak> revertingTxHashes = new();
+            foreach (var tx in txs)
+            {
+                if (tx.CanRevert) revertingTxHashes.Add(tx.Hash!);
+            }
+            ResultWrapper<bool> resultOfBundle = chain.MevRpcModule.eth_sendBundle(bundleBytes, blockNumber, default, default, revertingTxHashes.Count > 0 ? revertingTxHashes.ToArray() : null);
             resultOfBundle.GetResult().ResultType.Should().NotBe(ResultType.Failure);
             resultOfBundle.GetData().Should().Be(true);
             return new MevBundle(blockNumber, txs);
@@ -196,7 +201,7 @@ namespace Nethermind.Mev.Test
             var chain = await CreateChain(1);
             chain.GasLimitCalculator.GasLimit = GasCostOf.Transaction;
 
-            BundleTransaction poolTx = Build.A.TypedTransaction<BundleTransaction>()
+            Transaction poolTx = Build.A.Transaction
                 .WithGasLimit(GasCostOf.Transaction)
                 .WithGasPrice(150ul)
                 .SignedAndResolved(TestItem.PrivateKeyB).TestObject;

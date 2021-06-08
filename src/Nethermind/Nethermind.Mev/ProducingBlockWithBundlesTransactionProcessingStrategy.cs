@@ -86,20 +86,32 @@ namespace Nethermind.Mev
                     {
                         if (currentTx is BundleTransaction bundleTransaction)
                         {
-                            if (bundleTransaction.Hash == bundleHash)
+                            if (bundleTransaction.BundleHash == bundleHash)
                             {
                                 bundleTransactionWithIndex.Add((bundleTransaction, i++));
                             }
                             else
                             {
                                 ProcessBundle(block, transactionsInBlock, bundleTransactionWithIndex, receiptsTracer, TransactionProcessed);
-                                bundleHash = bundleTransaction.Hash;
+                                
+                                if (currentTx.GasLimit > block.Header.GasLimit - block.GasUsed)
+                                {
+                                    break;
+                                }
+                                
+                                bundleTransactionWithIndex.Add((bundleTransaction, i++));
+                                bundleHash = bundleTransaction.BundleHash;
                             }
                         }
                         else
                         {
                             ProcessBundle(block, transactionsInBlock, bundleTransactionWithIndex, receiptsTracer, TransactionProcessed);
                             bundleHash = null;
+                            
+                            if (currentTx.GasLimit > block.Header.GasLimit - block.GasUsed)
+                            {
+                                break;
+                            }
                             
                             // process current transactions
                             ProcessTransaction(block, transactionsInBlock, currentTx, i++, receiptsTracer, TransactionProcessed);
@@ -134,10 +146,9 @@ namespace Nethermind.Mev
 
         private void ProcessBundle(Block block, LinkedHashSet<Transaction> transactionsInBlock, List<(BundleTransaction, int)> bundleTransactionWithIndex,
             BlockReceiptsTracer receiptsTracer, EventHandler<TxProcessedEventArgs> TransactionProcessed)
-        { 
+        {
             var stateSnapshot = _stateProvider.TakeSnapshot();
             var storageSnapshot = _storageProvider.TakeSnapshot();
-            //var initialTracer = receiptsTracer;
 
             var eventList = new List<TxProcessedEventArgs>();
                 
@@ -145,10 +156,16 @@ namespace Nethermind.Mev
             {
                 ProcessTransaction(block, null, currentTx, index, receiptsTracer, null);
                 
-                if (receiptsTracer.LastReceipt!.Error == "reverted" && !currentTx.CanRevert)
+                if (receiptsTracer.LastReceipt!.Error == "revert" && !currentTx.CanRevert)
                 {
                     _stateProvider.Restore(stateSnapshot);
                     _storageProvider.Restore(storageSnapshot);
+                    bundleTransactionWithIndex.Clear();
+                    foreach (var (tx, i) in bundleTransactionWithIndex)
+                    {
+                        transactionsInBlock.Remove(tx);
+                    }
+                    
                     return;
                 }
                 eventList.Add(new TxProcessedEventArgs(index, currentTx, receiptsTracer.TxReceipts![index]));

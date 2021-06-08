@@ -77,6 +77,16 @@ namespace Nethermind.Mev
         public ResultWrapper<bool> eth_sendBundle(byte[][] transactions, long blockNumber, UInt256? minTimestamp = null, UInt256? maxTimestamp = null, Keccak[]? revertingTxHashes = null)
         {
             BundleTransaction[] txs = Decode(transactions, revertingTxHashes?.ToHashSet());
+            if (revertingTxHashes != null)
+            {
+                foreach (var tx in txs)
+                {
+                    if (revertingTxHashes.Contains(tx.Hash))
+                    {
+                        tx.CanRevert = true;
+                    }
+                }
+            }
             MevBundle bundle = new(blockNumber, txs, minTimestamp, maxTimestamp);
             bool result = _bundlePool.AddBundle(bundle);
             return ResultWrapper<bool>.Success(result);
