@@ -352,6 +352,7 @@ namespace Nethermind.TxPool
                 || isTxNonceTooFarInFuture)
             {
                 Metrics.PendingTransactionsDiscarded++;
+                Metrics.PendingTransactionsTooFarInFuture++;
                 if (_logger.IsTrace)
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, nonce in future.");
                 return AddTxResult.FutureNonce;
@@ -383,6 +384,7 @@ namespace Nethermind.TxPool
                 && payableGasPrice <= lastTx?.GasBottleneck)
             {
                 Metrics.PendingTransactionsDiscarded++;
+                Metrics.PendingTransactionsTooLowFee++;
                 if (_logger.IsTrace)
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, too low payable gas price.");
                 return AddTxResult.FeeTooLow;
@@ -405,12 +407,6 @@ namespace Nethermind.TxPool
             // !!! do not change it to |=
             bool isKnown = !isReorg && isInHashCache;
 
-            if (isKnown)
-            {
-                Metrics.PendingTransactionsKnown++;
-                return AddTxResult.AlreadyKnown;
-            }
-            
             if (!isInHashCache)
             {
                 _hashCache.Set(tx.Hash);
