@@ -47,9 +47,9 @@ namespace Nethermind.TxPool
             _txPoolFilter = txPoolFilter;
         }
 
-        protected override AddTxResult? FilterTransaction(Transaction tx, in bool managedNonce)
+        protected override AddTxResult? FilterTransaction(Transaction tx, in bool managedNonce, in bool isReorg)
         {
-            AddTxResult? addTxResult = base.FilterTransaction(tx, in managedNonce);
+            AddTxResult? addTxResult = base.FilterTransaction(tx, in managedNonce, isReorg);
             if (addTxResult == null && !(tx is GeneratedTransaction))
             {
                 var result = _txPoolFilter?.Accept(tx);

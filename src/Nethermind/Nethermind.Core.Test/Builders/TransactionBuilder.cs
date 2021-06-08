@@ -89,7 +89,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
         
-        public TransactionBuilder<T> WithFeeCap(UInt256 feeCap)
+        public TransactionBuilder<T> WithMaxFeePerGas(UInt256 feeCap)
         {
             TestObjectInternal.DecodedMaxFeePerGas = feeCap;
             return this;
