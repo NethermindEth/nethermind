@@ -31,6 +31,7 @@ namespace Nethermind.Dsl.Pipeline
         public EventsSource(IBlockProcessor blockProcessor)
         {
             _blockProcessor = blockProcessor;
+            _blockProcessor.TransactionProcessed += OnTransactionProcessed;
         }
 
         private void OnTransactionProcessed(object? sender, TxProcessedEventArgs args)
