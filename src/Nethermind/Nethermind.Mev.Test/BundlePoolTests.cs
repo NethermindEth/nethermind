@@ -269,25 +269,26 @@ namespace Nethermind.Mev.Test
             async Task GetSimulations(int[] expectedSimulations)
             {
                 int index = 0;
-                for (int i = 2; i <= 4; i++)
+                for (int i = 1; i <= 4; i++)
                 {
-                    for (int j = 0; i < expectedSimulations[index]; i++)
+                    for (int j = 0; j < expectedSimulations[index]; j++)
                     {
-                        ss.WaitAsync(TimeSpan.FromMilliseconds(10));
+                        await ss.WaitAsync(TimeSpan.FromMilliseconds(10));
                     }
                     IEnumerable<SimulatedMevBundle> simulatedBundles = await GetSimulation(i);
-                    simulatedBundles.Count().Should().Be(expectedSimulations[index++]);
+                    IEnumerable<MevBundle> mevBundles = simulatedBundles.Select(bundle => bundle.Bundle);
+                    mevBundles.Count().Should().Be(expectedSimulations[index++]);
                 }
             }
             int head = 1;
             //MevBundle[] bundles = (tc.BundlePool.GetBundles(2, UInt256.Zero)).ToArray();
-            await GetSimulations(new int[] {2, 0, 0});
+            await GetSimulations(new int[] {2, 0, 0, 0});
             tc.BlockTree.Head.Returns(Build.A.Block.WithNumber(++head).TestObject);
-            await GetSimulations(new int[] {0, 1, 0});
+            await GetSimulations(new int[] {0, 1, 0, 0});
             tc.BlockTree.Head.Returns(Build.A.Block.WithNumber(++head).TestObject);
-            await GetSimulations(new int[] {0, 0, 1});
+            await GetSimulations(new int[] {0, 0, 1, 0});
             tc.BlockTree.Head.Returns(Build.A.Block.WithNumber(++head).TestObject);
-            await GetSimulations(new int[] {0, 0, 0});
+            await GetSimulations(new int[] {0, 0, 0, 0});
         }
         
         [Test]
