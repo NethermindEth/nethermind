@@ -264,7 +264,7 @@ namespace Nethermind.Blockchain.Test
                     {
                         new WrappedTransaction(Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithType(TxType.EIP1559).WithNonce(2)
                             .WithMaxFeePerGas(5).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject),
-                            new WrappedTransaction(Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(1)
+                        new WrappedTransaction(Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(1)
                             .WithMaxFeePerGas(30).WithMaxPriorityFeePerGas(25).WithGasLimit(10).WithType(TxType.EIP1559).WithValue(60).SignedAndResolved(TestItem.PrivateKeyA).TestObject)
                     },
                     GasLimit = 10000000
@@ -278,10 +278,10 @@ namespace Nethermind.Blockchain.Test
                     Eip1559Enabled = true,
                     BaseFee = 5,
                     AccountStates = {{TestItem.AddressA, (400, 1)}},
-                    Transactions =
+                    WrappedTransactions =
                     {
-                        Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(1)
-                            .WithMaxFeePerGas(45).WithMaxPriorityFeePerGas(25).WithGasLimit(10).WithType(TxType.EIP1559).WithValue(60).SignedAndResolved(TestItem.PrivateKeyA).TestObject
+                        new WrappedTransaction(Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(1)
+                            .WithMaxFeePerGas(45).WithMaxPriorityFeePerGas(25).WithGasLimit(10).WithType(TxType.EIP1559).WithValue(60).SignedAndResolved(TestItem.PrivateKeyA).TestObject)
                     },
                     GasLimit = 10000000
                 };
