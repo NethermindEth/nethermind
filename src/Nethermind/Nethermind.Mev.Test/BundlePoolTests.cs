@@ -236,59 +236,49 @@ namespace Nethermind.Mev.Test
         public async Task should_remove_simulations_on_eviction()
         {
             SemaphoreSlim ss = new SemaphoreSlim(0);
-            Transaction tx1 = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-            Transaction tx2 = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).TestObject;
-            Transaction tx3 = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).TestObject;
-            Transaction tx4 = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyD).TestObject;
-
-            MevConfig config = new() {BundlePoolSize = 4};
-            TestContext tc = new(default, config, 1, false);
-            IEnumerable<SimulatedMevBundle> simulatedMevBundles;
+            int head = 3;
+            TestContext tc = new(default, new() {BundlePoolSize = 4}, head, false);
             ISimulatedBundleSource simulatedBundleSource = tc.BundlePool;
+            Transaction[] emptyarr = new Transaction[]{};
             
-            MevBundle bundle1 = new(4, new[]{tx1});
-            MevBundle bundle2 = new(3, new[]{tx2});
-            MevBundle bundle3 = new(2, new[]{tx3});
-            MevBundle bundle4 = new(2, new[]{tx4});
+            tc.Simulator.Simulate(Arg.Any<MevBundle>(), Arg.Any<BlockHeader>())
+                .Returns(SimulatedMevBundle.Cancelled(new MevBundle(1, emptyarr)))
+                .AndDoes(c => ss.Release());
             
-            tc.BundlePool.AddBundle(bundle1);
-            tc.BundlePool.AddBundle(bundle2);
-            tc.BundlePool.AddBundle(bundle3);
-            tc.BundlePool.AddBundle(bundle4);
-            
-            tc.Simulator.Simulate(Arg.Any<MevBundle>(), Arg.Any<BlockHeader>()).
-                Returns(SimulatedMevBundle.Cancelled(new MevBundle(1, new Transaction[]{}))).AndDoes(c => ss.Release());
-            
-            async Task<IEnumerable<SimulatedMevBundle>> GetSimulation(int blockNumber)
+            async Task<IEnumerable<SimulatedMevBundle>> GetSimulatedBundlesForBlock(int blockNumber)
             {
-                return simulatedMevBundles = await simulatedBundleSource
-                        .GetBundles(Build.A.BlockHeader.WithNumber(blockNumber).TestObject, tc.Timestamper.UnixTime.Seconds,
-                            Int64.MaxValue);
+                return await simulatedBundleSource
+                        .GetBundles(Build.A.BlockHeader.WithNumber(blockNumber).TestObject,
+                        tc.Timestamper.UnixTime.Seconds,
+                        Int64.MaxValue);
             }
             
-            async Task GetSimulations(int[] expectedSimulations)
+            async Task CheckSimulatedBundles(int[] expectedSimulations)
             {
                 int index = 0;
-                for (int i = 1; i <= 4; i++)
+                for (int i = 3; i <= 8; i++)
                 {
                     for (int j = 0; j < expectedSimulations[index]; j++)
                     {
                         await ss.WaitAsync(TimeSpan.FromMilliseconds(10));
                     }
-                    IEnumerable<SimulatedMevBundle> simulatedBundles = await GetSimulation(i);
+                    IEnumerable<SimulatedMevBundle> simulatedBundles = await GetSimulatedBundlesForBlock(i);
                     IEnumerable<MevBundle> mevBundles = simulatedBundles.Select(bundle => bundle.Bundle);
                     mevBundles.Count().Should().Be(expectedSimulations[index++]);
                 }
             }
-            int head = 1;
-            //MevBundle[] bundles = (tc.BundlePool.GetBundles(2, UInt256.Zero)).ToArray();
-            await GetSimulations(new int[] {2, 0, 0, 0});
+            
+            await CheckSimulatedBundles(new int[] {1, 0, 0, 0, 0, 0});
             tc.BlockTree.Head.Returns(Build.A.Block.WithNumber(++head).TestObject);
-            await GetSimulations(new int[] {0, 1, 0, 0});
+            await CheckSimulatedBundles(new int[] {0, 1, 0, 0, 0, 0});
             tc.BlockTree.Head.Returns(Build.A.Block.WithNumber(++head).TestObject);
-            await GetSimulations(new int[] {0, 0, 1, 0});
+            await CheckSimulatedBundles(new int[] {0, 0, 1, 0, 0, 0});
             tc.BlockTree.Head.Returns(Build.A.Block.WithNumber(++head).TestObject);
-            await GetSimulations(new int[] {0, 0, 0, 0});
+            await CheckSimulatedBundles(new int[] {0, 0, 0, 0, 0, 0});
+            tc.BlockTree.Head.Returns(Build.A.Block.WithNumber(++head).TestObject);
+            await CheckSimulatedBundles(new int[] {0, 0, 0, 0, 0, 0});
+            tc.BlockTree.Head.Returns(Build.A.Block.WithNumber(++head).TestObject);
+            await CheckSimulatedBundles(new int[] {0, 0, 0, 0, 0, 3});
         }
         
         [Test]
