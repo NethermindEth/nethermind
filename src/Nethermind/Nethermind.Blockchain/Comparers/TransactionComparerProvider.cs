@@ -57,9 +57,9 @@ namespace Nethermind.Blockchain.Comparers
                 IComparer<WrappedTransaction> gasPriceComparer =
                     new GasPriceTxComparerForProducer(blockPreparationContext, _specProvider);
                 return gasPriceComparer
-                .ThenBy(CompareTxByTimestamp.Instance)
-                .ThenBy(CompareTxByPoolIndex.Instance)
-                .ThenBy(CompareTxByGasLimit.Instance);
+                    .ThenBy(CompareTxByTimestamp.Instance)
+                    .ThenBy(CompareTxByPoolIndex.Instance)
+                    .ThenBy(CompareTxByGasLimit.Instance);
         }
     }
 }

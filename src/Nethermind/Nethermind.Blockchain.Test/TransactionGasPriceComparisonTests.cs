@@ -92,9 +92,7 @@ namespace Nethermind.Blockchain.Test
                 .WithGasPrice((UInt256)gasPriceX).TestObject;
             Transaction y = Build.A.Transaction.WithSenderAddress(TestItem.AddressA)
                 .WithGasPrice((UInt256)gasPriceY).TestObject;
-            WrappedTransaction wrX = new WrappedTransaction(x);
-            WrappedTransaction wrY = new WrappedTransaction(y);
-            int result = comparer.Compare(wrX, wrY);
+            int result = comparer.Compare(new WrappedTransaction(x), new WrappedTransaction(y));
             Assert.AreEqual(expectedResult, result);
         }
         
@@ -136,9 +134,7 @@ namespace Nethermind.Blockchain.Test
             Transaction y = Build.A.Transaction.WithSenderAddress(TestItem.AddressA)
                 .WithMaxFeePerGas((UInt256)feeCapY).WithMaxPriorityFeePerGas((UInt256)gasPremiumY)
                 .WithType(TxType.EIP1559).TestObject;
-            WrappedTransaction wrX = new WrappedTransaction(x);
-            WrappedTransaction wrY = new WrappedTransaction(y);
-            int result = comparer.Compare(wrX, wrY);
+            int result = comparer.Compare(new WrappedTransaction(x), new WrappedTransaction(y));
             Assert.AreEqual(expectedResult, result);
         }
 

@@ -74,10 +74,10 @@ namespace Nethermind.Blockchain.Test.TxPools.Collections
             
             for (int i = 0; i < Capacity; i++)
             {
-                _sortedPool.TryTakeFirst(out WrappedTransaction tx);
+                _sortedPool.TryTakeFirst(out WrappedTransaction wTx);
                 UInt256 gasPrice = (UInt256)(_transactions.Length - i - 1);
                 Assert.AreEqual(Capacity - i - 1, _sortedPool.Count);
-                Assert.AreEqual(gasPrice, tx.Tx.GasPrice);
+                Assert.AreEqual(gasPrice, wTx.Tx.GasPrice);
             }
         }
         
@@ -94,10 +94,10 @@ namespace Nethermind.Blockchain.Test.TxPools.Collections
         
             for (int i = 0; i < Capacity; i++)
             {
-                _sortedPool.TryTakeFirst(out WrappedTransaction tx);
+                _sortedPool.TryTakeFirst(out WrappedTransaction wTx);
                 UInt256 gasPrice = (UInt256)(_transactions.Length - i - 1);
                 Assert.AreEqual(Capacity - i - 1, _sortedPool.Count);
-                Assert.AreEqual(gasPrice, tx.Tx.GasPrice);
+                Assert.AreEqual(gasPrice, wTx.Tx.GasPrice);
             }
         }
     }
