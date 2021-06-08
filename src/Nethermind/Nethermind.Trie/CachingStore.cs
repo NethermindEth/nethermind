@@ -23,7 +23,7 @@ namespace Nethermind.Trie
 {
     public static class KeyValueStoreWithBatchingExtensions
     {
-        public static IKeyValueStoreWithBatching Cached(this IKeyValueStoreWithBatching @this, int maxCapacity)
+        public static IKeyValueStoreWithBatching Cached(this IKeyValueStoreWithBatching @this, long maxCapacity)
         {
             return new CachingStore(@this, maxCapacity);
         }
@@ -33,7 +33,7 @@ namespace Nethermind.Trie
     {
         private readonly IKeyValueStoreWithBatching _wrappedStore;
 
-        public CachingStore(IKeyValueStoreWithBatching wrappedStore, int maxCapacity)
+        public CachingStore(IKeyValueStoreWithBatching wrappedStore, long maxCapacity)
         {
             _wrappedStore = wrappedStore ?? throw new ArgumentNullException(nameof(wrappedStore));
             _cache = new LruCache<byte[], byte[]>(maxCapacity, "RLP Cache");

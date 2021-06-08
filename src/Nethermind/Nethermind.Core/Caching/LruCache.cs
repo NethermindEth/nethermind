@@ -29,7 +29,7 @@ namespace Nethermind.Core.Caching
     /// </summary>
     public class LruCache<TKey, TValue> : ICache<TKey, TValue> where TKey : notnull
     {
-        private readonly int _maxCapacity;
+        private readonly long _maxCapacity;
         private readonly Dictionary<TKey, LinkedListNode<LruCacheItem>> _cacheMap;
         private readonly LinkedList<LruCacheItem> _lruList;
 
@@ -40,7 +40,7 @@ namespace Nethermind.Core.Caching
             _lruList?.Clear();
         }
 
-        public LruCache(int maxCapacity, int startCapacity, string name)
+        public LruCache(long maxCapacity, int startCapacity, string name)
         {
             _maxCapacity = maxCapacity;
             _cacheMap = typeof(TKey) == typeof(byte[])
@@ -49,7 +49,7 @@ namespace Nethermind.Core.Caching
             _lruList = new LinkedList<LruCacheItem>();
         }
 
-        public LruCache(int maxCapacity, string name)
+        public LruCache(long maxCapacity, string name)
             : this(maxCapacity, 0, name)
         {
         }
