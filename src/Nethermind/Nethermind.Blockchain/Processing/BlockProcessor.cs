@@ -241,16 +241,22 @@ namespace Nethermind.Blockchain.Processing
                 {
                     if (!transactionsForBlock.Contains(currentTx))
                     {
-                        // No more gas available in block
-                        if (currentTx.GasLimit > block.Header.GasLimit - block.GasUsed)
-                        {
-                            break;
-                        }
+	                    // No more gas available in block
+	                    long gasRemaining = block.Header.GasLimit - block.GasUsed;
+	                    if (gasRemaining < GasCostOf.Transaction)
+	                    {
+	                        break;
+	                    }
+	                    if (currentTx.GasLimit > gasRemaining)
+	                    {
+	                        continue;
+	                    }
 
-                        ProcessTransaction(currentTx, i++);
-                        transactionsForBlock.Add(currentTx);
-                    }
+	                    ProcessTransaction(currentTx, i++);
+	                    transactionsForBlock.Add(currentTx);
+					}
                 }
+                
                 block.TrySetTransactions(transactionsForBlock.ToArray());
                 block.Header.TxRoot = new TxTrie(block.Transactions).RootHash;
 
