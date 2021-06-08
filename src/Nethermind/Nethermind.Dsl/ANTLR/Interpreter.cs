@@ -162,16 +162,16 @@ namespace Nethermind.Dsl.ANTLR
             return operation switch
             {
                 "IS" => new PipelineElement<Transaction, Transaction>(
-                    condition: (t => t.GetType().GetProperty(key).GetValue(t).ToString() == value),
+                    condition: (t => t.GetType().GetProperty(key).GetValue(t).ToString()?.ToLowerInvariant() == value.ToLowerInvariant()),
                     transformData: (t => t)),
                 "==" => new PipelineElement<Transaction, Transaction>(
-                    condition: (t => t.GetType().GetProperty(key).GetValue(t).ToString() == value),
+                    condition: (t => t.GetType().GetProperty(key)?.GetValue(t)?.ToString()?.ToLowerInvariant() == value.ToLowerInvariant()),
                     transformData: (t => t)),
                 "NOT" => new PipelineElement<Transaction, Transaction>(
-                    condition: (t => t.GetType().GetProperty(key)?.GetValue(t)?.ToString() != value),
+                    condition: (t => t.GetType().GetProperty(key)?.GetValue(t)?.ToString()?.ToLowerInvariant() != value.ToLowerInvariant()),
                     transformData: (t => t)),
                 "!=" => new PipelineElement<Transaction, Transaction>(
-                    condition: (t => t.GetType().GetProperty(key)?.GetValue(t)?.ToString() != value),
+                    condition: (t => t.GetType().GetProperty(key)?.GetValue(t)?.ToString()?.ToLowerInvariant() != value.ToLowerInvariant()),
                     transformData: (t => t)),
                 ">" => new PipelineElement<Transaction, Transaction>(
                     condition: (t => (UInt256) t.GetType().GetProperty(key)?.GetValue(t) > UInt256.Parse(value)),
@@ -197,16 +197,16 @@ namespace Nethermind.Dsl.ANTLR
             return operation switch
             {
                 "IS" => new PipelineElement<Block, Block>(
-                    condition: (b => b.GetType().GetProperty(key)?.GetValue(b)?.ToString() == value),
+                    condition: (b => b.GetType().GetProperty(key)?.GetValue(b)?.ToString()?.ToLowerInvariant() == value.ToLowerInvariant()),
                     transformData: (b => b)),
                 "==" => new PipelineElement<Block, Block>(
-                    condition: (b => b.GetType().GetProperty(key)?.GetValue(b)?.ToString() == value),
+                    condition: (b => b.GetType().GetProperty(key)?.GetValue(b)?.ToString()?.ToLowerInvariant() == value.ToLowerInvariant()),
                     transformData: (b => b)),
                 "!=" => new PipelineElement<Block, Block>(
-                    condition: (b => b.GetType().GetProperty(key)?.GetValue(b)?.ToString() != value),
+                    condition: (b => b.GetType().GetProperty(key)?.GetValue(b)?.ToString()?.ToLowerInvariant() != value.ToLowerInvariant()),
                     transformData: (b => b)),
                 "NOT" => new PipelineElement<Block, Block>(
-                    condition: (b => b.GetType().GetProperty(key)?.GetValue(b)?.ToString() != value),
+                    condition: (b => b.GetType().GetProperty(key)?.GetValue(b)?.ToString()?.ToLowerInvariant() != value.ToLowerInvariant()),
                     transformData: (b => b)),
                 ">" => new PipelineElement<Block, Block>(
                     condition: (b => (UInt256) b.GetType().GetProperty(key)?.GetValue(b) > UInt256.Parse(value)),
@@ -251,16 +251,16 @@ namespace Nethermind.Dsl.ANTLR
             return operation switch
             {
                 "IS" => new PipelineElement<TxReceipt, TxReceipt>(
-                    condition: (t => t.GetType().GetProperty(key)?.GetValue(t)?.ToString() == value),
+                    condition: (t => t.GetType().GetProperty(key)?.GetValue(t)?.ToString()?.ToLowerInvariant() == value.ToLowerInvariant()),
                     transformData: (t => t)),
                 "==" => new PipelineElement<TxReceipt, TxReceipt>(
-                    condition: (t => t.GetType().GetProperty(key)?.GetValue(t)?.ToString() == value),
+                    condition: (t => t.GetType().GetProperty(key)?.GetValue(t)?.ToString()?.ToLowerInvariant() == value.ToLowerInvariant()),
                     transformData: (t => t)),
                 "NOT" => new PipelineElement<TxReceipt, TxReceipt>(
-                    condition: (t => t.GetType().GetProperty(key)?.GetValue(t)?.ToString() != value),
+                    condition: (t => t.GetType().GetProperty(key)?.GetValue(t)?.ToString()?.ToLowerInvariant() != value.ToLowerInvariant()),
                     transformData: (t => t)),
                 "!=" => new PipelineElement<TxReceipt, TxReceipt>(
-                    condition: (t => t.GetType().GetProperty(key)?.GetValue(t)?.ToString() != value),
+                    condition: (t => t.GetType().GetProperty(key)?.GetValue(t)?.ToString()?.ToLowerInvariant() != value.ToLowerInvariant()),
                     transformData: (t => t)),
                 _ => null
             };
