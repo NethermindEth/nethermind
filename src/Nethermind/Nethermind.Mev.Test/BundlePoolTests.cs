@@ -26,6 +26,7 @@ using Avro.File;
 using FluentAssertions;
 using FluentAssertions.Common;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.FileSystemGlobbing.Internal.PathSegments;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Core;
@@ -234,6 +235,7 @@ namespace Nethermind.Mev.Test
         [Test]
         public async Task should_remove_simulations_on_eviction()
         {
+            SemaphoreSlim ss = new SemaphoreSlim(0);
             Transaction tx1 = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject;
             Transaction tx2 = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).TestObject;
             Transaction tx3 = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).TestObject;
@@ -243,10 +245,6 @@ namespace Nethermind.Mev.Test
             TestContext tc = new(default, config, 1, false);
             IEnumerable<SimulatedMevBundle> simulatedMevBundles;
             ISimulatedBundleSource simulatedBundleSource = tc.BundlePool;
-            SemaphoreSlim semaphoreSlim = new SemaphoreSlim(0);
-
-            simulatedBundleSource.GetBundles(Arg.Any<BlockHeader>(), Arg.Any<UInt256>(), Arg.Any<long>())
-                .Returns(Arg.Any<IEnumerable<SimulatedMevBundle>>()).AndDoes(c => semaphoreSlim.Release());
             
             MevBundle bundle1 = new(4, new[]{tx1});
             MevBundle bundle2 = new(3, new[]{tx2});
@@ -258,31 +256,38 @@ namespace Nethermind.Mev.Test
             tc.BundlePool.AddBundle(bundle3);
             tc.BundlePool.AddBundle(bundle4);
             
-            async Task getSimulations(int[] expectedSimulations)
+            tc.Simulator.Simulate(Arg.Any<MevBundle>(), Arg.Any<BlockHeader>()).
+                Returns(SimulatedMevBundle.Cancelled(new MevBundle(1, new Transaction[]{}))).AndDoes(c => ss.Release());
+            
+            async Task<IEnumerable<SimulatedMevBundle>> GetSimulation(int blockNumber)
+            {
+                return simulatedMevBundles = await simulatedBundleSource
+                        .GetBundles(Build.A.BlockHeader.WithNumber(blockNumber).TestObject, tc.Timestamper.UnixTime.Seconds,
+                            Int64.MaxValue);
+            }
+            
+            async Task GetSimulations(int[] expectedSimulations)
             {
                 int index = 0;
                 for (int i = 2; i <= 4; i++)
                 {
                     for (int j = 0; i < expectedSimulations[index]; i++)
                     {
-                        semaphoreSlim.WaitAsync(TimeSpan.FromMilliseconds(10));
+                        ss.WaitAsync(TimeSpan.FromMilliseconds(10));
                     }
-                    simulatedMevBundles = await simulatedBundleSource
-                        .GetBundles(Build.A.BlockHeader.WithNumber(i).TestObject, tc.Timestamper.UnixTime.Seconds,
-                            Int64.MaxValue);
-                    
-                    simulatedMevBundles.Count().Should().Be(expectedSimulations[index++]);
+                    IEnumerable<SimulatedMevBundle> simulatedBundles = await GetSimulation(i);
+                    simulatedBundles.Count().Should().Be(expectedSimulations[index++]);
                 }
             }
             int head = 1;
             //MevBundle[] bundles = (tc.BundlePool.GetBundles(2, UInt256.Zero)).ToArray();
-            await getSimulations(new int[] {2, 0, 0});
+            await GetSimulations(new int[] {2, 0, 0});
             tc.BlockTree.Head.Returns(Build.A.Block.WithNumber(++head).TestObject);
-            await getSimulations(new int[] {0, 1, 0});
+            await GetSimulations(new int[] {0, 1, 0});
             tc.BlockTree.Head.Returns(Build.A.Block.WithNumber(++head).TestObject);
-            await getSimulations(new int[] {0, 0, 1});
+            await GetSimulations(new int[] {0, 0, 1});
             tc.BlockTree.Head.Returns(Build.A.Block.WithNumber(++head).TestObject);
-            await getSimulations(new int[] {0, 0, 0});
+            await GetSimulations(new int[] {0, 0, 0});
         }
         
         [Test]
