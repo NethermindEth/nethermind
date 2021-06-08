@@ -31,7 +31,7 @@ namespace Nethermind.Mev.Data
     {
         private static int _sequenceNumber = 0;
 
-        public MevBundle(long blockNumber, IReadOnlyList<Transaction> transactions, UInt256? minTimestamp = null, UInt256? maxTimestamp = null, Keccak[]? revertingTxHashes = null)
+        public MevBundle(long blockNumber, IReadOnlyList<BundleTransaction> transactions, UInt256? minTimestamp = null, UInt256? maxTimestamp = null, Keccak[]? revertingTxHashes = null)
         {
             Transactions = transactions;
             BlockNumber = blockNumber;
@@ -42,6 +42,9 @@ namespace Nethermind.Mev.Data
             MinTimestamp = minTimestamp ?? UInt256.Zero;
             MaxTimestamp = maxTimestamp ?? UInt256.Zero;
             SequenceNumber = Interlocked.Increment(ref _sequenceNumber);
+
+            Transactions.Select(tx => tx.BundleHash = Hash);
+            Transactions.Select(tx => tx.CanRevert = RevertingTxHashes.Contains(tx.Hash));
             
             Keccak[] missingRevertingTxHashes = RevertingTxHashes.Except(transactions.Select(t => t.Hash!)).ToArray();
             if (missingRevertingTxHashes.Length > 0)
@@ -51,8 +54,8 @@ namespace Nethermind.Mev.Data
                     nameof(revertingTxHashes));
             }
         }
-        
-        public IReadOnlyList<Transaction> Transactions { get; }
+
+        public IReadOnlyList<BundleTransaction> Transactions { get; }
 
         public long BlockNumber { get; }
         public Keccak[] RevertingTxHashes { get; }

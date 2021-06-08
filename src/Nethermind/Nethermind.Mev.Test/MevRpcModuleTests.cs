@@ -109,7 +109,10 @@ namespace Nethermind.Mev.Test
             ResultWrapper<bool> resultOfBundle = chain.MevRpcModule.eth_sendBundle(bundleBytes, blockNumber);
             resultOfBundle.GetResult().ResultType.Should().NotBe(ResultType.Failure);
             resultOfBundle.GetData().Should().Be(true);
-            return new MevBundle(blockNumber, txs, default, default, null);
+            
+            
+            
+            return new MevBundle(blockNumber, BundleTransaction.ConvertTransactionArray(txs), default, default, null);
         }
         
         private MevBundle SuccessfullySendBundleWithRevertingTxHashes(TestMevRpcBlockchain chain, int blockNumber, Keccak[] revertingTxHashes = null, params Transaction[] txs)
@@ -118,7 +121,7 @@ namespace Nethermind.Mev.Test
             ResultWrapper<bool> resultOfBundle = chain.MevRpcModule.eth_sendBundle(bundleBytes, blockNumber, default, default, revertingTxHashes);
             resultOfBundle.GetResult().ResultType.Should().NotBe(ResultType.Failure);
             resultOfBundle.GetData().Should().Be(true);
-            return new MevBundle(blockNumber, txs, default, default, revertingTxHashes);
+            return new MevBundle(blockNumber, (IReadOnlyList<BundleTransaction>) txs.Select(tx => new BundleTransaction(tx)), default, default, revertingTxHashes);
         }
         
         [Test]

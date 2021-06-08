@@ -16,14 +16,43 @@
 // 
 
 using System;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Org.BouncyCastle.Asn1.Cms;
 
 namespace Nethermind.Mev.Data
 {
     public class BundleTransaction : Transaction
     {
+        public BundleTransaction(Transaction transaction)
+        {
+            ChainId = transaction.ChainId;
+            Type = transaction.Type;
+            Nonce = transaction.Nonce;
+            GasPrice = transaction.GasPrice;
+            GasBottleneck = transaction.GasBottleneck;
+            DecodedMaxFeePerGas = transaction.DecodedMaxFeePerGas;
+            GasLimit = transaction.GasLimit;
+            To = transaction.To;
+            Value = transaction.Value;
+            Data = transaction.Data;
+            SenderAddress = transaction.SenderAddress;
+            Signature = transaction.Signature;
+            Hash = transaction.Hash;
+            DeliveredBy = transaction.DeliveredBy;
+            Timestamp = transaction.Timestamp;
+            AccessList = transaction.AccessList;
+            IsServiceTransaction = transaction.IsServiceTransaction;
+            PoolIndex = transaction.PoolIndex;
+        }
+
+        public static BundleTransaction[] ConvertTransactionArray(Transaction[] txs)
+        {
+            return txs.Select(tx => new BundleTransaction(tx)).ToArray();
+        }
+        
         public Keccak BundleHash { get; set; } = Keccak.Zero;
-        public bool CanRevert { get; set; } = true;
+        public bool CanRevert { get; set; } = false;
     }
 }

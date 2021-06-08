@@ -51,10 +51,10 @@ namespace Nethermind.Mev.Test
             int beforeValidBundlesReceived = Metrics.ValidBundlesReceived;
             int beforeBundlesSimulated = Metrics.BundlesSimulated;
 
-            bundlePool.AddBundle(new MevBundle(1, new []{Build.A.Transaction.TestObject, Build.A.Transaction.WithNonce(1).TestObject}, 0, 0, default));
-            bundlePool.AddBundle(new MevBundle(1, new []{Build.A.Transaction.TestObject}, 0, 0, default));
-            bundlePool.AddBundle(new MevBundle(3, new []{Build.A.Transaction.TestObject}, 0, 0, default));
-            bundlePool.AddBundle(new MevBundle(4, new []{Build.A.Transaction.TestObject}, 0, 0, default));
+            bundlePool.AddBundle(new MevBundle(1, new []{new BundleTransaction(Build.A.Transaction.TestObject), new BundleTransaction(Build.A.Transaction.WithNonce(1).TestObject)}, 0, 0, default));
+            bundlePool.AddBundle(new MevBundle(1, new []{new BundleTransaction(Build.A.Transaction.TestObject)}, 0, 0, default));
+            bundlePool.AddBundle(new MevBundle(3, new []{new BundleTransaction(Build.A.Transaction.TestObject)}, 0, 0, default));
+            bundlePool.AddBundle(new MevBundle(4, new []{new BundleTransaction(Build.A.Transaction.TestObject)}, 0, 0, default));
             
             int deltaBundlesReceived = Metrics.BundlesReceived - beforeBundlesReceived;
             int deltaValidBundlesReceived = Metrics.ValidBundlesReceived - beforeValidBundlesReceived;
@@ -74,10 +74,10 @@ namespace Nethermind.Mev.Test
             int beforeValidBundlesReceived = Metrics.ValidBundlesReceived;
             int beforeBundlesSimulated = Metrics.BundlesSimulated;
 
-            bundlePool.AddBundle(new MevBundle(1, new []{Build.A.Transaction.TestObject}, 5, 0, default)); // invalid
-            bundlePool.AddBundle(new MevBundle(2, new []{Build.A.Transaction.TestObject}, 0, 0, default)); 
-            bundlePool.AddBundle(new MevBundle(3, new []{Build.A.Transaction.TestObject}, 0, long.MaxValue, default)); // invalid
-            bundlePool.AddBundle(new MevBundle(4, new []{Build.A.Transaction.TestObject}, 0, 0, default));
+            bundlePool.AddBundle(new MevBundle(1, new []{new BundleTransaction(Build.A.Transaction.TestObject)}, 5, 0, default)); // invalid
+            bundlePool.AddBundle(new MevBundle(2, new []{new BundleTransaction(Build.A.Transaction.TestObject)}, 0, 0, default)); 
+            bundlePool.AddBundle(new MevBundle(3, new []{new BundleTransaction(Build.A.Transaction.TestObject)}, 0, long.MaxValue, default)); // invalid
+            bundlePool.AddBundle(new MevBundle(4, new []{new BundleTransaction(Build.A.Transaction.TestObject)}, 0, 0, default));
             
             int deltaBundlesReceived = Metrics.BundlesReceived - beforeBundlesReceived;
             int deltaValidBundlesReceived = Metrics.ValidBundlesReceived - beforeValidBundlesReceived;

@@ -38,16 +38,16 @@ namespace Nethermind.Mev.Test
                 
                 Transaction tx1 = BuildTransaction(TestItem.PrivateKeyA);
                 Transaction tx2 = BuildTransaction(TestItem.PrivateKeyB);
-                MevBundle bundle = new(1, new[] {tx1, tx2}, UInt256.One, UInt256.One);
+                MevBundle bundle = new(1, new[] {new BundleTransaction(tx1), new BundleTransaction(tx2)}, UInt256.One, UInt256.One);
 
-                yield return new TestCaseData(bundle, new MevBundle(1, new[] {tx1, tx2})) {ExpectedResult = true, TestName = "timestamps don't matter"};
-                yield return new TestCaseData(bundle, new MevBundle(1, new[] {tx1, tx2}, revertingTxHashes: new[]{tx1.Hash!})) {ExpectedResult = true, TestName = "reverting hashes don't matter"};
-                yield return new TestCaseData(bundle, new MevBundle(1, new[] {tx2, tx1})) {ExpectedResult = false, TestName = "transaction order matters"};
-                yield return new TestCaseData(bundle, new MevBundle(2, new[] {tx1, tx2})) {ExpectedResult = false, TestName = "block number matters"};
+                yield return new TestCaseData(bundle, new MevBundle(1, new[] {new BundleTransaction(tx1), new BundleTransaction(tx2)})) {ExpectedResult = true, TestName = "timestamps don't matter"};
+                yield return new TestCaseData(bundle, new MevBundle(1, new[] {new BundleTransaction(tx1), new BundleTransaction(tx2)}, revertingTxHashes: new[]{tx1.Hash!})) {ExpectedResult = true, TestName = "reverting hashes don't matter"};
+                yield return new TestCaseData(bundle, new MevBundle(1, new[] {new BundleTransaction(tx2), new BundleTransaction(tx1)})) {ExpectedResult = false, TestName = "transaction order matters"};
+                yield return new TestCaseData(bundle, new MevBundle(2, new[] {new BundleTransaction(tx1), new BundleTransaction(tx2)})) {ExpectedResult = false, TestName = "block number matters"};
                 
                 Transaction tx3 = BuildTransaction(TestItem.PrivateKeyC);
                 Transaction tx4 = BuildTransaction(TestItem.PrivateKeyD);
-                yield return new TestCaseData(bundle, new MevBundle(2, new[] {tx3, tx4})) {ExpectedResult = false, TestName = "transactions matter"};
+                yield return new TestCaseData(bundle, new MevBundle(2, new[] {new BundleTransaction(tx3), new BundleTransaction(tx4)})) {ExpectedResult = false, TestName = "transactions matter"};
             }
         }
         
@@ -60,8 +60,8 @@ namespace Nethermind.Mev.Test
         [Test]
         public void bundles_are_sequenced()
         {
-            MevBundle bundle1 = new(1, new List<Transaction>());
-            MevBundle bundle2 = new(1, new List<Transaction>());
+            MevBundle bundle1 = new(1, new List<BundleTransaction>());
+            MevBundle bundle2 = new(1, new List<BundleTransaction>());
 
             bundle2.SequenceNumber.Should().Be(bundle1.SequenceNumber + 1);
         }

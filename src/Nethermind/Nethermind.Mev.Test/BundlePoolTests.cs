@@ -61,7 +61,7 @@ namespace Nethermind.Mev.Test
                 yield return new BundleTest(8, DefaultTimestamp, 0);
                 yield return new BundleTest(9, DefaultTimestamp, 3);
                 yield return new BundleTest(10, 8, 0, 
-                    p => p.AddBundle(new MevBundle(10, Array.Empty<Transaction>(), 5, 7)));
+                    p => p.AddBundle(new MevBundle(10, Array.Empty<BundleTransaction>(), 5, 7)));
                 yield return new BundleTest(11, DefaultTimestamp, 0);
                 yield return new BundleTest(12, DefaultTimestamp, 1);
                 yield return new BundleTest(15, DefaultTimestamp, 1);
@@ -114,12 +114,12 @@ namespace Nethermind.Mev.Test
             
             MevBundle[] bundles = new []
             {
-                new MevBundle(1, tx1, 0, 0), //should get added
-                new MevBundle(2, tx1, timestamp + 5, timestamp), //should not get added, min > max
-                new MevBundle(3, tx1, timestamp - 5,  timestamp + 5), //should get added
-                new MevBundle(4, tx1, timestamp + 4000, timestamp + 5000), //should not get added, min time too large
-                new MevBundle(4, tx2, timestamp, timestamp + 10), //should get added
-                new MevBundle(5, tx2, timestamp + 1, timestamp + 10) //should not get added, min timestamp too large
+                new MevBundle(1, BundleTransaction.ConvertTransactionArray(tx1), 0, 0), //should get added
+                new MevBundle(2, BundleTransaction.ConvertTransactionArray(tx1), timestamp + 5, timestamp), //should not get added, min > max
+                new MevBundle(3, BundleTransaction.ConvertTransactionArray(tx1), timestamp - 5,  timestamp + 5), //should get added
+                new MevBundle(4, BundleTransaction.ConvertTransactionArray(tx1), timestamp + 4000, timestamp + 5000), //should not get added, min time too large
+                new MevBundle(4, BundleTransaction.ConvertTransactionArray(tx2), timestamp, timestamp + 10), //should get added
+                new MevBundle(5, BundleTransaction.ConvertTransactionArray(tx2), timestamp + 1, timestamp + 10) //should not get added, min timestamp too large
                 
             };
 
@@ -139,14 +139,14 @@ namespace Nethermind.Mev.Test
            };
            
            //Adding empty transaction array bundles
-           MevBundle bundleNoTx1 = new MevBundle(10, emptyArr);
-           MevBundle bundleNoTx2 = new MevBundle(11, emptyArr);
+           MevBundle bundleNoTx1 = new MevBundle(10, BundleTransaction.ConvertTransactionArray(emptyArr));
+           MevBundle bundleNoTx2 = new MevBundle(11, BundleTransaction.ConvertTransactionArray(emptyArr));
            tc.BundlePool.AddBundle(bundleNoTx1).Should().BeFalse();
            tc.BundlePool.AddBundle(bundleNoTx2).Should().BeFalse();
            
            //Same bundles with filled transaction array
-           MevBundle updatedBundle1 = new MevBundle(10, filledArr);
-           MevBundle updatedBundle2 = new MevBundle(11, filledArr);
+           MevBundle updatedBundle1 = new MevBundle(10, BundleTransaction.ConvertTransactionArray(filledArr));
+           MevBundle updatedBundle2 = new MevBundle(11, BundleTransaction.ConvertTransactionArray(filledArr));
            tc.BundlePool.AddBundle(updatedBundle1).Should().BeTrue();
            tc.BundlePool.AddBundle(updatedBundle2).Should().BeTrue();
         }
@@ -164,10 +164,10 @@ namespace Nethermind.Mev.Test
             Block block = Build.A.Block.WithNumber(16).TestObject;
             tc.BlockTree.Head.Returns(block);
 
-            MevBundle bundleFalse1 = new MevBundle(10, filledArr);
-            MevBundle bundleFalse2 = new MevBundle(15, filledArr);
-            MevBundle bundleFalse3 = new MevBundle(16, filledArr);
-            MevBundle bundleTrue1 = new MevBundle(17, filledArr);
+            MevBundle bundleFalse1 = new MevBundle(10, BundleTransaction.ConvertTransactionArray(filledArr));
+            MevBundle bundleFalse2 = new MevBundle(15, BundleTransaction.ConvertTransactionArray(filledArr));
+            MevBundle bundleFalse3 = new MevBundle(16, BundleTransaction.ConvertTransactionArray(filledArr));
+            MevBundle bundleTrue1 = new MevBundle(17, BundleTransaction.ConvertTransactionArray(filledArr));
             
             tc.BundlePool.AddBundle(bundleFalse1).Should().BeFalse();
             tc.BundlePool.AddBundle(bundleFalse2).Should().BeFalse();
@@ -215,7 +215,7 @@ namespace Nethermind.Mev.Test
             TestContext test = new();
             Block block = Build.A.Block.WithNumber(5).TestObject;
             test.BlockTree.Head.Returns(block);
-            MevBundle mevBundle = new MevBundle(6, new[] {Build.A.Transaction.TestObject});
+            MevBundle mevBundle = new MevBundle(6, BundleTransaction.ConvertTransactionArray(new[] {Build.A.Transaction.TestObject}));
             test.BundlePool.AddBundle(mevBundle);
             
             test.Simulator.Received(1).Simulate(mevBundle, block.Header, Arg.Any<CancellationToken>());
@@ -232,10 +232,10 @@ namespace Nethermind.Mev.Test
             MevConfig config = new() {BundlePoolSize = 3};
             TestContext tc = new(default, config, 1, false);
 
-            MevBundle bundle1 = new(3, new[]{tx1});
-            MevBundle bundle2 = new(2, new[]{tx2});
-            MevBundle bundle3 = new(2, new[]{tx3});
-            MevBundle bundle4 = new(2, new[]{tx4});
+            MevBundle bundle1 = new(3, BundleTransaction.ConvertTransactionArray(new[]{tx1}));
+            MevBundle bundle2 = new(2, BundleTransaction.ConvertTransactionArray(new[]{tx2}));
+            MevBundle bundle3 = new(2, BundleTransaction.ConvertTransactionArray(new[]{tx3}));
+            MevBundle bundle4 = new(2, BundleTransaction.ConvertTransactionArray(new[]{tx4}));
             
             tc.BundlePool.AddBundle(bundle1);
             tc.BundlePool.AddBundle(bundle2);
@@ -262,8 +262,8 @@ namespace Nethermind.Mev.Test
             Transaction revertingBundleTx = Build.A.Transaction.WithGasLimit(MevRpcModuleTests.Contracts.LargeGasLimit).WithGasPrice(500).WithTo(contractAddress).WithData(Bytes.FromHexString(MevRpcModuleTests.Contracts.ReverterInvokeFail)).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
             Transaction normalBundleTx = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject;
             
-            MevBundle failingBundle = new(2, new[]{revertingBundleTx});
-            MevBundle normalBundle = new(2, new[]{normalBundleTx});
+            MevBundle failingBundle = new(2, BundleTransaction.ConvertTransactionArray(new[]{revertingBundleTx}));
+            MevBundle normalBundle = new(2, BundleTransaction.ConvertTransactionArray(new[]{normalBundleTx}));
 
             chain.BundlePool.AddBundle(failingBundle);
             chain.BundlePool.AddBundle(normalBundle);
@@ -333,9 +333,9 @@ namespace Nethermind.Mev.Test
                 BundlePool.AddBundle(CreateBundle(4, tx1));
                 BundlePool.AddBundle(CreateBundle(5, tx2));
                 BundlePool.AddBundle(CreateBundle(6, tx2));
-                BundlePool.AddBundle(new MevBundle(9, new []{tx1}, 0, 0));
-                BundlePool.AddBundle(new MevBundle(9, new []{tx2}, 10, 100));
-                BundlePool.AddBundle(new MevBundle(9, new []{tx3}, 5, 50));
+                BundlePool.AddBundle(new MevBundle(9, BundleTransaction.ConvertTransactionArray(new []{tx1}), 0, 0));
+                BundlePool.AddBundle(new MevBundle(9, BundleTransaction.ConvertTransactionArray(new []{tx2}), 10, 100));
+                BundlePool.AddBundle(new MevBundle(9, BundleTransaction.ConvertTransactionArray(new []{tx3}), 5, 50));
                 BundlePool.AddBundle(CreateBundle(12, tx1, tx2, tx3));
                 BundlePool.AddBundle(CreateBundle(15, tx1, tx2));
             }
@@ -345,7 +345,7 @@ namespace Nethermind.Mev.Test
             public IBlockTree BlockTree { get; } = Substitute.For<IBlockTree>();
             public BundlePool BundlePool { get; }
             
-            private MevBundle CreateBundle(long blockNumber, params Transaction[] transactions) => new(blockNumber, transactions);
+            private MevBundle CreateBundle(long blockNumber, params Transaction[] transactions) => new(blockNumber, BundleTransaction.ConvertTransactionArray(transactions));
         }
     }
 }

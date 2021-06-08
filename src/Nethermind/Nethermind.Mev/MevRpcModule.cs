@@ -71,7 +71,7 @@ namespace Nethermind.Mev
 
         public ResultWrapper<bool> eth_sendBundle(byte[][] transactions, long blockNumber, UInt256? minTimestamp = null, UInt256? maxTimestamp = null, Keccak[]? revertingTxHashes = null)
         {
-            Transaction[] txs = Decode(transactions);
+            BundleTransaction[] txs = Decode(transactions);
             MevBundle bundle = new(blockNumber, txs, minTimestamp, maxTimestamp, revertingTxHashes);
             bool result = _bundlePool.AddBundle(bundle);
             return ResultWrapper<bool>.Success(result);
@@ -79,11 +79,11 @@ namespace Nethermind.Mev
 
         public ResultWrapper<TxsResults> eth_callBundle(byte[][] transactions, BlockParameter? blockParameter = null, UInt256? timestamp = null)
         {
-            Transaction[] txs = Decode(transactions);
+            BundleTransaction[] txs = Decode(transactions);
             return CallBundle(txs, blockParameter, timestamp);
         }
 
-        private ResultWrapper<TxsResults> CallBundle(Transaction[] txs, BlockParameter? blockParameter, UInt256? timestamp)
+        private ResultWrapper<TxsResults> CallBundle(BundleTransaction[] txs, BlockParameter? blockParameter, UInt256? timestamp)
         {
             blockParameter ??= BlockParameter.Latest;
             if (txs.Length == 0)
@@ -114,16 +114,16 @@ namespace Nethermind.Mev
 
         public ResultWrapper<TxsResults> eth_callBundleJSon(TransactionForRpc[] transactions, BlockParameter? blockParameter = null, UInt256? timestamp = null) 
         {
-            Transaction[] txs = transactions.Select(txForRpc =>
+            BundleTransaction[] txs = transactions.Select(txForRpc =>
             {
                 FixCallTx(txForRpc);
-                return txForRpc.ToTransaction(_chainId);
+                return new BundleTransaction(txForRpc.ToTransaction(_chainId));
             }).ToArray();
             
             return CallBundle(txs, blockParameter, timestamp);
         }
         
-        private static Transaction[] Decode(byte[][] transactions)
+        private static BundleTransaction[] Decode(byte[][] transactions)
         {
             Transaction[] txs = new Transaction[transactions.Length];
             for (int i = 0; i < transactions.Length; i++)
@@ -131,7 +131,7 @@ namespace Nethermind.Mev
                 txs[i] = Rlp.Decode<Transaction>(transactions[i]);
             }
 
-            return txs;
+            return BundleTransaction.ConvertTransactionArray(txs);
         }
         
         private bool HasStateForBlock(BlockHeader header)
