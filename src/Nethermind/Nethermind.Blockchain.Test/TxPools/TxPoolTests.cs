@@ -874,48 +874,22 @@ namespace Nethermind.Blockchain.Test.TxPools
             _txPool.RemoveTransaction(null).Should().Be(false);
         }
 
-        [Test]
-        public void should_not_overwrite_tx_if_price_is_not_more_than_10_percent_higher()
-        {
-            _txPool = CreatePool(_noTxStorage);
-            Transaction oldTx = Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(0).WithGasPrice(1000).SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
-            Transaction newTx = Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(0).WithGasPrice(1100).SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
-            EnsureSenderBalance(newTx);
-
-            _txPool.AddTransaction(oldTx, TxHandlingOptions.PersistentBroadcast);
-            _txPool.AddTransaction(newTx, TxHandlingOptions.PersistentBroadcast);
-
-            _txPool.GetPendingTransactions().Length.Should().Be(1);
-            _txPool.GetPendingTransactions().First().Should().BeEquivalentTo(oldTx);
-        }
-        
-        [Test]
-        public void should_overwrite_tx_if_price_is_more_than_10_percent_higher()
-        {
-            _txPool = CreatePool(_noTxStorage);
-            Transaction oldTx = Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(0).WithGasPrice(1000).SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
-            Transaction newTx = Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(0).WithGasPrice(1101).SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
-            EnsureSenderBalance(newTx);
-
-            _txPool.AddTransaction(oldTx, TxHandlingOptions.PersistentBroadcast);
-            _txPool.AddTransaction(newTx, TxHandlingOptions.PersistentBroadcast);
-
-            _txPool.GetPendingTransactions().Length.Should().Be(1);
-            _txPool.GetPendingTransactions().First().Should().BeEquivalentTo(newTx);
-        }
-
         [TestCase(0,0,false)]
         [TestCase(0,1,true)]
-        [TestCase(9,10,true)]
-        [TestCase(10,11,false)]
-        [TestCase(1_000_000_000,1_100_000_000,false)]
-        [TestCase(1_000_000_000,1_100_000_001,true)]
-        public void should_handle_overwriting_txs_properly(int oldGasPrice, int newGasPrice, bool replaced)
+        [TestCase(1,2,true)]
+        [TestCase(10,11,true)]
+        [TestCase(100,0,false)]
+        [TestCase(100,80,false)]
+        [TestCase(100,109,false)]
+        [TestCase(100,110,true)]
+        [TestCase(1_000_000_000,1_099_999_999,false)]
+        [TestCase(1_000_000_000,1_100_000_000,true)]
+        public void should_replace_tx_with_same_sender_and_nonce_only_if_new_fee_is_at_least_10_percent_higher_than_old(int oldGasPrice, int newGasPrice, bool replaced)
         {
             _txPool = CreatePool(_noTxStorage);
             Transaction oldTx = Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(0).WithGasPrice((UInt256)oldGasPrice).SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             Transaction newTx = Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(0).WithGasPrice((UInt256)newGasPrice).SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
-            EnsureSenderBalance(newTx);
+            EnsureSenderBalance(newTx.GasPrice > oldTx.GasPrice ? newTx : oldTx);
 
             _txPool.AddTransaction(oldTx, TxHandlingOptions.PersistentBroadcast);
             _txPool.AddTransaction(newTx, TxHandlingOptions.PersistentBroadcast);
