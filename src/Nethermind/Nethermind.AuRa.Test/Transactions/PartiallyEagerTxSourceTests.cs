@@ -30,44 +30,55 @@ namespace Nethermind.AuRa.Test.Transactions
 {
     public class PartiallyEagerTxSourceTests
     {
+        private static object[] GetArgs(params Transaction[] txs) => new object[] {txs};
+
+        private static readonly Transaction _generatedTx = Build.A.GeneratedTransaction.TestObject;
+        private static readonly Transaction _tx = Build.A.Transaction.TestObject;
+        
         public static IEnumerable TestCases
         {
             get
             {
-                object[] GetArgs(params Transaction[] txs) => new object[] {txs};
-
-                Transaction generatedTx = Build.A.GeneratedTransaction.TestObject;
-                Transaction tx = Build.A.Transaction.TestObject;
-                
                 yield return new TestCaseData(GetArgs()) {TestName = "empty_transactions"};
-                yield return new TestCaseData(GetArgs(generatedTx)) {TestName = "single_eager_transaction"};
-                yield return new TestCaseData(GetArgs(tx)) {TestName = "single_lazy_transaction"};
-                yield return new TestCaseData(GetArgs(generatedTx, generatedTx, generatedTx, tx, tx, tx, tx)) {TestName = "multiple_transactions"};
+                yield return new TestCaseData(GetArgs(_generatedTx)) {TestName = "single_eager_transaction"};
+                yield return new TestCaseData(GetArgs(_tx)) {TestName = "single_lazy_transaction"};
+                yield return new TestCaseData(GetArgs(_generatedTx, _generatedTx, _generatedTx, _tx, _tx, _tx, _tx)) {TestName = "multiple_transactions"};
             }
         }
 
         [TestCaseSource(nameof(TestCases))]
         public void Eagerly_prepares_needed_transactions(Transaction[] txs)
         {
-            bool EagerTransaction(Transaction t) => t is GeneratedTransaction;
-            
-            MockTxSource mockTxSource = new(txs);
+            MockTxSource mockTxSource = new(){Transactions = txs};
             PartiallyEagerTxSource txSource = new(mockTxSource, EagerTransaction);
-
             BlockHeader blockHeader = Build.A.BlockHeader.TestObject;
             txSource.PrepareEagerTransactions(blockHeader, 0);
             mockTxSource.Index.Should().Be(txs.TakeWhile(EagerTransaction).Count());
             txSource.GetTransactions(blockHeader, 0).Should().BeEquivalentTo(txs.ToArray<object>());
         }
 
+        private bool EagerTransaction(Transaction t) => t is GeneratedTransaction;
+
+        [Test]
+        public void Multiple_evaluations_are_correct()
+        {
+            Transaction[] txs = {_generatedTx, _generatedTx, _generatedTx, _tx, _tx, _tx, _tx};
+            MockTxSource mockTxSource = new(){Transactions = txs};
+            PartiallyEagerTxSource txSource = new(mockTxSource, EagerTransaction);
+            BlockHeader blockHeader = Build.A.BlockHeader.TestObject;
+            txSource.PrepareEagerTransactions(blockHeader, 0);
+            IEnumerable<Transaction> transactions = txSource.GetTransactions(blockHeader, 0);
+            transactions.Should().BeEquivalentTo(txs.ToArray<object>());
+            txs = new[] {_generatedTx, _tx};
+            mockTxSource.Transactions = txs;
+            txSource.PrepareEagerTransactions(blockHeader, 0);
+            transactions = txSource.GetTransactions(blockHeader, 0); 
+            transactions.Should().BeEquivalentTo(txs.ToArray<object>());
+        }
+
         private class MockTxSource : ITxSource
         {
-            private readonly Transaction[] _transactions;
-
-            public MockTxSource(params Transaction[] transactions)
-            {
-                _transactions = transactions;
-            }
+            public Transaction[] Transactions { get; set; }
 
             public int Index { get; private set; } = -1;
             
@@ -75,9 +86,9 @@ namespace Nethermind.AuRa.Test.Transactions
             {
                 Index = 0;
                 
-                for (int i = 0; i < _transactions.Length; i++)
+                for (int i = 0; i < Transactions.Length; i++)
                 {
-                    yield return _transactions[i];
+                    yield return Transactions[i];
                     Index++;
                 }
             }

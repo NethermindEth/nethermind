@@ -38,6 +38,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
         public void PrepareEagerTransactions(BlockHeader parent, long gasLimit)
         {
             _enumerator?.Dispose();
+            _eagerTransactions.Clear();
             _enumerator = _innerSource.GetTransactions(parent, gasLimit).GetEnumerator();
 
             while (_enumerator.MoveNext())
