@@ -20,21 +20,61 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 using Nethermind.Logging;
 
 namespace Nethermind.TxPool.Collections
 {
     public class TxDistinctSortedPool : DistinctValueSortedPool<Keccak, Transaction, Address>
     {
+        private readonly IComparer<Transaction> _comparer;
+        private readonly ILogger _logger;
+
         public TxDistinctSortedPool(int capacity, IComparer<Transaction> comparer, ILogManager logManager) 
             : base(capacity, comparer, CompetingTransactionEqualityComparer.Instance, logManager)
         {
+            _comparer = comparer ?? throw new ArgumentNullException(nameof(comparer));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         protected override IComparer<Transaction> GetUniqueComparer(IComparer<Transaction> comparer) => comparer.GetPoolUniqueTxComparer();
         protected override IComparer<Transaction> GetGroupComparer(IComparer<Transaction> comparer) => comparer.GetPoolUniqueTxComparerByNonce();
 
         protected override Address? MapToGroup(Transaction value) => value.MapTxToGroup();
+        
+        protected override bool CanInsert(Keccak hash, Transaction transaction)
+        {
+            // either there is no distinct value or it would go before (or at same place) as old value
+            // if it would go after old value in order, we ignore it and wont add it
+            if (base.CanInsert(hash, transaction))
+            {
+                bool isDuplicate = _distinctDictionary.TryGetValue(transaction, out var oldKvp);
+                if (isDuplicate)
+                {
+                    Transaction oldTx = oldKvp.Value;
+                    Transaction oldTxWithPrice10PercentHigher = new Transaction();
+                    
+                    oldTx.GasBottleneck.Divide(10, out UInt256 bumpGasBottleneck);
+                    oldTxWithPrice10PercentHigher.GasBottleneck = oldTx.GasBottleneck + bumpGasBottleneck;
+                    
+                    oldTx.GasPrice.Divide(10, out UInt256 bumpGasPrice);
+                    oldTxWithPrice10PercentHigher.GasPrice = oldTx.GasPrice + bumpGasPrice;
+
+                    bool isHigher = _comparer.Compare(transaction, oldTxWithPrice10PercentHigher) <= 0;
+                    
+                    if (_logger.IsTrace && !isHigher)
+                    {
+                        _logger.Trace($"Cannot insert {nameof(Transaction)} {transaction}, its not distinct and not higher than old {nameof(Transaction)} {oldKvp.Value} by more than 10%.");
+                    }
+
+                    return isHigher;
+                }
+
+                return true;
+            }
+
+            return false;
+        }
         
         [MethodImpl(MethodImplOptions.Synchronized)]
         public void UpdatePool(Func<Address, ICollection<Transaction>, IEnumerable<(Transaction Tx, Action<Transaction> Change)>> changingElements)

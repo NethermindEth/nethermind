@@ -30,7 +30,7 @@ namespace Nethermind.TxPool.Collections
     public abstract class DistinctValueSortedPool<TKey, TValue, TGroupKey> : SortedPool<TKey, TValue, TGroupKey>
     {
         private readonly IComparer<TValue> _comparer;
-        private readonly IDictionary<TValue, KeyValuePair<TKey, TValue>> _distinctDictionary;
+        protected readonly IDictionary<TValue, KeyValuePair<TKey, TValue>> _distinctDictionary;
         private readonly ILogger _logger;
 
         /// <summary>
