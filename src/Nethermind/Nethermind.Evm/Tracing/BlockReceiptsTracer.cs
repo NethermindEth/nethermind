@@ -260,6 +260,26 @@ namespace Nethermind.Evm.Tracing
 
         public bool IsTracingRewards => _otherTracer!.IsTracingRewards;
 
+        public int TakeSnapshot()
+        {
+            return _txReceipts.Count;
+        }
+
+        public void RestoreSnapshot(int length)
+        {
+            var txs = _block.GetTransactions(out _).ToList();
+
+            int numToRemove = _txReceipts.Count - length;
+            for (int i = 0; i < numToRemove; i++)
+            {
+                txs.RemoveAt(_txReceipts.Count - 1);
+                _txReceipts.RemoveAt(_txReceipts.Count - 1);
+            }
+
+            _block.TrySetTransactions(txs.ToArray());
+            _block.Header.GasUsed = _txReceipts.Last().GasUsedTotal;
+        }
+
         public void ReportReward(Address author, string rewardType, UInt256 rewardValue)
         {
             _otherTracer!.ReportReward(author, rewardType, rewardValue);

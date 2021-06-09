@@ -55,10 +55,9 @@ namespace Nethermind.Mev
         {
             IEnumerable<Transaction> transactions = block.GetTransactions(out _);
 
-            int i = 0;
             LinkedHashSet<Transaction> transactionsInBlock = new(DistinctCompareTx.Instance);
 
-            List<(BundleTransaction, int)> bundleTransactionWithIndex = new();
+            List<BundleTransaction> bundleTransactions = new();
             Keccak? bundleHash = null;
             
             foreach (Transaction currentTx in transactions)
@@ -74,12 +73,12 @@ namespace Nethermind.Mev
                     {
                         if (currentTx is BundleTransaction bundleTransaction)
                         {
-                            bundleTransactionWithIndex.Add((bundleTransaction, i++));
+                            bundleTransactions.Add(bundleTransaction);
                             bundleHash = bundleTransaction.BundleHash;
                         }
                         else
                         {
-                            ProcessTransaction(block, transactionsInBlock, currentTx, i++, receiptsTracer, TransactionProcessed);
+                            ProcessTransaction(block, transactionsInBlock, currentTx, transactionsInBlock.Count, receiptsTracer, TransactionProcessed);
                         }
                     }
                     else
@@ -88,24 +87,24 @@ namespace Nethermind.Mev
                         {
                             if (bundleTransaction.BundleHash == bundleHash)
                             {
-                                bundleTransactionWithIndex.Add((bundleTransaction, i++));
+                                bundleTransactions.Add(bundleTransaction);
                             }
                             else
                             {
-                                ProcessBundle(block, transactionsInBlock, bundleTransactionWithIndex, receiptsTracer, TransactionProcessed);
+                                ProcessBundle(block, transactionsInBlock, bundleTransactions, receiptsTracer, TransactionProcessed);
                                 
                                 if (currentTx.GasLimit > block.Header.GasLimit - block.GasUsed)
                                 {
                                     break;
                                 }
                                 
-                                bundleTransactionWithIndex.Add((bundleTransaction, i++));
+                                bundleTransactions.Add(bundleTransaction);
                                 bundleHash = bundleTransaction.BundleHash;
                             }
                         }
                         else
                         {
-                            ProcessBundle(block, transactionsInBlock, bundleTransactionWithIndex, receiptsTracer, TransactionProcessed);
+                            ProcessBundle(block, transactionsInBlock, bundleTransactions, receiptsTracer, TransactionProcessed);
                             bundleHash = null;
                             
                             if (currentTx.GasLimit > block.Header.GasLimit - block.GasUsed)
@@ -114,15 +113,15 @@ namespace Nethermind.Mev
                             }
                             
                             // process current transactions
-                            ProcessTransaction(block, transactionsInBlock, currentTx, i++, receiptsTracer, TransactionProcessed);
+                            ProcessTransaction(block, transactionsInBlock, currentTx, transactionsInBlock.Count, receiptsTracer, TransactionProcessed);
                         }
                     }
                 }
             }
             // if bundle is not clear process it still
-            if (bundleTransactionWithIndex.Count > 0)
+            if (bundleTransactions.Count > 0)
             {
-                ProcessBundle(block, transactionsInBlock, bundleTransactionWithIndex, receiptsTracer, TransactionProcessed);
+                ProcessBundle(block, transactionsInBlock, bundleTransactions, receiptsTracer, TransactionProcessed);
             }
             block.TrySetTransactions(transactionsInBlock.ToArray());
             block.Header.TxRoot = new TxTrie(block.Transactions).RootHash;
@@ -144,31 +143,35 @@ namespace Nethermind.Mev
             TransactionProcessed?.Invoke(this, new TxProcessedEventArgs(index, currentTx, receiptsTracer.TxReceipts![index]));
         }
 
-        private void ProcessBundle(Block block, LinkedHashSet<Transaction> transactionsInBlock, List<(BundleTransaction, int)> bundleTransactionWithIndex,
+        private void ProcessBundle(Block block, LinkedHashSet<Transaction> transactionsInBlock, List<BundleTransaction> bundleTransactions,
             BlockReceiptsTracer receiptsTracer, EventHandler<TxProcessedEventArgs> TransactionProcessed)
         {
             var stateSnapshot = _stateProvider.TakeSnapshot();
             var storageSnapshot = _storageProvider.TakeSnapshot();
+            var receiptSnapshot = receiptsTracer.TakeSnapshot();
 
             var eventList = new List<TxProcessedEventArgs>();
-                
-            foreach (var (currentTx, index) in bundleTransactionWithIndex)
+
+
+            foreach (var currentTx in bundleTransactions)
             {
-                ProcessTransaction(block, null, currentTx, index, receiptsTracer, null);
+                ProcessTransaction(block, null, currentTx, transactionsInBlock.Count, receiptsTracer, null);
                 
                 if (receiptsTracer.LastReceipt!.Error == "revert" && !currentTx.CanRevert)
                 {
                     _stateProvider.Restore(stateSnapshot);
                     _storageProvider.Restore(storageSnapshot);
-                    bundleTransactionWithIndex.Clear();
-                    foreach (var (tx, i) in bundleTransactionWithIndex)
+                    receiptsTracer.RestoreSnapshot(receiptSnapshot);
+
+                    bundleTransactions.Clear();
+                    foreach (var tx in bundleTransactions)
                     {
                         transactionsInBlock.Remove(tx);
                     }
                     
                     return;
                 }
-                eventList.Add(new TxProcessedEventArgs(index, currentTx, receiptsTracer.TxReceipts![index]));
+                eventList.Add(new TxProcessedEventArgs(transactionsInBlock.Count, currentTx, receiptsTracer.TxReceipts![transactionsInBlock.Count]));
             }
 
             foreach (var eventItem in eventList)
@@ -177,7 +180,7 @@ namespace Nethermind.Mev
                 TransactionProcessed?.Invoke(this, eventItem);
             }
             
-            bundleTransactionWithIndex.Clear();
+            bundleTransactions.Clear();
         }
     }
 }
