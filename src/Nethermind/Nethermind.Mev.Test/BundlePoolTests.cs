@@ -113,15 +113,16 @@ namespace Nethermind.Mev.Test
             {
                 Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject
             };
-            
+            MevConfig mevConfig = new MevConfig();
+            UInt256 bundleHorizon = mevConfig.BundleHorizon;
             MevBundle[] bundles = new []
             {
-                new MevBundle(1, tx1, 0, 0), //should get added
-                new MevBundle(2, tx1, timestamp + 5, timestamp), //should not get added, min > max
-                new MevBundle(3, tx1, timestamp - 5,  timestamp + 5), //should get added
-                new MevBundle(4, tx1, timestamp + 4000, timestamp + 5000), //should not get added, min time too large
-                new MevBundle(4, tx2, timestamp, timestamp + 10), //should get added
-                new MevBundle(5, tx2, timestamp + 1, timestamp + 10) //should not get added, min timestamp too large
+                new MevBundle(1, tx1, 0, 0),
+                new MevBundle(2, tx1, timestamp + 5, timestamp), //min > max
+                new MevBundle(3, tx1, timestamp - 5,  timestamp + 5),
+                new MevBundle(4, tx2, timestamp - 10, timestamp - 5), //max < curr
+                new MevBundle(4, tx2, timestamp + bundleHorizon , timestamp + bundleHorizon + 10),
+                new MevBundle(5, tx2, timestamp + bundleHorizon + 1, timestamp + bundleHorizon + 10) //min too large
                 
             };
 
