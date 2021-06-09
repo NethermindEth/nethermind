@@ -51,11 +51,11 @@ namespace Nethermind.Consensus.AuRa
         private readonly long _posdaoTransition;
         private readonly bool _forSealing;
 
-        public AuRaValidatorFactory(IStateProvider stateProvider,
-            IAbiEncoder abiEncoder,
+        public AuRaValidatorFactory(IAbiEncoder abiEncoder,
+            IStateProvider stateProvider,
             ITransactionProcessor transactionProcessor,
-            IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
             IBlockTree blockTree,
+            IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
             IReceiptFinder receiptFinder,
             IValidatorStore validatorStore,
             IAuRaBlockFinalizationManager finalizationManager,
