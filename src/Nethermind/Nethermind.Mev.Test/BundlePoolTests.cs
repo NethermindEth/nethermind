@@ -239,8 +239,9 @@ namespace Nethermind.Mev.Test
             int head = 3;
             IBundleSimulator bundleSimulator = Substitute.For<IBundleSimulator>();
             Transaction[] emptyArr = new Transaction[]{};
-            bundleSimulator.Simulate(Arg.Any<MevBundle>(), Arg.Any<BlockHeader>())
-                .Returns( Task.FromResult(SimulatedMevBundle.Cancelled(new MevBundle(1, emptyArr))))
+            bundleSimulator.Simulate(Arg.Any<MevBundle>(), Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>())
+                .Returns( Task.FromResult(new SimulatedMevBundle(new MevBundle(1, emptyArr), 0, true, UInt256.Zero, 
+                    UInt256.Zero, UInt256.Zero)))
                 .AndDoes(c => ss.Release());
             TestContext tc = new(default, bundleSimulator, new MevConfig() {BundlePoolSize = 4}, head);
             ISimulatedBundleSource simulatedBundleSource = tc.BundlePool;
@@ -266,18 +267,18 @@ namespace Nethermind.Mev.Test
                     simulatedBundles.Length.Should().Be(expectedSimulations[index++]);
                 }
             }
-            
-            
+
+            tc.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.WithNumber(head++).TestObject));
             await CheckSimulatedBundles(new int[] {1, 0, 0, 0, 0, 0});
-            tc.BlockTree.Head.Returns(Build.A.Block.WithNumber(++head).TestObject);
+            tc.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.WithNumber(head++).TestObject));
             await CheckSimulatedBundles(new int[] {0, 1, 0, 0, 0, 0});
-            tc.BlockTree.Head.Returns(Build.A.Block.WithNumber(++head).TestObject);
+            tc.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.WithNumber(head++).TestObject));
             await CheckSimulatedBundles(new int[] {0, 0, 1, 0, 0, 0});
-            tc.BlockTree.Head.Returns(Build.A.Block.WithNumber(++head).TestObject);
+            tc.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.WithNumber(head++).TestObject));
             await CheckSimulatedBundles(new int[] {0, 0, 0, 0, 0, 0});
-            tc.BlockTree.Head.Returns(Build.A.Block.WithNumber(++head).TestObject);
+            tc.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.WithNumber(head++).TestObject));
             await CheckSimulatedBundles(new int[] {0, 0, 0, 0, 0, 0});
-            tc.BlockTree.Head.Returns(Build.A.Block.WithNumber(++head).TestObject);
+            tc.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.WithNumber(head).TestObject));
             await CheckSimulatedBundles(new int[] {0, 0, 0, 0, 0, 3});
         }
         
