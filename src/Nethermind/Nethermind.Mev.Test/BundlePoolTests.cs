@@ -239,10 +239,11 @@ namespace Nethermind.Mev.Test
             int head = 3;
             IBundleSimulator bundleSimulator = Substitute.For<IBundleSimulator>();
             Transaction[] emptyArr = new Transaction[]{};
+            SimulatedMevBundle successfulBundle = new SimulatedMevBundle(new MevBundle(1, emptyArr),
+                0, true, UInt256.Zero, UInt256.Zero, UInt256.Zero);
             bundleSimulator.Simulate(Arg.Any<MevBundle>(), Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>())
-                .Returns( Task.FromResult(new SimulatedMevBundle(new MevBundle(1, emptyArr), 0, true, UInt256.Zero, 
-                    UInt256.Zero, UInt256.Zero)))
-                .AndDoes(c => ss.Release());
+                            .Returns( Task.FromResult(successfulBundle))
+                            .AndDoes(c => ss.Release());
             TestContext tc = new(default, bundleSimulator, new MevConfig() {BundlePoolSize = 10}, head);
             ISimulatedBundleSource simulatedBundleSource = tc.BundlePool;
             
@@ -267,7 +268,7 @@ namespace Nethermind.Mev.Test
                     simulatedBundles.Length.Should().Be(expectedSimulations[index++]);
                 }
             }
-            //starts at 4
+            
             tc.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.WithNumber(head++).TestObject));
             await CheckSimulatedBundles(new int[] {1, 0, 0, 0, 0, 0});
             tc.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.WithNumber(head++).TestObject));
