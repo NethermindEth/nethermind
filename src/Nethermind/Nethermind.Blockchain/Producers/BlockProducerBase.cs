@@ -54,9 +54,8 @@ namespace Nethermind.Blockchain.Producers
         protected ISealer Sealer { get; }
         protected IStateProvider StateProvider { get; }
         private readonly IGasLimitCalculator _gasLimitCalculator;
-        private readonly ITimestamper _timestamper;
         private readonly ISpecProvider _specProvider;
-        private readonly ITxSource _txSource;
+        protected ITxSource TxSource { get; }
 
         protected DateTime _lastProducedBlockDateTime;
         protected ILogger Logger { get; }
@@ -73,7 +72,7 @@ namespace Nethermind.Blockchain.Producers
             ISpecProvider? specProvider,
             ILogManager? logManager)
         {
-            _txSource = txSource ?? throw new ArgumentNullException(nameof(txSource));
+            TxSource = txSource ?? throw new ArgumentNullException(nameof(txSource));
             Processor = processor ?? throw new ArgumentNullException(nameof(processor));
             Sealer = sealer ?? throw new ArgumentNullException(nameof(sealer));
             BlockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -217,11 +216,8 @@ namespace Nethermind.Blockchain.Producers
             return true;
         }
         
-        private IEnumerable<Transaction> GetTransactions(BlockHeader parent)
-        {
-            long gasLimit = _gasLimitCalculator.GetGasLimit(parent);
-            return _txSource.GetTransactions(parent, gasLimit);
-        }
+        protected virtual IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit) => 
+            TxSource.GetTransactions(parent, gasLimit);
 
         protected virtual Block PrepareBlock(BlockHeader parent)
         {
@@ -244,7 +240,8 @@ namespace Nethermind.Blockchain.Producers
             if (Logger.IsDebug) Logger.Debug($"Setting total difficulty to {parent.TotalDifficulty} + {difficulty}.");
             header.BaseFeePerGas = BaseFeeCalculator.Calculate(parent, _specProvider.GetSpec(header.Number));
 
-            IEnumerable<Transaction> transactions = GetTransactions(parent);
+            long gasLimit = _gasLimitCalculator.GetGasLimit(parent);
+            IEnumerable<Transaction> transactions = GetTransactions(parent, gasLimit);
             return new BlockToProduce(header, transactions, Array.Empty<BlockHeader>());;
         }
 

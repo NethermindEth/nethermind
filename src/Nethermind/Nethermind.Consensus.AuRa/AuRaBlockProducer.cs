@@ -23,6 +23,7 @@ using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.AuRa.Config;
+using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
@@ -38,6 +39,7 @@ namespace Nethermind.Consensus.AuRa
         private readonly IAuRaStepCalculator _auRaStepCalculator;
         private readonly IReportingValidator _reportingValidator;
         private readonly IAuraConfig _config;
+        private readonly PartiallyEagerTxSource _partiallyEagerTxSource;
 
         public AuRaBlockProducer(ITxSource txSource,
             IBlockchainProcessor processor,
@@ -53,7 +55,7 @@ namespace Nethermind.Consensus.AuRa
             ISpecProvider specProvider,
             ILogManager logManager) 
             : base(
-                new ValidatedTxSource(txSource, logManager),
+                new PartiallyEagerTxSource(txSource, t => t is GeneratedTransaction),
                 processor,
                 sealer,
                 blockTree,
@@ -65,6 +67,7 @@ namespace Nethermind.Consensus.AuRa
                 logManager,
                 "AuRa")
         {
+            _partiallyEagerTxSource = (PartiallyEagerTxSource)TxSource;
             _auRaStepCalculator = auRaStepCalculator ?? throw new ArgumentNullException(nameof(auRaStepCalculator));
             _reportingValidator = reportingValidator ?? throw new ArgumentNullException(nameof(reportingValidator));
             _config = config ?? throw new ArgumentNullException(nameof(config));
@@ -130,7 +133,16 @@ namespace Nethermind.Consensus.AuRa
             _reportingValidator.TryReportSkipped(block.Header, parent);
             return base.SealBlock(block, parent, token);
         }
-        
+
+        protected override IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
+        {
+            // we need to eagerly precalculate generated transactions, only later pool transactions can be calculated lazy
+            _partiallyEagerTxSource.PrepareEagerTransactions(parent, gasLimit);
+            return base.GetTransactions(parent, gasLimit);
+        }
+
+        #region debug
+
         // This is for debugging.
         private class ValidatedTxSource : ITxSource
         {
@@ -177,5 +189,7 @@ namespace Nethermind.Consensus.AuRa
             
             public override string ToString() => $"{nameof(ValidatedTxSource)} [ {_innerSource} ]";
         }
+
+        #endregion
     }
 }
