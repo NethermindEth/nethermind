@@ -27,6 +27,10 @@ namespace Nethermind.TxPool
         
         private CompareSameIdentityTxByFee() { }
         
+        // To replace old transaction, new transaction needs to have fee higher by at least 10% (1/10) of current fee.
+        // It is required to avoid acceptance and propagation of transaction with almost the same fee as replaced one.
+        private const int PartOfFeeRequiredToIncrease = 10;
+        
         public int Compare(Transaction? x, Transaction? y)
         {
             if (ReferenceEquals(x, y)) return 0;
@@ -37,7 +41,7 @@ namespace Nethermind.TxPool
             // if not, different method of sorting by gas price is needed
             if (x.GasBottleneck != 0 || y.GasBottleneck != 0)
             {
-                y.GasBottleneck.Divide(10, out UInt256 bumpGasBottleneck);
+                y.GasBottleneck.Divide(PartOfFeeRequiredToIncrease, out UInt256 bumpGasBottleneck);
                 return (y.GasBottleneck + bumpGasBottleneck).CompareTo(x.GasBottleneck);
             }
             
