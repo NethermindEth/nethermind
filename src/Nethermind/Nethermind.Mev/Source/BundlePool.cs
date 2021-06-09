@@ -195,7 +195,7 @@ namespace Nethermind.Mev.Source
             {
                 d.AddOrUpdate(key, 
                     _ => CreateContext(), 
-                    (_, c) => c); //how can we set the whole value to the Keccak?
+                    (_, c) => c);
                 return d;
             }
             
@@ -228,7 +228,7 @@ namespace Nethermind.Mev.Source
             long blockNumber = e.Block!.Number;
             RemoveBundlesUpToBlock(blockNumber);
 
-            Task.Run(() => //does this need to be in a task?
+            Task.Run(() => 
             {
                 UInt256 timestamp = _timestamper.UnixTime.Seconds;
                 IEnumerable<MevBundle> bundles = GetBundles(e.Block.Number + 1, UInt256.MaxValue, timestamp);
@@ -309,18 +309,18 @@ namespace Nethermind.Mev.Source
             if (_simulatedBundles.TryGetValue(parent.Number, out ConcurrentDictionary<(MevBundle Bundle, Keccak BlockHash), SimulatedMevBundleContext>? simulatedBundlesForBlock))
             {
                 IEnumerable<Task<SimulatedMevBundle>> resultTasks = simulatedBundlesForBlock
-                    .Where(b => b.Key.BlockHash == parent.Hash) //same block number as Blockheader param
-                    .Where(b => bundles.Contains(b.Key.Bundle)) //if block is in bundles (meets parameters like timestamp/gasLimit)
+                    .Where(b => b.Key.BlockHash == parent.Hash)
+                    .Where(b => bundles.Contains(b.Key.Bundle))
                     .Select(b => b.Value.Task)
-                    .ToArray(); //spawns tasks that are going to be returned to this
+                    .ToArray();
                 
-                await Task.WhenAny(Task.WhenAll(resultTasks), token.AsTask()); //what does waiting for token.AsTask do?
+                await Task.WhenAny(Task.WhenAll(resultTasks), token.AsTask()); 
 
                 IEnumerable<SimulatedMevBundle> res = resultTasks
                     .Where(t => t.IsCompletedSuccessfully)
                     .Select(t => t.Result)
                     .Where(t => t.Success)
-                    .Where(s => s.GasUsed <= gasLimit); //get all result tasks that are successful and use less gas than gaslimit
+                    .Where(s => s.GasUsed <= gasLimit); 
                 
                 return res;
             }
