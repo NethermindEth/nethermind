@@ -39,7 +39,7 @@ namespace Nethermind.Consensus.AuRa
         private readonly IAuRaStepCalculator _auRaStepCalculator;
         private readonly IReportingValidator _reportingValidator;
         private readonly IAuraConfig _config;
-        private readonly PartiallyEagerTxSource _partiallyEagerTxSource;
+        private readonly PrecomputedTxSource _precomputedTxSource;
 
         public AuRaBlockProducer(ITxSource txSource,
             IBlockchainProcessor processor,
@@ -55,7 +55,7 @@ namespace Nethermind.Consensus.AuRa
             ISpecProvider specProvider,
             ILogManager logManager) 
             : base(
-                new PartiallyEagerTxSource(txSource, t => t is GeneratedTransaction),
+                new PrecomputedTxSource(txSource, t => t is GeneratedTransaction),
                 processor,
                 sealer,
                 blockTree,
@@ -67,7 +67,7 @@ namespace Nethermind.Consensus.AuRa
                 logManager,
                 "AuRa")
         {
-            _partiallyEagerTxSource = (PartiallyEagerTxSource)TxSource;
+            _precomputedTxSource = (PrecomputedTxSource)TxSource;
             _auRaStepCalculator = auRaStepCalculator ?? throw new ArgumentNullException(nameof(auRaStepCalculator));
             _reportingValidator = reportingValidator ?? throw new ArgumentNullException(nameof(reportingValidator));
             _config = config ?? throw new ArgumentNullException(nameof(config));
@@ -136,8 +136,9 @@ namespace Nethermind.Consensus.AuRa
 
         protected override IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
         {
-            // we need to eagerly precalculate generated transactions, only later pool transactions can be calculated lazy
-            _partiallyEagerTxSource.PrepareEagerTransactions(parent, gasLimit);
+            // we need to eagerly precompute generated transactions, only later pool transactions can be calculated lazily
+            // this is because state has to be accessed before potentially calling FinalizeChange on beginning of block processing
+            _precomputedTxSource.PrecomputeTransactions(parent, gasLimit);
             return base.GetTransactions(parent, gasLimit);
         }
 

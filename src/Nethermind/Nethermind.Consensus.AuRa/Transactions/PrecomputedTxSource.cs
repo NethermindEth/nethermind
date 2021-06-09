@@ -22,23 +22,35 @@ using Nethermind.Core;
 
 namespace Nethermind.Consensus.AuRa.Transactions
 {
-    public class PartiallyEagerTxSource : ITxSource, IDisposable
+    /// <summary>
+    /// <see cref="ITxSource"/> that precomputes some transactions before block processing lazily other transaction.
+    /// </summary>
+    /// <remarks>
+    /// Rationale: Posdao transactions need to be precomputed before any block processing is done as AuRa FinalizeChange might be called before computing lazy transactions.
+    /// </remarks>
+    public class PrecomputedTxSource : ITxSource, IDisposable
     {
         private readonly ITxSource _innerSource;
-        private readonly Predicate<Transaction> _eagerTransaction;
+        private readonly Predicate<Transaction> _shouldPrecompute;
         private IEnumerator<Transaction>? _enumerator;
-        private readonly IList<Transaction> _eagerTransactions = new List<Transaction>();
+        private readonly IList<Transaction> _precomputedTransactions = new List<Transaction>();
 
-        public PartiallyEagerTxSource(ITxSource innerSource, Predicate<Transaction> eagerTransaction)
+        /// <summary>
+        /// Constructor
+        /// </summary>
+        /// <param name="innerSource">inner wrapped source</param>
+        /// <param name="shouldPrecompute">predicate if current transaction is to be precomputed</param>
+        /// <remarks>Only first transactions will be precomputed as soon as first lazy transaction will be found precomputing will be stopped</remarks>
+        public PrecomputedTxSource(ITxSource innerSource, Predicate<Transaction> shouldPrecompute)
         {
             _innerSource = innerSource;
-            _eagerTransaction = eagerTransaction;
+            _shouldPrecompute = shouldPrecompute;
         }
 
-        public void PrepareEagerTransactions(BlockHeader parent, long gasLimit)
+        public void PrecomputeTransactions(BlockHeader parent, long gasLimit)
         {
             _enumerator?.Dispose();
-            _eagerTransactions.Clear();
+            _precomputedTransactions.Clear();
             _enumerator = _innerSource.GetTransactions(parent, gasLimit).GetEnumerator();
 
             while (_enumerator.MoveNext())
@@ -46,9 +58,9 @@ namespace Nethermind.Consensus.AuRa.Transactions
                 Transaction currentTx = _enumerator.Current;
                 if (currentTx is not null)
                 {
-                    if (_eagerTransaction(currentTx))
+                    if (_shouldPrecompute(currentTx))
                     {
-                        _eagerTransactions.Add(currentTx);
+                        _precomputedTransactions.Add(currentTx);
                     }
                     else
                     {
@@ -60,16 +72,16 @@ namespace Nethermind.Consensus.AuRa.Transactions
 
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
         {
-            for (int i = 0; i < _eagerTransactions.Count; i++)
+            for (int i = 0; i < _precomputedTransactions.Count; i++)
             {
-                yield return _eagerTransactions[i];
+                yield return _precomputedTransactions[i];
             }
 
             if (_enumerator is not null)
             {
                 if (_enumerator.Current is not null)
                 {
-                    if (!_eagerTransaction(_enumerator.Current))
+                    if (!_shouldPrecompute(_enumerator.Current))
                     {
                         yield return _enumerator.Current;
                     }
@@ -87,7 +99,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
             }
         }
             
-        public override string ToString() => $"{nameof(PartiallyEagerTxSource)} [ {_innerSource} ]";
+        public override string ToString() => $"{nameof(PrecomputedTxSource)} [ {_innerSource} ]";
             
         public void Dispose()
         {

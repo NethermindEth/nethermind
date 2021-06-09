@@ -28,7 +28,7 @@ using NUnit.Framework;
 
 namespace Nethermind.AuRa.Test.Transactions
 {
-    public class PartiallyEagerTxSourceTests
+    public class PrecomputedTxSourceTests
     {
         private static object[] GetArgs(params Transaction[] txs) => new object[] {txs};
 
@@ -50,9 +50,9 @@ namespace Nethermind.AuRa.Test.Transactions
         public void Eagerly_prepares_needed_transactions(Transaction[] txs)
         {
             MockTxSource mockTxSource = new(){Transactions = txs};
-            PartiallyEagerTxSource txSource = new(mockTxSource, EagerTransaction);
+            PrecomputedTxSource txSource = new(mockTxSource, EagerTransaction);
             BlockHeader blockHeader = Build.A.BlockHeader.TestObject;
-            txSource.PrepareEagerTransactions(blockHeader, 0);
+            txSource.PrecomputeTransactions(blockHeader, 0);
             mockTxSource.Index.Should().Be(txs.TakeWhile(EagerTransaction).Count());
             txSource.GetTransactions(blockHeader, 0).Should().BeEquivalentTo(txs.ToArray<object>());
         }
@@ -64,14 +64,14 @@ namespace Nethermind.AuRa.Test.Transactions
         {
             Transaction[] txs = {_generatedTx, _generatedTx, _generatedTx, _tx, _tx, _tx, _tx};
             MockTxSource mockTxSource = new(){Transactions = txs};
-            PartiallyEagerTxSource txSource = new(mockTxSource, EagerTransaction);
+            PrecomputedTxSource txSource = new(mockTxSource, EagerTransaction);
             BlockHeader blockHeader = Build.A.BlockHeader.TestObject;
-            txSource.PrepareEagerTransactions(blockHeader, 0);
+            txSource.PrecomputeTransactions(blockHeader, 0);
             IEnumerable<Transaction> transactions = txSource.GetTransactions(blockHeader, 0);
             transactions.Should().BeEquivalentTo(txs.ToArray<object>());
             txs = new[] {_generatedTx, _tx};
             mockTxSource.Transactions = txs;
-            txSource.PrepareEagerTransactions(blockHeader, 0);
+            txSource.PrecomputeTransactions(blockHeader, 0);
             transactions = txSource.GetTransactions(blockHeader, 0); 
             transactions.Should().BeEquivalentTo(txs.ToArray<object>());
         }
