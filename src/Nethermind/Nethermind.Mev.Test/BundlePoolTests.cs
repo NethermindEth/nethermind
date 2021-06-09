@@ -237,9 +237,13 @@ namespace Nethermind.Mev.Test
         {
             SemaphoreSlim ss = new SemaphoreSlim(0);
             int head = 3;
-            TestContext tc = new(default, new MevConfig() {BundlePoolSize = 4}, head);
+            IBundleSimulator bundleSimulator = Substitute.For<IBundleSimulator>();
+            Transaction[] emptyArr = new Transaction[]{};
+            bundleSimulator.Simulate(Arg.Any<MevBundle>(), Arg.Any<BlockHeader>())
+                .Returns( Task.FromResult(SimulatedMevBundle.Cancelled(new MevBundle(1, emptyArr))))
+                .AndDoes(c => ss.Release());
+            TestContext tc = new(default, bundleSimulator, new MevConfig() {BundlePoolSize = 4}, head);
             ISimulatedBundleSource simulatedBundleSource = tc.BundlePool;
-            Transaction[] emptyarr = new Transaction[]{};
             
             async Task<IEnumerable<SimulatedMevBundle>> GetSimulatedBundlesForBlock(int blockNumber)
             {
@@ -263,9 +267,6 @@ namespace Nethermind.Mev.Test
                 }
             }
             
-            tc.Simulator.Simulate(Arg.Any<MevBundle>(), Arg.Any<BlockHeader>())
-                .Returns(SimulatedMevBundle.Cancelled(new MevBundle(1, emptyarr)))
-                .AndDoes(c => ss.Release());
             
             await CheckSimulatedBundles(new int[] {1, 0, 0, 0, 0, 0});
             tc.BlockTree.Head.Returns(Build.A.Block.WithNumber(++head).TestObject);
@@ -340,9 +341,10 @@ namespace Nethermind.Mev.Test
         
         private class TestContext
         {
-            public TestContext(ITimestamper? timestamper = null, IMevConfig? config = null, long? BlockTreeHead = null, bool addTestBundles = true)
+            public TestContext(ITimestamper? timestamper = null, IBundleSimulator? bundleSimulator = null, IMevConfig? config = null, long? BlockTreeHead = null, bool addTestBundles = true)
             {
                 Transaction CreateTransaction(PrivateKey privateKey) => Build.A.Transaction.SignedAndResolved(privateKey).TestObject;
+                
                 if (BlockTreeHead != null)
                 {
                     BlockTree.Head.Returns(Build.A.Block.WithNumber((long) BlockTreeHead).TestObject);
@@ -351,6 +353,11 @@ namespace Nethermind.Mev.Test
                 if (timestamper != null)
                 {
                     Timestamper = timestamper;
+                }
+
+                if (bundleSimulator != null)
+                {
+                    Simulator = bundleSimulator;
                 }
                 
                 BundlePool = new(

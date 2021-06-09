@@ -302,9 +302,9 @@ namespace Nethermind.Mev.Source
             }
         }
 
-        Task<IEnumerable<SimulatedMevBundle>> ISimulatedBundleSource.GetBundles(BlockHeader parent, UInt256 timestamp, long gasLimit, CancellationToken token)
+        async Task<IEnumerable<SimulatedMevBundle>> ISimulatedBundleSource.GetBundles(BlockHeader parent, UInt256 timestamp, long gasLimit, CancellationToken token)
         {
-            HashSet<MevBundle> bundles = (GetBundles(parent, timestamp, gasLimit, token)).Result.ToHashSet();
+            HashSet<MevBundle> bundles = (await GetBundles(parent, timestamp, gasLimit, token)).ToHashSet();
             
             if (_simulatedBundles.TryGetValue(parent.Number, out ConcurrentDictionary<(MevBundle Bundle, Keccak BlockHash), SimulatedMevBundleContext>? simulatedBundlesForBlock))
             {
@@ -314,21 +314,19 @@ namespace Nethermind.Mev.Source
                     .Select(b => b.Value.Task)
                     .ToArray(); //spawns tasks that are going to be returned to this
                 
-                Task.WaitAll((Task<SimulatedMevBundle>[]) resultTasks);
-                //await Task.WhenAny(Task.WhenAll(resultTasks), token.AsTask());
-                //await Task.WhenAll(resultTasks);
-                
+                await Task.WhenAny(Task.WhenAll(resultTasks), token.AsTask()); //what does waiting for token.AsTask do?
+
                 IEnumerable<SimulatedMevBundle> res = resultTasks
                     .Where(t => t.IsCompletedSuccessfully)
                     .Select(t => t.Result)
                     .Where(t => t.Success)
                     .Where(s => s.GasUsed <= gasLimit); //get all result tasks that are successful and use less gas than gaslimit
                 
-                return Task.FromResult(res);
+                return res;
             }
             else
             {
-                return Task.FromResult(Enumerable.Empty<SimulatedMevBundle>());
+                return (Enumerable.Empty<SimulatedMevBundle>());
             }
         }
 
