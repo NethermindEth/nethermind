@@ -189,7 +189,7 @@ namespace Nethermind.AuRa.Test.Transactions
             if (test.TxType == TxType.EIP1559)
             {
                 transactionBuilder.WithMaxPriorityFeePerGas(test.GasPremium);
-                transactionBuilder.WithFeeCap(test.FeeCap);
+                transactionBuilder.WithMaxFeePerGas(test.FeeCap);
             }
 
             transactionBuilder.WithType(test.TxType);

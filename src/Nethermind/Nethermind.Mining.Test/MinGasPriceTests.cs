@@ -60,7 +60,7 @@ namespace Nethermind.Mining.Test
                 IsEip1559Enabled = true
             });
             MinGasPriceTxFilter _filter = new MinGasPriceTxFilter((UInt256)minimum, specProvider);
-            Transaction tx = Build.A.Transaction.WithGasPrice(0).WithFeeCap((UInt256)actual).WithType(TxType.EIP1559).TestObject;
+            Transaction tx = Build.A.Transaction.WithGasPrice(0).WithMaxFeePerGas((UInt256)actual).WithType(TxType.EIP1559).TestObject;
             BlockBuilder blockBuilder = Core.Test.Builders.Build.A.Block.Genesis.WithGasLimit(10000).WithBaseFeePerGas((UInt256)actual).WithGasUsed(100);
             _filter.IsAllowed(tx, blockBuilder.TestObject.Header).Allowed.Should().Be(expectedResult);
         }

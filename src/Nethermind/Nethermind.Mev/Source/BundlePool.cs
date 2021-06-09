@@ -127,7 +127,7 @@ namespace Nethermind.Mev.Source
             return false;
         }
 
-        private bool ValidateBundle(MevBundle bundle, UInt256? currentTimestamp = null)
+        private bool ValidateBundle(MevBundle bundle)
         {
             if (HeadNumber >= bundle.BlockNumber)
             {
@@ -140,7 +140,7 @@ namespace Nethermind.Mev.Source
                 return false;
             }
             
-            currentTimestamp ??= _timestamper.UnixTime.Seconds;
+            ulong currentTimestamp = _timestamper.UnixTime.Seconds;
 
             if (bundle.MaxTimestamp < bundle.MinTimestamp)
             {
@@ -152,7 +152,7 @@ namespace Nethermind.Mev.Source
                 if (_logger.IsDebug) _logger.Debug($"Bundle rejected, because {nameof(bundle.MaxTimestamp)} {bundle.MaxTimestamp} is < current {currentTimestamp}.");
                 return false;
             }
-            else if (bundle.MinTimestamp != 0 && bundle.MinTimestamp > currentTimestamp)
+            else if (bundle.MinTimestamp != 0 && bundle.MinTimestamp > currentTimestamp + _mevConfig.BundleHorizon)
             {
                 if (_logger.IsDebug) _logger.Debug($"Bundle rejected, because {nameof(bundle.MinTimestamp)} {bundle.MaxTimestamp} is further into the future than accepted horizon {_mevConfig.BundleHorizon}.");
                 return false;
