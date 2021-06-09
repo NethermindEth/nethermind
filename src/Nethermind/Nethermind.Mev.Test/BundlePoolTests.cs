@@ -237,20 +237,16 @@ namespace Nethermind.Mev.Test
         {
             SemaphoreSlim ss = new SemaphoreSlim(0);
             int head = 3;
-            TestContext tc = new(default, new() {BundlePoolSize = 4}, head, false);
+            TestContext tc = new(default, new MevConfig() {BundlePoolSize = 4}, head);
             ISimulatedBundleSource simulatedBundleSource = tc.BundlePool;
             Transaction[] emptyarr = new Transaction[]{};
-            
-            tc.Simulator.Simulate(Arg.Any<MevBundle>(), Arg.Any<BlockHeader>())
-                .Returns(SimulatedMevBundle.Cancelled(new MevBundle(1, emptyarr)))
-                .AndDoes(c => ss.Release());
             
             async Task<IEnumerable<SimulatedMevBundle>> GetSimulatedBundlesForBlock(int blockNumber)
             {
                 return await simulatedBundleSource
                         .GetBundles(Build.A.BlockHeader.WithNumber(blockNumber).TestObject,
                         tc.Timestamper.UnixTime.Seconds,
-                        Int64.MaxValue);
+                        long.MaxValue);
             }
             
             async Task CheckSimulatedBundles(int[] expectedSimulations)
@@ -262,11 +258,14 @@ namespace Nethermind.Mev.Test
                     {
                         await ss.WaitAsync(TimeSpan.FromMilliseconds(10));
                     }
-                    IEnumerable<SimulatedMevBundle> simulatedBundles = await GetSimulatedBundlesForBlock(i);
-                    IEnumerable<MevBundle> mevBundles = simulatedBundles.Select(bundle => bundle.Bundle);
-                    mevBundles.Count().Should().Be(expectedSimulations[index++]);
+                    SimulatedMevBundle[] simulatedBundles = (await GetSimulatedBundlesForBlock(i)).ToArray();
+                    simulatedBundles.Length.Should().Be(expectedSimulations[index++]);
                 }
             }
+            
+            tc.Simulator.Simulate(Arg.Any<MevBundle>(), Arg.Any<BlockHeader>())
+                .Returns(SimulatedMevBundle.Cancelled(new MevBundle(1, emptyarr)))
+                .AndDoes(c => ss.Release());
             
             await CheckSimulatedBundles(new int[] {1, 0, 0, 0, 0, 0});
             tc.BlockTree.Head.Returns(Build.A.Block.WithNumber(++head).TestObject);

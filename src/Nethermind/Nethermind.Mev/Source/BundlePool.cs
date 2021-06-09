@@ -195,7 +195,7 @@ namespace Nethermind.Mev.Source
             {
                 d.AddOrUpdate(key, 
                     _ => CreateContext(), 
-                    (_, c) => c);
+                    (_, c) => c); //how can we set the whole value to the Keccak?
                 return d;
             }
             
@@ -302,9 +302,9 @@ namespace Nethermind.Mev.Source
             }
         }
 
-        async Task<IEnumerable<SimulatedMevBundle>> ISimulatedBundleSource.GetBundles(BlockHeader parent, UInt256 timestamp, long gasLimit, CancellationToken token)
+        Task<IEnumerable<SimulatedMevBundle>> ISimulatedBundleSource.GetBundles(BlockHeader parent, UInt256 timestamp, long gasLimit, CancellationToken token)
         {
-            HashSet<MevBundle> bundles = (await GetBundles(parent, timestamp, gasLimit, token)).ToHashSet();
+            HashSet<MevBundle> bundles = (GetBundles(parent, timestamp, gasLimit, token)).Result.ToHashSet();
             
             if (_simulatedBundles.TryGetValue(parent.Number, out ConcurrentDictionary<(MevBundle Bundle, Keccak BlockHash), SimulatedMevBundleContext>? simulatedBundlesForBlock))
             {
@@ -312,21 +312,23 @@ namespace Nethermind.Mev.Source
                     .Where(b => b.Key.BlockHash == parent.Hash) //same block number as Blockheader param
                     .Where(b => bundles.Contains(b.Key.Bundle)) //if block is in bundles (meets parameters like timestamp/gasLimit)
                     .Select(b => b.Value.Task)
-                    .ToArray();
-
-                await Task.WhenAny(Task.WhenAll(resultTasks), token.AsTask());
-
+                    .ToArray(); //spawns tasks that are going to be returned to this
+                
+                Task.WaitAll((Task<SimulatedMevBundle>[]) resultTasks);
+                //await Task.WhenAny(Task.WhenAll(resultTasks), token.AsTask());
+                //await Task.WhenAll(resultTasks);
+                
                 IEnumerable<SimulatedMevBundle> res = resultTasks
                     .Where(t => t.IsCompletedSuccessfully)
                     .Select(t => t.Result)
                     .Where(t => t.Success)
                     .Where(s => s.GasUsed <= gasLimit); //get all result tasks that are successful and use less gas than gaslimit
                 
-                return res;
+                return Task.FromResult(res);
             }
             else
             {
-                return Enumerable.Empty<SimulatedMevBundle>();
+                return Task.FromResult(Enumerable.Empty<SimulatedMevBundle>());
             }
         }
 
