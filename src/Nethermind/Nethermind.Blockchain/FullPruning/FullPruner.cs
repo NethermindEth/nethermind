@@ -22,6 +22,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Db.FullPruning;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -75,27 +76,21 @@ namespace Nethermind.Blockchain.FullPruning
                 {
                     _blockTree.NewHeadBlock -= OnNewHead;
 
-                    long? persistedState = _blockTree.BestState;
-                    if (persistedState.HasValue)
+                    if (e.Block?.StateRoot is not null)
                     {
-                        BlockHeader? header = _blockTree.FindHeader(persistedState.Value);
-                        if (header is not null)
+                        if (_fullPruningDb.TryStartPruning(out IPruningContext pruningContext))
                         {
-                            if (_fullPruningDb.TryStartPruning(out IPruningContext pruningContext))
-                            {
-                                IPruningContext? oldPruning = Interlocked.Exchange(ref _currentPruning, pruningContext);
-
-                                Task.Run(() => RunPruning(pruningContext, header, oldPruning));
-                            }
+                            IPruningContext? oldPruning = Interlocked.Exchange(ref _currentPruning, pruningContext);
+                            Task.Run(() => RunPruning(pruningContext, e.Block.StateRoot, oldPruning));
                         }
                     }
                 }
             }
         }
 
-        private bool CanRunPruning() => _fullPruningDb.CanStartPruning && _blockTree.BestState.HasValue;
+        private bool CanRunPruning() => _fullPruningDb.CanStartPruning;
 
-        protected virtual void RunPruning(IPruningContext pruning, BlockHeader header, IPruningContext? oldPruning)
+        protected void RunPruning(IPruningContext pruning, Keccak statRoot, IPruningContext? oldPruning)
         {
             oldPruning?.Dispose();
             
@@ -104,7 +99,7 @@ namespace Nethermind.Blockchain.FullPruning
                 pruning.MarkStart();
                 using (CopyTreeVisitor copyTreeVisitor = new(pruning, _cancellationTokenSource, _logManager))
                 {
-                    _stateReader.RunTreeVisitor(copyTreeVisitor, header.StateRoot!);
+                    _stateReader.RunTreeVisitor(copyTreeVisitor, statRoot);
 
                     if (!_cancellationTokenSource.IsCancellationRequested)
                     {
