@@ -15,7 +15,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macOS-latest]
     env:
-      EXCLUDE_TEST_PROJECTS: fromJSON('['', '/p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[*Test*]*"']')[matrix.os == 'ubuntu-latest']
+      EXCLUDE_TEST_PROJECTS: "${{ matrix.os == 'ubuntu-latest' && '/p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="/[Nethermind.HashLib]*%2c[*Test*]*"' || '' }}"
     steps:
     - uses: actions/checkout@v2
       with: 
@@ -169,7 +169,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macOS-latest]
     env:
-      EXCLUDE_TEST_PROJECTS: fromJSON('['', '/p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[*Test*]*"']')[matrix.os == 'ubuntu-latest']
+      EXCLUDE_TEST_PROJECTS: "${{ matrix.os == 'ubuntu-latest' && '/p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="/[Nethermind.HashLib]*%2c[*Test*]*"' || '' }}"
     steps:
     - uses: actions/checkout@v2
     - name: Unshallow fetching
