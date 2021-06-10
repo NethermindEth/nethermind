@@ -105,7 +105,7 @@ namespace Ethereum.Test.Base
             Transaction transaction = new();
             if (transaction.AccessList != null)
                 transaction.Type = TxType.AccessList;
-            if (transactionJson.GasPrice == null)
+            if (transactionJson.MaxFeePerGas != null)
                 transaction.Type = TxType.EIP1559;
             
             transaction.Value = transactionJson.Value[postStateJson.Indexes.Value];
