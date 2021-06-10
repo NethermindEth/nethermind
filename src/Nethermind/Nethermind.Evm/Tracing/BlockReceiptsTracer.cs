@@ -86,6 +86,7 @@ namespace Nethermind.Evm.Tracing
         {
             Transaction transaction = _currentTx;
             
+            /*
             if (logEntries.Length > 0)
             {
                 if (_block!.Bloom == Bloom.Empty)
@@ -93,12 +94,13 @@ namespace Nethermind.Evm.Tracing
                     _block.Header.Bloom = new Bloom();
                 }
             }
+            */
             
             TxReceipt txReceipt = new()
             {
                 Logs = logEntries,
                 TxType = transaction!.Type,
-                Bloom = logEntries.Length == 0 ? Bloom.Empty : new Bloom(logEntries, _block!.Bloom),
+                Bloom = logEntries.Length == 0 ? Bloom.Empty : new Bloom(logEntries),
                 GasUsedTotal = _block!.GasUsed,
                 StatusCode = statusCode,
                 Recipient = transaction.IsContractCreation ? null : recipient,
@@ -318,6 +320,21 @@ namespace Nethermind.Evm.Tracing
         {
             _otherTracer!.EndTxTrace();
             _currentIndex++;
+        }
+        
+        public void EndBlockTrace()
+        {
+            _otherTracer!.EndBlockTrace();
+            if (_txReceipts.Count > 0)
+            {
+                Bloom blockBloom = new Bloom();
+                _block!.Header.Bloom = blockBloom;
+                for (var index = 0; index < _txReceipts.Count; index++)
+                {
+                    var receipt = _txReceipts[index];
+                    blockBloom.Accumulate(receipt.Bloom!);
+                }
+            }
         }
 
         public void SetOtherTracer(IBlockTracer blockTracer)

@@ -162,6 +162,7 @@ namespace Nethermind.Mev
                     _stateProvider.Restore(stateSnapshot);
                     _storageProvider.Restore(storageSnapshot);
                     receiptsTracer.RestoreSnapshot(receiptSnapshot);
+                    
 
                     bundleTransactions.Clear();
                     foreach (var tx in bundleTransactions)
@@ -173,7 +174,7 @@ namespace Nethermind.Mev
                 }
                 eventList.Add(new TxProcessedEventArgs(transactionsInBlock.Count, currentTx, receiptsTracer.TxReceipts![transactionsInBlock.Count]));
             }
-
+            
             foreach (var eventItem in eventList)
             {
                 transactionsInBlock.Add(eventItem.Transaction);

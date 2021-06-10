@@ -272,6 +272,8 @@ namespace Nethermind.Blockchain.Processing
 
             TxReceipt[] receipts = transactionProcessingStrategy.ProcessTransactions(block, options, blockTracer, _receiptsTracer, spec, TransactionProcessed);
 
+            _receiptsTracer.EndBlockTrace();
+            
             block.Header.ReceiptsRoot = receipts.GetReceiptsRoot(spec, block.ReceiptsRoot);
             ApplyMinerRewards(block, blockTracer, spec);
 

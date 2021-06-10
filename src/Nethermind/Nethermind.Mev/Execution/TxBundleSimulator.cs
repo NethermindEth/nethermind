@@ -173,6 +173,10 @@ namespace Nethermind.Mev.Execution
                     throw new OperationCanceledException("Block gas limit exceeded.");
                 }
             }
+            
+            public void EndBlockTrace()
+            {
+            }
         }
 
         public class BundleTxTracer : ITxTracer

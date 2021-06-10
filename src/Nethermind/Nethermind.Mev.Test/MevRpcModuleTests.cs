@@ -602,7 +602,7 @@ namespace Nethermind.Mev.Test
         //[Ignore("Whole bundle reverting bundle checking not yet implemented")]
         public async Task Should_reject_second_bundle_where_they_succeed_individually_but_fail_if_in_the_same_block()
         {
-            var chain = await CreateChain(3);
+            var chain = await CreateChain(2);
             chain.GasLimitCalculator.GasLimit = 10_000_000;
             
             Address contractAddress = await Contracts.Deploy(chain, Contracts.SecondCallReverter);

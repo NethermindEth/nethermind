@@ -63,5 +63,9 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         {
             _block = block;
         }
+        
+        public override void EndBlockTrace()
+        {
+        }
     }
 }

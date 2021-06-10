@@ -31,5 +31,7 @@ namespace Nethermind.Evm.Tracing
         ITxTracer StartNewTxTrace(Transaction? tx);
         
         void EndTxTrace();
+        
+        void EndBlockTrace();
     }
 }
