@@ -156,7 +156,7 @@ jobs:
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Math.Gmp.Native/MathGmp.Native.UnitTests                
     - name: Upload Codecov Report
-      if: matrix.os == ubuntu-latest
+      if: matrix.os == 'ubuntu-latest'
       uses: actions/upload-artifact@v2
       with:
         name: codecov-report
@@ -213,7 +213,7 @@ jobs:
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Ethereum.Trie.Test
     - name: Upload Codecov Report
-      if: matrix.os == ubuntu-latest
+      if: matrix.os == 'ubuntu-latest'
       uses: actions/upload-artifact@v2
       with:
         name: codecov-report

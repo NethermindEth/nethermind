@@ -7,6 +7,9 @@ on:
 jobs:
   neth-tests:
     name: Running Nethermind Tests 1
+    concurrency: 
+      group: ${{ github.head_ref }}
+      cancel-in-progress: true
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
@@ -45,6 +48,9 @@ jobs:
         dotnet test -c Release src/Nethermind/Nethermind.Cli.Test
   neth-tests2:
     name: Running Nethermind Tests 2
+    concurrency: 
+      group: ${{ github.head_ref }}
+      cancel-in-progress: true
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
@@ -86,6 +92,9 @@ jobs:
         dotnet test -c Release src/Math.Gmp.Native/MathGmp.Native.UnitTests                
   neth-tests3:
     name: Running Nethermind Tests 3
+    concurrency: 
+      group: ${{ github.head_ref }}
+      cancel-in-progress: true
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
@@ -124,6 +133,9 @@ jobs:
         dotnet test -c Release src/Nethermind/Nethermind.Specs.Test
   neth-tests4:
     name: Running Nethermind Tests 4
+    concurrency: 
+      group: ${{ github.head_ref }}
+      cancel-in-progress: true
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
@@ -150,6 +162,9 @@ jobs:
         dotnet test -c Release src/Nethermind/Nethermind.Synchronization.Test
   neth-tests5:
     name: Running Nethermind Tests 5
+    concurrency: 
+      group: ${{ github.head_ref }}
+      cancel-in-progress: true
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
@@ -194,6 +209,9 @@ jobs:
         dotnet test -c Release src/Nethermind/Nethermind.DataMarketplace.WebSockets.Test
   neth-runner:
     name: Nethermind Runner Tests
+    concurrency: 
+      group: ${{ github.head_ref }}
+      cancel-in-progress: true
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
@@ -211,6 +229,9 @@ jobs:
         dotnet test -c Release src/Nethermind/Nethermind.State.Test.Runner.Test
   eth-tests:
     name: Running Ethereum Tests
+    concurrency: 
+      group: ${{ github.head_ref }}
+      cancel-in-progress: true
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
