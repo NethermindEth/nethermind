@@ -8,7 +8,7 @@ jobs:
   neth-tests:
     name: Running Nethermind Tests 1
     concurrency: 
-      group: ${{ github.head_ref }}
+      group: ${{ github.ref }}
       cancel-in-progress: true
     runs-on: ubuntu-latest
     steps:
@@ -49,7 +49,7 @@ jobs:
   neth-tests2:
     name: Running Nethermind Tests 2
     concurrency: 
-      group: ${{ github.head_ref }}
+      group: ${{ github.ref }}
       cancel-in-progress: true
     runs-on: ubuntu-latest
     steps:
@@ -93,7 +93,7 @@ jobs:
   neth-tests3:
     name: Running Nethermind Tests 3
     concurrency: 
-      group: ${{ github.head_ref }}
+      group: ${{ github.ref }}
       cancel-in-progress: true
     runs-on: ubuntu-latest
     steps:
@@ -134,7 +134,7 @@ jobs:
   neth-tests4:
     name: Running Nethermind Tests 4
     concurrency: 
-      group: ${{ github.head_ref }}
+      group: ${{ github.ref }}
       cancel-in-progress: true
     runs-on: ubuntu-latest
     steps:
@@ -163,7 +163,7 @@ jobs:
   neth-tests5:
     name: Running Nethermind Tests 5
     concurrency: 
-      group: ${{ github.head_ref }}
+      group: ${{ github.ref }}
       cancel-in-progress: true
     runs-on: ubuntu-latest
     steps:
@@ -210,7 +210,7 @@ jobs:
   neth-runner:
     name: Nethermind Runner Tests
     concurrency: 
-      group: ${{ github.head_ref }}
+      group: ${{ github.ref }}
       cancel-in-progress: true
     runs-on: ubuntu-latest
     steps:
@@ -230,7 +230,7 @@ jobs:
   eth-tests:
     name: Running Ethereum Tests
     concurrency: 
-      group: ${{ github.head_ref }}
+      group: ${{ github.ref }}
       cancel-in-progress: true
     runs-on: ubuntu-latest
     steps:
