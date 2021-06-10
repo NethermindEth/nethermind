@@ -17,8 +17,10 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.IO.Abstractions;
 using System.Linq;
+using System.Threading;
 using Nethermind.Core.Timers;
 
 namespace Nethermind.Blockchain.FullPruning
@@ -32,22 +34,57 @@ namespace Nethermind.Blockchain.FullPruning
 
         public PathSizePruningTrigger(string path, long threshold, ITimerFactory timerFactory, IFileSystem fileSystem)
         {
+            if (!fileSystem.Directory.Exists(path))
+            {
+                throw new ArgumentException($"{path} is not a directory", nameof(path));
+            }
+            
             _path = path;
             _threshold = threshold;
             _fileSystem = fileSystem;
-            _timer = timerFactory.CreateTimer(TimeSpan.FromMinutes(5));
+            // _timer = timerFactory.CreateTimer(TimeSpan.FromMinutes(5));
+            _timer = timerFactory.CreateTimer(TimeSpan.FromSeconds(30));
             _timer.Elapsed += OnTick;
             _timer.Start();
         }
 
         private void OnTick(object? sender, EventArgs e)
         {
-            IEnumerable<IFileInfo> files = _fileSystem.DirectoryInfo.FromDirectoryName(_path).EnumerateFiles();
-            long size = files.Sum(f => f.Length);
+            long size = GetDbSize();
             if (size >= _threshold)
             {
                 Prune?.Invoke(this, EventArgs.Empty);
             }
+        }
+
+        private long GetDbSize()
+        {
+            long size = GetPathSize(_path);
+            if (size == 0)
+            {
+                size = GetPathSize(GetDbIndex(_path));
+            }
+            return size;
+        }
+
+        private string GetDbIndex(string path)
+        {
+            int? firstIndexSubDirectory = _fileSystem.Directory
+                .EnumerateDirectories(path)
+                .Select(d => _fileSystem.Path.GetFileName(d))
+                .Select(n => int.TryParse(n, out int index) ? (int?)index : null)
+                .Where(i => i is not null)
+                .OrderBy(i => i)
+                .FirstOrDefault();
+
+            return firstIndexSubDirectory is null ? path : _fileSystem.Path.Combine(path, firstIndexSubDirectory.Value.ToString());
+        }
+
+        private long GetPathSize(string path)
+        {
+            IEnumerable<IFileInfo> files = _fileSystem.DirectoryInfo.FromDirectoryName(path).EnumerateFiles();
+            long size = files.Sum(f => f.Length);
+            return size;
         }
 
         public event EventHandler? Prune;
