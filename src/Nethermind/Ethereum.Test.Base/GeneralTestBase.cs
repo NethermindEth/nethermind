@@ -19,6 +19,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -103,7 +104,13 @@ namespace Ethereum.Test.Base
             header.Hash = header.CalculateHash();
 
             Stopwatch stopwatch = Stopwatch.StartNew();
-            transactionProcessor.Execute(test.Transaction, header, txTracer);
+            var txValidator = new TxValidator((MainnetSpecProvider.Instance.ChainId));
+            var spec = specProvider.GetSpec(test.CurrentNumber);
+            if (test.Transaction.ChainId == null)
+                test.Transaction.ChainId = MainnetSpecProvider.Instance.ChainId;
+            bool isValid = txValidator.IsWellFormed(test.Transaction, spec);
+            if (isValid)
+                transactionProcessor.Execute(test.Transaction, header, txTracer);
             stopwatch.Stop();
 
             stateProvider.Commit(specProvider.GenesisSpec);
