@@ -131,9 +131,9 @@ namespace Nethermind.Db.FullPruning
             Task.Run(() => oldDb.Clear());
         }
         
-        private void CancelPruning()
+        private void CancelPruning(PruningContext pruningContext)
         {
-            Interlocked.CompareExchange(ref _pruningContext, null, _pruningContext);
+            Interlocked.CompareExchange(ref _pruningContext, null, pruningContext);
         }
 
         private class PruningContext : IPruningContext
@@ -172,7 +172,7 @@ namespace Nethermind.Db.FullPruning
 
             public void Dispose()
             {
-                _db.CancelPruning();
+                _db.CancelPruning(this);
                 if (!_commited)
                 {
                     CloningDb.Clear();
