@@ -33,7 +33,7 @@ namespace Nethermind.TxPool.Collections
 
         protected override IComparer<Transaction> GetUniqueComparer(IComparer<Transaction> comparer) => comparer.GetPoolUniqueTxComparer();
         protected override IComparer<Transaction> GetGroupComparer(IComparer<Transaction> comparer) => comparer.GetPoolUniqueTxComparerByNonce();
-        protected override IComparer<Transaction> GetSameIdentityComparer(IComparer<Transaction> comparer) => comparer.GetSameIdentityComparer();
+        protected override IComparer<Transaction> GetReplacementComparer(IComparer<Transaction> comparer) => comparer.GetReplacementComparer();
         
         protected override Address? MapToGroup(Transaction value) => value.MapTxToGroup();
 

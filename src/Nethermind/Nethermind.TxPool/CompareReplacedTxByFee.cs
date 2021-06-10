@@ -21,11 +21,14 @@ using Nethermind.Int256;
 
 namespace Nethermind.TxPool
 {
-    public class CompareSameIdentityTxByFee : IComparer<Transaction>
+    /// <summary>
+    /// Compare fee of newcomer transaction with fee of transaction intended to be replaced increased by given percent
+    /// </summary>
+    public class CompareReplacedTxByFee : IComparer<Transaction>
     {
-        public static readonly CompareSameIdentityTxByFee Instance = new();
+        public static readonly CompareReplacedTxByFee Instance = new();
         
-        private CompareSameIdentityTxByFee() { }
+        private CompareReplacedTxByFee() { }
         
         // To replace old transaction, new transaction needs to have fee higher by at least 10% (1/10) of current fee.
         // It is required to avoid acceptance and propagation of transaction with almost the same fee as replaced one.
