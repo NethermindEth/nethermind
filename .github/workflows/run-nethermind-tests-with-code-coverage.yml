@@ -14,15 +14,8 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macOS-latest]
-        code-coverage: ['', '/p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[*Test*]*"'] 
-        exclude:
-          # excludes code-coverage reports for macos and windows
-          - os: [macOS-latest, windows-latest]
-            code-coverage: ['/p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[*Test*]*"']
-          - os: [ubuntu-latest]
-            code-coverage: ['']
     env:
-      EXCLUDE_TEST_PROJECTS: ${{ matrix.code-coverage }}
+      EXCLUDE_TEST_PROJECTS: fromJSON('['', '/p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[*Test*]*"']')[matrix.os == 'ubuntu-latest']
     steps:
     - uses: actions/checkout@v2
       with: 
@@ -163,7 +156,7 @@ jobs:
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Math.Gmp.Native/MathGmp.Native.UnitTests                
     - name: Upload Codecov Report
-      if: matrix.code-coverage != ''
+      if: matrix.os == ubuntu-latest
       uses: actions/upload-artifact@v2
       with:
         name: codecov-report
@@ -175,15 +168,8 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macOS-latest]
-        code-coverage: ['', '/p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[*Test*]*"'] 
-        exclude:
-          # excludes code-coverage reports for macos and windows
-          - os: [macOS-latest, windows-latest]
-            code-coverage: ['/p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[*Test*]*"']
-          - os: [ubuntu-latest]
-            code-coverage: ['']
     env:
-      EXCLUDE_TEST_PROJECTS: ${{ matrix.code-coverage }}
+      EXCLUDE_TEST_PROJECTS: fromJSON('['', '/p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[*Test*]*"']')[matrix.os == 'ubuntu-latest']
     steps:
     - uses: actions/checkout@v2
     - name: Unshallow fetching
@@ -227,7 +213,7 @@ jobs:
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Ethereum.Trie.Test
     - name: Upload Codecov Report
-      if: matrix.code-coverage != ''
+      if: matrix.os == ubuntu-latest
       uses: actions/upload-artifact@v2
       with:
         name: codecov-report
