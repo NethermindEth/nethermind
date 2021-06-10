@@ -132,24 +132,21 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.LogManager, 
                 chainSpecAuRa.TwoThirdsMajorityTransition);
             
-            IAuRaValidator validator = new AuRaValidatorFactory(
+            IAuRaValidator validator = new AuRaValidatorFactory(_api.AbiEncoder, 
                     _api.StateProvider, 
-                    _api.AbiEncoder, 
                     _api.TransactionProcessor, 
-                    readOnlyTxProcessorSource, 
                     _api.BlockTree, 
-                    _api.ReceiptStorage, 
-                    _api.ValidatorStore,
+                    readOnlyTxProcessorSource,
+                    _api.ReceiptStorage,
+                    _api.ValidatorStore, 
                     _api.FinalizationManager,
-                    new TxPoolSender(_api.TxPool, new NonceReservingTxSealer(_api.EngineSigner, _api.Timestamper, _api.TxPool)), 
+                    new TxPoolSender(_api.TxPool, new NonceReservingTxSealer(_api.EngineSigner, _api.Timestamper, _api.TxPool)),
                     _api.TxPool,
                     NethermindApi.Config<IMiningConfig>(),
                     _api.LogManager,
                     _api.EngineSigner,
                     _api.SpecProvider,
-                    _api.ReportingContractValidatorCache,
-                    chainSpecAuRa.PosdaoTransition,
-                    false)
+                    _api.ReportingContractValidatorCache, chainSpecAuRa.PosdaoTransition, false)
                 .CreateValidatorProcessor(chainSpecAuRa.Validators, _api.BlockTree.Head?.Header);
 
             if (validator is IDisposable disposableValidator)
