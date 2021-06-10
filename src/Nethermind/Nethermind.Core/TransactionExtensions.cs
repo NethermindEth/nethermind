@@ -33,7 +33,7 @@ namespace Nethermind.Core
             if (baseFeePerGas > feeCap)
             {
                 premiumPerGas = UInt256.Zero; 
-                return !freeTransaction;
+                return freeTransaction;
             }
             
             premiumPerGas = UInt256.Min(tx.MaxPriorityFeePerGas, feeCap - baseFeePerGas);
