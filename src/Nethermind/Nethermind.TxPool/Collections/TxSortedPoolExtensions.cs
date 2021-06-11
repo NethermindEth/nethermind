@@ -30,6 +30,9 @@ namespace Nethermind.TxPool.Collections
             => CompareTxByNonce.Instance // we need to ensure transactions are ordered by nonce, which might not be done in supplied comparer
                 .ThenBy(GetPoolUniqueTxComparer(comparer));
 
+        public static IComparer<Transaction> GetReplacementComparer(this IComparer<Transaction> comparer)
+            => CompareReplacedTxByFee.Instance.ThenBy(comparer);
+
         public static Address? MapTxToGroup(this Transaction value) => value.SenderAddress;
     }
 }
