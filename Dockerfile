@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk@sha256:e6b7bbd8daa77b072c6f1e0c18f531e63381cc6c8d75ee922fa9fd504749966e AS build
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk@sha256:fa19559201c43bc8191c1a095670e242de80a23697d24f5a3460019958637c63 AS build
 
 ARG TARGETPLATFORM
 ARG TARGETOS
@@ -16,7 +16,7 @@ RUN if [ "$TARGETARCH" = "amd64" ] ; \
     git describe --tags --always --long > out/git-hash ; \
     fi
 
-FROM --platform=$TARGETPLATFORM mcr.microsoft.com/dotnet/aspnet@sha256:41faa82e297e4067a5d6c8803e4dbb64709880047f42ae6671820dd3bfff6ad6 
+FROM --platform=$TARGETPLATFORM mcr.microsoft.com/dotnet/aspnet@sha256:1d75db770c7ce82b128744770271bd87dc9d119f0ef15b94cab0f84477abfaec 
 RUN apt-get update && apt-get -y install libsnappy-dev libc6-dev libc6
 
 WORKDIR /nethermind
