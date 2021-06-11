@@ -172,17 +172,16 @@ namespace Nethermind.JsonRpc.Modules.Eth
             {
                 return ResultWrapper<UInt256?>.Fail("The blocks all have gas prices that are null.");
             }
-            else
+            else //find the gas price at the index that is the percentile of the max index
             {
-                int findex = (int) (gasPrices.Count * (float) (percentile / 100));
+                int finalIndex = (int) ((gasPrices.Count - 1) * ((float) percentile / 100));
                 foreach (UInt256? gasPrice in gasPrices)
                 {
                     gasPriceFinal = gasPrice;
-                    if (findex <= 0)
+                    if (finalIndex-- <= 0)
                     {
                         break;
                     }
-                    findex--;
                 }
 
                 return ResultWrapper<UInt256?>.Success(gasPriceFinal);
