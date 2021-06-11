@@ -244,10 +244,6 @@ namespace Nethermind.Blockchain.Processing
                     {
                         break;
                     }
-                    if (currentTx.GasLimit > gasRemaining)
-                    {
-                        continue;
-                    }
 
                     ProcessTransaction(currentTx, i++);
                     transactionsForBlock.Add(currentTx);
