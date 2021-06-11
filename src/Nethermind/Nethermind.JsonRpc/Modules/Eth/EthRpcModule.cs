@@ -147,38 +147,42 @@ namespace Nethermind.JsonRpc.Modules.Eth
             Block latestBlock = _blockFinder.FindLatestBlock();
             Block headBlock = _blockFinder.FindHeadBlock();
             Block genesisBlock = _blockFinder.FindGenesisBlock();
-            SortedSet<UInt256?> gasPrices = new(); //does this have automatic sorting?
+            SortedSet<UInt256?> gasPrices = new();
             long blocksToGoBack = 5;
             int percentile = 70;
-            if (_blockFinder.Head != null && _blockFinder.Head.GasUsed != null)
+            long blockNumber = headBlock!.Number; //if latest gas price doesn't exist, start from head block and find blocksToGoBack # of gas prices
+            
+            if (latestBlock!.GasUsed != null) //check latest gas price
             {
-                return ResultWrapper<UInt256?>.Success(_blockFinder.Head.GasUsed);
+                return ResultWrapper<UInt256?>.Success(latestBlock.GasUsed);
             }
-            //go back blocksToGoBack blocks, get their prices, put them in a list
-            long blockNumber = headBlock!.Number - 1;
-            while (blocksToGoBack > 0 && blockNumber > genesisBlock!.Number - 1)
+            
+            while (blocksToGoBack > 0 && blockNumber > genesisBlock!.Number - 1) //else, go back "blockNumber" valid gas prices from genesisBlock
             {
-                UInt256? res = _blockFinder.FindBlock(blockNumber).GasUsed;
+                UInt256? res = _blockFinder.FindBlock(blockNumber)?.GasUsed;
                 if (res != null)
                 {
                     gasPrices.Add(res);
                     blocksToGoBack--;
-                    blockNumber--;
                 }
+                blockNumber--;
             }
             
             if (gasPrices.Count == 0)
+            {
                 return ResultWrapper<UInt256?>.Fail("The blocks all have gas prices that are null.");
+            }
             else
             {
                 int findex = (int) (gasPrices.Count * (float) (percentile / 100));
                 foreach (UInt256? gasPrice in gasPrices)
                 {
                     gasPriceFinal = gasPrice;
-                    if (findex == 0)
+                    if (findex <= 0)
                     {
                         break;
                     }
+                    findex--;
                 }
 
                 return ResultWrapper<UInt256?>.Success(gasPriceFinal);
