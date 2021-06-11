@@ -46,14 +46,12 @@ namespace Nethermind.Config
             string[] enodeParts2 = enodeParts[1].Split('@');
             _nodeKey = new PublicKey(enodeParts2[0].TrimStart('/'));
             string host = enodeParts2[1];
-            if (enodeParts.Length > 2 && int.TryParse(enodeParts[2], out int port))
-            {
-                Port = port;
-            }
-            else
+            if (enodeParts.Length <= 2 || !int.TryParse(enodeParts[2], out int port))
             {
                 throw GetPortException(host);
+                
             }
+            Port = port;
 
             try
             {
