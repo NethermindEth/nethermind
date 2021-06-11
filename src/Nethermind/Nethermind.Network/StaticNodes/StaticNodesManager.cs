@@ -19,6 +19,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net.Sockets;
 using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
@@ -73,7 +74,7 @@ namespace Nethermind.Network.StaticNodes
                     NetworkNode networkNode = new(n);
                     networkNodes = networkNodes.Append(networkNode);
                 }
-                catch (Exception exception)
+                catch (Exception exception) when (exception is ArgumentException or SocketException)
                 {
                     if (_logger.IsError) _logger.Error("Unable to process node. ", exception);
                 }
