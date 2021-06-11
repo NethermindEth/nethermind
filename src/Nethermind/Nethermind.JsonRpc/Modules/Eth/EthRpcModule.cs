@@ -143,7 +143,46 @@ namespace Nethermind.JsonRpc.Modules.Eth
         [Todo("Gas pricer to be implemented")]
         public ResultWrapper<UInt256?> eth_gasPrice()
         {
-            return ResultWrapper<UInt256?>.Success(20.GWei());
+            UInt256? gasPriceFinal = null;
+            Block latestBlock = _blockFinder.FindLatestBlock();
+            Block headBlock = _blockFinder.FindHeadBlock();
+            Block genesisBlock = _blockFinder.FindGenesisBlock();
+            SortedSet<UInt256?> gasPrices = new(); //does this have automatic sorting?
+            long blocksToGoBack = 5;
+            int percentile = 70;
+            if (_blockFinder.Head != null && _blockFinder.Head.GasUsed != null)
+            {
+                return ResultWrapper<UInt256?>.Success(_blockFinder.Head.GasUsed);
+            }
+            //go back blocksToGoBack blocks, get their prices, put them in a list
+            long blockNumber = headBlock!.Number - 1;
+            while (blocksToGoBack > 0 && blockNumber > genesisBlock!.Number - 1)
+            {
+                UInt256? res = _blockFinder.FindBlock(blockNumber).GasUsed;
+                if (res != null)
+                {
+                    gasPrices.Add(res);
+                    blocksToGoBack--;
+                    blockNumber--;
+                }
+            }
+            
+            if (gasPrices.Count == 0)
+                return ResultWrapper<UInt256?>.Fail("The blocks all have gas prices that are null.");
+            else
+            {
+                int findex = (int) (gasPrices.Count * (float) (percentile / 100));
+                foreach (UInt256? gasPrice in gasPrices)
+                {
+                    gasPriceFinal = gasPrice;
+                    if (findex == 0)
+                    {
+                        break;
+                    }
+                }
+
+                return ResultWrapper<UInt256?>.Success(gasPriceFinal);
+            }
         }
 
         public ResultWrapper<IEnumerable<Address>> eth_accounts()
