@@ -352,7 +352,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             {
                 return ResultWrapper<Keccak>.Fail(e.Message, ErrorCodes.AccountLocked);
             }
-            catch (Exception e)
+            catch (ArgumentException e)
             {
                 if (_logger.IsError) _logger.Error("Failed to send transaction.", e);
                 return ResultWrapper<Keccak>.Fail(e.Message, ErrorCodes.TransactionRejected);

@@ -43,6 +43,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.TxPool;
+using Nethermind.Wallet;
 using Newtonsoft.Json.Linq;
 using NSubstitute;
 using NUnit.Framework;
@@ -778,6 +779,17 @@ namespace Nethermind.JsonRpc.Test.Modules
             string serialized = ctx._test.TestEthRpc("eth_sendTransaction", new EthereumJsonSerializer().Serialize(rpcTx));
             
             await txSender.Received().SendTransaction(Arg.Any<Transaction>(), TxHandlingOptions.PersistentBroadcast | TxHandlingOptions.ManagedNonce);
+            Assert.AreEqual($"{{\"jsonrpc\":\"2.0\",\"result\":\"{TestItem.KeccakA.Bytes.ToHexString(true)}\",\"id\":67}}", serialized);
+        }
+
+        [Test]
+        public async Task Send_raw_transaction_should_return_ErrorCode_if_tx_not_added()
+        {
+            using Context ctx = await Context.Create();
+            Transaction tx = Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithValue(10000).WithNonce(0).TestObject;
+            Rlp rlp = Rlp.Encode(tx, true);
+            string serialized = ctx._test.TestEthRpc("eth_sendRawTransaction", rlp.ToString());
+
             Assert.AreEqual($"{{\"jsonrpc\":\"2.0\",\"result\":\"{TestItem.KeccakA.Bytes.ToHexString(true)}\",\"id\":67}}", serialized);
         }
 
