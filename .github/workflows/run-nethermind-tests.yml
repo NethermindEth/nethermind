@@ -74,6 +74,9 @@ jobs:
     - name: Nethermind.Config.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Config.Test
+    - name: Nethermind.Consensus.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.Consensus.Test
     - name: Nethermind.Core.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Core.Test

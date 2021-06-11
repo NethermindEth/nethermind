@@ -187,7 +187,7 @@ namespace Nethermind.Runner.Ethereum.Api
         public IHealthHintService? HealthHintService { get; set; }
         public TxValidator? TxValidator { get; set; }
         public IBlockFinalizationManager? FinalizationManager { get; set; }
-        public IGasLimitCalculator GasLimitCalculator { get; set; } = FollowOtherMiners.Instance;
+        public IGasLimitCalculator GasLimitCalculator { get; set; }
         
         public IBlockProducerEnvFactory BlockProducerEnvFactory { get; set; }
         public IWallet? Wallet { get; set; }
