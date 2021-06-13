@@ -24,7 +24,9 @@ namespace Nethermind.Dsl.Test
         {
             _dslPlugin = new DslPlugin();
             _api = Substitute.For<INethermindApi>();
-            _dslRpcModule = new DslRpcModule();
+            _dslRpcModule = Substiture.For<DslRpcModule>();
+            _interpreter = Substiture.For<Dictionary<int, Interpreter>>();
+            _logger = Substiture.For<ILogger>();
         }
         
         [Test]
