@@ -172,14 +172,25 @@ namespace Nethermind.Core.Test.Blockchain
 
             var genesis = GetGenesisBlock();
             BlockTree.SuggestBlock(genesis);
-            await _resetEvent.WaitAsync();
-            //if (!await _resetEvent.WaitAsync(1000))
-            // {
-            //     throw new InvalidOperationException("Failed to process genesis in 1s.");
-            // }
-
+            await WaitAsync(_resetEvent, "Failed to process genesis in time.");
             await AddBlocksOnStart();
             return this;
+        }
+
+        private static async Task WaitAsync(SemaphoreSlim semaphore, string error, int timeout = 1000)
+        {
+            if (!await semaphore.WaitAsync(timeout))
+            {
+                throw new InvalidOperationException(error);
+            }
+        }
+        
+        private static async Task WaitAsync(ManualResetEvent manualResetEvent, string error, int timeout = 1000)
+        {
+            if (!await manualResetEvent.WaitOneAsync(timeout, CancellationToken.None))
+            {
+                throw new InvalidOperationException(error);
+            }
         }
 
         protected virtual ITestBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, BlockchainProcessor chainProcessor, IStateProvider producerStateProvider, ISealer sealer)
@@ -246,7 +257,7 @@ namespace Nethermind.Core.Test.Blockchain
 
         public async Task WaitForNewHead()
         {
-            await _resetEvent.WaitAsync(CancellationToken.None);
+            await WaitAsync(_resetEvent, "Failed to produce new head in time.");
             _suggestedBlockResetEvent.Reset();
         }
 
@@ -254,7 +265,7 @@ namespace Nethermind.Core.Test.Blockchain
         {
             await AddBlockInternal(transactions);
 
-            await _resetEvent.WaitAsync(CancellationToken.None);
+            await WaitAsync(_resetEvent, "Failed to produce new head in time.");
             _suggestedBlockResetEvent.Reset();
             _oneAtATime.Set();
         }
@@ -265,11 +276,11 @@ namespace Nethermind.Core.Test.Blockchain
 
             if (shouldWaitForHead)
             {
-                await _resetEvent.WaitAsync(CancellationToken.None);
+                await WaitAsync(_resetEvent, "Failed to produce new head in time.");
             }
             else
             {
-                await _suggestedBlockResetEvent.WaitOneAsync(CancellationToken.None);
+                await WaitAsync(_suggestedBlockResetEvent, "Failed to produce new suggested block in time.");
             }
 
             _oneAtATime.Set();
