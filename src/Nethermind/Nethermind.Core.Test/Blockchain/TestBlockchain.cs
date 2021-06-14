@@ -185,9 +185,9 @@ namespace Nethermind.Core.Test.Blockchain
             }
         }
         
-        private static async Task WaitAsync(ManualResetEvent manualResetEvent, string error, int timeout = 1000)
+        private static async Task WaitAsync(EventWaitHandle eventWaitHandle, string error, int timeout = 1000)
         {
-            if (!await manualResetEvent.WaitOneAsync(timeout, CancellationToken.None))
+            if (!await eventWaitHandle.WaitOneAsync(timeout, CancellationToken.None))
             {
                 throw new InvalidOperationException(error);
             }
@@ -288,7 +288,7 @@ namespace Nethermind.Core.Test.Blockchain
 
         private async Task<AddTxResult[]> AddBlockInternal(params Transaction[] transactions)
         {
-            await _oneAtATime.WaitOneAsync(CancellationToken.None);
+            await WaitAsync(_oneAtATime, "Multiple block produced at once.");
             AddTxResult[] txResults = transactions.Select(t => TxPool.AddTransaction(t, TxHandlingOptions.None)).ToArray();
             Timestamper.Add(TimeSpan.FromSeconds(1));
             await BlockProducer.BuildNewBlock();
