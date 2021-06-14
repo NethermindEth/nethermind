@@ -198,7 +198,7 @@ namespace Nethermind.Core.Test.Blockchain
             return new TestBlockProducer(txPoolTxSource, chainProcessor, producerStateProvider, sealer, BlockTree, chainProcessor, Timestamper, SpecProvider, LogManager);
         }
 
-        public virtual ILogManager LogManager => NUnitLogManager.Instance;
+        public virtual ILogManager LogManager => new NUnitLogManager(LogLevel.Info);
 
         protected virtual TxPool.TxPool CreateTxPool(ITxStorage txStorage) =>
             new TxPool.TxPool(
