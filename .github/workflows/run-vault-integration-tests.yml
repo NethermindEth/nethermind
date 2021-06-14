@@ -1,7 +1,10 @@
 name: '[RUN] Vault Integration Tests'
 
-on: push
-
+on:
+  push:
+    branches:
+      - master
+      
 jobs:
   run-vault-tests:
     name: Running Vault Integration Tests
