@@ -38,6 +38,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc.Test.Modules;
 using System.Threading.Tasks;
 using System.Threading;
+using FluentAssertions;
 
 namespace Nethermind.Blockchain.Test
 {
@@ -170,7 +171,7 @@ namespace Nethermind.Blockchain.Test
 
             var branchLength = blocksAmount + (int)testRpc.BlockTree.BestKnownNumber + 1;
             ((BlockTree)testRpc.BlockTree).AddBranch(branchLength, (int)testRpc.BlockTree.BestKnownNumber);
-            await suggestedBlockResetEvent.WaitAsync();
+            (await suggestedBlockResetEvent.WaitAsync(1000)).Should().BeTrue();
             Assert.AreEqual(branchLength - 1, (int)testRpc.BlockTree.BestKnownNumber);
         }
     }

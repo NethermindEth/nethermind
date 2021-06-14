@@ -87,14 +87,12 @@ namespace Nethermind.Core.Test.Blockchain
         protected override async ValueTask ProducerLoop()
         {
             _lastProducedBlockDateTime = DateTime.UtcNow;
-            while (true)
+            while (!LoopCancellationTokenSource.IsCancellationRequested)
             {
                 await _newBlockArrived.WaitAsync(LoopCancellationTokenSource.Token);
                 await TryProduceNewBlock(LoopCancellationTokenSource.Token);
                 // Console.WriteLine($"Produce new block result -> {result}");
             }
-
-            // ReSharper disable once FunctionNeverReturns
         }
 
         protected override UInt256 CalculateDifficulty(BlockHeader parent, UInt256 timestamp)
