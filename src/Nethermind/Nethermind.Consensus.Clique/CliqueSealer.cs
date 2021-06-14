@@ -45,13 +45,13 @@ namespace Nethermind.Consensus.Clique
             if (config.Epoch == 0) config.Epoch = Clique.DefaultEpochLength;
         }
 
-        public async Task<Block?> SealBlock(Block processed, CancellationToken cancellationToken)
+        public Task<Block?> SealBlock(Block processed, CancellationToken cancellationToken)
         {
             Block? sealedBlock = Seal(processed);
-            if (sealedBlock is null) return null;
+            if (sealedBlock is null) return Task.FromResult<Block?>(null);
 
             sealedBlock.Header.Hash = sealedBlock.Header.CalculateHash();
-            return await Task.FromResult(sealedBlock);
+            return Task.FromResult(sealedBlock);
         }
 
         private Block? Seal(Block block)

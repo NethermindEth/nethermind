@@ -23,6 +23,7 @@ using Nethermind.Blockchain.Processing;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Logging;
@@ -38,7 +39,7 @@ namespace Nethermind.AuRa.Test.Validators
         private ILogManager _logManager;
         private IDictionary<long, IAuRaValidator> _innerValidators;
         private Block _block;
-        private IBlockFinalizationManager _finalizationManager;
+        private IAuRaBlockFinalizationManager _finalizationManager;
         private IBlockTree _blockTree;
         private IValidatorStore _validatorStore;
 
@@ -49,7 +50,7 @@ namespace Nethermind.AuRa.Test.Validators
             _innerValidators = new SortedList<long, IAuRaValidator>();
             _factory = Substitute.For<IAuRaValidatorFactory>();
             _logManager = LimboLogs.Instance;
-            _finalizationManager = Substitute.For<IBlockFinalizationManager>();
+            _finalizationManager = Substitute.For<IAuRaBlockFinalizationManager>();
             _blockTree = Substitute.For<IBlockTree>();
             _validatorStore = Substitute.For<IValidatorStore>();
             _finalizationManager.LastFinalizedBlockLevel.Returns(0);

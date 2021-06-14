@@ -245,7 +245,7 @@ namespace Nethermind.DataMarketplace.Test
                 tx.Nonce = GetNonce(tx.SenderAddress);
                 tx.Hash = tx.CalculateHash();
                 _headBlock.Transactions[_txIndex++] = tx;
-                _receiptsTracer.StartNewTxTrace(tx.Hash);
+                _receiptsTracer.StartNewTxTrace(tx);
                 _processor.Execute(tx, Head?.Header, _receiptsTracer);
                 _receiptsTracer.EndTxTrace();
                 return new ValueTask<Keccak>(tx.CalculateHash());

@@ -16,11 +16,17 @@
 //
 
 using System;
+using System.Numerics;
 using Nethermind.Api;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
+using System.Collections.Generic;
+using Nethermind.Core;
+using FluentAssertions;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Mev.Data;
 
 namespace Nethermind.Mev.Test
 {
@@ -43,32 +49,8 @@ namespace Nethermind.Mev.Test
         [Test]
         public void Can_initialize()
         {
-            INethermindApi api = Substitute.For<INethermindApi>();
-            api.Config<IMevConfig>().Returns(MevConfig.Default);
-            api.LogManager.Returns(LimboLogs.Instance);
-
             MevPlugin plugin = new();
-            plugin.Init(api);
-        }
-        
-        [Test]
-        public void Throws_if_not_initialized_before_rpc_registration()
-        {
-            MevPlugin plugin = new();
-            Assert.Throws<InvalidOperationException>(() => plugin.InitRpcModules());
-        }
-        
-        [Test]
-        public void Can_register_json_rpc()
-        {
-            INethermindApi api = Substitute.For<INethermindApi>();
-            api.ForRpc.Returns((api, api));
-            api.Config<IMevConfig>().Returns(MevConfig.Default);
-            api.Config<IJsonRpcConfig>().Returns(JsonRpcConfig.Default);
-            api.LogManager.Returns(LimboLogs.Instance);
-
-            MevPlugin plugin = new();
-            plugin.Init(api);
+            plugin.Init(Runner.Test.Ethereum.Build.ContextWithMocks());
             plugin.InitRpcModules();
         }
     }

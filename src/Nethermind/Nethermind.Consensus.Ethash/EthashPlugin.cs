@@ -19,6 +19,7 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain.Rewards;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 
 namespace Nethermind.Consensus.Ethash
@@ -58,9 +59,9 @@ namespace Nethermind.Consensus.Ethash
             return Task.CompletedTask;
         }
         
-        public Task InitBlockProducer()
+        public Task<IBlockProducer> InitBlockProducer(ITxSource? txSource = null)
         {
-            return Task.CompletedTask;
+            return Task.FromResult((IBlockProducer)null);
         }
 
         public Task InitNetworkProtocol()

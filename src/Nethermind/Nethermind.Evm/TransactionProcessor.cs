@@ -82,7 +82,6 @@ namespace Nethermind.Evm
         private void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer, bool isCall)
         {
             bool notSystemTransaction = !transaction.IsSystem();
-            bool freeTransaction = transaction.IsSystem() || transaction.IsServiceTransaction;
             bool wasSenderAccountCreatedInsideACall = false;
             
             IReleaseSpec spec = _specProvider.GetSpec(block.Number);
@@ -93,17 +92,14 @@ namespace Nethermind.Evm
             
             UInt256 value = transaction.Value;
 
-            UInt256 feeCap = transaction.FeeCap;
-            UInt256 baseFee = block.BaseFee;
-            if (baseFee > feeCap && !freeTransaction)
+            if (!transaction.TryCalculatePremiumPerGas(block.BaseFeePerGas, out UInt256 premiumPerGas))
             {
                 TraceLogInvalidTx(transaction, "MINER_PREMIUM_IS_NEGATIVE");
                 QuickFail(transaction, block, txTracer, "miner premium is negative");
                 return;
             }
             
-            UInt256 premiumPerGas = (feeCap < baseFee && freeTransaction) ? UInt256.Zero  : UInt256.Min(transaction.GasPremium, feeCap - baseFee);
-            UInt256 gasPrice = transaction.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, block.BaseFee);
+            UInt256 gasPrice = transaction.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, block.BaseFeePerGas);
 
             long gasLimit = transaction.GasLimit;
             byte[] machineCode = transaction.IsContractCreation ? transaction.Data : null;
@@ -139,7 +135,7 @@ namespace Nethermind.Evm
                     return;
                 }
             }
-
+            
             if (!_stateProvider.AccountExists(caller))
             {
                 // hacky fix for the potential recovery issue
@@ -177,6 +173,13 @@ namespace Nethermind.Evm
                 {
                     TraceLogInvalidTx(transaction, $"INSUFFICIENT_SENDER_BALANCE: ({caller})_BALANCE = {senderBalance}");
                     QuickFail(transaction, block, txTracer, "insufficient sender balance");
+                    return;
+                }
+                
+                if (transaction.IsEip1559 && !transaction.IsServiceTransaction && senderBalance < (UInt256)transaction.GasLimit * transaction.MaxFeePerGas)
+                {
+                    TraceLogInvalidTx(transaction, $"INSUFFICIENT_MAX_FEE_PER_GAS_FOR_SENDER_BALANCE: ({caller})_BALANCE = {senderBalance}, MAX_FEE_PER_GAS: {transaction.MaxFeePerGas}");
+                    QuickFail(transaction, block, txTracer, "insufficient MaxFeePerGas for sender balance");
                     return;
                 }
 

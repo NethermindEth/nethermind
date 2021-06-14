@@ -102,7 +102,7 @@ namespace Nethermind.Blockchain.Producers
         
         protected virtual async ValueTask ProducerLoop()
         {
-            _lastProducedBlock = DateTime.UtcNow;
+            _lastProducedBlockDateTime = DateTime.UtcNow;
             while (!LoopCancellationTokenSource.IsCancellationRequested)
             {
                 if (_canProduce == 1 && BlockProcessingQueue.IsEmpty)

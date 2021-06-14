@@ -62,12 +62,6 @@ namespace Nethermind.Blockchain.Test
                 yield return new TestCaseData(noneTransactionsSelectedDueToGasPrice).SetName(
                     "None transactions selected due to transaction gas price and limit");
 
-                ProperTransactionsSelectedTestCase noneTransactionsSelectedDueToGasLimit =
-                    ProperTransactionsSelectedTestCase.Default;
-                noneTransactionsSelectedDueToGasLimit.GasLimit = 9;
-                yield return new TestCaseData(noneTransactionsSelectedDueToGasLimit).SetName(
-                    "None transactions selected due to gas limit");
-
                 ProperTransactionsSelectedTestCase oneTransactionSelectedDueToValue =
                     ProperTransactionsSelectedTestCase.Default;
                 oneTransactionSelectedDueToValue.Transactions.ForEach(t => t.Value = 500);
@@ -251,9 +245,9 @@ namespace Nethermind.Blockchain.Test
                     Transactions =
                     {
                         Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithType(TxType.EIP1559).WithNonce(2)
-                            .WithFeeCap(4).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+                            .WithMaxFeePerGas(4).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
                         Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithType(TxType.EIP1559).WithNonce(1)
-                            .WithFeeCap(50).WithGasLimit(10).WithValue(100).SignedAndResolved(TestItem.PrivateKeyA).TestObject
+                            .WithMaxFeePerGas(30).WithGasLimit(10).WithValue(100).SignedAndResolved(TestItem.PrivateKeyA).TestObject
                     },
                     GasLimit = 10000000
                 };
@@ -269,15 +263,29 @@ namespace Nethermind.Blockchain.Test
                     Transactions =
                     {
                         Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithType(TxType.EIP1559).WithNonce(2)
-                            .WithFeeCap(5).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+                            .WithMaxFeePerGas(5).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
                         Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(1)
-                            .WithFeeCap(50).WithGasPremium(25).WithGasLimit(10).WithType(TxType.EIP1559).WithValue(60).SignedAndResolved(TestItem.PrivateKeyA).TestObject
+                            .WithMaxFeePerGas(30).WithMaxPriorityFeePerGas(25).WithGasLimit(10).WithType(TxType.EIP1559).WithValue(60).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
                     },
                     GasLimit = 10000000
                 };
                 balanceCheckWithGasPremium.ExpectedSelectedTransactions.AddRange(
                     new[] { 1 }.Select(i => balanceCheckWithGasPremium.Transactions[i]));
                 yield return new TestCaseData(balanceCheckWithGasPremium).SetName("EIP1559 transactions: one transaction selected because of account balance and miner tip");
+                
+                ProperTransactionsSelectedTestCase balanceBelowMaxFeeTimesGasLimit = new ProperTransactionsSelectedTestCase()
+                {
+                    Eip1559Enabled = true,
+                    BaseFee = 5,
+                    AccountStates = {{TestItem.AddressA, (400, 1)}},
+                    Transactions =
+                    {
+                        Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(1)
+                            .WithMaxFeePerGas(45).WithMaxPriorityFeePerGas(25).WithGasLimit(10).WithType(TxType.EIP1559).WithValue(60).SignedAndResolved(TestItem.PrivateKeyA).TestObject
+                    },
+                    GasLimit = 10000000
+                };
+                yield return new TestCaseData(balanceBelowMaxFeeTimesGasLimit).SetName("EIP1559 transactions: none transactions selected because balance is lower than MaxFeePerGas times GasLimit");
             }
         }
 
@@ -408,11 +416,11 @@ namespace Nethermind.Blockchain.Test
                 Transactions =
                 {
                     Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithType(TxType.EIP1559).WithNonce(3).WithValue(1)
-                        .WithFeeCap(10).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+                        .WithMaxFeePerGas(10).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
                     Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithType(TxType.EIP1559).WithNonce(1).WithValue(10)
-                        .WithFeeCap(10).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+                        .WithMaxFeePerGas(10).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
                     Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithType(TxType.EIP1559).WithNonce(2).WithValue(10)
-                        .WithFeeCap(10).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject
+                        .WithMaxFeePerGas(10).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject
                 },
                 GasLimit = 10000000
             };

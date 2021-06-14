@@ -346,7 +346,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             genesisHeader.ReceiptsRoot = Keccak.EmptyTreeHash;
             genesisHeader.StateRoot = Keccak.EmptyTreeHash;
             genesisHeader.TxRoot = Keccak.EmptyTreeHash;
-            genesisHeader.BaseFee = baseFee;
+            genesisHeader.BaseFeePerGas = baseFee;
             
             genesisHeader.AuRaStep = step;
             genesisHeader.AuRaSignature = auRaSignature;

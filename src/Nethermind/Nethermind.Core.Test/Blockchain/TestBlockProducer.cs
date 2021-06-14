@@ -51,7 +51,7 @@ namespace Nethermind.Core.Test.Blockchain
                 blockProcessingQueue,
                 stateProvider,
                 timestamper,
-                FollowOtherMiners.Instance,
+                new FollowOtherMiners(specProvider),
                 specProvider,
                 logManager,
                 "test producer")
@@ -61,13 +61,14 @@ namespace Nethermind.Core.Test.Blockchain
         public Block LastProducedBlock { get; private set; }
         public event EventHandler<BlockEventArgs> LastProducedBlockChanged;
 
-        private SemaphoreSlim _newBlockArrived = new SemaphoreSlim(0);
-        private BlockHeader _blockParent = null;
-        public BlockHeader BlockParent
+        private readonly SemaphoreSlim _newBlockArrived = new SemaphoreSlim(0);
+        private BlockHeader? _blockParent = null;
+        
+        public BlockHeader? BlockParent
         {
             get
             {
-                return _blockParent ?? base.GetCurrentBlockParent();
+                return _blockParent ?? BlockTree.Head?.Header;
             }
             set
             {
@@ -75,23 +76,21 @@ namespace Nethermind.Core.Test.Blockchain
             }
         }
 
-        protected override BlockHeader GetCurrentBlockParent()
-        {
-            return BlockParent;
-        }
+        protected override BlockHeader? GetProducedBlockParent(BlockHeader? parentHeader) => parentHeader ?? BlockParent;
 
-        public void BuildNewBlock()
+        public Task<bool> BuildNewBlock()
         {
             _newBlockArrived.Release(1);
+            return Task.FromResult(true);
         }
 
         protected override async ValueTask ProducerLoop()
         {
-            _lastProducedBlock = DateTime.UtcNow;
+            _lastProducedBlockDateTime = DateTime.UtcNow;
             while (true)
             {
                 await _newBlockArrived.WaitAsync(LoopCancellationTokenSource.Token);
-                bool result = await TryProduceNewBlock(LoopCancellationTokenSource.Token);
+                await TryProduceNewBlock(LoopCancellationTokenSource.Token);
                 // Console.WriteLine($"Produce new block result -> {result}");
             }
 

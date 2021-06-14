@@ -50,7 +50,7 @@ namespace Nethermind.Blockchain.Processing
         public ReadOnlyTxProcessingEnv(
             IReadOnlyDbProvider? readOnlyDbProvider,
             IReadOnlyTrieStore? readOnlyTrieStore,
-            ReadOnlyBlockTree? readOnlyBlockTree,
+            IReadOnlyBlockTree? readOnlyBlockTree,
             ISpecProvider? specProvider,
             ILogManager? logManager)
         {

@@ -75,7 +75,7 @@ namespace Nethermind.Core
         public UInt256? TotalDifficulty { get; set; }
         public byte[]? AuRaSignature { get; set; }
         public long? AuRaStep { get; set; }
-        public UInt256 BaseFee { get; set; }
+        public UInt256 BaseFeePerGas { get; set; }
 
         public bool HasBody => OmmersHash != Keccak.OfAnEmptySequenceRlp || TxRoot != Keccak.EmptyTreeHash;
         public string SealEngineType { get; set; } = Nethermind.Core.SealEngineType.Ethash;
@@ -98,7 +98,7 @@ namespace Nethermind.Core
             builder.AppendLine($"{indent}Tx Root: {TxRoot}");
             builder.AppendLine($"{indent}Receipts Root: {ReceiptsRoot}");
             builder.AppendLine($"{indent}State Root: {StateRoot}");
-            builder.AppendLine($"{indent}Base Fee: {BaseFee}");
+            builder.AppendLine($"{indent}BaseFeePerGas: {BaseFeePerGas}");
 
             return builder.ToString();
         }

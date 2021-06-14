@@ -20,6 +20,9 @@ using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using NUnit.Framework;
 
 namespace Nethermind.Mining.Test
@@ -35,7 +38,25 @@ namespace Nethermind.Mining.Test
         public void Test(long current, long expected)
         {
             BlockHeader header = Build.A.BlockHeader.WithGasLimit(current).TestObject;
-            FollowOtherMiners.Instance.GetGasLimit(header).Should().Be(expected);
+            FollowOtherMiners followOtherMiners = new FollowOtherMiners(MainnetSpecProvider.Instance);
+            followOtherMiners.GetGasLimit(header).Should().Be(expected);
+        }
+        
+        [TestCase(1000000, 2000000)]
+        [TestCase(2000000, 4000000)]
+        [TestCase(2000001, 4000002)]
+        [TestCase(3000000, 6000000)]
+        public void FollowOtherMines_on_1559_fork_block(long current, long expected)
+        {
+            int forkNumber = 5;
+            OverridableReleaseSpec spec = new OverridableReleaseSpec(London.Instance)
+            {
+                Eip1559TransitionBlock = forkNumber
+            };
+            TestSpecProvider specProvider = new TestSpecProvider(spec);
+            BlockHeader header = Build.A.BlockHeader.WithGasLimit(current).WithNumber(forkNumber - 1).TestObject;
+            FollowOtherMiners followOtherMiners = new FollowOtherMiners(specProvider);
+            followOtherMiners.GetGasLimit(header).Should().Be(expected);
         }
     }
 }

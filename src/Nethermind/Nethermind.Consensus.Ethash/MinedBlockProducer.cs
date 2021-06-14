@@ -88,7 +88,7 @@ namespace Nethermind.Consensus.Ethash
         {
             BlockProcessingQueue.ProcessingQueueEmpty += OnBlockProcessorQueueEmpty;
             BlockTree.NewBestSuggestedBlock += BlockTreeOnNewBestSuggestedBlock;
-            _lastProducedBlock = DateTime.UtcNow;
+            _lastProducedBlockDateTime = DateTime.UtcNow;
             _isRunning = true;
         }
 
