@@ -38,8 +38,8 @@ namespace Nethermind.Specs.Test
             _specProvider.GetSpec(blockNumber).IsEip2930Enabled.Should().Be(isEnabled);
         }
 
-        [TestCase(8_813_187, false)]
-        [TestCase(8_813_188, true)]
+        [TestCase(8_897_987, false)]
+        [TestCase(8_897_988, true)]
         public void London_eips(long blockNumber, bool isEnabled)
         {
             _specProvider.GetSpec(blockNumber).IsEip1559Enabled.Should().Be(isEnabled);
