@@ -121,6 +121,7 @@ namespace Nethermind.Baseline.Test
         }
 
         [Test]
+        [Retry(3)]
         public async Task Tree_tracker_insert_leaves([ValueSource(nameof(InsertLeavesTestCases))]InsertLeavesTest test)
         {
             Address address = TestItem.Addresses[0];
