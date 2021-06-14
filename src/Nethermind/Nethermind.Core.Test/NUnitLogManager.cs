@@ -36,7 +36,5 @@ namespace Nethermind.Core.Test
         public ILogger GetClassLogger() => _logger;
 
         public ILogger GetLogger(string loggerName) => GetClassLogger();
-
-        public string Logs => _logger.Logs;
     }
 }
