@@ -17,4 +17,12 @@
     <ProjectReference Include="..\Nethermind.Pipeline\Nethermind.Pipeline.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Remove="Pipeline\UniswapAbi.resx" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="Pipeline\UniswapAbi.Designer.cs" />
+  </ItemGroup>
+
 </Project>

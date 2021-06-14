@@ -19,6 +19,7 @@ namespace Nethermind.Dsl.JsonRpc
             _logger = logger;            
             _interpreters = interpreters;
         }
+        
         public ResultWrapper<int> dsl_addScript(string script)
         {
             if(_logger.IsInfo) _logger.Info($"Adding new DSL script. {script}");
