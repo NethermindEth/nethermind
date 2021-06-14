@@ -16,6 +16,7 @@
 // 
 
 using System;
+using System.Text;
 using Nethermind.Logging;
 using NUnit.Framework;
 
@@ -24,6 +25,7 @@ namespace Nethermind.Core.Test
     public class NUnitLogger : ILogger
     {
         private readonly LogLevel _level;
+        private StringBuilder _builder = new StringBuilder();
 
         public NUnitLogger(LogLevel level)
         {
@@ -78,16 +80,19 @@ namespace Nethermind.Core.Test
 
         private bool CheckLevel(LogLevel logLevel) => _level >= logLevel;
 
-        private static void Log(string text, Exception ex = null)
+        private void Log(string text, Exception? ex = null)
         {
-            Console.WriteLine(text);
-            // TestContext.Out.WriteLine(text);
-
+            // Console.WriteLine(text);
+            _builder.AppendLine(text);
+            TestContext.Out.WriteLine(text);
             if (ex != null)
             {
-                Console.WriteLine(ex.ToString());
-                // TestContext.Out.WriteLine(ex.ToString());
+                // Console.WriteLine(ex.ToString());
+                _builder.AppendLine(ex.ToString());
+                TestContext.Out.WriteLine(ex.ToString());
             }
         }
+
+        public string Logs => _builder.ToString();
     }
 }

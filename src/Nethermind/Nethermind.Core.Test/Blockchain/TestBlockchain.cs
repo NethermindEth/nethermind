@@ -181,7 +181,7 @@ namespace Nethermind.Core.Test.Blockchain
         {
             if (!await semaphore.WaitAsync(timeout))
             {
-                throw new InvalidOperationException(error);
+                throw new InvalidOperationException(error + Environment.NewLine + NUnitLogManager.Instance.Logs);
             }
         }
         
@@ -189,7 +189,7 @@ namespace Nethermind.Core.Test.Blockchain
         {
             if (!await eventWaitHandle.WaitOneAsync(timeout, CancellationToken.None))
             {
-                throw new InvalidOperationException(error);
+                throw new InvalidOperationException(error + Environment.NewLine + NUnitLogManager.Instance.Logs);
             }
         }
 
@@ -198,7 +198,7 @@ namespace Nethermind.Core.Test.Blockchain
             return new TestBlockProducer(txPoolTxSource, chainProcessor, producerStateProvider, sealer, BlockTree, chainProcessor, Timestamper, SpecProvider, LogManager);
         }
 
-        public virtual ILogManager LogManager => LimboLogs.Instance;
+        public virtual ILogManager LogManager => NUnitLogManager.Instance;
 
         protected virtual TxPool.TxPool CreateTxPool(ITxStorage txStorage) =>
             new TxPool.TxPool(
