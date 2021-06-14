@@ -200,7 +200,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                 RopstenSpecProvider.BerlinBlockNumber,
                 RopstenSpecProvider.LondonBlockNumber - 1,
                 RopstenSpecProvider.LondonBlockNumber,
-                120000000, // far in the future
+                999_999_999, // far in the future
             };
 
             CompareSpecProviders(ropsten, provider, blockNumbersToTest, true);

@@ -59,7 +59,7 @@ namespace Nethermind.Network.Test
         [TestCase(4_460_644L, "0x757a1c47", 5_062_605, "First Berlin block")]
         [TestCase(4_600_000L, "0x757a1c47", 5_062_605, "Future Berlin block")]
         [TestCase(5_062_605L, "0xB8C6299D", 0L, "First London block")]
-        [TestCase(5_979_794L, "0xB8C6299D", 0L, "Future London block")]
+        [TestCase(6_000_000, "0xB8C6299D", 0L, "Future London block")]
         public void Fork_id_and_hash_as_expected_on_goerli(long head, string forkHashHex, long next, string description)
         {
             Test(head, KnownHashes.GoerliGenesis, forkHashHex, next, description, GoerliSpecProvider.Instance, "goerli.json");
@@ -101,7 +101,7 @@ namespace Nethermind.Network.Test
         [TestCase(9_812_189L, "0xa157d377", 10_499_401L, "First Berlin block")]
         [TestCase(9_900_000L, "0xa157d377", 10_499_401L, "Future Berlin block")]
         [TestCase(10_499_401L, "0x7119B6B3", 0L, "First London block")]
-        [TestCase(11_399_301L, "0x7119B6B3", 0L, "Future London block")]
+        [TestCase(12_000_000, "0x7119B6B3", 0L, "Future London block")]
         public void Fork_id_and_hash_as_expected_on_ropsten(long head, string forkHashHex, long next, string description)
         {
             Test(head, KnownHashes.RopstenGenesis, forkHashHex, next, description, RopstenSpecProvider.Instance, "ropsten.json");
