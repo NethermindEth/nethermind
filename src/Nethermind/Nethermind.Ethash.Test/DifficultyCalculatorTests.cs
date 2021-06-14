@@ -61,5 +61,25 @@ namespace Nethermind.Ethash.Test
             UInt256 result = difficultyCalculator.Calculate(0x55f78f7, 1613570258, 0x602d20d2, 200000, false);
             Assert.AreEqual((UInt256)90186982, result);
         }
+        
+        [TestCase(3)]
+        [TestCase(730000)]
+        public void London_calculation_should_not_be_equal_to_berlin_above_block_9200000(long blocksAbove)
+        {
+            UInt256 parentDifficulty = 0x55f78f7;
+            UInt256 parentTimestamp = 1613570258;
+            UInt256 currentTimestamp = 0x602d20d2;
+            ISpecProvider berlinSpecProvider = Substitute.For<ISpecProvider>();
+            berlinSpecProvider.GetSpec(Arg.Any<long>()).Returns(Berlin.Instance);
+            DifficultyCalculator berlinDifficultyCalculator = new(berlinSpecProvider);
+            UInt256 berlinResult = berlinDifficultyCalculator.Calculate(parentDifficulty, parentTimestamp, currentTimestamp, 9200000L + blocksAbove, false);
+            
+            ISpecProvider londonSpecProvider = Substitute.For<ISpecProvider>();
+            londonSpecProvider.GetSpec(Arg.Any<long>()).Returns(London.Instance);
+            DifficultyCalculator londonDifficultyCalculator = new(londonSpecProvider);
+            UInt256 londonResult = londonDifficultyCalculator.Calculate(parentDifficulty, parentTimestamp, currentTimestamp, 9200000L + blocksAbove, false);
+            
+            Assert.AreNotEqual(berlinResult, londonResult);
+        }
     }
 }
