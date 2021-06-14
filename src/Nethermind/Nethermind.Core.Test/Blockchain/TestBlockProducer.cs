@@ -90,7 +90,14 @@ namespace Nethermind.Core.Test.Blockchain
             while (!LoopCancellationTokenSource.IsCancellationRequested)
             {
                 await _newBlockArrived.WaitAsync(LoopCancellationTokenSource.Token);
-                await TryProduceNewBlock(LoopCancellationTokenSource.Token);
+                try
+                {
+                    await TryProduceNewBlock(LoopCancellationTokenSource.Token);
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine(e);
+                }
                 // Console.WriteLine($"Produce new block result -> {result}");
             }
         }

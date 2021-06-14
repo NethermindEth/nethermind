@@ -288,7 +288,7 @@ namespace Nethermind.Core.Test.Blockchain
 
         private async Task<AddTxResult[]> AddBlockInternal(params Transaction[] transactions)
         {
-            await WaitAsync(_oneAtATime, "Multiple block produced at once.");
+            await WaitAsync(_oneAtATime, "Multiple block produced at once.", 500);
             AddTxResult[] txResults = transactions.Select(t => TxPool.AddTransaction(t, TxHandlingOptions.None)).ToArray();
             Timestamper.Add(TimeSpan.FromSeconds(1));
             await BlockProducer.BuildNewBlock();
