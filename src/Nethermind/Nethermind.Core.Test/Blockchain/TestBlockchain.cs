@@ -75,6 +75,7 @@ namespace Nethermind.Core.Test.Blockchain
 
         public IJsonSerializer JsonSerializer { get; set; }
         public IStateProvider State { get; set; }
+        public IReadOnlyStateProvider ReadOnlyState { get; private set; }
         public IDb StateDb => DbProvider.StateDb;
         public TrieStore TrieStore { get; set; }
         public ITestBlockProducer BlockProducer { get; private set; }
@@ -130,10 +131,14 @@ namespace Nethermind.Core.Test.Blockchain
             State.Commit(SpecProvider.GenesisSpec);
             State.CommitTree(0);
             
+            ReadOnlyTrieStore = TrieStore.AsReadOnly(StateDb.Innermost);
+            StateReader = new StateReader(ReadOnlyTrieStore, CodeDb, LogManager);
+            
             IDb blockDb = new MemDb();
             IDb headerDb = new MemDb();
             IDb blockInfoDb = new MemDb();
             BlockTree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), SpecProvider, NullBloomStorage.Instance, LimboLogs.Instance);
+            ReadOnlyState = new ChainHeadReadOnlyStateProvider(BlockTree, StateReader);
             TransactionComparerProvider = new TransactionComparerProvider(specProvider, BlockTree);
             TxPool = CreateTxPool(txStorage);
 
@@ -141,16 +146,13 @@ namespace Nethermind.Core.Test.Blockchain
             VirtualMachine virtualMachine = new VirtualMachine(State, Storage, new BlockhashProvider(BlockTree, LogManager), SpecProvider, LogManager);
             TxProcessor = new TransactionProcessor(SpecProvider, State, Storage, virtualMachine, LogManager);
             BlockPreprocessorStep = new RecoverSignatures(EthereumEcdsa, TxPool, SpecProvider, LogManager);
-            ReadOnlyTrieStore = TrieStore.AsReadOnly(StateDb.Innermost);
-            
             BlockProcessor = CreateBlockProcessor();
             
             BlockchainProcessor chainProcessor = new BlockchainProcessor(BlockTree, BlockProcessor, BlockPreprocessorStep, LogManager, Nethermind.Blockchain.Processing.BlockchainProcessor.Options.Default);
             BlockchainProcessor = chainProcessor;
             BlockProcessingQueue = chainProcessor;
             chainProcessor.Start();
-
-            StateReader = new StateReader(ReadOnlyTrieStore, CodeDb, LogManager);
+            
             TxPoolTxSource txPoolTxSource = CreateTxPoolTxSource();
             ISealer sealer = new NethDevSealEngine(TestItem.AddressD);
             IStateProvider producerStateProvider = new StateProvider(ReadOnlyTrieStore, CodeDb, LogManager);
@@ -212,7 +214,7 @@ namespace Nethermind.Core.Test.Blockchain
             new TxPool.TxPool(
                 txStorage,
                 EthereumEcdsa,
-                new ChainHeadInfoProvider(new FixedBlockChainHeadSpecProvider(SpecProvider), BlockTree, State),
+                new ChainHeadInfoProvider(new FixedBlockChainHeadSpecProvider(SpecProvider), BlockTree, ReadOnlyState),
                 new TxPoolConfig(),
                 new TxValidator(SpecProvider.ChainId),
                 LogManager,

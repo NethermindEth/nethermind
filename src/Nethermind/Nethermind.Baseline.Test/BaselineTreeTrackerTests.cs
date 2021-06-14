@@ -197,7 +197,7 @@ namespace Nethermind.Baseline.Test
                 new ReorgTxPool(
                     txStorage,
                     EthereumEcdsa,
-                    new ChainHeadInfoProvider(new FixedBlockChainHeadSpecProvider(SpecProvider), BlockTree, State),
+                    new ChainHeadInfoProvider(new FixedBlockChainHeadSpecProvider(SpecProvider), BlockTree, ReadOnlyState),
                     new TxPoolConfig(),
                     new TxValidator(SpecProvider.ChainId),
                     LimboLogs.Instance,
