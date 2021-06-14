@@ -130,8 +130,6 @@ namespace Nethermind.Core.Test.Blockchain
             State.Commit(SpecProvider.GenesisSpec);
             State.CommitTree(0);
             
-            
-            
             IDb blockDb = new MemDb();
             IDb headerDb = new MemDb();
             IDb blockInfoDb = new MemDb();
@@ -177,19 +175,29 @@ namespace Nethermind.Core.Test.Blockchain
             return this;
         }
 
-        private static async Task WaitAsync(SemaphoreSlim semaphore, string error, int timeout = 1000)
+        private async Task WaitAsync(SemaphoreSlim semaphore, string error, int timeout = 1000)
         {
             if (!await semaphore.WaitAsync(timeout))
             {
-                throw new InvalidOperationException(error + Environment.NewLine + NUnitLogManager.Instance.Logs);
+                ThrowWaitFailedException(error);
             }
         }
-        
-        private static async Task WaitAsync(EventWaitHandle eventWaitHandle, string error, int timeout = 1000)
+
+        private void ThrowWaitFailedException(string error)
+        {
+            if (LogManager is NUnitLogManager nUnitLogger)
+            {
+                error += Environment.NewLine + nUnitLogger.Logs;
+            }
+            
+            throw new InvalidOperationException(error);
+        }
+
+        private async Task WaitAsync(EventWaitHandle eventWaitHandle, string error, int timeout = 1000)
         {
             if (!await eventWaitHandle.WaitOneAsync(timeout, CancellationToken.None))
             {
-                throw new InvalidOperationException(error + Environment.NewLine + NUnitLogManager.Instance.Logs);
+                ThrowWaitFailedException(error);
             }
         }
 
@@ -198,7 +206,7 @@ namespace Nethermind.Core.Test.Blockchain
             return new TestBlockProducer(txPoolTxSource, chainProcessor, producerStateProvider, sealer, BlockTree, chainProcessor, Timestamper, SpecProvider, LogManager);
         }
 
-        public virtual ILogManager LogManager => new NUnitLogManager(LogLevel.Info);
+        public virtual ILogManager LogManager { get; } = new NUnitLogManager();
 
         protected virtual TxPool.TxPool CreateTxPool(ITxStorage txStorage) =>
             new TxPool.TxPool(
