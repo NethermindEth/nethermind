@@ -47,6 +47,7 @@ namespace Nethermind.JsonRpc.Data
                 MaxFeePerGas = transaction.MaxFeePerGas;
                 MaxPriorityFeePerGas = transaction.MaxPriorityFeePerGas;
             }
+            ChainId = transaction.ChainId;
             Type = transaction.Type;
             AccessList = transaction.AccessList is null ? null : AccessListItemForRpc.FromAccessList(transaction.AccessList);
 
@@ -92,7 +93,9 @@ namespace Nethermind.JsonRpc.Data
 
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public byte[]? Input { get; set; }
-
+        
+        public UInt256? ChainId { get; set; }
+        
         public TxType Type { get; set; }
         
         public AccessListItemForRpc[]? AccessList { get; set; }
