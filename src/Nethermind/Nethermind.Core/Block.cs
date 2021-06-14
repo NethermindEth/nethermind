@@ -90,7 +90,7 @@ namespace Nethermind.Core
 
         public long GasLimit => Header.GasLimit; // do not add setter here
 
-        public UInt256? GasUsed => (UInt256) Header.GasUsed; // do not add setter here
+        public long GasUsed => Header.GasUsed; // do not add setter here
 
         public UInt256 Timestamp => Header.Timestamp; // do not add setter here
 

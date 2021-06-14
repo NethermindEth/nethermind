@@ -21,6 +21,7 @@ using System.Security;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
@@ -60,6 +61,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly ISpecProvider _specProvider;
 
         private readonly ILogger _logger;
+
         private static bool HasStateForBlock(IBlockchainBridge blockchainBridge, BlockHeader header)
         {
             RootCheckVisitor rootCheckVisitor = new();
@@ -140,29 +142,39 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return ResultWrapper<UInt256?>.Success(0);
         }
 
-        [Todo("Gas pricer to be implemented")]
+        private float avg_transaction_gas_price(Block block)
+        {
+            Transaction[] transactions = block.Transactions;
+            
+            if (transactions.Length == 0)
+                return 0;
+            long sum = transactions.Sum(transaction => (long) transaction.GasPrice);
+            return ((float) sum / transactions.Length);
+        }
+
+    [Todo("Gas pricer to be implemented")]
         public ResultWrapper<UInt256?> eth_gasPrice()
         {
             UInt256? gasPriceFinal = null;
             Block latestBlock = _blockFinder.FindLatestBlock();
             Block headBlock = _blockFinder.FindHeadBlock();
             Block genesisBlock = _blockFinder.FindGenesisBlock();
-            SortedSet<UInt256?> gasPrices = new();
+            SortedSet<float> gasPrices = new();
             long blocksToGoBack = 5;
-            int percentile = 70;
+            int percentile = 20;
             long blockNumber = headBlock!.Number; //if latest gas price doesn't exist, start from head block and find blocksToGoBack # of gas prices
             
-            if (latestBlock!.GasUsed != null) //check latest gas price
+            if (avg_transaction_gas_price(latestBlock!) == 0) //where do we see gas price?
             {
-                return ResultWrapper<UInt256?>.Success(latestBlock.GasUsed);
+                return ResultWrapper<UInt256?>.Success((UInt256) latestBlock.GasUsed);
             }
             
             while (blocksToGoBack > 0 && blockNumber > genesisBlock!.Number - 1) //else, go back "blockNumber" valid gas prices from genesisBlock
             {
-                UInt256? res = _blockFinder.FindBlock(blockNumber)?.GasUsed;
-                if (res != null)
+                float avgTransactionPrice = avg_transaction_gas_price(_blockFinder.FindBlock(blockNumber)!); 
+                if (avgTransactionPrice != 0)
                 {
-                    gasPrices.Add(res);
+                    gasPrices.Add(avgTransactionPrice);
                     blocksToGoBack--;
                 }
                 blockNumber--;
@@ -175,17 +187,19 @@ namespace Nethermind.JsonRpc.Modules.Eth
             else //find the gas price at the index that is the percentile of the max index
             {
                 int finalIndex = (int) ((gasPrices.Count - 1) * ((float) percentile / 100));
-                foreach (UInt256? gasPrice in gasPrices)
+                foreach (UInt256? gasPrice in gasPrices.Where(gasPrice => finalIndex-- <= 0))
                 {
                     gasPriceFinal = gasPrice;
-                    if (finalIndex-- <= 0)
-                    {
-                        break;
-                    }
+                    break;
                 }
 
                 return ResultWrapper<UInt256?>.Success(gasPriceFinal);
             }
+        }
+        
+        public ResultWrapper<UInt256?> return_result(UInt256? num)
+        {
+            return ResultWrapper<UInt256?>.Success(num);
         }
 
         public ResultWrapper<IEnumerable<Address>> eth_accounts()

@@ -25,6 +25,7 @@ using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -32,17 +33,21 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Facade;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
+using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.State;
 using Nethermind.TxPool;
+using Nethermind.Wallet;
 using Newtonsoft.Json.Linq;
 using NSubstitute;
 using NUnit.Framework;
@@ -64,6 +69,44 @@ namespace Nethermind.JsonRpc.Test.Modules
             serialized.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":\"{expectedResult}\",\"id\":67}}");
         }
 
+        [Test]
+        public async Task get_right_eth_gas_price()
+        {
+            IBlockTree blockTree = Build.A.BlockTree()
+                .WithTransactions(new InMemoryReceiptStorage(), new TestSpecProvider(Homestead.Instance))
+                .OfChainLength(10).TestObject;
+            
+            EthRpcModule ethRpcModule = new EthRpcModule
+            (
+                Substitute.For<IJsonRpcConfig>(),
+                Substitute.For<IBlockchainBridge>(),
+                blockTree,
+                Substitute.For<IStateReader>(),
+                Substitute.For<ITxPool>(),
+                Substitute.For<ITxSender>(),
+                Substitute.For<IWallet>(),
+                Substitute.For<ILogManager>(),
+                Substitute.For<ISpecProvider>()
+            );
+            
+            ResultWrapper<UInt256?> resultWrapper = ethRpcModule.eth_gasPrice();
+            resultWrapper.Result.Should().Be(6); //Add new blocks with gas price 1,2,3,4,5,6
+            /*
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            blockTree.Insert(Build.A.BlockHeader.WithNumber(1).WithGasUsed(4).TestObject); //does this even do anything?
+            blockTree.Insert(Build.A.BlockHeader.WithNumber(2).WithGasUsed(6).TestObject);
+            blockTree.Insert(Build.A.BlockHeader.WithNumber(3).WithGasUsed(8).TestObject);
+            blockTree.Insert(Build.A.BlockHeader.WithNumber(4).WithGasUsed(5).TestObject);
+            blockTree.Insert(Build.A.BlockHeader.WithNumber(5).WithGasUsed(7).TestObject);
+            blockTree.Insert(Build.A.BlockHeader.WithNumber(6).WithGasUsed(3).TestObject);
+            //blockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.WithNumber(6).TestObject));
+            blockTree.Head.Returns(Build.A.Block.WithNumber(6).TestObject);
+            */
+            using Context ctx = await Context.Create();
+            ctx._test.BlockTree = blockTree;
+            
+        }
+        
         [Test]
         public async Task Eth_get_balance_default_block()
         {
