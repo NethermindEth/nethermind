@@ -56,7 +56,7 @@ namespace Nethermind.JsonRpc.Data
             {
                 R = new UInt256(signature.R, true);
                 S = new UInt256(signature.S, true);
-                V = transaction.Type == TxType.AccessList ? (UInt256?)signature.RecoveryId : (UInt256?)signature.V;
+                V = transaction.Type == TxType.Legacy ? (UInt256?)signature.V : (UInt256?)signature.RecoveryId;
             }
         }
 
