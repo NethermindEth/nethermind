@@ -157,9 +157,6 @@ namespace Nethermind.Runner.Ethereum.Steps
             
             ITxPool txPool = _api.TxPool = CreateTxPool(txStorage);
 
-            OnChainTxWatcher onChainTxWatcher = new(getApi.BlockTree, txPool, getApi.SpecProvider, _api.LogManager);
-            getApi.DisposeStack.Push(onChainTxWatcher);
-            
             ReceiptCanonicalityMonitor receiptCanonicalityMonitor = new(getApi.BlockTree, getApi.ReceiptStorage, _api.LogManager);
             getApi.DisposeStack.Push(receiptCanonicalityMonitor);
 
@@ -296,7 +293,6 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.TransactionProcessor,
                 _api.StateProvider,
                 _api.StorageProvider,
-                _api.TxPool,
                 _api.ReceiptStorage,
                 _api.WitnessCollector,
                 _api.LogManager);

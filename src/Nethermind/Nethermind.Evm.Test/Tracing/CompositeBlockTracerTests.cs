@@ -68,13 +68,13 @@ namespace Nethermind.Evm.Test.Tracing
             
             blockTracer.StartNewBlockTrace(block);
 
-            blockTracer.StartNewTxTrace(tx1.Hash);
+            blockTracer.StartNewTxTrace(tx1);
             blockTracer.EndTxTrace();
 
-            blockTracer.StartNewTxTrace(tx2.Hash);
+            blockTracer.StartNewTxTrace(tx2);
             blockTracer.EndTxTrace();
             
-            blockTracer.StartNewTxTrace(tx3.Hash);
+            blockTracer.StartNewTxTrace(tx3);
             blockTracer.EndTxTrace();
             
             blockTracer.EndBlockTrace();

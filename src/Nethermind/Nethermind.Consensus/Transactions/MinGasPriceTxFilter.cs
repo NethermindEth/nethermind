@@ -21,6 +21,9 @@ using Nethermind.Int256;
 
 namespace Nethermind.Consensus.Transactions
 {
+    /// <summary>The filter for transactions below minimum gas price threshold. It is the minimal value for gas that the miner/validator would receive.
+    /// Before 1559: EffectivePriorityFeePerGas = transaction.GasPrice.
+    /// After 1559: EffectivePriorityFeePerGas = transaction.EffectiveGasPrice - BaseFee.</summary>
     public class MinGasPriceTxFilter : IMinGasPriceTxFilter
     {
         private readonly UInt256 _minGasPrice;
@@ -41,17 +44,18 @@ namespace Nethermind.Consensus.Transactions
 
         public (bool Allowed, string Reason) IsAllowed(Transaction tx, BlockHeader? parentHeader, UInt256 minGasPriceFloor)
         {
-            UInt256 gasPrice = tx.GasPrice;
+            UInt256 premiumPerGas = tx.GasPrice;
+            UInt256 baseFeePerGas = UInt256.Zero;
             long blockNumber = (parentHeader?.Number ?? 0) + 1;
             IReleaseSpec spec = _specProvider.GetSpec(blockNumber);
-            if (spec.IsEip1559Enabled && tx.IsEip1559)
+            if (spec.IsEip1559Enabled)
             {
-                UInt256 baseFee = BlockHeader.CalculateBaseFee(parentHeader, spec);
-                gasPrice = tx.CalculateEffectiveGasPrice(true, baseFee);
+                baseFeePerGas = BaseFeeCalculator.Calculate(parentHeader, spec);
+                tx.TryCalculatePremiumPerGas(baseFeePerGas, out premiumPerGas);
             }
 
-            bool allowed = gasPrice >= minGasPriceFloor;
-            return (allowed, allowed ? string.Empty : $"gas price too low {gasPrice} < {minGasPriceFloor}");
+            bool allowed = premiumPerGas >= minGasPriceFloor;
+            return (allowed, allowed ? string.Empty : $"EffectivePriorityFeePerGas too low {premiumPerGas} < {minGasPriceFloor}, BaseFee: {baseFeePerGas}");
         }
     }
 }

@@ -76,5 +76,17 @@ namespace Nethermind.Api
         IHealthHintService? HealthHintService { get; set; }
         ITransactionComparerProvider? TransactionComparerProvider { get; set; }
         TxValidator? TxValidator { get; set; }
+        
+        /// <summary>
+        /// Manager of block finalization
+        /// </summary>
+        /// <remarks>
+        /// Currently supported in <see cref="SealEngineType.AuRa"/> and Eth2Merge.
+        /// </remarks>
+        IBlockFinalizationManager? FinalizationManager { get; set; }
+        
+        IGasLimitCalculator GasLimitCalculator { get; set; }
+        
+        IBlockProducerEnvFactory BlockProducerEnvFactory { get; set; }
     }
 }

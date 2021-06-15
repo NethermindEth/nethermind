@@ -28,13 +28,13 @@ namespace Nethermind.Blockchain.Tracing
     {
         private readonly IStateProvider _stateProvider;
         private readonly IBlockchainProcessor _blockProcessor;
+        private readonly ProcessingOptions _processingOptions;
 
-        public Tracer(
-            IStateProvider stateProvider,
-            IBlockchainProcessor blockProcessor)
+        public Tracer(IStateProvider stateProvider, IBlockchainProcessor blockProcessor, ProcessingOptions processingOptions = ProcessingOptions.Trace)
         {
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
+            _processingOptions = processingOptions;
         }
 
         public Keccak Trace(Block block, IBlockTracer blockTracer)
@@ -46,7 +46,7 @@ namespace Nethermind.Blockchain.Tracing
 
             try
             {
-                _blockProcessor.Process(block, ProcessingOptions.Trace, blockTracer);
+                _blockProcessor.Process(block, _processingOptions, blockTracer);
             }
             catch (Exception)
             {

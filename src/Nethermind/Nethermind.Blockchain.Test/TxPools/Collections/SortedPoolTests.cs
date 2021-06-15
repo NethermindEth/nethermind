@@ -22,6 +22,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Collections;
@@ -48,7 +49,7 @@ namespace Nethermind.Blockchain.Test.TxPools.Collections
             blockTree.Head.Returns(block);
             specProvider.GetSpec(Arg.Any<long>()).Returns(new ReleaseSpec() {IsEip1559Enabled = false});
             ITransactionComparerProvider transactionComparerProvider = new TransactionComparerProvider(specProvider, blockTree);
-            _sortedPool = new TxSortedPool(Capacity, transactionComparerProvider.GetDefaultComparer());
+            _sortedPool = new TxDistinctSortedPool(Capacity, transactionComparerProvider.GetDefaultComparer(), LimboLogs.Instance);
             for (int i = 0; i < _transactions.Length; i++)
             {
                 UInt256 gasPrice = (UInt256)i;

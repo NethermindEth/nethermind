@@ -20,7 +20,7 @@ using Nethermind.State;
 
 namespace Nethermind.Blockchain
 {
-    public class BlockProducerContext
+    public class BlockProducerEnv
     {
         public IBlockchainProcessor ChainProcessor { get; set; }
         public IStateProvider ReadOnlyStateProvider { get; set; }

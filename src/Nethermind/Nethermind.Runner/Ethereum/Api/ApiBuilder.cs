@@ -19,6 +19,7 @@ using System.IO;
 using System.Threading;
 using Nethermind.Api;
 using Nethermind.Config;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -60,6 +61,7 @@ namespace Nethermind.Runner.Ethereum.Api
 
             nethermindApi.SealEngineType = engine;
             nethermindApi.SpecProvider = new ChainSpecBasedSpecProvider(chainSpec);
+            nethermindApi.GasLimitCalculator = new FollowOtherMiners(nethermindApi.SpecProvider);
             nethermindApi.ChainSpec = chainSpec;
 
             SetLoggerVariables(chainSpec);

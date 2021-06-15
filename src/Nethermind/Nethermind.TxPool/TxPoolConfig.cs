@@ -20,7 +20,7 @@ namespace Nethermind.TxPool
     {
         public int PeerNotificationThreshold { get; set; } = 5;
         public int Size { get; set; } = 2048;
-        public uint FutureNonceRetention { get; set; } = 16;
+        public uint FutureNonceRetention { get; set; } = 256;
         public int HashCacheSize { get; set; } = 512 * 1024;
         public long? GasLimit { get; set; } = null;
     }

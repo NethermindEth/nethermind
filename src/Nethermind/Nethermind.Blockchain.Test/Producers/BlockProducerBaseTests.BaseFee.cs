@@ -128,7 +128,7 @@ namespace Nethermind.Blockchain.Test.Producers
                     tx.SenderAddress = _address;
                     tx.GasLimit = gasLimit;
                     tx.GasPrice = gasPrice;
-                    tx.DecodedFeeCap = feeCap;
+                    tx.DecodedMaxFeePerGas = feeCap;
                     tx.Nonce = _currentNonce;
                     ++_currentNonce;
                     
@@ -165,12 +165,12 @@ namespace Nethermind.Blockchain.Test.Producers
                     await ExecuteAntecedentIfNeeded();
                     IBlockTree blockTree = _testRpcBlockchain.BlockTree;
                     Block startingBlock = blockTree.Head;
-                    Assert.AreEqual(UInt256.Zero, startingBlock!.Header.BaseFee);
+                    Assert.AreEqual(UInt256.Zero, startingBlock!.Header.BaseFeePerGas);
                     for (long i = startingBlock.Number; i < _eip1559TransitionBlock - 1; ++i)
                     {
                         await _testRpcBlockchain.AddBlock();
                         Block currentBlock = blockTree.Head;
-                        Assert.AreEqual(UInt256.Zero, currentBlock!.Header.BaseFee);
+                        Assert.AreEqual(UInt256.Zero, currentBlock!.Header.BaseFeePerGas);
                     }
 
                     return this;
@@ -183,7 +183,7 @@ namespace Nethermind.Blockchain.Test.Producers
                     await _testRpcBlockchain.AddBlock(transactions);
                     IBlockTree blockTree = _testRpcBlockchain.BlockTree;
                     Block headBlock = blockTree.Head;
-                    Assert.AreEqual(expectedBaseFee, headBlock!.Header.BaseFee);
+                    Assert.AreEqual(expectedBaseFee, headBlock!.Header.BaseFeePerGas);
 
                     return this;
                 }
@@ -196,7 +196,7 @@ namespace Nethermind.Blockchain.Test.Producers
                     Block startingBlock = blockTree.Head;
                     await _testRpcBlockchain.AddBlock();
                     Block newBlock = blockTree.Head;
-                    Assert.Less(newBlock!.Header.BaseFee, startingBlock!.Header.BaseFee);
+                    Assert.Less(newBlock!.Header.BaseFeePerGas, startingBlock!.Header.BaseFeePerGas);
 
                     return this;
                 }
@@ -209,7 +209,7 @@ namespace Nethermind.Blockchain.Test.Producers
                     Block startingBlock = blockTree.Head;
                     await _testRpcBlockchain.AddBlock();
                     Block newBlock = blockTree.Head;
-                    Assert.Less(startingBlock!.Header.BaseFee, newBlock!.Header.BaseFee);
+                    Assert.Less(startingBlock!.Header.BaseFeePerGas, newBlock!.Header.BaseFeePerGas);
 
                     return this;
                 }

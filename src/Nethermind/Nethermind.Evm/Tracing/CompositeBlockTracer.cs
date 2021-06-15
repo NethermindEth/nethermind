@@ -59,13 +59,13 @@ namespace Nethermind.Evm.Tracing
             }
         }
 
-        public ITxTracer StartNewTxTrace(Keccak? txHash)
+        public ITxTracer StartNewTxTrace(Transaction? tx)
         {
             IBlockTracer[] childBlockTracers = _childTracers;
             if (childBlockTracers.Length == 0) return NullTxTracer.Instance;
             
             ITxTracer[] childTxTracers = childBlockTracers
-                .Select(childBlockTracer => childBlockTracer.StartNewTxTrace(txHash))
+                .Select(childBlockTracer => childBlockTracer.StartNewTxTrace(tx))
                 .Where(childTxTracer => childTxTracer != NullTxTracer.Instance).ToArray();
             return childTxTracers.Any() ? new CompositeTxTracer(childTxTracers) : NullTxTracer.Instance;
         }

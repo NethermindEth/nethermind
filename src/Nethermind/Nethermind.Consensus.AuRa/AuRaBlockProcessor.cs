@@ -64,7 +64,6 @@ namespace Nethermind.Consensus.AuRa
                 transactionProcessor,
                 stateProvider,
                 storageProvider,
-                txPool,
                 receiptStorage,
                 NullWitnessCollector.Instance, // TODO: we will not support beam sync on AuRa chains for now
                 logManager)

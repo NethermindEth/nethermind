@@ -79,9 +79,9 @@
       "commandName": "Project",
       "commandLineArgs": "--config configs\\xdai1559.cfg --Init.DiagnosticMode MemDb"
     },
-    "Aleut": {
+    "Calaveras": {
       "commandName": "Project",
-      "commandLineArgs": "--config configs\\aleut.cfg"
-    },
+      "commandLineArgs": "--config configs\\calaveras.cfg --Init.DiagnosticMode MemDb"
+    }
   }
 }

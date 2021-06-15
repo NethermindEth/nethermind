@@ -21,6 +21,8 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Transactions;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -31,44 +33,37 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Merge.Plugin.Test
 {
-    internal class Eth2TestBlockProducerFactory : Eth2BlockProducerFactory
+    public class Eth2TestBlockProducerFactory : Eth2BlockProducerFactory
     {
+        private readonly IGasLimitCalculator _gasLimitCalculator;
+
+        public Eth2TestBlockProducerFactory(IGasLimitCalculator gasLimitCalculator, ITxSource? txSource = null) : base(txSource)
+        {
+            _gasLimitCalculator = gasLimitCalculator;
+        }
+
         public override Eth2BlockProducer Create(
-            IBlockTree blockTree,
-            IDbProvider dbProvider,
-            IReadOnlyTrieStore readOnlyTrieStore,
-            IBlockPreprocessorStep blockPreprocessor,
-            ITxPool txPool,
-            IBlockValidator blockValidator,
-            IRewardCalculatorSource rewardCalculatorSource,
-            IReceiptStorage receiptStorage,
-            IBlockProcessingQueue blockProcessingQueue,
+            IBlockProducerEnvFactory blockProducerEnvFactory, 
+            IBlockTree blockTree, 
+            IBlockProcessingQueue blockProcessingQueue, 
             ISpecProvider specProvider, 
-            ISigner engineSigner,
-            IMiningConfig miningConfig,
+            ISigner engineSigner, 
+            ITimestamper timestamper,
+            IMiningConfig miningConfig, 
             ILogManager logManager)
         {
-            BlockProducerContext producerContext = GetProducerChain(
-                blockTree,
-                dbProvider,
-                readOnlyTrieStore,
-                blockPreprocessor,
-                txPool,
-                blockValidator, 
-                rewardCalculatorSource, 
-                receiptStorage,
-                specProvider,
-                miningConfig,
-                logManager);
-                
+            BlockProducerEnv producerEnv = GetProducerEnv(blockProducerEnvFactory);
+            
             return new Eth2TestBlockProducer(
-                producerContext.TxSource,
-                producerContext.ChainProcessor,
+                producerEnv.TxSource,
+                producerEnv.ChainProcessor,
                 blockTree,
                 blockProcessingQueue,
-                producerContext.ReadOnlyStateProvider,
-                new TargetAdjustedGasLimitCalculator(specProvider, miningConfig),
+                producerEnv.ReadOnlyStateProvider,
+                _gasLimitCalculator,
                 engineSigner,
+                timestamper,
+                producerEnv.ReadOnlyTxProcessingEnv.StateReader,
                 specProvider,
                 logManager);
         }

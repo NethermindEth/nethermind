@@ -55,10 +55,10 @@ namespace Nethermind.Evm.Tracing
             _innerTracer.StartNewBlockTrace(block);
         }
 
-        public ITxTracer StartNewTxTrace(Keccak txHash)
+        public ITxTracer StartNewTxTrace(Transaction? tx)
         {
             _token.ThrowIfCancellationRequested();
-            return _innerTracer.StartNewTxTrace(txHash).WithCancellation(_token);
+            return _innerTracer.StartNewTxTrace(tx).WithCancellation(_token);
         }
 
         public void EndTxTrace()
