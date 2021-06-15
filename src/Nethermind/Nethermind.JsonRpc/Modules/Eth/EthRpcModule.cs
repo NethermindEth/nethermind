@@ -152,7 +152,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return ((float) sum / transactions.Length);
         }
 
-    [Todo("Gas pricer to be implemented")]
+        [Todo("Gas pricer to be implemented")]
         public ResultWrapper<UInt256?> eth_gasPrice()
         {
             UInt256? gasPriceFinal = null;

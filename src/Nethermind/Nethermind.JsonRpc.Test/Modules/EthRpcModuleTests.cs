@@ -72,10 +72,26 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public async Task get_right_eth_gas_price()
         {
-            IBlockTree blockTree = Build.A.BlockTree()
-                .WithTransactions(new InMemoryReceiptStorage(), new TestSpecProvider(Homestead.Instance))
-                .OfChainLength(10).TestObject;
-            
+            Transaction[] transactions = { //should i be worried about two tx with same hash?
+                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).WithGasPrice(1).TestObject,
+                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).WithGasPrice(2).TestObject,
+                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).WithGasPrice(3).TestObject,
+                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyD).WithGasPrice(0).TestObject,
+                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).WithGasPrice(10).TestObject,
+                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).WithGasPrice(5).TestObject,
+            };
+            Block[] blocks = {
+                Build.A.Block.WithNumber(1).WithKnownTransactions(new Transaction[] {transactions[0], transactions[1]}).TestObject,
+                Build.A.Block.WithNumber(2).WithKnownTransactions(new Transaction[] {transactions[2]}).TestObject,
+                Build.A.Block.WithNumber(3).WithKnownTransactions(new Transaction[] {transactions[3]}).TestObject,
+                Build.A.Block.WithNumber(4).WithKnownTransactions(new Transaction[] {transactions[4]}).TestObject,
+                Build.A.Block.WithNumber(5).WithKnownTransactions(new Transaction[] {transactions[5]}).TestObject,
+            };
+            BlockTree blockTree = Build.A.BlockTree(blocks[0]).TestObject; //Genesis block not being added
+            foreach (Block block in blocks)
+            {
+                BlockTreeBuilder.AddBlock(blockTree, block);
+            }
             EthRpcModule ethRpcModule = new EthRpcModule
             (
                 Substitute.For<IJsonRpcConfig>(),
@@ -90,21 +106,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             );
             
             ResultWrapper<UInt256?> resultWrapper = ethRpcModule.eth_gasPrice();
-            resultWrapper.Result.Should().Be(6); //Add new blocks with gas price 1,2,3,4,5,6
-            /*
-            IBlockTree blockTree = Substitute.For<IBlockTree>();
-            blockTree.Insert(Build.A.BlockHeader.WithNumber(1).WithGasUsed(4).TestObject); //does this even do anything?
-            blockTree.Insert(Build.A.BlockHeader.WithNumber(2).WithGasUsed(6).TestObject);
-            blockTree.Insert(Build.A.BlockHeader.WithNumber(3).WithGasUsed(8).TestObject);
-            blockTree.Insert(Build.A.BlockHeader.WithNumber(4).WithGasUsed(5).TestObject);
-            blockTree.Insert(Build.A.BlockHeader.WithNumber(5).WithGasUsed(7).TestObject);
-            blockTree.Insert(Build.A.BlockHeader.WithNumber(6).WithGasUsed(3).TestObject);
-            //blockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.WithNumber(6).TestObject));
-            blockTree.Head.Returns(Build.A.Block.WithNumber(6).TestObject);
-            */
-            using Context ctx = await Context.Create();
-            ctx._test.BlockTree = blockTree;
-            
+            resultWrapper.Result.Should().Be(5); //Add new blocks with gas price 1,2,3,4,5,6
         }
         
         [Test]
