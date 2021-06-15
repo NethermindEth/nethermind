@@ -52,6 +52,7 @@ namespace Nethermind.Core.Test.Blockchain
 {
     public class TestBlockchain : IDisposable
     {
+        public const int DefaultTimeout = 2000;
         public IStateReader StateReader { get; private set; }
         public IEthereumEcdsa EthereumEcdsa { get; private set; }
         public TransactionProcessor TxProcessor { get; set; }
@@ -177,7 +178,7 @@ namespace Nethermind.Core.Test.Blockchain
             return this;
         }
 
-        private async Task WaitAsync(SemaphoreSlim semaphore, string error, int timeout = 1000)
+        private async Task WaitAsync(SemaphoreSlim semaphore, string error, int timeout = DefaultTimeout)
         {
             if (!await semaphore.WaitAsync(timeout))
             {
@@ -185,7 +186,7 @@ namespace Nethermind.Core.Test.Blockchain
             }
         }
 
-        private async Task WaitAsync(EventWaitHandle eventWaitHandle, string error, int timeout = 1000)
+        private async Task WaitAsync(EventWaitHandle eventWaitHandle, string error, int timeout = DefaultTimeout)
         {
             if (!await eventWaitHandle.WaitOneAsync(timeout, CancellationToken.None))
             {
