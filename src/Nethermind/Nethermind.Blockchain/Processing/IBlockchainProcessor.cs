@@ -23,7 +23,7 @@ namespace Nethermind.Blockchain.Processing
 {
     public interface IBlockchainProcessor : IDisposable
     {
-        public CompositeBlockTracerFactory BlockTracerFactory { get; }
+        CompositeBlockTracerFactory BlockTracerFactory { get; }
 
         void Start();
         

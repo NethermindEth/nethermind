@@ -9,7 +9,7 @@ namespace Nethermind.Evm.Tracing
 
         public IBlockTracer Create()
         {
-            return _childFactories.Length == 0 ? NullBlockTracer.Instance : new CompositeBlockTracer(_childFactories.Select(factory => factory.Create()));
+            return _childFactories.Length == 0 ? NullBlockTracer.Instance : new CompositeBlockTracer(_childFactories.Select(factory => factory.Create()).ToArray());
         }
 
         public void AddChildFactory(IBlockTracerFactory factoryToAdd)
