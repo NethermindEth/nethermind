@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -80,7 +81,8 @@ namespace Nethermind.Specs.ChainSpecStyle
                 KeyValuePair<string, JObject>[] pricing = allocation.BuiltIn.Pricing.Where(o => predicate(o)).ToArray();
                 if (pricing.Length > 0)
                 {
-                    return long.Parse(pricing[0].Key);
+                    string key = pricing[0].Key;
+                    return long.TryParse(key, out long transition) ? transition : Convert.ToInt64(key, 16);
                 }
 
                 return null;
