@@ -344,15 +344,18 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             try
             {
-                Keccak txHash =
+                (Keccak txHash, AddTxResult addTxResult) =
                     await _txSender.SendTransaction(tx, txHandlingOptions | TxHandlingOptions.PersistentBroadcast);
-                return ResultWrapper<Keccak>.Success(txHash);
+
+                return addTxResult == AddTxResult.Added
+                    ? ResultWrapper<Keccak>.Success(txHash)
+                    : ResultWrapper<Keccak>.Fail(string.Concat(txHash, ": Transaction not added - ", addTxResult.ToString()), ErrorCodes.TransactionRejected);
             }
             catch (SecurityException e)
             {
                 return ResultWrapper<Keccak>.Fail(e.Message, ErrorCodes.AccountLocked);
             }
-            catch (ArgumentException e)
+            catch (Exception e)
             {
                 if (_logger.IsError) _logger.Error("Failed to send transaction.", e);
                 return ResultWrapper<Keccak>.Fail(e.Message, ErrorCodes.TransactionRejected);
