@@ -40,7 +40,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
             _percentDelta = percentDelta;
         }
 
-        public ValueTask<(Keccak, AddTxResult)> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
+        public ValueTask<(Keccak, AddTxResult?)> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
             (UInt256 minFeeCap, UInt256 minGasPremium) = CurrentMinGas();
             UInt256 txFeeCap = minFeeCap * _percentDelta / 100;

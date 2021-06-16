@@ -34,9 +34,9 @@ namespace Nethermind.TxPool
             if (sealers.Length == 0) throw new ArgumentException("Sealers can not be empty.", nameof(sealers));
         }
 
-        public ValueTask<(Keccak, AddTxResult)> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
+        public ValueTask<(Keccak, AddTxResult?)> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
-            AddTxResult result = new();
+            AddTxResult? result = null;
             
             // TODO: this is very not intuitive - can we fix it...?
             // maybe move nonce reservation to sender itself before sealing
@@ -54,7 +54,7 @@ namespace Nethermind.TxPool
                 }
             }
 
-            return new ValueTask<(Keccak, AddTxResult)>((tx.Hash, result));
+            return new ValueTask<(Keccak, AddTxResult?)>((tx.Hash, result));
         }
     }
 }
