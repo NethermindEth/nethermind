@@ -142,59 +142,70 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return ResultWrapper<UInt256?>.Success(0);
         }
 
-        private float avg_transaction_gas_price(Block block)
+        private void add_transactions_from_block_to_set(Block block, SortedSet<UInt256> sortedSet, UInt256 finalPrice, UInt256? ignoreUnder = null, long? maxCount = null)
         {
-            Transaction[] transactions = block.Transactions;
-            
-            if (transactions.Length == 0)
-                return 0;
-            long sum = transactions.Sum(transaction => (long) transaction.GasPrice);
-            return ((float) sum / transactions.Length);
+            int length = block.Transactions.Length;
+            if (length > 0)
+            {
+                for (int index = 0; index < length && (maxCount == null || sortedSet.Count < maxCount); index++)
+                {
+                    Transaction transaction = block.Transactions[index];
+                    if (transaction.GasPrice >= ignoreUnder)
+                    {
+                        sortedSet.Add(transaction.GasPrice);
+                    }
+                }
+            }
+            else
+            {
+                sortedSet.Add(finalPrice);
+            }
         }
 
         [Todo("Gas pricer to be implemented")]
-        public ResultWrapper<UInt256?> eth_gasPrice()
+        public ResultWrapper<UInt256?> eth_gasPrice(UInt256? ignoreUnder = null)
         {
-            UInt256? gasPriceFinal = null;
             Block latestBlock = _blockFinder.FindLatestBlock();
             Block headBlock = _blockFinder.FindHeadBlock();
             Block genesisBlock = _blockFinder.FindGenesisBlock();
-            SortedSet<float> gasPrices = new();
+            SortedSet<UInt256> gasPrices = new();
             long blocksToGoBack = 5;
-            int percentile = 20;
+            const int percentile = 20;
+            UInt256 gasPriceFinal = latestBlock!.Transactions.Select(t=>t.GasPrice).Max();
             long blockNumber = headBlock!.Number; //if latest gas price doesn't exist, start from head block and find blocksToGoBack # of gas prices
-            
-            if (avg_transaction_gas_price(latestBlock!) == 0) //where do we see gas price?
-            {
-                return ResultWrapper<UInt256?>.Success((UInt256) latestBlock.GasUsed);
-            }
-            
+
             while (blocksToGoBack > 0 && blockNumber > genesisBlock!.Number - 1) //else, go back "blockNumber" valid gas prices from genesisBlock
             {
-                float avgTransactionPrice = avg_transaction_gas_price(_blockFinder.FindBlock(blockNumber)!); 
-                if (avgTransactionPrice != 0)
+                Block? foundBlock = _blockFinder.FindBlock(blockNumber);
+                if (foundBlock != null)
                 {
-                    gasPrices.Add(avgTransactionPrice);
+                    add_transactions_from_block_to_set(foundBlock, gasPrices, gasPriceFinal, ignoreUnder);
                     blocksToGoBack--;
                 }
                 blockNumber--;
             }
-            
-            if (gasPrices.Count == 0)
-            {
-                return ResultWrapper<UInt256?>.Fail("The blocks all have gas prices that are null.");
-            }
-            else //find the gas price at the index that is the percentile of the max index
-            {
-                int finalIndex = (int) ((gasPrices.Count - 1) * ((float) percentile / 100));
-                foreach (UInt256? gasPrice in gasPrices.Where(gasPrice => finalIndex-- <= 0))
-                {
-                    gasPriceFinal = gasPrice;
-                    break;
-                }
 
-                return ResultWrapper<UInt256?>.Success(gasPriceFinal);
+            while (gasPrices.Count < blocksToGoBack * 2 && blockNumber > genesisBlock!.Number - 1) //is this always 0? to add more transactions if not enough
+            {
+                Block? foundBlock = _blockFinder.FindBlock(blockNumber);
+                if (foundBlock != null)
+                {
+                    add_transactions_from_block_to_set(foundBlock, gasPrices, gasPriceFinal, ignoreUnder, blocksToGoBack * 2);
+                }
             }
+            if (gasPrices.Count == 0) //we keep looking at blocks previous to number if we don't have enough transactions
+            {
+                return ResultWrapper<UInt256?>.Fail("There are no gas price values to choose from.");
+            }
+
+            int finalIndex = (int) ((gasPrices.Count - 1) * ((float) percentile / 100));
+            foreach (UInt256 gasPrice in gasPrices.Where(gasPrice => finalIndex-- <= 0))
+            {
+                gasPriceFinal = gasPrice;
+                break;
+            }
+
+            return ResultWrapper<UInt256?>.Success(gasPriceFinal);
         }
         
         public ResultWrapper<UInt256?> return_result(UInt256? num)
