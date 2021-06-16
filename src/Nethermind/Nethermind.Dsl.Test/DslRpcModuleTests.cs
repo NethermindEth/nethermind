@@ -1,4 +1,7 @@
 using System;
+using System.Linq;
+using System.Data;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
@@ -9,8 +12,12 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
+using Nethermind.JsonRpc;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.Dsl.ANTLR;
+using Nethermind.Dsl.JsonRpc;
+using Nethermind.Logging;
 
 namespace Nethermind.Dsl.Test
 {
@@ -20,53 +27,62 @@ namespace Nethermind.Dsl.Test
         private INethermindApi _api;
         private Dictionary<int, Interpreter> _interpreter;
         private DslRpcModule _dslRpcModule;
-        private ILogger logger;
+        private ILogger _logger;
+        public ResultWrapper<int> res;
 
         [SetUp]
         public void SetUp()
         {
+             _api = Substitute.For<INethermindApi>();
+            _interpreter = Substitute.For<Dictionary<int, Interpreter>>();
+            _logger = Substitute.For<ILogger>();
+
             _dslPlugin = new DslPlugin();
-            _api = Substitute.For<INethermindApi>();
-            _dslRpcModule = Substiture.For<DslRpcModule>();
-            _interpreters= Substiture.For<Dictionary<int, Interpreter>>();
-            _logger = Substiture.For<ILogger>();
+            _dslRpcModule = new DslRpcModule(_api, _logger, _interpreter);
         }
         
         [Test]
-        public async Task will_load_interpreters_correctly
+        public async Task check()
         {
-            _dslRpcModule.AddInterpreter(_interpreters)
+           res = _dslRpcModule.dsl_addScript("WATCH Blocks WHERE Author IS 0x22eA9f6b28DB76A7162054c05ed812dEb2f519Cd PUBLISH WebSockets ytext");
+           Assert.IsInstanceOf<ResultWrapper<int>>(res);
         }
+                        
         [Test]
-        public async Task will_throw_error_for_undefined_watch(String script)
+        public async Task will_throw_error_for_undefined_watch()
         {
-           _dslRpcModule.dsl_addScript("WATCH House WHERE Author IS 0x22eA9f6b28DB76A7162054c05ed812dEb2f519Cd PUBLISH WebSockets ytext");
-        }
-
-        [Test]
-        public async Task will_throw_error_for_improper_use_of_is(String script)
-        {
-            _dslRpcModule.dsl_addScript("WATCH Blocks WHERE Author IS AUTHOR PUBLISH WebSockets ytext");
+           res = _dslRpcModule.dsl_addScript("WATCH House WHERE Author IS 0x22eA9f6b28DB76A7162054c05ed812dEb2f519Cd PUBLISH WebSockets ytext");
+           Assert.IsInstanceOf<ResultWrapper<int>>(res);
         }
 
-
         [Test]
-        public async Task will_return_nothing_if_is_is_always_false(String script)
+        public async Task will_throw_error_for_improper_use_of_is()
         {
-            _dslRpcModule.dsl_addScript("WATCH WHERE 23 IS NOT 23 PUBLISH WebSockets ytext");
+            res = _dslRpcModule.dsl_addScript("WATCH Blocks WHERE Author IS AUTHOR PUBLISH WebSockets ytext");
+            Assert.IsInstanceOf<ResultWrapper<int>>(res);
         }
 
 
         [Test]
-        public async Task will_fail_with_out_of_order_expressions(String script)
+        public async Task will_return_nothing_if_is_is_always_false()
         {
-            _dslRpcModule.dsl_addScript("WHERE Author IS 0x22eA9f6b28DB76A7162054c05ed812dEb2f519Cd WATCH Blocks PUBLISH WebSockets ytext");
+            res = _dslRpcModule.dsl_addScript("WATCH WHERE 23 IS NOT 23 PUBLISH WebSockets ytext");
+            Assert.IsInstanceOf<ResultWrapper<int>>(res);
+        }
+
+
+        [Test]
+        public async Task will_fail_with_out_of_order_expressions()
+        {
+            res = _dslRpcModule.dsl_addScript("WHERE Author IS 0x22eA9f6b28DB76A7162054c05ed812dEb2f519Cd WATCH Blocks PUBLISH WebSockets ytext");
+            Assert.IsInstanceOf<ResultWrapper<int>>(res);
         }
 
         [Test]
-        public async Task will_fail_on_undefined_operation(String script)
+        public async Task will_fail_on_undefined_operation()
         {
-            _dslRpcModule.dsl_addScript("WATCH Blocks WHERE AUTHOR IS 0x22eA9f6b28DB76A7162054c05ed812dEb2f519Cd STOP PUBLISH WebSockets ytext");
+            res = _dslRpcModule.dsl_addScript("WATCH Blocks WHERE AUTHOR IS 0x22eA9f6b28DB76A7162054c05ed812dEb2f519Cd STOP PUBLISH WebSockets ytext");
+            Assert.IsInstanceOf<ResultWrapper<int>>(res);
         }
     }
-}
+}   
