@@ -149,7 +149,7 @@ namespace Nethermind.DataMarketplace.Test
             deployContract.GasLimit = 4000000;
             deployContract.Data = initCode;
             deployContract.Nonce = _bridge.GetNonce(_providerAccount);
-            Keccak txHash = await _bridge.SendTransaction(deployContract, TxHandlingOptions.None);
+            (Keccak txHash, AddTxResult? addTxResult) = await _bridge.SendTransaction(deployContract, TxHandlingOptions.None);
             _bridge.IncrementNonce(_providerAccount);
             TxReceipt receipt = _bridge.GetReceipt(txHash);
             Assert.AreEqual(StatusCode.Success, receipt.StatusCode, $"contract deployed {receipt.Error}");
@@ -240,7 +240,7 @@ namespace Nethermind.DataMarketplace.Test
 
             private int _txIndex;
 
-            public ValueTask<Keccak> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
+            public ValueTask<(Keccak, AddTxResult?)> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
             {
                 tx.Nonce = GetNonce(tx.SenderAddress);
                 tx.Hash = tx.CalculateHash();
@@ -248,7 +248,7 @@ namespace Nethermind.DataMarketplace.Test
                 _receiptsTracer.StartNewTxTrace(tx);
                 _processor.Execute(tx, Head?.Header, _receiptsTracer);
                 _receiptsTracer.EndTxTrace();
-                return new ValueTask<Keccak>(tx.CalculateHash());
+                return new ValueTask<(Keccak, AddTxResult?)>((tx.CalculateHash(), null));
             }
 
             public TxReceipt GetReceipt(Keccak txHash) => _receiptsTracer.TxReceipts.Single(r => r?.TxHash == txHash);
