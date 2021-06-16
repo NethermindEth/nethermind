@@ -126,7 +126,7 @@ namespace Nethermind.Vault
             // this should happen after we set the GasPrice
             _txSigner.Seal(tx, TxHandlingOptions.None);
             ProvideTx createdTx = await _provide.CreateTransaction(provideTx);
-            return ((createdTx?.Hash == null ? Keccak.Zero : new Keccak(createdTx.Hash)), null);
+            return (createdTx?.Hash == null ? Keccak.Zero : new Keccak(createdTx.Hash), null);
         }
 
         public async Task<HttpResponseMessage> SendPostNChainRequest(string methodName, CreateAccountRequest request)
