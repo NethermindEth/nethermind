@@ -72,21 +72,23 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public async Task get_right_eth_gas_price()
         {
-            Transaction[] transactions = { //should i be worried about two tx with same hash?
-                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).WithGasPrice(1).TestObject,
-                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).WithGasPrice(2).TestObject,
-                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).WithGasPrice(3).TestObject,
-                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyD).WithGasPrice(0).TestObject,
-                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).WithGasPrice(10).TestObject,
-                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).WithGasPrice(5).TestObject,
+            Transaction[] transactions = 
+            { //should i be worried about two tx with same hash?
+                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).WithGasPrice(1).WithNonce(0).TestObject,
+                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).WithGasPrice(2).WithNonce(0).TestObject,
+                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).WithGasPrice(3).WithNonce(0).TestObject,
+                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyD).WithGasPrice(0).WithNonce(0).TestObject,
+                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).WithGasPrice(10).WithNonce(1).TestObject,
+                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).WithGasPrice(5).WithNonce(1).TestObject,
             };
-            Block[] blocks = {
-                Build.A.Block.WithNumber(1).WithKnownTransactions(new Transaction[] {transactions[0], transactions[1]}).TestObject,
-                Build.A.Block.WithNumber(2).WithKnownTransactions(new Transaction[] {transactions[2]}).TestObject,
-                Build.A.Block.WithNumber(3).WithKnownTransactions(new Transaction[] {transactions[3]}).TestObject,
-                Build.A.Block.WithNumber(4).WithKnownTransactions(new Transaction[] {transactions[4]}).TestObject,
-                Build.A.Block.WithNumber(5).WithKnownTransactions(new Transaction[] {transactions[5]}).TestObject,
-            };
+            
+            Block a = Build.A.Block.Genesis.WithKnownTransactions(new[] {transactions[0], transactions[1]}).TestObject;
+            Block b = Build.A.Block.WithNumber(1).WithParentHash(a.Hash).WithKnownTransactions(new[] {transactions[2]}).TestObject;
+            Block c = Build.A.Block.WithNumber(2).WithParentHash(b.Hash).WithKnownTransactions(new[] {transactions[3]}).TestObject;
+            Block d = Build.A.Block.WithNumber(3).WithParentHash(c.Hash).WithKnownTransactions(new[] {transactions[4]}).TestObject;
+            Block e = Build.A.Block.WithNumber(4).WithParentHash(d.Hash).WithKnownTransactions(new[] {transactions[5]}).TestObject;
+            Block[] blocks = {a, b, c, d, e};
+            
             BlockTree blockTree = Build.A.BlockTree(blocks[0]).TestObject; //Genesis block not being added
             foreach (Block block in blocks)
             {
@@ -106,7 +108,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             );
             
             ResultWrapper<UInt256?> resultWrapper = ethRpcModule.eth_gasPrice();
-            resultWrapper.Result.Should().Be(5); //Add new blocks with gas price 1,2,3,4,5,6
+            resultWrapper.Data.Should().Be((UInt256?) 5); //Add new blocks with gas price 1,2,3,4,5,6
         }
         
         [Test]
