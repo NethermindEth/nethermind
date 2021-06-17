@@ -108,7 +108,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             );
             
             ResultWrapper<UInt256?> resultWrapper = ethRpcModule.eth_gasPrice();
-            resultWrapper.Data.Should().Be((UInt256?) 5); //Add new blocks with gas price 1,2,3,4,5,6
+            resultWrapper.Data.Should().Be((UInt256?) 1); //Add new blocks with gas price 1,2,3,4,5,6
         }
         
         [Test]

@@ -142,8 +142,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return ResultWrapper<UInt256?>.Success(0);
         }
 
-        private void add_transactions_from_block_to_set(Block block, SortedSet<UInt256> sortedSet, UInt256 finalPrice, UInt256? ignoreUnder = null, long? maxCount = null)
+        private void add_transactions_from_block_to_set(Block block, ref SortedSet<UInt256> sortedSet, UInt256 finalPrice, UInt256? ignoreUnder = null, long? maxCount = null)
         {
+            ignoreUnder ??= UInt256.Zero;
             int length = block.Transactions.Length;
             if (length > 0)
             {
@@ -198,7 +199,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 Block? foundBlock = _blockFinder.FindBlock(blockNumber);
                 if (foundBlock != null)
                 {
-                    add_transactions_from_block_to_set(foundBlock, gasPrices, (UInt256) gasPriceLatest, ignoreUnder);
+                    add_transactions_from_block_to_set(foundBlock, ref gasPrices, (UInt256) gasPriceLatest, ignoreUnder);
                     blocksToGoBack--;
                 }
                 blockNumber--;
@@ -209,7 +210,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 Block? foundBlock = _blockFinder.FindBlock(blockNumber);
                 if (foundBlock != null)
                 {
-                    add_transactions_from_block_to_set(foundBlock, gasPrices, (UInt256) gasPriceLatest, ignoreUnder, blocksToGoBack * 2);
+                    add_transactions_from_block_to_set(foundBlock, ref gasPrices, (UInt256) gasPriceLatest, ignoreUnder, blocksToGoBack * 2);
                 }
             }
 
