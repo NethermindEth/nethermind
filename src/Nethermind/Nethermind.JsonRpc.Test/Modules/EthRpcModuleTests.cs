@@ -148,11 +148,24 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
-        void eth_gas_price_price_under_value_should_remove_tx()
+        public void eth_gas_price_price_under_value_should_remove_tx()
         {
             BlocktreeSetup blocktreeSetup = new BlocktreeSetup();
             blocktreeSetup.ethRpcModule.eth_gasPrice(2).Should().Be(3); //should only leave 2,3,5,10 => 3/5 => 0.6, rounded to 1 => price should be 3
+
+            
+            Transaction a = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).WithGasPrice(2).WithNonce(2)
+                .TestObject;
+            Transaction b = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).WithGasPrice(5).WithNonce(3)
+                .TestObject;
+
+            Block a1 = Build.A.Block.WithKnownTransactions(new Transaction[] {a, b})
+                .WithParentHash(blocktreeSetup._blocks[^1].Hash).TestObject;
+            BlocktreeSetup blockTreeSetup2 = new BlocktreeSetup(new Block[]{a1}, true);
+            blockTreeSetup2.ethRpcModule.eth_gasPrice(2).Should().Be(2); //should only leave 2,2,3,5,5,10 => 5/5 => 1, rounded to 1 => price should be 2
         }
+        
+        
         [Test]
         public void eth_gas_price_get_tx_from_more_blocks_if_num_tx_not_greater_than_limit()
         {
@@ -205,7 +218,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public class BlocktreeSetup
         {
             private Transaction[] _transactions;
-            private Block[] _blocks;
+            public Block[] _blocks;
             public BlockTree blockTree;
             public EthRpcModule ethRpcModule;
 
