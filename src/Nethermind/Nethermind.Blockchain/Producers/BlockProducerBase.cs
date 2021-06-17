@@ -234,7 +234,7 @@ namespace Nethermind.Blockchain.Producers
                 Sealer.Address,
                 difficulty,
                 parent.Number + 1,
-                Eip1559GasLimitAdjuster.AdjustGasLimit(spec, _gasLimitCalculator.GetGasLimit(parent), parent.Number + 1),
+                _gasLimitCalculator.GetGasLimit(parent),
                 timestamp,
                 GetExtraData(parent))
             {
