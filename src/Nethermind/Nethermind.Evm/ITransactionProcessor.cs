@@ -23,5 +23,6 @@ namespace Nethermind.Evm
     {
         void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer);
         void CallAndRestore(Transaction transaction, BlockHeader block, ITxTracer txTracer);
+        bool BuildUp(Transaction transaction, BlockHeader block, ITxTracer txTracer);
     }
 }

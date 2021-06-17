@@ -68,6 +68,10 @@ namespace Nethermind.Blockchain.Processing
                     transactionsForBlock.Add(currentTx);
                 }
             }
+            
+            _stateProvider.Commit(spec);
+            _storageProvider.Commit();
+            
             block.TrySetTransactions(transactionsForBlock.ToArray());
             block.Header.TxRoot = new TxTrie(block.Transactions).RootHash;
             return receiptsTracer.TxReceipts!;
@@ -81,7 +85,7 @@ namespace Nethermind.Blockchain.Processing
             }
 
             receiptsTracer.StartNewTxTrace(currentTx);
-            _transactionProcessor.Execute(currentTx, block.Header, receiptsTracer);
+            _transactionProcessor.BuildUp(currentTx, block.Header, receiptsTracer);
             receiptsTracer.EndTxTrace();
 
             TransactionProcessed?.Invoke(this, new TxProcessedEventArgs(index, currentTx, receiptsTracer.TxReceipts[index]));

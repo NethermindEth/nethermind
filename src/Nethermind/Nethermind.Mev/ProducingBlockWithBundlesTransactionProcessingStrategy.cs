@@ -124,6 +124,8 @@ namespace Nethermind.Mev
                 ProcessBundle(block, transactionsInBlock, bundleTransactions, receiptsTracer, TransactionProcessed);
             }
             block.TrySetTransactions(transactionsInBlock.ToArray());
+            _stateProvider.Commit(spec);
+            _storageProvider.Commit();
             block.Header.TxRoot = new TxTrie(block.Transactions).RootHash;
             return receiptsTracer.TxReceipts!;
         }
@@ -136,7 +138,7 @@ namespace Nethermind.Mev
             }
 
             receiptsTracer.StartNewTxTrace(currentTx);
-            _transactionProcessor.Execute(currentTx, block.Header, receiptsTracer);
+            _transactionProcessor.BuildUp(currentTx, block.Header, receiptsTracer);
             receiptsTracer.EndTxTrace();
 
             transactionsInBlock?.Add(currentTx);
@@ -163,7 +165,6 @@ namespace Nethermind.Mev
                     _storageProvider.Restore(storageSnapshot);
                     receiptsTracer.RestoreSnapshot(receiptSnapshot);
                     
-
                     bundleTransactions.Clear();
                     foreach (var tx in bundleTransactions)
                     {
