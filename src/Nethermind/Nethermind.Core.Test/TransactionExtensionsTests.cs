@@ -40,6 +40,30 @@ namespace Nethermind.Core.Test
             Assert.AreEqual(test.ExpectedEffectiveGasPriceResult, effectiveGasPrice);
             Assert.AreEqual(test.ExpectedEffectiveGasPriceResult * (UInt256)test.GasLimit + test.Value, test.ExpectedPotentialCostResult);
         }
+        
+        [Test]
+        public void TryCalculatePremiumPerGas_should_succeeds_for_free_transactions()
+        {
+            Transaction transaction = new SystemTransaction();
+            transaction.DecodedMaxFeePerGas = 10;
+            transaction.GasPrice = 30;
+            transaction.Type = TxType.EIP1559;
+            bool tryResult = transaction.TryCalculatePremiumPerGas(100, out UInt256 premiumPerGas);
+            Assert.AreEqual(UInt256.Zero, premiumPerGas);
+            Assert.True(tryResult);
+        }
+        
+        [Test]
+        public void TryCalculatePremiumPerGas_should_fails_when_base_fee_is_greater_than_fee()
+        {
+            Transaction transaction = new Transaction();
+            transaction.DecodedMaxFeePerGas = 10;
+            transaction.GasPrice = 30;
+            transaction.Type = TxType.EIP1559;
+            bool tryResult = transaction.TryCalculatePremiumPerGas(100, out UInt256 premiumPerGas);
+            Assert.AreEqual(UInt256.Zero, premiumPerGas);
+            Assert.False(tryResult);
+        }
 
         public class TransactionPotentialCostsAndEffectiveGasPrice
         {

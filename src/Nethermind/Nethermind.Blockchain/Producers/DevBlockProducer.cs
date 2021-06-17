@@ -54,7 +54,7 @@ namespace Nethermind.Blockchain.Producers
                 blockTree,
                 blockProcessingQueue,
                 stateProvider,
-                FollowOtherMiners.Instance,
+                new FollowOtherMiners(specProvider!),
                 timestamper,
                 specProvider,
                 logManager)

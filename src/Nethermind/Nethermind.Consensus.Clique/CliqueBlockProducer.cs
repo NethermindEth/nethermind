@@ -365,7 +365,7 @@ namespace Nethermind.Consensus.Clique
                 Address.Zero,
                 1,
                 parentBlock.Number + 1,
-                Eip1559GasLimitAdjuster.AdjustGasLimit(spec, _gasLimitCalculator.GetGasLimit(parentBlock.Header), parentHeader.Number + 1),
+                _gasLimitCalculator.GetGasLimit(parentBlock.Header),
                 timestamp > parentBlock.Timestamp ? timestamp : parentBlock.Timestamp + 1,
                 Array.Empty<byte>());
 
