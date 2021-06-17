@@ -183,9 +183,22 @@ namespace Nethermind.JsonRpc.Modules.Eth
             Block latestBlock = _blockFinder.FindLatestBlock();
             Block headBlock = _blockFinder.FindHeadBlock();
             Block genesisBlock = _blockFinder.FindGenesisBlock();
-            SortedSet<UInt256> gasPrices = new();
+            Comparer<UInt256> comparer = Comparer<UInt256>.Create(((a, b) =>
+            {
+                int res = a.CompareTo(b);
+                if (res == 0)
+                {
+                    return (1);
+                }
+                else
+                {
+                    return (res);
+                }
+            })); 
+            SortedSet<UInt256> gasPrices = new(comparer); //allows duplicates
             long blocksToGoBack = 5;
             const int percentile = 20;
+            long txLimit = blocksToGoBack * 2;
             UInt256? gasPriceLatest = null;
             latest_gas_price(headBlock!.Number, genesisBlock!.Number, ref gasPriceLatest);
             if (gasPriceLatest == null) //this means that there were no transactions to get the value of
@@ -205,7 +218,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 blockNumber--;
             }
 
-            while (gasPrices.Count < blocksToGoBack * 2 && blockNumber > genesisBlock!.Number - 1) //is this always 0? to add more transactions if not enough
+            while (gasPrices.Count < txLimit && blockNumber > genesisBlock!.Number - 1) //is this always 0? to add more transactions if not enough
             {
                 Block? foundBlock = _blockFinder.FindBlock(blockNumber);
                 if (foundBlock != null)
@@ -214,7 +227,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 }
             }
 
-            int finalIndex = (int) ((gasPrices.Count - 1) * ((float) percentile / 100));
+            int finalIndex = (int) Math.Round(((gasPrices.Count - 1) * ((float) percentile / 100)));
             foreach (UInt256 gasPrice in gasPrices.Where(gasPrice => finalIndex-- <= 0))
             {
                 gasPriceLatest = gasPrice;

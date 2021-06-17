@@ -97,6 +97,56 @@ namespace Nethermind.JsonRpc.Test.Modules
             resultWrapper.Result.Should().BeEquivalentTo(Result.Fail("There are no gas price values to choose from."));
         }
 
+        [Test]
+        public void eth_gas_price_get_tx_from_min_blocks_if_num_tx_greater_than_limit()
+        {
+            Transaction[] transactions = new Transaction[]
+            {
+                //should i be worried about two tx with same hash?
+                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).WithGasPrice(1).WithNonce(0)
+                    .TestObject,
+                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).WithGasPrice(2).WithNonce(0)
+                    .TestObject,
+                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).WithGasPrice(3).WithNonce(0)
+                    .TestObject,
+                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyD).WithGasPrice(0).WithNonce(0)
+                    .TestObject,
+                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).WithGasPrice(10).WithNonce(1)
+                    .TestObject,
+                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).WithGasPrice(5).WithNonce(1)
+                    .TestObject,
+                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).WithGasPrice(5).WithNonce(2)
+                    .TestObject,
+                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).WithGasPrice(5).WithNonce(3)
+                    .TestObject,
+                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyD).WithGasPrice(4).WithNonce(1)
+                    .TestObject,
+                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).WithGasPrice(5).WithNonce(1)
+                    .TestObject,
+                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyD).WithGasPrice(4).WithNonce(2)
+                    .TestObject,
+                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).WithGasPrice(5).WithNonce(2)
+                    .TestObject,
+            };
+
+            Block a = Build.A.Block.Genesis.WithKnownTransactions(new[] {transactions[0], transactions[1]})
+                .TestObject;
+            Block b = Build.A.Block.WithNumber(1).WithParentHash(a.Hash)
+                .WithKnownTransactions(new[] {transactions[2], transactions[3]}).TestObject;
+            Block c = Build.A.Block.WithNumber(2).WithParentHash(b.Hash)
+                .WithKnownTransactions(new[] {transactions[4], transactions[5]}).TestObject;
+            Block d = Build.A.Block.WithNumber(3).WithParentHash(c.Hash)
+                .WithKnownTransactions(new[] {transactions[6], transactions[7]}).TestObject;
+            Block e = Build.A.Block.WithNumber(4).WithParentHash(d.Hash)
+                .WithKnownTransactions(new[] {transactions[8], transactions[9]}).TestObject;
+            Block f = Build.A.Block.WithNumber(5).WithParentHash(e.Hash)
+                .WithKnownTransactions(new[] {transactions[10], transactions[11]}).TestObject;
+            BlocktreeSetup blocktreeSetup = new BlocktreeSetup(new Block[]{a, b, c, d, e, f});
+
+            ResultWrapper<UInt256?> resultWrapper = blocktreeSetup.ethRpcModule.eth_gasPrice();
+            resultWrapper.Data.Should().Be((UInt256?) 4); //tx prices: 0, 3, 4, 4, 5, 5, 5, 5, 5, 10, 20th percentile is 9/5 = 1.8 , rounded to 2 => price should be 4
+        }
+
         public class BlocktreeSetup
         {
             private Transaction[] _transactions;
@@ -104,9 +154,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             public BlockTree blockTree;
             public EthRpcModule ethRpcModule;
 
-            public BlocktreeSetup(Block[] blocks = null)
+            public BlocktreeSetup(Block[] blocks = null, bool addBlocks = false)
             {
-                if (blocks == null)
+                if (blocks == null || addBlocks)
                 {
                     _transactions = new Transaction[]
                     {
@@ -136,6 +186,13 @@ namespace Nethermind.JsonRpc.Test.Modules
                     Block e = Build.A.Block.WithNumber(4).WithParentHash(d.Hash)
                         .WithKnownTransactions(new[] {_transactions[5]}).TestObject;
                     _blocks = new[] {a, b, c, d, e};
+                    if (addBlocks)
+                    {
+                        foreach (Block block in blocks)
+                        {
+                            _blocks.Append(block);
+                        }
+                    }
                 }
                 else
                 {
