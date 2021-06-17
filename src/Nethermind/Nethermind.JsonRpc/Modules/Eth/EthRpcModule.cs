@@ -165,7 +165,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         private void latest_gas_price(long headBlockNumber, long genesisBlockNumber, ref UInt256? latestGasPrice)
         {
-            while (headBlockNumber >= genesisBlockNumber)
+            while (headBlockNumber >= genesisBlockNumber) //should this be latestBlock or headBlock?
             {
                 Transaction[] transactions = _blockFinder.FindBlock(headBlockNumber)!.Transactions;
                 if (transactions.Length > 0)

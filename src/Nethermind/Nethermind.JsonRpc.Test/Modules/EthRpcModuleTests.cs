@@ -26,6 +26,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -70,11 +71,30 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
-        public void get_right_percentile_of_gas_price()
+        public void eth_gas_price_get_right_percentile_with_blocks_equal_to_check_Blocks()
         {
             BlocktreeSetup blocktreeSetup = new BlocktreeSetup();
             ResultWrapper<UInt256?> resultWrapper = blocktreeSetup.ethRpcModule.eth_gasPrice();
             resultWrapper.Data.Should().Be((UInt256?) 1); //Add new blocks with gas price 1,2,3,4,5,6
+        }
+
+        [Test]
+        public void eth_gas_price_return_error_when_block_have_no_tx()
+        {
+            Block a = Build.A.Block.Genesis.WithKnownTransactions(Array.Empty<Transaction>())
+                .TestObject;
+            Block b = Build.A.Block.WithNumber(1).WithParentHash(a.Hash)
+                .WithKnownTransactions(Array.Empty<Transaction>()).TestObject;
+            Block c = Build.A.Block.WithNumber(2).WithParentHash(b.Hash)
+                .WithKnownTransactions(Array.Empty<Transaction>()).TestObject;
+            Block d = Build.A.Block.WithNumber(3).WithParentHash(c.Hash)
+                .WithKnownTransactions(Array.Empty<Transaction>()).TestObject;
+            Block e = Build.A.Block.WithNumber(4).WithParentHash(d.Hash)
+                .WithKnownTransactions(Array.Empty<Transaction>()).TestObject;
+            BlocktreeSetup blocktreeSetup = new BlocktreeSetup(new Block[] {a, b, c, d, e});
+
+            ResultWrapper<UInt256?> resultWrapper = blocktreeSetup.ethRpcModule.eth_gasPrice();
+            resultWrapper.Result.Should().BeEquivalentTo(Result.Fail("There are no gas price values to choose from."));
         }
 
         public class BlocktreeSetup
@@ -83,6 +103,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             private Block[] _blocks;
             public BlockTree blockTree;
             public EthRpcModule ethRpcModule;
+
             public BlocktreeSetup(Block[] blocks = null)
             {
                 if (blocks == null)
@@ -118,32 +139,32 @@ namespace Nethermind.JsonRpc.Test.Modules
                 }
                 else
                 {
+                    _transactions = Array.Empty<Transaction>();
                     _blocks = blocks;
                 }
 
                 blockTree = Build.A.BlockTree(_blocks[0]).TestObject; //Genesis block not being added
-                    foreach (Block block in _blocks)
-                    {
-                        BlockTreeBuilder.AddBlock(blockTree, block);
-                    }
-
-                    ethRpcModule = new EthRpcModule
-                    (
-                        Substitute.For<IJsonRpcConfig>(),
-                        Substitute.For<IBlockchainBridge>(),
-                        blockTree,
-                        Substitute.For<IStateReader>(),
-                        Substitute.For<ITxPool>(),
-                        Substitute.For<ITxSender>(),
-                        Substitute.For<IWallet>(),
-                        Substitute.For<ILogManager>(),
-                        Substitute.For<ISpecProvider>()
-                    );
-
+                foreach (Block block in _blocks)
+                {
+                    BlockTreeBuilder.AddBlock(blockTree, block);
                 }
 
+                ethRpcModule = new EthRpcModule
+                (
+                    Substitute.For<IJsonRpcConfig>(),
+                    Substitute.For<IBlockchainBridge>(),
+                    blockTree,
+                    Substitute.For<IStateReader>(),
+                    Substitute.For<ITxPool>(),
+                    Substitute.For<ITxSender>(),
+                    Substitute.For<IWallet>(),
+                    Substitute.For<ILogManager>(),
+                    Substitute.For<ISpecProvider>()
+                );
+
+            }
         }
-        
+
         [Test]
         public async Task Eth_get_balance_default_block()
         {
