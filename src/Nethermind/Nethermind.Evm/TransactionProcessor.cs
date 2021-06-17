@@ -149,7 +149,7 @@ namespace Nethermind.Evm
                     return QuickFail(transaction, block, txTracer, "block gas limit exceeded");
                 }
             }
-
+            
             if (!_stateProvider.AccountExists(caller))
             {
                 // hacky fix for the potential recovery issue
@@ -186,6 +186,12 @@ namespace Nethermind.Evm
                 {
                     TraceLogInvalidTx(transaction, $"INSUFFICIENT_SENDER_BALANCE: ({caller})_BALANCE = {senderBalance}");
                     return QuickFail(transaction, block, txTracer, "insufficient sender balance");
+                }
+                
+                if (transaction.IsEip1559 && !transaction.IsServiceTransaction && senderBalance < (UInt256)transaction.GasLimit * transaction.MaxFeePerGas)
+                {
+                    TraceLogInvalidTx(transaction, $"INSUFFICIENT_MAX_FEE_PER_GAS_FOR_SENDER_BALANCE: ({caller})_BALANCE = {senderBalance}, MAX_FEE_PER_GAS: {transaction.MaxFeePerGas}");
+                    return QuickFail(transaction, block, txTracer, "insufficient MaxFeePerGas for sender balance");
                 }
 
                 if (transaction.Nonce != _stateProvider.GetNonce(caller))

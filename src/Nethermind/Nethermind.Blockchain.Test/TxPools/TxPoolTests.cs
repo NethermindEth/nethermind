@@ -189,6 +189,8 @@ namespace Nethermind.Blockchain.Test.TxPools
             Transaction tx = Build.A.Transaction
                 .WithType(TxType.EIP1559)
                 .WithChainId(ChainId.Mainnet)
+                .WithMaxFeePerGas(10.GWei())
+                .WithMaxPriorityFeePerGas(5.GWei())
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(tx);
             AddTxResult result = txPool.AddTransaction(tx, TxHandlingOptions.PersistentBroadcast);
@@ -203,7 +205,7 @@ namespace Nethermind.Blockchain.Test.TxPools
             specProvider.GetSpec(Arg.Any<long>()).Returns(London.Instance);
             var txPool = CreatePool(_noTxStorage, null, specProvider);
             Transaction tx = Build.A.Transaction
-                .WithType(TxType.EIP1559).WithFeeCap(20)
+                .WithType(TxType.EIP1559).WithMaxFeePerGas(20)
                 .WithChainId(ChainId.Mainnet)
                 .WithValue(5).SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(tx.SenderAddress, tx.Value - 1); // we should have InsufficientFunds only when balance < tx.Value
@@ -273,7 +275,7 @@ namespace Nethermind.Blockchain.Test.TxPools
             Transaction tx = Build.A.Transaction.WithGasPrice(UInt256.MaxValue / Transaction.BaseTxGasCost)
                 .WithGasLimit(Transaction.BaseTxGasCost)
                 .WithValue(Transaction.BaseTxGasCost)
-                .WithFeeCap(UInt256.MaxValue - 10)
+                .WithMaxFeePerGas(UInt256.MaxValue - 10)
                 .WithMaxPriorityFeePerGas((UInt256)15)
                 .WithType(TxType.EIP1559)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
@@ -346,9 +348,9 @@ namespace Nethermind.Blockchain.Test.TxPools
         [TestCase(11,5, AddTxResult.FeeTooLow)]
         [TestCase(11,15, AddTxResult.FeeTooLow)]
         [TestCase(11,16, AddTxResult.InsufficientFunds)]
-        [TestCase(50,0, AddTxResult.Added)]
-        [TestCase(50,15, AddTxResult.FeeTooLow)]
-        [TestCase(50,16, AddTxResult.InsufficientFunds)]
+        [TestCase(50,0, AddTxResult.Invalid)]
+        [TestCase(50,15, AddTxResult.Invalid)]
+        [TestCase(50,16, AddTxResult.Invalid)]
         public void should_handle_adding_1559_tx_to_full_txPool_properly(int gasPremium, int value, AddTxResult expected)
         {
             var specProvider = Substitute.For<ISpecProvider>();
@@ -365,7 +367,7 @@ namespace Nethermind.Blockchain.Test.TxPools
             
             Transaction tx = Build.A.Transaction
                 .WithType(TxType.EIP1559)
-                .WithFeeCap(20)
+                .WithMaxFeePerGas(20)
                 .WithMaxPriorityFeePerGas((UInt256)gasPremium)
                 .WithChainId(ChainId.Mainnet)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
@@ -828,6 +830,21 @@ namespace Nethermind.Blockchain.Test.TxPools
         }
 
         [Test]
+        public void When_MaxFeePerGas_is_lower_than_MaxPriorityFeePerGas_tx_is_invalid()
+        {
+            _txPool = CreatePool(_noTxStorage);
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+                .WithMaxPriorityFeePerGas(10.GWei())
+                .WithMaxFeePerGas(5.GWei())
+                .WithType(TxType.EIP1559)
+                .TestObject;
+            EnsureSenderBalance(tx);
+            AddTxResult result = _txPool.AddTransaction(tx, TxHandlingOptions.PersistentBroadcast);
+            _txPool.GetPendingTransactions().Length.Should().Be(0);
+            result.Should().Be(AddTxResult.Invalid);
+        }
+        
+        [Test]
         public void should_return_true_when_asking_for_txHash_existing_in_pool()
         {
             _txPool = CreatePool(_noTxStorage);
@@ -853,6 +870,30 @@ namespace Nethermind.Blockchain.Test.TxPools
         {
             _txPool = CreatePool(_noTxStorage);
             _txPool.RemoveTransaction(null).Should().Be(false);
+        }
+
+        [TestCase(0,0,false)]
+        [TestCase(0,1,true)]
+        [TestCase(1,2,true)]
+        [TestCase(10,11,true)]
+        [TestCase(100,0,false)]
+        [TestCase(100,80,false)]
+        [TestCase(100,109,false)]
+        [TestCase(100,110,true)]
+        [TestCase(1_000_000_000,1_099_999_999,false)]
+        [TestCase(1_000_000_000,1_100_000_000,true)]
+        public void should_replace_tx_with_same_sender_and_nonce_only_if_new_fee_is_at_least_10_percent_higher_than_old(int oldGasPrice, int newGasPrice, bool replaced)
+        {
+            _txPool = CreatePool(_noTxStorage);
+            Transaction oldTx = Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(0).WithGasPrice((UInt256)oldGasPrice).SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            Transaction newTx = Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(0).WithGasPrice((UInt256)newGasPrice).SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(newTx.GasPrice > oldTx.GasPrice ? newTx : oldTx);
+
+            _txPool.AddTransaction(oldTx, TxHandlingOptions.PersistentBroadcast);
+            _txPool.AddTransaction(newTx, TxHandlingOptions.PersistentBroadcast);
+            
+            _txPool.GetPendingTransactions().Length.Should().Be(1);
+            _txPool.GetPendingTransactions().First().Should().BeEquivalentTo(replaced ? newTx : oldTx);
         }
 
         private Transactions AddTransactions(ITxStorage storage)
@@ -948,7 +989,10 @@ namespace Nethermind.Blockchain.Test.TxPools
 
         private void EnsureSenderBalance(Transaction transaction)
         {
-            EnsureSenderBalance(transaction.SenderAddress, transaction.GasPrice * (UInt256)transaction.GasLimit + transaction.Value);
+            if (transaction.IsEip1559)
+                EnsureSenderBalance(transaction.SenderAddress, transaction.MaxFeePerGas * (UInt256)transaction.GasLimit + transaction.Value);
+            else
+                EnsureSenderBalance(transaction.SenderAddress, transaction.GasPrice * (UInt256)transaction.GasLimit + transaction.Value);
         }
         
         private void EnsureSenderBalance(Address address, UInt256 balance)

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -16,22 +16,23 @@
 // 
 
 using System.Collections.Generic;
-using Nethermind.Blockchain.Find;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
+using Nethermind.Int256;
 
-namespace Nethermind.Blockchain.Comparers
+namespace Nethermind.TxPool
 {
-    public class GasPriceTxComparer : IComparer<Transaction>
+    /// <summary>
+    /// Compare fee of newcomer transaction with fee of transaction intended to be replaced increased by given percent
+    /// </summary>
+    public class CompareReplacedTxByFee : IComparer<Transaction>
     {
-        private readonly IBlockFinder _blockFinder;
-        private readonly ISpecProvider _specProvider;
-
-        public GasPriceTxComparer(IBlockFinder blockFinder, ISpecProvider specProvider)
-        {
-            _blockFinder = blockFinder;
-            _specProvider = specProvider;
-        }
+        public static readonly CompareReplacedTxByFee Instance = new();
+        
+        private CompareReplacedTxByFee() { }
+        
+        // To replace old transaction, new transaction needs to have fee higher by at least 10% (1/10) of current fee.
+        // It is required to avoid acceptance and propagation of transaction with almost the same fee as replaced one.
+        private const int PartOfFeeRequiredToIncrease = 10;
         
         public int Compare(Transaction? x, Transaction? y)
         {
@@ -43,15 +44,13 @@ namespace Nethermind.Blockchain.Comparers
             // if not, different method of sorting by gas price is needed
             if (x.GasBottleneck != 0 || y.GasBottleneck != 0)
             {
-                return y!.GasBottleneck.CompareTo(x!.GasBottleneck);
+                y.GasBottleneck.Divide(PartOfFeeRequiredToIncrease, out UInt256 bumpGasBottleneck);
+                return (y.GasBottleneck + bumpGasBottleneck).CompareTo(x.GasBottleneck);
             }
             
-            // When we're adding Tx to TxPool we don't know the base fee of the block in which transaction will be added.
-            // We can get a base fee from the current head.
-            Block block = _blockFinder.Head;
-            bool isEip1559Enabled = _specProvider.GetSpec(block?.Number ?? 0).IsEip1559Enabled;
-            
-            return GasPriceTxComparerHelper.Compare(x, y, block?.Header.BaseFeePerGas ?? 0, isEip1559Enabled);
+            y.GasPrice.Divide(10, out UInt256 bumpGasPrice);
+            return (y.GasPrice + bumpGasPrice).CompareTo(x.GasPrice);
         }
+
     }
 }

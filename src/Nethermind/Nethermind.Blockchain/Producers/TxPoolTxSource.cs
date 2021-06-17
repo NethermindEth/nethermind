@@ -102,14 +102,22 @@ namespace Nethermind.Blockchain.Producers
                 return balance;
             }
 
-            bool HasEnoughFounds(IDictionary<Address, UInt256> balances, Transaction transaction, bool isEip1559Enabled, UInt256 baseFee)
+            bool HasEnoughFounds(IDictionary<Address, UInt256> balances, Transaction transaction, bool eip1559Enabled, UInt256 baseFeePerGas)
             {
                 UInt256 balance = GetRemainingBalance(balances, transaction.SenderAddress!);
-                UInt256 transactionPotentialCost = transaction.CalculateTransactionPotentialCost(isEip1559Enabled, baseFee);
+                UInt256 transactionPotentialCost = transaction.CalculateTransactionPotentialCost(eip1559Enabled, baseFeePerGas);
 
                 if (balance < transactionPotentialCost)
                 {
                     if (_logger.IsDebug) _logger.Debug($"Rejecting transaction - transaction cost ({transactionPotentialCost}) is higher than sender balance ({balance}).");
+                    return false;
+                }
+
+                if (transaction.IsEip1559 && !transaction.IsServiceTransaction && balance < (UInt256)transaction.GasLimit * transaction.MaxFeePerGas)
+                {
+                    if (_logger.IsDebug)
+                        _logger.Debug(
+                                $"Rejecting transaction - MaxFeePerGas({transaction.MaxFeePerGas}) times GasLimit {transaction.GasLimit} is higher than sender balance ({balance}).");
                     return false;
                 }
 
@@ -130,10 +138,13 @@ namespace Nethermind.Blockchain.Producers
             Dictionary<Address, UInt256> nonces = new();
             if (_logger.IsDebug) _logger.Debug($"Collecting pending transactions at block gas limit {gasLimit}.");
 
+            int selectedTransactions = 0;
             int i = 0;
             
             foreach (Transaction tx in transactions)
             {
+                i++;
+                
                 if (tx.SenderAddress == null)
                 {
                     _transactionPool.RemoveTransaction(tx.Hash!);
@@ -170,11 +181,11 @@ namespace Nethermind.Blockchain.Producers
                 if (_logger.IsTrace) _logger.Trace($"Selected {tx.ToShortString()} to be included in block.");
                 nonces[tx.SenderAddress!] = tx.Nonce + 1;
 
-                i++;
+                selectedTransactions++;
                 yield return tx;
             }
 
-            if (_logger.IsDebug) _logger.Debug($"Collected {i} out of {pendingTransactions.Sum(g => g.Value.Length)} pending transactions.");
+            if (_logger.IsDebug) _logger.Debug($"Collected {selectedTransactions} out of {i} pending transactions checked.");
             
         }
         

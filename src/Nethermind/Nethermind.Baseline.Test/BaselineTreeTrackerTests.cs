@@ -185,9 +185,9 @@ namespace Nethermind.Baseline.Test
                 {
                 }
 
-                protected override AddTxResult? FilterTransaction(Transaction tx, in bool managedNonce)
+                protected override AddTxResult? FilterTransaction(Transaction tx, in bool managedNonce, in bool isReorg)
                 {
-                    AddTxResult? addTxResult = base.FilterTransaction(tx, in managedNonce);
+                    AddTxResult? addTxResult = base.FilterTransaction(tx, in managedNonce, isReorg);
                     return addTxResult == AddTxResult.OldNonce ? null : addTxResult;
                 }
             }
@@ -196,7 +196,7 @@ namespace Nethermind.Baseline.Test
                 new ReorgTxPool(
                     txStorage,
                     EthereumEcdsa,
-                    new ChainHeadInfoProvider(new FixedBlockChainHeadSpecProvider(SpecProvider), BlockTree, State),
+                    new ChainHeadInfoProvider(new FixedBlockChainHeadSpecProvider(SpecProvider), BlockTree, ReadOnlyState),
                     new TxPoolConfig(),
                     new TxValidator(SpecProvider.ChainId),
                     LimboLogs.Instance,

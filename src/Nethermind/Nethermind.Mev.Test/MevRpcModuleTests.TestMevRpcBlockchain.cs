@@ -159,7 +159,7 @@ namespace Nethermind.Mev.Test
                     LogManager,
                     ProcessingOptions.ProducingBlock);
                 
-                TxBundleSimulator txBundleSimulator = new(_tracerFactory, FollowOtherMiners.Instance, Timestamper, TxPool, Signer.Address);
+                TxBundleSimulator txBundleSimulator = new(_tracerFactory, new FollowOtherMiners(SpecProvider), Timestamper, TxPool, Signer.Address);
                 BundlePool = new TestBundlePool(BlockTree, txBundleSimulator, Timestamper, _mevConfig, LogManager);
 
                 return blockProcessor;

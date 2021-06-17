@@ -219,6 +219,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Dsl", "Nethermin
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Dsl.Test", "Nethermind.Dsl.Test\Nethermind.Dsl.Test.csproj", "{0BE1CD87-8A29-40A9-981D-692932E93408}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Consensus.Test", "Nethermind.Consensus.Test\Nethermind.Consensus.Test.csproj", "{1343D865-029A-490F-A904-0015D10365F9}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -577,6 +579,10 @@ Global
 		{0BE1CD87-8A29-40A9-981D-692932E93408}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{0BE1CD87-8A29-40A9-981D-692932E93408}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{0BE1CD87-8A29-40A9-981D-692932E93408}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1343D865-029A-490F-A904-0015D10365F9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1343D865-029A-490F-A904-0015D10365F9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1343D865-029A-490F-A904-0015D10365F9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1343D865-029A-490F-A904-0015D10365F9}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -652,6 +658,7 @@ Global
 		{87ECA5BD-8DB0-4ED6-82FF-9F68D576A8E8} = {6466669A-B504-4E2E-9D20-C7E03FCF7D4F}
 		{1CA19A3B-0E9F-44E6-B9D4-0066E443BBD5} = {78BED57D-720E-4E6C-ABA2-397B73B494F9}
 		{643A1DD3-5DBE-44DB-B56D-9C3C5A46763F} = {1CA19A3B-0E9F-44E6-B9D4-0066E443BBD5}
+		{1343D865-029A-490F-A904-0015D10365F9} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
