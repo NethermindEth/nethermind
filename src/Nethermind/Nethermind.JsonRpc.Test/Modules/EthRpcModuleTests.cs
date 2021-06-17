@@ -148,6 +148,12 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
+        void eth_gas_price_price_under_value_should_remove_tx()
+        {
+            BlocktreeSetup blocktreeSetup = new BlocktreeSetup();
+            blocktreeSetup.ethRpcModule.eth_gasPrice(2).Should().Be(3); //should only leave 2,3,5,10 => 3/5 => 0.6, rounded to 1 => price should be 3
+        }
+        [Test]
         public void eth_gas_price_get_tx_from_more_blocks_if_num_tx_not_greater_than_limit()
         {
             Transaction[] transactions = new Transaction[]
@@ -194,6 +200,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             ResultWrapper<UInt256?> resultWrapper = blocktreeSetup.ethRpcModule.eth_gasPrice();
             resultWrapper.Data.Should().Be((UInt256?) 3); //tx prices: 0, 1, 3, 4, 4, 5, 5, 5, 5, 10, 20th percentile is 9/5 = 1.8 , rounded to 2 => price should be 3
         }
+        
+        
         public class BlocktreeSetup
         {
             private Transaction[] _transactions;
