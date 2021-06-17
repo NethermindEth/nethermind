@@ -70,45 +70,78 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
-        public async Task get_right_eth_gas_price()
+        public void get_right_percentile_of_gas_price()
         {
-            Transaction[] transactions = 
-            { //should i be worried about two tx with same hash?
-                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).WithGasPrice(1).WithNonce(0).TestObject,
-                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).WithGasPrice(2).WithNonce(0).TestObject,
-                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).WithGasPrice(3).WithNonce(0).TestObject,
-                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyD).WithGasPrice(0).WithNonce(0).TestObject,
-                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).WithGasPrice(10).WithNonce(1).TestObject,
-                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).WithGasPrice(5).WithNonce(1).TestObject,
-            };
-            
-            Block a = Build.A.Block.Genesis.WithKnownTransactions(new[] {transactions[0], transactions[1]}).TestObject;
-            Block b = Build.A.Block.WithNumber(1).WithParentHash(a.Hash).WithKnownTransactions(new[] {transactions[2]}).TestObject;
-            Block c = Build.A.Block.WithNumber(2).WithParentHash(b.Hash).WithKnownTransactions(new[] {transactions[3]}).TestObject;
-            Block d = Build.A.Block.WithNumber(3).WithParentHash(c.Hash).WithKnownTransactions(new[] {transactions[4]}).TestObject;
-            Block e = Build.A.Block.WithNumber(4).WithParentHash(d.Hash).WithKnownTransactions(new[] {transactions[5]}).TestObject;
-            Block[] blocks = {a, b, c, d, e};
-            
-            BlockTree blockTree = Build.A.BlockTree(blocks[0]).TestObject; //Genesis block not being added
-            foreach (Block block in blocks)
-            {
-                BlockTreeBuilder.AddBlock(blockTree, block);
-            }
-            EthRpcModule ethRpcModule = new EthRpcModule
-            (
-                Substitute.For<IJsonRpcConfig>(),
-                Substitute.For<IBlockchainBridge>(),
-                blockTree,
-                Substitute.For<IStateReader>(),
-                Substitute.For<ITxPool>(),
-                Substitute.For<ITxSender>(),
-                Substitute.For<IWallet>(),
-                Substitute.For<ILogManager>(),
-                Substitute.For<ISpecProvider>()
-            );
-            
-            ResultWrapper<UInt256?> resultWrapper = ethRpcModule.eth_gasPrice();
+            BlocktreeSetup blocktreeSetup = new BlocktreeSetup();
+            ResultWrapper<UInt256?> resultWrapper = blocktreeSetup.ethRpcModule.eth_gasPrice();
             resultWrapper.Data.Should().Be((UInt256?) 1); //Add new blocks with gas price 1,2,3,4,5,6
+        }
+
+        public class BlocktreeSetup
+        {
+            private Transaction[] _transactions;
+            private Block[] _blocks;
+            public BlockTree blockTree;
+            public EthRpcModule ethRpcModule;
+            public BlocktreeSetup(Block[] blocks = null)
+            {
+                if (blocks == null)
+                {
+                    _transactions = new Transaction[]
+                    {
+                        //should i be worried about two tx with same hash?
+                        Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).WithGasPrice(1).WithNonce(0)
+                            .TestObject,
+                        Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).WithGasPrice(2).WithNonce(0)
+                            .TestObject,
+                        Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).WithGasPrice(3).WithNonce(0)
+                            .TestObject,
+                        Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyD).WithGasPrice(0).WithNonce(0)
+                            .TestObject,
+                        Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).WithGasPrice(10).WithNonce(1)
+                            .TestObject,
+                        Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).WithGasPrice(5).WithNonce(1)
+                            .TestObject,
+                    };
+
+                    Block a = Build.A.Block.Genesis.WithKnownTransactions(new[] {_transactions[0], _transactions[1]})
+                        .TestObject;
+                    Block b = Build.A.Block.WithNumber(1).WithParentHash(a.Hash)
+                        .WithKnownTransactions(new[] {_transactions[2]}).TestObject;
+                    Block c = Build.A.Block.WithNumber(2).WithParentHash(b.Hash)
+                        .WithKnownTransactions(new[] {_transactions[3]}).TestObject;
+                    Block d = Build.A.Block.WithNumber(3).WithParentHash(c.Hash)
+                        .WithKnownTransactions(new[] {_transactions[4]}).TestObject;
+                    Block e = Build.A.Block.WithNumber(4).WithParentHash(d.Hash)
+                        .WithKnownTransactions(new[] {_transactions[5]}).TestObject;
+                    _blocks = new[] {a, b, c, d, e};
+                }
+                else
+                {
+                    _blocks = blocks;
+                }
+
+                blockTree = Build.A.BlockTree(_blocks[0]).TestObject; //Genesis block not being added
+                    foreach (Block block in _blocks)
+                    {
+                        BlockTreeBuilder.AddBlock(blockTree, block);
+                    }
+
+                    ethRpcModule = new EthRpcModule
+                    (
+                        Substitute.For<IJsonRpcConfig>(),
+                        Substitute.For<IBlockchainBridge>(),
+                        blockTree,
+                        Substitute.For<IStateReader>(),
+                        Substitute.For<ITxPool>(),
+                        Substitute.For<ITxSender>(),
+                        Substitute.For<IWallet>(),
+                        Substitute.For<ILogManager>(),
+                        Substitute.For<ISpecProvider>()
+                    );
+
+                }
+
         }
         
         [Test]
