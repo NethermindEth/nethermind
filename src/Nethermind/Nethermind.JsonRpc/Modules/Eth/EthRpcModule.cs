@@ -223,8 +223,10 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 Block? foundBlock = _blockFinder.FindBlock(blockNumber);
                 if (foundBlock != null)
                 {
-                    add_transactions_from_block_to_set(foundBlock, ref gasPrices, (UInt256) gasPriceLatest, ignoreUnder, blocksToGoBack * 2);
+                    add_transactions_from_block_to_set(foundBlock, ref gasPrices, (UInt256) gasPriceLatest, ignoreUnder, txLimit);
                 }
+
+                blockNumber--;
             }
 
             int finalIndex = (int) Math.Round(((gasPrices.Count - 1) * ((float) percentile / 100)));
