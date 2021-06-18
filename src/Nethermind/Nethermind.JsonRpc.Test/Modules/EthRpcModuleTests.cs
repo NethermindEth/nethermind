@@ -223,7 +223,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
-        public void eth_gas_price_blocks_less_than_blocks_to_check_should_be_successful()
+        public void eth_gas_price_blocks_available_less_than_blocks_to_check_should_be_successful()
         {
             Transaction[] transactions =
             {
