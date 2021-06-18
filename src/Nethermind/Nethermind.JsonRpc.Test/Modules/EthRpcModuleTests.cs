@@ -144,7 +144,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             BlocktreeSetup blocktreeSetup = new BlocktreeSetup(new Block[]{a, b, c, d, e, f});
 
             ResultWrapper<UInt256?> resultWrapper = blocktreeSetup.ethRpcModule.eth_gasPrice();
-            resultWrapper.Data.Should().Be((UInt256?) 4); //tx prices: 3,4,5,6,7,8,9,10,11,12 20th percentile is 10/5 = 2 , rounded to 2 => price should be 5
+            resultWrapper.Data.Should().Be((UInt256?) 5); //tx prices: 3,4,5,6,7,8,9,10,11,12 20th percentile is 10/5 = 2 , rounded to 2 => price should be 5
         }
 
         [Test]
@@ -178,40 +178,44 @@ namespace Nethermind.JsonRpc.Test.Modules
                     .TestObject,
                 Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).WithGasPrice(3).WithNonce(0)
                     .TestObject,
-                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyD).WithGasPrice(0).WithNonce(0)
+                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyD).WithGasPrice(4).WithNonce(0)
                     .TestObject,
-                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).WithGasPrice(10).WithNonce(1)
+                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).WithGasPrice(5).WithNonce(1)
                     .TestObject,
-                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).WithGasPrice(5).WithNonce(1)
+                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).WithGasPrice(7).WithNonce(1)
                     .TestObject,
-                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).WithGasPrice(5).WithNonce(2)
+                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).WithGasPrice(6).WithNonce(2)
                     .TestObject,
-                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).WithGasPrice(5).WithNonce(3)
+                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).WithGasPrice(9).WithNonce(3)
                     .TestObject,
-                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyD).WithGasPrice(4).WithNonce(1)
+                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyD).WithGasPrice(8).WithNonce(1)
                     .TestObject,
-                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).WithGasPrice(5).WithNonce(1)
+                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).WithGasPrice(11).WithNonce(1)
                     .TestObject,
-                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyD).WithGasPrice(4).WithNonce(2)
+                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyD).WithGasPrice(10).WithNonce(2)
+                    .TestObject,
+                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).WithGasPrice(12).WithNonce(2)
                     .TestObject,
             };
 
             Block a = Build.A.Block.Genesis.WithKnownTransactions(new[] {transactions[0], transactions[1]})
                 .TestObject;
             Block b = Build.A.Block.WithNumber(1).WithParentHash(a.Hash)
-                .WithKnownTransactions(new[] {transactions[2], transactions[3]}).TestObject;
+                .WithKnownTransactions(new[] {transactions[2], transactions[3]}).TestObject; //1 block left
             Block c = Build.A.Block.WithNumber(2).WithParentHash(b.Hash)
-                .WithKnownTransactions(new[] {transactions[4], transactions[5]}).TestObject;
+                .WithKnownTransactions(new[] {transactions[4]}).TestObject; //1 block left (8 transactions added, 2 more to go => 8 + 2 >= 10)
             Block d = Build.A.Block.WithNumber(3).WithParentHash(c.Hash)
-                .WithKnownTransactions(new[] {transactions[6], transactions[7]}).TestObject;
+                .WithKnownTransactions(new[] {transactions[5], transactions[6]}).TestObject; //2 blocks left, I
             Block e = Build.A.Block.WithNumber(4).WithParentHash(d.Hash)
-                .WithKnownTransactions(new[] {transactions[8], transactions[9]}).TestObject;
+                .WithKnownTransactions(new[] {transactions[7], transactions[8]}).TestObject; //3 blocks left, I
             Block f = Build.A.Block.WithNumber(5).WithParentHash(e.Hash)
-                .WithKnownTransactions(new[] {transactions[10]}).TestObject;
-            BlocktreeSetup blocktreeSetup = new BlocktreeSetup(new Block[]{a, b, c, d, e, f});
+                .WithKnownTransactions(new[] {transactions[9], transactions[10]}).TestObject; //4 blocks left
+            Block g = Build.A.Block.WithNumber(6).WithParentHash(f.Hash)
+                .WithKnownTransactions(new[] {transactions[11]}).TestObject; //5 blocks left
+            BlocktreeSetup blocktreeSetup = new BlocktreeSetup(new Block[]{a, b, c, d, e, f, g});
 
             ResultWrapper<UInt256?> resultWrapper = blocktreeSetup.ethRpcModule.eth_gasPrice();
-            resultWrapper.Data.Should().Be((UInt256?) 3); //tx prices: 0, 1, 3, 4, 4, 5, 5, 5, 5, 10, 20th percentile is 9/5 = 1.8 , rounded to 2 => price should be 3
+            resultWrapper.Data.Should().Be((UInt256?) 5); //tx prices: 3,4,5,6,7,8,9,10,11,12 20th percentile is 10/5 = 2 , rounded to 2 => price should be 5
         }
         
         

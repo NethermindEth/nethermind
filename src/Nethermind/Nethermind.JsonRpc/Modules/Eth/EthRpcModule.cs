@@ -235,7 +235,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
 
             int finalIndex = (int) Math.Round(((gasPrices.Count - 1) * ((float) percentile / 100)));
-            foreach (UInt256 gasPrice in gasPrices.Where(gasPrice => finalIndex-- <= 0))
+            foreach (UInt256 gasPrice in gasPrices.Where(_ => finalIndex-- <= 0))
             {
                 gasPriceLatest = gasPrice;
                 break;
