@@ -96,26 +96,42 @@ namespace Nethermind.Consensus.AuRa
         {
             if (!block.IsGenesis)
             {
-                BlockHeader? parentHeader = _blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None);
-                
-                ValidateGasLimit(block.Header, parentHeader);
-                ValidateTxs(block, parentHeader);
+                ValidateGasLimit(block);
+                ValidateTxs(block);
             }
         }
 
-        private void ValidateGasLimit(BlockHeader header, BlockHeader parentHeader)
+        private BlockHeader GetParentHeader(Block block) => 
+            _blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None)!;
+
+        private void ValidateGasLimit(Block block)
         {
+            BlockHeader parentHeader = GetParentHeader(block);
             long? expectedGasLimit = null;
-            if (_gasLimitOverride?.IsGasLimitValid(parentHeader, header.GasLimit, out expectedGasLimit) == false)
+            if (_gasLimitOverride?.IsGasLimitValid(parentHeader, block.GasLimit, out expectedGasLimit) == false)
             {
-                if (_logger.IsWarn) _logger.Warn($"Invalid gas limit for block {header.Number}, hash {header.Hash}, expected value from contract {expectedGasLimit}, but found {header.GasLimit}.");
-                throw new InvalidBlockException(header.Hash);
+                if (_logger.IsWarn) _logger.Warn($"Invalid gas limit for block {block.Number}, hash {block.Hash}, expected value from contract {expectedGasLimit}, but found {block.GasLimit}.");
+                throw new InvalidBlockException(block.Hash);
             }
         }
 
-        private void ValidateTxs(Block block, BlockHeader parentHeader)
+        private void ValidateTxs(Block block)
         {
-            (bool Allowed, string Reason)? TryRecoverSenderAddress(Transaction tx)
+            for (int i = 0; i < block.Transactions.Length; i++)
+            {
+                Transaction tx = block.Transactions[i];
+                (TxAction Action, string Reason) txCheck = CheckTx(tx, block);
+                if (txCheck.Action != TxAction.Add)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Proposed block is not valid {block.ToString(Block.Format.FullHashAndNumber)}. {tx.ToShortString()} doesn't have required permissions. Reason: {txCheck.Reason}.");
+                    throw new InvalidBlockException(block.Hash);
+                }
+            }
+        }
+
+        protected override (TxAction Action, string Reason) CheckTx(Transaction currentTx, Block block)
+        {
+            (bool Allowed, string Reason)? TryRecoverSenderAddress(Transaction tx, BlockHeader header)
             {
                 if (tx.Signature != null)
                 {
@@ -126,30 +142,33 @@ namespace Nethermind.Consensus.AuRa
                     {
                         if (_logger.IsWarn) _logger.Warn($"Transaction {tx.ToShortString()} in block {block.ToString(Block.Format.FullHashAndNumber)} had recovered sender address on validation.");
                         tx.SenderAddress = txSenderAddress;
-                        return _txFilter.IsAllowed(tx, parentHeader);
+                        return _txFilter.IsAllowed(tx, header);
                     }
                 }
 
                 return null;
             }
 
-            for (int i = 0; i < block.Transactions.Length; i++)
+            (TxAction Action, string Reason) baseResult = base.CheckTx(currentTx, block);
+            if (baseResult.Action != TxAction.Add)
             {
-                Transaction tx = block.Transactions[i];
-                (bool Allowed, string Reason) txFilterResult = _txFilter.IsAllowed(tx, parentHeader);
+                return baseResult;
+            }
+            else
+            {
+                BlockHeader parentHeader = GetParentHeader(block);
+                (bool Allowed, string Reason) txFilterResult = _txFilter.IsAllowed(currentTx, parentHeader);
                 if (!txFilterResult.Allowed)
                 {
-                    txFilterResult = TryRecoverSenderAddress(tx) ?? txFilterResult;
+                    txFilterResult = TryRecoverSenderAddress(currentTx, parentHeader) ?? txFilterResult;
                 }
 
-                if (!txFilterResult.Allowed)
-                {
-                    if (_logger.IsWarn) _logger.Warn($"Proposed block is not valid {block.ToString(Block.Format.FullHashAndNumber)}. {tx.ToShortString()} doesn't have required permissions. Reason: {txFilterResult.Reason}.");
-                    throw new InvalidBlockException(block.Hash);
-                }
+                return txFilterResult.Allowed 
+                    ? baseResult
+                    : (TxAction.Skip, txFilterResult.Reason);
             }
         }
-        
+
         private class NullAuRaValidator : IAuRaValidator
         {
             public Address[] Validators => Array.Empty<Address>();
