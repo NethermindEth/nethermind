@@ -349,7 +349,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
                 return addTxResult == AddTxResult.Added
                     ? ResultWrapper<Keccak>.Success(txHash)
-                    : ResultWrapper<Keccak>.Fail(addTxResult?.ToString() ?? "", ErrorCodes.TransactionRejected);
+                    : ResultWrapper<Keccak>.Fail(addTxResult?.ToString() ?? string.Empty, ErrorCodes.TransactionRejected);
             }
             catch (SecurityException e)
             {
