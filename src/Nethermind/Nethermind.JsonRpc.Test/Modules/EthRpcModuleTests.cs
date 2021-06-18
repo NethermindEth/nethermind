@@ -81,16 +81,16 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void eth_gas_price_one_when_block_have_no_tx()
         {
-            Block a = Build.A.Block.Genesis.WithKnownTransactions(Array.Empty<Transaction>())
+            Block a = Build.A.Block.Genesis.WithTransactions(Array.Empty<Transaction>())
                 .TestObject;
             Block b = Build.A.Block.WithNumber(1).WithParentHash(a.Hash)
-                .WithKnownTransactions(Array.Empty<Transaction>()).TestObject;
+                .WithTransactions(Array.Empty<Transaction>()).TestObject;
             Block c = Build.A.Block.WithNumber(2).WithParentHash(b.Hash)
-                .WithKnownTransactions(Array.Empty<Transaction>()).TestObject;
+                .WithTransactions(Array.Empty<Transaction>()).TestObject;
             Block d = Build.A.Block.WithNumber(3).WithParentHash(c.Hash)
-                .WithKnownTransactions(Array.Empty<Transaction>()).TestObject;
+                .WithTransactions(Array.Empty<Transaction>()).TestObject;
             Block e = Build.A.Block.WithNumber(4).WithParentHash(d.Hash)
-                .WithKnownTransactions(Array.Empty<Transaction>()).TestObject;
+                .WithTransactions(Array.Empty<Transaction>()).TestObject;
             BlocktreeSetup blocktreeSetup = new BlocktreeSetup(new Block[] {a, b, c, d, e});
 
             ResultWrapper<UInt256?> resultWrapper = blocktreeSetup.ethRpcModule.eth_gasPrice();
@@ -134,18 +134,18 @@ namespace Nethermind.JsonRpc.Test.Modules
                     .TestObject
             };
 
-            Block a = Build.A.Block.Genesis.WithKnownTransactions(new[] {transactions[0], transactions[1]})
+            Block a = Build.A.Block.Genesis.WithTransactions(new[] {transactions[0], transactions[1]})
                 .TestObject;
             Block b = Build.A.Block.WithNumber(1).WithParentHash(a.Hash)
-                .WithKnownTransactions(new[] {transactions[2], transactions[3]}).TestObject;
+                .WithTransactions(new[] {transactions[2], transactions[3]}).TestObject;
             Block c = Build.A.Block.WithNumber(2).WithParentHash(b.Hash)
-                .WithKnownTransactions(new[] {transactions[4], transactions[5]}).TestObject;
+                .WithTransactions(new[] {transactions[4], transactions[5]}).TestObject;
             Block d = Build.A.Block.WithNumber(3).WithParentHash(c.Hash)
-                .WithKnownTransactions(new[] {transactions[6], transactions[7]}).TestObject;
+                .WithTransactions(new[] {transactions[6], transactions[7]}).TestObject;
             Block e = Build.A.Block.WithNumber(4).WithParentHash(d.Hash)
-                .WithKnownTransactions(new[] {transactions[8], transactions[9]}).TestObject;
+                .WithTransactions(new[] {transactions[8], transactions[9]}).TestObject;
             Block f = Build.A.Block.WithNumber(5).WithParentHash(e.Hash)
-                .WithKnownTransactions(new[] {transactions[10], transactions[11]}).TestObject;
+                .WithTransactions(new[] {transactions[10], transactions[11]}).TestObject;
             BlocktreeSetup blocktreeSetup = new BlocktreeSetup(new Block[]{a, b, c, d, e, f});
 
             ResultWrapper<UInt256?> resultWrapper = blocktreeSetup.ethRpcModule.eth_gasPrice();
@@ -161,7 +161,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             Transaction b = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).WithGasPrice(8).WithNonce(3)
                 .TestObject;
 
-            Block a1 = Build.A.Block.WithNumber(5).WithKnownTransactions(new Transaction[] {a, b})
+            Block a1 = Build.A.Block.WithNumber(5).WithTransactions(new Transaction[] {a, b})
                 .WithParentHash(blocktreeSetup._blocks[^1].Hash).TestObject;
             BlocktreeSetup blockTreeSetup2 = new BlocktreeSetup(new Block[]{a1}, true);
             
@@ -202,20 +202,20 @@ namespace Nethermind.JsonRpc.Test.Modules
                     .TestObject,
             };
 
-            Block a = Build.A.Block.Genesis.WithKnownTransactions(new[] {transactions[0], transactions[1]})
+            Block a = Build.A.Block.Genesis.WithTransactions(new[] {transactions[0], transactions[1]})
                 .TestObject;
             Block b = Build.A.Block.WithNumber(1).WithParentHash(a.Hash)
-                .WithKnownTransactions(new[] {transactions[2], transactions[3]}).TestObject; //1 block left
+                .WithTransactions(new[] {transactions[2], transactions[3]}).TestObject; //1 block left
             Block c = Build.A.Block.WithNumber(2).WithParentHash(b.Hash)
-                .WithKnownTransactions(new[] {transactions[4]}).TestObject; //1 block left (8 transactions added, 2 more to go => 8 + 2 >= 10)
+                .WithTransactions(new[] {transactions[4]}).TestObject; //1 block left (8 transactions added, 2 more to go => 8 + 2 >= 10)
             Block d = Build.A.Block.WithNumber(3).WithParentHash(c.Hash)
-                .WithKnownTransactions(new[] {transactions[5], transactions[6]}).TestObject; //2 blocks left, I
+                .WithTransactions(new[] {transactions[5], transactions[6]}).TestObject; //2 blocks left, I
             Block e = Build.A.Block.WithNumber(4).WithParentHash(d.Hash)
-                .WithKnownTransactions(new[] {transactions[7], transactions[8]}).TestObject; //3 blocks left, I
+                .WithTransactions(new[] {transactions[7], transactions[8]}).TestObject; //3 blocks left, I
             Block f = Build.A.Block.WithNumber(5).WithParentHash(e.Hash)
-                .WithKnownTransactions(new[] {transactions[9], transactions[10]}).TestObject; //4 blocks left
+                .WithTransactions(new[] {transactions[9], transactions[10]}).TestObject; //4 blocks left
             Block g = Build.A.Block.WithNumber(6).WithParentHash(f.Hash)
-                .WithKnownTransactions(new[] {transactions[11]}).TestObject; //5 blocks left
+                .WithTransactions(new[] {transactions[11]}).TestObject; //5 blocks left
             BlocktreeSetup blocktreeSetup = new BlocktreeSetup(new Block[]{a, b, c, d, e, f, g});
 
             ResultWrapper<UInt256?> resultWrapper = blocktreeSetup.ethRpcModule.eth_gasPrice();
@@ -241,14 +241,14 @@ namespace Nethermind.JsonRpc.Test.Modules
                     .TestObject
             };
             
-            Block a = Build.A.Block.Genesis.WithKnownTransactions(new[] {transactions[0], transactions[1]})
+            Block a = Build.A.Block.Genesis.WithTransactions(new[] {transactions[0], transactions[1]})
                 .TestObject;
             Block b = Build.A.Block.WithNumber(1).WithParentHash(a.Hash)
-                .WithKnownTransactions(new[] {transactions[2]}).TestObject;
+                .WithTransactions(new[] {transactions[2]}).TestObject;
             Block c = Build.A.Block.WithNumber(2).WithParentHash(b.Hash)
-                .WithKnownTransactions(new[] {transactions[3]}).TestObject;
+                .WithTransactions(new[] {transactions[3]}).TestObject;
             Block d = Build.A.Block.WithNumber(3).WithParentHash(c.Hash)
-                .WithKnownTransactions(new[] {transactions[4], transactions[5]}).TestObject;
+                .WithTransactions(new[] {transactions[4], transactions[5]}).TestObject;
 
             BlocktreeSetup blocktreeSetup = new BlocktreeSetup(new Block[] {a, b, c, d});
             ResultWrapper<UInt256?> resultWrapper = blocktreeSetup.ethRpcModule.eth_gasPrice();
@@ -283,16 +283,16 @@ namespace Nethermind.JsonRpc.Test.Modules
                             .TestObject,
                     };
 
-                    Block a = Build.A.Block.Genesis.WithKnownTransactions(new[] {_transactions[0], _transactions[1]})
+                    Block a = Build.A.Block.Genesis.WithTransactions(new[] {_transactions[0], _transactions[1]})
                         .TestObject;
                     Block b = Build.A.Block.WithNumber(1).WithParentHash(a.Hash)
-                        .WithKnownTransactions(new[] {_transactions[2]}).TestObject;
+                        .WithTransactions(new[] {_transactions[2]}).TestObject;
                     Block c = Build.A.Block.WithNumber(2).WithParentHash(b.Hash)
-                        .WithKnownTransactions(new[] {_transactions[3]}).TestObject;
+                        .WithTransactions(new[] {_transactions[3]}).TestObject;
                     Block d = Build.A.Block.WithNumber(3).WithParentHash(c.Hash)
-                        .WithKnownTransactions(new[] {_transactions[4]}).TestObject;
+                        .WithTransactions(new[] {_transactions[4]}).TestObject;
                     Block e = Build.A.Block.WithNumber(4).WithParentHash(d.Hash)
-                        .WithKnownTransactions(new[] {_transactions[5]}).TestObject; //Tx Prices: 1,2,3,4,5,6, Index: (6-1)/5 = 1 => Gas Price should be 2 (if no tx added)
+                        .WithTransactions(new[] {_transactions[5]}).TestObject; //Tx Prices: 1,2,3,4,5,6, Index: (6-1)/5 = 1 => Gas Price should be 2 (if no tx added)
                     _blocks = new[] {a, b, c, d, e};
                     if (addBlocks)
                     {

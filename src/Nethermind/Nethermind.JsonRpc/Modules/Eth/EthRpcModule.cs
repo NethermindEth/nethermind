@@ -142,7 +142,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return ResultWrapper<UInt256?>.Success(0);
         }
 
-        private bool add_transactions_from_block_to_set(Block block, ref SortedSet<UInt256> sortedSet, UInt256 finalPrice, UInt256? ignoreUnder = null, long? maxCount = null)
+        private bool AddTransactionsFromBlockToSet(Block block, ref SortedSet<UInt256> sortedSet, UInt256 finalPrice, UInt256? ignoreUnder = null, long? maxCount = null)
         {
             ignoreUnder ??= UInt256.Zero;
             int length = block.Transactions.Length;
@@ -152,7 +152,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 for (int index = 0; index < length && (maxCount == null || sortedSet.Count < maxCount); index++)
                 {
                     Transaction transaction = block.Transactions[index];
-                    if (transaction.GasPrice >= ignoreUnder)
+                    if (!transaction.IsEip1559 && transaction.GasPrice >= ignoreUnder)
                     {
                         sortedSet.Add(transaction.GasPrice);
                         added++;
@@ -181,7 +181,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             while (headBlockNumber >= genesisBlockNumber) //should this be latestBlock or headBlock?
             {
-                Transaction[] transactions = _blockFinder.FindBlock(headBlockNumber)!.Transactions;
+                Transaction[] transactions = _blockFinder.FindBlock(headBlockNumber)!.Transactions.Where(t=> !t.IsEip1559).ToArray();
                 if (transactions.Length > 0)
                 {
                     latestGasPrice = transactions[^1].GasPrice;
@@ -194,7 +194,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
             latestGasPrice = 1; //do we want to throw an error if there are no transactions? Do we want to set lastPrice to 1 when we cannot find latestPrice in tx?
         }
         
-        [Todo("Gas pricer to be implemented")]
         public ResultWrapper<UInt256?> eth_gasPrice(UInt256? ignoreUnder = null)
         {
             Block headBlock = _blockFinder.FindHeadBlock();
@@ -225,7 +224,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 Block? foundBlock = _blockFinder.FindBlock(blockNumber);
                 if (foundBlock != null)
                 {
-                    bool result = add_transactions_from_block_to_set(foundBlock, ref gasPrices, (UInt256) gasPriceLatest, ignoreUnder);
+                    bool result = AddTransactionsFromBlockToSet(foundBlock, ref gasPrices, (UInt256) gasPriceLatest, ignoreUnder);
                     if (result || gasPrices.Count + blocksToGoBack >= threshold) //if we only added one transaction, we don't reduce blocksToGoBack if second condition holds
                     {
                         blocksToGoBack--;

@@ -79,10 +79,6 @@ namespace Nethermind.Core.Test.Builders
             return WithTransactions(txs);
         }
 
-        public BlockBuilder WithKnownTransactions(Transaction[] transactions)
-        {
-            return WithTransactions(transactions);
-        }
         
         public BlockBuilder WithTransactions(int txCount, ISpecProvider specProvider)
         {
