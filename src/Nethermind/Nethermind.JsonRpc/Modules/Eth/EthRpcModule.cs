@@ -21,7 +21,6 @@ using System.Security;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using Jint.Native;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
