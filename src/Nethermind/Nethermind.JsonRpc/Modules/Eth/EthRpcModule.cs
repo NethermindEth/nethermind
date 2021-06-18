@@ -142,7 +142,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return ResultWrapper<UInt256?>.Success(0);
         }
 
-        private bool AddTransactionsFromBlockToSet(Block block, ref SortedSet<UInt256> sortedSet, UInt256 finalPrice, UInt256? ignoreUnder = null, long? maxCount = null)
+        private bool eth_addTxFromBlockToSet(Block block, ref SortedSet<UInt256> sortedSet, UInt256 finalPrice, UInt256? ignoreUnder = null, long? maxCount = null)
         {
             ignoreUnder ??= UInt256.Zero;
             int length = block.Transactions.Length;
@@ -177,7 +177,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
         }
 
-        private void latest_gas_price(long headBlockNumber, long genesisBlockNumber, ref UInt256? latestGasPrice)
+        private void eth_latestGasPrice(long headBlockNumber, long genesisBlockNumber, ref UInt256? latestGasPrice)
         {
             while (headBlockNumber >= genesisBlockNumber) //should this be latestBlock or headBlock?
             {
@@ -212,7 +212,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             const int percentile = 20;
             long threshold = blocksToGoBack * 2;
             UInt256? gasPriceLatest = null;
-            latest_gas_price(headBlock!.Number, genesisBlock!.Number, ref gasPriceLatest);
+            eth_latestGasPrice(headBlock!.Number, genesisBlock!.Number, ref gasPriceLatest);
             if (gasPriceLatest == null)
             {
                 return ResultWrapper<UInt256?>.Fail("gasPriceLatest was not set properly.");
@@ -224,7 +224,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 Block? foundBlock = _blockFinder.FindBlock(blockNumber);
                 if (foundBlock != null)
                 {
-                    bool result = AddTransactionsFromBlockToSet(foundBlock, ref gasPrices, (UInt256) gasPriceLatest, ignoreUnder);
+                    bool result = eth_addTxFromBlockToSet(foundBlock, ref gasPrices, (UInt256) gasPriceLatest, ignoreUnder);
                     if (result || gasPrices.Count + blocksToGoBack >= threshold) //if we only added one transaction, we don't reduce blocksToGoBack if second condition holds
                     {
                         blocksToGoBack--;
