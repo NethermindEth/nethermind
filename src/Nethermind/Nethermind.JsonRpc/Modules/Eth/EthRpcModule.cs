@@ -21,6 +21,7 @@ using System.Security;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Jint.Native;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
@@ -142,10 +143,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return ResultWrapper<UInt256?>.Success(0);
         }
 
-        private void add_transactions_from_block_to_set(Block block, ref SortedSet<UInt256> sortedSet, UInt256 finalPrice, UInt256? ignoreUnder = null, long? maxCount = null)
+        private bool add_transactions_from_block_to_set(Block block, ref SortedSet<UInt256> sortedSet, UInt256 finalPrice, UInt256? ignoreUnder = null, long? maxCount = null)
         {
             ignoreUnder ??= UInt256.Zero;
             int length = block.Transactions.Length;
+            int added = 0;
             if (length > 0)
             {
                 for (int index = 0; index < length && (maxCount == null || sortedSet.Count < maxCount); index++)
@@ -154,17 +156,36 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     if (transaction.GasPrice >= ignoreUnder)
                     {
                         sortedSet.Add(transaction.GasPrice);
+                        added++;
                     }
+                }
+
+                switch (added)
+                {
+                    case 0:
+                        sortedSet.Add(finalPrice);
+                        return (false);
+                    case 1:
+                        return (false);
+                    default:
+                        return true;
                 }
             }
             else
             {
                 sortedSet.Add(finalPrice);
+                return false;
             }
         }
 
         private void latest_gas_price(long headBlockNumber, long genesisBlockNumber, ref UInt256? latestGasPrice)
         {
+            if (genesisBlockNumber == headBlockNumber)
+            {
+                latestGasPrice = 1;
+                return;
+            }
+            
             while (headBlockNumber >= genesisBlockNumber) //should this be latestBlock or headBlock?
             {
                 Transaction[] transactions = _blockFinder.FindBlock(headBlockNumber)!.Transactions;
@@ -173,37 +194,35 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     latestGasPrice = transactions[^1].GasPrice;
                     return;
                 }
+
                 headBlockNumber--;
             }
         }
-
+        
         [Todo("Gas pricer to be implemented")]
         public ResultWrapper<UInt256?> eth_gasPrice(UInt256? ignoreUnder = null)
         {
             Block latestBlock = _blockFinder.FindLatestBlock();
             Block headBlock = _blockFinder.FindHeadBlock();
             Block genesisBlock = _blockFinder.FindGenesisBlock();
+            if (headBlock == null || genesisBlock == null)
+            {
+                return ResultWrapper<UInt256?>.Fail("The head block or genesis block had a null value.");
+            }
             Comparer<UInt256> comparer = Comparer<UInt256>.Create(((a, b) =>
             {
                 int res = a.CompareTo(b);
-                if (res == 0)
-                {
-                    return (1);
-                }
-                else
-                {
-                    return (res);
-                }
+                return res == 0 ? 1 : res;
             })); 
             SortedSet<UInt256> gasPrices = new(comparer); //allows duplicates
             long blocksToGoBack = 5;
             const int percentile = 20;
-            long txLimit = blocksToGoBack * 2;
-            UInt256? gasPriceLatest = null;
+            long threshold = blocksToGoBack * 2;
+            UInt256? gasPriceLatest = headBlock.Number == genesisBlock.Number ? 1 : null;
             latest_gas_price(headBlock!.Number, genesisBlock!.Number, ref gasPriceLatest);
             if (gasPriceLatest == null) //this means that there were no transactions to get the value of
             {
-                return ResultWrapper<UInt256?>.Fail("There are no gas price values to choose from.");
+                return ResultWrapper<UInt256?>.Fail("There are no transactions to get gas price values from.");
             }
             long blockNumber = headBlock!.Number; //if latest gas price doesn't exist, start from head block and find blocksToGoBack # of gas prices
 
@@ -212,20 +231,12 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 Block? foundBlock = _blockFinder.FindBlock(blockNumber);
                 if (foundBlock != null)
                 {
-                    add_transactions_from_block_to_set(foundBlock, ref gasPrices, (UInt256) gasPriceLatest, ignoreUnder);
-                    blocksToGoBack--;
+                    bool result = add_transactions_from_block_to_set(foundBlock, ref gasPrices, (UInt256) gasPriceLatest, ignoreUnder);
+                    if (result || gasPrices.Count + blocksToGoBack >= threshold)
+                    {
+                        blocksToGoBack--;
+                    }
                 }
-                blockNumber--;
-            }
-
-            while (gasPrices.Count < txLimit && blockNumber > genesisBlock!.Number - 1) //is this always 0? to add more transactions if not enough
-            {
-                Block? foundBlock = _blockFinder.FindBlock(blockNumber);
-                if (foundBlock != null)
-                {
-                    add_transactions_from_block_to_set(foundBlock, ref gasPrices, (UInt256) gasPriceLatest, ignoreUnder, txLimit);
-                }
-
                 blockNumber--;
             }
 
