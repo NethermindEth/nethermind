@@ -64,7 +64,7 @@ namespace Nethermind.Evm
 
         public void CallAndRestore(Transaction transaction, BlockHeader block, ITxTracer txTracer)
         {
-            Execute(transaction, block, txTracer, ExecutionOptions.Restore);
+            Execute(transaction, block, txTracer, ExecutionOptions.Restore | ExecutionOptions.Commit);
         }
 
         public bool BuildUp(Transaction transaction, BlockHeader block, ITxTracer txTracer)
@@ -101,6 +101,8 @@ namespace Nethermind.Evm
             bool notSystemTransaction = !transaction.IsSystem();
             bool restore = (executionOptions & ExecutionOptions.Restore) != ExecutionOptions.None;
             bool commit = (executionOptions & ExecutionOptions.Commit) != ExecutionOptions.None;
+
+            bool deleteCallerAccount = false;
             
             IReleaseSpec spec = _specProvider.GetSpec(block.Number);
             if (!notSystemTransaction)
@@ -168,6 +170,7 @@ namespace Nethermind.Evm
                     TraceLogInvalidTx(transaction, $"SENDER_ACCOUNT_DOES_NOT_EXIST {caller}");
                     if (restore || gasPrice == UInt256.Zero)
                     {
+                        deleteCallerAccount = restore;
                         _stateProvider.CreateAccount(caller, UInt256.Zero);
                     }
                 }
@@ -352,20 +355,15 @@ namespace Nethermind.Evm
                 }
             }
 
-            if (!restore)
-            {
-                if (commit)
-                {
-                    _storageProvider.Commit(txTracer.IsTracingState ? txTracer : NullStorageTracer.Instance);
-                    _stateProvider.Commit(spec, txTracer.IsTracingState ? txTracer : NullStateTracer.Instance);
-                }
-            }
-            else
+            if (restore && commit)
             {
                 _storageProvider.Reset();
                 _stateProvider.Reset();
-
-                if (commit)
+                if (deleteCallerAccount)
+                {
+                    _stateProvider.DeleteAccount(caller);
+                }
+                else
                 {
                     _stateProvider.AddToBalance(caller, senderReservedGasPayment, spec);
                     if (notSystemTransaction)
@@ -376,8 +374,13 @@ namespace Nethermind.Evm
                     _stateProvider.Commit(spec);
                 }
             }
+            else if (commit)
+            {
+                _storageProvider.Commit(txTracer.IsTracingState ? txTracer : NullStorageTracer.Instance);
+                _stateProvider.Commit(spec, txTracer.IsTracingState ? txTracer : NullStateTracer.Instance);
+            }
 
-            if (!restore && notSystemTransaction)
+            if (commit && notSystemTransaction)
             {
                 block.GasUsed += spentGas;
             }
