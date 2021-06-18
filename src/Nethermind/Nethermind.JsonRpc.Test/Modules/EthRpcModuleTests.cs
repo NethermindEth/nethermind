@@ -71,11 +71,11 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
-        public void eth_gas_price_get_right_percentile_with_blocks_equal_to_check_Blocks()
+        public void eth_gas_price_get_right_percentile_with_blockcount_equal_to_blocks_to_check()
         {
             BlocktreeSetup blocktreeSetup = new BlocktreeSetup();
             ResultWrapper<UInt256?> resultWrapper = blocktreeSetup.ethRpcModule.eth_gasPrice();
-            resultWrapper.Data.Should().Be((UInt256?) 1); //Add new blocks with gas price 1,2,3,4,5,6
+            resultWrapper.Data.Should().Be((UInt256?) 2); //Add new blocks with gas price 1,2,3,4,5,6, 5/5 = 1 => gas price should be 2
         }
 
         [Test]
@@ -97,6 +97,11 @@ namespace Nethermind.JsonRpc.Test.Modules
             resultWrapper.Data.Should().Be((UInt256?) 1);
         }
 
+        Transaction build_a_transaction_hash_gasprice_and_nonce(PrivateKey hash, UInt256 gasPrice, UInt256 nonce)
+        {
+            return Build.A.Transaction.SignedAndResolved(hash).WithGasPrice(gasPrice).WithNonce(nonce).TestObject;
+        }
+        
         [Test]
         public void eth_gas_price_get_tx_from_min_blocks_if_num_tx_greater_than_limit()
         {
@@ -126,7 +131,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyD).WithGasPrice(10).WithNonce(2)
                     .TestObject,
                 Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).WithGasPrice(12).WithNonce(2)
-                    .TestObject,
+                    .TestObject
             };
 
             Block a = Build.A.Block.Genesis.WithKnownTransactions(new[] {transactions[0], transactions[1]})
@@ -148,7 +153,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
-        public void eth_gas_price_price_under_value_should_remove_tx()
+        public void eth_gas_price_should_remove_tx_when_txgasprices_are_under_threshold()
         {
             BlocktreeSetup blocktreeSetup = new BlocktreeSetup();
             Transaction a = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).WithGasPrice(7).WithNonce(2)
@@ -166,7 +171,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         
         
         [Test]
-        public void eth_gas_price_get_tx_from_more_blocks_if_num_tx_not_greater_than_limit()
+        public void eth_gas_price_get_tx_from_more_blocks_if_tx_count_not_greater_than_limit()
         {
             Transaction[] transactions = new Transaction[]
             {
@@ -216,7 +221,39 @@ namespace Nethermind.JsonRpc.Test.Modules
             ResultWrapper<UInt256?> resultWrapper = blocktreeSetup.ethRpcModule.eth_gasPrice();
             resultWrapper.Data.Should().Be((UInt256?) 5); //tx prices: 3,4,5,6,7,8,9,10,11,12 20th percentile is 10/5 = 2 , rounded to 2 => price should be 5
         }
-        
+
+        [Test]
+        public void eth_gas_price_blocks_less_than_blocks_to_check_should_be_successful()
+        {
+            Transaction[] transactions =
+            {
+                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).WithGasPrice(1).WithNonce(0)
+                    .TestObject,
+                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).WithGasPrice(2).WithNonce(0)
+                    .TestObject,
+                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).WithGasPrice(3).WithNonce(0)
+                    .TestObject,
+                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyD).WithGasPrice(5).WithNonce(0)
+                    .TestObject,
+                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).WithGasPrice(4).WithNonce(1)
+                    .TestObject,
+                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).WithGasPrice(6).WithNonce(1)
+                    .TestObject
+            };
+            
+            Block a = Build.A.Block.Genesis.WithKnownTransactions(new[] {transactions[0], transactions[1]})
+                .TestObject;
+            Block b = Build.A.Block.WithNumber(1).WithParentHash(a.Hash)
+                .WithKnownTransactions(new[] {transactions[2]}).TestObject;
+            Block c = Build.A.Block.WithNumber(2).WithParentHash(b.Hash)
+                .WithKnownTransactions(new[] {transactions[3]}).TestObject;
+            Block d = Build.A.Block.WithNumber(3).WithParentHash(c.Hash)
+                .WithKnownTransactions(new[] {transactions[4], transactions[5]}).TestObject;
+
+            BlocktreeSetup blocktreeSetup = new BlocktreeSetup(new Block[] {a, b, c, d});
+            ResultWrapper<UInt256?> resultWrapper = blocktreeSetup.ethRpcModule.eth_gasPrice();
+            resultWrapper.Data.Should().Be((UInt256?) 2); //tx prices: 1,2,3,4,5,6 20th percentile is 5/5 = 1 => price should be 2
+        }
         
         public class BlocktreeSetup
         {
