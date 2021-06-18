@@ -109,23 +109,23 @@ namespace Nethermind.JsonRpc.Test.Modules
                     .TestObject,
                 Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).WithGasPrice(3).WithNonce(0)
                     .TestObject,
-                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyD).WithGasPrice(0).WithNonce(0)
+                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyD).WithGasPrice(4).WithNonce(0)
                     .TestObject,
-                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).WithGasPrice(10).WithNonce(1)
+                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).WithGasPrice(5).WithNonce(1)
                     .TestObject,
-                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).WithGasPrice(5).WithNonce(1)
+                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).WithGasPrice(7).WithNonce(1)
                     .TestObject,
-                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).WithGasPrice(5).WithNonce(2)
+                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).WithGasPrice(6).WithNonce(2)
                     .TestObject,
-                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).WithGasPrice(5).WithNonce(3)
+                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).WithGasPrice(9).WithNonce(3)
                     .TestObject,
-                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyD).WithGasPrice(4).WithNonce(1)
+                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyD).WithGasPrice(8).WithNonce(1)
                     .TestObject,
-                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).WithGasPrice(5).WithNonce(1)
+                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).WithGasPrice(11).WithNonce(1)
                     .TestObject,
-                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyD).WithGasPrice(4).WithNonce(2)
+                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyD).WithGasPrice(10).WithNonce(2)
                     .TestObject,
-                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).WithGasPrice(5).WithNonce(2)
+                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).WithGasPrice(12).WithNonce(2)
                     .TestObject,
             };
 
@@ -144,7 +144,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             BlocktreeSetup blocktreeSetup = new BlocktreeSetup(new Block[]{a, b, c, d, e, f});
 
             ResultWrapper<UInt256?> resultWrapper = blocktreeSetup.ethRpcModule.eth_gasPrice();
-            resultWrapper.Data.Should().Be((UInt256?) 4); //tx prices: 0, 3, 4, 4, 5, 5, 5, 5, 5, 10, 20th percentile is 9/5 = 1.8 , rounded to 2 => price should be 4
+            resultWrapper.Data.Should().Be((UInt256?) 4); //tx prices: 3,4,5,6,7,8,9,10,11,12 20th percentile is 10/5 = 2 , rounded to 2 => price should be 5
         }
 
         [Test]

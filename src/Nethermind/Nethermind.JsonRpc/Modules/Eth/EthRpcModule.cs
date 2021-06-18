@@ -179,12 +179,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         private void latest_gas_price(long headBlockNumber, long genesisBlockNumber, ref UInt256? latestGasPrice)
         {
-            if (genesisBlockNumber == headBlockNumber)
-            {
-                latestGasPrice = 1;
-                return;
-            }
-            
             while (headBlockNumber >= genesisBlockNumber) //should this be latestBlock or headBlock?
             {
                 Transaction[] transactions = _blockFinder.FindBlock(headBlockNumber)!.Transactions;
@@ -196,12 +190,13 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
                 headBlockNumber--;
             }
+
+            latestGasPrice = 1; //do we want to throw an error if there are no transactions? Do we want to set lastPrice to 1 for everything?
         }
         
         [Todo("Gas pricer to be implemented")]
         public ResultWrapper<UInt256?> eth_gasPrice(UInt256? ignoreUnder = null)
         {
-            Block latestBlock = _blockFinder.FindLatestBlock();
             Block headBlock = _blockFinder.FindHeadBlock();
             Block genesisBlock = _blockFinder.FindGenesisBlock();
             if (headBlock == null || genesisBlock == null)
@@ -217,13 +212,13 @@ namespace Nethermind.JsonRpc.Modules.Eth
             long blocksToGoBack = 5;
             const int percentile = 20;
             long threshold = blocksToGoBack * 2;
-            UInt256? gasPriceLatest = headBlock.Number == genesisBlock.Number ? 1 : null;
+            UInt256? gasPriceLatest = null;
             latest_gas_price(headBlock!.Number, genesisBlock!.Number, ref gasPriceLatest);
-            if (gasPriceLatest == null) //this means that there were no transactions to get the value of
+            if (gasPriceLatest == null)
             {
-                return ResultWrapper<UInt256?>.Fail("There are no transactions to get gas price values from.");
+                return ResultWrapper<UInt256?>.Fail("gasPriceLatest was not set properly.");
             }
-            long blockNumber = headBlock!.Number; //if latest gas price doesn't exist, start from head block and find blocksToGoBack # of gas prices
+            long blockNumber = headBlock!.Number; 
 
             while (blocksToGoBack > 0 && blockNumber > genesisBlock!.Number - 1) //else, go back "blockNumber" valid gas prices from genesisBlock
             {
@@ -231,7 +226,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 if (foundBlock != null)
                 {
                     bool result = add_transactions_from_block_to_set(foundBlock, ref gasPrices, (UInt256) gasPriceLatest, ignoreUnder);
-                    if (result || gasPrices.Count + blocksToGoBack >= threshold)
+                    if (result || gasPrices.Count + blocksToGoBack >= threshold) //if we only added one transaction, we don't reduce blocksToGoBack if second condition holds
                     {
                         blocksToGoBack--;
                     }
