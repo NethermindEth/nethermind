@@ -79,7 +79,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
-        public void eth_gas_price_return_error_when_block_have_no_tx()
+        public void eth_gas_price_one_when_block_have_no_tx()
         {
             Block a = Build.A.Block.Genesis.WithKnownTransactions(Array.Empty<Transaction>())
                 .TestObject;
@@ -94,7 +94,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             BlocktreeSetup blocktreeSetup = new BlocktreeSetup(new Block[] {a, b, c, d, e});
 
             ResultWrapper<UInt256?> resultWrapper = blocktreeSetup.ethRpcModule.eth_gasPrice();
-            resultWrapper.Result.Should().BeEquivalentTo(Result.Fail("There are no gas price values to choose from."));
+            resultWrapper.Data.Should().Be((UInt256?) 1);
         }
 
         [Test]
@@ -151,18 +151,17 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void eth_gas_price_price_under_value_should_remove_tx()
         {
             BlocktreeSetup blocktreeSetup = new BlocktreeSetup();
-            blocktreeSetup.ethRpcModule.eth_gasPrice(2).Should().Be(3); //should only leave 2,3,5,10 => 3/5 => 0.6, rounded to 1 => price should be 3
-
-            
-            Transaction a = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).WithGasPrice(2).WithNonce(2)
+            Transaction a = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).WithGasPrice(7).WithNonce(2)
                 .TestObject;
-            Transaction b = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).WithGasPrice(5).WithNonce(3)
+            Transaction b = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).WithGasPrice(8).WithNonce(3)
                 .TestObject;
 
-            Block a1 = Build.A.Block.WithKnownTransactions(new Transaction[] {a, b})
+            Block a1 = Build.A.Block.WithNumber(5).WithKnownTransactions(new Transaction[] {a, b})
                 .WithParentHash(blocktreeSetup._blocks[^1].Hash).TestObject;
             BlocktreeSetup blockTreeSetup2 = new BlocktreeSetup(new Block[]{a1}, true);
-            blockTreeSetup2.ethRpcModule.eth_gasPrice(2).Should().Be(2); //should only leave 2,2,3,5,5,10 => 5/5 => 1, rounded to 1 => price should be 2
+            
+            blocktreeSetup.ethRpcModule.eth_gasPrice(2).Data.Should().Be((UInt256?) 3); //should only leave 2,3,4,5,6 => 5/5 => 0.6, rounded to 1 => price should be 3
+            blockTreeSetup2.ethRpcModule.eth_gasPrice(3).Data.Should().Be((UInt256?) 4); //should only leave 3,4,5,6,7,8 => 7/5 => 1.4, rounded to 1 => price should be 4
         }
         
         
@@ -239,11 +238,11 @@ namespace Nethermind.JsonRpc.Test.Modules
                             .TestObject,
                         Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).WithGasPrice(3).WithNonce(0)
                             .TestObject,
-                        Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyD).WithGasPrice(0).WithNonce(0)
+                        Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyD).WithGasPrice(5).WithNonce(0)
                             .TestObject,
-                        Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).WithGasPrice(10).WithNonce(1)
+                        Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).WithGasPrice(4).WithNonce(1)
                             .TestObject,
-                        Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).WithGasPrice(5).WithNonce(1)
+                        Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).WithGasPrice(6).WithNonce(1)
                             .TestObject,
                     };
 

@@ -191,7 +191,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 headBlockNumber--;
             }
 
-            latestGasPrice = 1; //do we want to throw an error if there are no transactions? Do we want to set lastPrice to 1 for everything?
+            latestGasPrice = 1; //do we want to throw an error if there are no transactions? Do we want to set lastPrice to 1 when we cannot find latestPrice in tx?
         }
         
         [Todo("Gas pricer to be implemented")]
@@ -244,11 +244,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return ResultWrapper<UInt256?>.Success(gasPriceLatest);
         }
         
-        public ResultWrapper<UInt256?> return_result(UInt256? num)
-        {
-            return ResultWrapper<UInt256?>.Success(num);
-        }
-
         public ResultWrapper<IEnumerable<Address>> eth_accounts()
         {
             try
