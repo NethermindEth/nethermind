@@ -75,7 +75,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             BlocktreeSetup blocktreeSetup = new BlocktreeSetup();
             ResultWrapper<UInt256?> resultWrapper = blocktreeSetup.ethRpcModule.eth_gasPrice();
-            resultWrapper.Data.Should().Be((UInt256?) 2); //Add new blocks with gas price 1,2,3,4,5,6, 5/5 = 1 => gas price should be 2
+            resultWrapper.Data.Should().Be((UInt256?) 2); //Tx Prices: 1,2,3,4,5,6, Index: (6-1)/5 = 1 => Gas Price should be 2
         }
 
         [Test]
@@ -103,7 +103,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
         
         [Test]
-        public void eth_gas_price_get_tx_from_min_blocks_if_num_tx_greater_than_limit()
+        public void eth_gas_price_get_tx_from_min_blocks_if_num_tx_greater_than_or_equal_to_limit()
         {
             Transaction[] transactions = new Transaction[]
             {
@@ -149,7 +149,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             BlocktreeSetup blocktreeSetup = new BlocktreeSetup(new Block[]{a, b, c, d, e, f});
 
             ResultWrapper<UInt256?> resultWrapper = blocktreeSetup.ethRpcModule.eth_gasPrice();
-            resultWrapper.Data.Should().Be((UInt256?) 5); //tx prices: 3,4,5,6,7,8,9,10,11,12 20th percentile is 10/5 = 2 , rounded to 2 => price should be 5
+            resultWrapper.Data.Should().Be((UInt256?) 5); //Tx Prices: 3,4,5,6,7,8,9,10,11,12, Index: (10-1)/5 = 1.8, rounded to 2 => Gas Price should be 5
         }
 
         [Test]
@@ -165,8 +165,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                 .WithParentHash(blocktreeSetup._blocks[^1].Hash).TestObject;
             BlocktreeSetup blockTreeSetup2 = new BlocktreeSetup(new Block[]{a1}, true);
             
-            blocktreeSetup.ethRpcModule.eth_gasPrice(2).Data.Should().Be((UInt256?) 3); //should only leave 2,3,4,5,6 => 5/5 => 0.6, rounded to 1 => price should be 3
-            blockTreeSetup2.ethRpcModule.eth_gasPrice(3).Data.Should().Be((UInt256?) 4); //should only leave 3,4,5,6,7,8 => 7/5 => 1.4, rounded to 1 => price should be 4
+            blocktreeSetup.ethRpcModule.eth_gasPrice(2).Data.Should().Be((UInt256?) 3); //Tx Prices: 2,3,4,5,6, Index (5-1)/5 => 0.8, rounded to 1 => price should be 3
+            blockTreeSetup2.ethRpcModule.eth_gasPrice(3).Data.Should().Be((UInt256?) 4); //should only leave 3,4,5,6,7,8 => (7-1)/5 => 1.2, rounded to 1 => price should be 4
         }
         
         
@@ -219,7 +219,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             BlocktreeSetup blocktreeSetup = new BlocktreeSetup(new Block[]{a, b, c, d, e, f, g});
 
             ResultWrapper<UInt256?> resultWrapper = blocktreeSetup.ethRpcModule.eth_gasPrice();
-            resultWrapper.Data.Should().Be((UInt256?) 5); //tx prices: 3,4,5,6,7,8,9,10,11,12 20th percentile is 10/5 = 2 , rounded to 2 => price should be 5
+            resultWrapper.Data.Should().Be((UInt256?) 5); //Tx Prices: 3,4,5,6,7,8,9,10,11,12, Index: (10 - 1)/5 = 1.8, rounded to 2 => Gas Price should be 5
         }
 
         [Test]
@@ -252,7 +252,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             BlocktreeSetup blocktreeSetup = new BlocktreeSetup(new Block[] {a, b, c, d});
             ResultWrapper<UInt256?> resultWrapper = blocktreeSetup.ethRpcModule.eth_gasPrice();
-            resultWrapper.Data.Should().Be((UInt256?) 2); //tx prices: 1,2,3,4,5,6 20th percentile is 5/5 = 1 => price should be 2
+            resultWrapper.Data.Should().Be((UInt256?) 2); //Tx prices: 1,2,3,4,5,6, Index: (6-1)/5 = 1.2, rounded to 1 => price should be 2
         }
         
         public class BlocktreeSetup
@@ -292,7 +292,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                     Block d = Build.A.Block.WithNumber(3).WithParentHash(c.Hash)
                         .WithKnownTransactions(new[] {_transactions[4]}).TestObject;
                     Block e = Build.A.Block.WithNumber(4).WithParentHash(d.Hash)
-                        .WithKnownTransactions(new[] {_transactions[5]}).TestObject;
+                        .WithKnownTransactions(new[] {_transactions[5]}).TestObject; //Tx Prices: 1,2,3,4,5,6, Index: (6-1)/5 = 1 => Gas Price should be 2 (if no tx added)
                     _blocks = new[] {a, b, c, d, e};
                     if (addBlocks)
                     {
