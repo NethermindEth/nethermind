@@ -380,7 +380,7 @@ namespace Nethermind.Evm
                 _stateProvider.Commit(spec, txTracer.IsTracingState ? txTracer : NullStateTracer.Instance);
             }
 
-            if (commit && notSystemTransaction)
+            if (!restore && notSystemTransaction)
             {
                 block.GasUsed += spentGas;
             }
