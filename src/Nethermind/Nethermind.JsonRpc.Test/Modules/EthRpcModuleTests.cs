@@ -22,6 +22,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Microsoft.FSharp.Data.UnitSystems.SI.UnitNames;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
@@ -152,19 +153,12 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             BlocktreeSetup blocktreeSetup = new BlocktreeSetup();
             ResultWrapper<UInt256?> firstResult = blocktreeSetup.ethRpcModule.eth_gasPrice();
-            
-            Transaction a = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).WithGasPrice(7).WithNonce(2)
-                .TestObject;
-            Transaction b = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).WithGasPrice(8).WithNonce(3)
-                .TestObject;
-
-            Block a1 = Build.A.Block.WithNumber(3).WithTransactions(new Transaction[] {a, b})
-                .WithParentHash(blocktreeSetup._blocks[^1].Hash).TestObject;
-
-            BlocktreeSetup blocktreeSetup2 = new BlocktreeSetup(new Block[] {a1}, true);
+            BlocktreeSetup blocktreeSetup2 = new BlocktreeSetup();
             ResultWrapper<UInt256?> secondResult = blocktreeSetup2.ethRpcModule.eth_gasPrice();
             
             firstResult.Data.Should().Be(secondResult.Data);
+            firstResult.ErrorCode.Should().Be(0);
+            secondResult.ErrorCode.Should().Be(-1);
         }
         [Test]
         public void eth_gas_price_should_remove_tx_when_txgasprices_are_under_threshold()

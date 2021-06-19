@@ -144,7 +144,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return ResultWrapper<UInt256?>.Success(0);
         }
 
-        private GasPrice? _gasPrice = null;
+        public GasPrice? _gasPrice = null;
         public ResultWrapper<UInt256?> eth_gasPrice(UInt256? ignoreUnder = null)
         {
             _gasPrice ??= new GasPrice(_blockFinder);

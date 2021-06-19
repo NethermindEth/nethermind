@@ -11,13 +11,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
 {
     public class GasPrice
     {
-        private static UInt256? _lastPrice; //will this be okay if it is static?
-        private static Block? _lastHeadBlock;
+        private static UInt256? _lastPrice = null; //will this be okay if it is static?
+        private static Block? _lastHeadBlock = null;
         private readonly IBlockFinder _blockFinder;
         public GasPrice(IBlockFinder blockFinder)
         {
-            _lastPrice = null;
-            _lastHeadBlock = null;
             _blockFinder = blockFinder;
         }
         private bool eth_addTxFromBlockToSet(Block block, ref SortedSet<UInt256> sortedSet, UInt256 finalPrice,
@@ -117,17 +115,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
         
         private static bool eth_initalChecks(Block? headBlock, Block? genesisBlock, out ResultWrapper<UInt256?> resultWrapper)
         {
-            if (_lastPrice != null && _lastHeadBlock != null)
-            {
-                if (headBlock == _lastHeadBlock)
-                {
-                    {
-                        resultWrapper = ResultWrapper<UInt256?>.Success(_lastPrice);
-                        return true;
-                    }
-                }
-            }
-
             if (headBlock == null || genesisBlock == null)
             {
                 {
@@ -135,6 +122,21 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     return true;
                 }
             }
+            
+            if (_lastPrice != null && _lastHeadBlock != null)
+            {
+                if (headBlock.Hash == _lastHeadBlock.Hash)
+                {
+                    {
+                        resultWrapper = ResultWrapper<UInt256?>.Success(_lastPrice);
+                        #if DEBUG
+                            resultWrapper.ErrorCode = -1;
+                        #endif
+                        return true;
+                    }
+                }
+            }
+
             resultWrapper = ResultWrapper<UInt256?>.Success(UInt256.Zero);
             return false;
         }
