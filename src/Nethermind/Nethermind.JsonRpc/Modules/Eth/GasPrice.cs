@@ -115,20 +115,37 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return gasPrices;
         }
         
-        public ResultWrapper<UInt256?> eth_gasPrice(UInt256? ignoreUnder = null)
+        private static bool eth_initalChecks(Block? headBlock, Block? genesisBlock, out ResultWrapper<UInt256?> resultWrapper)
         {
-            Block headBlock = _blockFinder.FindHeadBlock();
-            Block genesisBlock = _blockFinder.FindGenesisBlock();
             if (_lastPrice != null && _lastHeadBlock != null)
-            {    
+            {
                 if (headBlock == _lastHeadBlock)
                 {
-                    return ResultWrapper<UInt256?>.Success(_lastPrice);
+                    {
+                        resultWrapper = ResultWrapper<UInt256?>.Success(_lastPrice);
+                        return true;
+                    }
                 }
             }
+
             if (headBlock == null || genesisBlock == null)
             {
-                return ResultWrapper<UInt256?>.Fail("The head block or genesis block had a null value.");
+                {
+                    resultWrapper = ResultWrapper<UInt256?>.Fail("The head block or genesis block had a null value.");
+                    return true;
+                }
+            }
+            resultWrapper = ResultWrapper<UInt256?>.Success(UInt256.Zero);
+            return false;
+        }
+        
+        public ResultWrapper<UInt256?> eth_gasPrice(UInt256? ignoreUnder = null)
+        {
+            Block? headBlock = _blockFinder.FindHeadBlock();
+            Block? genesisBlock = _blockFinder.FindGenesisBlock();
+            if (eth_initalChecks(headBlock, genesisBlock, out ResultWrapper<UInt256?> resultWrapper))
+            {
+                return resultWrapper;
             }
 
             SortedSet<UInt256> gasPrices = eth_initializeValues(headBlock, genesisBlock, out long blocksToGoBack,
