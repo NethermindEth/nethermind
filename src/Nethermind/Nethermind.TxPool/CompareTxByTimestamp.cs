@@ -23,13 +23,13 @@ namespace Nethermind.TxPool
     /// <summary>
     /// Default ordering by <see cref="Transaction.Timestamp"/> asc
     /// </summary>
-    public class CompareTxByTimestamp : IComparer<Transaction>
+    public class CompareTxByTimestamp : IComparer<Transaction?>
     {
         public static readonly CompareTxByTimestamp Instance = new();
         
         private CompareTxByTimestamp() { }
 
-        public int Compare(Transaction x, Transaction y)
+        public int Compare(Transaction? x, Transaction? y)
         {
             if (ReferenceEquals(x, y)) return 0;
             if (ReferenceEquals(null, y)) return 1;

@@ -24,7 +24,7 @@ namespace Nethermind.TxPool
     /// <summary>
     /// Compare fee of newcomer transaction with fee of transaction intended to be replaced increased by given percent
     /// </summary>
-    public class CompareReplacedTxByFee : IComparer<Transaction>
+    public class CompareReplacedTxByFee : IComparer<Transaction?>
     {
         public static readonly CompareReplacedTxByFee Instance = new();
         

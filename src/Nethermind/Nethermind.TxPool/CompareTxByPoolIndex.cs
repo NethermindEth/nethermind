@@ -23,13 +23,13 @@ namespace Nethermind.TxPool
     /// <summary>
     /// Default ordering by <see cref="Transaction.PoolIndex"/> asc
     /// </summary>
-    public class CompareTxByPoolIndex : IComparer<Transaction>
+    public class CompareTxByPoolIndex : IComparer<Transaction?>
     {
         public static readonly CompareTxByPoolIndex Instance = new();
         
         private CompareTxByPoolIndex() { }
 
-        public int Compare(Transaction x, Transaction y)
+        public int Compare(Transaction? x, Transaction? y)
         {
             if (ReferenceEquals(x, y)) return 0;
             if (ReferenceEquals(null, y)) return 1;

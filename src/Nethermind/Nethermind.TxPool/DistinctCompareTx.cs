@@ -31,11 +31,11 @@ namespace Nethermind.TxPool
 
         public int Compare(Transaction? x, Transaction? y)
         {
-            if (ReferenceEquals(x, y)) return 0;
-            if (ReferenceEquals(null, y)) return 1;
-            if (ReferenceEquals(null, x)) return -1;
+            if (ReferenceEquals(x?.Hash, y?.Hash)) return 0;
+            if (ReferenceEquals(null, y?.Hash)) return 1;
+            if (ReferenceEquals(null, x?.Hash)) return -1;
             
-            return x.Hash.CompareTo(y.Hash);
+            return x.Hash!.CompareTo(y.Hash);
         }
     }
 }

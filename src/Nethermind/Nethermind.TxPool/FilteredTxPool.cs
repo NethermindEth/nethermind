@@ -17,10 +17,8 @@
 
 using System.Collections.Generic;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
-using Nethermind.State;
 
 namespace Nethermind.TxPool
 {
