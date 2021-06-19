@@ -157,7 +157,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             
             firstResult.Data.Should().Be(secondResult.Data);
             firstResult.ErrorCode.Should().Be(0);
-            secondResult.ErrorCode.Should().Be(-1);
+            secondResult.ErrorCode.Should().Be(7);
         }
         [Test]
         public void eth_gas_price_should_remove_tx_when_txgasprices_are_under_threshold()

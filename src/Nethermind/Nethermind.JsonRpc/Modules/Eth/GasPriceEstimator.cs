@@ -112,8 +112,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
             gasPriceLatest = LatestGasPrice(headBlock!.Number);
             return gasPrices;
         }
-        
-        private bool InitialChecks(Block? headBlock, Block? genesisBlock, out ResultWrapper<UInt256?> resultWrapper)
+
+        private bool HandleMissingHeadOrGenesisBlockCase(Block? headBlock, Block? genesisBlock, out ResultWrapper<UInt256?> resultWrapper)
         {
             if (headBlock == null)
             {
@@ -125,14 +125,20 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 resultWrapper = ResultWrapper<UInt256?>.Fail("The genesis block had a null value.");
                 return true;
             }
+            
+            resultWrapper = ResultWrapper<UInt256?>.Success(UInt256.Zero);
+            return false;
+        }
+        private bool HandleNoHeadBlockChange(Block? headBlock, out ResultWrapper<UInt256?> resultWrapper)
+        {
             if (_lastPrice != null && _lastHeadBlock != null)
             {
-                if (headBlock.Hash == _lastHeadBlock.Hash)
+                if (headBlock!.Hash == _lastHeadBlock.Hash)
                 {
                     {
                         resultWrapper = ResultWrapper<UInt256?>.Success(this._lastPrice);
                         #if DEBUG
-                            resultWrapper.ErrorCode = -1;
+                            resultWrapper.ErrorCode = 7;
                         #endif
                         return true;
                     }
@@ -147,9 +153,14 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             Block? headBlock = _blockFinder.FindHeadBlock();
             Block? genesisBlock = _blockFinder.FindGenesisBlock();
-            if (InitialChecks(headBlock, genesisBlock, out ResultWrapper<UInt256?> resultWrapper))
+            if (HandleMissingHeadOrGenesisBlockCase(headBlock, genesisBlock, out ResultWrapper<UInt256?> resultWrapperA))
             {
-                return resultWrapper;
+                return resultWrapperA;
+            }
+
+            if (HandleNoHeadBlockChange(headBlock, out ResultWrapper<UInt256?> resultWrapperB))
+            {
+                return resultWrapperB;
             }
 
             SortedSet<UInt256> gasPrices = InitializeValues(headBlock, 
