@@ -290,7 +290,7 @@ namespace Nethermind.TxPool
                 Metrics.PendingTransactionsDiscarded++;
                 return AddTxResult.Invalid;
             }
-
+            
             if (!isReorg && _hashCache.Get(tx.Hash))
             {
                 Metrics.PendingTransactionsKnown++;
@@ -326,7 +326,7 @@ namespace Nethermind.TxPool
                 {
                     Metrics.PendingTransactionsDiscarded++;
                     if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, no sender.");
-                    return AddTxResult.PotentiallyUseless;
+                    return AddTxResult.FailedToResolveSender;
                 }
             }
 
@@ -355,7 +355,7 @@ namespace Nethermind.TxPool
                 Metrics.PendingTransactionsTooFarInFuture++;
                 if (_logger.IsTrace)
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, nonce in future.");
-                return AddTxResult.FutureNonce;
+                return AddTxResult.NonceTooFarInTheFuture;
             }
 
             UInt256 balance = account?.Balance ?? UInt256.Zero;
@@ -369,7 +369,7 @@ namespace Nethermind.TxPool
                 Metrics.PendingTransactionsDiscarded++;
                 if (_logger.IsTrace)
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, cost overflow.");
-                return AddTxResult.BalanceOverflow;
+                return AddTxResult.Int256Overflow;
             }
             else if (balance < cost)
             {
