@@ -16,11 +16,9 @@
 // 
 
 using System;
-using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Spec;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Int256;
 using Nethermind.State;
 using Nethermind.TxPool;
 
@@ -34,12 +32,8 @@ namespace Nethermind.Blockchain
             : this(new ChainHeadSpecProvider(specProvider, blockTree), blockTree, new ChainHeadReadOnlyStateProvider(blockTree, stateReader))
         {
         }
-        public ChainHeadInfoProvider(ISpecProvider specProvider, IBlockTree blockTree, IReadOnlyStateProvider stateProvider)
-            : this(new ChainHeadSpecProvider(specProvider, blockTree), blockTree, stateProvider)
-        {
-        }
-        
-        public ChainHeadInfoProvider(IChainHeadSpecProvider specProvider, IBlockTree blockTree, IReadOnlyStateProvider stateProvider)
+
+        public ChainHeadInfoProvider(IChainHeadSpecProvider specProvider, IBlockTree blockTree, IAccountStateProvider stateProvider)
         {
             SpecProvider = specProvider;
             AccountStateProvider = stateProvider;
@@ -48,7 +42,6 @@ namespace Nethermind.Blockchain
 
         public IChainHeadSpecProvider SpecProvider { get; }
         public IAccountStateProvider AccountStateProvider { get; }
-        public UInt256 BaseFee => _blockTree.Head?.Header.BaseFeePerGas ?? UInt256.Zero;
         public event EventHandler<BlockReplacementEventArgs> HeadChanged
         {
             add { _blockTree.BlockAddedToMain += value; }
