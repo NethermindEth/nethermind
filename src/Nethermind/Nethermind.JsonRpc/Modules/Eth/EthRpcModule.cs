@@ -21,6 +21,7 @@ using System.Security;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Jint.Parser.Ast;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
@@ -40,6 +41,7 @@ using Nethermind.State.Proofs;
 using Nethermind.Trie;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
+using Org.BouncyCastle.Security;
 using Block = Nethermind.Core.Block;
 using BlockHeader = Nethermind.Core.BlockHeader;
 using Signature = Nethermind.Core.Crypto.Signature;
@@ -142,107 +144,13 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return ResultWrapper<UInt256?>.Success(0);
         }
 
-        private bool eth_addTxFromBlockToSet(Block block, ref SortedSet<UInt256> sortedSet, UInt256 finalPrice, UInt256? ignoreUnder = null, long? maxCount = null)
-        {
-            ignoreUnder ??= UInt256.Zero;
-            int length = block.Transactions.Length;
-            int added = 0;
-            if (length > 0)
-            {
-                for (int index = 0; index < length && (maxCount == null || sortedSet.Count < maxCount); index++)
-                {
-                    Transaction transaction = block.Transactions[index];
-                    if (!transaction.IsEip1559 && transaction.GasPrice >= ignoreUnder)
-                    {
-                        sortedSet.Add(transaction.GasPrice);
-                        added++;
-                    }
-                }
-
-                switch (added)
-                {
-                    case 0:
-                        sortedSet.Add(finalPrice);
-                        return (false);
-                    case 1:
-                        return (false);
-                    default:
-                        return true;
-                }
-            }
-            else
-            {
-                sortedSet.Add(finalPrice);
-                return false;
-            }
-        }
-
-        private void eth_latestGasPrice(long headBlockNumber, long genesisBlockNumber, ref UInt256? latestGasPrice)
-        {
-            while (headBlockNumber >= genesisBlockNumber) //should this be latestBlock or headBlock?
-            {
-                Transaction[] transactions = _blockFinder.FindBlock(headBlockNumber)!.Transactions.Where(t=> !t.IsEip1559).ToArray();
-                if (transactions.Length > 0)
-                {
-                    latestGasPrice = transactions[^1].GasPrice;
-                    return;
-                }
-
-                headBlockNumber--;
-            }
-
-            latestGasPrice = 1; //do we want to throw an error if there are no transactions? Do we want to set lastPrice to 1 when we cannot find latestPrice in tx?
-        }
-        
+        private GasPrice? _gasPrice = null;
         public ResultWrapper<UInt256?> eth_gasPrice(UInt256? ignoreUnder = null)
         {
-            Block headBlock = _blockFinder.FindHeadBlock();
-            Block genesisBlock = _blockFinder.FindGenesisBlock();
-            if (headBlock == null || genesisBlock == null)
-            {
-                return ResultWrapper<UInt256?>.Fail("The head block or genesis block had a null value.");
-            }
-            Comparer<UInt256> comparer = Comparer<UInt256>.Create(((a, b) =>
-            {
-                int res = a.CompareTo(b);
-                return res == 0 ? 1 : res;
-            })); 
-            SortedSet<UInt256> gasPrices = new(comparer); //allows duplicates
-            long blocksToGoBack = 5;
-            const int percentile = 20;
-            long threshold = blocksToGoBack * 2;
-            UInt256? gasPriceLatest = null;
-            eth_latestGasPrice(headBlock!.Number, genesisBlock!.Number, ref gasPriceLatest);
-            if (gasPriceLatest == null)
-            {
-                return ResultWrapper<UInt256?>.Fail("gasPriceLatest was not set properly.");
-            }
-            long blockNumber = headBlock!.Number; 
-
-            while (blocksToGoBack > 0 && blockNumber > genesisBlock!.Number - 1) //else, go back "blockNumber" valid gas prices from genesisBlock
-            {
-                Block? foundBlock = _blockFinder.FindBlock(blockNumber);
-                if (foundBlock != null)
-                {
-                    bool result = eth_addTxFromBlockToSet(foundBlock, ref gasPrices, (UInt256) gasPriceLatest, ignoreUnder);
-                    if (result || gasPrices.Count + blocksToGoBack >= threshold) //if we only added one transaction, we don't reduce blocksToGoBack if second condition holds
-                    {
-                        blocksToGoBack--;
-                    }
-                }
-                blockNumber--;
-            }
-
-            int finalIndex = (int) Math.Round(((gasPrices.Count - 1) * ((float) percentile / 100)));
-            foreach (UInt256 gasPrice in gasPrices.Where(_ => finalIndex-- <= 0))
-            {
-                gasPriceLatest = gasPrice;
-                break;
-            }
-
-            return ResultWrapper<UInt256?>.Success(gasPriceLatest);
+            _gasPrice ??= new GasPrice(_blockFinder);
+            return _gasPrice.eth_gasPrice(ignoreUnder);
         }
-        
+
         public ResultWrapper<IEnumerable<Address>> eth_accounts()
         {
             try
