@@ -15,31 +15,21 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
-using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
-using Nethermind.TxPool;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.TxPool
 {
-    public class TxFilterAdapter : IIncomingTxFilter
+    public class NullIncomingTxFilter : IIncomingTxFilter
     {
-
-        private readonly ITxFilter _txFilter;
-        private readonly IBlockTree _blockTree;
-
-        public TxFilterAdapter(IBlockTree blockTree, ITxFilter txFilter)
+        private NullIncomingTxFilter()
         {
-            _txFilter = txFilter ?? throw new ArgumentNullException(nameof(txFilter));
-            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
         }
-        
-        public (bool Accepted, string Reason) Accept(Transaction tx)
+
+        public static IIncomingTxFilter Instance { get; } = new NullIncomingTxFilter();
+
+        public (bool Accepted, string? Reason) Accept(Transaction tx)
         {
-            var parentHeader = _blockTree.Head?.Header;
-            return parentHeader == null 
-                ? (true, string.Empty) 
-                : _txFilter.IsAllowed(tx, parentHeader);
+            return (true, null);
         }
     }
 }

@@ -274,7 +274,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 minGasPricesContractDataStore,
                 _api.SpecProvider);
             
-            return new FilteredTxPool(
+            return new TxPool.TxPool(
                 txStorage,
                 _api.EthereumEcdsa,
                 new ChainHeadInfoProvider(_api.SpecProvider, _api.BlockTree, _api.StateReader),

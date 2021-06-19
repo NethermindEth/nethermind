@@ -42,7 +42,8 @@ namespace Nethermind.TxPool
     /// </summary>
     public partial class TxPool : ITxPool, IDisposable
     {
-
+        private readonly IIncomingTxFilter _incomingTxFilter = NullIncomingTxFilter.Instance;
+        
         private readonly object _locker = new();
 
         private readonly Dictionary<Address, AddressNonces> _nonces =
@@ -109,6 +110,7 @@ namespace Nethermind.TxPool
         /// <param name="validator"></param>
         /// <param name="logManager"></param>
         /// <param name="comparer"></param>
+        /// <param name="incomingTxFilter"></param>
         public TxPool(
             ITxStorage txStorage,
             IEthereumEcdsa ecdsa,
@@ -116,8 +118,10 @@ namespace Nethermind.TxPool
             ITxPoolConfig txPoolConfig,
             ITxValidator validator,
             ILogManager? logManager,
-            IComparer<Transaction> comparer)
+            IComparer<Transaction> comparer,
+            IIncomingTxFilter? incomingTxFilter = null)
         {
+            _incomingTxFilter = incomingTxFilter ?? NullIncomingTxFilter.Instance;
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
             _chainHeadInfoProvider = chainHeadInfoProvider ?? throw new ArgumentNullException(nameof(chainHeadInfoProvider));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -273,7 +277,7 @@ namespace Nethermind.TxPool
             return FilterTransaction(tx, managedNonce, isReorg) ?? AddCore(tx, isPersistentBroadcast, isReorg);
         }
         
-        protected virtual AddTxResult? FilterTransaction(Transaction tx, in bool managedNonce, in bool isReorg)
+        private AddTxResult? FilterTransaction(Transaction tx, in bool managedNonce, in bool isReorg)
         {
             Metrics.PendingTransactionsReceived++;
 
@@ -388,6 +392,16 @@ namespace Nethermind.TxPool
                 if (_logger.IsTrace)
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, nonce already used.");
                 return AddTxResult.OwnNonceAlreadyUsed;
+            }
+            
+            if (tx is not GeneratedTransaction)
+            {
+                (bool Accepted, string? Reason) result = _incomingTxFilter.Accept(tx);
+                if (!result.Accepted)
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, filtered ({result.Reason}).");
+                    return AddTxResult.Filtered;
+                }
             }
             
             return null;
