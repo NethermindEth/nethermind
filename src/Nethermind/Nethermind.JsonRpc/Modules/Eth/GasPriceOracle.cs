@@ -18,7 +18,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private const int BlocksToGoBack = 5;
         public GasPriceOracle(IBlockFinder blockFinder)
         {
-            _blockFinder = blockFinder;
+            _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
         }
         private bool AddTxFromBlockToSet(Block block, ref SortedSet<UInt256> sortedSet, UInt256 finalPrice,
             UInt256? ignoreUnder = null, long? maxCount = null)
