@@ -153,8 +153,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             BlocktreeSetup blocktreeSetup = new BlocktreeSetup();
             ResultWrapper<UInt256?> firstResult = blocktreeSetup.ethRpcModule.eth_gasPrice();
-            BlocktreeSetup blocktreeSetup2 = new BlocktreeSetup();
-            ResultWrapper<UInt256?> secondResult = blocktreeSetup2.ethRpcModule.eth_gasPrice();
+            ResultWrapper<UInt256?> secondResult = blocktreeSetup.ethRpcModule.eth_gasPrice();
             
             firstResult.Data.Should().Be(secondResult.Data);
             firstResult.ErrorCode.Should().Be(0);

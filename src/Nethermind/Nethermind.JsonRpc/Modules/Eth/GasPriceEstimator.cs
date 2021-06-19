@@ -9,16 +9,16 @@ using Nethermind.TxPool;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
-    public class GasPrice
+    public class GasPriceEstimator
     {
-        private static UInt256? _lastPrice = null; //will this be okay if it is static?
-        private static Block? _lastHeadBlock = null;
+        private UInt256? _lastPrice = null; //will this be okay if it is static?
+        private Block? _lastHeadBlock = null;
         private readonly IBlockFinder _blockFinder;
-        public GasPrice(IBlockFinder blockFinder)
+        public GasPriceEstimator(IBlockFinder blockFinder)
         {
             _blockFinder = blockFinder;
         }
-        private bool eth_addTxFromBlockToSet(Block block, ref SortedSet<UInt256> sortedSet, UInt256 finalPrice,
+        private bool addTxFromBlockToSet(Block block, ref SortedSet<UInt256> sortedSet, UInt256 finalPrice,
             UInt256? ignoreUnder = null, long? maxCount = null)
         {
             ignoreUnder ??= UInt256.Zero;
@@ -54,15 +54,16 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
         }
 
-        private UInt256? eth_latestGasPrice(long headBlockNumber, long genesisBlockNumber)
+        private UInt256? latestGasPrice(long headBlockNumber, long genesisBlockNumber)
         {
-            while (headBlockNumber >= genesisBlockNumber) //should this be latestBlock or headBlock?
+            int blocksToCheck = 8;
+            while (headBlockNumber >= genesisBlockNumber && blocksToCheck-- > 0) //TEST
             {
                 Transaction[] transactions = _blockFinder.FindBlock(headBlockNumber)!.Transactions
                     .Where(t => !t.IsEip1559).ToArray();
                 if (transactions.Length > 0)
                 {
-                    return transactions[^1].GasPrice;
+                    return transactions[^1].GasPrice; //are tx in order of time or price
                 }
 
                 headBlockNumber--;
@@ -71,18 +72,18 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return 1; //do we want to throw an error if there are no transactions? Do we want to set lastPrice to 1 when we cannot find latestPrice in tx?
         }
         
-        private SortedSet<UInt256> eth_AddingPreviousBlockTx(UInt256? ignoreUnder, long blocksToGoBack, long currBlockNumber,
-            long genBlockNumber, SortedSet<UInt256> gasPrices, UInt256? gasPriceLatest, long threshold)
+        private SortedSet<UInt256> addingPreviousBlockTx(UInt256? ignoreUnder, long blocksToGoBack, long currBlockNumber, 
+                SortedSet<UInt256> gasPrices, UInt256? gasPriceLatest, long threshold)
         //if a block has 0 tx, we add the latest gas price as its only tx
         //if a block only has 1 tx (includes blocks that had initially 0 tx), we don't count it as part of the number of blocks we go back,
         //unless after the tx is added, len(gasPrices) + blocksToGoBack >= threshold
         {
-            while (blocksToGoBack > 0 && currBlockNumber > genBlockNumber - 1) //else, go back "blockNumber" valid gas prices from genesisBlock
+            while (blocksToGoBack > 0 && currBlockNumber > -1) //else, go back "blockNumber" valid gas prices from genesisBlock
             {
                 Block? foundBlock = _blockFinder.FindBlock(currBlockNumber);
                 if (foundBlock != null)
                 {
-                    bool result = eth_addTxFromBlockToSet(foundBlock, ref gasPrices, (UInt256) gasPriceLatest, ignoreUnder);
+                    bool result = addTxFromBlockToSet(foundBlock, ref gasPrices, (UInt256) gasPriceLatest, ignoreUnder);
                     if (result || gasPrices.Count + blocksToGoBack >= threshold)
                     {
                         blocksToGoBack--;
@@ -95,8 +96,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return gasPrices;
         }
         
-        private SortedSet<UInt256> eth_initializeValues(Block headBlock, Block genesisBlock, out long blocksToGoBack, out int percentile,
-            out long threshold, out long currBlockNumber, out long genBlockNumber, out UInt256? gasPriceLatest)
+        private SortedSet<UInt256> initializeValues(Block headBlock, Block genesisBlock, out long blocksToGoBack, out int percentile,
+            out long threshold, out long currBlockNumber, out UInt256? gasPriceLatest)
         {
             Comparer<UInt256> comparer = Comparer<UInt256>.Create(((a, b) =>
             {
@@ -108,27 +109,28 @@ namespace Nethermind.JsonRpc.Modules.Eth
             percentile = 20;
             threshold = blocksToGoBack * 2;
             currBlockNumber = headBlock!.Number;
-            genBlockNumber = genesisBlock!.Number;
-            gasPriceLatest = eth_latestGasPrice(headBlock!.Number, genesisBlock!.Number);
+            gasPriceLatest = latestGasPrice(headBlock!.Number, genesisBlock!.Number);
             return gasPrices;
         }
         
-        private static bool eth_initalChecks(Block? headBlock, Block? genesisBlock, out ResultWrapper<UInt256?> resultWrapper)
+        private bool initalChecks(Block? headBlock, Block? genesisBlock, out ResultWrapper<UInt256?> resultWrapper)
         {
-            if (headBlock == null || genesisBlock == null)
+            if (headBlock == null)
             {
-                {
-                    resultWrapper = ResultWrapper<UInt256?>.Fail("The head block or genesis block had a null value.");
-                    return true;
-                }
+                resultWrapper = ResultWrapper<UInt256?>.Fail("The head block had a null value.");
+                return true;
             }
-            
+            if (genesisBlock == null)
+            {
+                resultWrapper = ResultWrapper<UInt256?>.Fail("The genesis block had a null value.");
+                return true;
+            }
             if (_lastPrice != null && _lastHeadBlock != null)
             {
                 if (headBlock.Hash == _lastHeadBlock.Hash)
                 {
                     {
-                        resultWrapper = ResultWrapper<UInt256?>.Success(_lastPrice);
+                        resultWrapper = ResultWrapper<UInt256?>.Success(this._lastPrice);
                         #if DEBUG
                             resultWrapper.ErrorCode = -1;
                         #endif
@@ -141,23 +143,23 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return false;
         }
         
-        public ResultWrapper<UInt256?> eth_gasPrice(UInt256? ignoreUnder = null)
+        public ResultWrapper<UInt256?> gasPriceEstimate(UInt256? ignoreUnder = null)
         {
             Block? headBlock = _blockFinder.FindHeadBlock();
             Block? genesisBlock = _blockFinder.FindGenesisBlock();
-            if (eth_initalChecks(headBlock, genesisBlock, out ResultWrapper<UInt256?> resultWrapper))
+            if (initalChecks(headBlock, genesisBlock, out ResultWrapper<UInt256?> resultWrapper))
             {
                 return resultWrapper;
             }
 
-            SortedSet<UInt256> gasPrices = eth_initializeValues(headBlock, genesisBlock, out long blocksToGoBack,
-                out int percentile, out long threshold, out long currBlockNumber, out long genBlockNumber, out UInt256? gasPriceLatest);
+            SortedSet<UInt256> gasPrices = initializeValues(headBlock, genesisBlock, out long blocksToGoBack,
+                out int percentile, out long threshold, out long currBlockNumber, out UInt256? gasPriceLatest);
             if (gasPriceLatest == null)
             {
                 return ResultWrapper<UInt256?>.Fail("gasPriceLatest was not set properly.");
             }
             
-            gasPrices = eth_AddingPreviousBlockTx(ignoreUnder, blocksToGoBack, currBlockNumber, genBlockNumber, 
+            gasPrices = addingPreviousBlockTx(ignoreUnder, blocksToGoBack, currBlockNumber, 
                 gasPrices, gasPriceLatest, threshold);
 
             int finalIndex = (int) Math.Round(((gasPrices.Count - 1) * ((float) percentile / 100)));
