@@ -71,7 +71,7 @@ namespace Nethermind.TxPool
         private readonly ITxValidator _validator;
         private readonly IEthereumEcdsa _ecdsa;
         private readonly IChainHeadInfoProvider _chainHeadInfoProvider;
-        protected readonly ILogger _logger;
+        private readonly ILogger _logger;
 
         /// <summary>
         /// Transactions published locally (initiated by this node users) or reorganised.
@@ -409,6 +409,7 @@ namespace Nethermind.TxPool
 
         private AddTxResult AddCore(Transaction tx, bool isPersistentBroadcast, bool isReorg)
         {
+            // TODO: this is silly - it should be already done in filtering
             bool isInHashCache = _hashCache.Get(tx.Hash);
             // !!! do not change it to |=
             bool isKnown = !isReorg && isInHashCache;

@@ -919,12 +919,12 @@ namespace Nethermind.TxPool.Test
             return peers;
         }
 
-        private Nethermind.TxPool.TxPool CreatePool(ITxStorage txStorage, ITxPoolConfig config = null, ISpecProvider specProvider = null)
+        private TxPool CreatePool(ITxStorage txStorage, ITxPoolConfig config = null, ISpecProvider specProvider = null)
         {
             specProvider ??= RopstenSpecProvider.Instance;
             ITransactionComparerProvider transactionComparerProvider =
                 new TransactionComparerProvider(specProvider, _blockTree);
-            return new Nethermind.TxPool.TxPool(txStorage, _ethereumEcdsa, new ChainHeadInfoProvider(specProvider, _blockTree, _stateProvider),
+            return new TxPool(txStorage, _ethereumEcdsa, new ChainHeadInfoProvider(specProvider, _blockTree, (IAccountStateProvider)_stateProvider),
                 config ?? new TxPoolConfig() { GasLimit = _txGasLimit },
                 new TxValidator(_specProvider.ChainId), _logManager, transactionComparerProvider.GetDefaultComparer());
         }

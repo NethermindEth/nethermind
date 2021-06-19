@@ -40,6 +40,7 @@ using Nethermind.State.Witnesses;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test
@@ -54,13 +55,13 @@ namespace Nethermind.Blockchain.Test
         public void Setup()
         {
             IDbProvider memDbProvider = TestMemDbProvider.Init();
-            TrieStore trieStore = new TrieStore(new MemDb(), LimboLogs.Instance);
-            StateProvider stateProvider = new StateProvider(trieStore, memDbProvider.CodeDb, LimboLogs.Instance);
-            StorageProvider storageProvider = new StorageProvider(trieStore, stateProvider, LimboLogs.Instance);
-            ChainLevelInfoRepository chainLevelInfoRepository = new ChainLevelInfoRepository(memDbProvider);
+            TrieStore trieStore = new (new MemDb(), LimboLogs.Instance);
+            StateProvider stateProvider = new (trieStore, memDbProvider.CodeDb, LimboLogs.Instance);
+            StorageProvider storageProvider = new (trieStore, stateProvider, LimboLogs.Instance);
+            ChainLevelInfoRepository chainLevelInfoRepository = new (memDbProvider);
             ISpecProvider specProvider = MainnetSpecProvider.Instance;
             IBloomStorage bloomStorage = NullBloomStorage.Instance;
-            EthereumEcdsa ecdsa = new EthereumEcdsa(1, LimboLogs.Instance);
+            EthereumEcdsa ecdsa = new (1, LimboLogs.Instance);
             ITransactionComparerProvider transactionComparerProvider =
                 new TransactionComparerProvider(specProvider, _blockTree);
             _blockTree = new BlockTree(
@@ -78,20 +79,20 @@ namespace Nethermind.Blockchain.Test
                 new TxValidator(specProvider.ChainId),
                 LimboLogs.Instance, 
                 transactionComparerProvider.GetDefaultComparer());
-            BlockhashProvider blockhashProvider = new BlockhashProvider(_blockTree, LimboLogs.Instance);
-            VirtualMachine virtualMachine = new VirtualMachine(
+            BlockhashProvider blockhashProvider = new (_blockTree, LimboLogs.Instance);
+            VirtualMachine virtualMachine = new (
                 stateProvider,
                 storageProvider,
                 blockhashProvider,
                 specProvider,
                 LimboLogs.Instance);
-            TransactionProcessor transactionProcessor = new TransactionProcessor(
+            TransactionProcessor transactionProcessor = new (
                 specProvider,
                 stateProvider,
                 storageProvider,
                 virtualMachine,
                 LimboLogs.Instance);
-            BlockProcessor blockProcessor = new BlockProcessor(
+            BlockProcessor blockProcessor = new (
                 MainnetSpecProvider.Instance,
                 Always.Valid,
                 new RewardCalculator(specProvider),

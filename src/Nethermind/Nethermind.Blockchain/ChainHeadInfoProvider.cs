@@ -32,6 +32,11 @@ namespace Nethermind.Blockchain
             : this(new ChainHeadSpecProvider(specProvider, blockTree), blockTree, new ChainHeadReadOnlyStateProvider(blockTree, stateReader))
         {
         }
+        
+        public ChainHeadInfoProvider(ISpecProvider specProvider, IBlockTree blockTree, IAccountStateProvider stateProvider)
+            : this(new ChainHeadSpecProvider(specProvider, blockTree), blockTree, stateProvider)
+        {
+        }
 
         public ChainHeadInfoProvider(IChainHeadSpecProvider specProvider, IBlockTree blockTree, IAccountStateProvider stateProvider)
         {
