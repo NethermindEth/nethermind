@@ -15,8 +15,11 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Int256;
+
+[assembly:InternalsVisibleTo("Nethermind.TxPool.Test")]
 
 namespace Nethermind.TxPool
 {

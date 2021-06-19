@@ -155,6 +155,9 @@ jobs:
     - name: Nethermind.Synchronization.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Synchronization.Test
+    - name: Nethermind.TxPool.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.TxPool.Test
   neth-tests5:
     name: Running Nethermind Tests 5
     runs-on: ubuntu-latest
