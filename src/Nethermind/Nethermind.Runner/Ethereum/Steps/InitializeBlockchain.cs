@@ -52,7 +52,7 @@ namespace Nethermind.Runner.Ethereum.Steps
     public class InitializeBlockchain : IStep
     {
         private readonly INethermindApi _api;
-        private ILogger _logger;
+        private ILogger? _logger;
 
         // ReSharper disable once MemberCanBeProtected.Global
         public InitializeBlockchain(INethermindApi api)
@@ -169,10 +169,10 @@ namespace Nethermind.Runner.Ethereum.Steps
                 getApi.LogManager);
 
             // blockchain processing
-            BlockhashProvider blockhashProvider = new BlockhashProvider(
+            BlockhashProvider blockhashProvider = new (
                 getApi.BlockTree, getApi.LogManager);
 
-            VirtualMachine virtualMachine = new VirtualMachine(
+            VirtualMachine virtualMachine = new (
                 stateProvider,
                 storageProvider,
                 blockhashProvider,
@@ -190,22 +190,24 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_api.SealValidator == null) throw new StepDependencyException(nameof(_api.SealValidator));
 
             /* validation */
-            var headerValidator = setApi.HeaderValidator = CreateHeaderValidator();
+            IHeaderValidator? headerValidator = setApi.HeaderValidator = CreateHeaderValidator();
 
             OmmersValidator ommersValidator = new(
                 getApi.BlockTree,
                 headerValidator,
                 getApi.LogManager);
 
-            var blockValidator = setApi.BlockValidator = new BlockValidator(
+            IBlockValidator? blockValidator = setApi.BlockValidator = new BlockValidator(
                 txValidator,
                 headerValidator,
                 ommersValidator,
                 getApi.SpecProvider,
                 getApi.LogManager);
-                
-            setApi.TxPoolInfoProvider = new TxPoolInfoProvider(stateReader, txPool);
-            var mainBlockProcessor = setApi.MainBlockProcessor = CreateBlockProcessor();
+
+            IChainHeadInfoProvider chainHeadInfoProvider =
+                new ChainHeadInfoProvider(getApi.SpecProvider, getApi.BlockTree, stateReader);
+            setApi.TxPoolInfoProvider = new TxPoolInfoProvider(chainHeadInfoProvider, txPool);
+            IBlockProcessor? mainBlockProcessor = setApi.MainBlockProcessor = CreateBlockProcessor();
 
             BlockchainProcessor blockchainProcessor = new(
                 getApi.BlockTree,
@@ -245,7 +247,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             setApi.TxSender = new TxPoolSender(txPool, nonceReservingTxSealer, standardSealer);
 
             // TODO: possibly hide it (but need to confirm that NDM does not really need it)
-            var filterStore = setApi.FilterStore = new FilterStore();
+            IFilterStore? filterStore = setApi.FilterStore = new FilterStore();
             setApi.FilterManager = new FilterManager(filterStore, mainBlockProcessor, txPool, getApi.LogManager);
             setApi.HealthHintService = CreateHealthHintService();
             return Task.CompletedTask;
