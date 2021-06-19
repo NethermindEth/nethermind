@@ -22,7 +22,7 @@ namespace Nethermind.TxPool
 {
     public partial class TxPool
     {
-        private class NonceInfo
+        internal class NonceInfo
         {
             public UInt256 Value { get; }
             

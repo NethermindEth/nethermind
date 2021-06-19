@@ -17,14 +17,18 @@
 
 using Nethermind.Core;
 
-namespace Nethermind.TxPool
+namespace Nethermind.TxPool.Filters
 {
-    /// <summary>
-    /// Filter used for discarding inbound transactions in the TX pool.
-    /// Name used to differentiate from filters from Consensus namespace.
-    /// </summary>
-    public interface IIncomingTxFilter
+    internal class NullHashTxFilter : IIncomingTxFilter
     {
-        (bool Accepted, string? Reason) Accept(Transaction tx);
+        public (bool Accepted, AddTxResult? Reason) Accept(Transaction tx, TxHandlingOptions handlingOptions)
+        {
+            if (tx.Hash is null)
+            {
+                return (false, AddTxResult.Invalid);
+            }
+
+            return (true, null);
+        }
     }
 }

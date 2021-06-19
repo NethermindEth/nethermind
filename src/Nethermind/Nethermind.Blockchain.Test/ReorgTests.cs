@@ -71,7 +71,7 @@ namespace Nethermind.Blockchain.Test
                 bloomStorage,
                 new SyncConfig(),
                 LimboLogs.Instance);
-            TxPool.TxPool txPool = new TxPool.TxPool(
+            TxPool.TxPool txPool = new (
                 NullTxStorage.Instance,
                 ecdsa,
                 new ChainHeadInfoProvider(specProvider, _blockTree, stateProvider),

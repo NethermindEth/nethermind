@@ -23,7 +23,7 @@ namespace Nethermind.TxPool
 {
     public partial class TxPool
     {
-        private class AddressNonces
+        internal class AddressNonces
         {
             private NonceInfo _currentNonceInfo;
 

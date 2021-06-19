@@ -16,18 +16,20 @@
 // 
 
 using System;
+using System.Runtime.CompilerServices;
 using Nethermind.Blockchain.Spec;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Int256;
 using Nethermind.State;
 using Nethermind.TxPool;
+
+[assembly:InternalsVisibleTo("Nethermind.TxPool.Test")]
 
 namespace Nethermind.Blockchain
 {
     public class ChainHeadInfoProvider : IChainHeadInfoProvider
     {
-        private readonly IBlockTree _blockTree;
-        
         public ChainHeadInfoProvider(ISpecProvider specProvider, IBlockTree blockTree, IStateReader stateReader)
             : this(new ChainHeadSpecProvider(specProvider, blockTree), blockTree, new ChainHeadReadOnlyStateProvider(blockTree, stateReader))
         {
@@ -42,16 +44,26 @@ namespace Nethermind.Blockchain
         {
             SpecProvider = specProvider;
             AccountStateProvider = stateProvider;
-            _blockTree = blockTree;
+            
+            // TODO: why not NewHeadBlock event?
+            blockTree.BlockAddedToMain += OnHeadChanged;
         }
 
         public IChainHeadSpecProvider SpecProvider { get; }
-        public IAccountStateProvider AccountStateProvider { get; }
-        public event EventHandler<BlockReplacementEventArgs> HeadChanged
-        {
-            add { _blockTree.BlockAddedToMain += value; }
-            remove { _blockTree.BlockAddedToMain -= value; }
-        }
         
+        public IAccountStateProvider AccountStateProvider { get; }
+        
+        public long? BlockGasLimit { get; internal set; }
+        
+        public UInt256 CurrentBaseFee { get; private set; }
+        
+        public event EventHandler<BlockReplacementEventArgs>? HeadChanged;
+        
+        private void OnHeadChanged(object? sender, BlockReplacementEventArgs e)
+        {
+            BlockGasLimit = e.Block!.GasLimit;
+            CurrentBaseFee = e.Block.Header.BaseFeePerGas;
+            HeadChanged?.Invoke(sender, e);
+        }
     }
 }

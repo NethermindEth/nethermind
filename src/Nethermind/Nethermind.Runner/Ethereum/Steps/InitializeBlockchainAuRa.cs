@@ -282,7 +282,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.TxValidator,
                 _api.LogManager,
                 CreateTxPoolTxComparer(txPriorityContract, localDataSource),
-                new TxFilterAdapter(_api.BlockTree, txPoolFilter));
+                new TxFilterAdapter(_api.BlockTree, txPoolFilter, _api.LogManager.GetClassLogger<TxFilterAdapter>()));
         }
 
         private void ReportTxPriorityRules(TxPriorityContract? txPriorityContract, TxPriorityContract.LocalDataSource? localDataSource)

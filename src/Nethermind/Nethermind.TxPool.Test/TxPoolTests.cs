@@ -192,6 +192,7 @@ namespace Nethermind.TxPool.Test
                 .WithMaxPriorityFeePerGas(5.GWei())
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(tx);
+            _blockTree.BlockAddedToMain += Raise.EventWith(_blockTree, new BlockReplacementEventArgs(Build.A.Block.WithGasLimit(10000000).TestObject));
             AddTxResult result = txPool.AddTransaction(tx, TxHandlingOptions.PersistentBroadcast);
             txPool.GetPendingTransactions().Length.Should().Be(eip1559Enabled ? 1 : 0);
             result.Should().Be(eip1559Enabled ? AddTxResult.Added : AddTxResult.Invalid);
@@ -212,6 +213,7 @@ namespace Nethermind.TxPool.Test
             txPool.GetPendingTransactions().Length.Should().Be(0);
             result.Should().Be(AddTxResult.InsufficientFunds);
             EnsureSenderBalance(tx.SenderAddress, tx.Value);
+            _blockTree.BlockAddedToMain += Raise.EventWith(_blockTree, new BlockReplacementEventArgs(Build.A.Block.WithGasLimit(10000000).TestObject));
             result = txPool.AddTransaction(tx, TxHandlingOptions.PersistentBroadcast);
             result.Should().Be(AddTxResult.Added);
             txPool.GetPendingTransactions().Length.Should().Be(1);
@@ -292,7 +294,7 @@ namespace Nethermind.TxPool.Test
                 .WithGasLimit(Transaction.BaseTxGasCost * 5)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(tx);
-            _txPool.BlockGasLimit = Transaction.BaseTxGasCost * 4;
+            _headInfo.BlockGasLimit = Transaction.BaseTxGasCost * 4;
             AddTxResult result = _txPool.AddTransaction(tx, TxHandlingOptions.PersistentBroadcast);
             _txPool.GetPendingTransactions().Length.Should().Be(0);
             result.Should().Be(AddTxResult.GasLimitExceeded);
@@ -919,12 +921,15 @@ namespace Nethermind.TxPool.Test
             return peers;
         }
 
+        private ChainHeadInfoProvider _headInfo;
+        
         private TxPool CreatePool(ITxStorage txStorage, ITxPoolConfig config = null, ISpecProvider specProvider = null)
         {
             specProvider ??= RopstenSpecProvider.Instance;
             ITransactionComparerProvider transactionComparerProvider =
                 new TransactionComparerProvider(specProvider, _blockTree);
-            return new TxPool(txStorage, _ethereumEcdsa, new ChainHeadInfoProvider(specProvider, _blockTree, (IAccountStateProvider)_stateProvider),
+            _headInfo = new ChainHeadInfoProvider(specProvider, _blockTree, _stateProvider);
+            return new TxPool(txStorage, _ethereumEcdsa, _headInfo,
                 config ?? new TxPoolConfig() { GasLimit = _txGasLimit },
                 new TxValidator(_specProvider.ChainId), _logManager, transactionComparerProvider.GetDefaultComparer());
         }

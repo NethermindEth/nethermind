@@ -46,7 +46,7 @@ namespace Nethermind.TxPool
         /// <summary>
         /// Indicates transaction is re-added after reorganisation
         /// </summary>
-        Reorganisation = 16 | PersistentBroadcast,
+        Reorganisation = 16 | PersistentBroadcast, // TODO: what magic trick is this???
         
         All = ManagedNonce | PersistentBroadcast | PreEip155Signing | AllowReplacingSignature | Reorganisation
     }

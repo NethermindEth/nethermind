@@ -26,8 +26,7 @@ namespace Nethermind.TxPool
     {
         int GetPendingTransactionsCount();
         Transaction[] GetPendingTransactions();
-        Transaction[] GetOwnPendingTransactions();
-        
+
         /// <summary>
         /// Grouped by sender address, sorted by nonce and later tx pool sorting
         /// </summary>

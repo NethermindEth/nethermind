@@ -15,23 +15,36 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
-using Nethermind.Int256;
+using Nethermind.Core.Caching;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.TxPool
 {
-    public interface IChainHeadInfoProvider
+    internal class PeerInfo : ITxPoolPeer
     {
-        IChainHeadSpecProvider SpecProvider { get; }
-        
-        IAccountStateProvider AccountStateProvider { get; }
+        private ITxPoolPeer Peer { get; }
 
-        public long? BlockGasLimit { get; }
-        
-        public UInt256 CurrentBaseFee { get; }
-        
-        event EventHandler<BlockReplacementEventArgs> HeadChanged;
+        private LruKeyCache<Keccak> NotifiedTransactions { get; } = new(MemoryAllowance.MemPoolSize, "notifiedTransactions");
+
+        public PeerInfo(ITxPoolPeer peer)
+        {
+            Peer = peer;
+        }
+
+        public PublicKey Id => Peer.Id;
+
+        public bool SendNewTransaction(Transaction tx, bool isPriority)
+        {
+            if (!NotifiedTransactions.Get(tx.Hash))
+            {
+                NotifiedTransactions.Set(tx.Hash);
+                return Peer.SendNewTransaction(tx, isPriority);                     
+            }
+
+            return false;
+        }
+
+        public override string ToString() => Peer.Enode;
     }
 }

@@ -15,23 +15,21 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
-using Nethermind.Int256;
 
-namespace Nethermind.TxPool
+namespace Nethermind.TxPool.Filters
 {
-    public interface IChainHeadInfoProvider
+    public class NullIncomingTxFilter : IIncomingTxFilter
     {
-        IChainHeadSpecProvider SpecProvider { get; }
-        
-        IAccountStateProvider AccountStateProvider { get; }
+        private NullIncomingTxFilter()
+        {
+        }
 
-        public long? BlockGasLimit { get; }
-        
-        public UInt256 CurrentBaseFee { get; }
-        
-        event EventHandler<BlockReplacementEventArgs> HeadChanged;
+        public static IIncomingTxFilter Instance { get; } = new NullIncomingTxFilter();
+
+        public (bool Accepted, AddTxResult? Reason) Accept(Transaction tx, TxHandlingOptions txHandlingOptions)
+        {
+            return (true, null);
+        }
     }
 }

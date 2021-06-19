@@ -16,38 +16,34 @@
 // 
 
 using Nethermind.Core;
-using Nethermind.Core.Caching;
-using Nethermind.Core.Crypto;
 
-namespace Nethermind.TxPool
+namespace Nethermind.TxPool.Filters
 {
-    public partial class TxPool
+    internal class EarlyHashCacheFilter : IIncomingTxFilter
     {
-        private class PeerInfo : ITxPoolPeer
+        private readonly HashCache _hashCache;
+
+        public EarlyHashCacheFilter(HashCache hashCache)
         {
-            private ITxPoolPeer Peer { get; }
+            _hashCache = hashCache;
+        }
+            
+        public (bool Accepted, AddTxResult? Reason) Accept(Transaction tx, TxHandlingOptions handlingOptions)
+        {
+            bool isReorg =
+                ((handlingOptions & TxHandlingOptions.Reorganisation) == TxHandlingOptions.Reorganisation);
 
-            private LruKeyCache<Keccak> NotifiedTransactions { get; } = new(MemoryAllowance.MemPoolSize, "notifiedTransactions");
-
-            public PeerInfo(ITxPoolPeer peer)
+            if (!isReorg)
             {
-                Peer = peer;
-            }
-
-            public PublicKey Id => Peer.Id;
-
-            public bool SendNewTransaction(Transaction tx, bool isPriority)
-            {
-                if (!NotifiedTransactions.Get(tx.Hash))
+                if (_hashCache.Get(tx.Hash!))
                 {
-                    NotifiedTransactions.Set(tx.Hash);
-                    return Peer.SendNewTransaction(tx, isPriority);                     
+                    return (false, AddTxResult.AlreadyKnown);
                 }
 
-                return false;
+                _hashCache.SetForThisBlock(tx.Hash!);
             }
 
-            public override string ToString() => Peer.Enode;
+            return (true, null);
         }
     }
 }

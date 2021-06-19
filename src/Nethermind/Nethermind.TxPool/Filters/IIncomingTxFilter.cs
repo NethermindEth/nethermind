@@ -17,19 +17,14 @@
 
 using Nethermind.Core;
 
-namespace Nethermind.TxPool
+namespace Nethermind.TxPool.Filters
 {
-    public class NullIncomingTxFilter : IIncomingTxFilter
+    /// <summary>
+    /// Filter used for discarding inbound transactions in the TX pool.
+    /// Name used to differentiate from filters from Consensus namespace.
+    /// </summary>
+    public interface IIncomingTxFilter
     {
-        private NullIncomingTxFilter()
-        {
-        }
-
-        public static IIncomingTxFilter Instance { get; } = new NullIncomingTxFilter();
-
-        public (bool Accepted, string? Reason) Accept(Transaction tx)
-        {
-            return (true, null);
-        }
+        (bool Accepted, AddTxResult? Reason) Accept(Transaction tx, TxHandlingOptions txHandlingOptions);
     }
 }

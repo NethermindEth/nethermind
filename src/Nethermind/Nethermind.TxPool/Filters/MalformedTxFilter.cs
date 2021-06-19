@@ -15,42 +15,33 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
-using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Logging;
-using Nethermind.TxPool;
-using Nethermind.TxPool.Filters;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.TxPool.Filters
 {
-    public class TxFilterAdapter : IIncomingTxFilter
+    internal class MalformedTxFilter : IIncomingTxFilter
     {
-        private readonly ITxFilter _txFilter;
+        private readonly ITxValidator _txValidator;
+        private readonly IChainHeadSpecProvider _specProvider;
         private readonly ILogger _logger;
-        private readonly IBlockTree _blockTree;
 
-        public TxFilterAdapter(IBlockTree blockTree, ITxFilter txFilter, ILogger logger)
+        public MalformedTxFilter(IChainHeadSpecProvider specProvider, ITxValidator txValidator, ILogger logger)
         {
-            _txFilter = txFilter ?? throw new ArgumentNullException(nameof(txFilter));
+            _txValidator = txValidator;
+            _specProvider = specProvider;
             _logger = logger;
-            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
         }
-
+            
         public (bool Accepted, AddTxResult? Reason) Accept(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
-            if (tx is not GeneratedTransaction)
+            IReleaseSpec spec = _specProvider.GetSpec();
+            if (!_txValidator.IsWellFormed(tx, spec))
             {
-                BlockHeader parentHeader = _blockTree.Head?.Header;
-                if (parentHeader == null) return (true, null);
-
-                (bool accepted, string? reason) = _txFilter.IsAllowed(tx, parentHeader);
-                if (reason is not null)
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, filtered ({reason}).");
-                }
-                
-                return (accepted, reason is null ? null : AddTxResult.Filtered);
+                // It may happen that other nodes send us transactions that were signed for another chain or don't have enough gas.
+                if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, invalid transaction.");
+                return (false, AddTxResult.Invalid);
             }
 
             return (true, null);
