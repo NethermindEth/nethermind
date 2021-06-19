@@ -42,7 +42,7 @@ namespace Nethermind.TxPool
     /// </summary>
     public partial class TxPool : ITxPool, IDisposable
     {
-        private readonly IIncomingTxFilter _incomingTxFilter = NullIncomingTxFilter.Instance;
+        private readonly IIncomingTxFilter _incomingTxFilter;
         
         private readonly object _locker = new();
 

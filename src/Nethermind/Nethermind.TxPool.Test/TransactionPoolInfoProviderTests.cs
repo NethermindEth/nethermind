@@ -53,7 +53,7 @@ namespace Nethermind.TxPool.Test
 
             _txPool.GetPendingTransactionsBySender()
                 .Returns(new Dictionary<Address, Transaction[]> {{_address, transactions}});
-            var info = _infoProvider.GetInfo(Build.A.BlockHeader.TestObject);
+            var info = _infoProvider.GetInfo();
 
             info.Pending.Count.Should().Be(1);
             info.Queued.Count.Should().Be(1);

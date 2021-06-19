@@ -33,7 +33,7 @@ namespace Nethermind.TxPool
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
         }
 
-        public TxPoolInfo GetInfo(BlockHeader head)
+        public TxPoolInfo GetInfo()
         {
             var groupedTransactions = _txPool.GetPendingTransactionsBySender();
             var pendingTransactions = new Dictionary<Address, IDictionary<ulong, Transaction>>();
