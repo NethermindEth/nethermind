@@ -66,7 +66,7 @@ namespace Nethermind.Blockchain
         public bool IsDeadAccount(Address address)
         {
             Account account = GetAccount(address);
-            return account?.IsEmpty ?? true;
+            return account.IsEmpty;
         }
     }
 }
