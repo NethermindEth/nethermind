@@ -147,6 +147,26 @@ namespace Nethermind.JsonRpc.Test.Modules
             resultWrapper.Data.Should().Be((UInt256?) 5); //Tx Prices: 3,4,5,6,7,8,9,10,11,12, Index: (10-1)/5 = 1.8, rounded to 2 => Gas Price should be 5
         }
 
+        /*[Test]
+        public void eth_gas_price_should_use_last_tx_price_when_head_block_is_not_changed()
+        {
+            BlocktreeSetup blocktreeSetup = new BlocktreeSetup();
+            ResultWrapper<UInt256?> firstResult = blocktreeSetup.ethRpcModule.eth_gasPrice();
+            
+            Transaction a = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).WithGasPrice(7).WithNonce(2)
+                .TestObject;
+            Transaction b = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).WithGasPrice(8).WithNonce(3)
+                .TestObject;
+
+            Block a1 = Build.A.Block.WithNumber(3).WithTransactions(new Transaction[] {a, b})
+                .WithParentHash(blocktreeSetup._blocks[^1].Hash).TestObject;
+            
+            List<Block> blockList = blocktreeSetup._blocks.ToList();
+            blockList.Add(a1);
+            ResultWrapper<UInt256?> secondResult = blocktreeSetup.ethRpcModule.eth_gasPrice();
+            
+            firstResult.Data.Should().Be(secondResult.Data);
+        }*/
         [Test]
         public void eth_gas_price_should_remove_tx_when_txgasprices_are_under_threshold()
         {
@@ -336,16 +356,15 @@ namespace Nethermind.JsonRpc.Test.Modules
                 ethRpcModule = new EthRpcModule
                 (
                     Substitute.For<IJsonRpcConfig>(),
-                    Substitute.For<IBlockchainBridge>(),
+                     Substitute.For<IBlockchainBridge>(),
                     blockTree,
-                    Substitute.For<IStateReader>(),
-                    Substitute.For<ITxPool>(),
-                    Substitute.For<ITxSender>(),
-                    Substitute.For<IWallet>(),
-                    Substitute.For<ILogManager>(),
-                    Substitute.For<ISpecProvider>()
+                     Substitute.For<IStateReader>(),
+                     Substitute.For<ITxPool>(),
+                     Substitute.For<ITxSender>(),
+                     Substitute.For<IWallet>(),
+                     Substitute.For<ILogManager>(),
+                     Substitute.For<ISpecProvider>()
                 );
-
             }
         }
 
