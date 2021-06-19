@@ -9,14 +9,14 @@ using Nethermind.TxPool;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
-    public class GasPriceEstimator : IGasPriceOracle
+    public class GasPriceOracle : IGasPriceOracle
     {
         private UInt256? _lastPrice = null; //will this be okay if it is static?
         private Block? _lastHeadBlock = null;
         private readonly IBlockFinder _blockFinder;
         private const int Percentile = 20;
         private const int BlocksToGoBack = 5;
-        public GasPriceEstimator(IBlockFinder blockFinder)
+        public GasPriceOracle(IBlockFinder blockFinder)
         {
             _blockFinder = blockFinder;
         }
