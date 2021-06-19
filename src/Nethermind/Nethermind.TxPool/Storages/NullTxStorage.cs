@@ -23,16 +23,12 @@ namespace Nethermind.TxPool.Storages
     {
         public static NullTxStorage Instance => new();
         
-        public Transaction Get(Keccak hash) => null;
+        public Transaction? Get(Keccak hash) => null;
 
         public Transaction[] GetAll() => new Transaction[0];
 
-        public void Add(Transaction transaction)
-        {
-        }
+        public void Add(Transaction transaction) { }
 
-        public void Delete(Keccak hash)
-        {
-        }
+        public void Delete(Keccak hash) { }
     }
 }

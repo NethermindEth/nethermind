@@ -32,32 +32,31 @@ namespace Nethermind.TxPool.Storages
             _database = database;
         }
 
-        public Transaction Get(Keccak hash)
-            => Decode(_database.Get(hash));
+        public Transaction? Get(Keccak hash) => Decode(_database.Get(hash));
 
         public Transaction[] GetAll()
         {
-            var transactionsBytes = _database.GetAllValues().ToArray();
+            byte[]?[] transactionsBytes = _database.GetAllValues().ToArray();
             if (transactionsBytes.Length == 0)
             {
                 return Array.Empty<Transaction>();
             }
 
-            var transactions = new Transaction[transactionsBytes.Length];
-            for (var i = 0; i < transactionsBytes.Length; i++)
+            Transaction[] transactions = new Transaction[transactionsBytes.Length];
+            for (int i = 0; i < transactionsBytes.Length; i++)
             {
-                transactions[i] = Decode(transactionsBytes[i]);
+                transactions[i] = Decode(transactionsBytes[i])!;
             }
 
             return transactions;
         }
 
-        private static Transaction Decode(byte[] bytes)
+        private static Transaction? Decode(byte[]? bytes)
             => bytes == null ? null : Rlp.Decode<Transaction>(new Rlp(bytes));
 
         public void Add(Transaction transaction)
         {
-            if (transaction == null)
+            if (transaction?.Hash == null)
             {
                 throw new ArgumentNullException(nameof(transaction));
             }
@@ -65,7 +64,6 @@ namespace Nethermind.TxPool.Storages
             _database.Set(transaction.Hash, Rlp.Encode(transaction, RlpBehaviors.None).Bytes);
         }
 
-        public void Delete(Keccak hash)
-            => _database.Remove(hash.Bytes);
+        public void Delete(Keccak hash) => _database.Remove(hash.Bytes);
     }
 }

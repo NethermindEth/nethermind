@@ -23,12 +23,11 @@ namespace Nethermind.TxPool.Storages
 {
     public class InMemoryTxStorage : ITxStorage
     {
-        private readonly ConcurrentDictionary<Keccak, Transaction> _transactions =
-            new();
+        private readonly ConcurrentDictionary<Keccak, Transaction> _transactions = new();
 
-        public Transaction Get(Keccak hash)
+        public Transaction? Get(Keccak hash)
         {
-            _transactions.TryGetValue(hash, out var transaction);
+            _transactions.TryGetValue(hash, out Transaction? transaction);
 
             return transaction;
         }
