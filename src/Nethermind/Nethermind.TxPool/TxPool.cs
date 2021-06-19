@@ -41,7 +41,7 @@ namespace Nethermind.TxPool
     /// Stores all pending transactions. These will be used by block producer if this node is a miner / validator
     /// or simply for broadcasting and tracing in other cases.
     /// </summary>
-    public class TxPool : ITxPool, IDisposable
+    public partial class TxPool : ITxPool, IDisposable
     {
 
         private readonly object _locker = new();
@@ -51,11 +51,6 @@ namespace Nethermind.TxPool
 
         private readonly LruKeyCache<Keccak> _hashCache = new(MemoryAllowance.TxHashCacheSize,
             Math.Min(1024 * 16, MemoryAllowance.TxHashCacheSize), "tx hashes");
-
-        /// <summary>
-        /// Number of blocks after which own transaction will not be resurrected any more
-        /// </summary>
-        private const long FadingTimeInBlocks = 64;
 
         /// <summary>
         /// Notification threshold randomizer seed
@@ -110,15 +105,13 @@ namespace Nethermind.TxPool
         /// </summary>
         /// <param name="txStorage">Tx storage used to reject known transactions.</param>
         /// <param name="ecdsa">Used to recover sender addresses from transaction signatures.</param>
-        /// <param name="specProvider">Used for retrieving information on EIPs that may affect tx signature scheme.</param>
         /// <param name="chainHeadInfoProvider"></param>
         /// <param name="txPoolConfig"></param>
-        /// <param name="stateProvider"></param>
-        /// <param name="transactionComparerProvider"></param>
         /// <param name="validator"></param>
         /// <param name="logManager"></param>
         /// <param name="comparer"></param>
-        public TxPool(ITxStorage txStorage,
+        public TxPool(
+            ITxStorage txStorage,
             IEthereumEcdsa ecdsa,
             IChainHeadInfoProvider chainHeadInfoProvider,
             ITxPoolConfig txPoolConfig,
@@ -606,8 +599,8 @@ namespace Nethermind.TxPool
 
                 if (!addressNonces.Nonces.TryGetValue(transaction.Nonce, out var nonce))
                 {
-                    nonce = new Nonce(transaction.Nonce);
-                    addressNonces.Nonces.TryAdd(transaction.Nonce, new Nonce(transaction.Nonce));
+                    nonce = new NonceInfo(transaction.Nonce);
+                    addressNonces.Nonces.TryAdd(transaction.Nonce, new NonceInfo(transaction.Nonce));
                 }
 
                 if (!(nonce.TransactionHash is null && nonce.TransactionHash != transaction.Hash))
@@ -706,9 +699,9 @@ namespace Nethermind.TxPool
                     return currentNonce;
                 }
 
-                Nonce incrementedNonce = addressNonces.ReserveNonce();
+                NonceInfo incrementedNonceInfo = addressNonces.ReserveNonce();
 
-                return incrementedNonce.Value;
+                return incrementedNonceInfo.Value;
             }
         }
 
@@ -795,73 +788,6 @@ namespace Nethermind.TxPool
                 // otherwise adding own transaction will reenable the timer anyway
                 _ownTimer.Enabled = true;
             }
-        }
-
-        private class AddressNonces
-        {
-            private Nonce _currentNonce;
-
-            public ConcurrentDictionary<UInt256, Nonce> Nonces { get; } = new();
-
-            public AddressNonces(UInt256 startNonce)
-            {
-                _currentNonce = new Nonce(startNonce);
-                Nonces.TryAdd(_currentNonce.Value, _currentNonce);
-            }
-
-            public Nonce ReserveNonce()
-            {
-                var nonce = _currentNonce.Increment();
-                Interlocked.Exchange(ref _currentNonce, nonce);
-                Nonces.TryAdd(nonce.Value, nonce);
-
-                return nonce;
-            }
-        }
-
-        private class Nonce
-        {
-            public UInt256 Value { get; }
-            public Keccak? TransactionHash { get; private set; }
-
-            public Nonce(UInt256 value)
-            {
-                Value = value;
-            }
-
-            public void SetTransactionHash(Keccak transactionHash)
-            {
-                TransactionHash = transactionHash;
-            }
-
-            public Nonce Increment() => new(Value + 1);
-        }
-
-        private class PeerInfo : ITxPoolPeer
-        {
-            private ITxPoolPeer Peer { get; }
-
-            private LruKeyCache<Keccak> NotifiedTransactions { get; } = new(MemoryAllowance.MemPoolSize, "notifiedTransactions");
-
-            public PeerInfo(ITxPoolPeer peer)
-            {
-                Peer = peer;
-            }
-
-            public PublicKey Id => Peer.Id;
-
-            public bool SendNewTransaction(Transaction tx, bool isPriority)
-            {
-                if (!NotifiedTransactions.Get(tx.Hash))
-                {
-                    NotifiedTransactions.Set(tx.Hash);
-                    return Peer.SendNewTransaction(tx, isPriority);                     
-                }
-
-                return false;
-            }
-
-            public override string ToString() => Peer.Enode;
         }
     }
 }
