@@ -124,10 +124,10 @@ namespace Nethermind.JsonRpc.Test.Modules
                     .TestObject,
                 Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).WithGasPrice(11).WithNonce(1)
                     .TestObject,
-                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyD).WithGasPrice(10).WithNonce(2)
+                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyD).WithGasPrice(11).WithNonce(2)
                     .TestObject,
-                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).WithGasPrice(12).WithNonce(2)
-                    .TestObject
+                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).WithGasPrice(11).WithNonce(2)
+                    .TestObject //equal gas price to transactions[9] and transactions[10]
             };
 
             Block a = Build.A.Block.Genesis.WithTransactions(new[] {transactions[0], transactions[1]})
