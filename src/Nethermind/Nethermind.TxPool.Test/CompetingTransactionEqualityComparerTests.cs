@@ -21,7 +21,7 @@ using NUnit.Framework;
 
 namespace Nethermind.TxPool.Test
 {
-    public class PendingTransactionComparerTests
+    public class CompetingTransactionEqualityComparerTests
     {
         public static IEnumerable TestCases
         {

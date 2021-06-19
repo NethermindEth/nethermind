@@ -23,11 +23,11 @@ namespace Nethermind.TxPool
     /// <summary>
     /// Compares <see cref="Transaction"/>s based on <see cref="Transaction.Hash"/> identity. No two different signed transactions will be same.
     /// </summary>
-    public class DistinctCompareTx : IComparer<Transaction>
+    public class ByHashTxComparer : IComparer<Transaction>
     {
-        public static readonly DistinctCompareTx Instance = new();
+        public static readonly ByHashTxComparer Instance = new();
         
-        private DistinctCompareTx() { }
+        private ByHashTxComparer() { }
 
         public int Compare(Transaction? x, Transaction? y)
         {
