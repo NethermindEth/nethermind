@@ -147,7 +147,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             resultWrapper.Data.Should().Be((UInt256?) 5); //Tx Prices: 3,4,5,6,7,8,9,10,11,12, Index: (10-1)/5 = 1.8, rounded to 2 => Gas Price should be 5
         }
 
-        /*[Test]
+        [Test]
         public void eth_gas_price_should_use_last_tx_price_when_head_block_is_not_changed()
         {
             BlocktreeSetup blocktreeSetup = new BlocktreeSetup();
@@ -160,13 +160,12 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             Block a1 = Build.A.Block.WithNumber(3).WithTransactions(new Transaction[] {a, b})
                 .WithParentHash(blocktreeSetup._blocks[^1].Hash).TestObject;
-            
-            List<Block> blockList = blocktreeSetup._blocks.ToList();
-            blockList.Add(a1);
-            ResultWrapper<UInt256?> secondResult = blocktreeSetup.ethRpcModule.eth_gasPrice();
+
+            BlocktreeSetup blocktreeSetup2 = new BlocktreeSetup(new Block[] {a1}, true);
+            ResultWrapper<UInt256?> secondResult = blocktreeSetup2.ethRpcModule.eth_gasPrice();
             
             firstResult.Data.Should().Be(secondResult.Data);
-        }*/
+        }
         [Test]
         public void eth_gas_price_should_remove_tx_when_txgasprices_are_under_threshold()
         {
