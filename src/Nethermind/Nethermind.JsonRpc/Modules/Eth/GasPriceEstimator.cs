@@ -14,11 +14,13 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private UInt256? _lastPrice = null; //will this be okay if it is static?
         private Block? _lastHeadBlock = null;
         private readonly IBlockFinder _blockFinder;
+        private const int Percentile = 20;
+        private const int BlocksToGoBack = 5;
         public GasPriceEstimator(IBlockFinder blockFinder)
         {
             _blockFinder = blockFinder;
         }
-        private bool addTxFromBlockToSet(Block block, ref SortedSet<UInt256> sortedSet, UInt256 finalPrice,
+        private bool AddTxFromBlockToSet(Block block, ref SortedSet<UInt256> sortedSet, UInt256 finalPrice,
             UInt256? ignoreUnder = null, long? maxCount = null)
         {
             ignoreUnder ??= UInt256.Zero;
@@ -54,10 +56,10 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
         }
 
-        private UInt256? latestGasPrice(long headBlockNumber, long genesisBlockNumber)
+        private UInt256? LatestGasPrice(long headBlockNumber)
         {
             int blocksToCheck = 8;
-            while (headBlockNumber >= genesisBlockNumber && blocksToCheck-- > 0) //TEST
+            while (headBlockNumber >= 0 && blocksToCheck-- > 0) //TEST
             {
                 Transaction[] transactions = _blockFinder.FindBlock(headBlockNumber)!.Transactions
                     .Where(t => !t.IsEip1559).ToArray();
@@ -72,7 +74,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return 1; //do we want to throw an error if there are no transactions? Do we want to set lastPrice to 1 when we cannot find latestPrice in tx?
         }
         
-        private SortedSet<UInt256> addingPreviousBlockTx(UInt256? ignoreUnder, long blocksToGoBack, long currBlockNumber, 
+        private SortedSet<UInt256> AddingPreviousBlockTx(UInt256? ignoreUnder, long blocksToGoBack, long currBlockNumber, 
                 SortedSet<UInt256> gasPrices, UInt256? gasPriceLatest, long threshold)
         //if a block has 0 tx, we add the latest gas price as its only tx
         //if a block only has 1 tx (includes blocks that had initially 0 tx), we don't count it as part of the number of blocks we go back,
@@ -83,7 +85,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 Block? foundBlock = _blockFinder.FindBlock(currBlockNumber);
                 if (foundBlock != null)
                 {
-                    bool result = addTxFromBlockToSet(foundBlock, ref gasPrices, (UInt256) gasPriceLatest, ignoreUnder);
+                    bool result = AddTxFromBlockToSet(foundBlock, ref gasPrices, (UInt256) gasPriceLatest, ignoreUnder);
                     if (result || gasPrices.Count + blocksToGoBack >= threshold)
                     {
                         blocksToGoBack--;
@@ -96,8 +98,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return gasPrices;
         }
         
-        private SortedSet<UInt256> initializeValues(Block headBlock, Block genesisBlock, out long blocksToGoBack, out int percentile,
-            out long threshold, out long currBlockNumber, out UInt256? gasPriceLatest)
+        private SortedSet<UInt256> InitializeValues(Block? headBlock, out long threshold, 
+            out long currBlockNumber, out UInt256? gasPriceLatest)
         {
             Comparer<UInt256> comparer = Comparer<UInt256>.Create(((a, b) =>
             {
@@ -105,15 +107,13 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return res == 0 ? 1 : res;
             }));
             SortedSet<UInt256> gasPrices = new(comparer); //allows duplicates
-            blocksToGoBack = 5;
-            percentile = 20;
-            threshold = blocksToGoBack * 2;
+            threshold = BlocksToGoBack * 2;
             currBlockNumber = headBlock!.Number;
-            gasPriceLatest = latestGasPrice(headBlock!.Number, genesisBlock!.Number);
+            gasPriceLatest = LatestGasPrice(headBlock!.Number);
             return gasPrices;
         }
         
-        private bool initalChecks(Block? headBlock, Block? genesisBlock, out ResultWrapper<UInt256?> resultWrapper)
+        private bool InitialChecks(Block? headBlock, Block? genesisBlock, out ResultWrapper<UInt256?> resultWrapper)
         {
             if (headBlock == null)
             {
@@ -143,26 +143,22 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return false;
         }
         
-        public ResultWrapper<UInt256?> gasPriceEstimate(UInt256? ignoreUnder = null)
+        public ResultWrapper<UInt256?> GasPriceEstimate(UInt256? ignoreUnder = null)
         {
             Block? headBlock = _blockFinder.FindHeadBlock();
             Block? genesisBlock = _blockFinder.FindGenesisBlock();
-            if (initalChecks(headBlock, genesisBlock, out ResultWrapper<UInt256?> resultWrapper))
+            if (InitialChecks(headBlock, genesisBlock, out ResultWrapper<UInt256?> resultWrapper))
             {
                 return resultWrapper;
             }
 
-            SortedSet<UInt256> gasPrices = initializeValues(headBlock, genesisBlock, out long blocksToGoBack,
-                out int percentile, out long threshold, out long currBlockNumber, out UInt256? gasPriceLatest);
-            if (gasPriceLatest == null)
-            {
-                return ResultWrapper<UInt256?>.Fail("gasPriceLatest was not set properly.");
-            }
+            SortedSet<UInt256> gasPrices = InitializeValues(headBlock, 
+                out long threshold, out long currBlockNumber, out UInt256? gasPriceLatest);
             
-            gasPrices = addingPreviousBlockTx(ignoreUnder, blocksToGoBack, currBlockNumber, 
+            gasPrices = AddingPreviousBlockTx(ignoreUnder, BlocksToGoBack, currBlockNumber, 
                 gasPrices, gasPriceLatest, threshold);
 
-            int finalIndex = (int) Math.Round(((gasPrices.Count - 1) * ((float) percentile / 100)));
+            int finalIndex = (int) Math.Round(((gasPrices.Count - 1) * ((float) Percentile / 100)));
             foreach (UInt256 gasPrice in gasPrices.Where(_ => finalIndex-- <= 0))
             {
                 gasPriceLatest = gasPrice;
