@@ -9,7 +9,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
-    public class GasPriceEstimator
+    public class GasPriceEstimator : IGasPriceOracle
     {
         private UInt256? _lastPrice = null; //will this be okay if it is static?
         private Block? _lastHeadBlock = null;
