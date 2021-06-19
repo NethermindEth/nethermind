@@ -18,25 +18,24 @@
 using System.Collections.Generic;
 using Nethermind.Core;
 
-namespace Nethermind.TxPool
+namespace Nethermind.TxPool.Comparison
 {
     /// <summary>
-    /// Default ordering by <see cref="Transaction.GasLimit"/> asc
+    /// Compares <see cref="Transaction"/>s based on <see cref="Transaction.Hash"/> identity. No two different signed transactions will be same.
     /// </summary>
-    public class CompareTxByGasLimit : IComparer<Transaction?>
+    public class ByHashTxComparer : IComparer<Transaction>
     {
-        public static readonly CompareTxByGasLimit Instance = new();
+        public static readonly ByHashTxComparer Instance = new();
         
-        private CompareTxByGasLimit() { }
+        private ByHashTxComparer() { }
 
         public int Compare(Transaction? x, Transaction? y)
         {
-            if (ReferenceEquals(x, y)) return 0;
-            if (ReferenceEquals(null, y)) return 1;
-            if (ReferenceEquals(null, x)) return -1;
-
-            // then by gas limit ascending
-            return x.GasLimit.CompareTo(y.GasLimit);
+            if (ReferenceEquals(x?.Hash, y?.Hash)) return 0;
+            if (ReferenceEquals(null, y?.Hash)) return 1;
+            if (ReferenceEquals(null, x?.Hash)) return -1;
+            
+            return x.Hash!.CompareTo(y.Hash);
         }
     }
 }

@@ -19,7 +19,6 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
-using Nethermind.State;
 
 namespace Nethermind.TxPool
 {
@@ -27,9 +26,8 @@ namespace Nethermind.TxPool
     {
         IChainHeadSpecProvider SpecProvider { get; }
         
-        IReadOnlyStateProvider ReadOnlyStateProvider { get; }
-        UInt256 BaseFee { get; }
+        IAccountStateProvider AccountStateProvider { get; }
+        
         event EventHandler<BlockReplacementEventArgs> HeadChanged;
-
     }
 }

@@ -31,6 +31,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.Trie;
 using Nethermind.TxPool;
+using Nethermind.TxPool.Comparison;
 
 [assembly:InternalsVisibleTo("Nethermind.AuRa.Test")]
 

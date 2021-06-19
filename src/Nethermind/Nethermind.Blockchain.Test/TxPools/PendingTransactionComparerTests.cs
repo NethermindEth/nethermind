@@ -18,6 +18,7 @@ using System.Collections;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.TxPool;
+using Nethermind.TxPool.Comparison;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.TxPools

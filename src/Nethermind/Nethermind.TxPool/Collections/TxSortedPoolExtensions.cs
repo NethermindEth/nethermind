@@ -17,6 +17,7 @@
 
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.TxPool.Comparison;
 
 namespace Nethermind.TxPool.Collections
 {

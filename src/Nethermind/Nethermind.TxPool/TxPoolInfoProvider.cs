@@ -38,7 +38,7 @@ namespace Nethermind.TxPool
             var groupedTransactions = _txPool.GetPendingTransactionsBySender();
             var pendingTransactions = new Dictionary<Address, IDictionary<ulong, Transaction>>();
             var queuedTransactions = new Dictionary<Address, IDictionary<ulong, Transaction>>();
-            foreach (KeyValuePair<Address, Transaction[]> group in groupedTransactions)
+            foreach (KeyValuePair<Address?, Transaction[]> group in groupedTransactions)
             {
                 Address? address = group.Key;
                 if (address is null)
@@ -46,7 +46,7 @@ namespace Nethermind.TxPool
                     continue;
                 }
 
-                var accountNonce = _stateReader.GetNonce(head.StateRoot, address);
+                var accountNonce = _stateReader.GetAccount(head.StateRoot, address).Nonce;
                 var expectedNonce = accountNonce;
                 var pending = new Dictionary<ulong, Transaction>();
                 var queued = new Dictionary<ulong, Transaction>();

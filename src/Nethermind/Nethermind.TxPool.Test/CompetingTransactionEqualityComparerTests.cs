@@ -17,6 +17,7 @@
 using System.Collections;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
+using Nethermind.TxPool.Comparison;
 using NUnit.Framework;
 
 namespace Nethermind.TxPool.Test

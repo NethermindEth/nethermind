@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,27 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Collections.Generic;
-using Nethermind.Core;
-
-namespace Nethermind.TxPool
+namespace Nethermind.Core
 {
-    /// <summary>
-    /// Default ordering by <see cref="Transaction.PoolIndex"/> asc
-    /// </summary>
-    public class CompareTxByPoolIndex : IComparer<Transaction?>
+    public interface IAccountStateProvider
     {
-        public static readonly CompareTxByPoolIndex Instance = new();
-        
-        private CompareTxByPoolIndex() { }
-
-        public int Compare(Transaction? x, Transaction? y)
-        {
-            if (ReferenceEquals(x, y)) return 0;
-            if (ReferenceEquals(null, y)) return 1;
-            if (ReferenceEquals(null, x)) return -1;
-            
-            return x.PoolIndex.CompareTo(y.PoolIndex);
-        }
+        Account GetAccount(Address address);   
     }
 }

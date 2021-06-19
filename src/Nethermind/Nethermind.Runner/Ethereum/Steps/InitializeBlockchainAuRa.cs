@@ -42,6 +42,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Api;
 using Nethermind.TxPool;
+using Nethermind.TxPool.Comparison;
 using Nethermind.TxPool.Storages;
 
 namespace Nethermind.Runner.Ethereum.Steps

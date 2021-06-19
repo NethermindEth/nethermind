@@ -42,12 +42,12 @@ namespace Nethermind.Blockchain
         public ChainHeadInfoProvider(IChainHeadSpecProvider specProvider, IBlockTree blockTree, IReadOnlyStateProvider stateProvider)
         {
             SpecProvider = specProvider;
-            ReadOnlyStateProvider = stateProvider;
+            AccountStateProvider = stateProvider;
             _blockTree = blockTree;
         }
 
         public IChainHeadSpecProvider SpecProvider { get; }
-        public IReadOnlyStateProvider ReadOnlyStateProvider { get; }
+        public IAccountStateProvider AccountStateProvider { get; }
         public UInt256 BaseFee => _blockTree.Head?.Header.BaseFeePerGas ?? UInt256.Zero;
         public event EventHandler<BlockReplacementEventArgs> HeadChanged
         {

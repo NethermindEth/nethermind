@@ -29,7 +29,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.State;
 using Nethermind.TxPool.Collections;
 using Timer = System.Timers.Timer;
 
@@ -67,7 +66,7 @@ namespace Nethermind.TxPool
 
         private readonly IChainHeadSpecProvider _specProvider;
         private readonly ITxPoolConfig _txPoolConfig;
-        private readonly IReadOnlyStateProvider _stateProvider;
+        private readonly IAccountStateProvider _accounts;
         private readonly ITxValidator _validator;
         private readonly IEthereumEcdsa _ecdsa;
         private readonly IChainHeadInfoProvider _chainHeadInfoProvider;
@@ -125,7 +124,7 @@ namespace Nethermind.TxPool
             _txStorage = txStorage ?? throw new ArgumentNullException(nameof(txStorage));
             _specProvider = _chainHeadInfoProvider.SpecProvider;
             _txPoolConfig = txPoolConfig;
-            _stateProvider = _chainHeadInfoProvider.ReadOnlyStateProvider;
+            _accounts = _chainHeadInfoProvider.AccountStateProvider;
             _validator = validator ?? throw new ArgumentNullException(nameof(validator));
 
             MemoryAllowance.MemPoolSize = txPoolConfig.Size;
@@ -327,8 +326,8 @@ namespace Nethermind.TxPool
             // high-priority garbage transactions. We need to filter them as much as possible to use the tx pool space
             // efficiently. One call to get account from state is not that costly and it only happens after previous checks.
             // This was modeled by OpenEthereum behavior.
-            Account account = _stateProvider.GetAccount(tx.SenderAddress);
-            UInt256 currentNonce = account?.Nonce ?? UInt256.Zero;
+            Account account = _accounts.GetAccount(tx.SenderAddress);
+            UInt256 currentNonce = account.Nonce;
             if (tx.Nonce < currentNonce)
             {
                 Metrics.PendingTransactionsDiscarded++;
@@ -351,7 +350,7 @@ namespace Nethermind.TxPool
                 return AddTxResult.NonceTooFarInTheFuture;
             }
 
-            UInt256 balance = account?.Balance ?? UInt256.Zero;
+            UInt256 balance = account.Balance;
             UInt256 payableGasPrice = tx.CalculatePayableGasPrice(spec.IsEip1559Enabled, CurrentBaseFee, balance);
 
             bool overflow = spec.IsEip1559Enabled && UInt256.AddOverflow(tx.MaxPriorityFeePerGas, tx.MaxFeePerGas, out _);
@@ -465,9 +464,9 @@ namespace Nethermind.TxPool
         {
             if (transactions.Count != 0)
             {
-                Account? account = _stateProvider.GetAccount(address);
-                UInt256 balance = account?.Balance ?? UInt256.Zero;
-                long currentNonce = (long)(account?.Nonce ?? UInt256.Zero);
+                Account account = _accounts.GetAccount(address);
+                UInt256 balance = account.Balance;
+                long currentNonce = (long)(account.Nonce);
 
                 foreach (var changedTx in UpdateGasBottleneck(transactions, currentNonce, balance))
                 {
@@ -533,9 +532,9 @@ namespace Nethermind.TxPool
         {
             if (transactions.Count != 0)
             {
-                Account? account = _stateProvider.GetAccount(address);
-                UInt256 balance = account?.Balance ?? UInt256.Zero;
-                long currentNonce = (long)(account?.Nonce ?? UInt256.Zero);
+                Account? account = _accounts.GetAccount(address);
+                UInt256 balance = account.Balance;
+                long currentNonce = (long)(account.Nonce);
                 Transaction tx = transactions.FirstOrDefault(t => t.Nonce == currentNonce);
                 bool shouldBeDumped = false;
                 
@@ -692,7 +691,7 @@ namespace Nethermind.TxPool
             {
                 if (!_nonces.TryGetValue(address, out var addressNonces))
                 {
-                    var currentNonce = _stateProvider.GetNonce(address);
+                    UInt256 currentNonce = _accounts.GetAccount(address).Nonce;
                     addressNonces = new AddressNonces(currentNonce);
                     _nonces.TryAdd(address, addressNonces);
 

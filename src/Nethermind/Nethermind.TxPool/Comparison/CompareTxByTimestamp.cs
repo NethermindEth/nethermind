@@ -13,26 +13,29 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 
-namespace Nethermind.TxPool
+namespace Nethermind.TxPool.Comparison
 {
     /// <summary>
-    /// Comparer to check if two pending <see cref="Transaction"/>s compete with each other.
-    /// <see cref="Transaction"/>s compete with each other if they have same <see cref="Transaction.SenderAddress"/> and <see cref="Transaction.Nonce"/>. In that case only one transaction can go into chain. 
+    /// Default ordering by <see cref="Transaction.Timestamp"/> asc
     /// </summary>
-    public class CompetingTransactionEqualityComparer : IEqualityComparer<Transaction?>
+    public class CompareTxByTimestamp : IComparer<Transaction?>
     {
-        public static readonly CompetingTransactionEqualityComparer Instance = new();
+        public static readonly CompareTxByTimestamp Instance = new();
         
-        private CompetingTransactionEqualityComparer() { }
-        
-        public bool Equals(Transaction? x, Transaction? y) =>
-            ReferenceEquals(x, y) || !ReferenceEquals(x, null) && !ReferenceEquals(y, null) && x.SenderAddress == y.SenderAddress && x.Nonce == y.Nonce;
+        private CompareTxByTimestamp() { }
 
-        public int GetHashCode(Transaction? obj) => HashCode.Combine(obj?.SenderAddress, obj?.Nonce);
+        public int Compare(Transaction? x, Transaction? y)
+        {
+            if (ReferenceEquals(x, y)) return 0;
+            if (ReferenceEquals(null, y)) return 1;
+            if (ReferenceEquals(null, x)) return -1;
+            
+            return x.Timestamp.CompareTo(y.Timestamp);
+        }
     }
 }
