@@ -19,7 +19,6 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using Avro.File;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Core;
