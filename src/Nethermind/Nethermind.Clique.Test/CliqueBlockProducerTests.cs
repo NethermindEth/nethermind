@@ -460,7 +460,7 @@ namespace Nethermind.Clique.Test
                 transaction.SenderAddress = TestItem.PrivateKeyD.Address;
                 transaction.Hash = transaction.CalculateHash();
                 _ethereumEcdsa.Sign(TestItem.PrivateKeyD, transaction, true);
-                _pools[nodeKey].AddTransaction(transaction, TxHandlingOptions.None);
+                _pools[nodeKey].SubmitTx(transaction, TxHandlingOptions.None);
 
                 return this;
             }
@@ -477,7 +477,7 @@ namespace Nethermind.Clique.Test
                 transaction.SenderAddress = TestItem.PrivateKeyD.Address;
                 transaction.Hash = transaction.CalculateHash();
                 _ethereumEcdsa.Sign(TestItem.PrivateKeyD, transaction, true);
-                _pools[nodeKey].AddTransaction(transaction, TxHandlingOptions.None);
+                _pools[nodeKey].SubmitTx(transaction, TxHandlingOptions.None);
 
                 // bad nonce
                 transaction = new Transaction();
@@ -489,7 +489,7 @@ namespace Nethermind.Clique.Test
                 transaction.SenderAddress = TestItem.PrivateKeyD.Address;
                 transaction.Hash = transaction.CalculateHash();
                 _ethereumEcdsa.Sign(TestItem.PrivateKeyD, transaction, true);
-                _pools[nodeKey].AddTransaction(transaction, TxHandlingOptions.None);
+                _pools[nodeKey].SubmitTx(transaction, TxHandlingOptions.None);
 
                 // gas limit too high
                 transaction = new Transaction();
@@ -501,7 +501,7 @@ namespace Nethermind.Clique.Test
                 transaction.SenderAddress = TestItem.PrivateKeyD.Address;
                 transaction.Hash = transaction.CalculateHash();
                 _ethereumEcdsa.Sign(TestItem.PrivateKeyD, transaction, true);
-                _pools[nodeKey].AddTransaction(transaction, TxHandlingOptions.None);
+                _pools[nodeKey].SubmitTx(transaction, TxHandlingOptions.None);
 
                 // insufficient balance
                 transaction = new Transaction();
@@ -513,7 +513,7 @@ namespace Nethermind.Clique.Test
                 transaction.SenderAddress = TestItem.PrivateKeyD.Address;
                 transaction.Hash = transaction.CalculateHash();
                 _ethereumEcdsa.Sign(TestItem.PrivateKeyD, transaction, true);
-                _pools[nodeKey].AddTransaction(transaction, TxHandlingOptions.None);
+                _pools[nodeKey].SubmitTx(transaction, TxHandlingOptions.None);
 
                 return this;
             }
@@ -533,7 +533,7 @@ namespace Nethermind.Clique.Test
                 transaction.SenderAddress = TestItem.PrivateKeyD.Address;
                 transaction.Hash = transaction.CalculateHash();
                 _ethereumEcdsa.Sign(TestItem.PrivateKeyD, transaction, true);
-                _pools[nodeKey].AddTransaction(transaction, TxHandlingOptions.None);
+                _pools[nodeKey].SubmitTx(transaction, TxHandlingOptions.None);
             
                 return this;
             }
@@ -549,7 +549,7 @@ namespace Nethermind.Clique.Test
                 transaction.SenderAddress = TestItem.PrivateKeyD.Address;
                 transaction.Hash = transaction.CalculateHash();
                 _ethereumEcdsa.Sign(TestItem.PrivateKeyD, transaction, true);
-                _pools[nodeKey].AddTransaction(transaction, TxHandlingOptions.None);
+                _pools[nodeKey].SubmitTx(transaction, TxHandlingOptions.None);
 
                 return this;
             }

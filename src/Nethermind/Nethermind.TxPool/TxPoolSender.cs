@@ -45,7 +45,7 @@ namespace Nethermind.TxPool
             {
                 sealer.Seal(tx, txHandlingOptions);
                 
-                result = _txPool.AddTransaction(tx, txHandlingOptions);
+                result = _txPool.SubmitTx(tx, txHandlingOptions);
 
                 if (result != AddTxResult.OwnNonceAlreadyUsed && result != AddTxResult.AlreadyKnown
                     || (txHandlingOptions & TxHandlingOptions.ManagedNonce) != TxHandlingOptions.ManagedNonce)

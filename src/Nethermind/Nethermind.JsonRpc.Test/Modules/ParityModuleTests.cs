@@ -100,7 +100,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 .WithSenderAddress(Address.FromNumber((UInt256)blockNumber)).TestObject;
             pendingTransaction.Signature.V = 37;
             stateProvider.CreateAccount(pendingTransaction.SenderAddress, UInt256.UInt128MaxValue);
-            txPool.AddTransaction(pendingTransaction, TxHandlingOptions.None);
+            txPool.SubmitTx(pendingTransaction, TxHandlingOptions.None);
             
             blockNumber = 1;
             Transaction transaction = Build.A.Transaction.Signed(ethereumEcdsa, TestItem.PrivateKeyD, false)
@@ -108,7 +108,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 .WithNonce(100).TestObject;
             transaction.Signature.V = 37;
             stateProvider.CreateAccount(transaction.SenderAddress, UInt256.UInt128MaxValue);
-            txPool.AddTransaction(transaction, TxHandlingOptions.None);
+            txPool.SubmitTx(transaction, TxHandlingOptions.None);
 
             
             Block genesis = Build.A.Block.Genesis

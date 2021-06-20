@@ -23,6 +23,9 @@ using Nethermind.TxPool.Collections;
 
 namespace Nethermind.TxPool.Filters
 {
+    /// <summary>
+    /// Filters out transactions where gas fee properties were set too low or where the sender has not enough balance.
+    /// </summary>
     internal class FeeToLowFilter : IIncomingTxFilter
     {
         private readonly IChainHeadSpecProvider _specProvider;
@@ -45,12 +48,11 @@ namespace Nethermind.TxPool.Filters
             IReleaseSpec spec = _specProvider.GetSpec();
             Account account = _accounts.GetAccount(tx.SenderAddress!);
             UInt256 balance = account.Balance;
-            UInt256 payableGasPrice = tx.CalculatePayableGasPrice(spec.IsEip1559Enabled, _headInfo.CurrentBaseFee, balance);
-            bool isTxPoolFull = _txs.IsFull();
-
-            if (isTxPoolFull
+            UInt256 affordableGasPrice = tx.CalculateAffordableGasPrice(spec.IsEip1559Enabled, _headInfo.CurrentBaseFee, balance);
+            
+            if (_txs.IsFull()
                 && _txs.TryGetLast(out Transaction? lastTx)
-                && payableGasPrice <= lastTx?.GasBottleneck)
+                && affordableGasPrice <= lastTx?.GasBottleneck)
             {
                 Metrics.PendingTransactionsTooLowFee++;
                 if (_logger.IsTrace)

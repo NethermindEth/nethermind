@@ -21,6 +21,9 @@ using Nethermind.Logging;
 
 namespace Nethermind.TxPool.Filters
 {
+    /// <summary>
+    /// Filters out transactions where nonce is lower than the current sender account nonce.
+    /// </summary>
     internal class LowNonceFilter : IIncomingTxFilter
     {
         private readonly IAccountStateProvider _accounts;

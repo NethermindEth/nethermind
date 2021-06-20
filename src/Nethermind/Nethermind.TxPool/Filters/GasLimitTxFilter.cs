@@ -21,6 +21,9 @@ using Nethermind.Logging;
 
 namespace Nethermind.TxPool.Filters
 {
+    /// <summary>
+    /// Ignores transactions that outright exceed block gas limit or configured max block gas limit.
+    /// </summary>
     internal class GasLimitTxFilter : IIncomingTxFilter
     {
         private readonly IChainHeadInfoProvider _chainHeadInfoProvider;

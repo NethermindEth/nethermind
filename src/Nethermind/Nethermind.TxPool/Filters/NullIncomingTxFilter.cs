@@ -21,9 +21,7 @@ namespace Nethermind.TxPool.Filters
 {
     public class NullIncomingTxFilter : IIncomingTxFilter
     {
-        private NullIncomingTxFilter()
-        {
-        }
+        private NullIncomingTxFilter() { }
 
         public static IIncomingTxFilter Instance { get; } = new NullIncomingTxFilter();
 

@@ -19,6 +19,11 @@ using Nethermind.Core;
 
 namespace Nethermind.TxPool.Filters
 {
+    /// <summary>
+    /// Filters out all the transactions without TX hash calculated.
+    /// This generally should never happen as there should be no way for a transaction to be decoded
+    /// without hash when coming from devp2p.
+    /// </summary>
     internal class NullHashTxFilter : IIncomingTxFilter
     {
         public (bool Accepted, AddTxResult? Reason) Accept(Transaction tx, TxHandlingOptions handlingOptions)

@@ -21,6 +21,9 @@ using Nethermind.Logging;
 
 namespace Nethermind.TxPool.Filters
 {
+    /// <summary>
+    /// Filters out transactions that are not well formed (not conforming with the yellowpaper and EIPs)
+    /// </summary>
     internal class MalformedTxFilter : IIncomingTxFilter
     {
         private readonly ITxValidator _txValidator;

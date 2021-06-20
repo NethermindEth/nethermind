@@ -29,7 +29,7 @@ using Nethermind.TxPool.Collections;
 namespace Nethermind.TxPool
 {
     /// <summary>
-    /// Isolated persistent broadcast implementation to broadcast own transactions from tx pool.
+    /// This class responsibility is to notify other peers about interesting transactions.
     /// </summary>
     internal class TxBroadcaster : IDisposable
     {

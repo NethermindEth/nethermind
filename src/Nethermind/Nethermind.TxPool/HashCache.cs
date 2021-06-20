@@ -21,38 +21,56 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.TxPool
 {
+    /// <summary>
+    /// Hash cache prevents transactions from being analyzed multiple times.
+    /// It has a 2-layer structure -> transactions received many times within the same block will be ignored after
+    /// the first check (using this block cache).
+    /// After new chain head, the current block should be reset so that transactions can be analyzed again in case
+    /// conditions changed (sender balance, basefee, etc.)
+    /// User responsibility is to clear the current block cache when current block changes.
+    /// While it could be natural to rename CurrentBlock to CurrentScope, this class
+    /// exists as an internal helper for TX pool and I am aware only of a block scope use cases.
+    /// I claim that this class is thread safe due to thread safety of underlying structures and
+    /// careful ordering of the operations.
+    /// </summary>
     internal class HashCache
     {
-        private readonly LruKeyCache<Keccak> _hashCache = new(MemoryAllowance.TxHashCacheSize,
-            Math.Min(1024 * 16, MemoryAllowance.TxHashCacheSize), "tx hashes");
+        private const int SafeCapacity = 1024 * 16;
         
-        private readonly LruKeyCache<Keccak> _hashCacheThisBlock = new(1024 * 16,
-            Math.Min(1024 * 16, MemoryAllowance.TxHashCacheSize), "tx hashes");
+        private readonly LruKeyCache<Keccak> _longTermCache = new(
+            MemoryAllowance.TxHashCacheSize,
+            Math.Min(SafeCapacity, MemoryAllowance.TxHashCacheSize), 
+            "long term hash cache");
+        
+        private readonly LruKeyCache<Keccak> _currentBlockCache = new(
+            SafeCapacity,
+            Math.Min(SafeCapacity, MemoryAllowance.TxHashCacheSize), 
+            "current block hash cache");
 
         public bool Get(Keccak hash)
         {
-            return _hashCacheThisBlock.Get(hash) || _hashCache.Get(hash);
+            return _currentBlockCache.Get(hash) || _longTermCache.Get(hash);
         }
         
-        public void Set(Keccak hash)
+        public void SetLongTerm(Keccak hash)
         {
-            _hashCache.Set(hash);
+            _longTermCache.Set(hash);
         }
         
-        public void SetForThisBlock(Keccak hash)
+        public void SetForCurrentBlock(Keccak hash)
         {
-            _hashCacheThisBlock.Set(hash);
+            _currentBlockCache.Set(hash);
         }
         
         public void Delete(Keccak hash)
         {
-            _hashCache.Delete(hash);
-            _hashCacheThisBlock.Delete(hash);
+            _longTermCache.Delete(hash);
+            _currentBlockCache.Delete(hash);
         }
 
-        public void ClearThisBlock()
+        public void ClearCurrentBlockCache()
         {
-            _hashCacheThisBlock.Clear();
+            _currentBlockCache.Clear();
         }
     }
 }

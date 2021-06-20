@@ -37,7 +37,7 @@ namespace Nethermind.TxPool.Test
             tx.Value = test.Value;
             tx.DecodedMaxFeePerGas = test.FeeCap;
         
-            UInt256 payableGasPrice = tx.CalculatePayableGasPrice(test.IsEip1559Enabled, test.BaseFee, test.AccountBalance);
+            UInt256 payableGasPrice = tx.CalculateAffordableGasPrice(test.IsEip1559Enabled, test.BaseFee, test.AccountBalance);
             payableGasPrice.Should().Be(test.ExpectedPayableGasPriceResult);
         }
         

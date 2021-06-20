@@ -142,6 +142,8 @@ namespace Nethermind.Blockchain.Producers
             int selectedTransactions = 0;
             int i = 0;
             
+            // TODO: removing transactions from TX pool here seems to be a bad practice since they will
+            // not come back if the block is ignored?
             foreach (Transaction tx in transactions)
             {
                 i++;

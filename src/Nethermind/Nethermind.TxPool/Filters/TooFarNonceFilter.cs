@@ -22,6 +22,10 @@ using Nethermind.TxPool.Collections;
 
 namespace Nethermind.TxPool.Filters
 {
+    /// <summary>
+    /// Filters out transactions with nonces set too far in the future.
+    /// Without this filter it would be possible to fill in TX pool with transactions that have low chance of being executed soon.
+    /// </summary>
     internal class TooFarNonceFilter : IIncomingTxFilter
     {
         private readonly TxDistinctSortedPool _txs;

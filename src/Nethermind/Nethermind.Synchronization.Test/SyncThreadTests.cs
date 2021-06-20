@@ -179,7 +179,7 @@ namespace Nethermind.Synchronization.Test
                 transaction.GasPrice = 20.GWei();
                 transaction.Hash = transaction.CalculateHash();
                 _originPeer.Ecdsa.Sign(TestItem.PrivateKeyA, transaction);
-                _originPeer.TxPool.AddTransaction(transaction, TxHandlingOptions.None);
+                _originPeer.TxPool.SubmitTx(transaction, TxHandlingOptions.None);
                 if (!resetEvent.WaitOne(1000))
                 {
                     throw new Exception($"Failed to produce block {i + 1}");

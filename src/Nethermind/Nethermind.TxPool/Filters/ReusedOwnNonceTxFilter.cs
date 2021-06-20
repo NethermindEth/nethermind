@@ -22,6 +22,10 @@ using Nethermind.Logging;
 
 namespace Nethermind.TxPool.Filters
 {
+    /// <summary>
+    /// Filters out transactions that were generated at this machine and were already signed with the same nonce.
+    /// TODO: review if cancel by replace is still possible with this!
+    /// </summary>
     internal class ReusedOwnNonceTxFilter : IIncomingTxFilter
     {
         private readonly object _locker = new();

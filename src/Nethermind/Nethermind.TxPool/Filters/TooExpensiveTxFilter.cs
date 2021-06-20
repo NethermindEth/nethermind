@@ -22,6 +22,9 @@ using Nethermind.Logging;
 
 namespace Nethermind.TxPool.Filters
 {
+    /// <summary>
+    /// Filters out transactions which gas payments overflow uint256 or simply exceed sender balance
+    /// </summary>
     internal class TooExpensiveTxFilter : IIncomingTxFilter
     {
         private readonly IChainHeadSpecProvider _specProvider;
@@ -42,10 +45,10 @@ namespace Nethermind.TxPool.Filters
             IReleaseSpec spec = _specProvider.GetSpec();
             Account account = _accounts.GetAccount(tx.SenderAddress!);
             UInt256 balance = account.Balance;
-            UInt256 payableGasPrice = tx.CalculatePayableGasPrice(spec.IsEip1559Enabled, _headInfo.CurrentBaseFee, balance);
+            UInt256 affordableGasPrice = tx.CalculateAffordableGasPrice(spec.IsEip1559Enabled, _headInfo.CurrentBaseFee, balance);
 
             bool overflow = spec.IsEip1559Enabled && UInt256.AddOverflow(tx.MaxPriorityFeePerGas, tx.MaxFeePerGas, out _);
-            overflow |= UInt256.MultiplyOverflow(payableGasPrice, (UInt256) tx.GasLimit, out UInt256 cost);
+            overflow |= UInt256.MultiplyOverflow(affordableGasPrice, (UInt256) tx.GasLimit, out UInt256 cost);
             overflow |= UInt256.AddOverflow(cost, tx.Value, out cost);
             if (overflow)
             {
@@ -53,7 +56,8 @@ namespace Nethermind.TxPool.Filters
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, cost overflow.");
                 return (false, AddTxResult.Int256Overflow);
             }
-            else if (balance < cost)
+            
+            if (balance < cost)
             {
                 if (_logger.IsTrace)
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, insufficient funds.");

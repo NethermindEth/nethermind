@@ -42,6 +42,11 @@ namespace Nethermind.TxPool
         FeeTooLow,
         
         /// <summary>
+        /// Fee paid by this transaction is not enough to be accepted in the mempool.
+        /// </summary>
+        FeeTooLowToCompete,
+        
+        /// <summary>
         /// This transaction has been filtered out by the transaction pool filter.
         /// </summary>
         Filtered,
@@ -80,6 +85,6 @@ namespace Nethermind.TxPool
         /// A transaction with same nonce has been signed locally already and is awaiting in the pool.
         /// (I would like to change this behaviour to allow local replacement)
         /// </summary>
-        OwnNonceAlreadyUsed,
+        OwnNonceAlreadyUsed
     }
 }

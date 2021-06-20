@@ -173,6 +173,8 @@ namespace Nethermind.Baseline.Test
         {
             private class ReorgTxPool : TxPool.TxPool
             {
+                private readonly bool _noNonce;
+
                 public ReorgTxPool(
                     ITxStorage txStorage, 
                     IEthereumEcdsa ecdsa,
@@ -180,16 +182,30 @@ namespace Nethermind.Baseline.Test
                     ITxPoolConfig txPoolConfig,
                     ITxValidator validator,
                     ILogManager? logManager,
-                    IComparer<Transaction> comparer) 
+                    IComparer<Transaction> comparer,
+                    bool noNonce) 
                     : base(txStorage, ecdsa, chainHeadInfoProvider, txPoolConfig, validator, logManager, comparer)
                 {
+                    _noNonce = noNonce;
                 }
 
-                protected override AddTxResult? FilterTransaction(Transaction tx, in bool managedNonce, in bool isReorg)
+                protected override void SetupNonceTooLow()
                 {
-                    AddTxResult? addTxResult = base.FilterTransaction(tx, in managedNonce, isReorg);
-                    return addTxResult == AddTxResult.OldNonce ? null : addTxResult;
+                    if (_noNonce)
+                    {
+                        
+                    }
+                    else
+                    {
+                        
+                    }
                 }
+
+                // protected override AddTxResult? FilterTransaction(Transaction tx, in bool managedNonce, in bool isReorg)
+                // {
+                //     AddTxResult? addTxResult = base.FilterTransaction(tx, in managedNonce, isReorg);
+                //     return addTxResult == AddTxResult.OldNonce ? null : addTxResult;
+                // }
             }
             
             protected override TxPool.TxPool CreateTxPool(ITxStorage txStorage) =>

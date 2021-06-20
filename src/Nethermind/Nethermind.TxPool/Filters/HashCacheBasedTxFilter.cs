@@ -19,29 +19,29 @@ using Nethermind.Core;
 
 namespace Nethermind.TxPool.Filters
 {
-    internal class EarlyHashCacheFilter : IIncomingTxFilter
+    /// <summary>
+    /// This filters out transactions that have already been analyzed in the current scope
+    /// (block scope for rejected transactions or chain scope for accepted transactions).
+    /// It uses a limited capacity hash cache underneath so there is no strict promise on filtering
+    /// transactions.
+    /// </summary>
+    internal class HashCacheBasedTxFilter : IIncomingTxFilter
     {
         private readonly HashCache _hashCache;
 
-        public EarlyHashCacheFilter(HashCache hashCache)
+        public HashCacheBasedTxFilter(HashCache hashCache)
         {
             _hashCache = hashCache;
         }
-            
+
         public (bool Accepted, AddTxResult? Reason) Accept(Transaction tx, TxHandlingOptions handlingOptions)
         {
-            bool isReorg =
-                ((handlingOptions & TxHandlingOptions.Reorganisation) == TxHandlingOptions.Reorganisation);
-
-            if (!isReorg)
+            if (_hashCache.Get(tx.Hash!))
             {
-                if (_hashCache.Get(tx.Hash!))
-                {
-                    return (false, AddTxResult.AlreadyKnown);
-                }
-
-                _hashCache.SetForThisBlock(tx.Hash!);
+                return (false, AddTxResult.AlreadyKnown);
             }
+
+            _hashCache.SetForCurrentBlock(tx.Hash!);
 
             return (true, null);
         }
