@@ -282,7 +282,7 @@ namespace Nethermind.DataMarketplace.Test
 
             public Account GetAccount(Keccak stateRoot, Address address)
             {
-                throw new NotImplementedException();
+                return Account.TotallyEmpty.WithChangedNonce(GetNonce(stateRoot, address));
             }
 
             public UInt256 GetNonce(Keccak stateRoot, Address address)
