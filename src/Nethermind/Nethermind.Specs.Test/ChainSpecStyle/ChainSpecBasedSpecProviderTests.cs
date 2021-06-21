@@ -54,7 +54,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                 RinkebySpecProvider.BerlinBlockNumber,
                 RinkebySpecProvider.LondonBlockNumber - 1,
                 RinkebySpecProvider.LondonBlockNumber,
-                120000000, // far in the future
+                120_000_000, // far in the future
             };
             
             CompareSpecProviders(rinkeby, provider, blockNumbersToTest);
