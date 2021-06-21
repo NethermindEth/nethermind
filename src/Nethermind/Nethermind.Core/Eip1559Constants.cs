@@ -20,11 +20,14 @@ using Nethermind.Int256;
 
 namespace Nethermind.Core
 {
-    public static class Eip1559Constants
+    public class Eip1559Constants
     {
+        private readonly UInt256 _forkBaseFee;
+        
         public static readonly UInt256 BaseFeeMaxChangeDenominator = 8;
         
-        public static readonly UInt256 ForkBaseFee = 1.GWei();
+        // The default fork base fee is 1 Gwei. However, we can override it in genesis
+        public static UInt256 ForkBaseFee { get; set; } = 1.GWei();
 
         public const int ElasticityMultiplier = 2;
     }

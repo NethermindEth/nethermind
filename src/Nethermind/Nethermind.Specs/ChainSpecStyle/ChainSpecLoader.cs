@@ -327,6 +327,8 @@ namespace Nethermind.Specs.ChainSpecStyle
             UInt256 gasLimit = chainSpecJson.Genesis.GasLimit;
             Address beneficiary = chainSpecJson.Genesis.Author ?? Address.Zero;
             UInt256 baseFee = UInt256.Zero;
+            if (chainSpecJson.Genesis.BaseFeePerGas != null)
+                Eip1559Constants.ForkBaseFee = chainSpecJson.Genesis.BaseFeePerGas.Value;
             if (chainSpecJson.Params.Eip1559Transition != null)
                 baseFee = chainSpecJson.Params.Eip1559Transition == 0 ? Eip1559Constants.ForkBaseFee : UInt256.Zero; 
 
