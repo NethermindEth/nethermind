@@ -462,22 +462,26 @@ namespace Nethermind.Db.Rocks
         {
             try
             {
-                // We want to keep the folder if it can have subfolders with copied databases from pruning
-                if (_settings.CanDeleteFolder)
+                string fullPath = _fullPath!;
+                if (Directory.Exists(fullPath))
                 {
-                    Directory.Delete(_fullPath!, true);
-                }
-                else
-                {
-                    foreach (string file in Directory.EnumerateFiles(_fullPath!))
+                    // We want to keep the folder if it can have subfolders with copied databases from pruning
+                    if (_settings.CanDeleteFolder)
                     {
-                        File.Delete(file);
-                    }                    
+                        Directory.Delete(fullPath, true);
+                    }
+                    else
+                    {
+                        foreach (string file in Directory.EnumerateFiles(fullPath))
+                        {
+                            File.Delete(file);
+                        }
+                    }
                 }
             }
             catch (Exception e)
             {
-                if (_logger.IsWarn) _logger.Warn($"could not delete the {Name} database. {e.Message}");
+                if (_logger.IsWarn) _logger.Warn($"Could not delete the {Name} database. {e.Message}");
             }
         }
 
