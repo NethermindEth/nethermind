@@ -117,12 +117,7 @@ namespace Nethermind.State
             {
                 throw new InvalidOperationException($"{nameof(StorageProvider)} tried to restore snapshot {snapshot} beyond current position {_currentPosition}");
             }
-
-            while (_originalSnapshots.TryPeek(out int lastOriginalSnapshot) && lastOriginalSnapshot >= snapshot)
-            {
-                _originalSnapshots.Pop();
-            }
-
+            
             if (snapshot == _currentPosition)
             {
                 return;
@@ -170,6 +165,12 @@ namespace Nethermind.State
                 _changes[_currentPosition] = kept;
                 _intraBlockCache[kept.StorageCell].Push(_currentPosition);
             }
+            
+            while (_originalSnapshots.TryPeek(out int lastOriginalSnapshot) && lastOriginalSnapshot > snapshot)
+            {
+                _originalSnapshots.Pop();
+            }
+
         }
 
         public void Commit()

@@ -148,40 +148,49 @@ namespace Nethermind.Mev
         private void ProcessBundle(Block block, LinkedHashSet<Transaction> transactionsInBlock, List<BundleTransaction> bundleTransactions,
             BlockReceiptsTracer receiptsTracer, EventHandler<TxProcessedEventArgs> TransactionProcessed)
         {
-            var stateSnapshot = _stateProvider.TakeSnapshot();
-            var storageSnapshot = _storageProvider.TakeSnapshot(true);
-            var receiptSnapshot = receiptsTracer.TakeSnapshot();
-
-            var eventList = new List<TxProcessedEventArgs>();
-
-
-            foreach (var currentTx in bundleTransactions)
+            int stateSnapshot = _stateProvider.TakeSnapshot();
+            int storageSnapshot = _storageProvider.TakeSnapshot();
+            int receiptSnapshot = receiptsTracer.TakeSnapshot();
+            List<TxProcessedEventArgs> eventList = new();
+            bool bundleSucceeded = true;
+            for (int index = 0; index < bundleTransactions.Count && bundleSucceeded; index++)
             {
+                BundleTransaction currentTx = bundleTransactions[index];
                 ProcessTransaction(block, null, currentTx, transactionsInBlock.Count, receiptsTracer, null);
-                
-                if (receiptsTracer.LastReceipt!.Error == "revert" && !currentTx.CanRevert)
+
+                bool wasReverted = receiptsTracer.LastReceipt!.Error == "revert";
+                if (wasReverted && !currentTx.CanRevert)
                 {
-                    _stateProvider.Restore(stateSnapshot);
-                    _storageProvider.Restore(storageSnapshot);
-                    receiptsTracer.RestoreSnapshot(receiptSnapshot);
-                    
-                    bundleTransactions.Clear();
-                    foreach (var tx in bundleTransactions)
-                    {
-                        transactionsInBlock.Remove(tx);
-                    }
-                    
-                    return;
+                    bundleSucceeded = false;
                 }
-                eventList.Add(new TxProcessedEventArgs(transactionsInBlock.Count, currentTx, receiptsTracer.TxReceipts![transactionsInBlock.Count]));
+                else
+                {
+                    // we need to treat the result of previous transaction as the original value of next transaction, even when we do not commit 
+                    _storageProvider.TakeSnapshot(true);
+                    eventList.Add(new TxProcessedEventArgs(transactionsInBlock.Count, currentTx, receiptsTracer.TxReceipts![transactionsInBlock.Count]));                    
+                }
             }
-            
-            foreach (var eventItem in eventList)
+
+            if (bundleSucceeded)
             {
-                transactionsInBlock.Add(eventItem.Transaction);
-                TransactionProcessed?.Invoke(this, eventItem);
+                for (int index = 0; index < eventList.Count; index++)
+                {
+                    TxProcessedEventArgs eventItem = eventList[index];
+                    transactionsInBlock.Add(eventItem.Transaction);
+                    TransactionProcessed?.Invoke(this, eventItem);
+                }
             }
-            
+            else
+            {
+                _stateProvider.Restore(stateSnapshot);
+                _storageProvider.Restore(storageSnapshot);
+                receiptsTracer.RestoreSnapshot(receiptSnapshot);
+                for (int index = 0; index < bundleTransactions.Count; index++)
+                {
+                    transactionsInBlock.Remove(bundleTransactions[index]);
+                }
+            }
+
             bundleTransactions.Clear();
         }
     }
