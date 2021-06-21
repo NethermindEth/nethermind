@@ -165,8 +165,6 @@ namespace Nethermind.Mev
                 }
                 else
                 {
-                    // we need to treat the result of previous transaction as the original value of next transaction, even when we do not commit 
-                    _storageProvider.TakeSnapshot(true);
                     eventList.Add(new TxProcessedEventArgs(transactionsInBlock.Count, currentTx, receiptsTracer.TxReceipts![transactionsInBlock.Count]));                    
                 }
             }

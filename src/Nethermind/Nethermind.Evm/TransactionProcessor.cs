@@ -69,6 +69,9 @@ namespace Nethermind.Evm
 
         public bool BuildUp(Transaction transaction, BlockHeader block, ITxTracer txTracer)
         {
+            // we need to treat the result of previous transaction as the original value of next transaction
+            // when we do not commit
+            _storageProvider.TakeSnapshot(true);
             return Execute(transaction, block, txTracer, ExecutionOptions.None);
         }
 

@@ -48,7 +48,7 @@ namespace Nethermind.State
         private const int StartCapacity = Resettable.StartCapacity;
         private int _capacity = StartCapacity;
         private Change?[] _changes = new Change[StartCapacity];
-        private int _currentPosition = -1;
+        private int _currentPosition = Resettable.EmptyPosition;
 
         private readonly Stack<int> _originalSnapshots = new();
 
@@ -102,7 +102,7 @@ namespace Nethermind.State
         public int TakeSnapshot(bool asOriginal)
         {
             if (_logger.IsTrace) _logger.Trace($"Storage snapshot {_currentPosition}");
-            if (asOriginal)
+            if (asOriginal && _currentPosition != Resettable.EmptyPosition)
             {
                 _originalSnapshots.Push(_currentPosition);
             }
