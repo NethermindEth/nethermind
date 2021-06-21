@@ -149,7 +149,7 @@ namespace Nethermind.Mev
             BlockReceiptsTracer receiptsTracer, EventHandler<TxProcessedEventArgs> TransactionProcessed)
         {
             var stateSnapshot = _stateProvider.TakeSnapshot();
-            var storageSnapshot = _storageProvider.TakeSnapshot();
+            var storageSnapshot = _storageProvider.TakeSnapshot(true);
             var receiptSnapshot = receiptsTracer.TakeSnapshot();
 
             var eventList = new List<TxProcessedEventArgs>();
