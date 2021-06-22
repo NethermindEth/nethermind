@@ -166,9 +166,8 @@ namespace Nethermind.Baseline.Test
         
         private class BaseLineTreeReorgTestBlockChain : TestRpcBlockchain
         {
-            protected override TxPool.TxPool CreateTxPool(ITxStorage txStorage) =>
+            protected override TxPool.TxPool CreateTxPool() =>
                 new (
-                    txStorage,
                     EthereumEcdsa,
                     new ChainHeadInfoProvider(new FixedBlockChainHeadSpecProvider(SpecProvider), BlockTree, ReadOnlyState),
                     new TxPoolConfig(),

@@ -42,7 +42,6 @@ using Nethermind.Facade;
 using Nethermind.State;
 using Nethermind.Trie;
 using Nethermind.TxPool;
-using Nethermind.TxPool.Storages;
 using Nethermind.Wallet;
 using NSubstitute;
 using NUnit.Framework;
@@ -137,8 +136,13 @@ namespace Nethermind.DataMarketplace.Test
             Block block =  Build.A.Block.WithNumber(0).TestObject;
             blockTree.Head.Returns(block);
             TransactionComparerProvider transactionComparerProvider = new TransactionComparerProvider(specProvider, blockTree);
-            _txPool = new TxPool.TxPool(new InMemoryTxStorage(),
-                new EthereumEcdsa(specProvider.ChainId, _logManager), new ChainHeadInfoProvider(specProvider, blockTree, _state), new TxPoolConfig(), new TxValidator(specProvider.ChainId), _logManager, transactionComparerProvider.GetDefaultComparer());
+            _txPool = new TxPool.TxPool(
+                new EthereumEcdsa(specProvider.ChainId, _logManager),
+                new ChainHeadInfoProvider(specProvider, blockTree, _state),
+                new TxPoolConfig(),
+                new TxValidator(specProvider.ChainId),
+                _logManager,
+                transactionComparerProvider.GetDefaultComparer());
             _ndmBridge = new NdmBlockchainBridge(_bridge, _bridge, _bridge, _bridge);
         }
 
