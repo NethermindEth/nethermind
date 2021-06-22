@@ -7,6 +7,8 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Dsl.Pipeline;
+using Nethermind.Dsl.Pipeline.Builders;
+using Nethermind.Dsl.Pipeline.Sources;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Pipeline;
@@ -29,8 +31,11 @@ namespace Nethermind.Dsl.ANTLR
         private IPipelineBuilder<Transaction, Transaction> _transactionsPipelineBuilder;
         private IPipelineBuilder<TxReceipt, TxReceipt> _eventsPipelineBuilder;
         private IPipelineBuilder<Transaction, Transaction> _pendingTransactionsPipelineBuilder;
+        
+        //builders of elements in pipeline
+        private readonly BlockElementsBuilder _blockElementsBuilder;
 
-        public Interpreter(INethermindApi api, string script)
+        public Interpreter(INethermindApi api, string script, BlockElementsBuilder blockElementsBuilder = null)
         {
             _api = api ?? throw new ArgumentNullException(nameof(api));
             _logger = api.LogManager.GetClassLogger();
@@ -194,34 +199,6 @@ namespace Nethermind.Dsl.ANTLR
 
         private PipelineElement<Block, Block> GetNextBlockElement(string key, string operation, string value)
         {
-            return operation switch
-            {
-                "IS" => new PipelineElement<Block, Block>(
-                    condition: (b => b.GetType().GetProperty(key)?.GetValue(b)?.ToString()?.ToLowerInvariant() == value.ToLowerInvariant()),
-                    transformData: (b => b)),
-                "==" => new PipelineElement<Block, Block>(
-                    condition: (b => b.GetType().GetProperty(key)?.GetValue(b)?.ToString()?.ToLowerInvariant() == value.ToLowerInvariant()),
-                    transformData: (b => b)),
-                "!=" => new PipelineElement<Block, Block>(
-                    condition: (b => b.GetType().GetProperty(key)?.GetValue(b)?.ToString()?.ToLowerInvariant() != value.ToLowerInvariant()),
-                    transformData: (b => b)),
-                "NOT" => new PipelineElement<Block, Block>(
-                    condition: (b => b.GetType().GetProperty(key)?.GetValue(b)?.ToString()?.ToLowerInvariant() != value.ToLowerInvariant()),
-                    transformData: (b => b)),
-                ">" => new PipelineElement<Block, Block>(
-                    condition: (b => (UInt256) b.GetType().GetProperty(key)?.GetValue(b) > UInt256.Parse(value)),
-                    transformData: (b => b)),
-                "<" => new PipelineElement<Block, Block>(
-                    condition: (b => (UInt256) b.GetType().GetProperty(key)?.GetValue(b) < UInt256.Parse(value)),
-                    transformData: (b => b)),
-                ">=" => new PipelineElement<Block, Block>(
-                    condition: (b => (UInt256) b.GetType().GetProperty(key)?.GetValue(b) >= UInt256.Parse(value)),
-                    transformData: (b => b)),
-                "<=" => new PipelineElement<Block, Block>(
-                    condition: (b => (UInt256) b.GetType().GetProperty(key)?.GetValue(b) <= UInt256.Parse(value)),
-                    transformData: (b => b)),
-                _ => null
-            };
         }
 
         private PipelineElement<TxReceipt, TxReceipt> GetNextEventElement(string key, string operation, string value)

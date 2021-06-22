@@ -1,1 +1,1 @@
-WATCH Blocks WHERE Author IS 0x22eA9f6b28DB76A7162054c05ed812dEb2f519Cd PUBLISH WebSockets ytext
+WATCH Events WHERE EventSignature IS Swap(address, uint256, uint256, uint256, uint256, address) PUBLISH WebSockets test

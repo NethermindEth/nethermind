@@ -5,7 +5,7 @@ using Nethermind.Logging;
 using Nethermind.Pipeline;
 
 #nullable enable
-namespace Nethermind.Dsl.Pipeline
+namespace Nethermind.Dsl.Pipeline.Sources
 {
     public class BlocksSource<TOut> : IPipelineElement<TOut> where TOut : Block
     {

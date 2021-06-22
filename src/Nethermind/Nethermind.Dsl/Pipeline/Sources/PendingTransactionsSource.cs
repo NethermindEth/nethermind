@@ -4,7 +4,7 @@ using Nethermind.Pipeline;
 using Nethermind.TxPool;
 
 #nullable enable
-namespace Nethermind.Dsl.Pipeline
+namespace Nethermind.Dsl.Pipeline.Sources
 {
     public class PendingTransactionsSource<TOut> : IPipelineElement<TOut> where TOut : Transaction
     {

@@ -4,7 +4,7 @@ using Nethermind.Core;
 using Nethermind.Pipeline;
 
 #nullable enable
-namespace Nethermind.Dsl.Pipeline
+namespace Nethermind.Dsl.Pipeline.Sources
 {
     public class ProcessedTransactionsSource<TOut> : IPipelineElement<TOut> where TOut : Transaction
     {

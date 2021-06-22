@@ -22,7 +22,7 @@ using Nethermind.Core;
 using Nethermind.Facade;
 using Nethermind.Pipeline;
 
-namespace Nethermind.Dsl.Pipeline
+namespace Nethermind.Dsl.Pipeline.Sources
 {
     public class UniswapSource<TOut> : IPipelineElement<TOut> where TOut : Transaction
     {
