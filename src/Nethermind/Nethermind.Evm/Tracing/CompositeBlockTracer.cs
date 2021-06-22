@@ -26,8 +26,8 @@ namespace Nethermind.Evm.Tracing
     public class CompositeBlockTracer : IBlockTracer
     {
         private readonly IBlockTracer[] _childTracers;
-        public bool IsTracingRewards { get; private set; }
-
+        public bool IsTracingRewards { get; }
+        
         public CompositeBlockTracer(IBlockTracer[] childTracers)
         {
             _childTracers = childTracers;
@@ -44,17 +44,21 @@ namespace Nethermind.Evm.Tracing
 
         public void ReportReward(Address author, string rewardType, UInt256 rewardValue)
         {
-            foreach (IBlockTracer childTracer in _childTracers)
+            for (int index = 0; index < _childTracers.Length; index++)
             {
-                if (!childTracer.IsTracingRewards) continue;
-                childTracer.ReportReward(author, rewardType, rewardValue);
+                IBlockTracer childTracer = _childTracers[index];
+                if (childTracer.IsTracingRewards)
+                {
+                    childTracer.ReportReward(author, rewardType, rewardValue);
+                }
             }
         }
 
         public void StartNewBlockTrace(Block block)
         {
-            foreach (IBlockTracer childTracer in _childTracers)
+            for (int index = 0; index < _childTracers.Length; index++)
             {
+                IBlockTracer childTracer = _childTracers[index];
                 childTracer.StartNewBlockTrace(block);
             }
         }
@@ -62,19 +66,27 @@ namespace Nethermind.Evm.Tracing
         public ITxTracer StartNewTxTrace(Transaction? tx)
         {
             IBlockTracer[] childBlockTracers = _childTracers;
-            if (childBlockTracers.Length == 0) return NullTxTracer.Instance;
+
+            List<ITxTracer> tracers = new(_childTracers.Length);
             
-            ITxTracer[] childTxTracers = childBlockTracers
-                .Select(childBlockTracer => childBlockTracer.StartNewTxTrace(tx))
-                .Where(childTxTracer => childTxTracer != NullTxTracer.Instance).ToArray();
-            return childTxTracers.Any() ? new CompositeTxTracer(childTxTracers) : NullTxTracer.Instance;
+            for (int i = 0; i < childBlockTracers.Length; i++)
+            {
+                IBlockTracer childBlockTracer = childBlockTracers[i];
+                ITxTracer txTracer = childBlockTracer.StartNewTxTrace(tx);
+                if (txTracer != NullTxTracer.Instance)
+                {
+                    tracers.Add(txTracer);
+                }
+            }
+
+            return tracers.Count > 0 ? new CompositeTxTracer(tracers) : NullTxTracer.Instance;
         }
 
         public void EndBlockTrace()
         {
-            if (_childTracers.Length == 0) return;
-            foreach (IBlockTracer childTracer in _childTracers)
+            for (int index = 0; index < _childTracers.Length; index++)
             {
+                IBlockTracer childTracer = _childTracers[index];
                 childTracer.EndBlockTrace();
             }
         }

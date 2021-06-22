@@ -36,7 +36,7 @@ namespace Nethermind.Evm.Test.Tracing
     public class CompositeBlockTracerTests
     {
         [Test]
-        public async Task Should_create_tracer_correctly()
+        public void Should_create_tracer_correctly()
         {
             Keccak txHash = TestItem.KeccakA;
             GethLikeBlockTracer gethLikeBlockTracer = new(txHash, GethTraceOptions.Default);

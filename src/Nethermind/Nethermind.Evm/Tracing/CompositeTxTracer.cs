@@ -25,14 +25,14 @@ namespace Nethermind.Evm.Tracing
 {
     public class CompositeTxTracer : ITxTracer
     {
-        private readonly ITxTracer[] _txTracers;
+        private readonly IList<ITxTracer> _txTracers;
 
-        public CompositeTxTracer(params ITxTracer[] txTracers)
+        public CompositeTxTracer(IList<ITxTracer> txTracers)
         {
             _txTracers = txTracers;
-            for (var index = 0; index < txTracers.Length; index++)
+            for (int index = 0; index < txTracers.Count; index++)
             {
-                var t = txTracers[index];
+                ITxTracer t = txTracers[index];
                 IsTracingState |= t.IsTracingState;
                 IsTracingReceipt |= t.IsTracingReceipt;
                 IsTracingActions |= t.IsTracingActions;
@@ -63,9 +63,9 @@ namespace Nethermind.Evm.Tracing
 
         public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
         {
-            for (var index = 0; index < _txTracers.Length; index++)
+            for (int index = 0; index < _txTracers.Count; index++)
             {
-                var innerTracer = _txTracers[index];
+                ITxTracer innerTracer = _txTracers[index];
                 if (innerTracer.IsTracingState)
                 {
                     innerTracer.ReportBalanceChange(address, before, after);
@@ -75,9 +75,9 @@ namespace Nethermind.Evm.Tracing
 
         public void ReportCodeChange(Address address, byte[] before, byte[] after)
         {
-            for (var index = 0; index < _txTracers.Length; index++)
+            for (int index = 0; index < _txTracers.Count; index++)
             {
-                var innerTracer = _txTracers[index];
+                ITxTracer innerTracer = _txTracers[index];
                 if (innerTracer.IsTracingState)
                 {
                     innerTracer.ReportCodeChange(address, before, after);
@@ -87,9 +87,9 @@ namespace Nethermind.Evm.Tracing
 
         public void ReportNonceChange(Address address, UInt256? before, UInt256? after)
         {
-            for (var index = 0; index < _txTracers.Length; index++)
+            for (int index = 0; index < _txTracers.Count; index++)
             {
-                var innerTracer = _txTracers[index];
+                ITxTracer innerTracer = _txTracers[index];
                 if (innerTracer.IsTracingState)
                 {
                     innerTracer.ReportNonceChange(address, before, after);
@@ -99,9 +99,9 @@ namespace Nethermind.Evm.Tracing
 
         public void ReportAccountRead(Address address)
         {
-            for (var index = 0; index < _txTracers.Length; index++)
+            for (int index = 0; index < _txTracers.Count; index++)
             {
-                var innerTracer = _txTracers[index];
+                ITxTracer innerTracer = _txTracers[index];
                 if (innerTracer.IsTracingState)
                 {
                     innerTracer.ReportAccountRead(address);
@@ -111,9 +111,9 @@ namespace Nethermind.Evm.Tracing
 
         public void ReportStorageChange(StorageCell storageCell, byte[] before, byte[] after)
         {
-            for (var index = 0; index < _txTracers.Length; index++)
+            for (int index = 0; index < _txTracers.Count; index++)
             {
-                var innerTracer = _txTracers[index];
+                ITxTracer innerTracer = _txTracers[index];
                 if (innerTracer.IsTracingStorage)
                 {
                     innerTracer.ReportStorageChange(storageCell, before, after);
@@ -123,9 +123,9 @@ namespace Nethermind.Evm.Tracing
         
         public void ReportStorageRead(StorageCell storageCell)
         {
-            for (var index = 0; index < _txTracers.Length; index++)
+            for (int index = 0; index < _txTracers.Count; index++)
             {
-                var innerTracer = _txTracers[index];
+                ITxTracer innerTracer = _txTracers[index];
                 if (innerTracer.IsTracingStorage)
                 {
                     innerTracer.ReportStorageRead(storageCell);
@@ -135,9 +135,9 @@ namespace Nethermind.Evm.Tracing
 
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
         {
-            for (var index = 0; index < _txTracers.Length; index++)
+            for (int index = 0; index < _txTracers.Count; index++)
             {
-                var innerTracer = _txTracers[index];
+                ITxTracer innerTracer = _txTracers[index];
                 if (innerTracer.IsTracingReceipt)
                 {
                     innerTracer.MarkAsSuccess(recipient, gasSpent, output, logs, stateRoot);
@@ -147,9 +147,9 @@ namespace Nethermind.Evm.Tracing
 
         public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak? stateRoot = null)
         {
-            for (var index = 0; index < _txTracers.Length; index++)
+            for (int index = 0; index < _txTracers.Count; index++)
             {
-                var innerTracer = _txTracers[index];
+                ITxTracer innerTracer = _txTracers[index];
                 if (innerTracer.IsTracingReceipt)
                 {
                     innerTracer.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
@@ -159,9 +159,9 @@ namespace Nethermind.Evm.Tracing
 
         public void StartOperation(int depth, long gas, Instruction opcode, int pc)
         {
-            for (var index = 0; index < _txTracers.Length; index++)
+            for (int index = 0; index < _txTracers.Count; index++)
             {
-                var innerTracer = _txTracers[index];
+                ITxTracer innerTracer = _txTracers[index];
                 if (innerTracer.IsTracingInstructions)
                 {
                     innerTracer.StartOperation(depth, gas, opcode, pc);
@@ -171,9 +171,9 @@ namespace Nethermind.Evm.Tracing
 
         public void ReportOperationError(EvmExceptionType error)
         {
-            for (var index = 0; index < _txTracers.Length; index++)
+            for (int index = 0; index < _txTracers.Count; index++)
             {
-                var innerTracer = _txTracers[index];
+                ITxTracer innerTracer = _txTracers[index];
                 if (innerTracer.IsTracingInstructions)
                 {
                     innerTracer.ReportOperationError(error);
@@ -183,9 +183,9 @@ namespace Nethermind.Evm.Tracing
 
         public void ReportOperationRemainingGas(long gas)
         {
-            for (var index = 0; index < _txTracers.Length; index++)
+            for (int index = 0; index < _txTracers.Count; index++)
             {
-                var innerTracer = _txTracers[index];
+                ITxTracer innerTracer = _txTracers[index];
                 if (innerTracer.IsTracingInstructions)
                 {
                     innerTracer.ReportOperationRemainingGas(gas);
@@ -195,9 +195,9 @@ namespace Nethermind.Evm.Tracing
 
         public void SetOperationStack(List<string> stackTrace)
         {
-            for (var index = 0; index < _txTracers.Length; index++)
+            for (int index = 0; index < _txTracers.Count; index++)
             {
-                var innerTracer = _txTracers[index];
+                ITxTracer innerTracer = _txTracers[index];
                 if (innerTracer.IsTracingStack)
                 {
                     innerTracer.SetOperationStack(stackTrace);
@@ -207,9 +207,9 @@ namespace Nethermind.Evm.Tracing
 
         public void ReportStackPush(in ReadOnlySpan<byte> stackItem)
         {
-            for (var index = 0; index < _txTracers.Length; index++)
+            for (int index = 0; index < _txTracers.Count; index++)
             {
-                var innerTracer = _txTracers[index];
+                ITxTracer innerTracer = _txTracers[index];
                 if (innerTracer.IsTracingInstructions)
                 {
                     innerTracer.ReportStackPush(stackItem);
@@ -219,9 +219,9 @@ namespace Nethermind.Evm.Tracing
 
         public void ReportStackPush(in ZeroPaddedSpan stackItem)
         {
-            for (var index = 0; index < _txTracers.Length; index++)
+            for (int index = 0; index < _txTracers.Count; index++)
             {
-                var innerTracer = _txTracers[index];
+                ITxTracer innerTracer = _txTracers[index];
                 if (innerTracer.IsTracingInstructions)
                 {
                     innerTracer.ReportStackPush(stackItem);
@@ -231,9 +231,9 @@ namespace Nethermind.Evm.Tracing
 
         public void ReportStackPush(byte stackItem)
         {
-            for (var index = 0; index < _txTracers.Length; index++)
+            for (int index = 0; index < _txTracers.Count; index++)
             {
-                var innerTracer = _txTracers[index];
+                ITxTracer innerTracer = _txTracers[index];
                 if (innerTracer.IsTracingInstructions)
                 {
                     innerTracer.ReportStackPush(stackItem);
@@ -243,9 +243,9 @@ namespace Nethermind.Evm.Tracing
 
         public void SetOperationMemory(List<string> memoryTrace)
         {
-            for (var index = 0; index < _txTracers.Length; index++)
+            for (int index = 0; index < _txTracers.Count; index++)
             {
-                var innerTracer = _txTracers[index];
+                ITxTracer innerTracer = _txTracers[index];
                 if (innerTracer.IsTracingMemory)
                 {
                     innerTracer.SetOperationMemory(memoryTrace);
@@ -255,9 +255,9 @@ namespace Nethermind.Evm.Tracing
 
         public void SetOperationMemorySize(ulong newSize)
         {
-            for (var index = 0; index < _txTracers.Length; index++)
+            for (int index = 0; index < _txTracers.Count; index++)
             {
-                var innerTracer = _txTracers[index];
+                ITxTracer innerTracer = _txTracers[index];
                 if (innerTracer.IsTracingMemory)
                 {
                     innerTracer.SetOperationMemorySize(newSize);
@@ -267,9 +267,9 @@ namespace Nethermind.Evm.Tracing
 
         public void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)
         {
-            for (var index = 0; index < _txTracers.Length; index++)
+            for (int index = 0; index < _txTracers.Count; index++)
             {
-                var innerTracer = _txTracers[index];
+                ITxTracer innerTracer = _txTracers[index];
                 if (innerTracer.IsTracingInstructions)
                 {
                     innerTracer.ReportMemoryChange(offset, data);
@@ -279,9 +279,9 @@ namespace Nethermind.Evm.Tracing
 
         public void ReportMemoryChange(long offset, in ZeroPaddedSpan data)
         {
-            for (var index = 0; index < _txTracers.Length; index++)
+            for (int index = 0; index < _txTracers.Count; index++)
             {
-                var innerTracer = _txTracers[index];
+                ITxTracer innerTracer = _txTracers[index];
                 if (innerTracer.IsTracingInstructions)
                 {
                     innerTracer.ReportMemoryChange(offset, data);
@@ -291,9 +291,9 @@ namespace Nethermind.Evm.Tracing
 
         public void ReportMemoryChange(long offset, byte data)
         {
-            for (var index = 0; index < _txTracers.Length; index++)
+            for (int index = 0; index < _txTracers.Count; index++)
             {
-                var innerTracer = _txTracers[index];
+                ITxTracer innerTracer = _txTracers[index];
                 if (innerTracer.IsTracingInstructions)
                 {
                     innerTracer.ReportMemoryChange(offset, data);
@@ -303,9 +303,9 @@ namespace Nethermind.Evm.Tracing
 
         public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
         {
-            for (var index = 0; index < _txTracers.Length; index++)
+            for (int index = 0; index < _txTracers.Count; index++)
             {
-                var innerTracer = _txTracers[index];
+                ITxTracer innerTracer = _txTracers[index];
                 if (innerTracer.IsTracingInstructions)
                 {
                     innerTracer.ReportStorageChange(key, value);
@@ -315,9 +315,9 @@ namespace Nethermind.Evm.Tracing
 
         public void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
         {
-            for (var index = 0; index < _txTracers.Length; index++)
+            for (int index = 0; index < _txTracers.Count; index++)
             {
-                var innerTracer = _txTracers[index];
+                ITxTracer innerTracer = _txTracers[index];
                 if (innerTracer.IsTracingOpLevelStorage)
                 {
                     innerTracer.SetOperationStorage(address, storageIndex, newValue, currentValue);
@@ -327,9 +327,9 @@ namespace Nethermind.Evm.Tracing
 
         public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
         {
-            for (var index = 0; index < _txTracers.Length; index++)
+            for (int index = 0; index < _txTracers.Count; index++)
             {
-                var innerTracer = _txTracers[index];
+                ITxTracer innerTracer = _txTracers[index];
                 if (innerTracer.IsTracingActions)
                 {
                     innerTracer.ReportSelfDestruct(address, balance, refundAddress);
@@ -339,9 +339,9 @@ namespace Nethermind.Evm.Tracing
 
         public void ReportAction(long gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
         {
-            for (var index = 0; index < _txTracers.Length; index++)
+            for (int index = 0; index < _txTracers.Count; index++)
             {
-                var innerTracer = _txTracers[index];
+                ITxTracer innerTracer = _txTracers[index];
                 if (innerTracer.IsTracingActions)
                 {
                     innerTracer.ReportAction(gas, value, @from, to, input, callType, isPrecompileCall);
@@ -351,9 +351,9 @@ namespace Nethermind.Evm.Tracing
 
         public void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
         {
-            for (var index = 0; index < _txTracers.Length; index++)
+            for (int index = 0; index < _txTracers.Count; index++)
             {
-                var innerTracer = _txTracers[index];
+                ITxTracer innerTracer = _txTracers[index];
                 if (innerTracer.IsTracingActions)
                 {
                     innerTracer.ReportActionEnd(gas, output);
@@ -363,9 +363,9 @@ namespace Nethermind.Evm.Tracing
 
         public void ReportActionError(EvmExceptionType evmExceptionType)
         {
-            for (var index = 0; index < _txTracers.Length; index++)
+            for (int index = 0; index < _txTracers.Count; index++)
             {
-                var innerTracer = _txTracers[index];
+                ITxTracer innerTracer = _txTracers[index];
                 if (innerTracer.IsTracingActions)
                 {
                     innerTracer.ReportActionError(evmExceptionType);
@@ -375,9 +375,9 @@ namespace Nethermind.Evm.Tracing
 
         public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
         {
-            for (var index = 0; index < _txTracers.Length; index++)
+            for (int index = 0; index < _txTracers.Count; index++)
             {
-                var innerTracer = _txTracers[index];
+                ITxTracer innerTracer = _txTracers[index];
                 if (innerTracer.IsTracingActions)
                 {
                     innerTracer.ReportActionEnd(gas, deploymentAddress, deployedCode);
@@ -387,9 +387,9 @@ namespace Nethermind.Evm.Tracing
 
         public void ReportBlockHash(Keccak blockHash)
         {
-            for (var index = 0; index < _txTracers.Length; index++)
+            for (int index = 0; index < _txTracers.Count; index++)
             {
-                var innerTracer = _txTracers[index];
+                ITxTracer innerTracer = _txTracers[index];
                 if (innerTracer.IsTracingBlockHash)
                 {
                     innerTracer.ReportBlockHash(blockHash);
@@ -399,9 +399,9 @@ namespace Nethermind.Evm.Tracing
 
         public void ReportByteCode(byte[] byteCode)
         {
-            for (var index = 0; index < _txTracers.Length; index++)
+            for (int index = 0; index < _txTracers.Count; index++)
             {
-                var innerTracer = _txTracers[index];
+                ITxTracer innerTracer = _txTracers[index];
                 if (innerTracer.IsTracingCode)
                 {
                     innerTracer.ReportByteCode(byteCode);
@@ -411,9 +411,9 @@ namespace Nethermind.Evm.Tracing
 
         public void ReportGasUpdateForVmTrace(long refund, long gasAvailable)
         {
-            for (var index = 0; index < _txTracers.Length; index++)
+            for (int index = 0; index < _txTracers.Count; index++)
             {
-                var innerTracer = _txTracers[index];
+                ITxTracer innerTracer = _txTracers[index];
                 if (innerTracer.IsTracingInstructions)
                 {
                     innerTracer.ReportGasUpdateForVmTrace(refund, gasAvailable);
@@ -423,9 +423,9 @@ namespace Nethermind.Evm.Tracing
 
         public void ReportRefund(long refund)
         {
-            for (var index = 0; index < _txTracers.Length; index++)
+            for (int index = 0; index < _txTracers.Count; index++)
             {
-                var innerTracer = _txTracers[index];
+                ITxTracer innerTracer = _txTracers[index];
                 if (innerTracer.IsTracingRefunds)
                 {
                     innerTracer.ReportRefund(refund);
@@ -435,9 +435,9 @@ namespace Nethermind.Evm.Tracing
 
         public void ReportExtraGasPressure(long extraGasPressure)
         {
-            for (var index = 0; index < _txTracers.Length; index++)
+            for (int index = 0; index < _txTracers.Count; index++)
             {
-                var innerTracer = _txTracers[index];
+                ITxTracer innerTracer = _txTracers[index];
                 if (innerTracer.IsTracingRefunds)
                 {
                     innerTracer.ReportExtraGasPressure(extraGasPressure);
@@ -447,9 +447,9 @@ namespace Nethermind.Evm.Tracing
 
         public void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells)
         {
-            for (var index = 0; index < _txTracers.Length; index++)
+            for (int index = 0; index < _txTracers.Count; index++)
             {
-                var innerTracer = _txTracers[index];
+                ITxTracer innerTracer = _txTracers[index];
                 if (innerTracer.IsTracingAccess)
                 {
                     innerTracer.ReportAccess(accessedAddresses, accessedStorageCells);
