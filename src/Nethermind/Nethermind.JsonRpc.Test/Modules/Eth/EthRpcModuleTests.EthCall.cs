@@ -21,6 +21,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -152,7 +153,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         {
             using Context ctx = await Context.Create();
             TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>("{\"from\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
-            string serialized = ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction), "0x0");
+            string serialized = ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction));
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}", serialized);
         }
         
@@ -161,26 +162,49 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         {
             using Context ctx = await Context.Create();
             TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>("{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"to\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"gasPrice\": \"0x10\"}");
-            string serialized = ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction), "0x0");
+            string serialized = ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction));
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}", serialized);
         }
         
         [Test]
         public async Task Eth_call_without_gas_pricing_after_1559_legacy()
         {
-            using Context ctx = await Context.CreateWith1559Enabled();
+            using Context ctx = await Context.CreateWithLondonEnabled();
             TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>("{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"to\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"gasPrice\": \"0x10\"}");
-            string serialized = ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction), "0x0");
+            string serialized = ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction));
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}", serialized);
         }
         
         [Test]
         public async Task Eth_call_without_gas_pricing_after_1559_new_type_of_transaction()
         {
-            using Context ctx = await Context.CreateWith1559Enabled();
+            using Context ctx = await Context.CreateWithLondonEnabled();
             TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>("{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"to\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"type\": \"0x2\"}");
-            string serialized = ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction), "0x0");
+            string serialized = ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction));
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}", serialized);
+            byte[] code = Prepare.EvmCode
+                .Op(Instruction.BASEFEE)
+                .PushData(0)
+                .Op(Instruction.SSTORE)
+                .Done;
+        }
+        
+        [Test]
+        public async Task Eth_call_with_base_fee_opcode()
+        {
+            using Context ctx = await Context.CreateWithLondonEnabled();
+            
+            byte[] code = Prepare.EvmCode
+                .Op(Instruction.BASEFEE)
+                .PushData(0)
+                .Op(Instruction.SSTORE)
+                .Done;
+            string dataStr = code.ToHexString();
+            TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>($"{{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"to\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"type\": \"0x2\", \"data\": \"{dataStr}\"}}");
+            string serialized = ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction));
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}", serialized);
         }
+        
+        
     }
 }
