@@ -25,11 +25,11 @@ namespace Nethermind.TxPool.Filters
     /// It uses a limited capacity hash cache underneath so there is no strict promise on filtering
     /// transactions.
     /// </summary>
-    internal class HashCacheBasedTxFilter : IIncomingTxFilter
+    internal class AlreadyKnownTxFilter : IIncomingTxFilter
     {
         private readonly HashCache _hashCache;
 
-        public HashCacheBasedTxFilter(HashCache hashCache)
+        public AlreadyKnownTxFilter(HashCache hashCache)
         {
             _hashCache = hashCache;
         }
@@ -38,6 +38,7 @@ namespace Nethermind.TxPool.Filters
         {
             if (_hashCache.Get(tx.Hash!))
             {
+                Metrics.PendingTransactionsKnown++;
                 return (false, AddTxResult.AlreadyKnown);
             }
 
