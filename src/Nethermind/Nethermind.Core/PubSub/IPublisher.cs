@@ -17,7 +17,7 @@
 using System;
 using System.Threading.Tasks;
 
-namespace Nethermind.PubSub
+namespace Nethermind.Core.PubSub
 {
     public interface IPublisher : IDisposable
     {
