@@ -679,20 +679,6 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public void should_add_transactions_to_in_memory_storage()
-        {
-            var transactions = AddTransactions(_inMemoryTxStorage);
-            transactions.Pending.Count().Should().Be(transactions.Persisted.Count());
-        }
-
-        [Test]
-        public void should_add_transactions_to_persistent_storage()
-        {
-            var transactions = AddTransactions(_persistentTxStorage);
-            transactions.Pending.Count().Should().Be(transactions.Persisted.Count());
-        }
-
-        [Test]
         public void should_increment_own_transaction_nonces_locally_when_requesting_reservations()
         {
             _txPool = CreatePool(_noTxStorage);
@@ -739,13 +725,6 @@ namespace Nethermind.TxPool.Test
             result2.Should().Be(AddTxResult.OwnNonceAlreadyUsed);
             _txPool.GetOwnPendingTransactions().Length.Should().Be(1);
             _txPool.GetPendingTransactions().Length.Should().Be(1);
-        }
-
-        [Test]
-        public void should_add_all_transactions_to_storage_when_using_accept_all_filter()
-        {
-            var transactions = AddTransactions(_inMemoryTxStorage);
-            transactions.Pending.Count().Should().Be(transactions.Persisted.Count());
         }
 
         [Test]
