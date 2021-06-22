@@ -171,9 +171,9 @@ namespace Nethermind.Evm
                 else
                 {
                     TraceLogInvalidTx(transaction, $"SENDER_ACCOUNT_DOES_NOT_EXIST {caller}");
-                    if (restore || gasPrice == UInt256.Zero)
+                    if (!commit || restore || gasPrice == UInt256.Zero)
                     {
-                        deleteCallerAccount = restore;
+                        deleteCallerAccount = !commit || restore;
                         _stateProvider.CreateAccount(caller, UInt256.Zero);
                     }
                 }
