@@ -18,6 +18,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Int256;
 
 namespace Nethermind.Specs.ChainSpecStyle
 {
@@ -54,6 +55,8 @@ namespace Nethermind.Specs.ChainSpecStyle
         public Dictionary<Address, ChainSpecAllocation> Allocations { get; set; }
         
         public long? FixedDifficulty { get; set; }
+        
+        public UInt256 ForkBaseFee { get; set; }
         
         public long? DaoForkBlockNumber { get; set; }
 
