@@ -27,6 +27,10 @@ namespace Nethermind.Evm.Tracing
     {
         private readonly IList<ITxTracer> _txTracers;
 
+        public CompositeTxTracer(params ITxTracer[] txTracers) : this((IList<ITxTracer>)txTracers)
+        {
+        }
+        
         public CompositeTxTracer(IList<ITxTracer> txTracers)
         {
             _txTracers = txTracers;
