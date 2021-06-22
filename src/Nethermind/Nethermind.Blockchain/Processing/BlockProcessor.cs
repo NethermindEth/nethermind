@@ -261,6 +261,8 @@ namespace Nethermind.Blockchain.Processing
                     ProcessTransaction(currentTx, i);
                 }
             }
+
+            _receiptsTracer.EndBlockTrace();
             
             return _receiptsTracer.TxReceipts!;
         }

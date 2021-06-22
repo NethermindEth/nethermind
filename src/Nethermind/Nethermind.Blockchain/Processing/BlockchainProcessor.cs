@@ -37,6 +37,8 @@ namespace Nethermind.Blockchain.Processing
         public int SoftMaxRecoveryQueueSizeInTx = 10000; // adjust based on tx or gas
         public const int MaxProcessingQueueSize = 2000; // adjust based on tx or gas
 
+        public CompositeBlockTracerFactory BlockTracerFactory { get; } = new();
+
         private readonly IBlockProcessor _blockProcessor;
         private readonly IBlockPreprocessorStep _recoveryStep;
         private readonly Options _options;
@@ -236,7 +238,7 @@ namespace Nethermind.Blockchain.Processing
 
                 if (_logger.IsTrace) _logger.Trace($"Processing block {block.ToString(Block.Format.Short)}).");
 
-                Block processedBlock = Process(block, blockRef.ProcessingOptions, NullBlockTracer.Instance);
+                Block processedBlock = Process(block, blockRef.ProcessingOptions, BlockTracerFactory.Create());
                 if (processedBlock == null)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Failed / skipped processing {block.ToString(Block.Format.Full)}");
