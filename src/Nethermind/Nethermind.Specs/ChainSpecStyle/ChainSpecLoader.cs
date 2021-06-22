@@ -327,9 +327,12 @@ namespace Nethermind.Specs.ChainSpecStyle
             UInt256 gasLimit = chainSpecJson.Genesis.GasLimit;
             Address beneficiary = chainSpecJson.Genesis.Author ?? Address.Zero;
             UInt256 baseFee = UInt256.Zero;
+            chainSpec.ForkBaseFee = chainSpecJson.Genesis.BaseFeePerGas ?? Eip1559Constants.DefaultForkBaseFee;
+            Eip1559Constants.ForkBaseFee = chainSpec.ForkBaseFee;
             if (chainSpecJson.Params.Eip1559Transition != null)
-                baseFee = chainSpecJson.Params.Eip1559Transition == 0 ? Eip1559Constants.ForkBaseFee : UInt256.Zero; 
+                baseFee = chainSpecJson.Params.Eip1559Transition == 0 ? chainSpec.ForkBaseFee : UInt256.Zero;
 
+            
             BlockHeader genesisHeader = new(
                 parentHash,
                 Keccak.OfAnEmptySequenceRlp,
@@ -352,6 +355,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             
             genesisHeader.AuRaStep = step;
             genesisHeader.AuRaSignature = auRaSignature;
+
 
             chainSpec.Genesis = new Block(genesisHeader);
         }
