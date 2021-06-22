@@ -52,8 +52,7 @@ namespace Nethermind.Db.Test.Rpc
                 memDbProvider.BloomDb,
                 memDbProvider.HeadersDb,
                 memDbProvider.ReceiptsDb,
-                memDbProvider.BlockInfosDb,
-                memDbProvider.PendingTxsDb);
+                memDbProvider.BlockInfosDb);
 
             ValidateDb<ReadOnlyDb>(
                 memDbProvider.StateDb,
