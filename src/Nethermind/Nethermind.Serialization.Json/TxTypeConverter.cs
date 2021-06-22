@@ -26,7 +26,7 @@ namespace Nethermind.Serialization.Json
         public override void WriteJson(JsonWriter writer, TxType txTypeValue, JsonSerializer serializer)
         {
             byte byteValue = (byte)txTypeValue;
-            writer.WriteValue(string.Concat("0x", byteValue.ToString("X2")));
+            writer.WriteValue(string.Concat("0x", byteValue.ToString("X")));
         }
 
         public override TxType ReadJson(JsonReader reader, Type objectType, TxType existingValue, bool hasExistingValue,

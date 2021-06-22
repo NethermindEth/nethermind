@@ -34,8 +34,10 @@ namespace Nethermind.TxPool
             if (sealers.Length == 0) throw new ArgumentException("Sealers can not be empty.", nameof(sealers));
         }
 
-        public ValueTask<Keccak> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
+        public ValueTask<(Keccak, AddTxResult?)> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
+            AddTxResult? result = null;
+            
             // TODO: this is very not intuitive - can we fix it...?
             // maybe move nonce reservation to sender itself before sealing
             // sealers should behave like composite and not like chain of commands
@@ -43,7 +45,7 @@ namespace Nethermind.TxPool
             {
                 sealer.Seal(tx, txHandlingOptions);
                 
-                AddTxResult result = _txPool.AddTransaction(tx, txHandlingOptions);
+                result = _txPool.AddTransaction(tx, txHandlingOptions);
 
                 if (result != AddTxResult.OwnNonceAlreadyUsed && result != AddTxResult.AlreadyKnown
                     || (txHandlingOptions & TxHandlingOptions.ManagedNonce) != TxHandlingOptions.ManagedNonce)
@@ -52,7 +54,7 @@ namespace Nethermind.TxPool
                 }
             }
 
-            return new ValueTask<Keccak>(tx.Hash);
+            return new ValueTask<(Keccak, AddTxResult?)>((tx.Hash, result));
         }
     }
 }

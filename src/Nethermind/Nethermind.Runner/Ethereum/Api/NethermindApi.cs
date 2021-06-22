@@ -33,6 +33,7 @@ using Nethermind.Blockchain.Validators;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Core.PubSub;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
@@ -49,7 +50,6 @@ using Nethermind.Network;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.P2P;
 using Nethermind.Network.Rlpx;
-using Nethermind.PubSub;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
@@ -187,7 +187,7 @@ namespace Nethermind.Runner.Ethereum.Api
         public IHealthHintService? HealthHintService { get; set; }
         public TxValidator? TxValidator { get; set; }
         public IBlockFinalizationManager? FinalizationManager { get; set; }
-        public IGasLimitCalculator GasLimitCalculator { get; set; } = FollowOtherMiners.Instance;
+        public IGasLimitCalculator GasLimitCalculator { get; set; }
         
         public IBlockProducerEnvFactory BlockProducerEnvFactory { get; set; }
         public IWallet? Wallet { get; set; }

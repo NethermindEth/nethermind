@@ -240,13 +240,9 @@ namespace Nethermind.Blockchain.Processing
                 {
                     // No more gas available in block
                     long gasRemaining = block.Header.GasLimit - block.GasUsed;
-                    if (gasRemaining < GasCostOf.Transaction)
-                    {
-                        break;
-                    }
                     if (currentTx.GasLimit > gasRemaining)
                     {
-                        continue;
+                        break;
                     }
 
                     ProcessTransaction(currentTx, i++);
