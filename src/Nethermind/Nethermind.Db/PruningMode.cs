@@ -25,6 +25,6 @@ namespace Nethermind.Db
         None,
         Memory,
         Full,
-        All = Memory | Full
+        Both = Memory | Full
     }
 }

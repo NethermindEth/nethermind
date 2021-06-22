@@ -19,6 +19,22 @@ namespace Nethermind.Db
 {
     public class PruningConfig : IPruningConfig
     {
+        public bool Enabled
+        {
+            get => (Mode & PruningMode.Memory) != 0;
+            set
+            {
+                if (value)
+                {
+                    Mode |= PruningMode.Memory;
+                }
+                else
+                {
+                    Mode &= ~PruningMode.Memory;
+                }
+            }
+        }
+
         public PruningMode Mode { get; set; } = PruningMode.None;
         public long CacheMb { get; set; } = 512;
         public long PersistenceInterval { get; set; } = 8192;
