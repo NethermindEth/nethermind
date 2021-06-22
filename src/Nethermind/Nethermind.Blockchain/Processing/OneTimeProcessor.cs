@@ -24,7 +24,13 @@ namespace Nethermind.Blockchain.Processing
 {
     public class OneTimeChainProcessor : IBlockchainProcessor
     {
-        public CompositeBlockTracerFactory BlockTracerFactory { get; } = new();
+        public CompositeBlockTracerFactory BlockTracerFactory
+        {
+            get
+            {
+                return _processor.BlockTracerFactory;
+            }
+        }
 
         private readonly IBlockchainProcessor _processor;
         private readonly IReadOnlyDbProvider _readOnlyDbProvider;
