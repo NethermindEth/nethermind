@@ -17,6 +17,7 @@
 
 using System;
 using System.IO.Abstractions;
+using FluentAssertions;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Core.Timers;
 using NSubstitute;
@@ -43,6 +44,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
                 GetFile(100),
                 GetFile(200)
             };
+            fileSystem.Directory.Exists(path).Returns(true);
             fileSystem.DirectoryInfo.FromDirectoryName(path).EnumerateFiles().Returns(files);
 
             bool triggered = false;
@@ -52,6 +54,13 @@ namespace Nethermind.Blockchain.Test.FullPruning
             
             timer.Elapsed += Raise.Event();
             return triggered;
+        }
+
+        [Test]
+        public void throws_on_nonexisting_path()
+        {
+            Action action = () => new PathSizePruningTrigger("path", 5, null!, Substitute.For<IFileSystem>());
+            action.Should().Throw<ArgumentException>();
         }
 
         private static IFileInfo GetFile(long length)

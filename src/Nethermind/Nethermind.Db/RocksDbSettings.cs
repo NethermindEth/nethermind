@@ -50,5 +50,7 @@ namespace Nethermind.Db
         }
         
         public RocksDbSettings Clone() => (RocksDbSettings)MemberwiseClone();
+
+        public override string ToString() => $"{DbName}:{DbPath}";
     }
 }

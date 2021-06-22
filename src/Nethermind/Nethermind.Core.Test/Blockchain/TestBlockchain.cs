@@ -100,7 +100,6 @@ namespace Nethermind.Core.Test.Blockchain
         private IBlockFinder _blockFinder;
 
         public static readonly UInt256 InitialValue = 1000.Ether();
-        private OnChainTxWatcher _txWatcher;
         private TrieStoreBoundaryWatcher _trieStoreWatcher;
 
         public IReadOnlyTrieStore ReadOnlyTrieStore { get; private set; }
@@ -322,7 +321,6 @@ namespace Nethermind.Core.Test.Blockchain
             BlockProducer?.StopAsync();
             CodeDb?.Dispose();
             StateDb?.Dispose();
-            _txWatcher?.Dispose();
             _trieStoreWatcher?.Dispose();
             DbProvider?.Dispose();
         }

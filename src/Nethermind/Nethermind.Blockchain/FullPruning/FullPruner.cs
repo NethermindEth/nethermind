@@ -90,7 +90,7 @@ namespace Nethermind.Blockchain.FullPruning
 
         private bool CanRunPruning() => _fullPruningDb.CanStartPruning;
 
-        protected void RunPruning(IPruningContext pruning, Keccak statRoot, IPruningContext? oldPruning)
+        protected virtual void RunPruning(IPruningContext pruning, Keccak statRoot, IPruningContext? oldPruning)
         {
             oldPruning?.Dispose();
             

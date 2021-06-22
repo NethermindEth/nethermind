@@ -22,6 +22,7 @@ using FluentAssertions;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -51,7 +52,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
         [Test]
         public async Task pruning_deletes_old_db_on_success()
         {
-            TestContext test = CreateTest();
+            TestContext test = CreateTest(clearPrunedDb: true);
             await test.WaitForPruning();
             test.TrieDb.Count.Should().Be(0);
         }
@@ -78,10 +79,11 @@ namespace Nethermind.Blockchain.Test.FullPruning
         {
             TestContext test = CreateTest();
             int count = test.TrieDb.Count;
-            await test.WaitForPruning();
+            bool result = await test.WaitForPruning();
+            result.Should().BeTrue();
             test.CopyDb.Count.Should().Be(count);
         }
-        
+
         [Test]
         public async Task can_not_start_pruning_when_other_is_in_progress()
         {
@@ -136,10 +138,12 @@ namespace Nethermind.Blockchain.Test.FullPruning
             test.FullPruningDb[key].Should().BeEquivalentTo(key);
         }
 
-        private static TestContext CreateTest(bool successfulPruning = true) => new(successfulPruning);
+        private static TestContext CreateTest(bool successfulPruning = true, bool clearPrunedDb = false) => new(successfulPruning, clearPrunedDb);
 
         private class TestContext
         {
+            private readonly bool _clearPrunedDb;
+            private readonly Keccak _stateRoot;
             public TestFullPruningDb FullPruningDb { get; }
             public IPruningTrigger PruningTrigger { get; } = Substitute.For<IPruningTrigger>();
             public IBlockTree BlockTree { get; } = Substitute.For<IBlockTree>();
@@ -148,28 +152,32 @@ namespace Nethermind.Blockchain.Test.FullPruning
             public MemDb TrieDb { get; }
             public MemDb CopyDb { get; }
 
-            public TestContext(bool successfulPruning)
+            public TestContext(bool successfulPruning, bool clearPrunedDb = false)
             {
+                _clearPrunedDb = clearPrunedDb;
                 TrieDb = new MemDb();
                 CopyDb = new MemDb();
                 IRocksDbFactory rocksDbFactory = Substitute.For<IRocksDbFactory>();
                 rocksDbFactory.CreateDb(Arg.Any<RocksDbSettings>()).Returns(TrieDb, CopyDb);
                 
                 PatriciaTree trie = Build.A.Trie(TrieDb).WithAccountsByIndex(0, 100).TestObject;
+                _stateRoot = trie.RootHash;
                 StateReader = new StateReader(new TrieStore(TrieDb, LimboLogs.Instance), new MemDb(), LimboLogs.Instance);
-                BlockTree.BestState.Returns(10);
-                BlockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(10).TestObject);
-                BlockTree.FindHeader(10).Returns(Build.A.BlockHeader.WithStateRoot(trie.RootHash).TestObject);
-
-                FullPruningDb = new TestFullPruningDb(new RocksDbSettings("test", "test"), rocksDbFactory, successfulPruning);
+                FullPruningDb = new TestFullPruningDb(new RocksDbSettings("test", "test"), rocksDbFactory, successfulPruning, clearPrunedDb);
                 
                 Pruner = new(FullPruningDb, PruningTrigger, BlockTree, StateReader, LimboLogs.Instance);
             }
 
-            public Task<bool> WaitForPruning()
+            public async Task<bool> WaitForPruning()
             {
                 TestFullPruningDb.TestPruningContext context = WaitForPruningStart();
-                return WaitForPruningEnd(context);
+                bool result = await WaitForPruningEnd(context);
+                if (result && _clearPrunedDb)
+                {
+                    await FullPruningDb.WaitForClearDb.WaitOneAsync(TimeSpan.FromMilliseconds(10), CancellationToken.None);
+                }
+
+                return result;
             }
 
             public Task<bool> WaitForPruningEnd(TestFullPruningDb.TestPruningContext context)
@@ -182,7 +190,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             public TestFullPruningDb.TestPruningContext WaitForPruningStart()
             {
                 PruningTrigger.Prune += Raise.Event();
-                BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.TestObject));
+                BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.WithStateRoot(_stateRoot).TestObject));
                 TestFullPruningDb.TestPruningContext context = FullPruningDb.Context;
                 if (context is not null)
                 {
@@ -196,14 +204,26 @@ namespace Nethermind.Blockchain.Test.FullPruning
         private class TestFullPruningDb : FullPruningDb
         {
             private readonly bool _successfulPruning;
-            
+            private readonly bool _clearPrunedDb;
+
             public TestPruningContext Context { get; set; }
             public int PruningStarted { get; private set; }
+            public ManualResetEvent WaitForClearDb { get; } = new(false);
             
-            public TestFullPruningDb(RocksDbSettings settings, IRocksDbFactory dbFactory, bool successfulPruning) 
+            public TestFullPruningDb(RocksDbSettings settings, IRocksDbFactory dbFactory, bool successfulPruning, bool clearPrunedDb = false) 
                 : base(settings, dbFactory)
             {
                 _successfulPruning = successfulPruning;
+                _clearPrunedDb = clearPrunedDb;
+            }
+
+            protected override void ClearOldDb(IDb oldDb)
+            {
+                if (_clearPrunedDb)
+                {
+                    base.ClearOldDb(oldDb);
+                    WaitForClearDb.Set();
+                }
             }
 
             public override bool TryStartPruning(out IPruningContext context)

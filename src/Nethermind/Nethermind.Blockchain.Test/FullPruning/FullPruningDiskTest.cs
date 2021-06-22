@@ -27,6 +27,7 @@ using Nethermind.Blockchain.FullPruning;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
@@ -82,6 +83,8 @@ namespace Nethermind.Blockchain.Test.FullPruning
                 TempDirectory.Dispose();
             }
 
+            protected override Task AddBlocksOnStart() => Task.CompletedTask;
+
             public static async Task<PruningTestBlockchain> Create()
             {
                 PruningTestBlockchain chain = new();
@@ -103,9 +106,9 @@ namespace Nethermind.Blockchain.Test.FullPruning
                 {
                 }
 
-                protected override void RunPruning(IPruningContext pruning, BlockHeader header, IPruningContext? oldPruning)
+                protected override void RunPruning(IPruningContext pruning, Keccak stateRoot, IPruningContext? oldPruning)
                 {
-                    base.RunPruning(pruning, header, oldPruning);
+                    base.RunPruning(pruning, stateRoot, oldPruning);
                     WaitHandle.Set();
                 }
             }

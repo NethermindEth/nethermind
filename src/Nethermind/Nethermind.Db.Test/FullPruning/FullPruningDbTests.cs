@@ -30,8 +30,7 @@ namespace Nethermind.Db.Test.FullPruning
         {
             TestContext test = new();
             test.FullPruningDb.Name.Should().BeEquivalentTo(test.Name);
-            test.FullPruningDb.Innermost.Should().BeOfType<MemDb>();
-            test.FullPruningDb.Innermost.Name.Should().BeEquivalentTo(0.ToString());
+            test.FullPruningDb.Innermost.Should().BeOfType<FullPruningDb>();
         }
         
         [Test]
