@@ -45,7 +45,6 @@ namespace Nethermind.Blockchain
             SpecProvider = specProvider;
             AccountStateProvider = stateProvider;
             
-            // TODO: why not NewHeadBlock event?
             blockTree.BlockAddedToMain += OnHeadChanged;
         }
 

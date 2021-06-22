@@ -256,7 +256,6 @@ namespace Nethermind.TxPool
             {
                 bool eip1559Enabled = _specProvider.GetSpec().IsEip1559Enabled;
                 
-                // TODO: is it called Bottleneck or effective gas price?
                 tx.GasBottleneck = tx.CalculateEffectiveGasPrice(eip1559Enabled, _headInfo.CurrentBaseFee);
                 bool inserted = _transactions.TryInsert(tx.Hash, tx, out Transaction? removed);
                 if (inserted)
