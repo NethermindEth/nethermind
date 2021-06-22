@@ -13,13 +13,38 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-namespace Nethermind.PubSub.Kafka.Models
+using System.Threading.Tasks;
+
+namespace Nethermind.Core.PubSub
 {
-    public class LogEntry
+    public class CompositePublisher : IPublisher
     {
-        public byte[] LoggersAddress { get; set; }
-        public byte[][] Topics { get; set; }
-        public byte[] Data { get; set; }
+        private readonly IPublisher[] _publishers;
+
+        public CompositePublisher(params IPublisher[] publishers)
+        {
+            _publishers = publishers;
+        }
+
+        public async Task PublishAsync<T>(T data) where T : class
+        {
+            Task[] tasks = new Task[_publishers.Length];
+            for (int i = 0; i < _publishers.Length; i++)
+            {
+                tasks[i] = _publishers[i].PublishAsync(data);
+            }
+
+            await Task.WhenAll(tasks);
+        }
+
+        public void Dispose()
+        {
+            foreach (IPublisher publisher in _publishers)
+            {
+                publisher.Dispose();
+            }
+        }
     }
 }
