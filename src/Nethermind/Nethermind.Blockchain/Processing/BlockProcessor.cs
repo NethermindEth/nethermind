@@ -269,8 +269,10 @@ namespace Nethermind.Blockchain.Processing
                         options);
                 }
             }
+            
+            transactionProcessingStrategy.TransactionProcessed += TransactionProcessed;
 
-            TxReceipt[] receipts = transactionProcessingStrategy.ProcessTransactions(block, options, blockTracer, _receiptsTracer, spec, TransactionProcessed);
+            TxReceipt[] receipts = transactionProcessingStrategy.ProcessTransactions(block, options, blockTracer, _receiptsTracer, spec);
 
             _receiptsTracer.EndBlockTrace();
             

@@ -45,17 +45,25 @@ namespace Nethermind.Blockchain.Processing
             _options = options;
         }
         
-        public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, IBlockTracer blockTracer, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec, EventHandler<TxProcessedEventArgs> TransactionProcessed)
+        private event EventHandler<TxProcessedEventArgs>? TransactionProcessedEvent; 
+        
+        event EventHandler<TxProcessedEventArgs> ITransactionProcessingStrategy.TransactionProcessed
+        {
+            add => TransactionProcessedEvent += value;
+            remove => TransactionProcessedEvent -= value;
+        } 
+        
+        public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, IBlockTracer blockTracer, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec)
         {
             for (int i = 0; i < block.Transactions.Length; i++)
             {
                 Transaction currentTx = block.Transactions[i];
-                ProcessTransaction(block, currentTx, i, receiptsTracer, TransactionProcessed);
+                ProcessTransaction(block, currentTx, i, receiptsTracer);
             }
             return receiptsTracer.TxReceipts!;
         }
         
-        private void ProcessTransaction(Block block, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, EventHandler<TxProcessedEventArgs> TransactionProcessed)
+        private void ProcessTransaction(Block block, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer)
         {
             if ((_options & ProcessingOptions.DoNotVerifyNonce) != 0)
             {
@@ -66,7 +74,7 @@ namespace Nethermind.Blockchain.Processing
             _transactionProcessor.Execute(currentTx, block.Header, receiptsTracer);
             receiptsTracer.EndTxTrace();
 
-            TransactionProcessed?.Invoke(this, new TxProcessedEventArgs(index, currentTx, receiptsTracer.TxReceipts[index]));
+            TransactionProcessedEvent?.Invoke(this, new TxProcessedEventArgs(index, currentTx, receiptsTracer.TxReceipts[index]));
         }
     }
 }

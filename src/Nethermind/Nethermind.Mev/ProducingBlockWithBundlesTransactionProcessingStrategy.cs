@@ -32,7 +32,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Mev
 {
-    public class ProducingBlockWithBundlesTransactionProcessingStrategy : ITransactionProcessingStrategy // WIP
+    public class ProducingBlockWithBundlesTransactionProcessingStrategy : ITransactionProcessingStrategy
     {
         private readonly ITransactionProcessor _transactionProcessor;
         private readonly IStateProvider _stateProvider;
@@ -50,8 +50,16 @@ namespace Nethermind.Mev
             _storageProvider = storageProvider;
             _options = options;
         }
+
+        private event EventHandler<TxProcessedEventArgs>? TransactionProcessedEvent; 
         
-        public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, IBlockTracer blockTracer, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec, EventHandler<TxProcessedEventArgs> TransactionProcessed)
+        event EventHandler<TxProcessedEventArgs> ITransactionProcessingStrategy.TransactionProcessed
+        {
+            add => TransactionProcessedEvent += value;
+            remove => TransactionProcessedEvent -= value;
+        }
+        
+        public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, IBlockTracer blockTracer, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec)
         {
             IEnumerable<Transaction> transactions = block.GetTransactions(out _);
 
@@ -78,7 +86,7 @@ namespace Nethermind.Mev
                         }
                         else
                         {
-                            ProcessTransaction(block, transactionsInBlock, currentTx, transactionsInBlock.Count, receiptsTracer, TransactionProcessed);
+                            ProcessTransaction(block, transactionsInBlock, currentTx, transactionsInBlock.Count, receiptsTracer);
                         }
                     }
                     else
@@ -91,7 +99,7 @@ namespace Nethermind.Mev
                             }
                             else
                             {
-                                ProcessBundle(block, transactionsInBlock, bundleTransactions, receiptsTracer, TransactionProcessed);
+                                ProcessBundle(block, transactionsInBlock, bundleTransactions, receiptsTracer);
                                 
                                 if (currentTx.GasLimit > block.Header.GasLimit - block.GasUsed)
                                 {
@@ -104,7 +112,7 @@ namespace Nethermind.Mev
                         }
                         else
                         {
-                            ProcessBundle(block, transactionsInBlock, bundleTransactions, receiptsTracer, TransactionProcessed);
+                            ProcessBundle(block, transactionsInBlock, bundleTransactions, receiptsTracer);
                             bundleHash = null;
                             
                             if (currentTx.GasLimit > block.Header.GasLimit - block.GasUsed)
@@ -113,7 +121,7 @@ namespace Nethermind.Mev
                             }
                             
                             // process current transactions
-                            ProcessTransaction(block, transactionsInBlock, currentTx, transactionsInBlock.Count, receiptsTracer, TransactionProcessed);
+                            ProcessTransaction(block, transactionsInBlock, currentTx, transactionsInBlock.Count, receiptsTracer);
                         }
                     }
                 }
@@ -121,7 +129,7 @@ namespace Nethermind.Mev
             // if bundle is not clear process it still
             if (bundleTransactions.Count > 0)
             {
-                ProcessBundle(block, transactionsInBlock, bundleTransactions, receiptsTracer, TransactionProcessed);
+                ProcessBundle(block, transactionsInBlock, bundleTransactions, receiptsTracer);
             }
             block.TrySetTransactions(transactionsInBlock.ToArray());
             _stateProvider.Commit(spec);
@@ -130,7 +138,7 @@ namespace Nethermind.Mev
             return receiptsTracer.TxReceipts!;
         }
         
-        private void ProcessTransaction(Block block, ISet<Transaction>? transactionsInBlock, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, EventHandler<TxProcessedEventArgs>? TransactionProcessed)
+        private void ProcessTransaction(Block block, ISet<Transaction>? transactionsInBlock, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer)
         {
             if ((_options & ProcessingOptions.DoNotVerifyNonce) != 0)
             {
@@ -140,13 +148,10 @@ namespace Nethermind.Mev
             receiptsTracer.StartNewTxTrace(currentTx);
             _transactionProcessor.BuildUp(currentTx, block.Header, receiptsTracer);
             receiptsTracer.EndTxTrace();
-
-            transactionsInBlock?.Add(currentTx);
-            TransactionProcessed?.Invoke(this, new TxProcessedEventArgs(index, currentTx, receiptsTracer.TxReceipts![index]));
         }
 
         private void ProcessBundle(Block block, LinkedHashSet<Transaction> transactionsInBlock, List<BundleTransaction> bundleTransactions,
-            BlockReceiptsTracer receiptsTracer, EventHandler<TxProcessedEventArgs> TransactionProcessed)
+            BlockReceiptsTracer receiptsTracer)
         {
             int stateSnapshot = _stateProvider.TakeSnapshot();
             int storageSnapshot = _storageProvider.TakeSnapshot();
@@ -156,7 +161,7 @@ namespace Nethermind.Mev
             for (int index = 0; index < bundleTransactions.Count && bundleSucceeded; index++)
             {
                 BundleTransaction currentTx = bundleTransactions[index];
-                ProcessTransaction(block, null, currentTx, transactionsInBlock.Count, receiptsTracer, null);
+                ProcessTransaction(block, null, currentTx, transactionsInBlock.Count, receiptsTracer);
 
                 bool wasReverted = receiptsTracer.LastReceipt!.Error == "revert";
                 if (wasReverted && !currentTx.CanRevert)
@@ -175,7 +180,7 @@ namespace Nethermind.Mev
                 {
                     TxProcessedEventArgs eventItem = eventList[index];
                     transactionsInBlock.Add(eventItem.Transaction);
-                    TransactionProcessed?.Invoke(this, eventItem);
+                    TransactionProcessedEvent?.Invoke(this, eventItem);
                 }
             }
             else
