@@ -73,12 +73,15 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             BlockhashProvider blockhashProvider = new BlockhashProvider(_blockTree, LimboLogs.Instance);
             VirtualMachine virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, specProvider, LimboLogs.Instance);
             TransactionProcessor transactionProcessor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, LimboLogs.Instance);
+            ITransactionProcessingStrategy transactionProcessingStrategy =
+                new TransactionProcessingStrategy(transactionProcessor, stateProvider, storageProvider, ProcessingOptions.All);
             
             BlockProcessor blockProcessor = new BlockProcessor(
                 specProvider,
                 Always.Valid,
                 NoBlockRewards.Instance,
                 transactionProcessor,
+                transactionProcessingStrategy,
                 stateProvider,
                 storageProvider,
                 NullReceiptStorage.Instance,

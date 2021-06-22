@@ -159,6 +159,7 @@ namespace Nethermind.Blockchain
                 blockValidator,
                 rewardCalculatorSource.Get(readOnlyTxProcessingEnv.TransactionProcessor),
                 readOnlyTxProcessingEnv.TransactionProcessor,
+                readOnlyTxProcessingEnv.TransactionProcessingStrategy,
                 readOnlyTxProcessingEnv.StateProvider,
                 readOnlyTxProcessingEnv.StorageProvider,
                 receiptStorage,

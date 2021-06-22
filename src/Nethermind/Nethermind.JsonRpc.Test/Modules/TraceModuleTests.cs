@@ -104,11 +104,14 @@ namespace Nethermind.JsonRpc.Test.Modules
             IReceiptStorage receiptStorage = new InMemoryReceiptStorage();
             VirtualMachine virtualMachine = new VirtualMachine(_stateProvider, storageProvider, new BlockhashProvider(blockTree, LimboLogs.Instance), specProvider, LimboLogs.Instance);
             TransactionProcessor txProcessor = new TransactionProcessor(specProvider, _stateProvider, storageProvider, virtualMachine, LimboLogs.Instance);
+            ITransactionProcessingStrategy transactionProcessingStrategy =
+                new TransactionProcessingStrategy(txProcessor, _stateProvider, storageProvider, ProcessingOptions.All);
             IBlockProcessor blockProcessor = new BlockProcessor(
                 specProvider,
                 Always.Valid,
                 new RewardCalculator(specProvider),
                 txProcessor,
+                transactionProcessingStrategy,
                 _stateProvider,
                 storageProvider,
                 receiptStorage,

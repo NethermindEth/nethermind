@@ -113,6 +113,7 @@ namespace Nethermind.Merge.Plugin.Test
                     BlockValidator,
                     NoBlockRewards.Instance,
                     TxProcessor,
+                    TxProcessingStrategy,
                     State,
                     Storage,
                     ReceiptStorage,

@@ -93,6 +93,7 @@ namespace Nethermind.Consensus.Ethash
                 getFromApi!.BlockValidator,
                 NoBlockRewards.Instance,
                 producerEnv.TransactionProcessor,
+                producerEnv.TransactionProcessingStrategy,
                 producerEnv.StateProvider,
                 producerEnv.StorageProvider,
                 NullReceiptStorage.Instance,

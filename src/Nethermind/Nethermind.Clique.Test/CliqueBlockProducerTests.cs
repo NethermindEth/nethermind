@@ -141,12 +141,15 @@ namespace Nethermind.Clique.Test
                 
                 StorageProvider storageProvider = new StorageProvider(trieStore, stateProvider, nodeLogManager);
                 TransactionProcessor transactionProcessor = new TransactionProcessor(goerliSpecProvider, stateProvider, storageProvider, new VirtualMachine(stateProvider, storageProvider, blockhashProvider, specProvider, nodeLogManager), nodeLogManager);
+                ITransactionProcessingStrategy transactionProcessingStrategy =
+                    new TransactionProcessingStrategy(transactionProcessor, stateProvider, storageProvider, ProcessingOptions.All);
 
                 BlockProcessor blockProcessor = new BlockProcessor(
                     goerliSpecProvider,
                     Always.Valid,
                     NoBlockRewards.Instance,
                     transactionProcessor,
+                    transactionProcessingStrategy,
                     stateProvider,
                     storageProvider,
                     NullReceiptStorage.Instance,
@@ -162,12 +165,15 @@ namespace Nethermind.Clique.Test
                 StorageProvider minerStorageProvider = new StorageProvider(minerTrieStore, minerStateProvider, nodeLogManager);
                 VirtualMachine minerVirtualMachine = new VirtualMachine(minerStateProvider, minerStorageProvider, blockhashProvider, specProvider, nodeLogManager);
                 TransactionProcessor minerTransactionProcessor = new TransactionProcessor(goerliSpecProvider, minerStateProvider, minerStorageProvider, minerVirtualMachine, nodeLogManager);
+                ITransactionProcessingStrategy minerTransactionProcessingStrategy = new ProducingBlockTransactionProcessingStrategy(minerTransactionProcessor, minerStateProvider, minerStorageProvider, ProcessingOptions.All);
 
+                
                 BlockProcessor minerBlockProcessor = new BlockProcessor(
                     goerliSpecProvider,
                     Always.Valid,
                     NoBlockRewards.Instance,
                     minerTransactionProcessor,
+                    minerTransactionProcessingStrategy,
                     minerStateProvider,
                     minerStorageProvider,
                     NullReceiptStorage.Instance,

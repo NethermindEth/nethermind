@@ -34,25 +34,28 @@ namespace Nethermind.Mev
         private readonly ITransactionProcessor _transactionProcessor;
         private readonly IStateProvider _stateProvider;
         private readonly IStorageProvider _storageProvider;
+        private readonly ITransactionProcessingStrategy _transactionProcessingStrategy;
         
         public MevBlockProcessor(
             ISpecProvider? specProvider, 
             IBlockValidator? blockValidator, 
             IRewardCalculator? rewardCalculator,
             ITransactionProcessor? transactionProcessor, 
+            ITransactionProcessingStrategy? transactionProcessingStrategy,
             IStateProvider? stateProvider, 
             IStorageProvider? storageProvider,
             IReceiptStorage? receiptStorage, 
             IWitnessCollector? witnessCollector, 
             ILogManager? logManager) 
-            : base(specProvider, blockValidator, rewardCalculator, transactionProcessor, stateProvider, storageProvider, receiptStorage, witnessCollector, logManager)
+            : base(specProvider, blockValidator, rewardCalculator, transactionProcessor, transactionProcessingStrategy, stateProvider, storageProvider, receiptStorage, witnessCollector, logManager)
         {
             _transactionProcessor = transactionProcessor!;
             _stateProvider = stateProvider!;
             _storageProvider = storageProvider!;
+            _transactionProcessingStrategy = transactionProcessingStrategy!;
         }
 
-        protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options, ITransactionProcessingStrategy? transactionProcessingStrategy = null)
+        protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options, ITransactionProcessingStrategy? transactionProcessingStrategy)
         {
             ITransactionProcessingStrategy strategy = new ProducingBlockWithBundlesTransactionProcessingStrategy(_transactionProcessor, _stateProvider, _storageProvider, options);
             TxReceipt[] processBlock = base.ProcessBlock(block, blockTracer, options, strategy);

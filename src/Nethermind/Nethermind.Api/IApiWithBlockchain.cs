@@ -67,6 +67,7 @@ namespace Nethermind.Api
         IReadOnlyStateProvider? ChainHeadStateProvider { get; set; }
         IStateReader? StateReader { get; set; }
         IStorageProvider? StorageProvider { get; set; }
+        ITransactionProcessingStrategy TransactionProcessingStrategy { get; set; }
         ITransactionProcessor? TransactionProcessor { get; set; }
         ITrieStore? TrieStore { get; set; }
         ITxSender? TxSender { get; set; }

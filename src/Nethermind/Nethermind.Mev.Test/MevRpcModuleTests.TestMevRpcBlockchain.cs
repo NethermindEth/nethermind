@@ -144,6 +144,7 @@ namespace Nethermind.Mev.Test
                     BlockValidator,
                     NoBlockRewards.Instance,
                     TxProcessor,
+                    TxProcessingStrategy,
                     State,
                     Storage,
                     ReceiptStorage,
