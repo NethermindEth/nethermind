@@ -17,6 +17,7 @@
 using System;
 using System.IO;
 using System.Runtime.CompilerServices;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie.Pruning;
@@ -47,24 +48,40 @@ namespace Nethermind.Trie
             {
                 case NodeType.Branch:
                 {
-                    visitor.VisitBranch(this, trieVisitContext);
-                    trieVisitContext.Level++;
-                    for (int i = 0; i < 16; i++)
+                    void VisitChild(int i, TrieNode? child, ITrieNodeResolver resolver, ITreeVisitor v, TrieVisitContext context)
                     {
-                        TrieNode child = GetChild(nodeResolver, i);
                         if (child != null)
                         {
-                            child.ResolveKey(nodeResolver, false);
-                            if (visitor.ShouldVisit(child.Keccak!))
+                            child.ResolveKey(resolver, false);
+                            if (v.ShouldVisit(child.Keccak!))
                             {
-                                trieVisitContext.BranchChildIndex = i;
-                                child.Accept(visitor, nodeResolver, trieVisitContext);
+                                context.BranchChildIndex = i;
+                                child.Accept(v, resolver, context);
                             }
 
                             if (child.IsPersisted)
                             {
                                 UnresolveChild(i);
                             }
+                        }
+                    }
+
+                    visitor.VisitBranch(this, trieVisitContext);
+                    trieVisitContext.Level++;
+                    if (trieVisitContext.Level <= visitor.ParallelLevels)
+                    {
+                        TrieNode?[] children = new TrieNode?[16];
+                        for (int i = 0; i < 16; i++)
+                        {
+                            children[i] = GetChild(nodeResolver, i);
+                        }
+                        Parallel.For(0, 16, i => VisitChild(i, children[i], nodeResolver, visitor, trieVisitContext.Clone()));
+                    }
+                    else
+                    {
+                        for (int i = 0; i < 16; i++)
+                        {
+                            VisitChild(i, GetChild(nodeResolver, i), nodeResolver, visitor, trieVisitContext);
                         }
                     }
 
@@ -97,7 +114,7 @@ namespace Nethermind.Trie
                 case NodeType.Leaf:
                 {
                     visitor.VisitLeaf(this, trieVisitContext, Value);
-                    if (!trieVisitContext.IsStorage && trieVisitContext.ExpectAccounts) // can combine these conditions
+                    if (!trieVisitContext.IsStorage && visitor.VisitAccounts) // can combine these conditions
                     {
                         Account account = _accountDecoder.Decode(Value.AsRlpStream());
                         if (account.HasCode && visitor.ShouldVisit(account.CodeHash))

@@ -36,23 +36,17 @@ namespace Nethermind.State.Proofs
         
         private List<byte[]> _proofBits = new();
 
+        public bool VisitAccounts => false;
+
         public ProofCollector(byte[] key)
         {
             _key = key;
         }
 
-        private byte[][] _proof;
+        
+        public byte[][] BuildResult() => _proofBits.ToArray();
 
-        public byte[][] BuildResult()
-        {
-            _proof = _proofBits.ToArray();
-            return _proof;
-        }
-
-        public bool ShouldVisit(Keccak nextNode)
-        {
-            return _visitingFilter.Contains(nextNode);
-        }
+        public bool ShouldVisit(Keccak nextNode) => _visitingFilter.Contains(nextNode);
 
         public void VisitTree(Keccak rootHash, TrieVisitContext trieVisitContext)
         {
