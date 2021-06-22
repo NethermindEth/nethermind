@@ -63,11 +63,6 @@ namespace Nethermind.TxPool
         private readonly ILogger _logger;
 
         /// <summary>
-        /// Long term storage for pending transactions.
-        /// </summary>
-        private readonly ITxStorage _txStorage;
-
-        /// <summary>
         /// Indexes transactions
         /// </summary>
         private ulong _txIndex;
@@ -96,7 +91,6 @@ namespace Nethermind.TxPool
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _headInfo = chainHeadInfoProvider ?? throw new ArgumentNullException(nameof(chainHeadInfoProvider));
-            _txStorage = txStorage ?? throw new ArgumentNullException(nameof(txStorage));
             _accounts = _headInfo.AccountStateProvider;
             _specProvider = _headInfo.SpecProvider;
 
@@ -284,18 +278,10 @@ namespace Nethermind.TxPool
                 }
             }
 
-            // TODO: this is strange as it may pretend that it has skipped the transaction while the transaction has been added above?
-            if (_txStorage.Get(tx.Hash!) is not null)
-            {
-                Metrics.PendingTransactionsStored++;
-                if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, already known.");
-                return AddTxResult.AlreadyKnown;
-            }
-
             _broadcaster.BroadcastOnce(tx);
             if (isPersistentBroadcast) { _broadcaster.StartBroadcast(tx); }
 
-            StoreTx(tx);
+            _hashCache.SetLongTerm(tx.Hash!);
             NewPending?.Invoke(this, new TxEventArgs(tx));
             return AddTxResult.Added;
         }
@@ -445,7 +431,6 @@ namespace Nethermind.TxPool
                 _broadcaster.StopBroadcast(hash);
             }
 
-            _txStorage.Delete(hash);
             if (_logger.IsTrace) _logger.Trace($"Removed a transaction: {hash}");
 
             return hasBeenRemoved;
@@ -489,13 +474,6 @@ namespace Nethermind.TxPool
             }
         }
 
-        private void StoreTx(Transaction tx)
-        {
-            _hashCache.SetLongTerm(tx.Hash!);
-            _txStorage.Add(tx);
-            if (_logger.IsTrace) _logger.Trace($"Stored a transaction: {tx.Hash}");
-        }
-        
         public bool IsKnown(Keccak hash) => _hashCache.Get(hash);
 
         public event EventHandler<TxEventArgs>? NewDiscovered;
