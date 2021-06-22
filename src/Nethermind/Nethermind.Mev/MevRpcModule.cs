@@ -29,6 +29,7 @@ using Nethermind.Facade;
 using Nethermind.Logging;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
+using Nethermind.Consensus;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Mev.Data;
@@ -48,7 +49,7 @@ namespace Nethermind.Mev
         private readonly IBlockFinder _blockFinder;
         private readonly IStateReader _stateReader;
         private readonly ITracerFactory _tracerFactory;
-        private readonly Address? _beneficiaryAddress;
+        private readonly ISigner? _signer;
         private readonly ulong _chainId;
 
         static MevRpcModule()
@@ -62,7 +63,7 @@ namespace Nethermind.Mev
             IBlockFinder blockFinder, 
             IStateReader stateReader,
             ITracerFactory tracerFactory,
-            Address? beneficiaryAddress,
+            ISigner? signer,
             ulong chainId)
         {
             _jsonRpcConfig = jsonRpcConfig;
@@ -70,7 +71,7 @@ namespace Nethermind.Mev
             _blockFinder = blockFinder;
             _stateReader = stateReader;
             _tracerFactory = tracerFactory;
-            _beneficiaryAddress = beneficiaryAddress;
+            _signer = signer;
             _chainId = chainId;
         }
 
@@ -118,7 +119,7 @@ namespace Nethermind.Mev
 
             using CancellationTokenSource cancellationTokenSource = new(_jsonRpcConfig.Timeout);
 
-            TxsResults results = new CallTxBundleExecutor(_tracerFactory, _beneficiaryAddress).ExecuteBundle(
+            TxsResults results = new CallTxBundleExecutor(_tracerFactory, _signer).ExecuteBundle(
                 new MevBundle(header.Number, txs, timestamp, timestamp),
                 header,
                 cancellationTokenSource.Token,

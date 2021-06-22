@@ -18,6 +18,7 @@
 using System;
 using System.Threading;
 using Nethermind.Blockchain.Tracing;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -32,12 +33,12 @@ namespace Nethermind.Mev.Execution
     public abstract class TxBundleExecutor<TResult, TBlockTracer> where TBlockTracer : IBlockTracer
     {
         private readonly ITracerFactory _tracerFactory;
-        private readonly Address? _beneficiaryAddress;
+        private readonly ISigner? _signer;
 
-        protected TxBundleExecutor(ITracerFactory tracerFactory, Address? beneficiaryAddress)
+        protected TxBundleExecutor(ITracerFactory tracerFactory, ISigner? signer)
         {
             _tracerFactory = tracerFactory;
-            _beneficiaryAddress = beneficiaryAddress;
+            _signer = signer;
         }
             
         public TResult ExecuteBundle(MevBundle bundle, BlockHeader parent, CancellationToken cancellationToken, UInt256? timestamp = null)
@@ -69,7 +70,7 @@ namespace Nethermind.Mev.Execution
             return new Block(header, bundle.Transactions, Array.Empty<BlockHeader>());
         }
 
-        protected virtual Address Beneficiary => _beneficiaryAddress ?? Address.Zero;
+        protected virtual Address Beneficiary => _signer?.Address ?? Address.Zero;
 
         protected abstract TBlockTracer CreateBlockTracer(MevBundle mevBundle);
 
