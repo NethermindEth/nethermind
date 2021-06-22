@@ -39,7 +39,6 @@ using Nethermind.State.Repositories;
 using Nethermind.State.Witnesses;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
-using Nethermind.TxPool.Storages;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -72,7 +71,6 @@ namespace Nethermind.Blockchain.Test
                 new SyncConfig(),
                 LimboLogs.Instance);
             TxPool.TxPool txPool = new (
-                NullTxStorage.Instance,
                 ecdsa,
                 new ChainHeadInfoProvider(specProvider, _blockTree, stateProvider),
                 new TxPoolConfig(),

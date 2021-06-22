@@ -45,7 +45,6 @@ using Nethermind.Db.Blooms;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
-using Nethermind.TxPool.Storages;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 
 namespace Nethermind.Core.Test.Blockchain
@@ -113,7 +112,6 @@ namespace Nethermind.Core.Test.Blockchain
             JsonSerializer = new EthereumJsonSerializer();
             SpecProvider = specProvider ?? MainnetSpecProvider.Instance;
             EthereumEcdsa = new EthereumEcdsa(ChainId.Mainnet, LogManager);
-            ITxStorage txStorage = new InMemoryTxStorage();
             DbProvider = await TestMemDbProvider.InitAsync();
             TrieStore = new TrieStore(StateDb.Innermost, LogManager);
             State = new StateProvider(TrieStore, DbProvider.CodeDb, LogManager);
@@ -141,7 +139,7 @@ namespace Nethermind.Core.Test.Blockchain
             BlockTree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), SpecProvider, NullBloomStorage.Instance, LimboLogs.Instance);
             ReadOnlyState = new ChainHeadReadOnlyStateProvider(BlockTree, StateReader);
             TransactionComparerProvider = new TransactionComparerProvider(specProvider, BlockTree);
-            TxPool = CreateTxPool(txStorage);
+            TxPool = CreateTxPool();
 
             ReceiptStorage = new InMemoryReceiptStorage();
             VirtualMachine virtualMachine = new VirtualMachine(State, Storage, new BlockhashProvider(BlockTree, LogManager), SpecProvider, LogManager);
@@ -201,9 +199,8 @@ namespace Nethermind.Core.Test.Blockchain
 
         public virtual ILogManager LogManager { get; } = LimboLogs.Instance;
 
-        protected virtual TxPool.TxPool CreateTxPool(ITxStorage txStorage) =>
+        protected virtual TxPool.TxPool CreateTxPool() =>
             new TxPool.TxPool(
-                txStorage,
                 EthereumEcdsa,
                 new ChainHeadInfoProvider(new FixedBlockChainHeadSpecProvider(SpecProvider), BlockTree, ReadOnlyState),
                 new TxPoolConfig(),

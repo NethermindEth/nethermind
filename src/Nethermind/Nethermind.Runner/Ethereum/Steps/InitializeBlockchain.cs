@@ -43,7 +43,6 @@ using Nethermind.Synchronization.Witness;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
-using Nethermind.TxPool.Storages;
 using Nethermind.Wallet;
 
 namespace Nethermind.Runner.Ethereum.Steps
@@ -130,7 +129,6 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             ReadOnlyDbProvider readOnly = new(getApi.DbProvider, false);
             
-            PersistentTxStorage txStorage = new(getApi.DbProvider.PendingTxsDb);
             IStateReader stateReader = setApi.StateReader = new StateReader(readOnlyTrieStore, readOnly.GetDb<IDb>(DbNames.Code), getApi.LogManager);
             
             setApi.TransactionComparerProvider =
@@ -155,7 +153,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             
             var txValidator = setApi.TxValidator = new TxValidator(getApi.SpecProvider.ChainId);
             
-            ITxPool txPool = _api.TxPool = CreateTxPool(txStorage);
+            ITxPool txPool = _api.TxPool = CreateTxPool();
 
             ReceiptCanonicalityMonitor receiptCanonicalityMonitor = new(getApi.BlockTree, getApi.ReceiptStorage, _api.LogManager);
             getApi.DisposeStack.Push(receiptCanonicalityMonitor);
@@ -263,9 +261,8 @@ namespace Nethermind.Runner.Ethereum.Steps
             new HealthHintService(_api.ChainSpec);
 
 
-        protected virtual TxPool.TxPool CreateTxPool(PersistentTxStorage txStorage) =>
+        protected virtual TxPool.TxPool CreateTxPool() =>
             new TxPool.TxPool(
-                txStorage,
                 _api.EthereumEcdsa,
                 new ChainHeadInfoProvider(_api.SpecProvider, _api.BlockTree, _api.StateReader),
                 _api.Config<ITxPoolConfig>(),

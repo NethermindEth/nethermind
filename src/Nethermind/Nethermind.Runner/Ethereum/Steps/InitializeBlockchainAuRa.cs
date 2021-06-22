@@ -43,7 +43,6 @@ using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Api;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Comparison;
-using Nethermind.TxPool.Storages;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
@@ -257,7 +256,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             return CreateTxPoolTxComparer();
         }
 
-        protected override TxPool.TxPool CreateTxPool(PersistentTxStorage txStorage)
+        protected override TxPool.TxPool CreateTxPool()
         {
             // This has to be different object than the _processingReadOnlyTransactionProcessorSource as this is in separate thread
             var txPoolReadOnlyTransactionProcessorSource = CreateReadOnlyTransactionProcessorSource();
@@ -275,7 +274,6 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.SpecProvider);
             
             return new TxPool.TxPool(
-                txStorage,
                 _api.EthereumEcdsa,
                 new ChainHeadInfoProvider(_api.SpecProvider, _api.BlockTree, _api.StateReader),
                 NethermindApi.Config<ITxPoolConfig>(),

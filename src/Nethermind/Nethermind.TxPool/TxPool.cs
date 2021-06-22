@@ -80,7 +80,6 @@ namespace Nethermind.TxPool
         /// <param name="comparer"></param>
         /// <param name="incomingTxFilter"></param>
         public TxPool(
-            ITxStorage txStorage,
             IEthereumEcdsa ecdsa,
             IChainHeadInfoProvider chainHeadInfoProvider,
             ITxPoolConfig txPoolConfig,

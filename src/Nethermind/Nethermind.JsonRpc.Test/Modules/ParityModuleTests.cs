@@ -46,7 +46,6 @@ using Nethermind.Specs.Forks;
 using Nethermind.Stats.Model;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
-using Nethermind.TxPool.Storages;
 using NSubstitute;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
@@ -66,7 +65,6 @@ namespace Nethermind.JsonRpc.Test.Modules
             LimboLogs logger = LimboLogs.Instance;
             MainnetSpecProvider specProvider = MainnetSpecProvider.Instance;
             EthereumEcdsa ethereumEcdsa = new EthereumEcdsa(specProvider.ChainId, logger);
-            InMemoryTxStorage txStorage = new InMemoryTxStorage();
             
             Peer peerA = SetUpPeerA();      //standard case
             Peer peerB = SetUpPeerB();      //Session is null
@@ -86,7 +84,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             ITransactionComparerProvider transactionComparerProvider =
                 new TransactionComparerProvider(specProvider, blockTree);
-            TxPool.TxPool txPool = new TxPool.TxPool(txStorage, ethereumEcdsa, new ChainHeadInfoProvider(new FixedBlockChainHeadSpecProvider(specProvider), blockTree, stateProvider), new TxPoolConfig(),
+            TxPool.TxPool txPool = new TxPool.TxPool(ethereumEcdsa, new ChainHeadInfoProvider(new FixedBlockChainHeadSpecProvider(specProvider), blockTree, stateProvider), new TxPoolConfig(),
                 new TxValidator(specProvider.ChainId), LimboLogs.Instance, transactionComparerProvider.GetDefaultComparer());
             
             IReceiptStorage receiptStorage = new InMemoryReceiptStorage();
@@ -289,7 +287,6 @@ namespace Nethermind.JsonRpc.Test.Modules
             LimboLogs logger = LimboLogs.Instance;
             MainnetSpecProvider specProvider = MainnetSpecProvider.Instance;
             EthereumEcdsa ethereumEcdsa = new EthereumEcdsa(specProvider.ChainId, logger);
-            InMemoryTxStorage txStorage = new InMemoryTxStorage();
             IDb blockDb = new MemDb();
             IDb headerDb = new MemDb();
             IDb blockInfoDb = new MemDb();
@@ -297,7 +294,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             ITransactionComparerProvider transactionComparerProvider =
                 new TransactionComparerProvider(specProvider, blockTree);
-            TxPool.TxPool txPool = new TxPool.TxPool(txStorage, ethereumEcdsa, new ChainHeadInfoProvider(new FixedBlockChainHeadSpecProvider(specProvider), blockTree, new StateProvider(new TrieStore(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance)), new TxPoolConfig(), 
+            TxPool.TxPool txPool = new TxPool.TxPool(ethereumEcdsa, new ChainHeadInfoProvider(new FixedBlockChainHeadSpecProvider(specProvider), blockTree, new StateProvider(new TrieStore(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance)), new TxPoolConfig(), 
                 new TxValidator(specProvider.ChainId), LimboLogs.Instance, transactionComparerProvider.GetDefaultComparer());
 
             IReceiptStorage receiptStorage = new InMemoryReceiptStorage();
@@ -320,7 +317,6 @@ namespace Nethermind.JsonRpc.Test.Modules
             LimboLogs logger = LimboLogs.Instance;
             MainnetSpecProvider specProvider = MainnetSpecProvider.Instance;
             EthereumEcdsa ethereumEcdsa = new EthereumEcdsa(specProvider.ChainId, logger);
-            InMemoryTxStorage txStorage = new InMemoryTxStorage();
             
             IDb blockDb = new MemDb();
             IDb headerDb = new MemDb();
@@ -328,7 +324,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             IBlockTree blockTree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), specProvider, NullBloomStorage.Instance, LimboLogs.Instance);
             ITransactionComparerProvider transactionComparerProvider =
                 new TransactionComparerProvider(specProvider, blockTree);
-            TxPool.TxPool txPool = new TxPool.TxPool(txStorage, ethereumEcdsa, new ChainHeadInfoProvider(specProvider, blockTree, new StateReader(new TrieStore(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance)), new TxPoolConfig(), 
+            TxPool.TxPool txPool = new TxPool.TxPool(ethereumEcdsa, new ChainHeadInfoProvider(specProvider, blockTree, new StateReader(new TrieStore(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance)), new TxPoolConfig(), 
                 new TxValidator(specProvider.ChainId), LimboLogs.Instance, transactionComparerProvider.GetDefaultComparer());
             
             IReceiptStorage receiptStorage = new InMemoryReceiptStorage();
