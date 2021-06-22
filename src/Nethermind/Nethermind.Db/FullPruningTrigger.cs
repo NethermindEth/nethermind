@@ -13,15 +13,13 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
 namespace Nethermind.Db
 {
-    public interface IRocksDbFactory
+    public enum FullPruningTrigger
     {
-        IDb CreateDb(RocksDbSettings rocksDbSettings);
-        
-        IColumnsDb<T> CreateColumnsDb<T>(RocksDbSettings rocksDbSettings) where T : notnull;
-
-        public string GetFullDbPath(RocksDbSettings rocksDbSettings) => rocksDbSettings.DbPath;
+        StateDbSize,
+        VolumeFreeSpace
     }
 }

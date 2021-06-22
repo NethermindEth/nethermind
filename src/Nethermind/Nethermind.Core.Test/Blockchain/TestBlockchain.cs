@@ -100,6 +100,7 @@ namespace Nethermind.Core.Test.Blockchain
         private IBlockFinder _blockFinder;
 
         public static readonly UInt256 InitialValue = 1000.Ether();
+        private TrieStoreBoundaryWatcher _trieStoreWatcher;
 
         public IReadOnlyTrieStore ReadOnlyTrieStore { get; private set; }
 
@@ -114,7 +115,7 @@ namespace Nethermind.Core.Test.Blockchain
             SpecProvider = specProvider ?? MainnetSpecProvider.Instance;
             EthereumEcdsa = new EthereumEcdsa(ChainId.Mainnet, LogManager);
             ITxStorage txStorage = new InMemoryTxStorage();
-            DbProvider = await TestMemDbProvider.InitAsync();
+            DbProvider = await CreateDbProvider();
             TrieStore = new TrieStore(StateDb.Innermost, LogManager);
             State = new StateProvider(TrieStore, DbProvider.CodeDb, LogManager);
             State.CreateAccount(TestItem.AddressA, (initialValues ?? InitialValue));
@@ -143,6 +144,9 @@ namespace Nethermind.Core.Test.Blockchain
             TransactionComparerProvider = new TransactionComparerProvider(specProvider, BlockTree);
             TxPool = CreateTxPool(txStorage);
 
+            _trieStoreWatcher = new TrieStoreBoundaryWatcher(TrieStore, BlockTree, LogManager);
+            
+
             ReceiptStorage = new InMemoryReceiptStorage();
             VirtualMachine virtualMachine = new VirtualMachine(State, Storage, new BlockhashProvider(BlockTree, LogManager), SpecProvider, LogManager);
             TxProcessor = new TransactionProcessor(SpecProvider, State, Storage, virtualMachine, LogManager);
@@ -162,10 +166,7 @@ namespace Nethermind.Core.Test.Blockchain
 
             _resetEvent = new SemaphoreSlim(0);
             _suggestedBlockResetEvent = new ManualResetEvent(true);
-            BlockTree.NewHeadBlock += (s, e) =>
-            {
-                _resetEvent.Release(1);
-            };
+            BlockTree.NewHeadBlock += OnNewHeadBlock;
             BlockProducer.LastProducedBlockChanged += (s, e) =>
             {
                 _suggestedBlockResetEvent.Set();
@@ -177,6 +178,13 @@ namespace Nethermind.Core.Test.Blockchain
             await AddBlocksOnStart();
             return this;
         }
+
+        private void OnNewHeadBlock(object? sender, BlockEventArgs e)
+        {
+            _resetEvent.Release(1);
+        }
+
+        protected virtual Task<IDbProvider> CreateDbProvider() => TestMemDbProvider.InitAsync();
 
         private async Task WaitAsync(SemaphoreSlim semaphore, string error, int timeout = DefaultTimeout)
         {
@@ -289,6 +297,10 @@ namespace Nethermind.Core.Test.Blockchain
 
         private async Task<AddTxResult[]> AddBlockInternal(params Transaction[] transactions)
         {
+            // we want it to be last event, so lets re-register
+            BlockTree.NewHeadBlock -= OnNewHeadBlock;
+            BlockTree.NewHeadBlock += OnNewHeadBlock;
+            
             await WaitAsync(_oneAtATime, "Multiple block produced at once.");
             AddTxResult[] txResults = transactions.Select(t => TxPool.AddTransaction(t, TxHandlingOptions.None)).ToArray();
             Timestamper.Add(TimeSpan.FromSeconds(1));
@@ -309,6 +321,8 @@ namespace Nethermind.Core.Test.Blockchain
             BlockProducer?.StopAsync();
             CodeDb?.Dispose();
             StateDb?.Dispose();
+            _trieStoreWatcher?.Dispose();
+            DbProvider?.Dispose();
         }
 
         /// <summary>

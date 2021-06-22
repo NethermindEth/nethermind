@@ -15,14 +15,13 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Config;
-
-namespace Nethermind.Blockchain.Synchronization
+namespace Nethermind.Db.FullPruning
 {
-    public class PruningConfig : IPruningConfig
+    public interface IFullPruningDb
     {
-        public bool Enabled { get; set; }
-        public long CacheMb { get; set; } = 512;
-        public long PersistenceInterval { get; set; } = 8192;    
+        bool CanStartPruning { get; }
+        bool TryStartPruning(out IPruningContext context);
+        string GetPath(string basePath);
+        string InnerDbName { get; }
     }
 }

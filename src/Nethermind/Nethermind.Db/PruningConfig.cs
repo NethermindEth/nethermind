@@ -13,15 +13,32 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
 namespace Nethermind.Db
 {
-    public interface IRocksDbFactory
+    public class PruningConfig : IPruningConfig
     {
-        IDb CreateDb(RocksDbSettings rocksDbSettings);
-        
-        IColumnsDb<T> CreateColumnsDb<T>(RocksDbSettings rocksDbSettings) where T : notnull;
+        public bool Enabled
+        {
+            get => (Mode & PruningMode.Memory) != 0;
+            set
+            {
+                if (value)
+                {
+                    Mode |= PruningMode.Memory;
+                }
+                else
+                {
+                    Mode &= ~PruningMode.Memory;
+                }
+            }
+        }
 
-        public string GetFullDbPath(RocksDbSettings rocksDbSettings) => rocksDbSettings.DbPath;
+        public PruningMode Mode { get; set; } = PruningMode.None;
+        public long CacheMb { get; set; } = 512;
+        public long PersistenceInterval { get; set; } = 8192;
+        public long FullPruningThresholdMb { get; set; } = 256000;
+        public FullPruningTrigger FullPruningTrigger { get; set; } = FullPruningTrigger.StateDbSize;
     }
 }

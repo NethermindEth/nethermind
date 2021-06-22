@@ -27,8 +27,8 @@ namespace Nethermind.Db
             DbPath = path;
         }
         
-        public string DbName { get; }
-        public string DbPath { get; }
+        public string DbName { get; private set; }
+        public string DbPath { get; private set; }
 
         public Action? UpdateReadMetrics { get; init; }
         public Action? UpdateWriteMetrics { get; init; }
@@ -37,5 +37,20 @@ namespace Nethermind.Db
         public uint? WriteBufferNumber { get; init; }
         public ulong? BlockCacheSize { get; init; }
         public bool? CacheIndexAndFilterBlocks { get; init; }
+        
+        public bool DeleteOnStart { get; set; }
+        public bool CanDeleteFolder { get; set; } = true;
+
+        public RocksDbSettings Clone(string name, string path)
+        {
+            RocksDbSettings settings = (RocksDbSettings)MemberwiseClone();
+            settings.DbName = name;
+            settings.DbPath = path;
+            return settings;
+        }
+        
+        public RocksDbSettings Clone() => (RocksDbSettings)MemberwiseClone();
+
+        public override string ToString() => $"{DbName}:{DbPath}";
     }
 }

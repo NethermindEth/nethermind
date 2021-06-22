@@ -67,6 +67,9 @@ namespace Nethermind.Db
         
         [Description("Number of State DB writes.")]
         public static long StateDbWrites { get; set; }
+
+        [Description("Number of State DB duplicate writes during full pruning.")]
+        public static int StateDbInPruningWrites;
         
         [Description("Number of storge trie reads.")]
         public static long StorageTreeReads { get; set; }
@@ -97,5 +100,8 @@ namespace Nethermind.Db
         
         [Description("Number of Witness DB writes.")]
         public static long WitnessDbWrites { get; set; }
+
+        [Description("Indicator if StadeDb is being pruned.")]
+        public static int StateDbPruning { get; set; }
     }
 } 
