@@ -57,7 +57,7 @@ namespace Nethermind.Mev
         {
             add => TransactionProcessedEvent += value;
             remove => TransactionProcessedEvent -= value;
-        }
+        } 
         
         public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, IBlockTracer blockTracer, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec)
         {
@@ -148,6 +148,8 @@ namespace Nethermind.Mev
             receiptsTracer.StartNewTxTrace(currentTx);
             _transactionProcessor.BuildUp(currentTx, block.Header, receiptsTracer);
             receiptsTracer.EndTxTrace();
+
+            transactionsInBlock?.Add(currentTx);
         }
 
         private void ProcessBundle(Block block, LinkedHashSet<Transaction> transactionsInBlock, List<BundleTransaction> bundleTransactions,

@@ -45,7 +45,7 @@ namespace Nethermind.Evm.Tracing
 
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak stateRoot = null)
         {
-            _txReceipts[_currentIndex] = BuildReceipt(recipient, gasSpent, StatusCode.Success, logs, stateRoot);
+            _txReceipts.Add(BuildReceipt(recipient, gasSpent, StatusCode.Success, logs, stateRoot));
             
             // hacky way to support nested receipt tracers
             if (_otherTracer is ITxTracer otherTxTracer)
@@ -61,7 +61,7 @@ namespace Nethermind.Evm.Tracing
 
         public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak stateRoot = null)
         {
-            _txReceipts[_currentIndex] = BuildFailedReceipt(recipient, gasSpent, error, stateRoot);
+            _txReceipts.Add(BuildFailedReceipt(recipient, gasSpent, error, stateRoot));
             
             // hacky way to support nested receipt tracers
             if (_otherTracer is ITxTracer otherTxTracer)
@@ -296,9 +296,7 @@ namespace Nethermind.Evm.Tracing
             
             _block = block;
             _currentIndex = 0;
-            _txReceipts = _block.Transactions.Length == 0 
-                ? new List<TxReceipt>() 
-                : new TxReceipt[_block.Transactions.Length];
+            _txReceipts = new List<TxReceipt>();
             _isFixedSize = ((System.Collections.IList)_txReceipts).IsFixedSize;
 
             _otherTracer.StartNewBlockTrace(block);
@@ -306,11 +304,6 @@ namespace Nethermind.Evm.Tracing
 
         public ITxTracer StartNewTxTrace(Transaction? tx)
         {
-            if (!_isFixedSize && tx is not null)
-            {
-                _txReceipts.Add(null);
-            }
-
             _currentTx = tx;
             _currentTxTracer = _otherTracer!.StartNewTxTrace(tx);
             return _currentTxTracer;
