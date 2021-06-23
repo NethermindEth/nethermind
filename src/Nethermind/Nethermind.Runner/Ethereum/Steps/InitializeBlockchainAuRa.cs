@@ -73,6 +73,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_api.StorageProvider == null) throw new StepDependencyException(nameof(_api.StorageProvider));
             if (_api.TxPool == null) throw new StepDependencyException(nameof(_api.TxPool));
             if (_api.ReceiptStorage == null) throw new StepDependencyException(nameof(_api.ReceiptStorage));
+            if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.BlockTree));
        
             var processingReadOnlyTransactionProcessorSource = CreateReadOnlyTransactionProcessorSource();
             var txPermissionFilterOnlyTxProcessorSource = CreateReadOnlyTransactionProcessorSource();
@@ -85,11 +86,9 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.SpecProvider,
                 _api.BlockValidator,
                 _api.RewardCalculatorSource.Get(_api.TransactionProcessor),
-                _api.TransactionProcessor,
-                _api.TransactionProcessingStrategy,
+                new BlockProcessor.StandardTransactionProcessor(_api.TransactionProcessor, _api.StateProvider),
                 _api.StateProvider,
                 _api.StorageProvider,
-                _api.TxPool,
                 _api.ReceiptStorage,
                 _api.LogManager,
                 _api.BlockTree,

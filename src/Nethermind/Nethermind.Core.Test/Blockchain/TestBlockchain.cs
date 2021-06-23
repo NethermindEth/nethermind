@@ -56,7 +56,6 @@ namespace Nethermind.Core.Test.Blockchain
         public IStateReader StateReader { get; private set; }
         public IEthereumEcdsa EthereumEcdsa { get; private set; }
         public TransactionProcessor TxProcessor { get; set; }
-        public ITransactionProcessingStrategy TxProcessingStrategy { get; set; }
         public IStorageProvider Storage { get; set; }
         public IReceiptStorage ReceiptStorage { get; set; }
         public ITxPool TxPool { get; set; }
@@ -147,7 +146,6 @@ namespace Nethermind.Core.Test.Blockchain
             ReceiptStorage = new InMemoryReceiptStorage();
             VirtualMachine virtualMachine = new VirtualMachine(State, Storage, new BlockhashProvider(BlockTree, LogManager), SpecProvider, LogManager);
             TxProcessor = new TransactionProcessor(SpecProvider, State, Storage, virtualMachine, LogManager);
-            TxProcessingStrategy = new TransactionProcessingStrategy(TxProcessor, State, Storage, ProcessingOptions.All);
             BlockPreprocessorStep = new RecoverSignatures(EthereumEcdsa, TxPool, SpecProvider, LogManager);
             BlockProcessor = CreateBlockProcessor();
             
@@ -251,8 +249,7 @@ namespace Nethermind.Core.Test.Blockchain
                 SpecProvider,
                 Always.Valid,
                 new RewardCalculator(SpecProvider),
-                TxProcessor,
-                TxProcessingStrategy,
+                new BlockProcessor.StandardTransactionProcessor(TxProcessor, State),
                 State,
                 Storage,
                 ReceiptStorage,

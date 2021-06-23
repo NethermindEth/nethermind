@@ -31,7 +31,6 @@ using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa
 {
@@ -48,11 +47,9 @@ namespace Nethermind.Consensus.AuRa
             ISpecProvider specProvider,
             IBlockValidator blockValidator,
             IRewardCalculator rewardCalculator,
-            ITransactionProcessor transactionProcessor,
-            ITransactionProcessingStrategy transactionProcessingStrategy,
+            IBlockProcessor.ITransactionProcessor transactionProcessor,
             IStateProvider stateProvider,
             IStorageProvider storageProvider,
-            ITxPool txPool,
             IReceiptStorage receiptStorage,
             ILogManager logManager,
             IBlockTree blockTree,
@@ -63,7 +60,6 @@ namespace Nethermind.Consensus.AuRa
                 blockValidator,
                 rewardCalculator,
                 transactionProcessor,
-                transactionProcessingStrategy,
                 stateProvider,
                 storageProvider,
                 receiptStorage,
@@ -83,11 +79,11 @@ namespace Nethermind.Consensus.AuRa
             set => _auRaValidator = value;
         }
 
-        protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options, ITransactionProcessingStrategy transactionProcessingStrategy)
+        protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options)
         {
             ValidateAuRa(block);
             AuRaValidator.OnBlockProcessingStart(block, options);
-            TxReceipt[] receipts = base.ProcessBlock(block, blockTracer, options, transactionProcessingStrategy);
+            TxReceipt[] receipts = base.ProcessBlock(block, blockTracer, options);
             AuRaValidator.OnBlockProcessingEnd(block, receipts, options);
             Metrics.AuRaStep = block.Header?.AuRaStep ?? 0;
             return receipts;

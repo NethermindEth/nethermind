@@ -32,7 +32,6 @@ namespace Nethermind.Blockchain.Processing
         public IStateProvider StateProvider { get; }
         public IStorageProvider StorageProvider { get; }
         public ITransactionProcessor TransactionProcessor { get; set; }
-        public ITransactionProcessingStrategy TransactionProcessingStrategy { get; set; }
         public IBlockTree BlockTree { get; }
         public IReadOnlyDbProvider DbProvider { get; }
         public IBlockhashProvider BlockhashProvider { get; }
@@ -67,7 +66,6 @@ namespace Nethermind.Blockchain.Processing
 
             Machine = new VirtualMachine(StateProvider, StorageProvider, BlockhashProvider, specProvider, logManager);
             TransactionProcessor = new TransactionProcessor(specProvider, StateProvider, StorageProvider, Machine, logManager);
-            TransactionProcessingStrategy = new TransactionProcessingStrategy(TransactionProcessor, StateProvider, StorageProvider, ProcessingOptions.All);
         }
 
         public void Reset()

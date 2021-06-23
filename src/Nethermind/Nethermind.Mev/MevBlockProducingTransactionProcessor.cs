@@ -32,33 +32,24 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Mev
 {
-    public class ProducingBlockWithBundlesTransactionProcessingStrategy : ITransactionProcessingStrategy
+    public class MevBlockProducingTransactionProcessor : IBlockProcessor.ITransactionProcessor
     {
         private readonly ITransactionProcessor _transactionProcessor;
         private readonly IStateProvider _stateProvider;
         private readonly IStorageProvider _storageProvider;
-        private readonly ProcessingOptions _options;
         
-        public ProducingBlockWithBundlesTransactionProcessingStrategy(
+        public MevBlockProducingTransactionProcessor(
             ITransactionProcessor transactionProcessor, 
             IStateProvider stateProvider,
-            IStorageProvider storageProvider, 
-            ProcessingOptions options)
+            IStorageProvider storageProvider)
         {
             _transactionProcessor = transactionProcessor;
             _stateProvider = stateProvider;
             _storageProvider = storageProvider;
-            _options = options;
         }
 
-        private event EventHandler<TxProcessedEventArgs>? TransactionProcessedEvent; 
-        
-        event EventHandler<TxProcessedEventArgs> ITransactionProcessingStrategy.TransactionProcessed
-        {
-            add => TransactionProcessedEvent += value;
-            remove => TransactionProcessedEvent -= value;
-        } 
-        
+        public event EventHandler<TxProcessedEventArgs>? TransactionProcessed;
+
         public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, IBlockTracer blockTracer, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec)
         {
             IEnumerable<Transaction> transactions = block.GetTransactions(out _);
@@ -86,7 +77,7 @@ namespace Nethermind.Mev
                         }
                         else
                         {
-                            ProcessTransaction(block, transactionsInBlock, currentTx, transactionsInBlock.Count, receiptsTracer);
+                            ProcessTransaction(block, transactionsInBlock, currentTx, transactionsInBlock.Count, receiptsTracer, processingOptions);
                         }
                     }
                     else
@@ -99,7 +90,7 @@ namespace Nethermind.Mev
                             }
                             else
                             {
-                                ProcessBundle(block, transactionsInBlock, bundleTransactions, receiptsTracer);
+                                ProcessBundle(block, transactionsInBlock, bundleTransactions, receiptsTracer, processingOptions);
                                 
                                 if (currentTx.GasLimit > block.Header.GasLimit - block.GasUsed)
                                 {
@@ -112,7 +103,7 @@ namespace Nethermind.Mev
                         }
                         else
                         {
-                            ProcessBundle(block, transactionsInBlock, bundleTransactions, receiptsTracer);
+                            ProcessBundle(block, transactionsInBlock, bundleTransactions, receiptsTracer, processingOptions);
                             bundleHash = null;
                             
                             if (currentTx.GasLimit > block.Header.GasLimit - block.GasUsed)
@@ -121,7 +112,7 @@ namespace Nethermind.Mev
                             }
                             
                             // process current transactions
-                            ProcessTransaction(block, transactionsInBlock, currentTx, transactionsInBlock.Count, receiptsTracer);
+                            ProcessTransaction(block, transactionsInBlock, currentTx, transactionsInBlock.Count, receiptsTracer, processingOptions);
                         }
                     }
                 }
@@ -129,7 +120,7 @@ namespace Nethermind.Mev
             // if bundle is not clear process it still
             if (bundleTransactions.Count > 0)
             {
-                ProcessBundle(block, transactionsInBlock, bundleTransactions, receiptsTracer);
+                ProcessBundle(block, transactionsInBlock, bundleTransactions, receiptsTracer, processingOptions);
             }
             block.TrySetTransactions(transactionsInBlock.ToArray());
             _stateProvider.Commit(spec);
@@ -138,9 +129,9 @@ namespace Nethermind.Mev
             return receiptsTracer.TxReceipts!;
         }
         
-        private void ProcessTransaction(Block block, ISet<Transaction>? transactionsInBlock, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer)
+        private void ProcessTransaction(Block block, ISet<Transaction>? transactionsInBlock, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
         {
-            if ((_options & ProcessingOptions.DoNotVerifyNonce) != 0)
+            if ((processingOptions & ProcessingOptions.DoNotVerifyNonce) != 0)
             {
                 currentTx.Nonce = _stateProvider.GetNonce(currentTx.SenderAddress!);
             }
@@ -153,7 +144,7 @@ namespace Nethermind.Mev
         }
 
         private void ProcessBundle(Block block, LinkedHashSet<Transaction> transactionsInBlock, List<BundleTransaction> bundleTransactions,
-            BlockReceiptsTracer receiptsTracer)
+            BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
         {
             int stateSnapshot = _stateProvider.TakeSnapshot();
             int storageSnapshot = _storageProvider.TakeSnapshot();
@@ -163,7 +154,7 @@ namespace Nethermind.Mev
             for (int index = 0; index < bundleTransactions.Count && bundleSucceeded; index++)
             {
                 BundleTransaction currentTx = bundleTransactions[index];
-                ProcessTransaction(block, null, currentTx, transactionsInBlock.Count, receiptsTracer);
+                ProcessTransaction(block, null, currentTx, transactionsInBlock.Count, receiptsTracer, processingOptions);
 
                 bool wasReverted = receiptsTracer.LastReceipt!.Error == "revert";
                 if (wasReverted && !currentTx.CanRevert)
@@ -182,7 +173,7 @@ namespace Nethermind.Mev
                 {
                     TxProcessedEventArgs eventItem = eventList[index];
                     transactionsInBlock.Add(eventItem.Transaction);
-                    TransactionProcessedEvent?.Invoke(this, eventItem);
+                    TransactionProcessed?.Invoke(this, eventItem);
                 }
             }
             else

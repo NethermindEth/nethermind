@@ -179,7 +179,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 getApi.SpecProvider,
                 getApi.LogManager);
 
-            _api.TransactionProcessor = new TransactionProcessor(
+            ITransactionProcessor transactionProcessor = _api.TransactionProcessor = new TransactionProcessor(
                 getApi.SpecProvider,
                 stateProvider,
                 storageProvider,
@@ -289,9 +289,8 @@ namespace Nethermind.Runner.Ethereum.Steps
             return new BlockProcessor(
                 _api.SpecProvider,
                 _api.BlockValidator,
-                _api.RewardCalculatorSource.Get(_api.TransactionProcessor),
-                _api.TransactionProcessor,
-                _api.TransactionProcessingStrategy,
+                _api.RewardCalculatorSource.Get(_api.TransactionProcessor!),
+                new BlockProcessor.StandardTransactionProcessor(_api.TransactionProcessor, _api.StateProvider!),
                 _api.StateProvider,
                 _api.StorageProvider,
                 _api.ReceiptStorage,

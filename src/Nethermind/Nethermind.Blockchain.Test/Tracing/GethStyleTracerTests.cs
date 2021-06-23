@@ -61,16 +61,11 @@ namespace Nethermind.Blockchain.Test.Tracing
             
             TransactionProcessor transactionProcessor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, LimboLogs.Instance);
 
-            ITransactionProcessingStrategy transactionProcessingStrategy =
-                new TransactionProcessingStrategy(transactionProcessor, stateProvider, storageProvider,
-                    ProcessingOptions.Trace); 
-
             BlockProcessor blockProcessor = new BlockProcessor(
                 specProvider,
                 TestBlockValidator.AlwaysValid,
                 NoBlockRewards.Instance,
-                transactionProcessor,
-                transactionProcessingStrategy,
+                new BlockProcessor.StandardTransactionProcessor(transactionProcessor, stateProvider),
                 stateProvider,
                 storageProvider,
                 NullReceiptStorage.Instance,

@@ -82,17 +82,11 @@ namespace Nethermind.Blockchain.Test.Producers
                 storageProvider,
                 virtualMachine,
                 LimboLogs.Instance);
-            ITransactionProcessingStrategy transactionProcessingStrategy = new TransactionProcessingStrategy(
-                txProcessor,
-                stateProvider,
-                storageProvider,
-                ProcessingOptions.All);
             BlockProcessor blockProcessor = new BlockProcessor(
                 specProvider,
                 Always.Valid,
                 NoBlockRewards.Instance,
-                txProcessor,
-                transactionProcessingStrategy,
+                new BlockProcessor.StandardTransactionProcessor(txProcessor, stateProvider),
                 stateProvider,
                 storageProvider,
                 NullReceiptStorage.Instance,
