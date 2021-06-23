@@ -125,6 +125,33 @@ namespace Nethermind.Blockchain.Test.Receipts
         }
 
         [Test]
+        public void Adds_and_retrieves_receipts_for_block_with_iterator()
+        {
+            var (block, _) = InsertBlock();
+
+            _storage.ClearCache();
+            _storage.TryGetReceiptsIterator(0, block.Hash, out var iterator).Should().BeTrue();
+            iterator.TryGetNext(out var receiptStructRef).Should().BeTrue();
+            receiptStructRef.LogsRlp.ToArray().Should().NotBeEmpty();
+            receiptStructRef.Logs.Should().BeNullOrEmpty();
+            iterator.TryGetNext(out receiptStructRef).Should().BeFalse();
+        }
+        
+        [Test]
+        public void Adds_and_retrieves_receipts_for_block_with_iterator_from_cache_after_get()
+        {
+            var (block, receipts) = InsertBlock();
+
+            _storage.ClearCache();
+            _storage.Get(block);
+            _storage.TryGetReceiptsIterator(0, block.Hash, out var iterator).Should().BeTrue();
+            iterator.TryGetNext(out var receiptStructRef).Should().BeTrue();
+            receiptStructRef.LogsRlp.ToArray().Should().BeEmpty();
+            receiptStructRef.Logs.Should().BeEquivalentTo(receipts.First().Logs);
+            iterator.TryGetNext(out receiptStructRef).Should().BeFalse();
+        }
+        
+        [Test]
         public void Should_not_overwrite_reference_from_tx_to_block_when_adding_rollbacked_receipts()
         {
             Transaction transaction = Build.A.Transaction.SignedAndResolved().TestObject;
@@ -150,32 +177,15 @@ namespace Nethermind.Blockchain.Test.Receipts
 
             _storage.FindBlockHash(transaction.Hash).Should().Be(oldBlock.Hash);
         }
-        
-        [Test]
-        public void Adds_and_retrieves_receipts_for_block_with_iterator()
-        {
-            var (block, _) = InsertBlock();
 
-            _storage.ClearCache();
-            _storage.TryGetReceiptsIterator(0, block.Hash, out var iterator).Should().BeTrue();
-            iterator.TryGetNext(out var receiptStructRef).Should().BeTrue();
-            receiptStructRef.LogsRlp.ToArray().Should().NotBeEmpty();
-            receiptStructRef.Logs.Should().BeNullOrEmpty();
-            iterator.TryGetNext(out receiptStructRef).Should().BeFalse();
-        }
-        
         [Test]
-        public void Adds_and_retrieves_receipts_for_block_with_iterator_from_cache_after_get()
+        public void Should_handle_inserting_null_receipts()
         {
-            var (block, receipts) = InsertBlock();
+            Block block = Build.A.Block.WithReceiptsRoot(TestItem.KeccakA).TestObject;
 
-            _storage.ClearCache();
-            _storage.Get(block);
-            _storage.TryGetReceiptsIterator(0, block.Hash, out var iterator).Should().BeTrue();
-            iterator.TryGetNext(out var receiptStructRef).Should().BeTrue();
-            receiptStructRef.LogsRlp.ToArray().Should().BeEmpty();
-            receiptStructRef.Logs.Should().BeEquivalentTo(receipts.First().Logs);
-            iterator.TryGetNext(out receiptStructRef).Should().BeFalse();
+            TxReceipt[] receipts = null;
+            
+            _storage.Insert(block, receipts);
         }
         
 
