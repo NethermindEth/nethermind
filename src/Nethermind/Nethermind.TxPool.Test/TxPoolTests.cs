@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -695,14 +696,18 @@ namespace Nethermind.TxPool.Test
             var address = TestItem.AddressA;
             const int reservationsCount = 1000;
             _txPool = CreatePool();
+            ConcurrentBag<UInt256> nonces = new();
+            
             var result = Parallel.For(0, reservationsCount, i =>
             {
-                _txPool.ReserveOwnTransactionNonce(address);
+                nonces.Add(_txPool.ReserveOwnTransactionNonce(address));
             });
 
             result.IsCompleted.Should().BeTrue();
-            var nonce = _txPool.ReserveOwnTransactionNonce(address);
+            UInt256 nonce = _txPool.ReserveOwnTransactionNonce(address);
+            nonces.Add(nonce);
             nonce.Should().Be(new UInt256(reservationsCount));
+            nonces.OrderBy(n => n).Should().BeEquivalentTo(Enumerable.Range(0, reservationsCount + 1).Select(i => new UInt256((uint)i)));
         }
 
         [Test]

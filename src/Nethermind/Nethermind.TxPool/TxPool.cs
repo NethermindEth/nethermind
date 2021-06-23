@@ -456,21 +456,18 @@ namespace Nethermind.TxPool
         // TODO: Ensure that nonce is always valid in case of sending own transactions from different nodes.
         public UInt256 ReserveOwnTransactionNonce(Address address)
         {
-            lock (_locker)
+            UInt256 currentNonce = 0;
+            _nonces.AddOrUpdate(address, a =>
             {
-                UInt256 currentNonce = 0;
-                _nonces.AddOrUpdate(address, a =>
-                {
-                    currentNonce = _accounts.GetAccount(address).Nonce;
-                    return new AddressNonces(currentNonce);
-                }, (a, n) =>
-                {
-                    currentNonce = n.ReserveNonce().Value;
-                    return n;
-                });
+                currentNonce = _accounts.GetAccount(address).Nonce;
+                return new AddressNonces(currentNonce);
+            }, (a, n) =>
+            {
+                currentNonce = n.ReserveNonce().Value;
+                return n;
+            });
 
-                return currentNonce;
-            }
+            return currentNonce;
         }
 
         public bool IsKnown(Keccak hash) => _hashCache.Get(hash);

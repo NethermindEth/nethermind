@@ -38,20 +38,27 @@ namespace Nethermind.TxPool
             public NonceInfo ReserveNonce()
             {
                 UInt256 nonce = _currentNonceInfo.Value;
-                NonceInfo newNonce = _currentNonceInfo;
+                NonceInfo newNonce;
                 bool added = false;
 
                 do
                 {
                     nonce += 1;
-                    Nonces.AddOrUpdate(nonce, v =>
+                    newNonce = Nonces.AddOrUpdate(nonce, v =>
                     {
-                        newNonce = new NonceInfo(v);
-                        Interlocked.Exchange(ref _currentNonceInfo, newNonce);
                         added = true;
-                        return newNonce;
-                    }, (v, n) => n);
+                        return new NonceInfo(v);
+                    }, (v, n) =>
+                    {
+                        added = false;
+                        return n;
+                    });
                 } while (!added);
+
+                if (_currentNonceInfo.Value < newNonce.Value)
+                {
+                    Interlocked.Exchange(ref _currentNonceInfo, newNonce);
+                }
                 
                 return newNonce;
             }
