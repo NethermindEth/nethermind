@@ -227,8 +227,11 @@ namespace Nethermind.Blockchain.Receipts
             
             for (int i = 0; i < txReceipts.Length; i++)
             {
-                var txHash = block.Transactions[i].Hash;
-                _transactionDb.Set(txHash, block.Hash.Bytes);
+                if (txReceipts[i].Removed == false)
+                {
+                    var txHash = block.Transactions[i].Hash;
+                    _transactionDb.Set(txHash, block.Hash.Bytes);
+                }
             }
 
             if (blockNumber < MigratedBlockNumber)
