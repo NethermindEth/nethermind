@@ -159,8 +159,13 @@ namespace Nethermind.Mev
                 BundleTransaction currentTx = bundleTransactions[index];
                 ProcessTransaction(block, null, currentTx, index, receiptsTracer, processingOptions);
 
-                bool wasReverted = receiptsTracer.LastReceipt!.Error == "revert";
+                string error = receiptsTracer.LastReceipt!.Error ?? "";
+                bool wasReverted = error == "revert";
                 if (wasReverted && !currentTx.CanRevert)
+                {
+                    bundleSucceeded = false;
+                }
+                else if (!wasReverted && (error != ""))
                 {
                     bundleSucceeded = false;
                 }
