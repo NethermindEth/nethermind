@@ -30,10 +30,10 @@ namespace Nethermind.Blockchain
         private readonly ILogger _logger;
         private readonly IBlockTree _blockTree;
 
-        public TxFilterAdapter(IBlockTree blockTree, ITxFilter txFilter, ILogger logger)
+        public TxFilterAdapter(IBlockTree blockTree, ITxFilter txFilter, ILogManager logManager)
         {
             _txFilter = txFilter ?? throw new ArgumentNullException(nameof(txFilter));
-            _logger = logger;
+            _logger = logManager.GetClassLogger();
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
         }
 
