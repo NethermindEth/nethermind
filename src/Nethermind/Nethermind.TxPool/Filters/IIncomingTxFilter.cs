@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,14 +13,18 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using Nethermind.Int256;
+using Nethermind.Core;
 
-namespace Nethermind.TxPool
+namespace Nethermind.TxPool.Filters
 {
-    public interface IPendingTxThresholdValidator
+    /// <summary>
+    /// Filter used for discarding inbound transactions in the TX pool.
+    /// Name used to differentiate from filters from Consensus namespace.
+    /// </summary>
+    public interface IIncomingTxFilter
     {
-        bool IsObsolete(UInt256 currentTimestamp, UInt256 transactionTimestamp);
-        bool IsRemovable(UInt256 currentTimestamp, UInt256 transactionTimestamp);
+        (bool Accepted, AddTxResult? Reason) Accept(Transaction tx, TxHandlingOptions txHandlingOptions);
     }
 }

@@ -15,28 +15,25 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Collections.Generic;
 using Nethermind.Core;
 
-namespace Nethermind.TxPool
+namespace Nethermind.TxPool.Filters
 {
     /// <summary>
-    /// Orders first by <see cref="Transaction.Nonce"/> asc and then by inner comparer
+    /// Filters out all the transactions without TX hash calculated.
+    /// This generally should never happen as there should be no way for a transaction to be decoded
+    /// without hash when coming from devp2p.
     /// </summary>
-    public class CompareTxByNonce : IComparer<Transaction>
+    internal class NullHashTxFilter : IIncomingTxFilter
     {
-        public static readonly CompareTxByNonce Instance = new();
-        
-        private CompareTxByNonce() { }
-
-        public int Compare(Transaction x, Transaction y)
+        public (bool Accepted, AddTxResult? Reason) Accept(Transaction tx, TxHandlingOptions handlingOptions)
         {
-            if (ReferenceEquals(x, y)) return 0;
-            if (ReferenceEquals(null, y)) return 1;
-            if (ReferenceEquals(null, x)) return -1;
-                
-            // compare by nonce ascending
-            return x.Nonce.CompareTo(y.Nonce);
+            if (tx.Hash is null)
+            {
+                return (false, AddTxResult.Invalid);
+            }
+
+            return (true, null);
         }
     }
 }

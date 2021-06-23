@@ -21,6 +21,7 @@ using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.TxPool.Comparison;
 
 namespace Nethermind.TxPool.Collections
 {

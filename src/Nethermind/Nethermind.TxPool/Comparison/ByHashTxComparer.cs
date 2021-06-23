@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,31 +13,29 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System.Collections.Concurrent;
-using System.Linq;
+using System.Collections.Generic;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 
-namespace Nethermind.TxPool.Storages
+namespace Nethermind.TxPool.Comparison
 {
-    public class InMemoryTxStorage : ITxStorage
+    /// <summary>
+    /// Compares <see cref="Transaction"/>s based on <see cref="Transaction.Hash"/> identity. No two different signed transactions will be same.
+    /// </summary>
+    public class ByHashTxComparer : IComparer<Transaction>
     {
-        private readonly ConcurrentDictionary<Keccak, Transaction> _transactions =
-            new();
+        public static readonly ByHashTxComparer Instance = new();
+        
+        private ByHashTxComparer() { }
 
-        public Transaction Get(Keccak hash)
+        public int Compare(Transaction? x, Transaction? y)
         {
-            _transactions.TryGetValue(hash, out var transaction);
-
-            return transaction;
+            if (ReferenceEquals(x?.Hash, y?.Hash)) return 0;
+            if (ReferenceEquals(null, y?.Hash)) return 1;
+            if (ReferenceEquals(null, x?.Hash)) return -1;
+            
+            return x.Hash!.CompareTo(y.Hash);
         }
-
-        public Transaction[] GetAll() => _transactions.Values.ToArray();
-
-        public void Add(Transaction transaction)
-            => _transactions.TryAdd(transaction.Hash, transaction);
-
-        public void Delete(Keccak hash) => _transactions.TryRemove(hash, out _);
     }
 }

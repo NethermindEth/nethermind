@@ -23,10 +23,9 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Specs;
-using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
-namespace Nethermind.Blockchain.Test.TxPools
+namespace Nethermind.TxPool.Test
 {
     [TestFixture(true)]
     [TestFixture(false)]

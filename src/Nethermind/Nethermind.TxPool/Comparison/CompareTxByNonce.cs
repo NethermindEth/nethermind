@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,17 +13,30 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
+using System.Collections.Generic;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 
-namespace Nethermind.TxPool
+namespace Nethermind.TxPool.Comparison
 {
-    public interface ITxStorage
+    /// <summary>
+    /// Orders first by <see cref="Transaction.Nonce"/> asc and then by inner comparer
+    /// </summary>
+    public class CompareTxByNonce : IComparer<Transaction?>
     {
-        Transaction? Get(Keccak hash);
-        Transaction[] GetAll();
-        void Add(Transaction transaction);
-        void Delete(Keccak hash);
+        public static readonly CompareTxByNonce Instance = new();
+        
+        private CompareTxByNonce() { }
+
+        public int Compare(Transaction? x, Transaction? y)
+        {
+            if (ReferenceEquals(x, y)) return 0;
+            if (ReferenceEquals(null, y)) return 1;
+            if (ReferenceEquals(null, x)) return -1;
+                
+            // compare by nonce ascending
+            return x.Nonce.CompareTo(y.Nonce);
+        }
     }
 }

@@ -15,27 +15,19 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Collections.Generic;
 using Nethermind.Core;
 
-namespace Nethermind.TxPool
+namespace Nethermind.TxPool.Filters
 {
-    /// <summary>
-    /// Default ordering by <see cref="Transaction.PoolIndex"/> asc
-    /// </summary>
-    public class CompareTxByPoolIndex : IComparer<Transaction>
+    public class NullIncomingTxFilter : IIncomingTxFilter
     {
-        public static readonly CompareTxByPoolIndex Instance = new();
-        
-        private CompareTxByPoolIndex() { }
+        private NullIncomingTxFilter() { }
 
-        public int Compare(Transaction x, Transaction y)
+        public static IIncomingTxFilter Instance { get; } = new NullIncomingTxFilter();
+
+        public (bool Accepted, AddTxResult? Reason) Accept(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
-            if (ReferenceEquals(x, y)) return 0;
-            if (ReferenceEquals(null, y)) return 1;
-            if (ReferenceEquals(null, x)) return -1;
-            
-            return x.PoolIndex.CompareTo(y.PoolIndex);
+            return (true, null);
         }
     }
 }

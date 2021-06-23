@@ -15,28 +15,36 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.TxPool
 {
-    /// <summary>
-    /// Default ordering by <see cref="Transaction.GasLimit"/> asc
-    /// </summary>
-    public class CompareTxByGasLimit : IComparer<Transaction>
+    internal class PeerInfo : ITxPoolPeer
     {
-        public static readonly CompareTxByGasLimit Instance = new();
-        
-        private CompareTxByGasLimit() { }
+        private ITxPoolPeer Peer { get; }
 
-        public int Compare(Transaction x, Transaction y)
+        private LruKeyCache<Keccak> NotifiedTransactions { get; } = new(MemoryAllowance.MemPoolSize, "notifiedTransactions");
+
+        public PeerInfo(ITxPoolPeer peer)
         {
-            if (ReferenceEquals(x, y)) return 0;
-            if (ReferenceEquals(null, y)) return 1;
-            if (ReferenceEquals(null, x)) return -1;
-
-            // then by gas limit ascending
-            return x.GasLimit.CompareTo(y.GasLimit);
+            Peer = peer;
         }
+
+        public PublicKey Id => Peer.Id;
+
+        public bool SendNewTransaction(Transaction tx, bool isPriority)
+        {
+            if (!NotifiedTransactions.Get(tx.Hash))
+            {
+                NotifiedTransactions.Set(tx.Hash);
+                return Peer.SendNewTransaction(tx, isPriority);                     
+            }
+
+            return false;
+        }
+
+        public override string ToString() => Peer.Enode;
     }
 }

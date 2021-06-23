@@ -126,7 +126,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             UInt256 nonce = 1;
             var address = TestItem.AddressA;
             _blockchainBridge.BeamHead.Returns(_anyBlock);
-            _stateReader.GetNonce(_anyBlock.StateRoot, address).Returns(nonce);
+            _stateReader.GetAccount(_anyBlock.StateRoot, address).Returns(Account.TotallyEmpty.WithChangedNonce(nonce));
             var result = await _ndmBridge.GetNonceAsync(address);
             _stateReader.Received().GetNonce(_anyBlock.StateRoot, address);
             result.Should().Be(nonce);

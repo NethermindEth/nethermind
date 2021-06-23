@@ -15,27 +15,28 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Collections.Generic;
-using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 
 namespace Nethermind.TxPool
 {
-    /// <summary>
-    /// Compares <see cref="Transaction"/>s based on <see cref="Transaction.Hash"/> identity. No two different signed transactions will be same.
-    /// </summary>
-    public class DistinctCompareTx : IComparer<Transaction>
+    public partial class TxPool
     {
-        public static readonly DistinctCompareTx Instance = new();
-        
-        private DistinctCompareTx() { }
-
-        public int Compare(Transaction? x, Transaction? y)
+        internal class NonceInfo
         {
-            if (ReferenceEquals(x, y)) return 0;
-            if (ReferenceEquals(null, y)) return 1;
-            if (ReferenceEquals(null, x)) return -1;
+            public UInt256 Value { get; }
             
-            return x.Hash.CompareTo(y.Hash);
+            public Keccak? TransactionHash { get; private set; }
+
+            public NonceInfo(UInt256 value)
+            {
+                Value = value;
+            }
+
+            public void SetTransactionHash(Keccak transactionHash)
+            {
+                TransactionHash = transactionHash;
+            }
         }
     }
 }

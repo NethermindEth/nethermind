@@ -19,10 +19,9 @@ using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Int256;
-using Nethermind.TxPool;
 using NUnit.Framework;
 
-namespace Nethermind.Blockchain.Test.TxPools
+namespace Nethermind.TxPool.Test
 {
     [TestFixture]
     public class TransactionExtensionsTests
@@ -38,7 +37,7 @@ namespace Nethermind.Blockchain.Test.TxPools
             tx.Value = test.Value;
             tx.DecodedMaxFeePerGas = test.FeeCap;
         
-            UInt256 payableGasPrice = tx.CalculatePayableGasPrice(test.IsEip1559Enabled, test.BaseFee, test.AccountBalance);
+            UInt256 payableGasPrice = tx.CalculateAffordableGasPrice(test.IsEip1559Enabled, test.BaseFee, test.AccountBalance);
             payableGasPrice.Should().Be(test.ExpectedPayableGasPriceResult);
         }
         

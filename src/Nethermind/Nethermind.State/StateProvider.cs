@@ -115,9 +115,9 @@ namespace Nethermind.State
             return account.IsEmpty;
         }
 
-        public Account? GetAccount(Address address)
+        public Account GetAccount(Address address)
         {
-            return GetThroughCache(address);
+            return GetThroughCache(address) ?? Account.TotallyEmpty;
         }
 
         public bool IsDeadAccount(Address address)

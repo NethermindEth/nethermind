@@ -13,26 +13,12 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-
-namespace Nethermind.TxPool.Storages
+namespace Nethermind.Core
 {
-    public class NullTxStorage : ITxStorage
+    public interface IAccountStateProvider
     {
-        public static NullTxStorage Instance => new();
-        
-        public Transaction Get(Keccak hash) => null;
-
-        public Transaction[] GetAll() => new Transaction[0];
-
-        public void Add(Transaction transaction)
-        {
-        }
-
-        public void Delete(Keccak hash)
-        {
-        }
+        Account GetAccount(Address address);   
     }
 }

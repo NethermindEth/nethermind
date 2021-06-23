@@ -18,21 +18,18 @@ using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
-using Nethermind.State;
-using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 
-namespace Nethermind.Blockchain.Test
+namespace Nethermind.TxPool.Test
 {
     [TestFixture]
     public class TxPoolInfoProviderTests
     {
         private Address _address;
-        private IStateReader _stateReader;
+        private IAccountStateProvider _stateReader;
         private ITxPoolInfoProvider _infoProvider;
         private ITxPool _txPool;
 
@@ -40,7 +37,7 @@ namespace Nethermind.Blockchain.Test
         public void Setup()
         {
             _address = Address.FromNumber(1);
-            _stateReader = Substitute.For<IStateReader>();
+            _stateReader = Substitute.For<IAccountStateProvider>();
             _txPool = Substitute.For<ITxPool>();
             _infoProvider = new TxPoolInfoProvider(_stateReader, _txPool);
         }
@@ -49,12 +46,12 @@ namespace Nethermind.Blockchain.Test
         public void should_return_valid_pending_and_queued_transactions()
         {
             uint nonce = 3;
-            _stateReader.GetNonce(Arg.Any<Keccak>(), _address).Returns(new UInt256(nonce));
+            _stateReader.GetAccount(_address).Returns(Account.TotallyEmpty.WithChangedNonce(nonce));
             var transactions = GetTransactions();
 
             _txPool.GetPendingTransactionsBySender()
                 .Returns(new Dictionary<Address, Transaction[]> {{_address, transactions}});
-            var info = _infoProvider.GetInfo(Build.A.BlockHeader.TestObject);
+            var info = _infoProvider.GetInfo();
 
             info.Pending.Count.Should().Be(1);
             info.Queued.Count.Should().Be(1);
