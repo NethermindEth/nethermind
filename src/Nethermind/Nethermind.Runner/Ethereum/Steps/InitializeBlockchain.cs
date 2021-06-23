@@ -204,7 +204,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             IChainHeadInfoProvider chainHeadInfoProvider =
                 new ChainHeadInfoProvider(getApi.SpecProvider, getApi.BlockTree, stateReader);
-            setApi.TxPoolInfoProvider = new TxPoolInfoProvider(chainHeadInfoProvider, txPool);
+            setApi.TxPoolInfoProvider = new TxPoolInfoProvider(chainHeadInfoProvider.AccountStateProvider, txPool);
             IBlockProcessor? mainBlockProcessor = setApi.MainBlockProcessor = CreateBlockProcessor();
 
             BlockchainProcessor blockchainProcessor = new(

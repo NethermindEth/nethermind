@@ -26,10 +26,9 @@ namespace Nethermind.TxPool
         private readonly IAccountStateProvider _stateReader;
         private readonly ITxPool _txPool;
 
-        public TxPoolInfoProvider(IChainHeadInfoProvider stateReader, ITxPool txPool)
+        public TxPoolInfoProvider(IAccountStateProvider accountStateProvider, ITxPool txPool)
         {
-            if (stateReader == null) throw new ArgumentNullException(nameof(stateReader));
-            _stateReader = stateReader.AccountStateProvider;
+            _stateReader = accountStateProvider ?? throw new ArgumentNullException(nameof(accountStateProvider));
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
         }
 
