@@ -513,6 +513,8 @@ namespace Nethermind.Mev.Test
                 .WithGasLimit(Contracts.LargeGasLimit)
                 .WithGasPrice(500)
                 .WithTo(contractAddress)
+                .WithValue(0)
+                .WithNonce(1)
                 .WithData(Bytes.FromHexString(Contracts.ReverterInvokeFail))
                 .SignedAndResolved(TestItem.PrivateKeyC).TestObject;
             revertingBundleTx.CanRevert = true;
@@ -675,6 +677,7 @@ namespace Nethermind.Mev.Test
             BundleTransaction revertingOnSecondCallTx1 = Build.A.TypedTransaction<BundleTransaction>()
                 .WithGasLimit(4_000_000)
                 .WithGasPrice(30ul)
+                .WithValue(0)
                 .WithTo(contractAddress)
                 .WithData(Bytes.FromHexString(Contracts.SecondCallReverterInvokeFail))
                 .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
@@ -683,6 +686,7 @@ namespace Nethermind.Mev.Test
             BundleTransaction revertingOnSecondCallTx2 = Build.A.TypedTransaction<BundleTransaction>()
                 .WithGasLimit(4_000_000)
                 .WithGasPrice(20ul)
+                .WithValue(0)
                 .WithTo(contractAddress)
                 .WithData(Bytes.FromHexString(Contracts.SecondCallReverterInvokeFail))
                 .SignedAndResolved(TestItem.PrivateKeyB).TestObject;

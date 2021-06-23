@@ -279,7 +279,14 @@ namespace Nethermind.Evm.Tracing
             }
 
             _block.TrySetTransactions(txs.ToArray());
-            _block.Header.GasUsed = _txReceipts.Last().GasUsedTotal;
+            if (_txReceipts.Count > 0)
+            {
+                _block.Header.GasUsed = _txReceipts.Last().GasUsedTotal;
+            }
+            else
+            {
+                _block.Header.GasUsed = 0;
+            }
         }
 
         public void ReportReward(Address author, string rewardType, UInt256 rewardValue)

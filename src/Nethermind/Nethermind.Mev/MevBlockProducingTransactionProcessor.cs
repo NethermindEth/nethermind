@@ -25,6 +25,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
+using Nethermind.Int256;
 using Nethermind.Mev.Data;
 using Nethermind.State;
 using Nethermind.State.Proofs;
@@ -151,10 +152,12 @@ namespace Nethermind.Mev
             int receiptSnapshot = receiptsTracer.TakeSnapshot();
             List<TxProcessedEventArgs> eventList = new();
             bool bundleSucceeded = true;
+            
+            UInt256 initialBalance = _stateProvider.GetBalance(block.Header.GasBeneficiary!);
             for (int index = 0; index < bundleTransactions.Count && bundleSucceeded; index++)
             {
                 BundleTransaction currentTx = bundleTransactions[index];
-                ProcessTransaction(block, null, currentTx, transactionsInBlock.Count, receiptsTracer, processingOptions);
+                ProcessTransaction(block, null, currentTx, index, receiptsTracer, processingOptions);
 
                 bool wasReverted = receiptsTracer.LastReceipt!.Error == "revert";
                 if (wasReverted && !currentTx.CanRevert)
@@ -165,6 +168,15 @@ namespace Nethermind.Mev
                 {
                     eventList.Add(new TxProcessedEventArgs(transactionsInBlock.Count, currentTx, receiptsTracer.TxReceipts![transactionsInBlock.Count]));                    
                 }
+            }
+            UInt256 finalBalance = _stateProvider.GetBalance(block.Header.GasBeneficiary!);
+            UInt256 feeReceived = finalBalance - initialBalance;
+            UInt256 originalSimulatedGasPrice = bundleTransactions[0].SimulatedBundleFee / bundleTransactions[0].SimulatedBundleGasUsed;
+            UInt256 actualGasPrice = feeReceived / (UInt256)receiptsTracer.LastReceipt!.GasUsed!;
+
+            if (actualGasPrice < originalSimulatedGasPrice)
+            {
+                bundleSucceeded = false;
             }
 
             if (bundleSucceeded)

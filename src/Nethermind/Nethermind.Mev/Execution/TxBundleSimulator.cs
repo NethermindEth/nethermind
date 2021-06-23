@@ -63,20 +63,29 @@ namespace Nethermind.Mev.Execution
         protected override SimulatedMevBundle BuildResult(MevBundle bundle, Block block, BundleBlockTracer tracer, Keccak resultStateRoot)
         {
             UInt256 eligibleGasFeePayment = UInt256.Zero;
+            UInt256 totalGasFeePayment = UInt256.Zero;
             bool success = true;
             for (int i = 0; i < bundle.Transactions.Count; i++)
             {
                 BundleTransaction tx = bundle.Transactions[i];
 
+                tx.SimulatedBundleGasUsed = (UInt256)tracer.GasUsed;
+
                 if (!tx.CanRevert)
                 {
                     success &= tracer.TransactionResults[i];
                 }
-
+                
+                totalGasFeePayment += tracer.TxFees[i];
                 if (!_txPool.IsKnown(tx.Hash))
                 {
                     eligibleGasFeePayment += tracer.TxFees[i];
                 }
+            }
+            
+            for (int i = 0; i < bundle.Transactions.Count; i++)
+            {
+                bundle.Transactions[i].SimulatedBundleFee = totalGasFeePayment + tracer.CoinbasePayments;
             }
 
             Metrics.TotalCoinbasePayments += tracer.CoinbasePayments;
