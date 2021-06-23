@@ -111,7 +111,10 @@ namespace Nethermind.TxPool
             _filterPipeline.Add(new TooExpensiveTxFilter(_headInfo, _accounts, _logger));
             _filterPipeline.Add(new FeeToLowFilter(_headInfo, _accounts, _transactions, _logger));
             _filterPipeline.Add(new ReusedOwnNonceTxFilter(_accounts, _nonces, _logger));
-            _filterPipeline.Add(incomingTxFilter ?? NullIncomingTxFilter.Instance);
+            if (incomingTxFilter is not null)
+            {
+                _filterPipeline.Add(incomingTxFilter);
+            }
         }
 
         public Transaction[] GetPendingTransactions() => _transactions.GetSnapshot();
