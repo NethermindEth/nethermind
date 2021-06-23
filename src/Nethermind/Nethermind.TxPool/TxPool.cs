@@ -237,8 +237,9 @@ namespace Nethermind.TxPool
             if (_logger.IsTrace) _logger.Trace(
                 $"Adding transaction {tx.ToString("  ")} - managed nonce: {managedNonce} | persistent broadcast {startBroadcast}");
 
-            foreach (IIncomingTxFilter incomingTxFilter in _filterPipeline)
+            for (int i = 0; i < _filterPipeline.Count; i++)
             {
+                IIncomingTxFilter incomingTxFilter = _filterPipeline[i];
                 (bool accepted, AddTxResult? filteringResult) = incomingTxFilter.Accept(tx, handlingOptions);
                 if (!accepted)
                 {
