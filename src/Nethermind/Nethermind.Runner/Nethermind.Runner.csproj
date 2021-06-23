@@ -116,8 +116,14 @@
   <Target Name="CreatePluginsFolder" AfterTargets="AfterBuild;AfterPublish">
     <MakeDir Directories="$(PublishDir)plugins" Condition="!Exists('$(PublishDir)plugins')" /> 
   </Target>
+  <Target Name="CreatePluginsFolder" AfterTargets="AfterBuild">
+    <MakeDir Directories="$(OutDir)plugins" Condition="!Exists('$(OutDir)plugins')" /> 
+  </Target>
   <Target Name="CreateNdmPluginsFolder" AfterTargets="AfterPublish">
     <MakeDir Directories="$(PublishDir)ndm-plugins" Condition="!Exists('$(PublishDir)ndm-plugins')" /> 
+  </Target>
+  <Target Name="CreateNdmPluginsFolder" AfterTargets="AfterBuild">
+    <MakeDir Directories="$(OutDir)ndm-plugins" Condition="!Exists('$(OutDir)ndm-plugins')" /> 
   </Target>
     <Target Name="CopyMergePluginOnBuildOrPublish" AfterTargets="AfterBuild;AfterPublish">
     <Copy SourceFiles="$(SolutionDir)Nethermind.Merge.Plugin\bin\$(Configuration)\$(TargetFramework)\Nethermind.Merge.Plugin.dll" 
