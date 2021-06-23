@@ -37,8 +37,6 @@ namespace Nethermind.TxPool
             {
                 TransactionHash = transactionHash;
             }
-
-            public NonceInfo Incremented() => new(Value + 1);
         }
     }
 }

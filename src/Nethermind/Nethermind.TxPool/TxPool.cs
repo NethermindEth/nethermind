@@ -457,18 +457,18 @@ namespace Nethermind.TxPool
         {
             lock (_locker)
             {
-                if (!_nonces.TryGetValue(address, out var addressNonces))
+                UInt256 currentNonce = 0;
+                _nonces.AddOrUpdate(address, a =>
                 {
-                    UInt256 currentNonce = _accounts.GetAccount(address).Nonce;
-                    addressNonces = new AddressNonces(currentNonce);
-                    _nonces.TryAdd(address, addressNonces);
+                    currentNonce = _accounts.GetAccount(address).Nonce;
+                    return new AddressNonces(currentNonce);
+                }, (a, n) =>
+                {
+                    currentNonce = n.ReserveNonce().Value;
+                    return n;
+                });
 
-                    return currentNonce;
-                }
-
-                NonceInfo incrementedNonceInfo = addressNonces.ReserveNonce();
-
-                return incrementedNonceInfo.Value;
+                return currentNonce;
             }
         }
 
