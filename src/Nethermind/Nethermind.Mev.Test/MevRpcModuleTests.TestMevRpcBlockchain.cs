@@ -17,8 +17,10 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
@@ -27,6 +29,7 @@ using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
@@ -39,9 +42,11 @@ using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Test;
+using Nethermind.Mev.Data;
 using Nethermind.Mev.Execution;
 using Nethermind.Mev.Source;
 using Nethermind.Runner.Ethereum;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
@@ -231,6 +236,18 @@ namespace Nethermind.Mev.Test
 
                     return false;
                 }
+            }
+            
+            public MevBundle SendBundle(int blockNumber, params Transaction[] txs) => 
+                SendBundle(blockNumber, null, txs);
+
+            public MevBundle SendBundle(int blockNumber, Keccak[]? revertingTxHashes = null, params Transaction[] txs)
+            {
+                byte[][] bundleBytes = txs.Select(t => Rlp.Encode(t).Bytes).ToArray();
+                ResultWrapper<bool> resultOfBundle = MevRpcModule.eth_sendBundle(bundleBytes, blockNumber, default, default, revertingTxHashes);
+                resultOfBundle.GetResult().ResultType.Should().NotBe(ResultType.Failure);
+                resultOfBundle.GetData().Should().Be(true);
+                return new MevBundle(blockNumber, txs, default, default, revertingTxHashes);
             }
         }
     }

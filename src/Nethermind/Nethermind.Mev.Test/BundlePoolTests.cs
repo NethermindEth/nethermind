@@ -136,19 +136,14 @@ namespace Nethermind.Mev.Test
            
            //Adding empty transaction array bundles
            MevBundle bundleNoTx1 = new MevBundle(10, emptyArr);
-           MevBundle bundleNoTx2 = new MevBundle(11, emptyArr);
            tc.BundlePool.AddBundle(bundleNoTx1).Should().BeFalse();
-           tc.BundlePool.AddBundle(bundleNoTx2).Should().BeFalse();
-           
-           //Same bundles with filled transaction array
-           MevBundle updatedBundle1 = new MevBundle(10, filledArr);
-           MevBundle updatedBundle2 = new MevBundle(11, filledArr);
-           tc.BundlePool.AddBundle(updatedBundle1).Should().BeTrue();
-           tc.BundlePool.AddBundle(updatedBundle2).Should().BeTrue();
         }
         
-        [Test]
-        public void should_reject_bundle_on_block_before_head()
+        [TestCase(10, ExpectedResult = false)]
+        [TestCase(15, ExpectedResult = false)]
+        [TestCase(16, ExpectedResult = false)]
+        [TestCase(17, ExpectedResult = true)]
+        public bool should_reject_bundle_on_block_before_head(long bundleBlock)
         { 
             Transaction[] filledArr = new Transaction[]
             {
@@ -160,15 +155,8 @@ namespace Nethermind.Mev.Test
             Block block = Build.A.Block.WithNumber(16).TestObject;
             tc.BlockTree.Head.Returns(block);
 
-            MevBundle bundleFalse1 = new MevBundle(10, filledArr);
-            MevBundle bundleFalse2 = new MevBundle(15, filledArr);
-            MevBundle bundleFalse3 = new MevBundle(16, filledArr);
-            MevBundle bundleTrue1 = new MevBundle(17, filledArr);
-            
-            tc.BundlePool.AddBundle(bundleFalse1).Should().BeFalse();
-            tc.BundlePool.AddBundle(bundleFalse2).Should().BeFalse();
-            tc.BundlePool.AddBundle(bundleFalse3).Should().BeFalse();
-            tc.BundlePool.AddBundle(bundleTrue1).Should().BeTrue();
+            MevBundle bundle = new MevBundle(bundleBlock, filledArr);
+            return tc.BundlePool.AddBundle(bundle);
         }
 
         [Test]
@@ -226,8 +214,13 @@ namespace Nethermind.Mev.Test
             test.Simulator.Received(1).Simulate(mevBundle, block.Header, Arg.Any<CancellationToken>());
         }
         
-        [Test]
-        public async Task should_remove_simulations_on_eviction()
+        [TestCase(0, new int[] {1, 0, 0, 0, 0, 0})]
+        [TestCase(1, new int[] {0, 1, 0, 0, 0, 0})]
+        [TestCase(2, new int[] {0, 0, 1, 0, 0, 0})]
+        [TestCase(3,new int[] {0, 0, 0, 0, 0, 0})]
+        [TestCase(4,new int[] {0, 0, 0, 0, 0, 0})]
+        [TestCase(5, new int[] {0, 0, 0, 0, 0, 3})]
+        public async Task should_remove_simulations_on_eviction(long headDelta, int[] expectedSimulations)
         {
             SemaphoreSlim ss = new SemaphoreSlim(0);
             int head = 3;
@@ -263,18 +256,8 @@ namespace Nethermind.Mev.Test
                 }
             }
             
-            tc.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.WithNumber(head++).TestObject));
-            await CheckSimulatedBundles(new int[] {1, 0, 0, 0, 0, 0});
-            tc.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.WithNumber(head++).TestObject));
-            await CheckSimulatedBundles(new int[] {0, 1, 0, 0, 0, 0});
-            tc.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.WithNumber(head++).TestObject));
-            await CheckSimulatedBundles(new int[] {0, 0, 1, 0, 0, 0});
-            tc.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.WithNumber(head++).TestObject));
-            await CheckSimulatedBundles(new int[] {0, 0, 0, 0, 0, 0});
-            tc.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.WithNumber(head++).TestObject));
-            await CheckSimulatedBundles(new int[] {0, 0, 0, 0, 0, 0});
-            tc.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.WithNumber(head).TestObject));
-            await CheckSimulatedBundles(new int[] {0, 0, 0, 0, 0, 3});
+            tc.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.WithNumber(head+headDelta).TestObject));
+            await CheckSimulatedBundles(expectedSimulations);
         }
         
         [Test]

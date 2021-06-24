@@ -91,7 +91,7 @@ namespace Nethermind.Mev.Test
         [Test]
         public async Task Should_count_total_coinbase_payments()
         {
-            var chain = await MevRpcModuleTests.CreateChain(1);
+            MevRpcModuleTests.TestMevRpcBlockchain chain = await MevRpcModuleTests.CreateChain(1);
             chain.GasLimitCalculator.GasLimit = 10_000_000;
             
             Address contractAddress = await MevRpcModuleTests.Contracts.Deploy(chain, MevRpcModuleTests.Contracts.CoinbaseCode);
@@ -103,7 +103,7 @@ namespace Nethermind.Mev.Test
             UInt256 beforeCoinbasePayments = Metrics.TotalCoinbasePayments;
 
             Transaction coinbaseTx = Build.A.Transaction.WithGasLimit(MevRpcModuleTests.Contracts.LargeGasLimit).WithData(Bytes.FromHexString(MevRpcModuleTests.Contracts.CoinbaseInvokePay)).WithTo(contractAddress).WithGasPrice(1ul).WithNonce(0).WithValue(0).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-            MevRpcModuleTests.SuccessfullySendBundle(chain, 3, coinbaseTx);
+            chain.SendBundle(3, coinbaseTx);
             await chain.AddBlock(true);
             
             MevRpcModuleTests.GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(MevRpcModuleTests.GetHashes(new []{coinbaseTx}));
