@@ -73,7 +73,7 @@ namespace Nethermind.AuRa.Test
         }
         
         [Test]
-        public void Prepared_block_contains_author_field2()
+        public void For_not_empty_block_tx_filter_should_be_called()
         {
             IDb stateDb = new MemDb();
             IDb codeDb = new MemDb();
