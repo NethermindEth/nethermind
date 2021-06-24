@@ -34,6 +34,7 @@ using Nethermind.Specs;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
+using Nethermind.TxPool.Comparison;
 using NSubstitute;
 using NUnit.Framework;
 

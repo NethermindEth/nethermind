@@ -16,7 +16,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -29,7 +28,6 @@ using Nethermind.Int256;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.State.Proofs;
 using Nethermind.Core.Specs;
 
 namespace Nethermind.Blockchain.Producers
@@ -234,7 +232,7 @@ namespace Nethermind.Blockchain.Producers
                 Sealer.Address,
                 difficulty,
                 parent.Number + 1,
-                Eip1559GasLimitAdjuster.AdjustGasLimit(spec, _gasLimitCalculator.GetGasLimit(parent), parent.Number + 1),
+                _gasLimitCalculator.GetGasLimit(parent),
                 timestamp,
                 GetExtraData(parent))
             {

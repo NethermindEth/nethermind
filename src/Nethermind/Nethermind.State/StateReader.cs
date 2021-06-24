@@ -46,16 +46,6 @@ namespace Nethermind.State
             return GetState(stateRoot, address);
         }
 
-        public UInt256 GetNonce(Keccak stateRoot, Address address)
-        {
-            return GetState(stateRoot, address)?.Nonce ?? UInt256.Zero;
-        }
-
-        public Keccak? GetStorageRoot(Keccak stateRoot, Address address)
-        {
-            return GetState(stateRoot, address)?.StorageRoot;
-        }
-
         public byte[] GetStorage(Keccak storageRoot, UInt256 index)
         {
             if (storageRoot == Keccak.EmptyTreeHash)
@@ -72,7 +62,7 @@ namespace Nethermind.State
             return GetState(stateRoot, address)?.Balance ?? UInt256.Zero;
         }
 
-        public byte[] GetCode(Keccak codeHash)
+        public byte[]? GetCode(Keccak codeHash)
         {
             if (codeHash == Keccak.OfAnEmptyString)
             {
@@ -90,12 +80,7 @@ namespace Nethermind.State
         public byte[] GetCode(Keccak stateRoot, Address address)
         {
             Account? account = GetState(stateRoot, address);
-            if (account is null)
-            {
-                return Array.Empty<byte>();
-            }
-
-            return GetCode(account.CodeHash);
+            return account is null ? Array.Empty<byte>() : GetCode(account.CodeHash);
         }
 
         private Account? GetState(Keccak stateRoot, Address address)

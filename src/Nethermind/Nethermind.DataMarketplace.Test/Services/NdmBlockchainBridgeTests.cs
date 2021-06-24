@@ -126,7 +126,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             UInt256 nonce = 1;
             var address = TestItem.AddressA;
             _blockchainBridge.BeamHead.Returns(_anyBlock);
-            _stateReader.GetNonce(_anyBlock.StateRoot, address).Returns(nonce);
+            _stateReader.GetAccount(_anyBlock.StateRoot, address).Returns(Account.TotallyEmpty.WithChangedNonce(nonce));
             var result = await _ndmBridge.GetNonceAsync(address);
             _stateReader.Received().GetNonce(_anyBlock.StateRoot, address);
             result.Should().Be(nonce);
@@ -213,7 +213,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         {
             var transaction = Build.A.Transaction.TestObject;
             var hash = TestItem.KeccakA;
-            _txSender.SendTransaction(transaction, TxHandlingOptions.PersistentBroadcast | TxHandlingOptions.ManagedNonce).Returns(hash);
+            _txSender.SendTransaction(transaction, TxHandlingOptions.PersistentBroadcast | TxHandlingOptions.ManagedNonce).Returns((hash, null));
             var result = await _ndmBridge.SendOwnTransactionAsync(transaction);
             await _txSender.Received().SendTransaction(transaction, TxHandlingOptions.PersistentBroadcast | TxHandlingOptions.ManagedNonce);
             result.Should().Be(hash);

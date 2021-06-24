@@ -36,22 +36,22 @@ namespace Nethermind.Blockchain
 
         public virtual Keccak StateRoot { get; }
 
-        public Account? GetAccount(Address address) => _stateReader.GetAccount(StateRoot, address);
+        public Account GetAccount(Address address) => _stateReader.GetAccount(StateRoot, address) ?? Account.TotallyEmpty;
 
-        public UInt256 GetNonce(Address address) => _stateReader.GetNonce(StateRoot, address);
+        public UInt256 GetNonce(Address address) => GetAccount(address).Nonce;
 
-        public UInt256 GetBalance(Address address) => _stateReader.GetBalance(StateRoot, address);
+        public UInt256 GetBalance(Address address) => GetAccount(address).Balance;
 
-        public Keccak GetStorageRoot(Address address) => _stateReader.GetStorageRoot(StateRoot, address);
+        public Keccak? GetStorageRoot(Address address) => GetAccount(address).StorageRoot;
 
-        public byte[] GetCode(Address address) => _stateReader.GetCode(StateRoot, address);
+        public byte[] GetCode(Address address) => _stateReader.GetCode(GetAccount(address).CodeHash);
 
         public byte[] GetCode(Keccak codeHash) => _stateReader.GetCode(codeHash);
 
         public Keccak GetCodeHash(Address address)
         {
             Account account = GetAccount(address);
-            return account?.CodeHash ?? Keccak.OfAnEmptyString;
+            return account.CodeHash;
         }
 
         public void Accept(ITreeVisitor visitor, Keccak stateRoot)
@@ -59,15 +59,14 @@ namespace Nethermind.Blockchain
             _stateReader.RunTreeVisitor(visitor,  stateRoot);
         }
 
-        public bool AccountExists(Address address) => GetAccount(address) != null;
-        
+        public bool AccountExists(Address address) => _stateReader.GetAccount(StateRoot, address) != null;
 
         public bool IsEmptyAccount(Address address) => GetAccount(address).IsEmpty;
 
         public bool IsDeadAccount(Address address)
         {
             Account account = GetAccount(address);
-            return account?.IsEmpty ?? true;
+            return account.IsEmpty;
         }
     }
 }

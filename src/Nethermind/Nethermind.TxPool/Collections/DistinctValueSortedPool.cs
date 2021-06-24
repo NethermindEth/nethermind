@@ -48,12 +48,12 @@ namespace Nethermind.TxPool.Collections
             : base(capacity, comparer)
         {
             // ReSharper disable once VirtualMemberCallInConstructor
-            _comparer = GetSameIdentityComparer(comparer ?? throw new ArgumentNullException(nameof(comparer)));
+            _comparer = GetReplacementComparer(comparer ?? throw new ArgumentNullException(nameof(comparer)));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _distinctDictionary = new Dictionary<TValue, KeyValuePair<TKey, TValue>>(distinctComparer);
         }
 
-        protected virtual IComparer<TValue> GetSameIdentityComparer(IComparer<TValue> comparer) => comparer;
+        protected virtual IComparer<TValue> GetReplacementComparer(IComparer<TValue> comparer) => comparer;
 
         protected override void InsertCore(TKey key, TValue value, TGroupKey groupKey, ICollection<TValue> bucketCollection)
         {

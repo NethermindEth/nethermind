@@ -25,7 +25,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.TxPool;
 
 namespace Nethermind.Blockchain.Producers
 {
@@ -54,7 +53,7 @@ namespace Nethermind.Blockchain.Producers
                 blockTree,
                 blockProcessingQueue,
                 stateProvider,
-                FollowOtherMiners.Instance,
+                new FollowOtherMiners(specProvider!),
                 timestamper,
                 specProvider,
                 logManager)

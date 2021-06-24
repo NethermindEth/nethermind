@@ -44,8 +44,6 @@
     <ProjectReference Include="..\Nethermind.Monitoring\Nethermind.Monitoring.csproj" />
     <ProjectReference Include="..\Nethermind.Network\Nethermind.Network.csproj" />
     <ProjectReference Include="..\Nethermind.Pipeline\Nethermind.Pipeline.csproj" />
-    <ProjectReference Include="..\Nethermind.PubSub.Kafka\Nethermind.PubSub.Kafka.csproj" />
-    <ProjectReference Include="..\Nethermind.PubSub\Nethermind.PubSub.csproj" />
     <ProjectReference Include="..\Nethermind.Specs\Nethermind.Specs.csproj" />
     <ProjectReference Include="..\Nethermind.Db.Rpc\Nethermind.Db.Rpc.csproj" />
     <ProjectReference Include="..\Nethermind.Synchronization\Nethermind.Synchronization.csproj" />
@@ -115,11 +113,17 @@
     <None Remove="out\**" />
     <None Remove="keystore\**" />
   </ItemGroup>
-  <Target Name="CreatePluginsFolder" AfterTargets="AfterPublish">
+  <Target Name="CreatePluginsFolder" AfterTargets="AfterBuild;AfterPublish">
     <MakeDir Directories="$(PublishDir)plugins" Condition="!Exists('$(PublishDir)plugins')" /> 
+  </Target>
+  <Target Name="CreatePluginsFolder" AfterTargets="AfterBuild">
+    <MakeDir Directories="$(OutDir)plugins" Condition="!Exists('$(OutDir)plugins')" /> 
   </Target>
   <Target Name="CreateNdmPluginsFolder" AfterTargets="AfterPublish">
     <MakeDir Directories="$(PublishDir)ndm-plugins" Condition="!Exists('$(PublishDir)ndm-plugins')" /> 
+  </Target>
+  <Target Name="CreateNdmPluginsFolder" AfterTargets="AfterBuild">
+    <MakeDir Directories="$(OutDir)ndm-plugins" Condition="!Exists('$(OutDir)ndm-plugins')" /> 
   </Target>
     <Target Name="CopyMergePluginOnBuildOrPublish" AfterTargets="AfterBuild;AfterPublish">
     <Copy SourceFiles="$(SolutionDir)Nethermind.Merge.Plugin\bin\$(Configuration)\$(TargetFramework)\Nethermind.Merge.Plugin.dll" 
@@ -130,7 +134,10 @@
           DestinationFolder="$(OutDir)plugins" 
           Condition="Exists('$(SolutionDir)Nethermind.Merge.Plugin\bin\$(Configuration)\$(TargetFramework)\Nethermind.Merge.Plugin.pdb')" 
           SkipUnchangedFiles="true"/>
-	  
+    <Copy SourceFiles="$(SolutionDir)Nethermind.HealthChecks\bin\$(Configuration)\$(TargetFramework)\Nethermind.HealthChecks.dll" 
+          DestinationFolder="$(OutDir)plugins" 
+          Condition="Exists('$(SolutionDir)Nethermind.HealthChecks\bin\$(Configuration)\$(TargetFramework)\Nethermind.HealthChecks.dll')" 
+          SkipUnchangedFiles="true" />
     <Copy SourceFiles="$(SolutionDir)Nethermind.Mev\bin\$(Configuration)\$(TargetFramework)\Nethermind.Mev.dll" 
           DestinationFolder="$(OutDir)plugins" 
           Condition="Exists('$(SolutionDir)Nethermind.Mev\bin\$(Configuration)\$(TargetFramework)\Nethermind.Mev.dll')" 
@@ -139,14 +146,14 @@
           DestinationFolder="$(OutDir)plugins" 
           Condition="Exists('$(SolutionDir)Nethermind.Mev\bin\$(Configuration)\$(TargetFramework)\Nethermind.Mev.pdb')" 
           SkipUnchangedFiles="true"/>	  
-	  
-   <Copy SourceFiles="$(SolutionDir)Nethermind.Dsl\bin\$(Configuration)\$(TargetFramework)\Nethermind.Dsl.dll" 
-   	 DestinationFolder="$(OutDir)plugins" Condition="Exists('$(SolutionDir)Nethermind.Dsl\bin\$(Configuration)\$(TargetFramework)\Nethermind.Dsl.dll')" 
-	 SkipUnchangedFiles="true" />
-   <Copy SourceFiles="$(SolutionDir)Nethermind.Dsl\bin\$(Configuration)\$(TargetFramework)\Nethermind.Dsl.pdb" 
-   	 DestinationFolder="$(OutDir)plugins" Condition="Exists('$(SolutionDir)Nethermind.Dsl\bin\$(Configuration)\$(TargetFramework)\Nethermind.Dsl.pdb')" 
-	 SkipUnchangedFiles="true" />	  
-	 
+    <Copy SourceFiles="$(SolutionDir)Nethermind.Dsl\bin\$(Configuration)\$(TargetFramework)\Nethermind.Dsl.dll" 
+   	      DestinationFolder="$(OutDir)plugins" 
+          Condition="Exists('$(SolutionDir)Nethermind.Dsl\bin\$(Configuration)\$(TargetFramework)\Nethermind.Dsl.dll')" 
+	        SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(SolutionDir)Nethermind.Dsl\bin\$(Configuration)\$(TargetFramework)\Nethermind.Dsl.pdb" 
+   	      DestinationFolder="$(OutDir)plugins" 
+          Condition="Exists('$(SolutionDir)Nethermind.Dsl\bin\$(Configuration)\$(TargetFramework)\Nethermind.Dsl.pdb')" 
+	        SkipUnchangedFiles="true" />
   </Target>
   <Target Name="CopyPluginsOnPublish" AfterTargets="AfterPublish">
     <Copy SourceFiles="$(OutputPath)Nethermind.HealthChecks.dll" DestinationFolder="$(PublishDir)plugins" />

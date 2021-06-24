@@ -26,7 +26,6 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
-using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
@@ -243,13 +242,9 @@ namespace Nethermind.Blockchain.Processing
                     {
 	                    // No more gas available in block
 	                    long gasRemaining = block.Header.GasLimit - block.GasUsed;
-	                    if (gasRemaining < GasCostOf.Transaction)
-	                    {
-	                        break;
-	                    }
 	                    if (currentTx.GasLimit > gasRemaining)
 	                    {
-	                        continue;
+	                        break;
 	                    }
 
 	                    ProcessTransaction(currentTx, i++);
@@ -269,6 +264,8 @@ namespace Nethermind.Blockchain.Processing
                     ProcessTransaction(currentTx, i);
                 }
             }
+
+            _receiptsTracer.EndBlockTrace();
             
             return _receiptsTracer.TxReceipts!;
         }
