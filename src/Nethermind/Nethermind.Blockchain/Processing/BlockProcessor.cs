@@ -241,9 +241,14 @@ namespace Nethermind.Blockchain.Processing
                 {
                     if (!transactionsForBlock.Contains(currentTx))
                     {
-	                    // No more gas available in block
-	                    long gasRemaining = block.Header.GasLimit - block.GasUsed;
-	                    if (currentTx.GasLimit > gasRemaining)
+	                    TxAction txAction = CheckTx(currentTx, block).Action;
+
+	                    if (txAction == TxAction.Skip)
+	                    {
+	                        continue;
+	                    }
+                    
+	                    if (txAction == TxAction.Stop)
 	                    {
 	                        break;
 	                    }
@@ -421,6 +426,23 @@ namespace Nethermind.Blockchain.Processing
                     _stateProvider.SubtractFromBalance(daoAccount, balance, Dao.Instance);
                 }
             }
+        }
+        
+        // This is going to be moved to separate strategies in MEV work
+        protected virtual (TxAction Action, string Reason) CheckTx(Transaction currentTx, Block block)
+        {
+            // No more gas available in block
+            long gasRemaining = block.Header.GasLimit - block.GasUsed;
+            return currentTx.GasLimit > gasRemaining 
+                ? (TxAction.Stop, "Not enough gas in block") 
+                : (TxAction.Add, string.Empty);
+        }
+
+        protected enum TxAction
+        {
+            Add,
+            Skip,
+            Stop
         }
     }
 }
