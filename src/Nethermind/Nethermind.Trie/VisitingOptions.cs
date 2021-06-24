@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,32 +13,19 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using Nethermind.State.Proofs;
-using Nethermind.Trie;
+using System;
 
-namespace Nethermind.Synchronization.LesSync
+namespace Nethermind.Trie
 {
-    class ChtProofCollector : ProofCollector
+    [Flags]
+    public enum VisitingOptions
     {
-        long _fromLevel;
-        long _level;
-        public ChtProofCollector(byte[] key, long fromLevel): base(key)
-        {
-            _fromLevel = fromLevel;
-            _level = 0;
-        }
-
-        protected override void AddProofBits(TrieNode node)
-        {
-            if (_level < _fromLevel)
-            {
-                _level++;
-            }
-            else
-            {
-                base.AddProofBits(node);
-            }
-        }
+        None = 0,
+        ExpectAccounts = 1,
+        Parallel = 2,
+        All = ExpectAccounts | Parallel,
+        Default = ExpectAccounts
     }
 }
