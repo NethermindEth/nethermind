@@ -33,7 +33,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Mev
 {
-    public class MevBlockProducingTransactionProcessor : IBlockProcessor.ITransactionProcessor
+    public class MevBlockProducingTransactionProcessor : BlockProcessor.BlockProducingTransactionProcessor
     {
         private readonly ITransactionProcessor _transactionProcessor;
         private readonly IStateProvider _stateProvider;
@@ -42,16 +42,14 @@ namespace Nethermind.Mev
         public MevBlockProducingTransactionProcessor(
             ITransactionProcessor transactionProcessor, 
             IStateProvider stateProvider,
-            IStorageProvider storageProvider)
+            IStorageProvider storageProvider) : base(transactionProcessor, stateProvider, storageProvider)
         {
             _transactionProcessor = transactionProcessor;
             _stateProvider = stateProvider;
             _storageProvider = storageProvider;
         }
-
-        public event EventHandler<TxProcessedEventArgs>? TransactionProcessed;
-
-        public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, IBlockTracer blockTracer, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec)
+        
+        public override TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, IBlockTracer blockTracer, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec)
         {
             IEnumerable<Transaction> transactions = block.GetTransactions(out _);
 
@@ -129,20 +127,6 @@ namespace Nethermind.Mev
             block.Header.TxRoot = new TxTrie(block.Transactions).RootHash;
             return receiptsTracer.TxReceipts!;
         }
-        
-        private void ProcessTransaction(Block block, ISet<Transaction>? transactionsInBlock, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
-        {
-            if ((processingOptions & ProcessingOptions.DoNotVerifyNonce) != 0)
-            {
-                currentTx.Nonce = _stateProvider.GetNonce(currentTx.SenderAddress!);
-            }
-
-            receiptsTracer.StartNewTxTrace(currentTx);
-            _transactionProcessor.BuildUp(currentTx, block.Header, receiptsTracer);
-            receiptsTracer.EndTxTrace();
-
-            transactionsInBlock?.Add(currentTx);
-        }
 
         private void ProcessBundle(Block block, LinkedHashSet<Transaction> transactionsInBlock, List<BundleTransaction> bundleTransactions,
             BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
@@ -190,7 +174,6 @@ namespace Nethermind.Mev
                 {
                     TxProcessedEventArgs eventItem = eventList[index];
                     transactionsInBlock.Add(eventItem.Transaction);
-                    TransactionProcessed?.Invoke(this, eventItem);
                 }
             }
             else

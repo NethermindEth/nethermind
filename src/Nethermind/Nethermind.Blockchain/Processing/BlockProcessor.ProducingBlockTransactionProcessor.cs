@@ -54,7 +54,7 @@ namespace Nethermind.Blockchain.Processing
 
             public event EventHandler<TxProcessedEventArgs>? TransactionProcessed;
 
-            public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, IBlockTracer blockTracer, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec)
+            public virtual TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, IBlockTracer blockTracer, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec)
             {
                 IEnumerable<Transaction> transactions = block.GetTransactions(out _);
 
@@ -70,7 +70,7 @@ namespace Nethermind.Blockchain.Processing
                             break;
                         }
 
-                        ProcessTransaction(block, currentTx, i++, receiptsTracer, processingOptions);
+                        ProcessTransaction(block, transactionsForBlock, currentTx, i++, receiptsTracer, processingOptions);
                         transactionsForBlock.Add(currentTx);
                     }
                 }
@@ -83,7 +83,7 @@ namespace Nethermind.Blockchain.Processing
                 return receiptsTracer.TxReceipts!;
             }
 
-            private void ProcessTransaction(Block block, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
+            protected void ProcessTransaction(Block block, ISet<Transaction>? transactionsInBlock, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
             {
                 if ((processingOptions & ProcessingOptions.DoNotVerifyNonce) != 0)
                 {
@@ -94,6 +94,7 @@ namespace Nethermind.Blockchain.Processing
                 _transactionProcessor.BuildUp(currentTx, block.Header, receiptsTracer);
                 receiptsTracer.EndTxTrace();
 
+                transactionsInBlock?.Add(currentTx);
                 TransactionProcessed?.Invoke(this, new TxProcessedEventArgs(index, currentTx, receiptsTracer.TxReceipts[index]));
             }
         }
