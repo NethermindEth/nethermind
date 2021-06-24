@@ -267,12 +267,15 @@ namespace Nethermind.TxPool
                     _transactions.UpdateGroup(tx.SenderAddress!, UpdateBucketWithAddedTransaction);
                     Metrics.PendingTransactionsAdded++;
                     if (tx.IsEip1559) { Metrics.Pending1559TransactionsAdded++; }
-
-                    // transaction which was on last position in sorted TxPool and was deleted to give
-                    // a place for a newly added tx (with higher priority) is now removed from hashCache
-                    // to give it opportunity to come back to TxPool in the future, when fees drops
-                    Metrics.PendingTransactionsEvicted++;
-                    if(removed != null) _hashCache.Delete(removed.Hash!);
+                    
+                    if (removed != null)
+                    {
+                        // transaction which was on last position in sorted TxPool and was deleted to give
+                        // a place for a newly added tx (with higher priority) is now removed from hashCache
+                        // to give it opportunity to come back to TxPool in the future, when fees drops
+                        _hashCache.Delete(removed.Hash!);
+                        Metrics.PendingTransactionsEvicted++;
+                    }
                 }
                 else
                 {
