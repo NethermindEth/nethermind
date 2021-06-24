@@ -120,7 +120,7 @@ namespace Nethermind.Consensus.AuRa
             for (int i = 0; i < block.Transactions.Length; i++)
             {
                 Transaction tx = block.Transactions[i];
-                (TxAction Action, string Reason) txCheck = CheckTx(tx, block);
+                (TxAction Action, string Reason) txCheck = CheckTxPosdaoRules(tx, block);
                 if (txCheck.Action != TxAction.Add)
                 {
                     if (_logger.IsWarn) _logger.Warn($"Proposed block is not valid {block.ToString(Block.Format.FullHashAndNumber)}. {tx.ToShortString()} doesn't have required permissions. Reason: {txCheck.Reason}.");
@@ -130,6 +130,14 @@ namespace Nethermind.Consensus.AuRa
         }
 
         protected override (TxAction Action, string Reason) CheckTx(Transaction currentTx, Block block)
+        {
+            (TxAction Action, string Reason) baseResult = base.CheckTx(currentTx, block);
+            return baseResult.Action != TxAction.Add 
+                ? baseResult 
+                : CheckTxPosdaoRules(currentTx, block);
+        }
+
+        private (TxAction Action, string Reason) CheckTxPosdaoRules(Transaction currentTx, Block block)
         {
             (bool Allowed, string Reason)? TryRecoverSenderAddress(Transaction tx, BlockHeader header)
             {
@@ -149,24 +157,16 @@ namespace Nethermind.Consensus.AuRa
                 return null;
             }
 
-            (TxAction Action, string Reason) baseResult = base.CheckTx(currentTx, block);
-            if (baseResult.Action != TxAction.Add)
+            BlockHeader parentHeader = GetParentHeader(block);
+            (bool Allowed, string Reason) txFilterResult = _txFilter.IsAllowed(currentTx, parentHeader);
+            if (!txFilterResult.Allowed)
             {
-                return baseResult;
+                txFilterResult = TryRecoverSenderAddress(currentTx, parentHeader) ?? txFilterResult;
             }
-            else
-            {
-                BlockHeader parentHeader = GetParentHeader(block);
-                (bool Allowed, string Reason) txFilterResult = _txFilter.IsAllowed(currentTx, parentHeader);
-                if (!txFilterResult.Allowed)
-                {
-                    txFilterResult = TryRecoverSenderAddress(currentTx, parentHeader) ?? txFilterResult;
-                }
 
-                return txFilterResult.Allowed 
-                    ? baseResult
-                    : (TxAction.Skip, txFilterResult.Reason);
-            }
+            return txFilterResult.Allowed
+                ? (TxAction.Add, string.Empty)
+                : (TxAction.Skip, txFilterResult.Reason);
         }
 
         private class NullAuRaValidator : IAuRaValidator
