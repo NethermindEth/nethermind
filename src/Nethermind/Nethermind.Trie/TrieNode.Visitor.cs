@@ -30,6 +30,8 @@ namespace Nethermind.Trie
 {
     public partial class TrieNode
     {
+        private const int ParallelLevels = 5;
+        
         internal void Accept(ITreeVisitor visitor, ITrieNodeResolver nodeResolver, TrieVisitContext trieVisitContext)
         {
             try
@@ -68,7 +70,7 @@ namespace Nethermind.Trie
 
                     visitor.VisitBranch(this, trieVisitContext);
                     trieVisitContext.Level++;
-                    if (trieVisitContext.Level <= visitor.ParallelLevels)
+                    if (trieVisitContext.Parallel && trieVisitContext.Level <= ParallelLevels)
                     {
                         TrieNode?[] children = new TrieNode?[16];
                         for (int i = 0; i < 16; i++)
@@ -114,7 +116,7 @@ namespace Nethermind.Trie
                 case NodeType.Leaf:
                 {
                     visitor.VisitLeaf(this, trieVisitContext, Value);
-                    if (!trieVisitContext.IsStorage && visitor.VisitAccounts) // can combine these conditions
+                    if (!trieVisitContext.IsStorage && trieVisitContext.ExpectAccounts) // can combine these conditions
                     {
                         Account account = _accountDecoder.Decode(Value.AsRlpStream());
                         if (account.HasCode && visitor.ShouldVisit(account.CodeHash))

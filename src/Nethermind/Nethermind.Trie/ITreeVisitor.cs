@@ -34,8 +34,6 @@ namespace Nethermind.Trie
         
         void VisitCode(Keccak codeHash, TrieVisitContext trieVisitContext);
 
-        bool VisitAccounts => true;
-        
-        int ParallelLevels => -1;
+        bool SupportsParallelVisits => false;
     }
 }

@@ -71,7 +71,7 @@ namespace Nethermind.Store.Test
 
             TrieStatsCollector statsCollector = new TrieStatsCollector(stateDb, LimboLogs.Instance)
             {
-                ParallelLevels = parallel ? 16 : -1
+                SupportsParallelVisits = parallel
             };
             stateProvider.Accept(statsCollector, stateProvider.StateRoot);
             var stats = statsCollector.Stats;

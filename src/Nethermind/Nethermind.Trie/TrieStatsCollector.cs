@@ -29,7 +29,7 @@ namespace Nethermind.Trie
 
         private readonly ILogger _logger;
 
-        public int ParallelLevels { get; set; } = -1;
+        public bool SupportsParallelVisits { get; set; } = true;
 
         public TrieStatsCollector(IKeyValueStore codeKeyValueStore, ILogManager logManager)
         {

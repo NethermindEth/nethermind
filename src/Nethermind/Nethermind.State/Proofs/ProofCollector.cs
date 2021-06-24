@@ -36,8 +36,6 @@ namespace Nethermind.State.Proofs
         
         private List<byte[]> _proofBits = new();
 
-        public bool VisitAccounts => false;
-
         public ProofCollector(byte[] key)
         {
             _key = key;

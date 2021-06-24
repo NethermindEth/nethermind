@@ -23,7 +23,9 @@ namespace Nethermind.Trie
         public bool IsStorage { get; internal set; }
 
         public int? BranchChildIndex { get; internal set; }
-        
+        public bool ExpectAccounts { get; init; }
+        public bool Parallel { get; init; }
+
         public TrieVisitContext Clone() => (TrieVisitContext) MemberwiseClone();
     }
 }

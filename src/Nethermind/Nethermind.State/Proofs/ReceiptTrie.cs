@@ -66,7 +66,7 @@ namespace Nethermind.State.Proofs
             }
             
             ProofCollector proofCollector = new(Rlp.Encode(index).Bytes);
-            Accept(proofCollector, RootHash);
+            Accept(proofCollector, RootHash, VisitingOptions.None);
             return proofCollector.BuildResult();
         }
     }

@@ -63,7 +63,7 @@ namespace Nethermind.State
             if (visitor is null) throw new ArgumentNullException(nameof(visitor));
             if (stateRoot is null) throw new ArgumentNullException(nameof(stateRoot));
 
-            _tree.Accept(visitor, stateRoot);
+            _tree.Accept(visitor, stateRoot, visitor.GetSupportedOptions());
         }
 
         public void CommitCode()
