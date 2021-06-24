@@ -41,7 +41,7 @@ namespace Nethermind.Mev.Source
 
         protected override long MapToGroup(MevBundle mevBundle) => mevBundle.BlockNumber;
 
-        protected override IComparer<MevBundle> GetSameIdentityComparer(IComparer<MevBundle> comparer) => 
+        protected override IComparer<MevBundle> GetReplacementComparer(IComparer<MevBundle> comparer) => 
             CompareMevBundleBySequenceNumber.Default;
 
         protected override bool AllowSameKeyReplacement => true;

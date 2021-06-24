@@ -38,14 +38,8 @@ namespace Nethermind.TxPool.Comparison
             return x.Hash!.CompareTo(y.Hash);
         }
 
-        public bool Equals(Transaction? x, Transaction? y)
-        {
-            return Compare(x, y) == 0;
-        }
+        public bool Equals(Transaction? x, Transaction? y) => Compare(x, y) == 0;
 
-        public int GetHashCode(Transaction obj)
-        {
-            return obj.Hash?.GetHashCode() ?? 0;
-        }
+        public int GetHashCode(Transaction obj) => obj.Hash?.GetHashCode() ?? 0;
     }
 }

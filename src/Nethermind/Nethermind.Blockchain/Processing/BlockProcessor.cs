@@ -34,6 +34,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.State.Proofs;
 using Nethermind.TxPool;
+using Nethermind.TxPool.Comparison;
 
 namespace Nethermind.Blockchain.Processing
 {
@@ -235,7 +236,7 @@ namespace Nethermind.Blockchain.Processing
             if (transactionsChangeable)
             {
                 int i = 0;
-                LinkedHashSet<Transaction> transactionsForBlock = new(DistinctCompareTx.Instance);
+                LinkedHashSet<Transaction> transactionsForBlock = new(ByHashTxComparer.Instance);
                 foreach (Transaction currentTx in transactions)
                 {
                     if (!transactionsForBlock.Contains(currentTx))
