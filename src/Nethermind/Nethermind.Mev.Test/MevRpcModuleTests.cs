@@ -755,5 +755,60 @@ namespace Nethermind.Mev.Test
 
             GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { revertingOnSecondCallTx1, revertingOnSecondCallTx2 }));
         }
+
+        [Test]
+        public async Task Should_be_able_to_handle_hundreds_of_smart_contract_state_changes()
+        {
+            var chain = await CreateChain(1);
+            chain.GasLimitCalculator.GasLimit = 30_000_000;
+
+            Address contractAddress = await Contracts.Deploy(chain, Contracts.SetableCode);
+
+            List<BundleTransaction> bundleTxs = new List<BundleTransaction>();
+
+            for (int i = 0; i < 300; i++)
+            {
+                BundleTransaction tx1 = Build.A.TypedTransaction<BundleTransaction>()
+                    .WithNonce((UInt256)i)
+                    .WithValue(0)
+                    .WithTo(contractAddress)
+                    .WithData(Bytes.FromHexString(Contracts.SetableInvokeSet1))
+                    .WithGasPrice(300 - (UInt256)i)
+                    .WithGasLimit(30_000)
+                    .SignedAndResolved(TestItem.PrivateKeyA)
+                    .TestObject;
+
+                BundleTransaction tx2 = Build.A.TypedTransaction<BundleTransaction>()
+                    .WithNonce((UInt256)i)
+                    .WithValue(0)
+                    .WithTo(contractAddress)
+                    .WithData(Bytes.FromHexString(Contracts.SetableInvokeSet2))
+                    .WithGasPrice(300 - (UInt256)i)
+                    .WithGasLimit(30_000)
+                    .SignedAndResolved(TestItem.PrivateKeyB)
+                    .TestObject;
+
+                BundleTransaction tx3 = Build.A.TypedTransaction<BundleTransaction>()
+                    .WithNonce((UInt256)i + 1)
+                    .WithValue(0)
+                    .WithTo(contractAddress)
+                    .WithData(Bytes.FromHexString(Contracts.SetableInvokeSet3))
+                    .WithGasPrice(300 - (UInt256)i)
+                    .WithGasLimit(30_000)
+                    .SignedAndResolved(TestItem.PrivateKeyC)
+                    .TestObject;
+
+                bundleTxs.Add(tx1);
+                bundleTxs.Add(tx2);
+                bundleTxs.Add(tx3);
+            }
+
+            SuccessfullySendBundle(chain, 2, bundleTxs.ToArray());
+
+            await chain.AddBlock(true);
+            bundleTxs.Clear();
+
+            GetHashes(chain.BlockTree.Head!.Transactions).Count().Should().Be(900);
+        }
     }
 }
