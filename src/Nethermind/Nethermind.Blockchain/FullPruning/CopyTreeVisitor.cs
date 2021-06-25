@@ -48,6 +48,8 @@ namespace Nethermind.Blockchain.FullPruning
             _stopwatch = new Stopwatch();
         }
 
+        public bool SupportsParallelVisits => true;
+
         public bool ShouldVisit(Keccak nextNode) => !_cancellationToken.IsCancellationRequested;
 
         public void VisitTree(Keccak rootHash, TrieVisitContext trieVisitContext)
@@ -55,7 +57,6 @@ namespace Nethermind.Blockchain.FullPruning
             _stopwatch.Start();
             if (_logger.IsWarn) _logger.Warn($"Full Pruning Started: do not close the node until finished or progress will be lost.");
         }
-
 
         public void VisitMissingNode(Keccak nodeHash, TrieVisitContext trieVisitContext)
         {
@@ -79,7 +80,7 @@ namespace Nethermind.Blockchain.FullPruning
             if (node.Keccak is not null)
             {
                 _pruningContext[node.Keccak!.Bytes] = node.FullRlp;
-                _persistedNodes++;
+                Interlocked.Increment(ref _persistedNodes);
                 
                 if (_persistedNodes % Million == 0)
                 {

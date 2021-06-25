@@ -249,10 +249,6 @@ namespace Nethermind.Synchronization
             }
             else
             {
-                if (_logger.IsDebug) _logger.Debug($"Discovered block {block.ToString(Block.Format.FullHashAndNumber)} has unknown parent.");
-            }
-            else
-            {
                 if (_logger.IsDebug) _logger.Debug($"Peer {syncPeer} sent block with unknown parent {block}, best suggested {_blockTree.BestSuggestedHeader}.");
             }
         }
