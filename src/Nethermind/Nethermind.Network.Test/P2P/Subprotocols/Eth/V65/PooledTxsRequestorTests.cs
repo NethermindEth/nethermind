@@ -38,31 +38,6 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         
         
         [Test]
-        public void filter_properly_newPooledTxHashes()
-        {
-            _response = new List<Keccak>();
-            _requestor = new PooledTxsRequestor(_txPool);
-            _requestor.RequestTransactions(_doNothing, new List<Keccak>{TestItem.KeccakA, TestItem.KeccakD});
-
-            _request = new List<Keccak>{TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC};
-            _expected = new List<Keccak>{TestItem.KeccakB, TestItem.KeccakC};
-            _requestor.RequestTransactions(Send, _request);
-            _response.Should().BeEquivalentTo(_expected);
-        }
-
-        [Test]
-        public void filter_properly_already_pending_hashes()
-        {
-            _response = new List<Keccak>();
-            _requestor = new PooledTxsRequestor(_txPool);
-            _requestor.RequestTransactions(_doNothing, new List<Keccak>{TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC});
-            
-            _request = new List<Keccak>{TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC};
-            _requestor.RequestTransactions(Send, _request);
-            _response.Should().BeEmpty();
-        }
-        
-        [Test]
         public void filter_properly_discovered_hashes()
         {
             _response = new List<Keccak>();
