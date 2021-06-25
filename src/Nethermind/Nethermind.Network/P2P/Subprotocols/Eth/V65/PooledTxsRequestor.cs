@@ -27,8 +27,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
     public class PooledTxsRequestor : IPooledTxsRequestor
     {
         private readonly ITxPool _txPool;
-        private readonly LruKeyCache<Keccak> _pendingHashes = new(MemoryAllowance.TxHashCacheSize,
-            Math.Min(1024 * 16, MemoryAllowance.TxHashCacheSize), "pending tx hashes");
 
         public PooledTxsRequestor(ITxPool txPool)
         {
@@ -55,11 +53,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                 Keccak hash = hashes[i];
                 if (!_txPool.IsKnown(hash))
                 {
-                    if (!_pendingHashes.Get(hash))
-                    {
-                        discoveredTxHashes.Add(hash);
-                        _pendingHashes.Set(hash);
-                    }
+                    discoveredTxHashes.Add(hash);
                 }
             }
 
