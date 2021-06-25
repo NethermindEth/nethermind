@@ -17,6 +17,7 @@
 
 using System;
 using System.Linq;
+using Nethermind.Abi;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -33,52 +34,46 @@ namespace Nethermind.Dsl.Pipeline.Builders
             _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
         }
 
-        public EventsSource<TxReceipt> GetSourceElement()
+        public EventsSource<LogEntry> GetSourceElement()
         {
             return new(_blockProcessor);
         }
         
-        public PipelineElement<TxReceipt, TxReceipt> GetConditionElement(string key, string operation, string value)
+        public PipelineElement<LogEntry, LogEntry> GetConditionElement(string key, string operation, string value)
         {
 
             if (key.Equals("EventSignature", StringComparison.InvariantCultureIgnoreCase) && operation.Equals("IS"))
             {
-                return new PipelineElement<TxReceipt, TxReceipt>(
+                return new PipelineElement<LogEntry, LogEntry>(
                     condition: (t => CheckEventSignature(t, value)), 
                     transformData: (t => t));
             }
 
             return operation switch
             {
-                "IS" => new PipelineElement<TxReceipt, TxReceipt>(
+                "IS" => new PipelineElement<LogEntry, LogEntry>(
                     condition: (t => t.GetType().GetProperty(key)?.GetValue(t)?.ToString()?.ToLowerInvariant() == value.ToLowerInvariant()),
                     transformData: (t => t)),
-                "==" => new PipelineElement<TxReceipt, TxReceipt>(
+                "==" => new PipelineElement<LogEntry, LogEntry>(
                     condition: (t => t.GetType().GetProperty(key)?.GetValue(t)?.ToString()?.ToLowerInvariant() == value.ToLowerInvariant()),
                     transformData: (t => t)),
-                "NOT" => new PipelineElement<TxReceipt, TxReceipt>(
+                "NOT" => new PipelineElement<LogEntry, LogEntry>(
                     condition: (t => t.GetType().GetProperty(key)?.GetValue(t)?.ToString()?.ToLowerInvariant() != value.ToLowerInvariant()),
                     transformData: (t => t)),
-                "!=" => new PipelineElement<TxReceipt, TxReceipt>(
+                "!=" => new PipelineElement<LogEntry, LogEntry>(
                     condition: (t => t.GetType().GetProperty(key)?.GetValue(t)?.ToString()?.ToLowerInvariant() != value.ToLowerInvariant()),
                     transformData: (t => t)),
                 _ => null
             };
         }
 
-        private static bool CheckEventSignature(TxReceipt receipt, string signature)
+        private static bool CheckEventSignature(LogEntry log, string signature)
         {
             var signatureHash = Keccak.Compute(signature);
 
-            if (receipt.Logs == null) return false;
+            if (log == null) return false;
 
-            foreach (var log in receipt.Logs)
-            {
-                if (log.Topics.Contains(signatureHash))
-                    return true;
-            }
-
-            return false;
+            return log.Topics.First() == signatureHash;
         }
     }
 }

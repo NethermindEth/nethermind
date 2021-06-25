@@ -23,7 +23,7 @@ using Nethermind.Pipeline;
 #nullable enable
 namespace Nethermind.Dsl.Pipeline.Sources
 {
-    public class EventsSource<TOut> : IPipelineElement<TOut> where TOut : TxReceipt
+    public class EventsSource<TOut> : IPipelineElement<TOut> where TOut : LogEntry
     {
         public Action<TOut>? Emit { private get; set; }
         private IBlockProcessor _blockProcessor;
@@ -35,8 +35,11 @@ namespace Nethermind.Dsl.Pipeline.Sources
         }
 
         private void OnTransactionProcessed(object? sender, TxProcessedEventArgs args)
-        {   
-            Emit?.Invoke((TOut)args.TxReceipt);
+        {
+            foreach (TOut log in args.TxReceipt.Logs)
+            {
+                Emit?.Invoke(log); 
+            }    
         } 
     }
 }
