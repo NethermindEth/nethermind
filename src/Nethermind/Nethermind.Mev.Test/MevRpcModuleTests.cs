@@ -806,9 +806,58 @@ namespace Nethermind.Mev.Test
             SuccessfullySendBundle(chain, 2, bundleTxs.ToArray());
 
             await chain.AddBlock(true);
-            bundleTxs.Clear();
 
             GetHashes(chain.BlockTree.Head!.Transactions).Count().Should().Be(900);
+        }
+        
+        [Test]
+        public async Task Should_be_able_to_handle_hundreds_of_transaction_state_changes()
+        {
+            var chain = await CreateChain(1);
+            chain.GasLimitCalculator.GasLimit = 30_000_000;
+            
+            List<BundleTransaction> bundleTxs = new List<BundleTransaction>();
+
+            for (int i = 0; i < 450; i++)
+            {
+                BundleTransaction tx1 = Build.A.TypedTransaction<BundleTransaction>()
+                    .WithNonce((UInt256)i)
+                    .WithValue(1)
+                    //.WithTo(TestItem.AddressB)
+                    .WithGasPrice(450 - (UInt256)i)
+                    .WithGasLimit(GasCostOf.Transaction)
+                    .SignedAndResolved(TestItem.PrivateKeyA)
+                    .TestObject;
+
+                BundleTransaction tx2 = Build.A.TypedTransaction<BundleTransaction>()
+                    .WithNonce((UInt256)i)
+                    .WithValue(1)
+                    //.WithTo(TestItem.AddressC)
+                    .WithGasPrice(450 - (UInt256)i)
+                    .WithGasLimit(GasCostOf.Transaction)
+                    .SignedAndResolved(TestItem.PrivateKeyB)
+                    .TestObject;
+                
+
+                BundleTransaction tx3 = Build.A.TypedTransaction<BundleTransaction>()
+                    .WithNonce((UInt256)i)
+                    .WithValue(1)
+                    //.WithTo(TestItem.AddressA)
+                    .WithGasPrice(450 - (UInt256)i)
+                    .WithGasLimit(GasCostOf.Transaction)
+                    .SignedAndResolved(TestItem.PrivateKeyC)
+                    .TestObject;
+
+                bundleTxs.Add(tx1);
+                bundleTxs.Add(tx2);
+                bundleTxs.Add(tx3);
+            }
+
+            SuccessfullySendBundle(chain, 1, bundleTxs.ToArray());
+
+            await chain.AddBlock(true);
+
+            GetHashes(chain.BlockTree.Head!.Transactions).Count().Should().Be(1350);
         }
     }
 }
