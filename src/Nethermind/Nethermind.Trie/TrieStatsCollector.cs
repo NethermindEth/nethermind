@@ -29,8 +29,6 @@ namespace Nethermind.Trie
 
         private readonly ILogger _logger;
 
-        public bool SupportsParallelVisits { get; set; } = true;
-
         public TrieStatsCollector(IKeyValueStore codeKeyValueStore, ILogManager logManager)
         {
             _codeKeyValueStore = codeKeyValueStore ?? throw new ArgumentNullException(nameof(codeKeyValueStore));
