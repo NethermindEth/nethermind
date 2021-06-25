@@ -253,7 +253,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             setApi.FilterManager = new FilterManager(filterStore, mainBlockProcessor, txPool, getApi.LogManager);
             setApi.HealthHintService = CreateHealthHintService();
             
-            InitializeFullPruning(pruningConfig, initConfig, getApi, mainBlockProcessor, stateReader);
+            InitializeFullPruning(pruningConfig, initConfig, getApi, stateReader);
             
             return Task.CompletedTask;
         }
@@ -262,7 +262,6 @@ namespace Nethermind.Runner.Ethereum.Steps
             IPruningConfig pruningConfig,
             IInitConfig initConfig, 
             IApiWithStores getApi, 
-            IBlockProcessor mainBlockProcessor, 
             IStateReader stateReader)
         {
             IPruningTrigger CreateTrigger(string dbPath)
@@ -286,7 +285,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 if (stateDb is IFullPruningDb fullPruningDb)
                 {
                     IPruningTrigger pruningTrigger = CreateTrigger(fullPruningDb.GetPath(initConfig.BaseDbPath));
-                    FullPruner pruner = new(fullPruningDb, pruningTrigger, getApi.BlockTree!, stateReader, getApi.LogManager);
+                    FullPruner pruner = new(fullPruningDb, pruningTrigger, pruningConfig, getApi.BlockTree!, stateReader, getApi.LogManager);
                     getApi.DisposeStack.Push(pruner);
                 }
             }

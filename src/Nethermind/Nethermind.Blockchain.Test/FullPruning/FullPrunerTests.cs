@@ -165,7 +165,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
                 StateReader = new StateReader(new TrieStore(TrieDb, LimboLogs.Instance), new MemDb(), LimboLogs.Instance);
                 FullPruningDb = new TestFullPruningDb(new RocksDbSettings("test", "test"), rocksDbFactory, successfulPruning, clearPrunedDb);
                 
-                Pruner = new(FullPruningDb, PruningTrigger, BlockTree, StateReader, LimboLogs.Instance);
+                Pruner = new(FullPruningDb, PruningTrigger, new PruningConfig(), BlockTree, StateReader, LimboLogs.Instance);
             }
 
             public async Task<bool> WaitForPruning()

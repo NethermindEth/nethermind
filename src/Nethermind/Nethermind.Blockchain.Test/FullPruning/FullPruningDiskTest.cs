@@ -64,7 +64,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             {
                 TestBlockchain chain = await base.Build(specProvider, initialValues);
                 PruningDb = (IFullPruningDb)DbProvider.StateDb;
-                FullPruner = new FullTestPruner(PruningDb, PruningTrigger, BlockTree, StateReader, LogManager);
+                FullPruner = new FullTestPruner(PruningDb, PruningTrigger, new PruningConfig(), BlockTree, StateReader, LogManager);
                 return chain;
             }
 
@@ -98,11 +98,12 @@ namespace Nethermind.Blockchain.Test.FullPruning
                 
                 public FullTestPruner(
                     IFullPruningDb pruningDb,
-                    IPruningTrigger pruningTrigger, 
+                    IPruningTrigger pruningTrigger,
+                    IPruningConfig pruningConfig,
                     IBlockTree blockTree,
                     IStateReader stateReader,
                     ILogManager logManager)
-                    : base(pruningDb, pruningTrigger, blockTree, stateReader, logManager)
+                    : base(pruningDb, pruningTrigger, pruningConfig, blockTree, stateReader, logManager)
                 {
                 }
 

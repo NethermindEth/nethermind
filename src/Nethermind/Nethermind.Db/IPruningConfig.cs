@@ -47,6 +47,11 @@ namespace Nethermind.Db
             Description = "Defines trigger for full pruning, either size of StateDB or free space left on Volume where StateDB is located.",
             DefaultValue = "StateDbSize")]
         FullPruningTrigger FullPruningTrigger { get; set; }        
+
+        [ConfigItem(
+            Description = "Defines how many parallel tasks and potentially used threads can be created by full pruning. 0 - no limit, 1 - full pruning will run on single thread, 16^N - First N levels of the state tree will be run in parallel.",
+            DefaultValue = "16")]
+        int FullPruningMaxDegreeOfParallelism { get; set; }
         
         
     }

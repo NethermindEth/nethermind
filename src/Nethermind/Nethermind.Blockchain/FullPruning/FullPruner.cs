@@ -23,9 +23,11 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Db;
 using Nethermind.Db.FullPruning;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.Trie;
 using Org.BouncyCastle.Crypto.Generators;
 
 namespace Nethermind.Blockchain.FullPruning
@@ -34,6 +36,7 @@ namespace Nethermind.Blockchain.FullPruning
     {
         private readonly IFullPruningDb _fullPruningDb;
         private readonly IPruningTrigger _pruningTrigger;
+        private readonly IPruningConfig _pruningConfig;
         private readonly IBlockTree _blockTree;
         private readonly IStateReader _stateReader;
         private readonly ILogManager _logManager;
@@ -44,12 +47,14 @@ namespace Nethermind.Blockchain.FullPruning
         public FullPruner(
             IFullPruningDb fullPruningDb, 
             IPruningTrigger pruningTrigger,
+            IPruningConfig pruningConfig,
             IBlockTree blockTree,
             IStateReader stateReader,
             ILogManager logManager)
         {
             _fullPruningDb = fullPruningDb;
             _pruningTrigger = pruningTrigger;
+            _pruningConfig = pruningConfig;
             _blockTree = blockTree;
             _stateReader = stateReader;
             _logManager = logManager;
@@ -99,7 +104,8 @@ namespace Nethermind.Blockchain.FullPruning
                 pruning.MarkStart();
                 using (CopyTreeVisitor copyTreeVisitor = new(pruning, _cancellationTokenSource, _logManager))
                 {
-                    _stateReader.RunTreeVisitor(copyTreeVisitor, statRoot);
+                    VisitingOptions visitingOptions = new() {MaxDegreeOfParallelism = _pruningConfig.FullPruningMaxDegreeOfParallelism};
+                    _stateReader.RunTreeVisitor(copyTreeVisitor, statRoot, visitingOptions);
 
                     if (!_cancellationTokenSource.IsCancellationRequested)
                     {
