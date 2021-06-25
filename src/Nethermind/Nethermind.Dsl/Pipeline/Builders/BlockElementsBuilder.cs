@@ -15,17 +15,30 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using Nethermind.Blockchain.Processing;
 using Nethermind.Core;
+using Nethermind.Dsl.Pipeline.Sources;
 using Nethermind.Int256;
 using Nethermind.Pipeline;
 using Nethermind.Pipeline.Publishers;
 
 namespace Nethermind.Dsl.Pipeline.Builders
 {
-    private readonly IBlockProcessor
     public class BlockElementsBuilder
     {
-        public IPipelineElement<Block, Block> GetConditionElement(string key, string operation, string value)
+        private readonly IBlockProcessor _blockProcessor;
+
+        public BlockElementsBuilder(IBlockProcessor blockProcessor)
+        {
+            _blockProcessor = blockProcessor;
+        }
+
+        public BlocksSource<Block> GetSourceElement()
+        {
+            return new(_blockProcessor);
+        }
+        
+        public PipelineElement<Block, Block> GetConditionElement(string key, string operation, string value)
         {
             return operation switch
             {

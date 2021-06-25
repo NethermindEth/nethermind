@@ -10,13 +10,11 @@ namespace Nethermind.Dsl.Pipeline.Sources
     public class BlocksSource<TOut> : IPipelineElement<TOut> where TOut : Block
     {
         private readonly IBlockProcessor _blockProcessor;
-        private readonly ILogger _logger;
 
-        public BlocksSource(IBlockProcessor blockProcessor, ILogger logger)
+        public BlocksSource(IBlockProcessor blockProcessor)
         {
            _blockProcessor = blockProcessor; 
            _blockProcessor.BlockProcessed += OnBlockProcessed;
-           _logger = logger;
         }
 
         public Action<TOut>? Emit { private get; set; }
