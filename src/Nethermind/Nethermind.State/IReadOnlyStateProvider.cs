@@ -38,7 +38,7 @@ namespace Nethermind.State
 
         public bool IsContract(Address address) => GetCodeHash(address) != Keccak.OfAnEmptyString;
 
-        void Accept(ITreeVisitor visitor, Keccak stateRoot);
+        void Accept(ITreeVisitor visitor, Keccak stateRoot, VisitingOptions? visitingOptions = null);
         
         bool AccountExists(Address address);
 

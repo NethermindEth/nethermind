@@ -24,7 +24,7 @@ namespace Nethermind.Trie
 
         public int? BranchChildIndex { get; internal set; }
         public bool ExpectAccounts { get; init; }
-        public bool Parallel { get; init; }
+        public int MaxDegreeOfParallelism { get; internal set; }
 
         public TrieVisitContext Clone() => (TrieVisitContext) MemberwiseClone();
     }

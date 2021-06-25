@@ -30,8 +30,9 @@ namespace Nethermind.Trie
 {
     public partial class TrieNode
     {
-        private const int ParallelLevels = 5;
-        
+        private static readonly ParallelOptions _defaultOptions = new();
+        private const int BranchesCount = 16;
+            
         internal void Accept(ITreeVisitor visitor, ITrieNodeResolver nodeResolver, TrieVisitContext trieVisitContext)
         {
             try
@@ -70,18 +71,20 @@ namespace Nethermind.Trie
 
                     visitor.VisitBranch(this, trieVisitContext);
                     trieVisitContext.Level++;
-                    if (trieVisitContext.Parallel && trieVisitContext.Level <= ParallelLevels)
+                    if (trieVisitContext.MaxDegreeOfParallelism != 1)
                     {
-                        TrieNode?[] children = new TrieNode?[16];
-                        for (int i = 0; i < 16; i++)
+                        TrieNode?[] children = new TrieNode?[BranchesCount];
+                        for (int i = 0; i < BranchesCount; i++)
                         {
                             children[i] = GetChild(nodeResolver, i);
                         }
-                        Parallel.For(0, 16, i => VisitChild(i, children[i], nodeResolver, visitor, trieVisitContext.Clone()));
+
+                        ParallelOptions options = trieVisitContext.MaxDegreeOfParallelism == 0 ? _defaultOptions : new ParallelOptions() {MaxDegreeOfParallelism = trieVisitContext.MaxDegreeOfParallelism % (BranchesCount + 1)};
+                        Parallel.For(0, BranchesCount, i => VisitChild(i, children[i], nodeResolver, visitor, GetChildContext(trieVisitContext)));
                     }
                     else
                     {
-                        for (int i = 0; i < 16; i++)
+                        for (int i = 0; i < BranchesCount; i++)
                         {
                             VisitChild(i, GetChild(nodeResolver, i), nodeResolver, visitor, trieVisitContext);
                         }
@@ -145,6 +148,17 @@ namespace Nethermind.Trie
                 default:
                     throw new TrieException($"An attempt was made to visit a node {Keccak} of type {NodeType}");
             }
+        }
+
+        private static TrieVisitContext GetChildContext(TrieVisitContext trieVisitContext)
+        {
+            TrieVisitContext childContext = trieVisitContext.Clone();
+            int maxDegreeOfParallelism = trieVisitContext.MaxDegreeOfParallelism;
+            childContext.MaxDegreeOfParallelism =
+                maxDegreeOfParallelism > 1
+                    ? Math.Max(1, maxDegreeOfParallelism / BranchesCount)
+                    : maxDegreeOfParallelism;
+            return childContext;
         }
     }
 }

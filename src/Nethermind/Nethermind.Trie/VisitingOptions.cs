@@ -19,13 +19,10 @@ using System;
 
 namespace Nethermind.Trie
 {
-    [Flags]
-    public enum VisitingOptions
+    public class VisitingOptions
     {
-        None = 0,
-        ExpectAccounts = 1,
-        Parallel = 2,
-        All = ExpectAccounts | Parallel,
-        Default = ExpectAccounts
+        public static readonly VisitingOptions Default = new VisitingOptions();
+        public bool ExpectAccounts { get; init; } = true;
+        public int MaxDegreeOfParallelism { get; init; } = 1; 
     }
 }

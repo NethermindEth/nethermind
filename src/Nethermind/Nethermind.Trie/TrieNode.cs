@@ -113,7 +113,7 @@ namespace Nethermind.Trie
             get
             {
                 int nonEmptyNodes = 0;
-                for (int i = 0; i < 16; i++)
+                for (int i = 0; i < BranchesCount; i++)
                 {
                     if (!IsChildNull(i))
                     {
@@ -179,20 +179,20 @@ namespace Nethermind.Trie
                     return Array.Empty<byte>();
                 }
 
-                if (_data![16] is null)
+                if (_data![BranchesCount] is null)
                 {
                     if (_rlpStream is null)
                     {
-                        _data[16] = Array.Empty<byte>();
+                        _data[BranchesCount] = Array.Empty<byte>();
                     }
                     else
                     {
-                        SeekChild(16);
-                        _data![16] = _rlpStream!.DecodeByteArray();
+                        SeekChild(BranchesCount);
+                        _data![BranchesCount] = _rlpStream!.DecodeByteArray();
                     }
                 }
 
-                return (byte[])_data[16];
+                return (byte[])_data[BranchesCount];
             }
 
             set
@@ -211,7 +211,7 @@ namespace Nethermind.Trie
                     throw new TrieException("Optimized Patricia Trie does not support setting values on branches.");
                 }
 
-                _data![IsLeaf ? 1 : 16] = value;
+                _data![IsLeaf ? 1 : BranchesCount] = value;
             }
         }
 
@@ -726,7 +726,7 @@ namespace Nethermind.Trie
                         throw new InvalidOperationException(
                             $"Cannot resolve children of an {nameof(NodeType.Unknown)} node");
                     case NodeType.Branch:
-                        _data = new object[AllowBranchValues ? 17 : 16];
+                        _data = new object[AllowBranchValues ? BranchesCount + 1 : BranchesCount];
                         break;
                     default:
                         _data = new object[2];

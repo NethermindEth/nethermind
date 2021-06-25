@@ -54,9 +54,9 @@ namespace Nethermind.Blockchain
             return account.CodeHash;
         }
 
-        public void Accept(ITreeVisitor visitor, Keccak stateRoot)
+        public void Accept(ITreeVisitor visitor, Keccak stateRoot, VisitingOptions? visitingOptions)
         {
-            _stateReader.RunTreeVisitor(visitor,  stateRoot);
+            _stateReader.RunTreeVisitor(visitor,  stateRoot, visitingOptions);
         }
 
         public bool AccountExists(Address address) => _stateReader.GetAccount(StateRoot, address) != null;
