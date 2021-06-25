@@ -4,12 +4,9 @@ using Antlr4.Runtime;
 using Antlr4.Runtime.Tree;
 using Nethermind.Api;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Dsl.Pipeline;
 using Nethermind.Dsl.Pipeline.Builders;
 using Nethermind.Dsl.Pipeline.Sources;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Pipeline;
 using Nethermind.Pipeline.Publishers;
@@ -18,7 +15,6 @@ namespace Nethermind.Dsl.ANTLR
 {
     public class Interpreter
     {
-        public IPipeline Pipeline;
         private readonly INethermindApi _api;
         private readonly IParseTree _tree;
         private readonly ParseTreeListener _treeListener;
@@ -36,19 +32,28 @@ namespace Nethermind.Dsl.ANTLR
         private readonly BlockElementsBuilder _blockElementsBuilder;
         private readonly TransactionElementsBuilder _transactionElementsBuilder;
         private readonly PendingTransactionElementsBuilder _pendingTransactionElementsBuilder;
+        private readonly EventElementsBuilder _eventElementsBuilder;
+        
+        //pipelines for each flow
+        private IPipeline _blocksPipeline;
+        private IPipeline _transactionsPipeline;
+        private IPipeline _pendingTransactionsPipeline;
+        private IPipeline _eventsPipeline;
 
         public Interpreter(
             INethermindApi api,
             string script,
             BlockElementsBuilder blockElementsBuilder = null,
             TransactionElementsBuilder transactionElementsBuilder = null,
-            PendingTransactionElementsBuilder pendingTransactionElementsBuilder = null)
+            PendingTransactionElementsBuilder pendingTransactionElementsBuilder = null,
+            EventElementsBuilder eventElementsBuilder = null)
         {
             _api = api ?? throw new ArgumentNullException(nameof(api));
             _logger = api.LogManager.GetClassLogger();
             _blockElementsBuilder = blockElementsBuilder ?? new BlockElementsBuilder(_api.MainBlockProcessor);
             _transactionElementsBuilder = transactionElementsBuilder ?? new TransactionElementsBuilder(_api.MainBlockProcessor);
             _pendingTransactionElementsBuilder = pendingTransactionElementsBuilder ?? new PendingTransactionElementsBuilder(_api.TxPool);
+            _eventElementsBuilder = eventElementsBuilder ?? new EventElementsBuilder(_api.MainBlockProcessor);
 
             var inputStream = new AntlrInputStream(script);
             var lexer = new DslGrammarLexer(inputStream);
@@ -84,7 +89,7 @@ namespace Nethermind.Dsl.ANTLR
 
                     break;
                 case "events":
-                    var eventSource = new EventsSource<TxReceipt>(_api.MainBlockProcessor);
+                    var eventSource = _eventElementsBuilder.GetSourceElement();
                     _eventsPipelineBuilder = new PipelineBuilder<TxReceipt, TxReceipt>(eventSource);
                     _pipelineSource = PipelineSource.Events;
 
@@ -121,7 +126,7 @@ namespace Nethermind.Dsl.ANTLR
                     _pendingTransactionsPipelineBuilder = _pendingTransactionsPipelineBuilder.AddElement(pendingTxElement);
                     break;
                 case PipelineSource.Events:
-                    PipelineElement<TxReceipt, TxReceipt> eventElement = GetNextEventElement(key, symbol, value);
+                    PipelineElement<TxReceipt, TxReceipt> eventElement = _eventElementsBuilder.GetConditionElement(key, symbol, value);
                     _eventsPipelineBuilder = _eventsPipelineBuilder.AddElement(eventElement);
                     break;
             }
@@ -156,54 +161,12 @@ namespace Nethermind.Dsl.ANTLR
                     lastPendingTxElement.AddCondition(pendingTxCondition);
                     break;
                 case PipelineSource.Events:
-                    var eventElement = GetNextEventElement(key, symbol, value);
+                    var eventElement = _eventElementsBuilder.GetConditionElement(key, symbol, value);
                     var eventElementCondition = eventElement.Conditions.Last();
                     var lastEventElement = (PipelineElement<TxReceipt, TxReceipt>) _eventsPipelineBuilder.LastElement;
                     lastEventElement.AddCondition(eventElementCondition);
                     break;
             }
-        }
-
-        private PipelineElement<TxReceipt, TxReceipt> GetNextEventElement(string key, string operation, string value)
-        {
-            bool CheckEventSignature(TxReceipt receipt, string signature)
-            {
-                Keccak signatureHash = Keccak.Compute(signature);
-
-                if (receipt.Logs == null) return false;
-
-                foreach (var log in receipt.Logs)
-                {
-                    if (log.Topics.Contains(signatureHash))
-                        return true;
-                }
-
-                return false;
-            }
-
-            if (key.Equals("EventSignature", StringComparison.InvariantCultureIgnoreCase) && operation.Equals("IS"))
-            {
-                return new PipelineElement<TxReceipt, TxReceipt>(
-                    condition: (t => CheckEventSignature(t, value)), 
-                    transformData: (t => t));
-            }
-
-            return operation switch
-            {
-                "IS" => new PipelineElement<TxReceipt, TxReceipt>(
-                    condition: (t => t.GetType().GetProperty(key)?.GetValue(t)?.ToString()?.ToLowerInvariant() == value.ToLowerInvariant()),
-                    transformData: (t => t)),
-                "==" => new PipelineElement<TxReceipt, TxReceipt>(
-                    condition: (t => t.GetType().GetProperty(key)?.GetValue(t)?.ToString()?.ToLowerInvariant() == value.ToLowerInvariant()),
-                    transformData: (t => t)),
-                "NOT" => new PipelineElement<TxReceipt, TxReceipt>(
-                    condition: (t => t.GetType().GetProperty(key)?.GetValue(t)?.ToString()?.ToLowerInvariant() != value.ToLowerInvariant()),
-                    transformData: (t => t)),
-                "!=" => new PipelineElement<TxReceipt, TxReceipt>(
-                    condition: (t => t.GetType().GetProperty(key)?.GetValue(t)?.ToString()?.ToLowerInvariant() != value.ToLowerInvariant()),
-                    transformData: (t => t)),
-                _ => null
-            };
         }
 
         private void AddPublisher(string publisher, string path)
@@ -216,7 +179,7 @@ namespace Nethermind.Dsl.ANTLR
             AddPendingTransactionsPublisher(webSocketsPublisher);
             AddEventsPublisher(webSocketsPublisher);
 
-            BuildPipeline();
+            BuildPipelines();
         }
 
         private void AddBlocksPublisher(IWebSocketsPublisher publisher)
@@ -239,12 +202,12 @@ namespace Nethermind.Dsl.ANTLR
             _eventsPipelineBuilder = _eventsPipelineBuilder?.AddPublisher(publisher);
         }
 
-        private void BuildPipeline()
+        private void BuildPipelines()
         {
-            _blocksPipelineBuilder?.Build();
-            _transactionsPipelineBuilder?.Build();
-            _pendingTransactionsPipelineBuilder?.Build();
-            _eventsPipelineBuilder?.Build();
+            _blocksPipeline = _blocksPipelineBuilder?.Build();
+            _transactionsPipeline = _transactionsPipelineBuilder?.Build();
+            _pendingTransactionsPipeline = _pendingTransactionsPipelineBuilder?.Build();
+            _eventsPipeline = _eventsPipelineBuilder?.Build();
         }
     }
 }

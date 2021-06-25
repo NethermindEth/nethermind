@@ -23,6 +23,5 @@ namespace Nethermind.Dsl.Pipeline.Sources
        PendingTransactions,
        Blocks,
        Events, 
-       Uniswap
     }
 }
