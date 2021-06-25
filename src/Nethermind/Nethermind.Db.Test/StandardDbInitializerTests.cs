@@ -93,7 +93,6 @@ namespace Nethermind.Db.Test
             dbProvider.BloomDb.Should().BeOfType(dbType);
             dbProvider.ChtDb.Should().BeOfType(dbType);
             dbProvider.HeadersDb.Should().BeOfType(dbType);
-            dbProvider.PendingTxsDb.Should().BeOfType(dbType);
             dbProvider.ReceiptsDb.Should().BeOfType(receiptsDb);
             dbProvider.CodeDb.Should().BeOfType(dbType);
             dbProvider.StateDb.Should().BeOfType(dbType);

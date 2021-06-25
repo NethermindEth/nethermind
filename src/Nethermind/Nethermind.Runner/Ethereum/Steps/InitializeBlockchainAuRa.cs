@@ -42,7 +42,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Api;
 using Nethermind.TxPool;
-using Nethermind.TxPool.Storages;
+using Nethermind.TxPool.Comparison;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
@@ -256,7 +256,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             return CreateTxPoolTxComparer();
         }
 
-        protected override TxPool.TxPool CreateTxPool(PersistentTxStorage txStorage)
+        protected override TxPool.TxPool CreateTxPool()
         {
             // This has to be different object than the _processingReadOnlyTransactionProcessorSource as this is in separate thread
             var txPoolReadOnlyTransactionProcessorSource = CreateReadOnlyTransactionProcessorSource();
@@ -273,15 +273,14 @@ namespace Nethermind.Runner.Ethereum.Steps
                 minGasPricesContractDataStore,
                 _api.SpecProvider);
             
-            return new FilteredTxPool(
-                txStorage,
+            return new TxPool.TxPool(
                 _api.EthereumEcdsa,
                 new ChainHeadInfoProvider(_api.SpecProvider, _api.BlockTree, _api.StateReader),
                 NethermindApi.Config<ITxPoolConfig>(),
                 _api.TxValidator,
                 _api.LogManager,
                 CreateTxPoolTxComparer(txPriorityContract, localDataSource),
-                new TxFilterAdapter(_api.BlockTree, txPoolFilter));
+                new TxFilterAdapter(_api.BlockTree, txPoolFilter, _api.LogManager));
         }
 
         private void ReportTxPriorityRules(TxPriorityContract? txPriorityContract, TxPriorityContract.LocalDataSource? localDataSource)

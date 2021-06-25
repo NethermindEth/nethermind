@@ -37,9 +37,6 @@ namespace Nethermind.TxPool
         
         [Description("Number of already known pending transactions.")]
         public static long PendingTransactionsKnown { get; set; }
-        
-        [Description("Number of already stored pending transactions.")]
-        public static long PendingTransactionsStored { get; set; }
 
         [Description("Number of pending transactions added to transaction pool.")]
         public static long PendingTransactionsAdded { get; set; }

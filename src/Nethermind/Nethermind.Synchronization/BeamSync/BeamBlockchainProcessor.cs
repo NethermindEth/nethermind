@@ -393,7 +393,10 @@ namespace Nethermind.Synchronization.BeamSync
                     {
                         BeamSyncContext.Description.Value = $"[storage prefetch {i}]";
                         BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
-                        stateReader.GetStorageRoot(stateRoot, tx.To);
+                        
+                        // TODO: not that this does not retrieve storage
+                        // we should call GetStorage afterwards
+                        _ = stateReader.GetAccount(stateRoot, tx.To)?.StorageRoot;
                     }
                 }
 
@@ -415,7 +418,11 @@ namespace Nethermind.Synchronization.BeamSync
                     {
                         BeamSyncContext.Description.Value = $"[code prefetch {i}]";
                         BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
-                        stateReader.GetCode(stateRoot, tx.To);
+                        Account? account = stateReader.GetAccount(stateRoot, tx.To);
+                        if (account != null)
+                        {
+                            stateReader.GetCode(account.CodeHash);
+                        }
                     }
                 }
 

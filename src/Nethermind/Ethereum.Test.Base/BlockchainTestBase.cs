@@ -51,7 +51,6 @@ using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
-using Nethermind.TxPool.Storages;
 using NUnit.Framework;
 
 namespace Ethereum.Test.Base
@@ -131,7 +130,7 @@ namespace Ethereum.Test.Base
             ITransactionComparerProvider transactionComparerProvider = new TransactionComparerProvider(specProvider, blockTree);
             IStateReader stateReader = new StateReader(trieStore, codeDb, _logManager);
             IChainHeadInfoProvider chainHeadInfoProvider = new ChainHeadInfoProvider(specProvider, blockTree, stateReader);
-            ITxPool transactionPool = new TxPool(NullTxStorage.Instance, ecdsa, chainHeadInfoProvider, new TxPoolConfig(),  new TxValidator(specProvider.ChainId), _logManager, transactionComparerProvider.GetDefaultComparer());
+            ITxPool transactionPool = new TxPool(ecdsa, chainHeadInfoProvider, new TxPoolConfig(),  new TxValidator(specProvider.ChainId), _logManager, transactionComparerProvider.GetDefaultComparer());
 
             IReceiptStorage receiptStorage = NullReceiptStorage.Instance;
             IBlockhashProvider blockhashProvider = new BlockhashProvider(blockTree, _logManager);

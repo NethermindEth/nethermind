@@ -315,7 +315,14 @@ namespace Nethermind.AuRa.Test.Transactions
                     PermissionBasedTxFilter);
             }
 
-            protected override Task AddBlocksOnStart() => Task.CompletedTask;
+            protected override async Task AddBlocksOnStart() 
+            {
+                await AddBlock();
+                var tx = Nethermind.Core.Test.Builders.Build.A.GeneratedTransaction.WithData(new byte[]{0, 1})
+                    .SignedAndResolved(GetPrivateKey(1)).WithChainId(105).WithGasPrice(0).WithValue(0).TestObject;
+                await AddBlock(tx);
+                await AddBlock(BuildSimpleTransaction.WithNonce(1).TestObject, BuildSimpleTransaction.WithNonce(2).TestObject);
+            }
         }
 
         public class Test

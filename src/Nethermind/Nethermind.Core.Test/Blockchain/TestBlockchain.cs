@@ -45,7 +45,6 @@ using Nethermind.Db.Blooms;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
-using Nethermind.TxPool.Storages;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 
 namespace Nethermind.Core.Test.Blockchain
@@ -114,7 +113,6 @@ namespace Nethermind.Core.Test.Blockchain
             JsonSerializer = new EthereumJsonSerializer();
             SpecProvider = specProvider ?? MainnetSpecProvider.Instance;
             EthereumEcdsa = new EthereumEcdsa(ChainId.Mainnet, LogManager);
-            ITxStorage txStorage = new InMemoryTxStorage();
             DbProvider = await CreateDbProvider();
             TrieStore = new TrieStore(StateDb.Innermost, LogManager);
             State = new StateProvider(TrieStore, DbProvider.CodeDb, LogManager);
@@ -142,7 +140,7 @@ namespace Nethermind.Core.Test.Blockchain
             BlockTree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), SpecProvider, NullBloomStorage.Instance, LimboLogs.Instance);
             ReadOnlyState = new ChainHeadReadOnlyStateProvider(BlockTree, StateReader);
             TransactionComparerProvider = new TransactionComparerProvider(specProvider, BlockTree);
-            TxPool = CreateTxPool(txStorage);
+            TxPool = CreateTxPool();
 
             _trieStoreWatcher = new TrieStoreBoundaryWatcher(TrieStore, BlockTree, LogManager);
             
@@ -209,9 +207,8 @@ namespace Nethermind.Core.Test.Blockchain
 
         public virtual ILogManager LogManager { get; } = LimboLogs.Instance;
 
-        protected virtual TxPool.TxPool CreateTxPool(ITxStorage txStorage) =>
+        protected virtual TxPool.TxPool CreateTxPool() =>
             new TxPool.TxPool(
-                txStorage,
                 EthereumEcdsa,
                 new ChainHeadInfoProvider(new FixedBlockChainHeadSpecProvider(SpecProvider), BlockTree, ReadOnlyState),
                 new TxPoolConfig(),
@@ -302,7 +299,7 @@ namespace Nethermind.Core.Test.Blockchain
             BlockTree.NewHeadBlock += OnNewHeadBlock;
             
             await WaitAsync(_oneAtATime, "Multiple block produced at once.");
-            AddTxResult[] txResults = transactions.Select(t => TxPool.AddTransaction(t, TxHandlingOptions.None)).ToArray();
+            AddTxResult[] txResults = transactions.Select(t => TxPool.SubmitTx(t, TxHandlingOptions.None)).ToArray();
             Timestamper.Add(TimeSpan.FromSeconds(1));
             await BlockProducer.BuildNewBlock();
             return txResults;
@@ -312,7 +309,7 @@ namespace Nethermind.Core.Test.Blockchain
         {
             for (int i = 0; i < txs.Length; i++)
             {
-                TxPool.AddTransaction(txs[i], TxHandlingOptions.None);
+                TxPool.SubmitTx(txs[i], TxHandlingOptions.None);
             }
         }
 
