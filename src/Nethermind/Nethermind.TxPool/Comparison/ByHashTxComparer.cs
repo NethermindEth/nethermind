@@ -23,7 +23,7 @@ namespace Nethermind.TxPool.Comparison
     /// <summary>
     /// Compares <see cref="Transaction"/>s based on <see cref="Transaction.Hash"/> identity. No two different signed transactions will be same.
     /// </summary>
-    public class ByHashTxComparer : IComparer<Transaction>
+    public class ByHashTxComparer : IComparer<Transaction>, IEqualityComparer<Transaction>
     {
         public static readonly ByHashTxComparer Instance = new();
         
@@ -37,5 +37,9 @@ namespace Nethermind.TxPool.Comparison
             
             return x.Hash!.CompareTo(y.Hash);
         }
+
+        public bool Equals(Transaction? x, Transaction? y) => Compare(x, y) == 0;
+
+        public int GetHashCode(Transaction obj) => obj.Hash?.GetHashCode() ?? 0;
     }
 }

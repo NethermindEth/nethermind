@@ -15,21 +15,22 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Core.Crypto;
-using Nethermind.Int256;
+using System.Collections.Generic;
+using Nethermind.Mev.Data;
 
-namespace Nethermind.Mev.Test
+namespace Nethermind.Mev.Source
 {
-    public class TxForTest
+    public class CompareMevBundleByBlock : IComparer<MevBundle>
     {
-        public Keccak Hash { get; set; }
-
-        public long GasUsed { get; set; }
+        public static readonly CompareMevBundleByBlock Default = new();
         
-        public UInt256 GasPrice { get; set; }
-        
-        public UInt256 CoinbasePayment { get; set; }
-
-        public TxVisibility Visibility { get; set; }
+        public int Compare(MevBundle? x, MevBundle? y)
+        {
+            if (ReferenceEquals(x, y)) return 0; 
+            if (ReferenceEquals(null, y)) return 1;
+            if (ReferenceEquals(null, x)) return -1;
+            
+            return x.BlockNumber.CompareTo(y.BlockNumber);
+        }
     }
 }

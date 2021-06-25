@@ -15,12 +15,19 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Int256;
+using Nethermind.Mev.Data;
+
 namespace Nethermind.Mev
 {
     public class MevConfig : IMevConfig
     {
-        public static readonly MevConfig Default = new(); 
-        
+        public static readonly MevConfig Default = new();
         public bool Enabled { get; set; }
+        public UInt256 BundleHorizon { get; set; } = 60 * 60;
+        public int BundlePoolSize { get; set; } = 200;
+        public int MaxMergedBundles { get; set; }
     }
 }

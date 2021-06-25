@@ -49,6 +49,12 @@ namespace Nethermind.Core.Collections
             UnionWith(enumerable);
         }
 
+        public LinkedHashSet(IEqualityComparer<T> equalityComparer)
+        {
+            _dict = new Dictionary<T, LinkedListNode<T>>(equalityComparer);
+            _list = new LinkedList<T>();
+        }
+
         #region ISet
 
         public bool Add(T item)

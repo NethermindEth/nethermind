@@ -15,20 +15,22 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using NUnit.Framework;
-using Nethermind.Core;
 using System.Collections.Generic;
 using Nethermind.Mev.Data;
 
-namespace Nethermind.Mev.Test
+namespace Nethermind.Mev.Source
 {
-    [TestFixture]
-    public class MevBundleForRpcTests
+    public class CompareMevBundleByMinTimestamp : IComparer<MevBundle>
     {
-        [Test]
-        public void Can_create()
+        public static readonly CompareMevBundleByMinTimestamp Default = new();
+        
+        public int Compare(MevBundle? x, MevBundle? y)
         {
-            _ = new MevBundle(new List<Transaction>(), 0, 0, 0);
+            if (ReferenceEquals(x, y)) return 0;
+            if (ReferenceEquals(null, y)) return 1;
+            if (ReferenceEquals(null, x)) return -1;
+
+            return x.MinTimestamp.CompareTo(y.MinTimestamp);
         }
     }
 }

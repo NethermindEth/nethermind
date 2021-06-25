@@ -33,6 +33,8 @@ using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.State.Proofs;
+using Nethermind.TxPool;
+using Nethermind.TxPool.Comparison;
 
 namespace Nethermind.Blockchain.Processing
 {
@@ -234,23 +236,26 @@ namespace Nethermind.Blockchain.Processing
             if (transactionsChangeable)
             {
                 int i = 0;
-                LinkedHashSet<Transaction> transactionsForBlock = new();
+                LinkedHashSet<Transaction> transactionsForBlock = new(ByHashTxComparer.Instance);
                 foreach (Transaction currentTx in transactions)
                 {
-                    TxAction txAction = CheckTx(currentTx, block).Action;
-
-                    if (txAction == TxAction.Skip)
+                    if (!transactionsForBlock.Contains(currentTx))
                     {
-                        continue;
-                    }
+	                    TxAction txAction = CheckTx(currentTx, block).Action;
+
+	                    if (txAction == TxAction.Skip)
+	                    {
+	                        continue;
+	                    }
                     
-                    if (txAction == TxAction.Stop)
-                    {
-                        break;
-                    }
+	                    if (txAction == TxAction.Stop)
+	                    {
+	                        break;
+	                    }
 
-                    ProcessTransaction(currentTx, i++);
-                    transactionsForBlock.Add(currentTx);
+	                    ProcessTransaction(currentTx, i++);
+	                    transactionsForBlock.Add(currentTx);
+					}
                 }
                 
                 block.TrySetTransactions(transactionsForBlock.ToArray());
