@@ -54,7 +54,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             return txInfo;
         }
 
-        public string[] GetTxFromStrings(string privateKeyLetter, string gasPrice, string nonce)
+        public string[] GetStringArray(string privateKeyLetter, string gasPrice, string nonce)
         {
             return new[] {privateKeyLetter, gasPrice, nonce};
         }
@@ -84,8 +84,8 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             Block[] blocks = GetBlocks(
                 GetBlockWithNumberAndTxs(0, GetArray(
-                            GetTxFromStrings("A", "2", "0"),
-                            GetTxFromStrings("B", "3", "0")
+                        GetStringArray("A", "2", "0"),
+                            GetStringArray("B", "3", "0")
                         )
                     ),
                 GetBlockWithNumberAndTxs(1, null),
@@ -111,18 +111,18 @@ namespace Nethermind.JsonRpc.Test.Modules
             //should I change the limit? Override the gas Price class?
             Block[] blocks = GetBlocks(
                 GetBlockWithNumberAndTxs(0, GetArray(
-                    GetTxFromStrings("A", "1", "0"),
-                    GetTxFromStrings("B", "2", "0")
+                    GetStringArray("A", "1", "0"),
+                    GetStringArray("B", "2", "0")
                     )
                 ),
                 GetBlockWithNumberAndTxs(1, GetArray(
-                    GetTxFromStrings("C", "3", "0"),
-                    GetTxFromStrings("D", "4", "0")
+                    GetStringArray("C", "3", "0"),
+                    GetStringArray("D", "4", "0")
                     )
                 ),
                 GetBlockWithNumberAndTxs(2, GetArray(
-                    GetTxFromStrings("A", "5","1"),
-                    GetTxFromStrings("B", "6","1")
+                    GetStringArray("A", "5","1"),
+                    GetStringArray("B", "6","1")
                     )
                 )
             ); 
@@ -150,7 +150,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
         [TestCase(2,3)] //Tx Prices: 2,3,4,5,6 Index: (5-1)/5 => 0.8, rounded to 1 => price should be 3
         [TestCase(4,5)] //Tx Prices: 4,5,6 Index: (3-1)/5 => 0.6, rounded to 1 => price should be 5
-        public void eth_gas_price_should_remove_tx_when_txgasprices_are_under_threshold(int ignoreUnder, int expected)
+        public void eth_gasPrice_WhenTxGasPricesAreBelowThreshold_shouldNotConsiderTxsWithGasPriceUnderThreshold(int ignoreUnder, int expected)
         {
             BlocktreeSetup blocktreeSetup = new BlocktreeSetup();
             UInt256? ignoreUnderUInt256 = (UInt256) ignoreUnder;
@@ -163,34 +163,45 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
-        public void eth_gas_price_should_not_consider_eip1559_transactions()
+        public void eth_gasPrice_GivenEip1559Tx_ShouldNotConsiderEip1559Tx()
         {
+            Transaction[] firstTxGroup =  GetTransactionArray(
+                    GetArray(
+                    GetStringArray("B","7","2"), 
+                    GetStringArray("B","8","3")),IsEip1559());
+            Transaction[] secondTxGroup = GetTransactionArray(
+                    GetArray(
+                    GetStringArray("B","9","4"),
+                    GetStringArray("B","10","5"),
+                    GetStringArray("B","11","6")),IsNotEip1559());
             BlocktreeSetup blocktreeSetup = new BlocktreeSetup();
-            Transaction a = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).WithType(TxType.EIP1559)
-                .WithGasPrice(7).WithNonce(2)
-                .TestObject;
-            Transaction b = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).WithType(TxType.EIP1559)
-                .WithGasPrice(8).WithNonce(3)
-                .TestObject;
-            Transaction c = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).WithType(TxType.EIP1559)
-                .WithGasPrice(10).WithNonce(4)
-                .TestObject;
-            Transaction d = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).WithType(TxType.EIP1559)
-                .WithGasPrice(9).WithNonce(5)
-                .TestObject;
-            Transaction e = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).WithType(TxType.EIP1559)
-                .WithGasPrice(11).WithNonce(6)
-                .TestObject;
-            Block a1 = Build.A.Block.WithNumber(5).WithTransactions(a, b)
-                .WithParentHash(blocktreeSetup._blocks[^1].Hash).TestObject;
-            Block b1 = Build.A.Block.WithNumber(6).WithTransactions(c, d, e)
-                .WithParentHash(a1.Hash).TestObject;
-            BlocktreeSetup blockTreeSetup2 = new BlocktreeSetup(new[] {a1, b1}, true);
+            Block firstBlock = Build.A.Block.WithNumber(5).WithParentHash(HashOfLastBlockIn(blocktreeSetup))
+                .WithTransactions(firstTxGroup).TestObject;
+            Block secondBlock = Build.A.Block.WithNumber(6).WithParentHash(firstBlock.Hash)
+                .WithTransactions(firstTxGroup).TestObject;
+            
+            BlocktreeSetup blockTreeSetup = new BlocktreeSetup(new Block[]{firstBlock, secondBlock},true);
 
-            blockTreeSetup2.ethRpcModule.eth_gasPrice().Data.Should()
-                .Be((UInt256?)2); //should only leave 1,2,3,4,5,6 => (5-1)/5 => 1.2, rounded to 1 => price should be 2
+            ResultWrapper<UInt256?> resultWrapper = blockTreeSetup.ethRpcModule.eth_gasPrice();
+            resultWrapper.Data.Should().Be((UInt256?) 2); 
+            //should only leave 1,2,3,4,5,6 => (5-1)/5 => 1.2, rounded to 1 => price should be 2
         }
 
+        public bool IsEip1559()
+        {
+            return true;
+        }
+
+        public bool IsNotEip1559()
+        {
+            return false;
+        }
+
+        public Keccak HashOfLastBlockIn(BlocktreeSetup blocktreeSetup)
+        {
+            return blocktreeSetup._blocks[^1].Hash;
+        }
+        
         [Test]
         public void eth_gas_price_get_tx_from_more_blocks_if_tx_count_not_greater_than_limit()
         {
@@ -282,37 +293,55 @@ namespace Nethermind.JsonRpc.Test.Modules
         public Block[] GetBlocks(params KeyValuePair<int, string[][]>[] blockAndTxInfo)
         {
             Keccak parentHash = null;
-            bool firstIteration = true;
             Block block;
             List<Block> blocks = new List<Block>();
-            Transaction[] transactions;
-            foreach (var keyValuePair in blockAndTxInfo)
+            foreach (KeyValuePair<int, string[][]> keyValuePair in blockAndTxInfo)
             {
-                block = BlockBuilder(keyValuePair, firstIteration, parentHash);
+                block = BlockBuilder(keyValuePair, parentHash);
                 parentHash = block.Hash;
-                firstIteration = false;
+                blocks.Add(block);
+            }
+
+            return blocks.ToArray();
+        }
+        
+        
+        public Block[] GetBlocksWithEip1559Txs(params KeyValuePair<int, string[][]>[] blockAndTxInfo)
+        {
+            Keccak parentHash = null;
+            Block block;
+            List<Block> blocks = new List<Block>();
+            foreach (KeyValuePair<int, string[][]> keyValuePair in blockAndTxInfo)
+            {
+                block = BlockBuilder(keyValuePair, parentHash, true);
+                parentHash = block.Hash;
                 blocks.Add(block);
             }
 
             return blocks.ToArray();
         }
 
-        private Block BlockBuilder(KeyValuePair<int, string[][]> keyValuePair, bool firstIteration, Keccak parentHash)
+        private Block BlockBuilder(KeyValuePair<int, string[][]> keyValuePair, Keccak parentHash, bool isEip1559 = false)
         {
             Transaction[] transactions;
             Block block;
+            
             int blockNumber = keyValuePair.Key;
             string[][] txInfo = keyValuePair.Value; //array of tx info
-            transactions = GetTransactionArray(txInfo);
-            block = BlockFactoryNumberParentHashTxs(blockNumber, firstIteration ? null : parentHash, transactions);
+            transactions = GetTransactionArray(txInfo, isEip1559);
+            block = BlockFactoryNumberParentHashTxs(blockNumber, parentHash, transactions);
             return block;
         }
 
-        private Transaction[] GetTransactionArray(string[][] txInfo)
+        private Transaction[] GetTransactionArray(string[][] txInfo, bool isEip1559)
         {
             if (txInfo == null)
             {
                 return Array.Empty<Transaction>();
+            }
+            else if (isEip1559 == true)
+            {
+                return Eip1559TxsFromInfoStrings(txInfo).ToArray();
             }
             else
             {
@@ -320,6 +349,22 @@ namespace Nethermind.JsonRpc.Test.Modules
             }
         }
 
+        public IEnumerable<Transaction> Eip1559TxsFromInfoStrings(params string[][] txsInfo)
+        {
+            PrivateKey privateKey;
+            char privateKeyLetter;
+            UInt256 gasPrice;
+            UInt256 nonce;
+            foreach (string[] txInfo in txsInfo)
+            {
+                privateKeyLetter = Convert.ToChar(txInfo[0]);
+                privateKey = PrivateKeyForLetter(privateKeyLetter);
+                gasPrice = UInt256.Parse(txInfo[1]);
+                nonce = UInt256.Parse(txInfo[2]);
+                yield return Build.A.Transaction.SignedAndResolved(privateKey).WithGasPrice(gasPrice).WithNonce(nonce)
+                    .WithType(TxType.EIP1559).TestObject;
+            }
+        }
         public IEnumerable<Transaction> TxsFromInfoStrings(params string[][] txsInfo)
         {
             PrivateKey privateKey;
@@ -438,7 +483,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 blockTree = Build.A.BlockTree(_blocks[0]).TestObject; //Genesis block not being added
                 foreach (Block block in _blocks)
                 {
-                    BlockTreeBuilder.AddBlock(blockTree, block);
+                    BlockTreeBuilder.AddBlock(blockTree, block); //do we need to add genesis block?
                 }
 
                 ethRpcModule = new EthRpcModule
