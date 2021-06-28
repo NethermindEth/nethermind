@@ -46,8 +46,7 @@ namespace Nethermind.Config
                     Initialize();
                 }
 
-                object config = Activator.CreateInstance(_implementations[configType]);
-                _instances[configType] = config!;
+                var config = _instances[configType];
                 foreach (PropertyInfo propertyInfo in config.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance))
                 {
                     for (int i = 0; i < _configSource.Count; i++)
@@ -116,8 +115,38 @@ namespace Nethermind.Config
                 {
                     Categories.Add(@interface.Name.Substring(1), Activator.CreateInstance(directImplementation));
                     _implementations[@interface] = directImplementation;
+
+                    object config = Activator.CreateInstance(_implementations[@interface]);
+                    _instances[@interface] = config!;
                 }
             }
+        }
+
+        public IList<(IConfigSource Source, string Category, string Name)> FindIncorrectSettings()
+        {
+            if(_instances.Count() == 0)
+            {
+                Initialize();
+            }
+
+            var propertySet = _instances.SelectMany(i => i.GetType().GetProperties().Select(p => ( i.GetType().Name, p.Name ))).ToHashSet();
+
+            List<(IConfigSource Source, string Category, string Name)> incorrectSettings = new();
+
+            foreach (var source in _configSource)
+            {
+                var configs = source.GetConfigKeys();
+
+                foreach (var conf in configs)
+                {
+                    if(!propertySet.Contains(conf))
+                    {
+                        incorrectSettings.Add((source, conf.Category, conf.Name));
+                    }
+                }
+            }
+
+            return incorrectSettings;
         }
     }
 }

@@ -15,6 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Linq;
+using System.Collections.Generic;
 
 namespace Nethermind.Config
 {
@@ -31,6 +33,11 @@ namespace Nethermind.Config
             var variableName = $"NETHERMIND_{category.ToUpperInvariant()}_{name.ToUpperInvariant()}";
             var variableValueString = Environment.GetEnvironmentVariable(variableName);
             return string.IsNullOrWhiteSpace(variableValueString) ? (false, null) : (true, variableValueString); 
+        }
+
+        public IEnumerable<(string Category, string Name)> GetConfigKeys()
+        {
+            return Environment.GetEnvironmentVariables().Keys.Cast<string>().Where(k => k.StartsWith("NETHERMIND_")).Select(v => v.Split('_')).Where(a => a.Length > 2).Select(a => (a[1], a[2]));
         }
     }
 }
