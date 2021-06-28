@@ -49,61 +49,66 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
 
-        public string[][] GetStringArray(params string[][] txInfo)
+        public string[][] GetArray(params string[][] txInfo)
         {
             return txInfo;
         }
 
-        public KeyValuePair<int, string[][]> GetBlockFromNumberAndTxs(int blockNumber, string[][] txInfo)
+        public string[] GetTxString(string privateKeyLetter, string gasPrice, string nonce)
+        {
+            return new[] {privateKeyLetter, gasPrice, nonce};
+        }
+        public KeyValuePair<int, string[][]> GetBlockWithNumberAndTxs(int blockNumber, string[][] txInfo)
         {
             return new KeyValuePair<int, string[][]>(blockNumber, txInfo);
         }
         [Test]
         public void eth_gas_price_one_when_block_have_no_tx()
         {
-            Block[] blocks = BlocksBuilder(
-                    GetBlockFromNumberAndTxs(0, null), 
-                    GetBlockFromNumberAndTxs(1, null),
-                    GetBlockFromNumberAndTxs(2, null),
-                    GetBlockFromNumberAndTxs(3, null),
-                    GetBlockFromNumberAndTxs(4, null)
-                    ).ToArray();
+            Block[] blocks = GetBlocks(
+                    GetBlockWithNumberAndTxs(0, null), 
+                    GetBlockWithNumberAndTxs(1, null),
+                    GetBlockWithNumberAndTxs(2, null),
+                    GetBlockWithNumberAndTxs(3, null),
+                    GetBlockWithNumberAndTxs(4, null));
+            
             BlocktreeSetup blocktreeSetup = new BlocktreeSetup(blocks);
             ResultWrapper<UInt256?> resultWrapper = blocktreeSetup.ethRpcModule.eth_gasPrice();
+            
             resultWrapper.Data.Should().Be((UInt256?)1);
         }
 
-        [Test]
-        public void Eth_gasPrice_ReturnDefaultGasPrice_EmptyBlocksAtEndGreaterThanOrEqualToEight()
+        [TestCase(7,3)] //Gas Prices: 2,3,3,3,3,3,3,3,3 Index: 8 / 5 = 1.6, rounds to 2 => Gas Price is 3
+        [TestCase(8,1)] //Last eight blocks empty, so gas price defaults to 1
+        public void Eth_gasPrice_ReturnDefaultGasPrice_EmptyBlocksAtEndEqualToEight(int maxBlockNumber, int expected)
         {
-            Transaction[] transactions =
-            {
-                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).WithGasPrice(2).WithNonce(0).TestObject,
-                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).WithGasPrice(3).WithNonce(0).TestObject,
-            };
+            Block[] blocks = GetBlocks(
+                GetBlockWithNumberAndTxs(0, GetArray(GetTxString("A", "2", "0")
+                        ,GetTxString("B", "3", "0"))),
+                GetBlockWithNumberAndTxs(1, null),
+                GetBlockWithNumberAndTxs(2, null),
+                GetBlockWithNumberAndTxs(3, null),
+                GetBlockWithNumberAndTxs(4, null),
+                GetBlockWithNumberAndTxs(5, null),
+                GetBlockWithNumberAndTxs(6, null),
+                GetBlockWithNumberAndTxs(7, null),
+                GetBlockWithNumberAndTxs(8, null));
 
-            Block a = Build.A.Block.Genesis.WithTransactions(transactions[0], transactions[1]).TestObject;
-            Block b = Build.A.Block.WithNumber(1).WithParent(a).TestObject;
-            Block c = Build.A.Block.WithNumber(2).WithParent(b).TestObject;
-            Block d = Build.A.Block.WithNumber(3).WithParent(c).TestObject;
-            Block e = Build.A.Block.WithNumber(4).WithParent(d).TestObject;
-            Block f = Build.A.Block.WithNumber(5).WithParent(e).TestObject;
-            Block g = Build.A.Block.WithNumber(6).WithParent(f).TestObject;
-            Block h = Build.A.Block.WithNumber(7).WithParent(g).TestObject;
-            Block i = Build.A.Block.WithNumber(8).WithParent(h).TestObject; //should return 1 since last
-
-            BlocktreeSetup blocktreeSetup = new BlocktreeSetup(new[] {a, b, c, d, e, f, g, h});
-            BlocktreeSetup blocktreeSetup2 = new BlocktreeSetup(new[] {a, b, c, d, e, f, g, h, i});
-
-            blocktreeSetup.ethRpcModule.eth_gasPrice().Data.Should()
-                .Be((UInt256?)3); //Gas Prices: 2,3,3,3,3,3,3,3,3 Index: 8 / 5 = 1.6, rounds to 2 => Gas Price is 3
-            blocktreeSetup2.ethRpcModule.eth_gasPrice().Data.Should()
-                .Be((UInt256?)1); //Last eight blocks empty, so gas price defaults to 1
+            IEnumerable<Block> blocksInRange = blocks.Where(block => block.Number <= maxBlockNumber);
+            Block[] blockArray = blocksInRange.ToArray();
+            BlocktreeSetup blocktreeSetup = new BlocktreeSetup(blockArray);
+            UInt256? blocktreeSetupResult = blocktreeSetup.ethRpcModule.eth_gasPrice().Data;
+            
+            blocktreeSetupResult.Should().Be((UInt256?) expected); 
         }
 
         [Test]
         public void Eth_gasPrice_getTxFromMinBlocks_NumTxGreaterThanOrEqualToLimit()
         {
+
+            Block[] blocks = GetBlocks(
+            ).ToArray(); 
+                /*
             Transaction[] transactions =
             {
                 //should i be worried about two tx with same hash?
@@ -146,10 +151,11 @@ namespace Nethermind.JsonRpc.Test.Modules
             Block f = Build.A.Block.WithNumber(5).WithParentHash(e.Hash)
                 .WithTransactions(transactions[10], transactions[11]).TestObject;
             BlocktreeSetup blocktreeSetup = new BlocktreeSetup(new[] {a, b, c, d, e, f});
-
+            
             ResultWrapper<UInt256?> resultWrapper = blocktreeSetup.ethRpcModule.eth_gasPrice();
             resultWrapper.Data.Should()
                 .Be((UInt256?)5); //Tx Prices: 3,4,5,6,7,8,9,10,11,12, Index: (10-1)/5 = 1.8, rounded to 2 => Gas Price should be 5
+        */
         }
 
         [Test]
@@ -300,19 +306,22 @@ namespace Nethermind.JsonRpc.Test.Modules
                 .Be((UInt256?)2); //Tx prices: 1,2,3,4,5,6, Index: (6-1)/5 = 1.2, rounded to 1 => price should be 2
         }
 
-        public IEnumerable<Block> BlocksBuilder(params KeyValuePair<int, string[][]>[] blockAndTxInfo)
+        public Block[] GetBlocks(params KeyValuePair<int, string[][]>[] blockAndTxInfo)
         {
             Keccak parentHash = null;
             bool firstIteration = true;
             Block block;
+            List<Block> blocks = new List<Block>();
             Transaction[] transactions;
             foreach (var keyValuePair in blockAndTxInfo)
             {
                 block = BlockBuilder(keyValuePair, firstIteration, parentHash);
                 parentHash = block.Hash;
                 firstIteration = false;
-                yield return block;
+                blocks.Add(block);
             }
+
+            return blocks.ToArray();
         }
 
         private Block BlockBuilder(KeyValuePair<int, string[][]> keyValuePair, bool firstIteration, Keccak parentHash)
