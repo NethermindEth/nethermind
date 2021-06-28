@@ -40,7 +40,7 @@ namespace Nethermind.JsonRpc.Test.Modules
     public partial class EthRpcModuleTests
     {
         [Test]
-        public void eth_gas_price_get_right_percentile_with_blockcount_equal_to_blocks_to_check()
+        public void Eth_gasPrice_BlockcountEqualToBlocksToCheck_ShouldGetTwentiethPercentileIndex()
         {
             BlocktreeSetup blocktreeSetup = new BlocktreeSetup();
             ResultWrapper<UInt256?> resultWrapper = blocktreeSetup.ethRpcModule.eth_gasPrice();
@@ -49,21 +49,8 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
 
-        public string[][] GetArray(params string[][] txInfo)
-        {
-            return txInfo;
-        }
-
-        public string[] GetStringArray(string privateKeyLetter, string gasPrice, string nonce)
-        {
-            return new[] {privateKeyLetter, gasPrice, nonce};
-        }
-        public KeyValuePair<int, string[][]> GetBlockWithNumberAndTxInfo(int blockNumber, string[][] txInfo)
-        {
-            return new KeyValuePair<int, string[][]>(blockNumber, txInfo);
-        }
         [Test]
-        public void eth_gas_price_one_when_block_have_no_tx()
+        public void Eth_gasPrice_WhenBlocksHaveNoTx_GasPriceShouldBeOne()
         {
             Block[] blocks = GetBlocks(
                     GetBlockWithNumberAndTxInfo(0, null), 
@@ -106,7 +93,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
         //Test for repeated Tx
         [Test]
-        public void Eth_gasPrice_getTxFromMinBlocks_NumTxGreaterThanOrEqualToLimit()
+        public void Eth_gasPrice_GetTxFromMinBlocks_NumTxGreaterThanOrEqualToLimit()
         {
             Block[] blocks = GetBlocks(
                 GetBlockWithNumberAndTxInfo(0, GetArray(
@@ -133,7 +120,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
-        public void eth_gas_price_should_use_last_tx_price_when_head_block_is_not_changed()
+        public void Eth_gasPrice_WhenHeadBlockIsNotChanged_ShouldUsePreviouslyCalculatedGasPrice()
         {
             const int normalErrorCode = 0;
             int noHeadBlockChangeErrorCode = GasPriceOracle._noHeadBlockChangeErrorCode;
@@ -147,9 +134,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             secondResult.ErrorCode.Should().Be(noHeadBlockChangeErrorCode);
         }
 
-        [TestCase(2,3)] //Tx Prices: 2,3,4,5,6 Index: (5-1)/5 => 0.8, rounded to 1 => price should be 3
-        [TestCase(4,5)] //Tx Prices: 4,5,6 Index: (3-1)/5 => 0.6, rounded to 1 => price should be 5
-        public void eth_gasPrice_WhenTxGasPricesAreBelowThreshold_shouldNotConsiderTxsWithGasPriceUnderThreshold(int ignoreUnder, int expected)
+        [TestCase(2,3)] //Tx Prices: 2,3,4,5,6 Index: (5-1)/5 rounds to 1 => price should be 3
+        [TestCase(4,5)] //Tx Prices: 4,5,6,6,6 Index: (5-1)/5 rounds to 1 => price should be 5
+        public void Eth_gasPrice_TxGasPricesAreBelowThreshold_ReplaceGasPriceUnderThresholdWithLatestPrice(int ignoreUnder, int expected)
         {
             BlocktreeSetup blocktreeSetup = new BlocktreeSetup();
             UInt256? ignoreUnderUInt256 = (UInt256) ignoreUnder;
@@ -162,7 +149,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
-        public void eth_gasPrice_GivenEip1559Tx_ShouldNotConsiderEip1559Tx()
+        public void Eth_gasPrice_GivenEip1559Tx_ShouldNotConsiderEip1559Tx()
         {
             Transaction[] firstTxGroup =  GetTransactionArray(
                     GetArray(
@@ -202,7 +189,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
         
         [Test]
-        public void eth_gasPrice_TxCountNotGreaterThanLimit_GetTxFromMoreBlocks()
+        public void Eth_gasPrice_TxCountNotGreaterThanLimit_GetTxFromMoreBlocks()
         {
             Block[] blocks = GetBlocks(
                 GetBlockWithNumberAndTxInfo(0, GetArray(
@@ -228,7 +215,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
-        public void eth_gasPrice_BlocksAvailableLessThanBlocksToCheck_ShouldBeSuccessful()
+        public void Eth_gasPrice_BlocksAvailableLessThanBlocksToCheck_ShouldBeSuccessful()
         {
             Block[] blocks = GetBlocks(
                 GetBlockWithNumberAndTxInfo(0, GetArray(
@@ -255,6 +242,19 @@ namespace Nethermind.JsonRpc.Test.Modules
             //Tx prices: 3,4,5,6,7,8 Index: (6-1)/5 = 1 Gas Price: 4
         }
 
+        public string[][] GetArray(params string[][] txInfo)
+        {
+            return txInfo;
+        }
+
+        public string[] GetStringArray(string privateKeyLetter, string gasPrice, string nonce)
+        {
+            return new[] {privateKeyLetter, gasPrice, nonce};
+        }
+        public KeyValuePair<int, string[][]> GetBlockWithNumberAndTxInfo(int blockNumber, string[][] txInfo)
+        {
+            return new KeyValuePair<int, string[][]>(blockNumber, txInfo);
+        }
         public Block[] GetBlocks(params KeyValuePair<int, string[][]>[] blockAndTxInfo)
         {
             Keccak parentHash = null;
@@ -270,22 +270,6 @@ namespace Nethermind.JsonRpc.Test.Modules
             return blocks.ToArray();
         }
         
-        
-        public Block[] GetBlocksWithEip1559Txs(params KeyValuePair<int, string[][]>[] blockAndTxInfo)
-        {
-            Keccak parentHash = null;
-            Block block;
-            List<Block> blocks = new List<Block>();
-            foreach (KeyValuePair<int, string[][]> keyValuePair in blockAndTxInfo)
-            {
-                block = BlockBuilder(keyValuePair, parentHash, true);
-                parentHash = block.Hash;
-                blocks.Add(block);
-            }
-
-            return blocks.ToArray();
-        }
-
         private Block BlockBuilder(KeyValuePair<int, string[][]> keyValuePair, Keccak parentHash, bool isEip1559 = false)
         {
             Transaction[] transactions;
@@ -390,7 +374,6 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
         public class BlocktreeSetup
         {
-            private Transaction[] _transactions;
             public Block[] _blocks;
             public BlockTree blockTree;
             public EthRpcModule ethRpcModule;
@@ -425,7 +408,6 @@ namespace Nethermind.JsonRpc.Test.Modules
                 }
                 else
                 {
-                    _transactions = Array.Empty<Transaction>();
                     _blocks = blocks;
                 }
             }
