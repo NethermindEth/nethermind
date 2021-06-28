@@ -397,46 +397,30 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             public BlocktreeSetup(Block[] blocks = null, bool addBlocks = false)
             {
+                GetBlocks(blocks, addBlocks);
+
+                InitializeAndAddToBlockTree();
+
+                GetEthRpcModule();
+            }
+
+            private void InitializeAndAddToBlockTree()
+            {
+                blockTree = BuildABlockTreeWithGenesisBlock(_blocks[0]);
+                foreach (Block block in _blocks)
+                {
+                    BlockTreeBuilder.AddBlock(blockTree, block);
+                }
+            }
+
+            private void GetBlocks(Block[] blocks, bool addBlocks)
+            {
                 if (blocks == null || addBlocks)
                 {
-                    _transactions = new[]
-                    {
-                        //should i be worried about two tx with same hash?
-                        Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).WithGasPrice(1).WithNonce(0)
-                            .TestObject,
-                        Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).WithGasPrice(2).WithNonce(0)
-                            .TestObject,
-                        Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).WithGasPrice(3).WithNonce(0)
-                            .TestObject,
-                        Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyD).WithGasPrice(5).WithNonce(0)
-                            .TestObject,
-                        Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).WithGasPrice(4).WithNonce(1)
-                            .TestObject,
-                        Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).WithGasPrice(6).WithNonce(1)
-                            .TestObject,
-                    };
-
-                    Block a = Build.A.Block.Genesis.WithTransactions(_transactions[0], _transactions[1])
-                        .TestObject;
-                    Block b = Build.A.Block.WithNumber(1).WithParentHash(a.Hash)
-                        .WithTransactions(_transactions[2]).TestObject;
-                    Block c = Build.A.Block.WithNumber(2).WithParentHash(b.Hash)
-                        .WithTransactions(_transactions[3]).TestObject;
-                    Block d = Build.A.Block.WithNumber(3).WithParentHash(c.Hash)
-                        .WithTransactions(_transactions[4]).TestObject;
-                    Block e = Build.A.Block.WithNumber(4).WithParentHash(d.Hash)
-                        .WithTransactions(_transactions[5])
-                        .TestObject; //Tx Prices: 1,2,3,4,5,6, Index: (6-1)/5 = 1 => Gas Price should be 2 (if no tx added)
-                    _blocks = new[] {a, b, c, d, e};
+                    GetBlockArray();
                     if (addBlocks)
                     {
-                        List<Block> listBlocks = _blocks.ToList();
-                        foreach (Block block in blocks)
-                        {
-                            listBlocks.Add(block);
-                        }
-
-                        _blocks = listBlocks.ToArray();
+                        AddExtraBlocksToArray(blocks);
                     }
                 }
                 else
@@ -444,13 +428,43 @@ namespace Nethermind.JsonRpc.Test.Modules
                     _transactions = Array.Empty<Transaction>();
                     _blocks = blocks;
                 }
+            }
 
-                blockTree = Build.A.BlockTree(_blocks[0]).TestObject; //Genesis block not being added
-                foreach (Block block in _blocks)
-                {
-                    BlockTreeBuilder.AddBlock(blockTree, block); //do we need to add genesis block?
-                }
+            private BlockTree BuildABlockTreeWithGenesisBlock(Block genesisBlock)
+            {
+                return Build.A.BlockTree(genesisBlock).TestObject;
+            }
 
+            private void GetBlockArray()
+            {
+                EthRpcModuleTests e = new EthRpcModuleTests();
+                _blocks = e.GetBlocks(
+                    e.GetBlockWithNumberAndTxInfo(0, e.GetArray(
+                            e.GetStringArray("A", "1", "0"),
+                            e.GetStringArray("B", "2", "0")
+                        )
+                    ),
+                    e.GetBlockWithNumberAndTxInfo(1, e.GetArray(
+                            e.GetStringArray("C", "3", "0")
+                        )
+                    ),
+                    e.GetBlockWithNumberAndTxInfo(2, e.GetArray(
+                            e.GetStringArray("D", "5", "0")
+                        )
+                    ),
+                    e.GetBlockWithNumberAndTxInfo(3, e.GetArray(
+                            e.GetStringArray("A", "4", "1")
+                        )
+                    ),
+                    e.GetBlockWithNumberAndTxInfo(4, e.GetArray(
+                            e.GetStringArray("B", "6", "1")
+                        )
+                    )
+                );
+            }
+
+            private void GetEthRpcModule()
+            {
                 ethRpcModule = new EthRpcModule
                 (
                     Substitute.For<IJsonRpcConfig>(),
@@ -463,6 +477,16 @@ namespace Nethermind.JsonRpc.Test.Modules
                     Substitute.For<ILogManager>(),
                     Substitute.For<ISpecProvider>()
                 );
+            }
+            private void AddExtraBlocksToArray(Block[] blocks)
+            {
+                List<Block> listBlocks = _blocks.ToList();
+                foreach (Block block in blocks)
+                {
+                    listBlocks.Add(block);
+                }
+
+                _blocks = listBlocks.ToArray();
             }
         }
     }
