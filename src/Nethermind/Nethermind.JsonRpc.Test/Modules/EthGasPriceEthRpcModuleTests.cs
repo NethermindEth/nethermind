@@ -148,23 +148,18 @@ namespace Nethermind.JsonRpc.Test.Modules
             secondResult.ErrorCode.Should().Be(noHeadBlockChangeErrorCode);
         }
 
-        [Test]
-        public void eth_gas_price_should_remove_tx_when_txgasprices_are_under_threshold()
+        [TestCase(2,3)] //Tx Prices: 2,3,4,5,6 Index: (5-1)/5 => 0.8, rounded to 1 => price should be 3
+        [TestCase(4,5)] //Tx Prices: 4,5,6 Index: (3-1)/5 => 0.6, rounded to 1 => price should be 5
+        public void eth_gas_price_should_remove_tx_when_txgasprices_are_under_threshold(int ignoreUnder, int expected)
         {
             BlocktreeSetup blocktreeSetup = new BlocktreeSetup();
-            Transaction a = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).WithGasPrice(7).WithNonce(2)
-                .TestObject;
-            Transaction b = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).WithGasPrice(8).WithNonce(3)
-                .TestObject;
-
-            Block a1 = Build.A.Block.WithNumber(5).WithTransactions(a, b)
-                .WithParentHash(blocktreeSetup._blocks[^1].Hash).TestObject;
-            BlocktreeSetup blockTreeSetup2 = new BlocktreeSetup(new[] {a1}, true);
-
-            blocktreeSetup.ethRpcModule.eth_gasPrice(2).Data.Should()
-                .Be((UInt256?)3); //Tx Prices: 2,3,4,5,6, Index (5-1)/5 => 0.8, rounded to 1 => price should be 3
-            blockTreeSetup2.ethRpcModule.eth_gasPrice(3).Data.Should()
-                .Be((UInt256?)4); //should only leave 3,4,5,6,7,8 => (7-1)/5 => 1.2, rounded to 1 => price should be 4
+            UInt256? ignoreUnderUInt256 = (UInt256) ignoreUnder;
+            UInt256? expectedUInt256 = (UInt256) expected;
+            
+            ResultWrapper<UInt256?> resultWrapper = blocktreeSetup.ethRpcModule.eth_gasPrice(ignoreUnderUInt256);
+            UInt256? result = resultWrapper.Data;
+            
+            result.Should().Be(expectedUInt256); 
         }
 
         [Test]
