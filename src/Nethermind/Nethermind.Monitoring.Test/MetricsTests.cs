@@ -40,7 +40,7 @@ namespace Nethermind.Monitoring.Test
             {
                 Enabled = true
             };
-            List<Type> knowMetricsTypes = new()
+            List<Type> knownMetricsTypes = new()
             {
                 typeof(Nethermind.Mev.Metrics), typeof(Nethermind.TxPool.Metrics), typeof(Nethermind.Blockchain.Metrics),
                 typeof(Nethermind.Consensus.AuRa.Metrics), typeof(Nethermind.Evm.Metrics), typeof(Nethermind.JsonRpc.Metrics),
@@ -50,7 +50,7 @@ namespace Nethermind.Monitoring.Test
             MetricsUpdater metricsUpdater = new(metricsConfig);
             MonitoringService monitoringService = new(metricsUpdater, metricsConfig, LimboLogs.Instance);
             List<Type> metrics = new TypeDiscovery().FindNethermindTypes(nameof(Metrics)).ToList();
-            metrics.AddRange(knowMetricsTypes);
+            metrics.AddRange(knownMetricsTypes);
 
             Assert.DoesNotThrow(() =>
             {
