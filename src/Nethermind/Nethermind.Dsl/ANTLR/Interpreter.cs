@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using Antlr4.Runtime;
 using Antlr4.Runtime.Tree;
+using Microsoft.Extensions.Logging.Abstractions;
 using Nethermind.Api;
 using Nethermind.Core;
 using Nethermind.Dsl.Pipeline;
@@ -25,7 +26,7 @@ namespace Nethermind.Dsl.ANTLR
         // pipelines builders for each flow
         private IPipelineBuilder<Block, Block> _blocksPipelineBuilder;
         private IPipelineBuilder<Transaction, Transaction> _transactionsPipelineBuilder;
-        private IPipelineBuilder<TxReceipt, TxReceipt> _eventsPipelineBuilder;
+        private IPipelineBuilder<LogEntry, LogEntry> _eventsPipelineBuilder;
         private IPipelineBuilder<Transaction, Transaction> _pendingTransactionsPipelineBuilder;
         
         //builders of elements in pipelines
@@ -90,7 +91,7 @@ namespace Nethermind.Dsl.ANTLR
                     break;
                 case "events":
                     var eventSource = _eventElementsBuilder.GetSourceElement();
-                    _eventsPipelineBuilder = new PipelineBuilder<TxReceipt, TxReceipt>(eventSource);
+                    _eventsPipelineBuilder = new PipelineBuilder<LogEntry, LogEntry>(eventSource);
                     _pipelineSource = PipelineSource.Events;
 
                     break;
@@ -126,7 +127,7 @@ namespace Nethermind.Dsl.ANTLR
                     _pendingTransactionsPipelineBuilder = _pendingTransactionsPipelineBuilder.AddElement(pendingTxElement);
                     break;
                 case PipelineSource.Events:
-                    PipelineElement<TxReceipt, TxReceipt> eventElement = _eventElementsBuilder.GetConditionElement(key, symbol, value);
+                    PipelineElement<LogEntry, LogEntry> eventElement = _eventElementsBuilder.GetConditionElement(key, symbol, value);
                     _eventsPipelineBuilder = _eventsPipelineBuilder.AddElement(eventElement);
                     break;
             }
@@ -163,7 +164,7 @@ namespace Nethermind.Dsl.ANTLR
                 case PipelineSource.Events:
                     var eventElement = _eventElementsBuilder.GetConditionElement(key, symbol, value);
                     var eventElementCondition = eventElement.Conditions.Last();
-                    var lastEventElement = (PipelineElement<TxReceipt, TxReceipt>) _eventsPipelineBuilder.LastElement;
+                    var lastEventElement = (PipelineElement<LogEntry, LogEntry>) _eventsPipelineBuilder.LastElement;
                     lastEventElement.AddCondition(eventElementCondition);
                     break;
             }
