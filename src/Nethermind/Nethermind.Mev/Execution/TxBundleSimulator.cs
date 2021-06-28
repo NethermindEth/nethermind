@@ -79,9 +79,9 @@ namespace Nethermind.Mev.Execution
                 }
             }
 
-            if ((UInt256)ulong.MaxValue >= Metrics.TotalCoinbasePayments + tracer.CoinbasePayments)
+            if ((UInt256)decimal.MaxValue >= (UInt256)Metrics.TotalCoinbasePayments + tracer.CoinbasePayments)
             {
-                Metrics.TotalCoinbasePayments += (ulong)tracer.CoinbasePayments;
+                Metrics.TotalCoinbasePayments += (decimal)tracer.CoinbasePayments;
             }
             else
             {

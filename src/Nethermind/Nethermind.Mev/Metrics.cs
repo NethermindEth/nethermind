@@ -32,6 +32,6 @@ namespace Nethermind.Mev
         public static int BundlesSimulated { get; set; } = 0;
 
         [Description("Total coinbase payments in wei")]
-        public static ulong TotalCoinbasePayments { get; set; } = 0;
+        public static decimal TotalCoinbasePayments { get; set; } = 0;
     }
 }
