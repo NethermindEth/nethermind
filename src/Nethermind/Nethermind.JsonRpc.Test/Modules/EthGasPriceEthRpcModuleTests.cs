@@ -39,7 +39,6 @@ namespace Nethermind.JsonRpc.Test.Modules
 {
     public partial class EthRpcModuleTests
     {
-        
         [Test]
         public void eth_gas_price_get_right_percentile_with_blockcount_equal_to_blocks_to_check()
         {
@@ -48,81 +47,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             resultWrapper.Data.Should()
                 .Be((UInt256?)2); //Tx Prices: 1,2,3,4,5,6, Index: (6-1)/5 = 1 => Gas Price should be 2
         }
-        public PrivateKey PrivateKeyForLetter(char privateKeyLetter)
-        {
-            if (privateKeyLetter == 'A')
-            {
-                return TestItem.PrivateKeyA;
-            }
-            else if (privateKeyLetter == 'B')
-            {
-                return TestItem.PrivateKeyB;
-            }
-            else if (privateKeyLetter == 'C')
-            {
-                return TestItem.PrivateKeyC;
-            }
-            else if (privateKeyLetter == 'D')
-            {
-                return TestItem.PrivateKeyD;
-            }
-            else
-            {
-                throw new ArgumentException("PrivateKeyLetter should only be either A, B, C, or D.");
-            }
-        }
-
-        public IEnumerable<Transaction> TxsFromInfoTuples(params Tuple<char, UInt256, UInt256>[] txsInfo)
-        {
-            PrivateKey privateKey;
-            char privateKeyLetter;
-            UInt256 gasPrice;
-            UInt256 nonce;
-            foreach (Tuple<char, UInt256, UInt256> txInfo in txsInfo)
-            {
-                privateKeyLetter = txInfo.Item1;
-                privateKey = PrivateKeyForLetter(privateKeyLetter);
-                gasPrice = txInfo.Item2;
-                nonce = txInfo.Item3;
-                yield return Build.A.Transaction.SignedAndResolved(privateKey).WithGasPrice(gasPrice).WithNonce(nonce)
-                    .TestObject;
-            }
-        }
-
-        public Block BlockFactoryNumberParentHashTxs(int number, Keccak parentHash, Transaction[] txs)
-        {
-            if (number == 0)
-            {
-                return Build.A.Block.Genesis.WithTransactions(txs).TestObject;
-            }
-
-            if (number > 0)
-            {
-                return Build.A.Block.WithNumber(number).WithParentHash(parentHash).WithTransactions(txs).TestObject;
-            }
-        }
-
-        public IEnumerable<Block> BlocksBuilder(KeyValuePair<int, string[]>[] blockAndTxInfo)
-        {
-            Keccak parentHash = null;
-            bool firstIteration = true;
-            Block block;
-            Transaction[] transactions;
-            foreach (var keyValuePair in blockAndTxInfo)
-            {
-                char firstNumber = Convert.ToChar(blockAndTxInfo[0]);
-                int blockNumber = firstNumber - '0';
-                Tuple<char, UInt256, UInt256>[] txInfo = blockAndTxInfo.Item2;
-                transactions = txInfo == null
-                    ? Array.Empty<Transaction>()
-                    : TxsFromInfoTuples(blockAndTxInfo.Item2).ToArray();
-                block = BlockFactoryNumberParentHashTxs(blockNumber, firstIteration ? null : parentHash, transactions);
-                parentHash = block.Hash;
-                firstIteration = false;
-                yield return block;
-            }
-        }
-
+        
+        
         [Test]
         public void eth_gas_price_one_when_block_have_no_tx()
         {
@@ -377,6 +303,102 @@ namespace Nethermind.JsonRpc.Test.Modules
                 .Be((UInt256?)2); //Tx prices: 1,2,3,4,5,6, Index: (6-1)/5 = 1.2, rounded to 1 => price should be 2
         }
 
+        public IEnumerable<Block> BlocksBuilder(KeyValuePair<int, string[][]>[] blockAndTxInfo)
+        {
+            Keccak parentHash = null;
+            bool firstIteration = true;
+            Block block;
+            Transaction[] transactions;
+            foreach (var keyValuePair in blockAndTxInfo)
+            {
+                block = BlockBuilder(keyValuePair, firstIteration, parentHash);
+                parentHash = block.Hash;
+                firstIteration = false;
+                yield return block;
+            }
+        }
+
+        private Block BlockBuilder(KeyValuePair<int, string[][]> keyValuePair, bool firstIteration, Keccak parentHash)
+        {
+            Transaction[] transactions;
+            Block block;
+            int blockNumber = keyValuePair.Key;
+            string[][] txInfo = keyValuePair.Value; //array of tx info
+            transactions = GetTransactionArray(txInfo);
+            block = BlockFactoryNumberParentHashTxs(blockNumber, firstIteration ? null : parentHash, transactions);
+            return block;
+        }
+
+        private Transaction[] GetTransactionArray(string[][] txInfo)
+        {
+            if (txInfo == null)
+            {
+                return Array.Empty<Transaction>();
+            }
+            else
+            {
+                return TxsFromInfoStrings(txInfo).ToArray();
+            }
+        }
+
+        public IEnumerable<Transaction> TxsFromInfoStrings(params string[][] txsInfo)
+        {
+            PrivateKey privateKey;
+            char privateKeyLetter;
+            UInt256 gasPrice;
+            UInt256 nonce;
+            foreach (string[] txInfo in txsInfo)
+            {
+                privateKeyLetter = Convert.ToChar(txInfo[0]);
+                privateKey = PrivateKeyForLetter(privateKeyLetter);
+                gasPrice = UInt256.Parse(txInfo[1]);
+                nonce = UInt256.Parse(txInfo[2]);
+                yield return Build.A.Transaction.SignedAndResolved(privateKey).WithGasPrice(gasPrice).WithNonce(nonce)
+                    .TestObject;
+            }
+        }
+        
+        public PrivateKey PrivateKeyForLetter(char privateKeyLetter)
+        {
+            if (privateKeyLetter == 'A')
+            {
+                return TestItem.PrivateKeyA;
+            }
+            else if (privateKeyLetter == 'B')
+            {
+                return TestItem.PrivateKeyB;
+            }
+            else if (privateKeyLetter == 'C')
+            {
+                return TestItem.PrivateKeyC;
+            }
+            else if (privateKeyLetter == 'D')
+            {
+                return TestItem.PrivateKeyD;
+            }
+            else
+            {
+                throw new ArgumentException("PrivateKeyLetter should only be either A, B, C, or D.");
+            }
+        }
+        
+        public Block BlockFactoryNumberParentHashTxs(int number, Keccak parentHash, Transaction[] txs)
+        {
+            if (number == 0)
+            {
+                return Build.A.Block.Genesis.WithTransactions(txs).TestObject;
+            }
+
+            else if (number > 0)
+            {
+                return Build.A.Block.WithNumber(number).WithParentHash(parentHash).WithTransactions(txs).TestObject;
+            }
+            
+            else
+            {
+                throw new ArgumentException("Block number should be greater than or equal to 0.");
+            }
+        }
         public class BlocktreeSetup
         {
             private Transaction[] _transactions;
