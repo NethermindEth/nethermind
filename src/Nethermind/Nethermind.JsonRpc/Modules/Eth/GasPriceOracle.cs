@@ -11,14 +11,15 @@ namespace Nethermind.JsonRpc.Modules.Eth
 {
     public class GasPriceOracle : IGasPriceOracle
     {
-        private UInt256? _lastPrice = null; //will this be okay if it is static?
+        private UInt256? _lastPrice = null;
         private Block? _lastHeadBlock = null;
         private readonly IBlockFinder _blockFinder;
         private const int Percentile = 20;
-        private const int BlocksToGoBack = 5;
-        public GasPriceOracle(IBlockFinder blockFinder)
+        private readonly int _blocksToGoBack;
+        public GasPriceOracle(IBlockFinder blockFinder, int blocksToGoBack = 5)
         {
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
+            _blocksToGoBack = blocksToGoBack;
         }
         private bool AddTxFromBlockToSet(Block block, ref SortedSet<UInt256> sortedSet, UInt256 finalPrice,
             UInt256? ignoreUnder = null, long? maxCount = null)
@@ -107,7 +108,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return res == 0 ? 1 : res;
             }));
             SortedSet<UInt256> gasPrices = new(comparer); //allows duplicates
-            threshold = BlocksToGoBack * 2;
+            threshold = _blocksToGoBack * 2;
             currBlockNumber = headBlock!.Number;
             gasPriceLatest = LatestGasPrice(headBlock!.Number);
             return gasPrices;
@@ -166,7 +167,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             SortedSet<UInt256> gasPrices = InitializeValues(headBlock, 
                 out long threshold, out long currBlockNumber, out UInt256? gasPriceLatest);
             
-            gasPrices = AddingPreviousBlockTx(ignoreUnder, BlocksToGoBack, currBlockNumber, 
+            gasPrices = AddingPreviousBlockTx(ignoreUnder, _blocksToGoBack, currBlockNumber, 
                 gasPrices, gasPriceLatest, threshold);
 
             int finalIndex = (int) Math.Round(((gasPrices.Count - 1) * ((float) Percentile / 100)));

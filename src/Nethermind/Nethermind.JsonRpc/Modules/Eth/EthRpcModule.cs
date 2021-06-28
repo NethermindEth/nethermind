@@ -61,9 +61,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly ITxSender _txSender;
         private readonly IWallet _wallet;
         private readonly ISpecProvider _specProvider;
-
         private readonly ILogger _logger;
-
+        private GasPriceOracle? _gasPriceOracle;
+        
         private static bool HasStateForBlock(IBlockchainBridge blockchainBridge, BlockHeader header)
         {
             RootCheckVisitor rootCheckVisitor = new();
@@ -91,6 +91,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+            _gasPriceOracle = null;
         }
 
         public ResultWrapper<string> eth_protocolVersion()
@@ -144,11 +145,17 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return ResultWrapper<UInt256?>.Success(0);
         }
 
-        private GasPriceOracle? _gasPriceEstimator = null;
-        public ResultWrapper<UInt256?> eth_gasPrice(UInt256? ignoreUnder = null)
+        public ResultWrapper<UInt256?> eth_gasPrice(UInt256? ignoreUnder = null, int? blockLimit = null)
         {
-            _gasPriceEstimator ??= new GasPriceOracle(_blockFinder);
-            return _gasPriceEstimator.GasPriceEstimate(ignoreUnder);
+            if (blockLimit != null)
+            {
+                _gasPriceOracle = new GasPriceOracle(_blockFinder, (int) blockLimit);
+            }
+            else
+            {
+                _gasPriceOracle ??= new GasPriceOracle(_blockFinder);
+            }
+            return _gasPriceOracle.GasPriceEstimate(ignoreUnder);
         }
 
         public ResultWrapper<IEnumerable<Address>> eth_accounts()

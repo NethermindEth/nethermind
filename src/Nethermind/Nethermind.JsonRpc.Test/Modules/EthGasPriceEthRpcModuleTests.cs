@@ -54,7 +54,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             return txInfo;
         }
 
-        public string[] GetTxString(string privateKeyLetter, string gasPrice, string nonce)
+        public string[] GetTxFromStrings(string privateKeyLetter, string gasPrice, string nonce)
         {
             return new[] {privateKeyLetter, gasPrice, nonce};
         }
@@ -83,8 +83,11 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void Eth_gasPrice_ReturnDefaultGasPrice_EmptyBlocksAtEndEqualToEight(int maxBlockNumber, int expected)
         {
             Block[] blocks = GetBlocks(
-                GetBlockWithNumberAndTxs(0, GetArray(GetTxString("A", "2", "0")
-                        ,GetTxString("B", "3", "0"))),
+                GetBlockWithNumberAndTxs(0, GetArray(
+                            GetTxFromStrings("A", "2", "0"),
+                            GetTxFromStrings("B", "3", "0")
+                        )
+                    ),
                 GetBlockWithNumberAndTxs(1, null),
                 GetBlockWithNumberAndTxs(2, null),
                 GetBlockWithNumberAndTxs(3, null),
@@ -101,61 +104,49 @@ namespace Nethermind.JsonRpc.Test.Modules
             
             blocktreeSetupResult.Should().Be((UInt256?) expected); 
         }
-
+        //Test for repeated Tx
         [Test]
         public void Eth_gasPrice_getTxFromMinBlocks_NumTxGreaterThanOrEqualToLimit()
         {
-
+            //should I change the limit? Override the gas Price class?
             Block[] blocks = GetBlocks(
-            ).ToArray(); 
-                /*
-            Transaction[] transactions =
-            {
-                //should i be worried about two tx with same hash?
-                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).WithGasPrice(1).WithNonce(0)
-                    .TestObject,
-                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).WithGasPrice(2).WithNonce(0)
-                    .TestObject,
-                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).WithGasPrice(3).WithNonce(0)
-                    .TestObject,
-                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyD).WithGasPrice(4).WithNonce(0)
-                    .TestObject,
-                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).WithGasPrice(5).WithNonce(1)
-                    .TestObject,
-                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).WithGasPrice(7).WithNonce(1)
-                    .TestObject,
-                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).WithGasPrice(6).WithNonce(2)
-                    .TestObject,
-                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).WithGasPrice(9).WithNonce(3)
-                    .TestObject,
-                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyD).WithGasPrice(8).WithNonce(1)
-                    .TestObject,
-                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).WithGasPrice(11).WithNonce(1)
-                    .TestObject,
-                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyD).WithGasPrice(11).WithNonce(2)
-                    .TestObject,
-                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).WithGasPrice(11).WithNonce(2)
-                    .TestObject //equal gas price to transactions[9] and transactions[10]
-            };
-
-            Block a = Build.A.Block.Genesis.WithTransactions(transactions[0], transactions[1])
-                .TestObject;
-            Block b = Build.A.Block.WithNumber(1).WithParentHash(a.Hash)
-                .WithTransactions(transactions[2], transactions[3]).TestObject;
-            Block c = Build.A.Block.WithNumber(2).WithParentHash(b.Hash)
-                .WithTransactions(transactions[4], transactions[5]).TestObject;
-            Block d = Build.A.Block.WithNumber(3).WithParentHash(c.Hash)
-                .WithTransactions(transactions[6], transactions[7]).TestObject;
-            Block e = Build.A.Block.WithNumber(4).WithParentHash(d.Hash)
-                .WithTransactions(transactions[8], transactions[9]).TestObject;
-            Block f = Build.A.Block.WithNumber(5).WithParentHash(e.Hash)
-                .WithTransactions(transactions[10], transactions[11]).TestObject;
-            BlocktreeSetup blocktreeSetup = new BlocktreeSetup(new[] {a, b, c, d, e, f});
+                GetBlockWithNumberAndTxs(0, GetArray(
+                    GetTxFromStrings("A", "1", "0"),
+                    GetTxFromStrings("B", "2", "0")
+                    )
+                ),
+                GetBlockWithNumberAndTxs(1, GetArray(
+                    GetTxFromStrings("C", "3", "0"),
+                    GetTxFromStrings("D", "4", "0")
+                    )
+                ),
+                GetBlockWithNumberAndTxs(2, GetArray(
+                    GetTxFromStrings("A", "5","1"),
+                    GetTxFromStrings("B", "7","1")
+                    )
+                ),
+                GetBlockWithNumberAndTxs(3, GetArray(
+                    GetTxFromStrings("B", "6", "2"),
+                    GetTxFromStrings("B", "9", "3")
+                    )
+                ),
+                GetBlockWithNumberAndTxs(4, GetArray(
+                    GetTxFromStrings("D", "8", "1"),
+                    GetTxFromStrings("C", "10","1")
+                    )
+                ),
+                GetBlockWithNumberAndTxs(5, GetArray(
+                    GetTxFromStrings("D", "11","2"),
+                    GetTxFromStrings("C", "12","2")
+                    )
+                )
+            ); 
+            BlocktreeSetup blocktreeSetup = new BlocktreeSetup(blocks);
             
             ResultWrapper<UInt256?> resultWrapper = blocktreeSetup.ethRpcModule.eth_gasPrice();
             resultWrapper.Data.Should()
-                .Be((UInt256?)5); //Tx Prices: 3,4,5,6,7,8,9,10,11,12, Index: (10-1)/5 = 1.8, rounded to 2 => Gas Price should be 5
-        */
+                .Be((UInt256?) 5); //Tx Prices: 3,4,5,6,7,8,9,10,11,12 Index: (10-1)/5 = 1.8, rounded to 2 => Gas Price should be 5
+        
         }
 
         [Test]
