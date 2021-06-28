@@ -96,12 +96,24 @@ namespace Nethermind.JsonRpc.Test.Modules
                 throw new ArgumentException("PrivateKeyLetter should only be either A, B, C, or D.");
             }
         }
-        public Transaction TxFactorySigningKeyGasPriceNonce(char privateKeyLetter, UInt256 gasPrice, UInt256 nonce)
+        
+        public IEnumerable<Transaction> TxsFromInfoTuples(params Tuple<char, UInt256, UInt256>[] txsInfo)
         {
-            PrivateKey privateKey = PrivateKeyForLetter(privateKeyLetter);
-            return Build.A.Transaction.SignedAndResolved(privateKey).WithGasPrice(gasPrice).WithNonce(nonce).TestObject;
+            PrivateKey privateKey;
+            char privateKeyLetter;
+            UInt256 gasPrice;
+            UInt256 nonce;
+            foreach (Tuple<char, UInt256, UInt256> txInfo in txsInfo)
+            {
+                privateKeyLetter = txInfo.Item1;
+                privateKey = PrivateKeyForLetter(privateKeyLetter);
+                gasPrice = txInfo.Item2;
+                nonce = txInfo.Item3;
+                yield return Build.A.Transaction.SignedAndResolved(privateKey).WithGasPrice(gasPrice).WithNonce(nonce)
+                    .TestObject;
+            }
         }
-        public Block BlockFactoryNumberParentHashTxs(int number, Keccak? parentHash, Transaction[] txs)
+        public Block BlockFactoryNumberParentHashTxs(int number, Keccak parentHash, Transaction[] txs)
         {
             if (number == 0)
             {
@@ -112,16 +124,23 @@ namespace Nethermind.JsonRpc.Test.Modules
                 return Build.A.Block.WithNumber(number).WithParentHash(parentHash).WithTransactions(txs).TestObject;
             }
         }
-
-        public IEnumerable<Block> BlockBuilder(params KeyValuePair<int, Transaction[]>[] keyValuePairs)
+        //create string in format "block #, space, tx1, privateKeyLetter, GasPrice, Nonce, ..."
+        public IEnumerable<Block> BlockBuilder(string[] blockAndTxInfo)
         {
             Keccak parentHash = null;
             bool firstIteration = true;
             Block block;
-            foreach (KeyValuePair<int, Transaction[]> keyValuePair in keyValuePairs)
+            Transaction[] transactions;
+            if (blockAndTxInfo.Length == 1)
             {
-                int blockNumber = keyValuePair.Key;
-                Transaction[] transactions = keyValuePair.Value;
+                yield return BlockFactoryNumberParentHashTxs(int.Parse(blockAndTxInfo), null, null);
+            }
+            foreach ()
+            {
+                char firstNumber = Convert.ToChar(blockAndTxInfo[0]);
+                int blockNumber = firstNumber - '0';
+                Tuple<char, UInt256, UInt256>[] txInfo = blockAndTxInfo.Item2;
+                transactions = txInfo == null ? Array.Empty<Transaction>() : TxsFromInfoTuples(blockAndTxInfo.Item2).ToArray();
                 block = BlockFactoryNumberParentHashTxs(blockNumber, firstIteration ? null : parentHash, transactions);
                 parentHash = block.Hash;
                 firstIteration = false;
@@ -132,6 +151,18 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void eth_gas_price_one_when_block_have_no_tx()
         {
+            List<Tuple<int, Tuple<char, UInt256, UInt256>>> blocksAndTxsInfo;
+            blocksAndTxsInfo = new []
+            {
+                Tuple.Create(0, null),
+                
+            }
+            Block[] blocks = BlockBuilder(
+                new Tuple<int, Tuple<char, UInt256, UInt256>[]>(0, null),
+                (1, null),
+                (2, null),
+                (3, null),
+                (4, null));
             Block a = Build.A.Block.Genesis.WithTransactions(Array.Empty<Transaction>())
                 .TestObject;
             Block b = Build.A.Block.WithNumber(1).WithParentHash(a.Hash)
