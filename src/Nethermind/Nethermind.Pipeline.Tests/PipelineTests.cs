@@ -72,7 +72,7 @@ namespace Nethermind.Pipeline.Tests
         {
             var sourceElement = new TxPoolPipelineSource<Transaction>(_txPool);
             var element = new TxPoolPipelineElement<Transaction, Transaction>();
-            var publisher = new WebSocketsPublisher<Transaction, Transaction>("testPublisher", Substitute.For<IJsonSerializer>(), Substitute.For<ILogger>());
+            var publisher = new WebSocketsPublisher("testPublisher", Substitute.For<IJsonSerializer>(), Substitute.For<ILogger>());
 
             var mockWebSocket = Substitute.For<WebSocket>();
             mockWebSocket.State.Returns(WebSocketState.Open);
@@ -81,7 +81,7 @@ namespace Nethermind.Pipeline.Tests
             Transaction transactionToEmit = new() {To = new Address("0x92A3c5e7Cee811C3402b933A6D43aAF2e56f2823")};
 
             var builder = new PipelineBuilder<Transaction, Transaction>(sourceElement);
-            builder.AddElement(element).AddElement(publisher);
+            builder.AddElement(element).AddPublisher(publisher);
             var pipeline = builder.Build();
 
             _txPool.NewPending += Raise.EventWith(new object(), new TxEventArgs(transactionToEmit));

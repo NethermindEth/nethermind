@@ -42,6 +42,5 @@ namespace Nethermind.Pipeline
         {
             return new Pipeline(_elements);
         }
-
     }
 }

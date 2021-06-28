@@ -36,10 +36,10 @@ namespace Nethermind.Dsl.ANTLR
         private readonly EventElementsBuilder _eventElementsBuilder;
         
         //pipelines for each flow
-        private IPipeline _blocksPipeline;
-        private IPipeline _transactionsPipeline;
-        private IPipeline _pendingTransactionsPipeline;
-        private IPipeline _eventsPipeline;
+        public IPipeline BlocksPipeline { get; private set; }
+        public IPipeline TransactionsPipeline { get; private set; }
+        public IPipeline PendingTransactionsPipeline { get; private set; }
+        public IPipeline EventsPipeline { get; private set; }
 
         public Interpreter(
             INethermindApi api,
@@ -205,10 +205,10 @@ namespace Nethermind.Dsl.ANTLR
 
         private void BuildPipelines()
         {
-            _blocksPipeline = _blocksPipelineBuilder?.Build();
-            _transactionsPipeline = _transactionsPipelineBuilder?.Build();
-            _pendingTransactionsPipeline = _pendingTransactionsPipelineBuilder?.Build();
-            _eventsPipeline = _eventsPipelineBuilder?.Build();
+            BlocksPipeline = _blocksPipelineBuilder?.Build();
+            TransactionsPipeline = _transactionsPipelineBuilder?.Build();
+            PendingTransactionsPipeline = _pendingTransactionsPipelineBuilder?.Build();
+            EventsPipeline = _eventsPipelineBuilder?.Build();
         }
     }
 }

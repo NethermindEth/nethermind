@@ -15,7 +15,7 @@ namespace Nethermind.Pipeline.Publishers
     {
         private readonly ConcurrentDictionary<string, IWebSocketsClient> _clients = new();
         private readonly IJsonSerializer _jsonSerializer;
-        public string Name { private set; get; }
+        public string Name { get; }
         private readonly ILogger _logger;
 
         public WebSocketsPublisher(string name, IJsonSerializer jsonSerializer, ILogger logger)
