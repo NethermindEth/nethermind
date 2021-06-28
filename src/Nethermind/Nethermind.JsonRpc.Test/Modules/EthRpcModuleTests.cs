@@ -72,6 +72,62 @@ namespace Nethermind.JsonRpc.Test.Modules
             ResultWrapper<UInt256?> resultWrapper = blocktreeSetup.ethRpcModule.eth_gasPrice();
             resultWrapper.Data.Should().Be((UInt256?) 2); //Tx Prices: 1,2,3,4,5,6, Index: (6-1)/5 = 1 => Gas Price should be 2
         }
+
+        public PrivateKey PrivateKeyForLetter(char privateKeyLetter)
+        {
+            if (privateKeyLetter == 'A')
+            {
+                return TestItem.PrivateKeyA;
+            }
+            else if (privateKeyLetter == 'B')
+            {
+                return TestItem.PrivateKeyB;
+            }
+            else if (privateKeyLetter == 'C')
+            {
+                return TestItem.PrivateKeyC;
+            }
+            else if (privateKeyLetter == 'D')
+            {
+                return TestItem.PrivateKeyD;
+            }
+            else
+            {
+                throw new ArgumentException("PrivateKeyLetter should only be either A, B, C, or D.");
+            }
+        }
+        public Transaction TxFactorySigningKeyGasPriceNonce(char privateKeyLetter, UInt256 gasPrice, UInt256 nonce)
+        {
+            PrivateKey privateKey = PrivateKeyForLetter(privateKeyLetter);
+            return Build.A.Transaction.SignedAndResolved(privateKey).WithGasPrice(gasPrice).WithNonce(nonce).TestObject;
+        }
+        public Block BlockFactoryNumberParentHashTxs(int number, Keccak? parentHash, Transaction[] txs)
+        {
+            if (number == 0)
+            {
+                return Build.A.Block.Genesis.WithTransactions(txs).TestObject;
+            }
+            if (number > 0)
+            {
+                return Build.A.Block.WithNumber(number).WithParentHash(parentHash).WithTransactions(txs).TestObject;
+            }
+        }
+
+        public IEnumerable<Block> BlockBuilder(params KeyValuePair<int, Transaction[]>[] keyValuePairs)
+        {
+            Keccak parentHash = null;
+            bool firstIteration = true;
+            Block block;
+            foreach (KeyValuePair<int, Transaction[]> keyValuePair in keyValuePairs)
+            {
+                int blockNumber = keyValuePair.Key;
+                Transaction[] transactions = keyValuePair.Value;
+                block = BlockFactoryNumberParentHashTxs(blockNumber, firstIteration ? null : parentHash, transactions);
+                parentHash = block.Hash;
+                firstIteration = false;
+                yield return block;
+            }
+        }
         
         [Test]
         public void eth_gas_price_one_when_block_have_no_tx()
@@ -91,9 +147,11 @@ namespace Nethermind.JsonRpc.Test.Modules
             ResultWrapper<UInt256?> resultWrapper = blocktreeSetup.ethRpcModule.eth_gasPrice();
             resultWrapper.Data.Should().Be((UInt256?) 1);
         }
-
+        //rename functions
+        //refactor tests so that transactions and block creating logic can be reused - block factory!
+        //move all these tests to a new class
         [Test]
-        public void eth_gas_price_return_default_gasPrice_if_empty_blocks_at_end_greater_than_or_equal_to_eight()
+        public void Eth_gasPrice_ReturnDefaultGasPrice_EmptyBlocksAtEndGreaterThanOrEqualToEight()
         {
             Transaction[] transactions =
             {
@@ -118,7 +176,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             blocktreeSetup2.ethRpcModule.eth_gasPrice().Data.Should().Be((UInt256?) 1); //Last eight blocks empty, so gas price defaults to 1
         }
         [Test]
-        public void eth_gas_price_get_tx_from_min_blocks_if_num_tx_greater_than_or_equal_to_limit()
+        public void Eth_gasPrice_getTxFromMinBlocks_NumTxGreaterThanOrEqualToLimit()
         {
             Transaction[] transactions = {
                 //should i be worried about two tx with same hash?
