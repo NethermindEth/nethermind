@@ -757,7 +757,7 @@ namespace Nethermind.Mev.Test
         }
 
         [Test]
-        public async Task Should_be_able_to_handle_hundreds_of_smart_contract_state_changes()
+        public async Task Should_be_able_to_handle_hundreds_of_bundle_smart_contract_state_changes()
         {
             var chain = await CreateChain(1);
             chain.GasLimitCalculator.GasLimit = 30_000_000;
@@ -811,7 +811,7 @@ namespace Nethermind.Mev.Test
         }
         
         [Test]
-        public async Task Should_be_able_to_handle_hundreds_of_transaction_state_changes()
+        public async Task Should_be_able_to_handle_hundreds_of_bundle_transaction_state_changes()
         {
             var chain = await CreateChain(1);
             chain.GasLimitCalculator.GasLimit = 30_000_000;
@@ -823,7 +823,7 @@ namespace Nethermind.Mev.Test
                 BundleTransaction tx1 = Build.A.TypedTransaction<BundleTransaction>()
                     .WithNonce((UInt256)i)
                     .WithValue(1)
-                    //.WithTo(TestItem.AddressB)
+                    .WithTo(TestItem.AddressB)
                     .WithGasPrice(450 - (UInt256)i)
                     .WithGasLimit(GasCostOf.Transaction)
                     .SignedAndResolved(TestItem.PrivateKeyA)
@@ -832,7 +832,7 @@ namespace Nethermind.Mev.Test
                 BundleTransaction tx2 = Build.A.TypedTransaction<BundleTransaction>()
                     .WithNonce((UInt256)i)
                     .WithValue(1)
-                    //.WithTo(TestItem.AddressC)
+                    .WithTo(TestItem.AddressC)
                     .WithGasPrice(450 - (UInt256)i)
                     .WithGasLimit(GasCostOf.Transaction)
                     .SignedAndResolved(TestItem.PrivateKeyB)
@@ -842,7 +842,7 @@ namespace Nethermind.Mev.Test
                 BundleTransaction tx3 = Build.A.TypedTransaction<BundleTransaction>()
                     .WithNonce((UInt256)i)
                     .WithValue(1)
-                    //.WithTo(TestItem.AddressA)
+                    .WithTo(TestItem.AddressD)
                     .WithGasPrice(450 - (UInt256)i)
                     .WithGasLimit(GasCostOf.Transaction)
                     .SignedAndResolved(TestItem.PrivateKeyC)
@@ -862,6 +862,102 @@ namespace Nethermind.Mev.Test
             await chain.AddBlock(true);
 
             GetHashes(chain.BlockTree.Head!.Transactions).Count().Should().Be(1350);
+        }
+        
+        [Test]
+        public async Task Should_be_able_to_handle_hundreds_of_pool_smart_contract_state_changes()
+        {
+            var chain = await CreateChain(0);
+            chain.GasLimitCalculator.GasLimit = 30_000_000;
+
+            Address contractAddress = await Contracts.Deploy(chain, Contracts.SetableCode);
+            
+            for (int i = 0; i < 256; i++)
+            {
+                Transaction tx1 = Build.A.Transaction
+                    .WithNonce((UInt256)i)
+                    .WithValue(0)
+                    .WithTo(contractAddress)
+                    .WithData(Bytes.FromHexString(Contracts.SetableInvokeSet1))
+                    .WithGasPrice(300 - (UInt256)i)
+                    .WithGasLimit(30_000)
+                    .SignedAndResolved(TestItem.PrivateKeyA)
+                    .TestObject;
+
+                Transaction tx2 = Build.A.Transaction
+                    .WithNonce((UInt256)i)
+                    .WithValue(0)
+                    .WithTo(contractAddress)
+                    .WithData(Bytes.FromHexString(Contracts.SetableInvokeSet2))
+                    .WithGasPrice(300 - (UInt256)i)
+                    .WithGasLimit(30_000)
+                    .SignedAndResolved(TestItem.PrivateKeyB)
+                    .TestObject;
+
+                Transaction tx3 = Build.A.Transaction
+                    .WithNonce((UInt256)i + 1)
+                    .WithValue(0)
+                    .WithTo(contractAddress)
+                    .WithData(Bytes.FromHexString(Contracts.SetableInvokeSet3))
+                    .WithGasPrice(300 - (UInt256)i)
+                    .WithGasLimit(30_000)
+                    .SignedAndResolved(TestItem.PrivateKeyC)
+                    .TestObject;
+
+                await SendSignedTransaction(chain, tx1);
+                await SendSignedTransaction(chain, tx2);
+                await SendSignedTransaction(chain, tx3);
+            }
+
+            await chain.AddBlock(true);
+
+            GetHashes(chain.BlockTree.Head!.Transactions).Count().Should().Be(768);
+        }
+        
+        [Test]
+        public async Task Should_be_able_to_handle_hundreds_of_pool_transaction_state_changes()
+        {
+            var chain = await CreateChain(0);
+            chain.GasLimitCalculator.GasLimit = 15_000_000;
+            
+            // cannot do more than 256 per account because of future nonce retention (and only accounts A to C have ETH)
+            for (int i = 0; i < 238; i++)
+            {
+                Transaction tx1 = Build.A.Transaction
+                    .WithNonce((UInt256)i)
+                    .WithValue(1)
+                    .WithTo(TestItem.AddressB)
+                    .WithGasPrice(238 - (UInt256)i)
+                    .WithGasLimit(GasCostOf.Transaction)
+                    .SignedAndResolved(TestItem.PrivateKeyA)
+                    .TestObject;
+
+                Transaction tx2 = Build.A.Transaction
+                    .WithNonce((UInt256)i)
+                    .WithValue(1)
+                    .WithTo(TestItem.AddressC)
+                    .WithGasPrice(238 - (UInt256)i)
+                    .WithGasLimit(GasCostOf.Transaction)
+                    .SignedAndResolved(TestItem.PrivateKeyB)
+                    .TestObject;
+
+                Transaction tx3 = Build.A.Transaction
+                    .WithNonce((UInt256)i)
+                    .WithValue(1)
+                    .WithTo(TestItem.AddressD)
+                    .WithGasPrice(238 - (UInt256)i)
+                    .WithGasLimit(GasCostOf.Transaction)
+                    .SignedAndResolved(TestItem.PrivateKeyC)
+                    .TestObject;
+
+                await SendSignedTransaction(chain, tx1);
+                await SendSignedTransaction(chain, tx2);
+                await SendSignedTransaction(chain, tx3);
+            }
+            
+            await chain.AddBlock(true);
+
+            GetHashes(chain.BlockTree.Head!.Transactions).Count().Should().Be(714);
         }
     }
 }
