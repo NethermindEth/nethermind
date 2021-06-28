@@ -16,6 +16,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly IBlockFinder _blockFinder;
         private const int Percentile = 20;
         private readonly int _blocksToGoBack;
+        public static readonly int _noHeadBlockChangeErrorCode = 7;
         public GasPriceOracle(IBlockFinder blockFinder, int blocksToGoBack = 5)
         {
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
@@ -139,7 +140,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     {
                         resultWrapper = ResultWrapper<UInt256?>.Success(this._lastPrice);
                         #if DEBUG
-                            resultWrapper.ErrorCode = 7;
+                            resultWrapper.ErrorCode = _noHeadBlockChangeErrorCode;
                         #endif
                         return true;
                     }

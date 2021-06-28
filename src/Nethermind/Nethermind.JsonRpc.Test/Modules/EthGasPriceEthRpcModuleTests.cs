@@ -136,13 +136,16 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void eth_gas_price_should_use_last_tx_price_when_head_block_is_not_changed()
         {
+            const int normalErrorCode = 0;
+            int noHeadBlockChangeErrorCode = GasPriceOracle._noHeadBlockChangeErrorCode;
+            
             BlocktreeSetup blocktreeSetup = new BlocktreeSetup();
             ResultWrapper<UInt256?> firstResult = blocktreeSetup.ethRpcModule.eth_gasPrice();
             ResultWrapper<UInt256?> secondResult = blocktreeSetup.ethRpcModule.eth_gasPrice();
 
             firstResult.Data.Should().Be(secondResult.Data);
-            firstResult.ErrorCode.Should().Be(0);
-            secondResult.ErrorCode.Should().Be(7);
+            firstResult.ErrorCode.Should().Be(normalErrorCode);
+            secondResult.ErrorCode.Should().Be(noHeadBlockChangeErrorCode);
         }
 
         [Test]
