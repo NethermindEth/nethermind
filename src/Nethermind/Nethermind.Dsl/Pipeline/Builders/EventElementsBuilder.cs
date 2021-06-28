@@ -45,8 +45,8 @@ namespace Nethermind.Dsl.Pipeline.Builders
             if (key.Equals("EventSignature", StringComparison.InvariantCultureIgnoreCase) && operation.Equals("IS"))
             {
                 return new PipelineElement<LogEntry, LogEntry>(
-                    condition: (t => CheckEventSignature(t, value)), 
-                    transformData: (t => t));
+                    condition: t => CheckEventSignature(t, value), 
+                    transformData: t => t);
             }
 
             return operation switch

@@ -16,7 +16,7 @@ namespace Nethermind.Dsl.Pipeline
 
         public PipelineElement(Func<TIn, bool> condition, Func<TIn, TOut> transformData)
         {
-            _conditions = new List<Func<TIn, bool>> { condition } ?? throw new ArgumentNullException(nameof(condition));
+            _conditions = new List<Func<TIn, bool>> { condition };
             _transformData = transformData ?? throw new ArgumentNullException(nameof(transformData));
         }
 
