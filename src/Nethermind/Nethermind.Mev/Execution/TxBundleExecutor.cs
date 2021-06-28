@@ -60,7 +60,7 @@ namespace Nethermind.Mev.Execution
                 Beneficiary, 
                 parent.Difficulty,  
                 parent.Number + 1, 
-                parent.GasLimit, 
+                GetGasLimit(parent), 
                 timestamp ?? parent.Timestamp, 
                 Bytes.Empty)
             {
@@ -69,6 +69,8 @@ namespace Nethermind.Mev.Execution
 
             return new Block(header, bundle.Transactions, Array.Empty<BlockHeader>());
         }
+
+        protected virtual long GetGasLimit(BlockHeader parent) => parent.GasLimit;
 
         protected virtual Address Beneficiary => _signer?.Address ?? Address.Zero;
 

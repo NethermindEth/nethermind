@@ -853,8 +853,12 @@ namespace Nethermind.Mev.Test
                 bundleTxs.Add(tx3);
             }
 
-            SuccessfullySendBundle(chain, 1, bundleTxs.ToArray());
-
+            MevBundle? bunlde = SuccessfullySendBundle(chain, 1, bundleTxs.ToArray());
+            CancellationTokenSource cts = new CancellationTokenSource(TimeSpan.FromSeconds(4));
+            Task simulationTask = chain.BundlePool.WaitForSimulationToFinish(bunlde, cts.Token);
+            await simulationTask;
+            simulationTask.IsCompletedSuccessfully.Should().BeTrue();
+            
             await chain.AddBlock(true);
 
             GetHashes(chain.BlockTree.Head!.Transactions).Count().Should().Be(1350);

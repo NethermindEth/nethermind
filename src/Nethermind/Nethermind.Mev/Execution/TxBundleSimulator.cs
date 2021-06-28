@@ -60,6 +60,8 @@ namespace Nethermind.Mev.Execution
             }
         }
 
+        protected override long GetGasLimit(BlockHeader parent) => _gasLimitCalculator.GetGasLimit(parent);
+
         protected override SimulatedMevBundle BuildResult(MevBundle bundle, Block block, BundleBlockTracer tracer, Keccak resultStateRoot)
         {
             UInt256 eligibleGasFeePayment = UInt256.Zero;
@@ -218,6 +220,7 @@ namespace Nethermind.Mev.Execution
             public UInt256? BeneficiaryBalanceAfter { get; private set; }
             
             public bool Success { get; private set; }
+            public string? Error { get; private set; }
             
             public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
             {
@@ -229,6 +232,7 @@ namespace Nethermind.Mev.Execution
             {
                 GasSpent = gasSpent;
                 Success = false;
+                Error = error;
             }
 
             public void StartOperation(int depth, long gas, Instruction opcode, int pc)
