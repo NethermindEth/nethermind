@@ -39,7 +39,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 {
     public partial class EthRpcModuleTests
     {
-        /*
+        
         [Test]
         public void eth_gas_price_get_right_percentile_with_blockcount_equal_to_blocks_to_check()
         {
@@ -454,6 +454,5 @@ namespace Nethermind.JsonRpc.Test.Modules
                 );
             }
         }
-        */
     }
 }
