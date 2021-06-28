@@ -122,31 +122,15 @@ namespace Nethermind.JsonRpc.Test.Modules
                 ),
                 GetBlockWithNumberAndTxs(2, GetArray(
                     GetTxFromStrings("A", "5","1"),
-                    GetTxFromStrings("B", "7","1")
-                    )
-                ),
-                GetBlockWithNumberAndTxs(3, GetArray(
-                    GetTxFromStrings("B", "6", "2"),
-                    GetTxFromStrings("B", "9", "3")
-                    )
-                ),
-                GetBlockWithNumberAndTxs(4, GetArray(
-                    GetTxFromStrings("D", "8", "1"),
-                    GetTxFromStrings("C", "10","1")
-                    )
-                ),
-                GetBlockWithNumberAndTxs(5, GetArray(
-                    GetTxFromStrings("D", "11","2"),
-                    GetTxFromStrings("C", "12","2")
+                    GetTxFromStrings("B", "6","1")
                     )
                 )
             ); 
             BlocktreeSetup blocktreeSetup = new BlocktreeSetup(blocks);
             
-            ResultWrapper<UInt256?> resultWrapper = blocktreeSetup.ethRpcModule.eth_gasPrice();
+            ResultWrapper<UInt256?> resultWrapper = blocktreeSetup.ethRpcModule.eth_gasPrice(blockLimit: 2);
             resultWrapper.Data.Should()
-                .Be((UInt256?) 5); //Tx Prices: 3,4,5,6,7,8,9,10,11,12 Index: (10-1)/5 = 1.8, rounded to 2 => Gas Price should be 5
-        
+                .Be((UInt256?) 4); //Tx Prices: 3,4,5,6 Index: (4-1)/5 = 0.6, rounded to 1 => Gas Price should be 4
         }
 
         [Test]
