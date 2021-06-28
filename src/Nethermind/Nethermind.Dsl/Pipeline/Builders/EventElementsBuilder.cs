@@ -17,10 +17,10 @@
 
 using System;
 using System.Linq;
-using Nethermind.Abi;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Dsl.Pipeline.Sources;
 
 namespace Nethermind.Dsl.Pipeline.Builders
@@ -63,7 +63,21 @@ namespace Nethermind.Dsl.Pipeline.Builders
                 "!=" => new PipelineElement<LogEntry, LogEntry>(
                     condition: (t => t.GetType().GetProperty(key)?.GetValue(t)?.ToString()?.ToLowerInvariant() != value.ToLowerInvariant()),
                     transformData: (t => t)),
+                "CONTAINS" => new PipelineElement<LogEntry, LogEntry>(
+                    condition: (l => CheckIfContains(l, key, value)),
+                    transformData: (l => l)),
                 _ => null
+            };
+        }
+
+        private bool CheckIfContains(LogEntry logEntry,string key ,string value)
+        {
+            key = key.ToLowerInvariant();
+            return key switch
+            {
+                "data" => logEntry.Data.ToHexString().Contains(value),
+                "topics" => logEntry.Topics.Contains(new Keccak(value)),
+                _ => false
             };
         }
 
