@@ -34,7 +34,6 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
-using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -111,7 +110,6 @@ namespace Nethermind.AuRa.Test
                 transactionProcessor,
                 stateProvider,
                 new StorageProvider(trieStore, stateProvider, LimboLogs.Instance),
-                Substitute.For<ITxPool>(),
                 NullReceiptStorage.Instance,
                 LimboLogs.Instance,
                 Substitute.For<IBlockTree>(),

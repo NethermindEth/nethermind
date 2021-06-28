@@ -110,7 +110,6 @@ namespace Nethermind.AuRa.Test.Contract
                     TxProcessor,
                     State,
                     Storage,
-                    TxPool,
                     ReceiptStorage,
                     LimboLogs.Instance,
                     BlockTree,
