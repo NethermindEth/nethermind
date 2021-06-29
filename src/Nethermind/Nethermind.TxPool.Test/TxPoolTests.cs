@@ -321,7 +321,7 @@ namespace Nethermind.TxPool.Test
             
             foreach (Address address in transactions.Select(t => t.SenderAddress).Distinct())
             {
-                EnsureSenderBalance(address, 9999999999);
+                EnsureSenderBalance(address, UInt256.MaxValue);
             }
             
             foreach (Transaction transaction in transactions)
@@ -358,7 +358,7 @@ namespace Nethermind.TxPool.Test
 
             foreach (Address address in transactions.Select(t => t.SenderAddress).Distinct())
             {
-                EnsureSenderBalance(address, 9999999999);
+                EnsureSenderBalance(address, UInt256.MaxValue);
             }
             
             foreach (Transaction transaction in transactions)
@@ -468,6 +468,7 @@ namespace Nethermind.TxPool.Test
             }
 
             transactions[2].GasPrice = 5;
+            _txPool.GetPendingTransactions().Length.Should().Be(2);
             _txPool.SubmitTx(transactions[2], TxHandlingOptions.PersistentBroadcast).Should().Be(AddTxResult.Int256Overflow);
         }
 
@@ -477,7 +478,7 @@ namespace Nethermind.TxPool.Test
             _txPool = CreatePool();
             Transaction[] transactions = new Transaction[5];
             
-            EnsureSenderBalance(TestItem.AddressA, 9999999999);
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
             for (int i = 0; i < 5; i++)
             {
@@ -508,7 +509,7 @@ namespace Nethermind.TxPool.Test
             _txPool = CreatePool();
             Transaction[] transactions = new Transaction[5];
             
-            EnsureSenderBalance(TestItem.AddressA, 9999999999);
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
             for (int i = 0; i < 3; i++)
             {
@@ -578,7 +579,7 @@ namespace Nethermind.TxPool.Test
         {
             _txPool = CreatePool();
             Transaction[] transactions = new Transaction[5];
-            EnsureSenderBalance(TestItem.AddressA, GasCostOf.Transaction * 21);
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
             for (int i = 0; i < 5; i++)
             {
@@ -967,7 +968,7 @@ namespace Nethermind.TxPool.Test
             
             foreach (Address address in transactions.Select(t => t.SenderAddress).Distinct())
             {
-                EnsureSenderBalance(address, (UInt256)transactionsPerPeer * GasCostOf.Transaction * 100);
+                EnsureSenderBalance(address, UInt256.MaxValue);
             }
             
             foreach (var transaction in transactions)
