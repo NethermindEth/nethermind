@@ -102,7 +102,7 @@ namespace Nethermind.TxPool.Collections
         }
 
         /// <summary>
-        /// Gets number of items in requested group.
+        /// Gets all items of requested group.
         /// </summary>
         [MethodImpl(MethodImplOptions.Synchronized)]
         public TValue[] GetBucketSnapshot(TGroupKey group)
