@@ -17,7 +17,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private const int Percentile = 20;
         private readonly int _blocksToGoBack;
         public static readonly int _noHeadBlockChangeErrorCode = 7;
-        public GasPriceOracle(IBlockFinder blockFinder, int blocksToGoBack = 5)
+        public GasPriceOracle(IBlockFinder blockFinder, int blocksToGoBack = 20)
         {
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
             _blocksToGoBack = blocksToGoBack;
@@ -33,7 +33,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 for (int index = 0; index < length && (maxCount == null || sortedSet.Count < maxCount); index++)
                 {
                     Transaction transaction = block.Transactions[index];
-                    if (!transaction.IsEip1559 && transaction.GasPrice >= ignoreUnder)
+                    if (!transaction.IsEip1559 && transaction.GasPrice != null && transaction.GasPrice >= ignoreUnder) //how should i set to be null?
                     {
                         sortedSet.Add(transaction.GasPrice);
                         added++;
