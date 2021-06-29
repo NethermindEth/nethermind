@@ -166,7 +166,7 @@ namespace Nethermind.Mev.Test
             MevBundle replacingBundle = new(replacedBundle.BlockNumber, replacedBundle.Transactions, 10, 100);
             test.BundlePool.AddBundle(replacingBundle).Should().BeTrue();
 
-            test.BundlePool.GetBundles(5, 1).Should().BeEquivalentTo(replacingBundle);
+            test.BundlePool.GetBundles(5, 15).Should().BeEquivalentTo(replacingBundle);
         }
         
         [Test]
