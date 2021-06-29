@@ -51,7 +51,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         ResultWrapper<UInt256?> eth_hashrate();
         
         [JsonRpcMethod(IsImplemented = false, Description = "Returns miner's gas price", IsSharable = true)]
-        ResultWrapper<UInt256?> eth_gasPrice(UInt256? ignoreUnder = null, int? blockLimit = null);
+        ResultWrapper<UInt256?> eth_gasPrice(UInt256? ignoreUnder = null);
         
         [JsonRpcMethod(IsImplemented = false, Description = "Returns accounts", IsSharable = true)]
         ResultWrapper<IEnumerable<Address>> eth_accounts();

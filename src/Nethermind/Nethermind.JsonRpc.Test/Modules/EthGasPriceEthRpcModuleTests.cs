@@ -123,9 +123,9 @@ namespace Nethermind.JsonRpc.Test.Modules
                     )
                 )
             ); 
-            BlocktreeSetup blocktreeSetup = new BlocktreeSetup(blocks);
+            BlocktreeSetup blocktreeSetup = new BlocktreeSetup(blocks: blocks, blockLimit: 2);
             
-            ResultWrapper<UInt256?> resultWrapper = blocktreeSetup.ethRpcModule.eth_gasPrice(blockLimit: 2);
+            ResultWrapper<UInt256?> resultWrapper = blocktreeSetup.ethRpcModule.eth_gasPrice();
             resultWrapper.Data.Should().Be((UInt256?) 4); 
             //Tx Prices: 3,4,5,6 Index: (4-1)/5 rounds to 1 Gas Price: 4
         }
@@ -218,8 +218,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                     )
                 ));
             
-            BlocktreeSetup blocktreeSetup = new BlocktreeSetup(blocks);
-            ResultWrapper<UInt256?> resultWrapper = blocktreeSetup.ethRpcModule.eth_gasPrice(blockLimit:2);
+            BlocktreeSetup blocktreeSetup = new BlocktreeSetup(blocks: blocks, blockLimit: 2);
+            ResultWrapper<UInt256?> resultWrapper = blocktreeSetup.ethRpcModule.eth_gasPrice();
             
             resultWrapper.Data.Should().Be((UInt256?) 1); 
             //Tx Prices: 0,1,2,3,4 Index: (5 - 1)/5 rounds to 1 Gas Price: 1
@@ -246,8 +246,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                 ));
 
 
-            BlocktreeSetup blocktreeSetup = new BlocktreeSetup(blocks);
-            ResultWrapper<UInt256?> resultWrapper = blocktreeSetup.ethRpcModule.eth_gasPrice(blockLimit:4);
+            BlocktreeSetup blocktreeSetup = new BlocktreeSetup(blocks: blocks, blockLimit: 4);
+            ResultWrapper<UInt256?> resultWrapper = blocktreeSetup.ethRpcModule.eth_gasPrice();
             
             resultWrapper.Data.Should().Be((UInt256?) 4); 
             //Tx prices: 3,4,5,6,7,8 Index: (6-1)/5 = 1 Gas Price: 4
@@ -389,13 +389,14 @@ namespace Nethermind.JsonRpc.Test.Modules
             public BlockTree blockTree;
             public EthRpcModule ethRpcModule;
 
-            public BlocktreeSetup(Block[] blocks = null, bool addBlocks = false, IGasPriceOracle gasPriceOracle = null)
+            public BlocktreeSetup(Block[] blocks = null, bool addBlocks = false, IGasPriceOracle gasPriceOracle = null, 
+                int? blockLimit = null)
             {
                 GetBlocks(blocks, addBlocks);
 
                 InitializeAndAddToBlockTree();
 
-                GetEthRpcModule(gasPriceOracle);
+                GetEthRpcModule(gasPriceOracle, blockLimit);
             }
 
             private void InitializeAndAddToBlockTree()
@@ -456,7 +457,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 );
             }
 
-            private void GetEthRpcModule(IGasPriceOracle gasPriceOracle = null)
+            private void GetEthRpcModule(IGasPriceOracle? gasPriceOracle, int? blockLimit)
             {
                 ethRpcModule = new EthRpcModule
                 (
@@ -469,7 +470,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                     Substitute.For<IWallet>(),
                     Substitute.For<ILogManager>(),
                     Substitute.For<ISpecProvider>(),
-                    gasPriceOracle
+                    gasPriceOracle,
+                    blockLimit
                 );
             }
             private void AddExtraBlocksToArray(Block[] blocks)

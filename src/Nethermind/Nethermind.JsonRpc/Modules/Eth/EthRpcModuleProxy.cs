@@ -78,7 +78,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             throw new NotSupportedException();
         }
 
-        public ResultWrapper<UInt256?> eth_gasPrice(UInt256? ignoreUnder = null, int? blockLimit = null)
+        public ResultWrapper<UInt256?> eth_gasPrice(UInt256? ignoreUnder = null)
         {
             throw new NotSupportedException();
         }
