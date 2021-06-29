@@ -31,7 +31,6 @@ using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
 using Nethermind.Trie.Pruning;
-using Nethermind.TxPool;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Tracing
@@ -69,7 +68,6 @@ namespace Nethermind.Blockchain.Test.Tracing
                 transactionProcessor,
                 stateProvider,
                 storageProvider,
-                NullTxPool.Instance,
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,
                 LimboLogs.Instance);

@@ -26,8 +26,7 @@ namespace Nethermind.TxPool
     {
         int GetPendingTransactionsCount();
         Transaction[] GetPendingTransactions();
-        Transaction[] GetOwnPendingTransactions();
-        
+
         /// <summary>
         /// Grouped by sender address, sorted by nonce and later tx pool sorting
         /// </summary>
@@ -35,16 +34,13 @@ namespace Nethermind.TxPool
         IDictionary<Address, Transaction[]> GetPendingTransactionsBySender();
         void AddPeer(ITxPoolPeer peer);
         void RemovePeer(PublicKey nodeId);
-        AddTxResult AddTransaction(Transaction tx, TxHandlingOptions handlingOptions);
-        bool RemoveTransaction(Keccak? hash, bool removeBelowThisTxNonce = false);
-        bool IsInHashCache(Keccak? hash);
+        AddTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions);
+        bool RemoveTransaction(Keccak? hash);
+        bool IsKnown(Keccak? hash);
         bool TryGetPendingTransaction(Keccak hash, out Transaction? transaction);
-        UInt256 ReserveOwnTransactionNonce(Address address);
+        UInt256 ReserveOwnTransactionNonce(Address address); // TODO: this should be moved to a signer component, outside of TX pool
         event EventHandler<TxEventArgs> NewDiscovered;
         event EventHandler<TxEventArgs> NewPending;
         event EventHandler<TxEventArgs> RemovedPending;
-        
-        public uint FutureNonceRetention { get; }
-        long? BlockGasLimit { get; set; }
     }
 }

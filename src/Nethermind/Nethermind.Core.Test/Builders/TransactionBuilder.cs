@@ -89,7 +89,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
         
-        public TransactionBuilder<T> WithFeeCap(UInt256 feeCap)
+        public TransactionBuilder<T> WithMaxFeePerGas(UInt256 feeCap)
         {
             TestObjectInternal.DecodedMaxFeePerGas = feeCap;
             return this;
@@ -153,20 +153,12 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
         
-        private EthereumEcdsa _ecdsa = new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance);
-        
-        public TransactionBuilder<T> SignedAndResolved(PrivateKey privateKey)
+        public TransactionBuilder<T> SignedAndResolved(PrivateKey? privateKey = null)
         {
-            _ecdsa.Sign(privateKey, TestObjectInternal, true);
-            TestObjectInternal.SenderAddress = privateKey.Address;
-            return this;
-        }
-        
-        public TransactionBuilder<T> SignedAndResolved()
-        {
+            privateKey ??= TestItem.IgnoredPrivateKey;
             EthereumEcdsa ecdsa = new EthereumEcdsa(TestObjectInternal.ChainId ?? ChainId.Mainnet, LimboLogs.Instance);
-            ecdsa.Sign(TestItem.IgnoredPrivateKey, TestObjectInternal, true);
-            TestObjectInternal.SenderAddress = TestItem.IgnoredPrivateKey.Address;
+            ecdsa.Sign(privateKey, TestObjectInternal, true);
+            TestObjectInternal.SenderAddress = privateKey.Address;
             return this;
         }
 

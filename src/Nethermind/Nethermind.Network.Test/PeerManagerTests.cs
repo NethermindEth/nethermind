@@ -53,9 +53,18 @@ namespace Nethermind.Network.Test
         }
 
         private const string enodesString = enode1String + "," + enode2String;
-        private const string enode1String = "enode://22222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222@51.141.78.53:30303";
-        private const string enode2String = "enode://1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b@52.141.78.53:30303";
-                                            
+
+        private const string enode1String =
+            "enode://22222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222@51.141.78.53:30303";
+
+        private const string enode2String =
+            "enode://1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b@52.141.78.53:30303";
+
+        private const string enode3String =
+            "enode://3333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333b@some.url";
+
+        private const string enode4String =
+            "enode://3333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333b@some.url:434";
 
         [Test, Retry(10)]
         public async Task Will_connect_to_a_candidate_node()
@@ -78,54 +87,78 @@ namespace Nethermind.Network.Test
             await Task.Delay(_travisDelayLong * 10);
             Assert.AreEqual(25, ctx.RlpxPeer.ConnectAsyncCallsCount);
         }
-        
+
         [Test]
         public async Task Will_discard_a_duplicate_incoming_session()
         {
             await using Context ctx = new Context();
             ctx.PeerManager.Init();
-            Session session1 = new Session(30303, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
-            Session session2 = new Session(30303, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            Session session1 = new Session(30303, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance,
+                LimboLogs.Instance);
+            Session session2 = new Session(30303, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance,
+                LimboLogs.Instance);
             session1.RemoteHost = "1.2.3.4";
             session1.RemotePort = 12345;
             session1.RemoteNodeId = TestItem.PublicKeyA;
             session2.RemoteHost = "1.2.3.4";
             session2.RemotePort = 12345;
             session2.RemoteNodeId = TestItem.PublicKeyA;
-            
+
             ctx.RlpxPeer.CreateIncoming(session1, session2);
             ctx.PeerManager.ActivePeers.Count.Should().Be(1);
         }
-        
+
+        [Test]
+        public async Task Will_return_exception_in_port()
+        {
+            Assert.Throws<ArgumentException>(delegate
+            {
+                Enode enode = new Enode(enode3String);
+            });
+        }
+
+        [Test]
+        public async Task Will_return_exception_in_dns()
+        {
+            Assert.Throws<ArgumentException>(delegate
+            {
+                Enode enode = new Enode(enode4String);
+            });
+        }
+
         [Test]
         public async Task Will_accept_static_connection()
         {
             await using Context ctx = new Context();
             ctx.NetworkConfig.ActivePeersMaxCount = 1;
             ctx.StaticNodesManager.IsStatic(enode2String).Returns(true);
-            
+
             ctx.PeerManager.Init();
             var enode1 = new Enode(enode1String);
             Node node1 = new Node(enode1.PublicKey, new IPEndPoint(enode1.HostIp, enode1.Port));
-            Session session1 = new Session(30303, node1, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
-            
+            Session session1 = new Session(30303, node1, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance,
+                LimboLogs.Instance);
+
             var enode2 = new Enode(enode2String);
-            Node node2 = new Node(enode2.PublicKey, new IPEndPoint(enode2.HostIp, enode2.Port));            
-            Session session2 = new Session(30303, node2, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
-            
+            Node node2 = new Node(enode2.PublicKey, new IPEndPoint(enode2.HostIp, enode2.Port));
+            Session session2 = new Session(30303, node2, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance,
+                LimboLogs.Instance);
+
             ctx.RlpxPeer.CreateIncoming(session1, session2);
             ctx.PeerManager.ActivePeers.Count.Should().Be(2);
         }
-        
+
         [TestCase(true, ConnectionDirection.In)]
         [TestCase(false, ConnectionDirection.In)]
         // [TestCase(true, ConnectionDirection.Out)] // cannot create an active peer waiting for the test
         [TestCase(false, ConnectionDirection.Out)]
-        public async Task Will_agree_on_which_session_to_disconnect_when_connecting_at_once(bool shouldLose, ConnectionDirection firstDirection)
+        public async Task Will_agree_on_which_session_to_disconnect_when_connecting_at_once(bool shouldLose,
+            ConnectionDirection firstDirection)
         {
             await using Context ctx = new Context();
             ctx.PeerManager.Init();
-            Session session1 = new Session(30303, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            Session session1 = new Session(30303, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance,
+                LimboLogs.Instance);
             session1.RemoteHost = "1.2.3.4";
             session1.RemotePort = 12345;
             session1.RemoteNodeId = shouldLose ? TestItem.PublicKeyA : TestItem.PublicKeyC;
@@ -134,7 +167,7 @@ namespace Nethermind.Network.Test
             {
                 ctx.RlpxPeer.CreateIncoming(session1);
                 await ctx.RlpxPeer.ConnectAsync(session1.Node);
-                if(session1.State < SessionState.HandshakeComplete) session1.Handshake(session1.Node.Id);
+                if (session1.State < SessionState.HandshakeComplete) session1.Handshake(session1.Node.Id);
                 (ctx.PeerManager.ActivePeers.First().OutSession?.IsClosing ?? true).Should().Be(shouldLose);
                 (ctx.PeerManager.ActivePeers.First().InSession?.IsClosing ?? true).Should().Be(!shouldLose);
             }
@@ -265,7 +298,8 @@ namespace Nethermind.Network.Test
         }
 
         [Test, Retry(3)]
-        public async Task Will_fill_up_over_and_over_again_on_disconnects_and_when_ids_keep_changing_with_max_candidates_40()
+        public async Task
+            Will_fill_up_over_and_over_again_on_disconnects_and_when_ids_keep_changing_with_max_candidates_40()
         {
             await using Context ctx = new Context();
             ctx.NetworkConfig.MaxCandidatePeerCount = 40;
@@ -288,7 +322,8 @@ namespace Nethermind.Network.Test
         }
 
         [Test, Retry(3)]
-        public async Task Will_fill_up_over_and_over_again_on_disconnects_and_when_ids_keep_changing_with_max_candidates_40_with_random_incoming_connections()
+        public async Task
+            Will_fill_up_over_and_over_again_on_disconnects_and_when_ids_keep_changing_with_max_candidates_40_with_random_incoming_connections()
         {
             await using Context ctx = new Context();
             ctx.NetworkConfig.MaxCandidatePeerCount = 40;
@@ -396,7 +431,7 @@ namespace Nethermind.Network.Test
             await Task.Delay(_travisDelay);
             ctx.PeerManager.RemovePeer(node).Should().BeFalse();
         }
-        
+
         private class Context : IAsyncDisposable
         {
             public RlpxMock RlpxPeer { get; }
@@ -416,7 +451,8 @@ namespace Nethermind.Network.Test
                 ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
                 Stats = new NodeStatsManager(timerFactory, LimboLogs.Instance);
                 Storage = new InMemoryStorage();
-                PeerLoader = new PeerLoader(new NetworkConfig(), new DiscoveryConfig(), Stats, Storage, LimboLogs.Instance);
+                PeerLoader = new PeerLoader(new NetworkConfig(), new DiscoveryConfig(), Stats, Storage,
+                    LimboLogs.Instance);
                 NetworkConfig = new NetworkConfig();
                 NetworkConfig.ActivePeersMaxCount = 25;
                 NetworkConfig.PeersPersistenceInterval = 50;
@@ -424,12 +460,12 @@ namespace Nethermind.Network.Test
                 PeerManager = new PeerManager(RlpxPeer, DiscoveryApp, Stats, Storage, PeerLoader, NetworkConfig,
                     LimboLogs.Instance, StaticNodesManager);
             }
-            
+
             public void SetupPersistedPeers(int count)
             {
                 Storage.UpdateNodes(CreateNodes(count));
             }
-            
+
             public void CreateIncomingSessions()
             {
                 Session[] clone;
@@ -441,7 +477,7 @@ namespace Nethermind.Network.Test
 
                 RlpxPeer.CreateIncoming(clone);
             }
-            
+
             public void HandshakeAllSessions()
             {
                 Session[] clone;
@@ -455,7 +491,7 @@ namespace Nethermind.Network.Test
                     session.Handshake(new PrivateKeyGenerator().Generate().PublicKey);
                 }
             }
-            
+
             public void CreateNewIncomingSessions(int count)
             {
                 for (int i = 0; i < count; i++)
@@ -463,7 +499,7 @@ namespace Nethermind.Network.Test
                     RlpxPeer.CreateRandomIncoming();
                 }
             }
-            
+
             public List<NetworkNode> CreateNodes(int count)
             {
                 var nodes = new List<NetworkNode>();
@@ -482,7 +518,9 @@ namespace Nethermind.Network.Test
             {
                 for (int i = 0; i < count; i++)
                 {
-                    DiscoveryApp.NodeDiscovered += Raise.EventWith(new NodeEventArgs(new Node(new PrivateKeyGenerator().Generate().PublicKey, "1.2.3.4", 1234)));
+                    DiscoveryApp.NodeDiscovered +=
+                        Raise.EventWith(new NodeEventArgs(new Node(new PrivateKeyGenerator().Generate().PublicKey,
+                            "1.2.3.4", 1234)));
                 }
             }
 
@@ -500,7 +538,7 @@ namespace Nethermind.Network.Test
                     session.MarkDisconnected(DisconnectReason.TooManyPeers, DisconnectType.Remote, "test");
                 }
             }
-            
+
             public string GenerateEnode(PrivateKeyGenerator generator = null)
             {
                 generator ??= new PrivateKeyGenerator();
@@ -540,7 +578,8 @@ namespace Nethermind.Network.Test
                     ConnectAsyncCallsCount++;
                 }
 
-                var session = new Session(30313, node, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+                var session = new Session(30313, node, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance,
+                    LimboLogs.Instance);
                 lock (_sessions)
                 {
                     _sessions.Add(session);
@@ -552,7 +591,8 @@ namespace Nethermind.Network.Test
 
             public void CreateRandomIncoming()
             {
-                var session = new Session(30313, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+                var session = new Session(30313, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance,
+                    LimboLogs.Instance);
                 lock (_sessions)
                 {
                     _sessions.Add(session);
@@ -580,7 +620,8 @@ namespace Nethermind.Network.Test
                 List<Session> incomingSessions = new List<Session>();
                 foreach (Session session in sessions)
                 {
-                    var sessionIn = new Session(30313, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+                    var sessionIn = new Session(30313, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance,
+                        LimboLogs.Instance);
                     sessionIn.RemoteHost = session.RemoteHost;
                     sessionIn.RemotePort = session.RemotePort;
                     SessionCreated?.Invoke(this, new SessionEventArgs(sessionIn));
@@ -604,7 +645,8 @@ namespace Nethermind.Network.Test
 
         private class InMemoryStorage : INetworkStorage
         {
-            private ConcurrentDictionary<PublicKey, NetworkNode> _nodes = new ConcurrentDictionary<PublicKey, NetworkNode>();
+            private ConcurrentDictionary<PublicKey, NetworkNode> _nodes =
+                new ConcurrentDictionary<PublicKey, NetworkNode>();
 
             public NetworkNode[] GetPersistedNodes()
             {
@@ -647,6 +689,5 @@ namespace Nethermind.Network.Test
                 return _pendingChanges;
             }
         }
-
     }
 }

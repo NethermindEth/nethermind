@@ -19,7 +19,7 @@ using Nethermind.Trie;
 
 namespace Nethermind.Synchronization.LesSync
 {
-    class ChtProofCollector: ProofCollector
+    class ChtProofCollector : ProofCollector
     {
         long _fromLevel;
         long _level;

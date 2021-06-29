@@ -42,6 +42,11 @@ namespace Nethermind.Core.Caching
 
         public LruCache(int maxCapacity, int startCapacity, string name)
         {
+            if (maxCapacity < 1) 
+            {
+                throw new ArgumentOutOfRangeException();
+            }
+
             _maxCapacity = maxCapacity;
             _cacheMap = typeof(TKey) == typeof(byte[])
                 ? new Dictionary<TKey, LinkedListNode<LruCacheItem>>((IEqualityComparer<TKey>)Bytes.EqualityComparer)

@@ -25,7 +25,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.TxPool;
 
 namespace Nethermind.Blockchain.Producers
 {
@@ -54,7 +53,7 @@ namespace Nethermind.Blockchain.Producers
                 blockTree,
                 blockProcessingQueue,
                 stateProvider,
-                FollowOtherMiners.Instance,
+                new FollowOtherMiners(specProvider!),
                 timestamper,
                 specProvider,
                 logManager)
@@ -69,7 +68,8 @@ namespace Nethermind.Blockchain.Producers
             {
                 try
                 {
-                    if (!await TryProduceNewBlock(CancellationToken.None))
+                    Block? block = await TryProduceNewBlock(CancellationToken.None);
+                    if (block is null)
                     {
                         _newBlockLock.Release();
                     }
@@ -87,7 +87,7 @@ namespace Nethermind.Blockchain.Producers
             _isRunning = true;
             _trigger.TriggerBlockProduction += TriggerOnTriggerBlockProduction;
             BlockTree.NewHeadBlock += OnNewHeadBlock;
-            _lastProducedBlock = DateTime.UtcNow;
+            _lastProducedBlockDateTime = DateTime.UtcNow;
         }
 
         public override async Task StopAsync()

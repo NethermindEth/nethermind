@@ -46,7 +46,7 @@ namespace Nethermind.Evm.Test.Tracing
 
             for (int i = 0; i < block.Transactions.Length; i++)
             {
-                ((IBlockTracer) blockTracer).StartNewTxTrace(TestItem.KeccakA);
+                ((IBlockTracer) blockTracer).StartNewTxTrace(Build.A.Transaction.TestObject);
                 ((IBlockTracer) blockTracer).EndTxTrace();    
             }
             
@@ -60,13 +60,13 @@ namespace Nethermind.Evm.Test.Tracing
             block = block.WithReplacedBody(new BlockBody(new Transaction[3], new BlockHeader[0]));
 
             GethLikeBlockTracer blockTracer = new(GethTraceOptions.Default);
-            ((IBlockTracer) blockTracer).StartNewTxTrace(TestItem.KeccakA);
+            ((IBlockTracer) blockTracer).StartNewTxTrace(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject);
             ((IBlockTracer) blockTracer).EndTxTrace();
 
-            ((IBlockTracer) blockTracer).StartNewTxTrace(TestItem.KeccakB);
+            ((IBlockTracer) blockTracer).StartNewTxTrace(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).TestObject);
             ((IBlockTracer) blockTracer).EndTxTrace();
 
-            ((IBlockTracer) blockTracer).StartNewTxTrace(TestItem.KeccakC);
+            ((IBlockTracer) blockTracer).StartNewTxTrace(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).TestObject);
             ((IBlockTracer) blockTracer).EndTxTrace();
 
             Assert.NotNull(blockTracer.BuildResult().First(), "0");
@@ -88,7 +88,7 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.Throws<InvalidOperationException>(() => ((IBlockTracer)blockTracer1).EndTxTrace());
             
             GethLikeBlockTracer blockTracer2 = new(GethTraceOptions.Default);
-            ((IBlockTracer)blockTracer2).StartNewTxTrace(block.Transactions[0].Hash);
+            ((IBlockTracer)blockTracer2).StartNewTxTrace(block.Transactions[0]);
             Assert.DoesNotThrow(() => ((IBlockTracer)blockTracer2).EndTxTrace());
             Assert.Throws<InvalidOperationException>(() => ((IBlockTracer)blockTracer2).EndTxTrace());
         }

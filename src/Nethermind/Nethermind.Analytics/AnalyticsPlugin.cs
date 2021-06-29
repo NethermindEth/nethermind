@@ -19,8 +19,8 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Core.PubSub;
 using Nethermind.JsonRpc.Modules;
-using Nethermind.PubSub;
 using Nethermind.TxPool;
 
 namespace Nethermind.Analytics

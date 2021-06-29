@@ -81,7 +81,6 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
                 transactionProcessor,
                 stateProvider,
                 storageProvider,
-                NullTxPool.Instance,
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,
                 LimboLogs.Instance);

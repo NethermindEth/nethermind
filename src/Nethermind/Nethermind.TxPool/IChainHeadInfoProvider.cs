@@ -15,9 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
-using Nethermind.State;
 
 namespace Nethermind.TxPool
 {
@@ -25,7 +26,12 @@ namespace Nethermind.TxPool
     {
         IChainHeadSpecProvider SpecProvider { get; }
         
-        IReadOnlyStateProvider ReadOnlyStateProvider { get; }
-        UInt256 BaseFee { get; }
+        IAccountStateProvider AccountStateProvider { get; }
+
+        public long? BlockGasLimit { get; }
+        
+        public UInt256 CurrentBaseFee { get; }
+        
+        event EventHandler<BlockReplacementEventArgs> HeadChanged;
     }
 }

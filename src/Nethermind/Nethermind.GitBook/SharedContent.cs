@@ -53,7 +53,9 @@ namespace Nethermind.GitBook
                 "Object[]" => "Array",
                 "String" => "String",
                 "String[]" => "Array",
+                "UInt64" => "Quantity",
                 "UInt256" => "Quantity",
+                "UInt256[]" => "Array",
                 _ => $"{type.Name} object",
             };
             return replacedType;
@@ -80,8 +82,10 @@ namespace Nethermind.GitBook
                     moduleBuilder.AppendLine();
                     continue;
                 }
+                
+                Type typeToDescribe = type.IsArray ? type.GetElementType() : type;
 
-                PropertyInfo[] properties = type.GetProperties();
+                PropertyInfo[] properties = typeToDescribe.GetProperties();
 
                 moduleBuilder.AppendLine("| Field name | Type |");
                 moduleBuilder.AppendLine("| :--- | :--- |");

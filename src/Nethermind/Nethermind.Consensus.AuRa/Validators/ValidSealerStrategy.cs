@@ -16,6 +16,7 @@
 
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Consensus.AuRa.Validators
 {

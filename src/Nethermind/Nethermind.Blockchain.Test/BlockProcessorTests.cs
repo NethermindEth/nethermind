@@ -31,7 +31,6 @@ using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
-using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 using System.Security;
@@ -39,6 +38,8 @@ using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc.Test.Modules;
 using System.Threading.Tasks;
 using System.Threading;
+using FluentAssertions;
+using Nethermind.Core.Test.Blockchain;
 
 namespace Nethermind.Blockchain.Test
 {
@@ -60,7 +61,6 @@ namespace Nethermind.Blockchain.Test
                 transactionProcessor,
                 stateProvider,
                 new StorageProvider(trieStore, stateProvider, LimboLogs.Instance),
-                NullTxPool.Instance,
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,
                 LimboLogs.Instance);
@@ -93,7 +93,6 @@ namespace Nethermind.Blockchain.Test
                 transactionProcessor,
                 stateProvider,
                 new StorageProvider(trieStore, stateProvider, LimboLogs.Instance),
-                NullTxPool.Instance,
                 NullReceiptStorage.Instance,
                 witnessCollector,
                 LimboLogs.Instance);
@@ -124,7 +123,6 @@ namespace Nethermind.Blockchain.Test
                 transactionProcessor,
                 stateProvider,
                 new StorageProvider(trieStore, stateProvider, LimboLogs.Instance),
-                NullTxPool.Instance,
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,
                 LimboLogs.Instance);
@@ -174,7 +172,7 @@ namespace Nethermind.Blockchain.Test
 
             var branchLength = blocksAmount + (int)testRpc.BlockTree.BestKnownNumber + 1;
             ((BlockTree)testRpc.BlockTree).AddBranch(branchLength, (int)testRpc.BlockTree.BestKnownNumber);
-            await suggestedBlockResetEvent.WaitAsync();
+            (await suggestedBlockResetEvent.WaitAsync(TestBlockchain.DefaultTimeout)).Should().BeTrue();
             Assert.AreEqual(branchLength - 1, (int)testRpc.BlockTree.BestKnownNumber);
         }
     }

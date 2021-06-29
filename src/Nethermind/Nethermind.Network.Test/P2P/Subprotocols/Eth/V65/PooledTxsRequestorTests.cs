@@ -88,7 +88,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         {
             _response = new List<Keccak>();
             ITxPool txPool = Substitute.For<ITxPool>();
-            txPool.IsInHashCache(Arg.Any<Keccak>()).Returns(true);
+            txPool.IsKnown(Arg.Any<Keccak>()).Returns(true);
             _requestor = new PooledTxsRequestor(txPool);
             
             _request = new List<Keccak>{TestItem.KeccakA, TestItem.KeccakB};

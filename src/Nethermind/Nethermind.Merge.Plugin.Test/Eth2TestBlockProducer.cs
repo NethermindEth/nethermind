@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -16,6 +16,7 @@
 // 
 
 using System;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Consensus;
@@ -30,7 +31,9 @@ using Nethermind.State;
 namespace Nethermind.Merge.Plugin.Test
 {
     internal class Eth2TestBlockProducer : Eth2BlockProducer, ITestBlockProducer
-    {  
+    {
+        private Block? _lastProducedBlock;
+
         public Eth2TestBlockProducer(
             ITxSource txSource, 
             IBlockchainProcessor processor, 
@@ -39,18 +42,23 @@ namespace Nethermind.Merge.Plugin.Test
             IStateProvider stateProvider, 
             IGasLimitCalculator gasLimitCalculator, 
             ISigner signer,
-            ISpecProvider specProvider,
+            ITimestamper timestamper,
+            IStateReader stateReader,
+            ISpecProvider specProvider,			
             ILogManager logManager) 
-            : base(txSource, processor, blockTree, blockProcessingQueue, stateProvider, gasLimitCalculator, signer, specProvider, logManager)
+            : base(txSource, processor, blockTree, blockProcessingQueue, stateProvider, gasLimitCalculator, signer, timestamper, specProvider, logManager)
         {
         }
-
-        protected override Block? BlockProduced 
+        
+        public Block? LastProducedBlock
         {
-            get => base.BlockProduced;
-            set
+            get
             {
-                base.BlockProduced = value;
+                return _lastProducedBlock!;
+            }
+            private set
+            {
+                _lastProducedBlock = value;
                 if (value != null)
                 {
                     LastProducedBlockChanged?.Invoke(this, new BlockEventArgs(value));
@@ -58,11 +66,9 @@ namespace Nethermind.Merge.Plugin.Test
             }
         }
 
-        public Block LastProducedBlock => BlockProduced!;
-
         public event EventHandler<BlockEventArgs> LastProducedBlockChanged = null!;
         
-        public void BuildNewBlock()
+        public Task<bool> BuildNewBlock()
         {
             throw new NotSupportedException();
         }
