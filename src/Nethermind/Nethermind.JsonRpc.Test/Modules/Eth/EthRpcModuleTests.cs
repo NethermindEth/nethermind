@@ -458,8 +458,6 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0xabcd\",\"id\":67}", serialized);
         }
 
-
-
         [Test]
         public async Task Eth_mining_true()
         {
@@ -687,8 +685,6 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             Assert.AreEqual(expected, serialized);
         }
         
-
-
 
         private static (byte[] ByteCode, AccessListItemForRpc[] AccessList) GetTestAccessList(long loads = 2, bool allowSystemUser = true)
         {
