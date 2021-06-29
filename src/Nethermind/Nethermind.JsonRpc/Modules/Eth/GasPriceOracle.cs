@@ -15,6 +15,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private Block? _lastHeadBlock;
         private readonly IBlockFinder _blockFinder;
         private readonly int _blocksToGoBack;
+        private readonly int _txThreshold;
         public const int NoHeadBlockChangeErrorCode = 7;
         private const int Percentile = 20;
         
@@ -22,7 +23,14 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
             _blocksToGoBack = blocksToGoBack;
+            _txThreshold = SetTxThreshold();
         }
+
+        private int SetTxThreshold()
+        {
+            return _blocksToGoBack * 2;
+        }
+
         private bool AddTxFromBlockToSet(Block block, ref SortedSet<UInt256> sortedSet, UInt256 finalPrice,
             UInt256? ignoreUnder = null, long? maxCount = null)
         {
@@ -101,16 +109,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return gasPrices;
         }
         
-        private SortedSet<UInt256> InitializeValues(Block? headBlock, out long threshold, 
+        private SortedSet<UInt256> InitializeValues(Block? headBlock, out long txThreshold, 
             out long currBlockNumber, out UInt256? gasPriceLatest)
         {
-            Comparer<UInt256> comparerForDuplicates = Comparer<UInt256>.Create(((a, b) =>
-            {
-                int res = a.CompareTo(b);
-                return res == 0 ? 1 : res;
-            }));
-            SortedSet<UInt256> gasPricesWithDuplicates = new(comparerForDuplicates);
-            threshold = _blocksToGoBack * 2;
+            SortedSet<UInt256> gasPricesWithDuplicates = new(GetDuplicateComparer());
+            txThreshold = _blocksToGoBack * 2;
             currBlockNumber = headBlock!.Number;
             gasPriceLatest = LatestGasPrice(headBlock!.Number);
             return gasPricesWithDuplicates;
@@ -188,22 +191,23 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return resultWrapper;
             }
 
-            SortedSet<UInt256> gasPrices = InitializeValues(headBlock, 
-                out long threshold, out long currBlockNumber, out UInt256? gasPriceLatest);
+            long currentBlockNumber = headBlock!.Number;
+            UInt256? latestGasPrice = LatestGasPrice(headBlock!.Number);
+            SortedSet<UInt256> gasPricesWithDuplicates = new(GetDuplicateComparer());
             
-            gasPrices = AddingPreviousBlockTx(ignoreUnder, _blocksToGoBack, currBlockNumber, 
-                gasPrices, gasPriceLatest, threshold);
+            gasPricesWithDuplicates = AddingPreviousBlockTx(ignoreUnder, _blocksToGoBack, currentBlockNumber, 
+                gasPricesWithDuplicates, latestGasPrice, _txThreshold);
 
-            int finalIndex = (int) Math.Round(((gasPrices.Count - 1) * ((float) Percentile / 100)));
-            foreach (UInt256 gasPrice in gasPrices.Where(_ => finalIndex-- <= 0))
+            int finalIndex = (int) Math.Round(((gasPricesWithDuplicates.Count - 1) * ((float) Percentile / 100)));
+            foreach (UInt256 gasPrice in gasPricesWithDuplicates.Where(_ => finalIndex-- <= 0))
             {
-                gasPriceLatest = gasPrice;
+                latestGasPrice = gasPrice;
                 break;
             }
 
             _lastHeadBlock = headBlock;
-            _lastPrice = gasPriceLatest;
-            return ResultWrapper<UInt256?>.Success(gasPriceLatest);
+            _lastPrice = latestGasPrice;
+            return ResultWrapper<UInt256?>.Success(latestGasPrice);
         }
 
         private static bool ResultWrapperWasSuccessful(ResultWrapper<UInt256?> resultWrapper)
@@ -214,6 +218,16 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private static bool ResultWrapperWasNotSuccessful(ResultWrapper<UInt256?> resultWrapper)
         {
             return resultWrapper.Result != Result.Success;
+        }
+        
+        private static Comparer<UInt256> GetDuplicateComparer()
+        {
+            Comparer<UInt256> comparerForDuplicates = Comparer<UInt256>.Create(((a, b) =>
+            {
+                int res = a.CompareTo(b);
+                return res == 0 ? 1 : res;
+            }));
+            return comparerForDuplicates;
         }
     }
 }
