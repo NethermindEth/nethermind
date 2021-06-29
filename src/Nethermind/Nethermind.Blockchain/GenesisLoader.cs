@@ -62,7 +62,7 @@ namespace Nethermind.Blockchain
             _chainSpec.Allocations = null;
 
             _storageProvider.Commit();
-            _stateProvider.Commit(_specProvider.GenesisSpec);
+            _stateProvider.Commit(_specProvider.GenesisSpec, true);
 
             _storageProvider.CommitTrees(0);
             _stateProvider.CommitTree(0);
