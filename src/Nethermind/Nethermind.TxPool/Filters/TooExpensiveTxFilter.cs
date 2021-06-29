@@ -50,22 +50,26 @@ namespace Nethermind.TxPool.Filters
             Account account = _accounts.GetAccount(tx.SenderAddress!);
             UInt256 balance = account.Balance;
             UInt256 precedingCost = UInt256.Zero;
+            bool overflow = false;
             
             Transaction[] bucket = _txs.GetBucketSnapshot(tx.SenderAddress);
 
             foreach (Transaction precedingTx in bucket.Where(t => t.Nonce < tx.Nonce))
             {
-                precedingTx.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, _headInfo.CurrentBaseFee)
-                    .Multiply((UInt256)precedingTx.GasLimit, out UInt256 txCost);
-                precedingCost += txCost;
-                precedingCost += tx.Value;
+                overflow |= UInt256.MultiplyOverflow(
+                    precedingTx.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, _headInfo.CurrentBaseFee),
+                    (UInt256)precedingTx.GasLimit, out UInt256 txCost);
+
+                overflow |= UInt256.AddOverflow(precedingCost, txCost, out precedingCost);
+                overflow |= UInt256.AddOverflow(precedingCost, tx.Value, out precedingCost);
             }
             
             UInt256 affordableGasPrice = tx.CalculateAffordableGasPrice(spec.IsEip1559Enabled, _headInfo.CurrentBaseFee, balance > precedingCost ? balance - precedingCost : 0);
 
-            bool overflow = spec.IsEip1559Enabled && UInt256.AddOverflow(tx.MaxPriorityFeePerGas, tx.MaxFeePerGas, out _);
+            overflow |= spec.IsEip1559Enabled && UInt256.AddOverflow(tx.MaxPriorityFeePerGas, tx.MaxFeePerGas, out _);
             overflow |= UInt256.MultiplyOverflow(affordableGasPrice, (UInt256) tx.GasLimit, out UInt256 cost);
             overflow |= UInt256.AddOverflow(cost, tx.Value, out cost);
+            overflow |= UInt256.AddOverflow(cost, precedingCost, out UInt256 cumulativeCost);
             if (overflow)
             {
                 if (_logger.IsTrace)
@@ -73,7 +77,7 @@ namespace Nethermind.TxPool.Filters
                 return (false, AddTxResult.Int256Overflow);
             }
             
-            if (balance < cost + precedingCost)
+            if (balance < cumulativeCost)
             {
                 if (_logger.IsTrace)
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, insufficient funds.");

@@ -443,6 +443,35 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public void should_discard_tx_because_of_overflow_of_cumulative_cost_of_this_tx_and_all_txs_with_lower_nonces()
+        {
+            _txPool = CreatePool();
+
+            Transaction[] transactions = new Transaction[3];
+
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            UInt256.MaxValue.Divide(GasCostOf.Transaction * 2, out UInt256 halfOfMaxGasPriceWithoutOverflow);
+            
+            for (int i = 0; i < 3; i++)
+            {
+                transactions[i] = Build.A.Transaction
+                    .WithSenderAddress(TestItem.AddressA)
+                    .WithNonce((UInt256)i)
+                    .WithGasPrice(halfOfMaxGasPriceWithoutOverflow)
+                    .WithGasLimit(GasCostOf.Transaction)
+                    .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+                if (i != 2)
+                {
+                    _txPool.SubmitTx(transactions[i], TxHandlingOptions.PersistentBroadcast);
+                }
+            }
+
+            transactions[2].GasPrice = 5;
+            _txPool.SubmitTx(transactions[2], TxHandlingOptions.PersistentBroadcast).Should().Be(AddTxResult.Int256Overflow);
+        }
+
+        [Test]
         public async Task should_not_dump_GasBottleneck_of_all_txs_in_bucket_if_first_tx_in_bucket_has_insufficient_balance_but_has_old_nonce()
         {
             _txPool = CreatePool();
