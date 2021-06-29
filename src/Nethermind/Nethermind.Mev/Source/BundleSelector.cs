@@ -56,7 +56,7 @@ namespace Nethermind.Mev.Source
 
             HashSet<Keccak> selectedTransactionsHashes = new HashSet<Keccak>();
 
-            foreach (SimulatedMevBundle simulatedBundle in simulatedBundles.OrderByDescending(bundle => bundle.BundleAdjustedGasPrice))
+            foreach (SimulatedMevBundle simulatedBundle in simulatedBundles.OrderByDescending(bundle => bundle.BundleAdjustedGasPrice).ThenBy(bundle => bundle.Bundle.SequenceNumber))
             {
                 if (numBundles < _bundleLimit)
                 {

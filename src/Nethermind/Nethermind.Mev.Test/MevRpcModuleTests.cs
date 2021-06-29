@@ -654,6 +654,31 @@ namespace Nethermind.Mev.Test
         }
         
         [Test]
+        public async Task Should_choose_first_tx_that_was_sent_to_include_if_bundles_have_same_gas_price()
+        {
+            var chain = await CreateChain(1);
+            // space for 4 simple transactions
+            chain.GasLimitCalculator.GasLimit = 21000;
+            
+            BundleTransaction bundleTx1 = Build.A.TypedTransaction<BundleTransaction>()
+                .WithGasLimit(GasCostOf.Transaction)
+                .WithGasPrice(150ul)
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            
+            BundleTransaction bundleTx2 = Build.A.TypedTransaction<BundleTransaction>()
+                .WithGasLimit(GasCostOf.Transaction)
+                .WithGasPrice(150ul)
+                .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+
+            SuccessfullySendBundle(chain, 1, bundleTx1);
+            SuccessfullySendBundle(chain, 1, bundleTx2);
+
+            await chain.AddBlock(true);
+
+            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { bundleTx1 }));
+        }
+        
+        [Test]
         public async Task Should_not_include_same_transaction_in_different_bundles_twice()
         {
             var chain = await CreateChain(3);
