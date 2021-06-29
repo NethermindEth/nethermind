@@ -56,16 +56,11 @@ namespace Nethermind.Mev
             IReceiptStorage receiptStorage,
             ILogManager logManager)
         {
-            MevProduceBlockTransactionsStrategy transactionsStrategy = new(
-                readOnlyTxProcessingEnv.TransactionProcessor, 
-                readOnlyTxProcessingEnv.StateProvider,
-                readOnlyTxProcessingEnv.StorageProvider);
-            
             return LastMevBlockProcessor = new MevBlockProcessor(
                 specProvider,
                 blockValidator,
                 rewardCalculatorSource.Get(readOnlyTxProcessingEnv.TransactionProcessor),
-                transactionsStrategy,
+                new MevProduceBlockTransactionsStrategy(readOnlyTxProcessingEnv),
                 readOnlyTxProcessingEnv.StateProvider,
                 readOnlyTxProcessingEnv.StorageProvider,
                 receiptStorage,

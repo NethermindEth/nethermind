@@ -56,8 +56,6 @@ namespace Nethermind.Blockchain.Tracing
             
             blockTracer.EndBlockTrace();
 
-            blockTracer.EndBlockTrace();
-
             return _stateProvider.StateRoot;
         }
 

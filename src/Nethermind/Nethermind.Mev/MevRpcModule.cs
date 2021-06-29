@@ -78,16 +78,6 @@ namespace Nethermind.Mev
         public ResultWrapper<bool> eth_sendBundle(byte[][] transactions, long blockNumber, UInt256? minTimestamp = null, UInt256? maxTimestamp = null, Keccak[]? revertingTxHashes = null)
         {
             BundleTransaction[] txs = Decode(transactions, revertingTxHashes?.ToHashSet());
-            if (revertingTxHashes != null)
-            {
-                foreach (var tx in txs)
-                {
-                    if (revertingTxHashes.Contains(tx.Hash))
-                    {
-                        tx.CanRevert = true;
-                    }
-                }
-            }
             MevBundle bundle = new(blockNumber, txs, minTimestamp, maxTimestamp);
             bool result = _bundlePool.AddBundle(bundle);
             return ResultWrapper<bool>.Success(result);
@@ -128,12 +118,15 @@ namespace Nethermind.Mev
             return ResultWrapper<TxsResults>.Success(results);
         }
 
-        public ResultWrapper<TxsResults> eth_callBundleJSon(TransactionForRpc[] transactions, BlockParameter? blockParameter = null, UInt256? timestamp = null) 
+        public ResultWrapper<TxsResults> eth_callBundleJSon(TransactionForRpc[] transactions, BlockParameter? blockParameter = null, UInt256? timestamp = null, Keccak[]? revertingTxHashes = null)
         {
+            HashSet<Keccak> revertingTxHashesSet = revertingTxHashes?.ToHashSet() ?? new HashSet<Keccak>();
             BundleTransaction[] txs = transactions.Select(txForRpc =>
             {
                 FixCallTx(txForRpc);
-                return txForRpc.ToTransaction<BundleTransaction>(_chainId);
+                BundleTransaction bundleTransaction = txForRpc.ToTransaction<BundleTransaction>(_chainId);
+                bundleTransaction.CanRevert = bundleTransaction.Hash is not null && revertingTxHashesSet.Contains(bundleTransaction.Hash);
+                return bundleTransaction;
             }).ToArray();
             
             return CallBundle(txs, blockParameter, timestamp);

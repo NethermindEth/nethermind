@@ -228,7 +228,7 @@ namespace Nethermind.Mev.Source
             long blockNumber = e.Block!.Number;
             RemoveBundlesUpToBlock(blockNumber);
 
-            Task t = Task.Run(() => //does this need to be in a task?
+            Task t = Task.Run(() =>
             {
                 UInt256 timestamp = _timestamper.UnixTime.Seconds;
                 IEnumerable<MevBundle> bundles = GetBundles(e.Block.Number + 1, UInt256.MaxValue, timestamp);

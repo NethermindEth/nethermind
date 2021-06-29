@@ -153,20 +153,15 @@ namespace Nethermind.Blockchain
             IBlockValidator blockValidator, 
             IRewardCalculatorSource rewardCalculatorSource, 
             IReceiptStorage receiptStorage, 
-            ILogManager logManager)
-        {
-            BlockProcessor.ProduceBlockTransactionsStrategy transactionsStrategy = new(readOnlyTxProcessingEnv);
-            
-            return new(
-                specProvider,
+            ILogManager logManager) =>
+            new(specProvider,
                 blockValidator,
                 rewardCalculatorSource.Get(readOnlyTxProcessingEnv.TransactionProcessor),
-                transactionsStrategy,
+                new BlockProcessor.ProduceBlockTransactionsStrategy(readOnlyTxProcessingEnv),
                 readOnlyTxProcessingEnv.StateProvider,
                 readOnlyTxProcessingEnv.StorageProvider,
                 receiptStorage,
                 NullWitnessCollector.Instance,
                 logManager);
-        }
     }
 }

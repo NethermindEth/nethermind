@@ -36,16 +36,20 @@ namespace Nethermind.Mev
 {
     public class MevProduceBlockTransactionsStrategy : BlockProcessor.ProduceBlockTransactionsStrategy
     {
-        private readonly ITransactionProcessor _transactionProcessor;
         private readonly IStateProvider _stateProvider;
         private readonly IStorageProvider _storageProvider;
+        
+        public MevProduceBlockTransactionsStrategy(ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv) : 
+            this(readOnlyTxProcessingEnv.TransactionProcessor, readOnlyTxProcessingEnv.StateProvider, readOnlyTxProcessingEnv.StorageProvider)
+        {
+                
+        }
         
         public MevProduceBlockTransactionsStrategy(
             ITransactionProcessor transactionProcessor, 
             IStateProvider stateProvider,
             IStorageProvider storageProvider) : base(transactionProcessor, stateProvider, storageProvider)
         {
-            _transactionProcessor = transactionProcessor;
             _stateProvider = stateProvider;
             _storageProvider = storageProvider;
         }

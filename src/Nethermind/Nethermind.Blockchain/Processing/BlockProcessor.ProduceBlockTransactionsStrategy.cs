@@ -31,12 +31,12 @@ namespace Nethermind.Blockchain.Processing
 {
     public partial class BlockProcessor
     {
-        public interface IProduceBlockTransactionsStrategy : IBlockProcessor.IBlockTransactionsStrategy
+        protected interface IProduceBlockTransactionsStrategy : IBlockProcessor.IBlockTransactionsStrategy
         {
-            event EventHandler<TxCheckEventArgs> CheckTransaction;
+            public event EventHandler<TxCheckEventArgs> CheckTransaction;
         }
 
-        public class TxCheckEventArgs : TxEventArgs
+        protected class TxCheckEventArgs : TxEventArgs
         {
             public Block Block { get; }
             public IReadOnlyCollection<Transaction> TransactionsInBlock { get; }
@@ -81,7 +81,13 @@ namespace Nethermind.Blockchain.Processing
             }
 
             public event EventHandler<TxProcessedEventArgs>? TransactionProcessed;
-            public event EventHandler<TxCheckEventArgs>? CheckTransaction;
+            private event EventHandler<TxCheckEventArgs>? CheckTransaction;
+
+            event EventHandler<TxCheckEventArgs>? IProduceBlockTransactionsStrategy.CheckTransaction
+            {
+                add => CheckTransaction += value;
+                remove => CheckTransaction -= value;
+            }
 
             public virtual TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, IBlockTracer blockTracer, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec)
             {
