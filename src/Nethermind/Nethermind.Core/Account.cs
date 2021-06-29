@@ -68,7 +68,7 @@ namespace Nethermind.Core
             IsTotallyEmpty = Balance.IsZero && Nonce == _accountStartNonce && CodeHash == Keccak.OfAnEmptyString && StorageRoot == Keccak.EmptyTreeHash;
         }
 
-        private Account(UInt256 nonce, UInt256 balance, Keccak storageRoot, Keccak codeHash, bool isTotallyEmpty)
+        public Account(UInt256 nonce, UInt256 balance, Keccak storageRoot, Keccak codeHash, bool isTotallyEmpty)
         {
             Nonce = nonce;
             Balance = balance;

@@ -77,7 +77,7 @@ namespace Nethermind.Blockchain
         {
             foreach ((Address address, ChainSpecAllocation allocation) in _chainSpec.Allocations.OrderBy(a => a.Key))
             {
-                _stateProvider.CreateAccount(address, allocation.Balance, allocation.Nonce);
+                _stateProvider.CreateAccount(address, allocation.Balance, allocation.Nonce, false);
 
                 if (allocation.Code != null)
                 {

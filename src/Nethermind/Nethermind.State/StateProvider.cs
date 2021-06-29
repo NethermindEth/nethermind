@@ -425,11 +425,17 @@ namespace Nethermind.State
         }
         
         
-        public void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce)
+        public void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce, bool emptyStorageAndHash)
         {
             _needsStateRootUpdate = true;
             if (_logger.IsTrace) _logger.Trace($"Creating account: {address} with balance {balance} and nonce {nonce}");
-            Account account = (balance.IsZero && nonce.IsZero) ? Account.TotallyEmpty : new Account(nonce, balance, Keccak.EmptyTreeHash, Keccak.OfAnEmptyString);
+            Account account;
+            if (emptyStorageAndHash)
+                account = (balance.IsZero && nonce.IsZero)
+                    ? Account.TotallyEmpty
+                    : new Account(nonce, balance, Keccak.EmptyTreeHash, Keccak.OfAnEmptyString);
+            else
+                account = new Account(nonce, balance, Keccak.EmptyTreeHash, Keccak.OfAnEmptyString, false);
             PushNew(address, account);
         }
 
@@ -524,7 +530,7 @@ namespace Nethermind.State
                     case ChangeType.Touch:
                     case ChangeType.Update:
                     {
-                        if (releaseSpec.IsEip158Enabled && change.Account.IsEmpty)
+                        if (releaseSpec.IsEip158Enabled && change.Account.IsTotallyEmpty)
                         {
                             if (_logger.IsTrace) _logger.Trace($"  Commit remove empty {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
                             SetState(change.Address, null);
