@@ -107,7 +107,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _blockLimit = blockLimit;
-            _gasPriceOracle = gasPriceOracle ?? GetGasPriceOracle(_blockFinder, blockLimit);
+            _gasPriceOracle = gasPriceOracle ?? GetGasPriceOracle(_blockFinder, _blockLimit);
         }
 
         public ResultWrapper<string> eth_protocolVersion()
@@ -164,12 +164,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         public ResultWrapper<UInt256?> eth_gasPrice(UInt256? ignoreUnder = null)
         {
 
-            return _gasPriceOracle.GasPriceEstimate(ignoreUnder);
-        }
-
-        private static bool BlockLimitInitializedOrChanged(int? blockLimit)
-        {
-            return blockLimit != null;
+            return _gasPriceOracle!.GasPriceEstimate(ignoreUnder);
         }
 
         public ResultWrapper<IEnumerable<Address>> eth_accounts()
