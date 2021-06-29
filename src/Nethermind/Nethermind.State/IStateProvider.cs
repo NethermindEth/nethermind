@@ -33,7 +33,7 @@ namespace Nethermind.State
 
         void CreateAccount(Address address, in UInt256 balance);
         
-        void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce, bool emptyStorageAndHash);
+        void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce);
 
         void UpdateCodeHash(Address address, Keccak codeHash, IReleaseSpec spec);
 
@@ -51,9 +51,9 @@ namespace Nethermind.State
 
         /* snapshots */
 
-        void Commit(IReleaseSpec releaseSpec);
+        void Commit(IReleaseSpec releaseSpec, bool isGenesis = false);
 
-        void Commit(IReleaseSpec releaseSpec, IStateTracer? stateTracer);
+        void Commit(IReleaseSpec releaseSpec, IStateTracer? stateTracer, bool isGenesis = false);
 
         void Reset();
 

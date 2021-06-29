@@ -425,23 +425,17 @@ namespace Nethermind.State
         }
         
         
-        public void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce, bool emptyStorageAndHash)
+        public void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce)
         {
             _needsStateRootUpdate = true;
             if (_logger.IsTrace) _logger.Trace($"Creating account: {address} with balance {balance} and nonce {nonce}");
-            Account account;
-            if (emptyStorageAndHash)
-                account = (balance.IsZero && nonce.IsZero)
-                    ? Account.TotallyEmpty
-                    : new Account(nonce, balance, Keccak.EmptyTreeHash, Keccak.OfAnEmptyString);
-            else
-                account = new Account(nonce, balance, Keccak.EmptyTreeHash, Keccak.OfAnEmptyString, false);
+            Account account = (balance.IsZero && nonce.IsZero) ? Account.TotallyEmpty : new Account(nonce, balance, Keccak.EmptyTreeHash, Keccak.OfAnEmptyString);
             PushNew(address, account);
         }
 
-        public void Commit(IReleaseSpec releaseSpec)
+        public void Commit(IReleaseSpec releaseSpec, bool isGenesis = false)
         {
-            Commit(releaseSpec, NullStateTracer.Instance);
+            Commit(releaseSpec, NullStateTracer.Instance, isGenesis);
         }
 
         private readonly struct ChangeTrace
@@ -462,7 +456,7 @@ namespace Nethermind.State
             public Account? After { get; }
         }
 
-        public void Commit(IReleaseSpec releaseSpec, IStateTracer stateTracer)
+        public void Commit(IReleaseSpec releaseSpec, IStateTracer stateTracer, bool isGenesis = false)
         {
             if (_currentPosition == -1)
             {
@@ -530,7 +524,7 @@ namespace Nethermind.State
                     case ChangeType.Touch:
                     case ChangeType.Update:
                     {
-                        if (releaseSpec.IsEip158Enabled && change.Account.IsTotallyEmpty)
+                        if (releaseSpec.IsEip158Enabled && change.Account.IsEmpty && !isGenesis)
                         {
                             if (_logger.IsTrace) _logger.Trace($"  Commit remove empty {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
                             SetState(change.Address, null);
