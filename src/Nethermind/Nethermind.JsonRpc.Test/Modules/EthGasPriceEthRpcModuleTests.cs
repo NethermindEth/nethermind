@@ -149,11 +149,11 @@ namespace Nethermind.JsonRpc.Test.Modules
         [TestCase(4,5)] //Tx Prices: 4,5,6,6,6 Index: (5-1)/5 rounds to 1 => price should be 5
         public void Eth_gasPrice_TxGasPricesAreBelowThreshold_ReplaceGasPriceUnderThresholdWithLatestPrice(int ignoreUnder, int expected)
         {
-            BlockTreeSetup blockTreeSetup = new BlockTreeSetup();
             UInt256? ignoreUnderUInt256 = (UInt256) ignoreUnder;
             UInt256? expectedUInt256 = (UInt256) expected;
+            BlockTreeSetup blockTreeSetup = new BlockTreeSetup(ignoreUnder: ignoreUnderUInt256);
             
-            ResultWrapper<UInt256?> resultWrapper = blockTreeSetup.ethRpcModule.eth_gasPrice(ignoreUnderUInt256);
+            ResultWrapper<UInt256?> resultWrapper = blockTreeSetup.ethRpcModule.eth_gasPrice();
             UInt256? result = resultWrapper.Data;
             
             result.Should().Be(expectedUInt256); 
@@ -390,13 +390,13 @@ namespace Nethermind.JsonRpc.Test.Modules
             public EthRpcModule ethRpcModule;
 
             public BlockTreeSetup(Block[] blocks = null, bool addBlocks = false, IGasPriceOracle gasPriceOracle = null, 
-                int? blockLimit = null)
+                int? blockLimit = null, UInt256? ignoreUnder = null)
             {
                 GetBlocks(blocks, addBlocks);
 
                 InitializeAndAddToBlockTree();
 
-                GetEthRpcModule(gasPriceOracle, blockLimit);
+                GetEthRpcModule(gasPriceOracle, ignoreUnder, blockLimit);
             }
 
             private void InitializeAndAddToBlockTree()
@@ -457,7 +457,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 );
             }
 
-            private void GetEthRpcModule(IGasPriceOracle? gasPriceOracle, int? blockLimit)
+            private void GetEthRpcModule(IGasPriceOracle? gasPriceOracle, UInt256? ignoreUnder, int? blockLimit)
             {
                 ethRpcModule = new EthRpcModule
                 (
@@ -471,6 +471,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                     Substitute.For<ILogManager>(),
                     Substitute.For<ISpecProvider>(),
                     gasPriceOracle,
+                    ignoreUnder,
                     blockLimit
                 );
             }

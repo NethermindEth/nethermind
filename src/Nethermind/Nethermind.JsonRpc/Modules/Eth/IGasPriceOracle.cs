@@ -6,6 +6,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
 {
     public interface IGasPriceOracle
     {
-        ResultWrapper<UInt256?> GasPriceEstimate(UInt256? ignoreUnder = null);
+        ResultWrapper<UInt256?> GasPriceEstimate();
     }
 }

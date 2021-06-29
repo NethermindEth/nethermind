@@ -11,20 +11,21 @@ namespace Nethermind.JsonRpc.Modules.Eth
 {
     public class GasPriceOracle : IGasPriceOracle
     {
-        private UInt256? _lastPrice;
         private Block? _lastHeadBlock;
-        private UInt256 _defaultGasPrice;
+        private UInt256? _defaultGasPrice;
+        private UInt256? _ignoreUnder;
         private readonly IBlockFinder _blockFinder;
         private readonly int _blocksToGoBack;
         private readonly int _txThreshold;
         public const int NoHeadBlockChangeErrorCode = 7;
         private const int Percentile = 20;
 
-        public GasPriceOracle(IBlockFinder blockFinder, int blocksToGoBack = 20)
+        public GasPriceOracle(IBlockFinder blockFinder, UInt256? ignoreUnder = null, int blocksToGoBack = 20)
         {
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
             _blocksToGoBack = blocksToGoBack;
             _txThreshold = SetTxThreshold();
+            _ignoreUnder = ignoreUnder ?? UInt256.Zero;
         }
 
         private int SetTxThreshold()
@@ -32,19 +33,17 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return _blocksToGoBack * 2;
         }
 
-        private bool AddTxFromBlockToSet(Block block, ref SortedSet<UInt256> sortedSet, UInt256 finalPrice,
-            UInt256? ignoreUnder = null, long? maxCount = null)
+        private bool AddTxFromBlockToSet(Block block, ref SortedSet<UInt256> sortedSet)
         {
-            ignoreUnder ??= UInt256.Zero;
             int length = block.Transactions.Length;
             int added = 0;
             
             if (length > 0)
             {
-                for (int index = 0; index < length && (maxCount == null || sortedSet.Count < maxCount); index++)
+                for (int index = 0; index < length; index++)
                 {
                     Transaction transaction = GetTransactionFromBlockAtIndex(block, index);
-                    if (!transaction.IsEip1559 && transaction.GasPrice >= ignoreUnder) //how should i set to be null?
+                    if (!transaction.IsEip1559 && transaction.GasPrice >= _ignoreUnder) //how should i set to be null?
                     {
                         sortedSet.Add(transaction.GasPrice);
                         added++;
@@ -53,14 +52,14 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
                 if (added == 0)
                 {
-                    sortedSet.Add(_defaultGasPrice);
+                    sortedSet.Add((UInt256) _defaultGasPrice!);
                 }
                 
                 return MoreThanOneTransactionAdded(sortedSet, added);
             }
             else
             {
-                sortedSet.Add(finalPrice);
+                sortedSet.Add((UInt256) _defaultGasPrice!);
                 return false;
             }
         }
@@ -101,7 +100,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return transactions.Length > 0;
         }
 
-        private SortedSet<UInt256> AddingTxsInDirectionOfHeadToGenesis(UInt256? ignoreUnder, SortedSet<UInt256> gasPrices)
+        private SortedSet<UInt256> AddingTxPrices(SortedSet<UInt256> gasPrices)
         {
             long currentBlockNumber = GetHeadBlock()!.Number;
             int blocksToGoBack = _blocksToGoBack;
@@ -110,7 +109,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 Block? block = _blockFinder.FindBlock(currentBlockNumber);
                 if (BlockExists(block))
                 {
-                    bool moreThanOneTxAdded = AddTxFromBlockToSet(block, ref gasPrices, (UInt256) _defaultGasPrice!, ignoreUnder);
+                    bool moreThanOneTxAdded = AddTxFromBlockToSet(block, ref gasPrices);
                     if (moreThanOneTxAdded || BonusBlockLimitReached(gasPrices, blocksToGoBack))
                     {
                         blocksToGoBack--;
@@ -172,9 +171,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             ResultWrapper<UInt256?> resultWrapper;
             
-            if (LastPriceExists() && LastHeadBlockExists() && LastHeadIsSameAsCurrentHead(headBlock))
+            if (DefaultPriceExists() && LastHeadBlockExists() && LastHeadIsSameAsCurrentHead(headBlock))
             {
-                resultWrapper = ResultWrapper<UInt256?>.Success(_lastPrice);
+                resultWrapper = ResultWrapper<UInt256?>.Success(_defaultGasPrice);
 #if DEBUG
                 resultWrapper.ErrorCode = NoHeadBlockChangeErrorCode;
 #endif
@@ -196,12 +195,12 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return _lastHeadBlock != null;
         }
 
-        private bool LastPriceExists()
+        private bool DefaultPriceExists()
         {
-            return _lastPrice != null;
+            return _defaultGasPrice != null;
         }
 
-        public ResultWrapper<UInt256?> GasPriceEstimate(UInt256? ignoreUnder = null)
+        public ResultWrapper<UInt256?> GasPriceEstimate()
         {
             Block? headBlock = _blockFinder.FindHeadBlock();
             Block? genesisBlock = _blockFinder.FindGenesisBlock();
@@ -221,12 +220,10 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return resultWrapper;
             }
 
-            long currentBlockNumber = headBlock!.Number;
             SetDefaultGasPrice(headBlock!.Number);
             SortedSet<UInt256> gasPricesWithDuplicates = new(GetDuplicateComparer());
             
-            gasPricesWithDuplicates = AddingTxsInDirectionOfHeadToGenesis(ignoreUnder, 
-                gasPricesWithDuplicates);
+            gasPricesWithDuplicates = AddingTxPrices(gasPricesWithDuplicates);
 
             
             int finalIndex = (int) Math.Round(((gasPricesWithDuplicates.Count - 1) * ((float) Percentile / 100)));
