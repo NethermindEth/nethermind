@@ -35,11 +35,11 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             
-            _blockTree.NewHeadBlock += OnNewHeadBlock;
+            _blockTree.BlockAddedToMain += OnBlockAddedToMain;
             if(_logger.IsTrace) _logger.Trace($"NewHeads subscription {Id} will track NewHeadBlocks");
         }
 
-        private void OnNewHeadBlock(object? sender, BlockEventArgs e)
+        private void OnBlockAddedToMain(object? sender, BlockReplacementEventArgs e)
         {
             Task.Run(() =>
             {
@@ -62,7 +62,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         
         public override void Dispose()
         {
-            _blockTree.NewHeadBlock -= OnNewHeadBlock;
+            _blockTree.BlockAddedToMain -= OnBlockAddedToMain;
             if(_logger.IsTrace) _logger.Trace($"NewHeads subscription {Id} will no longer track NewHeadBlocks");
         }
     }

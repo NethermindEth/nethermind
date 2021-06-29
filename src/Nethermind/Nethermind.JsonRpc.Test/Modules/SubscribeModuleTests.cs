@@ -83,7 +83,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             _blockTree.FindHeader(Arg.Any<BlockParameter>(), true).Returns(toBlock);
         }
 
-        private JsonRpcResult GetNewHeadBlockResult(BlockEventArgs blockEventArgs, out string subscriptionId)
+        private JsonRpcResult GetBlockAddedToMainResult(BlockReplacementEventArgs blockReplacementEventArgs, out string subscriptionId)
         {
             NewHeadSubscription newHeadSubscription = new NewHeadSubscription(_jsonRpcDuplexClient, _blockTree, _logManager);
             
@@ -96,7 +96,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 manualResetEvent.Set();
             }));
             
-            _blockTree.NewHeadBlock += Raise.EventWith(new object(), blockEventArgs);
+            _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockReplacementEventArgs);
             manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(100));
 
             subscriptionId = newHeadSubscription.Id;
@@ -198,12 +198,12 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
         
         [Test]
-        public void NewHeadSubscription_on_NewHeadBlock_event()
+        public void NewHeadSubscription_on_BlockAddedToMain_event()
         {
             Block block = Build.A.Block.WithDifficulty(1991).WithExtraData(new byte[] {3, 5, 8}).TestObject;
-            BlockEventArgs blockEventArgs = new BlockEventArgs(block);
+            BlockReplacementEventArgs blockReplacementEventArgs = new(block);
 
-            JsonRpcResult jsonRpcResult = GetNewHeadBlockResult(blockEventArgs, out var subscriptionId);
+            JsonRpcResult jsonRpcResult = GetBlockAddedToMainResult(blockReplacementEventArgs, out var subscriptionId);
 
             jsonRpcResult.Response.Should().NotBeNull();
             string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response);
@@ -212,11 +212,11 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
         
         [Test]
-        public void NewHeadSubscription_on_NewHeadBlock_event_with_null_block()
+        public void NewHeadSubscription_on_BlockAddedToMain_event_with_null_block()
         {
-            BlockEventArgs blockEventArgs = new BlockEventArgs(null);
+            BlockReplacementEventArgs blockReplacementEventArgs = new(null);
             
-            JsonRpcResult jsonRpcResult = GetNewHeadBlockResult(blockEventArgs, out _);
+            JsonRpcResult jsonRpcResult = GetBlockAddedToMainResult(blockReplacementEventArgs, out _);
 
             jsonRpcResult.Response.Should().BeNull();
         }
