@@ -241,37 +241,87 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public ResultWrapper<UInt256?> GasPriceEstimate()
         {
-            Block? headBlock = _blockFinder.FindHeadBlock();
-            Block? genesisBlock = _blockFinder.FindGenesisBlock();
-            UInt256? gasPriceEstimate = null;
-            ResultWrapper<UInt256?> resultWrapper;
+            Tuple<bool, ResultWrapper<UInt256?>> edgeCasesResult = EarlyExitAndResult();
+            if (edgeCasesResult.Item1 == true)
+            {
+                return edgeCasesResult.Item2;
+            }
+
+            SetDefaultGasPrice(_lastHeadBlock!.Number);
             
+            SortedSet<UInt256> gasPricesSetHandlingDuplicates = CreateAndAddTxsToSetHandlingDuplicates();
+            
+            UInt256? gasPriceEstimate = EstimateGasPrice(gasPricesSetHandlingDuplicates);
+            
+            return ResultWrapper<UInt256?>.Success((UInt256) gasPriceEstimate!);
+        }
+
+        private static UInt256? EstimateGasPrice(SortedSet<UInt256> gasPricesSetHandlingDuplicates)
+        {
+            int roundedIndex = GetRoundedIndexAtPercentile(gasPricesSetHandlingDuplicates);
+
+            UInt256? gasPriceEstimate = GetElementAtIndex(gasPricesSetHandlingDuplicates, roundedIndex);
+
+            return gasPriceEstimate;
+        }
+
+        private static int GetRoundedIndexAtPercentile(SortedSet<UInt256> gasPricesSetHandlingDuplicates)
+        {
+            int lastIndex = gasPricesSetHandlingDuplicates.Count - 1;
+            float percentileOfLastIndex = lastIndex * ((float) Percentile / 100);
+            int roundedIndex = (int) Math.Round(percentileOfLastIndex);
+            return roundedIndex;
+        }
+
+        private static UInt256 GetElementAtIndex(SortedSet<UInt256> gasPricesSetHandlingDuplicates, int roundedIndex)
+        {
+            UInt256[] arrayOfGasPrices = gasPricesSetHandlingDuplicates.ToArray();
+            return arrayOfGasPrices[roundedIndex];
+        }
+
+        private SortedSet<UInt256> CreateAndAddTxsToSetHandlingDuplicates()
+        {
+            SortedSet<UInt256> gasPricesSetHandlingDuplicates = new(GetDuplicateComparer());
+
+            gasPricesSetHandlingDuplicates = AddingTxPricesFromNewestToOldestBlock(gasPricesSetHandlingDuplicates);
+            return gasPricesSetHandlingDuplicates;
+        }
+
+        private Tuple<bool, ResultWrapper<UInt256?>> EarlyExitAndResult()
+        {
+            Block? headBlock = GetHeadBlock();
+            Block? genesisBlock = GetGenesisBlock();
+            ResultWrapper<UInt256?> resultWrapper;
+            SetLastHeadBlock(headBlock);
+
             resultWrapper = HandleMissingHeadOrGenesisBlockCase(headBlock, genesisBlock);
             if (ResultWrapperWasNotSuccessful(resultWrapper))
             {
-                return resultWrapper;
+                return BoolAndWrapperTuple(true, resultWrapper);
             }
 
             resultWrapper = HandleNoHeadBlockChange(headBlock);
             if (ResultWrapperWasSuccessful(resultWrapper))
             {
-                return resultWrapper;
+                return BoolAndWrapperTuple(true, resultWrapper);
             }
-            
-            _lastHeadBlock = headBlock;
-            SetDefaultGasPrice(headBlock!.Number);
-            SortedSet<UInt256> gasPricesWithDuplicates = new(GetDuplicateComparer());
-            
-            gasPricesWithDuplicates = AddingTxPricesFromNewestToOldestBlock(gasPricesWithDuplicates);
 
-            
-            int finalIndex = (int) Math.Round(((gasPricesWithDuplicates.Count - 1) * ((float) Percentile / 100)));
-            foreach (UInt256 gasPrice in gasPricesWithDuplicates.Where(_ => finalIndex-- <= 0))
-            {
-                gasPriceEstimate = gasPrice;
-                break;
-            }
-            return ResultWrapper<UInt256?>.Success((UInt256) gasPriceEstimate!);
+            return BoolAndWrapperTuple(false, resultWrapper);
+        }
+
+        private void SetLastHeadBlock(Block? headBlock)
+        {
+            _lastHeadBlock = headBlock;
+        }
+
+        private static Tuple<bool, ResultWrapper<UInt256?>> BoolAndWrapperTuple(bool boolean, ResultWrapper<UInt256?> resultWrapper)
+        {
+            return new Tuple<bool, ResultWrapper<UInt256?>>(boolean, resultWrapper);
+        }
+
+        private Block? GetGenesisBlock()
+        {
+            return _blockFinder.FindGenesisBlock();
         }
 
         private static bool ResultWrapperWasSuccessful(ResultWrapper<UInt256?> resultWrapper)
