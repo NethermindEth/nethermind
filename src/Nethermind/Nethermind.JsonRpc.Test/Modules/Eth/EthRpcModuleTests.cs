@@ -42,16 +42,17 @@ using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.TxPool;
 using Newtonsoft.Json.Linq;
 using NSubstitute;
 using NUnit.Framework;
 
-namespace Nethermind.JsonRpc.Test.Modules
+namespace Nethermind.JsonRpc.Test.Modules.Eth
 {
     [Parallelizable(ParallelScope.All)]
     [TestFixture]
-    public class EthRpcModuleTests
+    public partial class EthRpcModuleTests
     {
         [TestCase("earliest", "0x3635c9adc5dea00000")]
         [TestCase("latest", "0x3635c9adc5de9f09e5")]
@@ -113,7 +114,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             if (eip1559)
             {
                 specProvider = Substitute.For<ISpecProvider>();
-                ReleaseSpec releaseSpec = new ReleaseSpec() {IsEip1559Enabled = true, Eip1559TransitionBlock = 0 };
+                ReleaseSpec releaseSpec = new() {IsEip1559Enabled = true, Eip1559TransitionBlock = 0 };
                 specProvider.GetSpec(Arg.Any<long>()).Returns(releaseSpec);
             }
             using Context ctx = await Context.Create();
@@ -133,7 +134,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             if (eip1559)
             {
                 specProvider = Substitute.For<ISpecProvider>();
-                ReleaseSpec releaseSpec = new ReleaseSpec() {IsEip1559Enabled = true, Eip1559TransitionBlock = 1 };
+                ReleaseSpec releaseSpec = new() {IsEip1559Enabled = true, Eip1559TransitionBlock = 1 };
                 specProvider.GetSpec(Arg.Any<long>()).Returns(releaseSpec);
             }
                 
@@ -372,7 +373,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [TestCase(true, true,"{\"jsonrpc\":\"2.0\",\"result\":{\"author\":\"0x0000000000000000000000000000000000000000\",\"difficulty\":\"0xf4240\",\"extraData\":\"0x010203\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0x0\",\"hash\":\"0x16af125b31ba6f33725bffd77d8778121c8b24c3c29a9821d2fc15049a5bdcb6\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"miner\":\"0x0000000000000000000000000000000000000000\",\"number\":\"0x0\",\"parentHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"receiptsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"signature\":\"0x0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"size\":\"0x21b\",\"stateRoot\":\"0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f\",\"step\":0,\"totalDifficulty\":\"0xf4240\",\"timestamp\":\"0xf4240\",\"baseFeePerGas\":\"0x0\",\"transactions\":[],\"transactionsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"uncles\":[]},\"id\":67}")]
         public async Task Eth_get_block_by_hash(bool aura, bool eip1559, string expected)
         {
-            using Context ctx = eip1559 ? await Context.CreateWith1559Enabled() : await Context.Create();
+            using Context ctx = eip1559 ? await Context.CreateWithLondonEnabled() : await Context.Create();
             TestRpcBlockchain testBlockchain = (aura ? ctx._auraTest : ctx._test);
             string serialized = testBlockchain.TestEthRpc("eth_getBlockByHash", testBlockchain.BlockTree.Genesis.Hash.ToString(), "true");
             Assert.AreEqual(expected, serialized);
@@ -400,12 +401,12 @@ namespace Nethermind.JsonRpc.Test.Modules
         [TestCase(false, "pending", "{\"jsonrpc\":\"2.0\",\"result\":{\"author\":\"0x475674cb523a0a2736b7f7534390288fce16982c\",\"difficulty\":\"0x1\",\"extraData\":\"0x4e65746865726d696e64\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0xa410\",\"hash\":\"0x505b2dffef52f175b22b8e4d74a0c70be7c6202bccf707ca40583a8d82d931bb\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"miner\":\"0x475674cb523a0a2736b7f7534390288fce16982c\",\"mixHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"nonce\":\"0x0000000000000000\",\"number\":\"0x3\",\"parentHash\":\"0xabb51ebbd1e8d62545deb0e2236b80546c8060c50d9ce8f37467cf195bc1cc4f\",\"receiptsRoot\":\"0x3b289f09d619feda8c5411e05bdf0f7020edf2aea3cc49c2bc22fcc362c4b5d9\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"size\":\"0x2cb\",\"stateRoot\":\"0xf6e098d6260e2c719384af142974978f4ad9ada56558d63c888a6687d38d138b\",\"totalDifficulty\":\"0xf4243\",\"timestamp\":\"0x5e47e919\",\"transactions\":[{\"hash\":\"0x681c2b6f99e37fd6fe6046db8b51ec3460d699cacd6a376143fd5842ac50621f\",\"nonce\":\"0x1\",\"blockHash\":\"0x505b2dffef52f175b22b8e4d74a0c70be7c6202bccf707ca40583a8d82d931bb\",\"blockNumber\":\"0x3\",\"transactionIndex\":\"0x0\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"value\":\"0x1\",\"gasPrice\":\"0x1\",\"gas\":\"0x5208\",\"data\":\"0x\",\"input\":\"0x\",\"type\":\"0x0\",\"v\":\"0x25\",\"s\":\"0x575361bb330bf38b9a89dd8279d42a20d34edeaeede9739a7c2bdcbe3242d7bb\",\"r\":\"0xe7c5ff3cba254c4fe8f9f12c3f202150bb9a0aebeee349ff2f4acb23585f56bd\"},{\"hash\":\"0x7126cf20a0ad8bd51634837d9049615c34c1bff5e1a54e5663f7e23109bff48b\",\"nonce\":\"0x2\",\"blockHash\":\"0x505b2dffef52f175b22b8e4d74a0c70be7c6202bccf707ca40583a8d82d931bb\",\"blockNumber\":\"0x3\",\"transactionIndex\":\"0x1\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"value\":\"0x1\",\"gasPrice\":\"0x1\",\"gas\":\"0x5208\",\"data\":\"0x\",\"input\":\"0x\",\"type\":\"0x0\",\"v\":\"0x25\",\"s\":\"0x575361bb330bf38b9a89dd8279d42a20d34edeaeede9739a7c2bdcbe3242d7bb\",\"r\":\"0xe7c5ff3cba254c4fe8f9f12c3f202150bb9a0aebeee349ff2f4acb23585f56bd\"}],\"transactionsRoot\":\"0x2e6e6deb19d24bd48eda6071ab38b1bae64c15ef1998c96f0d153711d3a3efc7\",\"uncles\":[]},\"id\":67}")]
         [TestCase(false, "0x0", "{\"jsonrpc\":\"2.0\",\"result\":{\"author\":\"0x0000000000000000000000000000000000000000\",\"difficulty\":\"0xf4240\",\"extraData\":\"0x010203\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0x0\",\"hash\":\"0x2167088a0f0de66028d2b728235af6d467108c1750c3e11a8f6e6cd60fddb0e4\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"miner\":\"0x0000000000000000000000000000000000000000\",\"mixHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"nonce\":\"0x00000000000003e8\",\"number\":\"0x0\",\"parentHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"receiptsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"size\":\"0x201\",\"stateRoot\":\"0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f\",\"totalDifficulty\":\"0xf4240\",\"timestamp\":\"0xf4240\",\"transactions\":[],\"transactionsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"uncles\":[]},\"id\":67}")]
         [TestCase(true, "earliest", "{\"jsonrpc\":\"2.0\",\"result\":{\"author\":\"0x0000000000000000000000000000000000000000\",\"difficulty\":\"0xf4240\",\"extraData\":\"0x010203\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0x0\",\"hash\":\"0x2167088a0f0de66028d2b728235af6d467108c1750c3e11a8f6e6cd60fddb0e4\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"miner\":\"0x0000000000000000000000000000000000000000\",\"mixHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"nonce\":\"0x00000000000003e8\",\"number\":\"0x0\",\"parentHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"receiptsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"size\":\"0x201\",\"stateRoot\":\"0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f\",\"totalDifficulty\":\"0xf4240\",\"timestamp\":\"0xf4240\",\"baseFeePerGas\":\"0x0\",\"transactions\":[],\"transactionsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"uncles\":[]},\"id\":67}")]
-        [TestCase(true, "latest","{\"jsonrpc\":\"2.0\",\"result\":{\"author\":\"0x475674cb523a0a2736b7f7534390288fce16982c\",\"difficulty\":\"0x1\",\"extraData\":\"0x4e65746865726d696e64\",\"gasLimit\":\"0x7a1200\",\"gasUsed\":\"0x0\",\"hash\":\"0x8fbe17f374980112d95d631ce5dd25e96c5e2d53dff8d7cde562392fd201bed7\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"miner\":\"0x475674cb523a0a2736b7f7534390288fce16982c\",\"mixHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"nonce\":\"0x0000000000000000\",\"number\":\"0x3\",\"parentHash\":\"0x2a5c11fd0c235db7499a930d485874ed54d11b7a968bd9cacb5afbd9596ca6e9\",\"receiptsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"size\":\"0x206\",\"stateRoot\":\"0xc8674586ed4df6ba9038dd85cbec5164ab4ec649b8504ecf737519fbd49f3ae0\",\"totalDifficulty\":\"0xf4243\",\"timestamp\":\"0x5e47e919\",\"baseFeePerGas\":\"0x2da282a8\",\"transactions\":[],\"transactionsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"uncles\":[]},\"id\":67}")]
+        [TestCase(true, "latest","{\"jsonrpc\":\"2.0\",\"result\":{\"author\":\"0x475674cb523a0a2736b7f7534390288fce16982c\",\"difficulty\":\"0x1\",\"extraData\":\"0x4e65746865726d696e64\",\"gasLimit\":\"0x7a1200\",\"gasUsed\":\"0x0\",\"hash\":\"0x92f9ec14a7c07efcada4bb5e13d6f28a353935181201c88f805cecb51848fef6\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"miner\":\"0x475674cb523a0a2736b7f7534390288fce16982c\",\"mixHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"nonce\":\"0x0000000000000000\",\"number\":\"0x3\",\"parentHash\":\"0xabbd9c680189ee91ac092c925342342d7c7d925cf8db8dc1ebab0c5dda994678\",\"receiptsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"size\":\"0x206\",\"stateRoot\":\"0x098b1cfaa9db71d5e41af5ae401e461099e73d6e7faf42d043d39d799a61246d\",\"totalDifficulty\":\"0xf4243\",\"timestamp\":\"0x5e47e919\",\"baseFeePerGas\":\"0x2da282a8\",\"transactions\":[],\"transactionsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"uncles\":[]},\"id\":67}")]
         [TestCase(true, "0x0", "{\"jsonrpc\":\"2.0\",\"result\":{\"author\":\"0x0000000000000000000000000000000000000000\",\"difficulty\":\"0xf4240\",\"extraData\":\"0x010203\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0x0\",\"hash\":\"0x2167088a0f0de66028d2b728235af6d467108c1750c3e11a8f6e6cd60fddb0e4\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"miner\":\"0x0000000000000000000000000000000000000000\",\"mixHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"nonce\":\"0x00000000000003e8\",\"number\":\"0x0\",\"parentHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"receiptsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"size\":\"0x201\",\"stateRoot\":\"0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f\",\"totalDifficulty\":\"0xf4240\",\"timestamp\":\"0xf4240\",\"baseFeePerGas\":\"0x0\",\"transactions\":[],\"transactionsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"uncles\":[]},\"id\":67}")]
         [TestCase(false, "0x20", "{\"jsonrpc\":\"2.0\",\"result\":null,\"id\":67}")]
         public async Task Eth_get_block_by_number(bool eip1559, string blockParameter, string expectedResult)
         {
-            using Context ctx = eip1559 ? await Context.CreateWith1559Enabled() : await Context.Create();
+            using Context ctx = eip1559 ? await Context.CreateWithLondonEnabled() : await Context.Create();
             string serialized = ctx._test.TestEthRpc("eth_getBlockByNumber", blockParameter, "true");
             Assert.AreEqual(expectedResult, serialized, serialized.Replace("\"", "\\\""));
         }
@@ -458,15 +459,6 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
-        public async Task Eth_call_web3_sample()
-        {
-            using Context ctx = await Context.Create();
-            TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>("{\"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
-            string serialized = ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction), "0x0");
-            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}", serialized);
-        }
-
-        [Test]
         public async Task Eth_mining_true()
         {
             using Context ctx = await Context.Create();
@@ -497,147 +489,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             string serialized = ctx._test.TestEthRpc("eth_accounts");
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":[\"0x7e5f4552091a69125d5dfcb7b8c2659029395bdf\",\"0x2b5ad5c4795c026514f8317c7a215e218dccd6cf\",\"0x6813eb9362372eef6200f3b1dbc3f819671cba69\",\"0x1eff47bc3a10a45d4b230b5d10e37751fe6aa718\",\"0xe1ab8145f7e55dc933d51a18c793f901a3a0b276\",\"0xe57bfe9f44b819898f47bf37e5af72a0783e1141\",\"0xd41c057fd1c78805aac12b0a94a405c0461a6fbb\",\"0xf1f6619b38a98d6de0800f1defc0a6399eb6d30c\",\"0xf7edc8fa1ecc32967f827c9043fcae6ba73afa5c\",\"0x4cceba2d7d2b4fdce4304d3e09a1fea9fbeb1528\",\"0x3da8d322cb2435da26e9c9fee670f9fb7fe74e49\",\"0xdbc23ae43a150ff8884b02cea117b22d1c3b9796\",\"0x68e527780872cda0216ba0d8fbd58b67a5d5e351\",\"0x5a83529ff76ac5723a87008c4d9b436ad4ca7d28\",\"0x8735015837bd10e05d9cf5ea43a2486bf4be156f\",\"0xfae394561e33e242c551d15d4625309ea4c0b97f\",\"0x252dae0a4b9d9b80f504f6418acd2d364c0c59cd\",\"0x79196b90d1e952c5a43d4847caa08d50b967c34a\",\"0x4bd1280852cadb002734647305afc1db7ddd6acb\",\"0x811da72aca31e56f770fc33df0e45fd08720e157\",\"0x157bfbecd023fd6384dad2bded5dad7e27bf92e4\",\"0x37da28c050e3c0a1c0ac3be97913ec038783da4c\",\"0x3bc8287f1d872df4217283b7920d363f13cf39d8\",\"0xf4e2b0fcbd0dc4b326d8a52b718a7bb43bdbd072\",\"0x9a5279029e9a2d6e787c5a09cb068ab3d45e209d\",\"0xc39677f5f47d5fe65ab24e66750e8fca127c15be\",\"0x1dc728786e09f862e39be1f39dd218ee37feb68d\",\"0x636cc65783084b9f370789c90f733dbbeb88925d\",\"0x4a7a7c2e09209dbe44a582cd92b0edd7129e74be\",\"0xa56160a359f2eaa66f5c9df5245542b07339a9a6\",\"0x6b09d6433a379752157fd1a9e537c5cae5fa3168\",\"0x32e77de0d74a5c7af861aaed324c6a4c488142a8\",\"0x093d49d617a10f26915553255ec3fee532d2c12f\",\"0x138854708d8b603c9b7d4d6e55b6d32d40557f4d\",\"0x7dc0a40d64d72bb4590652b8f5c687bf7f26400c\",\"0x9358a525cc25aa571af0bcb5b98fbeab045a5e36\",\"0xd8e8ea89d71de89214fa39ba13ba9fcddc0d9467\",\"0xb56ed8f48979e1a948ad129199a600d0562cac51\",\"0xf65ac7003e905d72c666bfec1dc0960ecc9d0d6e\",\"0xd817d23c981472d703be36da777ffdb1abefd972\",\"0xf2adb90aa27a3c61a95c50063b20919d811e1476\",\"0xae3dffee97f92db0201d11cb8877c89738353bce\",\"0xeb3025e7ac2764040384316b33476e048961a71f\",\"0x9e3289708dc5709926a542fcf260fd4b210461f0\",\"0x6c23face014f20b3ebb65ae96d0d7ff32ab94c17\",\"0xb83b6241f966b1685c8b2ffce3956e21f35b4dcb\",\"0x6350872d7465864689def650443026f2f73a08da\",\"0x673c638147fe91e4277646d86d5ae82f775eea5c\",\"0xf472086186382fca55cd182de196520abd76f69d\",\"0x5ae58d2bc5145bff0c1bec0f32bfc2d079bc66ed\",\"0x2b29bea668b044b2b355c370f85b729bcb43ec40\",\"0x3797126345fb5fb6a37629db55ec692173cfb458\",\"0xe6869cc98283ab53e8a1a5312857ef0be9d189fe\",\"0xa5dfe354b3fc30c5c3a8ffefc8f9470d9177c334\",\"0xa1a625ae13b80a9c48b7c0331c83bc4541ac137f\",\"0xa33c9d26e1e33b84247defca631c1d30ffc76f5d\",\"0xf9807a8719ae154e74591cb2d452797707fadf73\",\"0xa1ba6fc3ea0e89f0e79f89d9aa0081d010571e4a\",\"0x366c20b40048556e5682e360997537c3715aca0e\",\"0xeb0e56f32246d043228fac8b63a71687d5199af1\",\"0xdb3ed822b78f0641623a12166607b5fa4df862ad\",\"0xb88c19426f03c6981d1a4281c7414d842b97619a\",\"0x32e04b012ac811c91d36a355a6d2859a0071a965\",\"0xe0dd44773f7657b11019062879d65f3d9862460c\",\"0x756be12856a8f44ab22fdbcbd42b70b843377d09\",\"0x6f4c950442e1af093bcff730381e63ae9171b87a\",\"0x4d1bf28514a4451249908e611366ec967c3d1558\",\"0xb0142d883494197b02c6ece84f571d81bd831124\",\"0x1326324f5a9fb193409e10006e4ea41b970df321\",\"0xf9a2c330a19e2fbfeb50fe7a7195b973bb0a3be9\",\"0x7a601ffa997cede6435aeabf4fa2091f09e149ec\",\"0xa92f4b5c4fddcc37e5139873ac28a4a0a42d68df\",\"0x850cc185d6cae4a7fdfb3dd81f977dd1df7d6503\",\"0xb1b7c87e8a0bf2e7fd1a1c582bd353e4c4529341\",\"0xff844fdb49e00776ad538db9ea2f9fa98ec0caf7\",\"0x1ac6f9601f2f616badcea8a0a307e1a3c14767a4\",\"0xc2aa6271409c10dee630e79df90c968989ccf2b7\",\"0x883d01eae6eaac077e126ddb32cd53550966ed76\",\"0x127688bbc070dd69a4db8c3ba5d43909e13d8f77\",\"0x0b54a50c0409dab2e63c3566324268ed53ec019a\",\"0xafd46e3549cc63d7a240d6177d056857679e6f99\",\"0x752481f35bb1d44d786c7b4dbe40db4a4266f96f\",\"0xac32def421e36b43629f785fd04523260e7f2b28\",\"0xfe6032a0810e90d025a3a39dd29844f964ee102c\",\"0x5cb6f3e6499d1f068b33351d0cae4b68cdf501bf\",\"0x84b743441b7bdf65cb4293126db4c1b709d7d95e\",\"0x8530a26f6c062f55597bd30c1a44e248decb0027\",\"0x5ce162cfa6208d7c50a7cb3525ac126155e7bce4\",\"0x2853dc9ca40d012969e25360cce0d9d326b24a86\",\"0x802271c02f76701929e1ea772e72783d28e4b60f\",\"0x7bd2aa0726ac3b9e752b120de8568e90b0423ae4\",\"0xb540c05d9b2516da9596a5ee75d750717a4be035\",\"0xa72392cd4be285ab6681da1bf1c45f0b370cb7b4\",\"0xcf484269182ac2388a4bfe6d19fb0687e3534b7f\",\"0x994907cb80bfd175f9b0b32672cfde0091368e2e\",\"0x36eab6ce7fededc098ef98c41e83548a89147131\",\"0x440db3ab842910d2a39f4e1be9e017c6823fb658\",\"0x25ac70ea6f44c4531a7117ea3620fa29cdaaca48\",\"0x24d881139ee639c2a774b4b1851cb7a9d0fce122\",\"0xd9a284367b6d3e25a91c91b5a430af2593886eb9\",\"0xe6b3367318c5e11a6eed3cd0d850ec06a02e9b90\",\"0x88c0e901bd1fd1a77bda342f0d2210fdc71cef6b\",\"0x7231c364597f3bfdb72cf52b197cc59111e71794\",\"0x043aed06383f290ee28fa02794ec7215ca099683\",\"0x0c95931d95694b3ef74071241827c09f25d40620\",\"0x417f3b59ef57c641283c2300fae0f27fe98d518c\",\"0xd6b931d8d441b1ec98f55f8ec8adb532dc140c78\",\"0x9220625b1a30680387d542e6b5f753786ca5530e\",\"0x997cf669860a1dcc76344866534d8679a7b562e2\",\"0xb961768b578514debf079017ff78c47b0a6adbf6\",\"0x052b91ad9732d1bce0ddae15a4545e5c65d02443\",\"0x8df64de79608f0ae9e72ecae3a400582aed8101c\",\"0x0e7b23cd1fdb7ea3ccc80320ab43843a2f193c36\",\"0xfbbc41289f834a76e4320ac238512035560467ee\",\"0x61e1da6c7b8b211e6e5dd921efe27e73ad226dac\",\"0x87fcbe64187317c59a944be5b9c5c830b9373730\",\"0x2acf0d6fdac920081a446868b2f09a8dac797448\",\"0x1715eb68afba4d516ef1e068b55f5093bb4a2f59\",\"0x58bab2f728dc4fc227a4c38cab2ec93b73b4e828\",\"0x25346934b4faa00dee0190c2069156bde6010c18\",\"0xa01cca6367a84304b6607b76676c66c360b74741\",\"0x872917cec8992487651ee633dba73bd3a9dca309\",\"0x6c1a01c2ab554930a937b0a2e8105fb47946c679\",\"0x13c0e7c715fdea35c7f9663c719e4d36601275b9\",\"0xe8c5025c803f3279d94ea55598e147f601929bf4\",\"0x639acdbd838b81cea8d6a970136812783fa5bf5e\",\"0xb3087f34edab33a8182ba29adea4d739d9831a94\",\"0xc6a210606f2ee6e64afb9584db054f3476a5cc66\",\"0xd01c9d93efc83c00b30f768f832182beff65696f\",\"0x00edf2d16afbc028fb1e879559b07997af79539f\",\"0xf5d722030d17ca01f2813af9e7be158d7a037997\",\"0xae3d43ab6fdcd35386db427099ff11aa670ee0f4\",\"0x0dc8b8ef8457b1e45ac277d65ac5987b547ba775\",\"0xde521346f9327a4314a18b2cda96b2a33603177a\",\"0x69842e12d6f36f9f93f06086b70795bfc7e02745\",\"0x9b7bdf6ad17d5fc9a168acaa24495e52a65f3b79\",\"0xa2d47d2c42009520075cb15f5855052008d0c44d\",\"0xb0c249f6f92fb2491fc9750a5299d856ba2ea3c6\",\"0x839d96957f21e82fbcca0d42a1f12ef6e1cf82e9\",\"0x2a0d6b92b042497013e5549d6579202608ce0c80\",\"0xa4f8c598927eab2f1898f8f2d6f8121578de2344\",\"0xdb21655b672dacc8da6f538c899f9d6969604117\",\"0x21289cd01f9f58fc44962b6e213a0fbbd015beb6\",\"0x0b62d63c314d94dfa85b11a9c652ffe438382d6c\",\"0x9383e3096133f464d516b518b12851fd10d891f4\",\"0x64e582c17ab7c3b90e171795b504ca3c04108501\",\"0x848406919d014b1e5c27a82f951caff840fd63ef\",\"0x5fe015779fb36006b01f9c5a5dbcaa6ffa56f0c0\",\"0x28b6e15f86025b8ea8beaa6855a81069bfb6ab1e\",\"0x271d65af9a5a7b4cd7af264f251184c2a4b9e7a3\",\"0xddf44e34ed40c40624c7b9f20a1030b505a4fac0\",\"0xe5854075272ca5ef71663d5b87e0cd5ac53b2f36\",\"0x2798ba84d7830c5f60d750f37f87d93277106905\",\"0x7e9961fa09dd52f945f8143844785cf0e51bb4ce\",\"0xf33d2f7d96f92d912ca8418f9d62eb54c1a9889f\",\"0xeec566c793a89f388bbabfc0225183a6a95c4263\",\"0x2001f8cdcdeef1bbcc188ca59cf04fb44133d55a\",\"0x3bf958fa0626e898f548a8f95cf9ab3a4db65169\",\"0xb0d744fde06bbcb6655eb55288ec94fa6a0b2a52\",\"0x18eb36d090eeadf82f3454a6da690fc398d3eba1\",\"0xd2431ca38735c2fd438e2caa23f094191d89675b\",\"0x612b7be154a64292aae070aaa86fcd66ba218071\",\"0x681ce2f439fdc80e70c1eea8b8a085dfb976d32a\",\"0x2174ca3ee9ace7dd8c946c97054c72f2b384c4c2\",\"0x1d694d5ad94f32132ff5c14c901d3ddbee90a550\",\"0x0b6fe046e6fd8d7a7a36d5ad1ffb82d2e3e5c3bb\",\"0x258f4ed0560e290a95066d9dee3628f2f179302b\",\"0xe2a09565167d4e3f826adec6bef82b97e0a4383f\",\"0x9af70704e9ec5f505cdba564ff4dec03503ddaa2\",\"0xeb9afe072c781401bf364224c75a036e4d832f52\",\"0x07748403082b29a45abd6c124a37e6b14e6b1803\",\"0x63486b70d804464766cfd096bba5552c4bcdac30\",\"0x5181be40152caaba8e123a55b7762755d4e8e416\",\"0x9481da7766c043eefeecc9589ee7ade61316b0ff\",\"0x42aba3530dd1ccb1dda27bfaa7c6a832cfdb4446\",\"0x05650444ace15a01762bd97ee8fdeb495b3c2436\",\"0xd83d18a2eae2440e272a53f86e617cd9f33c8d68\",\"0x4a35a802dbd623561040dd50f6293842d0901731\",\"0x4dbaf6c348d8cd1f174a7a6155f80ea8d4a8baf8\",\"0x9efc4e49be8ff70d596ac20efec9b7842e1ea963\",\"0x68efde0cdd917c6da6dab02c23f69e7c9cff51a9\",\"0x99b52813933a46d95bd4265ea2f674e58827da97\",\"0x7b35461cc5adbdc415c1f9562ccc342adbf09bd4\",\"0x8ee8813fb9d41cc58ef87d28b36e948b1234e71d\",\"0x69c1bc7883a7bb7696c7726d025867cd16564c9c\",\"0x31eb18dd6f5a8064ab750eabb281cf162f43ccd0\",\"0xf5d122e123d9d7998d2bea685d11b10fec3e4508\",\"0xf762854586a40a93d1fdcde32c062829f3754de9\",\"0x1e3f8fb9f840325983d6e5c68b6b846ff66a20ac\",\"0x3c1638a25ad7e8c2a84b53b661dd1bd048407e8f\",\"0x2eedf8a799b73bc02e4664183eb72422c377153b\",\"0xcdef6f23a26f960b53468f497967ce74c026af52\",\"0x0a2035683fe5587b0b09db0e757306ad729fe6c1\",\"0x158cc083cfbcffb2f983a3aa8b027eb0711c9831\",\"0x691cb1645a4f21d879973b3a3b98a714fc1970d6\",\"0x754164c0cb85dda1b5b18e5b62adbb4d60c3efbf\",\"0x556330e8d92912ccf133851ba03abd2db70da404\",\"0x1745ceba112b0a41638e235ec59b35adf37b70ab\",\"0xa24c85b16a440587793f82e358fa6b204468735b\",\"0x5304fb08724d73f2bb5e04c582407c33cde6c8d3\",\"0x256a11785fc43141324cf61efb5f491378c10c85\",\"0xa9f161a2badd44f3fe45b91a044a9484b72f1dc4\",\"0xd5cc10c45fc0f9f956acd7559f61edbfec9f6c3d\",\"0x381c7a71035bdb42fb5d77523df2ff00d9f9df1b\",\"0x45cdbeea730d8212f451a6a8d0eb5998b04cccca\",\"0x6367283f25a32be0c28623d787c319e237c3b7bd\",\"0x598e94eb5e050045272d8417f6ab363bd874d568\",\"0x379ff6375f4a44f458683629ef05141d73fae55a\",\"0x18df8ba2ef19083ddff68f8b33976cf22e8419c6\",\"0xffceebc37a7351d5df9aa3b077ed39cc3b5192ff\",\"0x1cd21f00b58894260f7abed65ad23dce3cea0226\",\"0x26324733d604abb6176cf18e4f4a0624ceeddc09\",\"0x4102d394d723ff141b82ef9a6053fb89f90c67f4\",\"0x269c370cb95b63f9b6a7cad47998167f160a2689\",\"0x3bb9557113fbb052dae3008a2801a072c432c018\",\"0x3f588a72d94d0d0986b112c671c2343320a19386\",\"0x7cfa9eee1d752da599211bc8a68d0687708dabfc\",\"0x7bc23966c419eadcb8a2fc5f83e635c4d4ad0c2f\",\"0xc4ad60337b04fc721912531a52a5d77878293fb9\",\"0xfc5ba3041f750f9b6820ce066c153eb396aac1ff\",\"0x32480c2d857941d2fff4e34f0910b20c0f9c23bc\",\"0x8041c9a96585053db2d7214b5de56828645b8e62\",\"0x444ca66b3ceb4187840cb1a205566a1413d5fecb\",\"0xf084bbaabee1a700a8faa404027db620a5aa0059\",\"0x602d562b4ef2544f851587619b56f77a9d965d45\",\"0x216faec139a61329ef8b31d982de427d9c007a9e\",\"0x11eb17b20113ae923d72e52870d40bf59a08b40d\",\"0xe69017fcc36bbc7fb167b9585bdd47a950ba1992\",\"0xe5549f429a72bfa618cf5c1afdac22a730df6a1a\",\"0x161c2e10407e2a87959c0bae1f342c80eaea28f3\",\"0x4161220db043a7d682e0ad123a3f8fea165711aa\",\"0xb33609811fb3d9fc8955dc6e9e086f1f08fc3a65\",\"0x4148555ea4c00e14f81ef399bbe67ef2fd9811b1\",\"0x4f81e991f76276a17ca92a1321f37189b1727f77\",\"0xba95e317ead06b55c8b70276fc63904b3339dfa1\",\"0xf6203c4fb14da640d11fbd9573e3958d017e6745\",\"0x73377d6228266393747efa710017872d6dd5b9a6\",\"0xf7862d105fc6ee69604decc30aa89472ad405961\",\"0xfa1205e19719c248323563bd55cd8bfd08b0cbc6\",\"0x4f46630115b446f8f7cebe1e5961ef7858c25204\",\"0x7492ebbc1e7f2838fc7191edc031581d5712978a\",\"0xc0af3981f9c0dfcb8955fea07a3e4f23806fab51\",\"0x8621dd642245df371b584b48c081e8863313a70d\",\"0xc328de035c91b39efa07d2fe620813253c9b4ec2\",\"0xa11308e3b741227d41973ddb17534ceb27b8206f\",\"0xc4ff1b4565ee203fa12636e100fe9c89cd18acb7\",\"0x63a36aea8570219476ef835f09024acdedfee95a\",\"0xf7205066c153f7c88dc3653ebc72b438884ae109\",\"0xa8ce5c40c4aa9278ddeaa418e775985549960e7a\",\"0x81f58f2194b0413806bf2ce8e1654bc855dc65a1\",\"0xf0218008120201e66b65fce4df9035007e811228\",\"0x90f022e3ca8453f5e5765cd3054003b544526eec\",\"0x1d1f873ba1ddf7915e6e26f93f5624b40efaefe2\",\"0x0311afd3bc2ae250d5f9f2706bae2ef4164d6912\",\"0x5044a80bd3eff58302e638018534bbda8896c48a\"],\"id\":67}", serialized, serialized.Replace("\"", "\\\""));
         }
-
-        [Test]
-        public async Task Eth_call_web3_sample_not_enough_gas_system_account()
-        {
-            using Context ctx = await Context.Create();
-            ctx._test.ReadOnlyState.AccountExists(Address.SystemUser).Should().BeFalse();
-            TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>("{\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
-            string serialized = ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction), "0x0");
-            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}", serialized);
-            ctx._test.ReadOnlyState.AccountExists(Address.SystemUser).Should().BeFalse();
-        }
         
-        [Test]
-        public async Task Eth_estimateGas_web3_should_return_insufficient_balance_error()
-        {
-            using Context ctx = await Context.Create();
-            Address someAccount = new Address("0x0001020304050607080910111213141516171819");
-            ctx._test.ReadOnlyState.AccountExists(someAccount).Should().BeFalse();
-            TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>("{\"from\":\"0x0001020304050607080910111213141516171819\",\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\", \"value\": 500}");
-            string serialized = ctx._test.TestEthRpc("eth_estimateGas", ctx._test.JsonSerializer.Serialize(transaction));
-            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"insufficient funds for transfer: address 0x0001020304050607080910111213141516171819\"},\"id\":67}", serialized);
-            ctx._test.ReadOnlyState.AccountExists(someAccount).Should().BeFalse();
-        }
-        
-        [Test]
-        public async Task Eth_call_web3_should_return_insufficient_balance_error()
-        {
-            using Context ctx = await Context.Create();
-            Address someAccount = new Address("0x0001020304050607080910111213141516171819");
-            ctx._test.ReadOnlyState.AccountExists(someAccount).Should().BeFalse();
-            TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>("{\"from\":\"0x0001020304050607080910111213141516171819\",\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\", \"value\": 500}");
-            string serialized = ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction));
-            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"insufficient funds for transfer: address 0x0001020304050607080910111213141516171819\"},\"id\":67}", serialized);
-            ctx._test.ReadOnlyState.AccountExists(someAccount).Should().BeFalse();
-        }
-
-        [Test]
-        public async Task Eth_call_web3_sample_not_enough_gas_other_account()
-        {
-            using Context ctx = await Context.Create();
-            Address someAccount = new Address("0x0001020304050607080910111213141516171819");
-            ctx._test.ReadOnlyState.AccountExists(someAccount).Should().BeFalse();
-            TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>("{\"from\":\"0x0001020304050607080910111213141516171819\",\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
-            string serialized = ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction), "0x0");
-            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}", serialized);
-            ctx._test.ReadOnlyState.AccountExists(someAccount).Should().BeFalse();
-        }
-
-        [Test]
-        public async Task Eth_estimateGas_web3_sample_not_enough_gas_system_account()
-        {
-            using Context ctx = await Context.Create();
-            ctx._test.ReadOnlyState.AccountExists(Address.SystemUser).Should().BeFalse();
-            TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>("{\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
-            string serialized = ctx._test.TestEthRpc("eth_estimateGas", ctx._test.JsonSerializer.Serialize(transaction));
-            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x5898\",\"id\":67}", serialized);
-            ctx._test.ReadOnlyState.AccountExists(Address.SystemUser).Should().BeFalse();
-        }
-
-        [Test]
-        public async Task Eth_estimateGas_web3_sample_not_enough_gas_other_account()
-        {
-            using Context ctx = await Context.Create();
-            Address someAccount = new Address("0x0001020304050607080910111213141516171819");
-            ctx._test.ReadOnlyState.AccountExists(someAccount).Should().BeFalse();
-            TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>("{\"from\":\"0x0001020304050607080910111213141516171819\",\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
-            string serialized = ctx._test.TestEthRpc("eth_estimateGas", ctx._test.JsonSerializer.Serialize(transaction));
-            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x5898\",\"id\":67}", serialized);
-            ctx._test.ReadOnlyState.AccountExists(someAccount).Should().BeFalse();
-        }
-
-        [Test]
-        public async Task Eth_estimateGas_web3_above_block_gas_limit()
-        {
-            using Context ctx = await Context.Create();
-            Address someAccount = new Address("0x0001020304050607080910111213141516171819");
-            ctx._test.ReadOnlyState.AccountExists(someAccount).Should().BeFalse();
-            TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>("{\"from\":\"0x0001020304050607080910111213141516171819\",\"gas\":\"0x100000000\",\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
-            string serialized = ctx._test.TestEthRpc("eth_estimateGas", ctx._test.JsonSerializer.Serialize(transaction));
-            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x5898\",\"id\":67}", serialized);
-            ctx._test.ReadOnlyState.AccountExists(someAccount).Should().BeFalse();
-        }
-
-        [Test]
-        public async Task Eth_call_no_sender()
-        {
-            using Context ctx = await Context.Create();
-            TransactionForRpc transaction = new TransactionForRpc(Keccak.Zero, 1L, 1, new Transaction());
-            transaction.To = TestItem.AddressB;
-
-            string serialized = ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction), "latest");
-            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}", serialized);
-        }
-
-        [Test]
-        public async Task Eth_call_no_recipient_should_work_as_init()
-        {
-            using Context ctx = await Context.Create();
-            TransactionForRpc transaction = new TransactionForRpc(Keccak.Zero, 1L, 1, new Transaction());
-            transaction.From = TestItem.AddressA;
-            transaction.Data = new byte[] {1, 2, 3};
-
-            string serialized = ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction), "latest");
-            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32015,\"message\":\"VM execution error.\",\"data\":\"StackUnderflow\"},\"id\":67}", serialized);
-        }
-
-        [Test]
-        public async Task Eth_call_ethereum_recipient()
-        {
-            using Context ctx = await Context.Create();
-            string serialized = ctx._test.TestEthRpc("eth_call", "{\"data\":\"0x12\",\"from\":\"0x7301cfa0e1756b71869e93d4e4dca5c7d0eb0aa6\",\"to\":\"ethereum\"}", "latest");
-            Assert.True(serialized.StartsWith("{\"jsonrpc\":\"2.0\",\"error\""));
-        }
-
-        [Test]
-        public async Task Eth_call_ok()
-        {
-            using Context ctx = await Context.Create();
-            TransactionForRpc transaction = new TransactionForRpc(Keccak.Zero, 1L, 1, new Transaction());
-            transaction.From = TestItem.AddressA;
-            transaction.To = TestItem.AddressB;
-
-            string serialized = ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction), "latest");
-            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}", serialized);
-        }
-
-        [Test]
-        public async Task Eth_call_missing_state_after_fast_sync()
-        {
-            using Context ctx = await Context.Create();
-            TransactionForRpc transaction = new TransactionForRpc(Keccak.Zero, 1L, 1, new Transaction());
-            transaction.From = TestItem.AddressA;
-            transaction.To = TestItem.AddressB;
-            
-            ctx._test.StateDb.Clear();
-            ctx._test.TrieStore.ClearCache();
-
-            string serialized = ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction), "latest");
-            serialized.Should().StartWith("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32002,");
-        }
-
         [Test]
         public async Task Eth_get_block_by_number_with_number_bad_number()
         {
@@ -753,7 +605,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             ctx._test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
                 .WithBlockchainBridge(bridge).WithTxSender(txSender).Build();
             Transaction tx = Build.A.Transaction.TestObject;
-            TransactionForRpc rpcTx = new TransactionForRpc(tx);
+            TransactionForRpc rpcTx = new(tx);
             rpcTx.Nonce = 0;
             string serialized = ctx._test.TestEthRpc("eth_sendTransaction", new EthereumJsonSerializer().Serialize(rpcTx));
             // TODO: actual test missing now
@@ -773,7 +625,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             ctx._test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
                 .WithBlockchainBridge(bridge).WithTxSender(txSender).Build();
             Transaction tx = Build.A.Transaction.TestObject;
-            TransactionForRpc rpcTx = new TransactionForRpc(tx);
+            TransactionForRpc rpcTx = new(tx);
             rpcTx.Nonce = null;
             string serialized = ctx._test.TestEthRpc("eth_sendTransaction", new EthereumJsonSerializer().Serialize(rpcTx));
             
@@ -833,81 +685,6 @@ namespace Nethermind.JsonRpc.Test.Modules
             Assert.AreEqual(expected, serialized);
         }
         
-        [TestCase(false, 2)]
-        [TestCase(true, 2)]
-        [TestCase(true, AccessTxTracer.MaxStorageAccessToOptimize + 5)]
-        public async Task Eth_create_access_list_calculates_proper_gas(bool optimize, long loads)
-        {
-            var test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(new TestSpecProvider(Berlin.Instance));
-            
-            (byte[] code, AccessListItemForRpc[] accessList) = GetTestAccessList(loads);
-
-            TransactionForRpc transaction = test.JsonSerializer.Deserialize<TransactionForRpc>($"{{\"type\":\"0x1\", \"data\": \"{code.ToHexString(true)}\"}}");
-            string serializedCreateAccessList = test.TestEthRpc("eth_createAccessList", test.JsonSerializer.Serialize(transaction), "0x0", optimize.ToString().ToLower());
-            
-            if (optimize && loads <= AccessTxTracer.MaxStorageAccessToOptimize)
-            {
-                accessList = GetTestAccessList(loads, false).AccessList;
-            }
-            
-            transaction.AccessList = accessList;
-            string serializedEstimateGas = test.TestEthRpc("eth_estimateGas", test.JsonSerializer.Serialize(transaction), "0x0");
-
-            string gasUsedEstimateGas = JToken.Parse(serializedEstimateGas).Value<string>("result");
-            string gasUsedCreateAccessList = JToken.Parse(serializedCreateAccessList).SelectToken("result.gasUsed").Value<string>();
-            gasUsedCreateAccessList.Should().Be(gasUsedEstimateGas);
-        }
-
-        [TestCase(true, 0xeee7, 0xf71b)]
-        [TestCase(false, 0xeee7, 0xee83)]
-        public async Task Eth_estimate_gas_with_accessList(bool senderAccessList, long gasPriceWithoutAccessList, long gasPriceWithAccessList)
-        {
-            var test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(new TestSpecProvider(Berlin.Instance));
-            
-            (byte[] code, AccessListItemForRpc[] accessList) = GetTestAccessList(2, senderAccessList);
-            
-            TransactionForRpc transaction = test.JsonSerializer.Deserialize<TransactionForRpc>($"{{\"type\":\"0x1\", \"data\": \"{code.ToHexString(true)}\"}}");
-            string serialized = test.TestEthRpc("eth_estimateGas", test.JsonSerializer.Serialize(transaction), "0x0");
-            Assert.AreEqual($"{{\"jsonrpc\":\"2.0\",\"result\":\"{gasPriceWithoutAccessList.ToHexString(true)}\",\"id\":67}}", serialized);
-
-            transaction.AccessList = accessList;
-            serialized = test.TestEthRpc("eth_estimateGas", test.JsonSerializer.Serialize(transaction), "0x0");
-            Assert.AreEqual($"{{\"jsonrpc\":\"2.0\",\"result\":\"{gasPriceWithAccessList.ToHexString(true)}\",\"id\":67}}", serialized);
-        }
-
-        [Test]
-        public async Task Eth_estimate_gas_is_lower_with_optimized_access_list()
-        {
-            var test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(new TestSpecProvider(Berlin.Instance));
-            
-            (byte[] code, AccessListItemForRpc[] accessList) = GetTestAccessList(2, true);
-            (byte[] _, AccessListItemForRpc[] optimizedAccessList) = GetTestAccessList(2, false);
-            
-            TransactionForRpc transaction = test.JsonSerializer.Deserialize<TransactionForRpc>($"{{\"type\":\"0x1\", \"data\": \"{code.ToHexString(true)}\"}}");
-            transaction.AccessList = accessList;
-            string serialized = test.TestEthRpc("eth_estimateGas", test.JsonSerializer.Serialize(transaction), "0x0");
-            long estimateGas = Convert.ToInt64(JToken.Parse(serialized).Value<string>("result"), 16);
-            
-            transaction.AccessList = optimizedAccessList;
-            serialized = test.TestEthRpc("eth_estimateGas", test.JsonSerializer.Serialize(transaction), "0x0");
-            long optimizedEstimateGas = Convert.ToInt64(JToken.Parse(serialized).Value<string>("result"), 16);
-
-            optimizedEstimateGas.Should().BeLessThan(estimateGas);
-        }
-        
-        [Test]
-        public async Task Eth_call_with_accessList()
-        {
-            var test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(new TestSpecProvider(Berlin.Instance));
-            
-            (byte[] code, AccessListItemForRpc[] accessList) = GetTestAccessList();
-            
-            TransactionForRpc transaction = test.JsonSerializer.Deserialize<TransactionForRpc>($"{{\"type\":\"0x1\", \"data\": \"{code.ToHexString(true)}\"}}");
-
-            transaction.AccessList = accessList;
-            string serialized = test.TestEthRpc("eth_call", test.JsonSerializer.Serialize(transaction), "0x0");
-            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x010203\",\"id\":67}", serialized);
-        }
 
         private static (byte[] ByteCode, AccessListItemForRpc[] AccessList) GetTestAccessList(long loads = 2, bool allowSystemUser = true)
         {
@@ -950,17 +727,19 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             private Context() { }
             
-            public static async Task<Context> CreateWith1559Enabled()
+            public static async Task<Context> CreateWithLondonEnabled()
             {
                 ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-                ReleaseSpec releaseSpec = new ReleaseSpec() {IsEip1559Enabled = true, Eip1559TransitionBlock = 1 };
+                
+                OverridableReleaseSpec releaseSpec = new(London.Instance);
+                releaseSpec.Eip1559TransitionBlock = 1;
                 specProvider.GetSpec(Arg.Any<long>()).Returns(releaseSpec);
                 return await Context.Create(specProvider);
             }
             
             public static async Task<Context> Create(ISpecProvider specProvider = null)
             {
-                Context ctx = new Context();
+                Context ctx = new();
                 ctx._test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(specProvider);
                 ctx._auraTest = await TestRpcBlockchain.ForTest(SealEngineType.AuRa).Build(specProvider);
                 return ctx;
