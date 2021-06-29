@@ -117,6 +117,8 @@ namespace Nethermind.Mev.Test
                 .WithNonce(0)
                 .WithValue(0)
                 .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+
+            MevRpcModuleTests.SuccessfullySendBundle(chain, 3, coinbaseTx);
             
             await chain.AddBlock(true);
             
