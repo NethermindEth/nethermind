@@ -69,6 +69,16 @@ namespace Nethermind.Dsl.Pipeline.Builders
                 _ => null
             };
         }
+        
+        public static bool CheckEventSignature(LogEntry log, string signature)
+        {
+            signature = signature.Replace(" ", string.Empty); //Keccak will be wrong if we don't remove white space chars
+            var signatureHash = Keccak.Compute(signature);
+
+            if (log == null) return false;
+
+            return log.Topics.First() == signatureHash;
+        }
 
         private bool CheckIfContains(LogEntry logEntry,string key ,string value)
         {
@@ -79,15 +89,6 @@ namespace Nethermind.Dsl.Pipeline.Builders
                 "topics" => logEntry.Topics.Contains(new Keccak(value)),
                 _ => false
             };
-        }
-
-        private static bool CheckEventSignature(LogEntry log, string signature)
-        {
-            var signatureHash = Keccak.Compute(signature);
-
-            if (log == null) return false;
-
-            return log.Topics.First() == signatureHash;
         }
     }
 }
