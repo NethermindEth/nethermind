@@ -88,13 +88,13 @@ namespace Nethermind.Consensus.Ethash
                 getFromApi.SpecProvider,
                 getFromApi.LogManager);
 
-            BlockProcessor.BlockProducingTransactionProcessor producingTransactionProcessor = new(producerEnv);
+            BlockProcessor.ProduceBlockTransactionsStrategy transactionsStrategy = new(producerEnv);
             
             BlockProcessor producerProcessor = new(
                 getFromApi!.SpecProvider,
                 getFromApi!.BlockValidator,
                 NoBlockRewards.Instance,
-                producingTransactionProcessor,
+                transactionsStrategy,
                 producerEnv.StateProvider,
                 producerEnv.StorageProvider,
                 NullReceiptStorage.Instance,

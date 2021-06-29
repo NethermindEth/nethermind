@@ -39,6 +39,7 @@ using Result = Nethermind.Merge.Plugin.Data.Result;
 using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.State;
 using Nethermind.Trie;
 
 namespace Nethermind.Merge.Plugin.Test

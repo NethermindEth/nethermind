@@ -26,7 +26,6 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
-using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
@@ -35,6 +34,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.State.Proofs;
 using Nethermind.TxPool;
+using Nethermind.TxPool.Comparison;
 
 namespace Nethermind.Blockchain.Processing
 {
@@ -48,7 +48,7 @@ namespace Nethermind.Blockchain.Processing
         private readonly IBlockValidator _blockValidator;
         private readonly IStorageProvider _storageProvider;
         private readonly IRewardCalculator _rewardCalculator;
-        private readonly IBlockProcessor.ITransactionProcessor _transactionProcessor;
+        private readonly IBlockProcessor.IBlockTransactionsStrategy _blockTransactionsStrategy;
 
         private const int MaxUncommittedBlocks = 64;
 
@@ -62,7 +62,7 @@ namespace Nethermind.Blockchain.Processing
             ISpecProvider? specProvider,
             IBlockValidator? blockValidator,
             IRewardCalculator? rewardCalculator,
-            IBlockProcessor.ITransactionProcessor? transactionProcessor,
+            IBlockProcessor.IBlockTransactionsStrategy? blockTransactionsStrategy,
             IStateProvider? stateProvider,
             IStorageProvider? storageProvider,
             IReceiptStorage? receiptStorage,
@@ -77,7 +77,7 @@ namespace Nethermind.Blockchain.Processing
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _witnessCollector = witnessCollector ?? throw new ArgumentNullException(nameof(witnessCollector));
             _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
-            _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
+            _blockTransactionsStrategy = blockTransactionsStrategy ?? throw new ArgumentNullException(nameof(blockTransactionsStrategy));
 
             _receiptsTracer = new BlockReceiptsTracer();
         }
@@ -86,8 +86,8 @@ namespace Nethermind.Blockchain.Processing
 
         public event EventHandler<TxProcessedEventArgs> TransactionProcessed
         {
-            add { _transactionProcessor.TransactionProcessed += value; }
-            remove { _transactionProcessor.TransactionProcessed -= value; }
+            add { _blockTransactionsStrategy.TransactionProcessed += value; }
+            remove { _blockTransactionsStrategy.TransactionProcessed -= value; }
         }
 
         // TODO: move to branch processor
@@ -251,7 +251,7 @@ namespace Nethermind.Blockchain.Processing
             
             _receiptsTracer.SetOtherTracer(blockTracer);
             _receiptsTracer.StartNewBlockTrace(block);
-            TxReceipt[] receipts = _transactionProcessor.ProcessTransactions(block, options, blockTracer, _receiptsTracer, spec);
+            TxReceipt[] receipts = _blockTransactionsStrategy.ProcessTransactions(block, options, blockTracer, _receiptsTracer, spec);
             _receiptsTracer.EndBlockTrace();
             
             block.Header.ReceiptsRoot = receipts.GetReceiptsRoot(spec, block.ReceiptsRoot);

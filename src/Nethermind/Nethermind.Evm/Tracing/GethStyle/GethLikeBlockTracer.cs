@@ -41,7 +41,7 @@ namespace Nethermind.Evm.Tracing.GethStyle
         public override void StartNewBlockTrace(Block block)
         {
         }
-        
+
         public override void EndBlockTrace()
         {
         }

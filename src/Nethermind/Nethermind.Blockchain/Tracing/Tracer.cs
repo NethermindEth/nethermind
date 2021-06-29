@@ -56,6 +56,8 @@ namespace Nethermind.Blockchain.Tracing
             
             blockTracer.EndBlockTrace();
 
+            blockTracer.EndBlockTrace();
+
             return _stateProvider.StateRoot;
         }
 
@@ -63,7 +65,7 @@ namespace Nethermind.Blockchain.Tracing
         {
             if (visitor == null) throw new ArgumentNullException(nameof(visitor));
             if (stateRoot == null) throw new ArgumentNullException(nameof(stateRoot));
-            
+
             _stateProvider.Accept(visitor, stateRoot);
         }
     }

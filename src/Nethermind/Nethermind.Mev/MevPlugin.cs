@@ -183,7 +183,7 @@ namespace Nethermind.Mev
 
         public bool Enabled => _mevConfig.Enabled;
 
-        private void TxPoolOnNewPending(object? sender, TxEventArgs e)
+        private void TxPoolOnNewPending(object? sender, TxPool.TxEventArgs e)
         {
             IBlockchainBridge bridge = _nethermindApi!.CreateBlockchainBridge();
             // create a bundle

@@ -37,7 +37,6 @@ namespace Nethermind.Mev.Data
             BlockNumber = blockNumber;
 
             Hash = GetHash(this);
-            
             for (int i = 0; i < transactions.Count; i++)
             {
                 transactions[i].BundleHash = Hash;
@@ -47,7 +46,7 @@ namespace Nethermind.Mev.Data
             MaxTimestamp = maxTimestamp ?? UInt256.Zero;
             SequenceNumber = Interlocked.Increment(ref _sequenceNumber);
         }
-
+        
         public IReadOnlyList<BundleTransaction> Transactions { get; }
 
         public long BlockNumber { get; }

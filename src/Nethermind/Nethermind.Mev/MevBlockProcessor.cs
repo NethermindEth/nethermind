@@ -38,7 +38,7 @@ namespace Nethermind.Mev
             ISpecProvider? specProvider, 
             IBlockValidator? blockValidator, 
             IRewardCalculator? rewardCalculator,
-            IBlockProcessor.ITransactionProcessor? transactionProcessor,
+            IBlockProcessor.IBlockTransactionsStrategy? transactionProcessor,
             IStateProvider? stateProvider, 
             IStorageProvider? storageProvider,
             IReceiptStorage? receiptStorage, 

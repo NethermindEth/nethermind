@@ -234,7 +234,7 @@ namespace Nethermind.Synchronization
             {
                 if (!_blockValidator.ValidateSuggestedBlock(block))
                 {
-                    string message = $"Peer {syncPeer?.Node:c} sent an invalid block";
+                    string message = $"Peer {syncPeer?.Node:c} sent an invalid block.";
                     if (_logger.IsDebug) _logger.Debug(message);
                     lock (_recentlySuggested)
                     {
@@ -245,7 +245,11 @@ namespace Nethermind.Synchronization
                 }
 
                 AddBlockResult result = _blockTree.SuggestBlock(block);
-                if (_logger.IsTrace) _logger.Trace($"{block.Hash} ({block.Number}) adding result is {result}");
+                if (_logger.IsTrace) _logger.Trace($"Block {block.ToString(Block.Format.FullHashAndNumber)} adding result is {result}.");
+            }
+            else
+            {
+                if (_logger.IsDebug) _logger.Debug($"Discovered block {block.ToString(Block.Format.FullHashAndNumber)} has unknown parent.");
             }
         }
 

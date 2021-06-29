@@ -43,7 +43,7 @@ namespace Nethermind.Mev.Test
         }
 
         [Test]
-        public void Should_count_valid_bundles_correctly()
+        public void Should_count_valid_bundles()
         {
             TestBundlePool bundlePool = CreateTestBundlePool();
 
@@ -66,7 +66,7 @@ namespace Nethermind.Mev.Test
         }
         
         [Test]
-        public void Should_count_invalid_bundles_correctly()
+        public void Should_count_invalid_bundles()
         {
             TestBundlePool bundlePool = CreateTestBundlePool();
 
@@ -89,7 +89,7 @@ namespace Nethermind.Mev.Test
         }
         
         [Test]
-        public async Task Should_count_total_coinbase_payments_correctly()
+        public async Task Should_count_total_coinbase_payments()
         {
             var chain = await MevRpcModuleTests.CreateChain(1);
             chain.GasLimitCalculator.GasLimit = 10_000_000;
@@ -107,7 +107,7 @@ namespace Nethermind.Mev.Test
 
             //Console.WriteLine((await chain.EthRpcModule.eth_getBalance(contractAddress)).Data!);
 
-            UInt256 beforeCoinbasePayments = Metrics.TotalCoinbasePayments;
+            UInt256 beforeCoinbasePayments = (UInt256)Metrics.TotalCoinbasePayments;
 
             BundleTransaction coinbaseTx = Build.A.TypedTransaction<BundleTransaction>()
                 .WithGasLimit(MevRpcModuleTests.Contracts.LargeGasLimit)
@@ -118,12 +118,11 @@ namespace Nethermind.Mev.Test
                 .WithValue(0)
                 .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
             
-            MevRpcModuleTests.SuccessfullySendBundle(chain, 3, coinbaseTx);
             await chain.AddBlock(true);
             
             MevRpcModuleTests.GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(MevRpcModuleTests.GetHashes(new []{coinbaseTx}));
             
-            UInt256 deltaCoinbasePayments = Metrics.TotalCoinbasePayments - beforeCoinbasePayments;
+            UInt256 deltaCoinbasePayments = (UInt256)Metrics.TotalCoinbasePayments - beforeCoinbasePayments;
             deltaCoinbasePayments.Should().Be(100000000000);
         }
 

@@ -90,7 +90,14 @@ namespace Nethermind.Mev.Execution
                 bundle.Transactions[i].SimulatedBundleFee = totalGasFeePayment + tracer.CoinbasePayments;
             }
 
-            Metrics.TotalCoinbasePayments += tracer.CoinbasePayments;
+            if ((UInt256)decimal.MaxValue >= (UInt256)Metrics.TotalCoinbasePayments + tracer.CoinbasePayments)
+            {
+                Metrics.TotalCoinbasePayments += (decimal)tracer.CoinbasePayments;
+            }
+            else
+            {
+                Metrics.TotalCoinbasePayments = ulong.MaxValue;
+            }
             
             return new(bundle, tracer.GasUsed, success, tracer.BundleFee, tracer.CoinbasePayments, eligibleGasFeePayment);
         }

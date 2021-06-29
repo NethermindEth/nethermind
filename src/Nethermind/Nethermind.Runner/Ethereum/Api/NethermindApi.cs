@@ -33,6 +33,7 @@ using Nethermind.Blockchain.Validators;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Core.PubSub;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
@@ -49,7 +50,6 @@ using Nethermind.Network;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.P2P;
 using Nethermind.Network.Rlpx;
-using Nethermind.PubSub;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
@@ -117,7 +117,7 @@ namespace Nethermind.Runner.Ethereum.Api
 
         public IAbiEncoder AbiEncoder { get; } = Nethermind.Abi.AbiEncoder.Instance;
         public IBlockchainProcessor? BlockchainProcessor { get; set; }
-        public CompositeBlockPreprocessorStep BlockPreprocessor { get; } = new(); 
+        public CompositeBlockPreprocessorStep BlockPreprocessor { get; } = new();
         public IBlockProcessingQueue? BlockProcessingQueue { get; set; }
         public IBlockProcessor? MainBlockProcessor { get; set; }
         public IBlockProducer? BlockProducer { get; set; }

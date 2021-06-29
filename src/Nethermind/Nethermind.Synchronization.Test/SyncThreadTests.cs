@@ -48,7 +48,6 @@ using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
-using Nethermind.TxPool.Storages;
 using NSubstitute;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
@@ -179,7 +178,7 @@ namespace Nethermind.Synchronization.Test
                 transaction.GasPrice = 20.GWei();
                 transaction.Hash = transaction.CalculateHash();
                 _originPeer.Ecdsa.Sign(TestItem.PrivateKeyA, transaction);
-                _originPeer.TxPool.AddTransaction(transaction, TxHandlingOptions.None);
+                _originPeer.TxPool.SubmitTx(transaction, TxHandlingOptions.None);
                 if (!resetEvent.WaitOne(1000))
                 {
                     throw new Exception($"Failed to produce block {i + 1}");
@@ -283,7 +282,7 @@ namespace Nethermind.Synchronization.Test
             ITransactionComparerProvider transactionComparerProvider =
                 new TransactionComparerProvider(specProvider, tree);
 
-            TxPool.TxPool txPool = new(new InMemoryTxStorage(), ecdsa, new ChainHeadInfoProvider(specProvider, tree, stateReader), 
+            TxPool.TxPool txPool = new(ecdsa, new ChainHeadInfoProvider(specProvider, tree, stateReader), 
                 new TxPoolConfig(), new TxValidator(specProvider.ChainId), logManager, transactionComparerProvider.GetDefaultComparer());
             BlockhashProvider blockhashProvider = new(tree, LimboLogs.Instance);
             VirtualMachine virtualMachine =
@@ -308,7 +307,7 @@ namespace Nethermind.Synchronization.Test
                 specProvider,
                 blockValidator,
                 rewardCalculator,
-                new BlockProcessor.StandardTransactionProcessor(txProcessor, stateProvider),
+                new BlockProcessor.ProcessBlockTransactionsStrategy(txProcessor, stateProvider),
                 stateProvider,
                 storageProvider,
                 receiptStorage,
@@ -332,7 +331,7 @@ namespace Nethermind.Synchronization.Test
                 specProvider,
                 blockValidator,
                 rewardCalculator,
-                new BlockProcessor.BlockProducingTransactionProcessor(devTxProcessor, devState, devStorage),
+                new BlockProcessor.ProduceBlockTransactionsStrategy(devTxProcessor, devState, devStorage),
                 devState,
                 devStorage,
                 receiptStorage,

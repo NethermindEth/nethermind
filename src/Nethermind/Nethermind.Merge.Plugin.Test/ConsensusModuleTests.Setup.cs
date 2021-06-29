@@ -112,7 +112,7 @@ namespace Nethermind.Merge.Plugin.Test
                     SpecProvider,
                     BlockValidator,
                     NoBlockRewards.Instance,
-                    new BlockProcessor.StandardTransactionProcessor(TxProcessor, State),
+                    new BlockProcessor.ProcessBlockTransactionsStrategy(TxProcessor, State),
                     State,
                     Storage,
                     ReceiptStorage,

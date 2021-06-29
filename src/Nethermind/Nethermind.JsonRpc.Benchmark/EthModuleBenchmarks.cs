@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -84,7 +84,7 @@ namespace Nethermind.JsonRpc.Benchmark
                  = new TransactionProcessor(MainnetSpecProvider.Instance, stateProvider, storageProvider, _virtualMachine, LimboLogs.Instance);
             
             BlockProcessor blockProcessor = new BlockProcessor(specProvider, Always.Valid, new RewardCalculator(specProvider), transactionProcessor,
-                stateProvider, storageProvider, NullTxPool.Instance, NullReceiptStorage.Instance, NullWitnessCollector.Instance, LimboLogs.Instance);
+                stateProvider, storageProvider, NullReceiptStorage.Instance, NullWitnessCollector.Instance, LimboLogs.Instance);
 
             EthereumEcdsa ecdsa = new EthereumEcdsa(specProvider.ChainId, LimboLogs.Instance);
             BlockchainProcessor blockchainProcessor = new BlockchainProcessor(
@@ -124,6 +124,7 @@ namespace Nethermind.JsonRpc.Benchmark
                 ecdsa,
                 Timestamper.Default,
                 logFinder,
+                specProvider,
                 false,
                 false);
             
@@ -135,7 +136,8 @@ namespace Nethermind.JsonRpc.Benchmark
                 NullTxPool.Instance,
                 NullTxSender.Instance,
                 NullWallet.Instance,
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                specProvider);
         }
 
         [Benchmark]

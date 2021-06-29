@@ -111,11 +111,7 @@ namespace Nethermind.Mev.Test
         public static MevBundle SuccessfullySendBundle(TestMevRpcBlockchain chain, int blockNumber, params BundleTransaction[] txs)
         {
             byte[][] bundleBytes = txs.Select(t => Rlp.Encode(t).Bytes).ToArray();
-            List<Keccak> revertingTxHashes = new();
-            foreach (var tx in txs)
-            {
-                if (tx.CanRevert) revertingTxHashes.Add(tx.Hash!);
-            }
+            List<Keccak> revertingTxHashes = txs.Where(tx => tx.CanRevert).Select(tx => tx.Hash!).ToList();
             ResultWrapper<bool> resultOfBundle = chain.MevRpcModule.eth_sendBundle(bundleBytes, blockNumber, default, default, revertingTxHashes.Count > 0 ? revertingTxHashes.ToArray() : null);
             resultOfBundle.GetResult().ResultType.Should().NotBe(ResultType.Failure);
             resultOfBundle.GetData().Should().Be(true);
@@ -366,7 +362,7 @@ namespace Nethermind.Mev.Test
             await SendSignedTransaction(chain, tx4);
             await SendSignedTransaction(chain, tx5);
             
-            SuccessfullySendBundle(chain, 2, set1, set2, set3);
+            chain.SendBundle(2, set1, set2, set3);
 
             await chain.AddBlock(true);
 
@@ -511,7 +507,7 @@ namespace Nethermind.Mev.Test
         [Test]
         public async Task Should_accept_reverting_bundle_with_RevertingTxHashes()
         {
-            var chain = await CreateChain(3);
+            TestMevRpcBlockchain chain = await CreateChain(3);
             chain.GasLimitCalculator.GasLimit = 10_000_000;
             
             Address contractAddress = await Contracts.Deploy(chain, Contracts.ReverterCode);

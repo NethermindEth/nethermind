@@ -30,16 +30,17 @@ using Nethermind.Mev.Data;
 using Nethermind.State;
 using Nethermind.State.Proofs;
 using Nethermind.TxPool;
+using Nethermind.TxPool.Comparison;
 
 namespace Nethermind.Mev
 {
-    public class MevBlockProducingTransactionProcessor : BlockProcessor.BlockProducingTransactionProcessor
+    public class MevProduceBlockTransactionsStrategy : BlockProcessor.ProduceBlockTransactionsStrategy
     {
         private readonly ITransactionProcessor _transactionProcessor;
         private readonly IStateProvider _stateProvider;
         private readonly IStorageProvider _storageProvider;
         
-        public MevBlockProducingTransactionProcessor(
+        public MevProduceBlockTransactionsStrategy(
             ITransactionProcessor transactionProcessor, 
             IStateProvider stateProvider,
             IStorageProvider storageProvider) : base(transactionProcessor, stateProvider, storageProvider)
@@ -53,7 +54,7 @@ namespace Nethermind.Mev
         {
             IEnumerable<Transaction> transactions = block.GetTransactions(out _);
 
-            LinkedHashSet<Transaction> transactionsInBlock = new(DistinctCompareTx.Instance);
+            LinkedHashSet<Transaction> transactionsInBlock = new(ByHashTxComparer.Instance);
 
             List<BundleTransaction> bundleTransactions = new();
             Keccak? bundleHash = null;

@@ -20,25 +20,39 @@ namespace Nethermind.Trie
 {
     public class TrieStats
     {
-        public int StateBranchCount { get; internal set; }
+        internal int _stateBranchCount;
+        internal int _stateExtensionCount;
+        internal int _accountCount;
+        internal int _storageBranchCount;
+        internal int _storageExtensionCount;
+        internal int _storageLeafCount;
+        internal int _codeCount;
+        internal int _missingState;
+        internal int _missingCode;
+        internal int _missingStorage;
+        internal long _storageSize;
+        internal long _codeSize;
+        internal long _stateSize;
 
-        public int StateExtensionCount { get; internal set; }
+        public int StateBranchCount => _stateBranchCount;
 
-        public int AccountCount { get; internal set; }
+        public int StateExtensionCount => _stateExtensionCount;
 
-        public int StorageBranchCount { get; internal set; }
+        public int AccountCount => _accountCount;
 
-        public int StorageExtensionCount { get; internal set; }
+        public int StorageBranchCount => _storageBranchCount;
 
-        public int StorageLeafCount { get; internal set; }
+        public int StorageExtensionCount => _storageExtensionCount;
 
-        public int CodeCount { get; internal set; }
-        
-        public int MissingState { get; internal set; }
-        
-        public int MissingCode { get; internal set; }
-        
-        public int MissingStorage { get; internal set; }
+        public int StorageLeafCount => _storageLeafCount;
+
+        public int CodeCount => _codeCount;
+
+        public int MissingState => _missingState;
+
+        public int MissingCode => _missingCode;
+
+        public int MissingStorage => _missingStorage;
 
         public int MissingNodes => MissingCode + MissingState + MissingStorage;
 
@@ -47,12 +61,12 @@ namespace Nethermind.Trie
         public int StateCount => AccountCount + StateExtensionCount + StateBranchCount;
 
         public int NodesCount => StorageCount + StateCount + CodeCount;
-        
-        public long StorageSize { get; internal set; }
-        
-        public long CodeSize { get; internal set; }
-        
-        public long StateSize { get; internal set; }
+
+        public long StorageSize => _storageSize;
+
+        public long CodeSize => _codeSize;
+
+        public long StateSize => _stateSize;
 
         public long Size => StateSize + StorageSize + CodeSize;
 

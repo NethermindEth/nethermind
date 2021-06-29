@@ -185,10 +185,12 @@ namespace Nethermind.Evm
                 }
             }
 
+            UInt256 senderReservedGasPayment = restore ? UInt256.Zero : (ulong) gasLimit * gasPrice;
+            
             if (notSystemTransaction)
             {
                 UInt256 senderBalance = _stateProvider.GetBalance(caller);
-                if (!restore && (ulong) intrinsicGas * gasPrice + value > senderBalance)
+                if (!restore && ((ulong) intrinsicGas * gasPrice + value > senderBalance || senderReservedGasPayment > senderBalance))
                 {
                     TraceLogInvalidTx(transaction, $"INSUFFICIENT_SENDER_BALANCE: ({caller})_BALANCE = {senderBalance}");
                     return QuickFail(transaction, block, txTracer, "insufficient sender balance");
@@ -209,8 +211,6 @@ namespace Nethermind.Evm
                 _stateProvider.IncrementNonce(caller);
             }
 
-            UInt256 senderReservedGasPayment = restore ? UInt256.Zero : (ulong) gasLimit * gasPrice;
-            
             _stateProvider.SubtractFromBalance(caller, senderReservedGasPayment, spec);
             if (commit)
             {

@@ -155,13 +155,13 @@ namespace Nethermind.Blockchain
             IReceiptStorage receiptStorage, 
             ILogManager logManager)
         {
-            BlockProcessor.BlockProducingTransactionProcessor producingTransactionProcessor = new(readOnlyTxProcessingEnv);
+            BlockProcessor.ProduceBlockTransactionsStrategy transactionsStrategy = new(readOnlyTxProcessingEnv);
             
             return new(
                 specProvider,
                 blockValidator,
                 rewardCalculatorSource.Get(readOnlyTxProcessingEnv.TransactionProcessor),
-                producingTransactionProcessor,
+                transactionsStrategy,
                 readOnlyTxProcessingEnv.StateProvider,
                 readOnlyTxProcessingEnv.StorageProvider,
                 receiptStorage,

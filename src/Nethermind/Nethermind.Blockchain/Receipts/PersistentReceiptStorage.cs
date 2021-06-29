@@ -210,8 +210,9 @@ namespace Nethermind.Blockchain.Receipts
         public void Insert(Block block, params TxReceipt[] txReceipts)
         {
             txReceipts ??= Array.Empty<TxReceipt>();
+            int txReceiptsLength = txReceipts.Length;
             
-            if (block.Transactions.Length != txReceipts.Length)
+            if (block.Transactions.Length != txReceiptsLength)
             {
                 throw new InvalidDataException(
                     $"Block {block.ToString(Block.Format.FullHashAndNumber)} has different numbers " +
@@ -224,11 +225,14 @@ namespace Nethermind.Blockchain.Receipts
             var spec = _specProvider.GetSpec(blockNumber);
             RlpBehaviors behaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts | RlpBehaviors.Storage : RlpBehaviors.Storage;
             _blocksDb.Set(block.Hash, StorageDecoder.Encode(txReceipts, behaviors).Bytes);
-            
-            for (int i = 0; i < txReceipts.Length; i++)
+
+            if (txReceiptsLength > 0 && !txReceipts[0].Removed)
             {
-                var txHash = block.Transactions[i].Hash;
-                _transactionDb.Set(txHash, block.Hash.Bytes);
+                for (int i = 0; i < txReceiptsLength; i++)
+                {
+                    var txHash = block.Transactions[i].Hash;
+                    _transactionDb.Set(txHash, block.Hash.Bytes);
+                }
             }
 
             if (blockNumber < MigratedBlockNumber)

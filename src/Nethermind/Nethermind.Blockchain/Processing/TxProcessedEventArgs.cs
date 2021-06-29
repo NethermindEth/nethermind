@@ -19,22 +19,25 @@ using Nethermind.Core;
 
 namespace Nethermind.Blockchain.Processing
 {
-    public class TxProcessedEventArgs : EventArgs
+    public class TxEventArgs : EventArgs
     {
         public int Index { get; }
         public Transaction Transaction { get; }
-        public TxReceipt TxReceipt { get; }
-
-        public TxProcessedEventArgs(int index, Transaction transaction, TxReceipt txReceipt)
+        
+        public TxEventArgs(int index, Transaction transaction)
         {
             Index = index;
             Transaction = transaction;
-            TxReceipt = txReceipt;
         }
+    }
+    
+    public class TxProcessedEventArgs : TxEventArgs
+    {
+        public TxReceipt TxReceipt { get; }
 
-        public TxProcessedEventArgs(TxReceipt txTxReceipt)
+        public TxProcessedEventArgs(int index, Transaction transaction, TxReceipt txReceipt) : base(index, transaction)
         {
-            TxReceipt = txTxReceipt;
+            TxReceipt = txReceipt;
         }
     }
 }

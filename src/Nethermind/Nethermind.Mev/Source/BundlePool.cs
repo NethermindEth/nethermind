@@ -127,7 +127,7 @@ namespace Nethermind.Mev.Source
             return false;
         }
 
-        private bool ValidateBundle(MevBundle bundle, UInt256? currentTimestamp = null)
+        private bool ValidateBundle(MevBundle bundle)
         {
             if (HeadNumber >= bundle.BlockNumber)
             {
@@ -140,7 +140,7 @@ namespace Nethermind.Mev.Source
                 return false;
             }
             
-            currentTimestamp ??= _timestamper.UnixTime.Seconds;
+            ulong currentTimestamp = _timestamper.UnixTime.Seconds;
 
             if (bundle.MaxTimestamp < bundle.MinTimestamp)
             {
@@ -152,7 +152,7 @@ namespace Nethermind.Mev.Source
                 if (_logger.IsDebug) _logger.Debug($"Bundle rejected, because {nameof(bundle.MaxTimestamp)} {bundle.MaxTimestamp} is < current {currentTimestamp}.");
                 return false;
             }
-            else if (bundle.MinTimestamp != 0 && bundle.MinTimestamp > currentTimestamp)
+            else if (bundle.MinTimestamp != 0 && bundle.MinTimestamp > currentTimestamp + _mevConfig.BundleHorizon)
             {
                 if (_logger.IsDebug) _logger.Debug($"Bundle rejected, because {nameof(bundle.MinTimestamp)} {bundle.MaxTimestamp} is further into the future than accepted horizon {_mevConfig.BundleHorizon}.");
                 return false;
@@ -237,16 +237,27 @@ namespace Nethermind.Mev.Source
                     SimulateBundle(bundle, e.Block.Header);
                 }
             });
-            t.Wait();
         }
 
         private void RemoveBundlesUpToBlock(long blockNumber)
         {
+            void StopSimulations(IEnumerable<SimulatedMevBundleContext> simulations)
+            {
+                foreach (SimulatedMevBundleContext simulation in simulations)
+                {
+                    StopSimulation(simulation);
+                }
+            }
+            
             IDictionary<long, MevBundle[]> bundlesToRemove = _bundles.GetBucketSnapshot(b => b <= blockNumber);
 
             foreach (KeyValuePair<long, MevBundle[]> bundleBucket in bundlesToRemove)
             {
-                _simulatedBundles.TryRemove(bundleBucket.Key, out _);
+                if (_simulatedBundles.TryRemove(bundleBucket.Key, out var simulations))
+                {
+                    StopSimulations(simulations.Values);
+                }
+
                 foreach (MevBundle mevBundle in bundleBucket.Value)
                 {
                     _bundles.TryRemove(mevBundle);
@@ -270,13 +281,24 @@ namespace Nethermind.Mev.Source
 
                 foreach ((MevBundle Bundle, Keccak BlockHash) key in keys)
                 {
-                    simulations.TryRemove(key, out _);
+                    if (simulations.TryRemove(key, out var simulation))
+                    {
+                        StopSimulation(simulation);
+                    }
                 }
 
                 if (simulations.Count == 0)
                 {
                     _simulatedBundles.Remove(bundle.BlockNumber, out _);
                 }
+            }
+        }
+
+        private void StopSimulation(SimulatedMevBundleContext simulation)
+        {
+            if (!simulation.Task.IsCompleted)
+            {
+                simulation.CancellationTokenSource.Cancel();
             }
         }
 
@@ -287,24 +309,24 @@ namespace Nethermind.Mev.Source
             if (_simulatedBundles.TryGetValue(parent.Number, out ConcurrentDictionary<(MevBundle Bundle, Keccak BlockHash), SimulatedMevBundleContext>? simulatedBundlesForBlock))
             {
                 IEnumerable<Task<SimulatedMevBundle>> resultTasks = simulatedBundlesForBlock
-                    .Where(b => b.Key.BlockHash == parent.Hash) //same block number as Blockheader param
-                    .Where(b => bundles.Contains(b.Key.Bundle)) //if block is in bundles (meets parameters like timestamp/gasLimit)
+                    .Where(b => b.Key.BlockHash == parent.Hash)
+                    .Where(b => bundles.Contains(b.Key.Bundle))
                     .Select(b => b.Value.Task)
                     .ToArray();
+                
+                await Task.WhenAny(Task.WhenAll(resultTasks), token.AsTask()); 
 
-                await Task.WhenAny(Task.WhenAll(resultTasks), token.AsTask());
-
-                var res = resultTasks
+                IEnumerable<SimulatedMevBundle> res = resultTasks
                     .Where(t => t.IsCompletedSuccessfully)
                     .Select(t => t.Result)
                     .Where(t => t.Success)
-                    .Where(s => s.GasUsed <= gasLimit); //get all result tasks that are successful and use less gas than gaslimit
+                    .Where(s => s.GasUsed <= gasLimit); 
                 
                 return res;
             }
             else
             {
-                return Enumerable.Empty<SimulatedMevBundle>();
+                return (Enumerable.Empty<SimulatedMevBundle>());
             }
         }
 

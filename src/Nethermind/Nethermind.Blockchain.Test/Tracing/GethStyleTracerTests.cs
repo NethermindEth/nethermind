@@ -65,7 +65,7 @@ namespace Nethermind.Blockchain.Test.Tracing
                 specProvider,
                 TestBlockValidator.AlwaysValid,
                 NoBlockRewards.Instance,
-                new BlockProcessor.StandardTransactionProcessor(transactionProcessor, stateProvider),
+                new BlockProcessor.ProcessBlockTransactionsStrategy(transactionProcessor, stateProvider),
                 stateProvider,
                 storageProvider,
                 NullReceiptStorage.Instance,
