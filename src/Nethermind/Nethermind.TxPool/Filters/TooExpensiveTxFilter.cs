@@ -58,7 +58,8 @@ namespace Nethermind.TxPool.Filters
             {
                 overflow |= UInt256.MultiplyOverflow(
                     precedingTx.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, _headInfo.CurrentBaseFee),
-                    (UInt256)precedingTx.GasLimit, out UInt256 txCost);
+                    (UInt256)precedingTx.GasLimit,
+                    out UInt256 txCost);
 
                 overflow |= UInt256.AddOverflow(precedingCost, txCost, out precedingCost);
                 overflow |= UInt256.AddOverflow(precedingCost, tx.Value, out precedingCost);
