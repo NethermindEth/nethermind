@@ -104,66 +104,88 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private SortedSet<UInt256> InitializeValues(Block? headBlock, out long threshold, 
             out long currBlockNumber, out UInt256? gasPriceLatest)
         {
-            Comparer<UInt256> comparer = Comparer<UInt256>.Create(((a, b) =>
+            Comparer<UInt256> comparerForDuplicates = Comparer<UInt256>.Create(((a, b) =>
             {
                 int res = a.CompareTo(b);
                 return res == 0 ? 1 : res;
             }));
-            SortedSet<UInt256> gasPrices = new(comparer); //allows duplicates
+            SortedSet<UInt256> gasPricesWithDuplicates = new(comparerForDuplicates);
             threshold = _blocksToGoBack * 2;
             currBlockNumber = headBlock!.Number;
             gasPriceLatest = LatestGasPrice(headBlock!.Number);
-            return gasPrices;
+            return gasPricesWithDuplicates;
         }
 
-        private bool HandleMissingHeadOrGenesisBlockCase(Block? headBlock, Block? genesisBlock, out ResultWrapper<UInt256?> resultWrapper)
+        private ResultWrapper<UInt256?> HandleMissingHeadOrGenesisBlockCase(Block? headBlock, Block? genesisBlock)
         {
-            if (headBlock == null)
+            if (BlockDoesNotExist(headBlock))
             {
-                resultWrapper = ResultWrapper<UInt256?>.Fail("The head block had a null value.");
-                return true;
+                return ResultWrapper<UInt256?>.Fail("The head block had a null value.");
             }
-            if (genesisBlock == null)
+            else if (BlockDoesNotExist(genesisBlock))
             {
-                resultWrapper = ResultWrapper<UInt256?>.Fail("The genesis block had a null value.");
-                return true;
+                return ResultWrapper<UInt256?>.Fail("The genesis block had a null value.");
             }
+            else
+            {
+                return ResultWrapper<UInt256?>.Success(UInt256.Zero);
+            }
+        }
+
+        private static bool BlockDoesNotExist(Block? block)
+        {
+            return block == null;
+        }
+
+        private ResultWrapper<UInt256?> HandleNoHeadBlockChange(Block? headBlock)
+        {
+            ResultWrapper<UInt256?> resultWrapper;
             
-            resultWrapper = ResultWrapper<UInt256?>.Success(UInt256.Zero);
-            return false;
-        }
-        private bool HandleNoHeadBlockChange(Block? headBlock, out ResultWrapper<UInt256?> resultWrapper)
-        {
-            if (_lastPrice != null && _lastHeadBlock != null)
+            if (LastPriceExists() && LastHeadBlockExists() && LastHeadIsSameAsCurrentHead(headBlock))
             {
-                if (headBlock!.Hash == _lastHeadBlock.Hash)
-                {
-                    {
-                        resultWrapper = ResultWrapper<UInt256?>.Success(this._lastPrice);
-                        #if DEBUG
-                            resultWrapper.ErrorCode = NoHeadBlockChangeErrorCode;
-                        #endif
-                        return true;
-                    }
-                }
+                resultWrapper = ResultWrapper<UInt256?>.Success(_lastPrice);
+#if DEBUG
+                resultWrapper.ErrorCode = NoHeadBlockChangeErrorCode;
+#endif
+                return resultWrapper;
             }
-
-            resultWrapper = ResultWrapper<UInt256?>.Success(UInt256.Zero);
-            return false;
+            else
+            {
+                return ResultWrapper<UInt256?>.Fail("");
+            }
         }
-        
+
+        private bool LastHeadIsSameAsCurrentHead(Block? headBlock)
+        {
+            return headBlock!.Hash == _lastHeadBlock.Hash;
+        }
+
+        private bool LastHeadBlockExists()
+        {
+            return _lastHeadBlock != null;
+        }
+
+        private bool LastPriceExists()
+        {
+            return _lastPrice != null;
+        }
+
         public ResultWrapper<UInt256?> GasPriceEstimate(UInt256? ignoreUnder = null)
         {
             Block? headBlock = _blockFinder.FindHeadBlock();
             Block? genesisBlock = _blockFinder.FindGenesisBlock();
-            if (HandleMissingHeadOrGenesisBlockCase(headBlock, genesisBlock, out ResultWrapper<UInt256?> resultWrapperA))
+            ResultWrapper<UInt256?> resultWrapper;
+
+            resultWrapper = HandleMissingHeadOrGenesisBlockCase(headBlock, genesisBlock);
+            if (ResultWrapperWasNotSuccessful(resultWrapper))
             {
-                return resultWrapperA;
+                return resultWrapper;
             }
 
-            if (HandleNoHeadBlockChange(headBlock, out ResultWrapper<UInt256?> resultWrapperB))
+            resultWrapper = HandleNoHeadBlockChange(headBlock);
+            if (ResultWrapperWasSuccessful(resultWrapper))
             {
-                return resultWrapperB;
+                return resultWrapper;
             }
 
             SortedSet<UInt256> gasPrices = InitializeValues(headBlock, 
@@ -184,5 +206,14 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return ResultWrapper<UInt256?>.Success(gasPriceLatest);
         }
 
+        private static bool ResultWrapperWasSuccessful(ResultWrapper<UInt256?> resultWrapper)
+        {
+            return resultWrapper.Result == Result.Success;
+        }
+        
+        private static bool ResultWrapperWasNotSuccessful(ResultWrapper<UInt256?> resultWrapper)
+        {
+            return resultWrapper.Result != Result.Success;
+        }
     }
 }

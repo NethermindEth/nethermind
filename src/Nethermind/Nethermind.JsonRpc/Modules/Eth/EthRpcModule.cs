@@ -72,17 +72,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return rootCheckVisitor.HasRoot;
         }
 
-        private IGasPriceOracle GetGasPriceOracle(IBlockFinder blockFinder, int? blockLimit)
-        {
-            if (blockLimit != null)
-            {
-                return new GasPriceOracle(blockFinder, (int) blockLimit!);
-            }
-            else
-            {
-                return new GasPriceOracle(blockFinder);
-            }
-        }
         
         public EthRpcModule(
             IJsonRpcConfig rpcConfig,
@@ -109,7 +98,19 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _blockLimit = blockLimit;
             _gasPriceOracle = gasPriceOracle ?? GetGasPriceOracle(_blockFinder, _blockLimit);
         }
-
+        
+        private IGasPriceOracle GetGasPriceOracle(IBlockFinder blockFinder, int? blockLimit)
+        {
+            if (blockLimit != null)
+            {
+                return new GasPriceOracle(blockFinder, (int) blockLimit!);
+            }
+            else
+            {
+                return new GasPriceOracle(blockFinder);
+            }
+        }
+        
         public ResultWrapper<string> eth_protocolVersion()
         {
             return ResultWrapper<string>.Success("0x41");
@@ -163,7 +164,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public ResultWrapper<UInt256?> eth_gasPrice(UInt256? ignoreUnder = null)
         {
-
             return _gasPriceOracle!.GasPriceEstimate(ignoreUnder);
         }
 
