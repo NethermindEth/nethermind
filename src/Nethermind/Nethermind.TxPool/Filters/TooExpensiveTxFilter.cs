@@ -15,10 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.TxPool.Collections;
 
 namespace Nethermind.TxPool.Filters
 {
@@ -29,13 +31,15 @@ namespace Nethermind.TxPool.Filters
     {
         private readonly IChainHeadSpecProvider _specProvider;
         private readonly IChainHeadInfoProvider _headInfo;
+        private readonly TxDistinctSortedPool _txs;
         private readonly IAccountStateProvider _accounts;
         private readonly ILogger _logger;
 
-        public TooExpensiveTxFilter(IChainHeadInfoProvider headInfo, IAccountStateProvider accountStateProvider, ILogger logger)
+        public TooExpensiveTxFilter(IChainHeadInfoProvider headInfo, IAccountStateProvider accountStateProvider, TxDistinctSortedPool txs, ILogger logger)
         {
             _specProvider = headInfo.SpecProvider;
             _headInfo = headInfo;
+            _txs = txs;
             _accounts = accountStateProvider;
             _logger = logger;
         }
@@ -45,7 +49,19 @@ namespace Nethermind.TxPool.Filters
             IReleaseSpec spec = _specProvider.GetSpec();
             Account account = _accounts.GetAccount(tx.SenderAddress!);
             UInt256 balance = account.Balance;
-            UInt256 affordableGasPrice = tx.CalculateAffordableGasPrice(spec.IsEip1559Enabled, _headInfo.CurrentBaseFee, balance);
+            UInt256 precedingCost = UInt256.Zero;
+            
+            Transaction[] bucket = _txs.GetBucketSnapshot(tx.SenderAddress);
+
+            foreach (Transaction precedingTx in bucket.Where(t => t.Nonce < tx.Nonce))
+            {
+                precedingTx.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, _headInfo.CurrentBaseFee)
+                    .Multiply((UInt256)precedingTx.GasLimit, out UInt256 txCost);
+                precedingCost += txCost;
+                precedingCost += tx.Value;
+            }
+            
+            UInt256 affordableGasPrice = tx.CalculateAffordableGasPrice(spec.IsEip1559Enabled, _headInfo.CurrentBaseFee, balance > precedingCost ? balance - precedingCost : 0);
 
             bool overflow = spec.IsEip1559Enabled && UInt256.AddOverflow(tx.MaxPriorityFeePerGas, tx.MaxFeePerGas, out _);
             overflow |= UInt256.MultiplyOverflow(affordableGasPrice, (UInt256) tx.GasLimit, out UInt256 cost);
@@ -57,7 +73,7 @@ namespace Nethermind.TxPool.Filters
                 return (false, AddTxResult.Int256Overflow);
             }
             
-            if (balance < cost)
+            if (balance < cost + precedingCost)
             {
                 if (_logger.IsTrace)
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, insufficient funds.");
