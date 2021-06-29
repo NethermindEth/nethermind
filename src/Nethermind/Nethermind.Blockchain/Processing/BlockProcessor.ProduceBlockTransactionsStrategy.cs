@@ -21,6 +21,7 @@ using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.State;
 using Nethermind.State.Proofs;
@@ -60,7 +61,7 @@ namespace Nethermind.Blockchain.Processing
         
         public class ProduceBlockTransactionsStrategy : IProduceBlockTransactionsStrategy
         {
-            private readonly Evm.ITransactionProcessor _transactionProcessor;
+            private readonly ITransactionProcessor _transactionProcessor;
             private readonly IStateProvider _stateProvider;
             private readonly IStorageProvider _storageProvider;
 
@@ -71,7 +72,7 @@ namespace Nethermind.Blockchain.Processing
             }
             
             public ProduceBlockTransactionsStrategy(
-                Evm.ITransactionProcessor transactionProcessor,
+                ITransactionProcessor transactionProcessor,
                 IStateProvider stateProvider,
                 IStorageProvider storageProvider)
             {

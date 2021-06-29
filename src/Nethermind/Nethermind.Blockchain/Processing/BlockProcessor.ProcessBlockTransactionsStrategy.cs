@@ -33,10 +33,10 @@ namespace Nethermind.Blockchain.Processing
     {
         public class ProcessBlockTransactionsStrategy : IBlockProcessor.IBlockTransactionsStrategy
         {
-            private readonly Evm.ITransactionProcessor _transactionProcessor;
+            private readonly ITransactionProcessor _transactionProcessor;
             private readonly IStateProvider _stateProvider;
         
-            public ProcessBlockTransactionsStrategy(Evm.ITransactionProcessor transactionProcessor, IStateProvider stateProvider)
+            public ProcessBlockTransactionsStrategy(ITransactionProcessor transactionProcessor, IStateProvider stateProvider)
             {
                 _transactionProcessor = transactionProcessor;
                 _stateProvider = stateProvider;
