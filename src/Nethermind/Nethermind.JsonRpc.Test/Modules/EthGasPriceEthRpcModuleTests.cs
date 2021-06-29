@@ -40,6 +40,17 @@ namespace Nethermind.JsonRpc.Test.Modules
     public partial class EthRpcModuleTests
     {
         [Test]
+        public void Eth_gasPrice_WhenCalled_CallsGasPriceEstimateFromGasPriceOracle()
+        {
+            IGasPriceOracle gasPriceOracle = Substitute.For<IGasPriceOracle>();
+            BlocktreeSetup blocktreeSetup = new BlocktreeSetup(gasPriceOracle: gasPriceOracle);
+
+            blocktreeSetup.ethRpcModule.eth_gasPrice();
+            
+            gasPriceOracle.Received(1).GasPriceEstimate();
+        }
+
+        [Test]
         public void Eth_gasPrice_BlockcountEqualToBlocksToCheck_ShouldGetTwentiethPercentileIndex()
         {
             BlocktreeSetup blocktreeSetup = new BlocktreeSetup();
@@ -378,13 +389,13 @@ namespace Nethermind.JsonRpc.Test.Modules
             public BlockTree blockTree;
             public EthRpcModule ethRpcModule;
 
-            public BlocktreeSetup(Block[] blocks = null, bool addBlocks = false)
+            public BlocktreeSetup(Block[] blocks = null, bool addBlocks = false, IGasPriceOracle gasPriceOracle = null)
             {
                 GetBlocks(blocks, addBlocks);
 
                 InitializeAndAddToBlockTree();
 
-                GetEthRpcModule();
+                GetEthRpcModule(gasPriceOracle);
             }
 
             private void InitializeAndAddToBlockTree()
@@ -445,7 +456,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 );
             }
 
-            private void GetEthRpcModule()
+            private void GetEthRpcModule(IGasPriceOracle gasPriceOracle = null)
             {
                 ethRpcModule = new EthRpcModule
                 (
@@ -457,7 +468,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                     Substitute.For<ITxSender>(),
                     Substitute.For<IWallet>(),
                     Substitute.For<ILogManager>(),
-                    Substitute.For<ISpecProvider>()
+                    Substitute.For<ISpecProvider>(),
+                    gasPriceOracle
                 );
             }
             private void AddExtraBlocksToArray(Block[] blocks)

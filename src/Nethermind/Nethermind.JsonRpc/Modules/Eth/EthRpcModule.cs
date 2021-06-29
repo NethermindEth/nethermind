@@ -62,7 +62,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly IWallet _wallet;
         private readonly ISpecProvider _specProvider;
         private readonly ILogger _logger;
-        private GasPriceOracle? _gasPriceOracle;
+        private IGasPriceOracle _gasPriceOracle;
         
         private static bool HasStateForBlock(IBlockchainBridge blockchainBridge, BlockHeader header)
         {
@@ -80,7 +80,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
             ITxSender txSender,
             IWallet wallet,
             ILogManager logManager,
-            ISpecProvider specProvider)
+            ISpecProvider specProvider,
+            IGasPriceOracle? gasPriceOracle = null)
         {
             _logger = logManager.GetClassLogger();
             _rpcConfig = rpcConfig ?? throw new ArgumentNullException(nameof(rpcConfig));
@@ -91,7 +92,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _gasPriceOracle = null;
+            _gasPriceOracle = gasPriceOracle ?? new GasPriceOracle(_blockFinder);
         }
 
         public ResultWrapper<string> eth_protocolVersion()
@@ -147,15 +148,17 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public ResultWrapper<UInt256?> eth_gasPrice(UInt256? ignoreUnder = null, int? blockLimit = null)
         {
-            if (blockLimit != null)
+            if (BlockLimitInitializedOrChanged(blockLimit))
             {
-                _gasPriceOracle = new GasPriceOracle(_blockFinder, (int) blockLimit);
+                _gasPriceOracle = new GasPriceOracle(_blockFinder, (int) blockLimit!);
             }
-            else
-            {
-                _gasPriceOracle ??= new GasPriceOracle(_blockFinder);
-            }
+
             return _gasPriceOracle.GasPriceEstimate(ignoreUnder);
+        }
+
+        private static bool BlockLimitInitializedOrChanged(int? blockLimit)
+        {
+            return blockLimit != null;
         }
 
         public ResultWrapper<IEnumerable<Address>> eth_accounts()
