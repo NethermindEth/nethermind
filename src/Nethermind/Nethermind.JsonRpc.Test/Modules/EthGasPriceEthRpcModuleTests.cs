@@ -134,7 +134,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void Eth_gasPrice_WhenHeadBlockIsNotChanged_ShouldUsePreviouslyCalculatedGasPrice()
         {
             const int normalErrorCode = 0;
-            int noHeadBlockChangeErrorCode = GasPriceOracle._noHeadBlockChangeErrorCode;
+            int noHeadBlockChangeErrorCode = GasPriceOracle.NoHeadBlockChangeErrorCode;
             
             BlocktreeSetup blocktreeSetup = new BlocktreeSetup();
             ResultWrapper<UInt256?> firstResult = blocktreeSetup.ethRpcModule.eth_gasPrice();
