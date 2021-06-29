@@ -30,7 +30,15 @@
   </ItemGroup>
   <ItemGroup>
     <None Remove="SampleJsonConfig.json" />
-    <Content Include="SampleJsonConfig.cfg">
+    <None Remove="SampleJson\ConfigWithTypos.cfg" />
+    <None Remove="SampleJson\CorrectSettingNames.cfg" />
+    <Content Include="SampleJson\ConfigWithTypos.cfg">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="SampleJson\CorrectSettingNames.cfg">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="SampleJson\SampleJsonConfig.cfg">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
