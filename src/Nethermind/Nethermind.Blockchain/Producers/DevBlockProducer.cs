@@ -25,7 +25,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.TxPool;
 
 namespace Nethermind.Blockchain.Producers
 {

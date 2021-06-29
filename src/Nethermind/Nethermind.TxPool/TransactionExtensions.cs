@@ -15,14 +15,17 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Int256;
+
+[assembly:InternalsVisibleTo("Nethermind.TxPool.Test")]
 
 namespace Nethermind.TxPool
 {
     internal static class TransactionExtensions
     {
-        public static UInt256 CalculatePayableGasPrice(this Transaction tx, bool eip1559Enabled, UInt256 baseFee, UInt256 balance)
+        public static UInt256 CalculateAffordableGasPrice(this Transaction tx, bool eip1559Enabled, UInt256 baseFee, UInt256 balance)
         {
             if (eip1559Enabled && tx.IsEip1559)
             {

@@ -17,9 +17,7 @@
 
 using System.Collections.Generic;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
-using Nethermind.Int256;
 
 namespace Nethermind.Blockchain.Comparers
 {

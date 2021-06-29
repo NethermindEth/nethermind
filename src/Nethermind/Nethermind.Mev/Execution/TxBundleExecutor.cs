@@ -41,7 +41,7 @@ namespace Nethermind.Mev.Execution
         public TResult ExecuteBundle(MevBundle bundle, BlockHeader parent, CancellationToken cancellationToken, UInt256? timestamp = null)
         {
             Block block = BuildBlock(bundle, parent, timestamp);
-            TBlockTracer blockTracer = CreateBlockTracer();
+            TBlockTracer blockTracer = CreateBlockTracer(bundle);
             ITracer tracer = _tracerFactory.Create();
             Keccak resultStateRoot = tracer.Trace(block, blockTracer.WithCancellation(cancellationToken));
             return BuildResult(bundle, block, blockTracer, resultStateRoot);
@@ -69,7 +69,7 @@ namespace Nethermind.Mev.Execution
 
         protected virtual Address Beneficiary => Address.Zero;
 
-        protected abstract TBlockTracer CreateBlockTracer();
+        protected abstract TBlockTracer CreateBlockTracer(MevBundle mevBundle);
 
         protected ResultWrapper<TResult> GetInputError(BlockchainBridge.CallOutput result) => 
             ResultWrapper<TResult>.Fail(result.Error ?? "", ErrorCodes.InvalidInput);

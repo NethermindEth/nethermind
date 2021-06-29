@@ -35,6 +35,7 @@ namespace Nethermind.Evm.Tracing
         }
 
         public void EndTxTrace() { }
+        public void EndBlockTrace() { }
         public IReadOnlyDictionary<Keccak, CallOutputTracer> BuildResults() => _results;
     }
 }

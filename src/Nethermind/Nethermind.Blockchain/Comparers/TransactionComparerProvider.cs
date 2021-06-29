@@ -20,7 +20,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.TxPool;
+using Nethermind.TxPool.Comparison;
 
 namespace Nethermind.Blockchain.Comparers
 {

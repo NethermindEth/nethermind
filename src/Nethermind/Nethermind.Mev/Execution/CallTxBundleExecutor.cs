@@ -54,6 +54,6 @@ namespace Nethermind.Mev.Execution
                 kvp => ToTxResult(kvp.Value)));
         }
 
-        protected override BlockCallOutputTracer CreateBlockTracer() => new();
+        protected override BlockCallOutputTracer CreateBlockTracer(MevBundle mevBundle) => new();
     }
 }
