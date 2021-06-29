@@ -49,7 +49,7 @@ namespace Nethermind.TxPool.Filters
             IReleaseSpec spec = _specProvider.GetSpec();
             Account account = _accounts.GetAccount(tx.SenderAddress!);
             UInt256 balance = account.Balance;
-            UInt256 precedingCost = UInt256.Zero;
+            UInt256 cumulativeCost = UInt256.Zero;
             bool overflow = false;
             
             Transaction[] bucket = _txs.GetBucketSnapshot(tx.SenderAddress);
@@ -61,16 +61,16 @@ namespace Nethermind.TxPool.Filters
                     (UInt256)precedingTx.GasLimit,
                     out UInt256 txCost);
 
-                overflow |= UInt256.AddOverflow(precedingCost, txCost, out precedingCost);
-                overflow |= UInt256.AddOverflow(precedingCost, tx.Value, out precedingCost);
+                overflow |= UInt256.AddOverflow(cumulativeCost, txCost, out cumulativeCost);
+                overflow |= UInt256.AddOverflow(cumulativeCost, tx.Value, out cumulativeCost);
             }
             
-            UInt256 affordableGasPrice = tx.CalculateAffordableGasPrice(spec.IsEip1559Enabled, _headInfo.CurrentBaseFee, balance > precedingCost ? balance - precedingCost : 0);
+            UInt256 affordableGasPrice = tx.CalculateAffordableGasPrice(spec.IsEip1559Enabled, _headInfo.CurrentBaseFee, balance > cumulativeCost ? balance - cumulativeCost : 0);
 
             overflow |= spec.IsEip1559Enabled && UInt256.AddOverflow(tx.MaxPriorityFeePerGas, tx.MaxFeePerGas, out _);
             overflow |= UInt256.MultiplyOverflow(affordableGasPrice, (UInt256) tx.GasLimit, out UInt256 cost);
             overflow |= UInt256.AddOverflow(cost, tx.Value, out cost);
-            overflow |= UInt256.AddOverflow(cost, precedingCost, out UInt256 cumulativeCost);
+            overflow |= UInt256.AddOverflow(cost, cumulativeCost, out cumulativeCost);
             if (overflow)
             {
                 if (_logger.IsTrace)
