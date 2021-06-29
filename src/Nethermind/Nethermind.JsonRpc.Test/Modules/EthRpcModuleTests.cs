@@ -42,6 +42,7 @@ using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.TxPool;
 using Newtonsoft.Json.Linq;
 using NSubstitute;
@@ -372,7 +373,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [TestCase(true, true,"{\"jsonrpc\":\"2.0\",\"result\":{\"author\":\"0x0000000000000000000000000000000000000000\",\"difficulty\":\"0xf4240\",\"extraData\":\"0x010203\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0x0\",\"hash\":\"0x16af125b31ba6f33725bffd77d8778121c8b24c3c29a9821d2fc15049a5bdcb6\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"miner\":\"0x0000000000000000000000000000000000000000\",\"number\":\"0x0\",\"parentHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"receiptsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"signature\":\"0x0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"size\":\"0x21b\",\"stateRoot\":\"0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f\",\"step\":0,\"totalDifficulty\":\"0xf4240\",\"timestamp\":\"0xf4240\",\"baseFeePerGas\":\"0x0\",\"transactions\":[],\"transactionsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"uncles\":[]},\"id\":67}")]
         public async Task Eth_get_block_by_hash(bool aura, bool eip1559, string expected)
         {
-            using Context ctx = eip1559 ? await Context.CreateWith1559Enabled() : await Context.Create();
+            using Context ctx = eip1559 ? await Context.CreateWithLondonEnabled() : await Context.Create();
             TestRpcBlockchain testBlockchain = (aura ? ctx._auraTest : ctx._test);
             string serialized = testBlockchain.TestEthRpc("eth_getBlockByHash", testBlockchain.BlockTree.Genesis.Hash.ToString(), "true");
             Assert.AreEqual(expected, serialized);
@@ -405,7 +406,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [TestCase(false, "0x20", "{\"jsonrpc\":\"2.0\",\"result\":null,\"id\":67}")]
         public async Task Eth_get_block_by_number(bool eip1559, string blockParameter, string expectedResult)
         {
-            using Context ctx = eip1559 ? await Context.CreateWith1559Enabled() : await Context.Create();
+            using Context ctx = eip1559 ? await Context.CreateWithLondonEnabled() : await Context.Create();
             string serialized = ctx._test.TestEthRpc("eth_getBlockByNumber", blockParameter, "true");
             Assert.AreEqual(expectedResult, serialized, serialized.Replace("\"", "\\\""));
         }
@@ -672,12 +673,14 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Build.A.LogEntry.TestObject,
                 Build.A.LogEntry.TestObject
             };
-            bridge.GetReceipt(Arg.Any<Keccak>()).Returns(Build.A.Receipt.WithBloom(new Bloom(entries, new Bloom())).WithAllFieldsFilled.WithLogs(entries).TestObject);
+            TxReceipt receipt = Build.A.Receipt.WithBloom(new Bloom(entries, new Bloom())).WithAllFieldsFilled
+                .WithLogs(entries).TestObject;
+            bridge.GetReceiptAndEffectiveGasPrice(Arg.Any<Keccak>()).Returns((receipt, UInt256.One));
 
             ctx._test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
             string serialized = ctx._test.TestEthRpc("eth_getTransactionReceipt", TestItem.KeccakA.ToString());
 
-            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":{\"transactionHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"transactionIndex\":\"0x2\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"cumulativeGasUsed\":\"0x3e8\",\"gasUsed\":\"0x64\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"contractAddress\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"logs\":[{\"removed\":false,\"logIndex\":\"0x0\",\"transactionIndex\":\"0x2\",\"transactionHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]},{\"removed\":false,\"logIndex\":\"0x1\",\"transactionIndex\":\"0x2\",\"transactionHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]}],\"logsBloom\":\"0x00000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000800000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000\",\"root\":\"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111\",\"status\":\"0x1\",\"error\":\"error\",\"type\":\"0x0\"},\"id\":67}", serialized);
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":{\"transactionHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"transactionIndex\":\"0x2\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"cumulativeGasUsed\":\"0x3e8\",\"gasUsed\":\"0x64\",\"effectiveGasPrice\":\"0x1\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"contractAddress\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"logs\":[{\"removed\":false,\"logIndex\":\"0x0\",\"transactionIndex\":\"0x2\",\"transactionHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]},{\"removed\":false,\"logIndex\":\"0x1\",\"transactionIndex\":\"0x2\",\"transactionHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]}],\"logsBloom\":\"0x00000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000800000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000\",\"root\":\"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111\",\"status\":\"0x1\",\"error\":\"error\",\"type\":\"0x0\"},\"id\":67}", serialized);
         }
 
         [Test]
@@ -686,6 +689,32 @@ namespace Nethermind.JsonRpc.Test.Modules
             using Context ctx = await Context.Create();
             string serialized = ctx._test.TestEthRpc("eth_getTransactionReceipt", TestItem.KeccakA.ToString());
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":null,\"id\":67}", serialized);
+        }
+        
+        
+        [Test]
+        public async Task Eth_getTransactionReceipt_return_info_about_mined_tx()
+        {
+            using Context ctx = await Context.Create();
+            await ctx._test.AddFunds(new Address("0x723847c97bc651c7e8c013dbbe65a70712f02ad3"), 1.Ether());
+            Transaction tx = Build.A.Transaction.WithData(new byte[]{0, 1})
+                .SignedAndResolved().WithChainId(1).WithGasPrice(0).WithValue(0).WithGasLimit(210200).WithGasPrice(20.GWei()).TestObject;
+            await ctx._test.AddBlock(tx);
+            string serialized = ctx._test.TestEthRpc("eth_getTransactionReceipt", tx.Hash.ToString());
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":{\"transactionHash\":\"0xda6b4df2595675cbee0d4889f41c3d0790204e8ed1b8ad4cadaa45a7d50dace5\",\"transactionIndex\":\"0x0\",\"blockHash\":\"0xeb9cb6d28ce14ea16d7badaed4207ada972f26b39735cde17230f2ca5b6e34be\",\"blockNumber\":\"0x5\",\"cumulativeGasUsed\":\"0x5250\",\"gasUsed\":\"0x5250\",\"effectiveGasPrice\":\"0x4a817c800\",\"from\":\"0x723847c97bc651c7e8c013dbbe65a70712f02ad3\",\"to\":\"0x0000000000000000000000000000000000000000\",\"contractAddress\":null,\"logs\":[],\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"root\":\"0x4eae94a360ba0184825f616a82a03b36e6a8391f35b93f6132e7517537c29c85\",\"status\":\"0x1\",\"type\":\"0x0\"},\"id\":67}", serialized);
+        }
+        
+        [Test]
+        public async Task Eth_getTransactionReceipt_return_info_about_mined_1559tx()
+        {
+            using Context ctx = await Context.CreateWithLondonEnabled();
+            await ctx._test.AddFunds(new Address("0x723847c97bc651c7e8c013dbbe65a70712f02ad3"), 1.Ether());
+            Transaction tx = Build.A.Transaction.WithData(new byte[]{0, 1})
+                .SignedAndResolved().WithChainId(1).WithGasPrice(0).WithValue(0).WithGasLimit(210200)
+                .WithType(TxType.EIP1559).WithMaxFeePerGas(20.GWei()).WithMaxPriorityFeePerGas(1.GWei()).TestObject;
+            await ctx._test.AddBlock(tx);
+            string serialized = ctx._test.TestEthRpc("eth_getTransactionReceipt", tx.Hash.ToString());
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":{\"transactionHash\":\"0x31501f80bf2ec493c368a519cb8ed6f132f0be26202304bbf1e1728642affb7f\",\"transactionIndex\":\"0x0\",\"blockHash\":\"0xf40836f6db6f635f2972417b2e20b7c216f47d900f6542d125d2fb04840f53c8\",\"blockNumber\":\"0x5\",\"cumulativeGasUsed\":\"0x521c\",\"gasUsed\":\"0x521c\",\"effectiveGasPrice\":\"0x5e91eb5d\",\"from\":\"0x723847c97bc651c7e8c013dbbe65a70712f02ad3\",\"to\":\"0x0000000000000000000000000000000000000000\",\"contractAddress\":null,\"logs\":[],\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"status\":\"0x1\",\"type\":\"0x2\"},\"id\":67}", serialized);
         }
 
         [Test]
@@ -818,7 +847,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
         public async Task Eth_create_access_list_sample(AccessListProvided accessListProvided, bool optimize, long loads, string expected)
         {
-            var test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(new TestSpecProvider(Berlin.Instance));
+            TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(new TestSpecProvider(Berlin.Instance));
             
             (byte[] code, AccessListItemForRpc[] _) = GetTestAccessList(loads);
 
@@ -838,7 +867,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [TestCase(true, AccessTxTracer.MaxStorageAccessToOptimize + 5)]
         public async Task Eth_create_access_list_calculates_proper_gas(bool optimize, long loads)
         {
-            var test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(new TestSpecProvider(Berlin.Instance));
+            TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(new TestSpecProvider(Berlin.Instance));
             
             (byte[] code, AccessListItemForRpc[] accessList) = GetTestAccessList(loads);
 
@@ -862,7 +891,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [TestCase(false, 0xeee7, 0xee83)]
         public async Task Eth_estimate_gas_with_accessList(bool senderAccessList, long gasPriceWithoutAccessList, long gasPriceWithAccessList)
         {
-            var test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(new TestSpecProvider(Berlin.Instance));
+            TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(new TestSpecProvider(Berlin.Instance));
             
             (byte[] code, AccessListItemForRpc[] accessList) = GetTestAccessList(2, senderAccessList);
             
@@ -878,7 +907,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public async Task Eth_estimate_gas_is_lower_with_optimized_access_list()
         {
-            var test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(new TestSpecProvider(Berlin.Instance));
+            TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(new TestSpecProvider(Berlin.Instance));
             
             (byte[] code, AccessListItemForRpc[] accessList) = GetTestAccessList(2, true);
             (byte[] _, AccessListItemForRpc[] optimizedAccessList) = GetTestAccessList(2, false);
@@ -898,7 +927,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public async Task Eth_call_with_accessList()
         {
-            var test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(new TestSpecProvider(Berlin.Instance));
+            TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(new TestSpecProvider(Berlin.Instance));
             
             (byte[] code, AccessListItemForRpc[] accessList) = GetTestAccessList();
             
@@ -950,11 +979,14 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             private Context() { }
             
-            public static async Task<Context> CreateWith1559Enabled()
+            public static async Task<Context> CreateWithLondonEnabled()
             {
                 ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-                ReleaseSpec releaseSpec = new ReleaseSpec() {IsEip1559Enabled = true, Eip1559TransitionBlock = 1 };
+                
+                OverridableReleaseSpec releaseSpec = new(London.Instance);
+                releaseSpec.Eip1559TransitionBlock = 1;
                 specProvider.GetSpec(Arg.Any<long>()).Returns(releaseSpec);
+                specProvider.ChainId.Returns(MainnetSpecProvider.Instance.ChainId);
                 return await Context.Create(specProvider);
             }
             

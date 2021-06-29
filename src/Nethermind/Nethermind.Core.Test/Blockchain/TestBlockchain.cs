@@ -331,6 +331,7 @@ namespace Nethermind.Core.Test.Blockchain
                 .SignedAndResolved(TestItem.PrivateKeyA)
                 .To(address)
                 .WithNonce(nonce + index)
+                .WithGasPrice(20.GWei())
                 .WithValue(ether)
                 .TestObject;
             return tx;
