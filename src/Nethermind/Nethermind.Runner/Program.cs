@@ -336,7 +336,11 @@ namespace Nethermind.Runner
             configProvider.AddSource(new JsonConfigSource(configFilePath));
             configProvider.Initialize();
             var incorrectSettings = configProvider.FindIncorrectSettings();
-            //TODO: throw here or in configProvider.FindIncorrectSettings ?
+            if(incorrectSettings.Errors.Count() > 0)
+            {
+                logger.Warn($"Incorrect config settings found:{Environment.NewLine}{incorrectSettings.ErrorMsg}");
+            }
+
             logger.Info("Configuration initialized.");
             return configProvider;
         }
