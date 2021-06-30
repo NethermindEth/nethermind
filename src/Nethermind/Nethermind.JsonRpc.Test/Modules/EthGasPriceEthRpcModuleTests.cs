@@ -189,16 +189,14 @@ namespace Nethermind.JsonRpc.Test.Modules
                     GetStringArray("B","10","5"),
                     GetStringArray("B","11","6")),IsNotEip1559());
             BlockTreeSetup blockTreeSetup = new BlockTreeSetup();
-            Block firstBlock = Build.A.Block.WithNumber(5).WithParentHash(HashOfLastBlockIn(blockTreeSetup))
-                .WithTransactions(firstTxGroup).TestObject;
-            Block secondBlock = Build.A.Block.WithNumber(6).WithParentHash(firstBlock.Hash)
-                .WithTransactions(firstTxGroup).TestObject;
-            
+            Block firstBlock = BlockFactoryNumberParentHashTxs(5, HashOfLastBlockIn(blockTreeSetup), firstTxGroup);
+            Block secondBlock = BlockFactoryNumberParentHashTxs(6, firstBlock.Hash, secondTxGroup);
             blockTreeSetup = new BlockTreeSetup(new Block[]{firstBlock, secondBlock},true);
 
             ResultWrapper<UInt256?> resultWrapper = blockTreeSetup.ethRpcModule.eth_gasPrice();
-            resultWrapper.Data.Should().Be((UInt256?) 2); 
-            //should only leave 1,2,3,4,5,6 => (5-1)/5 => 1.2, rounded to 1 => price should be 2
+            
+            resultWrapper.Data.Should().Be((UInt256?) 3); 
+            //Tx Gas Prices: 1,2,3,4,5,6,9,10,11 Index: (9-1)/5 rounds to 2 Gas Price: 3
         }
 
         public bool IsEip1559()
