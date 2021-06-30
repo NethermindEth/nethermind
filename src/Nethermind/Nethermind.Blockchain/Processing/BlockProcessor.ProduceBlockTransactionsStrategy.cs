@@ -76,15 +76,8 @@ namespace Nethermind.Blockchain.Processing
                 LinkedHashSet<Transaction> transactionsInBlock = new(ByHashTxComparer.Instance);
                 foreach (Transaction currentTx in transactions)
                 {
-                    TxAction action = CanAddTransaction(transactionsInBlock, currentTx, block);
-                    if (action == TxAction.Add)
-                    {
-                        ProcessTransaction(block, currentTx, i++, receiptsTracer, processingOptions, transactionsInBlock);
-                    }
-                    else if (action == TxAction.Stop)
-                    {
-                        break;
-                    }
+                    TxAction action = ProcessTransaction(block, currentTx, i++, receiptsTracer, processingOptions, transactionsInBlock);
+                    if (action == TxAction.Stop) break;
                 }
 
                 _stateProvider.Commit(spec);
@@ -94,22 +87,30 @@ namespace Nethermind.Blockchain.Processing
                 return receiptsTracer.TxReceipts.ToArray();
             }
 
-            protected TxAction CanAddTransaction(LinkedHashSet<Transaction> transactionsInBlock, Transaction currentTx, Block block)
+            protected TxAction ProcessTransaction(
+                Block block, 
+                Transaction currentTx, 
+                int index, 
+                BlockReceiptsTracer receiptsTracer,
+                ProcessingOptions processingOptions, 
+                LinkedHashSet<Transaction> transactionsInBlock,
+                bool addToBlock = true)
             {
-                TxCheckEventArgs args = _blockProductionTransactionPicker.CanAddTransaction(transactionsInBlock, currentTx, block);
-                // TODO: Trace log.
-                return args.Action;
-            }
-
-            protected void ProcessTransaction(Block block, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions, ISet<Transaction>? transactionsInBlock = null)
-            {
-                _transactionProcessor.ProcessTransaction(block, currentTx, receiptsTracer, processingOptions, _stateProvider);
+                TxCheckEventArgs args = _blockProductionTransactionPicker.CanAddTransaction(block, currentTx, transactionsInBlock);
                 
-                if (transactionsInBlock is not null)
+                // TODO: Trace log args result
+                if (args.Action == TxAction.Add)
                 {
-                    transactionsInBlock.Add(currentTx);
-                    _transactionProcessed?.Invoke(this, new TxProcessedEventArgs(index, currentTx, receiptsTracer.TxReceipts[index]));
+                    _transactionProcessor.ProcessTransaction(block, currentTx, receiptsTracer, processingOptions, _stateProvider);
+                    
+                    if (addToBlock)
+                    {
+                        transactionsInBlock.Add(currentTx);
+                        _transactionProcessed?.Invoke(this, new TxProcessedEventArgs(index, currentTx, receiptsTracer.TxReceipts[index]));
+                    }
                 }
+                
+                return args.Action;
             }
         }
     }

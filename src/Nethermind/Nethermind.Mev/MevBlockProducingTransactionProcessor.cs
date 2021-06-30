@@ -32,6 +32,7 @@ using Nethermind.State;
 using Nethermind.State.Proofs;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Comparison;
+using TxAction = Nethermind.Blockchain.Processing.BlockProcessor.TxAction;
 
 namespace Nethermind.Mev
 {
@@ -64,79 +65,65 @@ namespace Nethermind.Mev
             
             foreach (Transaction currentTx in transactions)
             {
-                if (!transactionsInBlock.Contains(currentTx))
+                // if we don't accumulate bundle yet
+                if (bundleHash is null) 
                 {
-                    // No more gas available in block
-                    if (currentTx.GasLimit > block.Header.GasLimit - block.GasUsed)
+                    // and we see a bundle transaction
+                    if (currentTx is BundleTransaction bundleTransaction) 
                     {
-                        break;
+                        // start accumulating the bundle
+                        bundleTransactions.Add(bundleTransaction);
+                        bundleHash = bundleTransaction.BundleHash;
                     }
-                    // if we don't accumulate bundle yet
-                    if (bundleHash is null) 
+                    else
                     {
-                        // and we see a bundle transaction
-                        if (currentTx is BundleTransaction bundleTransaction) 
+                        // otherwise process transaction as usual 
+                        TxAction action = ProcessTransaction(block, currentTx, transactionsInBlock.Count, receiptsTracer, processingOptions, transactionsInBlock);
+                        if (action == TxAction.Stop) break;
+                    }
+                }
+                // if we are accumulating bundle
+                else
+                {
+                    // if we see a bundle transaction
+                    if (currentTx is BundleTransaction bundleTransaction)
+                    {
+                        // if its from same bundle
+                        if (bundleTransaction.BundleHash == bundleHash)
                         {
-                            // start accumulating the bundle
+                            // keep accumulating the bundle
+                            bundleTransactions.Add(bundleTransaction);
+                        }
+                        // if its from different bundle
+                        else
+                        {
+                            // process accumulated bundle
+                            TxAction action = ProcessBundle(block, bundleTransactions, transactionsInBlock, receiptsTracer, processingOptions);
+                            if (action == TxAction.Stop) break;
+                            
+                            // start accumulating new bundle
                             bundleTransactions.Add(bundleTransaction);
                             bundleHash = bundleTransaction.BundleHash;
                         }
-                        else
-                        {
-                            // otherwise process transaction as usual 
-                            ProcessTransaction(block, currentTx, transactionsInBlock.Count, receiptsTracer, processingOptions, transactionsInBlock);
-                        }
                     }
-                    // if we are accumulating bundle
+                    // if we see a normal transaction
                     else
                     {
-                        // if we see a bundle transaction
-                        if (currentTx is BundleTransaction bundleTransaction)
-                        {
-                            // if its from same bundle
-                            if (bundleTransaction.BundleHash == bundleHash)
-                            {
-                                // keep accumulating the bundle
-                                bundleTransactions.Add(bundleTransaction);
-                            }
-                            // if its from different bundle
-                            else
-                            {
-                                // process accumulated bundle
-                                ProcessBundle(block, transactionsInBlock, bundleTransactions, receiptsTracer, processingOptions);
-                                
-                                if (currentTx.GasLimit > block.Header.GasLimit - block.GasUsed)
-                                {
-                                    break;
-                                }
-                                
-                                // start accumulating new bundle
-                                bundleTransactions.Add(bundleTransaction);
-                                bundleHash = bundleTransaction.BundleHash;
-                            }
-                        }
-                        // if we see a normal transaction
-                        else
-                        {
-                            // process the bundle and stop accumulating it
-                            ProcessBundle(block, transactionsInBlock, bundleTransactions, receiptsTracer, processingOptions);
-                            bundleHash = null;
-                            
-                            if (currentTx.GasLimit > block.Header.GasLimit - block.GasUsed)
-                            {
-                                break;
-                            }
-                            
-                            // process normal transaction
-                            ProcessTransaction(block, currentTx, transactionsInBlock.Count, receiptsTracer, processingOptions, transactionsInBlock);
-                        }
+                        // process the bundle and stop accumulating it
+                        bundleHash = null;
+                        TxAction action = ProcessBundle(block, bundleTransactions, transactionsInBlock, receiptsTracer, processingOptions);
+                        if (action == TxAction.Stop) break;
+                        
+                        // process normal transaction
+                        action = ProcessTransaction(block, currentTx, transactionsInBlock.Count, receiptsTracer, processingOptions, transactionsInBlock);
+                        if (action == TxAction.Stop) break;
                     }
                 }
             }
             // if we ended with accumulated bundle, lets process it
             if (bundleTransactions.Count > 0)
             {
-                ProcessBundle(block, transactionsInBlock, bundleTransactions, receiptsTracer, processingOptions);
+                ProcessBundle(block, bundleTransactions, transactionsInBlock, receiptsTracer, processingOptions);
             }
 
             _stateProvider.Commit(spec);
@@ -146,10 +133,10 @@ namespace Nethermind.Mev
             return receiptsTracer.TxReceipts.ToArray();
         }
 
-        private void ProcessBundle(Block block,
-            LinkedHashSet<Transaction> transactionsInBlock,
+        private TxAction ProcessBundle(Block block,
             List<BundleTransaction> bundleTransactions,
-            BlockReceiptsTracer receiptsTracer, 
+            LinkedHashSet<Transaction> transactionsInBlock,
+            BlockReceiptsTracer receiptsTracer,
             ProcessingOptions processingOptions)
         {
             int stateSnapshot = _stateProvider.TakeSnapshot();
@@ -163,13 +150,18 @@ namespace Nethermind.Mev
                 UInt256 feeReceived = finalBalance - initialBalance;
                 UInt256 originalSimulatedGasPrice = bundleTransactions[0].SimulatedBundleFee / bundleTransactions[0].SimulatedBundleGasUsed;
                 UInt256 actualGasPrice = feeReceived / (UInt256) receiptsTracer.LastReceipt.GasUsed!;
-                return actualGasPrice < originalSimulatedGasPrice;
+                return actualGasPrice >= originalSimulatedGasPrice;
             }
             
-            bool bundleSucceeded = true;
+            bool bundleSucceeded = bundleTransactions.Count > 0;
+            TxAction txAction = TxAction.Skip;
             for (int index = 0; index < bundleTransactions.Count && bundleSucceeded; index++)
             {
-                bundleSucceeded = ProcessBundleTransaction(block, bundleTransactions[index], index, receiptsTracer, processingOptions);
+                txAction = ProcessBundleTransaction(block, bundleTransactions[index], index, receiptsTracer, processingOptions, transactionsInBlock);
+                bundleSucceeded &= txAction == TxAction.Add;
+                
+                // if we need to stop on not first tx in the bundle, we actually want to skip the bundle
+                txAction = txAction == TxAction.Stop && index != 0 ? TxAction.Skip : txAction;
             }
             
             bundleSucceeded &= CheckFeeNotManipulated();
@@ -196,14 +188,29 @@ namespace Nethermind.Mev
             }
 
             bundleTransactions.Clear();
+
+            return txAction;
         }
 
-        private bool ProcessBundleTransaction(Block block, BundleTransaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
+        private TxAction ProcessBundleTransaction(
+            Block block, 
+            BundleTransaction currentTx, 
+            int index, 
+            BlockReceiptsTracer receiptsTracer, 
+            ProcessingOptions processingOptions, 
+            LinkedHashSet<Transaction> transactionsInBlock)
         {
-            ProcessTransaction(block, currentTx, index, receiptsTracer, processingOptions);
-            string? error = receiptsTracer.LastReceipt.Error;
-            bool transactionSucceeded = string.IsNullOrEmpty(error) || (error == "revert" && currentTx.CanRevert);
-            return transactionSucceeded;
+            TxAction action = ProcessTransaction(block, currentTx, index, receiptsTracer, processingOptions, transactionsInBlock, false);
+            if (action == TxAction.Add)
+            {
+                string? error = receiptsTracer.LastReceipt.Error;
+                bool transactionSucceeded = string.IsNullOrEmpty(error) || (error == "revert" && currentTx.CanRevert);
+                return transactionSucceeded ? TxAction.Add : TxAction.Skip;
+            }
+            else
+            {
+                return action;
+            }
         }
     }
 }

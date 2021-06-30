@@ -27,7 +27,7 @@ namespace Nethermind.Blockchain.Processing
         {
             public event EventHandler<TxCheckEventArgs>? CheckTransaction;
 
-            public TxCheckEventArgs CanAddTransaction(IReadOnlySet<Transaction> transactionsInBlock, Transaction currentTx, Block block)
+            public TxCheckEventArgs CanAddTransaction(Block block, Transaction currentTx, IReadOnlySet<Transaction> transactionsInBlock)
             {
                 TxCheckEventArgs args = new(transactionsInBlock.Count, currentTx, block, transactionsInBlock);
 
