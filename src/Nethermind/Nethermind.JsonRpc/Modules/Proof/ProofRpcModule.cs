@@ -163,7 +163,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
             receiptsTracer.SetOtherTracer(NullBlockTracer.Instance);
             _tracer.Trace(block, receiptsTracer);
 
-            TxReceipt[] receipts = receiptsTracer.TxReceipts;
+            TxReceipt[] receipts = receiptsTracer.TxReceipts.ToArray();
             Transaction[] txs = block.Transactions;
 
             ReceiptWithProof receiptWithProof = new();

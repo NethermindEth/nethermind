@@ -43,13 +43,13 @@ namespace Nethermind.Mev
         public MevProduceBlockTransactionsStrategy(ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv) : 
             this(readOnlyTxProcessingEnv.TransactionProcessor, readOnlyTxProcessingEnv.StateProvider, readOnlyTxProcessingEnv.StorageProvider)
         {
-                
         }
 
         private MevProduceBlockTransactionsStrategy(
             ITransactionProcessor transactionProcessor, 
             IStateProvider stateProvider,
-            IStorageProvider storageProvider) : base(transactionProcessor, stateProvider, storageProvider)
+            IStorageProvider storageProvider) 
+            : base(transactionProcessor, stateProvider, storageProvider)
         {
             _stateProvider = stateProvider;
             _storageProvider = storageProvider;
@@ -155,34 +155,33 @@ namespace Nethermind.Mev
             int stateSnapshot = _stateProvider.TakeSnapshot();
             int storageSnapshot = _storageProvider.TakeSnapshot();
             int receiptSnapshot = receiptsTracer.TakeSnapshot();
-            
-            List<TxProcessedEventArgs> eventList = new();
-            bool bundleSucceeded = true;
             UInt256 initialBalance = _stateProvider.GetBalance(block.Header.GasBeneficiary!);
+            
+            bool CheckFeeNotManipulated()
+            {
+                UInt256 finalBalance = _stateProvider.GetBalance(block.Header.GasBeneficiary!);
+                UInt256 feeReceived = finalBalance - initialBalance;
+                UInt256 originalSimulatedGasPrice = bundleTransactions[0].SimulatedBundleFee / bundleTransactions[0].SimulatedBundleGasUsed;
+                UInt256 actualGasPrice = feeReceived / (UInt256) receiptsTracer.LastReceipt.GasUsed!;
+                return actualGasPrice < originalSimulatedGasPrice;
+            }
+            
+            bool bundleSucceeded = true;
             for (int index = 0; index < bundleTransactions.Count && bundleSucceeded; index++)
             {
-                BundleTransaction currentTx = bundleTransactions[index];
-                bundleSucceeded = ProcessBundleTransaction(block, currentTx, index, receiptsTracer, processingOptions);
-                eventList.Add(new TxProcessedEventArgs(transactionsInBlock.Count, currentTx, receiptsTracer.TxReceipts![transactionsInBlock.Count]));
+                bundleSucceeded = ProcessBundleTransaction(block, bundleTransactions[index], index, receiptsTracer, processingOptions);
             }
             
-            UInt256 finalBalance = _stateProvider.GetBalance(block.Header.GasBeneficiary!);
-            UInt256 feeReceived = finalBalance - initialBalance;
-            UInt256 originalSimulatedGasPrice = bundleTransactions[0].SimulatedBundleFee / bundleTransactions[0].SimulatedBundleGasUsed;
-            UInt256 actualGasPrice = feeReceived / (UInt256)receiptsTracer.LastReceipt.GasUsed!;
-
-            if (actualGasPrice < originalSimulatedGasPrice)
-            {
-                bundleSucceeded = false;
-            }
+            bundleSucceeded &= CheckFeeNotManipulated();
 
             if (bundleSucceeded)
             {
-                for (int index = 0; index < eventList.Count; index++)
+                for (int index = 0; index < bundleTransactions.Count; index++)
                 {
-                    TxProcessedEventArgs eventItem = eventList[index];
-                    transactionsInBlock.Add(eventItem.Transaction);
-                    _transactionProcessed?.Invoke(this, eventItem);
+                    BundleTransaction bundleTransaction = bundleTransactions[index];
+                    transactionsInBlock.Add(bundleTransaction);
+                    int txIndex = receiptSnapshot + index;
+                    _transactionProcessed?.Invoke(this, new TxProcessedEventArgs(txIndex, bundleTransaction, receiptsTracer.TxReceipts[txIndex]));
                 }
             }
             else
@@ -203,7 +202,8 @@ namespace Nethermind.Mev
         {
             ProcessTransaction(block, currentTx, index, receiptsTracer, processingOptions);
             string? error = receiptsTracer.LastReceipt.Error;
-            return string.IsNullOrEmpty(error) || (error == "revert" && currentTx.CanRevert);
+            bool transactionSucceeded = string.IsNullOrEmpty(error) || (error == "revert" && currentTx.CanRevert);
+            return transactionSucceeded;
         }
     }
 }

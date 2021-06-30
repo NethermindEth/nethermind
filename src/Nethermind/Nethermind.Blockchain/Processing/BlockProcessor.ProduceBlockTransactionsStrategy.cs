@@ -33,16 +33,16 @@ namespace Nethermind.Blockchain.Processing
 {
     public partial class BlockProcessor
     {
-        public class ProduceBlockTransactionsStrategy : IProduceBlockTransactionsStrategy
+        public partial class ProduceBlockTransactionsStrategy : IProduceBlockTransactionsStrategy
         {
             private readonly ITransactionProcessorAdapter _transactionProcessor;
             private readonly IStateProvider _stateProvider;
             private readonly IStorageProvider _storageProvider;
+            private readonly BlockProductionTransactionPicker _blockProductionTransactionPicker = new();
 
             public ProduceBlockTransactionsStrategy(ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv) : 
                 this(readOnlyTxProcessingEnv.TransactionProcessor, readOnlyTxProcessingEnv.StateProvider, readOnlyTxProcessingEnv.StorageProvider)
             {
-                
             }
             
             public ProduceBlockTransactionsStrategy(
@@ -62,11 +62,10 @@ namespace Nethermind.Blockchain.Processing
                 remove => _transactionProcessed -= value;
             }
 
-            private event EventHandler<TxCheckEventArgs>? CheckTransaction;
             event EventHandler<TxCheckEventArgs>? IProduceBlockTransactionsStrategy.CheckTransaction
             {
-                add => CheckTransaction += value;
-                remove => CheckTransaction -= value;
+                add => _blockProductionTransactionPicker.CheckTransaction += value;
+                remove => _blockProductionTransactionPicker.CheckTransaction -= value;
             }
 
             public virtual TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, IBlockTracer blockTracer, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec)
@@ -77,12 +76,12 @@ namespace Nethermind.Blockchain.Processing
                 LinkedHashSet<Transaction> transactionsInBlock = new(ByHashTxComparer.Instance);
                 foreach (Transaction currentTx in transactions)
                 {
-                    TxCheckEventArgs args = CheckTx(transactionsInBlock, currentTx, block);
-                    if (args.Action == TxAction.Add)
+                    TxAction action = CanAddTransaction(transactionsInBlock, currentTx, block);
+                    if (action == TxAction.Add)
                     {
                         ProcessTransaction(block, currentTx, i++, receiptsTracer, processingOptions, transactionsInBlock);
                     }
-                    else if (args.Action == TxAction.Stop)
+                    else if (action == TxAction.Stop)
                     {
                         break;
                     }
@@ -95,6 +94,13 @@ namespace Nethermind.Blockchain.Processing
                 return receiptsTracer.TxReceipts.ToArray();
             }
 
+            protected TxAction CanAddTransaction(LinkedHashSet<Transaction> transactionsInBlock, Transaction currentTx, Block block)
+            {
+                TxCheckEventArgs args = _blockProductionTransactionPicker.CanAddTransaction(transactionsInBlock, currentTx, block);
+                // TODO: Trace log.
+                return args.Action;
+            }
+
             protected void ProcessTransaction(Block block, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions, ISet<Transaction>? transactionsInBlock = null)
             {
                 _transactionProcessor.ProcessTransaction(block, currentTx, receiptsTracer, processingOptions, _stateProvider);
@@ -104,26 +110,6 @@ namespace Nethermind.Blockchain.Processing
                     transactionsInBlock.Add(currentTx);
                     _transactionProcessed?.Invoke(this, new TxProcessedEventArgs(index, currentTx, receiptsTracer.TxReceipts[index]));
                 }
-            }
-
-            private TxCheckEventArgs CheckTx(IReadOnlySet<Transaction> transactionsInBlock, Transaction currentTx, Block block)
-            {
-                TxCheckEventArgs args = new(transactionsInBlock.Count, currentTx, block, transactionsInBlock);
-
-                if (transactionsInBlock.Contains(currentTx))
-                {
-                    return args.Set(TxAction.Skip, "Transaction already in block.");
-                }
-
-                // No more gas available in block
-                long gasRemaining = block.Header.GasLimit - block.GasUsed;
-                if (currentTx.GasLimit > gasRemaining)
-                {
-                    return args.Set(TxAction.Stop, "Not enough gas in block.");
-                }
-
-                CheckTransaction?.Invoke(this, args);
-                return args;
             }
         }
     }
