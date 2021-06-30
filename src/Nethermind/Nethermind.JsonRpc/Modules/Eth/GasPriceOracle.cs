@@ -71,7 +71,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             
             foreach (Transaction transaction in transactionsInBlock)
             {
-                if (TransactionCanBeAdded(transaction)) //how should i set to be null?
+                if (TransactionCanBeAdded(transaction, _eip1559Enabled)) //how should i set to be null?
                 {
                     sortedSet.Add(CalculateEffectiveGasPriceOf(transaction));
                     countTxAdded++;
@@ -91,14 +91,26 @@ namespace Nethermind.JsonRpc.Modules.Eth
             sortedSet.Add((UInt256) _defaultGasPrice!);
         }
 
-        private bool TransactionCanBeAdded(Transaction transaction)
+        private bool TransactionCanBeAdded(Transaction transaction, bool eip1559Enabled)
         {
-            return IsAboveMinPrice(transaction);
+            return IsAboveMinPrice(transaction) && Eip1559ModeCompatible(transaction, eip1559Enabled);
         }
 
         private bool IsAboveMinPrice(Transaction transaction)
         {
             return transaction.GasPrice >= _ignoreUnder;
+        }
+
+        private bool Eip1559ModeCompatible(Transaction transaction, bool eip1559Enabled)
+        {
+            if (eip1559Enabled == false)
+            {
+                return TransactionIsNotEip1559(transaction);
+            }
+            else
+            {
+                return true;
+            }
         }
 
         private static bool TransactionIsNotEip1559(Transaction transaction)
