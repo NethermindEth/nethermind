@@ -82,7 +82,7 @@ namespace Nethermind.Blockchain
                 if (allocation.Code != null)
                 {
                     Keccak codeHash = _stateProvider.UpdateCode(allocation.Code);
-                    _stateProvider.UpdateCodeHash(address, codeHash, _specProvider.GenesisSpec);
+                    _stateProvider.UpdateCodeHash(address, codeHash, _specProvider.GenesisSpec, true);
                 }
 
                 if (allocation.Storage != null)
