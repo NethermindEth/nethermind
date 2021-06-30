@@ -88,9 +88,14 @@ namespace Nethermind.Core.Collections
         public static bool TryGetForBlock(this IList<long> list, in long blockNumber, out long item) =>
             list.TryGetForActivation(blockNumber, (b, c) => b.CompareTo(c), out item);
         
-        public static bool TryGetForActivation<T, TComparable>(this IList<T> list, in TComparable activation, Func<TComparable, T, int> comparer, out T item)
+        public static bool TryGetForActivation<T, TComparable>(this IList<T> list, in TComparable activation, Func<TComparable, T, int> comparer, out T? item)
         {
             var index = list.BinarySearch(activation, comparer);
+            return TryGetSearchedItem(list, index, out item);
+        }
+
+        public static bool TryGetSearchedItem<T>(this IList<T> list, int index, out T? item)
+        {
             if (index >= 0)
             {
                 item = list[index];
@@ -98,7 +103,7 @@ namespace Nethermind.Core.Collections
             }
             else
             {
-                var largerIndex = ~index;
+                int largerIndex = ~index;
                 if (largerIndex != 0)
                 {
                     item = list[largerIndex - 1];

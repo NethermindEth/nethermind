@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
@@ -27,7 +28,7 @@ namespace Nethermind.State
 {
     public class StorageProvider : IStorageProvider
     {
-        private readonly ResettableDictionary<StorageCell, Stack<int>> _intraBlockCache = new();
+        private readonly ResettableDictionary<StorageCell, StackList<int>> _intraBlockCache = new();
 
         /// <summary>
         /// EIP-1283
@@ -69,12 +70,12 @@ namespace Nethermind.State
 
             if (_originalSnapshots.TryPeek(out int snapshot))
             {
-                if (_intraBlockCache.TryGetValue(storageCell, out Stack<int> stack))
+                if (_intraBlockCache.TryGetValue(storageCell, out StackList<int> stack))
                 {
-                    int lastChangeIndex = stack.Peek();
-                    if (lastChangeIndex <= snapshot)
+                    int index = stack.BinarySearch(snapshot);
+                    if (stack.TryGetSearchedItem(index, out int lastChangeIndexBeforeOriginalSnapshot))
                     {
-                        return _changes[lastChangeIndex]!.Value;
+                        return _changes[lastChangeIndexBeforeOriginalSnapshot]!.Value;
                     }
                 }
             }
@@ -369,7 +370,7 @@ namespace Nethermind.State
 
         private byte[] GetCurrentValue(StorageCell storageCell)
         {
-            if (_intraBlockCache.TryGetValue(storageCell, out Stack<int> stack))
+            if (_intraBlockCache.TryGetValue(storageCell, out StackList<int> stack))
             {
                 int lastChangeIndex = stack.Peek();
                 return _changes[lastChangeIndex]!.Value;
@@ -414,7 +415,7 @@ namespace Nethermind.State
         {
             if (!_intraBlockCache.ContainsKey(cell))
             {
-                _intraBlockCache[cell] = new Stack<int>();
+                _intraBlockCache[cell] = new StackList<int>();
             }
         }
 
