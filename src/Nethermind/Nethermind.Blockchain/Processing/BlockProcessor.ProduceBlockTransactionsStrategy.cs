@@ -33,7 +33,7 @@ namespace Nethermind.Blockchain.Processing
 {
     public partial class BlockProcessor
     {
-        public partial class ProduceBlockTransactionsStrategy : IProduceBlockTransactionsStrategy
+        public class ProduceBlockTransactionsStrategy : IProduceBlockTransactionsStrategy
         {
             private readonly ITransactionProcessorAdapter _transactionProcessor;
             private readonly IStateProvider _stateProvider;

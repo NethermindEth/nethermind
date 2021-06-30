@@ -51,6 +51,7 @@ using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Spec;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core.Test;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.DataMarketplace.Test
