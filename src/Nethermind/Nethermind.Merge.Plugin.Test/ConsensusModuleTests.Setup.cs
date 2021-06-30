@@ -76,7 +76,7 @@ namespace Nethermind.Merge.Plugin.Test
 
             private ISigner Signer { get; }
 
-            protected override ITestBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, BlockchainProcessor chainProcessor, IStateProvider producerStateProvider, ISealer sealer)
+            protected override ITestBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, IBlockProcessingQueue blockProcessingQueue, ISealer sealer)
             {
                 MiningConfig miningConfig = new();
                 TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator = new(SpecProvider, miningConfig);

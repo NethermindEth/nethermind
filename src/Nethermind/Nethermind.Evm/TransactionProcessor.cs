@@ -80,7 +80,7 @@ namespace Nethermind.Evm
             Execute(transaction, block, txTracer, ExecutionOptions.Commit);
         }
 
-        private bool QuickFail(Transaction tx, BlockHeader block, ITxTracer txTracer, string? reason)
+        private bool QuickFail(Transaction tx, BlockHeader block, ITxTracer txTracer, bool eip658NotEnabled, string? reason)
         {
             block.GasUsed += tx.GasLimit;
             
@@ -88,11 +88,15 @@ namespace Nethermind.Evm
                 tx.SenderAddress ?? Address.Zero,
                 _stateProvider.GetNonce(tx.SenderAddress ?? Address.Zero));
             
-            // TODO: this is possibly an unnecessary calculation inside EIP-658
-            _stateProvider.RecalculateStateRoot();
-            Keccak? stateRoot = _specProvider.GetSpec(block.Number).IsEip658Enabled ? null : _stateProvider.StateRoot;
             if (txTracer.IsTracingReceipt)
             {
+                Keccak? stateRoot = null;
+                if (eip658NotEnabled)
+                {
+                    _stateProvider.RecalculateStateRoot();
+                    stateRoot = _stateProvider.StateRoot;
+                }
+                
                 txTracer.MarkAsFailed(recipient, tx.GasLimit, Array.Empty<byte>(), reason ?? "invalid", stateRoot);
             }
 
@@ -103,7 +107,8 @@ namespace Nethermind.Evm
         {
             bool notSystemTransaction = !transaction.IsSystem();
             bool restore = (executionOptions & ExecutionOptions.Restore) != ExecutionOptions.None;
-            bool commit = (executionOptions & ExecutionOptions.Commit) != ExecutionOptions.None;
+            bool eip658NotEnabled = !_specProvider.GetSpec(block.Number).IsEip658Enabled;
+            bool commit = (executionOptions & ExecutionOptions.Commit) != ExecutionOptions.None || eip658NotEnabled;
 
             bool deleteCallerAccount = false;
             
@@ -118,7 +123,7 @@ namespace Nethermind.Evm
             if (!transaction.TryCalculatePremiumPerGas(block.BaseFeePerGas, out UInt256 premiumPerGas))
             {
                 TraceLogInvalidTx(transaction, "MINER_PREMIUM_IS_NEGATIVE");
-                return QuickFail(transaction, block, txTracer, "miner premium is negative");
+                return QuickFail(transaction, block, txTracer, eip658NotEnabled, "miner premium is negative");
             }
             
             UInt256 gasPrice = transaction.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, block.BaseFeePerGas);
@@ -133,7 +138,7 @@ namespace Nethermind.Evm
             if (caller is null)
             {
                 TraceLogInvalidTx(transaction, "SENDER_NOT_SPECIFIED");
-                return QuickFail(transaction, block, txTracer, "sender not specified");
+                return QuickFail(transaction, block, txTracer, eip658NotEnabled, "sender not specified");
             }
 
             long intrinsicGas = IntrinsicGasCalculator.Calculate(transaction, spec);
@@ -144,14 +149,14 @@ namespace Nethermind.Evm
                 if (gasLimit < intrinsicGas)
                 {
                     TraceLogInvalidTx(transaction, $"GAS_LIMIT_BELOW_INTRINSIC_GAS {gasLimit} < {intrinsicGas}");
-                    return QuickFail(transaction, block, txTracer, "gas limit below intrinsic gas");
+                    return QuickFail(transaction, block, txTracer, eip658NotEnabled, "gas limit below intrinsic gas");
                 }
 
                 if (!restore && gasLimit > block.GasLimit - block.GasUsed)
                 {
                     TraceLogInvalidTx(transaction,
                         $"BLOCK_GAS_LIMIT_EXCEEDED {gasLimit} > {block.GasLimit} - {block.GasUsed}");
-                    return QuickFail(transaction, block, txTracer, "block gas limit exceeded");
+                    return QuickFail(transaction, block, txTracer, eip658NotEnabled, "block gas limit exceeded");
                 }
             }
             
@@ -193,19 +198,19 @@ namespace Nethermind.Evm
                 if (!restore && ((ulong) intrinsicGas * gasPrice + value > senderBalance || senderReservedGasPayment > senderBalance))
                 {
                     TraceLogInvalidTx(transaction, $"INSUFFICIENT_SENDER_BALANCE: ({caller})_BALANCE = {senderBalance}");
-                    return QuickFail(transaction, block, txTracer, "insufficient sender balance");
+                    return QuickFail(transaction, block, txTracer, eip658NotEnabled, "insufficient sender balance");
                 }
                 
                 if (transaction.IsEip1559 && !transaction.IsServiceTransaction && senderBalance < (UInt256)transaction.GasLimit * transaction.MaxFeePerGas)
                 {
                     TraceLogInvalidTx(transaction, $"INSUFFICIENT_MAX_FEE_PER_GAS_FOR_SENDER_BALANCE: ({caller})_BALANCE = {senderBalance}, MAX_FEE_PER_GAS: {transaction.MaxFeePerGas}");
-                    return QuickFail(transaction, block, txTracer, "insufficient MaxFeePerGas for sender balance");
+                    return QuickFail(transaction, block, txTracer, eip658NotEnabled, "insufficient MaxFeePerGas for sender balance");
                 }
 
                 if (transaction.Nonce != _stateProvider.GetNonce(caller))
                 {
                     TraceLogInvalidTx(transaction, $"WRONG_TRANSACTION_NONCE: {transaction.Nonce} (expected {_stateProvider.GetNonce(caller)})");
-                    return QuickFail(transaction, block, txTracer, "wrong transaction nonce");
+                    return QuickFail(transaction, block, txTracer, eip658NotEnabled, "wrong transaction nonce");
                 }
 
                 _stateProvider.IncrementNonce(caller);
@@ -391,8 +396,7 @@ namespace Nethermind.Evm
             if (txTracer.IsTracingReceipt)
             {
                 Keccak stateRoot = null;
-                bool eip658Enabled = _specProvider.GetSpec(block.Number).IsEip658Enabled;
-                if (!eip658Enabled)
+                if (eip658NotEnabled)
                 {
                     _stateProvider.RecalculateStateRoot();
                     stateRoot = _stateProvider.StateRoot;

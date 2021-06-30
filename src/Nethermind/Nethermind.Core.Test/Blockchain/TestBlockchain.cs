@@ -51,7 +51,7 @@ namespace Nethermind.Core.Test.Blockchain
 {
     public class TestBlockchain : IDisposable
     {
-        public const int DefaultTimeout = 2000;
+        public const int DefaultTimeout = 7000;
         public IStateReader StateReader { get; private set; }
         public IEthereumEcdsa EthereumEcdsa { get; private set; }
         public TransactionProcessor TxProcessor { get; set; }
@@ -99,6 +99,7 @@ namespace Nethermind.Core.Test.Blockchain
         private IBlockFinder _blockFinder;
 
         public static readonly UInt256 InitialValue = 1000.Ether();
+        private BlockValidator _blockValidator;
 
         public IReadOnlyTrieStore ReadOnlyTrieStore { get; private set; }
 
@@ -145,6 +146,15 @@ namespace Nethermind.Core.Test.Blockchain
             VirtualMachine virtualMachine = new VirtualMachine(State, Storage, new BlockhashProvider(BlockTree, LogManager), SpecProvider, LogManager);
             TxProcessor = new TransactionProcessor(SpecProvider, State, Storage, virtualMachine, LogManager);
             BlockPreprocessorStep = new RecoverSignatures(EthereumEcdsa, TxPool, SpecProvider, LogManager);
+            HeaderValidator headerValidator = new(BlockTree, Always.Valid, SpecProvider, LogManager);
+                
+            _blockValidator = new BlockValidator(
+                new TxValidator(SpecProvider.ChainId),
+                headerValidator,
+                Always.Valid,
+                SpecProvider,
+                LogManager);
+            
             BlockProcessor = CreateBlockProcessor();
             
             BlockchainProcessor chainProcessor = new BlockchainProcessor(BlockTree, BlockProcessor, BlockPreprocessorStep, LogManager, Nethermind.Blockchain.Processing.BlockchainProcessor.Options.Default);
@@ -154,8 +164,7 @@ namespace Nethermind.Core.Test.Blockchain
             
             TxPoolTxSource txPoolTxSource = CreateTxPoolTxSource();
             ISealer sealer = new NethDevSealEngine(TestItem.AddressD);
-            IStateProvider producerStateProvider = new StateProvider(ReadOnlyTrieStore, CodeDb, LogManager);
-            BlockProducer = CreateTestBlockProducer(txPoolTxSource, chainProcessor, producerStateProvider, sealer);
+            BlockProducer = CreateTestBlockProducer(txPoolTxSource, chainProcessor, sealer);
             BlockProducer.Start();
 
             _resetEvent = new SemaphoreSlim(0);
@@ -192,9 +201,25 @@ namespace Nethermind.Core.Test.Blockchain
             }
         }
 
-        protected virtual ITestBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, BlockchainProcessor chainProcessor, IStateProvider producerStateProvider, ISealer sealer)
+        protected virtual ITestBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, IBlockProcessingQueue blockProcessingQueue, ISealer sealer)
         {
-            return new TestBlockProducer(txPoolTxSource, chainProcessor, producerStateProvider, sealer, BlockTree, chainProcessor, Timestamper, SpecProvider, LogManager);
+            MiningConfig miningConfig = new();
+
+            BlockProducerEnvFactory blockProducerEnvFactory = new(
+                DbProvider, 
+                BlockTree, 
+                ReadOnlyTrieStore, 
+                SpecProvider, 
+                _blockValidator,
+                NoBlockRewards.Instance,
+                ReceiptStorage,
+                BlockPreprocessorStep,
+                TxPool,
+                miningConfig,
+                LogManager);
+
+            BlockProducerEnv env = blockProducerEnvFactory.Create(txPoolTxSource);
+            return new TestBlockProducer(env.TxSource, env.ChainProcessor, env.ReadOnlyStateProvider, sealer, BlockTree, blockProcessingQueue, Timestamper, SpecProvider, LogManager);
         }
 
         public virtual ILogManager LogManager { get; } = LimboLogs.Instance;
@@ -244,13 +269,13 @@ namespace Nethermind.Core.Test.Blockchain
         protected virtual BlockProcessor CreateBlockProcessor() =>
             new BlockProcessor(
                 SpecProvider,
-                Always.Valid,
-                new RewardCalculator(SpecProvider),
+                _blockValidator,
+                NoBlockRewards.Instance,
                 new BlockProcessor.ProcessBlockTransactionsStrategy(TxProcessor, State),
                 State,
                 Storage,
                 ReceiptStorage,
-                NullWitnessCollector.Instance, 
+                NullWitnessCollector.Instance,
                 LogManager);
 
         public async Task WaitForNewHead()

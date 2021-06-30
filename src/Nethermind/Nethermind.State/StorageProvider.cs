@@ -72,7 +72,7 @@ namespace Nethermind.State
                 if (_intraBlockCache.TryGetValue(storageCell, out Stack<int> stack))
                 {
                     int lastChangeIndex = stack.Peek();
-                    if (lastChangeIndex >= snapshot)
+                    if (lastChangeIndex <= snapshot)
                     {
                         return _changes[lastChangeIndex]!.Value;
                     }
