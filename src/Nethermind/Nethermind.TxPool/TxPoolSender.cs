@@ -41,11 +41,11 @@ namespace Nethermind.TxPool
             // TODO: this is very not intuitive - can we fix it...?
             // maybe move nonce reservation to sender itself before sealing
             // sealers should behave like composite and not like chain of commands
-            foreach (var sealer in _sealers)
+            foreach (ITxSealer sealer in _sealers)
             {
                 sealer.Seal(tx, txHandlingOptions);
                 
-                result = _txPool.AddTransaction(tx, txHandlingOptions);
+                result = _txPool.SubmitTx(tx, txHandlingOptions);
 
                 if (result != AddTxResult.OwnNonceAlreadyUsed && result != AddTxResult.AlreadyKnown
                     || (txHandlingOptions & TxHandlingOptions.ManagedNonce) != TxHandlingOptions.ManagedNonce)

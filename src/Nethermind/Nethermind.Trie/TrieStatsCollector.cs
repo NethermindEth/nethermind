@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
@@ -27,6 +28,8 @@ namespace Nethermind.Trie
         private int _lastAccountNodeCount = 0;
 
         private readonly ILogger _logger;
+
+        public bool SupportsParallelVisits { get; set; } = true;
 
         public TrieStatsCollector(IKeyValueStore codeKeyValueStore, ILogManager logManager)
         {
@@ -47,11 +50,11 @@ namespace Nethermind.Trie
         {
             if (trieVisitContext.IsStorage)
             {
-                Stats.MissingStorage++;
+                Interlocked.Increment(ref Stats._missingStorage);
             }
             else
             {
-                Stats.MissingState++;
+                Interlocked.Increment(ref Stats._missingState);
             }
         }
 
@@ -59,13 +62,13 @@ namespace Nethermind.Trie
         {
             if (trieVisitContext.IsStorage)
             {
-                Stats.StorageSize += node.FullRlp?.Length ?? 0;
-                Stats.StorageBranchCount++;
+                Interlocked.Add(ref Stats._storageSize, node.FullRlp?.Length ?? 0);
+                Interlocked.Increment(ref Stats._storageBranchCount);
             }
             else
             {
-                Stats.StateSize += node.FullRlp?.Length ?? 0;
-                Stats.StateBranchCount++;
+                Interlocked.Add(ref Stats._stateSize, node.FullRlp?.Length ?? 0);
+                Interlocked.Increment(ref Stats._stateBranchCount);
             }
         }
 
@@ -73,13 +76,13 @@ namespace Nethermind.Trie
         {
             if (trieVisitContext.IsStorage)
             {
-                Stats.StorageSize += node.FullRlp?.Length ?? 0;
-                Stats.StorageExtensionCount++;
+                Interlocked.Add(ref Stats._storageSize, node.FullRlp?.Length ?? 0);
+                Interlocked.Increment(ref Stats._storageExtensionCount);
             }
             else
             {
-                Stats.StateSize += node.FullRlp?.Length ?? 0;
-                Stats.StateExtensionCount++;
+                Interlocked.Add(ref Stats._stateSize, node.FullRlp?.Length ?? 0);
+                Interlocked.Increment(ref Stats._stateExtensionCount);
             }
         }
 
@@ -93,13 +96,13 @@ namespace Nethermind.Trie
 
             if (trieVisitContext.IsStorage)
             {
-                Stats.StorageSize += node.FullRlp?.Length ?? 0;
-                Stats.StorageLeafCount++;
+                Interlocked.Add(ref Stats._storageSize, node.FullRlp?.Length ?? 0);
+                Interlocked.Increment(ref Stats._storageLeafCount);
             }
             else
             {
-                Stats.StateSize += node.FullRlp?.Length ?? 0;
-                Stats.AccountCount++;
+                Interlocked.Add(ref Stats._stateSize, node.FullRlp?.Length ?? 0);
+                Interlocked.Increment(ref Stats._accountCount);
             }
         }
 
@@ -108,12 +111,12 @@ namespace Nethermind.Trie
             byte[] code = _codeKeyValueStore[codeHash.Bytes];
             if (code != null)
             {
-                Stats.CodeSize += code.Length;
-                Stats.CodeCount++;
+                Interlocked.Add(ref Stats._codeSize, code.Length);
+                Interlocked.Increment(ref Stats._codeCount);
             }
             else
             {
-                Stats.MissingCode++;
+                Interlocked.Increment(ref Stats._missingCode);
             }
         }
     }

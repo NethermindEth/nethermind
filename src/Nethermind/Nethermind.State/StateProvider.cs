@@ -63,7 +63,7 @@ namespace Nethermind.State
             if (visitor is null) throw new ArgumentNullException(nameof(visitor));
             if (stateRoot is null) throw new ArgumentNullException(nameof(stateRoot));
 
-            _tree.Accept(visitor, stateRoot, true);
+            _tree.Accept(visitor, stateRoot, visitor.GetSupportedOptions());
         }
 
         public void CommitCode()
@@ -115,9 +115,9 @@ namespace Nethermind.State
             return account.IsEmpty;
         }
 
-        public Account? GetAccount(Address address)
+        public Account GetAccount(Address address)
         {
-            return GetThroughCache(address);
+            return GetThroughCache(address) ?? Account.TotallyEmpty;
         }
 
         public bool IsDeadAccount(Address address)

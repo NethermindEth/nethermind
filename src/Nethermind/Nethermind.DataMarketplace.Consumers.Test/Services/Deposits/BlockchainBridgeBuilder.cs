@@ -33,7 +33,6 @@ using Nethermind.Specs;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
-using Nethermind.TxPool.Storages;
 using Nethermind.Wallet;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 
@@ -54,7 +53,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
             ITransactionComparerProvider transactionComparerProvider =
                 new TransactionComparerProvider(MainnetSpecProvider.Instance, blockTree);
             ITxPool txPool = new TxPool.TxPool(
-                new InMemoryTxStorage(), ecdsa,
+                ecdsa,
                 new ChainHeadInfoProvider(specProvider, blockTree, stateProvider),
                 new TxPoolConfig(),
                 new TxValidator(specProvider.ChainId), 
