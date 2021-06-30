@@ -160,9 +160,6 @@ namespace Nethermind.Blockchain.Test
                 .Build(spec);
             testRpc.TestWallet.UnlockAccount(address, new SecureString());
             await testRpc.AddFunds(address, 1.Ether());
-
-            BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
-            Block block = Build.A.Block.WithHeader(header).TestObject;
             await testRpc.AddBlock();
             var suggestedBlockResetEvent = new SemaphoreSlim(0);
             testRpc.BlockTree.NewHeadBlock += (s, e) =>
