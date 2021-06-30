@@ -120,7 +120,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
         
         [Test]
-        public void Eth_gasPrice_GetTxFromMinBlocks_NumTxGreaterThanOrEqualToLimit()
+        public void Eth_gasPrice_GetTxFromMinBlocks_NumTxInMinBlocksGreaterThanOrEqualToLimit()
         {
             Block[] blocks = GetBlocks(
                 GetBlockWithNumberAndTxInfo(0, CollectTxStrings(

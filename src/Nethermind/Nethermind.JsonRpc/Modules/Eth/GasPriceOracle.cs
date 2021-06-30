@@ -14,11 +14,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private Block? _lastHeadBlock;
         private UInt256? _lastGasPrice;
         private UInt256? _defaultGasPrice;
-        private UInt256? _ignoreUnder;
+        private readonly UInt256? _ignoreUnder;
         private readonly IBlockFinder _blockFinder;
         private readonly int _blocksToGoBack;
         private readonly int _txThreshold;
-        public const int NoHeadBlockChangeErrorCode = 7;
+        public  const int NoHeadBlockChangeErrorCode = 7;
         private const int Percentile = 60;
         private const int DefaultBlocksToGoBack = 20;
         private const int BlockLimitForDefaultGasPrice = 8;
