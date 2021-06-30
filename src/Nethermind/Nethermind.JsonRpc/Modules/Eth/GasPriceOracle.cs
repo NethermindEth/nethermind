@@ -19,7 +19,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly int _blocksToGoBack;
         private readonly int _txThreshold;
         public const int NoHeadBlockChangeErrorCode = 7;
-        private const int Percentile = 20;
+        private const int Percentile = 60;
         private const int DefaultBlocksToGoBack = 20;
         private const int BlockLimitForDefaultGasPrice = 8;
 

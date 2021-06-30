@@ -72,8 +72,8 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             BlockTreeSetup blockTreeSetup = new BlockTreeSetup();
             ResultWrapper<UInt256?> resultWrapper = blockTreeSetup.ethRpcModule.eth_gasPrice();
-            resultWrapper.Data.Should()
-                .Be((UInt256?)2); //Tx Prices: 1,2,3,4,5,6, Index: (6-1)/5 = 1 => Gas Price should be 2
+            resultWrapper.Data.Should().Be((UInt256?) 4); 
+            //Tx Gas Prices: 1,2,3,4,5,6, Index: (6-1) * 3/5 = 3, Gas Price: 4
         }
 
 
@@ -93,7 +93,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             resultWrapper.Data.Should().Be((UInt256?)1);
         }
 
-        [TestCase(7,3)] //Gas Prices: 2,3,3,3,3,3,3,3,3 Index: 8 / 5 rounds to 2 => Gas Price is 3
+        [TestCase(7,3)] //Tx Gas Prices: 2,3,3,3,3,3,3,3,3, Index: (9-1) * 3/5 rounds to 5, Gas Price: 3
         [TestCase(8,1)] //Last eight blocks empty, so gas price defaults to 1
         public void Eth_gasPrice_ReturnDefaultGasPrice_EmptyBlocksAtEndEqualToEight(int maxBlockNumber, int expected)
         {
@@ -119,7 +119,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             
             resultWrapper.Data.Should().Be((UInt256?) expected); 
         }
-        //Test for repeated Tx
+        
         [Test]
         public void Eth_gasPrice_GetTxFromMinBlocks_NumTxGreaterThanOrEqualToLimit()
         {
@@ -143,8 +143,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             BlockTreeSetup blockTreeSetup = new BlockTreeSetup(blocks: blocks, blockLimit: 2);
             
             ResultWrapper<UInt256?> resultWrapper = blockTreeSetup.ethRpcModule.eth_gasPrice();
-            resultWrapper.Data.Should().Be((UInt256?) 4); 
-            //Tx Prices: 3,4,5,6 Index: (4-1)/5 rounds to 1 Gas Price: 4
+            resultWrapper.Data.Should().Be((UInt256?) 5); 
+            //Tx Gas Prices: 3,4,5,6, Index: (4-1) * 3/5 rounds to 2, Gas Price: 5
         }
 
         [Test]
@@ -162,8 +162,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             secondResult.ErrorCode.Should().Be(noHeadBlockChangeErrorCode);
         }
 
-        [TestCase(2,3)] //Tx Prices: 2,3,4,5,6 Index: (5-1)/5 rounds to 1 => price should be 3
-        [TestCase(4,5)] //Tx Prices: 4,5,6,6,6 Index: (5-1)/5 rounds to 1 => price should be 5
+        [TestCase(2,4)] //Tx Gas Prices: 2,3,4,5,6, Index: (5-1) * 3/5 rounds to 2, Gas Price: 3
+        [TestCase(4,6)] //Tx Gas Prices: 4,5,6,6,6, Index: (5-1) * 3/5 rounds to 2, Gas Price: 5
         public void Eth_gasPrice_TxGasPricesAreBelowThreshold_ReplaceGasPriceUnderThresholdWithLatestPrice(int ignoreUnder, int expected)
         {
             UInt256? ignoreUnderUInt256 = (UInt256) ignoreUnder;
@@ -195,8 +195,8 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             ResultWrapper<UInt256?> resultWrapper = blockTreeSetup.ethRpcModule.eth_gasPrice();
             
-            resultWrapper.Data.Should().Be((UInt256?) 3); 
-            //Tx Gas Prices: 1,2,3,4,5,6,9,10,11 Index: (9-1)/5 rounds to 2 Gas Price: 3
+            resultWrapper.Data.Should().Be((UInt256?) 6); 
+            //Tx Gas Prices: 1,2,3,4,5,6,9,10,11 Index: (9-1) * 3/5 rounds to 5, Gas Price: 6
         }
 
         public bool IsEip1559()
@@ -236,8 +236,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             BlockTreeSetup blockTreeSetup = new BlockTreeSetup(blocks: blocks, blockLimit: 2);
             ResultWrapper<UInt256?> resultWrapper = blockTreeSetup.ethRpcModule.eth_gasPrice();
             
-            resultWrapper.Data.Should().Be((UInt256?) 1); 
-            //Tx Prices: 0,1,2,3,4 Index: (5 - 1)/5 rounds to 1 Gas Price: 1
+            resultWrapper.Data.Should().Be((UInt256?) 2); 
+            //Tx Gas Prices: 0,1,2,3,4, Index: (5-1) * 3/5 rounds to 2, Gas Price: 2
         }
 
         [Test]
@@ -264,8 +264,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             BlockTreeSetup blockTreeSetup = new BlockTreeSetup(blocks: blocks, blockLimit: 4);
             ResultWrapper<UInt256?> resultWrapper = blockTreeSetup.ethRpcModule.eth_gasPrice();
             
-            resultWrapper.Data.Should().Be((UInt256?) 4); 
-            //Tx prices: 3,4,5,6,7,8 Index: (6-1)/5 = 1 Gas Price: 4
+            resultWrapper.Data.Should().Be((UInt256?) 6); 
+            //Tx Gas Prices: 3,4,5,6,7,8 Index: (6-1) * 3/5 = 3, Gas Price: 6
         }
 
         public string[][] GetArray(params string[][] txInfo)
@@ -302,8 +302,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             Block block;
             
             int blockNumber = keyValuePair.Key;
-            string[][] txInfo = keyValuePair.Value; //array of tx info
-            transactions = GetTransactionArray(txInfo, isEip1559);
+            string[][] txInfoArray = keyValuePair.Value;
+            transactions = GetTransactionArray(txInfoArray, isEip1559);
             block = BlockFactoryNumberParentHashTxs(blockNumber, parentHash, transactions);
             return block;
         }
