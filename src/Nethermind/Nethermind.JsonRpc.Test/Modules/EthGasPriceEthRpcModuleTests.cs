@@ -98,9 +98,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             IEnumerable<Block> blocksInRange = blocks.Where(block => block.Number <= maxBlockNumber);
             Block[] blockArray = blocksInRange.ToArray();
             BlockTreeSetup blockTreeSetup = new BlockTreeSetup(blockArray);
-            UInt256? blockTreeSetupResult = blockTreeSetup.ethRpcModule.eth_gasPrice().Data;
+            ResultWrapper<UInt256?> resultWrapper = blockTreeSetup.ethRpcModule.eth_gasPrice();
             
-            blockTreeSetupResult.Should().Be((UInt256?) expected); 
+            resultWrapper.Data.Should().Be((UInt256?) expected); 
         }
         //Test for repeated Tx
         [Test]
