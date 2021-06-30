@@ -332,7 +332,7 @@ namespace Nethermind.Synchronization.Test
                 specProvider,
                 blockValidator,
                 rewardCalculator,
-                new BlockProcessor.ProduceBlockTransactionsStrategy(devTxProcessor, devState, devStorage),
+                new BlockProcessor.ProduceBlockTransactionsStrategy(devTxProcessor, devState, devStorage, specProvider, logManager),
                 devState,
                 devStorage,
                 receiptStorage,
@@ -342,7 +342,7 @@ namespace Nethermind.Synchronization.Test
             BlockchainProcessor devChainProcessor = new(tree, devBlockProcessor, step, logManager,
                 BlockchainProcessor.Options.NoReceipts);
             ITxFilterPipeline txFilterPipeline = TxFilterPipelineBuilder.CreateStandardFilteringPipeline(LimboLogs.Instance, specProvider);
-            TxPoolTxSource transactionSelector = new(txPool, stateReader, specProvider, transactionComparerProvider, logManager, txFilterPipeline);
+            TxPoolTxSource transactionSelector = new(txPool, specProvider, transactionComparerProvider, logManager, txFilterPipeline);
             DevBlockProducer producer = new(
                 transactionSelector,
                 devChainProcessor,

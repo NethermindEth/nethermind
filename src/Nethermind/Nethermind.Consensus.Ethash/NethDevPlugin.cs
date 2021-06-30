@@ -70,8 +70,7 @@ namespace Nethermind.Consensus.Ethash
                 .Build;
             
             txSource ??= new TxPoolTxSource(
-                getFromApi.TxPool, 
-                getFromApi.StateReader,
+                getFromApi.TxPool,
                 getFromApi.SpecProvider,
                 getFromApi.TransactionComparerProvider!,
                 getFromApi.LogManager,
@@ -92,7 +91,7 @@ namespace Nethermind.Consensus.Ethash
                 getFromApi!.SpecProvider,
                 getFromApi!.BlockValidator,
                 NoBlockRewards.Instance,
-                new BlockProcessor.ProduceBlockTransactionsStrategy(producerEnv),
+                new BlockProcessor.ProduceBlockTransactionsStrategy(producerEnv, getFromApi!.SpecProvider, getFromApi.LogManager),
                 producerEnv.StateProvider,
                 producerEnv.StorageProvider,
                 NullReceiptStorage.Instance,

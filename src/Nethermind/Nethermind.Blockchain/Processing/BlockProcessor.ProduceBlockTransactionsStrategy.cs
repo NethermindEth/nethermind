@@ -24,6 +24,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Proofs;
 using Nethermind.TxPool;
@@ -38,21 +39,34 @@ namespace Nethermind.Blockchain.Processing
             private readonly ITransactionProcessorAdapter _transactionProcessor;
             private readonly IStateProvider _stateProvider;
             private readonly IStorageProvider _storageProvider;
-            private readonly BlockProductionTransactionPicker _blockProductionTransactionPicker = new();
+            private readonly BlockProductionTransactionPicker _blockProductionTransactionPicker;
+            private readonly ILogger _logger;
 
-            public ProduceBlockTransactionsStrategy(ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv) : 
-                this(readOnlyTxProcessingEnv.TransactionProcessor, readOnlyTxProcessingEnv.StateProvider, readOnlyTxProcessingEnv.StorageProvider)
+            public ProduceBlockTransactionsStrategy(
+                ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv,
+                ISpecProvider specProvider,
+                ILogManager logManager) 
+                : this(
+                    readOnlyTxProcessingEnv.TransactionProcessor, 
+                    readOnlyTxProcessingEnv.StateProvider, 
+                    readOnlyTxProcessingEnv.StorageProvider, 
+                    specProvider, 
+                    logManager)
             {
             }
             
             public ProduceBlockTransactionsStrategy(
                 ITransactionProcessor transactionProcessor,
                 IStateProvider stateProvider,
-                IStorageProvider storageProvider)
+                IStorageProvider storageProvider, 
+                ISpecProvider specProvider,
+                ILogManager logManager)
             {
                 _transactionProcessor = new BuildUpTransactionProcessorAdapter(transactionProcessor);
                 _stateProvider = stateProvider;
                 _storageProvider = storageProvider;
+                _blockProductionTransactionPicker = new BlockProductionTransactionPicker(specProvider);
+                _logger = logManager.GetClassLogger();
             }
 
             protected EventHandler<TxProcessedEventArgs>? _transactionProcessed;
@@ -96,10 +110,13 @@ namespace Nethermind.Blockchain.Processing
                 LinkedHashSet<Transaction> transactionsInBlock,
                 bool addToBlock = true)
             {
-                TxCheckEventArgs args = _blockProductionTransactionPicker.CanAddTransaction(block, currentTx, transactionsInBlock);
-                
-                // TODO: Trace log args result
-                if (args.Action == TxAction.Add)
+                TxCheckEventArgs args = _blockProductionTransactionPicker.CanAddTransaction(block, currentTx, transactionsInBlock, _stateProvider);
+
+                if (args.Action != TxAction.Add)
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Skipping transaction {currentTx.ToShortString()} because: {args.Reason}.");
+                }
+                else
                 {
                     _transactionProcessor.ProcessTransaction(block, currentTx, receiptsTracer, processingOptions, _stateProvider);
                     

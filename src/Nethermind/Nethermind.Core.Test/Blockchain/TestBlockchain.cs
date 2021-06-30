@@ -238,7 +238,7 @@ namespace Nethermind.Core.Test.Blockchain
         {
             ITxFilterPipeline txFilterPipeline = TxFilterPipelineBuilder.CreateStandardFilteringPipeline(LimboLogs.Instance,
                 SpecProvider);
-            return new TxPoolTxSource(TxPool, StateReader, SpecProvider, TransactionComparerProvider, LogManager, txFilterPipeline);
+            return new TxPoolTxSource(TxPool, SpecProvider, TransactionComparerProvider, LogManager, txFilterPipeline);
         }
 
         public BlockBuilder GenesisBlockBuilder { get; set; }

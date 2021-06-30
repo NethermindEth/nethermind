@@ -27,6 +27,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Mev.Data;
 using Nethermind.State;
 using Nethermind.State.Proofs;
@@ -41,16 +42,26 @@ namespace Nethermind.Mev
         private readonly IStateProvider _stateProvider;
         private readonly IStorageProvider _storageProvider;
         
-        public MevProduceBlockTransactionsStrategy(ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv) : 
-            this(readOnlyTxProcessingEnv.TransactionProcessor, readOnlyTxProcessingEnv.StateProvider, readOnlyTxProcessingEnv.StorageProvider)
+        public MevProduceBlockTransactionsStrategy(
+            ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv,
+            ISpecProvider specProvider,
+            ILogManager logManager) : 
+            this(
+                readOnlyTxProcessingEnv.TransactionProcessor, 
+                readOnlyTxProcessingEnv.StateProvider, 
+                readOnlyTxProcessingEnv.StorageProvider,
+                specProvider,
+                logManager)
         {
         }
 
         private MevProduceBlockTransactionsStrategy(
             ITransactionProcessor transactionProcessor, 
             IStateProvider stateProvider,
-            IStorageProvider storageProvider) 
-            : base(transactionProcessor, stateProvider, storageProvider)
+            IStorageProvider storageProvider,
+            ISpecProvider specProvider,
+            ILogManager logManager) 
+            : base(transactionProcessor, stateProvider, storageProvider, specProvider, logManager)
         {
             _stateProvider = stateProvider;
             _storageProvider = storageProvider;
@@ -71,7 +82,7 @@ namespace Nethermind.Mev
                     // and we see a bundle transaction
                     if (currentTx is BundleTransaction bundleTransaction) 
                     {
-                        // start accumulating the bundle
+                        // start accumulating the bundle6
                         bundleTransactions.Add(bundleTransaction);
                         bundleHash = bundleTransaction.BundleHash;
                     }

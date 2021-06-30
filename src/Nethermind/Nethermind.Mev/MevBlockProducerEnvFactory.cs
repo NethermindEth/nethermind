@@ -60,7 +60,7 @@ namespace Nethermind.Mev
                 specProvider,
                 blockValidator,
                 rewardCalculatorSource.Get(readOnlyTxProcessingEnv.TransactionProcessor),
-                new MevProduceBlockTransactionsStrategy(readOnlyTxProcessingEnv),
+                new MevProduceBlockTransactionsStrategy(readOnlyTxProcessingEnv, specProvider, logManager),
                 readOnlyTxProcessingEnv.StateProvider,
                 readOnlyTxProcessingEnv.StorageProvider,
                 receiptStorage,

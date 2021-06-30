@@ -634,6 +634,7 @@ namespace Nethermind.Mev.Test
             
             Transaction poolTx2 = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction)
                 .WithGasPrice(110ul)
+                .WithNonce(1)
                 .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
             
             BundleTransaction bundleTx3 = Build.A.TypedTransaction<BundleTransaction>()

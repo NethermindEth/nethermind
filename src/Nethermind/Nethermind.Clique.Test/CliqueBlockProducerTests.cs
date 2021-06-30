@@ -166,7 +166,7 @@ namespace Nethermind.Clique.Test
                     goerliSpecProvider,
                     Always.Valid,
                     NoBlockRewards.Instance,
-                    new BlockProcessor.ProduceBlockTransactionsStrategy(minerTransactionProcessor, minerStateProvider, minerStorageProvider),
+                    new BlockProcessor.ProduceBlockTransactionsStrategy(minerTransactionProcessor, minerStateProvider, minerStorageProvider, goerliSpecProvider, _logManager),
                     minerStateProvider,
                     minerStorageProvider,
                     NullReceiptStorage.Instance,
@@ -181,7 +181,7 @@ namespace Nethermind.Clique.Test
                 }
                 
                 ITxFilterPipeline txFilterPipeline = TxFilterPipelineBuilder.CreateStandardFilteringPipeline(nodeLogManager, specProvider);
-                TxPoolTxSource txPoolTxSource = new TxPoolTxSource(txPool, stateReader, specProvider, transactionComparerProvider, nodeLogManager, txFilterPipeline);
+                TxPoolTxSource txPoolTxSource = new TxPoolTxSource(txPool, specProvider, transactionComparerProvider, nodeLogManager, txFilterPipeline);
                 CliqueBlockProducer blockProducer = new CliqueBlockProducer(
                     txPoolTxSource,
                     minerProcessor,
