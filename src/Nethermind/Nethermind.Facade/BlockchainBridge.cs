@@ -170,7 +170,7 @@ namespace Nethermind.Facade
         public CallOutput Call(BlockHeader header, Transaction tx, CancellationToken cancellationToken)
         {
             CallOutputTracer callOutputTracer = new();
-            (bool Success, string Error) tryCallResult = TryCallAndRestore(header, header.Number, header.Timestamp, tx,
+            (bool Success, string Error) tryCallResult = TryCallAndRestore(header, header.Timestamp, tx, false,
                 callOutputTracer.WithCancellation(cancellationToken));
             return new CallOutput
             {
@@ -186,9 +186,9 @@ namespace Nethermind.Facade
             EstimateGasTracer estimateGasTracer = new();
             (bool Success, string Error) tryCallResult = TryCallAndRestore(
                 header,
-                header.Number + 1,
                 UInt256.Max(header.Timestamp + 1, _timestamper.UnixTime.Seconds),
                 tx,
+                true,
                 estimateGasTracer.WithCancellation(cancellationToken));
             
             long estimate = estimateGasTracer.CalculateEstimate(tx, _specProvider.GetSpec(header.Number + 1));
@@ -209,7 +209,7 @@ namespace Nethermind.Facade
                     tx.GetRecipient(tx.IsContractCreation ? _stateReader.GetNonce(header.StateRoot, tx.SenderAddress) : 0)) 
                 : new();
 
-            (bool Success, string Error) tryCallResult = TryCallAndRestore(header, header.Number, header.Timestamp, tx,
+            (bool Success, string Error) tryCallResult = TryCallAndRestore(header, header.Timestamp, tx, false,
                 new CompositeTxTracer(callOutputTracer, accessTxTracer).WithCancellation(cancellationToken));
             
             return new CallOutput
@@ -224,14 +224,14 @@ namespace Nethermind.Facade
 
         private (bool Success, string Error) TryCallAndRestore(
             BlockHeader blockHeader,
-            long number,
             UInt256 timestamp,
             Transaction transaction,
+            bool treatBlockHeaderAsParentBlock,
             ITxTracer tracer)
         {
             try
             {
-                CallAndRestore(blockHeader, number, timestamp, transaction, tracer);
+                CallAndRestore(blockHeader, timestamp, transaction, treatBlockHeaderAsParentBlock, tracer);
                 return (true, string.Empty);
             }
             catch (InsufficientBalanceException ex)
@@ -242,9 +242,9 @@ namespace Nethermind.Facade
 
         private void CallAndRestore(
             BlockHeader blockHeader,
-            long number,
             UInt256 timestamp,
             Transaction transaction,
+            bool treatBlockHeaderAsParentBlock,
             ITxTracer tracer)
         {
             if (transaction.SenderAddress == null)
@@ -265,10 +265,14 @@ namespace Nethermind.Facade
                     Keccak.OfAnEmptySequenceRlp,
                     Address.Zero,
                     0,
-                    number,
+                    treatBlockHeaderAsParentBlock ? blockHeader.Number + 1 : blockHeader.Number,
                     blockHeader.GasLimit,
                     timestamp,
                     Array.Empty<byte>());
+
+                callHeader.BaseFeePerGas = treatBlockHeaderAsParentBlock
+                    ? BaseFeeCalculator.Calculate(blockHeader, _specProvider.GetSpec(callHeader.Number))
+                    : blockHeader.BaseFeePerGas;
 
                 transaction.Hash = transaction.CalculateHash();
                 _transactionProcessor.CallAndRestore(transaction, callHeader, tracer);
