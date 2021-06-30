@@ -177,7 +177,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
             await testRpc.AddBlock();
 
 
-            ReceiptForRpc receipt = (await testRpc.EthRpcModule.eth_getTransactionReceipt(txHash)).Data;
+            GetTransactionReceiptResponse receipt = (await testRpc.EthRpcModule.eth_getTransactionReceipt(txHash)).Data;
 
             Keccak insertLeafTxHash = (
                 await baselineModule.baseline_insertCommit(
@@ -186,7 +186,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
                     TestItem.KeccakH)).Data;
             await testRpc.AddBlock();
 
-            ReceiptForRpc insertLeafReceipt = (await testRpc.EthRpcModule.eth_getTransactionReceipt(insertLeafTxHash)).Data;
+            GetTransactionReceiptResponse insertLeafReceipt = (await testRpc.EthRpcModule.eth_getTransactionReceipt(insertLeafTxHash)).Data;
             insertLeafReceipt.Logs.Should().HaveCount(1);
         }
 
@@ -203,7 +203,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
             Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
             await testRpc.AddBlock();
 
-            ReceiptForRpc receipt = (await testRpc.EthRpcModule.eth_getTransactionReceipt(txHash)).Data;
+            GetTransactionReceiptResponse receipt = (await testRpc.EthRpcModule.eth_getTransactionReceipt(txHash)).Data;
 
             Keccak[] leaves = Enumerable.Repeat(TestItem.KeccakH, leafCount).ToArray();
             Keccak insertLeavesTxHash = (await baselineModule.baseline_insertCommits(
@@ -212,7 +212,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
                 leaves)).Data;
             await testRpc.AddBlock();
 
-            ReceiptForRpc insertLeafReceipt = (await testRpc.EthRpcModule.eth_getTransactionReceipt(
+            GetTransactionReceiptResponse insertLeafReceipt = (await testRpc.EthRpcModule.eth_getTransactionReceipt(
                 insertLeavesTxHash)).Data;
             insertLeafReceipt.Logs.Should().HaveCount(1);
             insertLeafReceipt.Logs[0].Data.Length.Should().Be(128 + leafCount * 32);
@@ -228,7 +228,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
             Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
             await testRpc.AddBlock();
 
-            ReceiptForRpc receipt = (await testRpc.EthRpcModule.eth_getTransactionReceipt(txHash)).Data;
+            GetTransactionReceiptResponse receipt = (await testRpc.EthRpcModule.eth_getTransactionReceipt(txHash)).Data;
 
             await baselineModule.baseline_insertCommit(
                 TestItem.Addresses[1], receipt.ContractAddress, TestItem.KeccakH);
@@ -265,7 +265,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
             Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
             await testRpc.AddBlock();
 
-            ReceiptForRpc receipt = (await testRpc.EthRpcModule.eth_getTransactionReceipt(txHash)).Data;
+            GetTransactionReceiptResponse receipt = (await testRpc.EthRpcModule.eth_getTransactionReceipt(txHash)).Data;
 
             await baselineModule.baseline_insertCommit(TestItem.Addresses[1], receipt.ContractAddress, TestItem.KeccakH);
             await testRpc.AddBlock();
@@ -286,7 +286,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
             Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
             await testRpc.AddBlock();
 
-            ReceiptForRpc receipt = (await testRpc.EthRpcModule.eth_getTransactionReceipt(txHash)).Data;
+            GetTransactionReceiptResponse receipt = (await testRpc.EthRpcModule.eth_getTransactionReceipt(txHash)).Data;
 
             await baselineModule.baseline_insertCommit(TestItem.Addresses[1], receipt.ContractAddress, TestItem.KeccakH);
             await testRpc.AddBlock();
@@ -309,7 +309,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
             Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
             await testRpc.AddBlock();
 
-            ReceiptForRpc receipt = (await testRpc.EthRpcModule.eth_getTransactionReceipt(txHash)).Data;
+            GetTransactionReceiptResponse receipt = (await testRpc.EthRpcModule.eth_getTransactionReceipt(txHash)).Data;
 
             await baselineModule.baseline_insertCommit(TestItem.Addresses[1], receipt.ContractAddress, TestItem.KeccakH);
             await testRpc.AddBlock();
@@ -334,7 +334,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
             Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
             await testRpc.AddBlock();
 
-            ReceiptForRpc receipt = (await testRpc.EthRpcModule.eth_getTransactionReceipt(txHash)).Data;
+            GetTransactionReceiptResponse receipt = (await testRpc.EthRpcModule.eth_getTransactionReceipt(txHash)).Data;
 
             await baselineModule.baseline_insertCommit(TestItem.Addresses[1], receipt.ContractAddress, TestItem.KeccakH);
             await testRpc.AddBlock();
@@ -360,7 +360,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
             Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
             await testRpc.AddBlock();
 
-            ReceiptForRpc receipt = (await testRpc.EthRpcModule.eth_getTransactionReceipt(txHash)).Data;
+            GetTransactionReceiptResponse receipt = (await testRpc.EthRpcModule.eth_getTransactionReceipt(txHash)).Data;
 
             await baselineModule.baseline_insertCommit(TestItem.Addresses[1], receipt.ContractAddress, TestItem.KeccakH);
             await testRpc.AddBlock();
@@ -382,7 +382,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
             Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
             await testRpc.AddBlock();
 
-            ReceiptForRpc receipt = (await testRpc.EthRpcModule.eth_getTransactionReceipt(txHash)).Data;
+            GetTransactionReceiptResponse receipt = (await testRpc.EthRpcModule.eth_getTransactionReceipt(txHash)).Data;
 
             await baselineModule.baseline_track(receipt.ContractAddress);
             await baselineModule.baseline_insertCommit(TestItem.Addresses[1], receipt.ContractAddress, TestItem.KeccakH);
@@ -410,9 +410,9 @@ namespace Nethermind.Baseline.Test.JsonRpc
             await testRpc.AddBlock();
             await testRpc.AddBlock();
 
-            ReceiptForRpc receipt = (await testRpc.EthRpcModule.eth_getTransactionReceipt(txHash)).Data;
-            ReceiptForRpc receipt2 = (await testRpc.EthRpcModule.eth_getTransactionReceipt(txHash2)).Data;
-            ReceiptForRpc receipt3 = (await testRpc.EthRpcModule.eth_getTransactionReceipt(txHash3)).Data;
+            GetTransactionReceiptResponse receipt = (await testRpc.EthRpcModule.eth_getTransactionReceipt(txHash)).Data;
+            GetTransactionReceiptResponse receipt2 = (await testRpc.EthRpcModule.eth_getTransactionReceipt(txHash2)).Data;
+            GetTransactionReceiptResponse receipt3 = (await testRpc.EthRpcModule.eth_getTransactionReceipt(txHash3)).Data;
 
             receipt.Status.Should().Be(1);
             receipt2.Status.Should().Be(1);
@@ -693,7 +693,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
             Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
             await testRpc.AddBlock();
 
-            ReceiptForRpc receipt = (await testRpc.EthRpcModule.eth_getTransactionReceipt(txHash)).Data;
+            GetTransactionReceiptResponse receipt = (await testRpc.EthRpcModule.eth_getTransactionReceipt(txHash)).Data;
             return receipt.ContractAddress;
         }
 
@@ -708,7 +708,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
             Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
             await testRpc.AddBlock();
 
-            ReceiptForRpc receipt = (await testRpc.EthRpcModule.eth_getTransactionReceipt(txHash)).Data;
+            GetTransactionReceiptResponse receipt = (await testRpc.EthRpcModule.eth_getTransactionReceipt(txHash)).Data;
 
             await baselineModule.baseline_insertCommit(TestItem.Addresses[1], receipt.ContractAddress, TestItem.KeccakH);
             await testRpc.AddBlock();
@@ -727,7 +727,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
             Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
             await testRpc.AddBlock();
 
-            ReceiptForRpc receipt;
+            GetTransactionReceiptResponse receipt;
             int tries = 100;
             do
             {
@@ -788,7 +788,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
 
             // Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
             // await testRpc.AddBlock();
-            // ReceiptForRpc receipt = (await testRpc.EthRpcModule.eth_getTransactionReceipt(txHash)).Data;
+            // GetTransactionReceiptResponse receipt = (await testRpc.EthRpcModule.eth_getTransactionReceipt(txHash)).Data;
 
             List<Task> tasks = new List<Task>();
             for (int i = 0; i < 16; i++)

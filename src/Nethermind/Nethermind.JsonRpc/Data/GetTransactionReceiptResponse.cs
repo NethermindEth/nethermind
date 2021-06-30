@@ -23,7 +23,7 @@ using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Data
 {
-    public class GetTransactionReceiptResponse : ReceiptForRpc
+    public class GetTransactionReceiptResponse
     {
         public GetTransactionReceiptResponse() { }
 
