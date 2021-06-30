@@ -27,7 +27,7 @@ namespace Nethermind.JsonRpc.Data
     {
         public GetTransactionReceiptResponse() { }
 
-        public GetTransactionReceiptResponse(Keccak txHash, TxReceipt receipt, UInt256 effectiveGasPrice)
+        public GetTransactionReceiptResponse(Keccak txHash, TxReceipt receipt, UInt256? effectiveGasPrice)
         {
             TransactionHash = txHash;
             TransactionIndex = receipt.Index;
@@ -53,7 +53,7 @@ namespace Nethermind.JsonRpc.Data
         public long BlockNumber { get; set; }
         public long CumulativeGasUsed { get; set; }
         public long GasUsed { get; set; }
-        public UInt256 EffectiveGasPrice { get; set; }
+        public UInt256? EffectiveGasPrice { get; set; }
         public Address From { get; set; }
         
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]

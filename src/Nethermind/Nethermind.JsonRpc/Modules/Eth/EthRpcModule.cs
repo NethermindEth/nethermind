@@ -498,7 +498,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return Task.FromResult(ResultWrapper<GetTransactionReceiptResponse>.Success(null));
             }
 
-            GetTransactionReceiptResponse receiptModel = new(txHash, result.Receipt, result.EffectiveGasPrice ?? UInt256.Zero);
+            GetTransactionReceiptResponse receiptModel = new(txHash, result.Receipt, result.EffectiveGasPrice);
             if (_logger.IsTrace) _logger.Trace($"eth_getTransactionReceipt request {txHash}, result: {txHash}");
             return Task.FromResult(ResultWrapper<GetTransactionReceiptResponse>.Success(receiptModel));
         }
