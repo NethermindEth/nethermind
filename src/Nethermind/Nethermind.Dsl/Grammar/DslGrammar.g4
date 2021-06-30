@@ -23,9 +23,9 @@ CONTAINS : 'CONTAINS' ;
 IS: 'IS' ;
 NOT: 'NOT' ;
 
-PUBLISH_VALUE : WEBSOCKETS | LOG_PUBLISHER ;
+PUBLISH_VALUE : WEBSOCKETS | TELEGRAM ;
 WEBSOCKETS : 'WebSockets' | 'webSockets' | 'websockets' ;
-LOG_PUBLISHER : 'LogPublisher' | 'logPublisher' | 'logpublisher' ;
+TELEGRAM : 'Telegram' | 'telegram' ;
 
 WORD : [a-zA-Z]+ ;
 BYTECODE : [a-fA-F0-9]+ ;
