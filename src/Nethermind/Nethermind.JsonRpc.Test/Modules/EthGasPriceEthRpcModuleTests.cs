@@ -51,6 +51,23 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
+        public void Eth_gasPrice_DuplicateGasPrices_ReturnsSuccessfully()
+        {
+            BlockTreeSetup blockTreeSetup = new BlockTreeSetup();
+            Transaction[] dupGasPriceGroup =  GetTransactionArray(
+                    GetArray(
+                    GetStringArray("B","6","2"), 
+                    GetStringArray("B","6","3"),
+                    GetStringArray("B","6","4")),false);
+            Block firstBlock = BlockFactoryNumberParentHashTxs(5, HashOfLastBlockIn(blockTreeSetup),
+                dupGasPriceGroup);
+            blockTreeSetup = new BlockTreeSetup(new[]{firstBlock},true);
+
+            ResultWrapper<UInt256?> resultWrapper = blockTreeSetup.ethRpcModule.eth_gasPrice();
+
+            resultWrapper.Result.Should().Be(Result.Success);
+        }
+        [Test]
         public void Eth_gasPrice_BlockcountEqualToBlocksToCheck_ShouldGetTwentiethPercentileIndex()
         {
             BlockTreeSetup blockTreeSetup = new BlockTreeSetup();
@@ -408,12 +425,12 @@ namespace Nethermind.JsonRpc.Test.Modules
                 }
             }
 
-            private void GetBlocks(Block[] blocks, bool addBlocks)
+            private void GetBlocks(Block[] blocks, bool addToBlocks)
             {
-                if (blocks == null || addBlocks)
+                if (NoBlocksGiven(blocks) || addToBlocks)
                 {
                     GetBlockArray();
-                    if (addBlocks)
+                    if (addToBlocks)
                     {
                         AddExtraBlocksToArray(blocks);
                     }
@@ -422,6 +439,11 @@ namespace Nethermind.JsonRpc.Test.Modules
                 {
                     _blocks = blocks;
                 }
+            }
+
+            private static bool NoBlocksGiven(Block[] blocks)
+            {
+                return blocks == null;
             }
 
             private BlockTree BuildABlockTreeWithGenesisBlock(Block genesisBlock)
