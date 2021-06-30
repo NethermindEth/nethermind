@@ -26,7 +26,7 @@ namespace Nethermind.Evm.Tracing
 {
     public class BlockReceiptsTracer : IBlockTracer, ITxTracer
     {
-        private Block? _block;
+        private Block _block = null!;
         public bool IsTracingReceipt => true;
         public bool IsTracingActions => _currentTxTracer!.IsTracingActions;
         public bool IsTracingOpLevelStorage => _currentTxTracer!.IsTracingOpLevelStorage;
@@ -85,17 +85,6 @@ namespace Nethermind.Evm.Tracing
         private TxReceipt BuildReceipt(Address recipient, long spentGas, byte statusCode, LogEntry[] logEntries, Keccak stateRoot = null)
         {
             Transaction transaction = _currentTx;
-            
-            /*
-            if (logEntries.Length > 0)
-            {
-                if (_block!.Bloom == Bloom.Empty)
-                {
-                    _block.Header.Bloom = new Bloom();
-                }
-            }
-            */
-            
             TxReceipt txReceipt = new()
             {
                 Logs = logEntries,
@@ -117,183 +106,113 @@ namespace Nethermind.Evm.Tracing
             return txReceipt;
         }
 
-        public void StartOperation(int depth, long gas, Instruction opcode, int pc)
-        {
+        public void StartOperation(int depth, long gas, Instruction opcode, int pc) =>
             _currentTxTracer!.StartOperation(depth, gas, opcode, pc);
-        }
 
-        public void ReportOperationError(EvmExceptionType error)
-        {
+        public void ReportOperationError(EvmExceptionType error) =>
             _currentTxTracer!.ReportOperationError(error);
-        }
+        
 
-        public void ReportOperationRemainingGas(long gas)
-        {
+        public void ReportOperationRemainingGas(long gas) =>
             _currentTxTracer!.ReportOperationRemainingGas(gas);
-        }
+        
 
-        public void SetOperationMemorySize(ulong newSize)
-        {
+        public void SetOperationMemorySize(ulong newSize) =>
             _currentTxTracer!.SetOperationMemorySize(newSize);
-        }
-
-        public void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)
-        {
+        
+        public void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data) =>
             _currentTxTracer!.ReportMemoryChange(offset, data);
-        }
-
-        public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
-        {
+        
+        public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value) =>
             _currentTxTracer!.ReportStorageChange(key, value);
-        }
-
-        public void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
-        {
+        
+        public void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue) =>
             _currentTxTracer!.SetOperationStorage(address, storageIndex, newValue, currentValue);
-        }
 
-        public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
-        {
+        public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress) =>
             _currentTxTracer!.ReportSelfDestruct(address, balance, refundAddress);
-        }
-
-        public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
-        {
+        
+        public void ReportBalanceChange(Address address, UInt256? before, UInt256? after) =>
             _currentTxTracer!.ReportBalanceChange(address, before, after);
-        }
-
-        public void ReportCodeChange(Address address, byte[] before, byte[] after)
-        {
+        
+        public void ReportCodeChange(Address address, byte[] before, byte[] after) =>
             _currentTxTracer!.ReportCodeChange(address, before, after);
-        }
 
-        public void ReportNonceChange(Address address, UInt256? before, UInt256? after)
-        {
+        public void ReportNonceChange(Address address, UInt256? before, UInt256? after) =>
             _currentTxTracer!.ReportNonceChange(address, before, after);
-        }
         
-        public void ReportAccountRead(Address address)
-        {
+        public void ReportAccountRead(Address address) =>
             _currentTxTracer!.ReportAccountRead(address);
-        }
-
-        public void ReportStorageChange(StorageCell storageCell, byte[] before, byte[] after)
-        {
+        
+        public void ReportStorageChange(StorageCell storageCell, byte[] before, byte[] after) =>
             _currentTxTracer!.ReportStorageChange(storageCell, before, after);
-        }
         
-        public void ReportStorageRead(StorageCell storageCell)
-        {
+        public void ReportStorageRead(StorageCell storageCell) =>
             _currentTxTracer!.ReportStorageRead(storageCell);
-        }
-
-        public void ReportAction(long gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
-        {
-            _currentTxTracer!.ReportAction(gas, value, @from, to, input, callType, isPrecompileCall);
-        }
-
-        public void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
-        {
-            _currentTxTracer!.ReportActionEnd(gas, output);
-        }
-
-        public void ReportActionError(EvmExceptionType exceptionType)
-        {
-            _currentTxTracer!.ReportActionError(exceptionType);
-        }
-
-        public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
-        {
-            _currentTxTracer!.ReportActionEnd(gas, deploymentAddress, deployedCode);
-        }
-
-        public void ReportByteCode(byte[] byteCode)
-        {
-            _currentTxTracer!.ReportByteCode(byteCode);
-        }
-
-        public void ReportGasUpdateForVmTrace(long refund, long gasAvailable)
-        {
-            _currentTxTracer!.ReportGasUpdateForVmTrace(refund, gasAvailable);
-        }
-
-        public void ReportRefund(long refund)
-        {
-            _currentTxTracer!.ReportRefund(refund);
-        }
-
-        public void ReportExtraGasPressure(long extraGasPressure)
-        {
-            _currentTxTracer!.ReportExtraGasPressure(extraGasPressure);
-        }
-
-        public void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells)
-        {
-            _currentTxTracer!.ReportAccess(accessedAddresses, accessedStorageCells);
-        }
-
-        public void SetOperationStack(List<string> stackTrace)
-        {
-            _currentTxTracer!.SetOperationStack(stackTrace);
-        }
-
-        public void ReportStackPush(in ReadOnlySpan<byte> stackItem)
-        {
-            _currentTxTracer!.ReportStackPush(stackItem);
-        }
         
-        public void ReportBlockHash(Keccak blockHash)
-        {
+        public void ReportAction(long gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false) =>
+            _currentTxTracer!.ReportAction(gas, value, @from, to, input, callType, isPrecompileCall);
+        
+        public void ReportActionEnd(long gas, ReadOnlyMemory<byte> output) =>
+            _currentTxTracer!.ReportActionEnd(gas, output);
+        
+        public void ReportActionError(EvmExceptionType exceptionType) =>
+            _currentTxTracer!.ReportActionError(exceptionType);
+        
+        public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode) =>
+            _currentTxTracer!.ReportActionEnd(gas, deploymentAddress, deployedCode);
+        
+        public void ReportByteCode(byte[] byteCode) =>
+            _currentTxTracer!.ReportByteCode(byteCode);
+        
+        public void ReportGasUpdateForVmTrace(long refund, long gasAvailable) =>
+            _currentTxTracer!.ReportGasUpdateForVmTrace(refund, gasAvailable);
+        
+        public void ReportRefund(long refund) =>
+            _currentTxTracer!.ReportRefund(refund);
+
+        public void ReportExtraGasPressure(long extraGasPressure) =>
+            _currentTxTracer!.ReportExtraGasPressure(extraGasPressure);
+        
+        public void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells) =>
+            _currentTxTracer!.ReportAccess(accessedAddresses, accessedStorageCells);
+        
+        public void SetOperationStack(List<string> stackTrace) =>
+            _currentTxTracer!.SetOperationStack(stackTrace);
+        
+        public void ReportStackPush(in ReadOnlySpan<byte> stackItem) =>
+            _currentTxTracer!.ReportStackPush(stackItem);
+        
+        public void ReportBlockHash(Keccak blockHash) =>
             _currentTxTracer!.ReportBlockHash(blockHash);
-        }
-
-        public void SetOperationMemory(List<string> memoryTrace)
-        {
+        
+        public void SetOperationMemory(List<string> memoryTrace) =>
             _currentTxTracer!.SetOperationMemory(memoryTrace);
-        }
-
+        
         private ITxTracer? _currentTxTracer;
         private int _currentIndex;
-        private IList<TxReceipt> _txReceipts = null!;
-        private bool _isFixedSize;
+        private readonly List<TxReceipt> _txReceipts = new();
         private Transaction? _currentTx;
-        public TxReceipt[]? TxReceipts => _txReceipts.ToArray();
-        public TxReceipt? LastReceipt => _txReceipts[^1];
-
+        public IReadOnlyList<TxReceipt> TxReceipts => _txReceipts;
+        public TxReceipt LastReceipt => _txReceipts[^1];
         public bool IsTracingRewards => _otherTracer!.IsTracingRewards;
-
-        public int TakeSnapshot()
-        {
-            return _txReceipts.Count;
-        }
-
+        public int TakeSnapshot() => _txReceipts.Count;
+        
         public void RestoreSnapshot(int length)
         {
-            var txs = _block.GetTransactions(out _).ToList();
-
             int numToRemove = _txReceipts.Count - length;
+            
             for (int i = 0; i < numToRemove; i++)
             {
-                txs.RemoveAt(_txReceipts.Count - 1);
                 _txReceipts.RemoveAt(_txReceipts.Count - 1);
             }
-
-            _block.TrySetTransactions(txs.ToArray());
-            if (_txReceipts.Count > 0)
-            {
-                _block.Header.GasUsed = _txReceipts.Last().GasUsedTotal;
-            }
-            else
-            {
-                _block.Header.GasUsed = 0;
-            }
+            
+            _block.Header.GasUsed = _txReceipts.Count > 0 ? _txReceipts.Last().GasUsedTotal : 0;
         }
 
-        public void ReportReward(Address author, string rewardType, UInt256 rewardValue)
-        {
+        public void ReportReward(Address author, string rewardType, UInt256 rewardValue) =>
             _otherTracer!.ReportReward(author, rewardType, rewardValue);
-        }
-
+        
         public void StartNewBlockTrace(Block block)
         {
             if (_otherTracer is null)
@@ -303,8 +222,7 @@ namespace Nethermind.Evm.Tracing
             
             _block = block;
             _currentIndex = 0;
-            _txReceipts = new List<TxReceipt>();
-            _isFixedSize = ((System.Collections.IList)_txReceipts).IsFixedSize;
+            _txReceipts.Clear();
 
             _otherTracer.StartNewBlockTrace(block);
         }
@@ -327,7 +245,7 @@ namespace Nethermind.Evm.Tracing
             _otherTracer!.EndBlockTrace();
             if (_txReceipts.Count > 0)
             {
-                Bloom blockBloom = new Bloom();
+                Bloom blockBloom = new();
                 _block!.Header.Bloom = blockBloom;
                 for (var index = 0; index < _txReceipts.Count; index++)
                 {

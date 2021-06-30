@@ -44,6 +44,7 @@ using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Stats;
 using Nethermind.Db.Blooms;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Trie.Pruning;

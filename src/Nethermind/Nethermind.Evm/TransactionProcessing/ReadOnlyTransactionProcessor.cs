@@ -20,7 +20,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing;
 using Nethermind.State;
 
-namespace Nethermind.Evm
+namespace Nethermind.Evm.TransactionProcessing
 {
     public class ReadOnlyTransactionProcessor : IReadOnlyTransactionProcessor
     {
@@ -48,9 +48,9 @@ namespace Nethermind.Evm
             _transactionProcessor.CallAndRestore(transaction, block, txTracer);
         }
 
-        public bool BuildUp(Transaction transaction, BlockHeader block, ITxTracer txTracer)
+        public void BuildUp(Transaction transaction, BlockHeader block, ITxTracer txTracer)
         {
-            return _transactionProcessor.BuildUp(transaction, block, txTracer);
+            _transactionProcessor.BuildUp(transaction, block, txTracer);
         }
 
         public bool IsContractDeployed(Address address) => _stateProvider.IsContract(address);

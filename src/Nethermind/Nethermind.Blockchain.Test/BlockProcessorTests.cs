@@ -40,6 +40,7 @@ using System.Threading.Tasks;
 using System.Threading;
 using FluentAssertions;
 using Nethermind.Core.Test.Blockchain;
+using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Blockchain.Test
 {

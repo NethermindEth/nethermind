@@ -25,6 +25,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Mev.Data;
 using Nethermind.State;
@@ -44,8 +45,8 @@ namespace Nethermind.Mev
         {
                 
         }
-        
-        public MevProduceBlockTransactionsStrategy(
+
+        private MevProduceBlockTransactionsStrategy(
             ITransactionProcessor transactionProcessor, 
             IStateProvider stateProvider,
             IStorageProvider storageProvider) : base(transactionProcessor, stateProvider, storageProvider)
@@ -56,10 +57,8 @@ namespace Nethermind.Mev
         
         public override TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, IBlockTracer blockTracer, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec)
         {
-            IEnumerable<Transaction> transactions = block.GetTransactions(out _);
-
+            IEnumerable<Transaction> transactions = block.GetTransactions();
             LinkedHashSet<Transaction> transactionsInBlock = new(ByHashTxComparer.Instance);
-
             List<BundleTransaction> bundleTransactions = new();
             Keccak? bundleHash = null;
             
@@ -72,28 +71,38 @@ namespace Nethermind.Mev
                     {
                         break;
                     }
-                    if (bundleHash is null)
+                    // if we don't accumulate bundle yet
+                    if (bundleHash is null) 
                     {
-                        if (currentTx is BundleTransaction bundleTransaction)
+                        // and we see a bundle transaction
+                        if (currentTx is BundleTransaction bundleTransaction) 
                         {
+                            // start accumulating the bundle
                             bundleTransactions.Add(bundleTransaction);
                             bundleHash = bundleTransaction.BundleHash;
                         }
                         else
                         {
-                            ProcessTransaction(block, transactionsInBlock, currentTx, transactionsInBlock.Count, receiptsTracer, processingOptions);
+                            // otherwise process transaction as usual 
+                            ProcessTransaction(block, currentTx, transactionsInBlock.Count, receiptsTracer, processingOptions, transactionsInBlock);
                         }
                     }
+                    // if we are accumulating bundle
                     else
                     {
+                        // if we see a bundle transaction
                         if (currentTx is BundleTransaction bundleTransaction)
                         {
+                            // if its from same bundle
                             if (bundleTransaction.BundleHash == bundleHash)
                             {
+                                // keep accumulating the bundle
                                 bundleTransactions.Add(bundleTransaction);
                             }
+                            // if its from different bundle
                             else
                             {
+                                // process accumulated bundle
                                 ProcessBundle(block, transactionsInBlock, bundleTransactions, receiptsTracer, processingOptions);
                                 
                                 if (currentTx.GasLimit > block.Header.GasLimit - block.GasUsed)
@@ -101,12 +110,15 @@ namespace Nethermind.Mev
                                     break;
                                 }
                                 
+                                // start accumulating new bundle
                                 bundleTransactions.Add(bundleTransaction);
                                 bundleHash = bundleTransaction.BundleHash;
                             }
                         }
+                        // if we see a normal transaction
                         else
                         {
+                            // process the bundle and stop accumulating it
                             ProcessBundle(block, transactionsInBlock, bundleTransactions, receiptsTracer, processingOptions);
                             bundleHash = null;
                             
@@ -115,58 +127,49 @@ namespace Nethermind.Mev
                                 break;
                             }
                             
-                            // process current transactions
-                            ProcessTransaction(block, transactionsInBlock, currentTx, transactionsInBlock.Count, receiptsTracer, processingOptions);
+                            // process normal transaction
+                            ProcessTransaction(block, currentTx, transactionsInBlock.Count, receiptsTracer, processingOptions, transactionsInBlock);
                         }
                     }
                 }
             }
-            // if bundle is not clear process it still
+            // if we ended with accumulated bundle, lets process it
             if (bundleTransactions.Count > 0)
             {
                 ProcessBundle(block, transactionsInBlock, bundleTransactions, receiptsTracer, processingOptions);
             }
-            block.TrySetTransactions(transactionsInBlock.ToArray());
+
             _stateProvider.Commit(spec);
             _storageProvider.Commit();
-            block.Header.TxRoot = new TxTrie(block.Transactions).RootHash;
-            return receiptsTracer.TxReceipts!;
+            
+            block.TrySetTransactions(transactionsInBlock.ToArray());
+            return receiptsTracer.TxReceipts.ToArray();
         }
 
-        private void ProcessBundle(Block block, LinkedHashSet<Transaction> transactionsInBlock, List<BundleTransaction> bundleTransactions,
-            BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
+        private void ProcessBundle(Block block,
+            LinkedHashSet<Transaction> transactionsInBlock,
+            List<BundleTransaction> bundleTransactions,
+            BlockReceiptsTracer receiptsTracer, 
+            ProcessingOptions processingOptions)
         {
             int stateSnapshot = _stateProvider.TakeSnapshot();
             int storageSnapshot = _storageProvider.TakeSnapshot();
             int receiptSnapshot = receiptsTracer.TakeSnapshot();
+            
             List<TxProcessedEventArgs> eventList = new();
             bool bundleSucceeded = true;
-            
             UInt256 initialBalance = _stateProvider.GetBalance(block.Header.GasBeneficiary!);
             for (int index = 0; index < bundleTransactions.Count && bundleSucceeded; index++)
             {
                 BundleTransaction currentTx = bundleTransactions[index];
-                ProcessTransaction(block, null, currentTx, index, receiptsTracer, processingOptions);
-
-                string error = receiptsTracer.LastReceipt!.Error ?? "";
-                bool wasReverted = error == "revert";
-                if (wasReverted && !currentTx.CanRevert)
-                {
-                    bundleSucceeded = false;
-                }
-                else if (!wasReverted && (error != ""))
-                {
-                    bundleSucceeded = false;
-                }
-                else
-                {
-                    eventList.Add(new TxProcessedEventArgs(transactionsInBlock.Count, currentTx, receiptsTracer.TxReceipts![transactionsInBlock.Count]));                    
-                }
+                bundleSucceeded = ProcessBundleTransaction(block, currentTx, index, receiptsTracer, processingOptions);
+                eventList.Add(new TxProcessedEventArgs(transactionsInBlock.Count, currentTx, receiptsTracer.TxReceipts![transactionsInBlock.Count]));
             }
+            
             UInt256 finalBalance = _stateProvider.GetBalance(block.Header.GasBeneficiary!);
             UInt256 feeReceived = finalBalance - initialBalance;
             UInt256 originalSimulatedGasPrice = bundleTransactions[0].SimulatedBundleFee / bundleTransactions[0].SimulatedBundleGasUsed;
-            UInt256 actualGasPrice = feeReceived / (UInt256)receiptsTracer.LastReceipt!.GasUsed!;
+            UInt256 actualGasPrice = feeReceived / (UInt256)receiptsTracer.LastReceipt.GasUsed!;
 
             if (actualGasPrice < originalSimulatedGasPrice)
             {
@@ -179,6 +182,7 @@ namespace Nethermind.Mev
                 {
                     TxProcessedEventArgs eventItem = eventList[index];
                     transactionsInBlock.Add(eventItem.Transaction);
+                    _transactionProcessed?.Invoke(this, eventItem);
                 }
             }
             else
@@ -193,6 +197,13 @@ namespace Nethermind.Mev
             }
 
             bundleTransactions.Clear();
+        }
+
+        private bool ProcessBundleTransaction(Block block, BundleTransaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
+        {
+            ProcessTransaction(block, currentTx, index, receiptsTracer, processingOptions);
+            string? error = receiptsTracer.LastReceipt.Error;
+            return string.IsNullOrEmpty(error) || (error == "revert" && currentTx.CanRevert);
         }
     }
 }

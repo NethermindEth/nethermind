@@ -13,14 +13,23 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System;
 using Nethermind.Core;
+using Nethermind.Evm.Tracing;
 
-namespace Nethermind.Evm
+namespace Nethermind.Evm.TransactionProcessing
 {
-    public interface IReadOnlyTransactionProcessor : ITransactionProcessor, IDisposable
+    public class ExecuteTransactionProcessorAdapter : ITransactionProcessorAdapter
     {
-        bool IsContractDeployed(Address address);
+        private readonly ITransactionProcessor _transactionProcessor;
+
+        public ExecuteTransactionProcessorAdapter(ITransactionProcessor transactionProcessor)
+        {
+            _transactionProcessor = transactionProcessor;
+        }
+        
+        public void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer) =>
+            _transactionProcessor.Execute(transaction, block, txTracer);
     }
 }

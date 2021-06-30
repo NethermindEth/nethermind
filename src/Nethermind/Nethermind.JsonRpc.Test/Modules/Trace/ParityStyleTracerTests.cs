@@ -40,6 +40,7 @@ using NUnit.Framework;
 using Nethermind.Evm.Tracing.ParityStyle;
 using System.Threading;
 using System;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
 

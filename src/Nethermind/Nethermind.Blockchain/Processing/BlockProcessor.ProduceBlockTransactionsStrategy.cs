@@ -23,6 +23,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.State;
 using Nethermind.State.Proofs;
 using Nethermind.TxPool;
@@ -32,36 +33,9 @@ namespace Nethermind.Blockchain.Processing
 {
     public partial class BlockProcessor
     {
-        protected interface IProduceBlockTransactionsStrategy : IBlockProcessor.IBlockTransactionsStrategy
-        {
-            public event EventHandler<TxCheckEventArgs> CheckTransaction;
-        }
-
-        protected class TxCheckEventArgs : TxEventArgs
-        {
-            public Block Block { get; }
-            public IReadOnlyCollection<Transaction> TransactionsInBlock { get; }
-            public TxAction Action { get; private set; } = TxAction.Add;
-            public string Reason { get; private set; } = string.Empty;
-
-            public TxCheckEventArgs Set(TxAction action, string reason)
-            {
-                Action = action;
-                Reason = reason;
-                return this;
-            }
-
-            public TxCheckEventArgs(int index, Transaction transaction, Block block, IReadOnlyCollection<Transaction> transactionsInBlock) 
-                : base(index, transaction)
-            {
-                Block = block;
-                TransactionsInBlock = transactionsInBlock;
-            }
-        }
-        
         public class ProduceBlockTransactionsStrategy : IProduceBlockTransactionsStrategy
         {
-            private readonly ITransactionProcessor _transactionProcessor;
+            private readonly ITransactionProcessorAdapter _transactionProcessor;
             private readonly IStateProvider _stateProvider;
             private readonly IStorageProvider _storageProvider;
 
@@ -76,14 +50,19 @@ namespace Nethermind.Blockchain.Processing
                 IStateProvider stateProvider,
                 IStorageProvider storageProvider)
             {
-                _transactionProcessor = transactionProcessor;
+                _transactionProcessor = new BuildUpTransactionProcessorAdapter(transactionProcessor);
                 _stateProvider = stateProvider;
                 _storageProvider = storageProvider;
             }
 
-            public event EventHandler<TxProcessedEventArgs>? TransactionProcessed;
-            private event EventHandler<TxCheckEventArgs>? CheckTransaction;
+            protected EventHandler<TxProcessedEventArgs>? _transactionProcessed;
+            event EventHandler<TxProcessedEventArgs>? IBlockProcessor.IBlockTransactionsStrategy.TransactionProcessed
+            {
+                add => _transactionProcessed += value;
+                remove => _transactionProcessed -= value;
+            }
 
+            private event EventHandler<TxCheckEventArgs>? CheckTransaction;
             event EventHandler<TxCheckEventArgs>? IProduceBlockTransactionsStrategy.CheckTransaction
             {
                 add => CheckTransaction += value;
@@ -92,7 +71,7 @@ namespace Nethermind.Blockchain.Processing
 
             public virtual TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, IBlockTracer blockTracer, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec)
             {
-                IEnumerable<Transaction> transactions = block.GetTransactions(out _);
+                IEnumerable<Transaction> transactions = block.GetTransactions();
 
                 int i = 0;
                 LinkedHashSet<Transaction> transactionsInBlock = new(ByHashTxComparer.Instance);
@@ -101,8 +80,7 @@ namespace Nethermind.Blockchain.Processing
                     TxCheckEventArgs args = CheckTx(transactionsInBlock, currentTx, block);
                     if (args.Action == TxAction.Add)
                     {
-                        ProcessTransaction(block, transactionsInBlock, currentTx, i++, receiptsTracer, processingOptions);
-                        transactionsInBlock.Add(currentTx);
+                        ProcessTransaction(block, currentTx, i++, receiptsTracer, processingOptions, transactionsInBlock);
                     }
                     else if (args.Action == TxAction.Stop)
                     {
@@ -114,23 +92,18 @@ namespace Nethermind.Blockchain.Processing
                 _storageProvider.Commit();
 
                 block.TrySetTransactions(transactionsInBlock.ToArray());
-                block.Header.TxRoot = new TxTrie(block.Transactions).RootHash;
-                return receiptsTracer.TxReceipts!;
+                return receiptsTracer.TxReceipts.ToArray();
             }
 
-            protected void ProcessTransaction(Block block, ISet<Transaction>? transactionsInBlock, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
+            protected void ProcessTransaction(Block block, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions, ISet<Transaction>? transactionsInBlock = null)
             {
-                if ((processingOptions & ProcessingOptions.DoNotVerifyNonce) != 0)
+                _transactionProcessor.ProcessTransaction(block, currentTx, receiptsTracer, processingOptions, _stateProvider);
+                
+                if (transactionsInBlock is not null)
                 {
-                    currentTx.Nonce = _stateProvider.GetNonce(currentTx.SenderAddress);
+                    transactionsInBlock.Add(currentTx);
+                    _transactionProcessed?.Invoke(this, new TxProcessedEventArgs(index, currentTx, receiptsTracer.TxReceipts[index]));
                 }
-
-                receiptsTracer.StartNewTxTrace(currentTx);
-                _transactionProcessor.BuildUp(currentTx, block.Header, receiptsTracer);
-                receiptsTracer.EndTxTrace();
-
-                transactionsInBlock?.Add(currentTx);
-                TransactionProcessed?.Invoke(this, new TxProcessedEventArgs(index, currentTx, receiptsTracer.TxReceipts[index]));
             }
 
             private TxCheckEventArgs CheckTx(IReadOnlySet<Transaction> transactionsInBlock, Transaction currentTx, Block block)

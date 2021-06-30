@@ -21,14 +21,14 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
-using Nethermind.Specs;
-using Nethermind.Int256;
 using Nethermind.Evm.Tracing;
+using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Specs;
 using Nethermind.State;
 using Transaction = Nethermind.Core.Transaction;
 
-namespace Nethermind.Evm
+namespace Nethermind.Evm.TransactionProcessing
 {
     public class TransactionProcessor : ITransactionProcessor
     {
@@ -67,12 +67,12 @@ namespace Nethermind.Evm
             Execute(transaction, block, txTracer, ExecutionOptions.Restore | ExecutionOptions.Commit);
         }
 
-        public bool BuildUp(Transaction transaction, BlockHeader block, ITxTracer txTracer)
+        public void BuildUp(Transaction transaction, BlockHeader block, ITxTracer txTracer)
         {
             // we need to treat the result of previous transaction as the original value of next transaction
             // when we do not commit
             _storageProvider.TakeSnapshot(true);
-            return Execute(transaction, block, txTracer, ExecutionOptions.None);
+            Execute(transaction, block, txTracer, ExecutionOptions.None);
         }
 
         public void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer)

@@ -32,6 +32,7 @@ using Nethermind.Network;
 using Nethermind.Db.Blooms;
 using Nethermind.Db.Rocks;
 using Nethermind.Evm;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.KeyStore;

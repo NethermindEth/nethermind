@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,28 +15,17 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Collections.Generic;
+using Nethermind.Core;
+using Nethermind.State.Proofs;
 
-namespace Nethermind.Core
+namespace Nethermind.Blockchain.Processing
 {
     public static class BlockExtensions
     {
-        public static IEnumerable<Transaction> GetTransactions(this Block block, out bool transactionsChangeable)
-        {
-            if (block is BlockToProduce {Transactions: not ICollection<Transaction>} blockToProduce)
-            {
-                transactionsChangeable = true;
-                return blockToProduce.Transactions;
-            }
-            else
-            {
-                transactionsChangeable = false;
-                return block.Transactions;
-            }
-        }
-
         public static bool TrySetTransactions(this Block block, Transaction[] transactions)
         {
+            block.Header.TxRoot = new TxTrie(transactions).RootHash;
+            
             if (block is BlockToProduce blockToProduce)
             {
                 blockToProduce.Transactions = transactions;

@@ -15,31 +15,32 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
-using Nethermind.Abi;
-using Nethermind.Blockchain.Contracts.Json;
 using Nethermind.Core;
-using Nethermind.Int256;
-using Nethermind.Evm;
+using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.State;
 
-namespace Nethermind.Consensus.AuRa.Contracts
+namespace Nethermind.Blockchain.Processing
 {
-    public sealed class TransactionPermissionContractV2 : TransactionPermissionContract
+    internal static class TransactionProcessorAdapterExtensions
     {
-        private static readonly UInt256 Two = 2;
-
-        public TransactionPermissionContractV2(
-            IAbiEncoder abiEncoder,
-            Address contractAddress,
-            IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
-            : base(abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)), readOnlyTxProcessorSource)
+        public static void ProcessTransaction(this ITransactionProcessorAdapter transactionProcessor, 
+            Block block, 
+            Transaction currentTx, 
+            BlockReceiptsTracer receiptsTracer, 
+            ProcessingOptions processingOptions,
+            IStateProvider stateProvider)
         {
+            if ((processingOptions & ProcessingOptions.DoNotVerifyNonce) != 0)
+            {
+                currentTx.Nonce = stateProvider.GetNonce(currentTx.SenderAddress);
+            }
+
+            receiptsTracer.StartNewTxTrace(currentTx);
+            transactionProcessor.Execute(currentTx, block.Header, receiptsTracer);
+            receiptsTracer.EndTxTrace();
+
+            
         }
-
-        protected override object[] GetAllowedTxTypesParameters(Transaction tx, BlockHeader parentHeader) => 
-            new object[] {tx.SenderAddress, tx.To ?? Address.Zero, tx.Value};
-
-        public override UInt256 Version => Two;
     }
 }

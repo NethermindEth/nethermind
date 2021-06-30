@@ -23,6 +23,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.State;
 using Nethermind.State.Proofs;
 using Nethermind.TxPool;
@@ -33,12 +34,12 @@ namespace Nethermind.Blockchain.Processing
     {
         public class ProcessBlockTransactionsStrategy : IBlockProcessor.IBlockTransactionsStrategy
         {
-            private readonly ITransactionProcessor _transactionProcessor;
+            private readonly ITransactionProcessorAdapter _transactionProcessor;
             private readonly IStateProvider _stateProvider;
         
             public ProcessBlockTransactionsStrategy(ITransactionProcessor transactionProcessor, IStateProvider stateProvider)
             {
-                _transactionProcessor = transactionProcessor;
+                _transactionProcessor = new ExecuteTransactionProcessorAdapter(transactionProcessor);
                 _stateProvider = stateProvider;
             }
         
@@ -51,20 +52,12 @@ namespace Nethermind.Blockchain.Processing
                     Transaction currentTx = block.Transactions[i];
                     ProcessTransaction(block, currentTx, i, receiptsTracer, processingOptions);
                 }
-                return receiptsTracer.TxReceipts!;
+                return receiptsTracer.TxReceipts.ToArray();
             }
         
             private void ProcessTransaction(Block block, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
             {
-                if ((processingOptions & ProcessingOptions.DoNotVerifyNonce) != 0)
-                {
-                    currentTx.Nonce = _stateProvider.GetNonce(currentTx.SenderAddress);
-                }
-
-                receiptsTracer.StartNewTxTrace(currentTx);
-                _transactionProcessor.Execute(currentTx, block.Header, receiptsTracer);
-                receiptsTracer.EndTxTrace();
-
+                _transactionProcessor.ProcessTransaction(block, currentTx, receiptsTracer, processingOptions, _stateProvider);
                 TransactionProcessed?.Invoke(this, new TxProcessedEventArgs(index, currentTx, receiptsTracer.TxReceipts[index]));
             }
         }
