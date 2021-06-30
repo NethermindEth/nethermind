@@ -82,9 +82,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
             IWallet wallet,
             ILogManager logManager,
             ISpecProvider specProvider,
+            bool eip1559Enabled = false,
             IGasPriceOracle? gasPriceOracle = null,
             UInt256? ignoreUnder = null,
-            int? blockLimit = null)
+            int? blockLimit = null,
+            UInt256? baseFee = null)
         {
             _logger = logManager.GetClassLogger();
             _rpcConfig = rpcConfig ?? throw new ArgumentNullException(nameof(rpcConfig));
@@ -95,19 +97,14 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _gasPriceOracle = gasPriceOracle ?? GetGasPriceOracle(_blockFinder, ignoreUnder, blockLimit);
+            _gasPriceOracle = gasPriceOracle ?? GetGasPriceOracle(_blockFinder, eip1559Enabled, ignoreUnder, blockLimit, baseFee);
         }
         
-        private IGasPriceOracle GetGasPriceOracle(IBlockFinder blockFinder, UInt256? ignoreUnder, int? blockLimit)
+        private IGasPriceOracle GetGasPriceOracle(IBlockFinder blockFinder, bool eip1559Enabled, UInt256? ignoreUnder,
+            int? blockLimit, UInt256? baseFee)
         {
-            if (blockLimit != null)
-            {
-                return new GasPriceOracle(blockFinder, ignoreUnder, (int) blockLimit!);
-            }
-            else
-            {
-                return new GasPriceOracle(blockFinder, ignoreUnder);
-            }
+            GasPriceOracle gasPriceOracle = new GasPriceOracle(blockFinder, eip1559Enabled, ignoreUnder, blockLimit, baseFee);
+            return gasPriceOracle;
         }
         
         public ResultWrapper<string> eth_protocolVersion()
