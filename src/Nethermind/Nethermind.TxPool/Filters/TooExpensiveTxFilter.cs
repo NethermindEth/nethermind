@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -51,20 +50,27 @@ namespace Nethermind.TxPool.Filters
             UInt256 balance = account.Balance;
             UInt256 cumulativeCost = UInt256.Zero;
             bool overflow = false;
-            
-            Transaction[] bucket = _txs.GetBucketSnapshot(tx.SenderAddress);
 
-            foreach (Transaction precedingTx in bucket.Where(t => t.Nonce < tx.Nonce))
+            Transaction[] transactions = _txs.GetBucketSnapshot(tx.SenderAddress);
+
+            for (int i = 0; i < transactions.Length; i++)
             {
-                overflow |= UInt256.MultiplyOverflow(
-                    precedingTx.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, _headInfo.CurrentBaseFee),
-                    (UInt256)precedingTx.GasLimit,
-                    out UInt256 txCost);
+                if (transactions[i].Nonce < tx.Nonce)
+                {
+                    overflow |= UInt256.MultiplyOverflow(
+                        transactions[i].CalculateEffectiveGasPrice(spec.IsEip1559Enabled, _headInfo.CurrentBaseFee),
+                        (UInt256)transactions[i].GasLimit,
+                        out UInt256 txCost);
 
-                overflow |= UInt256.AddOverflow(cumulativeCost, txCost, out cumulativeCost);
-                overflow |= UInt256.AddOverflow(cumulativeCost, tx.Value, out cumulativeCost);
+                    overflow |= UInt256.AddOverflow(cumulativeCost, txCost, out cumulativeCost);
+                    overflow |= UInt256.AddOverflow(cumulativeCost, tx.Value, out cumulativeCost);
+                }
+                else
+                {
+                    break;
+                }
             }
-            
+
             UInt256 affordableGasPrice = tx.CalculateAffordableGasPrice(spec.IsEip1559Enabled, _headInfo.CurrentBaseFee, balance > cumulativeCost ? balance - cumulativeCost : 0);
 
             overflow |= spec.IsEip1559Enabled && UInt256.AddOverflow(tx.MaxPriorityFeePerGas, tx.MaxFeePerGas, out _);
