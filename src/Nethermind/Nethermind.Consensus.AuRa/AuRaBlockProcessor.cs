@@ -47,7 +47,7 @@ namespace Nethermind.Consensus.AuRa
             ISpecProvider specProvider,
             IBlockValidator blockValidator,
             IRewardCalculator rewardCalculator,
-            IBlockProcessor.IBlockTransactionsStrategy blockTransactionsStrategy,
+            IBlockProcessor.IBlockTransactionsExecutor blockTransactionsExecutor,
             IStateProvider stateProvider,
             IStorageProvider storageProvider,
             IReceiptStorage receiptStorage,
@@ -59,7 +59,7 @@ namespace Nethermind.Consensus.AuRa
                 specProvider,
                 blockValidator,
                 rewardCalculator,
-                blockTransactionsStrategy,
+                blockTransactionsExecutor,
                 stateProvider,
                 storageProvider,
                 receiptStorage,
@@ -71,9 +71,9 @@ namespace Nethermind.Consensus.AuRa
             _logger = logManager?.GetClassLogger<AuRaBlockProcessor>() ?? throw new ArgumentNullException(nameof(logManager));
             _txFilter = txFilter ?? NullTxFilter.Instance;
             _gasLimitOverride = gasLimitOverride;
-            if (blockTransactionsStrategy is IProduceBlockTransactionsStrategy produceBlockTransactionsStrategy)
+            if (blockTransactionsExecutor is IBlockProductionTransactionsExecutor produceBlockTransactionsStrategy)
             {
-                produceBlockTransactionsStrategy.CheckTransaction += OnCheckTransaction;
+                produceBlockTransactionsStrategy.CheckTransactionToBeAdded += OnCheckTransactionToBeAdded;
             }
         }
 
@@ -131,7 +131,7 @@ namespace Nethermind.Consensus.AuRa
             }
         }
         
-        private void OnCheckTransaction(object? sender, TxCheckEventArgs e)
+        private void OnCheckTransactionToBeAdded(object? sender, TxCheckEventArgs e)
         {
             CheckTxPosdaoRules(e);
         }

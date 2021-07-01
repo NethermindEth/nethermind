@@ -32,12 +32,12 @@ namespace Nethermind.Blockchain.Processing
 {
     public partial class BlockProcessor
     {
-        public class ProcessBlockTransactionsStrategy : IBlockProcessor.IBlockTransactionsStrategy
+        public class BlockValidationTransactionsExecutor : IBlockProcessor.IBlockTransactionsExecutor
         {
             private readonly ITransactionProcessorAdapter _transactionProcessor;
             private readonly IStateProvider _stateProvider;
         
-            public ProcessBlockTransactionsStrategy(ITransactionProcessor transactionProcessor, IStateProvider stateProvider)
+            public BlockValidationTransactionsExecutor(ITransactionProcessor transactionProcessor, IStateProvider stateProvider)
             {
                 _transactionProcessor = new ExecuteTransactionProcessorAdapter(transactionProcessor);
                 _stateProvider = stateProvider;

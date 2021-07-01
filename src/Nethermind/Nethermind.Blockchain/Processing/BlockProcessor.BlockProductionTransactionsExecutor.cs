@@ -34,7 +34,7 @@ namespace Nethermind.Blockchain.Processing
 {
     public partial class BlockProcessor
     {
-        public class ProduceBlockTransactionsStrategy : IProduceBlockTransactionsStrategy
+        public class BlockProductionTransactionsExecutor : IBlockProductionTransactionsExecutor
         {
             private readonly ITransactionProcessorAdapter _transactionProcessor;
             private readonly IStateProvider _stateProvider;
@@ -42,7 +42,7 @@ namespace Nethermind.Blockchain.Processing
             private readonly BlockProductionTransactionPicker _blockProductionTransactionPicker;
             private readonly ILogger _logger;
 
-            public ProduceBlockTransactionsStrategy(
+            public BlockProductionTransactionsExecutor(
                 ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv,
                 ISpecProvider specProvider,
                 ILogManager logManager) 
@@ -55,7 +55,7 @@ namespace Nethermind.Blockchain.Processing
             {
             }
             
-            public ProduceBlockTransactionsStrategy(
+            public BlockProductionTransactionsExecutor(
                 ITransactionProcessor transactionProcessor,
                 IStateProvider stateProvider,
                 IStorageProvider storageProvider, 
@@ -70,13 +70,13 @@ namespace Nethermind.Blockchain.Processing
             }
 
             protected EventHandler<TxProcessedEventArgs>? _transactionProcessed;
-            event EventHandler<TxProcessedEventArgs>? IBlockProcessor.IBlockTransactionsStrategy.TransactionProcessed
+            event EventHandler<TxProcessedEventArgs>? IBlockProcessor.IBlockTransactionsExecutor.TransactionProcessed
             {
                 add => _transactionProcessed += value;
                 remove => _transactionProcessed -= value;
             }
 
-            event EventHandler<TxCheckEventArgs>? IProduceBlockTransactionsStrategy.CheckTransaction
+            event EventHandler<TxCheckEventArgs>? IBlockProductionTransactionsExecutor.CheckTransactionToBeAdded
             {
                 add => _blockProductionTransactionPicker.CheckTransaction += value;
                 remove => _blockProductionTransactionPicker.CheckTransaction -= value;
@@ -84,7 +84,7 @@ namespace Nethermind.Blockchain.Processing
 
             public virtual TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, IBlockTracer blockTracer, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec)
             {
-                IEnumerable<Transaction> transactions = block.GetTransactions();
+                IEnumerable<Transaction> transactions = GetTransactions(block);
 
                 int i = 0;
                 LinkedHashSet<Transaction> transactionsInBlock = new(ByHashTxComparer.Instance);
@@ -97,7 +97,7 @@ namespace Nethermind.Blockchain.Processing
                 _stateProvider.Commit(spec);
                 _storageProvider.Commit();
 
-                block.TrySetTransactions(transactionsInBlock.ToArray());
+                SetTransactions(block, transactionsInBlock);
                 return receiptsTracer.TxReceipts.ToArray();
             }
 
@@ -128,6 +128,13 @@ namespace Nethermind.Blockchain.Processing
                 }
                 
                 return args.Action;
+            }
+            
+            protected static IEnumerable<Transaction> GetTransactions(Block block) => block.GetTransactions();
+            
+            protected static void SetTransactions(Block block, IEnumerable<Transaction> transactionsInBlock)
+            {
+                block.TrySetTransactions(transactionsInBlock.ToArray());
             }
         }
     }

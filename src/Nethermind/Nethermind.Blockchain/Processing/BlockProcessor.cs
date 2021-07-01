@@ -48,7 +48,7 @@ namespace Nethermind.Blockchain.Processing
         private readonly IBlockValidator _blockValidator;
         private readonly IStorageProvider _storageProvider;
         private readonly IRewardCalculator _rewardCalculator;
-        private readonly IBlockProcessor.IBlockTransactionsStrategy _blockTransactionsStrategy;
+        private readonly IBlockProcessor.IBlockTransactionsExecutor _blockTransactionsExecutor;
 
         private const int MaxUncommittedBlocks = 64;
 
@@ -62,7 +62,7 @@ namespace Nethermind.Blockchain.Processing
             ISpecProvider? specProvider,
             IBlockValidator? blockValidator,
             IRewardCalculator? rewardCalculator,
-            IBlockProcessor.IBlockTransactionsStrategy? blockTransactionsStrategy,
+            IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor,
             IStateProvider? stateProvider,
             IStorageProvider? storageProvider,
             IReceiptStorage? receiptStorage,
@@ -77,7 +77,7 @@ namespace Nethermind.Blockchain.Processing
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _witnessCollector = witnessCollector ?? throw new ArgumentNullException(nameof(witnessCollector));
             _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
-            _blockTransactionsStrategy = blockTransactionsStrategy ?? throw new ArgumentNullException(nameof(blockTransactionsStrategy));
+            _blockTransactionsExecutor = blockTransactionsExecutor ?? throw new ArgumentNullException(nameof(blockTransactionsExecutor));
 
             _receiptsTracer = new BlockReceiptsTracer();
         }
@@ -86,8 +86,8 @@ namespace Nethermind.Blockchain.Processing
 
         public event EventHandler<TxProcessedEventArgs> TransactionProcessed
         {
-            add { _blockTransactionsStrategy.TransactionProcessed += value; }
-            remove { _blockTransactionsStrategy.TransactionProcessed -= value; }
+            add { _blockTransactionsExecutor.TransactionProcessed += value; }
+            remove { _blockTransactionsExecutor.TransactionProcessed -= value; }
         }
 
         // TODO: move to branch processor
@@ -251,7 +251,7 @@ namespace Nethermind.Blockchain.Processing
             
             _receiptsTracer.SetOtherTracer(blockTracer);
             _receiptsTracer.StartNewBlockTrace(block);
-            TxReceipt[] receipts = _blockTransactionsStrategy.ProcessTransactions(block, options, blockTracer, _receiptsTracer, spec);
+            TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, blockTracer, _receiptsTracer, spec);
             _receiptsTracer.EndBlockTrace();
             
             block.Header.ReceiptsRoot = receipts.GetReceiptsRoot(spec, block.ReceiptsRoot);
@@ -300,7 +300,7 @@ namespace Nethermind.Blockchain.Processing
                 BaseFeePerGas = bh.BaseFeePerGas
             };
 
-            return suggestedBlock.CreateBlockForProcessing(headerForProcessing);
+            return suggestedBlock.CreateCopy(headerForProcessing);
         }
 
         // TODO: block processor pipeline

@@ -272,7 +272,7 @@ namespace Nethermind.Core.Test.Blockchain
                 SpecProvider,
                 _blockValidator,
                 NoBlockRewards.Instance,
-                new BlockProcessor.ProcessBlockTransactionsStrategy(TxProcessor, State),
+                new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
                 State,
                 Storage,
                 ReceiptStorage,

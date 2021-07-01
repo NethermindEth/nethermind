@@ -46,11 +46,11 @@ namespace Nethermind.Mev.Execution
             Block block = BuildBlock(bundle, parent, timestamp);
             TBlockTracer blockTracer = CreateBlockTracer(bundle);
             ITracer tracer = _tracerFactory.Create();
-            Keccak resultStateRoot = tracer.Trace(block, blockTracer.WithCancellation(cancellationToken));
-            return BuildResult(bundle, block, blockTracer, resultStateRoot);
+            tracer.Trace(block, blockTracer.WithCancellation(cancellationToken));
+            return BuildResult(bundle, blockTracer);
         }
 
-        protected abstract TResult BuildResult(MevBundle bundle, Block block, TBlockTracer tracer, Keccak resultStateRoot);
+        protected abstract TResult BuildResult(MevBundle bundle, TBlockTracer tracer);
 
         private Block BuildBlock(MevBundle bundle, BlockHeader parent, UInt256? timestamp)
         {
@@ -72,7 +72,7 @@ namespace Nethermind.Mev.Execution
 
         protected virtual long GetGasLimit(BlockHeader parent) => parent.GasLimit;
 
-        protected virtual Address Beneficiary => _signer?.Address ?? Address.Zero;
+        protected Address Beneficiary => _signer?.Address ?? Address.Zero;
 
         protected abstract TBlockTracer CreateBlockTracer(MevBundle mevBundle);
 

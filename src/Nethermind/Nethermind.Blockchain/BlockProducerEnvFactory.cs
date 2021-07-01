@@ -157,7 +157,7 @@ namespace Nethermind.Blockchain
             new(specProvider,
                 blockValidator,
                 rewardCalculatorSource.Get(readOnlyTxProcessingEnv.TransactionProcessor),
-                new BlockProcessor.ProduceBlockTransactionsStrategy(readOnlyTxProcessingEnv, specProvider, logManager),
+                new BlockProcessor.BlockProductionTransactionsExecutor(readOnlyTxProcessingEnv, specProvider, logManager),
                 readOnlyTxProcessingEnv.StateProvider,
                 readOnlyTxProcessingEnv.StorageProvider,
                 receiptStorage,

@@ -33,9 +33,9 @@ namespace Nethermind.Blockchain.Processing
 {
     public partial class BlockProcessor
     {
-        protected interface IProduceBlockTransactionsStrategy : IBlockProcessor.IBlockTransactionsStrategy
+        protected interface IBlockProductionTransactionsExecutor : IBlockProcessor.IBlockTransactionsExecutor
         {
-            public event EventHandler<TxCheckEventArgs> CheckTransaction;
+            public event EventHandler<TxCheckEventArgs> CheckTransactionToBeAdded;
         }
 
         protected class TxCheckEventArgs : TxEventArgs

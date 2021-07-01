@@ -107,7 +107,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 specProvider,
                 Always.Valid,
                 new RewardCalculator(specProvider),
-                new BlockProcessor.ProcessBlockTransactionsStrategy(txProcessor, _stateProvider),
+                new BlockProcessor.BlockValidationTransactionsExecutor(txProcessor, _stateProvider),
                 _stateProvider,
                 storageProvider,
                 receiptStorage,

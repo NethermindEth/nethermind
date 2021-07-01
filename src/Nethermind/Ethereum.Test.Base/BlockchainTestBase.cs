@@ -151,7 +151,7 @@ namespace Ethereum.Test.Base
                 specProvider,
                 blockValidator,
                 rewardCalculator,
-                new BlockProcessor.ProcessBlockTransactionsStrategy(
+                new BlockProcessor.BlockValidationTransactionsExecutor(
                     new TransactionProcessor(
                         specProvider,
                         stateProvider,

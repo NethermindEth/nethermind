@@ -15,13 +15,26 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Collections.Generic;
+using System.Linq;
+using Nethermind.Blockchain.Producers;
 using Nethermind.Core;
 using Nethermind.State.Proofs;
 
 namespace Nethermind.Blockchain.Processing
 {
-    public static class BlockExtensions
+    internal static class BlockExtensions
     {
+        public static Block CreateCopy(this Block block, BlockHeader header) =>
+            block is BlockToProduce blockToProduce 
+                ? new BlockToProduce(header, blockToProduce.Transactions, blockToProduce.Ommers) 
+                : new Block(header, block.Transactions, block.Ommers);
+
+        public static IEnumerable<Transaction> GetTransactions(this Block block) =>
+            block is BlockToProduce blockToProduce
+                ? blockToProduce.Transactions
+                : block.Transactions;
+
         public static bool TrySetTransactions(this Block block, Transaction[] transactions)
         {
             block.Header.TxRoot = new TxTrie(transactions).RootHash;

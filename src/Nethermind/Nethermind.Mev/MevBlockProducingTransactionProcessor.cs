@@ -37,12 +37,12 @@ using TxAction = Nethermind.Blockchain.Processing.BlockProcessor.TxAction;
 
 namespace Nethermind.Mev
 {
-    public class MevProduceBlockTransactionsStrategy : BlockProcessor.ProduceBlockTransactionsStrategy
+    public class MevBlockProductionTransactionsExecutor : BlockProcessor.BlockProductionTransactionsExecutor
     {
         private readonly IStateProvider _stateProvider;
         private readonly IStorageProvider _storageProvider;
         
-        public MevProduceBlockTransactionsStrategy(
+        public MevBlockProductionTransactionsExecutor(
             ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv,
             ISpecProvider specProvider,
             ILogManager logManager) : 
@@ -55,7 +55,7 @@ namespace Nethermind.Mev
         {
         }
 
-        private MevProduceBlockTransactionsStrategy(
+        private MevBlockProductionTransactionsExecutor(
             ITransactionProcessor transactionProcessor, 
             IStateProvider stateProvider,
             IStorageProvider storageProvider,
@@ -69,7 +69,7 @@ namespace Nethermind.Mev
         
         public override TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, IBlockTracer blockTracer, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec)
         {
-            IEnumerable<Transaction> transactions = block.GetTransactions();
+            IEnumerable<Transaction> transactions = GetTransactions(block);
             LinkedHashSet<Transaction> transactionsInBlock = new(ByHashTxComparer.Instance);
             List<BundleTransaction> bundleTransactions = new();
             Keccak? bundleHash = null;
@@ -140,7 +140,7 @@ namespace Nethermind.Mev
             _stateProvider.Commit(spec);
             _storageProvider.Commit();
             
-            block.TrySetTransactions(transactionsInBlock.ToArray());
+            SetTransactions(block, transactionsInBlock);
             return receiptsTracer.TxReceipts.ToArray();
         }
 
