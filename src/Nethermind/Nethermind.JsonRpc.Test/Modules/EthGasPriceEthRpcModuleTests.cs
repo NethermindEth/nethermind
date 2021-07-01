@@ -20,6 +20,7 @@ using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -47,7 +48,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             blockTreeSetup._ethRpcModule.eth_gasPrice();
             
-            gasPriceOracle.Received(1).GasPriceEstimate();
+            gasPriceOracle.Received(1).GasPriceEstimate(Arg.Any<IBlockFinder>());
         }
 
         [Test]
@@ -190,14 +191,33 @@ namespace Nethermind.JsonRpc.Test.Modules
                 IsNotEip1559());
             
             BlockTreeSetup blockTreeSetup = new BlockTreeSetup();
-            Block firstBlock = GetBlockWithNumberParentHashAndTxInfo(5, HashOfLastBlockIn(blockTreeSetup), eip1559TxGroup);
-            Block secondBlock = GetBlockWithNumberParentHashAndTxInfo(6, firstBlock.Hash, notEip1559TxGroup);
-            blockTreeSetup = new BlockTreeSetup(new Block[]{firstBlock, secondBlock},true, 
+            Block eip1559Block = GetBlockWithNumberParentHashAndTxInfo(5, HashOfLastBlockIn(blockTreeSetup), eip1559TxGroup);
+            Block nonEip1559Block = GetBlockWithNumberParentHashAndTxInfo(6, eip1559Block.Hash, notEip1559TxGroup);
+            blockTreeSetup = new BlockTreeSetup(new Block[]{eip1559Block, nonEip1559Block},true, 
                 eip1559Enabled: eip1559Enabled);
 
             ResultWrapper<UInt256?> resultWrapper = blockTreeSetup._ethRpcModule.eth_gasPrice();
             
             resultWrapper.Data.Should().Be((UInt256?) expected); 
+        }
+
+        [TestCase(true, 8)]
+        [TestCase(false, 6)]
+        public void Eth_gasPrice_LatestTxIsEip1559_ShouldOnlySetPriceAsDefaultWhenInEip1559Mode(bool eip1559Enabled, int expected)
+        {
+            Transaction[] eip1559TxGroup =  GetTransactionsFromStringArray(CollectTxStrings(
+                    GetTxString("B","7","2"), 
+                    GetTxString("B","8","3")),
+                IsEip1559());
+            
+            BlockTreeSetup blockTreeSetup = new BlockTreeSetup();
+            Block eip1559Block = GetBlockWithNumberParentHashAndTxInfo(5, HashOfLastBlockIn(blockTreeSetup), eip1559TxGroup);
+            blockTreeSetup = new BlockTreeSetup(new Block[]{eip1559Block},true, 
+                eip1559Enabled: eip1559Enabled);
+
+            blockTreeSetup._ethRpcModule.eth_gasPrice();
+
+            blockTreeSetup._gasPriceOracle.DefaultGasPrice.Should().Be((UInt256?) expected); 
         }
 
         private bool IsEip1559()
@@ -397,18 +417,21 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
         public class BlockTreeSetup
         {
-            public Block[] _blocks;
-            private BlockTree _blockTree;
-            public EthRpcModule _ethRpcModule;
+            public Block[] _blocks { get; private set; }
+            public BlockTree _blockTree { get; private set; }
+            public EthRpcModule _ethRpcModule { get; private set; }
+            public IGasPriceOracle _gasPriceOracle { get; private set; }
 
-            public BlockTreeSetup(Block[] blocks = null,  bool addBlocks = false, IGasPriceOracle gasPriceOracle = null, 
+            public BlockTreeSetup(Block[] blocks = null,  bool addBlocks = false, IGasPriceOracle? gasPriceOracle = null, 
                 int? blockLimit = null, UInt256? ignoreUnder = null, UInt256? baseFee = null, bool eip1559Enabled = false)
             {
                 GetBlocks(blocks, addBlocks);
 
                 InitializeAndAddToBlockTree();
 
-                GetEthRpcModule(gasPriceOracle, ignoreUnder, blockLimit, baseFee, eip1559Enabled);
+                _gasPriceOracle = gasPriceOracle ?? GetGasPriceOracle(eip1559Enabled, ignoreUnder, blockLimit, baseFee);
+                
+                GetEthRpcModule(_gasPriceOracle, ignoreUnder, blockLimit, baseFee, eip1559Enabled);
             }
 
             private void InitializeAndAddToBlockTree()
@@ -488,11 +511,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                     Substitute.For<IWallet>(),
                     Substitute.For<ILogManager>(),
                     Substitute.For<ISpecProvider>(),
-                    eip1559Enabled,
-                    gasPriceOracle,
-                    ignoreUnder,
-                    blockLimit,
-                    baseFee
+                    _gasPriceOracle
                 );
             }
             private void AddExtraBlocksToArray(Block[] blocks)
@@ -504,6 +523,13 @@ namespace Nethermind.JsonRpc.Test.Modules
                 }
 
                 _blocks = listBlocks.ToArray();
+            }
+            
+            private IGasPriceOracle GetGasPriceOracle(bool eip1559Enabled, UInt256? ignoreUnder,
+                int? blockLimit, UInt256? baseFee)
+            {
+                GasPriceOracle gasPriceOracle = new GasPriceOracle(eip1559Enabled, ignoreUnder, blockLimit, baseFee);
+                return gasPriceOracle;
             }
         }
     }

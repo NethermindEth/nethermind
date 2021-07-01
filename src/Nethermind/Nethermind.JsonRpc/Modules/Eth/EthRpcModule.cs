@@ -82,11 +82,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             IWallet wallet,
             ILogManager logManager,
             ISpecProvider specProvider,
-            bool eip1559Enabled = false,
-            IGasPriceOracle? gasPriceOracle = null,
-            UInt256? ignoreUnder = null,
-            int? blockLimit = null,
-            UInt256? baseFee = null)
+            IGasPriceOracle? gasPriceOracle = null)
         {
             _logger = logManager.GetClassLogger();
             _rpcConfig = rpcConfig ?? throw new ArgumentNullException(nameof(rpcConfig));
@@ -97,14 +93,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _gasPriceOracle = gasPriceOracle ?? GetGasPriceOracle(_blockFinder, eip1559Enabled, ignoreUnder, blockLimit, baseFee);
-        }
-        
-        private IGasPriceOracle GetGasPriceOracle(IBlockFinder blockFinder, bool eip1559Enabled, UInt256? ignoreUnder,
-            int? blockLimit, UInt256? baseFee)
-        {
-            GasPriceOracle gasPriceOracle = new GasPriceOracle(blockFinder, eip1559Enabled, ignoreUnder, blockLimit, baseFee);
-            return gasPriceOracle;
+            _gasPriceOracle = gasPriceOracle ?? throw new ArgumentNullException(nameof(gasPriceOracle)); //pass _blockTree with it
         }
         
         public ResultWrapper<string> eth_protocolVersion()
@@ -160,7 +149,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public ResultWrapper<UInt256?> eth_gasPrice()
         {
-            return _gasPriceOracle!.GasPriceEstimate();
+            return _gasPriceOracle!.GasPriceEstimate(_blockFinder);
         }
 
         public ResultWrapper<IEnumerable<Address>> eth_accounts()
