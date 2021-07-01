@@ -51,7 +51,9 @@ namespace Nethermind.State
         private Change?[] _changes = new Change[StartCapacity];
         private int _currentPosition = Resettable.EmptyPosition;
 
-        private readonly Stack<int> _originalSnapshots = new();
+        // stack of snapshot indexes on changes for start of each transaction
+        // this is needed for OriginalValues for new transactions
+        private readonly Stack<int> _transactionChangesSnapshots = new();
 
         public StorageProvider(ITrieStore? trieStore, IStateProvider? stateProvider, ILogManager? logManager)
         {
@@ -68,7 +70,7 @@ namespace Nethermind.State
                 throw new InvalidOperationException("Get original should only be called after get within the same caching round");
             }
 
-            if (_originalSnapshots.TryPeek(out int snapshot))
+            if (_transactionChangesSnapshots.TryPeek(out int snapshot))
             {
                 if (_intraBlockCache.TryGetValue(storageCell, out StackList<int> stack))
                 {
@@ -99,12 +101,12 @@ namespace Nethermind.State
             return storageTree.RootHash;
         }
 
-        public int TakeSnapshot(bool asOriginal)
+        public int TakeSnapshot(bool newTransactionStart)
         {
             if (_logger.IsTrace) _logger.Trace($"Storage snapshot {_currentPosition}");
-            if (asOriginal && _currentPosition != Resettable.EmptyPosition)
+            if (newTransactionStart && _currentPosition != Resettable.EmptyPosition)
             {
-                _originalSnapshots.Push(_currentPosition);
+                _transactionChangesSnapshots.Push(_currentPosition);
             }
             return _currentPosition;
         }
@@ -166,9 +168,9 @@ namespace Nethermind.State
                 _intraBlockCache[kept.StorageCell].Push(_currentPosition);
             }
             
-            while (_originalSnapshots.TryPeek(out int lastOriginalSnapshot) && lastOriginalSnapshot > snapshot)
+            while (_transactionChangesSnapshots.TryPeek(out int lastOriginalSnapshot) && lastOriginalSnapshot > snapshot)
             {
-                _originalSnapshots.Pop();
+                _transactionChangesSnapshots.Pop();
             }
 
         }
@@ -307,7 +309,7 @@ namespace Nethermind.State
             _committedThisRound.Reset();
             _intraBlockCache.Reset();
             _originalValues.Reset();
-            _originalSnapshots.Clear();
+            _transactionChangesSnapshots.Clear();
 
             if (isTracing)
             {
@@ -335,7 +337,7 @@ namespace Nethermind.State
 
             _intraBlockCache.Clear();
             _originalValues.Clear();
-            _originalSnapshots.Clear();
+            _transactionChangesSnapshots.Clear();
             _currentPosition = -1;
             _committedThisRound.Clear();
             Array.Clear(_changes, 0, _changes.Length);
