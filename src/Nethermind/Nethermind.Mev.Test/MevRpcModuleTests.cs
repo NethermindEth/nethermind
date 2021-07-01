@@ -104,14 +104,14 @@ namespace Nethermind.Mev.Test
         
         private static async Task<Keccak> SendSignedTransaction(TestMevRpcBlockchain chain, Transaction tx)
         {
-            ResultWrapper<Keccak>? result = await chain.EthRpcModule.eth_sendRawTransaction(Rlp.Encode(tx, false, chain.SpecProvider.GetSpec(chain.BlockTree.Head?.Number ?? 1).IsEip1559Enabled, chain.SpecProvider.ChainId).Bytes);
+            ResultWrapper<Keccak>? result = await chain.EthRpcModule.eth_sendRawTransaction(Rlp.Encode(tx).Bytes);
             Assert.AreNotEqual(result.GetResult().ResultType, ResultType.Failure);
             return result.Data;
         }
         
         public static MevBundle SuccessfullySendBundle(TestMevRpcBlockchain chain, int blockNumber, params BundleTransaction[] txs)
         {
-            byte[][] bundleBytes = txs.Select(tx => Rlp.Encode(tx, false, chain.SpecProvider.GetSpec(chain.BlockTree.Head?.Number ?? 1).IsEip1559Enabled, chain.SpecProvider.ChainId).Bytes).ToArray();
+            byte[][] bundleBytes = txs.Select(t => Rlp.Encode(t).Bytes).ToArray();
             List<Keccak> revertingTxHashes = txs.Where(tx => tx.CanRevert).Select(tx => tx.Hash!).ToList();
             ResultWrapper<bool> resultOfBundle = chain.MevRpcModule.eth_sendBundle(bundleBytes, blockNumber, default, default, revertingTxHashes.Count > 0 ? revertingTxHashes.ToArray() : null);
             resultOfBundle.GetResult().ResultType.Should().NotBe(ResultType.Failure);
@@ -283,6 +283,7 @@ namespace Nethermind.Mev.Test
                 .WithGasLimit(GasCostOf.Transaction)
                 .WithMaxFeePerGas(100ul)
                 .WithMaxPriorityFeePerGas(5ul)
+                .WithChainId(ChainId.Mainnet)
                 .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
             
             BundleTransaction bundleTx = Build.A.TypedTransaction<BundleTransaction>()
@@ -290,6 +291,7 @@ namespace Nethermind.Mev.Test
                 .WithGasLimit(GasCostOf.Transaction)
                 .WithMaxFeePerGas(100ul)
                 .WithMaxPriorityFeePerGas(10ul)
+                .WithChainId(ChainId.Mainnet)
                 .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
 
             SuccessfullySendBundle(chain, 1, bundleTx);
@@ -1094,7 +1096,7 @@ namespace Nethermind.Mev.Test
         {
             var chain = await CreateChain(0);
             chain.GasLimitCalculator.GasLimit = 15_000_000;
-
+            
             // cannot do more than 256 per account because of future nonce retention (and only accounts A to C have ETH)
             for (int i = 0; i < 238; i++)
             {

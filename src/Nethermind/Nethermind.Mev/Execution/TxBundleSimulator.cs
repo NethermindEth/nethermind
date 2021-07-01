@@ -73,10 +73,7 @@ namespace Nethermind.Mev.Execution
 
                 tx.SimulatedBundleGasUsed = (UInt256)tracer.GasUsed;
 
-                if (!tx.CanRevert)
-                {
-                    success &= tracer.TransactionResults[i];
-                }
+                success &= tracer.TransactionResults[i];
                 
                 totalGasFeePayment += tracer.TxFees[i];
                 if (!_txPool.IsKnown(tx.Hash))
@@ -99,11 +96,6 @@ namespace Nethermind.Mev.Execution
                 Metrics.TotalCoinbasePayments = ulong.MaxValue;
             }
 
-            if (tracer.Invalid)
-            {
-                success = false;
-            }
-            
             return new(bundle, tracer.GasUsed, success, tracer.BundleFee, tracer.CoinbasePayments, eligibleGasFeePayment);
         }
 
@@ -135,8 +127,6 @@ namespace Nethermind.Mev.Execution
             public UInt256 BundleFee { get; private set; }
 
             public UInt256[] TxFees { get; }
-
-            public bool Invalid { get; private set; }
 
             public UInt256 CoinbasePayments
             {
@@ -190,11 +180,9 @@ namespace Nethermind.Mev.Execution
                         TxFees[_tracer.Index] = txFee;
                     }
                     
-                    TransactionResults[_tracer.Index] = _tracer.Success;
-                    if (_tracer.Success == false && _tracer.Error != "revert")
-                    {
-                        Invalid = true;
-                    }
+                    TransactionResults[_tracer.Index] = 
+                        _tracer.Success || 
+                        (tx is BundleTransaction {CanRevert: true} && _tracer.Error != "revert");
                 }
 
                 if (GasUsed > _gasLimit)

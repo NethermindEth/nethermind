@@ -249,6 +249,13 @@ namespace Nethermind.Mev.Test
                 resultOfBundle.GetData().Should().Be(true);
                 return new MevBundle(blockNumber, txs);
             }
+
+            protected override Block GetGenesisBlock()
+            {
+                Block genesisBlock = base.GetGenesisBlock();
+                genesisBlock.Header.BaseFeePerGas = 10;
+                return genesisBlock;
+            }
         }
     }
 }
