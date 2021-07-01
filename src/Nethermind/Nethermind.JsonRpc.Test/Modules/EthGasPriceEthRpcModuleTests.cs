@@ -55,7 +55,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void Eth_gasPrice_DuplicateGasPrices_ReturnsSuccessfully()
         {
             BlockTreeSetup blockTreeSetup = new BlockTreeSetup();
-            Transaction[] dupGasPriceGroup =  GetTransactionsFromStringArray(
+            Transaction[] dupGasPriceGroup =  GetTransactionsFromTxStrings(
                     CollectTxStrings(
                     GetTxString("B","6","2"), 
                     GetTxString("B","6","3"),
@@ -69,7 +69,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             resultWrapper.Result.Should().Be(Result.Success);
         }
         [Test]
-        public void Eth_gasPrice_BlockcountEqualToBlocksToCheck_ShouldGetTwentiethPercentileIndex()
+        public void Eth_gasPrice_BlockcountEqualToBlocksToCheck_ShouldGetSixtiethPercentileIndex()
         {
             BlockTreeSetup blockTreeSetup = new BlockTreeSetup();
             ResultWrapper<UInt256?> resultWrapper = blockTreeSetup.EthRpcModule.eth_gasPrice();
@@ -80,8 +80,8 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void Eth_gasPrice_EstimatedGasPriceMoreThanMaxGasPrice_ReturnMaxGasPrice()
         {
-            Block[] blockArray = GetBlocks(
-                GetBlockKeyValuePairNumberAndTxInfo(0, CollectTxStrings(
+            Block[] blockArray = GetBlocksFromKeyValuePairs(
+                BlockNumberAndTxStringsKeyValuePair(0, CollectTxStrings(
                     GetTxString("A", "501", "0")
                     )
                 ));
@@ -94,8 +94,8 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void Eth_gas_price_BlockWithMoreThanThreeTxs_OnlyAddsThreeGasPriceTxs()
         {
-            Block[] blockArray = GetBlocks(
-                GetBlockKeyValuePairNumberAndTxInfo(0, CollectTxStrings(
+            Block[] blockArray = GetBlocksFromKeyValuePairs(
+                BlockNumberAndTxStringsKeyValuePair(0, CollectTxStrings(
                     GetTxString("A", "4", "0"),
                     GetTxString("B", "3", "0"),
                     GetTxString("C", "2", "0"),
@@ -112,15 +112,15 @@ namespace Nethermind.JsonRpc.Test.Modules
        [Test] 
         public void Eth_gas_price_BlocksWithMoreThanThreeTxs_OnlyAddsThreeLowestEffectiveGasPriceTxs()
         {
-            Block[] blockArray = GetBlocks(
-                GetBlockKeyValuePairNumberAndTxInfo(0, CollectTxStrings(
+            Block[] blockArray = GetBlocksFromKeyValuePairs(
+                BlockNumberAndTxStringsKeyValuePair(0, CollectTxStrings(
                     GetTxString("A", "4", "0"),
                     GetTxString("B", "3", "0"),
                     GetTxString("C", "2", "0"),
                     GetTxString("D", "1", "0")
                     )
                 ),
-                GetBlockKeyValuePairNumberAndTxInfo(1, CollectTxStrings(
+                BlockNumberAndTxStringsKeyValuePair(1, CollectTxStrings(
                     GetTxString("A", "8", "1"),
                     GetTxString("B", "7", "1"),
                     GetTxString("C", "6", "1"),
@@ -139,12 +139,12 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void Eth_gasPrice_WhenBlocksHaveNoTx_GasPriceShouldBeOne()
         {
-            Block[] blocks = GetBlocks(
-                    GetBlockKeyValuePairNumberAndTxInfo(0, null), 
-                    GetBlockKeyValuePairNumberAndTxInfo(1, null),
-                    GetBlockKeyValuePairNumberAndTxInfo(2, null),
-                    GetBlockKeyValuePairNumberAndTxInfo(3, null),
-                    GetBlockKeyValuePairNumberAndTxInfo(4, null));
+            Block[] blocks = GetBlocksFromKeyValuePairs(
+                    BlockNumberAndTxStringsKeyValuePair(0, null), 
+                    BlockNumberAndTxStringsKeyValuePair(1, null),
+                    BlockNumberAndTxStringsKeyValuePair(2, null),
+                    BlockNumberAndTxStringsKeyValuePair(3, null),
+                    BlockNumberAndTxStringsKeyValuePair(4, null));
             
             BlockTreeSetup blockTreeSetup = new BlockTreeSetup(blocks);
             ResultWrapper<UInt256?> resultWrapper = blockTreeSetup.EthRpcModule.eth_gasPrice();
@@ -156,19 +156,19 @@ namespace Nethermind.JsonRpc.Test.Modules
         [TestCase(8,1)] //Last eight blocks empty, so gas price defaults to 1
         public void Eth_gasPrice_ReturnDefaultGasPrice_EmptyBlocksAtEndEqualToEight(int maxBlockNumber, int expected)
         {
-            Block[] blocks = GetBlocks(
-                GetBlockKeyValuePairNumberAndTxInfo(0, CollectTxStrings(
+            Block[] blocks = GetBlocksFromKeyValuePairs(
+                BlockNumberAndTxStringsKeyValuePair(0, CollectTxStrings(
                     GetTxString("A", "2", "0"),
                             GetTxString("B", "3", "0")
                         )),
-                GetBlockKeyValuePairNumberAndTxInfo(1, null),
-                GetBlockKeyValuePairNumberAndTxInfo(2, null),
-                GetBlockKeyValuePairNumberAndTxInfo(3, null),
-                GetBlockKeyValuePairNumberAndTxInfo(4, null),
-                GetBlockKeyValuePairNumberAndTxInfo(5, null),
-                GetBlockKeyValuePairNumberAndTxInfo(6, null),
-                GetBlockKeyValuePairNumberAndTxInfo(7, null),
-                GetBlockKeyValuePairNumberAndTxInfo(8, null));
+                BlockNumberAndTxStringsKeyValuePair(1, null),
+                BlockNumberAndTxStringsKeyValuePair(2, null),
+                BlockNumberAndTxStringsKeyValuePair(3, null),
+                BlockNumberAndTxStringsKeyValuePair(4, null),
+                BlockNumberAndTxStringsKeyValuePair(5, null),
+                BlockNumberAndTxStringsKeyValuePair(6, null),
+                BlockNumberAndTxStringsKeyValuePair(7, null),
+                BlockNumberAndTxStringsKeyValuePair(8, null));
 
             IEnumerable<Block> blocksInRange = blocks.Where(block => block.Number <= maxBlockNumber);
             Block[] blockArray = blocksInRange.ToArray();
@@ -211,11 +211,11 @@ namespace Nethermind.JsonRpc.Test.Modules
         [TestCase(true, 5)]  //Tx Gas Prices: 0,0,1,2,3,4,5,6,9,10,11 Index: (11-1) * 3/5 = 6, Gas Price: 5
         public void Eth_gasPrice_InEip1559Mode_ShouldCalculateTxGasPricesDifferently(bool eip1559Enabled, int expected)
         {
-            Transaction[] eip1559TxGroup =  GetTransactionsFromStringArray(CollectTxStrings(
+            Transaction[] eip1559TxGroup =  GetTransactionsFromTxStrings(CollectTxStrings(
                     GetTxString("B","7","2"), 
                     GetTxString("B","8","3")),
                 IsEip1559());
-            Transaction[] notEip1559TxGroup = GetTransactionsFromStringArray(CollectTxStrings(
+            Transaction[] notEip1559TxGroup = GetTransactionsFromTxStrings(CollectTxStrings(
                     GetTxString("B","9","4"),
                     GetTxString("B","10","5"),
                     GetTxString("B","11","6")),
@@ -236,7 +236,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [TestCase(false, 6)]
         public void Eth_gasPrice_LatestTxIsEip1559_ShouldOnlySetPriceAsDefaultWhenInEip1559Mode(bool eip1559Enabled, int expected)
         {
-            Transaction[] eip1559TxGroup =  GetTransactionsFromStringArray(CollectTxStrings(
+            Transaction[] eip1559TxGroup =  GetTransactionsFromTxStrings(CollectTxStrings(
                     GetTxString("B","7","2"), 
                     GetTxString("B","8","3")),
                 IsEip1559());
@@ -265,22 +265,23 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             return blockTreeSetup.Blocks[^1].Hash;
         }
-        
+
+
         [Test]
         public void Eth_gasPrice_TxCountNotGreaterThanLimit_GetTxFromMoreBlocks()
         {
-            Block[] blocks = GetBlocks(
-                GetBlockKeyValuePairNumberAndTxInfo(0, CollectTxStrings(
+            Block[] blocks = GetBlocksFromKeyValuePairs(
+                BlockNumberAndTxStringsKeyValuePair(0, CollectTxStrings(
                         GetTxString("A", "0", "0"),
                         GetTxString("B", "1", "0")
                     )
                 ),
-                GetBlockKeyValuePairNumberAndTxInfo(1, CollectTxStrings(
+                BlockNumberAndTxStringsKeyValuePair(1, CollectTxStrings(
                         GetTxString("C", "2", "0"),
                         GetTxString("D", "3","0")
                     )
                 ),
-                GetBlockKeyValuePairNumberAndTxInfo(2, CollectTxStrings(
+                BlockNumberAndTxStringsKeyValuePair(2, CollectTxStrings(
                     GetTxString("A", "4", "0")
                     )
                 ));
@@ -295,18 +296,18 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void Eth_gasPrice_BlocksAvailableLessThanBlocksToCheck_ShouldBeSuccessful()
         {
-            Block[] blocks = GetBlocks(
-                GetBlockKeyValuePairNumberAndTxInfo(0, CollectTxStrings(
+            Block[] blocks = GetBlocksFromKeyValuePairs(
+                BlockNumberAndTxStringsKeyValuePair(0, CollectTxStrings(
                         GetTxString("A", "3", "0"),
                         GetTxString("B", "4", "0")
                     )
                 ),
-                GetBlockKeyValuePairNumberAndTxInfo(1, CollectTxStrings(
+                BlockNumberAndTxStringsKeyValuePair(1, CollectTxStrings(
                         GetTxString("C", "5", "0"),
                         GetTxString("D", "6","0")
                     )
                 ),
-                GetBlockKeyValuePairNumberAndTxInfo(2, CollectTxStrings(
+                BlockNumberAndTxStringsKeyValuePair(2, CollectTxStrings(
                         GetTxString("A", "7", "0"),
                         GetTxString("B", "8", "1")
                     )
@@ -323,18 +324,18 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void Eth_gasPrice_GetTxFromMinBlocks_NumTxInMinBlocksGreaterThanOrEqualToLimit()
         {
-            Block[] blocks = GetBlocks(
-                GetBlockKeyValuePairNumberAndTxInfo(0, CollectTxStrings(
+            Block[] blocks = GetBlocksFromKeyValuePairs(
+                BlockNumberAndTxStringsKeyValuePair(0, CollectTxStrings(
                     GetTxString("A", "1", "0"),
                     GetTxString("B", "2", "0")
                     )
                 ),
-                GetBlockKeyValuePairNumberAndTxInfo(1, CollectTxStrings(
+                BlockNumberAndTxStringsKeyValuePair(1, CollectTxStrings(
                     GetTxString("C", "3", "0"),
                     GetTxString("D", "4", "0")
                     )
                 ),
-                GetBlockKeyValuePairNumberAndTxInfo(2, CollectTxStrings(
+                BlockNumberAndTxStringsKeyValuePair(2, CollectTxStrings(
                     GetTxString("A", "5","1"),
                     GetTxString("B", "6","1")
                     )
@@ -367,6 +368,14 @@ namespace Nethermind.JsonRpc.Test.Modules
             List<UInt256> expected = new List<UInt256>{8,9};
             gasPriceList.Should().Equal(expected);
         }
+        
+        private Block GetBlockWithBeneficiaryBlockNumberAndTxInfo(Address beneficiary, int blockNumber, string[][] txInfo)
+        {
+            Transaction[] transactions = GetTransactionsFromTxStrings(txInfo, false);
+            return Build.A.Block.WithBeneficiary(beneficiary).WithNumber(blockNumber).WithTransactions(transactions)
+                .TestObject;
+        }
+        
         private string[][] CollectTxStrings(params string[][] txInfo)
         {
             return txInfo;
@@ -377,19 +386,13 @@ namespace Nethermind.JsonRpc.Test.Modules
             return new[] {privateKeyLetter, gasPrice, nonce};
         }
 
-        private KeyValuePair<int, string[][]> GetBlockKeyValuePairNumberAndTxInfo(int blockNumber, string[][] txInfo)
+        private KeyValuePair<int, string[][]> BlockNumberAndTxStringsKeyValuePair(int blockNumber, string[][] txInfo)
         {
             return new KeyValuePair<int, string[][]>(blockNumber, txInfo);
         }
         
-        private Block GetBlockWithBeneficiaryBlockNumberAndTxInfo(Address beneficiary, int blockNumber, string[][] txInfo)
-        {
-            Transaction[] transactions = GetTransactionsFromStringArray(txInfo, false);
-            return Build.A.Block.WithBeneficiary(beneficiary).WithNumber(blockNumber).WithTransactions(transactions)
-                .TestObject;
-        }
         
-        private Block[] GetBlocks(params KeyValuePair<int, string[][]>[] blockAndTxInfo)
+        private Block[] GetBlocksFromKeyValuePairs(params KeyValuePair<int, string[][]>[] blockAndTxInfo)
         {
             Keccak parentHash = null;
             Block block;
@@ -411,12 +414,12 @@ namespace Nethermind.JsonRpc.Test.Modules
             
             int blockNumber = keyValuePair.Key;
             string[][] txInfoArray = keyValuePair.Value;
-            transactions = GetTransactionsFromStringArray(txInfoArray, isEip1559);
+            transactions = GetTransactionsFromTxStrings(txInfoArray, isEip1559);
             block = GetBlockWithNumberParentHashAndTxInfo(blockNumber, parentHash, transactions);
             return block;
         }
 
-        private Transaction[] GetTransactionsFromStringArray(string[][] txInfo, bool isEip1559)
+        private Transaction[] GetTransactionsFromTxStrings(string[][] txInfo, bool isEip1559)
         {
             if (txInfo == null)
             {
@@ -424,15 +427,15 @@ namespace Nethermind.JsonRpc.Test.Modules
             }
             else if (isEip1559 == true)
             {
-                return Eip1559TxsFromInfoStrings(txInfo).ToArray();
+                return GetEip1559TxsFromTxStrings(txInfo).ToArray();
             }
             else
             {
-                return TxsFromInfoStrings(txInfo).ToArray();
+                return GetTxsFromTxStrings(txInfo).ToArray();
             }
         }
 
-        private IEnumerable<Transaction> Eip1559TxsFromInfoStrings(params string[][] txsInfo)
+        private IEnumerable<Transaction> GetEip1559TxsFromTxStrings(params string[][] txsInfo)
         {
             PrivateKey privateKey;
             char privateKeyLetter;
@@ -449,21 +452,26 @@ namespace Nethermind.JsonRpc.Test.Modules
             }
         }
 
-        private IEnumerable<Transaction> TxsFromInfoStrings(params string[][] txsInfo)
+        private Transaction[] GetTxsFromTxStrings(params string[][] txsInfo)
         {
             PrivateKey privateKey;
             char privateKeyLetter;
             UInt256 gasPrice;
             UInt256 nonce;
+            Transaction transaction;
+            List<Transaction> transactions = new List<Transaction>();
             foreach (string[] txInfo in txsInfo)
             {
                 privateKeyLetter = Convert.ToChar(txInfo[0]);
                 privateKey = PrivateKeyForLetter(privateKeyLetter);
                 gasPrice = UInt256.Parse(txInfo[1]);
                 nonce = UInt256.Parse(txInfo[2]);
-                yield return Build.A.Transaction.SignedAndResolved(privateKey).WithGasPrice(gasPrice).WithNonce(nonce)
+                transaction = Build.A.Transaction.SignedAndResolved(privateKey).WithGasPrice(gasPrice).WithNonce(nonce)
                     .TestObject;
+                transactions.Add(transaction);
             }
+
+            return transactions.ToArray();
         }
 
         private PrivateKey PrivateKeyForLetter(char privateKeyLetter)
@@ -528,12 +536,12 @@ namespace Nethermind.JsonRpc.Test.Modules
                 }
             }
 
-            private void GetBlocks(Block[] blocks, bool addToBlocks)
+            private void GetBlocks(Block[] blocks, bool shouldAddToBlocks)
             {
-                if (NoBlocksGiven(blocks) || addToBlocks)
+                if (NoBlocksGiven(blocks) || shouldAddToBlocks)
                 {
                     GetBlockArray();
-                    if (addToBlocks)
+                    if (shouldAddToBlocks)
                     {
                         AddExtraBlocksToArray(blocks);
                     }
@@ -557,25 +565,25 @@ namespace Nethermind.JsonRpc.Test.Modules
             private void GetBlockArray()
             {
                 EthRpcModuleTests e = new EthRpcModuleTests();
-                Blocks = e.GetBlocks(
-                    e.GetBlockKeyValuePairNumberAndTxInfo(0, e.CollectTxStrings(
+                Blocks = e.GetBlocksFromKeyValuePairs(
+                    e.BlockNumberAndTxStringsKeyValuePair(0, e.CollectTxStrings(
                             e.GetTxString("A", "1", "0"),
                             e.GetTxString("B", "2", "0")
                         )
                     ),
-                    e.GetBlockKeyValuePairNumberAndTxInfo(1, e.CollectTxStrings(
+                    e.BlockNumberAndTxStringsKeyValuePair(1, e.CollectTxStrings(
                             e.GetTxString("C", "3", "0")
                         )
                     ),
-                    e.GetBlockKeyValuePairNumberAndTxInfo(2, e.CollectTxStrings(
+                    e.BlockNumberAndTxStringsKeyValuePair(2, e.CollectTxStrings(
                             e.GetTxString("D", "5", "0")
                         )
                     ),
-                    e.GetBlockKeyValuePairNumberAndTxInfo(3, e.CollectTxStrings(
+                    e.BlockNumberAndTxStringsKeyValuePair(3, e.CollectTxStrings(
                             e.GetTxString("A", "4", "1")
                         )
                     ),
-                    e.GetBlockKeyValuePairNumberAndTxInfo(4, e.CollectTxStrings(
+                    e.BlockNumberAndTxStringsKeyValuePair(4, e.CollectTxStrings(
                             e.GetTxString("B", "6", "1")
                         )
                     )
