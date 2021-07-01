@@ -46,7 +46,7 @@ namespace Nethermind.Pipeline.Publishers
         {
             var message = _serializer.Serialize(data);
 
-            var url = $"https://api.telegram.org/bot{_botToken}/sendMessage?chat_id={_chatId}&text={message}";
+            var url = $"https://api.telegram.org/bot{_botToken}/sendMessage?chat_id=-{_chatId}&text={message}";
             await _httpClient.GetAsync(url);
         }
 
