@@ -17,10 +17,15 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
+using Nethermind.Core;
 
-namespace Nethermind.Core
-{
-    public class BlockToProduce : Block
+//TODO: Redo clique block producer
+[assembly: InternalsVisibleTo("Nethermind.Consensus.Clique")]
+
+namespace Nethermind.Blockchain.Producers
+{   
+    internal class BlockToProduce : Block
     {
         private IEnumerable<Transaction>? _transactions;
 
@@ -37,22 +42,9 @@ namespace Nethermind.Core
             }
         }
 
-        public BlockToProduce(BlockHeader blockHeader, BlockBody body) : base(blockHeader, body)
-        {
-        }
-
         public BlockToProduce(BlockHeader blockHeader, IEnumerable<Transaction> transactions, IEnumerable<BlockHeader> ommers) : base(blockHeader, Array.Empty<Transaction>(), ommers)
         {
-            Transactions = transactions;
+            Transactions = transactions; 
         }
-
-        public BlockToProduce(BlockHeader blockHeader) : base(blockHeader)
-        {
-        }
-
-        public override Block CreateBlockForProcessing(BlockHeader header) => 
-            new BlockToProduce(header, Transactions, Ommers);
-
-        public override IEnumerable<Transaction> GetTransactions() => Transactions;
     }
 }

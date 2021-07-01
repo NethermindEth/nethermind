@@ -117,7 +117,7 @@ namespace Nethermind.Consensus.Clique
                 getFromApi!.SpecProvider,
                 getFromApi!.BlockValidator,
                 NoBlockRewards.Instance,
-                new BlockProcessor.ProduceBlockTransactionsStrategy(producerEnv, getFromApi!.SpecProvider, getFromApi.LogManager),
+                new BlockProcessor.BlockProductionTransactionsExecutor(producerEnv, getFromApi!.SpecProvider, getFromApi.LogManager),
                 producerEnv.StateProvider,
                 producerEnv.StorageProvider, // do not remove transactions from the pool when preprocessing
                 NullReceiptStorage.Instance,

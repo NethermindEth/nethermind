@@ -42,9 +42,25 @@ namespace Nethermind.Evm.TransactionProcessing
         [Flags]
         private enum ExecutionOptions
         {
+            /// <summary>
+            /// Just accumulate the state
+            /// </summary>
             None = 0,
+            
+            /// <summary>
+            /// Commit the state after execution
+            /// </summary>
             Commit = 1,
-            Restore = 2
+            
+            /// <summary>
+            /// Restore state after execution
+            /// </summary>
+            Restore = 2,
+            
+            /// <summary>
+            /// Commit and later restore state, use for CallAndRestore
+            /// </summary>
+            CommitAndRestore = Commit | Restore
         }
 
         public TransactionProcessor(
@@ -64,7 +80,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
         public void CallAndRestore(Transaction transaction, BlockHeader block, ITxTracer txTracer)
         {
-            Execute(transaction, block, txTracer, ExecutionOptions.Restore | ExecutionOptions.Commit);
+            Execute(transaction, block, txTracer, ExecutionOptions.CommitAndRestore);
         }
 
         public void BuildUp(Transaction transaction, BlockHeader block, ITxTracer txTracer)
@@ -103,11 +119,15 @@ namespace Nethermind.Evm.TransactionProcessing
 
         private void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer, ExecutionOptions executionOptions)
         {
-            bool notSystemTransaction = !transaction.IsSystem();
-            bool restore = (executionOptions & ExecutionOptions.Restore) != ExecutionOptions.None;
             bool eip658NotEnabled = !_specProvider.GetSpec(block.Number).IsEip658Enabled;
+            
+            // restore is CallAndRestore - previous call, we will restore state after the execution
+            bool restore = (executionOptions & ExecutionOptions.Restore) != ExecutionOptions.None;
+            // commit - is for standard execute, we will commit thee state after execution 
             bool commit = (executionOptions & ExecutionOptions.Commit) != ExecutionOptions.None || eip658NotEnabled;
-
+            //!commit - is for build up during block production, we won't commit state after each transaction to support rollbacks
+            //we commit only after all block is constructed 
+            bool notSystemTransaction = !transaction.IsSystem();
             bool deleteCallerAccount = false;
             
             IReleaseSpec spec = _specProvider.GetSpec(block.Number);
@@ -368,7 +388,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
             }
 
-            if (restore && commit)
+            if (restore)
             {
                 _storageProvider.Reset();
                 _stateProvider.Reset();

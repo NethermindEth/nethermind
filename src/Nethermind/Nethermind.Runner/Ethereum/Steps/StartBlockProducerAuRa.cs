@@ -139,7 +139,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.SpecProvider,
                 _api.BlockValidator,
                 _api.RewardCalculatorSource.Get(changableTxProcessingEnv.TransactionProcessor),
-                new BlockProcessor.ProduceBlockTransactionsStrategy(changableTxProcessingEnv, _api.SpecProvider, _api.LogManager),
+                new BlockProcessor.BlockProductionTransactionsExecutor(changableTxProcessingEnv, _api.SpecProvider, _api.LogManager),
                 changableTxProcessingEnv.StateProvider,
                 changableTxProcessingEnv.StorageProvider, 
                 _api.ReceiptStorage,

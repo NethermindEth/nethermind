@@ -148,7 +148,7 @@ namespace Nethermind.Mev.Test
                     SpecProvider,
                     BlockValidator,
                     NoBlockRewards.Instance,
-                    new BlockProcessor.ProcessBlockTransactionsStrategy(TxProcessor, State),
+                    new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
                     State,
                     Storage,
                     ReceiptStorage,

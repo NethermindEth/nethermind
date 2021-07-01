@@ -56,7 +56,7 @@ namespace Nethermind.Blockchain.Processing
         /// </summary>
         event EventHandler<TxProcessedEventArgs> TransactionProcessed;
         
-        public interface IBlockTransactionsStrategy
+        public interface IBlockTransactionsExecutor
         {
             TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, IBlockTracer blockTracer, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec);
             event EventHandler<TxProcessedEventArgs> TransactionProcessed;

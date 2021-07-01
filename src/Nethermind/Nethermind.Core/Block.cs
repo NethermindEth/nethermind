@@ -155,10 +155,5 @@ namespace Nethermind.Core
             HashNumberDiffAndTx,
             Short
         }
-        
-        public virtual Block CreateBlockForProcessing(BlockHeader header) => 
-            new(header, Transactions, Ommers);
-
-        public virtual IEnumerable<Transaction> GetTransactions() => Transactions;
     }
 }
