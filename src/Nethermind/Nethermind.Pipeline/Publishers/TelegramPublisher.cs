@@ -56,8 +56,14 @@ namespace Nethermind.Pipeline.Publishers
                 new KeyValuePair<string, string>("chat_id", _chatId),
                 new KeyValuePair<string, string>("text", serializedData)
             });
-            
-            await _httpClient.PostAsync(uri, content);
+
+            try
+            {
+             await _httpClient.PostAsync(uri, content);
+            }
+            catch (HttpRequestException)
+            {
+            }
         }
 
         private string LoadBotToken()
