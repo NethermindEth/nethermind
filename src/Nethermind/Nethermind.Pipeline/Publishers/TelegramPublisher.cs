@@ -39,12 +39,14 @@ namespace Nethermind.Pipeline.Publishers
         
         public void SubscribeToData<T>(T data)
         {
-            Task.Run(() => SendMessageAsync(data));
+            var task = Task.Run(() => SendMessageAsync(data));
+            task.Wait();
         }
 
         private async Task SendMessageAsync(object data)
         {
             var message = _serializer.Serialize(data);
+            message = message.Replace("\"", "'");
 
             var url = $"https://api.telegram.org/bot{_botToken}/sendMessage?chat_id=-{_chatId}&text={message}";
             await _httpClient.GetAsync(url);

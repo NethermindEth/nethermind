@@ -16,6 +16,7 @@
 // 
 
 using System;
+using System.Net.Http;
 using System.Net.WebSockets;
 using Nethermind.Abi;
 using Nethermind.Api;
@@ -68,6 +69,24 @@ namespace Nethermind.Dsl.Test
             //this needs to be fixed and properly checked if the sent buffer is correct, had a problem with this and decided that for now it's enough to be sure that it works
             mockWebSocket.ReceivedWithAnyArgs().SendAsync(default, default, default, default);
         }
+        
+        
+        [Test]
+        [TestCase("WATCH Events WHERE Topics CONTAINS  0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef PUBLISH Telegram 509090569")]
+        public void Will_send_to_telegram_given_log(string script)
+        {
+            var log = new LogEntry(Address.Zero, Array.Empty<byte>(), new[] { new Keccak("0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef")}); 
+            
+            var receipt = new TxReceipt
+            {
+                Logs = new[] { log }
+            };
+            
+            _interpreter = new Interpreter(_api, script);
+
+            _api.MainBlockProcessor.TransactionProcessed += Raise.Event<EventHandler<TxProcessedEventArgs>>(this, new TxProcessedEventArgs(receipt));
+        }
+
 
         [Test]
         public void Will_convert_signature_to_hash_correctly()
