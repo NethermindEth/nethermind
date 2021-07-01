@@ -175,27 +175,29 @@ namespace Nethermind.JsonRpc.Test.Modules
             result.Should().Be(expectedUInt256); 
         }
 
-        [Test]
-        public void Eth_gasPrice_InEip1559Mode_ShouldCalculateTxGasPricesDifferently()
+        [TestCase(false, 5)] //Tx Gas Prices: 1,2,3,4,5,6,9,10,11,11 Index: (10-1) * 2/5 rounds to 4, Gas Price: 5
+        [TestCase(true, 3)]  //Tx Gas Prices: 0,0,1,2,3,4,5,6,9,10,11 Index: (11-1) * 2/5 = 4, Gas Price: 4
+        public void Eth_gasPrice_InEip1559Mode_ShouldCalculateTxGasPricesDifferently(bool eip1559Enabled, int expected)
         {
-            Transaction[] firstTxGroup =  GetTransactionsFromStringArray(CollectTxStrings(
+            Transaction[] eip1559TxGroup =  GetTransactionsFromStringArray(CollectTxStrings(
                     GetTxString("B","7","2"), 
                     GetTxString("B","8","3")),
                 IsEip1559());
-            Transaction[] secondTxGroup = GetTransactionsFromStringArray(CollectTxStrings(
+            Transaction[] notEip1559TxGroup = GetTransactionsFromStringArray(CollectTxStrings(
                     GetTxString("B","9","4"),
                     GetTxString("B","10","5"),
                     GetTxString("B","11","6")),
                 IsNotEip1559());
+            
             BlockTreeSetup blockTreeSetup = new BlockTreeSetup();
-            Block firstBlock = GetBlockWithNumberParentHashAndTxInfo(5, HashOfLastBlockIn(blockTreeSetup), firstTxGroup);
-            Block secondBlock = GetBlockWithNumberParentHashAndTxInfo(6, firstBlock.Hash, secondTxGroup);
-            blockTreeSetup = new BlockTreeSetup(new Block[]{firstBlock, secondBlock},true, eip1559Enabled: true);
+            Block firstBlock = GetBlockWithNumberParentHashAndTxInfo(5, HashOfLastBlockIn(blockTreeSetup), eip1559TxGroup);
+            Block secondBlock = GetBlockWithNumberParentHashAndTxInfo(6, firstBlock.Hash, notEip1559TxGroup);
+            blockTreeSetup = new BlockTreeSetup(new Block[]{firstBlock, secondBlock},true, 
+                eip1559Enabled: eip1559Enabled);
 
             ResultWrapper<UInt256?> resultWrapper = blockTreeSetup._ethRpcModule.eth_gasPrice();
             
-            resultWrapper.Data.Should().Be((UInt256?) 4); 
-            //Tx Gas Prices: 1,2,3,4,5,6,9,10,11 Index: (9-1) * 2/5 rounds to 3, Gas Price: 4
+            resultWrapper.Data.Should().Be((UInt256?) expected); 
         }
 
         private bool IsEip1559()

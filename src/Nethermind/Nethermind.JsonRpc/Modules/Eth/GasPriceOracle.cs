@@ -49,7 +49,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             if (TransactionsExistIn(transactionsInBlock))
             {
-                countTxAdded = CountTxAdded(sortedSet, transactionsInBlock);
+                countTxAdded = AddTxAndReturnNumberAdded(sortedSet, transactionsInBlock);
 
                 if (countTxAdded == 0)
                 {
@@ -65,7 +65,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
         }
 
-        private int CountTxAdded(SortedSet<UInt256> sortedSet, Transaction[] transactionsInBlock)
+        private int AddTxAndReturnNumberAdded(SortedSet<UInt256> sortedSet, Transaction[] transactionsInBlock)
         {
             int countTxAdded = 0;
             
@@ -126,16 +126,19 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private void SetDefaultGasPrice(long headBlockNumber)
         {
             Transaction[] transactions;
-            Transaction[] filteredTxs;
             int blocksToCheck = BlockLimitForDefaultGasPrice;
             
             while (headBlockNumber >= 0 && DefaultGasPriceBlockLimitNotReached(ref blocksToCheck))
             {
                 transactions = GetTxFromBlockWithNumber(headBlockNumber);
-                
+                if (_eip1559Enabled)
+                {
+                    transactions = transactions.Where(tx => tx.IsEip1559).ToArray();
+                }
+
                 if (TransactionsExistIn(transactions))
                 {
-                    _defaultGasPrice = transactions[^1].GasPrice; //are tx in order of time or price
+                    _defaultGasPrice = transactions[^1].GasPrice;
                     return;
                 }
                 
