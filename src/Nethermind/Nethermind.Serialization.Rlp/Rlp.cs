@@ -233,10 +233,10 @@ namespace Nethermind.Serialization.Rlp
         public static Rlp Encode(
             Transaction transaction,
             bool forSigning,
-            bool isEip155Enabled = false,
+            bool isEip1559Enabled = false,
             ulong chainId = 0)
         {
-            bool includeSigChainIdHack = isEip155Enabled && chainId != 0 && transaction.Type == TxType.Legacy;
+            bool includeSigChainIdHack = isEip1559Enabled && chainId != 0 && transaction.Type == TxType.Legacy;
             int extraItems = transaction.IsEip1559 ? 1 : 0; // one extra gas field for 1559. 1559: GasPremium, FeeCap. Legacy: GasPrice
             if (!forSigning || includeSigChainIdHack)
             {
