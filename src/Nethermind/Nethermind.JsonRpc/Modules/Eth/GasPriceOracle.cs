@@ -215,14 +215,14 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             return foundBlock != null;
         }
-        private int AddTxAndReturnCountAdded(Transaction[] txInBlock)
+        private int AddTxAndReturnCountAdded(Transaction[] txInBlock, Block block)
         {
             int countTxAdded = 0;
             
             IEnumerable<Transaction> txSortedByEffectiveGasPrice = txInBlock.OrderBy(EffectiveGasPrice);
             foreach (Transaction transaction in txSortedByEffectiveGasPrice)
             {
-                if (TransactionCanBeAdded(transaction, _eip1559Enabled)) //how should i set to be null?
+                if (TransactionCanBeAdded(transaction, _eip1559Enabled, block)) //how should i set to be null?
                 {
                     TxGasPriceList.Add(EffectiveGasPrice(transaction));
                     countTxAdded++;
@@ -242,10 +242,10 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return transaction.CalculateEffectiveGasPrice(_eip1559Enabled, _baseFee);
         }
 
-        private bool TransactionCanBeAdded(Transaction transaction, bool eip1559Enabled)
+        private bool TransactionCanBeAdded(Transaction transaction, bool eip1559Enabled, Block block)
         {
             bool res = IsAboveMinPrice(transaction) && Eip1559ModeCompatible(transaction, eip1559Enabled);
-            return res;
+            return res && TxNotSentByBeneficiary(transaction, block);
         }
         
         private bool IsAboveMinPrice(Transaction transaction)
@@ -265,6 +265,16 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
         }
 
+        private bool TxNotSentByBeneficiary(Transaction transaction, Block block)
+        {
+            if (block.Beneficiary.Equals(null))
+            {
+                return true;
+            }
+
+            return block.Beneficiary != transaction.SenderAddress;
+        }
+
         private static bool TransactionIsNotEip1559(Transaction transaction)
         {
             return !transaction.IsEip1559;
@@ -277,7 +287,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             if (TransactionsExistIn(transactionsInBlock))
             {
-                countTxAdded = AddTxAndReturnCountAdded(transactionsInBlock);
+                countTxAdded = AddTxAndReturnCountAdded(transactionsInBlock, block);
 
                 if (countTxAdded == 0)
                 {
