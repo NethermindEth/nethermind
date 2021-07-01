@@ -15,10 +15,10 @@ namespace Nethermind.Pipeline
         IPipelineBuilder<TSource ,TOut> AddElement<TOut>(IPipelineElement<TOutput, TOut> element);
 
         /// <summary>
-        /// Adds <see cref="IWebSocketsPublisher"/> to the <see cref="IPipeline.Elements"/>. 
+        /// Adds <see cref="IPublisher"/> to the <see cref="IPipeline.Elements"/>. 
         /// </summary>
         /// <param name="publisher">Websockets publisher used in pipeline.</param>
-        IPipelineBuilder<TSource, TOutput> AddPublisher(IWebSocketsPublisher publisher);
+        IPipelineBuilder<TSource, TOutput> AddPublisher(IPublisher publisher);
     }
 
     public interface IPipelineBuilder

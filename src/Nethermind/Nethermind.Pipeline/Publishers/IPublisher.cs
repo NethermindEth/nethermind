@@ -17,7 +17,7 @@
 
 namespace Nethermind.Pipeline.Publishers
 {
-    public interface IWebSocketsPublisher
+    public interface IPublisher : IPipelineElement
     {
         void SubscribeToData<T>(T data);
     }

@@ -11,7 +11,7 @@ using Nethermind.WebSockets;
 
 namespace Nethermind.Pipeline.Publishers
 {
-    public class WebSocketsPublisher : IPipelineElement, IWebSocketsPublisher, IWebSocketsModule
+    public class WebSocketsPublisher : IPublisher, IWebSocketsModule
     {
         private readonly ConcurrentDictionary<string, IWebSocketsClient> _clients = new();
         private readonly IJsonSerializer _jsonSerializer;

@@ -30,7 +30,7 @@ namespace Nethermind.Pipeline
             return new PipelineBuilder<TSource, TOut>(element, _elements);
         }
 
-        public IPipelineBuilder<TSource, TOutput> AddPublisher(IWebSocketsPublisher publisher)
+        public IPipelineBuilder<TSource, TOutput> AddPublisher(IPublisher publisher)
         {
             _lastElement.Emit = publisher.SubscribeToData;
             _elements.Push((IPipelineElement) publisher);

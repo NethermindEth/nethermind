@@ -170,7 +170,32 @@ namespace Nethermind.Dsl.ANTLR
             }
         }
 
-        private void AddPublisher(string publisher, string path)
+        private void AddPublisher(string publisher, string value)
+        {
+            publisher = publisher.ToLowerInvariant();
+
+            switch (publisher)
+            {
+               case "websockets": AddWebSocketsPublisher(value);
+                   break;
+               case "telegram": AddTelegramPublisher(value); 
+                   break;
+            };
+        }
+
+        private void AddTelegramPublisher(string chatId)
+        {
+            var telegramPublisher = new TelegramPublisher(_api.EthereumJsonSerializer, chatId);
+            
+            AddBlocksPublisher(telegramPublisher); 
+            AddTransactionsPublisher(telegramPublisher);
+            AddPendingTransactionsPublisher(telegramPublisher);
+            AddEventsPublisher(telegramPublisher);
+            
+            BuildPipelines();
+        }
+
+        private void AddWebSocketsPublisher(string path)
         {
             var webSocketsPublisher = new WebSocketsPublisher(path, _api.EthereumJsonSerializer, _logger);
             _api.WebSocketsManager.AddModule(webSocketsPublisher);
@@ -183,22 +208,22 @@ namespace Nethermind.Dsl.ANTLR
             BuildPipelines();
         }
 
-        private void AddBlocksPublisher(IWebSocketsPublisher publisher)
+        private void AddBlocksPublisher(IPublisher publisher)
         {
             _blocksPipelineBuilder = _blocksPipelineBuilder?.AddPublisher(publisher);
         }
 
-        private void AddTransactionsPublisher(IWebSocketsPublisher publisher)
+        private void AddTransactionsPublisher(IPublisher publisher)
         {
             _transactionsPipelineBuilder = _transactionsPipelineBuilder?.AddPublisher(publisher);
         }
 
-        private void AddPendingTransactionsPublisher(IWebSocketsPublisher publisher)
+        private void AddPendingTransactionsPublisher(IPublisher publisher)
         {
             _pendingTransactionsPipelineBuilder = _pendingTransactionsPipelineBuilder?.AddPublisher(publisher);
         }
 
-        private void AddEventsPublisher(IWebSocketsPublisher publisher)
+        private void AddEventsPublisher(IPublisher publisher)
         {
             _eventsPipelineBuilder = _eventsPipelineBuilder?.AddPublisher(publisher);
         }
