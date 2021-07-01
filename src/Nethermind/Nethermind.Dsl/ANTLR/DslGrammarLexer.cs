@@ -35,7 +35,7 @@ public partial class DslGrammarLexer : Lexer {
 	public const int
 		BOOLEAN_OPERATOR=1, ARITHMETIC_SYMBOL=2, SOURCE=3, WATCH=4, WHERE=5, PUBLISH=6, 
 		AND=7, OR=8, CONTAINS=9, IS=10, NOT=11, PUBLISH_VALUE=12, WEBSOCKETS=13, 
-		TELEGRAM=14, WORD=15, BYTECODE=16, DIGIT=17, ADDRESS=18, WS=19;
+		TELEGRAM=14, WORD=15, DIGIT=16, BYTECODE=17, ADDRESS=18, WS=19;
 	public static string[] channelNames = {
 		"DEFAULT_TOKEN_CHANNEL", "HIDDEN"
 	};
@@ -47,7 +47,7 @@ public partial class DslGrammarLexer : Lexer {
 	public static readonly string[] ruleNames = {
 		"BOOLEAN_OPERATOR", "ARITHMETIC_SYMBOL", "SOURCE", "WATCH", "WHERE", "PUBLISH", 
 		"AND", "OR", "CONTAINS", "IS", "NOT", "PUBLISH_VALUE", "WEBSOCKETS", "TELEGRAM", 
-		"WORD", "BYTECODE", "DIGIT", "ADDRESS", "WS"
+		"WORD", "DIGIT", "BYTECODE", "ADDRESS", "WS"
 	};
 
 
@@ -67,7 +67,7 @@ public partial class DslGrammarLexer : Lexer {
 	private static readonly string[] _SymbolicNames = {
 		null, "BOOLEAN_OPERATOR", "ARITHMETIC_SYMBOL", "SOURCE", "WATCH", "WHERE", 
 		"PUBLISH", "AND", "OR", "CONTAINS", "IS", "NOT", "PUBLISH_VALUE", "WEBSOCKETS", 
-		"TELEGRAM", "WORD", "BYTECODE", "DIGIT", "ADDRESS", "WS"
+		"TELEGRAM", "WORD", "DIGIT", "BYTECODE", "ADDRESS", "WS"
 	};
 	public static readonly IVocabulary DefaultVocabulary = new Vocabulary(_LiteralNames, _SymbolicNames);
 
@@ -141,8 +141,8 @@ public partial class DslGrammarLexer : Lexer {
 		'\t', '\x11', '\n', '\x13', '\v', '\x15', '\f', '\x17', '\r', '\x19', 
 		'\xE', '\x1B', '\xF', '\x1D', '\x10', '\x1F', '\x11', '!', '\x12', '#', 
 		'\x13', '%', '\x14', '\'', '\x15', '\x3', '\x2', '\a', '\x4', '\x2', '>', 
-		'>', '@', '@', '\x4', '\x2', '\x43', '\\', '\x63', '|', '\x5', '\x2', 
-		'\x32', ';', '\x43', 'H', '\x63', 'h', '\x3', '\x2', '\x32', ';', '\x5', 
+		'>', '@', '@', '\x4', '\x2', '\x43', '\\', '\x63', '|', '\x3', '\x2', 
+		'\x32', ';', '\x5', '\x2', '\x32', ';', '\x43', 'H', '\x63', 'h', '\x5', 
 		'\x2', '\v', '\f', '\xF', '\xF', '\"', '\"', '\x2', '\xD0', '\x2', '\x3', 
 		'\x3', '\x2', '\x2', '\x2', '\x2', '\x5', '\x3', '\x2', '\x2', '\x2', 
 		'\x2', '\a', '\x3', '\x2', '\x2', '\x2', '\x2', '\t', '\x3', '\x2', '\x2', 
@@ -249,7 +249,7 @@ public partial class DslGrammarLexer : Lexer {
 		'\x2', '\x2', '\x2', '\xAF', '\xB0', '\x3', '\x2', '\x2', '\x2', '\xB0', 
 		'$', '\x3', '\x2', '\x2', '\x2', '\xB1', '\xB2', '\a', '\x32', '\x2', 
 		'\x2', '\xB2', '\xB3', '\a', 'z', '\x2', '\x2', '\xB3', '\xB7', '\x3', 
-		'\x2', '\x2', '\x2', '\xB4', '\xB6', '\t', '\x4', '\x2', '\x2', '\xB5', 
+		'\x2', '\x2', '\x2', '\xB4', '\xB6', '\t', '\x5', '\x2', '\x2', '\xB5', 
 		'\xB4', '\x3', '\x2', '\x2', '\x2', '\xB6', '\xB9', '\x3', '\x2', '\x2', 
 		'\x2', '\xB7', '\xB5', '\x3', '\x2', '\x2', '\x2', '\xB7', '\xB8', '\x3', 
 		'\x2', '\x2', '\x2', '\xB8', '&', '\x3', '\x2', '\x2', '\x2', '\xB9', 

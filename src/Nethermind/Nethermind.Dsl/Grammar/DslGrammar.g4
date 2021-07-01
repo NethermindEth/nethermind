@@ -28,7 +28,7 @@ WEBSOCKETS : 'WebSockets' | 'webSockets' | 'websockets' ;
 TELEGRAM : 'Telegram' | 'telegram' ;
 
 WORD : [a-zA-Z]+ ;
-BYTECODE : [a-fA-F0-9]+ ;
 DIGIT : [0-9]+;
+BYTECODE : [a-fA-F0-9]+ ;
 ADDRESS : '0x'[a-fA-F0-9]* ;
 WS : [ \t\r\n]+ -> skip ; // skip spaces, tabs, newlines

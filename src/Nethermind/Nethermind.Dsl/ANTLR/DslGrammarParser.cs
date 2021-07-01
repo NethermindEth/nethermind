@@ -38,7 +38,7 @@ public partial class DslGrammarParser : Parser {
 	public const int
 		BOOLEAN_OPERATOR=1, ARITHMETIC_SYMBOL=2, SOURCE=3, WATCH=4, WHERE=5, PUBLISH=6, 
 		AND=7, OR=8, CONTAINS=9, IS=10, NOT=11, PUBLISH_VALUE=12, WEBSOCKETS=13, 
-		TELEGRAM=14, WORD=15, BYTECODE=16, DIGIT=17, ADDRESS=18, WS=19;
+		TELEGRAM=14, WORD=15, DIGIT=16, BYTECODE=17, ADDRESS=18, WS=19;
 	public const int
 		RULE_tree = 0, RULE_expression = 1, RULE_sourceExpression = 2, RULE_watchExpression = 3, 
 		RULE_whereExpression = 4, RULE_publishExpression = 5, RULE_condition = 6, 
@@ -55,7 +55,7 @@ public partial class DslGrammarParser : Parser {
 	private static readonly string[] _SymbolicNames = {
 		null, "BOOLEAN_OPERATOR", "ARITHMETIC_SYMBOL", "SOURCE", "WATCH", "WHERE", 
 		"PUBLISH", "AND", "OR", "CONTAINS", "IS", "NOT", "PUBLISH_VALUE", "WEBSOCKETS", 
-		"TELEGRAM", "WORD", "BYTECODE", "DIGIT", "ADDRESS", "WS"
+		"TELEGRAM", "WORD", "DIGIT", "BYTECODE", "ADDRESS", "WS"
 	};
 	public static readonly IVocabulary DefaultVocabulary = new Vocabulary(_LiteralNames, _SymbolicNames);
 
@@ -479,7 +479,7 @@ public partial class DslGrammarParser : Parser {
 			Match(BOOLEAN_OPERATOR);
 			State = 47;
 			_la = TokenStream.LA(1);
-			if ( !((((_la) & ~0x3f) == 0 && ((1L << _la) & ((1L << WORD) | (1L << BYTECODE) | (1L << DIGIT) | (1L << ADDRESS))) != 0)) ) {
+			if ( !((((_la) & ~0x3f) == 0 && ((1L << _la) & ((1L << WORD) | (1L << DIGIT) | (1L << BYTECODE) | (1L << ADDRESS))) != 0)) ) {
 			ErrorHandler.RecoverInline(this);
 			}
 			else {
@@ -605,26 +605,26 @@ public partial class DslGrammarParser : Parser {
 		'\a', '\x3', '\b', '\x3', '\b', '\x3', '\b', '\x3', '\b', '\x3', '\t', 
 		'\x3', '\t', '\x3', '\t', '\x3', '\n', '\x3', '\n', '\x3', '\n', '\x3', 
 		'\n', '\x2', '\x2', '\v', '\x2', '\x4', '\x6', '\b', '\n', '\f', '\xE', 
-		'\x10', '\x12', '\x2', '\x4', '\x4', '\x2', '\x11', '\x11', '\x13', '\x13', 
-		'\x3', '\x2', '\x11', '\x14', '\x2', '\x36', '\x2', '\x17', '\x3', '\x2', 
-		'\x2', '\x2', '\x4', ' ', '\x3', '\x2', '\x2', '\x2', '\x6', '\"', '\x3', 
-		'\x2', '\x2', '\x2', '\b', '%', '\x3', '\x2', '\x2', '\x2', '\n', '(', 
-		'\x3', '\x2', '\x2', '\x2', '\f', '+', '\x3', '\x2', '\x2', '\x2', '\xE', 
-		'/', '\x3', '\x2', '\x2', '\x2', '\x10', '\x33', '\x3', '\x2', '\x2', 
-		'\x2', '\x12', '\x36', '\x3', '\x2', '\x2', '\x2', '\x14', '\x16', '\x5', 
-		'\x4', '\x3', '\x2', '\x15', '\x14', '\x3', '\x2', '\x2', '\x2', '\x16', 
-		'\x19', '\x3', '\x2', '\x2', '\x2', '\x17', '\x15', '\x3', '\x2', '\x2', 
-		'\x2', '\x17', '\x18', '\x3', '\x2', '\x2', '\x2', '\x18', '\x3', '\x3', 
-		'\x2', '\x2', '\x2', '\x19', '\x17', '\x3', '\x2', '\x2', '\x2', '\x1A', 
-		'!', '\x5', '\x6', '\x4', '\x2', '\x1B', '!', '\x5', '\b', '\x5', '\x2', 
-		'\x1C', '!', '\x5', '\n', '\x6', '\x2', '\x1D', '!', '\x5', '\f', '\a', 
-		'\x2', '\x1E', '!', '\x5', '\x10', '\t', '\x2', '\x1F', '!', '\x5', '\x12', 
-		'\n', '\x2', ' ', '\x1A', '\x3', '\x2', '\x2', '\x2', ' ', '\x1B', '\x3', 
-		'\x2', '\x2', '\x2', ' ', '\x1C', '\x3', '\x2', '\x2', '\x2', ' ', '\x1D', 
-		'\x3', '\x2', '\x2', '\x2', ' ', '\x1E', '\x3', '\x2', '\x2', '\x2', ' ', 
-		'\x1F', '\x3', '\x2', '\x2', '\x2', '!', '\x5', '\x3', '\x2', '\x2', '\x2', 
-		'\"', '#', '\a', '\x5', '\x2', '\x2', '#', '$', '\a', '\x11', '\x2', '\x2', 
-		'$', '\a', '\x3', '\x2', '\x2', '\x2', '%', '&', '\a', '\x6', '\x2', '\x2', 
+		'\x10', '\x12', '\x2', '\x4', '\x3', '\x2', '\x11', '\x12', '\x3', '\x2', 
+		'\x11', '\x14', '\x2', '\x36', '\x2', '\x17', '\x3', '\x2', '\x2', '\x2', 
+		'\x4', ' ', '\x3', '\x2', '\x2', '\x2', '\x6', '\"', '\x3', '\x2', '\x2', 
+		'\x2', '\b', '%', '\x3', '\x2', '\x2', '\x2', '\n', '(', '\x3', '\x2', 
+		'\x2', '\x2', '\f', '+', '\x3', '\x2', '\x2', '\x2', '\xE', '/', '\x3', 
+		'\x2', '\x2', '\x2', '\x10', '\x33', '\x3', '\x2', '\x2', '\x2', '\x12', 
+		'\x36', '\x3', '\x2', '\x2', '\x2', '\x14', '\x16', '\x5', '\x4', '\x3', 
+		'\x2', '\x15', '\x14', '\x3', '\x2', '\x2', '\x2', '\x16', '\x19', '\x3', 
+		'\x2', '\x2', '\x2', '\x17', '\x15', '\x3', '\x2', '\x2', '\x2', '\x17', 
+		'\x18', '\x3', '\x2', '\x2', '\x2', '\x18', '\x3', '\x3', '\x2', '\x2', 
+		'\x2', '\x19', '\x17', '\x3', '\x2', '\x2', '\x2', '\x1A', '!', '\x5', 
+		'\x6', '\x4', '\x2', '\x1B', '!', '\x5', '\b', '\x5', '\x2', '\x1C', '!', 
+		'\x5', '\n', '\x6', '\x2', '\x1D', '!', '\x5', '\f', '\a', '\x2', '\x1E', 
+		'!', '\x5', '\x10', '\t', '\x2', '\x1F', '!', '\x5', '\x12', '\n', '\x2', 
+		' ', '\x1A', '\x3', '\x2', '\x2', '\x2', ' ', '\x1B', '\x3', '\x2', '\x2', 
+		'\x2', ' ', '\x1C', '\x3', '\x2', '\x2', '\x2', ' ', '\x1D', '\x3', '\x2', 
+		'\x2', '\x2', ' ', '\x1E', '\x3', '\x2', '\x2', '\x2', ' ', '\x1F', '\x3', 
+		'\x2', '\x2', '\x2', '!', '\x5', '\x3', '\x2', '\x2', '\x2', '\"', '#', 
+		'\a', '\x5', '\x2', '\x2', '#', '$', '\a', '\x11', '\x2', '\x2', '$', 
+		'\a', '\x3', '\x2', '\x2', '\x2', '%', '&', '\a', '\x6', '\x2', '\x2', 
 		'&', '\'', '\a', '\x11', '\x2', '\x2', '\'', '\t', '\x3', '\x2', '\x2', 
 		'\x2', '(', ')', '\a', '\a', '\x2', '\x2', ')', '*', '\x5', '\xE', '\b', 
 		'\x2', '*', '\v', '\x3', '\x2', '\x2', '\x2', '+', ',', '\a', '\b', '\x2', 
