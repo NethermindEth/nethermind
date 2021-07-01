@@ -155,37 +155,8 @@ namespace Nethermind.Core
             HashNumberDiffAndTx,
             Short
         }
-
-        public Block GetBlockForProcessing()
-        {
-            BlockHeader bh = Header;
-            BlockHeader header = new(
-                bh.ParentHash,
-                bh.OmmersHash,
-                bh.Beneficiary,
-                bh.Difficulty,
-                bh.Number,
-                bh.GasLimit,
-                bh.Timestamp,
-                bh.ExtraData)
-            {
-                Bloom = Bloom.Empty,
-                Author = bh.Author,
-                Hash = bh.Hash,
-                MixHash = bh.MixHash,
-                Nonce = bh.Nonce,
-                TxRoot = bh.TxRoot,
-                TotalDifficulty = bh.TotalDifficulty,
-                AuRaStep = bh.AuRaStep,
-                AuRaSignature = bh.AuRaSignature,
-                ReceiptsRoot = bh.ReceiptsRoot,
-                BaseFeePerGas = bh.BaseFeePerGas
-            };
-            
-            return CreateBlockForProcessing(header);
-        }
-
-        protected virtual Block CreateBlockForProcessing(BlockHeader header) => 
+        
+        public virtual Block CreateBlockForProcessing(BlockHeader header) => 
             new(header, Transactions, Ommers);
 
         public virtual IEnumerable<Transaction> GetTransactions() => Transactions;

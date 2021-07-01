@@ -72,8 +72,7 @@ namespace Nethermind.State
             {
                 if (_intraBlockCache.TryGetValue(storageCell, out StackList<int> stack))
                 {
-                    int index = stack.BinarySearch(snapshot);
-                    if (stack.TryGetSearchedItem(index, out int lastChangeIndexBeforeOriginalSnapshot))
+                    if (stack.TryGetSearchedItem(snapshot, out int lastChangeIndexBeforeOriginalSnapshot))
                     {
                         return _changes[lastChangeIndexBeforeOriginalSnapshot]!.Value;
                     }

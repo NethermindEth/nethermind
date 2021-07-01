@@ -455,7 +455,7 @@ namespace Nethermind.Blockchain.Test
         }
         
         [Test]
-        [Explicit]
+        [Explicit("Does not work on CI")]
         public void Will_update_metrics_on_processing()
         {
             long metricsBefore = Metrics.LastBlockProcessingTimeInMs;

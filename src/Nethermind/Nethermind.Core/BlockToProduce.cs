@@ -50,7 +50,7 @@ namespace Nethermind.Core
         {
         }
 
-        protected override Block CreateBlockForProcessing(BlockHeader header) => 
+        public override Block CreateBlockForProcessing(BlockHeader header) => 
             new BlockToProduce(header, Transactions, Ommers);
 
         public override IEnumerable<Transaction> GetTransactions() => Transactions;

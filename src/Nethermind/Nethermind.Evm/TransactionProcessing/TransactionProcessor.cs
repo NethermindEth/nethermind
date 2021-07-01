@@ -80,7 +80,7 @@ namespace Nethermind.Evm.TransactionProcessing
             Execute(transaction, block, txTracer, ExecutionOptions.Commit);
         }
 
-        private bool QuickFail(Transaction tx, BlockHeader block, ITxTracer txTracer, bool eip658NotEnabled, string? reason)
+        private void QuickFail(Transaction tx, BlockHeader block, ITxTracer txTracer, bool eip658NotEnabled, string? reason)
         {
             block.GasUsed += tx.GasLimit;
             
@@ -99,11 +99,9 @@ namespace Nethermind.Evm.TransactionProcessing
                 
                 txTracer.MarkAsFailed(recipient, tx.GasLimit, Array.Empty<byte>(), reason ?? "invalid", stateRoot);
             }
-
-            return false;
         }
 
-        private bool Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer, ExecutionOptions executionOptions)
+        private void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer, ExecutionOptions executionOptions)
         {
             bool notSystemTransaction = !transaction.IsSystem();
             bool restore = (executionOptions & ExecutionOptions.Restore) != ExecutionOptions.None;
@@ -123,7 +121,8 @@ namespace Nethermind.Evm.TransactionProcessing
             if (!transaction.TryCalculatePremiumPerGas(block.BaseFeePerGas, out UInt256 premiumPerGas) && !restore)
             {
                 TraceLogInvalidTx(transaction, "MINER_PREMIUM_IS_NEGATIVE");
-                return QuickFail(transaction, block, txTracer, eip658NotEnabled, "miner premium is negative");
+                QuickFail(transaction, block, txTracer, eip658NotEnabled, "miner premium is negative");
+                return;
             }
             
             UInt256 gasPrice = transaction.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, block.BaseFeePerGas);
@@ -138,7 +137,8 @@ namespace Nethermind.Evm.TransactionProcessing
             if (caller is null)
             {
                 TraceLogInvalidTx(transaction, "SENDER_NOT_SPECIFIED");
-                return QuickFail(transaction, block, txTracer, eip658NotEnabled, "sender not specified");
+                QuickFail(transaction, block, txTracer, eip658NotEnabled, "sender not specified");
+                return;
             }
 
             long intrinsicGas = IntrinsicGasCalculator.Calculate(transaction, spec);
@@ -149,14 +149,16 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (gasLimit < intrinsicGas)
                 {
                     TraceLogInvalidTx(transaction, $"GAS_LIMIT_BELOW_INTRINSIC_GAS {gasLimit} < {intrinsicGas}");
-                    return QuickFail(transaction, block, txTracer, eip658NotEnabled, "gas limit below intrinsic gas");
+                    QuickFail(transaction, block, txTracer, eip658NotEnabled, "gas limit below intrinsic gas");
+                    return;
                 }
 
                 if (!restore && gasLimit > block.GasLimit - block.GasUsed)
                 {
                     TraceLogInvalidTx(transaction,
                         $"BLOCK_GAS_LIMIT_EXCEEDED {gasLimit} > {block.GasLimit} - {block.GasUsed}");
-                    return QuickFail(transaction, block, txTracer, eip658NotEnabled, "block gas limit exceeded");
+                    QuickFail(transaction, block, txTracer, eip658NotEnabled, "block gas limit exceeded");
+                    return;
                 }
             }
             
@@ -198,19 +200,22 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (!restore && ((ulong) intrinsicGas * gasPrice + value > senderBalance || senderReservedGasPayment > senderBalance))
                 {
                     TraceLogInvalidTx(transaction, $"INSUFFICIENT_SENDER_BALANCE: ({caller})_BALANCE = {senderBalance}");
-                    return QuickFail(transaction, block, txTracer, eip658NotEnabled, "insufficient sender balance");
+                    QuickFail(transaction, block, txTracer, eip658NotEnabled, "insufficient sender balance");
+                    return;
                 }
                 
                 if (!restore && transaction.IsEip1559 && !transaction.IsServiceTransaction && senderBalance < (UInt256)transaction.GasLimit * transaction.MaxFeePerGas)
                 {
                     TraceLogInvalidTx(transaction, $"INSUFFICIENT_MAX_FEE_PER_GAS_FOR_SENDER_BALANCE: ({caller})_BALANCE = {senderBalance}, MAX_FEE_PER_GAS: {transaction.MaxFeePerGas}");
-                    return QuickFail(transaction, block, txTracer, eip658NotEnabled, "insufficient MaxFeePerGas for sender balance");
+                    QuickFail(transaction, block, txTracer, eip658NotEnabled, "insufficient MaxFeePerGas for sender balance");
+                    return;
                 }
 
                 if (transaction.Nonce != _stateProvider.GetNonce(caller))
                 {
                     TraceLogInvalidTx(transaction, $"WRONG_TRANSACTION_NONCE: {transaction.Nonce} (expected {_stateProvider.GetNonce(caller)})");
-                    return QuickFail(transaction, block, txTracer, eip658NotEnabled, "wrong transaction nonce");
+                    QuickFail(transaction, block, txTracer, eip658NotEnabled, "wrong transaction nonce");
+                    return;
                 }
 
                 _stateProvider.IncrementNonce(caller);
@@ -411,8 +416,6 @@ namespace Nethermind.Evm.TransactionProcessing
                     txTracer.MarkAsSuccess(recipientOrNull, spentGas, substate.Output.ToArray(), substate.Logs.Any() ? substate.Logs.ToArray() : Array.Empty<LogEntry>(), stateRoot);
                 }
             }
-
-            return true;
         }
 
         private void TraceLogInvalidTx(Transaction transaction, string reason)

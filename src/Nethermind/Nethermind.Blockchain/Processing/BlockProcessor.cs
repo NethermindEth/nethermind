@@ -276,7 +276,31 @@ namespace Nethermind.Blockchain.Processing
         private Block PrepareBlockForProcessing(Block suggestedBlock)
         {
             if (_logger.IsTrace) _logger.Trace($"{suggestedBlock.Header.ToString(BlockHeader.Format.Full)}");
-            return suggestedBlock.GetBlockForProcessing();
+            BlockHeader bh = suggestedBlock.Header;
+            BlockHeader headerForProcessing = new(
+                bh.ParentHash,
+                bh.OmmersHash,
+                bh.Beneficiary,
+                bh.Difficulty,
+                bh.Number,
+                bh.GasLimit,
+                bh.Timestamp,
+                bh.ExtraData)
+            {
+                Bloom = Bloom.Empty,
+                Author = bh.Author,
+                Hash = bh.Hash,
+                MixHash = bh.MixHash,
+                Nonce = bh.Nonce,
+                TxRoot = bh.TxRoot,
+                TotalDifficulty = bh.TotalDifficulty,
+                AuRaStep = bh.AuRaStep,
+                AuRaSignature = bh.AuRaSignature,
+                ReceiptsRoot = bh.ReceiptsRoot,
+                BaseFeePerGas = bh.BaseFeePerGas
+            };
+
+            return suggestedBlock.CreateBlockForProcessing(headerForProcessing);
         }
 
         // TODO: block processor pipeline
