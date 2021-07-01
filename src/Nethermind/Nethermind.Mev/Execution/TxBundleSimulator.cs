@@ -62,7 +62,7 @@ namespace Nethermind.Mev.Execution
 
         protected override long GetGasLimit(BlockHeader parent) => _gasLimitCalculator.GetGasLimit(parent);
 
-        protected override SimulatedMevBundle BuildResult(MevBundle bundle, Block block, BundleBlockTracer tracer, Keccak resultStateRoot)
+        protected override SimulatedMevBundle BuildResult(MevBundle bundle, BundleBlockTracer tracer)
         {
             UInt256 eligibleGasFeePayment = UInt256.Zero;
             UInt256 totalGasFeePayment = UInt256.Zero;

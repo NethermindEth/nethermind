@@ -19,8 +19,6 @@ using System.Linq;
 using System.Text;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Mev.Data;
@@ -34,7 +32,7 @@ namespace Nethermind.Mev.Execution
         {
         }
 
-        protected override TxsResults BuildResult(MevBundle bundle, Block block, BlockCallOutputTracer tracer, Keccak resultStateRoot)
+        protected override TxsResults BuildResult(MevBundle bundle, BlockCallOutputTracer tracer)
         {
             TxResult ToTxResult(CallOutputTracer callOutputTracer)
             {

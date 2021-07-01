@@ -78,11 +78,13 @@ namespace Nethermind.JsonRpc.Modules.Proof
                 sourceHeader.Number + 1,
                 sourceHeader.GasLimit,
                 sourceHeader.Timestamp,
-                Array.Empty<byte>());
+                Array.Empty<byte>())
+            {
+                TxRoot = Keccak.EmptyTreeHash, 
+                ReceiptsRoot = Keccak.EmptyTreeHash, 
+                Author = Address.SystemUser
+            };
 
-            callHeader.TxRoot = Keccak.EmptyTreeHash;
-            callHeader.ReceiptsRoot = Keccak.EmptyTreeHash;
-            callHeader.Author = Address.SystemUser;
             callHeader.TotalDifficulty = sourceHeader.TotalDifficulty + callHeader.Difficulty;
             callHeader.Hash = callHeader.CalculateHash();
 
