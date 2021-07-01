@@ -38,17 +38,17 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
             }
 
-            Tuple<bool, ResultWrapper<UInt256?>> earlyExitResult = EarlyExitAndResult();
+            Tuple<bool, ResultWrapper<UInt256?>> earlyExitResult = EarlyExitResult();
             if (earlyExitResult.Item1 == true)
             {
                 return earlyExitResult.Item2;
             }
             
-            SetDefaultGasPrice(_lastHeadBlock!.Number);
+            SetDefaultGasPrice();
             
-            CreateAndAddTxGasPricesToList();
+            AddTxGasPricesToList();
             
-            TxGasPriceList = TxGasPriceList.OrderBy(tx => tx).ToList();
+            TxGasPriceList = TxGasPriceList.OrderBy(gasPrice => gasPrice).ToList();
             
             UInt256? gasPriceEstimate = GasPriceAtPercentile();
 
@@ -59,7 +59,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return ResultWrapper<UInt256?>.Success((UInt256) gasPriceEstimate!);
         }
 
-        private Tuple<bool, ResultWrapper<UInt256?>> EarlyExitAndResult()
+        private Tuple<bool, ResultWrapper<UInt256?>> EarlyExitResult()
         {
             Block? headBlock = GetHeadBlock();
             Block? genesisBlock = GetGenesisBlock();
@@ -133,47 +133,12 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return headBlock!.Hash == _lastHeadBlock!.Hash;
         }
         
-        private void SetDefaultGasPrice(long headBlockNumber)
+        private void SetDefaultGasPrice()
         {
-            Transaction[] transactions;
-            int blocksToCheck = GasPriceConfig.BlockLimitForDefaultGasPrice;
-            
-            while (headBlockNumber >= 0 && DefaultGasPriceBlockLimitNotReached(ref blocksToCheck))
-            {
-                transactions = GetTxFromBlockWithNumber(headBlockNumber);
-                if (_eip1559Enabled == false)
-                {
-                    transactions = transactions.Where(tx => tx.IsEip1559 == false).ToArray();
-                }
-
-                if (TransactionsExistIn(transactions))
-                {
-                    DefaultGasPrice = transactions[^1].GasPrice;
-                    return;
-                }
-                
-                headBlockNumber--;
-            }
-            DefaultGasPrice = 1; 
-        }
-
-        private static bool DefaultGasPriceBlockLimitNotReached(ref int blocksToCheck)
-        {
-            return blocksToCheck-- > 0;
+            DefaultGasPrice = _lastGasPrice ?? GasPriceConfig.DefaultGasPrice;
         }
         
-        private Transaction[] GetTxFromBlockWithNumber(long headBlockNumber)
-        {
-            Block block = _blockFinder!.FindBlock(headBlockNumber);
-            if (block == null)
-            {
-                ThrowBlockNotFoundException(headBlockNumber);
-            }
-            return block!.Transactions;
-        }
-        
-        
-        private void CreateAndAddTxGasPricesToList()
+        private void AddTxGasPricesToList()
         {
             long currentBlockNumber = GetHeadBlock()!.Number;
             int blocksToGoBack = _blockLimit;
