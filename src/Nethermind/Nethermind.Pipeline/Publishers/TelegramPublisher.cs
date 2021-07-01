@@ -15,6 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
+using System.Collections.Generic;
 using System.Net;
 using System.Net.Http;
 using System.Threading.Tasks;
@@ -32,7 +34,7 @@ namespace Nethermind.Pipeline.Publishers
         public TelegramPublisher(IJsonSerializer serializer, string chatId)
         {
             _serializer = serializer;
-            _chatId = chatId;
+            _chatId = $"-{chatId}";
             _botToken = LoadBotToken();
             _httpClient = new HttpClient();
         }
@@ -45,16 +47,28 @@ namespace Nethermind.Pipeline.Publishers
 
         private async Task SendMessageAsync(object data)
         {
-            var message = _serializer.Serialize(data);
-            message = message.Replace("\"", "'");
+            var serializedData = _serializer.Serialize(data);
+            serializedData = serializedData.Replace("\"", "'");
 
-            var url = $"https://api.telegram.org/bot{_botToken}/sendMessage?chat_id=-{_chatId}&text={message}";
-            await _httpClient.GetAsync(url);
+            var uri = new Uri($"https://api.telegram.org/bot{_botToken}/sendMessage");
+            var content = new FormUrlEncodedContent(new[]
+            {
+                new KeyValuePair<string, string>("chat_id", _chatId),
+                new KeyValuePair<string, string>("text", serializedData)
+            });
+            
+            await _httpClient.PostAsync(uri, content);
         }
 
         private string LoadBotToken()
         {
             return "1894135076:AAHmdMwkLia8FzUiDBsZ-h3kqsBIzeGa4y8"; //this is just a test bot, will do a proper secret token after tests are done and we will create another bot  
         }
+    }
+
+    class TelegramMessage
+    {
+        public string chat_id { get; set; }
+        public string text { get; set; }
     }
 }
