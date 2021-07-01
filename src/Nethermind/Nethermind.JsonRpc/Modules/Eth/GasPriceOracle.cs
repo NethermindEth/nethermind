@@ -12,7 +12,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
     public class GasPriceOracle : IGasPriceOracle
     {
         public UInt256? DefaultGasPrice { get; private set; }
-        
         private Block? _lastHeadBlock;
         private UInt256? _lastGasPrice;
         private readonly UInt256? _ignoreUnder;
@@ -60,23 +59,31 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
         }
 
-        private int AddTxAndReturnNumberAdded(SortedSet<UInt256> sortedSet, Transaction[] transactionsInBlock)
+        private int AddTxAndReturnNumberAdded(SortedSet<UInt256> sortedSet, Transaction[] txInBlock)
         {
             int countTxAdded = 0;
             
-            foreach (Transaction transaction in transactionsInBlock)
+            IEnumerable<Transaction> txSortedByEffectiveGasPrice = txInBlock.OrderBy(EffectiveGasPrice);
+            foreach (Transaction transaction in txSortedByEffectiveGasPrice)
             {
                 if (TransactionCanBeAdded(transaction, _eip1559Enabled)) //how should i set to be null?
                 {
-                    sortedSet.Add(CalculateEffectiveGasPriceOf(transaction));
+                    sortedSet.Add(EffectiveGasPrice(transaction));
                     countTxAdded++;
                 }
+
+                if (countTxAdded >= GasPriceConfig.MaxTxsFromBlock)
+                {
+                    break;
+                }
             }
+            
+            
 
             return countTxAdded;
         }
 
-        private UInt256 CalculateEffectiveGasPriceOf(Transaction transaction)
+        private UInt256 EffectiveGasPrice(Transaction transaction)
         {
             return transaction.CalculateEffectiveGasPrice(_eip1559Enabled, _baseFee);
         }
@@ -88,7 +95,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         private bool TransactionCanBeAdded(Transaction transaction, bool eip1559Enabled)
         {
-            return IsAboveMinPrice(transaction) && Eip1559ModeCompatible(transaction, eip1559Enabled);
+            bool res = IsAboveMinPrice(transaction) && Eip1559ModeCompatible(transaction, eip1559Enabled);
+            return res;
         }
 
         private bool IsAboveMinPrice(Transaction transaction)
@@ -149,7 +157,12 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         private Transaction[] GetTxFromBlockWithNumber(long headBlockNumber)
         {
-            return _blockFinder!.FindBlock(headBlockNumber)!.Transactions;
+            Block block = _blockFinder!.FindBlock(headBlockNumber);
+            if (block == null)
+            {
+                ThrowBlockNotFoundException(headBlockNumber);
+            }
+            return block!.Transactions;
         }
 
         private static bool TransactionsExistIn(Transaction[] transactions)
@@ -172,10 +185,19 @@ namespace Nethermind.JsonRpc.Modules.Eth
                         blocksToGoBack--;
                     }
                 }
+                else
+                {
+                    ThrowBlockNotFoundException(currentBlockNumber);
+                }
                 currentBlockNumber--;
             }
 
             return gasPrices;
+        }
+
+        private static void ThrowBlockNotFoundException(long blockNumber)
+        {
+            throw new Exception($"Block {blockNumber} was not found.");
         }
 
         private Block? GetHeadBlock()
@@ -277,9 +299,21 @@ namespace Nethermind.JsonRpc.Modules.Eth
             
             UInt256? gasPriceEstimate = GasPriceAtPercentile(gasPricesSetHandlingDuplicates);
 
+            gasPriceEstimate = FindMinOfThisAndMaxPrice(gasPriceEstimate);
+
             SetLastGasPrice(gasPriceEstimate);
             
             return ResultWrapper<UInt256?>.Success((UInt256) gasPriceEstimate!);
+        }
+
+        private static UInt256? FindMinOfThisAndMaxPrice(UInt256? gasPriceEstimate)
+        {
+            if (gasPriceEstimate > GasPriceConfig._maxGasPrice)
+            {
+                gasPriceEstimate = GasPriceConfig._maxGasPrice;
+            }
+
+            return gasPriceEstimate;
         }
 
         private void SetLastGasPrice(UInt256? lastGasPrice)

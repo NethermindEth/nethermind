@@ -73,8 +73,8 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             BlockTreeSetup blockTreeSetup = new BlockTreeSetup();
             ResultWrapper<UInt256?> resultWrapper = blockTreeSetup._ethRpcModule.eth_gasPrice();
-            resultWrapper.Data.Should().Be((UInt256?) 3); 
-            //Tx Gas Prices: 1,2,3,4,5,6, Index: (6-1) * 2/5 = 2, Gas Price: 3
+            resultWrapper.Data.Should().Be((UInt256?) 4); 
+            //Tx Gas Prices: 1,2,3,4,5,6, Index: (6-1) * 3/5 = 3, Gas Price: 4
         }
 
 
@@ -143,15 +143,15 @@ namespace Nethermind.JsonRpc.Test.Modules
             BlockTreeSetup blockTreeSetup = new BlockTreeSetup(blocks: blocks, blockLimit: 2);
             
             ResultWrapper<UInt256?> resultWrapper = blockTreeSetup._ethRpcModule.eth_gasPrice();
-            resultWrapper.Data.Should().Be((UInt256?) 4); 
-            //Tx Gas Prices: 3,4,5,6, Index: (4-1) * 2/5 rounds to 1, Gas Price: 4
+            resultWrapper.Data.Should().Be((UInt256?) 5); 
+            //Tx Gas Prices: 3,4,5,6, Index: (4-1) * 3/5 rounds to 2, Gas Price: 5
         }
 
         [Test]
         public void Eth_gasPrice_WhenHeadBlockIsNotChanged_ShouldUsePreviouslyCalculatedGasPrice()
         {
             const int normalErrorCode = 0;
-            int noHeadBlockChangeErrorCode = GasPriceOracle.NoHeadBlockChangeErrorCode;
+            int noHeadBlockChangeErrorCode = GasPriceConfig.NoHeadBlockChangeErrorCode;
             
             BlockTreeSetup blockTreeSetup = new BlockTreeSetup();
             ResultWrapper<UInt256?> firstResult = blockTreeSetup._ethRpcModule.eth_gasPrice();
@@ -162,8 +162,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             secondResult.ErrorCode.Should().Be(noHeadBlockChangeErrorCode);
         }
 
-        [TestCase(2,4)] //Tx Gas Prices: 2,3,4,5,6, Index: (5-1) * 2/5 rounds to 2, Gas Price: 3
-        [TestCase(4,6)] //Tx Gas Prices: 4,5,6,6,6, Index: (5-1) * 2/5 rounds to 2, Gas Price: 5
+        [TestCase(2,4)] //Tx Gas Prices: 2,3,4,5,6, Index: (5-1) * 3/5 rounds to 2, Gas Price: 3
+        [TestCase(4,6)] //Tx Gas Prices: 4,5,6,6,6, Index: (5-1) * 3/5 rounds to 2, Gas Price: 5
         public void Eth_gasPrice_TxGasPricesAreBelowThreshold_ReplaceGasPriceUnderThresholdWithLatestPrice(int ignoreUnder, int expected)
         {
             UInt256? ignoreUnderUInt256 = (UInt256) ignoreUnder;
@@ -176,8 +176,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             result.Should().Be(expectedUInt256); 
         }
 
-        [TestCase(false, 5)] //Tx Gas Prices: 1,2,3,4,5,6,9,10,11,11 Index: (10-1) * 2/5 rounds to 4, Gas Price: 5
-        [TestCase(true, 3)]  //Tx Gas Prices: 0,0,1,2,3,4,5,6,9,10,11 Index: (11-1) * 2/5 = 4, Gas Price: 4
+        [TestCase(false, 6)] //Tx Gas Prices: 1,2,3,4,5,6,9,10,11,11 Index: (10-1) * 3/5 rounds to 5, Gas Price: 6
+        [TestCase(true, 5)]  //Tx Gas Prices: 0,0,1,2,3,4,5,6,9,10,11 Index: (11-1) * 3/5 = 6, Gas Price: 5
         public void Eth_gasPrice_InEip1559Mode_ShouldCalculateTxGasPricesDifferently(bool eip1559Enabled, int expected)
         {
             Transaction[] eip1559TxGroup =  GetTransactionsFromStringArray(CollectTxStrings(
@@ -258,7 +258,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             ResultWrapper<UInt256?> resultWrapper = blockTreeSetup._ethRpcModule.eth_gasPrice();
             
             resultWrapper.Data.Should().Be((UInt256?) 2); 
-            //Tx Gas Prices: 0,1,2,3,4, Index: (5-1) * 2/5 rounds to 2, Gas Price: 2
+            //Tx Gas Prices: 0,1,2,3,4, Index: (5-1) * 3/5 rounds to 2, Gas Price: 2
         }
 
         [Test]
@@ -285,8 +285,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             BlockTreeSetup blockTreeSetup = new BlockTreeSetup(blocks: blocks, blockLimit: 4);
             ResultWrapper<UInt256?> resultWrapper = blockTreeSetup._ethRpcModule.eth_gasPrice();
             
-            resultWrapper.Data.Should().Be((UInt256?) 5); 
-            //Tx Gas Prices: 3,4,5,6,7,8 Index: (6-1) * 2/5 = 2, Gas Price: 5
+            resultWrapper.Data.Should().Be((UInt256?) 6); 
+            //Tx Gas Prices: 3,4,5,6,7,8 Index: (6-1) * 3/5 = 3, Gas Price: 6
         }
 
         private string[][] CollectTxStrings(params string[][] txInfo)
