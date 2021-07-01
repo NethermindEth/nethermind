@@ -12,7 +12,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
     public class GasPriceOracle : IGasPriceOracle
     {
         public UInt256? DefaultGasPrice { get; private set; }
-        public const int NoHeadBlockChangeErrorCode = 7;
         
         private Block? _lastHeadBlock;
         private UInt256? _lastGasPrice;
@@ -22,19 +21,15 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly int _txThreshold;
         private bool _eip1559Enabled;
         private readonly UInt256 _baseFee;
-        private const int Percentile = 40;
-        private const int DefaultBlocksToGoBack = 20;
-        private const int DefaultBaseFee = 200;
-        private const int BlockLimitForDefaultGasPrice = 8;
 
         public GasPriceOracle(bool eip1559Enabled = false, UInt256? ignoreUnder = null, 
             int? blockLimit = null, UInt256? baseFee = null)
         {
             _eip1559Enabled = eip1559Enabled;
             _ignoreUnder = ignoreUnder ?? UInt256.Zero;
-            _blockLimit = blockLimit ?? DefaultBlocksToGoBack;
+            _blockLimit = blockLimit ?? GasPriceConfig.DefaultBlocksToGoBack;
             _txThreshold = SetTxThreshold(_blockLimit);
-            _baseFee = baseFee ?? DefaultBaseFee;
+            _baseFee = baseFee ?? GasPriceConfig.DefaultBaseFee;
         }
 
         private int SetTxThreshold(int blocksToGoBack)
@@ -126,7 +121,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private void SetDefaultGasPrice(long headBlockNumber)
         {
             Transaction[] transactions;
-            int blocksToCheck = BlockLimitForDefaultGasPrice;
+            int blocksToCheck = GasPriceConfig.BlockLimitForDefaultGasPrice;
             
             while (headBlockNumber >= 0 && DefaultGasPriceBlockLimitNotReached(ref blocksToCheck))
             {
@@ -237,7 +232,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             {
                 resultWrapper = ResultWrapper<UInt256?>.Success(_lastGasPrice);
 #if DEBUG
-                resultWrapper.ErrorCode = NoHeadBlockChangeErrorCode;
+                resultWrapper.ErrorCode = GasPriceConfig.NoHeadBlockChangeErrorCode;
 #endif
                 return resultWrapper;
             }
@@ -304,7 +299,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private static int GetRoundedIndexAtPercentile(SortedSet<UInt256> gasPricesSetHandlingDuplicates)
         {
             int lastIndex = gasPricesSetHandlingDuplicates.Count - 1;
-            float percentileOfLastIndex = lastIndex * ((float) Percentile / 100);
+            float percentileOfLastIndex = lastIndex * ((float)GasPriceConfig.Percentile / 100);
             int roundedIndex = (int) Math.Round(percentileOfLastIndex);
             return roundedIndex;
         }
