@@ -10,6 +10,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
     public class GasPriceOracle : IGasPriceOracle
     {
         public UInt256? DefaultGasPrice { get; private set; }
+        public List<UInt256> TxGasPriceList { get; private set; }
         private Block? _lastHeadBlock;
         private UInt256? _lastGasPrice;
         private readonly UInt256? _ignoreUnder;
@@ -22,6 +23,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         public GasPriceOracle(bool eip1559Enabled = false, UInt256? ignoreUnder = null, 
             int? blockLimit = null, UInt256? baseFee = null)
         {
+            TxGasPriceList = new List<UInt256>();
             _eip1559Enabled = eip1559Enabled;
             _ignoreUnder = ignoreUnder ?? UInt256.Zero;
             _blockLimit = blockLimit ?? GasPriceConfig.DefaultBlocksLimit;
@@ -44,9 +46,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
             
             SetDefaultGasPrice(_lastHeadBlock!.Number);
             
-            List<UInt256> gasPricesList = CreateAndAddTxGasPricesToSet().OrderBy(tx => tx).ToList();
+            CreateAndAddTxGasPricesToList();
             
-            UInt256? gasPriceEstimate = GasPriceAtPercentile(gasPricesList);
+            TxGasPriceList = TxGasPriceList.OrderBy(tx => tx).ToList();
+            
+            UInt256? gasPriceEstimate = GasPriceAtPercentile();
 
             gasPriceEstimate = FindMinOfThisAndMaxPrice(gasPriceEstimate);
 
@@ -168,14 +172,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return block!.Transactions;
         }
         
-        private List<UInt256> CreateAndAddTxGasPricesToSet()
-        {
-            List<UInt256> gasPricesSetHandlingDuplicates = new List<UInt256>();
-            gasPricesSetHandlingDuplicates = AddingTxPricesFromNewestToOldestBlock(gasPricesSetHandlingDuplicates);
-            return gasPricesSetHandlingDuplicates;
-        }
         
-        private List<UInt256> AddingTxPricesFromNewestToOldestBlock(List<UInt256> txGasPriceList)
+        private void CreateAndAddTxGasPricesToList()
         {
             long currentBlockNumber = GetHeadBlock()!.Number;
             int blocksToGoBack = _blockLimit;
@@ -184,8 +182,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 Block? block = _blockFinder!.FindBlock(currentBlockNumber);
                 if (BlockExists(block))
                 {
-                    int txsAdded = AddValidTxAndReturnCount(block!, ref txGasPriceList);
-                    if (txsAdded > 1 || BonusBlockLimitReached(txGasPriceList, blocksToGoBack))
+                    int txsAdded = AddValidTxAndReturnCount(block!);
+                    if (txsAdded > 1 || BonusBlockLimitReached(blocksToGoBack))
                     {
                         blocksToGoBack--;
                     }
@@ -196,8 +194,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 }
                 currentBlockNumber--;
             }
-
-            return txGasPriceList;
         }
 
         private Block? GetHeadBlock()
@@ -219,7 +215,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             return foundBlock != null;
         }
-        private int AddTxAndReturnCountAdded(List<UInt256> txGasPriceList, Transaction[] txInBlock)
+        private int AddTxAndReturnCountAdded(Transaction[] txInBlock)
         {
             int countTxAdded = 0;
             
@@ -228,7 +224,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             {
                 if (TransactionCanBeAdded(transaction, _eip1559Enabled)) //how should i set to be null?
                 {
-                    txGasPriceList.Add(EffectiveGasPrice(transaction));
+                    TxGasPriceList.Add(EffectiveGasPrice(transaction));
                     countTxAdded++;
                 }
 
@@ -274,18 +270,18 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return !transaction.IsEip1559;
         }
         
-        private int AddValidTxAndReturnCount(Block block, ref List<UInt256> txGasPriceList)
+        private int AddValidTxAndReturnCount(Block block)
         {
             Transaction[] transactionsInBlock = block.Transactions;
             int countTxAdded;
 
             if (TransactionsExistIn(transactionsInBlock))
             {
-                countTxAdded = AddTxAndReturnCountAdded(txGasPriceList, transactionsInBlock);
+                countTxAdded = AddTxAndReturnCountAdded(transactionsInBlock);
 
                 if (countTxAdded == 0)
                 {
-                    AddDefaultPriceTo(txGasPriceList);
+                    AddDefaultPriceTo();
                     countTxAdded++;
                 }
 
@@ -293,7 +289,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
             else
             {
-                AddDefaultPriceTo(txGasPriceList);
+                AddDefaultPriceTo();
                 return 1;
             }
         }
@@ -303,26 +299,26 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return transactions.Length > 0;
         }
         
-        private void AddDefaultPriceTo(List<UInt256> txGasPriceList)
+        private void AddDefaultPriceTo()
         {
-            txGasPriceList.Add((UInt256) DefaultGasPrice!);
+            TxGasPriceList.Add((UInt256) DefaultGasPrice!);
         }
         
-        private bool BonusBlockLimitReached(List<UInt256> txGasPriceList, int blocksToGoBack)
+        private bool BonusBlockLimitReached(int blocksToGoBack)
         {
-            return txGasPriceList.Count + blocksToGoBack >= _softTxThreshold;
+            return TxGasPriceList.Count + blocksToGoBack >= _softTxThreshold;
         }
         
-        private static void ThrowBlockNotFoundException(long blockNumber)
+        private void ThrowBlockNotFoundException(long blockNumber)
         {
             throw new Exception($"Block {blockNumber} was not found.");
         }
         
-        private static UInt256? GasPriceAtPercentile(List<UInt256> txGasPriceList)
+        private UInt256? GasPriceAtPercentile()
         {
-            int roundedIndex = GetRoundedIndexAtPercentile(txGasPriceList.Count);
+            int roundedIndex = GetRoundedIndexAtPercentile(TxGasPriceList.Count);
 
-            UInt256? gasPriceEstimate = GetElementAtIndex(txGasPriceList, roundedIndex);
+            UInt256? gasPriceEstimate = GetElementAtIndex(TxGasPriceList, roundedIndex);
 
             return gasPriceEstimate;
         }

@@ -77,7 +77,65 @@ namespace Nethermind.JsonRpc.Test.Modules
             //Tx Gas Prices: 1,2,3,4,5,6, Index: (6-1) * 3/5 = 3, Gas Price: 4
         }
 
+        [Test]
+        public void Eth_gasPrice_EstimatedGasPriceMoreThanMaxGasPrice_ReturnMaxGasPrice()
+        {
+            Block[] blockArray = GetBlocks(
+                GetBlockWithNumberAndTxInfo(0, CollectTxStrings(
+                    GetTxString("A", "501", "0")
+                    )
+                ));
+            BlockTreeSetup blockTreeSetup = new BlockTreeSetup(blockArray);
 
+            ResultWrapper<UInt256?> resultWrapper = blockTreeSetup._ethRpcModule.eth_gasPrice();
+            resultWrapper.Data.Should().Be((UInt256?) 500);
+        }
+
+        [Test]
+        public void Eth_gas_price_BlockWithMoreThanThreeTxs_OnlyAddsThreeGasPriceTxs()
+        {
+            Block[] blockArray = GetBlocks(
+                GetBlockWithNumberAndTxInfo(0, CollectTxStrings(
+                    GetTxString("A", "4", "0"),
+                    GetTxString("B", "3", "0"),
+                    GetTxString("C", "2", "0"),
+                    GetTxString("D", "1", "0")
+                    )
+                ));
+            BlockTreeSetup blockTreeSetup = new BlockTreeSetup(blockArray);
+
+            ResultWrapper<UInt256?> resultWrapper = blockTreeSetup._ethRpcModule.eth_gasPrice();
+            List<UInt256> gasPriceList = blockTreeSetup._gasPriceOracle.TxGasPriceList;
+            gasPriceList.Count.Should().Be(3);
+        }
+        
+       [Test] 
+        public void Eth_gas_price_BlocksWithMoreThanThreeTxs_OnlyAddsThreeLowestEffectiveGasPriceTxs()
+        {
+            Block[] blockArray = GetBlocks(
+                GetBlockWithNumberAndTxInfo(0, CollectTxStrings(
+                    GetTxString("A", "4", "0"),
+                    GetTxString("B", "3", "0"),
+                    GetTxString("C", "2", "0"),
+                    GetTxString("D", "1", "0")
+                    )
+                ),
+                GetBlockWithNumberAndTxInfo(1, CollectTxStrings(
+                    GetTxString("A", "8", "1"),
+                    GetTxString("B", "7", "1"),
+                    GetTxString("C", "6", "1"),
+                    GetTxString("D", "5", "1")
+                    )
+                ));
+            BlockTreeSetup blockTreeSetup = new BlockTreeSetup(blockArray);
+            
+            blockTreeSetup._ethRpcModule.eth_gasPrice();
+            List<UInt256> gasPriceList = blockTreeSetup._gasPriceOracle.TxGasPriceList;
+            
+            IEnumerable<UInt256> correctGasPriceList = new List<UInt256> {1,2,3,5,6,7};
+            gasPriceList.Should().Equal(correctGasPriceList);
+        }
+        
         [Test]
         public void Eth_gasPrice_WhenBlocksHaveNoTx_GasPriceShouldBeOne()
         {

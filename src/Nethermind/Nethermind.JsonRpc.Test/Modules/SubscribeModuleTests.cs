@@ -366,7 +366,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void LogsSubscription_on_NewHeadBlock_event_with_few_TxReceipts_with_few_logs_with_some_address_mismatches()
         {
             int blockNumber = 55555;
-            Filter filter = new Filter()
+            Filter filter = new Filter
             {
                 FromBlock = BlockParameter.Latest,
                 ToBlock = BlockParameter.Latest,
@@ -413,7 +413,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             int blockNumber = 55555;
 
-            Filter filter = new Filter()
+            Filter filter = new Filter
             {
                 FromBlock = BlockParameter.Latest,
                 ToBlock = BlockParameter.Latest,
@@ -459,9 +459,9 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void LogsSubscription_on_NewHeadBlock_event_with_few_TxReceipts_with_few_logs_with_few_topics_and_some_address_and_topic_mismatches()
         {
             int blockNumber = 55555;
-            IEnumerable<object> topics = new List<object>(){TestItem.KeccakA};
+            IEnumerable<object> topics = new List<object> {TestItem.KeccakA};
 
-            Filter filter = new Filter()
+            Filter filter = new Filter
             {
                 FromBlock = BlockParameter.Latest,
                 ToBlock = BlockParameter.Latest,
