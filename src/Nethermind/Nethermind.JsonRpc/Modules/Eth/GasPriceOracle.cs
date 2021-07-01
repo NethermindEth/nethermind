@@ -31,9 +31,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _baseFee = baseFee ?? GasPriceConfig.DefaultBaseFee;
         }
 
-
-
-
         public ResultWrapper<UInt256?> GasPriceEstimate(IBlockFinder blockFinder)
         {
             if (_blockFinder == null)
@@ -133,6 +130,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             return headBlock!.Hash == _lastHeadBlock!.Hash;
         }
+        
         private void SetDefaultGasPrice(long headBlockNumber)
         {
             Transaction[] transactions;
@@ -215,7 +213,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return gasPrices;
         }
 
-
         private Block? GetHeadBlock()
         {
             return _blockFinder!.FindHeadBlock();
@@ -264,7 +261,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return transaction.CalculateEffectiveGasPrice(_eip1559Enabled, _baseFee);
         }
 
-
         private bool TransactionCanBeAdded(Transaction transaction, bool eip1559Enabled)
         {
             bool res = IsAboveMinPrice(transaction) && Eip1559ModeCompatible(transaction, eip1559Enabled);
@@ -292,6 +288,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             return !transaction.IsEip1559;
         }
+        
         private bool AddTxAndReturnIfMoreThanOneTxAdded(Block block, ref SortedSet<UInt256> sortedSet)
         {
             Transaction[] transactionsInBlock = block.Transactions;
@@ -369,8 +366,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             _lastGasPrice = lastGasPrice;
         }
-
-
+        
         private static int GetRoundedIndexAtPercentile(SortedSet<UInt256> gasPricesSetHandlingDuplicates)
         {
             int lastIndex = gasPricesSetHandlingDuplicates.Count - 1;
@@ -378,8 +374,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
             int roundedIndex = (int) Math.Round(percentileOfLastIndex);
             return roundedIndex;
         }
-
-
 
         private void SetLastHeadBlock(Block? headBlock)
         {
