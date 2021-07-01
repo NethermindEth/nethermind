@@ -44,11 +44,11 @@ namespace Nethermind.Blockchain.FullPruning
             IDriveInfo drive = _fileSystem.DriveInfo.FromDriveName(driveName);
             if (drive.AvailableFreeSpace < _threshold)
             {
-                Prune?.Invoke(this, EventArgs.Empty);
+                Prune?.Invoke(this, new PruningEventArgs());
             }
         }
 
-        public event EventHandler? Prune;
+        public event EventHandler<PruningEventArgs>? Prune;
         
         public void Dispose()
         {

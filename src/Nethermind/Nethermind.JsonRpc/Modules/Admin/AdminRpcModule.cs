@@ -133,5 +133,10 @@ namespace Nethermind.JsonRpc.Modules.Admin
         {
             return ResultWrapper<bool>.Success(true);
         }
+
+        public ResultWrapper<bool> admin_prune()
+        {
+            throw new NotImplementedException();
+        }
     }
 }

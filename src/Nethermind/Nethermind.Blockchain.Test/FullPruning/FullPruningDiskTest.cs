@@ -107,9 +107,9 @@ namespace Nethermind.Blockchain.Test.FullPruning
                 {
                 }
 
-                protected override void RunPruning(IPruningContext pruning, Keccak stateRoot, IPruningContext? oldPruning)
+                protected override void RunPruning(IPruningContext pruning, Keccak stateRoot)
                 {
-                    base.RunPruning(pruning, stateRoot, oldPruning);
+                    base.RunPruning(pruning, stateRoot);
                     WaitHandle.Set();
                 }
             }

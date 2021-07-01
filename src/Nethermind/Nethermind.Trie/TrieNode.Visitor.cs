@@ -80,7 +80,7 @@ namespace Nethermind.Trie
                         }
 
                         ParallelOptions options = trieVisitContext.MaxDegreeOfParallelism == 0 ? _defaultOptions : new ParallelOptions() {MaxDegreeOfParallelism = trieVisitContext.MaxDegreeOfParallelism % (BranchesCount + 1)};
-                        Parallel.For(0, BranchesCount, i => VisitChild(i, children[i], nodeResolver, visitor, GetChildContext(trieVisitContext)));
+                        Parallel.For(0, BranchesCount, options, i => VisitChild(i, children[i], nodeResolver, visitor, GetChildContext(trieVisitContext)));
                     }
                     else
                     {

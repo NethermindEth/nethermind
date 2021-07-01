@@ -21,6 +21,23 @@ namespace Nethermind.Blockchain.FullPruning
 {
     public interface IPruningTrigger
     {
-        event EventHandler Prune;
+        event EventHandler<PruningEventArgs> Prune;
+    }
+
+    public class PruningEventArgs : EventArgs
+    {
+        public PruningStatus Status { get; set; }
+        
+        public PruningEventArgs()
+        {
+            
+        }
+    }
+
+    public enum PruningStatus
+    {
+        Disabled,
+        AlreadyInProgress,
+        Starting,
     }
 }
