@@ -38,7 +38,7 @@ public partial class DslGrammarParser : Parser {
 	public const int
 		BOOLEAN_OPERATOR=1, ARITHMETIC_SYMBOL=2, SOURCE=3, WATCH=4, WHERE=5, PUBLISH=6, 
 		AND=7, OR=8, CONTAINS=9, IS=10, NOT=11, PUBLISH_VALUE=12, WEBSOCKETS=13, 
-		LOG_PUBLISHER=14, WORD=15, BYTECODE=16, DIGIT=17, ADDRESS=18, WS=19;
+		TELEGRAM=14, WORD=15, BYTECODE=16, DIGIT=17, ADDRESS=18, WS=19;
 	public const int
 		RULE_tree = 0, RULE_expression = 1, RULE_sourceExpression = 2, RULE_watchExpression = 3, 
 		RULE_whereExpression = 4, RULE_publishExpression = 5, RULE_condition = 6, 
@@ -55,7 +55,7 @@ public partial class DslGrammarParser : Parser {
 	private static readonly string[] _SymbolicNames = {
 		null, "BOOLEAN_OPERATOR", "ARITHMETIC_SYMBOL", "SOURCE", "WATCH", "WHERE", 
 		"PUBLISH", "AND", "OR", "CONTAINS", "IS", "NOT", "PUBLISH_VALUE", "WEBSOCKETS", 
-		"LOG_PUBLISHER", "WORD", "BYTECODE", "DIGIT", "ADDRESS", "WS"
+		"TELEGRAM", "WORD", "BYTECODE", "DIGIT", "ADDRESS", "WS"
 	};
 	public static readonly IVocabulary DefaultVocabulary = new Vocabulary(_LiteralNames, _SymbolicNames);
 
