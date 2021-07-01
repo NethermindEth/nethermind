@@ -41,6 +41,7 @@ using FluentAssertions;
 using Google.Protobuf.WellKnownTypes;
 using Nethermind.Evm;
 using Nethermind.Mev.Data;
+using Nethermind.Specs.Forks;
 
 namespace Nethermind.Mev.Test
 
@@ -270,6 +271,33 @@ namespace Nethermind.Mev.Test
 
             GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] {bundleTx}));
         }
+        
+        [Test]
+        public async Task Should_pick_bundle_if_better_than_pool_tx_in_London()
+        {
+            var chain = await CreateChain(1, London.Instance);
+            chain.GasLimitCalculator.GasLimit = GasCostOf.Transaction;
+
+            Transaction poolTx = Build.A.Transaction
+                .WithType(TxType.EIP1559)
+                .WithGasLimit(GasCostOf.Transaction)
+                .WithMaxFeePerGas(100ul)
+                .WithMaxPriorityFeePerGas(5ul)
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            
+            BundleTransaction bundleTx = Build.A.TypedTransaction<BundleTransaction>()
+                .WithType(TxType.EIP1559)
+                .WithGasLimit(GasCostOf.Transaction)
+                .WithMaxFeePerGas(100ul)
+                .WithMaxPriorityFeePerGas(10ul)
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+
+            SuccessfullySendBundle(chain, 1, bundleTx);
+
+            await chain.AddBlock(true, poolTx);
+
+            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { poolTx }));
+        }
 
         [Test]
         public async Task Should_pick_pool_tx_if_better_than_bundle()
@@ -277,7 +305,7 @@ namespace Nethermind.Mev.Test
             var chain = await CreateChain(3);
             chain.GasLimitCalculator.GasLimit = GasCostOf.Transaction;
 
-            BundleTransaction poolTx = Build.A.TypedTransaction<BundleTransaction>()
+            Transaction poolTx = Build.A.Transaction
                 .WithGasLimit(GasCostOf.Transaction)
                 .WithGasPrice(100ul)
                 .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
@@ -286,6 +314,33 @@ namespace Nethermind.Mev.Test
                 .WithGasLimit(GasCostOf.Transaction)
                 .WithGasPrice(50ul)
                 .SignedAndResolved(TestItem.PrivateKeyC).TestObject;
+
+            SuccessfullySendBundle(chain, 1, bundleTx);
+
+            await chain.AddBlock(true, poolTx);
+
+            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { poolTx }));
+        }
+        
+        [Test]
+        public async Task Should_pick_pool_tx_if_better_than_bundle_in_London()
+        {
+            var chain = await CreateChain(3, London.Instance);
+            chain.GasLimitCalculator.GasLimit = GasCostOf.Transaction;
+
+            Transaction poolTx = Build.A.Transaction
+                .WithType(TxType.EIP1559)
+                .WithGasLimit(GasCostOf.Transaction)
+                .WithMaxFeePerGas(100ul)
+                .WithMaxPriorityFeePerGas(10ul)
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            
+            BundleTransaction bundleTx = Build.A.TypedTransaction<BundleTransaction>()
+                .WithType(TxType.EIP1559)
+                .WithGasLimit(GasCostOf.Transaction)
+                .WithMaxFeePerGas(50ul)
+                .WithMaxPriorityFeePerGas(5ul)
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
 
             SuccessfullySendBundle(chain, 1, bundleTx);
 
@@ -503,6 +558,51 @@ namespace Nethermind.Mev.Test
             
             GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { expensiveBundleTx, middleBundleTx, poolAndBundleTx }));
         }
+        
+        [Test]
+        public async Task Should_not_include_bundles_with_txs_below_BaseFee_in_London()
+        {
+            var chain = await CreateChain(2, London.Instance);
+            chain.GasLimitCalculator.GasLimit = 10_000_000;
+            //chain.BlockTree.Head!.Header.BaseFeePerGas = 150;
+            
+            BundleTransaction expensiveBundleTx = Build.A.TypedTransaction<BundleTransaction>()
+                .WithType(TxType.EIP1559)
+                .WithGasLimit(GasCostOf.Transaction)
+                .WithMaxFeePerGas(155ul)
+                .WithMaxPriorityFeePerGas(5ul)
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+
+            BundleTransaction bundleTx = Build.A.TypedTransaction<BundleTransaction>()
+                .WithType(TxType.EIP1559)
+                .WithGasLimit(GasCostOf.Transaction)
+                .WithMaxFeePerGas(160ul)
+                .WithMaxPriorityFeePerGas(1ul)
+                .SignedAndResolved(TestItem.PrivateKeyC).TestObject;
+            
+            BundleTransaction cheapTx = Build.A.TypedTransaction<BundleTransaction>()
+                .WithType(TxType.EIP1559)
+                .WithGasLimit(GasCostOf.Transaction)
+                .WithMaxFeePerGas(130ul)
+                .WithMaxPriorityFeePerGas(10ul)
+                .WithNonce(1)
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            
+            BundleTransaction cheaperTx = Build.A.TypedTransaction<BundleTransaction>()
+                .WithType(TxType.EIP1559)
+                .WithGasLimit(GasCostOf.Transaction)
+                .WithMaxFeePerGas(120ul)
+                .WithMaxPriorityFeePerGas(30ul)
+                .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+            
+            SuccessfullySendBundle(chain, 1, expensiveBundleTx, cheapTx);
+            SuccessfullySendBundle(chain, 1, bundleTx);
+            SuccessfullySendBundle(chain, 1, cheaperTx);
+            
+            await chain.AddBlock(true);
+            
+            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { bundleTx }));
+        }
 
         [Test]
         public async Task Should_accept_reverting_bundle_with_RevertingTxHashes()
@@ -658,7 +758,6 @@ namespace Nethermind.Mev.Test
         public async Task Should_choose_first_tx_that_was_sent_to_include_if_bundles_have_same_gas_price()
         {
             var chain = await CreateChain(1);
-            // space for 4 simple transactions
             chain.GasLimitCalculator.GasLimit = 21000;
             
             BundleTransaction bundleTx1 = Build.A.TypedTransaction<BundleTransaction>()
@@ -683,7 +782,6 @@ namespace Nethermind.Mev.Test
         public async Task Should_not_include_same_transaction_in_different_bundles_twice()
         {
             var chain = await CreateChain(3);
-            // space for 4 simple transactions
             chain.GasLimitCalculator.GasLimit = 10_000_000;
             
             // ordered by gas
@@ -714,7 +812,6 @@ namespace Nethermind.Mev.Test
         public async Task Should_include_identical_bundles_only_once()
         {
             var chain = await CreateChain(3);
-            // space for 4 simple transactions
             chain.GasLimitCalculator.GasLimit = 10_000_000;
             
             // ordered by gas
