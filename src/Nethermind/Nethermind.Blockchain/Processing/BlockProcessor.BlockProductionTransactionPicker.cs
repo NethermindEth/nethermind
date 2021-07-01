@@ -41,31 +41,12 @@ namespace Nethermind.Blockchain.Processing
 
             public TxCheckEventArgs CanAddTransaction(Block block, Transaction currentTx, IReadOnlySet<Transaction> transactionsInBlock, IStateProvider stateProvider)
             {
-                bool HasEnoughFounds(Transaction transaction, UInt256 senderBalance, TxCheckEventArgs e)
-                {
-                    IReleaseSpec releaseSpec = _specProvider.GetSpec(block.Number);
-                    bool eip1559Enabled = releaseSpec.IsEip1559Enabled; 
-                    UInt256 transactionPotentialCost = transaction.CalculateTransactionPotentialCost(eip1559Enabled, block.BaseFeePerGas);
-
-                    if (senderBalance < transactionPotentialCost)
-                    {
-                        e.Set(TxAction.Skip, $"Transaction cost ({transactionPotentialCost}) is higher than sender balance ({senderBalance})");
-                        return false;
-                    }
-
-                    if (transaction.IsEip1559 && !transaction.IsServiceTransaction && senderBalance < (UInt256)transaction.GasLimit * transaction.MaxFeePerGas)
-                    {
-                        e.Set(TxAction.Skip, $"MaxFeePerGas({transaction.MaxFeePerGas}) times GasLimit {transaction.GasLimit} is higher than sender balance ({senderBalance})");
-                        return false;
-                    }
-                    
-                    return true;
-                }
-                
                 TxCheckEventArgs args = new(transactionsInBlock.Count, currentTx, block, transactionsInBlock);
                 
-                // No more gas available in block
                 long gasRemaining = block.Header.GasLimit - block.GasUsed;
+                
+                // No more gas available in block for any transactions,
+                // the only case we have to really stop
                 if (GasCostOf.Transaction > gasRemaining)
                 {
                     return args.Set(TxAction.Stop, "Block full");
@@ -76,15 +57,14 @@ namespace Nethermind.Blockchain.Processing
                     return args.Set(TxAction.Skip, "Null sender");
                 }
 
-                if (transactionsInBlock.Contains(currentTx))
-                {
-                    return args.Set(TxAction.Skip, "Transaction already in block");
-                }
-
-                // No gas available in block for tx
                 if (currentTx.GasLimit > gasRemaining)
                 {
                     return args.Set(TxAction.Skip, $"Not enough gas in block, gas limit {currentTx.GasLimit} > {gasRemaining}");
+                }
+                
+                if (transactionsInBlock.Contains(currentTx))
+                {
+                    return args.Set(TxAction.Skip, "Transaction already in block");
                 }
 
                 UInt256 expectedNonce = stateProvider.GetNonce(currentTx.SenderAddress);
@@ -94,13 +74,34 @@ namespace Nethermind.Blockchain.Processing
                 }
 
                 UInt256 balance = stateProvider.GetBalance(currentTx.SenderAddress);
-                if (!HasEnoughFounds(currentTx, balance, args))
+                if (!HasEnoughFounds(currentTx, balance, args, block))
                 {
                     return args;
                 }
 
                 CheckTransaction?.Invoke(this, args);
                 return args;
+            }
+
+            private bool HasEnoughFounds(Transaction transaction, UInt256 senderBalance, TxCheckEventArgs e, Block block)
+            {
+                IReleaseSpec releaseSpec = _specProvider.GetSpec(block.Number);
+                bool eip1559Enabled = releaseSpec.IsEip1559Enabled;
+                UInt256 transactionPotentialCost = transaction.CalculateTransactionPotentialCost(eip1559Enabled, block.BaseFeePerGas);
+
+                if (senderBalance < transactionPotentialCost)
+                {
+                    e.Set(TxAction.Skip, $"Transaction cost ({transactionPotentialCost}) is higher than sender balance ({senderBalance})");
+                    return false;
+                }
+
+                if (transaction.IsEip1559 && !transaction.IsServiceTransaction && senderBalance < (UInt256)transaction.GasLimit * transaction.MaxFeePerGas)
+                {
+                    e.Set(TxAction.Skip, $"MaxFeePerGas ({transaction.MaxFeePerGas}) times GasLimit {transaction.GasLimit} is higher than sender balance ({senderBalance})");
+                    return false;
+                }
+
+                return true;
             }
         }
         
