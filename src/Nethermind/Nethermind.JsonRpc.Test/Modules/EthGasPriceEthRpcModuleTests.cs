@@ -94,7 +94,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
-        public void Eth_gas_price_BlockWithMoreThanThreeTxs_OnlyAddsThreeGasPriceTxs()
+        public void Eth_gasPrice_BlockWithMoreThanThreeTxs_OnlyAddsThreeGasPriceTxs()
         {
             Block[] blockArray = GetBlocksFromKeyValuePairs(
                 BlockNumberAndTxStringsKeyValuePair(0, CollectTxStrings(
@@ -112,8 +112,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             gasPriceList.Count.Should().Be(3);
         }
         
-       [Test] 
-        public void Eth_gas_price_BlocksWithMoreThanThreeTxs_OnlyAddsThreeLowestEffectiveGasPriceTxs()
+        [Test] 
+        public void Eth_gasPrice_BlocksWithMoreThanThreeTxs_OnlyAddsThreeLowestEffectiveGasPriceTxs()
         {
             Block[] blockArray = GetBlocksFromKeyValuePairs(
                 BlockNumberAndTxStringsKeyValuePair(0, CollectTxStrings(
@@ -297,8 +297,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             BlockTreeSetup blockTreeSetup = new BlockTreeSetup(blocks: blocks, blockLimit: 4);
             ResultWrapper<UInt256?> resultWrapper = blockTreeSetup.EthRpcModule.eth_gasPrice();
             
-            resultWrapper.Data.Should().Be((UInt256?) 6); 
-            //Tx Gas Prices: 3,4,5,6,7,8 Index: (6-1) * 3/5 = 3, Gas Price: 6
+            resultWrapper.Result.Should().Be(Result.Success); 
         }
         
         [Test]
@@ -323,9 +322,10 @@ namespace Nethermind.JsonRpc.Test.Modules
             ); 
             BlockTreeSetup blockTreeSetup = new BlockTreeSetup(blocks: blocks, blockLimit: 2);
             
-            ResultWrapper<UInt256?> resultWrapper = blockTreeSetup.EthRpcModule.eth_gasPrice();
-            resultWrapper.Data.Should().Be((UInt256?) 5); 
-            //Tx Gas Prices: 3,4,5,6, Index: (4-1) * 3/5 rounds to 2, Gas Price: 5
+            blockTreeSetup.EthRpcModule.eth_gasPrice();
+            
+            List<UInt256> expected = new List<UInt256>{3, 4, 5, 6};
+            blockTreeSetup.GasPriceOracle.TxGasPriceList.Should().Equal(expected);
         }
         
         [Test]
