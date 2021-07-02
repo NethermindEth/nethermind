@@ -37,6 +37,13 @@ namespace Nethermind.Dsl.JsonRpc
                             : ResultWrapper<bool>.Fail("Adding new dsl script to the pool, failed.");
         }
 
+        public ResultWrapper<string> dsl_inspectScript(int index)
+        {
+            var interpreter = _interpreters.GetValueOrDefault(index);
+
+            return interpreter is null ? ResultWrapper<string>.Fail("Couldn't find pipeline with given ID") : ResultWrapper<string>.Success(interpreter.Script);
+        }
+
         private int AddInterpreter(Interpreter interpreter)
         {
             if(_interpreters?.Count == 0)

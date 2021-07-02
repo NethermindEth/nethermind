@@ -35,6 +35,8 @@ namespace Nethermind.Dsl.ANTLR
         private readonly PendingTransactionElementsBuilder _pendingTransactionElementsBuilder;
         private readonly EventElementsBuilder _eventElementsBuilder;
         
+        public string Script { get; }
+        
         //pipelines for each flow
         public IPipeline BlocksPipeline { get; private set; }
         public IPipeline TransactionsPipeline { get; private set; }
@@ -49,6 +51,7 @@ namespace Nethermind.Dsl.ANTLR
             PendingTransactionElementsBuilder pendingTransactionElementsBuilder = null,
             EventElementsBuilder eventElementsBuilder = null)
         {
+            Script = script;
             _api = api ?? throw new ArgumentNullException(nameof(api));
             _logger = api.LogManager.GetClassLogger();
             _blockElementsBuilder = blockElementsBuilder ?? new BlockElementsBuilder(_api.MainBlockProcessor);
@@ -56,7 +59,7 @@ namespace Nethermind.Dsl.ANTLR
             _pendingTransactionElementsBuilder = pendingTransactionElementsBuilder ?? new PendingTransactionElementsBuilder(_api.TxPool);
             _eventElementsBuilder = eventElementsBuilder ?? new EventElementsBuilder(_api.MainBlockProcessor);
 
-            var inputStream = new AntlrInputStream(script);
+            var inputStream = new AntlrInputStream(Script);
             var lexer = new DslGrammarLexer(inputStream);
             var tokens = new CommonTokenStream(lexer);
             var parser = new DslGrammarParser(tokens)
