@@ -13,14 +13,14 @@ namespace Nethermind.JsonRpc.Modules.Eth
         public List<UInt256> TxGasPriceList { get; private set; }
         private Block? _lastHeadBlock;
         private UInt256? _lastGasPrice;
-        private readonly UInt256? _ignoreUnder;
         private IBlockFinder? _blockFinder;
+        private EarlyExitManager? _earlyExitManager;
+        private bool _eip1559Enabled;
+        private readonly UInt256? _ignoreUnder;
         private readonly int _blockLimit;
         private readonly int _softTxThreshold;
-        private bool _eip1559Enabled;
         private readonly UInt256 _baseFee;
         private readonly ValidTxInsertionManager _addValidTx;
-        private EarlyExitManager? _earlyExitManager;
 
         public GasPriceOracle(bool eip1559Enabled = false, UInt256? ignoreUnder = null, 
             int? blockLimit = null, UInt256? baseFee = null)
