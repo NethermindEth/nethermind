@@ -60,9 +60,9 @@ namespace Nethermind.Mev.Test
 {
     public partial class MevRpcModuleTests
     {
-        public static Task<TestMevRpcBlockchain> CreateChain(int maxMergedBundles, IReleaseSpec? releaseSpec = null)
+        public static Task<TestMevRpcBlockchain> CreateChain(int maxMergedBundles, IReleaseSpec? releaseSpec = null, UInt256? initialBaseFeePerGas = null)
         {
-            TestMevRpcBlockchain testMevRpcBlockchain = new(maxMergedBundles);
+            TestMevRpcBlockchain testMevRpcBlockchain = new(maxMergedBundles, initialBaseFeePerGas);
             TestSpecProvider testSpecProvider = releaseSpec is not null ? new TestSpecProvider(releaseSpec) : new TestSpecProvider(Berlin.Instance);
             testSpecProvider.ChainId = 1;
             return TestRpcBlockchain.ForTest(testMevRpcBlockchain).Build(testSpecProvider);
@@ -75,13 +75,14 @@ namespace Nethermind.Mev.Test
             private ITracerFactory _tracerFactory = null!;
             public TestBundlePool BundlePool { get; private set; } = null!;
 
-            public TestMevRpcBlockchain(int maxMergedBundles)
+            public TestMevRpcBlockchain(int maxMergedBundles, UInt256? initialBaseFeePerGas)
             {
                 _maxMergedBundles = maxMergedBundles;
                 Signer = new Eth2Signer(MinerAddress);
                 GenesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.Genesis
                     .WithTimestamp(UInt256.One)
-                    .WithGasLimit(GasLimitCalculator.GasLimit);
+                    .WithGasLimit(GasLimitCalculator.GasLimit)
+                    .WithBaseFeePerGas(initialBaseFeePerGas ?? 0);
             }
             
             public IMevRpcModule MevRpcModule { get; set; } = Substitute.For<IMevRpcModule>();
@@ -165,7 +166,7 @@ namespace Nethermind.Mev.Test
                     LogManager,
                     ProcessingOptions.ProducingBlock);
                 
-                TxBundleSimulator txBundleSimulator = new(_tracerFactory, GasLimitCalculator, Timestamper, TxPool, Signer);
+                TxBundleSimulator txBundleSimulator = new(_tracerFactory, GasLimitCalculator, Timestamper, TxPool, SpecProvider, Signer);
                 BundlePool = new TestBundlePool(BlockTree, txBundleSimulator, Timestamper, _mevConfig, LogManager);
 
                 return blockProcessor;
@@ -179,6 +180,7 @@ namespace Nethermind.Mev.Test
                     BlockFinder,
                     StateReader,
                     _tracerFactory,
+                    SpecProvider,
                     Signer,
                     SpecProvider.ChainId);
                 
@@ -248,13 +250,6 @@ namespace Nethermind.Mev.Test
                 resultOfBundle.GetResult().ResultType.Should().NotBe(ResultType.Failure);
                 resultOfBundle.GetData().Should().Be(true);
                 return new MevBundle(blockNumber, txs);
-            }
-
-            protected override Block GetGenesisBlock()
-            {
-                Block genesisBlock = base.GetGenesisBlock();
-                genesisBlock.Header.BaseFeePerGas = 10;
-                return genesisBlock;
             }
         }
     }

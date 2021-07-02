@@ -25,6 +25,7 @@ using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
@@ -40,7 +41,7 @@ namespace Nethermind.Mev.Execution
         private readonly ITxPool _txPool;
         private long _gasLimit;
 
-        public TxBundleSimulator(ITracerFactory tracerFactory, IGasLimitCalculator gasLimitCalculator, ITimestamper timestamper, ITxPool txPool, ISigner? signer) : base(tracerFactory, signer)
+        public TxBundleSimulator(ITracerFactory tracerFactory, IGasLimitCalculator gasLimitCalculator, ITimestamper timestamper, ITxPool txPool, ISpecProvider specProvider, ISigner? signer) : base(tracerFactory, specProvider, signer)
         {
             _gasLimitCalculator = gasLimitCalculator;
             _timestamper = timestamper;
@@ -182,7 +183,7 @@ namespace Nethermind.Mev.Execution
                     
                     TransactionResults[_tracer.Index] = 
                         _tracer.Success || 
-                        (tx is BundleTransaction {CanRevert: true} && _tracer.Error != "revert");
+                        (tx is BundleTransaction {CanRevert: true} && _tracer.Error == "revert");
                 }
 
                 if (GasUsed > _gasLimit)

@@ -44,6 +44,7 @@ namespace Nethermind.Mev
         private readonly IBlockTree _blockTree;
         private readonly IStateReader _stateReader;
         private readonly ITracerFactory _tracerFactory;
+        private readonly ISpecProvider _specProvider;
         private readonly ISigner? _signer;
         private readonly ulong _chainId;
 
@@ -54,6 +55,7 @@ namespace Nethermind.Mev
             IBlockTree blockTree,
             IStateReader stateReader,
             ITracerFactory tracerFactory,
+            ISpecProvider specProvider,
             ISigner? signer,
             ulong chainId)
         {
@@ -63,6 +65,7 @@ namespace Nethermind.Mev
             _blockTree = blockTree;
             _stateReader = stateReader;
             _tracerFactory = tracerFactory;
+            _specProvider = specProvider;
             _signer = signer;
             _chainId = chainId;
         }
@@ -75,6 +78,7 @@ namespace Nethermind.Mev
                 _blockTree,
                 _stateReader, 
                 _tracerFactory,
+                _specProvider,
                 _signer,
                 _chainId);
         }

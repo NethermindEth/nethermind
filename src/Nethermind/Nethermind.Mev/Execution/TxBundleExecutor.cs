@@ -22,22 +22,27 @@ using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
 using Nethermind.Facade;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Mev.Data;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 
 namespace Nethermind.Mev.Execution
 {
     public abstract class TxBundleExecutor<TResult, TBlockTracer> where TBlockTracer : IBlockTracer
     {
         private readonly ITracerFactory _tracerFactory;
+        private readonly ISpecProvider _specProvider;
         private readonly ISigner? _signer;
 
-        protected TxBundleExecutor(ITracerFactory tracerFactory, ISigner? signer)
+        protected TxBundleExecutor(ITracerFactory tracerFactory, ISpecProvider specProvider, ISigner? signer)
         {
             _tracerFactory = tracerFactory;
+            _specProvider = specProvider;
             _signer = signer;
         }
             
@@ -66,6 +71,8 @@ namespace Nethermind.Mev.Execution
             {
                 TotalDifficulty = parent.TotalDifficulty + parent.Difficulty
             };
+
+            header.BaseFeePerGas = BaseFeeCalculator.Calculate(parent, _specProvider.GetSpec(header.Number));
 
             return new Block(header, bundle.Transactions, Array.Empty<BlockHeader>());
         }

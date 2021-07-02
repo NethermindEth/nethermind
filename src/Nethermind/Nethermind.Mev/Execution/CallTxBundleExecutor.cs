@@ -19,6 +19,7 @@ using System.Linq;
 using System.Text;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus;
+using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Mev.Data;
@@ -28,7 +29,7 @@ namespace Nethermind.Mev.Execution
     public class CallTxBundleExecutor : TxBundleExecutor<TxsResults, BlockCallOutputTracer>
     {
         
-        public CallTxBundleExecutor(ITracerFactory tracer, ISigner? signer) : base(tracer, signer)
+        public CallTxBundleExecutor(ITracerFactory tracer, ISpecProvider specProvider, ISigner? signer) : base(tracer, specProvider, signer)
         {
         }
 
