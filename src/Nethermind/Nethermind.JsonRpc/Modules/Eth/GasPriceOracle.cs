@@ -169,8 +169,5 @@ namespace Nethermind.JsonRpc.Modules.Eth
             int roundedIndex = (int) Math.Round(percentileOfLastIndex);
             return roundedIndex;
         }
-
-
-        
     }
 }
