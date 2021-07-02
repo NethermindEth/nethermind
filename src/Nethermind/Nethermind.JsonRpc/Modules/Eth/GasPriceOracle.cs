@@ -12,7 +12,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         public UInt256? DefaultGasPrice { get; private set; }
         public List<UInt256> TxGasPriceList { get; private set; }
         private Block? _lastHeadBlock;
-        private UInt256? _lastGasPrice;
+        private UInt256? LastGasPrice { get; set; }
         private IBlockFinder? _blockFinder;
         private EarlyExitManager? _earlyExitManager;
         private bool _eip1559Enabled;
@@ -20,7 +20,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly int _blockLimit;
         private readonly int _softTxThreshold;
         private readonly UInt256 _baseFee;
-        private readonly ValidTxInsertionManager _addValidTx;
+        private readonly ValidTxInsertionManager _validTxInsertionManager;
 
         public GasPriceOracle(bool eip1559Enabled = false, UInt256? ignoreUnder = null, 
             int? blockLimit = null, UInt256? baseFee = null)
@@ -31,7 +31,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _blockLimit = blockLimit ?? GasPriceConfig.DefaultBlocksLimit;
             _softTxThreshold = GasPriceConfig.SoftTxLimit;
             _baseFee = baseFee ?? GasPriceConfig.DefaultBaseFee;
-            _addValidTx = new ValidTxInsertionManager(this, _ignoreUnder, _eip1559Enabled, _baseFee);
+            _validTxInsertionManager = new ValidTxInsertionManager(this, _ignoreUnder, _eip1559Enabled, _baseFee);
             _earlyExitManager = null;
         }
 
@@ -42,7 +42,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
             }
 
-            _earlyExitManager = new EarlyExitManager(_blockFinder, _lastGasPrice);
+            _earlyExitManager = new EarlyExitManager(_blockFinder, LastGasPrice);
             
             Tuple<bool, ResultWrapper<UInt256?>> earlyExitResult = _earlyExitManager.EarlyExitResult(ref _lastHeadBlock);
             if (ExitingEarly(earlyExitResult))
@@ -58,9 +58,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
             
             UInt256? gasPriceEstimate = GasPriceAtPercentile();
 
-            gasPriceEstimate = FindMinOfThisAndMaxPrice(gasPriceEstimate);
+            gasPriceEstimate = UInt256.Min((UInt256) gasPriceEstimate!, GasPriceConfig._maxGasPrice);
 
-            SetLastGasPrice(gasPriceEstimate);
+            LastGasPrice = gasPriceEstimate;
             
             return ResultWrapper<UInt256?>.Success((UInt256) gasPriceEstimate!);
         }
@@ -72,7 +72,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         private void SetDefaultGasPrice()
         {
-            DefaultGasPrice = _lastGasPrice ?? GasPriceConfig.DefaultGasPrice;
+            DefaultGasPrice = LastGasPrice ?? GasPriceConfig.DefaultGasPrice;
         }
         
         private void AddTxGasPricesToList()
@@ -84,7 +84,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 Block? block = FindBlockAtNumber(currentBlockNumber);
                 if (BlockExists(block))
                 {
-                    int txsAdded = _addValidTx.AddValidTxAndReturnCount(block!);
+                    int txsAdded = _validTxInsertionManager.AddValidTxAndReturnCount(block!);
                     if (txsAdded > 1 || BonusBlockLimitReached(blocksToGoBack))
                     {
                         blocksToGoBack--;
@@ -137,35 +137,15 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             int roundedIndex = GetRoundedIndexAtPercentile(TxGasPriceList.Count);
 
-            UInt256? gasPriceEstimate = GetElementAtIndex(TxGasPriceList, roundedIndex);
-
-            return gasPriceEstimate;
-        }
-        
-        private static UInt256 GetElementAtIndex(List<UInt256> txGasPriceList, int roundedIndex)
-        {
-            return txGasPriceList[roundedIndex];
-        }
-        
-        private static UInt256? FindMinOfThisAndMaxPrice(UInt256? gasPriceEstimate)
-        {
-            if (gasPriceEstimate > GasPriceConfig._maxGasPrice)
-            {
-                gasPriceEstimate = GasPriceConfig._maxGasPrice;
-            }
+            UInt256? gasPriceEstimate = TxGasPriceList[roundedIndex];
 
             return gasPriceEstimate;
         }
 
-        private void SetLastGasPrice(UInt256? lastGasPrice)
-        {
-            _lastGasPrice = lastGasPrice;
-        }
-        
         private static int GetRoundedIndexAtPercentile(int count)
         {
             int lastIndex = count - 1;
-            float percentileOfLastIndex = lastIndex * ((float)GasPriceConfig.Percentile / 100);
+            float percentileOfLastIndex = lastIndex * ((float)GasPriceConfig.PercentileOfSortedTxs / 100);
             int roundedIndex = (int) Math.Round(percentileOfLastIndex);
             return roundedIndex;
         }

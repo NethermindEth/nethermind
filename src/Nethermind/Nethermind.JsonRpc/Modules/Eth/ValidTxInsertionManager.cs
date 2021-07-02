@@ -22,16 +22,14 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public int AddValidTxAndReturnCount(Block block)
         {
-            Transaction[] transactionsInBlock = block.Transactions;
-            int countTxAdded;
-
-            if (TransactionsExistIn(transactionsInBlock))
+            if (TransactionsExistIn(block))
             {
-                countTxAdded = AddTxAndReturnCountAdded(transactionsInBlock, block);
+                Transaction[] transactionsInBlock = block.Transactions;
+                int countTxAdded = AddTxAndReturnCountAdded(transactionsInBlock, block);
 
                 if (countTxAdded == 0)
                 {
-                    AddDefaultPriceTo();
+                    AddDefaultPriceToTxList();
                     countTxAdded++;
                 }
 
@@ -39,13 +37,14 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
             else
             {
-                AddDefaultPriceTo();
+                AddDefaultPriceToTxList();
                 return 1;
             }
         }
 
-        private static bool TransactionsExistIn(Transaction[] transactions)
+        private static bool TransactionsExistIn(Block block)
         {
+            Transaction[] transactions = block.Transactions;
             return transactions.Length > 0;
         }
 
@@ -114,7 +113,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return block.Beneficiary != transaction.SenderAddress;
         }
 
-        private void AddDefaultPriceTo()
+        private void AddDefaultPriceToTxList()
         {
             _gasPriceOracle.TxGasPriceList.Add((UInt256)_gasPriceOracle.DefaultGasPrice!);
         }
