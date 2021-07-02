@@ -19,7 +19,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly int _softTxThreshold;
         private bool _eip1559Enabled;
         private readonly UInt256 _baseFee;
-        private readonly ValidTxAdder _addValidTx;
+        private readonly ValidTxInsertionManager _addValidTx;
+        private EarlyExitManager? _earlyExitManager;
 
         public GasPriceOracle(bool eip1559Enabled = false, UInt256? ignoreUnder = null, 
             int? blockLimit = null, UInt256? baseFee = null)
@@ -30,7 +31,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _blockLimit = blockLimit ?? GasPriceConfig.DefaultBlocksLimit;
             _softTxThreshold = GasPriceConfig.SoftTxLimit;
             _baseFee = baseFee ?? GasPriceConfig.DefaultBaseFee;
-            _addValidTx = new ValidTxAdder(this, _ignoreUnder, _eip1559Enabled, _baseFee);
+            _addValidTx = new ValidTxInsertionManager(this, _ignoreUnder, _eip1559Enabled, _baseFee);
+            _earlyExitManager = null;
         }
 
         public ResultWrapper<UInt256?> GasPriceEstimate(IBlockFinder blockFinder)
@@ -40,7 +42,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
             }
 
-            Tuple<bool, ResultWrapper<UInt256?>> earlyExitResult = EarlyExitResult();
+            _earlyExitManager = new EarlyExitManager(_blockFinder, _lastGasPrice);
+            
+            Tuple<bool, ResultWrapper<UInt256?>> earlyExitResult = _earlyExitManager.EarlyExitResult(ref _lastHeadBlock);
             if (ExitingEarly(earlyExitResult))
             {
                 return earlyExitResult.Item2;
@@ -66,81 +70,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return earlyExitResult.Item1 == true;
         }
 
-        private Tuple<bool, ResultWrapper<UInt256?>> EarlyExitResult()
-        {
-            Block? headBlock = GetHeadBlock();
-            Block? genesisBlock = GetGenesisBlock();
-            ResultWrapper<UInt256?> resultWrapper;
-
-            resultWrapper = HandleMissingHeadOrGenesisBlockCase(headBlock, genesisBlock);
-            if (ResultWrapperWasNotSuccessful(resultWrapper))
-            {
-                return BoolAndWrapperTuple(true, resultWrapper);
-            }
-
-            resultWrapper = HandleNoHeadBlockChange(headBlock);
-            if (ResultWrapperWasSuccessful(resultWrapper))
-            {
-                return BoolAndWrapperTuple(true, resultWrapper);
-            }
-            SetLastHeadBlock(headBlock);
-            return BoolAndWrapperTuple(false, resultWrapper);
-        }
-        
-        private ResultWrapper<UInt256?> HandleMissingHeadOrGenesisBlockCase(Block? headBlock, Block? genesisBlock)
-        {
-            if (BlockDoesNotExist(headBlock))
-            {
-                return ResultWrapper<UInt256?>.Fail("The head block had a null value.");
-            }
-            else if (BlockDoesNotExist(genesisBlock))
-            {
-                return ResultWrapper<UInt256?>.Fail("The genesis block had a null value.");
-            }
-            else
-            {
-                return ResultWrapper<UInt256?>.Success(UInt256.Zero);
-            }
-        }
-
-        private static bool BlockDoesNotExist(Block? block)
-        {
-            return block == null;
-        }
-        
-        private ResultWrapper<UInt256?> HandleNoHeadBlockChange(Block? headBlock)
-        {
-            ResultWrapper<UInt256?> resultWrapper;
-            
-            if (LastGasPriceExists() && LastHeadBlockExists() && LastHeadIsSameAsCurrentHead(headBlock))
-            {
-                resultWrapper = ResultWrapper<UInt256?>.Success(_lastGasPrice);
-#if DEBUG
-                resultWrapper.ErrorCode = GasPriceConfig.NoHeadBlockChangeErrorCode;
-#endif
-                return resultWrapper;
-            }
-            else
-            {
-                return ResultWrapper<UInt256?>.Fail("");
-            }
-        }
-
-        private bool LastGasPriceExists()
-        {
-            return _lastGasPrice != null;
-        }
-
-        private bool LastHeadBlockExists()
-        {
-            return _lastHeadBlock != null;
-        }
-        
-        private bool LastHeadIsSameAsCurrentHead(Block? headBlock)
-        {
-            return headBlock!.Hash == _lastHeadBlock!.Hash;
-        }
-        
         private void SetDefaultGasPrice()
         {
             DefaultGasPrice = _lastGasPrice ?? GasPriceConfig.DefaultGasPrice;
@@ -168,7 +97,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 currentBlockNumber--;
             }
         }
-
         private Block? GetHeadBlock()
         {
             return _blockFinder!.FindHeadBlock();
@@ -242,30 +170,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return roundedIndex;
         }
 
-        private void SetLastHeadBlock(Block? headBlock)
-        {
-            _lastHeadBlock = headBlock;
-        }
 
-        private static Tuple<bool, ResultWrapper<UInt256?>> BoolAndWrapperTuple(bool boolean, ResultWrapper<UInt256?> resultWrapper)
-        {
-            return new(boolean, resultWrapper);
-        }
-
-        private Block? GetGenesisBlock()
-        {
-            return _blockFinder!.FindGenesisBlock();
-        }
-
-        private static bool ResultWrapperWasSuccessful(ResultWrapper<UInt256?> resultWrapper)
-        {
-            return resultWrapper.Result == Result.Success;
-        }
-        
-        private static bool ResultWrapperWasNotSuccessful(ResultWrapper<UInt256?> resultWrapper)
-        {
-            return resultWrapper.Result != Result.Success;
-        }
         
     }
 }
