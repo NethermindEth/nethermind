@@ -20,5 +20,7 @@ namespace Nethermind.Pipeline.Publishers
     public interface IPublisher : IPipelineElement
     {
         void SubscribeToData<T>(T data);
+        void Stop();
+        void Start();
     }
 }

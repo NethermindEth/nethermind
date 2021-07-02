@@ -17,12 +17,14 @@ namespace Nethermind.Pipeline.Publishers
         private readonly IJsonSerializer _jsonSerializer;
         public string Name { get; }
         private readonly ILogger _logger;
+        private bool _isEnabled;
 
         public WebSocketsPublisher(string name, IJsonSerializer jsonSerializer, ILogger logger)
         {
             Name = name;
             _jsonSerializer = jsonSerializer;
             _logger = logger;
+            Start();
         }
 
         public IWebSocketsClient CreateClient(WebSocket webSocket, string client)
@@ -60,12 +62,23 @@ namespace Nethermind.Pipeline.Publishers
             try
             {
                 var message = _jsonSerializer.Serialize(data);
+                if (!_isEnabled) return;
                 await Task.WhenAll(_clients.Values.Select(v => v.SendRawAsync(message)));
             }
             catch (Exception ex)
             {
                 if(_logger.IsInfo) _logger.Info($"Exception during sending data with websockets, inner exception: {ex.InnerException}");
             };
+        }
+
+        public void Stop()
+        {
+            _isEnabled = false;
+        }
+
+        public void Start()
+        {
+            _isEnabled = true;
         }
     }
 }

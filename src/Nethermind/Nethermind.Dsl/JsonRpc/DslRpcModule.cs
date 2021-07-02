@@ -1,9 +1,11 @@
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Api;
+using Nethermind.Core.PubSub;
 using Nethermind.Dsl.ANTLR;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
+using IPublisher = Nethermind.Pipeline.Publishers.IPublisher;
 
 namespace Nethermind.Dsl.JsonRpc
 {
@@ -42,6 +44,42 @@ namespace Nethermind.Dsl.JsonRpc
             var interpreter = _interpreters.GetValueOrDefault(index);
 
             return interpreter is null ? ResultWrapper<string>.Fail("Couldn't find pipeline with given ID") : ResultWrapper<string>.Success(interpreter.Script);
+        }
+
+        public ResultWrapper<bool> dsl_stopPublisher(int index)
+        {
+            var interpreter = _interpreters.GetValueOrDefault(index);
+            if (interpreter is null) return ResultWrapper<bool>.Fail("Couldn't find pipeline with given ID");
+
+            var blockPublisher = (IPublisher) interpreter.BlocksPipeline.Elements.Last();
+            var transactionsPublisher = (IPublisher) interpreter.TransactionsPipeline.Elements.Last();
+            var pendingTransactionsPublisher = (IPublisher) interpreter.PendingTransactionsPipeline.Elements.Last();
+            var eventsPublisher = (IPublisher) interpreter.EventsPipeline.Elements.Last();
+
+            blockPublisher.Stop();
+            transactionsPublisher.Stop();
+            pendingTransactionsPublisher.Stop();
+            eventsPublisher.Stop();
+
+            return ResultWrapper<bool>.Success(true);
+        }
+
+        public ResultWrapper<bool> dsl_startPublisher(int index)
+        {
+            var interpreter = _interpreters.GetValueOrDefault(index);
+            if (interpreter is null) return ResultWrapper<bool>.Fail("Couldn't find pipeline with given ID");
+
+            var blockPublisher = (IPublisher) interpreter.BlocksPipeline.Elements.Last();
+            var transactionsPublisher = (IPublisher) interpreter.TransactionsPipeline.Elements.Last();
+            var pendingTransactionsPublisher = (IPublisher) interpreter.PendingTransactionsPipeline.Elements.Last();
+            var eventsPublisher = (IPublisher) interpreter.EventsPipeline.Elements.Last();
+
+            blockPublisher.Start();
+            transactionsPublisher.Start();
+            pendingTransactionsPublisher.Start();
+            eventsPublisher.Start();
+
+            return ResultWrapper<bool>.Success(true);
         }
 
         private int AddInterpreter(Interpreter interpreter)

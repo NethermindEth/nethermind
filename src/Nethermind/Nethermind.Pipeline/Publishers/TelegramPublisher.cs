@@ -30,6 +30,7 @@ namespace Nethermind.Pipeline.Publishers
         private readonly string _chatId;
         private string _botToken;
         private readonly HttpClient _httpClient;
+        private bool _isEnabled;
         
         public TelegramPublisher(IJsonSerializer serializer, string chatId)
         {
@@ -37,12 +38,24 @@ namespace Nethermind.Pipeline.Publishers
             _chatId = $"-{chatId}";
             _botToken = LoadBotToken();
             _httpClient = new HttpClient();
+            Start();
         }
         
         public void SubscribeToData<T>(T data)
         {
+            if (!_isEnabled) return;
             var task = Task.Run(() => SendMessageAsync(data));
             task.Wait();
+        }
+
+        public void Stop()
+        {
+            _isEnabled = false;
+        }
+
+        public void Start()
+        {
+            _isEnabled = true;
         }
 
         private async Task SendMessageAsync(object data)
