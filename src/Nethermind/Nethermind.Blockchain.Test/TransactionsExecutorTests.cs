@@ -145,6 +145,40 @@ namespace Nethermind.Blockchain.Test
                 complexCase.ExpectedSelectedTransactions.AddRange(
                     new[] {7, 3, 4, 0, 2, 1}.Select(i => complexCase.Transactions[i]));
                 yield return new TestCaseData(complexCase).SetName("Complex case");
+                
+                ProperTransactionsSelectedTestCase baseFeeBalanceCheck = new ProperTransactionsSelectedTestCase()
+                {
+                    Eip1559Enabled = true,
+                    BaseFee = 5,
+                    AccountStates = {{TestItem.AddressA, (1000, 1)}},
+                    Transactions =
+                    {
+                        Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(3)
+                            .WithGasPrice(60).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+                        Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(1)
+                            .WithGasPrice(30).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+                        Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(2)
+                            .WithGasPrice(20).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject
+                    },
+                    GasLimit = 10000000
+                };
+                baseFeeBalanceCheck.ExpectedSelectedTransactions.AddRange(
+                    new[] {1, 2 }.Select(i => baseFeeBalanceCheck.Transactions[i]));
+                yield return new TestCaseData(baseFeeBalanceCheck).SetName("Legacy transactions: two transactions selected because of account balance");
+                
+                ProperTransactionsSelectedTestCase balanceBelowMaxFeeTimesGasLimit = new ProperTransactionsSelectedTestCase()
+                {
+                    Eip1559Enabled = true,
+                    BaseFee = 5,
+                    AccountStates = {{TestItem.AddressA, (400, 1)}},
+                    Transactions =
+                    {
+                        Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(1)
+                            .WithMaxFeePerGas(45).WithMaxPriorityFeePerGas(25).WithGasLimit(10).WithType(TxType.EIP1559).WithValue(60).SignedAndResolved(TestItem.PrivateKeyA).TestObject
+                    },
+                    GasLimit = 10000000
+                };
+                yield return new TestCaseData(balanceBelowMaxFeeTimesGasLimit).SetName("EIP1559 transactions: none transactions selected because balance is lower than MaxFeePerGas times GasLimit");
             }
         }
 
