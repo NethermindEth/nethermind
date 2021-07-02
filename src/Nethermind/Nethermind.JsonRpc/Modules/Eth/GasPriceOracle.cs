@@ -19,6 +19,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly int _softTxThreshold;
         private bool _eip1559Enabled;
         private readonly UInt256 _baseFee;
+        private readonly ValidTxAdder _addValidTx;
 
         public GasPriceOracle(bool eip1559Enabled = false, UInt256? ignoreUnder = null, 
             int? blockLimit = null, UInt256? baseFee = null)
@@ -29,6 +30,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _blockLimit = blockLimit ?? GasPriceConfig.DefaultBlocksLimit;
             _softTxThreshold = GasPriceConfig.SoftTxLimit;
             _baseFee = baseFee ?? GasPriceConfig.DefaultBaseFee;
+            _addValidTx = new ValidTxAdder(this, _ignoreUnder, _eip1559Enabled, _baseFee);
         }
 
         public ResultWrapper<UInt256?> GasPriceEstimate(IBlockFinder blockFinder)
@@ -39,7 +41,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
 
             Tuple<bool, ResultWrapper<UInt256?>> earlyExitResult = EarlyExitResult();
-            if (earlyExitResult.Item1 == true)
+            if (ExitingEarly(earlyExitResult))
             {
                 return earlyExitResult.Item2;
             }
@@ -57,6 +59,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
             SetLastGasPrice(gasPriceEstimate);
             
             return ResultWrapper<UInt256?>.Success((UInt256) gasPriceEstimate!);
+        }
+
+        private static bool ExitingEarly(Tuple<bool, ResultWrapper<UInt256?>> earlyExitResult)
+        {
+            return earlyExitResult.Item1 == true;
         }
 
         private Tuple<bool, ResultWrapper<UInt256?>> EarlyExitResult()
@@ -100,6 +107,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             return block == null;
         }
+        
         private ResultWrapper<UInt256?> HandleNoHeadBlockChange(Block? headBlock)
         {
             ResultWrapper<UInt256?> resultWrapper;
@@ -144,10 +152,10 @@ namespace Nethermind.JsonRpc.Modules.Eth
             int blocksToGoBack = _blockLimit;
             while (MoreBlocksToGoBack(blocksToGoBack) && CurrentBlockNumberIsValid(currentBlockNumber)) 
             {
-                Block? block = _blockFinder!.FindBlock(currentBlockNumber);
+                Block? block = FindBlockAtNumber(currentBlockNumber);
                 if (BlockExists(block))
                 {
-                    int txsAdded = AddValidTxAndReturnCount(block!);
+                    int txsAdded = _addValidTx.AddValidTxAndReturnCount(block!);
                     if (txsAdded > 1 || BonusBlockLimitReached(blocksToGoBack))
                     {
                         blocksToGoBack--;
@@ -176,109 +184,16 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return currBlockNumber > -1;
         }
         
+        private Block? FindBlockAtNumber(long blockNumber)
+        {
+            return _blockFinder!.FindBlock(blockNumber);
+        }
+        
         private static bool BlockExists(Block? foundBlock)
         {
             return foundBlock != null;
         }
-        private int AddTxAndReturnCountAdded(Transaction[] txInBlock, Block block)
-        {
-            int countTxAdded = 0;
-            
-            IEnumerable<Transaction> txSortedByEffectiveGasPrice = txInBlock.OrderBy(EffectiveGasPrice);
-            foreach (Transaction transaction in txSortedByEffectiveGasPrice)
-            {
-                if (TransactionCanBeAdded(transaction, _eip1559Enabled, block)) //how should i set to be null?
-                {
-                    TxGasPriceList.Add(EffectiveGasPrice(transaction));
-                    countTxAdded++;
-                }
 
-                if (countTxAdded >= GasPriceConfig.TxLimitFromABlock)
-                {
-                    break;
-                }
-            }
-
-            return countTxAdded;
-        }
-
-        private UInt256 EffectiveGasPrice(Transaction transaction)
-        {
-            return transaction.CalculateEffectiveGasPrice(_eip1559Enabled, _baseFee);
-        }
-
-        private bool TransactionCanBeAdded(Transaction transaction, bool eip1559Enabled, Block block)
-        {
-            bool res = IsAboveMinPrice(transaction) && Eip1559ModeCompatible(transaction, eip1559Enabled);
-            return res && TxNotSentByBeneficiary(transaction, block);
-        }
-        
-        private bool IsAboveMinPrice(Transaction transaction)
-        {
-            return transaction.GasPrice >= _ignoreUnder;
-        }
-        
-        private bool Eip1559ModeCompatible(Transaction transaction, bool eip1559Enabled)
-        {
-            if (eip1559Enabled == false)
-            {
-                return TransactionIsNotEip1559(transaction);
-            }
-            else
-            {
-                return true;
-            }
-        }
-
-        private bool TxNotSentByBeneficiary(Transaction transaction, Block block)
-        {
-            if (block.Beneficiary.Equals(null))
-            {
-                return true;
-            }
-
-            return block.Beneficiary != transaction.SenderAddress;
-        }
-
-        private static bool TransactionIsNotEip1559(Transaction transaction)
-        {
-            return !transaction.IsEip1559;
-        }
-        
-        private int AddValidTxAndReturnCount(Block block)
-        {
-            Transaction[] transactionsInBlock = block.Transactions;
-            int countTxAdded;
-
-            if (TransactionsExistIn(transactionsInBlock))
-            {
-                countTxAdded = AddTxAndReturnCountAdded(transactionsInBlock, block);
-
-                if (countTxAdded == 0)
-                {
-                    AddDefaultPriceTo();
-                    countTxAdded++;
-                }
-
-                return countTxAdded;
-            }
-            else
-            {
-                AddDefaultPriceTo();
-                return 1;
-            }
-        }
-        
-        private static bool TransactionsExistIn(Transaction[] transactions)
-        {
-            return transactions.Length > 0;
-        }
-        
-        private void AddDefaultPriceTo()
-        {
-            TxGasPriceList.Add((UInt256) DefaultGasPrice!);
-        }
-        
         private bool BonusBlockLimitReached(int blocksToGoBack)
         {
             return TxGasPriceList.Count + blocksToGoBack >= _softTxThreshold;
@@ -288,7 +203,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             throw new Exception($"Block {blockNumber} was not found.");
         }
-        
+
+
         private UInt256? GasPriceAtPercentile()
         {
             int roundedIndex = GetRoundedIndexAtPercentile(TxGasPriceList.Count);
