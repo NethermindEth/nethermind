@@ -59,7 +59,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                     CollectTxStrings(
                     GetTxString("B","6","2"), 
                     GetTxString("B","6","3"),
-                    GetTxString("B","6","4")),false);
+                    GetTxString("B","6","4")),IsNotEip1559());
             Block dupGasPriceBlock = GetBlockWithNumberParentHashAndTxInfo(5, HashOfLastBlockIn(blockTreeSetup),
                 dupGasPriceGroup);
             blockTreeSetup = new BlockTreeSetup(new[]{dupGasPriceBlock},true);
@@ -68,6 +68,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             resultWrapper.Result.Should().Be(Result.Success);
         }
+        
         [Test]
         public void Eth_gasPrice_BlockcountEqualToBlocksToCheck_ShouldGetSixtiethPercentileIndex()
         {
@@ -88,6 +89,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             BlockTreeSetup blockTreeSetup = new BlockTreeSetup(blockArray);
 
             ResultWrapper<UInt256?> resultWrapper = blockTreeSetup.EthRpcModule.eth_gasPrice();
+            
             resultWrapper.Data.Should().Be((UInt256?) 500);
         }
 
@@ -104,7 +106,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                 ));
             BlockTreeSetup blockTreeSetup = new BlockTreeSetup(blockArray);
 
-            ResultWrapper<UInt256?> resultWrapper = blockTreeSetup.EthRpcModule.eth_gasPrice();
+            blockTreeSetup.EthRpcModule.eth_gasPrice();
+            
             List<UInt256> gasPriceList = blockTreeSetup.GasPriceOracle.TxGasPriceList;
             gasPriceList.Count.Should().Be(3);
         }
@@ -145,7 +148,6 @@ namespace Nethermind.JsonRpc.Test.Modules
                     BlockNumberAndTxStringsKeyValuePair(2, null),
                     BlockNumberAndTxStringsKeyValuePair(3, null),
                     BlockNumberAndTxStringsKeyValuePair(4, null));
-            
             BlockTreeSetup blockTreeSetup = new BlockTreeSetup(blocks);
             ResultWrapper<UInt256?> resultWrapper = blockTreeSetup.EthRpcModule.eth_gasPrice();
             
@@ -157,9 +159,10 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             Block[] blocks = GetBlocksFromKeyValuePairs(
                 BlockNumberAndTxStringsKeyValuePair(0, CollectTxStrings(
-                    GetTxString("A", "2", "0"),
-                            GetTxString("B", "3", "0")
-                        )),
+                        GetTxString("A", "2", "0"),
+                        GetTxString("B", "3", "0")
+                        )
+                ),
                 BlockNumberAndTxStringsKeyValuePair(1, null),
                 BlockNumberAndTxStringsKeyValuePair(2, null),
                 BlockNumberAndTxStringsKeyValuePair(3, null),
@@ -167,7 +170,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                 BlockNumberAndTxStringsKeyValuePair(5, null),
                 BlockNumberAndTxStringsKeyValuePair(6, null),
                 BlockNumberAndTxStringsKeyValuePair(7, null),
-                BlockNumberAndTxStringsKeyValuePair(8, null));
+                BlockNumberAndTxStringsKeyValuePair(8, null)
+                );
 
             BlockTreeSetup blockTreeSetup = new BlockTreeSetup(blocks);
             ResultWrapper<UInt256?> resultWrapper = blockTreeSetup.EthRpcModule.eth_gasPrice();
@@ -206,13 +210,15 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             Transaction[] eip1559TxGroup =  GetTransactionsFromTxStrings(CollectTxStrings(
                     GetTxString("B","7","2"), 
-                    GetTxString("B","8","3")),
-                IsEip1559());
+                    GetTxString("B","8","3")
+                    ), IsEip1559()
+                );
             Transaction[] notEip1559TxGroup = GetTransactionsFromTxStrings(CollectTxStrings(
                     GetTxString("B","9","4"),
                     GetTxString("B","10","5"),
-                    GetTxString("B","11","6")),
-                IsNotEip1559());
+                    GetTxString("B","11","6")
+                    ), IsNotEip1559()
+                );
             
             BlockTreeSetup blockTreeSetup = new BlockTreeSetup();
             Block eip1559Block = GetBlockWithNumberParentHashAndTxInfo(5, HashOfLastBlockIn(blockTreeSetup), eip1559TxGroup);
@@ -401,15 +407,15 @@ namespace Nethermind.JsonRpc.Test.Modules
             }
             else if (isEip1559 == true)
             {
-                return GetEip1559TxsFromTxStrings(txInfo).ToArray();
+                return ConvertEip1559Txs(txInfo).ToArray();
             }
             else
             {
-                return GetTxsFromTxStrings(txInfo).ToArray();
+                return ConvertRegularTxs(txInfo).ToArray();
             }
         }
 
-        private IEnumerable<Transaction> GetEip1559TxsFromTxStrings(params string[][] txsInfo)
+        private IEnumerable<Transaction> ConvertEip1559Txs(params string[][] txsInfo)
         {
             PrivateKey privateKey;
             char privateKeyLetter;
@@ -426,7 +432,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             }
         }
 
-        private Transaction[] GetTxsFromTxStrings(params string[][] txsInfo)
+        private Transaction[] ConvertRegularTxs(params string[][] txsInfo)
         {
             PrivateKey privateKey;
             char privateKeyLetter;
@@ -489,8 +495,14 @@ namespace Nethermind.JsonRpc.Test.Modules
             public EthRpcModule EthRpcModule { get; private set; }
             public IGasPriceOracle GasPriceOracle { get; private set; }
 
-            public BlockTreeSetup(Block[] blocks = null,  bool addBlocks = false, IGasPriceOracle? gasPriceOracle = null, 
-                int? blockLimit = null, UInt256? ignoreUnder = null, UInt256? baseFee = null, bool eip1559Enabled = false)
+            public BlockTreeSetup(
+                Block[] blocks = null,
+                bool addBlocks = false,
+                IGasPriceOracle? gasPriceOracle = null, 
+                int? blockLimit = null,
+                UInt256? ignoreUnder = null,
+                UInt256? baseFee = null,
+                bool eip1559Enabled = false)
             {
                 GetBlocks(blocks, addBlocks);
 
@@ -498,7 +510,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
                 GasPriceOracle = gasPriceOracle ?? GetGasPriceOracle(eip1559Enabled, ignoreUnder, blockLimit, baseFee);
                 
-                GetEthRpcModule(GasPriceOracle, ignoreUnder, blockLimit, baseFee, eip1559Enabled);
+                GetEthRpcModule();
             }
 
             private void InitializeAndAddToBlockTree()
@@ -525,7 +537,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                     Blocks = blocks;
                 }
             }
-
+            
             private static bool NoBlocksGiven(Block[] blocks)
             {
                 return blocks == null;
@@ -564,8 +576,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 );
             }
 
-            private void GetEthRpcModule(IGasPriceOracle? gasPriceOracle, UInt256? ignoreUnder, 
-                int? blockLimit, UInt256? baseFee, bool eip1559Enabled)
+            private void GetEthRpcModule()
             {
                 EthRpcModule = new EthRpcModule
                 (
