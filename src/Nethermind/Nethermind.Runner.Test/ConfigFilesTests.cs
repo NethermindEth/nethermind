@@ -203,7 +203,7 @@ namespace Nethermind.Runner.Test
         [TestCase("volta archive", 256000000)]
         [TestCase("volta ^archive", 256000000)]
         [TestCase("goerli archive", 768000000)]
-        [TestCase("goerli ^archive", 384000000)]
+        [TestCase("goerli ^archive", 768000000)]
         [TestCase("rinkeby archive", 1536000000)]
         [TestCase("rinkeby ^archive", 1024000000)]
         [TestCase("ropsten archive", 1536000000)]
