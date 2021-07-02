@@ -13,14 +13,20 @@ namespace Nethermind.Dsl.Pipeline.Sources
         public PendingTransactionsSource(ITxPool txPool)
         {
             _txPool = txPool;
-            _txPool.NewPending += OnNewPending;
+            try
+            {
+                _txPool.NewPending += OnNewPending;
+            }
+            catch (Exception e)
+            {
+            }
         }
 
         public Action<TOut>? Emit { private get; set; }
 
         private void OnNewPending(object? sender, TxEventArgs args)
         {
-            Emit?.Invoke((TOut)args.Transaction);
+            Emit?.Invoke((TOut) args.Transaction);
         }
     }
 }

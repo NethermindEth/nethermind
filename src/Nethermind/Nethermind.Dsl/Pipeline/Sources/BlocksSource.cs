@@ -13,15 +13,22 @@ namespace Nethermind.Dsl.Pipeline.Sources
 
         public BlocksSource(IBlockProcessor blockProcessor)
         {
-           _blockProcessor = blockProcessor; 
-           _blockProcessor.BlockProcessed += OnBlockProcessed;
+            _blockProcessor = blockProcessor;
+            try
+            {
+                _blockProcessor.BlockProcessed += OnBlockProcessed;
+            }
+            catch (Exception e)
+            {
+                // ignored for now, will add logger later
+            }
         }
 
         public Action<TOut>? Emit { private get; set; }
 
         private void OnBlockProcessed(object? sender, BlockProcessedEventArgs args)
         {
-            Emit?.Invoke((TOut)args.Block);
+            Emit?.Invoke((TOut) args.Block);
         }
     }
 }
