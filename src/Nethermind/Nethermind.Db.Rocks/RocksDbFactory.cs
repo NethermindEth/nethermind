@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.Db.Files;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
 
@@ -35,8 +36,10 @@ namespace Nethermind.Db.Rocks
         }
 
         public IDb CreateDb(RocksDbSettings rocksDbSettings)
-        { 
-            return new DbOnTheRocks(_basePath, rocksDbSettings, _dbConfig, _logManager);
+        {
+            return rocksDbSettings.DbName != "State"
+                ? new DbOnTheRocks(_basePath, rocksDbSettings, _dbConfig, _logManager)
+                : new FileDb(_basePath, rocksDbSettings.DbPath);
         }
 
         public IColumnsDb<T> CreateColumnsDb<T>(RocksDbSettings rocksDbSettings) where T : notnull
