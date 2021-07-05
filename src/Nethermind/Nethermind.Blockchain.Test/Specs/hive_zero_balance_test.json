@@ -1,4 +1,4 @@
-	{
+﻿{
   "version": "1",
   "engine": {
     "Ethash": {
@@ -13,7 +13,8 @@
           "0x0": "0x1BC16D674EC80000"
         },
         "difficultyBombDelays": {
-          "0x0": 2000000
+          "0x0": 2000000,
+          "0x7d0": 700000
         }
       }
     }
@@ -45,6 +46,11 @@
     "eip2718Transition": "0x7d0",
     "eip2929Transition": "0x7d0",
     "eip2930Transition": "0x7d0",
+    "eip1559Transition": "0x7d0",
+    "eip3238Transition": "0x7d0",
+    "eip3529Transition": "0x7d0",
+    "eip3541Transition": "0x7d0",
+    "eip3198Transition": "0x7d0",
     "chainID": "0x1"
   },
   "genesis": {

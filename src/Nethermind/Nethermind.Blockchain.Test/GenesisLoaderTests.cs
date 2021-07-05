@@ -46,6 +46,12 @@ namespace Nethermind.Blockchain.Test
         {
             AssertBlockHash("0x62839401df8970ec70785f62e9e9d559b256a9a10b343baf6c064747b094de09", "Specs/test.json");
         }
+        
+        [Test]
+        public void Can_load_genesis_with_zero_balance_account()
+        {
+            AssertBlockHash("0x62839401df8970ec70785f62e9e9d559b256a9a10b343baf6c064747b094de09", "Specs/hive_zero_balance_test.json");
+        }
 
         private void AssertBlockHash(string expectedHash, string chainspecFilePath)
         {

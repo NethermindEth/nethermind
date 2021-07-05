@@ -46,8 +46,9 @@
     <Content Include="Specs\test.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-  </ItemGroup>
-  <ItemGroup>
-    <Folder Include="Specs" />
+    <None Remove="Specs\hive_zero_balance_test.json" />
+    <Content Include="Specs\hive_zero_balance_test.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 </Project>
