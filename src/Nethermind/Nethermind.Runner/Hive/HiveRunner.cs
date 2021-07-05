@@ -24,6 +24,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
@@ -159,6 +160,7 @@ namespace Nethermind.Runner.Hive
         private Block DecodeBlock(string file)
         {
             var fileContent = File.ReadAllBytes(file);
+            if (_logger.IsInfo) _logger.Info(fileContent.ToHexString());
             var blockRlp = new Rlp(fileContent);
 
             return Rlp.Decode<Block>(blockRlp);
