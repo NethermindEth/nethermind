@@ -38,13 +38,13 @@ namespace Nethermind.Blockchain.Test
         [TestCase]
         public void Can_load_genesis_with_emtpy_accounts_and_storage()
         {
-            AssertBlockHash("0x61b2253366eab37849d21ac066b96c9de133b8c58a9a38652deae1dd7ec22e7b", "../../../../Chains/test.json");
+            AssertBlockHash("0x61b2253366eab37849d21ac066b96c9de133b8c58a9a38652deae1dd7ec22e7b", "Specs/empty_accounts_and_storages.json");
         }
         
         [Test]
         public void Can_load_genesis_with_emtpy_accounts_and_code()
         {
-            AssertBlockHash("0x62839401df8970ec70785f62e9e9d559b256a9a10b343baf6c064747b094de09", "Specs/test.json");
+            AssertBlockHash("0x62839401df8970ec70785f62e9e9d559b256a9a10b343baf6c064747b094de09", "Specs/empty_accounts_and_codes.json");
         }
 
         private void AssertBlockHash(string expectedHash, string chainspecFilePath)
