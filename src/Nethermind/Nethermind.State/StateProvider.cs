@@ -149,7 +149,7 @@ namespace Nethermind.State
             return account?.Balance ?? UInt256.Zero;
         }
 
-        public void UpdateCodeHash(Address address, Keccak codeHash, IReleaseSpec releaseSpec, bool isGenesis = false)
+        public void UpdateCodeHash(Address address, Keccak codeHash, IReleaseSpec releaseSpec)
         {
             _needsStateRootUpdate = true;
             Account? account = GetThroughCache(address);
@@ -164,7 +164,7 @@ namespace Nethermind.State
                 Account changedAccount = account.WithChangedCodeHash(codeHash);
                 PushUpdate(address, changedAccount);
             }
-            else if (releaseSpec.IsEip158Enabled && !isGenesis)
+            else if (releaseSpec.IsEip158Enabled)
             {
                 if (_logger.IsTrace) _logger.Trace($"  Touch {address} (code hash)");
                 if (account.IsEmpty)
@@ -433,9 +433,9 @@ namespace Nethermind.State
             PushNew(address, account);
         }
 
-        public void Commit(IReleaseSpec releaseSpec, bool isGenesis = false)
+        public void Commit(IReleaseSpec releaseSpec)
         {
-            Commit(releaseSpec, NullStateTracer.Instance, isGenesis);
+            Commit(releaseSpec, NullStateTracer.Instance);
         }
 
         private readonly struct ChangeTrace
@@ -456,7 +456,7 @@ namespace Nethermind.State
             public Account? After { get; }
         }
 
-        public void Commit(IReleaseSpec releaseSpec, IStateTracer stateTracer, bool isGenesis = false)
+        public void Commit(IReleaseSpec releaseSpec, IStateTracer stateTracer)
         {
             if (_currentPosition == -1)
             {
@@ -524,7 +524,7 @@ namespace Nethermind.State
                     case ChangeType.Touch:
                     case ChangeType.Update:
                     {
-                        if (releaseSpec.IsEip158Enabled && change.Account.IsEmpty && !isGenesis)
+                        if (releaseSpec.IsEip158Enabled && change.Account.IsEmpty)
                         {
                             if (_logger.IsTrace) _logger.Trace($"  Commit remove empty {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
                             SetState(change.Address, null);
@@ -547,7 +547,7 @@ namespace Nethermind.State
                     }
                     case ChangeType.New:
                     {
-                        if (!releaseSpec.IsEip158Enabled || !change.Account.IsEmpty || isGenesis)
+                        if (!releaseSpec.IsEip158Enabled || !change.Account.IsEmpty)
                         {
                             if (_logger.IsTrace) _logger.Trace($"  Commit create {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
                             SetState(change.Address, change.Account);
