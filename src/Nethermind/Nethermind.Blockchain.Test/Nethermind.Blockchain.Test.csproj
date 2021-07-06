@@ -42,12 +42,5 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <None Remove="Producers\contracts\BadContract.bin" />
-    <None Remove="Specs\test.json" />
-    <Content Include="Specs\test.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-  </ItemGroup>
-  <ItemGroup>
-    <Folder Include="Specs" />
   </ItemGroup>
 </Project>

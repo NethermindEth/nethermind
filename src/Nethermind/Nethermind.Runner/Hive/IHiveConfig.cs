@@ -29,8 +29,5 @@ namespace Nethermind.Runner.Hive
         
         [ConfigItem(Description = "Path to a test key store directory.", DefaultValue = "\"/keys\"")]
         string KeysDir { get; set; }
-        
-        [ConfigItem(Description = "Enabling hive for debugging purpose", DefaultValue = "false")]
-        bool Enabled { get; set; }
     }
 }

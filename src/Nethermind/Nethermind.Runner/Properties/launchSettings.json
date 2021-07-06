@@ -82,10 +82,6 @@
     "Calaveras": {
       "commandName": "Project",
       "commandLineArgs": "--config configs\\calaveras.cfg --Init.DiagnosticMode MemDb"
-    },
-    "Hive": {
-      "commandName": "Project",
-      "commandLineArgs": "--config configs\\hive.cfg --Init.DiagnosticMode MemDb"
     }
   }
 }
