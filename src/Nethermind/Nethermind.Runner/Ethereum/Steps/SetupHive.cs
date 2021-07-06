@@ -35,8 +35,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         public async Task Execute(CancellationToken cancellationToken)
         {
-            IHiveConfig hiveConfig = _api.ConfigProvider.GetConfig<IHiveConfig>();
-            bool hiveEnabled = Environment.GetEnvironmentVariable("NETHERMIND_HIVE_ENABLED")?.ToLowerInvariant() == "true" || hiveConfig.Enabled;
+            bool hiveEnabled = Environment.GetEnvironmentVariable("NETHERMIND_HIVE_ENABLED")?.ToLowerInvariant() == "true";
             if (hiveEnabled)
             {
                 if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.BlockTree));

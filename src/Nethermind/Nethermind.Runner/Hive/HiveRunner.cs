@@ -51,7 +51,7 @@ namespace Nethermind.Runner.Hive
 
         public Task Start(CancellationToken cancellationToken)
         {
-            if(_logger.IsInfo) _logger.Info("HIVE initialization started");
+            if(_logger.IsInfo) _logger.Info("HIVE initialization starting");
             _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
             var hiveConfig = _configurationProvider.GetConfig<IHiveConfig>();
 
@@ -90,7 +90,7 @@ namespace Nethermind.Runner.Hive
 // #  - HIVE_MINER_EXTRA    extra-data field to set for newly minted blocks
 // #  - HIVE_SKIP_POW       If set, skip PoW verification during block import
 
-            string[] variableNames = {"HIVE_CHAIN_ID", "HIVE_BOOTNODE", "HIVE_TESTNET", "HIVE_NODETYPE", "HIVE_FORK_HOMESTEAD", "HIVE_FORK_DAO_BLOCK", "HIVE_FORK_DAO_VOTE", "HIVE_FORK_TANGERINE", "HIVE_FORK_SPURIOUS", "HIVE_FORK_METROPOLIS", "HIVE_FORK_BYZANTIUM", "HIVE_FORK_CONSTANTINOPLE", "HIVE_FORK_PETERSBURG", "HIVE_MINER", "HIVE_MINER_EXTRA", "HIVE_FORK_BERLIN", "HIVE_FORK_LONDON"};
+            string[] variableNames = {"HIVE_CHAIN_ID", "HIVE_BOOTNODE", "HIVE_TESTNET", "HIVE_NODETYPE", "HIVE_FORK_HOMESTEAD", "HIVE_FORK_DAO_BLOCK", "HIVE_FORK_DAO_VOTE", "HIVE_FORK_TANGERINE", "HIVE_FORK_SPURIOUS", "HIVE_FORK_METROPOLIS", "HIVE_FORK_BYZANTIUM", "HIVE_FORK_CONSTANTINOPLE", "HIVE_FORK_PETERSBURG", "HIVE_MINER", "HIVE_MINER_EXTRA"};
             foreach (string variableName in variableNames)
             {
                 if(_logger.IsInfo) _logger.Info($"{variableName}: {Environment.GetEnvironmentVariable(variableName)}");
