@@ -5,13 +5,13 @@ using Nethermind.Int256;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
-    public class ValidTxInsertionManager
+    public class TxInsertionManager
     {
         private GasPriceOracle _gasPriceOracle;
         private UInt256? _ignoreUnder;
         private bool _isEip1559Enabled;
         private UInt256 _baseFee;
-        public ValidTxInsertionManager(GasPriceOracle gasPriceOracle, UInt256? ignoreUnder, bool isEip1559Enabled,
+        public TxInsertionManager(GasPriceOracle gasPriceOracle, UInt256? ignoreUnder, bool isEip1559Enabled,
             UInt256 baseFee)
         {
             _gasPriceOracle = gasPriceOracle;
@@ -22,16 +22,14 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public int AddValidTxAndReturnCount(Block block)
         {
-            Transaction[] transactionsInBlock = block.Transactions;
-            int countTxAdded;
-
-            if (TransactionsExistIn(transactionsInBlock))
+            if (TransactionsExistIn(block))
             {
-                countTxAdded = AddTxAndReturnCountAdded(transactionsInBlock, block);
+                Transaction[] transactionsInBlock = block.Transactions;
+                int countTxAdded = AddTxAndReturnCountAdded(transactionsInBlock, block);
 
                 if (countTxAdded == 0)
                 {
-                    AddDefaultPriceTo();
+                    AddDefaultPriceToSortedTxList();
                     countTxAdded++;
                 }
 
@@ -39,13 +37,14 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
             else
             {
-                AddDefaultPriceTo();
+                AddDefaultPriceToSortedTxList();
                 return 1;
             }
         }
 
-        private static bool TransactionsExistIn(Transaction[] transactions)
+        private static bool TransactionsExistIn(Block block)
         {
+            Transaction[] transactions = block.Transactions;
             return transactions.Length > 0;
         }
 
@@ -114,7 +113,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return block.Beneficiary != transaction.SenderAddress;
         }
 
-        private void AddDefaultPriceTo()
+        private void AddDefaultPriceToSortedTxList()
         {
             _gasPriceOracle.TxGasPriceList.Add((UInt256)_gasPriceOracle.DefaultGasPrice!);
         }
