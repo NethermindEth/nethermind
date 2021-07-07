@@ -321,6 +321,9 @@ namespace Nethermind.Core.Test.Blockchain
         public async Task AddFunds(params (Address address, UInt256 ether)[] funds) =>
             await AddBlock(funds.Select((f, i) => GetFundsTransaction(f.address, f.ether, (uint)i)).ToArray());
         
+        public async Task AddFundsAfterLondon(params (Address address, UInt256 ether)[] funds) =>
+            await AddBlock(funds.Select((f, i) => GetFunds1559Transaction(f.address, f.ether, (uint)i)).ToArray());
+        
         private Transaction GetFundsTransaction(Address address, UInt256 ether, uint index = 0)
         {
             var nonce = StateReader.GetNonce(BlockTree.Head.StateRoot, TestItem.AddressA);
@@ -333,6 +336,20 @@ namespace Nethermind.Core.Test.Blockchain
             return tx;
         }
         
-
+        private Transaction GetFunds1559Transaction(Address address, UInt256 ether, uint index = 0)
+        {
+            var nonce = StateReader.GetNonce(BlockTree.Head.StateRoot, TestItem.AddressA);
+            Transaction tx = Builders.Build.A.Transaction
+                .SignedAndResolved(TestItem.PrivateKeyA)
+                .To(address)
+                .WithNonce(nonce + index)
+                .WithMaxFeePerGas(20.GWei())
+                .WithMaxPriorityFeePerGas(5.GWei())
+                .WithType(TxType.EIP1559)
+                .WithValue(ether)
+                .WithChainId(MainnetSpecProvider.Instance.ChainId)
+                .TestObject;
+            return tx;
+        }
     }
 }

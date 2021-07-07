@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -335,6 +335,12 @@ namespace Nethermind.Runner
             logger.Info($"Reading config file from {configFilePath}");
             configProvider.AddSource(new JsonConfigSource(configFilePath));
             configProvider.Initialize();
+            var incorrectSettings = configProvider.FindIncorrectSettings();
+            if(incorrectSettings.Errors.Count() > 0)
+            {
+                logger.Warn($"Incorrect config settings found:{Environment.NewLine}{incorrectSettings.ErrorMsg}");
+            }
+
             logger.Info("Configuration initialized.");
             return configProvider;
         }

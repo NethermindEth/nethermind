@@ -99,8 +99,8 @@ namespace Nethermind.Mev.Test
             await chain.AddBlock(true, seedContractTx);
 
             //Console.WriteLine((await chain.EthRpcModule.eth_getBalance(contractAddress)).Data!);
-
-            UInt256 beforeCoinbasePayments = Metrics.TotalCoinbasePayments;
+            
+            UInt256 beforeCoinbasePayments = (UInt256)Metrics.TotalCoinbasePayments;
 
             Transaction coinbaseTx = Build.A.Transaction.WithGasLimit(MevRpcModuleTests.Contracts.LargeGasLimit).WithData(Bytes.FromHexString(MevRpcModuleTests.Contracts.CoinbaseInvokePay)).WithTo(contractAddress).WithGasPrice(1ul).WithNonce(0).WithValue(0).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
             chain.SendBundle(3, coinbaseTx);
@@ -108,7 +108,7 @@ namespace Nethermind.Mev.Test
             
             MevRpcModuleTests.GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(MevRpcModuleTests.GetHashes(new []{coinbaseTx}));
             
-            UInt256 deltaCoinbasePayments = Metrics.TotalCoinbasePayments - beforeCoinbasePayments;
+            UInt256 deltaCoinbasePayments = (UInt256)Metrics.TotalCoinbasePayments - beforeCoinbasePayments;
             deltaCoinbasePayments.Should().Be(100000000000);
         }
 

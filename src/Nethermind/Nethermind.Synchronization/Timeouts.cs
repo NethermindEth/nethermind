@@ -13,28 +13,14 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Int256;
+using System;
 
-namespace Nethermind.Facade.Proxy.Models
+namespace Nethermind.Synchronization
 {
-    public class ReceiptModel
+    public class Timeouts
     {
-        public Keccak BlockHash { get; set; }
-        public UInt256 BlockNumber { get; set; }
-        public Address ContractAddress { get; set; }
-        public UInt256 CumulativeGasUsed { get; set; }
-        public Address From { get; set; }
-        public UInt256 GasUsed { get; set; }
-        
-        public UInt256 EffectiveGasPrice { get; set; }
-        public LogModel[] Logs { get; set; }
-        public byte[]? LogsBloom { get; set; }
-        public UInt256 Status { get; set; }
-        public Address To { get; set; }
-        public Keccak TransactionHash { get; set; }
-        public UInt256 TransactionIndex { get; set; }
+        public static readonly TimeSpan Eth = TimeSpan.FromSeconds(10);   
     }
 }

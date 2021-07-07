@@ -129,7 +129,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         ResultWrapper<TransactionForRpc> eth_getTransactionByBlockNumberAndIndex(BlockParameter blockParameter, UInt256 positionIndex);
         
         [JsonRpcMethod(IsImplemented = true, Description = "Retrieves a transaction receipt by tx hash", IsSharable = true)]
-        Task<ResultWrapper<ReceiptForRpc>> eth_getTransactionReceipt(Keccak txHashData);
+        Task<ResultWrapper<GetTransactionReceiptResponse>> eth_getTransactionReceipt(Keccak txHashData);
         
         [JsonRpcMethod(IsImplemented = true, Description = "Retrieves an uncle block header by block hash and uncle index", IsSharable = true)]
         ResultWrapper<BlockForRpc> eth_getUncleByBlockHashAndIndex(Keccak blockHashData, UInt256 positionIndex);

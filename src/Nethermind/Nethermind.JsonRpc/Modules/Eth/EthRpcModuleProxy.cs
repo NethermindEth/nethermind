@@ -207,14 +207,14 @@ namespace Nethermind.JsonRpc.Modules.Eth
             throw new NotSupportedException();
         }
 
-        public async Task<ResultWrapper<ReceiptForRpc>> eth_getTransactionReceipt(Keccak txHashData)
+        public async Task<ResultWrapper<GetTransactionReceiptResponse>> eth_getTransactionReceipt(Keccak txHashData)
         {
             RpcResult<ReceiptModel> result = await _proxy.eth_getTransactionReceipt(txHashData);
-            ReceiptForRpc? receipt = MapReceipt(result.Result);
+            GetTransactionReceiptResponse? receipt = MapReceipt(result.Result);
 
             return receipt is null
-                ? ResultWrapper<ReceiptForRpc>.Fail("Receipt was not found.")
-                : ResultWrapper<ReceiptForRpc>.Success(receipt);
+                ? ResultWrapper<GetTransactionReceiptResponse>.Fail("Receipt was not found.")
+                : ResultWrapper<GetTransactionReceiptResponse>.Success(receipt);
         }
 
         public ResultWrapper<BlockForRpc> eth_getUncleByBlockHashAndIndex(Keccak blockHashData, UInt256 positionIndex)
@@ -305,15 +305,15 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 Value = transaction.Value
             };
         }
-
-        private static ReceiptForRpc? MapReceipt(ReceiptModel? receipt)
+        
+        private static GetTransactionReceiptResponse? MapReceipt(ReceiptModel? receipt)
         {
             if (receipt is null)
             {
                 return null;
             }
 
-            return new ReceiptForRpc
+            return new GetTransactionReceiptResponse
             {
                 BlockHash = receipt.BlockHash,
                 BlockNumber = (long)receipt.BlockNumber,
@@ -326,7 +326,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 To = receipt.To,
                 TransactionHash = receipt.TransactionHash,
                 TransactionIndex = (long)receipt.TransactionIndex,
-                LogsBloom = receipt.LogsBloom is null ? null : new Bloom(receipt.LogsBloom)
+                LogsBloom = receipt.LogsBloom is null ? null : new Bloom(receipt.LogsBloom),
+                EffectiveGasPrice = receipt.EffectiveGasPrice
             };
         }
 
