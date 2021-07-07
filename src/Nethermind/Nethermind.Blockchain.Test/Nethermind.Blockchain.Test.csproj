@@ -49,9 +49,6 @@
     </Content>
     <None Remove="Producers\contracts\BadContract.bin" />
     <None Remove="Specs\test.json" />
-    <Content Include="Specs\test.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
     <None Remove="Specs\hive_zero_balance_test.json" />
     <Content Include="Specs\hive_zero_balance_test.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
