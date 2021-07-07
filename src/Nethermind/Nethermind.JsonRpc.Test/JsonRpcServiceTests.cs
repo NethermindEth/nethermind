@@ -67,15 +67,14 @@ namespace Nethermind.JsonRpc.Test
             return response;
         }
         
-        [TestCase("false")]
-        [TestCase("true")]
-        public void Admin_peers_WhenAdminInDefaultModules_JsonRpcCallIsSuccessful(string includeDetails)
+        [Test] 
+        public void Admin_peers_WhenAdminInDefaultModules_JsonRpcCallIsSuccessful()
         {
             IAdminRpcModule adminRpcModule = Substitute.For<IAdminRpcModule>();
             adminRpcModule.admin_peers(Arg.Any<bool>())
                 .Returns(c => ResultWrapper<PeerInfo[]>.Success(new PeerInfo[]{}));
 
-            JsonRpcResponse jsonRpcResponse = TestRequest(adminRpcModule,"admin_peers", includeDetails);
+            JsonRpcResponse jsonRpcResponse = TestRequest(adminRpcModule,"admin_peers", "false");
             
             JsonRpcErrorResponse errorResponse = jsonRpcResponse as JsonRpcErrorResponse;
             errorResponse?.Error.Should().BeNull();
