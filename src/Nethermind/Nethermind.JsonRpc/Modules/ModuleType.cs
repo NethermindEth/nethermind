@@ -76,6 +76,7 @@ namespace Nethermind.JsonRpc.Modules
 
         public static IEnumerable<string> DefaultModules { get; } = new List<string>()
         {
+            Admin,
             Eth, 
             Subscribe, 
             Trace, 

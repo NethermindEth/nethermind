@@ -19,8 +19,6 @@ using System.IO.Abstractions;
 using System.Linq;
 using System.Reflection;
 using FluentAssertions;
-using FluentAssertions.Specialized;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
@@ -30,6 +28,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Net;
 using Nethermind.JsonRpc.Modules.Web3;
@@ -67,7 +66,21 @@ namespace Nethermind.JsonRpc.Test
             Assert.AreEqual(request.Id, response.Id);
             return response;
         }
+        
+        [TestCase("false")]
+        [TestCase("true")]
+        public void Admin_addPeer_IfAdminIncludedInDefaultModules_IsSuccessful(string includeDetails)
+        {
+            IAdminRpcModule adminRpcModule = Substitute.For<IAdminRpcModule>();
+            adminRpcModule.admin_peers(Arg.Any<bool>())
+                .Returns(c => ResultWrapper<PeerInfo[]>.Success(new PeerInfo[]{}));
 
+            JsonRpcResponse jsonRpcResponse = TestRequest(adminRpcModule,"admin_peers", includeDetails);
+            
+            JsonRpcErrorResponse errorResponse = jsonRpcResponse as JsonRpcErrorResponse;
+            errorResponse?.Error.Should().BeNull();
+            
+        }
         [Test]
         public void GetBlockByNumberTest()
         {
