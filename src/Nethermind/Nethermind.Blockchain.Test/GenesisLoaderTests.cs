@@ -44,7 +44,7 @@ namespace Nethermind.Blockchain.Test
         [Test]
         public void Can_load_genesis_with_emtpy_accounts_and_code()
         {
-            AssertBlockHash("0x62839401df8970ec70785f62e9e9d559b256a9a10b343baf6c064747b094de09", "Specs/empty_accounts_and_codes.json");
+            AssertBlockHash("0xfa3da895e1c2a4d2673f60dd885b867d60fb6d823abaf1e5276a899d7e2feca5", "Specs/empty_accounts_and_codes.json");
         }
         
         [Test]
