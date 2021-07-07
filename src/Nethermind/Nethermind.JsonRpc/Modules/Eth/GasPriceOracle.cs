@@ -11,8 +11,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
     {
         public UInt256? DefaultGasPrice { get; private set; }
         public List<UInt256> TxGasPriceList { get; private set; }
-        private Block? _lastHeadBlock;
         private UInt256? LastGasPrice { get; set; }
+        private Block? _lastHeadBlock;
         private IBlockFinder? _blockFinder;
         private EarlyExitManager? _earlyExitManager;
         private bool _eip1559Enabled;
@@ -20,7 +20,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly int _blockLimit;
         private readonly int _softTxThreshold;
         private readonly UInt256 _baseFee;
-        private readonly ValidTxInsertionManager _validTxInsertionManager;
+        private readonly TxInsertionManager _txInsertionManager;
 
         public GasPriceOracle(bool eip1559Enabled = false, UInt256? ignoreUnder = null, 
             int? blockLimit = null, UInt256? baseFee = null)
@@ -31,7 +31,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _blockLimit = blockLimit ?? GasPriceConfig.DefaultBlocksLimit;
             _softTxThreshold = GasPriceConfig.SoftTxLimit;
             _baseFee = baseFee ?? GasPriceConfig.DefaultBaseFee;
-            _validTxInsertionManager = new ValidTxInsertionManager(this, _ignoreUnder, _eip1559Enabled, _baseFee);
+            _txInsertionManager = new TxInsertionManager(this, _ignoreUnder, _eip1559Enabled, _baseFee);
             _earlyExitManager = null;
         }
 
@@ -84,7 +84,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 Block? block = FindBlockAtNumber(currentBlockNumber);
                 if (BlockExists(block))
                 {
-                    int txsAdded = _validTxInsertionManager.AddValidTxAndReturnCount(block!);
+                    int txsAdded = _txInsertionManager.AddValidTxAndReturnCount(block!);
                     if (txsAdded > 1 || BonusBlockLimitReached(blocksToGoBack))
                     {
                         blocksToGoBack--;

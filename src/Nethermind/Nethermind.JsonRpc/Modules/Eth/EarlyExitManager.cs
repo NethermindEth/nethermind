@@ -5,8 +5,9 @@ using Nethermind.Int256;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
-    //Checks edge cases where head or genesis block may be missing (return error) or
-    //the head block did not change from the last time we ran eth_gasPrice (return previous estiamted gas price).
+    //Checks edge cases where:
+    //    1. Head or Genesis block is missing
+    //    2. The Head block did not change from previous call of eth_gasPrice from an instance of EthRpcModule
     public class EarlyExitManager
     {
         private IBlockFinder? _blockFinder;
