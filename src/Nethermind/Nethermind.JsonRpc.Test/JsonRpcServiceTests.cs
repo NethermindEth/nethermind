@@ -69,7 +69,7 @@ namespace Nethermind.JsonRpc.Test
         
         [TestCase("false")]
         [TestCase("true")]
-        public void Admin_addPeer_IfAdminInDefaultModules_JsonRpcCallIsSuccessful(string includeDetails)
+        public void Admin_peers_IfAdminInDefaultModules_JsonRpcCallIsSuccessful(string includeDetails)
         {
             IAdminRpcModule adminRpcModule = Substitute.For<IAdminRpcModule>();
             adminRpcModule.admin_peers(Arg.Any<bool>())
@@ -79,8 +79,8 @@ namespace Nethermind.JsonRpc.Test
             
             JsonRpcErrorResponse errorResponse = jsonRpcResponse as JsonRpcErrorResponse;
             errorResponse?.Error.Should().BeNull();
-            
         }
+        
         [Test]
         public void GetBlockByNumberTest()
         {
