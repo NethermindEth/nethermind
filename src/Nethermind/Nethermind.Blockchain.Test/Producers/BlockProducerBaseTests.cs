@@ -47,20 +47,11 @@ namespace Nethermind.Blockchain.Test.Producers
 
             public override Task StopAsync() => Task.CompletedTask;
 
-            protected override UInt256 CalculateDifficulty(BlockHeader parent, UInt256 timestamp)
-            {
-                return timestamp;
-            }
+            protected override UInt256 CalculateDifficulty(BlockHeader parent, UInt256 timestamp) => timestamp;
 
-            public Block Prepare()
-            {
-                return PrepareBlock(Build.A.BlockHeader.TestObject);
-            }
-            
-            public Block Prepare(BlockHeader header)
-            {
-                return PrepareBlock(header);
-            }
+            public Block Prepare() => PrepareBlock(Build.A.BlockHeader.TestObject);
+
+            public Block Prepare(BlockHeader header) => PrepareBlock(header);
 
             protected override bool IsRunning() => true;
         }

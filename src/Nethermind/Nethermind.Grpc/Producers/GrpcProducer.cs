@@ -15,7 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Threading.Tasks;
-using Nethermind.PubSub;
+using Nethermind.Core.PubSub;
 
 namespace Nethermind.Grpc.Producers
 {

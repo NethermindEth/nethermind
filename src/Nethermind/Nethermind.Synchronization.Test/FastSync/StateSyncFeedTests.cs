@@ -125,12 +125,12 @@ namespace Nethermind.Synchronization.Test.FastSync
 
                 if (!skipLogs) _logger.Info("-------------------- REMOTE --------------------");
                 TreeDumper dumper = new TreeDumper();
-                RemoteStateTree.Accept(dumper, RemoteStateTree.RootHash, true);
+                RemoteStateTree.Accept(dumper, RemoteStateTree.RootHash);
                 string remote = dumper.ToString();
                 if (!skipLogs) _logger.Info(remote);
                 if (!skipLogs) _logger.Info("-------------------- LOCAL --------------------");
                 dumper.Reset();
-                LocalStateTree.Accept(dumper, LocalStateTree.RootHash, true);
+                LocalStateTree.Accept(dumper, LocalStateTree.RootHash);
                 string local = dumper.ToString();
                 if (!skipLogs) _logger.Info(local);
 
@@ -138,7 +138,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 {
                     Assert.AreEqual(remote, local, $"{remote}{Environment.NewLine}{local}");
                     TrieStatsCollector collector = new TrieStatsCollector(LocalCodeDb, new OneLoggerLogManager(_logger));
-                    LocalStateTree.Accept(collector, LocalStateTree.RootHash, true);
+                    LocalStateTree.Accept(collector, LocalStateTree.RootHash);
                     Assert.AreEqual(0, collector.Stats.MissingNodes);
                     Assert.AreEqual(0, collector.Stats.MissingCode);
                 }

@@ -21,6 +21,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Processing;
@@ -49,7 +50,6 @@ using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
-using Nethermind.TxPool.Storages;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 
@@ -122,7 +122,7 @@ namespace Nethermind.Clique.Test
                 ITransactionComparerProvider transactionComparerProvider =
                     new TransactionComparerProvider(specProvider, blockTree);
 
-                 TxPool.TxPool txPool = new TxPool.TxPool(new InMemoryTxStorage(), _ethereumEcdsa, new ChainHeadInfoProvider(new FixedBlockChainHeadSpecProvider(GoerliSpecProvider.Instance), blockTree, stateProvider), new TxPoolConfig(), new TxValidator(goerliSpecProvider.ChainId), _logManager, transactionComparerProvider.GetDefaultComparer());
+                 TxPool.TxPool txPool = new TxPool.TxPool(_ethereumEcdsa, new ChainHeadInfoProvider(new FixedBlockChainHeadSpecProvider(GoerliSpecProvider.Instance), blockTree, stateProvider), new TxPoolConfig(), new TxValidator(goerliSpecProvider.ChainId), _logManager, transactionComparerProvider.GetDefaultComparer());
                 _pools[privateKey] = txPool;
 
                 BlockhashProvider blockhashProvider = new BlockhashProvider(blockTree, LimboLogs.Instance);
@@ -148,7 +148,6 @@ namespace Nethermind.Clique.Test
                     transactionProcessor,
                     stateProvider,
                     storageProvider,
-                    txPool,
                     NullReceiptStorage.Instance,
                     NullWitnessCollector.Instance,
                     nodeLogManager);
@@ -170,7 +169,6 @@ namespace Nethermind.Clique.Test
                     minerTransactionProcessor,
                     minerStateProvider,
                     minerStorageProvider,
-                    txPool,
                     NullReceiptStorage.Instance,
                     NullWitnessCollector.Instance,
                     nodeLogManager);
@@ -340,7 +338,6 @@ namespace Nethermind.Clique.Test
                     throw;
                 }
             }
-
             public On AssertHeadBlockParentIs(PrivateKey nodeKey, Keccak hash)
             {
                 if (_logger.IsInfo) _logger.Info($"ASSERTING HEAD PARENT HASH ON {nodeKey.Address}");
@@ -353,6 +350,14 @@ namespace Nethermind.Clique.Test
                 WaitForNumber(nodeKey, number);
                 if (_logger.IsInfo) _logger.Info($"ASSERTING HEAD BLOCK IS BLOCK {number} ON {nodeKey.Address}");
                 Assert.AreEqual(number, _blockTrees[nodeKey].Head.Number, nodeKey.Address + " head number");
+                return this;
+            }
+            
+            public On AssertTransactionCount(PrivateKey nodeKey, long number, int transactionCount)
+            {
+                WaitForNumber(nodeKey, number);
+                if (_logger.IsInfo) _logger.Info($"ASSERTING HEAD BLOCK IS BLOCK {number} ON {nodeKey.Address}");
+                Assert.AreEqual(transactionCount, _blockTrees[nodeKey].Head.Transactions.Length, nodeKey.Address + $" transaction count should be equal {transactionCount} for block number {number}");
                 return this;
             }
 
@@ -454,7 +459,7 @@ namespace Nethermind.Clique.Test
                 transaction.SenderAddress = TestItem.PrivateKeyD.Address;
                 transaction.Hash = transaction.CalculateHash();
                 _ethereumEcdsa.Sign(TestItem.PrivateKeyD, transaction, true);
-                _pools[nodeKey].AddTransaction(transaction, TxHandlingOptions.None);
+                _pools[nodeKey].SubmitTx(transaction, TxHandlingOptions.None);
 
                 return this;
             }
@@ -471,7 +476,7 @@ namespace Nethermind.Clique.Test
                 transaction.SenderAddress = TestItem.PrivateKeyD.Address;
                 transaction.Hash = transaction.CalculateHash();
                 _ethereumEcdsa.Sign(TestItem.PrivateKeyD, transaction, true);
-                _pools[nodeKey].AddTransaction(transaction, TxHandlingOptions.None);
+                _pools[nodeKey].SubmitTx(transaction, TxHandlingOptions.None);
 
                 // bad nonce
                 transaction = new Transaction();
@@ -483,7 +488,7 @@ namespace Nethermind.Clique.Test
                 transaction.SenderAddress = TestItem.PrivateKeyD.Address;
                 transaction.Hash = transaction.CalculateHash();
                 _ethereumEcdsa.Sign(TestItem.PrivateKeyD, transaction, true);
-                _pools[nodeKey].AddTransaction(transaction, TxHandlingOptions.None);
+                _pools[nodeKey].SubmitTx(transaction, TxHandlingOptions.None);
 
                 // gas limit too high
                 transaction = new Transaction();
@@ -495,7 +500,7 @@ namespace Nethermind.Clique.Test
                 transaction.SenderAddress = TestItem.PrivateKeyD.Address;
                 transaction.Hash = transaction.CalculateHash();
                 _ethereumEcdsa.Sign(TestItem.PrivateKeyD, transaction, true);
-                _pools[nodeKey].AddTransaction(transaction, TxHandlingOptions.None);
+                _pools[nodeKey].SubmitTx(transaction, TxHandlingOptions.None);
 
                 // insufficient balance
                 transaction = new Transaction();
@@ -507,8 +512,28 @@ namespace Nethermind.Clique.Test
                 transaction.SenderAddress = TestItem.PrivateKeyD.Address;
                 transaction.Hash = transaction.CalculateHash();
                 _ethereumEcdsa.Sign(TestItem.PrivateKeyD, transaction, true);
-                _pools[nodeKey].AddTransaction(transaction, TxHandlingOptions.None);
+                _pools[nodeKey].SubmitTx(transaction, TxHandlingOptions.None);
 
+                return this;
+            }
+            
+            public On AddTransactionWithGasLimitToHigh(PrivateKey nodeKey)
+            {
+                Transaction transaction = new Transaction();
+            
+                // gas limit too high
+                transaction = new Transaction();
+                transaction.Value = 1;
+                transaction.To = TestItem.AddressC;
+                transaction.GasLimit = 100000000;
+                transaction.GasPrice = 20.GWei();
+                transaction.Nonce = _currentNonce;
+                transaction.Data = Bytes.FromHexString("0xEF");
+                transaction.SenderAddress = TestItem.PrivateKeyD.Address;
+                transaction.Hash = transaction.CalculateHash();
+                _ethereumEcdsa.Sign(TestItem.PrivateKeyD, transaction, true);
+                _pools[nodeKey].SubmitTx(transaction, TxHandlingOptions.None);
+            
                 return this;
             }
 
@@ -523,7 +548,7 @@ namespace Nethermind.Clique.Test
                 transaction.SenderAddress = TestItem.PrivateKeyD.Address;
                 transaction.Hash = transaction.CalculateHash();
                 _ethereumEcdsa.Sign(TestItem.PrivateKeyD, transaction, true);
-                _pools[nodeKey].AddTransaction(transaction, TxHandlingOptions.None);
+                _pools[nodeKey].SubmitTx(transaction, TxHandlingOptions.None);
 
                 return this;
             }
@@ -574,6 +599,17 @@ namespace Nethermind.Clique.Test
                 .AddQueuedTransaction(TestItem.PrivateKeyA)
                 .ProcessGenesis()
                 .AssertHeadBlockIs(TestItem.PrivateKeyA, 1)
+                .StopNode(TestItem.PrivateKeyA);
+        }
+        
+        [Test]
+        public async Task Transaction_with_gas_limit_higher_than_block_gas_limit_should_not_be_send()
+        {
+            await On.Goerli
+                .CreateNode(TestItem.PrivateKeyA)
+                .AddTransactionWithGasLimitToHigh(TestItem.PrivateKeyA)
+                .ProcessGenesis()
+                .AssertTransactionCount(TestItem.PrivateKeyA, 1, 0)
                 .StopNode(TestItem.PrivateKeyA);
         }
 

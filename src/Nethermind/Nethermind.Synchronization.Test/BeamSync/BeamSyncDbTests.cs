@@ -165,7 +165,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
             {
                 await Task.Delay(1);
                 request = await _stateBeamLocal.PrepareRequest();
-                if (request!.RequestedNodes.Length > 0)
+                if (request?.RequestedNodes?.Length > 0)
                 {
                     break;
                 }

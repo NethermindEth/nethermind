@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Nethermind.Abi;
 using Nethermind.Api;
 using Nethermind.Blockchain;
@@ -49,7 +50,7 @@ namespace Nethermind.Runner.Ethereum.Steps
     {
         private new readonly AuRaNethermindApi _api;
         
-        private BlockProducerContext? _blockProducerContext;
+        private BlockProducerEnv? _blockProducerContext;
         private INethermindApi NethermindApi => _api;
         
         private readonly IAuraConfig _auraConfig;
@@ -64,7 +65,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             _auraConfig = NethermindApi.Config<IAuraConfig>();
         }
 
-        protected override void BuildProducer()
+        protected override Task BuildProducer()
         {
             if (_api.EngineSigner == null) throw new StepDependencyException(nameof(_api.EngineSigner));
             if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
@@ -73,11 +74,14 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (logger.IsWarn) logger.Warn("Starting AuRa block producer & sealer");
             
             IAuRaStepCalculator stepCalculator = new AuRaStepCalculator(_api.ChainSpec.AuRa.StepDuration, _api.Timestamper, _api.LogManager);
-            BlockProducerContext producerContext = GetProducerChain();
+            BlockProducerEnv producerEnv = GetProducerChain();
+
+            IGasLimitCalculator gasLimitCalculator = _api.GasLimitCalculator = CreateGasLimitCalculator(producerEnv.ReadOnlyTxProcessingEnv);
+            
             _api.BlockProducer = new AuRaBlockProducer(
-                producerContext.TxSource,
-                producerContext.ChainProcessor,
-                producerContext.ReadOnlyStateProvider,
+                producerEnv.TxSource,
+                producerEnv.ChainProcessor,
+                producerEnv.ReadOnlyStateProvider,
                 _api.Sealer,
                 _api.BlockTree,
                 _api.BlockProcessingQueue,
@@ -85,15 +89,14 @@ namespace Nethermind.Runner.Ethereum.Steps
                 stepCalculator,
                 _api.ReportingValidator,
                 _auraConfig,
-                CreateGasLimitCalculator(producerContext.ReadOnlyTxProcessingEnv),
+                gasLimitCalculator,
                 _api.SpecProvider,
                 _api.LogManager);
+            
+            return Task.CompletedTask;
         }
 
-        private BlockProcessor CreateBlockProcessor(
-            ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv,
-            IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
-            IReadOnlyDbProvider readOnlyDbProvider)
+        private BlockProcessor CreateBlockProcessor(ReadOnlyTxProcessingEnv changableTxProcessingEnv, ReadOnlyTxProcessingEnv constantContractTxProcessingEnv)
         {
             if (_api.RewardCalculatorSource == null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
             if (_api.ValidatorStore == null) throw new StepDependencyException(nameof(_api.ValidatorStore));
@@ -106,15 +109,14 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             ITxFilter auRaTxFilter = TxAuRaFilterBuilders.CreateAuRaTxFilter(
                 _api,
-                readOnlyTxProcessorSource,
+                constantContractTxProcessingEnv,
                 _api.SpecProvider);
 
-            _validator = new AuRaValidatorFactory(
-                    readOnlyTxProcessingEnv.StateProvider,
-                    _api.AbiEncoder,
-                    readOnlyTxProcessingEnv.TransactionProcessor,
-                    readOnlyTxProcessorSource,
-                    readOnlyTxProcessingEnv.BlockTree,
+            _validator = new AuRaValidatorFactory(_api.AbiEncoder,
+                    changableTxProcessingEnv.StateProvider,
+                    changableTxProcessingEnv.TransactionProcessor,
+                    changableTxProcessingEnv.BlockTree,
+                    constantContractTxProcessingEnv,
                     _api.ReceiptStorage,
                     _api.ValidatorStore,
                     _api.FinalizationManager,
@@ -124,9 +126,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _api.LogManager,
                     _api.EngineSigner,
                     _api.SpecProvider,
-                    _api.ReportingContractValidatorCache,
-                    chainSpecAuRa.PosdaoTransition,
-                    true)
+                    _api.ReportingContractValidatorCache, chainSpecAuRa.PosdaoTransition, true)
                 .CreateValidatorProcessor(chainSpecAuRa.Validators, _api.BlockTree.Head?.Header);
 
             if (_validator is IDisposable disposableValidator)
@@ -137,16 +137,15 @@ namespace Nethermind.Runner.Ethereum.Steps
             return new AuRaBlockProcessor(
                 _api.SpecProvider,
                 _api.BlockValidator,
-                _api.RewardCalculatorSource.Get(readOnlyTxProcessingEnv.TransactionProcessor),
-                readOnlyTxProcessingEnv.TransactionProcessor,
-                readOnlyTxProcessingEnv.StateProvider,
-                readOnlyTxProcessingEnv.StorageProvider,
-                NullTxPool.Instance, 
+                _api.RewardCalculatorSource.Get(changableTxProcessingEnv.TransactionProcessor),
+                changableTxProcessingEnv.TransactionProcessor,
+                changableTxProcessingEnv.StateProvider,
+                changableTxProcessingEnv.StorageProvider, 
                 _api.ReceiptStorage,
                 _api.LogManager,
-                readOnlyTxProcessingEnv.BlockTree,
+                changableTxProcessingEnv.BlockTree,
                 auRaTxFilter,
-                CreateGasLimitCalculator(readOnlyTxProcessorSource) as AuRaContractGasLimitOverride)
+                CreateGasLimitCalculator(constantContractTxProcessingEnv) as AuRaContractGasLimitOverride)
             {
                 AuRaValidator = _validator
             };
@@ -210,19 +209,22 @@ namespace Nethermind.Runner.Ethereum.Steps
             }
         }
         
-        
-        private BlockProducerContext GetProducerChain()
+        // TODO: Use BlockProducerEnvFactory
+        private BlockProducerEnv GetProducerChain()
         {
-            BlockProducerContext Create()
+            ReadOnlyTxProcessingEnv CreateReadonlyTxProcessingEnv(ReadOnlyDbProvider dbProvider, ReadOnlyBlockTree blockTree)
+            {
+                return new ReadOnlyTxProcessingEnv(dbProvider, _api.ReadOnlyTrieStore, blockTree, _api.SpecProvider, _api.LogManager);
+            }
+
+            BlockProducerEnv Create()
             {
                 ReadOnlyDbProvider dbProvider = _api.DbProvider.AsReadOnly(false);
                 ReadOnlyBlockTree blockTree = _api.BlockTree.AsReadOnly();
 
-                ReadOnlyTxProcessingEnv txProcessingEnv =
-                    new ReadOnlyTxProcessingEnv(dbProvider, _api.ReadOnlyTrieStore, blockTree, _api.SpecProvider, _api.LogManager);
-                
-                BlockProcessor blockProcessor =
-                    CreateBlockProcessor(txProcessingEnv, txProcessingEnv, dbProvider);
+                ReadOnlyTxProcessingEnv txProcessingEnv = CreateReadonlyTxProcessingEnv(dbProvider, blockTree);
+                ReadOnlyTxProcessingEnv constantContractsProcessingEnv = CreateReadonlyTxProcessingEnv(dbProvider, blockTree);
+                BlockProcessor blockProcessor = CreateBlockProcessor(txProcessingEnv, constantContractsProcessingEnv);
 
                 IBlockchainProcessor blockchainProcessor =
                     new BlockchainProcessor(
@@ -232,16 +234,16 @@ namespace Nethermind.Runner.Ethereum.Steps
                         _api.LogManager,
                         BlockchainProcessor.Options.NoReceipts);
 
-                OneTimeChainProcessor chainProcessor = new OneTimeChainProcessor(
+                OneTimeChainProcessor chainProcessor = new(
                     dbProvider,
                     blockchainProcessor);
 
-                return new BlockProducerContext
+                return new BlockProducerEnv()
                 {
                     ChainProcessor = chainProcessor,
                     ReadOnlyStateProvider = txProcessingEnv.StateProvider,
-                    TxSource = CreateTxSourceForProducer(txProcessingEnv, txProcessingEnv),
-                    ReadOnlyTxProcessingEnv = txProcessingEnv
+                    TxSource = CreateTxSourceForProducer(txProcessingEnv, constantContractsProcessingEnv),
+                    ReadOnlyTxProcessingEnv = constantContractsProcessingEnv
                 };
             }
 
@@ -362,8 +364,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 new TargetAdjustedGasLimitCalculator(_api.SpecProvider, NethermindApi.Config<IMiningConfig>());
             if (blockGasLimitContractTransitions?.Any() == true)
             {
-                AuRaContractGasLimitOverride auRaContractGasLimitOverride =
-                    new AuRaContractGasLimitOverride(
+                AuRaContractGasLimitOverride auRaContractGasLimitOverride = new(
                         blockGasLimitContractTransitions.Select(blockGasLimitContractTransition =>
                                 new BlockGasLimitContract(
                                     _api.AbiEncoder,

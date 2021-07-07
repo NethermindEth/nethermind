@@ -16,8 +16,9 @@
 // 
 
 using System.Threading.Tasks;
+using Nethermind.Api;
+using Nethermind.Core.PubSub;
 using Nethermind.Logging;
-using Nethermind.PubSub;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.Runner.Ethereum.Publishers

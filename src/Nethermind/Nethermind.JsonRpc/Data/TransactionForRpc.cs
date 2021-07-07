@@ -44,9 +44,10 @@ namespace Nethermind.JsonRpc.Data
             Input = Data = transaction.Data;
             if (transaction.IsEip1559)
             {
-                MaxFeePerGas = transaction.FeeCap;
-                MaxPriorityFeePerGas = transaction.GasPremium;
+                MaxFeePerGas = transaction.MaxFeePerGas;
+                MaxPriorityFeePerGas = transaction.MaxPriorityFeePerGas;
             }
+            ChainId = transaction.ChainId;
             Type = transaction.Type;
             AccessList = transaction.AccessList is null ? null : AccessListItemForRpc.FromAccessList(transaction.AccessList);
 
@@ -55,7 +56,7 @@ namespace Nethermind.JsonRpc.Data
             {
                 R = new UInt256(signature.R, true);
                 S = new UInt256(signature.S, true);
-                V = (UInt256?)signature.V;
+                V = transaction.Type == TxType.Legacy ? (UInt256?)signature.V : (UInt256?)signature.RecoveryId;
             }
         }
 
@@ -92,7 +93,9 @@ namespace Nethermind.JsonRpc.Data
 
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public byte[]? Input { get; set; }
-
+        
+        public UInt256? ChainId { get; set; }
+        
         public TxType Type { get; set; }
         
         public AccessListItemForRpc[]? AccessList { get; set; }
@@ -116,7 +119,7 @@ namespace Nethermind.JsonRpc.Data
             tx.Type = Type;
             tx.AccessList = TryGetAccessList();
             tx.ChainId = chainId;
-            tx.DecodedFeeCap = MaxFeePerGas ?? 0;
+            tx.DecodedMaxFeePerGas = MaxFeePerGas ?? 0;
             if (tx.IsEip1559)
                 tx.GasPrice = MaxPriorityFeePerGas ?? 0;
 
@@ -140,7 +143,7 @@ namespace Nethermind.JsonRpc.Data
             if (tx.IsEip1559)
             {
                 tx.GasPrice = MaxPriorityFeePerGas ?? 0;
-                tx.DecodedFeeCap = MaxFeePerGas ?? 0;
+                tx.DecodedMaxFeePerGas = MaxFeePerGas ?? 0;
             }
 
             return tx;

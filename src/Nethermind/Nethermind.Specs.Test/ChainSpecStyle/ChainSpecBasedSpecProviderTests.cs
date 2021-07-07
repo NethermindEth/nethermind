@@ -23,6 +23,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Specs.Test.ChainSpecStyle
@@ -42,24 +43,22 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             ChainSpecBasedSpecProvider provider = new(chainSpec);
             RinkebySpecProvider rinkeby = RinkebySpecProvider.Instance;
 
-            IReleaseSpec oldRinkebySpec = rinkeby.GetSpec(8_290_928);
-            IReleaseSpec newRinkebySpec = provider.GetSpec(8_290_928);
-
-            PropertyInfo[] propertyInfos =
-                typeof(IReleaseSpec).GetProperties(BindingFlags.Public | BindingFlags.Instance);
-            foreach (PropertyInfo propertyInfo in propertyInfos.Where(pi =>
-                pi.Name != "MaximumExtraDataSize"
-                && pi.Name != "Name"
-                && pi.Name != "Registrar"
-                && pi.Name != "BlockReward"
-                && pi.Name != "DifficultyBombDelay"
-                && pi.Name != "DifficultyBoundDivisor"))
+            List<long> blockNumbersToTest = new()
             {
-                object? a = propertyInfo.GetValue(oldRinkebySpec);
-                object? b = propertyInfo.GetValue(newRinkebySpec);
-
-                Assert.AreEqual(a, b, propertyInfo.Name);
-            }
+                RinkebySpecProvider.ByzantiumBlockNumber,
+                RinkebySpecProvider.ConstantinopleFixBlockNumber - 1,
+                RinkebySpecProvider.ConstantinopleFixBlockNumber,
+                RinkebySpecProvider.IstanbulBlockNumber - 1,
+                RinkebySpecProvider.IstanbulBlockNumber,
+                RinkebySpecProvider.BerlinBlockNumber - 1,
+                RinkebySpecProvider.BerlinBlockNumber,
+                RinkebySpecProvider.LondonBlockNumber - 1,
+                RinkebySpecProvider.LondonBlockNumber,
+                120_000_000, // far in the future
+            };
+            
+            CompareSpecProviders(rinkeby, provider, blockNumbersToTest);
+            Assert.AreEqual(RinkebySpecProvider.LondonBlockNumber, provider.GenesisSpec.Eip1559TransitionBlock);
         }
 
         [Test]
@@ -81,10 +80,13 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                 GoerliSpecProvider.IstanbulBlockNumber,
                 GoerliSpecProvider.BerlinBlockNumber - 1,
                 GoerliSpecProvider.BerlinBlockNumber,
+                GoerliSpecProvider.LondonBlockNumber - 1,
+                GoerliSpecProvider.LondonBlockNumber,
                 100000000, // far in the future
             };
 
             CompareSpecProviders(goerli, provider, blockNumbersToTest);
+            Assert.AreEqual(GoerliSpecProvider.LondonBlockNumber, provider.GenesisSpec.Eip1559TransitionBlock);
         }
 
         [Test]
@@ -137,7 +139,8 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
         private static void CompareSpecProviders(
             ISpecProvider oldSpecProvider,
             ISpecProvider newSpecProvider,
-            IEnumerable<long> blockNumbers)
+            IEnumerable<long> blockNumbers,
+            bool checkDifficultyBomb = false)
         {
             foreach (long blockNumber in blockNumbers)
             {
@@ -146,11 +149,12 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                 long? daoBlockNumber = newSpecProvider.DaoBlockNumber;
                 bool isMainnet = daoBlockNumber != null;
 
-                CompareSpecs(oldSpec, newSpec, blockNumber, isMainnet);
+                CompareSpecs(oldSpec, newSpec, blockNumber, isMainnet, checkDifficultyBomb);
             }
         }
 
-        private static void CompareSpecs(IReleaseSpec oldSpec, IReleaseSpec newSpec, long blockNumber, bool isMainnet)
+        private static void CompareSpecs(IReleaseSpec oldSpec, IReleaseSpec newSpec, long blockNumber, bool isMainnet,
+            bool checkDifficultyBomb = false)
         {
             PropertyInfo[] propertyInfos =
                 typeof(IReleaseSpec).GetProperties(BindingFlags.Public | BindingFlags.Instance);
@@ -158,8 +162,9 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                 .Where(p => p.Name != nameof(IReleaseSpec.Name))
                 .Where(p => isMainnet || p.Name != nameof(IReleaseSpec.MaximumExtraDataSize))
                 .Where(p => isMainnet || p.Name != nameof(IReleaseSpec.BlockReward))
-                .Where(p => isMainnet || p.Name != nameof(IReleaseSpec.DifficultyBombDelay))
-                .Where(p => isMainnet || p.Name != nameof(IReleaseSpec.DifficultyBoundDivisor)))
+                .Where(p => isMainnet || checkDifficultyBomb || p.Name != nameof(IReleaseSpec.DifficultyBombDelay))
+                .Where(p => isMainnet || checkDifficultyBomb || p.Name != nameof(IReleaseSpec.DifficultyBoundDivisor))
+                .Where(p => isMainnet || p.Name != nameof(IReleaseSpec.Eip1559TransitionBlock)))
             {
                 Assert.AreEqual(propertyInfo.GetValue(oldSpec), propertyInfo.GetValue(newSpec),
                     blockNumber + "." + propertyInfo.Name);
@@ -193,10 +198,13 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                 RopstenSpecProvider.MuirGlacierBlockNumber,
                 RopstenSpecProvider.BerlinBlockNumber - 1,
                 RopstenSpecProvider.BerlinBlockNumber,
-                120000000, // far in the future
+                RopstenSpecProvider.LondonBlockNumber - 1,
+                RopstenSpecProvider.LondonBlockNumber,
+                999_999_999, // far in the future
             };
 
-            CompareSpecProviders(ropsten, provider, blockNumbersToTest);
+            CompareSpecProviders(ropsten, provider, blockNumbersToTest, true);
+            Assert.AreEqual(RopstenSpecProvider.LondonBlockNumber, provider.GenesisSpec.Eip1559TransitionBlock);
         }
 
         [Test]

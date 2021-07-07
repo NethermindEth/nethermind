@@ -164,5 +164,13 @@ namespace Nethermind.Runner.Test
             Assert.Throws<ArgumentOutOfRangeException>(
                 () => SetMemoryAllowances(cpuCount));
         }
+
+        [TestCase(500 * GB)]
+        public void Big_value_at_memory_hint(long memoryHint)
+        {
+            _initConfig.MemoryHint = memoryHint;
+            SetMemoryAllowances(1);
+            Trie.MemoryAllowance.TrieNodeCacheCount.Should().BeGreaterThan(0);
+        }
     }
 }

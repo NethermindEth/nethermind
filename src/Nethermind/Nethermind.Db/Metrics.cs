@@ -73,13 +73,7 @@ namespace Nethermind.Db
         
         [Description("Number of storage trie writes.")]
         public static long StorageTreeWrites { get; set; }
-        
-        [Description("Number of Pending Tx DB reads.")]
-        public static long PendingTxsDbReads { get; set; }
-        
-        [Description("Number of Pending Tx DB writes.")]
-        public static long PendingTxsDbWrites { get; set; }
-        
+
         [Description("Number of other DB reads.")]
         public static long OtherDbReads { get; set; }
         

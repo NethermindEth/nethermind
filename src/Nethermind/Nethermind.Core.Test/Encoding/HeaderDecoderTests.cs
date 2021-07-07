@@ -112,7 +112,7 @@ namespace Nethermind.Core.Test.Encoding
                 BlockHeader header = Build.A.BlockHeader.WithBaseFee(123).TestObject;
                 Rlp rlp = Rlp.Encode(header);
                 BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp);
-                blockHeader.BaseFee.Should().Be(123);
+                blockHeader.BaseFeePerGas.Should().Be(123);
             }
             finally
             {
