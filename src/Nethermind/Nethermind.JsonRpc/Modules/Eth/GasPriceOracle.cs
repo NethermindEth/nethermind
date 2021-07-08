@@ -12,14 +12,14 @@ namespace Nethermind.JsonRpc.Modules.Eth
         public UInt256? DefaultGasPrice { get; private set; }
         public List<UInt256> TxGasPriceList { get; private set; }
         private UInt256? LastGasPrice { get; set; }
-        private Block? _lastHeadBlock;
-        private EarlyExitManager _earlyExitManager;
-        private bool _eip1559Enabled;
+        private Block? LastHeadBlock;
+        private readonly bool _eip1559Enabled;
         private readonly UInt256? _ignoreUnder;
         private readonly int _blockLimit;
         private readonly int _softTxThreshold;
         private readonly UInt256 _baseFee;
         private readonly TxInsertionManager _txInsertionManager;
+        private readonly EarlyExitManager _earlyExitManager;
 
         public GasPriceOracle(bool eip1559Enabled = false, UInt256? ignoreUnder = null, 
             int? blockLimit = null, UInt256? baseFee = null)
@@ -37,7 +37,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         public ResultWrapper<UInt256?> GasPriceEstimate(Block? headBlock, Dictionary<long, Block> blockNumToBlockMap)
         {
             Tuple<bool, ResultWrapper<UInt256?>> headChangedResult;
-            headChangedResult = _earlyExitManager.CheckChangeInHeadBlock(ref _lastHeadBlock, headBlock, LastGasPrice);
+            headChangedResult = _earlyExitManager.CheckChangeInHeadBlock(ref LastHeadBlock, headBlock, LastGasPrice);
             if (HeadBlockDidNotChange(headChangedResult))
             {
                 return headChangedResult.Item2;
