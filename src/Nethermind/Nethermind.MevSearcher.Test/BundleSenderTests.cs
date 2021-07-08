@@ -52,5 +52,18 @@ namespace Nethermind.MevSearcher.Test
             
             serializedRequest.Should().Be(expectedRequest);
         }
+        
+        [Test]
+        public void Should_sign_correctly()
+        {
+            Transaction tx1 = Build.A.Transaction.WithNonce(0).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            Transaction tx2 = Build.A.Transaction.WithNonce(0).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+            MevBundle bundle = new MevBundle(1, new []{tx1, tx2});
+
+            string serializedRequest = bundle.GenerateSerializedSendBundleRequest();
+            Signature signature = BundleSender.SignMessage(serializedRequest, new Signer(ChainId.Mainnet, TestItem.PrivateKeyA, NullLogManager.Instance));
+            
+            signature.ToString().Should().Be("0x2aa7aefdfb45163cd923052a5caaf444379a8c7a2d1002c8e360cbd7a41ac0b32079109e92557d3a7750bdb817eead0289953dc2feee959c488acb2c081a43f31b");
+        }
     }
 }

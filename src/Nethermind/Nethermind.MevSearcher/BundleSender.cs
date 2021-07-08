@@ -48,7 +48,7 @@ namespace Nethermind.MevSearcher
             Address address = _signer.Address;
 
             string serializedRequest = bundle.GenerateSerializedSendBundleRequest();
-            Signature signature = SignMessage(serializedRequest);
+            Signature signature = SignMessage(serializedRequest, _signer);
 
             HttpRequestMessage request = new HttpRequestMessage
             {
@@ -65,7 +65,7 @@ namespace Nethermind.MevSearcher
             HttpResponseMessage response = await _client.SendAsync(request);
             if (response.IsSuccessStatusCode)
             {
-                if (_logger!.IsInfo) _logger.Info($"Bundle with {bundle.Transactions.Count()} sent successfully");
+                if (_logger!.IsInfo) _logger.Info($"Bundle with {bundle.Transactions.Count()} transactions sent successfully");
             }
             else
             {
@@ -73,7 +73,7 @@ namespace Nethermind.MevSearcher
             }
         }
 
-        private Signature SignMessage(string messageToSign)
+        public static Signature SignMessage(string messageToSign, ISigner signer)
         {
             Keccak hashedRequest = Keccak.Compute(messageToSign);
 
@@ -86,7 +86,7 @@ namespace Nethermind.MevSearcher
             byteList.AddRange(header);
             byteList.AddRange(hashedBytes);
 
-            Signature signature = _signer.Sign(Keccak.Compute(byteList.ToArray()));
+            Signature signature = signer.Sign(Keccak.Compute(byteList.ToArray()));
             return signature;
         }
     }

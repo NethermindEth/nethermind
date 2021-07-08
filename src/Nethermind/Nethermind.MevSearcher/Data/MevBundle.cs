@@ -31,8 +31,7 @@ namespace Nethermind.MevSearcher.Data
     {
         public MevBundle(long blockNumber, Transaction[] transactions, Keccak[] revertingTxHashes = null, UInt256? minTimestamp = null, UInt256? maxTimestamp = null)
         {
-            //BlockNumber = $"0x{blockNumber:X}";
-            BlockNumber = blockNumber.ToString();
+            BlockNumber = $"0x{blockNumber:X}";
             Transactions = transactions.Select(tx => Rlp.Encode(tx).ToString());
             RevertingTxHashes = revertingTxHashes;
 
