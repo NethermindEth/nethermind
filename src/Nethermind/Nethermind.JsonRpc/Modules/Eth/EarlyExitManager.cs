@@ -5,7 +5,7 @@ using Nethermind.Int256;
 namespace Nethermind.JsonRpc.Modules.Eth
 {
     //Checks edge cases where the Head block did not change from previous call of eth_gasPrice from an instance of EthRpcModule
-    public class EarlyExitManager
+    public class EarlyExitManager : IEarlyExitManager
     {
         public Tuple<bool, ResultWrapper<UInt256?>> CheckChangeInHeadBlock(ref Block? lastHead, Block? currentHead, UInt256? lastGasPrice)
         {

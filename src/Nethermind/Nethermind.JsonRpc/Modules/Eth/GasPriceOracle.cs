@@ -21,8 +21,13 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly TxInsertionManager _txInsertionManager;
         private readonly EarlyExitManager _earlyExitManager;
 
-        public GasPriceOracle(bool eip1559Enabled = false, UInt256? ignoreUnder = null, 
-            int? blockLimit = null, UInt256? baseFee = null)
+        public GasPriceOracle(
+            bool eip1559Enabled = false, 
+            UInt256? ignoreUnder = null, 
+            int? blockLimit = null, 
+            UInt256? baseFee = null, 
+            TxInsertionManager? txInsertionManager = null,
+            EarlyExitManager? earlyExitManager = null)
         {
             TxGasPriceList = new List<UInt256>();
             _eip1559Enabled = eip1559Enabled;
@@ -30,8 +35,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _blockLimit = blockLimit ?? GasPriceConfig.DefaultBlocksLimit;
             _softTxThreshold = GasPriceConfig.SoftTxLimit;
             _baseFee = baseFee ?? GasPriceConfig.DefaultBaseFee;
-            _txInsertionManager = new TxInsertionManager(this, _ignoreUnder, _eip1559Enabled, _baseFee);
-            _earlyExitManager = new EarlyExitManager();
+            _txInsertionManager = txInsertionManager ?? new TxInsertionManager(this, _ignoreUnder, _eip1559Enabled, _baseFee);
+            _earlyExitManager = earlyExitManager ?? new EarlyExitManager();
         }
 
         public ResultWrapper<UInt256?> GasPriceEstimate(Block? headBlock, Dictionary<long, Block> blockNumToBlockMap)

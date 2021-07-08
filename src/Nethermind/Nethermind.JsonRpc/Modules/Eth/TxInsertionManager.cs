@@ -5,7 +5,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
-    public class TxInsertionManager
+    public class TxInsertionManager : ITxInsertionManager
     {
         private GasPriceOracle _gasPriceOracle;
         private UInt256? _ignoreUnder;
