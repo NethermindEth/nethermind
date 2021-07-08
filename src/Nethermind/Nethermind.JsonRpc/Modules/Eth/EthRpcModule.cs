@@ -157,7 +157,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
         }
 
-        private Dictionary<long, Block> CreateBlockNumberToBlockDictionary(Block? headBlock) //have this set a property of EthRpcModule?
+        private Dictionary<long, Block> CreateBlockNumberToBlockDictionary(Block? headBlock)
         {
             Dictionary<long, Block> blockToTxDict = new();
             Block block;
