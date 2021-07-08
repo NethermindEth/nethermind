@@ -18,16 +18,16 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly int _blockLimit;
         private readonly int _softTxThreshold;
         private readonly UInt256 _baseFee;
-        private readonly TxInsertionManager _txInsertionManager;
-        private readonly EarlyExitManager _earlyExitManager;
+        private readonly ITxInsertionManager _txInsertionManager;
+        private readonly IEarlyExitManager _earlyExitManager;
 
         public GasPriceOracle(
             bool eip1559Enabled = false, 
             UInt256? ignoreUnder = null, 
             int? blockLimit = null, 
             UInt256? baseFee = null, 
-            TxInsertionManager? txInsertionManager = null,
-            EarlyExitManager? earlyExitManager = null)
+            ITxInsertionManager? txInsertionManager = null,
+            IEarlyExitManager? earlyExitManager = null)
         {
             TxGasPriceList = new List<UInt256>();
             _eip1559Enabled = eip1559Enabled;
