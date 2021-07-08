@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -32,6 +33,7 @@ namespace Nethermind.Monitoring.Metrics
         private Dictionary<string, Gauge> _gauges = new Dictionary<string, Gauge>();
         private Dictionary<Type, (PropertyInfo, string)[]> _propertiesCache = new Dictionary<Type, (PropertyInfo, string)[]>();
         private Dictionary<Type, (FieldInfo, string)[]> _fieldsCache = new Dictionary<Type, (FieldInfo, string)[]>();
+        private Dictionary<Type, (string DictName, ConcurrentDictionary<string, long> Dict)> _dynamicPropCache = new Dictionary<Type, (string DictName, ConcurrentDictionary<string, long> Dict)>();
         private HashSet<Type> _metricTypes = new HashSet<Type>();
 
         public void RegisterMetrics(Type type)
@@ -54,14 +56,23 @@ namespace Nethermind.Monitoring.Metrics
         {
             if (!_propertiesCache.ContainsKey(type))
             {
-                _propertiesCache[type] = type.GetProperties().Select(
-                    p => (p, string.Concat(type.Name, ".", p.Name))).ToArray();
+                _propertiesCache[type] = type.GetProperties().Where(p => p.PropertyType == typeof(long)).Select(
+                    p => (p, GetGaugeNameKey(type.Name, p.Name))).ToArray();
             }
             
             if (!_fieldsCache.ContainsKey(type))
             {
                 _fieldsCache[type] = type.GetFields().Select(
-                    f => (f, string.Concat(type.Name, ".", f.Name))).ToArray();
+                    f => (f, GetGaugeNameKey(type.Name, f.Name))).ToArray();
+            }
+
+            if(!_dynamicPropCache.ContainsKey(type))
+            {
+                var p = type.GetProperties().Where(p => p.PropertyType == typeof(ConcurrentDictionary<string, long>)).FirstOrDefault();
+                if(p != null)
+                {
+                    _dynamicPropCache[type] = (p.Name, (ConcurrentDictionary<string, long>)p.GetValue(null));
+                }              
             }
         }
 
@@ -98,8 +109,7 @@ namespace Nethermind.Monitoring.Metrics
         
         private void UpdateMetrics(Type type)
         {
-            EnsurePropertiesCached(type);
-            
+            EnsurePropertiesCached(type);          
             
             foreach ((PropertyInfo propertyInfo, string gaugeName) in _propertiesCache[type])
             {
@@ -118,6 +128,35 @@ namespace Nethermind.Monitoring.Metrics
                     _gauges[gaugeName].Set(Convert.ToDouble(fieldInfo.GetValue(null)));
                 }
             }
+
+            if (_dynamicPropCache.TryGetValue(type, out var dict))
+            {
+                foreach (var propName in dict.Dict.Keys)
+                {
+                    var value = dict.Dict[propName];
+
+                    var gaugeKey = GetGaugeNameKey(dict.DictName, propName);
+
+                    if(_gauges.TryGetValue(gaugeKey, out var gauge))
+                    {
+                        if (Math.Abs(gauge.Value - value) > double.Epsilon)
+                        {
+                            gauge.Set(Convert.ToDouble(value));
+                        }
+                    }
+                    else
+                    {
+                        gauge = CreateGauge(BuildGaugeName(propName));
+                        _gauges[gaugeKey] = gauge;
+                        gauge.Set(Convert.ToDouble(value));
+                    }
+                }
+            }
+        }
+
+        private string GetGaugeNameKey(params string[] par)
+        {
+            return string.Join('.', par);
         }
     }
 }
