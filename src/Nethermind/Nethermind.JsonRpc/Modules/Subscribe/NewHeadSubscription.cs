@@ -36,7 +36,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             
             _blockTree.BlockAddedToMain += OnBlockAddedToMain;
-            if(_logger.IsTrace) _logger.Trace($"NewHeads subscription {Id} will track NewHeadBlocks");
+            if(_logger.IsTrace) _logger.Trace($"NewHeads subscription {Id} will track BlockAddedToMain");
         }
 
         private void OnBlockAddedToMain(object? sender, BlockReplacementEventArgs e)
@@ -46,12 +46,12 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                 JsonRpcResult result = CreateSubscriptionMessage(new BlockForRpc(e.Block, false));
 
                 JsonRpcDuplexClient.SendJsonRpcResult(result);
-                if(_logger.IsTrace) _logger.Trace($"NewHeads subscription {Id} printed NewHeadBlock");
+                if(_logger.IsTrace) _logger.Trace($"NewHeads subscription {Id} printed new block");
             }).ContinueWith(
                 t =>
                     t.Exception?.Handle(ex =>
                     {
-                        if (_logger.IsDebug) _logger.Debug($"NewHeads subscription {Id}: Failed Task.Run after NewHeadBlock event.");
+                        if (_logger.IsDebug) _logger.Debug($"NewHeads subscription {Id}: Failed Task.Run after BlockAddedToMain event.");
                         return true;
                     })
                 , TaskContinuationOptions.OnlyOnFaulted
@@ -63,7 +63,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         public override void Dispose()
         {
             _blockTree.BlockAddedToMain -= OnBlockAddedToMain;
-            if(_logger.IsTrace) _logger.Trace($"NewHeads subscription {Id} will no longer track NewHeadBlocks");
+            if(_logger.IsTrace) _logger.Trace($"NewHeads subscription {Id} will no longer track BlockAddedToMain");
         }
     }
 }
