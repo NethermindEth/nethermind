@@ -133,6 +133,31 @@ namespace Nethermind.Blockchain.Test
         }
 
         [Test]
+        public void Shall_notify_new_head_block_once_and_block_added_to_main_multiple_times_when_adding_multiple_blocks_at_once()
+        {
+            int newHeadBlockNotifications = 0;
+            int blockAddedToMainNotifications = 0;
+
+            BlockTree blockTree = BuildBlockTree();
+            Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
+            Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
+            Block block2 = Build.A.Block.WithNumber(2).WithDifficulty(0).WithParent(block1).TestObject;
+            Block block3 = Build.A.Block.WithNumber(3).WithDifficulty(0).WithParent(block2).TestObject;
+
+            blockTree.SuggestBlock(block0);
+            blockTree.NewHeadBlock += (sender, args) => { newHeadBlockNotifications++; };
+            blockTree.BlockAddedToMain += (sender, args) => { blockAddedToMainNotifications++; };
+
+            blockTree.SuggestBlock(block1);
+            blockTree.SuggestBlock(block2);
+            blockTree.SuggestBlock(block3);
+            blockTree.UpdateMainChain(new Block[] {block1, block2, block3}, true);
+
+            newHeadBlockNotifications.Should().Be(1, "new head block");
+            blockAddedToMainNotifications.Should().Be(3, "block added to main");
+        }
+
+        [Test]
         public void Shall_notify_on_new_suggested_block_after_genesis()
         {
             bool hasNotified = false;
