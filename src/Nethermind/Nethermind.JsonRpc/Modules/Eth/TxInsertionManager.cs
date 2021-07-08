@@ -7,10 +7,10 @@ namespace Nethermind.JsonRpc.Modules.Eth
 {
     public class TxInsertionManager : ITxInsertionManager
     {
-        private GasPriceOracle _gasPriceOracle;
-        private UInt256? _ignoreUnder;
-        private bool _isEip1559Enabled;
-        private UInt256 _baseFee;
+        private readonly GasPriceOracle _gasPriceOracle;
+        private readonly UInt256? _ignoreUnder;
+        private readonly UInt256 _baseFee;
+        private readonly bool _isEip1559Enabled;
         public TxInsertionManager(GasPriceOracle gasPriceOracle, UInt256? ignoreUnder, bool isEip1559Enabled,
             UInt256 baseFee)
         {

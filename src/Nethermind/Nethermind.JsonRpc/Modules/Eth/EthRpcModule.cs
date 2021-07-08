@@ -56,7 +56,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly IWallet _wallet;
         private readonly ISpecProvider _specProvider;
         private readonly ILogger _logger;
-        private readonly IGasPriceOracle? _gasPriceOracle;
+        private readonly IGasPriceOracle _gasPriceOracle;
 
         private static bool HasStateForBlock(IBlockchainBridge blockchainBridge, BlockHeader header)
         {
@@ -76,7 +76,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             IWallet wallet,
             ILogManager logManager,
             ISpecProvider specProvider,
-            IGasPriceOracle? gasPriceOracle = null)
+            IGasPriceOracle gasPriceOracle)
         {
             _logger = logManager.GetClassLogger();
             _rpcConfig = rpcConfig ?? throw new ArgumentNullException(nameof(rpcConfig));
