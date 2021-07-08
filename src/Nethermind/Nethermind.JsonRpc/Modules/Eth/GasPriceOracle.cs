@@ -13,7 +13,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         public List<UInt256> TxGasPriceList { get; private set; }
         private UInt256? LastGasPrice { get; set; }
         private Block? _lastHeadBlock;
-        private EarlyExitManager? _earlyExitManager;
+        private EarlyExitManager _earlyExitManager;
         private bool _eip1559Enabled;
         private readonly UInt256? _ignoreUnder;
         private readonly int _blockLimit;
@@ -31,17 +31,16 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _softTxThreshold = GasPriceConfig.SoftTxLimit;
             _baseFee = baseFee ?? GasPriceConfig.DefaultBaseFee;
             _txInsertionManager = new TxInsertionManager(this, _ignoreUnder, _eip1559Enabled, _baseFee);
-            _earlyExitManager = null;
+            _earlyExitManager = new EarlyExitManager();
         }
 
         public ResultWrapper<UInt256?> GasPriceEstimate(Block? headBlock, Dictionary<long, Block> blockNumToBlockMap)
         {
-            _earlyExitManager = new EarlyExitManager(headBlock, LastGasPrice);
-            
-            Tuple<bool, ResultWrapper<UInt256?>> earlyExitResult = _earlyExitManager.NoHeadBlockChangeResult(ref _lastHeadBlock);
-            if (HeadBlockDidNotChange(earlyExitResult))
+            Tuple<bool, ResultWrapper<UInt256?>> headChangedResult;
+            headChangedResult = _earlyExitManager.CheckChangeInHeadBlock(ref _lastHeadBlock, headBlock, LastGasPrice);
+            if (HeadBlockDidNotChange(headChangedResult))
             {
-                return earlyExitResult.Item2;
+                return headChangedResult.Item2;
             }
             
             SetDefaultGasPrice();
@@ -61,7 +60,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         private static bool HeadBlockDidNotChange(Tuple<bool, ResultWrapper<UInt256?>> earlyExitResult)
         {
-            return earlyExitResult.Item1 == true;
+            return earlyExitResult.Item1 == false;
         }
 
         private void SetDefaultGasPrice()
