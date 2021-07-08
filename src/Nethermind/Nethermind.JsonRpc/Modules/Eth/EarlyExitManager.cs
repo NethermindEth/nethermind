@@ -1,87 +1,35 @@
 using System;
-using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Int256;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
-    //Checks edge cases where:
-    //    1. Head or Genesis block is missing
-    //    2. The Head block did not change from previous call of eth_gasPrice from an instance of EthRpcModule
+    //Checks edge cases where the Head block did not change from previous call of eth_gasPrice from an instance of EthRpcModule
     public class EarlyExitManager
     {
-        private IBlockFinder? _blockFinder;
-        private UInt256? _lastGasPrice; 
-        public EarlyExitManager(IBlockFinder? blockFinder, UInt256? lastGasPrice)
+        public Tuple<bool, ResultWrapper<UInt256?>> CheckChangeInHeadBlock(ref Block? lastHead, Block? currentHead, UInt256? lastGasPrice)
         {
-            _blockFinder = blockFinder;
-            _lastGasPrice = lastGasPrice;
-        }
-
-        public Tuple<bool, ResultWrapper<UInt256?>> EarlyExitResult(ref Block lastHeadBlock)
-        {
-            Block? headBlock = GetHeadBlock();
-            Block? genesisBlock = GetGenesisBlock();
             ResultWrapper<UInt256?> resultWrapper;
 
-            resultWrapper = HandleMissingHeadOrGenesisBlockCase(headBlock, genesisBlock);
-            if (ResultWrapperWasNotSuccessful(resultWrapper))
+            resultWrapper = HandleNoHeadBlockChange(lastHead, currentHead, lastGasPrice);
+            if (HeadBlockDidNotChange(resultWrapper))
             {
-                return BoolAndWrapperTuple(true, resultWrapper);
-            }
-
-            resultWrapper = HandleNoHeadBlockChange(lastHeadBlock, headBlock);
-            if (ResultWrapperWasSuccessful(resultWrapper))
-            {
-                return BoolAndWrapperTuple(true, resultWrapper);
-            }
-            SetLastHeadBlock(ref lastHeadBlock, headBlock);
-            return BoolAndWrapperTuple(false, resultWrapper);
-        }
-
-        private Block? GetHeadBlock()
-        {
-            return _blockFinder!.FindHeadBlock();
-        }
-        
-        private Block? GetGenesisBlock()
-        {
-            return _blockFinder!.FindGenesisBlock();
-        }
-        
-        private static bool ResultWrapperWasNotSuccessful(ResultWrapper<UInt256?> resultWrapper)
-        {
-            return resultWrapper.Result != Result.Success;
-        }
-        
-        private ResultWrapper<UInt256?> HandleMissingHeadOrGenesisBlockCase(Block? headBlock, Block? genesisBlock)
-        {
-            if (BlockDoesNotExist(headBlock))
-            {
-                return ResultWrapper<UInt256?>.Fail("The head block had a null value.");
-            }
-            else if (BlockDoesNotExist(genesisBlock))
-            {
-                return ResultWrapper<UInt256?>.Fail("The genesis block had a null value.");
+                return BoolAndWrapperTuple(false, resultWrapper);
             }
             else
             {
-                return ResultWrapper<UInt256?>.Success(UInt256.Zero);
+                SetLastHeadBlock(ref lastHead, currentHead);
+                return BoolAndWrapperTuple(true, resultWrapper);
             }
         }
 
-        private static bool BlockDoesNotExist(Block? block)
-        {
-            return block == null;
-        }
-
-        private ResultWrapper<UInt256?> HandleNoHeadBlockChange(Block? lastHeadBlock, Block? headBlock)
+        private ResultWrapper<UInt256?> HandleNoHeadBlockChange(Block? lastHead, Block? currentHead, UInt256? lastGasPrice)
         {
             ResultWrapper<UInt256?> resultWrapper;
             
-            if (LastGasPriceExists() && LastHeadBlockExists(lastHeadBlock) && LastHeadIsSameAsCurrentHead(lastHeadBlock, headBlock))
+            if (LastGasPriceExists(lastGasPrice) && LastHeadBlockExists(lastHead) && LastHeadIsSameAsCurrentHead(lastHead, currentHead))
             {
-                resultWrapper = ResultWrapper<UInt256?>.Success(_lastGasPrice);
+                resultWrapper = ResultWrapper<UInt256?>.Success(lastGasPrice);
 #if DEBUG
                 resultWrapper.ErrorCode = GasPriceConfig.NoHeadBlockChangeErrorCode;
 #endif
@@ -93,24 +41,24 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
         }
 
-        private bool LastGasPriceExists()
+        private bool LastGasPriceExists(UInt256? lastGasPrice)
         {
-            return _lastGasPrice != null;
+            return lastGasPrice != null;
         }
 
-        private bool LastHeadBlockExists(Block? lastHeadBlock)
+        private bool LastHeadBlockExists(Block? lastHead)
         {
-            return lastHeadBlock != null;
+            return lastHead != null;
         }
 
-        private bool LastHeadIsSameAsCurrentHead(Block? lastHeadBlock, Block? headBlock)
+        private bool LastHeadIsSameAsCurrentHead(Block? lastHead, Block? currentHead)
         {
-            return headBlock!.Hash == lastHeadBlock!.Hash;
+            return lastHead!.Hash == currentHead!.Hash;
         }
 
-        private void SetLastHeadBlock(ref Block? lastHeadBlock, Block? headBlock)
+        private void SetLastHeadBlock(ref Block? lastHead, Block? currentHead)
         {
-            lastHeadBlock = headBlock;
+            lastHead = currentHead;
         }
 
         private static Tuple<bool, ResultWrapper<UInt256?>> BoolAndWrapperTuple(bool boolean, ResultWrapper<UInt256?> resultWrapper)
@@ -118,7 +66,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return new(boolean, resultWrapper);
         }
 
-        private static bool ResultWrapperWasSuccessful(ResultWrapper<UInt256?> resultWrapper)
+        private static bool HeadBlockDidNotChange(ResultWrapper<UInt256?> resultWrapper)
         {
             return resultWrapper.Result == Result.Success;
         }

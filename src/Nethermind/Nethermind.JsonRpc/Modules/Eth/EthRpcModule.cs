@@ -47,7 +47,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
     public partial class EthRpcModule : IEthRpcModule
     {
         private readonly Encoding _messageEncoding = Encoding.UTF8;
-
         private readonly IJsonRpcConfig _rpcConfig;
         private readonly IBlockchainBridge _blockchainBridge;
         private readonly IBlockFinder _blockFinder;
@@ -144,9 +143,37 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public ResultWrapper<UInt256?> eth_gasPrice()
         {
-            return _gasPriceOracle!.GasPriceEstimate(_blockFinder);
+            Block? headBlock = _blockFinder.FindHeadBlock();
+            ThrowExceptionIfHeadBlockIsNull(headBlock);
+            Dictionary<long, Block> blockNumberToBlockDictionary = CreateBlockNumberToBlockDictionary(headBlock);
+            return _gasPriceOracle!.GasPriceEstimate(headBlock, blockNumberToBlockDictionary);
         }
 
+        private void ThrowExceptionIfHeadBlockIsNull(Block? headBlock)
+        {
+            if (headBlock == null)
+            {
+                throw new Exception("Head Block was not found.");
+            }
+        }
+
+        private Dictionary<long, Block> CreateBlockNumberToBlockDictionary(Block? headBlock)
+        {
+            Dictionary<long, Block> blockToTxDict = new();
+            Block block;
+            for (long blockNumber = 0; blockNumber < headBlock!.Number + 1; blockNumber++)
+            {
+                block = _blockFinder.FindBlock(blockNumber);
+                if (block == null)
+                {
+                    throw new Exception("Block #" + blockNumber + "was not found.");
+                }
+                blockToTxDict.Add(blockNumber, block);
+            }
+
+            return blockToTxDict;
+        }
+        
         public ResultWrapper<IEnumerable<Address>> eth_accounts()
         {
             try
