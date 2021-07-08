@@ -16,9 +16,7 @@
 
 using System;
 using System.Linq;
-using System.Threading;
 using Nethermind.Core.Crypto;
-using Nethermind.Db.Files;
 using NUnit.Framework;
 
 namespace Nethermind.Db.Test
@@ -29,7 +27,7 @@ namespace Nethermind.Db.Test
         [Test]
         public void Smoke_test()
         {
-            using FileDb db = new(Environment.CurrentDirectory, "blocks", 1024, true);
+            using Files.Db db = new("blocks");
             byte[] key = Keccak.Compute("key").Bytes;
 
             db[key] = new byte[] { 4, 5, 6 };
@@ -40,22 +38,18 @@ namespace Nethermind.Db.Test
         [Test]
         public void Smoke_test_2()
         {
-            const int size = 1000000;
+            const int size = 2_000_000;
 
             static byte[] Key(int i) => Keccak.Compute(i.ToString()).Bytes;
             static byte[] Value(int i) => BitConverter.GetBytes(i);
 
-            Console.WriteLine("Directory: " + Environment.CurrentDirectory);
-
-            using FileDb db = new(Environment.CurrentDirectory, "blocks", 10 * 1024 * 1024, true);
+            using Files.Db db = new("blocks", 1024 * 1024, size * 2);
             for (int i = 0; i < size; i++)
             {
                 db[Key(i)] = Value(i);
             }
 
-            SpinWait.SpinUntil(() => !db.HasWritesPending);
-
-            for (int i = 0; i < size / 2; i++)
+            for (int i = size / 2; i < size; i++)
             {
                 CollectionAssert.AreEqual(Value(i), db[Key(i)]);
             }
