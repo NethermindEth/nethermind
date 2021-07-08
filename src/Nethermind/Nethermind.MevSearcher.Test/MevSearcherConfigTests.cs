@@ -15,11 +15,36 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-namespace Nethermind.MevSearcher
+
+using FluentAssertions;
+using NUnit.Framework;
+
+namespace Nethermind.MevSearcher.Test
 {
-    public class MevSearcherConfig : IMevSearcherConfig
+    [TestFixture]
+    public class MevSeacherConfigTests
     {
-        public bool Enabled { get; set; }
-        public string Endpoint { get; set; }
+        [Test]
+        public void Can_create()
+        {
+            _ = new MevSearcherConfig();
+        }
+        
+        [Test]
+        public void Disabled_by_default()
+        {
+            MevSearcherConfig mevConfig = new();
+            mevConfig.Enabled.Should().BeFalse();
+        }
+        
+        [Test]
+        public void Can_enabled_and_disable()
+        {
+            MevSearcherConfig mevSearcherConfig = new();
+            mevSearcherConfig.Enabled = true;
+            mevSearcherConfig.Enabled.Should().BeTrue();
+            mevSearcherConfig.Enabled = false;
+            mevSearcherConfig.Enabled.Should().BeFalse();
+        }
     }
 }

@@ -25,5 +25,10 @@ namespace Nethermind.MevSearcher
             Description = "Defines whether the MEV searcher plugin is enabled",
             DefaultValue = "false")]
         bool Enabled { get; set; }
+        
+        [ConfigItem(
+            Description = "Defines HTTP endpoint of the MEV relay, use https://relay.flashbots.net/ for mainnet and https://relay-goerli.flashbots.net/ for goerli",
+            DefaultValue = "null")]
+        string Endpoint { get; set; }
     }
 }

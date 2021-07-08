@@ -19,7 +19,6 @@
       <ProjectReference Include="..\Nethermind.Merge.Plugin.Test\Nethermind.Merge.Plugin.Test.csproj" />
       <ProjectReference Include="..\Nethermind.Merge.Plugin\Nethermind.Merge.Plugin.csproj" />
       <ProjectReference Include="..\Nethermind.MevSearcher\Nethermind.MevSearcher.csproj" />
-      <ProjectReference Include="..\Nethermind.Mev\Nethermind.Mev.csproj" />
       <ProjectReference Include="..\Nethermind.Monitoring.Test\Nethermind.Monitoring.Test.csproj" />
       <ProjectReference Include="..\Nethermind.Runner.Test\Nethermind.Runner.Test.csproj" />
     </ItemGroup>

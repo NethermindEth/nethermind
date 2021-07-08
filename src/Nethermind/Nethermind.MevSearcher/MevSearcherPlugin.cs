@@ -17,11 +17,12 @@
 
 
 using System;
+using System.Net.Http;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
-using Nethermind.Grpc.Clients;
 using Nethermind.Logging;
 using Nethermind.MevSearcher.Data;
 
@@ -32,9 +33,9 @@ namespace Nethermind.MevSearcher
         private IMevSearcherConfig _mevSearcherConfig = null!;
         private INethermindApi _nethermindApi = null!;
         private ILogger _logger = null!;
+        private HttpClient _client = null!;
 
         private IBundleStrategy _bundleStrategy = null!;
-        //private IBundleSigner _bundleSigner = null!;
         private IBundleSender _bundleSender = null!;
         
         public string Name => "MEV Searcher";
@@ -51,10 +52,20 @@ namespace Nethermind.MevSearcher
             _mevSearcherConfig = _nethermindApi.Config<IMevSearcherConfig>();
             _logger = _nethermindApi.LogManager.GetClassLogger();
 
-            _bundleStrategy = new BundleStrategy(_mevSearcherConfig, nethermindApi.StateProvider, nethermindApi.EngineSigner);
-            _bundleSender = new BundleSender();
+            _client = new HttpClient();
 
-            if (_mevSearcherConfig.Enabled)
+            ITracer tracer = new Tracer(nethermindApi.StateProvider!, nethermindApi.BlockchainProcessor!);
+
+            _bundleStrategy = new BundleStrategy(
+                _mevSearcherConfig, 
+                nethermindApi.StateProvider, 
+                nethermindApi.EngineSigner, 
+                tracer, 
+                nethermindApi.BlockTree, 
+                nethermindApi.SpecProvider);
+            _bundleSender = new BundleSender(_client, _nethermindApi.EngineSigner, _logger);
+            
+            if (Enabled)
             {
                 nethermindApi.TxPool!.NewPending += ProcessIncomingTransaction;
                 if (_logger!.IsInfo) _logger.Info("Flashbots searcher plugin enabled");
@@ -73,9 +84,8 @@ namespace Nethermind.MevSearcher
 
             if (_bundleStrategy.ProcessTransaction(transaction, out MevBundle bundle))
             {
-                _bundleSender.SendBundle(bundle);
+                _bundleSender.SendBundle(bundle, _mevSearcherConfig.Endpoint);
             }
-
         }
 
         public Task InitNetworkProtocol()

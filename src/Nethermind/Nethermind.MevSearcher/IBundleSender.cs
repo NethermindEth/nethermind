@@ -22,8 +22,6 @@ namespace Nethermind.MevSearcher
 {
     public interface IBundleSender
     {
-        public Task SendBundle(MevBundle bundle);
-
-        //public Task CallBundle(MevBundle bundle);
+        public Task SendBundle(MevBundle bundle, string endpoint);
     }
 }

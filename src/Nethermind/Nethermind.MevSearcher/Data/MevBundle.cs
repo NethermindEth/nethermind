@@ -15,33 +15,68 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
+using Newtonsoft.Json;
 
 namespace Nethermind.MevSearcher.Data
 {
     public class MevBundle
     {
-        public MevBundle(long blockNumber, Transaction[] transactions, Keccak[] revertingTxHashes, UInt256? minTimestamp = null, UInt256? maxTimestamp = null)
+        public MevBundle(long blockNumber, Transaction[] transactions, Keccak[] revertingTxHashes = null, UInt256? minTimestamp = null, UInt256? maxTimestamp = null)
         {
-            BlockNumber = blockNumber;
-            Transactions = transactions;
+            //BlockNumber = $"0x{blockNumber:X}";
+            BlockNumber = blockNumber.ToString();
+            Transactions = transactions.Select(tx => Rlp.Encode(tx).ToString());
             RevertingTxHashes = revertingTxHashes;
 
-            MinTimestamp = minTimestamp ?? UInt256.Zero;
-            MaxTimestamp = maxTimestamp ?? UInt256.Zero;
+            MinTimestamp = minTimestamp;
+            MaxTimestamp = maxTimestamp;
         }
         
-        public Transaction[] Transactions { get; }
+        [JsonProperty("txs")]
+        public IEnumerable<string> Transactions { get; }
         
+        [JsonProperty("revertingTxHashes", NullValueHandling = NullValueHandling.Ignore)]
         public Keccak[] RevertingTxHashes { get; }
 
-        public long BlockNumber { get; }
+        [JsonProperty("blockNumber")]
+        public string BlockNumber { get; }
         
-        public UInt256 MaxTimestamp { get; }
+        [JsonProperty("maxTimestamp", NullValueHandling = NullValueHandling.Ignore)]
+        public UInt256? MaxTimestamp { get; }
         
-        public UInt256 MinTimestamp { get; }
+        [JsonProperty("minTimestamp", NullValueHandling = NullValueHandling.Ignore)]
+        public UInt256? MinTimestamp { get; }
+
+        public string GenerateSerializedSendBundleRequest(int id = 67)
+        {
+            var request = new
+            {
+                jsonrpc = "2.0",
+                method = "eth_sendBundle",
+                @params = new List<MevBundle>{this},
+                id = id
+            };
+
+            return JsonConvert.SerializeObject(request);
+        } 
+
+        /*
+        public void GetObjectData(SerializationInfo info, StreamingContext context)
+        {
+            info.AddValue("txs", Transactions.Select(tx => Rlp.Encode(tx).Bytes));
+            info.AddValue("blockNumber", BlockNumber);
+            if (MinTimestamp != null) info.AddValue("minTimestamp", MinTimestamp);
+            if (MaxTimestamp != null) info.AddValue("maxTimestamp", MaxTimestamp);
+            if (RevertingTxHashes.Length > 0) info.AddValue("revertingTxHashes", RevertingTxHashes.Select(rtx => rtx.ToString()));
+        }
+        */
     }
 }
