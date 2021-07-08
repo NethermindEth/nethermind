@@ -16,6 +16,7 @@
 // 
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -23,13 +24,9 @@ using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.JsonRpc.Modules;
@@ -230,59 +227,53 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
         
         [Test]
-        public void NewHeadSubscription_should_send_notifications_after_reorgs()
+        public void NewHeadSubscription_should_send_notifications_when_adding_multiple_blocks_at_once_and_after_reorgs()
         {
-            IDbProvider memDbProvider = TestMemDbProvider.Init();
-            ChainLevelInfoRepository chainLevelInfoRepository = new(memDbProvider);
-            ISpecProvider specProvider = MainnetSpecProvider.Instance;
-            EthereumEcdsa ecdsa = new(1, LimboLogs.Instance);
+            MemDb blocksDb = new();
+            MemDb headersDb = new();
+            MemDb blocksInfosDb = new();
+            ChainLevelInfoRepository chainLevelInfoRepository = new(blocksInfosDb);
             BlockTree blockTree = new(
-                memDbProvider,
+                blocksDb,
+                headersDb,
+                blocksInfosDb,
                 chainLevelInfoRepository,
-                specProvider,
+                MainnetSpecProvider.Instance,
                 NullBloomStorage.Instance,
-                new SyncConfig(),
                 LimboLogs.Instance);
-            IBlockProcessor blockProcessor = Substitute.For<IBlockProcessor>();
-            BlockchainProcessor blockchainProcessor = new(
-                blockTree,
-                blockProcessor,
-                new RecoverSignatures(
-                    ecdsa,
-                    _txPool,
-                    specProvider,
-                    LimboLogs.Instance),
-                LimboLogs.Instance, BlockchainProcessor.Options.Default);
-            
+
             NewHeadSubscription newHeadSubscription = new(_jsonRpcDuplexClient, blockTree, _logManager);
-            List<JsonRpcResult> jsonRpcResult = new();
+            ConcurrentQueue<JsonRpcResult> jsonRpcResult = new();
             
             Block block0 = Build.A.Block.Genesis.WithTotalDifficulty(0L).TestObject;
-            Block block1 = Build.A.Block.WithParent(block0).WithDifficulty(1).WithTotalDifficulty(1L).TestObject;
-            Block block2 = Build.A.Block.WithParent(block1).WithDifficulty(2).WithTotalDifficulty(3L).TestObject;
-            Block block3 = Build.A.Block.WithParent(block2).WithDifficulty(3).WithTotalDifficulty(6L).TestObject;
-            Block block1B = Build.A.Block.WithParent(block0).WithDifficulty(10).WithTotalDifficulty(10L).TestObject;
-        
-            blockchainProcessor.Start();
-            
-            newHeadSubscription.JsonRpcDuplexClient.SendJsonRpcResult(Arg.Do<JsonRpcResult>(j =>
-            {
-                jsonRpcResult.Add(j);
-            }));
-            
+            Block block1 = Build.A.Block.WithParent(block0).WithDifficulty(0).WithTotalDifficulty(0L).TestObject;
+            Block block2 = Build.A.Block.WithParent(block1).WithDifficulty(0).WithTotalDifficulty(0L).TestObject;
+            Block block3 = Build.A.Block.WithParent(block2).WithDifficulty(0).WithTotalDifficulty(0L).TestObject;
+            Block block1B = Build.A.Block.WithParent(block0).WithDifficulty(0).WithTotalDifficulty(0L).TestObject;
+            Block block2B = Build.A.Block.WithParent(block1B).WithDifficulty(1).WithTotalDifficulty(1L).TestObject;
+
             blockTree.SuggestBlock(block0);
             blockTree.SuggestBlock(block1);
             blockTree.SuggestBlock(block2);
             blockTree.SuggestBlock(block3);
             blockTree.SuggestBlock(block1B);
+            blockTree.SuggestBlock(block2B);
 
-            Thread.Sleep(200);
+            newHeadSubscription.JsonRpcDuplexClient.SendJsonRpcResult(Arg.Do<JsonRpcResult>(j =>
+            {
+                jsonRpcResult.Enqueue(j);
+            }));
+
+            blockTree.UpdateMainChain(new Block[] {block1, block2, block3}, true);
+            Thread.Sleep(50);
+            blockTree.UpdateMainChain(new Block[] {block1B, block2B}, true);
+            Thread.Sleep(50);
 
             jsonRpcResult.Count.Should().Be(5);
-            blockTree.Head.Should().Be(block1B);
+            blockTree.Head.Should().Be(block2B);
 
             string serialized = _jsonSerializer.Serialize(jsonRpcResult.Last().Response);
-            var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", newHeadSubscription.Id, "\",\"result\":{\"author\":\"0x0000000000000000000000000000000000000000\",\"difficulty\":\"0xa\",\"extraData\":\"0x010203\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0x0\",\"hash\":\"0x55ea58cc09f5b19df4d845e52015765fd6c1b6d585c69cd4ef7ace2f135cb212\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"miner\":\"0x0000000000000000000000000000000000000000\",\"mixHash\":\"0x2ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e2\",\"nonce\":\"0x00000000000003e8\",\"number\":\"0x1\",\"parentHash\":\"0xb3157bcccab04639f6393042690a6c9862deebe88c781f911e8dfd265531e9ff\",\"receiptsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"size\":\"0x1fe\",\"stateRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"totalDifficulty\":\"0xa\",\"timestamp\":\"0xf4241\",\"transactions\":[],\"transactionsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"uncles\":[]}}}");
+            var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", newHeadSubscription.Id, "\",\"result\":{\"author\":\"0x0000000000000000000000000000000000000000\",\"difficulty\":\"0x1\",\"extraData\":\"0x010203\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0x0\",\"hash\":\"0x2a50f16b6461467b6e5e58c3ac5205763641165455fa9bafc1e9e77a06dc1fe3\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"miner\":\"0x0000000000000000000000000000000000000000\",\"mixHash\":\"0x2ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e2\",\"nonce\":\"0x00000000000003e8\",\"number\":\"0x2\",\"parentHash\":\"0x3a7518031f6de870575b043216dedcbb57188476103e40ac5c5d4862da2fbcc8\",\"receiptsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"size\":\"0x1fe\",\"stateRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"totalDifficulty\":\"0x1\",\"timestamp\":\"0xf4242\",\"transactions\":[],\"transactionsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"uncles\":[]}}}");
             expectedResult.Should().Be(serialized);
         }
         
