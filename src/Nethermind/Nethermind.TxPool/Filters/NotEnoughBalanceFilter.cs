@@ -16,6 +16,7 @@
 // 
 
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
 
@@ -23,11 +24,15 @@ namespace Nethermind.TxPool.Filters
 {
     internal class NotEnoughBalanceFilter : IIncomingTxFilter
     {
+        private readonly IChainHeadSpecProvider _specProvider;
+        private readonly IChainHeadInfoProvider _headInfo;
         private readonly IAccountStateProvider _accounts;
         private readonly ILogger _logger;
 
-        public NotEnoughBalanceFilter(IAccountStateProvider accounts, ILogger logger)
+        public NotEnoughBalanceFilter(IChainHeadInfoProvider headInfo, IAccountStateProvider accounts, ILogger logger)
         {
+            _headInfo = headInfo;
+            _specProvider = _headInfo.SpecProvider;
             _accounts = accounts;
             _logger = logger;
         }
@@ -35,20 +40,27 @@ namespace Nethermind.TxPool.Filters
         public (bool Accepted, AddTxResult? Reason) Accept(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
             Account account = _accounts.GetAccount(tx.SenderAddress!);
+            IReleaseSpec spec = _specProvider.GetSpec();
             UInt256 currentBalance = account.Balance;
-            bool overflow = UInt256.MultiplyOverflow((UInt256)tx.GasLimit, tx.MaxFeePerGas, out UInt256 totalAmountFee);
-            overflow |= UInt256.MultiplyOverflow(totalAmountFee, tx.Value, out totalAmountFee);
+            UInt256 affordableGasPrice =
+                tx.CalculateAffordableGasPrice(spec.IsEip1559Enabled, _headInfo.CurrentBaseFee, currentBalance);
+
+            bool overflow =
+                UInt256.MultiplyOverflow((UInt256)tx.GasLimit, affordableGasPrice, out UInt256 totalAmountFee);
+            //overflow |= UInt256.MultiplyOverflow(totalAmountFee, tx.Value, out totalAmountFee);
             if (overflow)
             {
                 if (_logger.IsTrace)
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, overflow.");
                 return (false, AddTxResult.Int256Overflow);
             }
+
             if (currentBalance < totalAmountFee)
             {
                 if (_logger.IsTrace)
                 {
-                    _logger.Trace($"Skipped adding transaction {tx.ToString(" ")}, The sender does not have enough funds on the balance.");
+                    _logger.Trace(
+                        $"Skipped adding transaction {tx.ToString(" ")}, The sender does not have enough funds on the balance.");
                     return (false, AddTxResult.NotEnoughBalance);
                 }
             }

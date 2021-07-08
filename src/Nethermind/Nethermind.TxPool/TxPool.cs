@@ -110,13 +110,15 @@ namespace Nethermind.TxPool
             _filterPipeline.Add(new TooFarNonceFilter(txPoolConfig, _accounts, _transactions, _logger));
             _filterPipeline.Add(new TooExpensiveTxFilter(_headInfo, _accounts, _logger));
             _filterPipeline.Add(new FeeToLowFilter(_headInfo, _accounts, _transactions, _logger));
+            _filterPipeline.Add(new NotEnoughBalanceFilter(_headInfo, _accounts, _logger));
             _filterPipeline.Add(new ReusedOwnNonceTxFilter(_accounts, _nonces, _logger));
-            _filterPipeline.Add(new NotEnoughBalanceFilter(_accounts, _logger));
             if (incomingTxFilter is not null)
             {
                 _filterPipeline.Add(incomingTxFilter);
             }
         }
+
+        public List<IIncomingTxFilter> FilterPipeline => _filterPipeline;
 
         public Transaction[] GetPendingTransactions() => _transactions.GetSnapshot();
 
@@ -236,10 +238,12 @@ namespace Nethermind.TxPool
             NewDiscovered?.Invoke(this, new TxEventArgs(tx));
 
             bool managedNonce = (handlingOptions & TxHandlingOptions.ManagedNonce) == TxHandlingOptions.ManagedNonce;
-            bool startBroadcast = (handlingOptions & TxHandlingOptions.PersistentBroadcast) == TxHandlingOptions.PersistentBroadcast;
+            bool startBroadcast = (handlingOptions & TxHandlingOptions.PersistentBroadcast) ==
+                                  TxHandlingOptions.PersistentBroadcast;
 
-            if (_logger.IsTrace) _logger.Trace(
-                $"Adding transaction {tx.ToString("  ")} - managed nonce: {managedNonce} | persistent broadcast {startBroadcast}");
+            if (_logger.IsTrace)
+                _logger.Trace(
+                    $"Adding transaction {tx.ToString("  ")} - managed nonce: {managedNonce} | persistent broadcast {startBroadcast}");
 
             for (int i = 0; i < _filterPipeline.Count; i++)
             {
@@ -260,7 +264,7 @@ namespace Nethermind.TxPool
             lock (_locker)
             {
                 bool eip1559Enabled = _specProvider.GetSpec().IsEip1559Enabled;
-                
+
                 tx.GasBottleneck = tx.CalculateEffectiveGasPrice(eip1559Enabled, _headInfo.CurrentBaseFee);
                 bool inserted = _transactions.TryInsert(tx.Hash, tx, out Transaction? removed);
                 if (inserted)
@@ -268,7 +272,7 @@ namespace Nethermind.TxPool
                     _transactions.UpdateGroup(tx.SenderAddress!, UpdateBucketWithAddedTransaction);
                     Metrics.PendingTransactionsAdded++;
                     if (tx.IsEip1559) { Metrics.Pending1559TransactionsAdded++; }
-                    
+
                     if (removed != null)
                     {
                         // transaction which was on last position in sorted TxPool and was deleted to give
@@ -488,7 +492,7 @@ namespace Nethermind.TxPool
             _broadcaster.Dispose();
             _headInfo.HeadChanged -= OnHeadChange;
         }
-        
+
         /// <summary>
         /// This method is used just for nice logging features in the console.
         /// </summary>
