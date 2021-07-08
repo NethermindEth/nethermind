@@ -145,7 +145,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             Block? headBlock = _blockFinder.FindHeadBlock();
             ThrowExceptionIfHeadBlockIsNull(headBlock);
-            Dictionary<long, Block> blockNumberToBlockDictionary = getBlockNumberToBlockDictionary(headBlock);
+            Dictionary<long, Block> blockNumberToBlockDictionary = CreateBlockNumberToBlockDictionary(headBlock);
             return _gasPriceOracle!.GasPriceEstimate(headBlock, blockNumberToBlockDictionary);
         }
 
@@ -157,10 +157,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
         }
 
-        private Dictionary<long, Block> getBlockNumberToBlockDictionary(Block? headBlock) //have this set a property of EthRpcModule?
+        private Dictionary<long, Block> CreateBlockNumberToBlockDictionary(Block? headBlock) //have this set a property of EthRpcModule?
         {
             Dictionary<long, Block> blockToTxDict = new();
-            Transaction[] transactions;
             Block block;
             for (long blockNumber = 0; blockNumber < headBlock!.Number + 1; blockNumber++)
             {
@@ -174,27 +173,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             return blockToTxDict;
         }
-
-        private static ResultWrapper<UInt256?> CheckIfHeadBlockIsNull(Block? headBlock)
-        {
-            if (headBlock == null)
-            {
-                return ResultWrapper<UInt256?>.Fail(CreateOutputString("Head Block"));
-            }
-
-            else
-            {
-                return ResultWrapper<UInt256?>.Success(UInt256.Zero);
-            }
-        }
-
-        private static string CreateOutputString(string output)
-        {
-            output = "The " + output + " is null.";
-            return output;
-        }
-
-
+        
         public ResultWrapper<IEnumerable<Address>> eth_accounts()
         {
             try
