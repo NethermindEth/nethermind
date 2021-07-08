@@ -47,7 +47,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
     public partial class EthRpcModule : IEthRpcModule
     {
         private readonly Encoding _messageEncoding = Encoding.UTF8;
-
         private readonly IJsonRpcConfig _rpcConfig;
         private readonly IBlockchainBridge _blockchainBridge;
         private readonly IBlockFinder _blockFinder;
@@ -88,7 +87,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _gasPriceOracle = gasPriceOracle ?? throw new ArgumentNullException(nameof(gasPriceOracle)); //pass _blockTree with it
+            _gasPriceOracle = gasPriceOracle ?? throw new ArgumentNullException(nameof(gasPriceOracle));
         }
         
         public ResultWrapper<string> eth_protocolVersion()
@@ -144,8 +143,57 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public ResultWrapper<UInt256?> eth_gasPrice()
         {
-            return _gasPriceOracle!.GasPriceEstimate(_blockFinder);
+            Block? headBlock = _blockFinder.FindHeadBlock();
+            ThrowExceptionIfHeadBlockIsNull(headBlock);
+            Dictionary<long, Block> blockNumberToBlockDictionary = getBlockNumberToBlockDictionary(headBlock);
+            return _gasPriceOracle!.GasPriceEstimate(headBlock, blockNumberToBlockDictionary);
         }
+
+        private void ThrowExceptionIfHeadBlockIsNull(Block? headBlock)
+        {
+            if (headBlock == null)
+            {
+                throw new Exception("Head Block was not found.");
+            }
+        }
+
+        private Dictionary<long, Block> getBlockNumberToBlockDictionary(Block? headBlock) //have this set a property of EthRpcModule?
+        {
+            Dictionary<long, Block> blockToTxDict = new();
+            Transaction[] transactions;
+            Block block;
+            for (long blockNumber = 0; blockNumber < headBlock!.Number + 1; blockNumber++)
+            {
+                block = _blockFinder.FindBlock(blockNumber);
+                if (block == null)
+                {
+                    throw new Exception("Block #" + blockNumber + "was not found.");
+                }
+                blockToTxDict.Add(blockNumber, block);
+            }
+
+            return blockToTxDict;
+        }
+
+        private static ResultWrapper<UInt256?> CheckIfHeadBlockIsNull(Block? headBlock)
+        {
+            if (headBlock == null)
+            {
+                return ResultWrapper<UInt256?>.Fail(CreateOutputString("Head Block"));
+            }
+
+            else
+            {
+                return ResultWrapper<UInt256?>.Success(UInt256.Zero);
+            }
+        }
+
+        private static string CreateOutputString(string output)
+        {
+            output = "The " + output + " is null.";
+            return output;
+        }
+
 
         public ResultWrapper<IEnumerable<Address>> eth_accounts()
         {

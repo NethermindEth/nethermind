@@ -48,7 +48,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             blockTreeSetup.EthRpcModule.eth_gasPrice();
             
-            gasPriceOracle.Received(1).GasPriceEstimate(Arg.Any<IBlockFinder>());
+            gasPriceOracle.Received(1).GasPriceEstimate(Arg.Any<Block>(), Arg.Any<Dictionary<long, Block>>());
         }
 
         [Test]

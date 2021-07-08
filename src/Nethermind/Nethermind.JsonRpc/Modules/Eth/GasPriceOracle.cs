@@ -13,7 +13,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
         public List<UInt256> TxGasPriceList { get; private set; }
         private UInt256? LastGasPrice { get; set; }
         private Block? _lastHeadBlock;
-        private IBlockFinder? _blockFinder;
         private EarlyExitManager? _earlyExitManager;
         private bool _eip1559Enabled;
         private readonly UInt256? _ignoreUnder;
@@ -35,24 +34,19 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _earlyExitManager = null;
         }
 
-        public ResultWrapper<UInt256?> GasPriceEstimate(IBlockFinder blockFinder)
+        public ResultWrapper<UInt256?> GasPriceEstimate(Block? headBlock, Dictionary<long, Block> blockNumToBlockMap)
         {
-            if (_blockFinder == null)
-            {
-                _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
-            }
-
-            _earlyExitManager = new EarlyExitManager(_blockFinder, LastGasPrice);
+            _earlyExitManager = new EarlyExitManager(headBlock, LastGasPrice);
             
-            Tuple<bool, ResultWrapper<UInt256?>> earlyExitResult = _earlyExitManager.EarlyExitResult(ref _lastHeadBlock);
-            if (ExitingEarly(earlyExitResult))
+            Tuple<bool, ResultWrapper<UInt256?>> earlyExitResult = _earlyExitManager.NoHeadBlockChangeResult(ref _lastHeadBlock);
+            if (HeadBlockDidNotChange(earlyExitResult))
             {
                 return earlyExitResult.Item2;
             }
             
             SetDefaultGasPrice();
             
-            AddTxGasPricesToList();
+            AddTxGasPricesToList(headBlock, blockNumToBlockMap);
             
             TxGasPriceList = TxGasPriceList.OrderBy(gasPrice => gasPrice).ToList();
             
@@ -65,7 +59,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return ResultWrapper<UInt256?>.Success((UInt256) gasPriceEstimate!);
         }
 
-        private static bool ExitingEarly(Tuple<bool, ResultWrapper<UInt256?>> earlyExitResult)
+        private static bool HeadBlockDidNotChange(Tuple<bool, ResultWrapper<UInt256?>> earlyExitResult)
         {
             return earlyExitResult.Item1 == true;
         }
@@ -75,31 +69,20 @@ namespace Nethermind.JsonRpc.Modules.Eth
             DefaultGasPrice = LastGasPrice ?? GasPriceConfig.DefaultGasPrice;
         }
         
-        private void AddTxGasPricesToList()
+        private void AddTxGasPricesToList(Block? headBlock, Dictionary<long, Block> blockNumToBlockMap)
         {
-            long currentBlockNumber = GetHeadBlock()!.Number;
+            long currentBlockNumber = headBlock!.Number;
             int blocksToGoBack = _blockLimit;
             while (MoreBlocksToGoBack(blocksToGoBack) && CurrentBlockNumberIsValid(currentBlockNumber)) 
             {
-                Block? block = FindBlockAtNumber(currentBlockNumber);
-                if (BlockExists(block))
+                int txsAdded = _txInsertionManager.AddValidTxAndReturnCount(blockNumToBlockMap[currentBlockNumber]);
+                if (txsAdded > 1 || BonusBlockLimitReached(blocksToGoBack))
                 {
-                    int txsAdded = _txInsertionManager.AddValidTxAndReturnCount(block!);
-                    if (txsAdded > 1 || BonusBlockLimitReached(blocksToGoBack))
-                    {
-                        blocksToGoBack--;
-                    }
+                    blocksToGoBack--;
                 }
-                else
-                {
-                    ThrowBlockNotFoundException(currentBlockNumber);
-                }
+                
                 currentBlockNumber--;
             }
-        }
-        private Block? GetHeadBlock()
-        {
-            return _blockFinder!.FindHeadBlock();
         }
 
         private static bool MoreBlocksToGoBack(long blocksToGoBack)
@@ -111,25 +94,10 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             return currBlockNumber > -1;
         }
-        
-        private Block? FindBlockAtNumber(long blockNumber)
-        {
-            return _blockFinder!.FindBlock(blockNumber);
-        }
-        
-        private static bool BlockExists(Block? foundBlock)
-        {
-            return foundBlock != null;
-        }
 
         private bool BonusBlockLimitReached(int blocksToGoBack)
         {
             return TxGasPriceList.Count + blocksToGoBack >= _softTxThreshold;
-        }
-        
-        private void ThrowBlockNotFoundException(long blockNumber)
-        {
-            throw new Exception($"Block {blockNumber} was not found.");
         }
 
 

@@ -55,7 +55,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             IEnumerable<Transaction> txsSortedByEffectiveGasPrice = txInBlock.OrderBy(EffectiveGasPrice);
             foreach (Transaction tx in txsSortedByEffectiveGasPrice)
             {
-                if (TransactionCanBeAdded(tx, block)) //how should i set to be null?
+                if (TransactionCanBeAdded(tx, block))
                 {
                     _gasPriceOracle.TxGasPriceList.Add(EffectiveGasPrice(tx));
                     countTxAdded++;
