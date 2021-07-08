@@ -37,6 +37,16 @@ namespace Nethermind.Specs.Test
             _specProvider.GetSpec(blockNumber).IsEip2930Enabled.Should().Be(isEnabled);
         }
         
+        [TestCase(12_964_999, false)]
+        [TestCase(12_965_000, true)]
+        public void London_eips(long blockNumber, bool isEnabled)
+        {
+            _specProvider.GetSpec(blockNumber).IsEip1559Enabled.Should().Be(isEnabled);
+            _specProvider.GetSpec(blockNumber).IsEip3198Enabled.Should().Be(isEnabled);
+            _specProvider.GetSpec(blockNumber).IsEip3529Enabled.Should().Be(isEnabled);
+            _specProvider.GetSpec(blockNumber).IsEip3541Enabled.Should().Be(isEnabled);
+        }
+        
         [Test]
         public void Dao_block_number_is_correct()
         {
