@@ -5,8 +5,8 @@ BUILD_DIR="build"
 BUILD_NEW_DIR="build_new"
 NETHERMIND_DIR="nethermind"
 
-gitPull() {
-	echo -e "${On_Green} Pulling latest changes from Github... ${Color_Off}"
+gitPullOrigin() {
+	echo -e "${On_Green} Pulling origin master from Github... ${Color_Off}"
 	git pull origin master
 }
 
@@ -16,6 +16,11 @@ gitCheckout() {
 		echo -e "${On_Green} Checking out branch/tag: ${BRANCH} ${Color_Off}"
 		git checkout $BRANCH
 	fi
+}
+
+gitPull() {
+        echo -e "${On_Green} Pulling latest changes from Github... ${Color_Off}"
+        git pull
 }
 
 gitSubmoduleUpdate() {
@@ -36,8 +41,9 @@ replaceOldBuild() {
 
 main() {
 	cd $HOME/$NETHERMIND_DIR
-	gitPull
+	gitPullOrigin
 	gitCheckout $BRANCH
+	gitPull
 	gitSubmoduleUpdate
 	buildNethermind
 	cd $HOME
