@@ -1,0 +1,33 @@
+//  Copyright (c) 2021 Demerzel Solutions Limited
+//  This file is part of the Nethermind library.
+// 
+//  The Nethermind library is free software: you can redistribute it and/or modify
+//  it under the terms of the GNU Lesser General Public License as published by
+//  the Free Software Foundation, either version 3 of the License, or
+//  (at your option) any later version.
+// 
+//  The Nethermind library is distributed in the hope that it will be useful,
+//  but WITHOUT ANY WARRANTY; without even the implied warranty of
+//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+//  GNU Lesser General Public License for more details.
+// 
+//  You should have received a copy of the GNU Lesser General Public License
+//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
+
+namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
+{
+    public static class Eth66MessageCode
+    {
+        public const int GetBlockHeaders = 0x03;
+        public const int BlockHeaders = 0x04;
+        public const int GetBlockBodies = 0x05;
+        public const int BlockBodies = 0x06;
+        public const int GetPooledTransactions = 0x09;
+        public const int PooledTransactions  = 0x0a;
+        public const int GetNodeData = 0x0d;
+        public const int NodeData = 0x0e;
+        public const int GetReceipts = 0x0f;
+        public const int Receipts = 0x10;
+    }
+}
