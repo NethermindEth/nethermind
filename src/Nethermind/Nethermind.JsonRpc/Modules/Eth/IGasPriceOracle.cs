@@ -9,6 +9,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
     {
         public UInt256? DefaultGasPrice { get; }
         public List<UInt256> TxGasPriceList { get; }
-        ResultWrapper<UInt256?> GasPriceEstimate(Block? headBlock, Dictionary<long, Block> blockNumToBlockMap);
+        ResultWrapper<UInt256?> GasPriceEstimate(Block? headBlock, IDictionary<long, Block> blockNumToBlockMap);
     }
 }

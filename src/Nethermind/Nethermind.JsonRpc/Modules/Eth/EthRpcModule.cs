@@ -57,6 +57,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly ISpecProvider _specProvider;
         private readonly ILogger _logger;
         private readonly IGasPriceOracle _gasPriceOracle;
+        public Dictionary<long, Block> BlockNumberToBlockDictionary { get; private set; }
 
         private static bool HasStateForBlock(IBlockchainBridge blockchainBridge, BlockHeader header)
         {
@@ -145,8 +146,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             Block? headBlock = _blockFinder.FindHeadBlock();
             ThrowExceptionIfHeadBlockIsNull(headBlock);
-            Dictionary<long, Block> blockNumberToBlockDictionary = CreateBlockNumberToBlockDictionary(headBlock);
-            return _gasPriceOracle!.GasPriceEstimate(headBlock, blockNumberToBlockDictionary);
+            BlockNumberToBlockDictionary = CreateBlockNumberToBlockDictionary(headBlock);
+            return _gasPriceOracle!.GasPriceEstimate(headBlock, BlockNumberToBlockDictionary);
         }
 
         private void ThrowExceptionIfHeadBlockIsNull(Block? headBlock)

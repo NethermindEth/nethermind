@@ -21,8 +21,8 @@ using Nethermind.Int256;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
-    public interface IEarlyExitManager
+    public interface IHeadBlockChangeManager
     {
-        Tuple<bool, ResultWrapper<UInt256?>> CheckChangeInHeadBlock(ref Block? lastHead, Block? currentHead, UInt256? lastGasPrice);
+        bool ReturnSameGasPrice(Block? lastHead, Block? currentHead, UInt256? lastGasPrice);
     }
 }

@@ -41,14 +41,74 @@ namespace Nethermind.JsonRpc.Test.Modules
     public partial class EthRpcModuleTests
     {
         [Test]
-        public void Eth_gasPrice_WhenCalled_CallsGasPriceEstimateFromGasPriceOracle()
+        public void Eth_gasPrice_WhenHeadBlockIsNull_ThrowsException()
         {
-            IGasPriceOracle gasPriceOracle = Substitute.For<IGasPriceOracle>();
-            BlockTreeSetup blockTreeSetup = new BlockTreeSetup(gasPriceOracle: gasPriceOracle);
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            blockFinder.FindHeadBlock().Returns((Block) null);
+            EthRpcModule testEthRpcModule = GetTestEthRpcModule(blockFinder: blockFinder);
+            
+            Action gasPriceCall = () => testEthRpcModule.eth_gasPrice();
+            
+            gasPriceCall.Should().Throw<Exception>().WithMessage("Head Block was not found.");
+        }
 
-            blockTreeSetup.EthRpcModule.eth_gasPrice();
+        [Test]
+        public void Eth_gasPrice_ForBlockTreeWithBlocks_CreatesMatchingBlockDict()
+        {
+            Block[] blocks = GetTwoTestBlocks();
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            EthRpcModule testEthRpcModule = GetTestEthRpcModule(blockFinder:blockFinder);
+            blockFinder.FindBlock(0).Returns(blocks[0]);
+            blockFinder.FindBlock(1).Returns(blocks[1]);
+            blockFinder.FindHeadBlock().Returns(blocks[1]);
+            Dictionary<long, Block> expected = new Dictionary<long, Block>
+            {
+                {0, blocks[0]},
+                {1, blocks[1]}
+            };
+            
+            testEthRpcModule.eth_gasPrice();
+            
+            testEthRpcModule.BlockNumberToBlockDictionary.Should().BeEquivalentTo(expected);
+        }
+
+        private Block[] GetTwoTestBlocks()
+        {
+            return GetBlocksFromKeyValuePairs(
+                BlockNumberAndTxStringsKeyValuePair(0, CollectTxStrings(
+                        GetTxString("A", "4", "0"),
+                        GetTxString("B", "3", "0"),
+                        GetTxString("C", "2", "0"),
+                        GetTxString("D", "1", "0")
+                    )
+                ),
+                BlockNumberAndTxStringsKeyValuePair(1, CollectTxStrings(
+                        GetTxString("A", "8", "1"),
+                        GetTxString("B", "7", "1"),
+                        GetTxString("C", "6", "1"),
+                        GetTxString("D", "5", "1")
+                    )
+                ));
+        }
+
+        [Test]
+        public void Eth_gasPrice_GivenValidHeadBlock_CallsGasPriceEstimateFromGasPriceOracle()
+        {
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            IGasPriceOracle gasPriceOracle = Substitute.For<IGasPriceOracle>();
+            EthRpcModule testEthRpcModule = GetTestEthRpcModule(blockFinder, gasPriceOracle);
+            Block testBlock = GetNoTxTestBlock();
+            blockFinder.FindHeadBlock().Returns(testBlock);
+            blockFinder.FindBlock(Arg.Is<long>(a => a == 0)).Returns(testBlock);
+
+            testEthRpcModule.eth_gasPrice();
             
             gasPriceOracle.Received(1).GasPriceEstimate(Arg.Any<Block>(), Arg.Any<Dictionary<long, Block>>());
+        }
+
+        private static Block GetNoTxTestBlock()
+        {
+            return Build.A.Block.WithNumber(0).TestObject;
         }
 
         [Test]
@@ -68,7 +128,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             resultWrapper.Result.Should().Be(Result.Success);
         }
-        
+       //// 
         [Test]
         public void Eth_gasPrice_BlockcountEqualToBlocksToCheck_ShouldGetSixtiethPercentileIndex()
         {
@@ -488,31 +548,69 @@ namespace Nethermind.JsonRpc.Test.Modules
                 throw new ArgumentException("Block number should be greater than or equal to 0.");
             }
         }
+        
+        private EthRpcModule GetTestEthRpcModule(IBlockFinder blockFinder = null, IGasPriceOracle gasPriceOracle = null)
+        {
+            return new EthRpcModule
+            (
+                Substitute.For<IJsonRpcConfig>(),
+                Substitute.For<IBlockchainBridge>(),
+                blockFinder ?? Substitute.For<IBlockFinder>(),
+                Substitute.For<IStateReader>(),
+                Substitute.For<ITxPool>(),
+                Substitute.For<ITxSender>(),
+                Substitute.For<IWallet>(),
+                Substitute.For<ILogManager>(),
+                Substitute.For<ISpecProvider>(),
+                gasPriceOracle ?? Substitute.For<IGasPriceOracle>()
+            );
+        }
+
+        public static class GasPriceTest
+        {
+            public static EthRpcModule GetTestEthRpcModule(IBlockFinder blockFinder = null, IGasPriceOracle gasPriceOracle = null)
+            {
+                return new EthRpcModule
+                (
+                    Substitute.For<IJsonRpcConfig>(),
+                    Substitute.For<IBlockchainBridge>(),
+                    blockFinder ?? Substitute.For<IBlockFinder>(),
+                    Substitute.For<IStateReader>(),
+                    Substitute.For<ITxPool>(),
+                    Substitute.For<ITxSender>(),
+                    Substitute.For<IWallet>(),
+                    Substitute.For<ILogManager>(),
+                    Substitute.For<ISpecProvider>(),
+                    gasPriceOracle ?? Substitute.For<IGasPriceOracle>()
+                );
+            }
+        }
+
         public class BlockTreeSetup
         {
             public Block[] Blocks { get; private set; }
-            public BlockTree BlockTree { get; private set; }
-            public EthRpcModule EthRpcModule { get; private set; }
+            private BlockTree BlockTree { get; set; }
+            public EthRpcModule EthRpcModule { get; }
             public IGasPriceOracle GasPriceOracle { get; private set; }
 
             public BlockTreeSetup(
                 Block[] blocks = null,
                 bool addBlocks = false,
-                IGasPriceOracle? gasPriceOracle = null, 
+                IGasPriceOracle gasPriceOracle = null, 
                 int? blockLimit = null,
                 UInt256? ignoreUnder = null,
                 UInt256? baseFee = null,
                 bool eip1559Enabled = false,
                 ITxInsertionManager txInsertionManager = null,
-                IEarlyExitManager earlyExitManager = null)
+                IHeadBlockChangeManager headBlockChangeManager = null)
             {
                 GetBlocks(blocks, addBlocks);
 
                 InitializeAndAddToBlockTree();
 
-                GasPriceOracle = gasPriceOracle ?? GetGasPriceOracle(eip1559Enabled, ignoreUnder, blockLimit, baseFee, txInsertionManager, earlyExitManager);
-                
-                GetEthRpcModule();
+                GasPriceOracle = gasPriceOracle ?? GetGasPriceOracle(eip1559Enabled, ignoreUnder, blockLimit, baseFee, txInsertionManager, headBlockChangeManager);
+
+                EthRpcModule = GasPriceTest.GetTestEthRpcModule(BlockTree, GasPriceOracle);
             }
 
             private void InitializeAndAddToBlockTree()
@@ -578,22 +676,6 @@ namespace Nethermind.JsonRpc.Test.Modules
                 );
             }
 
-            private void GetEthRpcModule()
-            {
-                EthRpcModule = new EthRpcModule
-                (
-                    Substitute.For<IJsonRpcConfig>(),
-                    Substitute.For<IBlockchainBridge>(),
-                    BlockTree,
-                    Substitute.For<IStateReader>(),
-                    Substitute.For<ITxPool>(),
-                    Substitute.For<ITxSender>(),
-                    Substitute.For<IWallet>(),
-                    Substitute.For<ILogManager>(),
-                    Substitute.For<ISpecProvider>(),
-                    GasPriceOracle
-                );
-            }
             private void AddExtraBlocksToArray(Block[] blocks)
             {
                 List<Block> listBlocks = Blocks.ToList();
@@ -611,10 +693,10 @@ namespace Nethermind.JsonRpc.Test.Modules
                 int? blockLimit, 
                 UInt256? baseFee,
                 ITxInsertionManager txInsertionManager,
-                IEarlyExitManager earlyExitManager)
+                IHeadBlockChangeManager headBlockChangeManager)
             {
                 GasPriceOracle gasPriceOracle = new GasPriceOracle(eip1559Enabled, ignoreUnder, blockLimit, baseFee, 
-                    txInsertionManager, earlyExitManager);
+                    txInsertionManager, headBlockChangeManager);
                 return gasPriceOracle;
             }
         }
