@@ -18,6 +18,7 @@ using System;
 using System.Buffers.Binary;
 using System.IO;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db.Files;
@@ -31,11 +32,7 @@ namespace Nethermind.Db.Test
         [Test]
         public void Persistent_log()
         {
-            string dir = Path.Combine(Environment.CurrentDirectory, nameof(Persistent_log));
-
-            if (Directory.Exists(dir)) Directory.Delete(dir, true);
-
-            Directory.CreateDirectory(dir);
+            string dir = GetDirectory();
 
             Console.WriteLine("Working in: {0}", dir);
 
@@ -60,35 +57,48 @@ namespace Nethermind.Db.Test
             }
         }
 
-        //[Test]
-        //public void Smoke_test()
-        //{
-        //    using Files.Db db = new("blocks");
-        //    byte[] key = Keccak.Compute("key").Bytes;
+        [Test]
+        public void Smoke_test()
+        {
+            using Files.Db db = new(GetDirectory(), "", 1024);
 
-        //    db[key] = new byte[] { 4, 5, 6 };
+            byte[] key = Keccak.Compute("key").Bytes;
 
-        //    Assert.AreEqual(new byte[] { 4, 5, 6 }, db[key.ToArray()]);
-        //}
+            db[key] = new byte[] { 4, 5, 6 };
 
-        //[Test]
-        //public void Smoke_test_2()
-        //{
-        //    const int size = 2_000_000;
+            Assert.AreEqual(new byte[] { 4, 5, 6 }, db[key.ToArray()]);
+        }
 
-        //    static byte[] Key(int i) => Keccak.Compute(i.ToString()).Bytes;
-        //    static byte[] Value(int i) => BitConverter.GetBytes(i);
+        [Test]
+        public void Smoke_test_2()
+        {
+            const int size = 1000;
 
-        //    using Files.Db db = new("blocks", 1024 * 1024, size * 2);
-        //    for (int i = 0; i < size; i++)
-        //    {
-        //        db[Key(i)] = Value(i);
-        //    }
+            static byte[] Key(int i) => Keccak.Compute(i.ToString()).Bytes;
+            static byte[] Value(int i) => BitConverter.GetBytes(i);
 
-        //    for (int i = size / 2; i < size; i++)
-        //    {
-        //        CollectionAssert.AreEqual(Value(i), db[Key(i)]);
-        //    }
-        //}
+            using Files.Db db = new(GetDirectory(), "", 1024);
+            for (int i = 0; i < size; i++)
+            {
+                db[Key(i)] = Value(i);
+            }
+
+            for (int i = size / 2; i < size; i++)
+            {
+                CollectionAssert.AreEqual(Value(i), db[Key(i)]);
+            }
+        }
+
+        private static string GetDirectory([CallerMemberName] string name = null)
+        {
+            string dir = Path.Combine(Environment.CurrentDirectory, nameof(name));
+
+            if (Directory.Exists(dir)) Directory.Delete(dir, true);
+
+            Console.WriteLine("Running at: {0}", dir);
+
+            Directory.CreateDirectory(dir);
+            return dir;
+        }
     }
 }

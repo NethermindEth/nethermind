@@ -27,11 +27,12 @@ namespace Nethermind.Db.Files
 {
     public class Db : IDbWithSpan
     {
-        private readonly KeccakMap _map;
+        private readonly PersistentKeccakMap _map;
         private readonly PersistentLog _log;
-        private readonly ConcurrentQueue<KeccakMap> _batches = new();
+        private readonly PersistentLog _mapLog;
+        private readonly ConcurrentQueue<InMemoryKeccakMap> _batches = new();
 
-        public Db(string basePath, string name, int buckets = 4 * 1024 * 1024, int allocate = 4 * 1024 * 1024)
+        public Db(string basePath, string name, int buckets = 4 * 1024 * 1024)
         {
             Name = name;
 
@@ -43,10 +44,12 @@ namespace Nethermind.Db.Files
             }
 
             _log = new PersistentLog((int)256.MiB(), fullPath);
+            _mapLog = new PersistentLog((int)128.MiB(), fullPath, ".keys");
 
             _log.Write(new byte[] { 1 }); // write one to make only positive positions
+            _mapLog.Write(new byte[] { 1 }); // write one to make only positive positions
 
-            _map = new KeccakMap(buckets, allocate);
+            _map = new PersistentKeccakMap(buckets, _mapLog);
         }
 
         public byte[]? this[byte[] key]
@@ -74,6 +77,7 @@ namespace Nethermind.Db.Files
         public void Dispose()
         {
             _log.Dispose();
+            _mapLog.Dispose();
         }
 
         public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] => throw new NotImplementedException();
@@ -95,12 +99,12 @@ namespace Nethermind.Db.Files
         class Batch : IBatch
         {
             private readonly Db _db;
-            private KeccakMap _map;
+            private InMemoryKeccakMap _map;
 
             public Batch(Db db)
             {
                 _db = db;
-                _map = _db._batches.TryDequeue(out KeccakMap? map) ? map : new KeccakMap(1024 * 4, 4 * 1024);
+                _map = _db._batches.TryDequeue(out InMemoryKeccakMap? map) ? map : new InMemoryKeccakMap(1024 * 4, 4 * 1024);
             }
 
             public byte[]? this[byte[] key]
@@ -116,7 +120,7 @@ namespace Nethermind.Db.Files
                 }
                 set
                 {
-                    KeccakMap.GuardKey(key);
+                    InMemoryKeccakMap.GuardKey(key);
 
                     // write directly to log file,
                     // if batch fails, log will contains some garbage,

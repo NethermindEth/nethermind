@@ -26,6 +26,7 @@ namespace Nethermind.Db.Files
     public class PersistentLog : IDisposable
     {
         private readonly string _directory;
+        private readonly string _fileExtension;
         private readonly IntPtr _buffer;
 
         private readonly int _size;
@@ -51,7 +52,7 @@ namespace Nethermind.Db.Files
         private const int LengthShift = 16;
         private const int LengthMask = (1 << LengthShift) - 1;
 
-        public PersistentLog(int chunkSize, string directory)
+        public PersistentLog(int chunkSize, string directory, string extension = ".log")
         {
             _directory = directory;
             int log2 = chunkSize.Log2();
@@ -64,9 +65,10 @@ namespace Nethermind.Db.Files
 
             _cts = new CancellationTokenSource();
             _thread = Start(_cts);
+            _fileExtension = extension;
         }
 
-        public long Write(byte[] value)
+        public long Write(ReadOnlySpan<byte> value)
         {
             int length = value.Length;
             int required = Helpers.Align(length, Alignment) + HeaderLength;
@@ -163,6 +165,50 @@ namespace Nethermind.Db.Files
             return Read(accessor, chunkOffset, length);
         }
 
+        public unsafe void Read<T>(long header, out T output)
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            static void ReadValue(MemoryMappedViewAccessor accessor, long chunkOffset, out T output)
+            {
+                IntPtr handle = accessor.SafeMemoryMappedViewHandle.DangerousGetHandle();
+                output = Unsafe.Read<T>((byte*)handle.ToPointer() + chunkOffset + HeaderLength);
+            }
+
+            long position = header >> LengthShift;
+            long chunkIndex = position / _chunkSize;
+            long chunkOffset = position & _chunkMask;
+
+            // try memory mapped first
+            MemoryMappedViewAccessor? accessor = Volatile.Read(ref _accessors[chunkIndex]);
+            if (accessor != null)
+            {
+                ReadValue(accessor, chunkOffset, out output);
+                return;
+            }
+
+            // try buffer 
+            byte* start = (byte*)_buffer.ToPointer() + (position & _sizeMask);
+            output = Unsafe.Read<T>(start + HeaderLength);
+
+            long read = Volatile.Read(ref Unsafe.AsRef<long>(start));
+
+            if (read == header)
+            {
+                // the ordering is preserved, nothing has overwritten the value in the mean time
+                return;
+            }
+
+            // it must have been being mapped, retry till it happens
+            SpinWait spin = default;
+            while (accessor == null)
+            {
+                spin.SpinOnce();
+                accessor = Volatile.Read(ref _accessors[chunkIndex]);
+            }
+
+            ReadValue(accessor, chunkOffset, out output);
+        }
+
         public static int GetLength(long header) => (int)(LengthMask & header);
 
         private static unsafe Span<byte> Read(MemoryMappedViewAccessor accessor, long chunkOffset, int length)
@@ -188,7 +234,7 @@ namespace Nethermind.Db.Files
                         {
                             long chunkIndex = head / _chunkSize;
 
-                            string file = Path.Combine(_directory, chunkIndex.ToString("D8") + ".log");
+                            string file = Path.Combine(_directory, chunkIndex.ToString("D8") + _fileExtension);
                             using (FileStream fileStream =
                                 new(file, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.ReadWrite))
                             {

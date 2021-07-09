@@ -38,7 +38,7 @@ namespace Nethermind.Db.Rocks
         {
             return rocksDbSettings.DbName != "State" ?
                    new DbOnTheRocks(_basePath, rocksDbSettings, _dbConfig, _logManager)
-                 : new Files.Db(_basePath, rocksDbSettings.DbPath, allocate: 16 * 1024 * 1024)
+                 : new Files.Db(_basePath, rocksDbSettings.DbPath)
                 ;
         }
 

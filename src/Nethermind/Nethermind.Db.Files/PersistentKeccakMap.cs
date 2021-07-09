@@ -17,22 +17,19 @@
 
 using System;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Db.Files
 {
     /// <summary>
-    /// An in memory map for entries that uses a bitmask addressing to access values.
-    ///
-    /// It uses an array for <see cref="_size"/> entries. Once a collision is found, another layer is used that keeps recently written values in the top. This means that:
-    /// - when no collision, the lookup should be fast
-    /// - when was a hash collision, the lookup will fail on fast path but should pick up the slow so it should be lookup in an array and they lookup by a ref
-    ///
-    /// This means that making the initial array big enough should result in some values written in O(1).
+    /// An in memory map for mapping between Keccak and its position in the log
     /// </summary>
-    public class KeccakMap
+    public class PersistentKeccakMap
     {
+        private readonly PersistentLog _log;
+
         struct Entry
         {
             public long _key0;
@@ -60,25 +57,20 @@ namespace Nethermind.Db.Files
             /// <summary>
             /// The pointer to next value.
             /// </summary>
-            public int _next;
+            public long _next;
         }
 
-        private readonly int[] _buckets;
+        private readonly long[] _buckets;
         private readonly long _addressMask;
-        private readonly Entry[] _entries;
-        private int _next = 1;
 
-        public KeccakMap(int buckets, int allocate)
+        public PersistentKeccakMap(int buckets, PersistentLog log)
         {
-            // 1st level
-            {
-                int sizeLog2 = buckets.Log2();
-                int size = 1 << sizeLog2;
-                _addressMask = (1 << sizeLog2) - 1;
-                _buckets = new int[size];
-            }
+            int sizeLog2 = buckets.Log2();
+            int size = 1 << sizeLog2;
+            _addressMask = (1 << sizeLog2) - 1;
+            _buckets = new long[size];
 
-            _entries = new Entry[allocate];
+            _log = log;
         }
 
         public void Put(byte[] key, long value)
@@ -100,10 +92,9 @@ namespace Nethermind.Db.Files
             Put(key0, key1, key2, key3, value);
         }
 
-        private void Put(long key0, long key1, long key2, long key3, long value)
+        public void Put(long key0, long key1, long key2, long key3, long value)
         {
-            int head = Interlocked.Increment(ref _next);
-            ref Entry e = ref _entries[head];
+            Entry e;
 
             e._key0 = key0;
             e._key1 = key1;
@@ -111,11 +102,15 @@ namespace Nethermind.Db.Files
             e._key3 = key3;
             e._value = value;
 
-            ref int bucket = ref GetBucket(key0);
+            ref long bucket = ref GetBucket(key0);
 
             while (true)
             {
                 e._next = Volatile.Read(ref bucket);
+
+                Span<byte> bytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref e, 1));
+                var head = _log.Write(bytes);
+
                 if (Interlocked.CompareExchange(ref bucket, head, e._next) == e._next)
                 {
                     break;
@@ -131,7 +126,7 @@ namespace Nethermind.Db.Files
             }
         }
 
-        ref int GetBucket(long key0) => ref _buckets[(int)(key0 & _addressMask)];
+        ref long GetBucket(long key0) => ref _buckets[(int)(key0 & _addressMask)];
 
         [SkipLocalsInit]
         public bool TryGet(byte[] key, out long value)
@@ -144,13 +139,13 @@ namespace Nethermind.Db.Files
             long key2 = Unsafe.ReadUnaligned<long>(ref Unsafe.Add(ref key[0], sizeof(long) * 2));
             long key3 = Unsafe.ReadUnaligned<long>(ref Unsafe.Add(ref key[0], sizeof(long) * 3));
 
-            ref int bucket = ref GetBucket(key0);
+            ref long bucket = ref GetBucket(key0);
 
-            int current = Volatile.Read(ref bucket);
+            long current = Volatile.Read(ref bucket);
 
             while (current != 0)
             {
-                ref Entry entry = ref _entries[current];
+                _log.Read(current, out Entry entry);
                 
                 if (entry._key0 == key0 &&
                     entry._key1 == key1 &&
@@ -166,29 +161,6 @@ namespace Nethermind.Db.Files
 
             value = default;
             return false;
-        }
-
-        public void CopyTo(KeccakMap other)
-        {
-            for (int i = 0; i < _buckets.Length; i++)
-            {
-                int current = Volatile.Read(ref _buckets[i]);
-
-                while (current != 0)
-                {
-                    ref Entry entry = ref _entries[current];
-
-                    other.Put(entry._key0, entry._key1, entry._key2, entry._key3, entry._value);
-                    current = entry._next;
-                }
-            }
-        }
-
-        public void Clear()
-        {
-            _buckets.AsSpan().Clear();
-            _entries.AsSpan().Clear();
-            _next = 1;
         }
     }
 }
