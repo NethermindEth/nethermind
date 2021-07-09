@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Core;
@@ -140,6 +141,21 @@ namespace Nethermind.JsonRpc.Test.Modules
             testableTxInsertionManager._txGasPriceList.Should().Equal(expected); 
         }
 
+        [Test]
+        public void AddValidTxAndReturnCount_IfNoTxsInABlock_DefaultPriceAddedToListInstead()
+        {
+            Transaction[] transactions = Array.Empty<Transaction>();
+            Block block = Build.A.Block.Genesis.WithTransactions(transactions).TestObject;
+            IGasPriceOracle gasPriceOracle = Substitute.For<IGasPriceOracle>();
+            gasPriceOracle.FallbackGasPrice.Returns((UInt256?) 3);
+            TestableTxInsertionManager testableTxInsertionManager = GetTestableTxInsertionManager(gasPriceOracle:gasPriceOracle);
+            List<UInt256> expected = new List<UInt256> {3};
+
+            testableTxInsertionManager.AddValidTxFromBlockAndReturnCount(block);
+            
+            testableTxInsertionManager._txGasPriceList.Should().Equal(expected); 
+        }
+        
         private TestableTxInsertionManager GetTestableTxInsertionManager(
             IGasPriceOracle gasPriceOracle = null,
             UInt256? ignoreUnder = null,

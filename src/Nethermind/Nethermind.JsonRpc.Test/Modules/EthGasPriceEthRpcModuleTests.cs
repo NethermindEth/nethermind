@@ -34,6 +34,7 @@ using Nethermind.TxPool;
 using Nethermind.Wallet;
 using NSubstitute;
 using NUnit.Framework;
+using static Nethermind.JsonRpc.Test.Modules.BlockConstructor;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
@@ -72,9 +73,18 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
         public Block[] GetTwoTestBlocks()
         {
-            return BlockConstructor.GetBlocksFromKeyValuePairs(BlockConstructor.BlockNumberAndTxStringsKeyValuePair(0, BlockConstructor.CollectTxStrings(BlockConstructor.GetTxString("A", "4", "0"), BlockConstructor.GetTxString("B", "3", "0"), BlockConstructor.GetTxString("C", "2", "0"), BlockConstructor.GetTxString("D", "1", "0")
+            return GetBlocksFromKeyValuePairs(
+                BlockNumberAndTxStringsKeyValuePair(0, CollectTxStrings(
+                        GetTxString("A", "4", "0"), 
+                        GetTxString("B", "3", "0"), 
+                        GetTxString("C", "2", "0"), 
+                        GetTxString("D", "1", "0")
                     )
-                ), BlockConstructor.BlockNumberAndTxStringsKeyValuePair(1, BlockConstructor.CollectTxStrings(BlockConstructor.GetTxString("A", "8", "1"), BlockConstructor.GetTxString("B", "7", "1"), BlockConstructor.GetTxString("C", "6", "1"), BlockConstructor.GetTxString("D", "5", "1")
+                ), BlockNumberAndTxStringsKeyValuePair(1, CollectTxStrings(
+                        GetTxString("A", "8", "1"), 
+                        GetTxString("B", "7", "1"), 
+                        GetTxString("C", "6", "1"), 
+                        GetTxString("D", "5", "1")
                     )
                 ));
         }
@@ -100,141 +110,27 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
-        public void Eth_gasPrice_DuplicateGasPrices_ReturnsSuccessfully()
-        {
-            BlockTreeSetup blockTreeSetup = new BlockTreeSetup();
-            Transaction[] dupGasPriceGroup = BlockConstructor.GetTransactionsFromTxStrings(BlockConstructor.CollectTxStrings(BlockConstructor.GetTxString("B","6","2"), BlockConstructor.GetTxString("B","6","3"), BlockConstructor.GetTxString("B","6","4")),IsNotEip1559());
-            Block dupGasPriceBlock = BlockConstructor.GetBlockWithNumberParentHashAndTxInfo(5, HashOfLastBlockIn(blockTreeSetup),
-                dupGasPriceGroup);
-            blockTreeSetup = new BlockTreeSetup(new[]{dupGasPriceBlock},true);
-
-            ResultWrapper<UInt256?> resultWrapper = blockTreeSetup.EthRpcModule.eth_gasPrice();
-
-            resultWrapper.Result.Should().Be(Result.Success);
-        }
-       //// 
-        [Test]
-        public void Eth_gasPrice_BlockcountEqualToBlocksToCheck_ShouldGetSixtiethPercentileIndex()
-        {
-            BlockTreeSetup blockTreeSetup = new BlockTreeSetup();
-            ResultWrapper<UInt256?> resultWrapper = blockTreeSetup.EthRpcModule.eth_gasPrice();
-            resultWrapper.Data.Should().Be((UInt256?) 4); 
-            //Tx Gas Prices: 1,2,3,4,5,6, Index: (6-1) * 3/5 = 3, Gas Price: 4
-        }
-
-        [Test]
-        public void Eth_gasPrice_EstimatedGasPriceMoreThanMaxGasPrice_ReturnMaxGasPrice()
-        {
-            Block[] blockArray = BlockConstructor.GetBlocksFromKeyValuePairs(BlockConstructor.BlockNumberAndTxStringsKeyValuePair(0, BlockConstructor.CollectTxStrings(BlockConstructor.GetTxString("A", "501", "0")
-                    )
-                ));
-            BlockTreeSetup blockTreeSetup = new BlockTreeSetup(blockArray);
-
-            ResultWrapper<UInt256?> resultWrapper = blockTreeSetup.EthRpcModule.eth_gasPrice();
-            
-            resultWrapper.Data.Should().Be((UInt256?) 500);
-        }
-
-        [Test]
-        public void Eth_gasPrice_BlockWithMoreThanThreeTxs_OnlyAddsThreeGasPriceTxs()
-        {
-            Block[] blockArray = BlockConstructor.GetBlocksFromKeyValuePairs(BlockConstructor.BlockNumberAndTxStringsKeyValuePair(0, BlockConstructor.CollectTxStrings(BlockConstructor.GetTxString("A", "4", "0"), BlockConstructor.GetTxString("B", "3", "0"), BlockConstructor.GetTxString("C", "2", "0"), BlockConstructor.GetTxString("D", "1", "0")
-                    )
-                ));
-            BlockTreeSetup blockTreeSetup = new BlockTreeSetup(blockArray);
-
-            blockTreeSetup.EthRpcModule.eth_gasPrice();
-            
-            List<UInt256> gasPriceList = blockTreeSetup.GasPriceOracle.TxGasPriceList;
-            gasPriceList.Count.Should().Be(3);
-        }
-        
-        [Test] 
-        public void Eth_gasPrice_BlocksWithMoreThanThreeTxs_OnlyAddsThreeLowestEffectiveGasPriceTxs()
-        {
-            Block[] blockArray = BlockConstructor.GetBlocksFromKeyValuePairs(BlockConstructor.BlockNumberAndTxStringsKeyValuePair(0, BlockConstructor.CollectTxStrings(BlockConstructor.GetTxString("A", "4", "0"), BlockConstructor.GetTxString("B", "3", "0"), BlockConstructor.GetTxString("C", "2", "0"), BlockConstructor.GetTxString("D", "1", "0")
-                    )
-                ), BlockConstructor.BlockNumberAndTxStringsKeyValuePair(1, BlockConstructor.CollectTxStrings(BlockConstructor.GetTxString("A", "8", "1"), BlockConstructor.GetTxString("B", "7", "1"), BlockConstructor.GetTxString("C", "6", "1"), BlockConstructor.GetTxString("D", "5", "1")
-                    )
-                ));
-            BlockTreeSetup blockTreeSetup = new BlockTreeSetup(blockArray);
-            
-            blockTreeSetup.EthRpcModule.eth_gasPrice();
-            List<UInt256> gasPriceList = blockTreeSetup.GasPriceOracle.TxGasPriceList;
-            
-            IEnumerable<UInt256> correctGasPriceList = new List<UInt256> {1,2,3,5,6,7};
-            gasPriceList.Should().Equal(correctGasPriceList);
-        }
-        
-        [Test]
-        public void Eth_gasPrice_WhenBlocksHaveNoTx_GasPriceShouldBeOne()
-        {
-            Block[] blocks = BlockConstructor.GetBlocksFromKeyValuePairs(BlockConstructor.BlockNumberAndTxStringsKeyValuePair(0, null), BlockConstructor.BlockNumberAndTxStringsKeyValuePair(1, null), BlockConstructor.BlockNumberAndTxStringsKeyValuePair(2, null), BlockConstructor.BlockNumberAndTxStringsKeyValuePair(3, null), BlockConstructor.BlockNumberAndTxStringsKeyValuePair(4, null));
-            BlockTreeSetup blockTreeSetup = new BlockTreeSetup(blocks);
-            ResultWrapper<UInt256?> resultWrapper = blockTreeSetup.EthRpcModule.eth_gasPrice();
-            
-            resultWrapper.Data.Should().Be((UInt256?) 1);
-        }
-        
-        [Test]
         public void Eth_gasPrice_ReturnDefaultGasPrice_EmptyBlocksAtEndEqualToEight()
         {
-            Block[] blocks = BlockConstructor.GetBlocksFromKeyValuePairs(BlockConstructor.BlockNumberAndTxStringsKeyValuePair(0, BlockConstructor.CollectTxStrings(BlockConstructor.GetTxString("A", "2", "0"), BlockConstructor.GetTxString("B", "3", "0")
-                        )
-                ), BlockConstructor.BlockNumberAndTxStringsKeyValuePair(1, null), BlockConstructor.BlockNumberAndTxStringsKeyValuePair(2, null), BlockConstructor.BlockNumberAndTxStringsKeyValuePair(3, null), BlockConstructor.BlockNumberAndTxStringsKeyValuePair(4, null), BlockConstructor.BlockNumberAndTxStringsKeyValuePair(5, null), BlockConstructor.BlockNumberAndTxStringsKeyValuePair(6, null), BlockConstructor.BlockNumberAndTxStringsKeyValuePair(7, null), BlockConstructor.BlockNumberAndTxStringsKeyValuePair(8, null)
+            Block[] blocks = GetBlocksFromKeyValuePairs(
+                BlockNumberAndTxStringsKeyValuePair(0, CollectTxStrings(
+                        GetTxString("A", "2", "0"), 
+                        GetTxString("B", "3", "0")
+                        )), 
+                BlockNumberAndTxStringsKeyValuePair(1, null), 
+                BlockNumberAndTxStringsKeyValuePair(2, null), 
+                BlockNumberAndTxStringsKeyValuePair(3, null), 
+                BlockNumberAndTxStringsKeyValuePair(4, null), 
+                BlockNumberAndTxStringsKeyValuePair(5, null), 
+                BlockNumberAndTxStringsKeyValuePair(6, null), 
+                BlockNumberAndTxStringsKeyValuePair(7, null), 
+                BlockNumberAndTxStringsKeyValuePair(8, null)
                 );
 
             BlockTreeSetup blockTreeSetup = new BlockTreeSetup(blocks);
             ResultWrapper<UInt256?> resultWrapper = blockTreeSetup.EthRpcModule.eth_gasPrice();
             
             resultWrapper.Data.Should().Be((UInt256?) 1); 
-        }
-
-        [Test]
-        public void Eth_gasPrice_WhenHeadBlockIsNotChanged_ShouldUsePreviouslyCalculatedGasPrice()
-        {
-            const int normalErrorCode = 0;
-            int noHeadBlockChangeErrorCode = GasPriceConfig.NoHeadBlockChangeErrorCode;
-
-            BlockTreeSetup blockTreeSetup = new BlockTreeSetup();
-            ResultWrapper<UInt256?> firstResult = blockTreeSetup.EthRpcModule.eth_gasPrice();
-            ResultWrapper<UInt256?> secondResult = blockTreeSetup.EthRpcModule.eth_gasPrice();
-
-            firstResult.Data.Should().Be(secondResult.Data);
-            firstResult.ErrorCode.Should().Be(normalErrorCode);
-            secondResult.ErrorCode.Should().Be(noHeadBlockChangeErrorCode);
-        }
-        
-        [Test]
-        public void Eth_gasPrice_TxGasPricesAreBelowThreshold_ReplaceGasPriceUnderThresholdWithDefaultPrice()
-        {
-            BlockTreeSetup blockTreeSetup = new BlockTreeSetup(ignoreUnder: 4);
-            blockTreeSetup.EthRpcModule.eth_gasPrice();
-            
-            List<UInt256> expected = new List<UInt256> {1,1,4,5,6};
-            blockTreeSetup.GasPriceOracle.TxGasPriceList.Should().Equal(expected); 
-        }
-
-        [TestCase(false, 5)] //Tx Gas Prices: 1,1,2,3,4,5,6,9,10,11 Index: (10-1) * 3/5 rounds to 5, Gas Price: 5
-        [TestCase(true, 5)]  //Tx Gas Prices: 0,0,1,2,3,4,5,6,9,10,11 Index: (11-1) * 3/5 = 6, Gas Price: 5
-        public void Eth_gasPrice_InEip1559Mode_ShouldCalculateTxGasPricesDifferently(bool eip1559Enabled, int expected)
-        {
-            Transaction[] eip1559TxGroup = BlockConstructor.GetTransactionsFromTxStrings(BlockConstructor.CollectTxStrings(BlockConstructor.GetTxString("B","7","2"), BlockConstructor.GetTxString("B","8","3")
-                    ), IsEip1559()
-                );
-            Transaction[] notEip1559TxGroup = BlockConstructor.GetTransactionsFromTxStrings(BlockConstructor.CollectTxStrings(BlockConstructor.GetTxString("B","9","4"), BlockConstructor.GetTxString("B","10","5"), BlockConstructor.GetTxString("B","11","6")
-                    ), IsNotEip1559()
-                );
-
-            BlockTreeSetup blockTreeSetup = new BlockTreeSetup();
-            Block eip1559Block = BlockConstructor.GetBlockWithNumberParentHashAndTxInfo(5, HashOfLastBlockIn(blockTreeSetup), eip1559TxGroup);
-            Block nonEip1559Block = BlockConstructor.GetBlockWithNumberParentHashAndTxInfo(6, eip1559Block.Hash, notEip1559TxGroup);
-            blockTreeSetup = new BlockTreeSetup(new[]{eip1559Block, nonEip1559Block},true, 
-                eip1559Enabled: eip1559Enabled);
-
-            ResultWrapper<UInt256?> resultWrapper = blockTreeSetup.EthRpcModule.eth_gasPrice();
-            
-            resultWrapper.Data.Should().Be((UInt256?) expected); 
         }
 
         private bool IsEip1559()
@@ -256,11 +152,11 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void Eth_gasPrice_TxCountNotGreaterThanLimit_GetTxFromMoreBlocks()
         {
-            Block[] blocks = BlockConstructor.GetBlocksFromKeyValuePairs(BlockConstructor.BlockNumberAndTxStringsKeyValuePair(0, BlockConstructor.CollectTxStrings(BlockConstructor.GetTxString("A", "0", "0"), BlockConstructor.GetTxString("B", "1", "0")
+            Block[] blocks = GetBlocksFromKeyValuePairs(BlockNumberAndTxStringsKeyValuePair(0, CollectTxStrings(GetTxString("A", "0", "0"), GetTxString("B", "1", "0")
                     )
-                ), BlockConstructor.BlockNumberAndTxStringsKeyValuePair(1, BlockConstructor.CollectTxStrings(BlockConstructor.GetTxString("C", "2", "0"), BlockConstructor.GetTxString("D", "3","0")
+                ), BlockNumberAndTxStringsKeyValuePair(1, CollectTxStrings(GetTxString("C", "2", "0"), GetTxString("D", "3","0")
                     )
-                ), BlockConstructor.BlockNumberAndTxStringsKeyValuePair(2, BlockConstructor.CollectTxStrings(BlockConstructor.GetTxString("A", "4", "0")
+                ), BlockNumberAndTxStringsKeyValuePair(2, CollectTxStrings(GetTxString("A", "4", "0")
                     )
                 ));
 
@@ -274,11 +170,11 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void Eth_gasPrice_BlocksAvailableLessThanBlocksToCheck_ShouldBeSuccessful()
         {
-            Block[] blocks = BlockConstructor.GetBlocksFromKeyValuePairs(BlockConstructor.BlockNumberAndTxStringsKeyValuePair(0, BlockConstructor.CollectTxStrings(BlockConstructor.GetTxString("A", "3", "0"), BlockConstructor.GetTxString("B", "4", "0")
+            Block[] blocks = GetBlocksFromKeyValuePairs(BlockNumberAndTxStringsKeyValuePair(0, CollectTxStrings(GetTxString("A", "3", "0"), GetTxString("B", "4", "0")
                     )
-                ), BlockConstructor.BlockNumberAndTxStringsKeyValuePair(1, BlockConstructor.CollectTxStrings(BlockConstructor.GetTxString("C", "5", "0"), BlockConstructor.GetTxString("D", "6","0")
+                ), BlockNumberAndTxStringsKeyValuePair(1, CollectTxStrings(GetTxString("C", "5", "0"), GetTxString("D", "6","0")
                     )
-                ), BlockConstructor.BlockNumberAndTxStringsKeyValuePair(2, BlockConstructor.CollectTxStrings(BlockConstructor.GetTxString("A", "7", "0"), BlockConstructor.GetTxString("B", "8", "1")
+                ), BlockNumberAndTxStringsKeyValuePair(2, CollectTxStrings(GetTxString("A", "7", "0"), GetTxString("B", "8", "1")
                     )
                 ));
 
@@ -292,11 +188,11 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void Eth_gasPrice_GetTxFromMinBlocks_NumTxInMinBlocksGreaterThanOrEqualToLimit()
         {
-            Block[] blocks = BlockConstructor.GetBlocksFromKeyValuePairs(BlockConstructor.BlockNumberAndTxStringsKeyValuePair(0, BlockConstructor.CollectTxStrings(BlockConstructor.GetTxString("A", "1", "0"), BlockConstructor.GetTxString("B", "2", "0")
+            Block[] blocks = GetBlocksFromKeyValuePairs(BlockNumberAndTxStringsKeyValuePair(0, CollectTxStrings(GetTxString("A", "1", "0"), GetTxString("B", "2", "0")
                     )
-                ), BlockConstructor.BlockNumberAndTxStringsKeyValuePair(1, BlockConstructor.CollectTxStrings(BlockConstructor.GetTxString("C", "3", "0"), BlockConstructor.GetTxString("D", "4", "0")
+                ), BlockNumberAndTxStringsKeyValuePair(1, CollectTxStrings(GetTxString("C", "3", "0"), GetTxString("D", "4", "0")
                     )
-                ), BlockConstructor.BlockNumberAndTxStringsKeyValuePair(2, BlockConstructor.CollectTxStrings(BlockConstructor.GetTxString("A", "5","1"), BlockConstructor.GetTxString("B", "6","1")
+                ), BlockNumberAndTxStringsKeyValuePair(2, CollectTxStrings(GetTxString("A", "5","1"), GetTxString("B", "6","1")
                     )
                 )
             );
@@ -311,8 +207,8 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void Eth_gasPrice_TransactionSentByMiner_AreNotConsideredInGasPriceCalculation()
         {
-            Address minerAddress = BlockConstructor.PrivateKeyForLetter('A').Address;
-            Block block = BlockConstructor.GetBlockWithBeneficiaryBlockNumberAndTxInfo(minerAddress, 0, BlockConstructor.CollectTxStrings(BlockConstructor.GetTxString("A", "7", "0"), BlockConstructor.GetTxString("B", "8", "0"), BlockConstructor.GetTxString("C", "9", "0")
+            Address minerAddress = PrivateKeyForLetter('A').Address;
+            Block block = GetBlockWithBeneficiaryBlockNumberAndTxInfo(minerAddress, 0, CollectTxStrings(GetTxString("A", "7", "0"), GetTxString("B", "8", "0"), GetTxString("C", "9", "0")
                     )
                 );
             BlockTreeSetup blockTreeSetup = new BlockTreeSetup(new[]{block});
@@ -405,27 +301,26 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             private void GetBlockArray()
             {
-                BlockConstructor b = new BlockConstructor();
-                Blocks = b.GetBlocksFromKeyValuePairs(
-                    BlockConstructor.BlockNumberAndTxStringsKeyValuePair(0, BlockConstructor.CollectTxStrings(
-                            BlockConstructor.GetTxString("A", "1", "0"),
-                            BlockConstructor.GetTxString("B", "2", "0")
+                Blocks = GetBlocksFromKeyValuePairs(
+                    BlockNumberAndTxStringsKeyValuePair(0, CollectTxStrings(
+                            GetTxString("A", "1", "0"),
+                            GetTxString("B", "2", "0")
                         )
                     ),
-                    BlockConstructor.BlockNumberAndTxStringsKeyValuePair(1, BlockConstructor.CollectTxStrings(
-                            BlockConstructor.GetTxString("C", "3", "0")
+                    BlockNumberAndTxStringsKeyValuePair(1, CollectTxStrings(
+                            GetTxString("C", "3", "0")
                         )
                     ),
-                    BlockConstructor.BlockNumberAndTxStringsKeyValuePair(2, BlockConstructor.CollectTxStrings(
-                            BlockConstructor.GetTxString("D", "5", "0")
+                    BlockNumberAndTxStringsKeyValuePair(2, CollectTxStrings(
+                            GetTxString("D", "5", "0")
                         )
                     ),
-                    BlockConstructor.BlockNumberAndTxStringsKeyValuePair(3, BlockConstructor.CollectTxStrings(
-                            BlockConstructor.GetTxString("A", "4", "1")
+                    BlockNumberAndTxStringsKeyValuePair(3, CollectTxStrings(
+                            GetTxString("A", "4", "1")
                         )
                     ),
-                    BlockConstructor.BlockNumberAndTxStringsKeyValuePair(4, BlockConstructor.CollectTxStrings(
-                            BlockConstructor.GetTxString("B", "6", "1")
+                    BlockNumberAndTxStringsKeyValuePair(4, CollectTxStrings(
+                            GetTxString("B", "6", "1")
                         )
                     )
                 );

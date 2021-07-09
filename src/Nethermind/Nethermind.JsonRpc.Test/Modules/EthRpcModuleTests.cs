@@ -54,13 +54,6 @@ namespace Nethermind.JsonRpc.Test.Modules
     [TestFixture]
     public partial class EthRpcModuleTests
     {
-        private readonly BlockConstructor _blockConstructor = new BlockConstructor();
-
-        public BlockConstructor BlockConstructor
-        {
-            get { return _blockConstructor; }
-        }
-
         [TestCase("earliest", "0x3635c9adc5dea00000")]
         [TestCase("latest", "0x3635c9adc5de9f09e5")]
         [TestCase("pending", "0x3635c9adc5de9f09e5")]
@@ -71,12 +64,6 @@ namespace Nethermind.JsonRpc.Test.Modules
             string serialized = ctx._test.TestEthRpc("eth_getBalance", TestItem.AddressA.Bytes.ToHexString(true), blockParameter);
             serialized.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":\"{expectedResult}\",\"id\":67}}");
         }
-
-        //create string in format "block #, space, tx1, privateKeyLetter, GasPrice, Nonce, ..."
-
-        //rename functions
-        //refactor tests so that transactions and block creating logic can be reused - block factory!
-        //move all these tests to a new class
 
         [Test]
         public async Task Eth_get_balance_default_block()

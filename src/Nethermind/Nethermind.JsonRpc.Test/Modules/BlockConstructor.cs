@@ -6,11 +6,10 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
-using static Nethermind.JsonRpc.Test.Modules.EthRpcModuleTests;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
-    public class BlockConstructor
+    public static class BlockConstructor
     {
         public static Block GetBlockWithBeneficiaryBlockNumberAndTxInfo(Address beneficiary, int blockNumber, string[][] txInfo)
         {
@@ -34,7 +33,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             return new KeyValuePair<int, string[][]>(blockNumber, txInfo);
         }
 
-        public Block[] GetBlocksFromKeyValuePairs(params KeyValuePair<int, string[][]>[] blockAndTxInfo)
+        public static Block[] GetBlocksFromKeyValuePairs(params KeyValuePair<int, string[][]>[] blockAndTxInfo)
         {
             Keccak parentHash = null;
             Block block;
@@ -49,7 +48,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             return blocks.ToArray();
         }
 
-        private Block BlockBuilder(KeyValuePair<int, string[][]> keyValuePair, Keccak parentHash, bool isEip1559 = false)
+        private static Block BlockBuilder(KeyValuePair<int, string[][]> keyValuePair, Keccak parentHash, bool isEip1559 = false)
         {
             Transaction[] transactions;
             Block block;
@@ -70,13 +69,13 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             if (isEip1559)
             {
-                return ConvertEip1559Txs(txInfo).ToArray();
+                return ConvertToEip1559Txs(txInfo).ToArray();
             }
 
-            return ConvertRegularTxs(txInfo).ToArray();
+            return ConvertToNonEip1559Txs(txInfo).ToArray();
         }
 
-        private static IEnumerable<Transaction> ConvertEip1559Txs(params string[][] txsInfo)
+        private static IEnumerable<Transaction> ConvertToEip1559Txs(params string[][] txsInfo)
         {
             PrivateKey privateKey;
             char privateKeyLetter;
@@ -93,7 +92,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             }
         }
 
-        private static Transaction[] ConvertRegularTxs(params string[][] txsInfo)
+        private static Transaction[] ConvertToNonEip1559Txs(params string[][] txsInfo)
         {
             PrivateKey privateKey;
             char privateKeyLetter;
@@ -145,22 +144,6 @@ namespace Nethermind.JsonRpc.Test.Modules
             }
 
             throw new ArgumentException("Block number should be greater than or equal to 0.");
-        }
-        
-        public static bool IsEip1559()
-        {
-            return true;
-        }
-        
-        public static bool IsNotEip1559()
-        { 
-            return false;
-        }
-        
-        
-        public static Keccak HashOfLastBlockIn(BlockTreeSetup blockTreeSetup)
-        {
-            return blockTreeSetup.Blocks[^1].Hash;
         }
     }
 }
