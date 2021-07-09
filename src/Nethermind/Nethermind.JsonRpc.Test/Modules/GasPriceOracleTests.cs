@@ -17,6 +17,8 @@ namespace Nethermind.JsonRpc.Test.Modules
     {
         private class TestableGasPriceOracle : GasPriceOracle
         {
+            private readonly UInt256? _lastGasPrice;
+            private readonly List<UInt256>? _sortedTxList;
             public TestableGasPriceOracle(
                 bool eip1559Enabled = false, 
                 UInt256? ignoreUnder = null, 
@@ -24,7 +26,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                 UInt256? baseFee = null, 
                 ITxInsertionManager? txInsertionManager = null,
                 IHeadBlockChangeManager? headBlockChangeManager = null,
-                UInt256? lastGasPrice = null) : 
+                UInt256? lastGasPrice = null,
+                List<UInt256>? sortedTxList = null) : 
                 base(
                     eip1559Enabled,
                     ignoreUnder,
@@ -33,13 +36,19 @@ namespace Nethermind.JsonRpc.Test.Modules
                     txInsertionManager,
                     headBlockChangeManager)
             {
-                LastGasPrice = lastGasPrice;
+                _lastGasPrice = lastGasPrice;
+                _sortedTxList = sortedTxList;
             }
-            
-            
-            public override UInt256? GetLastGasPrice()
+
+
+            protected override UInt256? GetLastGasPrice()
             {
-                return LastGasPrice;
+                return _lastGasPrice;
+            }
+
+            protected override List<UInt256> GetSortedTxGasPriceList(Block? headBlock, IDictionary<long, Block> blockNumToBlockMap)
+            {
+                return _sortedTxList ?? base.GetSortedTxGasPriceList(headBlock, blockNumToBlockMap);
             }
         }
         
@@ -84,16 +93,11 @@ namespace Nethermind.JsonRpc.Test.Modules
             
             testableGasPriceOracle.FallbackGasPrice.Should().BeEquivalentTo((UInt256?) lastGasPrice);
         }
-        [Test]
-        public void GasPriceEstimate_IfHeadBlockWasNotTheSame_AddValidTxAndReturnCountCalledNumberOfBlocksToGoBack()
-        {
-            
-        }
 
         [Test]
         public void GasPriceEstimate_BlockcountEqualToBlocksToCheck_SixtiethPercentileOfMaxIndexReturned()
         {
-            
+            TestableGasPriceOracle testableGasPriceOracle = GetTestableGasPriceOracle();
         }
 
         [Test]
