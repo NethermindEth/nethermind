@@ -74,7 +74,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void AddValidTxAndReturnCount_TxsSentByMiner_ShouldNotHaveGasPriceInTxGasPriceList()
         {
-                
+            
         }
 
         [Test]
