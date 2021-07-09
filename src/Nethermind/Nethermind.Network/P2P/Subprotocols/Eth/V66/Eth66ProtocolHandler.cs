@@ -18,6 +18,7 @@
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
+using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
@@ -44,5 +45,68 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
         public override string Name => "eth66";
 
         public override byte ProtocolVersion => 66;
+        
+        public override void HandleMessage(ZeroPacket message)
+        {
+            int size = message.Content.ReadableBytes;
+
+            switch (message.PacketType)
+            {
+                case Eth66MessageCode.GetBlockHeaders:
+                    GetBlockHeadersMessage getBlockHeadersMessage
+                        = Deserialize<GetBlockHeadersMessage>(message.Content);
+                    ReportIn(getBlockHeadersMessage);
+                    Handle(getBlockHeadersMessage);
+                    break;
+                case Eth66MessageCode.BlockHeaders:
+                    BlockHeadersMessage headersMsg = Deserialize<BlockHeadersMessage>(message.Content);
+                    ReportIn(headersMsg);
+                    Handle(headersMsg.EthMessage, size);
+                    break;
+                case Eth66MessageCode.GetBlockBodies:
+                    GetBlockBodiesMessage getBodiesMsg = Deserialize<GetBlockBodiesMessage>(message.Content);
+                    ReportIn(getBodiesMsg);
+                    Handle(getBodiesMsg);
+                    break;
+                case Eth66MessageCode.BlockBodies:
+                    BlockBodiesMessage bodiesMsg = Deserialize<BlockBodiesMessage>(message.Content);
+                    ReportIn(bodiesMsg);
+                    HandleBodies(bodiesMsg.EthMessage, size);
+                    break;
+                case Eth66MessageCode.PooledTransactions:
+                    PooledTransactionsMessage pooledTxMsg
+                        = Deserialize<PooledTransactionsMessage>(message.Content);
+                    Metrics.Eth65PooledTransactionsReceived++;
+                    ReportIn(pooledTxMsg);
+                    Handle(pooledTxMsg.EthMessage);
+                    break;
+                case Eth66MessageCode.GetPooledTransactions:
+                    GetPooledTransactionsMessage getPooledTxMsg
+                        = Deserialize<GetPooledTransactionsMessage>(message.Content);
+                    ReportIn(getPooledTxMsg);
+                    Handle(getPooledTxMsg);
+                    break;
+            }
+            base.HandleMessage(message);
+        }
+        
+        public void Handle(GetBlockHeadersMessage getBlockHeaders)
+        {
+            Eth.V62.BlockHeadersMessage ethBlockHeadersMessage = FulfillBlockHeadersRequest(getBlockHeaders.EthMessage);
+            Send(new BlockHeadersMessage(getBlockHeaders.RequestId, ethBlockHeadersMessage, int.MaxValue));
+        }
+
+        public void Handle(GetBlockBodiesMessage getBlockBodies)
+        {
+            Eth.V62.BlockBodiesMessage ethBlockBodiesMessage = FulfillBlockBodiesRequest(getBlockBodies.EthMessage);
+            Send(new BlockBodiesMessage(getBlockBodies.RequestId, ethBlockBodiesMessage, int.MaxValue));
+        }
+        
+        public void Handle(GetPooledTransactionsMessage getPooledTransactions)
+        {
+            Eth.V65.PooledTransactionsMessage pooledTransactionsMessage =
+                FulfillPooledTransactionsRequest(getPooledTransactions.EthMessage);
+            Send(new PooledTransactionsMessage(getPooledTransactions.RequestId, pooledTransactionsMessage));
+        }
     }
 }
