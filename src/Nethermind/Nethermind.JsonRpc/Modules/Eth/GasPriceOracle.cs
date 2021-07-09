@@ -13,7 +13,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         public List<UInt256> TxGasPriceList { get; private set; }
         protected UInt256? LastGasPrice { get; set; }
         private Block? LastHeadBlock;
-        private readonly bool _eip1559Enabled;
+        private readonly bool _isEip1559Enabled;
         private readonly UInt256? _ignoreUnder;
         private readonly int _blockLimit;
         private readonly int _softTxThreshold;
@@ -22,7 +22,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly IHeadBlockChangeManager _headBlockChangeManager;
 
         public GasPriceOracle(
-            bool eip1559Enabled = false, 
+            bool isEip1559Enabled = false, 
             UInt256? ignoreUnder = null, 
             int? blockLimit = null, 
             UInt256? baseFee = null, 
@@ -30,12 +30,12 @@ namespace Nethermind.JsonRpc.Modules.Eth
             IHeadBlockChangeManager? headBlockChangeManager = null)
         {
             TxGasPriceList = new List<UInt256>();
-            _eip1559Enabled = eip1559Enabled;
+            _isEip1559Enabled = isEip1559Enabled;
             _ignoreUnder = ignoreUnder ?? UInt256.Zero;
             _blockLimit = blockLimit ?? GasPriceConfig.DefaultBlocksLimit;
             _softTxThreshold = GasPriceConfig.SoftTxLimit;
             _baseFee = baseFee ?? GasPriceConfig.DefaultBaseFee;
-            _txInsertionManager = txInsertionManager ?? new TxInsertionManager(this, _ignoreUnder, _eip1559Enabled, _baseFee);
+            _txInsertionManager = txInsertionManager ?? new TxInsertionManager(this, _ignoreUnder, _baseFee, _isEip1559Enabled);
             _headBlockChangeManager = headBlockChangeManager ?? new HeadBlockChangeManager();
         }
 
