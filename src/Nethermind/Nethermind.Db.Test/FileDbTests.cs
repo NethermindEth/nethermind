@@ -15,8 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Buffers.Binary;
+using System.IO;
 using System.Linq;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Db.Files;
 using NUnit.Framework;
 
 namespace Nethermind.Db.Test
@@ -25,34 +29,66 @@ namespace Nethermind.Db.Test
     public class FileDbTests
     {
         [Test]
-        public void Smoke_test()
+        public void Persistent_log()
         {
-            using Files.Db db = new("blocks");
-            byte[] key = Keccak.Compute("key").Bytes;
+            string dir = Path.Combine(Environment.CurrentDirectory, nameof(Persistent_log));
 
-            db[key] = new byte[] { 4, 5, 6 };
+            if (Directory.Exists(dir)) Directory.Delete(dir, true);
 
-            Assert.AreEqual(new byte[] { 4, 5, 6 }, db[key.ToArray()]);
+            Directory.CreateDirectory(dir);
+
+            Console.WriteLine("Working in: {0}", dir);
+
+            const int size = 1000000;
+
+            using PersistentLog log = new((int)1.MiB(), dir);
+            {
+                byte[] expected = new byte[4];
+                long[] results = new long[size];
+                for (int i = 0; i < size; i++)
+                {
+                    BinaryPrimitives.WriteInt32LittleEndian(expected, i);
+                    results[i] = log.Write(expected);
+                }
+
+                for (int i = 0; i < size; i++)
+                {
+                    BinaryPrimitives.WriteInt32LittleEndian(expected, i);
+                    byte[] actual = log.Read(results[i]);
+                    CollectionAssert.AreEqual(expected, actual, "Failed for key {0}", i);
+                }
+            }
         }
 
-        [Test]
-        public void Smoke_test_2()
-        {
-            const int size = 2_000_000;
+        //[Test]
+        //public void Smoke_test()
+        //{
+        //    using Files.Db db = new("blocks");
+        //    byte[] key = Keccak.Compute("key").Bytes;
 
-            static byte[] Key(int i) => Keccak.Compute(i.ToString()).Bytes;
-            static byte[] Value(int i) => BitConverter.GetBytes(i);
+        //    db[key] = new byte[] { 4, 5, 6 };
 
-            using Files.Db db = new("blocks", 1024 * 1024, size * 2);
-            for (int i = 0; i < size; i++)
-            {
-                db[Key(i)] = Value(i);
-            }
+        //    Assert.AreEqual(new byte[] { 4, 5, 6 }, db[key.ToArray()]);
+        //}
 
-            for (int i = size / 2; i < size; i++)
-            {
-                CollectionAssert.AreEqual(Value(i), db[Key(i)]);
-            }
-        }
+        //[Test]
+        //public void Smoke_test_2()
+        //{
+        //    const int size = 2_000_000;
+
+        //    static byte[] Key(int i) => Keccak.Compute(i.ToString()).Bytes;
+        //    static byte[] Value(int i) => BitConverter.GetBytes(i);
+
+        //    using Files.Db db = new("blocks", 1024 * 1024, size * 2);
+        //    for (int i = 0; i < size; i++)
+        //    {
+        //        db[Key(i)] = Value(i);
+        //    }
+
+        //    for (int i = size / 2; i < size; i++)
+        //    {
+        //        CollectionAssert.AreEqual(Value(i), db[Key(i)]);
+        //    }
+        //}
     }
 }

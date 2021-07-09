@@ -18,25 +18,35 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Runtime.InteropServices;
+using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Logging;
 
 namespace Nethermind.Db.Files
 {
     public class Db : IDbWithSpan
     {
         private readonly KeccakMap _map;
-        private readonly IntPtr _log;
-        private static readonly int _size = (int)1.GiB();
-        private int _position = 1 ; // positive values required
-        private readonly ConcurrentQueue<KeccakMap> _batches = new (); 
-        
-        public Db(string name, int buckets = 4 * 1024 * 1024 , int allocate = 1024 * 1024)
+        private readonly PersistentLog _log;
+        private readonly ConcurrentQueue<KeccakMap> _batches = new();
+
+        public Db(string basePath, string name, int buckets = 4 * 1024 * 1024, int allocate = 4 * 1024 * 1024)
         {
             Name = name;
+
+            string? fullPath = name.GetApplicationResourcePath(basePath);
+
+            if (!Directory.Exists(fullPath))
+            {
+                Directory.CreateDirectory(fullPath);
+            }
+
+            _log = new PersistentLog((int)256.MiB(), fullPath);
+
+            _log.Write(new byte[] { 1 }); // write one to make only positive positions
+
             _map = new KeccakMap(buckets, allocate);
-            _log = Marshal.AllocHGlobal(_size);
         }
 
         public byte[]? this[byte[] key]
@@ -48,46 +58,23 @@ namespace Nethermind.Db.Files
             }
         }
 
-        private unsafe long Log(byte[] value)
-        {
-            int length = value.Length;
-            int position;
-
-            lock (_map)
-            {
-                position = _position;
-                _position += length;
-
-                if (_position > _size)
-                {
-                    throw new OutOfMemoryException("Buffer breached!");
-                }
-
-                value.CopyTo(new Span<byte>((byte*) _log.ToPointer() + position, length));
-            }
-
-            return Write(position, length);
-        }
+        private long Log(byte[] value) => _log.Write(value);
 
         public IBatch StartBatch() => new Batch(this);
 
+        // TODO: make faster!
         public Span<byte> GetSpan(byte[] key) => !_map.TryGet(key, out long value) ? Span<byte>.Empty : GetAt(value);
 
-        private unsafe Span<byte> GetAt(long value)
-        {
-            (int position, int length) = Parse(value);
-            return new Span<byte>((byte*) _log.ToPointer() + position, length);
-        }
+        private Span<byte> GetAt(long value) => _log.Read(value);
 
         public void DangerousReleaseMemory(in Span<byte> span) { }
 
-        static (int position, int length) Parse(long value) => ((int)(value >> 32), (int)(value & 0xffff));
-
-        static long Write(int position, int length) => (((long)position) << 32) | (uint)length;
-
         public string Name { get; }
 
-        public void Dispose() { }
+        public void Dispose()
+        {
+            _log.Dispose();
+        }
 
         public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] => throw new NotImplementedException();
 

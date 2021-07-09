@@ -17,7 +17,6 @@
 
 using System;
 using System.Runtime.CompilerServices;
-using System.Runtime.Intrinsics.X86;
 using System.Threading;
 using Nethermind.Core.Crypto;
 
@@ -71,11 +70,9 @@ namespace Nethermind.Db.Files
 
         public KeccakMap(int buckets, int allocate)
         {
-            static int Log2(int value) => 31 - (int)Lzcnt.LeadingZeroCount((uint)value);
-
             // 1st level
             {
-                int sizeLog2 = Log2(buckets);
+                int sizeLog2 = buckets.Log2();
                 int size = 1 << sizeLog2;
                 _addressMask = (1 << sizeLog2) - 1;
                 _buckets = new int[size];
@@ -114,7 +111,7 @@ namespace Nethermind.Db.Files
             e._key3 = key3;
             e._value = value;
 
-            ref int bucket = ref _buckets[(int) (key0 & _addressMask)];
+            ref int bucket = ref GetBucket(key0);
 
             while (true)
             {

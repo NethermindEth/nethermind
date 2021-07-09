@@ -1,127 +1,241 @@
-////  Copyright (c) 2021 Demerzel Solutions Limited
-////  This file is part of the Nethermind library.
-//// 
-////  The Nethermind library is free software: you can redistribute it and/or modify
-////  it under the terms of the GNU Lesser General Public License as published by
-////  the Free Software Foundation, either version 3 of the License, or
-////  (at your option) any later version.
-//// 
-////  The Nethermind library is distributed in the hope that it will be useful,
-////  but WITHOUT ANY WARRANTY; without even the implied warranty of
-////  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-////  GNU Lesser General Public License for more details.
-//// 
-////  You should have received a copy of the GNU Lesser General Public License
-////  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-//// 
+//  Copyright (c) 2021 Demerzel Solutions Limited
+//  This file is part of the Nethermind library.
+// 
+//  The Nethermind library is free software: you can redistribute it and/or modify
+//  it under the terms of the GNU Lesser General Public License as published by
+//  the Free Software Foundation, either version 3 of the License, or
+//  (at your option) any later version.
+// 
+//  The Nethermind library is distributed in the hope that it will be useful,
+//  but WITHOUT ANY WARRANTY; without even the implied warranty of
+//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+//  GNU Lesser General Public License for more details.
+// 
+//  You should have received a copy of the GNU Lesser General Public License
+//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-//using System;
-//using System.IO;
-//using System.Runtime.InteropServices;
-//using System.Threading;
-//using Nethermind.Core.Extensions;
+using System;
+using System.IO;
+using System.IO.MemoryMappedFiles;
+using System.Runtime.CompilerServices;
+using System.Threading;
 
-//namespace Nethermind.Db.Files
-//{
-//    public class PersistentLog
-//    {
-//        private static readonly int _chunkSize = (int)256.MiB();
-//        private const int MaxChunkCount = 3000;
-//        private const int InMemoryChunks = 2;
+namespace Nethermind.Db.Files
+{
+    public class PersistentLog : IDisposable
+    {
+        private readonly string _directory;
+        private readonly IntPtr _buffer;
 
-//        private readonly Chunk[] _chunks = new Chunk[MaxChunkCount];
-//        private readonly IntPtr[] _buffers = new IntPtr[InMemoryChunks];
-//        private int _current;
+        private readonly int _size;
+        private readonly int _sizeMask;
+        private readonly int _chunkSize;
+        private readonly int _chunkMask;
 
-//        public PersistentLog()
-//        {
-//            for (int i = 0; i < InMemoryChunks; i++)
-//            {
-//                _buffers[i] = Marshal.AllocHGlobal(_chunkSize);
-//            }
-//        }
+        private long _head; // where the flusher is
+        private long _tail; // where the writers are
 
-//        public long Write(byte[] value)
-//        {
-//            int index = Volatile.Read(ref _current);
-//            Chunk chunk = _chunks[index];
+        private const int MaxChunks = 1024;
+        private readonly MemoryMappedViewAccessor?[] _accessors = new MemoryMappedViewAccessor[MaxChunks];
+        private readonly MemoryMappedFile?[] _files = new MemoryMappedFile[MaxChunks];
+        private readonly CancellationTokenSource _cts;
+        private readonly Thread _thread;
 
-//            if (chunk.TryWrite(value, out int offset))
-//            {
-//                return CreateKey(index, offset);
-//            }
+        private const int HeaderLength = sizeof(long);
+        private const int Alignment = 8;
 
-//        }
+        /// <summary>
+        /// The shift in the value to embed the length.
+        /// </summary>
+        private const int LengthShift = 16;
+        private const int LengthMask = (1 << LengthShift) - 1;
 
-//        static long CreateKey(int chunkIndex, int position) => (((long)chunkIndex) << 32) | (uint)position;
+        public PersistentLog(int chunkSize, string directory)
+        {
+            _directory = directory;
+            int log2 = chunkSize.Log2();
 
-//        class Chunk
-//        {
-//            private readonly IntPtr _buffer;
-//            private readonly FileStream _stream;
-//            private int _position;
+            _chunkSize = 1 << log2;
+            _chunkMask = _chunkSize - 1;
+            _size = _chunkSize * 2;
+            _sizeMask = _size - 1;
+            _buffer = Helpers.AllocAlignedMemory(_size);
 
-//            public Chunk(IntPtr buffer, FileStream stream)
-//            {
-//                _buffer = buffer;
-//                _stream = stream;
-//            }
+            _cts = new CancellationTokenSource();
+            _thread = Start(_cts);
+        }
 
-//            public bool TryWrite(byte[] value, out int offset)
-//            {
-//                int length = value.Length;
-//                int position = Volatile.Read(ref _position);
+        public long Write(byte[] value)
+        {
+            int length = value.Length;
+            int required = Helpers.Align(length, Alignment) + HeaderLength;
 
-//                if (position + length > _chunkSize)
-//                {
-//                    TrySeal();
-//                    offset = default;
-//                    return false;
-//                }
+            long tail;
+            SpinWait spin = default;
+            bool retry;
 
-//                lock (this)
-//                {
-//                    if (_position + length > _chunkSize)
-//                    {
-//                        TrySeal();
-//                        offset = default;
-//                        return false;
-//                    }
+            do
+            {
+                retry = false;
+                long head = Volatile.Read(ref _head);
+                tail = Volatile.Read(ref _tail);
 
-//                    unsafe
-//                    {
-//                        value.CopyTo(new Span<byte>((byte*)_buffer.ToPointer() + _position, length));
-//                    }
+                int available = _size - (int)(tail - head);
+                if (required > available)
+                {
+                    // not enough, try in a while
+                    spin.SpinOnce();
+                    retry = true;
+                    continue;
+                }
 
-//                    offset = _position;
-//                    _position += length;
-//                    return true;
-//                }
+                // ensure    that writes are aligned to chunk boundaries
+                long toChunkEnd = _chunkSize - (tail & _chunkMask);
 
-//                Monitor.wa
-//            }
+                if (required > toChunkEnd)
+                {
+                    if (Interlocked.CompareExchange(ref _tail, tail + toChunkEnd, tail) == tail)
+                    {
+                        // succeeded, write padding
+                        long paddingLength = toChunkEnd - Alignment;
+                        WriteHeader(tail, paddingLength);
+                    }
 
-//            public void FlushNoLock(bool flushToDisk = false)
-//            {
-//                int current = Volatile.Read(ref _position);
-//                int flushedTo = (int)_stream.Position;
+                    // another worker added padding
+                    retry = true;
+                    continue;
+                }
 
-//                if (current > flushedTo)
-//                {
-//                    unsafe
-//                    {
-//                        _stream.Write(new Span<byte>(((byte*)_buffer.ToPointer()) + flushedTo, current - flushedTo));
-//                        _stream.Flush(flushToDisk);
-//                    }
+            } while (retry || Interlocked.CompareExchange(ref _tail, tail + required, tail) != tail);
 
-//                    flushedTo = current;
-//                }
-//            }
+            // perform actual write
+            unsafe
+            {
+                // copy value first
+                byte* position = (byte*)_buffer.ToPointer() + (tail & _sizeMask);
+                Span<byte> destination = new(position + HeaderLength, length);
+                value.CopyTo(destination);
 
-//            private void TrySeal()
-//            {
-//                throw new NotImplementedException();
-//            }
-//        }
-//    }
-//}
+                // then write the header to make it atomically visible
+                long header = BuildHeader(tail, length);
+                Volatile.Write(ref Unsafe.AsRef<long>(position), header);
+                return header;
+            }
+        }
+
+        public unsafe byte[] Read(long header)
+        {
+            int length = GetLength(header);
+            long position = header >> LengthShift;
+            long chunkIndex = position / _chunkSize;
+            long chunkOffset = position & _chunkMask;
+
+            // try memory mapped first
+            MemoryMappedViewAccessor? accessor = Volatile.Read(ref _accessors[chunkIndex]);
+            if (accessor != null)
+            {
+                return Read(accessor, chunkOffset, length);
+            }
+
+            // try buffer 
+            byte* start = (byte*)_buffer.ToPointer() + (position & _sizeMask);
+            byte[] array = new Span<byte>(start + HeaderLength, length).ToArray();
+            long read = Volatile.Read(ref Unsafe.AsRef<long>(start));
+
+            if (read == header)
+            {
+                // the ordering is preserved, nothing has overwritten the value in the mean time
+                return array;
+            }
+
+            // it must have been being mapped, retry till it happens
+            SpinWait spin = default;
+            while (accessor == null)
+            {
+                spin.SpinOnce();
+                accessor = Volatile.Read(ref _accessors[chunkIndex]);
+            }
+
+            return Read(accessor, chunkOffset, length);
+        }
+
+        public static int GetLength(long header) => (int)(LengthMask & header);
+
+        private static unsafe byte[] Read(MemoryMappedViewAccessor accessor, long chunkOffset, int length)
+        {
+            IntPtr handle = accessor.SafeMemoryMappedViewHandle.DangerousGetHandle();
+            return new Span<byte>((byte*)handle.ToPointer() + chunkOffset + HeaderLength, length).ToArray();
+        }
+
+        Thread Start(CancellationTokenSource cts)
+        {
+            Thread thread = new(() =>
+            {
+                SpinWait spin = default;
+
+                while (!cts.IsCancellationRequested)
+                {
+                    long head = Volatile.Read(ref _head);
+                    long tail = Volatile.Read(ref _tail);
+
+                    if ((tail - head) > _chunkSize)
+                    {
+                        unsafe
+                        {
+                            long chunkIndex = head / _chunkSize;
+
+                            string file = Path.Combine(_directory, chunkIndex.ToString("D8") + ".log");
+                            using (FileStream fileStream =
+                                new(file, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.ReadWrite))
+                            {
+                                byte* start = (byte*)_buffer.ToPointer() + (head & _sizeMask);
+                                Span<byte> toWrite = new(start, _chunkSize);
+                                fileStream.Write(toWrite);
+                                fileStream.Flush(true);
+                            }
+                            MemoryMappedFile mmf = MemoryMappedFile.CreateFromFile(file);
+                            _files[chunkIndex] = mmf;
+                            Volatile.Write(ref _accessors[chunkIndex], mmf.CreateViewAccessor());
+
+                            // write head
+                            Volatile.Write(ref _head, _head + _chunkSize);
+                        }
+                    }
+                    spin.SpinOnce();
+                }
+            });
+            thread.Start();
+            return thread;
+        }
+
+        private unsafe void WriteHeader(long tail, long length)
+        {
+            long header = BuildHeader(tail, length);
+            byte* pointer = (byte*)_buffer.ToPointer() + (tail & _sizeMask);
+
+            Volatile.Write(ref Unsafe.AsRef<long>(pointer), header);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static long BuildHeader(long tail, long length) => (tail << LengthShift) + length;
+
+        public void Dispose()
+        {
+            _cts.Cancel();
+            _thread.Join();
+
+            foreach (MemoryMappedViewAccessor? accessor in _accessors)
+            {
+                accessor?.Dispose();
+            }
+
+            foreach (MemoryMappedFile? file in _files)
+            {
+                file?.Dispose();
+            }
+
+            Helpers.FreeAlignedMemory(_buffer);
+        }
+    }
+}

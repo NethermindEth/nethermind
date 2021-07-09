@@ -36,9 +36,10 @@ namespace Nethermind.Db.Rocks
 
         public IDb CreateDb(RocksDbSettings rocksDbSettings)
         {
-            return rocksDbSettings.DbName != "State"
-                ? new DbOnTheRocks(_basePath, rocksDbSettings, _dbConfig, _logManager)
-                : new Files.Db(rocksDbSettings.DbName, allocate: 16 * 1024 * 1024);
+            return rocksDbSettings.DbName != "State" ?
+                   new DbOnTheRocks(_basePath, rocksDbSettings, _dbConfig, _logManager)
+                 : new Files.Db(_basePath, rocksDbSettings.DbPath, allocate: 16 * 1024 * 1024)
+                ;
         }
 
         public IColumnsDb<T> CreateColumnsDb<T>(RocksDbSettings rocksDbSettings) where T : notnull
