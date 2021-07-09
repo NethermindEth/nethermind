@@ -28,15 +28,15 @@ namespace Nethermind.Dsl.ANTLR
         private IPipelineBuilder<Transaction, Transaction> _transactionsPipelineBuilder;
         private IPipelineBuilder<LogEntry, LogEntry> _eventsPipelineBuilder;
         private IPipelineBuilder<Transaction, Transaction> _pendingTransactionsPipelineBuilder;
-        
+
         //builders of elements in pipelines
         private readonly BlockElementsBuilder _blockElementsBuilder;
         private readonly TransactionElementsBuilder _transactionElementsBuilder;
         private readonly PendingTransactionElementsBuilder _pendingTransactionElementsBuilder;
         private readonly EventElementsBuilder _eventElementsBuilder;
-        
+
         public string Script { get; }
-        
+
         //pipelines for each flow
         public IPipeline BlocksPipeline { get; private set; }
         public IPipeline TransactionsPipeline { get; private set; }
@@ -58,6 +58,7 @@ namespace Nethermind.Dsl.ANTLR
             _transactionElementsBuilder = transactionElementsBuilder ?? new TransactionElementsBuilder(_api.MainBlockProcessor);
             _pendingTransactionElementsBuilder = pendingTransactionElementsBuilder ?? new PendingTransactionElementsBuilder(_api.TxPool);
             _eventElementsBuilder = eventElementsBuilder ?? new EventElementsBuilder(_api.MainBlockProcessor);
+
 
             var inputStream = new AntlrInputStream(Script);
             var lexer = new DslGrammarLexer(inputStream);
@@ -179,22 +180,24 @@ namespace Nethermind.Dsl.ANTLR
 
             switch (publisher)
             {
-               case "websockets": AddWebSocketsPublisher(value);
-                   break;
-               case "telegram": AddTelegramPublisher(value); 
-                   break;
+                case "websockets": AddWebSocketsPublisher(value);
+                    break;
+                case "telegram": AddTelegramPublisher(value);
+                    break;
+                case "discord": AddDiscordPublisher(value);
+                    break;
             };
         }
 
         private void AddTelegramPublisher(string chatId)
         {
             var telegramPublisher = new TelegramPublisher(_api.EthereumJsonSerializer, chatId);
-            
-            AddBlocksPublisher(telegramPublisher); 
+
+            AddBlocksPublisher(telegramPublisher);
             AddTransactionsPublisher(telegramPublisher);
             AddPendingTransactionsPublisher(telegramPublisher);
             AddEventsPublisher(telegramPublisher);
-            
+
             BuildPipelines();
         }
 
@@ -207,6 +210,18 @@ namespace Nethermind.Dsl.ANTLR
             AddTransactionsPublisher(webSocketsPublisher);
             AddPendingTransactionsPublisher(webSocketsPublisher);
             AddEventsPublisher(webSocketsPublisher);
+
+            BuildPipelines();
+        }
+
+        private void AddDiscordPublisher(string chatId)
+        {
+            var discordPublisher = new DiscordPublisher(_api.EthereumJsonSerializer, chatId);
+
+            AddBlocksPublisher(discordPublisher);
+            AddTransactionsPublisher(discordPublisher);
+            AddPendingTransactionsPublisher(discordPublisher);
+            AddEventsPublisher(discordPublisher);
 
             BuildPipelines();
         }
