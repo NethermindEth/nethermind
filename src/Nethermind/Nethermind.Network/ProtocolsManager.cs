@@ -29,6 +29,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Network.P2P.Subprotocols.Eth.V64;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
+using Nethermind.Network.P2P.Subprotocols.Eth.V66;
 using Nethermind.Network.P2P.Subprotocols.Les;
 using Nethermind.Network.P2P.Subprotocols.Wit;
 using Nethermind.Network.Rlpx;
@@ -196,6 +197,7 @@ namespace Nethermind.Network
                         63 => new Eth63ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _logManager),
                         64 => new Eth64ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _specProvider, _logManager),
                         65 => new Eth65ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _pooledTxsRequestor, _specProvider, _logManager),
+                        66 => new Eth66ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _pooledTxsRequestor, _specProvider, _logManager),
                         _ => throw new NotSupportedException($"Eth protocol version {version} is not supported.")
                     };
 
