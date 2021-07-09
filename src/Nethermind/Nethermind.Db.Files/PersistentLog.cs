@@ -124,7 +124,7 @@ namespace Nethermind.Db.Files
             }
         }
 
-        public unsafe byte[] Read(long header)
+        public unsafe Span<byte> Read(long header)
         {
             int length = GetLength(header);
             long position = header >> LengthShift;
@@ -140,7 +140,10 @@ namespace Nethermind.Db.Files
 
             // try buffer 
             byte* start = (byte*)_buffer.ToPointer() + (position & _sizeMask);
+
+            // materialize before comparing
             byte[] array = new Span<byte>(start + HeaderLength, length).ToArray();
+
             long read = Volatile.Read(ref Unsafe.AsRef<long>(start));
 
             if (read == header)
@@ -162,10 +165,10 @@ namespace Nethermind.Db.Files
 
         public static int GetLength(long header) => (int)(LengthMask & header);
 
-        private static unsafe byte[] Read(MemoryMappedViewAccessor accessor, long chunkOffset, int length)
+        private static unsafe Span<byte> Read(MemoryMappedViewAccessor accessor, long chunkOffset, int length)
         {
             IntPtr handle = accessor.SafeMemoryMappedViewHandle.DangerousGetHandle();
-            return new Span<byte>((byte*)handle.ToPointer() + chunkOffset + HeaderLength, length).ToArray();
+            return new Span<byte>((byte*)handle.ToPointer() + chunkOffset + HeaderLength, length);
         }
 
         Thread Start(CancellationTokenSource cts)

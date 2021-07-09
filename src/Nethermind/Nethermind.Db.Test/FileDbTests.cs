@@ -54,7 +54,7 @@ namespace Nethermind.Db.Test
                 for (int i = 0; i < size; i++)
                 {
                     BinaryPrimitives.WriteInt32LittleEndian(expected, i);
-                    byte[] actual = log.Read(results[i]);
+                    byte[] actual = log.Read(results[i]).ToArray();
                     CollectionAssert.AreEqual(expected, actual, "Failed for key {0}", i);
                 }
             }
