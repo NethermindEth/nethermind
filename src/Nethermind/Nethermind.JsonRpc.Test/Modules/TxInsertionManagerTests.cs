@@ -7,7 +7,6 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth;
 using NSubstitute;
 using NUnit.Framework;
-using static Nethermind.JsonRpc.Test.Modules.EthRpcModuleTests;
 using static Nethermind.JsonRpc.Test.Modules.BlockConstructor;
 
 namespace Nethermind.JsonRpc.Test.Modules
