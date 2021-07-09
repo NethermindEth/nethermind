@@ -63,7 +63,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         private List<UInt256> CreateSortedTxGasPriceList(Block? headBlock, IDictionary<long, Block> blockNumToBlockMap)
         {
-            SetFallbackGasPrice(FallbackGasPrice);
+            SetFallbackGasPrice();
 
             return GetSortedTxGasPriceList(headBlock, blockNumToBlockMap);
         }
@@ -86,14 +86,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return resultWrapper;
         }
 
-        private static bool HeadBlockDidNotChange(Tuple<bool, ResultWrapper<UInt256?>> earlyExitResult)
+        private void SetFallbackGasPrice()
         {
-            return earlyExitResult.Item1 == false;
-        }
-
-        private void SetFallbackGasPrice(UInt256? fallbackGasPrice)
-        {
-            fallbackGasPrice = LastGasPrice ?? GasPriceConfig.DefaultGasPrice;
+            FallbackGasPrice = LastGasPrice ?? GasPriceConfig.DefaultGasPrice;
         }
         
         private void AddTxGasPricesToList(Block? headBlock, IDictionary<long, Block> blockNumToBlockMap)

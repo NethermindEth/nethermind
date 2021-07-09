@@ -110,46 +110,6 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
-        public void Eth_gasPrice_ReturnDefaultGasPrice_EmptyBlocksAtEndEqualToEight()
-        {
-            Block[] blocks = GetBlocksFromKeyValuePairs(
-                BlockNumberAndTxStringsKeyValuePair(0, CollectTxStrings(
-                        GetTxString("A", "2", "0"), 
-                        GetTxString("B", "3", "0")
-                        )), 
-                BlockNumberAndTxStringsKeyValuePair(1, null), 
-                BlockNumberAndTxStringsKeyValuePair(2, null), 
-                BlockNumberAndTxStringsKeyValuePair(3, null), 
-                BlockNumberAndTxStringsKeyValuePair(4, null), 
-                BlockNumberAndTxStringsKeyValuePair(5, null), 
-                BlockNumberAndTxStringsKeyValuePair(6, null), 
-                BlockNumberAndTxStringsKeyValuePair(7, null), 
-                BlockNumberAndTxStringsKeyValuePair(8, null)
-                );
-
-            BlockTreeSetup blockTreeSetup = new BlockTreeSetup(blocks);
-            ResultWrapper<UInt256?> resultWrapper = blockTreeSetup.EthRpcModule.eth_gasPrice();
-            
-            resultWrapper.Data.Should().Be((UInt256?) 1); 
-        }
-
-        private bool IsEip1559()
-        {
-            return true;
-        }
-
-        private bool IsNotEip1559()
-        {
-            return false;
-        }
-
-        private Keccak HashOfLastBlockIn(BlockTreeSetup blockTreeSetup)
-        {
-            return blockTreeSetup.Blocks[^1].Hash;
-        }
-
-
-        [Test]
         public void Eth_gasPrice_TxCountNotGreaterThanLimit_GetTxFromMoreBlocks()
         {
             Block[] blocks = GetBlocksFromKeyValuePairs(BlockNumberAndTxStringsKeyValuePair(0, CollectTxStrings(GetTxString("A", "0", "0"), GetTxString("B", "1", "0")
