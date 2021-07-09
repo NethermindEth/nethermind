@@ -71,8 +71,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             
             testEthRpcModule.BlockNumberToBlockDictionary.Should().BeEquivalentTo(expected);
         }
-
-        private Block[] GetTwoTestBlocks()
+        public Block[] GetTwoTestBlocks()
         {
             return GetBlocksFromKeyValuePairs(
                 BlockNumberAndTxStringsKeyValuePair(0, CollectTxStrings(

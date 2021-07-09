@@ -23,6 +23,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
 {
     public interface IHeadBlockChangeManager
     {
-        bool ReturnSameGasPrice(Block? lastHead, Block? currentHead, UInt256? lastGasPrice);
+        bool ShouldReturnSameGasPrice(Block? lastHead, Block? currentHead, UInt256? lastGasPrice);
     }
 }

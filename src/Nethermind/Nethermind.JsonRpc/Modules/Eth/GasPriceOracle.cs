@@ -42,10 +42,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
         public ResultWrapper<UInt256?> GasPriceEstimate(Block? headBlock, IDictionary<long, Block> blockNumToBlockMap)
         {
             bool shouldReturnSameGasPrice;
-            shouldReturnSameGasPrice = _headBlockChangeManager.ReturnSameGasPrice( LastHeadBlock, headBlock, LastGasPrice);
+            shouldReturnSameGasPrice = _headBlockChangeManager.ShouldReturnSameGasPrice( LastHeadBlock, headBlock, LastGasPrice);
             if (shouldReturnSameGasPrice)
             {
-                return NoHeadBlockChangeResultWrapper(LastGasPrice);
+                UInt256? lastGasPrice = GetLastGasPrice();
+                return NoHeadBlockChangeResultWrapper(lastGasPrice);
             }
 
             LastHeadBlock = headBlock;
@@ -65,6 +66,10 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return ResultWrapper<UInt256?>.Success((UInt256) gasPriceEstimate!);
         }
 
+        public virtual UInt256? GetLastGasPrice()
+        {
+            return LastGasPrice;
+        }
         private ResultWrapper<UInt256?> NoHeadBlockChangeResultWrapper(UInt256? lastGasPrice)
         {
             ResultWrapper<UInt256?> resultWrapper = ResultWrapper<UInt256?>.Success(lastGasPrice);

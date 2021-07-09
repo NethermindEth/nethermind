@@ -7,7 +7,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
     //Checks edge cases where the Head block did not change from previous call of eth_gasPrice from an instance of EthRpcModule
     public class HeadBlockChangeManager : IHeadBlockChangeManager
     {
-        public bool ReturnSameGasPrice(Block? lastHead, Block? currentHead, UInt256? lastGasPrice)
+        public bool ShouldReturnSameGasPrice(Block? lastHead, Block? currentHead, UInt256? lastGasPrice)
         { 
             if (HeadBlockChanged(lastHead, currentHead, lastGasPrice))
             {
