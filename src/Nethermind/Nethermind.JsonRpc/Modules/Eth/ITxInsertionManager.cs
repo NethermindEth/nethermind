@@ -21,6 +21,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
 {
     public interface ITxInsertionManager
     {
-        int AddValidTxAndReturnCount(Block block);
+        int AddValidTxFromBlockAndReturnCount(Block block);
     }
 }

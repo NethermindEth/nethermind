@@ -25,7 +25,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Crypto;
 using Nethermind.Facade;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth;
@@ -103,11 +102,11 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void Eth_gasPrice_DuplicateGasPrices_ReturnsSuccessfully()
         {
-            EthRpcModuleTests.BlockTreeSetup blockTreeSetup = new EthRpcModuleTests.BlockTreeSetup();
+            BlockTreeSetup blockTreeSetup = new BlockTreeSetup();
             Transaction[] dupGasPriceGroup = BlockConstructor.GetTransactionsFromTxStrings(BlockConstructor.CollectTxStrings(BlockConstructor.GetTxString("B","6","2"), BlockConstructor.GetTxString("B","6","3"), BlockConstructor.GetTxString("B","6","4")),IsNotEip1559());
             Block dupGasPriceBlock = BlockConstructor.GetBlockWithNumberParentHashAndTxInfo(5, HashOfLastBlockIn(blockTreeSetup),
                 dupGasPriceGroup);
-            blockTreeSetup = new EthRpcModuleTests.BlockTreeSetup(new[]{dupGasPriceBlock},true);
+            blockTreeSetup = new BlockTreeSetup(new[]{dupGasPriceBlock},true);
 
             ResultWrapper<UInt256?> resultWrapper = blockTreeSetup.EthRpcModule.eth_gasPrice();
 
@@ -117,7 +116,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void Eth_gasPrice_BlockcountEqualToBlocksToCheck_ShouldGetSixtiethPercentileIndex()
         {
-            EthRpcModuleTests.BlockTreeSetup blockTreeSetup = new EthRpcModuleTests.BlockTreeSetup();
+            BlockTreeSetup blockTreeSetup = new BlockTreeSetup();
             ResultWrapper<UInt256?> resultWrapper = blockTreeSetup.EthRpcModule.eth_gasPrice();
             resultWrapper.Data.Should().Be((UInt256?) 4); 
             //Tx Gas Prices: 1,2,3,4,5,6, Index: (6-1) * 3/5 = 3, Gas Price: 4
@@ -129,7 +128,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             Block[] blockArray = BlockConstructor.GetBlocksFromKeyValuePairs(BlockConstructor.BlockNumberAndTxStringsKeyValuePair(0, BlockConstructor.CollectTxStrings(BlockConstructor.GetTxString("A", "501", "0")
                     )
                 ));
-            EthRpcModuleTests.BlockTreeSetup blockTreeSetup = new EthRpcModuleTests.BlockTreeSetup(blockArray);
+            BlockTreeSetup blockTreeSetup = new BlockTreeSetup(blockArray);
 
             ResultWrapper<UInt256?> resultWrapper = blockTreeSetup.EthRpcModule.eth_gasPrice();
             
@@ -142,7 +141,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             Block[] blockArray = BlockConstructor.GetBlocksFromKeyValuePairs(BlockConstructor.BlockNumberAndTxStringsKeyValuePair(0, BlockConstructor.CollectTxStrings(BlockConstructor.GetTxString("A", "4", "0"), BlockConstructor.GetTxString("B", "3", "0"), BlockConstructor.GetTxString("C", "2", "0"), BlockConstructor.GetTxString("D", "1", "0")
                     )
                 ));
-            EthRpcModuleTests.BlockTreeSetup blockTreeSetup = new EthRpcModuleTests.BlockTreeSetup(blockArray);
+            BlockTreeSetup blockTreeSetup = new BlockTreeSetup(blockArray);
 
             blockTreeSetup.EthRpcModule.eth_gasPrice();
             
@@ -158,7 +157,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 ), BlockConstructor.BlockNumberAndTxStringsKeyValuePair(1, BlockConstructor.CollectTxStrings(BlockConstructor.GetTxString("A", "8", "1"), BlockConstructor.GetTxString("B", "7", "1"), BlockConstructor.GetTxString("C", "6", "1"), BlockConstructor.GetTxString("D", "5", "1")
                     )
                 ));
-            EthRpcModuleTests.BlockTreeSetup blockTreeSetup = new EthRpcModuleTests.BlockTreeSetup(blockArray);
+            BlockTreeSetup blockTreeSetup = new BlockTreeSetup(blockArray);
             
             blockTreeSetup.EthRpcModule.eth_gasPrice();
             List<UInt256> gasPriceList = blockTreeSetup.GasPriceOracle.TxGasPriceList;
@@ -171,7 +170,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void Eth_gasPrice_WhenBlocksHaveNoTx_GasPriceShouldBeOne()
         {
             Block[] blocks = BlockConstructor.GetBlocksFromKeyValuePairs(BlockConstructor.BlockNumberAndTxStringsKeyValuePair(0, null), BlockConstructor.BlockNumberAndTxStringsKeyValuePair(1, null), BlockConstructor.BlockNumberAndTxStringsKeyValuePair(2, null), BlockConstructor.BlockNumberAndTxStringsKeyValuePair(3, null), BlockConstructor.BlockNumberAndTxStringsKeyValuePair(4, null));
-            EthRpcModuleTests.BlockTreeSetup blockTreeSetup = new EthRpcModuleTests.BlockTreeSetup(blocks);
+            BlockTreeSetup blockTreeSetup = new BlockTreeSetup(blocks);
             ResultWrapper<UInt256?> resultWrapper = blockTreeSetup.EthRpcModule.eth_gasPrice();
             
             resultWrapper.Data.Should().Be((UInt256?) 1);
@@ -185,7 +184,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 ), BlockConstructor.BlockNumberAndTxStringsKeyValuePair(1, null), BlockConstructor.BlockNumberAndTxStringsKeyValuePair(2, null), BlockConstructor.BlockNumberAndTxStringsKeyValuePair(3, null), BlockConstructor.BlockNumberAndTxStringsKeyValuePair(4, null), BlockConstructor.BlockNumberAndTxStringsKeyValuePair(5, null), BlockConstructor.BlockNumberAndTxStringsKeyValuePair(6, null), BlockConstructor.BlockNumberAndTxStringsKeyValuePair(7, null), BlockConstructor.BlockNumberAndTxStringsKeyValuePair(8, null)
                 );
 
-            EthRpcModuleTests.BlockTreeSetup blockTreeSetup = new EthRpcModuleTests.BlockTreeSetup(blocks);
+            BlockTreeSetup blockTreeSetup = new BlockTreeSetup(blocks);
             ResultWrapper<UInt256?> resultWrapper = blockTreeSetup.EthRpcModule.eth_gasPrice();
             
             resultWrapper.Data.Should().Be((UInt256?) 1); 
@@ -197,7 +196,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             const int normalErrorCode = 0;
             int noHeadBlockChangeErrorCode = GasPriceConfig.NoHeadBlockChangeErrorCode;
 
-            EthRpcModuleTests.BlockTreeSetup blockTreeSetup = new EthRpcModuleTests.BlockTreeSetup();
+            BlockTreeSetup blockTreeSetup = new BlockTreeSetup();
             ResultWrapper<UInt256?> firstResult = blockTreeSetup.EthRpcModule.eth_gasPrice();
             ResultWrapper<UInt256?> secondResult = blockTreeSetup.EthRpcModule.eth_gasPrice();
 
@@ -209,7 +208,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void Eth_gasPrice_TxGasPricesAreBelowThreshold_ReplaceGasPriceUnderThresholdWithDefaultPrice()
         {
-            EthRpcModuleTests.BlockTreeSetup blockTreeSetup = new EthRpcModuleTests.BlockTreeSetup(ignoreUnder: 4);
+            BlockTreeSetup blockTreeSetup = new BlockTreeSetup(ignoreUnder: 4);
             blockTreeSetup.EthRpcModule.eth_gasPrice();
             
             List<UInt256> expected = new List<UInt256> {1,1,4,5,6};
@@ -227,10 +226,10 @@ namespace Nethermind.JsonRpc.Test.Modules
                     ), IsNotEip1559()
                 );
 
-            EthRpcModuleTests.BlockTreeSetup blockTreeSetup = new EthRpcModuleTests.BlockTreeSetup();
+            BlockTreeSetup blockTreeSetup = new BlockTreeSetup();
             Block eip1559Block = BlockConstructor.GetBlockWithNumberParentHashAndTxInfo(5, HashOfLastBlockIn(blockTreeSetup), eip1559TxGroup);
             Block nonEip1559Block = BlockConstructor.GetBlockWithNumberParentHashAndTxInfo(6, eip1559Block.Hash, notEip1559TxGroup);
-            blockTreeSetup = new EthRpcModuleTests.BlockTreeSetup(new Block[]{eip1559Block, nonEip1559Block},true, 
+            blockTreeSetup = new BlockTreeSetup(new[]{eip1559Block, nonEip1559Block},true, 
                 eip1559Enabled: eip1559Enabled);
 
             ResultWrapper<UInt256?> resultWrapper = blockTreeSetup.EthRpcModule.eth_gasPrice();
@@ -248,7 +247,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             return false;
         }
 
-        private Keccak HashOfLastBlockIn(EthRpcModuleTests.BlockTreeSetup blockTreeSetup)
+        private Keccak HashOfLastBlockIn(BlockTreeSetup blockTreeSetup)
         {
             return blockTreeSetup.Blocks[^1].Hash;
         }
@@ -265,7 +264,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                     )
                 ));
 
-            EthRpcModuleTests.BlockTreeSetup blockTreeSetup = new EthRpcModuleTests.BlockTreeSetup(blocks: blocks, blockLimit: 2);
+            BlockTreeSetup blockTreeSetup = new BlockTreeSetup(blocks: blocks, blockLimit: 2);
             ResultWrapper<UInt256?> resultWrapper = blockTreeSetup.EthRpcModule.eth_gasPrice();
             
             resultWrapper.Data.Should().Be((UInt256?) 2); 
@@ -284,7 +283,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 ));
 
 
-            EthRpcModuleTests.BlockTreeSetup blockTreeSetup = new EthRpcModuleTests.BlockTreeSetup(blocks: blocks, blockLimit: 4);
+            BlockTreeSetup blockTreeSetup = new BlockTreeSetup(blocks: blocks, blockLimit: 4);
             ResultWrapper<UInt256?> resultWrapper = blockTreeSetup.EthRpcModule.eth_gasPrice();
             
             resultWrapper.Result.Should().Be(Result.Success); 
@@ -301,7 +300,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                     )
                 )
             );
-            EthRpcModuleTests.BlockTreeSetup blockTreeSetup = new EthRpcModuleTests.BlockTreeSetup(blocks: blocks, blockLimit: 2);
+            BlockTreeSetup blockTreeSetup = new BlockTreeSetup(blocks: blocks, blockLimit: 2);
             
             blockTreeSetup.EthRpcModule.eth_gasPrice();
             
@@ -325,7 +324,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
 
-        public EthRpcModule GetTestEthRpcModule(IBlockFinder blockFinder = null, IGasPriceOracle gasPriceOracle = null)
+        private EthRpcModule GetTestEthRpcModule(IBlockFinder blockFinder = null, IGasPriceOracle gasPriceOracle = null)
         {
             return new EthRpcModule
             (

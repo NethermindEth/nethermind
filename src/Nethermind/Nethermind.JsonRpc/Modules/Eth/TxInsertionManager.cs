@@ -20,7 +20,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _baseFee = baseFee;
         }
 
-        public int AddValidTxAndReturnCount(Block block)
+        public int AddValidTxFromBlockAndReturnCount(Block block)
         {
             if (TransactionsExistIn(block))
             {

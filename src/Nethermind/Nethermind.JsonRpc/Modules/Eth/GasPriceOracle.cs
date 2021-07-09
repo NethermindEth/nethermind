@@ -97,7 +97,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             int blocksToGoBack = _blockLimit;
             while (MoreBlocksToGoBack(blocksToGoBack) && CurrentBlockNumberIsValid(currentBlockNumber)) 
             {
-                int txsAdded = _txInsertionManager.AddValidTxAndReturnCount(blockNumToBlockMap[currentBlockNumber]);
+                int txsAdded = _txInsertionManager.AddValidTxFromBlockAndReturnCount(blockNumToBlockMap[currentBlockNumber]);
                 if (txsAdded > 1 || BonusBlockLimitReached(blocksToGoBack))
                 {
                     blocksToGoBack--;
