@@ -46,9 +46,7 @@ namespace Nethermind.Pipeline.Publishers
             _httpClient = new HttpClient();
 
             Start();
-
-            // Uncomment below to trigger the sendMessageAsync Task
-            // SubscribeToData<String>("---Debugging---");
+       
         }
 
         public void SubscribeToData<T>(T data)
