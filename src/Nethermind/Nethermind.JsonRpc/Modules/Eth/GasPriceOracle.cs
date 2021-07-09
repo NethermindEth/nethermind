@@ -9,9 +9,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
 {
     public class GasPriceOracle : IGasPriceOracle
     {
-        public UInt256? DefaultGasPrice { get; private set; }
+        public UInt256? FallbackGasPrice { get; private set; }
         public List<UInt256> TxGasPriceList { get; private set; }
-        private UInt256? LastGasPrice { get; set; }
+        protected UInt256? LastGasPrice { get; set; }
         private Block? LastHeadBlock;
         private readonly bool _eip1559Enabled;
         private readonly UInt256? _ignoreUnder;
@@ -84,7 +84,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         private void SetDefaultGasPrice()
         {
-            DefaultGasPrice = LastGasPrice ?? GasPriceConfig.DefaultGasPrice;
+            FallbackGasPrice = LastGasPrice ?? GasPriceConfig.DefaultGasPrice;
         }
         
         private void AddTxGasPricesToList(Block? headBlock, IDictionary<long, Block> blockNumToBlockMap)
@@ -122,7 +122,12 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private UInt256? GasPriceAtPercentile()
         {
             int roundedIndex = GetRoundedIndexAtPercentile(TxGasPriceList.Count);
-
+#if DEBUG
+            if (roundedIndex <= 0)
+            {
+                return UInt256.Zero;
+            }
+#endif
             UInt256? gasPriceEstimate = TxGasPriceList[roundedIndex];
 
             return gasPriceEstimate;

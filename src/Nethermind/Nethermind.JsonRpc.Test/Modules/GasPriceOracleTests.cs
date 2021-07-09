@@ -23,7 +23,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                 int? blockLimit = null, 
                 UInt256? baseFee = null, 
                 ITxInsertionManager? txInsertionManager = null,
-                IHeadBlockChangeManager? headBlockChangeManager = null) : 
+                IHeadBlockChangeManager? headBlockChangeManager = null,
+                UInt256? lastGasPrice = null) : 
                 base(
                     eip1559Enabled,
                     ignoreUnder,
@@ -31,22 +32,24 @@ namespace Nethermind.JsonRpc.Test.Modules
                     baseFee,
                     txInsertionManager,
                     headBlockChangeManager)
-                {
-                }
+            {
+                LastGasPrice = lastGasPrice;
+            }
+            
             
             public override UInt256? GetLastGasPrice()
             {
-                return 10;
+                return LastGasPrice;
             }
         }
         
         [Test]
-        public void GasPriceEstimate_ChangeInHeadBlock_ReturnsPreviousGasPrice()
+        public void GasPriceEstimate_NoChangeInHeadBlock_ReturnsPreviousGasPrice()
         {
             IHeadBlockChangeManager headBlockChangeManager = Substitute.For<IHeadBlockChangeManager>();
-            TestableGasPriceOracle testableGasPriceOracle = GetTestableGasPriceOracle(headBlockChangeManager: headBlockChangeManager);
+            TestableGasPriceOracle testableGasPriceOracle = GetTestableGasPriceOracle(headBlockChangeManager: headBlockChangeManager, lastGasPrice: 7);
             Dictionary<long, Block> testDictionary = Substitute.For<Dictionary<long, Block>>();
-            Block testBlock = Build.A.Block.WithNumber(1).TestObject;
+            Block testBlock = EthRpcModuleTests.GetNoTxTestBlock();
             headBlockChangeManager.ShouldReturnSameGasPrice(
                     Arg.Any<Block?>(),
                     Arg.Any<Block?>(),
@@ -54,26 +57,33 @@ namespace Nethermind.JsonRpc.Test.Modules
             
             ResultWrapper<UInt256?> resultWrapper = testableGasPriceOracle.GasPriceEstimate(testBlock, testDictionary);
             
-            resultWrapper.Data.Should().Be((UInt256?) 10);
+            resultWrapper.Data.Should().Be((UInt256?) 7);
         }
 
         [Test]
-        public void GasPriceEstimate_IfPreviousGasPriceExists_DefaultGasPriceIsSetToPreviousGasPrice()
+        public void GasPriceEstimate_IfPreviousGasPriceDoesNotExist_FallbackGasPriceSetToDefaultGasPrice()
         {
-            IHeadBlockChangeManager headBlockChangeManager = Substitute.For<IHeadBlockChangeManager>();
-            TestableGasPriceOracle testableGasPriceOracle = GetTestableGasPriceOracle(headBlockChangeManager: headBlockChangeManager);
-            Dictionary<long, Block> testDictionary = Substitute.For<Dictionary<long, Block>>();
-            Block testBlock = Build.A.Block.WithNumber(1).TestObject;
-            headBlockChangeManager.ShouldReturnSameGasPrice(
-                    Arg.Any<Block?>(),
-                    Arg.Any<Block?>(),
-                    Arg.Any<UInt256?>()).Returns(true);
+            TestableGasPriceOracle testableGasPriceOracle = GetTestableGasPriceOracle();
+            IDictionary<long, Block> testDictionary = Substitute.For<IDictionary<long, Block>>();
+            Block testBlock = Build.A.Block.Genesis.TestObject;
             
-            ResultWrapper<UInt256?> resultWrapper = testableGasPriceOracle.GasPriceEstimate(testBlock, testDictionary);
+            testableGasPriceOracle.GasPriceEstimate(testBlock, testDictionary);
             
-            resultWrapper.Data.Should().Be((UInt256?) 10);
+            testableGasPriceOracle.FallbackGasPrice.Should().BeEquivalentTo((UInt256?) GasPriceConfig.DefaultGasPrice);
         }
 
+        [TestCase(3)]
+        [TestCase(10)]
+        public void GasPriceEstimate_IfPreviousGasPriceExists_FallbackGasPriceIsSetToPreviousGasPrice(int lastGasPrice)
+        {
+            TestableGasPriceOracle testableGasPriceOracle = GetTestableGasPriceOracle(lastGasPrice: (UInt256) lastGasPrice);
+            IDictionary<long, Block> testDictionary = Substitute.For<IDictionary<long, Block>>();
+            Block testBlock = Build.A.Block.Genesis.TestObject;
+            
+            testableGasPriceOracle.GasPriceEstimate(testBlock, testDictionary);
+            
+            testableGasPriceOracle.FallbackGasPrice.Should().BeEquivalentTo((UInt256?) lastGasPrice);
+        }
         [Test]
         public void GasPriceEstimate_IfHeadBlockWasNotTheSame_AddValidTxAndReturnCountCalledNumberOfBlocksToGoBack()
         {
@@ -97,8 +107,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             UInt256? ignoreUnder = null, 
             int? blockLimit = null, 
             UInt256? baseFee = null, 
-            ITxInsertionManager txInsertionManager = null,
-            IHeadBlockChangeManager headBlockChangeManager = null)
+            ITxInsertionManager? txInsertionManager = null,
+            IHeadBlockChangeManager? headBlockChangeManager = null,
+            UInt256? lastGasPrice = null)
         {
             return new TestableGasPriceOracle(
                 eip1559Enabled,
@@ -106,8 +117,9 @@ namespace Nethermind.JsonRpc.Test.Modules
                 blockLimit,
                 baseFee,
                 txInsertionManager ?? Substitute.For<ITxInsertionManager>(),
-                headBlockChangeManager ?? Substitute.For<IHeadBlockChangeManager>()
-                );
+                headBlockChangeManager ?? Substitute.For<IHeadBlockChangeManager>(),
+                lastGasPrice);
         }
+        
     }
 }

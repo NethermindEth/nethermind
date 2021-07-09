@@ -7,7 +7,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 {
     public interface IGasPriceOracle
     {
-        public UInt256? DefaultGasPrice { get; }
+        public UInt256? FallbackGasPrice { get; }
         public List<UInt256> TxGasPriceList { get; }
         ResultWrapper<UInt256?> GasPriceEstimate(Block? headBlock, IDictionary<long, Block> blockNumToBlockMap);
     }

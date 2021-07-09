@@ -115,7 +115,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         private void AddDefaultPriceToSortedTxList()
         {
-            _gasPriceOracle.TxGasPriceList.Add((UInt256)_gasPriceOracle.DefaultGasPrice!);
+            _gasPriceOracle.TxGasPriceList.Add((UInt256)_gasPriceOracle.FallbackGasPrice!);
         }
     }
 }

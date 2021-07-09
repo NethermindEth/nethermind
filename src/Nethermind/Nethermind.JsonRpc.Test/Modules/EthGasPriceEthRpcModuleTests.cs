@@ -105,7 +105,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             gasPriceOracle.Received(1).GasPriceEstimate(Arg.Any<Block>(), Arg.Any<Dictionary<long, Block>>());
         }
 
-        private static Block GetNoTxTestBlock()
+        public static Block GetNoTxTestBlock()
         {
             return Build.A.Block.WithNumber(0).TestObject;
         }
