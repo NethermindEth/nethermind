@@ -1,14 +1,13 @@
 #nullable enable
 using System.Collections.Generic;
+using System.Linq;
 using FluentAssertions;
-using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth;
 using NSubstitute;
 using NUnit.Framework;
-using static Nethermind.JsonRpc.Test.Modules.EthRpcModuleTests.GasPriceTest;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
@@ -94,26 +93,18 @@ namespace Nethermind.JsonRpc.Test.Modules
             testableGasPriceOracle.FallbackGasPrice.Should().BeEquivalentTo((UInt256?) lastGasPrice);
         }
 
-        [Test]
-        public void GasPriceEstimate_BlockcountEqualToBlocksToCheck_SixtiethPercentileOfMaxIndexReturned()
+        [TestCase(new[]{1,3,5,7,8,9}, 7)] //Last index: 6 - 1 = 5, 60th percentile: 5 * 3/5 = 3, Value: 7
+        [TestCase(new[]{0,0,7,9,10,27,83,101}, 10)] //Last index: 8 - 1 = 7, 60th percentile: 7 * 3/5 rounds to 4, Value: 10
+        public void GasPriceEstimate_BlockcountEqualToBlocksToCheck_SixtiethPercentileOfMaxIndexReturned(int[] gasPrice, int expected)
         {
-            List<UInt256> listOfGasPrices = new List<UInt256>
-            {
-                1,
-                3,
-                5,
-                7,
-                8,
-                9
-            }; //Last index: 6 - 1 = 5, 60th percentile: 5 * 3/5 = 3, Value: 7
+            List<UInt256> listOfGasPrices = gasPrice.Select(n => (UInt256) n).ToList();
             TestableGasPriceOracle testableGasPriceOracle = GetTestableGasPriceOracle(sortedTxList: listOfGasPrices);
             IDictionary<long, Block> testDictionary = Substitute.For<IDictionary<long, Block>>();
             Block testBlock = Build.A.Block.Genesis.TestObject;
 
             ResultWrapper<UInt256?> resultWrapper = testableGasPriceOracle.GasPriceEstimate(testBlock, testDictionary);
             
-            resultWrapper.Result.Should().Be(Result.Success);
-            resultWrapper.Data.Should().BeEquivalentTo((UInt256?) 7);
+            resultWrapper.Data.Should().BeEquivalentTo((UInt256?) expected);
         }
 
         [Test]
