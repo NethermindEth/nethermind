@@ -10,7 +10,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
     public class GasPriceOracle : IGasPriceOracle
     {
         public UInt256? FallbackGasPrice { get; private set; }
-        public List<UInt256> TxGasPriceList { get; private set; }
+        public List<UInt256> TxGasPriceList { get; protected set; }
         protected UInt256? LastGasPrice { get; set; }
         private Block? LastHeadBlock;
         private readonly bool _isEip1559Enabled;
@@ -33,7 +33,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _isEip1559Enabled = isEip1559Enabled;
             _ignoreUnder = ignoreUnder ?? UInt256.Zero;
             _blockLimit = blockLimit ?? GasPriceConfig.DefaultBlocksLimit;
-            _softTxThreshold = GasPriceConfig.SoftTxLimit;
+            _softTxThreshold = (int) (blockLimit != null ? blockLimit * 2 : GasPriceConfig.SoftTxLimit);
             _baseFee = baseFee ?? GasPriceConfig.DefaultBaseFee;
             _txInsertionManager = txInsertionManager ?? new TxInsertionManager(this, _ignoreUnder, _baseFee, _isEip1559Enabled);
             _headBlockChangeManager = headBlockChangeManager ?? new HeadBlockChangeManager();
@@ -50,17 +50,22 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             LastHeadBlock = headBlock;
 
-            SetFallbackGasPrice();
-            
-            TxGasPriceList = GetSortedTxGasPriceList(headBlock, blockNumToBlockMap);
+            TxGasPriceList = CreateSortedTxGasPriceList(headBlock, blockNumToBlockMap);
 
-            UInt256? gasPriceEstimate = GasPriceAtPercentile();
+            UInt256? gasPriceEstimate = GasPriceAtPercentile(TxGasPriceList);
 
             gasPriceEstimate = UInt256.Min((UInt256) gasPriceEstimate!, GasPriceConfig._maxGasPrice);
 
             LastGasPrice = gasPriceEstimate;
             
             return ResultWrapper<UInt256?>.Success((UInt256) gasPriceEstimate!);
+        }
+
+        private List<UInt256> CreateSortedTxGasPriceList(Block? headBlock, IDictionary<long, Block> blockNumToBlockMap)
+        {
+            SetFallbackGasPrice(FallbackGasPrice);
+
+            return GetSortedTxGasPriceList(headBlock, blockNumToBlockMap);
         }
 
         protected virtual List<UInt256> GetSortedTxGasPriceList(Block? headBlock, IDictionary<long, Block> blockNumToBlockMap)
@@ -86,9 +91,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return earlyExitResult.Item1 == false;
         }
 
-        private void SetFallbackGasPrice()
+        private void SetFallbackGasPrice(UInt256? fallbackGasPrice)
         {
-            FallbackGasPrice = LastGasPrice ?? GasPriceConfig.DefaultGasPrice;
+            fallbackGasPrice = LastGasPrice ?? GasPriceConfig.DefaultGasPrice;
         }
         
         private void AddTxGasPricesToList(Block? headBlock, IDictionary<long, Block> blockNumToBlockMap)
@@ -123,16 +128,16 @@ namespace Nethermind.JsonRpc.Modules.Eth
         }
 
 
-        private UInt256? GasPriceAtPercentile()
+        private UInt256? GasPriceAtPercentile(List<UInt256> txGasPriceList)
         {
-            int roundedIndex = GetRoundedIndexAtPercentile(TxGasPriceList.Count);
+            int roundedIndex = GetRoundedIndexAtPercentile(txGasPriceList.Count);
 #if DEBUG
             if (roundedIndex < 0)
             {
                 return UInt256.Zero;
             }
 #endif
-            UInt256? gasPriceEstimate = TxGasPriceList[roundedIndex];
+            UInt256? gasPriceEstimate = txGasPriceList[roundedIndex];
 
             return gasPriceEstimate;
         }

@@ -7,6 +7,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth;
 using NSubstitute;
+using NSubstitute.ReceivedExtensions;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules
@@ -17,7 +18,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         private class TestableGasPriceOracle : GasPriceOracle
         {
             private readonly UInt256? _lastGasPrice;
-            private readonly List<UInt256>? _sortedTxList;
+            public List<UInt256>? _sortedTxList;
             public TestableGasPriceOracle(
                 bool eip1559Enabled = false, 
                 UInt256? ignoreUnder = null, 
@@ -48,6 +49,11 @@ namespace Nethermind.JsonRpc.Test.Modules
             protected override List<UInt256> GetSortedTxGasPriceList(Block? headBlock, IDictionary<long, Block> blockNumToBlockMap)
             {
                 return _sortedTxList ?? base.GetSortedTxGasPriceList(headBlock, blockNumToBlockMap);
+            }
+
+            public void AddToSortedTxList(params UInt256[] numbers)
+            {
+                TxGasPriceList.AddRange(numbers.ToList());
             }
         }
         
@@ -123,6 +129,86 @@ namespace Nethermind.JsonRpc.Test.Modules
             
             resultWrapper.Result.Should().Be(Result.Success);
             resultWrapper.Data.Should().BeEquivalentTo((UInt256?) GasPriceConfig._maxGasPrice);
+        }
+        
+        [Test]
+        public void GasPriceEstimate_IfEightBlocksWithTwoTransactions_CheckEightBlocks()
+        {
+            ITxInsertionManager txInsertionManager = Substitute.For<ITxInsertionManager>();
+            txInsertionManager.AddValidTxFromBlockAndReturnCount(Arg.Any<Block>()).Returns(2);
+            TestableGasPriceOracle testableGasPriceOracle = GetTestableGasPriceOracle(txInsertionManager: txInsertionManager, blockLimit: 8);
+            Block headBlock = Build.A.Block.WithNumber(8).TestObject;
+            IDictionary<long, Block> testDictionary = Substitute.For<IDictionary<long, Block>>();
+            
+            testableGasPriceOracle.GasPriceEstimate(headBlock, testDictionary);
+            
+            txInsertionManager.Received(8).AddValidTxFromBlockAndReturnCount(Arg.Any<Block>());
+        }
+
+        [Test]
+        public void GasPriceEstimate_IfLastFiveBlocksWithThreeTxAndFirstFourWithOne_CheckSixBlocks()
+        {
+            //Any blocks with zero/one tx doesn't count towards the blockLimit unless the number of 
+            ITxInsertionManager txInsertionManager = Substitute.For<ITxInsertionManager>();
+            TestableGasPriceOracle testableGasPriceOracle = GetTestableGasPriceOracle(txInsertionManager: txInsertionManager, blockLimit: 8);
+            SetUpTxInsertionManager(txInsertionManager, testableGasPriceOracle);
+            Block headBlock = Build.A.Block.WithNumber(8).TestObject;
+            IDictionary<long, Block> testNineEmptyBlocksDictionary = GetNumberToBlockMapForNineEmptyBlocks();
+            
+            testableGasPriceOracle.GasPriceEstimate(headBlock, testNineEmptyBlocksDictionary);
+            
+            txInsertionManager.Received(8).AddValidTxFromBlockAndReturnCount(Arg.Any<Block>());
+        }
+
+        private static void SetUpTxInsertionManager(ITxInsertionManager txInsertionManager,
+            TestableGasPriceOracle testableGasPriceOracle)
+        {
+            txInsertionManager
+                .When(t => t.AddValidTxFromBlockAndReturnCount(Arg.Is<Block>(b => b.Number >= 4)))
+                .Do(t => AddThreeNumbersToSortedTxList(testableGasPriceOracle));
+            txInsertionManager.AddValidTxFromBlockAndReturnCount(Arg.Is<Block>(b => b.Number >= 4)).Returns(3);
+            txInsertionManager
+                .When(t => t.AddValidTxFromBlockAndReturnCount(Arg.Is<Block>(b => b.Number < 4)))
+                .Do(t => AddOneNumberToSortedTxList(testableGasPriceOracle));
+            txInsertionManager.AddValidTxFromBlockAndReturnCount(Arg.Is<Block>(b => b.Number < 4)).Returns(1);
+        }
+
+        private static void AddOneNumberToSortedTxList(TestableGasPriceOracle testableGasPriceOracle)
+        {
+            testableGasPriceOracle.AddToSortedTxList(4);
+        }
+
+        private static void AddThreeNumbersToSortedTxList(TestableGasPriceOracle testableGasPriceOracle)
+        {
+            testableGasPriceOracle.AddToSortedTxList(1,2,3);
+        }
+
+        private static Dictionary<long, Block> GetNumberToBlockMapForNineEmptyBlocks()
+        {
+            Block[] blocks = new[]
+            {
+                Build.A.Block.Genesis.TestObject,
+                Build.A.Block.WithNumber(1).TestObject,
+                Build.A.Block.WithNumber(2).TestObject,
+                Build.A.Block.WithNumber(3).TestObject,
+                Build.A.Block.WithNumber(4).TestObject,
+                Build.A.Block.WithNumber(5).TestObject,
+                Build.A.Block.WithNumber(6).TestObject,
+                Build.A.Block.WithNumber(7).TestObject,
+                Build.A.Block.WithNumber(8).TestObject,
+            };
+            return new Dictionary<long, Block>()
+            {
+                {0, blocks[0]},
+                {1, blocks[1]},
+                {2, blocks[2]},
+                {3, blocks[3]},
+                {4, blocks[4]},
+                {5, blocks[5]},
+                {6, blocks[6]},
+                {7, blocks[7]},
+                {8, blocks[8]}
+            };
         }
 
         private TestableGasPriceOracle GetTestableGasPriceOracle(

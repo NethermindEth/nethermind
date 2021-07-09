@@ -114,7 +114,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return block.Beneficiary != transaction.SenderAddress;
         }
 
-        private void AddDefaultPriceToSortedTxList()
+        protected void AddDefaultPriceToSortedTxList()
         {
             GetTxGasPriceList().Add((UInt256)_gasPriceOracle.FallbackGasPrice!);
         }
