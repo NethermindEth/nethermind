@@ -43,7 +43,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             protected override UInt256? GetLastGasPrice()
             {
-                return _lastGasPrice;
+                return _lastGasPrice ?? base.LastGasPrice;
             }
 
             protected override List<UInt256> GetSortedTxGasPriceList(Block? headBlock, IDictionary<long, Block> blockNumToBlockMap)
@@ -97,13 +97,41 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void GasPriceEstimate_BlockcountEqualToBlocksToCheck_SixtiethPercentileOfMaxIndexReturned()
         {
-            TestableGasPriceOracle testableGasPriceOracle = GetTestableGasPriceOracle();
+            List<UInt256> listOfGasPrices = new List<UInt256>
+            {
+                1,
+                3,
+                5,
+                7,
+                8,
+                9
+            }; //Last index: 6 - 1 = 5, 60th percentile: 5 * 3/5 = 3, Value: 7
+            TestableGasPriceOracle testableGasPriceOracle = GetTestableGasPriceOracle(sortedTxList: listOfGasPrices);
+            IDictionary<long, Block> testDictionary = Substitute.For<IDictionary<long, Block>>();
+            Block testBlock = Build.A.Block.Genesis.TestObject;
+
+            ResultWrapper<UInt256?> resultWrapper = testableGasPriceOracle.GasPriceEstimate(testBlock, testDictionary);
+            
+            resultWrapper.Result.Should().Be(Result.Success);
+            resultWrapper.Data.Should().BeEquivalentTo((UInt256?) 7);
         }
 
         [Test]
         public void GasPriceEstimate_IfCalculatedGasPriceGreaterThanMax_MaxGasPriceReturned()
         {
             
+            List<UInt256> listOfGasPrices = new List<UInt256>
+            {
+                501
+            }; 
+            TestableGasPriceOracle testableGasPriceOracle = GetTestableGasPriceOracle(sortedTxList: listOfGasPrices);
+            IDictionary<long, Block> testDictionary = Substitute.For<IDictionary<long, Block>>();
+            Block testBlock = Build.A.Block.Genesis.TestObject;
+
+            ResultWrapper<UInt256?> resultWrapper = testableGasPriceOracle.GasPriceEstimate(testBlock, testDictionary);
+            
+            resultWrapper.Result.Should().Be(Result.Success);
+            resultWrapper.Data.Should().BeEquivalentTo((UInt256?) GasPriceConfig._maxGasPrice);
         }
 
         private TestableGasPriceOracle GetTestableGasPriceOracle(
@@ -113,7 +141,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             UInt256? baseFee = null, 
             ITxInsertionManager? txInsertionManager = null,
             IHeadBlockChangeManager? headBlockChangeManager = null,
-            UInt256? lastGasPrice = null)
+            UInt256? lastGasPrice = null,
+            List<UInt256>? sortedTxList = null)
         {
             return new TestableGasPriceOracle(
                 eip1559Enabled,
@@ -122,7 +151,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                 baseFee,
                 txInsertionManager ?? Substitute.For<ITxInsertionManager>(),
                 headBlockChangeManager ?? Substitute.For<IHeadBlockChangeManager>(),
-                lastGasPrice);
+                lastGasPrice,
+                sortedTxList);
         }
         
     }
