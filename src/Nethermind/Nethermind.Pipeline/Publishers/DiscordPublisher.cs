@@ -92,23 +92,16 @@ namespace Nethermind.Pipeline.Publishers
 
               var x = await _httpClient.PostAsync(uri, new StringContent(content, Encoding.UTF8, "application/json"));
 
-                // Console.WriteLine(x);
 
-            } catch (HttpRequestException ex) {
-                Console.WriteLine(ex);
-            }//catch
-        }//SendMessageAsync
+            } catch (HttpRequestException) {
+
+            }
+        }
 
         private string LoadBotToken()
         {
-            //TODO: Generate Bot Token
-            return "ODYxOTkyOTIyNjIxNjczNTEy.YOR3dw.lQ3-VEaJShvuUT986b9jwK47y8s"; //this is just a test bot, will do a proper secret token after tests are done and we will create another bot
+            return "";
         }
 
-    }
-
-    class DiscordMessage
-    {
-        public string content { get; set;}
     }
 }
