@@ -52,29 +52,6 @@ namespace Nethermind.MevSearcher
             _mevSearcherConfig = _nethermindApi.Config<IMevSearcherConfig>();
             _logger = _nethermindApi.LogManager.GetClassLogger();
 
-            _client = new HttpClient();
-
-            ITracer tracer = new Tracer(nethermindApi.StateProvider!, nethermindApi.BlockchainProcessor!);
-
-            _bundleStrategy = new BundleStrategy(
-                _mevSearcherConfig, 
-                nethermindApi.StateProvider, 
-                nethermindApi.EngineSigner, 
-                tracer, 
-                nethermindApi.BlockTree, 
-                nethermindApi.SpecProvider);
-            _bundleSender = new BundleSender(_client, _nethermindApi.EngineSigner, _logger);
-            
-            if (Enabled)
-            {
-                nethermindApi.TxPool!.NewPending += ProcessIncomingTransaction;
-                if (_logger!.IsInfo) _logger.Info("Flashbots searcher plugin enabled");
-            }
-            else
-            {
-                if (_logger!.IsWarn) _logger.Info("Skipping Flashbots searcher plugin");
-            }
-
             return Task.CompletedTask;
         }
 
@@ -95,6 +72,29 @@ namespace Nethermind.MevSearcher
 
         public Task InitRpcModules()
         {
+            if (Enabled)
+            {
+                _client = new HttpClient();
+
+                ITracer tracer = new Tracer(_nethermindApi.StateProvider!, _nethermindApi.BlockchainProcessor!);
+            
+                _bundleStrategy = new BundleStrategy(
+                    _nethermindApi.StateProvider, 
+                    _nethermindApi.EngineSigner, 
+                    tracer, 
+                    _nethermindApi.BlockTree, 
+                    _nethermindApi.SpecProvider,
+                    _nethermindApi.EthereumEcdsa);
+                _bundleSender = new BundleSender(_client, _nethermindApi.EngineSigner, _logger);
+                
+                _nethermindApi.TxPool!.NewPending += ProcessIncomingTransaction;
+                if (_logger!.IsInfo) _logger.Info("Flashbots searcher plugin enabled");
+            }
+            else
+            {
+                if (_logger!.IsWarn) _logger.Info("Skipping Flashbots searcher plugin");
+            }
+
             return Task.CompletedTask;
         }
 

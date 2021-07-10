@@ -23,6 +23,10 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
+using Nethermind.Evm.Tracing;
+using Nethermind.Evm.Tracing.GethStyle;
+using Nethermind.Int256;
 using Nethermind.MevSearcher.Data;
 using Nethermind.State;
 
@@ -30,27 +34,27 @@ namespace Nethermind.MevSearcher
 {
     public class BundleStrategy : IBundleStrategy
     {
-        private readonly IMevSearcherConfig _mevSearcherConfig;
         private readonly IStateProvider _stateProvider;
         private readonly ISigner _signer;
         private readonly ITracer _tracer;
         private readonly IBlockTree _blockTree;
         private readonly ISpecProvider _specProvider;
+        private readonly IEthereumEcdsa _ecdsa;
 
         public BundleStrategy(
-            IMevSearcherConfig mevSearcherConfig, 
             IStateProvider stateProvider, 
             ISigner signer, 
             ITracer tracer, 
             IBlockTree blockTree, 
-            ISpecProvider specProvider)
+            ISpecProvider specProvider,
+            IEthereumEcdsa ecdsa)
         {
-            _mevSearcherConfig = mevSearcherConfig;
             _stateProvider = stateProvider;
             _signer = signer;
             _tracer = tracer;
             _blockTree = blockTree;
             _specProvider = specProvider;
+            _ecdsa = ecdsa;
         }
 
         private Address Address => _signer.Address;
