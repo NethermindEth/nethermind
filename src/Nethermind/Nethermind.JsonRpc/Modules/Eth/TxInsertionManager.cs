@@ -61,7 +61,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     countTxAdded++;
                 }
 
-                if (countTxAdded >= GasPriceConfig.TxLimitFromABlock)
+                if (countTxAdded >= EthGasPriceConstants.TxLimitFromABlock)
                 {
                     break;
                 }
@@ -78,30 +78,13 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         private bool TransactionCanBeAdded(Transaction transaction, Block block)
         {
-            bool res = IsAboveMinPrice(transaction) && Eip1559ModeCompatible(transaction);
-            return res && TxNotSentByBeneficiary(transaction, block);
-        }
-
-        private bool IsAboveMinPrice(Transaction transaction)
-        {
-            return transaction.GasPrice >= _ignoreUnder;
+            return transaction.GasPrice >= _ignoreUnder && Eip1559ModeCompatible(transaction) &&
+                   TxNotSentByBeneficiary(transaction, block);
         }
 
         private bool Eip1559ModeCompatible(Transaction transaction)
         {
-            if (_isEip1559Enabled == false)
-            {
-                return TransactionIsNotEip1559(transaction);
-            }
-            else
-            {
-                return true;
-            }
-        }
-
-        private static bool TransactionIsNotEip1559(Transaction transaction)
-        {
-            return !transaction.IsEip1559;
+            return _isEip1559Enabled || !transaction.IsEip1559;
         }
 
         private bool TxNotSentByBeneficiary(Transaction transaction, Block block)
@@ -114,7 +97,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return block.Beneficiary != transaction.SenderAddress;
         }
 
-        protected void AddDefaultPriceToSortedTxList()
+        private void AddDefaultPriceToSortedTxList()
         {
             GetTxGasPriceList().Add((UInt256)_gasPriceOracle.FallbackGasPrice!);
         }

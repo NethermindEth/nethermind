@@ -43,7 +43,6 @@ namespace Nethermind.JsonRpc.Test.Modules
             result.Should().BeFalse();
         }
         
-        
         [Test]
         public void ShouldReturnSameGasPrice_IfLastGasPriceIsNull_WillReturnFalse()
         {

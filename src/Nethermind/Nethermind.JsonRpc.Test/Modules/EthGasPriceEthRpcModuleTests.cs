@@ -34,7 +34,8 @@ using Nethermind.TxPool;
 using Nethermind.Wallet;
 using NSubstitute;
 using NUnit.Framework;
-using static Nethermind.JsonRpc.Test.Modules.BlockConstructor;
+using Org.BouncyCastle.Bcpg;
+using static Nethermind.JsonRpc.Test.Modules.TestBlockConstructor;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
@@ -55,38 +56,22 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void Eth_gasPrice_ForBlockTreeWithBlocks_CreatesMatchingBlockDict()
         {
-            Block[] blocks = GetTwoTestBlocks();
+            Block testBlockA = GetTestBlockA();
+            Block testBlockB = GetTestBlockB();
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             EthRpcModule testEthRpcModule = GetTestEthRpcModule(blockFinder:blockFinder);
-            blockFinder.FindBlock(0).Returns(blocks[0]);
-            blockFinder.FindBlock(1).Returns(blocks[1]);
-            blockFinder.FindHeadBlock().Returns(blocks[1]);
+            blockFinder.FindBlock(0).Returns(testBlockA);
+            blockFinder.FindBlock(1).Returns(testBlockB);
+            blockFinder.FindHeadBlock().Returns(testBlockB);
             Dictionary<long, Block> expected = new Dictionary<long, Block>
             {
-                {0, blocks[0]},
-                {1, blocks[1]}
+                {0, testBlockA},
+                {1, testBlockB}
             };
             
             testEthRpcModule.eth_gasPrice();
             
             testEthRpcModule.BlockNumberToBlockDictionary.Should().BeEquivalentTo(expected);
-        }
-        public Block[] GetTwoTestBlocks()
-        {
-            return GetBlocksFromKeyValuePairs(
-                BlockNumberAndTxStringsKeyValuePair(0, CollectTxStrings(
-                        GetTxString("A", "4", "0"), 
-                        GetTxString("B", "3", "0"), 
-                        GetTxString("C", "2", "0"), 
-                        GetTxString("D", "1", "0")
-                    )
-                ), BlockNumberAndTxStringsKeyValuePair(1, CollectTxStrings(
-                        GetTxString("A", "8", "1"), 
-                        GetTxString("B", "7", "1"), 
-                        GetTxString("C", "6", "1"), 
-                        GetTxString("D", "5", "1")
-                    )
-                ));
         }
 
         [Test]
@@ -95,7 +80,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             IGasPriceOracle gasPriceOracle = Substitute.For<IGasPriceOracle>();
             EthRpcModule testEthRpcModule = GetTestEthRpcModule(blockFinder, gasPriceOracle);
-            Block testBlock = GetNoTxTestBlock();
+            Block testBlock = Build.A.Block.Genesis.TestObject;
             blockFinder.FindHeadBlock().Returns(testBlock);
             blockFinder.FindBlock(Arg.Is<long>(a => a == 0)).Returns(testBlock);
 
@@ -104,58 +89,21 @@ namespace Nethermind.JsonRpc.Test.Modules
             gasPriceOracle.Received(1).GasPriceEstimate(Arg.Any<Block>(), Arg.Any<Dictionary<long, Block>>());
         }
 
-        public static Block GetNoTxTestBlock()
-        {
-            return Build.A.Block.WithNumber(0).TestObject;
-        }
-
-        [Test]
-        public void Eth_gasPrice_TxCountNotGreaterThanLimit_GetTxFromMoreBlocks()
-        {
-            Block[] blocks = GetBlocksFromKeyValuePairs(BlockNumberAndTxStringsKeyValuePair(0, CollectTxStrings(GetTxString("A", "0", "0"), GetTxString("B", "1", "0")
-                    )
-                ), BlockNumberAndTxStringsKeyValuePair(1, CollectTxStrings(GetTxString("C", "2", "0"), GetTxString("D", "3","0")
-                    )
-                ), BlockNumberAndTxStringsKeyValuePair(2, CollectTxStrings(GetTxString("A", "4", "0")
-                    )
-                ));
-
-            BlockTreeSetup blockTreeSetup = new BlockTreeSetup(blocks: blocks, blockLimit: 2);
-            ResultWrapper<UInt256?> resultWrapper = blockTreeSetup.EthRpcModule.eth_gasPrice();
-            
-            resultWrapper.Data.Should().Be((UInt256?) 2); 
-            //Tx Gas Prices: 0,1,2,3,4, Index: (5-1) * 3/5 rounds to 2, Gas Price: 2
-        }
-
         [Test]
         public void Eth_gasPrice_BlocksAvailableLessThanBlocksToCheck_ShouldBeSuccessful()
         {
-            Block[] blocks = GetBlocksFromKeyValuePairs(BlockNumberAndTxStringsKeyValuePair(0, CollectTxStrings(GetTxString("A", "3", "0"), GetTxString("B", "4", "0")
-                    )
-                ), BlockNumberAndTxStringsKeyValuePair(1, CollectTxStrings(GetTxString("C", "5", "0"), GetTxString("D", "6","0")
-                    )
-                ), BlockNumberAndTxStringsKeyValuePair(2, CollectTxStrings(GetTxString("A", "7", "0"), GetTxString("B", "8", "1")
-                    )
-                ));
-
+            Block[] blocks = GetThreeTestBlocks();
 
             BlockTreeSetup blockTreeSetup = new BlockTreeSetup(blocks: blocks, blockLimit: 4);
             ResultWrapper<UInt256?> resultWrapper = blockTreeSetup.EthRpcModule.eth_gasPrice();
             
             resultWrapper.Result.Should().Be(Result.Success); 
         }
-        
+
         [Test]
-        public void Eth_gasPrice_GetTxFromMinBlocks_NumTxInMinBlocksGreaterThanOrEqualToLimit()
+        public void Eth_gasPrice_NumTxInMinBlocksGreaterThanBlockLimit_GetTxFromBlockLimitBlocks()
         {
-            Block[] blocks = GetBlocksFromKeyValuePairs(BlockNumberAndTxStringsKeyValuePair(0, CollectTxStrings(GetTxString("A", "1", "0"), GetTxString("B", "2", "0")
-                    )
-                ), BlockNumberAndTxStringsKeyValuePair(1, CollectTxStrings(GetTxString("C", "3", "0"), GetTxString("D", "4", "0")
-                    )
-                ), BlockNumberAndTxStringsKeyValuePair(2, CollectTxStrings(GetTxString("A", "5","1"), GetTxString("B", "6","1")
-                    )
-                )
-            );
+            Block[] blocks = GetThreeTestBlocks();
             BlockTreeSetup blockTreeSetup = new BlockTreeSetup(blocks: blocks, blockLimit: 2);
             
             blockTreeSetup.EthRpcModule.eth_gasPrice();
@@ -163,22 +111,26 @@ namespace Nethermind.JsonRpc.Test.Modules
             List<UInt256> expected = new List<UInt256>{3, 4, 5, 6};
             blockTreeSetup.GasPriceOracle.TxGasPriceList.Should().Equal(expected);
         }
-        
-        [Test]
-        public void Eth_gasPrice_TransactionSentByMiner_AreNotConsideredInGasPriceCalculation()
+
+        private static Block[] GetThreeTestBlocks()
         {
-            Address minerAddress = PrivateKeyForLetter('A').Address;
-            Block block = GetBlockWithBeneficiaryBlockNumberAndTxInfo(minerAddress, 0, CollectTxStrings(GetTxString("A", "7", "0"), GetTxString("B", "8", "0"), GetTxString("C", "9", "0")
-                    )
-                );
-            BlockTreeSetup blockTreeSetup = new BlockTreeSetup(new[]{block});
-            blockTreeSetup.EthRpcModule.eth_gasPrice();
+            Block firstBlock = Build.A.Block.WithNumber(0).WithParentHash(Keccak.Zero).WithTransactions(
+                Build.A.Transaction.WithGasPrice(1).SignedAndResolved(TestItem.PrivateKeyA).WithNonce(0).TestObject,
+                Build.A.Transaction.WithGasPrice(2).SignedAndResolved(TestItem.PrivateKeyB).WithNonce(0).TestObject
+            ).TestObject;
 
-            List<UInt256> gasPriceList = blockTreeSetup.GasPriceOracle.TxGasPriceList;
-            List<UInt256> expected = new List<UInt256>{8,9};
-            gasPriceList.Should().Equal(expected);
+            Block secondBlock = Build.A.Block.WithNumber(1).WithParentHash(firstBlock.Hash).WithTransactions(
+                Build.A.Transaction.WithGasPrice(3).SignedAndResolved(TestItem.PrivateKeyC).WithNonce(0).TestObject,
+                Build.A.Transaction.WithGasPrice(4).SignedAndResolved(TestItem.PrivateKeyD).WithNonce(0).TestObject
+            ).TestObject;
+
+            Block thirdBlock = Build.A.Block.WithNumber(2).WithParentHash(secondBlock.Hash).WithTransactions(
+                Build.A.Transaction.WithGasPrice(5).SignedAndResolved(TestItem.PrivateKeyA).WithNonce(1).TestObject,
+                Build.A.Transaction.WithGasPrice(6).SignedAndResolved(TestItem.PrivateKeyB).WithNonce(1).TestObject
+            ).TestObject;
+           
+            return new[]{firstBlock, secondBlock, thirdBlock};
         }
-
 
         private EthRpcModule GetTestEthRpcModule(IBlockFinder blockFinder = null, IGasPriceOracle gasPriceOracle = null)
         {
@@ -237,7 +189,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             {
                 if (NoBlocksGiven(blocks) || shouldAddToBlocks)
                 {
-                    GetBlockArray();
+                    Blocks = GetBlockArray();
                     if (shouldAddToBlocks)
                     {
                         AddExtraBlocksToArray(blocks);
@@ -259,31 +211,31 @@ namespace Nethermind.JsonRpc.Test.Modules
                 return Build.A.BlockTree(genesisBlock).TestObject;
             }
 
-            private void GetBlockArray()
+            private Block[] GetBlockArray()
             {
-                Blocks = GetBlocksFromKeyValuePairs(
-                    BlockNumberAndTxStringsKeyValuePair(0, CollectTxStrings(
-                            GetTxString("A", "1", "0"),
-                            GetTxString("B", "2", "0")
-                        )
-                    ),
-                    BlockNumberAndTxStringsKeyValuePair(1, CollectTxStrings(
-                            GetTxString("C", "3", "0")
-                        )
-                    ),
-                    BlockNumberAndTxStringsKeyValuePair(2, CollectTxStrings(
-                            GetTxString("D", "5", "0")
-                        )
-                    ),
-                    BlockNumberAndTxStringsKeyValuePair(3, CollectTxStrings(
-                            GetTxString("A", "4", "1")
-                        )
-                    ),
-                    BlockNumberAndTxStringsKeyValuePair(4, CollectTxStrings(
-                            GetTxString("B", "6", "1")
-                        )
-                    )
-                );
+                Block firstBlock = Build.A.Block.WithNumber(0).WithParentHash(Keccak.Zero).WithTransactions(
+                        Build.A.Transaction.WithGasPrice(1).SignedAndResolved(TestItem.PrivateKeyA).WithNonce(0)
+                            .TestObject,
+                        Build.A.Transaction.WithGasPrice(2).SignedAndResolved(TestItem.PrivateKeyB).WithNonce(0)
+                            .TestObject)
+                    .TestObject;
+                Block secondBlock = Build.A.Block.WithNumber(2).WithParentHash(firstBlock.Hash).WithTransactions(
+                        Build.A.Transaction.WithGasPrice(3).SignedAndResolved(TestItem.PrivateKeyC).WithNonce(0)
+                            .TestObject)
+                    .TestObject;
+                Block thirdBlock = Build.A.Block.WithNumber(3).WithParentHash(secondBlock.Hash).WithTransactions(
+                        Build.A.Transaction.WithGasPrice(5).SignedAndResolved(TestItem.PrivateKeyD).WithNonce(0)
+                            .TestObject)
+                    .TestObject;
+                Block fourthBlock = Build.A.Block.WithNumber(4).WithParentHash(thirdBlock.Hash).WithTransactions(
+                        Build.A.Transaction.WithGasPrice(4).SignedAndResolved(TestItem.PrivateKeyA).WithNonce(1)
+                            .TestObject)
+                    .TestObject;
+                Block fifthBlock = Build.A.Block.WithNumber(5).WithParentHash(fourthBlock.Hash).WithTransactions(
+                        Build.A.Transaction.WithGasPrice(6).SignedAndResolved(TestItem.PrivateKeyB).WithNonce(1)
+                            .TestObject)
+                    .TestObject;
+                return new[] {firstBlock, secondBlock, thirdBlock, fourthBlock, fifthBlock};
             }
 
             private void AddExtraBlocksToArray(Block[] blocks)

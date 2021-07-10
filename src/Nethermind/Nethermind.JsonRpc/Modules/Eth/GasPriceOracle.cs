@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Int256;
 
@@ -32,9 +31,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
             TxGasPriceList = new List<UInt256>();
             _isEip1559Enabled = isEip1559Enabled;
             _ignoreUnder = ignoreUnder ?? UInt256.Zero;
-            _blockLimit = blockLimit ?? GasPriceConfig.DefaultBlocksLimit;
-            _softTxThreshold = (int) (blockLimit != null ? blockLimit * 2 : GasPriceConfig.SoftTxLimit);
-            _baseFee = baseFee ?? GasPriceConfig.DefaultBaseFee;
+            _blockLimit = blockLimit ?? EthGasPriceConstants.DefaultBlocksLimit;
+            _softTxThreshold = (int) (blockLimit != null ? blockLimit * 2 : EthGasPriceConstants.SoftTxLimit);
+            _baseFee = baseFee ?? EthGasPriceConstants.DefaultBaseFee;
             _txInsertionManager = txInsertionManager ?? new TxInsertionManager(this, _ignoreUnder, _baseFee, _isEip1559Enabled);
             _headBlockChangeManager = headBlockChangeManager ?? new HeadBlockChangeManager();
         }
@@ -54,7 +53,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             UInt256? gasPriceEstimate = GasPriceAtPercentile(TxGasPriceList);
 
-            gasPriceEstimate = UInt256.Min((UInt256) gasPriceEstimate!, GasPriceConfig._maxGasPrice);
+            gasPriceEstimate = UInt256.Min((UInt256) gasPriceEstimate!, EthGasPriceConstants._maxGasPrice);
 
             LastGasPrice = gasPriceEstimate;
             
@@ -82,13 +81,13 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private ResultWrapper<UInt256?> NoHeadBlockChangeResultWrapper(UInt256? lastGasPrice)
         {
             ResultWrapper<UInt256?> resultWrapper = ResultWrapper<UInt256?>.Success(lastGasPrice);
-            resultWrapper.ErrorCode = GasPriceConfig.NoHeadBlockChangeErrorCode;
+            resultWrapper.ErrorCode = EthGasPriceConstants.NoHeadBlockChangeErrorCode;
             return resultWrapper;
         }
 
         private void SetFallbackGasPrice()
         {
-            FallbackGasPrice = LastGasPrice ?? GasPriceConfig.DefaultGasPrice;
+            FallbackGasPrice = LastGasPrice ?? EthGasPriceConstants.DefaultGasPrice;
         }
         
         private void AddTxGasPricesToList(Block? headBlock, IDictionary<long, Block> blockNumToBlockMap)
@@ -140,7 +139,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private static int GetRoundedIndexAtPercentile(int count)
         {
             int lastIndex = count - 1;
-            float percentileOfLastIndex = lastIndex * ((float)GasPriceConfig.PercentileOfSortedTxs / 100);
+            float percentileOfLastIndex = lastIndex * ((float)EthGasPriceConstants.PercentileOfSortedTxs / 100);
             int roundedIndex = (int) Math.Round(percentileOfLastIndex);
             return roundedIndex;
         }

@@ -7,7 +7,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth;
 using NSubstitute;
-using NSubstitute.ReceivedExtensions;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules
@@ -15,55 +14,13 @@ namespace Nethermind.JsonRpc.Test.Modules
     [TestFixture]
     class GasPriceOracleTests
     {
-        private class TestableGasPriceOracle : GasPriceOracle
-        {
-            private readonly UInt256? _lastGasPrice;
-            public List<UInt256>? _sortedTxList;
-            public TestableGasPriceOracle(
-                bool eip1559Enabled = false, 
-                UInt256? ignoreUnder = null, 
-                int? blockLimit = null, 
-                UInt256? baseFee = null, 
-                ITxInsertionManager? txInsertionManager = null,
-                IHeadBlockChangeManager? headBlockChangeManager = null,
-                UInt256? lastGasPrice = null,
-                List<UInt256>? sortedTxList = null) : 
-                base(
-                    eip1559Enabled,
-                    ignoreUnder,
-                    blockLimit,
-                    baseFee,
-                    txInsertionManager,
-                    headBlockChangeManager)
-            {
-                _lastGasPrice = lastGasPrice;
-                _sortedTxList = sortedTxList;
-            }
-
-
-            protected override UInt256? GetLastGasPrice()
-            {
-                return _lastGasPrice ?? base.LastGasPrice;
-            }
-
-            protected override List<UInt256> GetSortedTxGasPriceList(Block? headBlock, IDictionary<long, Block> blockNumToBlockMap)
-            {
-                return _sortedTxList ?? base.GetSortedTxGasPriceList(headBlock, blockNumToBlockMap);
-            }
-
-            public void AddToSortedTxList(params UInt256[] numbers)
-            {
-                TxGasPriceList.AddRange(numbers.ToList());
-            }
-        }
-        
         [Test]
         public void GasPriceEstimate_NoChangeInHeadBlock_ReturnsPreviousGasPrice()
         {
             IHeadBlockChangeManager headBlockChangeManager = Substitute.For<IHeadBlockChangeManager>();
             TestableGasPriceOracle testableGasPriceOracle = GetTestableGasPriceOracle(headBlockChangeManager: headBlockChangeManager, lastGasPrice: 7);
             Dictionary<long, Block> testDictionary = Substitute.For<Dictionary<long, Block>>();
-            Block testBlock = EthRpcModuleTests.GetNoTxTestBlock();
+            Block testBlock = Build.A.Block.Genesis.TestObject;
             headBlockChangeManager.ShouldReturnSameGasPrice(
                     Arg.Any<Block?>(),
                     Arg.Any<Block?>(),
@@ -83,7 +40,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             
             testableGasPriceOracle.GasPriceEstimate(testBlock, testDictionary);
             
-            testableGasPriceOracle.FallbackGasPrice.Should().BeEquivalentTo((UInt256?) GasPriceConfig.DefaultGasPrice);
+            testableGasPriceOracle.FallbackGasPrice.Should().BeEquivalentTo((UInt256?) EthGasPriceConstants.DefaultGasPrice);
         }
 
         [TestCase(3)]
@@ -128,7 +85,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             ResultWrapper<UInt256?> resultWrapper = testableGasPriceOracle.GasPriceEstimate(testBlock, testDictionary);
             
             resultWrapper.Result.Should().Be(Result.Success);
-            resultWrapper.Data.Should().BeEquivalentTo((UInt256?) GasPriceConfig._maxGasPrice);
+            resultWrapper.Data.Should().BeEquivalentTo((UInt256?) EthGasPriceConstants._maxGasPrice);
         }
         
         [Test]
@@ -163,30 +120,19 @@ namespace Nethermind.JsonRpc.Test.Modules
         private static void SetUpTxInsertionManager(ITxInsertionManager txInsertionManager,
             TestableGasPriceOracle testableGasPriceOracle)
         {
-            txInsertionManager
-                .When(t => t.AddValidTxFromBlockAndReturnCount(Arg.Is<Block>(b => b.Number >= 4)))
-                .Do(t => AddThreeNumbersToSortedTxList(testableGasPriceOracle));
             txInsertionManager.AddValidTxFromBlockAndReturnCount(Arg.Is<Block>(b => b.Number >= 4)).Returns(3);
             txInsertionManager
-                .When(t => t.AddValidTxFromBlockAndReturnCount(Arg.Is<Block>(b => b.Number < 4)))
-                .Do(t => AddOneNumberToSortedTxList(testableGasPriceOracle));
+                .When(t => t.AddValidTxFromBlockAndReturnCount(Arg.Is<Block>(b => b.Number >= 4)))
+                .Do(t => testableGasPriceOracle.AddToSortedTxList(1,2,3));
+            
             txInsertionManager.AddValidTxFromBlockAndReturnCount(Arg.Is<Block>(b => b.Number < 4)).Returns(1);
+            txInsertionManager
+                .When(t => t.AddValidTxFromBlockAndReturnCount(Arg.Is<Block>(b => b.Number < 4)))
+                .Do(t => testableGasPriceOracle.AddToSortedTxList(4));
         }
-
-        private static void AddOneNumberToSortedTxList(TestableGasPriceOracle testableGasPriceOracle)
-        {
-            testableGasPriceOracle.AddToSortedTxList(4);
-        }
-
-        private static void AddThreeNumbersToSortedTxList(TestableGasPriceOracle testableGasPriceOracle)
-        {
-            testableGasPriceOracle.AddToSortedTxList(1,2,3);
-        }
-
         private static Dictionary<long, Block> GetNumberToBlockMapForNineEmptyBlocks()
         {
-            Block[] blocks = new[]
-            {
+            Block[] blocks = {
                 Build.A.Block.Genesis.TestObject,
                 Build.A.Block.WithNumber(1).TestObject,
                 Build.A.Block.WithNumber(2).TestObject,
@@ -211,6 +157,47 @@ namespace Nethermind.JsonRpc.Test.Modules
             };
         }
 
+        private class TestableGasPriceOracle : GasPriceOracle
+        {
+            private readonly UInt256? _lastGasPrice;
+            private readonly List<UInt256>? _sortedTxList;
+            public TestableGasPriceOracle(
+                bool eip1559Enabled = false, 
+                UInt256? ignoreUnder = null, 
+                int? blockLimit = null, 
+                UInt256? baseFee = null, 
+                ITxInsertionManager? txInsertionManager = null,
+                IHeadBlockChangeManager? headBlockChangeManager = null,
+                UInt256? lastGasPrice = null,
+                List<UInt256>? sortedTxList = null) : 
+                base(
+                    eip1559Enabled,
+                    ignoreUnder,
+                    blockLimit,
+                    baseFee,
+                    txInsertionManager,
+                    headBlockChangeManager)
+            {
+                _lastGasPrice = lastGasPrice;
+                _sortedTxList = sortedTxList;
+            }
+
+
+            protected override UInt256? GetLastGasPrice()
+            {
+                return _lastGasPrice ?? base.LastGasPrice;
+            }
+
+            protected override List<UInt256> GetSortedTxGasPriceList(Block? headBlock, IDictionary<long, Block> blockNumToBlockMap)
+            {
+                return _sortedTxList ?? base.GetSortedTxGasPriceList(headBlock, blockNumToBlockMap);
+            }
+
+            public void AddToSortedTxList(params UInt256[] numbers)
+            {
+                TxGasPriceList.AddRange(numbers.ToList());
+            }
+        }
         private TestableGasPriceOracle GetTestableGasPriceOracle(
             bool eip1559Enabled = false, 
             UInt256? ignoreUnder = null, 

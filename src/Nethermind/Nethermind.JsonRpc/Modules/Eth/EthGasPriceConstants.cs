@@ -2,7 +2,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
-    public static class GasPriceConfig
+    public static class EthGasPriceConstants
     {
         public const int NoHeadBlockChangeErrorCode = 7; //Error code used in debug mode when the head block is not changed
         public const int PercentileOfSortedTxs = 60; //Percentile of sortedTxList indexes to choose as gas price
