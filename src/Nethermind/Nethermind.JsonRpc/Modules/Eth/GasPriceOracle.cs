@@ -86,7 +86,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             while (blocksToGoBack > 0 && currentBlockNumber > -1) 
             {
                 int txsAdded = _txInsertionManager.AddValidTxFromBlockAndReturnCount(blockNumToBlockMap[currentBlockNumber]);
-                if (txsAdded > 1 || BonusBlockLimitReached(blocksToGoBack))
+                if (txsAdded > 1 || TxGasPriceList.Count + blocksToGoBack >= _softTxThreshold)
                 {
                     blocksToGoBack--;
                 }
@@ -94,13 +94,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 currentBlockNumber--;
             }
         }
-
-        private bool BonusBlockLimitReached(int blocksToGoBack)
-        {
-            return TxGasPriceList.Count + blocksToGoBack >= _softTxThreshold;
-        }
-
-
+        
         private UInt256? GasPriceAtPercentile(List<UInt256> txGasPriceList)
         {
             int roundedIndex = GetRoundedIndexAtPercentile(txGasPriceList.Count);
