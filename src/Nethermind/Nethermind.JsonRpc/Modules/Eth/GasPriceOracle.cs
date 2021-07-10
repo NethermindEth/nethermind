@@ -51,7 +51,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             TxGasPriceList = CreateSortedTxGasPriceList(headBlock, blockNumToBlockMap);
 
-            UInt256? gasPriceEstimate = GasPriceAtPercentile(TxGasPriceList);
+            UInt256? gasPriceEstimate = GetGasPriceAtPercentile(TxGasPriceList);
 
             gasPriceEstimate = UInt256.Min((UInt256) gasPriceEstimate!, EthGasPriceConstants._maxGasPrice);
 
@@ -95,7 +95,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
         }
         
-        private UInt256? GasPriceAtPercentile(List<UInt256> txGasPriceList)
+        private static UInt256? GetGasPriceAtPercentile(List<UInt256> txGasPriceList)
         {
             int roundedIndex = GetRoundedIndexAtPercentile(txGasPriceList.Count);
 #if DEBUG
