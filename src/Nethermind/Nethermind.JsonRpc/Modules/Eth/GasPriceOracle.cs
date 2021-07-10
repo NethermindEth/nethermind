@@ -10,8 +10,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
     {
         public UInt256? FallbackGasPrice { get; private set; }
         public List<UInt256> TxGasPriceList { get; private set; }
-        protected UInt256? LastGasPrice { get; set; }
-        private Block? _lastHeadBlock;
+        protected UInt256? LastGasPrice { get; private set; }
+        private Block? LastHeadBlock { get; set; }
         private readonly bool _isEip1559Enabled;
         private readonly UInt256? _ignoreUnder;
         private readonly int _blockLimit;
@@ -41,13 +41,13 @@ namespace Nethermind.JsonRpc.Modules.Eth
         public ResultWrapper<UInt256?> GasPriceEstimate(Block? headBlock, IDictionary<long, Block> blockNumToBlockMap)
         {
             LastGasPrice = GetLastGasPrice();
-            bool shouldReturnSameGasPrice = _headBlockChangeManager.ShouldReturnSameGasPrice( _lastHeadBlock, headBlock, LastGasPrice);
+            bool shouldReturnSameGasPrice = _headBlockChangeManager.ShouldReturnSameGasPrice( LastHeadBlock, headBlock, LastGasPrice);
             if (shouldReturnSameGasPrice)
             {
-                return NoHeadBlockChangeResultWrapper(LastGasPrice);
+                return ResultWrapper<UInt256?>.Success(LastGasPrice);
             }
 
-            _lastHeadBlock = headBlock;
+            LastHeadBlock = headBlock;
 
             TxGasPriceList = CreateSortedTxGasPriceList(headBlock, blockNumToBlockMap);
 
@@ -77,13 +77,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
             AddTxGasPricesToList(headBlock, blockNumToBlockMap);
 
             return TxGasPriceList.OrderBy(gasPrice => gasPrice).ToList();
-        }
-
-        private ResultWrapper<UInt256?> NoHeadBlockChangeResultWrapper(UInt256? lastGasPrice)
-        {
-            ResultWrapper<UInt256?> resultWrapper = ResultWrapper<UInt256?>.Success(lastGasPrice);
-            resultWrapper.ErrorCode = EthGasPriceConstants.NoHeadBlockChangeErrorCode;
-            return resultWrapper;
         }
 
         private void AddTxGasPricesToList(Block? headBlock, IDictionary<long, Block> blockNumToBlockMap)
