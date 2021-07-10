@@ -5,13 +5,13 @@ using Nethermind.Int256;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
-    public class TxInsertionManager : ITxInsertionManager
+    public class GasPriceEstimateGasPriceEstimateTxInsertionManager : IGasPriceEstimateTxInsertionManager
     {
-        protected readonly IGasPriceOracle _gasPriceOracle;
+        private readonly IGasPriceOracle _gasPriceOracle;
         private readonly UInt256? _ignoreUnder;
         private readonly UInt256 _baseFee;
         private readonly bool _isEip1559Enabled;
-        public TxInsertionManager(IGasPriceOracle gasPriceOracle, UInt256? ignoreUnder, 
+        public GasPriceEstimateGasPriceEstimateTxInsertionManager(IGasPriceOracle gasPriceOracle, UInt256? ignoreUnder, 
             UInt256 baseFee, bool isEip1559Enabled)
         {
             _gasPriceOracle = gasPriceOracle;
@@ -29,7 +29,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
                 if (countTxAdded == 0)
                 {
-                    AddDefaultPriceToSortedTxList();
+                    GetTxGasPriceList().Add((UInt256) _gasPriceOracle.FallbackGasPrice!);
                     countTxAdded++;
                 }
 
@@ -37,7 +37,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
             else
             {
-                AddDefaultPriceToSortedTxList();
+                GetTxGasPriceList().Add((UInt256) _gasPriceOracle.FallbackGasPrice!);
                 return 1;
             }
         }
@@ -91,11 +91,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return block.Beneficiary != transaction.SenderAddress;
         }
 
-        private void AddDefaultPriceToSortedTxList()
-        {
-            GetTxGasPriceList().Add((UInt256)_gasPriceOracle.FallbackGasPrice!);
-        }
-        
         protected virtual List<UInt256> GetTxGasPriceList()
         {
             return _gasPriceOracle.TxGasPriceList;

@@ -19,7 +19,7 @@ using Nethermind.Core;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
-    public interface ITxInsertionManager
+    public interface IGasPriceEstimateTxInsertionManager
     {
         int AddValidTxFromBlockAndReturnCount(Block block);
     }

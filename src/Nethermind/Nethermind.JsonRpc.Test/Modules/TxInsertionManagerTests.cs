@@ -18,36 +18,36 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void AddValidTxAndReturnCount_IfBlockHasMoreThanThreeValidTx_AddOnlyThree()
         {
-            TestableTxInsertionManager testableTxInsertionManager = GetTestableTxInsertionManager(ignoreUnder: 3);
+            TestableGasPriceEstimateGasPriceEstimateTxInsertionManager testableGasPriceEstimateGasPriceEstimateTxInsertionManager = GetTestableTxInsertionManager(ignoreUnder: 3);
             Block testBlock = GetTestBlockB();
             
-            testableTxInsertionManager.AddValidTxFromBlockAndReturnCount(testBlock);
+            testableGasPriceEstimateGasPriceEstimateTxInsertionManager.AddValidTxFromBlockAndReturnCount(testBlock);
 
-            testableTxInsertionManager._txGasPriceList.Count.Should().Be(3);
+            testableGasPriceEstimateGasPriceEstimateTxInsertionManager._txGasPriceList.Count.Should().Be(3);
         }
 
         [Test]
         public void AddValidTxAndReturnCount_IfBlockHasMoreThanThreeValidTxs_OnlyAddTxsWithLowestGasPrices()
         {
-            TestableTxInsertionManager testableTxInsertionManager = GetTestableTxInsertionManager(ignoreUnder: 3);
+            TestableGasPriceEstimateGasPriceEstimateTxInsertionManager testableGasPriceEstimateGasPriceEstimateTxInsertionManager = GetTestableTxInsertionManager(ignoreUnder: 3);
             Block testBlock = GetTestBlockB();
             List<UInt256> expected = new List<UInt256> {5,6,7};
             
-            testableTxInsertionManager.AddValidTxFromBlockAndReturnCount(testBlock);
+            testableGasPriceEstimateGasPriceEstimateTxInsertionManager.AddValidTxFromBlockAndReturnCount(testBlock);
 
-            testableTxInsertionManager._txGasPriceList.Should().BeEquivalentTo(expected);
+            testableGasPriceEstimateGasPriceEstimateTxInsertionManager._txGasPriceList.Should().BeEquivalentTo(expected);
         }
         
         [Test]
         public void AddValidTxAndReturnCount_TxsWithPriceLessThanIgnoreUnder_ShouldNotHaveGasPriceInTxGasPriceList()
         {
             Block testBlock = GetTestBlockA();
-            TestableTxInsertionManager testableTxInsertionManager = GetTestableTxInsertionManager(ignoreUnder: 3);
+            TestableGasPriceEstimateGasPriceEstimateTxInsertionManager testableGasPriceEstimateGasPriceEstimateTxInsertionManager = GetTestableTxInsertionManager(ignoreUnder: 3);
             List<UInt256> expected = new List<UInt256> {3, 4};
             
-            testableTxInsertionManager.AddValidTxFromBlockAndReturnCount(testBlock);
+            testableGasPriceEstimateGasPriceEstimateTxInsertionManager.AddValidTxFromBlockAndReturnCount(testBlock);
 
-            testableTxInsertionManager._txGasPriceList.Should().BeEquivalentTo(expected);
+            testableGasPriceEstimateGasPriceEstimateTxInsertionManager._txGasPriceList.Should().BeEquivalentTo(expected);
         }
         
         [Test]
@@ -61,12 +61,12 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Build.A.Transaction.WithGasPrice(9).SignedAndResolved(TestItem.PrivateKeyC).WithNonce(0).TestObject,
             };
             Block block = Build.A.Block.Genesis.WithBeneficiary(minerAddress).WithTransactions(transactions).TestObject;
-            TestableTxInsertionManager testableTxInsertionManager = GetTestableTxInsertionManager();
+            TestableGasPriceEstimateGasPriceEstimateTxInsertionManager testableGasPriceEstimateGasPriceEstimateTxInsertionManager = GetTestableTxInsertionManager();
             List<UInt256> expected = new List<UInt256>{8,9};
             
-            testableTxInsertionManager.AddValidTxFromBlockAndReturnCount(block);
+            testableGasPriceEstimateGasPriceEstimateTxInsertionManager.AddValidTxFromBlockAndReturnCount(block);
             
-            testableTxInsertionManager._txGasPriceList.Should().BeEquivalentTo(expected);
+            testableGasPriceEstimateGasPriceEstimateTxInsertionManager._txGasPriceList.Should().BeEquivalentTo(expected);
         }
         
         [Test]
@@ -88,13 +88,13 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             Block eip1559Block = Build.A.Block.WithNumber(1).WithParentHash(Keccak.Zero).WithTransactions(eip1559TxGroup).TestObject;
             Block nonEip1559Block = Build.A.Block.WithNumber(1).WithParentHash(eip1559Block.Hash).WithTransactions(nonEip1559TxGroup).TestObject;
-            TestableTxInsertionManager testableTxInsertionManager = GetTestableTxInsertionManager(baseFee:25, isEip1559Enabled: true);
+            TestableGasPriceEstimateGasPriceEstimateTxInsertionManager testableGasPriceEstimateGasPriceEstimateTxInsertionManager = GetTestableTxInsertionManager(baseFee:25, isEip1559Enabled: true);
             List<UInt256> expected = new List<UInt256> {26, 27, 27, 9, 10, 11};
             
-            testableTxInsertionManager.AddValidTxFromBlockAndReturnCount(eip1559Block);
-            testableTxInsertionManager.AddValidTxFromBlockAndReturnCount(nonEip1559Block);
+            testableGasPriceEstimateGasPriceEstimateTxInsertionManager.AddValidTxFromBlockAndReturnCount(eip1559Block);
+            testableGasPriceEstimateGasPriceEstimateTxInsertionManager.AddValidTxFromBlockAndReturnCount(nonEip1559Block);
             
-            testableTxInsertionManager._txGasPriceList.Should().BeEquivalentTo(expected);
+            testableGasPriceEstimateGasPriceEstimateTxInsertionManager._txGasPriceList.Should().BeEquivalentTo(expected);
         }
 
         [Test]
@@ -109,12 +109,12 @@ namespace Nethermind.JsonRpc.Test.Modules
             Block block = Build.A.Block.Genesis.WithTransactions(transactions).TestObject;
             IGasPriceOracle gasPriceOracle = Substitute.For<IGasPriceOracle>();
             gasPriceOracle.FallbackGasPrice.Returns((UInt256?) 7);
-            TestableTxInsertionManager testableTxInsertionManager = GetTestableTxInsertionManager(gasPriceOracle:gasPriceOracle, ignoreUnder: 4);
+            TestableGasPriceEstimateGasPriceEstimateTxInsertionManager testableGasPriceEstimateGasPriceEstimateTxInsertionManager = GetTestableTxInsertionManager(gasPriceOracle:gasPriceOracle, ignoreUnder: 4);
             List<UInt256> expected = new List<UInt256> {7};
 
-            testableTxInsertionManager.AddValidTxFromBlockAndReturnCount(block);
+            testableGasPriceEstimateGasPriceEstimateTxInsertionManager.AddValidTxFromBlockAndReturnCount(block);
             
-            testableTxInsertionManager._txGasPriceList.Should().Equal(expected); 
+            testableGasPriceEstimateGasPriceEstimateTxInsertionManager._txGasPriceList.Should().Equal(expected); 
         }
 
         [Test]
@@ -124,18 +124,18 @@ namespace Nethermind.JsonRpc.Test.Modules
             Block block = Build.A.Block.Genesis.WithTransactions(transactions).TestObject;
             IGasPriceOracle gasPriceOracle = Substitute.For<IGasPriceOracle>();
             gasPriceOracle.FallbackGasPrice.Returns((UInt256?) 3);
-            TestableTxInsertionManager testableTxInsertionManager = GetTestableTxInsertionManager(gasPriceOracle:gasPriceOracle);
+            TestableGasPriceEstimateGasPriceEstimateTxInsertionManager testableGasPriceEstimateGasPriceEstimateTxInsertionManager = GetTestableTxInsertionManager(gasPriceOracle:gasPriceOracle);
             List<UInt256> expected = new List<UInt256> {3};
 
-            testableTxInsertionManager.AddValidTxFromBlockAndReturnCount(block);
+            testableGasPriceEstimateGasPriceEstimateTxInsertionManager.AddValidTxFromBlockAndReturnCount(block);
             
-            testableTxInsertionManager._txGasPriceList.Should().Equal(expected); 
+            testableGasPriceEstimateGasPriceEstimateTxInsertionManager._txGasPriceList.Should().Equal(expected); 
         }
         
-    class TestableTxInsertionManager : TxInsertionManager
+    class TestableGasPriceEstimateGasPriceEstimateTxInsertionManager : GasPriceEstimateGasPriceEstimateTxInsertionManager
     {
         public readonly List<UInt256> _txGasPriceList;
-        public TestableTxInsertionManager(
+        public TestableGasPriceEstimateGasPriceEstimateTxInsertionManager(
             IGasPriceOracle gasPriceOracle,
             UInt256? ignoreUnder,
             UInt256 baseFee,
@@ -154,14 +154,14 @@ namespace Nethermind.JsonRpc.Test.Modules
             return _txGasPriceList;
         }
     }
-        private TestableTxInsertionManager GetTestableTxInsertionManager(
+        private TestableGasPriceEstimateGasPriceEstimateTxInsertionManager GetTestableTxInsertionManager(
             IGasPriceOracle gasPriceOracle = null,
             UInt256? ignoreUnder = null,
             UInt256? baseFee = null,
             bool isEip1559Enabled = false,
             List<UInt256> txGasPriceList = null)
         {
-            return new TestableTxInsertionManager(
+            return new TestableGasPriceEstimateGasPriceEstimateTxInsertionManager(
                 gasPriceOracle ?? Substitute.For<IGasPriceOracle>(),
                 ignoreUnder ?? UInt256.Zero,
                 baseFee ?? UInt256.Zero,
