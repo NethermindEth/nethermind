@@ -9,9 +9,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
     public class GasPriceOracle : IGasPriceOracle
     {
         public UInt256? FallbackGasPrice { get; private set; }
-        public List<UInt256> TxGasPriceList { get; protected set; }
+        public List<UInt256> TxGasPriceList { get; private set; }
         protected UInt256? LastGasPrice { get; set; }
-        private Block? LastHeadBlock;
+        private Block? _lastHeadBlock;
         private readonly bool _isEip1559Enabled;
         private readonly UInt256? _ignoreUnder;
         private readonly int _blockLimit;
@@ -41,13 +41,13 @@ namespace Nethermind.JsonRpc.Modules.Eth
         public ResultWrapper<UInt256?> GasPriceEstimate(Block? headBlock, IDictionary<long, Block> blockNumToBlockMap)
         {
             LastGasPrice = GetLastGasPrice();
-            bool shouldReturnSameGasPrice = _headBlockChangeManager.ShouldReturnSameGasPrice( LastHeadBlock, headBlock, LastGasPrice);
+            bool shouldReturnSameGasPrice = _headBlockChangeManager.ShouldReturnSameGasPrice( _lastHeadBlock, headBlock, LastGasPrice);
             if (shouldReturnSameGasPrice)
             {
                 return NoHeadBlockChangeResultWrapper(LastGasPrice);
             }
 
-            LastHeadBlock = headBlock;
+            _lastHeadBlock = headBlock;
 
             TxGasPriceList = CreateSortedTxGasPriceList(headBlock, blockNumToBlockMap);
 
@@ -60,9 +60,14 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return ResultWrapper<UInt256?>.Success((UInt256) gasPriceEstimate!);
         }
 
+        protected virtual UInt256? GetLastGasPrice()
+        {
+            return LastGasPrice;
+        }
+        
         private List<UInt256> CreateSortedTxGasPriceList(Block? headBlock, IDictionary<long, Block> blockNumToBlockMap)
         {
-            SetFallbackGasPrice();
+            FallbackGasPrice = LastGasPrice ?? EthGasPriceConstants.DefaultGasPrice;
 
             return GetSortedTxGasPriceList(headBlock, blockNumToBlockMap);
         }
@@ -74,10 +79,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return TxGasPriceList.OrderBy(gasPrice => gasPrice).ToList();
         }
 
-        protected virtual UInt256? GetLastGasPrice()
-        {
-            return LastGasPrice;
-        }
         private ResultWrapper<UInt256?> NoHeadBlockChangeResultWrapper(UInt256? lastGasPrice)
         {
             ResultWrapper<UInt256?> resultWrapper = ResultWrapper<UInt256?>.Success(lastGasPrice);
@@ -85,16 +86,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return resultWrapper;
         }
 
-        private void SetFallbackGasPrice()
-        {
-            FallbackGasPrice = LastGasPrice ?? EthGasPriceConstants.DefaultGasPrice;
-        }
-        
         private void AddTxGasPricesToList(Block? headBlock, IDictionary<long, Block> blockNumToBlockMap)
         {
             long currentBlockNumber = headBlock!.Number;
             int blocksToGoBack = _blockLimit;
-            while (MoreBlocksToGoBack(blocksToGoBack) && CurrentBlockNumberIsValid(currentBlockNumber)) 
+            while (blocksToGoBack > 0 && currentBlockNumber > -1) 
             {
                 int txsAdded = _txInsertionManager.AddValidTxFromBlockAndReturnCount(blockNumToBlockMap[currentBlockNumber]);
                 if (txsAdded > 1 || BonusBlockLimitReached(blocksToGoBack))
@@ -104,16 +100,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 
                 currentBlockNumber--;
             }
-        }
-
-        private static bool MoreBlocksToGoBack(long blocksToGoBack)
-        {
-            return blocksToGoBack > 0;
-        }
-        
-        private static bool CurrentBlockNumberIsValid(long currBlockNumber)
-        {
-            return currBlockNumber > -1;
         }
 
         private bool BonusBlockLimitReached(int blocksToGoBack)

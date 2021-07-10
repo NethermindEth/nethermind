@@ -34,7 +34,6 @@ using Nethermind.TxPool;
 using Nethermind.Wallet;
 using NSubstitute;
 using NUnit.Framework;
-using Org.BouncyCastle.Bcpg;
 using static Nethermind.JsonRpc.Test.Modules.TestBlockConstructor;
 
 namespace Nethermind.JsonRpc.Test.Modules

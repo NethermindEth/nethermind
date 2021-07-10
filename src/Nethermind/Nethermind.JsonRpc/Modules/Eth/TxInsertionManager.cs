@@ -22,7 +22,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public int AddValidTxFromBlockAndReturnCount(Block block)
         {
-            if (TransactionsExistIn(block))
+            if (block.Transactions.Length > 0)
             {
                 Transaction[] transactionsInBlock = block.Transactions;
                 int countTxAdded = AddTxAndReturnCountAdded(transactionsInBlock, block);
@@ -40,12 +40,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 AddDefaultPriceToSortedTxList();
                 return 1;
             }
-        }
-
-        private static bool TransactionsExistIn(Block block)
-        {
-            Transaction[] transactions = block.Transactions;
-            return transactions.Length > 0;
         }
 
         private int AddTxAndReturnCountAdded(Transaction[] txInBlock, Block block)
