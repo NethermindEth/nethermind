@@ -163,14 +163,14 @@ namespace Nethermind.JsonRpc.Test.Modules
                 UInt256? ignoreUnder = null,
                 UInt256? baseFee = null,
                 bool eip1559Enabled = false,
-                IGasPriceEstimateTxInsertionManager gasPriceEstimateTxInsertionManager = null,
-                IGasPriceEstimateHeadBlockChangeManager gasPriceEstimateHeadBlockChangeManager = null)
+                ITxInsertionManager txInsertionManager = null,
+                IHeadBlockChangeManager headBlockChangeManager = null)
             {
                 GetBlocks(blocks, addBlocks);
 
                 InitializeAndAddToBlockTree();
 
-                GasPriceOracle = gasPriceOracle ?? GetGasPriceOracle(eip1559Enabled, ignoreUnder, blockLimit, baseFee, gasPriceEstimateTxInsertionManager, gasPriceEstimateHeadBlockChangeManager);
+                GasPriceOracle = gasPriceOracle ?? GetGasPriceOracle(eip1559Enabled, ignoreUnder, blockLimit, baseFee, txInsertionManager, headBlockChangeManager);
 
                 EthRpcModule = new EthRpcModuleTests().GetTestEthRpcModule(BlockTree, GasPriceOracle);
             }
@@ -253,11 +253,11 @@ namespace Nethermind.JsonRpc.Test.Modules
                 UInt256? ignoreUnder,
                 int? blockLimit, 
                 UInt256? baseFee,
-                IGasPriceEstimateTxInsertionManager gasPriceEstimateTxInsertionManager,
-                IGasPriceEstimateHeadBlockChangeManager gasPriceEstimateHeadBlockChangeManager)
+                ITxInsertionManager txInsertionManager,
+                IHeadBlockChangeManager headBlockChangeManager)
             {
                 GasPriceOracle gasPriceOracle = new GasPriceOracle(eip1559Enabled, ignoreUnder, blockLimit, baseFee, 
-                    gasPriceEstimateTxInsertionManager, gasPriceEstimateHeadBlockChangeManager);
+                    txInsertionManager, headBlockChangeManager);
                 return gasPriceOracle;
             }
         }

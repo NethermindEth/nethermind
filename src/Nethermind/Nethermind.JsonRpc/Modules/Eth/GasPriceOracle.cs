@@ -17,16 +17,16 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly int _blockLimit;
         private readonly int _softTxThreshold;
         private readonly UInt256 _baseFee;
-        private readonly IGasPriceEstimateTxInsertionManager _gasPriceEstimateTxInsertionManager;
-        private readonly IGasPriceEstimateHeadBlockChangeManager _gasPriceEstimateHeadBlockChangeManager;
+        private readonly ITxInsertionManager _txInsertionManager;
+        private readonly IHeadBlockChangeManager _headBlockChangeManager;
 
         public GasPriceOracle(
             bool isEip1559Enabled = false, 
             UInt256? ignoreUnder = null, 
             int? blockLimit = null, 
             UInt256? baseFee = null, 
-            IGasPriceEstimateTxInsertionManager? txInsertionManager = null,
-            IGasPriceEstimateHeadBlockChangeManager? headBlockChangeManager = null)
+            ITxInsertionManager? txInsertionManager = null,
+            IHeadBlockChangeManager? headBlockChangeManager = null)
         {
             TxGasPriceList = new List<UInt256>();
             _isEip1559Enabled = isEip1559Enabled;
@@ -34,14 +34,14 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _blockLimit = blockLimit ?? EthGasPriceConstants.DefaultBlocksLimit;
             _softTxThreshold = (int) (blockLimit != null ? blockLimit * 2 : EthGasPriceConstants.SoftTxLimit);
             _baseFee = baseFee ?? EthGasPriceConstants.DefaultBaseFee;
-            _gasPriceEstimateTxInsertionManager = txInsertionManager ?? new GasPriceEstimateGasPriceEstimateTxInsertionManager(this, _ignoreUnder, _baseFee, _isEip1559Enabled);
-            _gasPriceEstimateHeadBlockChangeManager = headBlockChangeManager ?? new GasPriceEstimateHeadBlockChangeManager();
+            _txInsertionManager = txInsertionManager ?? new GasPriceEstimateTxInsertionManager(this, _ignoreUnder, _baseFee, _isEip1559Enabled);
+            _headBlockChangeManager = headBlockChangeManager ?? new GasPriceEstimateHeadBlockChangeManager();
         }
 
         public ResultWrapper<UInt256?> GasPriceEstimate(Block? headBlock, IDictionary<long, Block> blockNumToBlockMap)
         {
             LastGasPrice = GetLastGasPrice();
-            bool shouldReturnSameGasPrice = _gasPriceEstimateHeadBlockChangeManager.ShouldReturnSameGasPrice( _lastHeadBlock, headBlock, LastGasPrice);
+            bool shouldReturnSameGasPrice = _headBlockChangeManager.ShouldReturnSameGasPrice( _lastHeadBlock, headBlock, LastGasPrice);
             if (shouldReturnSameGasPrice)
             {
                 return NoHeadBlockChangeResultWrapper(LastGasPrice);
@@ -92,7 +92,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             int blocksToGoBack = _blockLimit;
             while (blocksToGoBack > 0 && currentBlockNumber > -1) 
             {
-                int txsAdded = _gasPriceEstimateTxInsertionManager.AddValidTxFromBlockAndReturnCount(blockNumToBlockMap[currentBlockNumber]);
+                int txsAdded = _txInsertionManager.AddValidTxFromBlockAndReturnCount(blockNumToBlockMap[currentBlockNumber]);
                 if (txsAdded > 1 || BonusBlockLimitReached(blocksToGoBack))
                 {
                     blocksToGoBack--;

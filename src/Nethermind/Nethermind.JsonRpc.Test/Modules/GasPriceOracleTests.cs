@@ -17,11 +17,11 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void GasPriceEstimate_NoChangeInHeadBlock_ReturnsPreviousGasPrice()
         {
-            IGasPriceEstimateHeadBlockChangeManager gasPriceEstimateHeadBlockChangeManager = Substitute.For<IGasPriceEstimateHeadBlockChangeManager>();
-            TestableGasPriceOracle testableGasPriceOracle = GetTestableGasPriceOracle(headBlockChangeManager: gasPriceEstimateHeadBlockChangeManager, lastGasPrice: 7);
+            IHeadBlockChangeManager headBlockChangeManager = Substitute.For<IHeadBlockChangeManager>();
+            TestableGasPriceOracle testableGasPriceOracle = GetTestableGasPriceOracle(headBlockChangeManager: headBlockChangeManager, lastGasPrice: 7);
             Dictionary<long, Block> testDictionary = Substitute.For<Dictionary<long, Block>>();
             Block testBlock = Build.A.Block.Genesis.TestObject;
-            gasPriceEstimateHeadBlockChangeManager.ShouldReturnSameGasPrice(
+            headBlockChangeManager.ShouldReturnSameGasPrice(
                     Arg.Any<Block?>(),
                     Arg.Any<Block?>(),
                     Arg.Any<UInt256?>()).Returns(true);
@@ -91,42 +91,42 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void GasPriceEstimate_IfEightBlocksWithTwoTransactions_CheckEightBlocks()
         {
-            IGasPriceEstimateTxInsertionManager gasPriceEstimateTxInsertionManager = Substitute.For<IGasPriceEstimateTxInsertionManager>();
-            gasPriceEstimateTxInsertionManager.AddValidTxFromBlockAndReturnCount(Arg.Any<Block>()).Returns(2);
-            TestableGasPriceOracle testableGasPriceOracle = GetTestableGasPriceOracle(txInsertionManager: gasPriceEstimateTxInsertionManager, blockLimit: 8);
+            ITxInsertionManager txInsertionManager = Substitute.For<ITxInsertionManager>();
+            txInsertionManager.AddValidTxFromBlockAndReturnCount(Arg.Any<Block>()).Returns(2);
+            TestableGasPriceOracle testableGasPriceOracle = GetTestableGasPriceOracle(txInsertionManager: txInsertionManager, blockLimit: 8);
             Block headBlock = Build.A.Block.WithNumber(8).TestObject;
             IDictionary<long, Block> testDictionary = Substitute.For<IDictionary<long, Block>>();
             
             testableGasPriceOracle.GasPriceEstimate(headBlock, testDictionary);
             
-            gasPriceEstimateTxInsertionManager.Received(8).AddValidTxFromBlockAndReturnCount(Arg.Any<Block>());
+            txInsertionManager.Received(8).AddValidTxFromBlockAndReturnCount(Arg.Any<Block>());
         }
 
         [Test]
         public void GasPriceEstimate_IfLastFiveBlocksWithThreeTxAndFirstFourWithOne_CheckSixBlocks()
         {
             //Any blocks with zero/one tx doesn't count towards the blockLimit unless the number of 
-            IGasPriceEstimateTxInsertionManager gasPriceEstimateTxInsertionManager = Substitute.For<IGasPriceEstimateTxInsertionManager>();
-            TestableGasPriceOracle testableGasPriceOracle = GetTestableGasPriceOracle(txInsertionManager: gasPriceEstimateTxInsertionManager, blockLimit: 8);
-            SetUpTxInsertionManager(gasPriceEstimateTxInsertionManager, testableGasPriceOracle);
+            ITxInsertionManager txInsertionManager = Substitute.For<ITxInsertionManager>();
+            TestableGasPriceOracle testableGasPriceOracle = GetTestableGasPriceOracle(txInsertionManager: txInsertionManager, blockLimit: 8);
+            SetUpTxInsertionManager(txInsertionManager, testableGasPriceOracle);
             Block headBlock = Build.A.Block.WithNumber(8).TestObject;
             IDictionary<long, Block> testNineEmptyBlocksDictionary = GetNumberToBlockMapForNineEmptyBlocks();
             
             testableGasPriceOracle.GasPriceEstimate(headBlock, testNineEmptyBlocksDictionary);
             
-            gasPriceEstimateTxInsertionManager.Received(8).AddValidTxFromBlockAndReturnCount(Arg.Any<Block>());
+            txInsertionManager.Received(8).AddValidTxFromBlockAndReturnCount(Arg.Any<Block>());
         }
 
-        private static void SetUpTxInsertionManager(IGasPriceEstimateTxInsertionManager gasPriceEstimateTxInsertionManager,
+        private static void SetUpTxInsertionManager(ITxInsertionManager txInsertionManager,
             TestableGasPriceOracle testableGasPriceOracle)
         {
-            gasPriceEstimateTxInsertionManager.AddValidTxFromBlockAndReturnCount(Arg.Is<Block>(b => b.Number >= 4)).Returns(3);
-            gasPriceEstimateTxInsertionManager
+            txInsertionManager.AddValidTxFromBlockAndReturnCount(Arg.Is<Block>(b => b.Number >= 4)).Returns(3);
+            txInsertionManager
                 .When(t => t.AddValidTxFromBlockAndReturnCount(Arg.Is<Block>(b => b.Number >= 4)))
                 .Do(t => testableGasPriceOracle.AddToSortedTxList(1,2,3));
             
-            gasPriceEstimateTxInsertionManager.AddValidTxFromBlockAndReturnCount(Arg.Is<Block>(b => b.Number < 4)).Returns(1);
-            gasPriceEstimateTxInsertionManager
+            txInsertionManager.AddValidTxFromBlockAndReturnCount(Arg.Is<Block>(b => b.Number < 4)).Returns(1);
+            txInsertionManager
                 .When(t => t.AddValidTxFromBlockAndReturnCount(Arg.Is<Block>(b => b.Number < 4)))
                 .Do(t => testableGasPriceOracle.AddToSortedTxList(4));
         }
@@ -166,8 +166,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                 UInt256? ignoreUnder = null, 
                 int? blockLimit = null, 
                 UInt256? baseFee = null, 
-                IGasPriceEstimateTxInsertionManager? txInsertionManager = null,
-                IGasPriceEstimateHeadBlockChangeManager? headBlockChangeManager = null,
+                ITxInsertionManager? txInsertionManager = null,
+                IHeadBlockChangeManager? headBlockChangeManager = null,
                 UInt256? lastGasPrice = null,
                 List<UInt256>? sortedTxList = null) : 
                 base(
@@ -203,8 +203,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             UInt256? ignoreUnder = null, 
             int? blockLimit = null, 
             UInt256? baseFee = null, 
-            IGasPriceEstimateTxInsertionManager? txInsertionManager = null,
-            IGasPriceEstimateHeadBlockChangeManager? headBlockChangeManager = null,
+            ITxInsertionManager? txInsertionManager = null,
+            IHeadBlockChangeManager? headBlockChangeManager = null,
             UInt256? lastGasPrice = null,
             List<UInt256>? sortedTxList = null)
         {
@@ -213,8 +213,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                 ignoreUnder,
                 blockLimit,
                 baseFee,
-                txInsertionManager ?? Substitute.For<IGasPriceEstimateTxInsertionManager>(),
-                headBlockChangeManager ?? Substitute.For<IGasPriceEstimateHeadBlockChangeManager>(),
+                txInsertionManager ?? Substitute.For<ITxInsertionManager>(),
+                headBlockChangeManager ?? Substitute.For<IHeadBlockChangeManager>(),
                 lastGasPrice,
                 sortedTxList);
         }

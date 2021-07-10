@@ -5,7 +5,7 @@ using Nethermind.Int256;
 namespace Nethermind.JsonRpc.Modules.Eth
 {
     //Checks edge cases where the Head block did not change from previous call of eth_gasPrice from an instance of EthRpcModule
-    public class GasPriceEstimateHeadBlockChangeManager : IGasPriceEstimateHeadBlockChangeManager
+    public class GasPriceEstimateHeadBlockChangeManager : IHeadBlockChangeManager
     {
         public bool ShouldReturnSameGasPrice(Block? lastHead, Block? currentHead, UInt256? lastGasPrice)
         { 

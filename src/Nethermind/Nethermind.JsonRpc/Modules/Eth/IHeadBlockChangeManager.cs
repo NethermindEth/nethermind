@@ -21,7 +21,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
-    public interface IGasPriceEstimateHeadBlockChangeManager
+    public interface IHeadBlockChangeManager
     {
         bool ShouldReturnSameGasPrice(Block? lastHead, Block? currentHead, UInt256? lastGasPrice);
     }

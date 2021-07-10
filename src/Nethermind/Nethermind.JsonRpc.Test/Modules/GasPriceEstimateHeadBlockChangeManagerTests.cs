@@ -13,9 +13,9 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void ShouldReturnSameGasPrice_IfLastHeadAndCurrentHeadAreSame_WillReturnTrue()
         {
             Block testBlock = Build.A.Block.Genesis.TestObject;
-            GasPriceEstimateHeadBlockChangeManager gasPriceEstimateHeadBlockChangeManager = new GasPriceEstimateHeadBlockChangeManager();
+            GasPriceEstimateHeadBlockChangeManager headBlockChangeManager = new GasPriceEstimateHeadBlockChangeManager();
             
-            bool result = gasPriceEstimateHeadBlockChangeManager.ShouldReturnSameGasPrice(testBlock, testBlock, 10);
+            bool result = headBlockChangeManager.ShouldReturnSameGasPrice(testBlock, testBlock, 10);
 
             result.Should().BeTrue();
         }
@@ -25,9 +25,9 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             Block testBlock = Build.A.Block.Genesis.TestObject;
             Block differentTestBlock = Build.A.Block.WithNumber(1).TestObject;
-            GasPriceEstimateHeadBlockChangeManager gasPriceEstimateHeadBlockChangeManager = new GasPriceEstimateHeadBlockChangeManager();
+            GasPriceEstimateHeadBlockChangeManager headBlockChangeManager = new GasPriceEstimateHeadBlockChangeManager();
             
-            bool result = gasPriceEstimateHeadBlockChangeManager.ShouldReturnSameGasPrice(testBlock, differentTestBlock, 10);
+            bool result = headBlockChangeManager.ShouldReturnSameGasPrice(testBlock, differentTestBlock, 10);
 
             result.Should().BeFalse();
         }
@@ -36,9 +36,9 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void ShouldReturnSameGasPrice_IfLastHeadIsNull_WillReturnFalse()
         {
             Block testBlock = Build.A.Block.Genesis.TestObject;
-            GasPriceEstimateHeadBlockChangeManager gasPriceEstimateHeadBlockChangeManager = new GasPriceEstimateHeadBlockChangeManager();
+            GasPriceEstimateHeadBlockChangeManager headBlockChangeManager = new GasPriceEstimateHeadBlockChangeManager();
             
-            bool result = gasPriceEstimateHeadBlockChangeManager.ShouldReturnSameGasPrice(null, testBlock, 10);
+            bool result = headBlockChangeManager.ShouldReturnSameGasPrice(null, testBlock, 10);
 
             result.Should().BeFalse();
         }
@@ -47,9 +47,9 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void ShouldReturnSameGasPrice_IfLastGasPriceIsNull_WillReturnFalse()
         {
             Block testBlock = Build.A.Block.Genesis.TestObject;
-            GasPriceEstimateHeadBlockChangeManager gasPriceEstimateHeadBlockChangeManager = new GasPriceEstimateHeadBlockChangeManager();
+            GasPriceEstimateHeadBlockChangeManager headBlockChangeManager = new GasPriceEstimateHeadBlockChangeManager();
             
-            bool result = gasPriceEstimateHeadBlockChangeManager.ShouldReturnSameGasPrice(testBlock, testBlock, null);
+            bool result = headBlockChangeManager.ShouldReturnSameGasPrice(testBlock, testBlock, null);
 
             result.Should().BeFalse();
         }

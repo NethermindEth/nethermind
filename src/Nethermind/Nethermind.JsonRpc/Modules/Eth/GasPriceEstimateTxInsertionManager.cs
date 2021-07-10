@@ -5,13 +5,13 @@ using Nethermind.Int256;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
-    public class GasPriceEstimateGasPriceEstimateTxInsertionManager : IGasPriceEstimateTxInsertionManager
+    public class GasPriceEstimateTxInsertionManager : ITxInsertionManager
     {
         private readonly IGasPriceOracle _gasPriceOracle;
         private readonly UInt256? _ignoreUnder;
         private readonly UInt256 _baseFee;
         private readonly bool _isEip1559Enabled;
-        public GasPriceEstimateGasPriceEstimateTxInsertionManager(IGasPriceOracle gasPriceOracle, UInt256? ignoreUnder, 
+        public GasPriceEstimateTxInsertionManager(IGasPriceOracle gasPriceOracle, UInt256? ignoreUnder, 
             UInt256 baseFee, bool isEip1559Enabled)
         {
             _gasPriceOracle = gasPriceOracle;
