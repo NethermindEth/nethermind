@@ -141,7 +141,7 @@ namespace Nethermind.Facade
             {
                 Block block = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                 TxReceipt txReceipt = _receiptFinder.Get(block).ForTransaction(txHash);
-                return (txReceipt, block?.Transactions[txReceipt.Index], block.BaseFeePerGas);
+                return (txReceipt, block?.Transactions[txReceipt.Index], block?.BaseFeePerGas);
             }
 
             if (_txPool.TryGetPendingTransaction(txHash, out Transaction? transaction))
