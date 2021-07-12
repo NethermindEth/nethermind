@@ -33,7 +33,10 @@
     "eip1884Transition": "0x4ff704",
     "eip2028Transition": "0x4ff704",
     "eip2200Transition": "0x4ff704",
-    "registrar": "0x1204700000000000000000000000000000000006",
+    "eip2565Transition": "0xba4e5f",
+    "eip2929Transition": "0xba4e5f",
+    "eip2930Transition": "0xba4e5f",
+    "registrar": "0x1204700000000000000000000000000000000006"
   },
   "genesis": {
     "seal": {

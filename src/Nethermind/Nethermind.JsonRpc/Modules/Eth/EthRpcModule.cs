@@ -344,9 +344,12 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             try
             {
-                Keccak txHash =
+                (Keccak txHash, AddTxResult? addTxResult) =
                     await _txSender.SendTransaction(tx, txHandlingOptions | TxHandlingOptions.PersistentBroadcast);
-                return ResultWrapper<Keccak>.Success(txHash);
+
+                return addTxResult == AddTxResult.Added
+                    ? ResultWrapper<Keccak>.Success(txHash)
+                    : ResultWrapper<Keccak>.Fail(addTxResult?.ToString() ?? string.Empty, ErrorCodes.TransactionRejected);
             }
             catch (SecurityException e)
             {
@@ -403,11 +406,12 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public Task<ResultWrapper<TransactionForRpc>> eth_getTransactionByHash(Keccak transactionHash)
         {
+            UInt256? baseFee = null;
             _txPoolBridge.TryGetPendingTransaction(transactionHash, out Transaction transaction);
             TxReceipt receipt = null; // note that if transaction is pending then for sure no receipt is known
             if (transaction == null)
             {
-                (receipt, transaction) = _blockchainBridge.GetTransaction(transactionHash);
+                (receipt, transaction, baseFee) = _blockchainBridge.GetTransaction(transactionHash);
                 if (transaction == null)
                 {
                     return Task.FromResult(ResultWrapper<TransactionForRpc>.Success(null));
@@ -416,7 +420,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             RecoverTxSenderIfNeeded(transaction);
             TransactionForRpc transactionModel =
-                new(receipt?.BlockHash, receipt?.BlockNumber, receipt?.Index, transaction);
+                new(receipt?.BlockHash, receipt?.BlockNumber, receipt?.Index, transaction, baseFee);
             if (_logger.IsTrace)
                 _logger.Trace($"eth_getTransactionByHash request {transactionHash}, result: {transactionModel.Hash}");
             return Task.FromResult(ResultWrapper<TransactionForRpc>.Success(transactionModel));
@@ -456,7 +460,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             Transaction transaction = block.Transactions[(int)positionIndex];
             RecoverTxSenderIfNeeded(transaction);
 
-            TransactionForRpc transactionModel = new(block.Hash, block.Number, (int)positionIndex, transaction);
+            TransactionForRpc transactionModel = new(block.Hash, block.Number, (int)positionIndex, transaction, block.BaseFeePerGas);
 
             return ResultWrapper<TransactionForRpc>.Success(transactionModel);
         }
@@ -479,7 +483,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             Transaction transaction = block.Transactions[(int)positionIndex];
             RecoverTxSenderIfNeeded(transaction);
 
-            TransactionForRpc transactionModel = new(block.Hash, block.Number, (int)positionIndex, transaction);
+            TransactionForRpc transactionModel = new(block.Hash, block.Number, (int)positionIndex, transaction, block.BaseFeePerGas);
 
             if (_logger.IsDebug)
                 _logger.Debug(
@@ -487,17 +491,17 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return ResultWrapper<TransactionForRpc>.Success(transactionModel);
         }
 
-        public Task<ResultWrapper<ReceiptForRpc>> eth_getTransactionReceipt(Keccak txHash)
+        public Task<ResultWrapper<GetTransactionReceiptResponse>> eth_getTransactionReceipt(Keccak txHash)
         {
-            TxReceipt receipt = _blockchainBridge.GetReceipt(txHash);
-            if (receipt == null)
+            var result = _blockchainBridge.GetReceiptAndEffectiveGasPrice(txHash);
+            if (result.Receipt == null)
             {
-                return Task.FromResult(ResultWrapper<ReceiptForRpc>.Success(null));
+                return Task.FromResult(ResultWrapper<GetTransactionReceiptResponse>.Success(null));
             }
 
-            ReceiptForRpc receiptModel = new(txHash, receipt);
+            GetTransactionReceiptResponse receiptModel = new(txHash, result.Receipt, result.EffectiveGasPrice);
             if (_logger.IsTrace) _logger.Trace($"eth_getTransactionReceipt request {txHash}, result: {txHash}");
-            return Task.FromResult(ResultWrapper<ReceiptForRpc>.Success(receiptModel));
+            return Task.FromResult(ResultWrapper<GetTransactionReceiptResponse>.Success(receiptModel));
         }
 
         public ResultWrapper<BlockForRpc> eth_getUncleByBlockHashAndIndex(Keccak blockHash, UInt256 positionIndex)

@@ -92,7 +92,7 @@ namespace Nethermind.Evm
             
             UInt256 value = transaction.Value;
 
-            if (!transaction.TryCalculatePremiumPerGas(block.BaseFeePerGas, out UInt256 premiumPerGas))
+            if (!transaction.TryCalculatePremiumPerGas(block.BaseFeePerGas, out UInt256 premiumPerGas) && !isCall)
             {
                 TraceLogInvalidTx(transaction, "MINER_PREMIUM_IS_NEGATIVE");
                 QuickFail(transaction, block, txTracer, "miner premium is negative");
@@ -135,7 +135,7 @@ namespace Nethermind.Evm
                     return;
                 }
             }
-
+            
             if (!_stateProvider.AccountExists(caller))
             {
                 // hacky fix for the potential recovery issue
@@ -166,13 +166,22 @@ namespace Nethermind.Evm
                 }
             }
 
+            UInt256 senderReservedGasPayment = isCall ? UInt256.Zero : (ulong) gasLimit * gasPrice;
+            
             if (notSystemTransaction)
             {
                 UInt256 senderBalance = _stateProvider.GetBalance(caller);
-                if (!isCall && (ulong) intrinsicGas * gasPrice + value > senderBalance)
+                if (!isCall && ((ulong) intrinsicGas * gasPrice + value > senderBalance || senderReservedGasPayment > senderBalance))
                 {
                     TraceLogInvalidTx(transaction, $"INSUFFICIENT_SENDER_BALANCE: ({caller})_BALANCE = {senderBalance}");
                     QuickFail(transaction, block, txTracer, "insufficient sender balance");
+                    return;
+                }
+                
+                if (!isCall && transaction.IsEip1559 && !transaction.IsServiceTransaction && senderBalance < (UInt256)transaction.GasLimit * transaction.MaxFeePerGas)
+                {
+                    TraceLogInvalidTx(transaction, $"INSUFFICIENT_MAX_FEE_PER_GAS_FOR_SENDER_BALANCE: ({caller})_BALANCE = {senderBalance}, MAX_FEE_PER_GAS: {transaction.MaxFeePerGas}");
+                    QuickFail(transaction, block, txTracer, "insufficient MaxFeePerGas for sender balance");
                     return;
                 }
 
@@ -186,8 +195,6 @@ namespace Nethermind.Evm
                 _stateProvider.IncrementNonce(caller);
             }
 
-            UInt256 senderReservedGasPayment = isCall ? UInt256.Zero : (ulong) gasLimit * gasPrice;
-            
             _stateProvider.SubtractFromBalance(caller, senderReservedGasPayment, spec);
             _stateProvider.Commit(spec, txTracer.IsTracingState ? txTracer : NullTxTracer.Instance);
 

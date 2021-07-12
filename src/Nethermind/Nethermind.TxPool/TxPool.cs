@@ -21,17 +21,16 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Timers;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.State;
 using Nethermind.TxPool.Collections;
-using Timer = System.Timers.Timer;
+using Nethermind.TxPool.Filters;
 
 [assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
 
@@ -41,63 +40,27 @@ namespace Nethermind.TxPool
     /// Stores all pending transactions. These will be used by block producer if this node is a miner / validator
     /// or simply for broadcasting and tracing in other cases.
     /// </summary>
-    public class TxPool : ITxPool, IDisposable
+    public partial class TxPool : ITxPool, IDisposable
     {
-
         private readonly object _locker = new();
 
-        private readonly Dictionary<Address, AddressNonces> _nonces =
-            new();
+        private readonly ConcurrentDictionary<Address, AddressNonces> _nonces = new();
 
-        private readonly LruKeyCache<Keccak> _hashCache = new(MemoryAllowance.TxHashCacheSize,
-            Math.Min(1024 * 16, MemoryAllowance.TxHashCacheSize), "tx hashes");
+        private readonly List<IIncomingTxFilter> _filterPipeline = new();
 
-        /// <summary>
-        /// Number of blocks after which own transaction will not be resurrected any more
-        /// </summary>
-        private const long FadingTimeInBlocks = 64;
+        private readonly HashCache _hashCache = new();
 
-        /// <summary>
-        /// Notification threshold randomizer seed
-        /// </summary>
-        private static int _seed = Environment.TickCount;
-
-        /// <summary>
-        /// Random number generator for peer notification threshold - no need to be securely random.
-        /// </summary>
-        private static readonly ThreadLocal<Random> Random =
-            new(() => new Random(Interlocked.Increment(ref _seed)));
+        private readonly TxBroadcaster _broadcaster;
 
         private readonly TxDistinctSortedPool _transactions;
 
         private readonly IChainHeadSpecProvider _specProvider;
-        private readonly ITxPoolConfig _txPoolConfig;
-        private readonly IReadOnlyStateProvider _stateProvider;
-        private readonly ITxValidator _validator;
-        private readonly IEthereumEcdsa _ecdsa;
-        private readonly IChainHeadInfoProvider _chainHeadInfoProvider;
-        protected readonly ILogger _logger;
 
-        /// <summary>
-        /// Transactions published locally (initiated by this node users) or reorganised.
-        /// </summary>
-        private readonly SortedPool<Keccak, Transaction, Address> _persistentBroadcastTransactions;
-        
-        /// <summary>
-        /// Long term storage for pending transactions.
-        /// </summary>
-        private readonly ITxStorage _txStorage;
+        private readonly IAccountStateProvider _accounts;
 
-        /// <summary>
-        /// Connected peers that can be notified about transactions.
-        /// </summary>
-        private readonly ConcurrentDictionary<PublicKey, ITxPoolPeer> _peers =
-            new();
+        private readonly IChainHeadInfoProvider _headInfo;
 
-        /// <summary>
-        /// Timer for rebroadcasting pending own transactions.
-        /// </summary>
-        private readonly Timer _ownTimer;
+        private readonly ILogger _logger;
 
         /// <summary>
         /// Indexes transactions
@@ -110,77 +73,79 @@ namespace Nethermind.TxPool
         /// </summary>
         /// <param name="txStorage">Tx storage used to reject known transactions.</param>
         /// <param name="ecdsa">Used to recover sender addresses from transaction signatures.</param>
-        /// <param name="specProvider">Used for retrieving information on EIPs that may affect tx signature scheme.</param>
         /// <param name="chainHeadInfoProvider"></param>
         /// <param name="txPoolConfig"></param>
-        /// <param name="stateProvider"></param>
-        /// <param name="transactionComparerProvider"></param>
         /// <param name="validator"></param>
         /// <param name="logManager"></param>
         /// <param name="comparer"></param>
-        public TxPool(ITxStorage txStorage,
+        /// <param name="incomingTxFilter"></param>
+        public TxPool(
             IEthereumEcdsa ecdsa,
             IChainHeadInfoProvider chainHeadInfoProvider,
             ITxPoolConfig txPoolConfig,
             ITxValidator validator,
             ILogManager? logManager,
-            IComparer<Transaction> comparer)
+            IComparer<Transaction> comparer,
+            IIncomingTxFilter? incomingTxFilter = null)
         {
-            _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
-            _chainHeadInfoProvider = chainHeadInfoProvider ?? throw new ArgumentNullException(nameof(chainHeadInfoProvider));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _txStorage = txStorage ?? throw new ArgumentNullException(nameof(txStorage));
-            _specProvider = _chainHeadInfoProvider.SpecProvider;
-            _txPoolConfig = txPoolConfig;
-            _stateProvider = _chainHeadInfoProvider.ReadOnlyStateProvider;
-            _validator = validator ?? throw new ArgumentNullException(nameof(validator));
+            _headInfo = chainHeadInfoProvider ?? throw new ArgumentNullException(nameof(chainHeadInfoProvider));
+            _accounts = _headInfo.AccountStateProvider;
+            _specProvider = _headInfo.SpecProvider;
 
             MemoryAllowance.MemPoolSize = txPoolConfig.Size;
-            ThisNodeInfo.AddInfo("Mem est tx   :",
-                $"{(LruCache<Keccak, object>.CalculateMemorySize(32, MemoryAllowance.TxHashCacheSize) + LruCache<Keccak, Transaction>.CalculateMemorySize(4096, MemoryAllowance.MemPoolSize)) / 1000 / 1000}MB"
-                    .PadLeft(8));
+            AddNodeInfoEntryForTxPool();
 
             _transactions = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, comparer, logManager);
-            _persistentBroadcastTransactions = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, comparer, logManager);
-            _chainHeadInfoProvider.HeadChanged += OnHeadChange;
-            _ownTimer = new Timer(500);
-            _ownTimer.Elapsed += OwnTimerOnElapsed;
-            _ownTimer.AutoReset = false;
-            _ownTimer.Start();
+            _broadcaster = new TxBroadcaster(comparer, TimerFactory.Default, txPoolConfig, logManager);
+
+            _headInfo.HeadChanged += OnHeadChange;
+
+            _filterPipeline.Add(new NullHashTxFilter());
+            _filterPipeline.Add(new AlreadyKnownTxFilter(_hashCache));
+            _filterPipeline.Add(new MalformedTxFilter(_specProvider, validator, _logger));
+            _filterPipeline.Add(new GasLimitTxFilter(_headInfo, txPoolConfig, _logger));
+            _filterPipeline.Add(new UnknownSenderFilter(ecdsa, _logger));
+            _filterPipeline.Add(new LowNonceFilter(_accounts, _logger));
+            _filterPipeline.Add(new TooFarNonceFilter(txPoolConfig, _accounts, _transactions, _logger));
+            _filterPipeline.Add(new TooExpensiveTxFilter(_headInfo, _accounts, _logger));
+            _filterPipeline.Add(new FeeToLowFilter(_headInfo, _accounts, _transactions, _logger));
+            _filterPipeline.Add(new ReusedOwnNonceTxFilter(_accounts, _nonces, _logger));
+            if (incomingTxFilter is not null)
+            {
+                _filterPipeline.Add(incomingTxFilter);
+            }
         }
 
-        private uint FutureNonceRetention  => _txPoolConfig.FutureNonceRetention;
-        
-        internal long? BlockGasLimit { get; set; } = null;
-
-        private UInt256 CurrentBaseFee { get; set; } = 0;
-
         public Transaction[] GetPendingTransactions() => _transactions.GetSnapshot();
-        
+
         public int GetPendingTransactionsCount() => _transactions.Count;
 
         public IDictionary<Address, Transaction[]> GetPendingTransactionsBySender() =>
             _transactions.GetBucketSnapshot();
 
-        public Transaction[] GetOwnPendingTransactions() => _persistentBroadcastTransactions.GetSnapshot();
+        internal Transaction[] GetOwnPendingTransactions() => _broadcaster.GetSnapshot();
 
         private void OnHeadChange(object? sender, BlockReplacementEventArgs e)
         {
+            _hashCache.ClearCurrentBlockCache();
             // we don't want this to be on main processing thread
+            // TODO: I think this is dangerous if many blocks are processed one after another
             Task.Run(() => OnHeadChange(e.Block!, e.PreviousBlock))
                 .ContinueWith(t =>
                 {
                     if (t.IsFaulted)
                     {
-                        if (_logger.IsError) _logger.Error($"Couldn't correctly add or remove transactions from txpool after processing block {e.Block.ToString(Block.Format.FullHashAndNumber)}.", t.Exception);
+                        if (_logger.IsError)
+                            _logger.Error(
+                                $"Couldn't correctly add or remove transactions from txpool after processing block {e.Block!.ToString(Block.Format.FullHashAndNumber)}.",
+                                t.Exception);
                     }
                 });
         }
-        
+
         private void OnHeadChange(Block block, Block? previousBlock)
         {
-            BlockGasLimit = block.GasLimit;
-            CurrentBaseFee = block.Header.BaseFeePerGas;
             ReAddReorganisedTransactions(previousBlock);
             RemoveProcessedTransactions(block.Transactions);
             UpdateBuckets();
@@ -194,7 +159,8 @@ namespace Nethermind.TxPool
                 for (int i = 0; i < previousBlock.Transactions.Length; i++)
                 {
                     Transaction tx = previousBlock.Transactions[i];
-                    AddTransaction(tx, (isEip155Enabled ? TxHandlingOptions.None : TxHandlingOptions.PreEip155Signing) | TxHandlingOptions.Reorganisation);
+                    _hashCache.Delete(tx.Hash!);
+                    SubmitTx(tx, isEip155Enabled ? TxHandlingOptions.None : TxHandlingOptions.PreEip155Signing);
                 }
             }
         }
@@ -204,12 +170,13 @@ namespace Nethermind.TxPool
             long transactionsInBlock = blockTransactions.Count;
             long discoveredForPendingTxs = 0;
             long discoveredForHashCache = 0;
-            
+            long eip1559Txs = 0;
+
             for (int i = 0; i < transactionsInBlock; i++)
             {
                 Keccak txHash = blockTransactions[i].Hash;
-                
-                if (!IsKnown(txHash))
+
+                if (!IsKnown(txHash!))
                 {
                     discoveredForHashCache++;
                 }
@@ -218,20 +185,29 @@ namespace Nethermind.TxPool
                 {
                     discoveredForPendingTxs++;
                 }
+
+                if (blockTransactions[i].IsEip1559)
+                {
+                    eip1559Txs++;
+                }
             }
-            
-            Metrics.DarkPoolRatioLevel1 = transactionsInBlock == 0 ? 0 : (float)discoveredForHashCache / transactionsInBlock;
-            Metrics.DarkPoolRatioLevel2 = transactionsInBlock == 0 ? 0 : (float)discoveredForPendingTxs / transactionsInBlock;
+
+            if (transactionsInBlock != 0)
+            {
+                Metrics.DarkPoolRatioLevel1 = (float)discoveredForHashCache / transactionsInBlock;
+                Metrics.DarkPoolRatioLevel2 = (float)discoveredForPendingTxs / transactionsInBlock;
+                Metrics.Eip1559TransactionsRatio = (float)eip1559Txs / transactionsInBlock;
+            }
         }
 
         public void AddPeer(ITxPoolPeer peer)
         {
             PeerInfo peerInfo = new(peer);
-            if (_peers.TryAdd(peer.Id, peerInfo))
+            if (_broadcaster.AddPeer(peerInfo))
             {
-                foreach (var transaction in _transactions.GetSnapshot())
+                foreach (Transaction transaction in _transactions.GetSnapshot())
                 {
-                    Notify(peerInfo, transaction, false);
+                    _broadcaster.BroadcastOnce(peerInfo, transaction);
                 }
 
                 if (_logger.IsTrace) _logger.Trace($"Added a peer to TX pool: {peer}");
@@ -240,7 +216,7 @@ namespace Nethermind.TxPool
 
         public void RemovePeer(PublicKey nodeId)
         {
-            if (!_peers.TryRemove(nodeId, out _))
+            if (!_broadcaster.RemovePeer(nodeId))
             {
                 return;
             }
@@ -248,199 +224,81 @@ namespace Nethermind.TxPool
             if (_logger.IsTrace) _logger.Trace($"Removed a peer from TX pool: {nodeId}");
         }
 
-        public AddTxResult AddTransaction(Transaction tx, TxHandlingOptions handlingOptions)
+        public AddTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions)
         {
-            if (tx.Hash is null)
-            {
-                throw new ArgumentException($"{nameof(tx.Hash)} not set on {nameof(Transaction)}");
-            }
-            
+            Metrics.PendingTransactionsReceived++;
+
+            // assign a sequence number to transaction so we can order them by arrival times when
+            // gas prices are exactly the same
             tx.PoolIndex = Interlocked.Increment(ref _txIndex);
 
             NewDiscovered?.Invoke(this, new TxEventArgs(tx));
 
             bool managedNonce = (handlingOptions & TxHandlingOptions.ManagedNonce) == TxHandlingOptions.ManagedNonce;
-            bool isPersistentBroadcast = (handlingOptions & TxHandlingOptions.PersistentBroadcast) ==
-                                         TxHandlingOptions.PersistentBroadcast;
-            bool isReorg = (handlingOptions & TxHandlingOptions.Reorganisation) == TxHandlingOptions.Reorganisation;
+            bool startBroadcast = (handlingOptions & TxHandlingOptions.PersistentBroadcast) == TxHandlingOptions.PersistentBroadcast;
 
-            if (_logger.IsTrace)
-                _logger.Trace(
-                    $"Adding transaction {tx.ToString("  ")} - managed nonce: {managedNonce} | persistent broadcast {isPersistentBroadcast}");
+            if (_logger.IsTrace) _logger.Trace(
+                $"Adding transaction {tx.ToString("  ")} - managed nonce: {managedNonce} | persistent broadcast {startBroadcast}");
 
-            return FilterTransaction(tx, managedNonce) ?? AddCore(tx, isPersistentBroadcast, isReorg);
-        }
-        
-        protected virtual AddTxResult? FilterTransaction(Transaction tx, in bool managedNonce)
-        {
-            if (tx.Hash is null)
+            for (int i = 0; i < _filterPipeline.Count; i++)
             {
-                return AddTxResult.Invalid;
-            }
-
-            IReleaseSpec spec = _specProvider.GetSpec();
-            Metrics.PendingTransactionsReceived++;
-            
-            if (!_validator.IsWellFormed(tx, spec))
-            {
-                // It may happen that other nodes send us transactions that were signed for another chain or don't have enough gas.
-                Metrics.PendingTransactionsDiscarded++;
-                if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, invalid transaction.");
-                return AddTxResult.Invalid;
-            }
-            
-            long gasLimit = Math.Min(BlockGasLimit ?? long.MaxValue, _txPoolConfig.GasLimit ?? long.MaxValue);
-            if (tx.GasLimit > gasLimit)
-            {
-                if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, gas limit exceeded.");
-                return AddTxResult.GasLimitExceeded;
-            }
-            
-            /* We have encountered multiple transactions that do not resolve sender address properly.
-             * We need to investigate what these txs are and why the sender address is resolved to null.
-             * Then we need to decide whether we really want to broadcast them.
-             */
-            if (tx.SenderAddress is null)
-            {
-                tx.SenderAddress = _ecdsa.RecoverAddress(tx);
-                if (tx.SenderAddress is null)
+                IIncomingTxFilter incomingTxFilter = _filterPipeline[i];
+                (bool accepted, AddTxResult? filteringResult) = incomingTxFilter.Accept(tx, handlingOptions);
+                if (!accepted)
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, no sender.");
-                    return AddTxResult.PotentiallyUseless;
+                    Metrics.PendingTransactionsDiscarded++;
+                    return filteringResult.Value;
                 }
             }
 
-            // As we have limited number of transaction that we store in mem pool its fairly easy to fill it up with
-            // high-priority garbage transactions. We need to filter them as much as possible to use the tx pool space
-            // efficiently. One call to get account from state is not that costly and it only happens after previous checks.
-            // This was modeled by OpenEthereum behavior.
-            Account account = _stateProvider.GetAccount(tx.SenderAddress);
-            UInt256 currentNonce = account?.Nonce ?? UInt256.Zero;
-            if (tx.Nonce < currentNonce)
-            {
-                if (_logger.IsTrace)
-                    _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, nonce already used.");
-                return AddTxResult.OldNonce;
-            }
-            
-            int numberOfSenderTxsInPending = _transactions.GetBucketCount(tx.SenderAddress);
-            bool isTxPoolFull = _transactions.IsFull();
-            bool isTxNonceNextInOrder = tx.Nonce <= (long)currentNonce + numberOfSenderTxsInPending;
-            bool isTxNonceTooFarInFuture = tx.Nonce > currentNonce + FutureNonceRetention;
-            if (isTxPoolFull && !isTxNonceNextInOrder
-                || isTxNonceTooFarInFuture)
-            {
-                if (_logger.IsTrace)
-                    _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, nonce in future.");
-                return AddTxResult.FutureNonce;
-            }
+            return AddCore(tx, startBroadcast);
+        }
 
-            UInt256 balance = account?.Balance ?? UInt256.Zero;
-            UInt256 payableGasPrice = tx.CalculatePayableGasPrice(spec.IsEip1559Enabled, CurrentBaseFee, balance);
-
-            bool overflow = spec.IsEip1559Enabled && UInt256.AddOverflow(tx.MaxPriorityFeePerGas, tx.MaxFeePerGas, out _);
-            overflow |= UInt256.MultiplyOverflow(payableGasPrice, (UInt256) tx.GasLimit, out UInt256 cost);
-            overflow |= UInt256.AddOverflow(cost, tx.Value, out cost);
-            if (overflow)
+        private AddTxResult AddCore(Transaction tx, bool isPersistentBroadcast)
+        {
+            lock (_locker)
             {
-                if (_logger.IsTrace)
-                    _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, cost overflow.");
-                return AddTxResult.BalanceOverflow;
-            }
-            else if (balance < cost)
-            {
-                if (_logger.IsTrace)
-                    _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, insufficient funds.");
-                return AddTxResult.InsufficientFunds;
-            }
+                bool eip1559Enabled = _specProvider.GetSpec().IsEip1559Enabled;
                 
-            if (isTxPoolFull
-                && _transactions.TryGetLast(out var lastTx)
-                && payableGasPrice <= lastTx?.GasBottleneck)
-            {
-                if (_logger.IsTrace)
-                    _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, too low payable gas price.");
-                return AddTxResult.FeeTooLow;
-            }
-
-            if (managedNonce && CheckOwnTransactionAlreadyUsed(tx, currentNonce))
-            {
-                if (_logger.IsTrace)
-                    _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, nonce already used.");
-                return AddTxResult.OwnNonceAlreadyUsed;
-            }
-            
-            return null;
-        }
-
-        private AddTxResult AddCore(Transaction tx, bool isPersistentBroadcast, bool isReorg)
-        {
-            bool isInHashCache = _hashCache.Get(tx.Hash);
-            // !!! do not change it to |=
-            bool isKnown = !isReorg && isInHashCache;
-
-            if (!isInHashCache)
-            {
-                _hashCache.Set(tx.Hash);
-            }
-
-            /*
-             * we need to make sure that the sender is resolved before adding to the distinct tx pool
-             * as the address is used in the distinct value calculation
-             */
-            if (!isKnown)
-            {
-                lock (_locker)
+                tx.GasBottleneck = tx.CalculateEffectiveGasPrice(eip1559Enabled, _headInfo.CurrentBaseFee);
+                bool inserted = _transactions.TryInsert(tx.Hash, tx, out Transaction? removed);
+                if (inserted)
                 {
-                    tx.GasBottleneck = tx.CalculateEffectiveGasPrice(_specProvider.GetSpec().IsEip1559Enabled, CurrentBaseFee);
-                    bool inserted = _transactions.TryInsert(tx.Hash, tx, out Transaction? removed);
-                    if (inserted)
+                    _transactions.UpdateGroup(tx.SenderAddress!, UpdateBucketWithAddedTransaction);
+                    Metrics.PendingTransactionsAdded++;
+                    if (tx.IsEip1559) { Metrics.Pending1559TransactionsAdded++; }
+                    
+                    if (removed != null)
                     {
-                        _transactions.UpdateGroup(tx.SenderAddress, UpdateBucketWithAddedTransaction);
-                        ForgetHashOfRemovedTransaction(removed?.Hash);
+                        // transaction which was on last position in sorted TxPool and was deleted to give
+                        // a place for a newly added tx (with higher priority) is now removed from hashCache
+                        // to give it opportunity to come back to TxPool in the future, when fees drops
+                        _hashCache.Delete(removed.Hash!);
+                        Metrics.PendingTransactionsEvicted++;
                     }
-                    isKnown |= !inserted;
+                }
+                else
+                {
+                    return AddTxResult.FeeTooLowToCompete;
                 }
             }
 
-            if (!isKnown)
-            {
-                isKnown |= !isReorg && (_txStorage.Get(tx.Hash) is not null);
-            }
+            _broadcaster.BroadcastOnce(tx);
+            if (isPersistentBroadcast) { _broadcaster.StartBroadcast(tx); }
 
-            if (isKnown)
-            {
-                // If transaction is a bit older and already known then it may be stored in the persistent storage.
-                Metrics.PendingTransactionsKnown++;
-                if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, already known.");
-                return AddTxResult.AlreadyKnown;
-            }
-            
-            HandleOwnTransaction(tx, isPersistentBroadcast);
-            NotifySelectedPeers(tx);
-            StoreTx(tx);
+            _hashCache.SetLongTerm(tx.Hash!);
             NewPending?.Invoke(this, new TxEventArgs(tx));
             return AddTxResult.Added;
         }
 
-        private void ForgetHashOfRemovedTransaction(Keccak? hash)
-        {
-            if (hash is not null)
-            {
-                // transaction which was on last position in sorted TxPool and was deleted to give
-                // a place for a newly added tx (with higher priority) is now removed from hashCache
-                // to give it opportunity to come back to TxPool in the future, when fees drops
-                _hashCache.Delete(hash);
-            }
-        }
-
-        private IEnumerable<(Transaction Tx, Action<Transaction> Change)> UpdateBucketWithAddedTransaction(Address address, ICollection<Transaction> transactions)
+        private IEnumerable<(Transaction Tx, Action<Transaction> Change)> UpdateBucketWithAddedTransaction(
+            Address address, ICollection<Transaction> transactions)
         {
             if (transactions.Count != 0)
             {
-                Account? account = _stateProvider.GetAccount(address);
-                UInt256 balance = account?.Balance ?? UInt256.Zero;
-                long currentNonce = (long)(account?.Nonce ?? UInt256.Zero);
+                Account account = _accounts.GetAccount(address);
+                UInt256 balance = account.Balance;
+                long currentNonce = (long)(account.Nonce);
 
                 foreach (var changedTx in UpdateGasBottleneck(transactions, currentNonce, balance))
                 {
@@ -449,11 +307,12 @@ namespace Nethermind.TxPool
             }
         }
 
-        private IEnumerable<(Transaction Tx, Action<Transaction> Change)> UpdateGasBottleneck(ICollection<Transaction> transactions, long currentNonce, UInt256 balance)
+        private IEnumerable<(Transaction Tx, Action<Transaction> Change)> UpdateGasBottleneck(
+            ICollection<Transaction> transactions, long currentNonce, UInt256 balance)
         {
             UInt256 previousTxBottleneck = UInt256.MaxValue;
             int i = 0;
-            
+
             foreach (Transaction tx in transactions)
             {
                 UInt256 gasBottleneck = 0;
@@ -469,12 +328,15 @@ namespace Nethermind.TxPool
                 {
                     if (previousTxBottleneck == UInt256.MaxValue)
                     {
-                        previousTxBottleneck = tx.CalculatePayableGasPrice(_specProvider.GetSpec().IsEip1559Enabled, CurrentBaseFee, balance);
+                        previousTxBottleneck = tx.CalculateAffordableGasPrice(_specProvider.GetSpec().IsEip1559Enabled,
+                            _headInfo.CurrentBaseFee, balance);
                     }
 
                     if (tx.Nonce == currentNonce + i)
                     {
-                        UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(_specProvider.GetSpec().IsEip1559Enabled, CurrentBaseFee);
+                        UInt256 effectiveGasPrice =
+                            tx.CalculateEffectiveGasPrice(_specProvider.GetSpec().IsEip1559Enabled,
+                                _headInfo.CurrentBaseFee);
                         gasBottleneck = UInt256.Min(effectiveGasPrice, previousTxBottleneck);
                     }
 
@@ -482,7 +344,7 @@ namespace Nethermind.TxPool
                     {
                         yield return (tx, SetGasBottleneckChange(gasBottleneck));
                     }
-                
+
                     previousTxBottleneck = gasBottleneck;
                     i++;
                 }
@@ -502,16 +364,17 @@ namespace Nethermind.TxPool
             }
         }
 
-        private IEnumerable<(Transaction Tx, Action<Transaction> Change)> UpdateBucket(Address address, ICollection<Transaction> transactions)
+        private IEnumerable<(Transaction Tx, Action<Transaction> Change)> UpdateBucket(Address address,
+            ICollection<Transaction> transactions)
         {
             if (transactions.Count != 0)
             {
-                Account? account = _stateProvider.GetAccount(address);
-                UInt256 balance = account?.Balance ?? UInt256.Zero;
-                long currentNonce = (long)(account?.Nonce ?? UInt256.Zero);
+                Account? account = _accounts.GetAccount(address);
+                UInt256 balance = account.Balance;
+                long currentNonce = (long)(account.Nonce);
                 Transaction tx = transactions.FirstOrDefault(t => t.Nonce == currentNonce);
                 bool shouldBeDumped = false;
-                
+
                 if (tx is null)
                 {
                     shouldBeDumped = true;
@@ -526,7 +389,7 @@ namespace Nethermind.TxPool
                     shouldBeDumped |= UInt256.AddOverflow(cost, tx.Value, out cost);
                     shouldBeDumped |= balance < cost;
                 }
-                
+
                 if (shouldBeDumped)
                 {
                     foreach (Transaction transaction in transactions)
@@ -544,69 +407,21 @@ namespace Nethermind.TxPool
             }
         }
 
-        private void HandleOwnTransaction(Transaction tx, bool isOwn)
-        {
-            if (isOwn)
-            {
-                lock (_locker)
-                {
-                    _persistentBroadcastTransactions.TryInsert(tx.Hash, tx);
-                }
-
-                _ownTimer.Enabled = true;
-                if (_logger.IsDebug) _logger.Debug($"Broadcasting own transaction {tx.Hash} to {_peers.Count} peers");
-                if (_logger.IsTrace) _logger.Trace($"Broadcasting transaction {tx.ToString("  ")}");
-            }
-        }
-
-        private bool CheckOwnTransactionAlreadyUsed(Transaction transaction, UInt256 currentNonce)
-        {
-            Address address = transaction.SenderAddress;
-            lock (_locker)
-            {
-                if (!_nonces.TryGetValue(address, out var addressNonces))
-                {
-                    addressNonces = new AddressNonces(currentNonce);
-                    _nonces.TryAdd(address, addressNonces);
-                }
-
-                if (!addressNonces.Nonces.TryGetValue(transaction.Nonce, out var nonce))
-                {
-                    nonce = new Nonce(transaction.Nonce);
-                    addressNonces.Nonces.TryAdd(transaction.Nonce, new Nonce(transaction.Nonce));
-                }
-
-                if (!(nonce.TransactionHash is null && nonce.TransactionHash != transaction.Hash))
-                {
-                    // Nonce conflict
-                    if (_logger.IsDebug)
-                        _logger.Debug(
-                            $"Nonce: {nonce.Value} was already used in transaction: '{nonce.TransactionHash}' and cannot be reused by transaction: '{transaction.Hash}'.");
-
-                    return true;
-                }
-
-                nonce.SetTransactionHash(transaction.Hash!);
-            }
-
-            return false;
-        }
-        
         public bool RemoveTransaction(Keccak? hash)
         {
             if (hash is null)
             {
                 return false;
             }
-            
-            bool isKnown;
+
+            bool hasBeenRemoved;
             lock (_locker)
             {
-                isKnown = _transactions.TryRemove(hash, out Transaction transaction);
-                if (isKnown)
+                hasBeenRemoved = _transactions.TryRemove(hash, out Transaction transaction);
+                if (hasBeenRemoved)
                 {
                     Address address = transaction.SenderAddress;
-                    if (_nonces.TryGetValue(address, out AddressNonces addressNonces))
+                    if (_nonces.TryGetValue(address!, out AddressNonces addressNonces))
                     {
                         addressNonces.Nonces.TryRemove(transaction.Nonce, out _);
                         if (addressNonces.Nonces.IsEmpty)
@@ -614,30 +429,16 @@ namespace Nethermind.TxPool
                             _nonces.Remove(address, out _);
                         }
                     }
-                    
+
                     RemovedPending?.Invoke(this, new TxEventArgs(transaction));
                 }
-                
-                if (_persistentBroadcastTransactions.Count != 0)
-                {
-                    bool ownIncluded = _persistentBroadcastTransactions.TryRemove(hash, out Transaction _);
-                    if (ownIncluded)
-                    {
-                        if (_logger.IsInfo)
-                            _logger.Trace($"Transaction {hash} created on this node was included in the block");
-                    }
-                }
+
+                _broadcaster.StopBroadcast(hash);
             }
 
-            _txStorage.Delete(hash);
-            if (_logger.IsTrace) _logger.Trace($"Deleted a transaction: {hash}");
-            
-            return isKnown;
-        }
+            if (_logger.IsTrace) _logger.Trace($"Removed a transaction: {hash}");
 
-        public bool IsKnown(Keccak hash)
-        {
-            return _hashCache.Get(hash);
+            return hasBeenRemoved;
         }
 
         public bool TryGetPendingTransaction(Keccak hash, out Transaction transaction)
@@ -661,173 +462,40 @@ namespace Nethermind.TxPool
         // TODO: Ensure that nonce is always valid in case of sending own transactions from different nodes.
         public UInt256 ReserveOwnTransactionNonce(Address address)
         {
-            lock (_locker)
+            UInt256 currentNonce = 0;
+            _nonces.AddOrUpdate(address, a =>
             {
-                if (!_nonces.TryGetValue(address, out var addressNonces))
-                {
-                    var currentNonce = _stateProvider.GetNonce(address);
-                    addressNonces = new AddressNonces(currentNonce);
-                    _nonces.TryAdd(address, addressNonces);
+                currentNonce = _accounts.GetAccount(address).Nonce;
+                return new AddressNonces(currentNonce);
+            }, (a, n) =>
+            {
+                currentNonce = n.ReserveNonce().Value;
+                return n;
+            });
 
-                    return currentNonce;
-                }
-
-                Nonce incrementedNonce = addressNonces.ReserveNonce();
-
-                return incrementedNonce.Value;
-            }
+            return currentNonce;
         }
 
-        public void Dispose()
-        {
-            _ownTimer.Dispose();
-            _chainHeadInfoProvider.HeadChanged -= OnHeadChange;
-        }
+        public bool IsKnown(Keccak hash) => _hashCache.Get(hash);
 
         public event EventHandler<TxEventArgs>? NewDiscovered;
         public event EventHandler<TxEventArgs>? NewPending;
         public event EventHandler<TxEventArgs>? RemovedPending;
+
+        public void Dispose()
+        {
+            _broadcaster.Dispose();
+            _headInfo.HeadChanged -= OnHeadChange;
+        }
         
-        private void Notify(ITxPoolPeer peer, Transaction tx, bool isPriority)
+        /// <summary>
+        /// This method is used just for nice logging features in the console.
+        /// </summary>
+        private static void AddNodeInfoEntryForTxPool()
         {
-            try
-            {
-                if (peer.SendNewTransaction(tx, isPriority))
-                {
-                    Metrics.PendingTransactionsSent++;
-                    if (_logger.IsTrace) _logger.Trace($"Notified {peer} about a transaction: {tx.Hash}");
-                }
-            }
-            catch (Exception e)
-            {
-                if (_logger.IsError) _logger.Error($"Failed to notify {peer} about a transaction: {tx.Hash}", e);
-            }
-        }
-
-        private void NotifyAllPeers(Transaction tx)
-        {
-            Task.Run(() =>
-            {
-                foreach ((_, ITxPoolPeer peer) in _peers)
-                {
-                    Notify(peer, tx, true);
-                }
-            });
-        }
-
-        private void NotifySelectedPeers(Transaction tx)
-        {
-            Task.Run(() =>
-            {
-                foreach ((_, ITxPoolPeer peer) in _peers)
-                {
-                    if (tx.DeliveredBy == null)
-                    {
-                        Notify(peer, tx, true);
-                        continue;
-                    }
-
-                    if (tx.DeliveredBy.Equals(peer.Id))
-                    {
-                        continue;
-                    }
-
-                    if (_txPoolConfig.PeerNotificationThreshold < Random.Value.Next(1, 100))
-                    {
-                        continue;
-                    }
-
-                    Notify(peer, tx, 3 < Random.Value.Next(1, 10));
-                }
-            });
-        }
-
-        private void StoreTx(Transaction tx)
-        {
-            _txStorage.Add(tx);
-            if (_logger.IsTrace) _logger.Trace($"Added a transaction: {tx.Hash}");
-        }
-
-        private void OwnTimerOnElapsed(object sender, ElapsedEventArgs e)
-        {
-            if (_persistentBroadcastTransactions.Count > 0)
-            {
-                foreach (Transaction tx in _persistentBroadcastTransactions.GetSnapshot())
-                {
-                    NotifyAllPeers(tx);
-                }
-
-                // we only reenable the timer if there are any transaction pending
-                // otherwise adding own transaction will reenable the timer anyway
-                _ownTimer.Enabled = true;
-            }
-        }
-
-        private class AddressNonces
-        {
-            private Nonce _currentNonce;
-
-            public ConcurrentDictionary<UInt256, Nonce> Nonces { get; } = new();
-
-            public AddressNonces(UInt256 startNonce)
-            {
-                _currentNonce = new Nonce(startNonce);
-                Nonces.TryAdd(_currentNonce.Value, _currentNonce);
-            }
-
-            public Nonce ReserveNonce()
-            {
-                var nonce = _currentNonce.Increment();
-                Interlocked.Exchange(ref _currentNonce, nonce);
-                Nonces.TryAdd(nonce.Value, nonce);
-
-                return nonce;
-            }
-        }
-
-        private class Nonce
-        {
-            public UInt256 Value { get; }
-            public Keccak? TransactionHash { get; private set; }
-
-            public Nonce(UInt256 value)
-            {
-                Value = value;
-            }
-
-            public void SetTransactionHash(Keccak transactionHash)
-            {
-                TransactionHash = transactionHash;
-            }
-
-            public Nonce Increment() => new(Value + 1);
-        }
-
-        private class PeerInfo : ITxPoolPeer
-        {
-            private ITxPoolPeer Peer { get; }
-
-            private LruKeyCache<Keccak> NotifiedTransactions { get; } = new(MemoryAllowance.MemPoolSize, "notifiedTransactions");
-
-            public PeerInfo(ITxPoolPeer peer)
-            {
-                Peer = peer;
-            }
-
-            public PublicKey Id => Peer.Id;
-
-            public bool SendNewTransaction(Transaction tx, bool isPriority)
-            {
-                if (!NotifiedTransactions.Get(tx.Hash))
-                {
-                    NotifiedTransactions.Set(tx.Hash);
-                    return Peer.SendNewTransaction(tx, isPriority);                     
-                }
-
-                return false;
-            }
-
-            public override string ToString() => Peer.Enode;
+            ThisNodeInfo.AddInfo("Mem est tx   :",
+                $"{(LruCache<Keccak, object>.CalculateMemorySize(32, MemoryAllowance.TxHashCacheSize) + LruCache<Keccak, Transaction>.CalculateMemorySize(4096, MemoryAllowance.MemPoolSize)) / 1000 / 1000}MB"
+                    .PadLeft(8));
         }
     }
 }

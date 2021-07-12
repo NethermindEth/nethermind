@@ -365,7 +365,7 @@ namespace Nethermind.Consensus.Clique
                 Address.Zero,
                 1,
                 parentBlock.Number + 1,
-                Eip1559GasLimitAdjuster.AdjustGasLimit(spec, _gasLimitCalculator.GetGasLimit(parentBlock.Header), parentHeader.Number + 1),
+                _gasLimitCalculator.GetGasLimit(parentBlock.Header),
                 timestamp > parentBlock.Timestamp ? timestamp : parentBlock.Timestamp + 1,
                 Array.Empty<byte>());
 
@@ -438,7 +438,7 @@ namespace Nethermind.Consensus.Clique
             _stateProvider.StateRoot = parentHeader.StateRoot;
             
             IEnumerable<Transaction> selectedTxs = _txSource.GetTransactions(parentBlock.Header, header.GasLimit);
-            Block block = new(header, selectedTxs, Array.Empty<BlockHeader>());
+            Block block = new BlockToProduce(header, selectedTxs, Array.Empty<BlockHeader>());
             header.TxRoot = new TxTrie(block.Transactions).RootHash;
             block.Header.Author = _sealer.Address;
             return block;

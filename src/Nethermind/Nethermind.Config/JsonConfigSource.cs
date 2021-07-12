@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using Newtonsoft.Json.Linq;
+using System.Linq;
 
 namespace Nethermind.Config
 {
@@ -143,6 +144,11 @@ namespace Nethermind.Config
         {
             bool isSet = _values.ContainsKey(category) && _values[category].ContainsKey(name);
             return (isSet, isSet ? _values[category][name] : null);
+        }
+
+        public IEnumerable<(string Category, string Name)> GetConfigKeys()
+        {
+            return _values.SelectMany(m => m.Value.Keys.Select(n => (m.Key, n)));
         }
     }
 }

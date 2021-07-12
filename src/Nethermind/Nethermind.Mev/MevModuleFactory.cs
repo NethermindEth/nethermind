@@ -65,7 +65,6 @@ namespace Nethermind.Mev
         public override IMevRpcModule Create()
         {
             return new MevRpcModule(
-                _mevConfig,
                 _jsonRpcConfig, 
                 _bundlePool,
                 _blockTree,

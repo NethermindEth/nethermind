@@ -16,6 +16,7 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using MathGmp.Native;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
@@ -29,7 +30,7 @@ namespace Nethermind.JsonRpc.Data
     {
         public TransactionForRpc(Transaction transaction) : this(null, null, null, transaction) { }
 
-        public TransactionForRpc(Keccak? blockHash, long? blockNumber, int? txIndex, Transaction transaction)
+        public TransactionForRpc(Keccak? blockHash, long? blockNumber, int? txIndex, Transaction transaction, UInt256? baseFee = null)
         {
             Hash = transaction.Hash;
             Nonce = transaction.Nonce;
@@ -44,9 +45,13 @@ namespace Nethermind.JsonRpc.Data
             Input = Data = transaction.Data;
             if (transaction.IsEip1559)
             {
+                GasPrice = baseFee != null
+                    ? transaction.CalculateEffectiveGasPrice(true, baseFee.Value)
+                    : transaction.MaxFeePerGas;
                 MaxFeePerGas = transaction.MaxFeePerGas;
                 MaxPriorityFeePerGas = transaction.MaxPriorityFeePerGas;
             }
+            ChainId = transaction.ChainId;
             Type = transaction.Type;
             AccessList = transaction.AccessList is null ? null : AccessListItemForRpc.FromAccessList(transaction.AccessList);
 
@@ -55,7 +60,7 @@ namespace Nethermind.JsonRpc.Data
             {
                 R = new UInt256(signature.R, true);
                 S = new UInt256(signature.S, true);
-                V = (UInt256?)signature.V;
+                V = transaction.Type == TxType.Legacy ? (UInt256?)signature.V : (UInt256?)signature.RecoveryId;
             }
         }
 
@@ -92,7 +97,9 @@ namespace Nethermind.JsonRpc.Data
 
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public byte[]? Input { get; set; }
-
+        
+        public UInt256? ChainId { get; set; }
+        
         public TxType Type { get; set; }
         
         public AccessListItemForRpc[]? AccessList { get; set; }

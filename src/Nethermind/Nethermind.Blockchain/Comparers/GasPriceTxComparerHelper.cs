@@ -27,13 +27,6 @@ namespace Nethermind.Blockchain.Comparers
             if (ReferenceEquals(x, y)) return 0;
             if (ReferenceEquals(null, y)) return 1;
             if (ReferenceEquals(null, x)) return -1;
-            
-            // if gas bottleneck was calculated, it's highest priority for sorting
-            // if not, different method of sorting by gas price is needed
-            if (x.GasBottleneck != 0 || y.GasBottleneck != 0)
-            {
-                return y.GasBottleneck.CompareTo(x.GasBottleneck);
-            }
 
             // EIP1559 changed the way we're sorting transactions. The transaction with a higher miner tip should go first
             if (isEip1559Enabled)

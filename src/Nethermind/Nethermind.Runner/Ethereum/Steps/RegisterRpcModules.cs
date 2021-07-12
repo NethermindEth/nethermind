@@ -166,7 +166,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             
             if (_api.TxPoolInfoProvider == null) throw new StepDependencyException(nameof(_api.TxPoolInfoProvider));
 
-            TxPoolRpcModule txPoolRpcModule = new(_api.BlockTree, _api.TxPoolInfoProvider, _api.LogManager);
+            TxPoolRpcModule txPoolRpcModule = new(_api.TxPoolInfoProvider, _api.LogManager);
             _api.RpcModuleProvider.RegisterSingle<ITxPoolRpcModule>(txPoolRpcModule);
             
             if (_api.SyncServer == null) throw new StepDependencyException(nameof(_api.SyncServer));

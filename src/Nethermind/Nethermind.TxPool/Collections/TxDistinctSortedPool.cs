@@ -21,6 +21,7 @@ using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.TxPool.Comparison;
 
 namespace Nethermind.TxPool.Collections
 {
@@ -33,9 +34,10 @@ namespace Nethermind.TxPool.Collections
 
         protected override IComparer<Transaction> GetUniqueComparer(IComparer<Transaction> comparer) => comparer.GetPoolUniqueTxComparer();
         protected override IComparer<Transaction> GetGroupComparer(IComparer<Transaction> comparer) => comparer.GetPoolUniqueTxComparerByNonce();
-
-        protected override Address? MapToGroup(Transaction value) => value.MapTxToGroup();
+        protected override IComparer<Transaction> GetReplacementComparer(IComparer<Transaction> comparer) => comparer.GetReplacementComparer();
         
+        protected override Address? MapToGroup(Transaction value) => value.MapTxToGroup();
+
         [MethodImpl(MethodImplOptions.Synchronized)]
         public void UpdatePool(Func<Address, ICollection<Transaction>, IEnumerable<(Transaction Tx, Action<Transaction> Change)>> changingElements)
         {

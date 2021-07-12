@@ -42,7 +42,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Api;
 using Nethermind.TxPool;
-using Nethermind.TxPool.Storages;
+using Nethermind.TxPool.Comparison;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
@@ -88,7 +88,6 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.TransactionProcessor,
                 _api.StateProvider,
                 _api.StorageProvider,
-                _api.TxPool,
                 _api.ReceiptStorage,
                 _api.LogManager,
                 _api.BlockTree,
@@ -132,24 +131,21 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.LogManager, 
                 chainSpecAuRa.TwoThirdsMajorityTransition);
             
-            IAuRaValidator validator = new AuRaValidatorFactory(
+            IAuRaValidator validator = new AuRaValidatorFactory(_api.AbiEncoder, 
                     _api.StateProvider, 
-                    _api.AbiEncoder, 
                     _api.TransactionProcessor, 
-                    readOnlyTxProcessorSource, 
                     _api.BlockTree, 
-                    _api.ReceiptStorage, 
-                    _api.ValidatorStore,
+                    readOnlyTxProcessorSource,
+                    _api.ReceiptStorage,
+                    _api.ValidatorStore, 
                     _api.FinalizationManager,
-                    new TxPoolSender(_api.TxPool, new NonceReservingTxSealer(_api.EngineSigner, _api.Timestamper, _api.TxPool)), 
+                    new TxPoolSender(_api.TxPool, new NonceReservingTxSealer(_api.EngineSigner, _api.Timestamper, _api.TxPool)),
                     _api.TxPool,
                     NethermindApi.Config<IMiningConfig>(),
                     _api.LogManager,
                     _api.EngineSigner,
                     _api.SpecProvider,
-                    _api.ReportingContractValidatorCache,
-                    chainSpecAuRa.PosdaoTransition,
-                    false)
+                    _api.ReportingContractValidatorCache, chainSpecAuRa.PosdaoTransition, false)
                 .CreateValidatorProcessor(chainSpecAuRa.Validators, _api.BlockTree.Head?.Header);
 
             if (validator is IDisposable disposableValidator)
@@ -259,7 +255,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             return CreateTxPoolTxComparer();
         }
 
-        protected override TxPool.TxPool CreateTxPool(PersistentTxStorage txStorage)
+        protected override TxPool.TxPool CreateTxPool()
         {
             // This has to be different object than the _processingReadOnlyTransactionProcessorSource as this is in separate thread
             var txPoolReadOnlyTransactionProcessorSource = CreateReadOnlyTransactionProcessorSource();
@@ -276,15 +272,14 @@ namespace Nethermind.Runner.Ethereum.Steps
                 minGasPricesContractDataStore,
                 _api.SpecProvider);
             
-            return new FilteredTxPool(
-                txStorage,
+            return new TxPool.TxPool(
                 _api.EthereumEcdsa,
                 new ChainHeadInfoProvider(_api.SpecProvider, _api.BlockTree, _api.StateReader),
                 NethermindApi.Config<ITxPoolConfig>(),
                 _api.TxValidator,
                 _api.LogManager,
                 CreateTxPoolTxComparer(txPriorityContract, localDataSource),
-                new TxFilterAdapter(_api.BlockTree, txPoolFilter));
+                new TxFilterAdapter(_api.BlockTree, txPoolFilter, _api.LogManager));
         }
 
         private void ReportTxPriorityRules(TxPriorityContract? txPriorityContract, TxPriorityContract.LocalDataSource? localDataSource)

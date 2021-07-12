@@ -26,7 +26,6 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
-using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
@@ -34,6 +33,8 @@ using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.State.Proofs;
+using Nethermind.TxPool;
+using Nethermind.TxPool.Comparison;
 
 namespace Nethermind.Blockchain.Processing
 {
@@ -235,17 +236,26 @@ namespace Nethermind.Blockchain.Processing
             if (transactionsChangeable)
             {
                 int i = 0;
-                LinkedHashSet<Transaction> transactionsForBlock = new();
+                LinkedHashSet<Transaction> transactionsForBlock = new(ByHashTxComparer.Instance);
                 foreach (Transaction currentTx in transactions)
                 {
-                    // No more gas available in block
-                    if (currentTx.GasLimit > block.Header.GasLimit - block.GasUsed)
+                    if (!transactionsForBlock.Contains(currentTx))
                     {
-                        break;
-                    }
+	                    TxAction txAction = CheckTx(currentTx, block).Action;
 
-                    ProcessTransaction(currentTx, i++);
-                    transactionsForBlock.Add(currentTx);
+	                    if (txAction == TxAction.Skip)
+	                    {
+	                        continue;
+	                    }
+                    
+	                    if (txAction == TxAction.Stop)
+	                    {
+	                        break;
+	                    }
+
+	                    ProcessTransaction(currentTx, i++);
+	                    transactionsForBlock.Add(currentTx);
+					}
                 }
                 
                 block.TrySetTransactions(transactionsForBlock.ToArray());
@@ -260,6 +270,8 @@ namespace Nethermind.Blockchain.Processing
                     ProcessTransaction(currentTx, i);
                 }
             }
+
+            _receiptsTracer.EndBlockTrace();
             
             return _receiptsTracer.TxReceipts!;
         }
@@ -414,6 +426,23 @@ namespace Nethermind.Blockchain.Processing
                     _stateProvider.SubtractFromBalance(daoAccount, balance, Dao.Instance);
                 }
             }
+        }
+        
+        // This is going to be moved to separate strategies in MEV work
+        protected virtual (TxAction Action, string Reason) CheckTx(Transaction currentTx, Block block)
+        {
+            // No more gas available in block
+            long gasRemaining = block.Header.GasLimit - block.GasUsed;
+            return currentTx.GasLimit > gasRemaining 
+                ? (TxAction.Stop, "Not enough gas in block") 
+                : (TxAction.Add, string.Empty);
+        }
+
+        protected enum TxAction
+        {
+            Add,
+            Skip,
+            Stop
         }
     }
 }

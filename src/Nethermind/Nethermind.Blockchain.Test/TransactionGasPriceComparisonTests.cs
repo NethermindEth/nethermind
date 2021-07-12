@@ -128,10 +128,10 @@ namespace Nethermind.Blockchain.Test
         private void Assert1559Transactions(IComparer<Transaction> comparer, int feeCapX, int gasPremiumX, int feeCapY, int gasPremiumY, int expectedResult)
         {
             Transaction x = Build.A.Transaction.WithSenderAddress(TestItem.AddressA)
-                .WithFeeCap((UInt256)feeCapX).WithMaxPriorityFeePerGas((UInt256)gasPremiumX)
+                .WithMaxFeePerGas((UInt256)feeCapX).WithMaxPriorityFeePerGas((UInt256)gasPremiumX)
                 .WithType(TxType.EIP1559).TestObject;
             Transaction y = Build.A.Transaction.WithSenderAddress(TestItem.AddressA)
-                .WithFeeCap((UInt256)feeCapY).WithMaxPriorityFeePerGas((UInt256)gasPremiumY)
+                .WithMaxFeePerGas((UInt256)feeCapY).WithMaxPriorityFeePerGas((UInt256)gasPremiumY)
                 .WithType(TxType.EIP1559).TestObject;
             int result = comparer.Compare(x, y);
             Assert.AreEqual(expectedResult, result);
