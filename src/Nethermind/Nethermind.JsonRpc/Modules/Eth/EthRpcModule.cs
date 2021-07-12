@@ -406,11 +406,12 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public Task<ResultWrapper<TransactionForRpc>> eth_getTransactionByHash(Keccak transactionHash)
         {
+            UInt256? baseFee = null;
             _txPoolBridge.TryGetPendingTransaction(transactionHash, out Transaction transaction);
             TxReceipt receipt = null; // note that if transaction is pending then for sure no receipt is known
             if (transaction == null)
             {
-                (receipt, transaction) = _blockchainBridge.GetTransaction(transactionHash);
+                (receipt, transaction, baseFee) = _blockchainBridge.GetTransaction(transactionHash);
                 if (transaction == null)
                 {
                     return Task.FromResult(ResultWrapper<TransactionForRpc>.Success(null));
@@ -419,7 +420,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             RecoverTxSenderIfNeeded(transaction);
             TransactionForRpc transactionModel =
-                new(receipt?.BlockHash, receipt?.BlockNumber, receipt?.Index, transaction);
+                new(receipt?.BlockHash, receipt?.BlockNumber, receipt?.Index, transaction, baseFee);
             if (_logger.IsTrace)
                 _logger.Trace($"eth_getTransactionByHash request {transactionHash}, result: {transactionModel.Hash}");
             return Task.FromResult(ResultWrapper<TransactionForRpc>.Success(transactionModel));
@@ -459,7 +460,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             Transaction transaction = block.Transactions[(int)positionIndex];
             RecoverTxSenderIfNeeded(transaction);
 
-            TransactionForRpc transactionModel = new(block.Hash, block.Number, (int)positionIndex, transaction);
+            TransactionForRpc transactionModel = new(block.Hash, block.Number, (int)positionIndex, transaction, block.BaseFeePerGas);
 
             return ResultWrapper<TransactionForRpc>.Success(transactionModel);
         }
@@ -482,7 +483,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             Transaction transaction = block.Transactions[(int)positionIndex];
             RecoverTxSenderIfNeeded(transaction);
 
-            TransactionForRpc transactionModel = new(block.Hash, block.Number, (int)positionIndex, transaction);
+            TransactionForRpc transactionModel = new(block.Hash, block.Number, (int)positionIndex, transaction, block.BaseFeePerGas);
 
             if (_logger.IsDebug)
                 _logger.Debug(

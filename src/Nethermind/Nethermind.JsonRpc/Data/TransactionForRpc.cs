@@ -16,6 +16,7 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using MathGmp.Native;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
@@ -29,7 +30,7 @@ namespace Nethermind.JsonRpc.Data
     {
         public TransactionForRpc(Transaction transaction) : this(null, null, null, transaction) { }
 
-        public TransactionForRpc(Keccak? blockHash, long? blockNumber, int? txIndex, Transaction transaction)
+        public TransactionForRpc(Keccak? blockHash, long? blockNumber, int? txIndex, Transaction transaction, UInt256? baseFee = null)
         {
             Hash = transaction.Hash;
             Nonce = transaction.Nonce;
@@ -44,6 +45,9 @@ namespace Nethermind.JsonRpc.Data
             Input = Data = transaction.Data;
             if (transaction.IsEip1559)
             {
+                GasPrice = baseFee != null
+                    ? transaction.CalculateEffectiveGasPrice(true, baseFee.Value)
+                    : transaction.MaxFeePerGas;
                 MaxFeePerGas = transaction.MaxFeePerGas;
                 MaxPriorityFeePerGas = transaction.MaxPriorityFeePerGas;
             }
