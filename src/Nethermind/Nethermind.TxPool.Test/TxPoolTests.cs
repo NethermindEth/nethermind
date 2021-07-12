@@ -851,10 +851,53 @@ namespace Nethermind.TxPool.Test
         [TestCase(1_000_000_000,1_100_000_000,true)]
         public void should_replace_tx_with_same_sender_and_nonce_only_if_new_fee_is_at_least_10_percent_higher_than_old(int oldGasPrice, int newGasPrice, bool replaced)
         {
-            _txPool = CreatePool();
+            var specProvider = Substitute.For<ISpecProvider>();
+            specProvider.GetSpec(Arg.Any<long>()).Returns(London.Instance);
+            _txPool = CreatePool(null, specProvider);
             Transaction oldTx = Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(0).WithGasPrice((UInt256)oldGasPrice).SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             Transaction newTx = Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(0).WithGasPrice((UInt256)newGasPrice).SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
-            EnsureSenderBalance(newTx.GasPrice > oldTx.GasPrice ? newTx : oldTx);
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            _txPool.SubmitTx(oldTx, TxHandlingOptions.PersistentBroadcast);
+            _txPool.SubmitTx(newTx, TxHandlingOptions.PersistentBroadcast);
+            
+            _txPool.GetPendingTransactions().Length.Should().Be(1);
+            _txPool.GetPendingTransactions().First().Should().BeEquivalentTo(replaced ? newTx : oldTx);
+        }
+        
+        [TestCase(0, 0, 0, 0, false)]
+        [TestCase(0, 1, 0, 1, true)]
+        [TestCase(1, 2, 1, 1, false)]
+        [TestCase(1, 1, 1, 2, false)]
+        [TestCase(1, 2, 1, 2, true)]
+        [TestCase(10, 11, 10, 11, true)]
+        [TestCase(100, 0, 100, 100, false)]
+        [TestCase(100, 80, 100, 80, false)]
+        [TestCase(100, 109, 100, 120, false)]
+        [TestCase(100, 120, 100, 109, false)]
+        [TestCase(100, 110, 100, 110, true)]
+        [TestCase(1_000_000_000, 1_099_999_999, 1_000_000_000, 1_099_999_999, false)]
+        [TestCase(1_000_000_000, 1_100_000_000, 1_000_000_000, 1_100_000_000, true)]
+        public void should_replace_1559tx_with_same_sender_and_nonce_only_if_both_new_maxPriorityFeePerGas_and_new_maxFeePerGas_are_at_least_10_percent_higher_than_old(int oldMaxFeePerGas, int newMaxFeePerGas, int oldMaxPriorityFeePerGas, int newMaxPriorityFeePerGas, bool replaced)
+        {
+            var specProvider = Substitute.For<ISpecProvider>();
+            specProvider.GetSpec(Arg.Any<long>()).Returns(London.Instance);
+            _txPool = CreatePool(null, specProvider);
+            Transaction oldTx = Build.A.Transaction
+                .WithSenderAddress(TestItem.AddressA)
+                .WithNonce(0)
+                .WithType(TxType.EIP1559)
+                .WithMaxFeePerGas((UInt256)oldMaxFeePerGas)
+                .WithMaxPriorityFeePerGas((UInt256)oldMaxPriorityFeePerGas)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            Transaction newTx = Build.A.Transaction
+                .WithSenderAddress(TestItem.AddressA)
+                .WithNonce(0)
+                .WithType(TxType.EIP1559)
+                .WithMaxFeePerGas((UInt256)newMaxFeePerGas)
+                .WithMaxPriorityFeePerGas((UInt256)newMaxPriorityFeePerGas)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
             _txPool.SubmitTx(oldTx, TxHandlingOptions.PersistentBroadcast);
             _txPool.SubmitTx(newTx, TxHandlingOptions.PersistentBroadcast);

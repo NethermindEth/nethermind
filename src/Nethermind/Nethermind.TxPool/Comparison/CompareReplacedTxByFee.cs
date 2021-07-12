@@ -39,17 +39,20 @@ namespace Nethermind.TxPool.Comparison
             if (ReferenceEquals(x, y)) return 0;
             if (ReferenceEquals(null, y)) return 1;
             if (ReferenceEquals(null, x)) return -1;
-            
-            // if gas bottleneck was calculated, it's highest priority for sorting
-            // if not, different method of sorting by gas price is needed
-            if (x.GasBottleneck != 0 || y.GasBottleneck != 0)
+
+            if (!x.IsEip1559 && !y.IsEip1559)
             {
-                y.GasBottleneck.Divide(PartOfFeeRequiredToIncrease, out UInt256 bumpGasBottleneck);
-                return (y.GasBottleneck + bumpGasBottleneck).CompareTo(x.GasBottleneck);
+                y.GasPrice.Divide(PartOfFeeRequiredToIncrease, out UInt256 bumpGasPrice);
+                return (y.GasPrice + bumpGasPrice).CompareTo(x.GasPrice);
             }
             
-            y.GasPrice.Divide(10, out UInt256 bumpGasPrice);
-            return (y.GasPrice + bumpGasPrice).CompareTo(x.GasPrice);
+            /* MaxFeePerGas for legacy will be GasPrice and MaxPriorityFeePerGas will be GasPrice too
+            so we can compare legacy txs without any problems */
+            y.MaxFeePerGas.Divide(PartOfFeeRequiredToIncrease, out UInt256 bumpMaxFeePerGas);
+            if (y.MaxFeePerGas + bumpMaxFeePerGas > x.MaxFeePerGas) return 1;
+
+            y.MaxPriorityFeePerGas.Divide(PartOfFeeRequiredToIncrease, out UInt256 bumpMaxPriorityFeePerGas);
+            return (y.MaxPriorityFeePerGas + bumpMaxPriorityFeePerGas).CompareTo(x.MaxPriorityFeePerGas);
         }
 
     }
