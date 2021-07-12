@@ -1,9 +1,9 @@
-FROM mcr.microsoft.com/dotnet/core/sdk:3.1 AS build
+FROM mcr.microsoft.com/dotnet/core/sdk@sha256:93683294b914c3370bf7871d9397812452f4f05af7bfec854af149b36366e31c AS build
 COPY . .
 RUN git submodule update --init src/Dirichlet src/int256 src/rocksdb-sharp src/Math.Gmp.Native
 RUN dotnet publish src/Nethermind/Nethermind.DataMarketplace.Consumers.Test.EndToEnd -c release -o out
 
-FROM mcr.microsoft.com/dotnet/core/aspnet:3.1
+FROM mcr.microsoft.com/dotnet/core/aspnet@sha256:f2889025e0bb21fd8ceafa86e78b9c51962bbe6933f51357dd8a030d36aedce9
 RUN apt-get update && apt-get -y install libsnappy-dev libc6-dev libc6 unzip
 WORKDIR /e2e
 COPY --from=build /out .
