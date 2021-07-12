@@ -73,6 +73,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                     ReportIn(bodiesMsg);
                     HandleBodies(bodiesMsg.EthMessage, size);
                     break;
+                case Eth66MessageCode.GetPooledTransactions:
+                    GetPooledTransactionsMessage getPooledTxMsg
+                        = Deserialize<GetPooledTransactionsMessage>(message.Content);
+                    ReportIn(getPooledTxMsg);
+                    Handle(getPooledTxMsg);
+                    break;
                 case Eth66MessageCode.PooledTransactions:
                     PooledTransactionsMessage pooledTxMsg
                         = Deserialize<PooledTransactionsMessage>(message.Content);
@@ -80,33 +86,59 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                     ReportIn(pooledTxMsg);
                     Handle(pooledTxMsg.EthMessage);
                     break;
-                case Eth66MessageCode.GetPooledTransactions:
-                    GetPooledTransactionsMessage getPooledTxMsg
-                        = Deserialize<GetPooledTransactionsMessage>(message.Content);
-                    ReportIn(getPooledTxMsg);
-                    Handle(getPooledTxMsg);
+                case Eth66MessageCode.GetReceipts:
+                    GetReceiptsMessage getReceiptsMessage = Deserialize<GetReceiptsMessage>(message.Content);
+                    ReportIn(getReceiptsMessage);
+                    Handle(getReceiptsMessage);
+                    break;
+                case Eth66MessageCode.Receipts:
+                    ReceiptsMessage receiptsMessage = Deserialize<ReceiptsMessage>(message.Content);
+                    ReportIn(receiptsMessage);
+                    Handle(receiptsMessage.EthMessage, size);
+                    break;
+                case Eth66MessageCode.GetNodeData:
+                    GetNodeDataMessage getNodeDataMessage = Deserialize<GetNodeDataMessage>(message.Content);
+                    ReportIn(getNodeDataMessage);
+                    Handle(getNodeDataMessage);
+                    break;
+                case Eth66MessageCode.NodeData:
+                    NodeDataMessage nodeDataMessage = Deserialize<NodeDataMessage>(message.Content);
+                    ReportIn(nodeDataMessage);
+                    Handle(nodeDataMessage.EthMessage, size);
                     break;
             }
             base.HandleMessage(message);
         }
-        
-        public void Handle(GetBlockHeadersMessage getBlockHeaders)
+
+        private void Handle(GetBlockHeadersMessage getBlockHeaders)
         {
             Eth.V62.BlockHeadersMessage ethBlockHeadersMessage = FulfillBlockHeadersRequest(getBlockHeaders.EthMessage);
             Send(new BlockHeadersMessage(getBlockHeaders.RequestId, ethBlockHeadersMessage, int.MaxValue));
         }
 
-        public void Handle(GetBlockBodiesMessage getBlockBodies)
+        private void Handle(GetBlockBodiesMessage getBlockBodies)
         {
             Eth.V62.BlockBodiesMessage ethBlockBodiesMessage = FulfillBlockBodiesRequest(getBlockBodies.EthMessage);
             Send(new BlockBodiesMessage(getBlockBodies.RequestId, ethBlockBodiesMessage, int.MaxValue));
         }
-        
-        public void Handle(GetPooledTransactionsMessage getPooledTransactions)
+
+        private void Handle(GetPooledTransactionsMessage getPooledTransactions)
         {
             Eth.V65.PooledTransactionsMessage pooledTransactionsMessage =
                 FulfillPooledTransactionsRequest(getPooledTransactions.EthMessage);
             Send(new PooledTransactionsMessage(getPooledTransactions.RequestId, pooledTransactionsMessage));
+        }
+
+        private void Handle(GetReceiptsMessage getReceiptsMessage)
+        {
+            Eth.V63.ReceiptsMessage receiptsMessage = FulfillReceiptsRequest(getReceiptsMessage.EthMessage);
+            Send(new ReceiptsMessage(getReceiptsMessage.RequestId, receiptsMessage, int.MaxValue));
+        }
+
+        private void Handle(GetNodeDataMessage getNodeDataMessage)
+        {
+            Eth.V63.NodeDataMessage nodeDataMessage = FulfillNodeDataRequest(getNodeDataMessage.EthMessage);
+            Send(new NodeDataMessage(getNodeDataMessage.RequestId, nodeDataMessage, int.MaxValue));
         }
     }
 }
