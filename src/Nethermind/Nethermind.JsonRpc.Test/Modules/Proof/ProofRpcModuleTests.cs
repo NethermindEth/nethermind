@@ -50,7 +50,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
     [TestFixture(true, true)]
     [TestFixture(true, false)]
     [TestFixture(false, false)]
-    public class ProofModuleTests
+    public class ProofRpcModuleTests
     {
         private readonly bool _createSystemAccount;
         private readonly bool _useNonZeroGasPrice;
@@ -59,7 +59,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
         private IDbProvider _dbProvider;
         private TestSpecProvider _specProvider;
 
-        public ProofModuleTests(bool createSystemAccount, bool useNonZeroGasPrice)
+        public ProofRpcModuleTests(bool createSystemAccount, bool useNonZeroGasPrice)
         {
             _createSystemAccount = createSystemAccount;
             _useNonZeroGasPrice = useNonZeroGasPrice;
