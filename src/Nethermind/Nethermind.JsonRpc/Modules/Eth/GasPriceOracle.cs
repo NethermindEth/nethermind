@@ -1,7 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection.PortableExecutable;
+using Jint.Native;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
 namespace Nethermind.JsonRpc.Modules.Eth
@@ -21,15 +24,15 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly IHeadBlockChangeManager _headBlockChangeManager;
 
         public GasPriceOracle(
-            bool isEip1559Enabled = false, 
+            IReleaseSpec? releaseSpec = null,
             UInt256? ignoreUnder = null, 
             int? blockLimit = null, 
-            UInt256? baseFee = null, 
+            UInt256? baseFee = null,
             ITxInsertionManager? txInsertionManager = null,
             IHeadBlockChangeManager? headBlockChangeManager = null)
         {
             TxGasPriceList = new List<UInt256>();
-            _isEip1559Enabled = isEip1559Enabled;
+            _isEip1559Enabled = releaseSpec != null && releaseSpec!.IsEip1559Enabled;
             _ignoreUnder = ignoreUnder ?? UInt256.Zero;
             _blockLimit = blockLimit ?? EthGasPriceConstants.DefaultBlocksLimit;
             _softTxThreshold = (int) (blockLimit != null ? blockLimit * 2 : EthGasPriceConstants.SoftTxLimit);
