@@ -82,7 +82,7 @@ namespace Nethermind.DataMarketplace.Core.Services
 
         public Task<NdmTransaction?> GetTransactionAsync(Keccak transactionHash)
         {
-            (TxReceipt receipt, Transaction transaction) = _blockchainBridge.GetTransaction(transactionHash);
+            (TxReceipt receipt, Transaction transaction, UInt256? baseFee) = _blockchainBridge.GetTransaction(transactionHash);
             if (transaction is null)
             {
                 return Task.FromResult<NdmTransaction?>(null);

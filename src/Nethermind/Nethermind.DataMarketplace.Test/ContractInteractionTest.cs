@@ -237,12 +237,12 @@ namespace Nethermind.DataMarketplace.Test
                 throw new NotImplementedException();
             }
 
-            public (TxReceipt Receipt, Transaction Transaction) GetTransaction(Keccak txHash)
+            public (TxReceipt Receipt, Transaction Transaction, UInt256? baseFee) GetTransaction(Keccak txHash)
             {
                 return (new TxReceipt(), new Transaction
                 {
                     Hash = txHash
-                });
+                }, null);
             }
             
             private BlockReceiptsTracer _receiptsTracer;
