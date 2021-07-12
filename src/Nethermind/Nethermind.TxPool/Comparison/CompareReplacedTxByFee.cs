@@ -40,6 +40,14 @@ namespace Nethermind.TxPool.Comparison
             if (ReferenceEquals(null, y)) return 1;
             if (ReferenceEquals(null, x)) return -1;
 
+            if (!x.IsEip1559 && !y.IsEip1559)
+            {
+                y.GasPrice.Divide(PartOfFeeRequiredToIncrease, out UInt256 bumpGasPrice);
+                return (y.GasPrice + bumpGasPrice).CompareTo(x.GasPrice);
+            }
+            
+            /* MaxFeePerGas for legacy will be GasPrice and MaxPriorityFeePerGas will be GasPrice too
+            so we can compare legacy txs without any problems */
             y.MaxFeePerGas.Divide(PartOfFeeRequiredToIncrease, out UInt256 bumpMaxFeePerGas);
             if (y.MaxFeePerGas + bumpMaxFeePerGas > x.MaxFeePerGas) return 1;
 
