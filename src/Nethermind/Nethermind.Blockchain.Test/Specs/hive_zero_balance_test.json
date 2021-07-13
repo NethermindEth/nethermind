@@ -1,4 +1,4 @@
-{
+﻿{
   "version": "1",
   "engine": {
     "Ethash": {
@@ -13,7 +13,8 @@
           "0x0": "0x1BC16D674EC80000"
         },
         "difficultyBombDelays": {
-          "0x0": 2000000
+          "0x0": 2000000,
+          "0x7d0": 700000
         }
       }
     }
@@ -41,10 +42,15 @@
     "eip1884Transition": "0x0",
     "eip2028Transition": "0x0",
     "eip2200Transition": "0x0",
-    "eip2565Transition": "0x0",
-    "eip2718Transition": "0x0",
-    "eip2929Transition": "0x0",
-    "eip2930Transition": "0x0",
+    "eip2565Transition": "0x7d0",
+    "eip2718Transition": "0x7d0",
+    "eip2929Transition": "0x7d0",
+    "eip2930Transition": "0x7d0",
+    "eip1559Transition": "0x7d0",
+    "eip3238Transition": "0x7d0",
+    "eip3529Transition": "0x7d0",
+    "eip3541Transition": "0x7d0",
+    "eip3198Transition": "0x7d0",
     "chainID": "0x1"
   },
   "genesis": {
@@ -59,21 +65,28 @@
     "timestamp": "0x0",
     "parentHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
     "extraData": "0x00",
-    "gasLimit": "0x0bebc200"
+    "gasLimit": "0xbebc200"
   },
   "accounts": {
-    "0x0e879ae28cdddeb31a405a9db354505a5560b0bd" : {
-        "balance" : "0x00",
-        "code" : "0x7c0100000000000000000000000000000000000000000000000000000000600035046397dd3054811415610065576004356040526024356060526040516060515b808212156100625760006000600060006000866000f150600182019150610040565b50505b50",
-        "nonce" : "0x00",
-        "storage" : {
+    "0x0000000000000000000000000000000000000003": {
+      "balance": "0x0",
+      "builtin": {
+        "name": "ripemd160",
+        "pricing": {
+          "linear": {
+            "base": 600,
+            "word": 120
+          }
         }
+      }
     },
-    "0xa94f5374fce5edbc8e2a8697c15331677e6ebf0b" : {
-        "balance" : "0x0de0b6b3a7640000",
-        "code" : "0x",
-        "nonce" : "0x01",
-        "storage" : {
+    "0x0e879ae28cdddeb31a405a9db354505a5560b0bd": {
+      "code": "0x7c0100000000000000000000000000000000000000000000000000000000600035046397dd3054811415610065576004356040526024356060526040516060515b808212156100625760006000600060006000866000f150600182019150610040565b50505b50",
+      "balance": "0x0"
+    },
+    "0xa94f5374fce5edbc8e2a8697c15331677e6ebf0b": {
+      "balance": "0xde0b6b3a7640000",
+      "nonce": "0x1"
     },
     "0x0000000000000000000000000000000000000001": {
       "builtin": {
@@ -93,17 +106,6 @@
           "linear": {
             "base": 60,
             "word": 12
-          }
-        }
-      }
-    },
-    "0x0000000000000000000000000000000000000003": {
-      "builtin": {
-        "name": "ripemd160",
-        "pricing": {
-          "linear": {
-            "base": 600,
-            "word": 120
           }
         }
       }
@@ -177,6 +179,5 @@
         }
       }
     }
-  }
   }
 }
