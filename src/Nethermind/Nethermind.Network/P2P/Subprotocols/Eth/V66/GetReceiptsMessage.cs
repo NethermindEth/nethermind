@@ -24,6 +24,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
         public long RequestId;
         public Eth.V63.GetReceiptsMessage EthMessage;
         
+        public GetReceiptsMessage()
+        {
+        }
         public GetReceiptsMessage(long requestId, Eth.V63.GetReceiptsMessage ethMessage)
         {
             RequestId = requestId;
