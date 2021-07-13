@@ -37,6 +37,7 @@ namespace Nethermind.Runner.Hive
         private readonly ILogger _logger;
         private readonly IConfigProvider _configurationProvider;
         private readonly IFileSystem _fileSystem;
+        private SemaphoreSlim _resetEvent;
         
         public HiveRunner(IBlockTree blockTree,
             IJsonSerializer jsonSerializer,
@@ -48,27 +49,29 @@ namespace Nethermind.Runner.Hive
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _configurationProvider = configurationProvider ?? throw new ArgumentNullException(nameof(configurationProvider));
             _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
+            
+            _resetEvent = new SemaphoreSlim(0);
         }
 
-        public Task Start(CancellationToken cancellationToken)
+        public async Task Start(CancellationToken cancellationToken)
         {
             if(_logger.IsInfo) _logger.Info("HIVE initialization started");
             _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
             var hiveConfig = _configurationProvider.GetConfig<IHiveConfig>();
 
             ListEnvironmentVariables();
-            InitializeBlocks(hiveConfig.BlocksDir, cancellationToken);
-            InitializeChain(hiveConfig.ChainFile);
+            await InitializeBlocks(hiveConfig.BlocksDir, cancellationToken);
+            await InitializeChain(hiveConfig.ChainFile);
 
             _blockTree.NewHeadBlock -= BlockTreeOnNewHeadBlock;
 
             if(_logger.IsInfo) _logger.Info("HIVE initialization completed");
-            return Task.CompletedTask;
         }
 
         private void BlockTreeOnNewHeadBlock(object? sender, BlockEventArgs e)
         {
             _logger.Info($"HIVE new head block {e.Block.ToString(Block.Format.Short)}");
+                _resetEvent.Release(1);
         }
 
         private void ListEnvironmentVariables()
@@ -103,7 +106,7 @@ namespace Nethermind.Runner.Hive
             await Task.CompletedTask;
         }
 
-        private void InitializeBlocks(string blocksDir, CancellationToken cancellationToken)
+        private async Task InitializeBlocks(string blocksDir, CancellationToken cancellationToken)
         {
             if (!Directory.Exists(blocksDir))
             {
@@ -124,11 +127,11 @@ namespace Nethermind.Runner.Hive
                 }
                 
                 if (_logger.IsInfo) _logger.Info($"HIVE Processing block file: {block.File} - {block.Block.ToString(Block.Format.Short)}");
-                ProcessBlock(block.Block);
+                await ProcessBlock(block.Block);
             }
         }
 
-        private void InitializeChain(string chainFile)
+        private async Task InitializeChain(string chainFile)
         {
             if (!_fileSystem.File.Exists(chainFile))
             {
@@ -153,7 +156,7 @@ namespace Nethermind.Runner.Hive
             {
                 Block block = blocks[i];
                 if (_logger.IsInfo) _logger.Info($"HIVE Processing a chain.rlp block {block.ToString(Block.Format.Short)}");
-                ProcessBlock(block);
+                await ProcessBlock(block);
             }
         }
 
@@ -165,13 +168,21 @@ namespace Nethermind.Runner.Hive
 
             return Rlp.Decode<Block>(blockRlp);
         }
+        
+        private async Task WaitAsync(SemaphoreSlim semaphore, string error)
+        {
+            if (!await semaphore.WaitAsync(-1))
+            {
+                throw new InvalidOperationException(error);
+            }
+        }
 
-        private void ProcessBlock(Block block)
+        private async Task ProcessBlock(Block block)
         {
             try
             {
                 _blockTree.SuggestBlock(block);
-
+                await WaitAsync(_resetEvent, string.Empty);
                 if (_logger.IsInfo) _logger.Info($"HIVE suggested {block.ToString(Block.Format.Short)}, now best suggested header {_blockTree.BestSuggestedHeader}, head {_blockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}");
             }
             catch (InvalidBlockException e)
