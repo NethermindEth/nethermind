@@ -76,10 +76,10 @@ namespace Nethermind.Blockchain.Processing
                 remove => _transactionProcessed -= value;
             }
 
-            event EventHandler<TxCheckEventArgs>? IBlockProductionTransactionsExecutor.CheckTransactionToBeAdded
+            event EventHandler<AddingTxEventArgs>? IBlockProductionTransactionsExecutor.AddingTransaction
             {
-                add => _blockProductionTransactionPicker.CheckTransaction += value;
-                remove => _blockProductionTransactionPicker.CheckTransaction -= value;
+                add => _blockProductionTransactionPicker.AddingTransaction += value;
+                remove => _blockProductionTransactionPicker.AddingTransaction -= value;
             }
 
             public virtual TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, IBlockTracer blockTracer, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec)
@@ -110,7 +110,7 @@ namespace Nethermind.Blockchain.Processing
                 LinkedHashSet<Transaction> transactionsInBlock,
                 bool addToBlock = true)
             {
-                TxCheckEventArgs args = _blockProductionTransactionPicker.CanAddTransaction(block, currentTx, transactionsInBlock, _stateProvider);
+                AddingTxEventArgs args = _blockProductionTransactionPicker.CanAddTransaction(block, currentTx, transactionsInBlock, _stateProvider);
 
                 if (args.Action != TxAction.Add)
                 {

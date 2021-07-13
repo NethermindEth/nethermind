@@ -35,24 +35,24 @@ namespace Nethermind.Blockchain.Processing
     {
         protected interface IBlockProductionTransactionsExecutor : IBlockProcessor.IBlockTransactionsExecutor
         {
-            public event EventHandler<TxCheckEventArgs> CheckTransactionToBeAdded;
+            public event EventHandler<AddingTxEventArgs> AddingTransaction;
         }
 
-        protected class TxCheckEventArgs : TxEventArgs
+        protected class AddingTxEventArgs : TxEventArgs
         {
             public Block Block { get; }
             public IReadOnlyCollection<Transaction> TransactionsInBlock { get; }
             public TxAction Action { get; private set; } = TxAction.Add;
             public string Reason { get; private set; } = string.Empty;
 
-            public TxCheckEventArgs Set(TxAction action, string reason)
+            public AddingTxEventArgs Set(TxAction action, string reason)
             {
                 Action = action;
                 Reason = reason;
                 return this;
             }
 
-            public TxCheckEventArgs(int index, Transaction transaction, Block block, IReadOnlyCollection<Transaction> transactionsInBlock) 
+            public AddingTxEventArgs(int index, Transaction transaction, Block block, IReadOnlyCollection<Transaction> transactionsInBlock) 
                 : base(index, transaction)
             {
                 Block = block;

@@ -73,7 +73,7 @@ namespace Nethermind.Consensus.AuRa
             _gasLimitOverride = gasLimitOverride;
             if (blockTransactionsExecutor is IBlockProductionTransactionsExecutor produceBlockTransactionsStrategy)
             {
-                produceBlockTransactionsStrategy.CheckTransactionToBeAdded += OnCheckTransactionToBeAdded;
+                produceBlockTransactionsStrategy.AddingTransaction += OnAddingTransaction;
             }
         }
 
@@ -122,7 +122,7 @@ namespace Nethermind.Consensus.AuRa
             for (int i = 0; i < block.Transactions.Length; i++)
             {
                 Transaction tx = block.Transactions[i];
-                TxCheckEventArgs args = CheckTxPosdaoRules(new TxCheckEventArgs(i, tx, block, block.Transactions));
+                AddingTxEventArgs args = CheckTxPosdaoRules(new AddingTxEventArgs(i, tx, block, block.Transactions));
                 if (args.Action != TxAction.Add)
                 {
                     if (_logger.IsWarn) _logger.Warn($"Proposed block is not valid {block.ToString(Block.Format.FullHashAndNumber)}. {tx.ToShortString()} doesn't have required permissions. Reason: {args.Reason}.");
@@ -131,12 +131,12 @@ namespace Nethermind.Consensus.AuRa
             }
         }
         
-        private void OnCheckTransactionToBeAdded(object? sender, TxCheckEventArgs e)
+        private void OnAddingTransaction(object? sender, AddingTxEventArgs e)
         {
             CheckTxPosdaoRules(e);
         }
         
-        private TxCheckEventArgs CheckTxPosdaoRules(TxCheckEventArgs args)
+        private AddingTxEventArgs CheckTxPosdaoRules(AddingTxEventArgs args)
         {
             (bool Allowed, string Reason)? TryRecoverSenderAddress(Transaction tx, BlockHeader header)
             {

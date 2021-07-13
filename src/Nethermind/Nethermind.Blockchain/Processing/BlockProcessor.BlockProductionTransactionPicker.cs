@@ -37,11 +37,11 @@ namespace Nethermind.Blockchain.Processing
                 _specProvider = specProvider;
             }
             
-            public event EventHandler<TxCheckEventArgs>? CheckTransaction;
+            public event EventHandler<AddingTxEventArgs>? AddingTransaction;
 
-            public TxCheckEventArgs CanAddTransaction(Block block, Transaction currentTx, IReadOnlySet<Transaction> transactionsInBlock, IStateProvider stateProvider)
+            public AddingTxEventArgs CanAddTransaction(Block block, Transaction currentTx, IReadOnlySet<Transaction> transactionsInBlock, IStateProvider stateProvider)
             {
-                TxCheckEventArgs args = new(transactionsInBlock.Count, currentTx, block, transactionsInBlock);
+                AddingTxEventArgs args = new(transactionsInBlock.Count, currentTx, block, transactionsInBlock);
                 
                 long gasRemaining = block.Header.GasLimit - block.GasUsed;
                 
@@ -79,11 +79,11 @@ namespace Nethermind.Blockchain.Processing
                     return args;
                 }
 
-                CheckTransaction?.Invoke(this, args);
+                AddingTransaction?.Invoke(this, args);
                 return args;
             }
 
-            private bool HasEnoughFounds(Transaction transaction, UInt256 senderBalance, TxCheckEventArgs e, Block block)
+            private bool HasEnoughFounds(Transaction transaction, UInt256 senderBalance, AddingTxEventArgs e, Block block)
             {
                 IReleaseSpec releaseSpec = _specProvider.GetSpec(block.Number);
                 bool eip1559Enabled = releaseSpec.IsEip1559Enabled;
