@@ -104,7 +104,7 @@ namespace Nethermind.Db.Files
             public Batch(Db db)
             {
                 _db = db;
-                _map = _db._batches.TryDequeue(out InMemoryKeccakMap? map) ? map : new InMemoryKeccakMap(1024 * 4, 4 * 1024);
+                _map = _db._batches.TryDequeue(out InMemoryKeccakMap? map) ? map : new InMemoryKeccakMap(1024 * 4, 512 * 1024);
             }
 
             public byte[]? this[byte[] key]
