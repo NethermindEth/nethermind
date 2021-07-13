@@ -561,7 +561,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                 .SignedAndResolved().WithChainId(1).WithGasPrice(0).WithValue(0).WithGasLimit(210200).WithGasPrice(20.GWei()).TestObject;
             await ctx._test.AddBlock(tx);
             string serialized = ctx._test.TestEthRpc("eth_getTransactionReceipt", tx.Hash.ToString());
-            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":{\"transactionHash\":\"0xda6b4df2595675cbee0d4889f41c3d0790204e8ed1b8ad4cadaa45a7d50dace5\",\"transactionIndex\":\"0x0\",\"blockHash\":\"0xeb9cb6d28ce14ea16d7badaed4207ada972f26b39735cde17230f2ca5b6e34be\",\"blockNumber\":\"0x5\",\"cumulativeGasUsed\":\"0x5250\",\"gasUsed\":\"0x5250\",\"effectiveGasPrice\":\"0x4a817c800\",\"from\":\"0x723847c97bc651c7e8c013dbbe65a70712f02ad3\",\"to\":\"0x0000000000000000000000000000000000000000\",\"contractAddress\":null,\"logs\":[],\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"root\":\"0x4eae94a360ba0184825f616a82a03b36e6a8391f35b93f6132e7517537c29c85\",\"status\":\"0x1\",\"type\":\"0x0\"},\"id\":67}", serialized);
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":{\"transactionHash\":\"0xda6b4df2595675cbee0d4889f41c3d0790204e8ed1b8ad4cadaa45a7d50dace5\",\"transactionIndex\":\"0x0\",\"blockHash\":\"0xb1422dacce9a61570bd73e570e9eaf64a19dd4582049e23d242415e83fe4681b\",\"blockNumber\":\"0x5\",\"cumulativeGasUsed\":\"0x521c\",\"gasUsed\":\"0x521c\",\"effectiveGasPrice\":\"0x4a817c800\",\"from\":\"0x723847c97bc651c7e8c013dbbe65a70712f02ad3\",\"to\":\"0x0000000000000000000000000000000000000000\",\"contractAddress\":null,\"logs\":[],\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"status\":\"0x1\",\"type\":\"0x0\"},\"id\":67}", serialized);
         }
         
         [Test]
@@ -574,7 +574,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                 .WithType(TxType.EIP1559).WithMaxFeePerGas(20.GWei()).WithMaxPriorityFeePerGas(1.GWei()).TestObject;
             await ctx._test.AddBlock(tx);
             string serialized = ctx._test.TestEthRpc("eth_getTransactionReceipt", tx.Hash.ToString());
-            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":{\"transactionHash\":\"0x31501f80bf2ec493c368a519cb8ed6f132f0be26202304bbf1e1728642affb7f\",\"transactionIndex\":\"0x0\",\"blockHash\":\"0x691ca9ebaa6f2839593bcc22284277ff6e5d89d8dec2e40f9813ea109669be92\",\"blockNumber\":\"0x5\",\"cumulativeGasUsed\":\"0x521c\",\"gasUsed\":\"0x521c\",\"effectiveGasPrice\":\"0x5e91eb5d\",\"from\":\"0x723847c97bc651c7e8c013dbbe65a70712f02ad3\",\"to\":\"0x0000000000000000000000000000000000000000\",\"contractAddress\":null,\"logs\":[],\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"status\":\"0x1\",\"type\":\"0x2\"},\"id\":67}", serialized);
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":{\"transactionHash\":\"0x31501f80bf2ec493c368a519cb8ed6f132f0be26202304bbf1e1728642affb7f\",\"transactionIndex\":\"0x0\",\"blockHash\":\"0x54515a11aa6c392ee2e1071fca3a579bc9a520930ef757dbf9b7d85fe155c691\",\"blockNumber\":\"0x5\",\"cumulativeGasUsed\":\"0x521c\",\"gasUsed\":\"0x521c\",\"effectiveGasPrice\":\"0x5e91eb5d\",\"from\":\"0x723847c97bc651c7e8c013dbbe65a70712f02ad3\",\"to\":\"0x0000000000000000000000000000000000000000\",\"contractAddress\":null,\"logs\":[],\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"status\":\"0x1\",\"type\":\"0x2\"},\"id\":67}", serialized);
         }
         
         [Test]
@@ -587,7 +587,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                 .WithType(TxType.EIP1559).WithMaxFeePerGas(20.GWei()).WithMaxPriorityFeePerGas(1.GWei()).TestObject;
             await ctx._test.AddBlock(tx);
             string serialized = ctx._test.TestEthRpc("eth_getTransactionByHash", tx.Hash.ToString());
-            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":{\"hash\":\"0x31501f80bf2ec493c368a519cb8ed6f132f0be26202304bbf1e1728642affb7f\",\"nonce\":\"0x0\",\"blockHash\":\"0x691ca9ebaa6f2839593bcc22284277ff6e5d89d8dec2e40f9813ea109669be92\",\"blockNumber\":\"0x5\",\"transactionIndex\":\"0x0\",\"from\":\"0x723847c97bc651c7e8c013dbbe65a70712f02ad3\",\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"0x0\",\"gasPrice\":\"0x5e91eb5d\",\"maxPriorityFeePerGas\":\"0x3b9aca00\",\"maxFeePerGas\":\"0x4a817c800\",\"gas\":\"0x33518\",\"data\":\"0x0001\",\"input\":\"0x0001\",\"chainId\":\"0x1\",\"type\":\"0x2\",\"v\":\"0x0\",\"s\":\"0x6b82095065a599e6b5e52bed0043702baf3411418af679ac483f9fc75a8f6aef\",\"r\":\"0x8654517f7822e7a4e10e79f3f5a4136703c7d1b51d98e47686e201c3c2845f92\"},\"id\":67}", serialized);
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":{\"hash\":\"0x31501f80bf2ec493c368a519cb8ed6f132f0be26202304bbf1e1728642affb7f\",\"nonce\":\"0x0\",\"blockHash\":\"0x54515a11aa6c392ee2e1071fca3a579bc9a520930ef757dbf9b7d85fe155c691\",\"blockNumber\":\"0x5\",\"transactionIndex\":\"0x0\",\"from\":\"0x723847c97bc651c7e8c013dbbe65a70712f02ad3\",\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"0x0\",\"gasPrice\":\"0x5e91eb5d\",\"maxPriorityFeePerGas\":\"0x3b9aca00\",\"maxFeePerGas\":\"0x4a817c800\",\"gas\":\"0x33518\",\"data\":\"0x0001\",\"input\":\"0x0001\",\"chainId\":\"0x1\",\"type\":\"0x2\",\"v\":\"0x0\",\"s\":\"0x6b82095065a599e6b5e52bed0043702baf3411418af679ac483f9fc75a8f6aef\",\"r\":\"0x8654517f7822e7a4e10e79f3f5a4136703c7d1b51d98e47686e201c3c2845f92\"},\"id\":67}", serialized);
         }
 
         [Test]
@@ -778,22 +778,16 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             
             public static async Task<Context> CreateWithLondonEnabled()
             {
-                ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-                
-                OverridableReleaseSpec releaseSpec = new(London.Instance);
-                releaseSpec.Eip1559TransitionBlock = 1;
-                specProvider.GetSpec(Arg.Any<long>()).Returns(releaseSpec);
-                specProvider.ChainId.Returns(MainnetSpecProvider.Instance.ChainId);
-                return await Context.Create(specProvider);
+                TestSpecProvider specProvider = new(London.Instance) {ChainId = ChainId.Mainnet};
+                return await Create(specProvider);
             }
             
-            public static async Task<Context> Create(ISpecProvider specProvider = null)
-            {
-                Context ctx = new();
-                ctx._test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(specProvider);
-                ctx._auraTest = await TestRpcBlockchain.ForTest(SealEngineType.AuRa).Build(specProvider);
-                return ctx;
-            }
+            public static async Task<Context> Create(ISpecProvider specProvider = null) =>
+                new()
+                {
+                    _test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(specProvider), 
+                    _auraTest = await TestRpcBlockchain.ForTest(SealEngineType.AuRa).Build(specProvider)
+                };
 
             public void Dispose()
             {
