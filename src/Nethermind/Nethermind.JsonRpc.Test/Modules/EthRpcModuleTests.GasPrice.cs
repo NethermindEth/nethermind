@@ -160,9 +160,9 @@ namespace Nethermind.JsonRpc.Test.Modules
                 bool addBlocks = false,
                 IGasPriceOracle gasPriceOracle = null, 
                 int? blockLimit = null,
+                IReleaseSpec releaseSpec = null,
                 UInt256? ignoreUnder = null,
                 UInt256? baseFee = null,
-                IReleaseSpec releaseSpec = null,
                 ITxInsertionManager txInsertionManager = null,
                 IHeadBlockChangeManager headBlockChangeManager = null)
             {

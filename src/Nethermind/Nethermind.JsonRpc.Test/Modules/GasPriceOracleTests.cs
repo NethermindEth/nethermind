@@ -109,7 +109,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             //Any blocks with zero/one tx doesn't count towards the blockLimit unless the number of 
             ITxInsertionManager txInsertionManager = Substitute.For<ITxInsertionManager>();
             TestableGasPriceOracle testableGasPriceOracle = GetTestableGasPriceOracle(txInsertionManager: txInsertionManager, blockLimit: 8);
-            SetUpTxInsertionManager(txInsertionManager, testableGasPriceOracle);
+            SetUpTxInsertionManagerForSpecificReturns(txInsertionManager, testableGasPriceOracle);
             Block headBlock = Build.A.Block.WithNumber(8).TestObject;
             IDictionary<long, Block> testNineEmptyBlocksDictionary = GetNumberToBlockMapForNineEmptyBlocks();
             
@@ -118,7 +118,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             txInsertionManager.Received(8).AddValidTxFromBlockAndReturnCount(Arg.Any<Block>());
         }
 
-        private static void SetUpTxInsertionManager(ITxInsertionManager txInsertionManager,
+        private static void SetUpTxInsertionManagerForSpecificReturns(ITxInsertionManager txInsertionManager,
             TestableGasPriceOracle testableGasPriceOracle)
         {
             txInsertionManager.AddValidTxFromBlockAndReturnCount(Arg.Is<Block>(b => b.Number >= 4)).Returns(3);
@@ -131,6 +131,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 .When(t => t.AddValidTxFromBlockAndReturnCount(Arg.Is<Block>(b => b.Number < 4)))
                 .Do(t => testableGasPriceOracle.AddToSortedTxList(4));
         }
+
         private static Dictionary<long, Block> GetNumberToBlockMapForNineEmptyBlocks()
         {
             Block[] blocks = {
