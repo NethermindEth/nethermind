@@ -122,7 +122,7 @@ namespace Nethermind.Mev
             return ResultWrapper<TxsResults>.Success(results);
         }
 
-        public ResultWrapper<TxsResults> eth_callBundleJSon(TransactionForRpc[] transactions, BlockParameter? blockParameter = null, UInt256? timestamp = null, Keccak[]? revertingTxHashes = null)
+        public ResultWrapper<TxsResults> eth_callBundleJson(TransactionForRpc[] transactions, BlockParameter? blockParameter = null, UInt256? timestamp = null, Keccak[]? revertingTxHashes = null)
         {
             HashSet<Keccak> revertingTxHashesSet = revertingTxHashes?.ToHashSet() ?? new HashSet<Keccak>();
             BundleTransaction[] txs = transactions.Select(txForRpc =>
