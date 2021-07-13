@@ -35,23 +35,23 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             
-            _blockTree.NewHeadBlock += OnNewHeadBlock;
-            if(_logger.IsTrace) _logger.Trace($"NewHeads subscription {Id} will track NewHeadBlocks");
+            _blockTree.BlockAddedToMain += OnBlockAddedToMain;
+            if(_logger.IsTrace) _logger.Trace($"NewHeads subscription {Id} will track BlockAddedToMain");
         }
 
-        private void OnNewHeadBlock(object? sender, BlockEventArgs e)
+        private void OnBlockAddedToMain(object? sender, BlockReplacementEventArgs e)
         {
             Task.Run(() =>
             {
                 JsonRpcResult result = CreateSubscriptionMessage(new BlockForRpc(e.Block, false));
 
                 JsonRpcDuplexClient.SendJsonRpcResult(result);
-                if(_logger.IsTrace) _logger.Trace($"NewHeads subscription {Id} printed NewHeadBlock");
+                if(_logger.IsTrace) _logger.Trace($"NewHeads subscription {Id} printed new block");
             }).ContinueWith(
                 t =>
                     t.Exception?.Handle(ex =>
                     {
-                        if (_logger.IsDebug) _logger.Debug($"NewHeads subscription {Id}: Failed Task.Run after NewHeadBlock event.");
+                        if (_logger.IsDebug) _logger.Debug($"NewHeads subscription {Id}: Failed Task.Run after BlockAddedToMain event.");
                         return true;
                     })
                 , TaskContinuationOptions.OnlyOnFaulted
@@ -62,8 +62,8 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         
         public override void Dispose()
         {
-            _blockTree.NewHeadBlock -= OnNewHeadBlock;
-            if(_logger.IsTrace) _logger.Trace($"NewHeads subscription {Id} will no longer track NewHeadBlocks");
+            _blockTree.BlockAddedToMain -= OnBlockAddedToMain;
+            if(_logger.IsTrace) _logger.Trace($"NewHeads subscription {Id} will no longer track BlockAddedToMain");
         }
     }
 }

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,15 +13,14 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-namespace Nethermind.Runner.Hive
+using System;
+
+namespace Nethermind.Synchronization
 {
-    public class HiveConfig : IHiveConfig
+    public class Timeouts
     {
-        public string ChainFile { get; set; } = "/chain.rlp";
-        public string BlocksDir { get; set; } = "/blocks";
-        public string KeysDir { get; set; } = "/keys";
-        public bool Enabled { get; set; }
-        public string GenesisFile { get; set; } = "/genesis.json";
+        public static readonly TimeSpan Eth = TimeSpan.FromSeconds(10);   
     }
 }

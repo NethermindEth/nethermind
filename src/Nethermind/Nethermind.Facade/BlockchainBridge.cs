@@ -119,22 +119,38 @@ namespace Nethermind.Facade
 
         public bool IsMining { get; }
 
-        public (TxReceipt Receipt, Transaction Transaction) GetTransaction(Keccak txHash)
+        public (TxReceipt Receipt, UInt256? EffectiveGasPrice) GetReceiptAndEffectiveGasPrice(Keccak txHash)
         {
             Keccak blockHash = _receiptFinder.FindBlockHash(txHash);
             if (blockHash != null)
             {
                 Block block = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                 TxReceipt txReceipt = _receiptFinder.Get(block).ForTransaction(txHash);
-                return (txReceipt, block?.Transactions[txReceipt.Index]);
+                Transaction tx = block?.Transactions[txReceipt.Index];
+                bool is1559Enabled = _specProvider.GetSpec(block.Number).IsEip1559Enabled;
+                UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(is1559Enabled, block.Header.BaseFeePerGas);
+                return (txReceipt, effectiveGasPrice);
+            }
+
+            return (null, null);
+        }
+
+        public (TxReceipt Receipt, Transaction Transaction, UInt256? baseFee) GetTransaction(Keccak txHash)
+        {
+            Keccak blockHash = _receiptFinder.FindBlockHash(txHash);
+            if (blockHash != null)
+            {
+                Block block = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                TxReceipt txReceipt = _receiptFinder.Get(block).ForTransaction(txHash);
+                return (txReceipt, block?.Transactions[txReceipt.Index], block?.BaseFeePerGas);
             }
 
             if (_txPool.TryGetPendingTransaction(txHash, out Transaction? transaction))
             {
-                return (null, transaction);
+                return (null, transaction, null);
             }
 
-            return (null, null);
+            return (null, null, null);
         }
 
         public TxReceipt GetReceipt(Keccak txHash)
