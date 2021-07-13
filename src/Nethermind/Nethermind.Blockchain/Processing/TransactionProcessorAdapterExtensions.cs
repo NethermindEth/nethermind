@@ -39,8 +39,6 @@ namespace Nethermind.Blockchain.Processing
             receiptsTracer.StartNewTxTrace(currentTx);
             transactionProcessor.Execute(currentTx, block.Header, receiptsTracer);
             receiptsTracer.EndTxTrace();
-
-            
         }
     }
 }
