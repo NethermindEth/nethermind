@@ -16,8 +16,10 @@
 // 
 
 using System;
+using System.Buffers.Binary;
 using System.IO;
 using System.IO.MemoryMappedFiles;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 
@@ -61,6 +63,16 @@ namespace Nethermind.Db.Files
             _chunkMask = _chunkSize - 1;
             _size = _chunkSize * 2;
             _sizeMask = _size - 1;
+
+            // enumerate only properly sealed filed and set them
+            string[] files = Directory.EnumerateFiles(directory, "0*" + extension).ToArray();
+            foreach (string file in files)
+            {
+                SetMemoryMappedFile(file);
+            }
+
+            _head = _tail = files.Length * chunkSize;
+
             _buffer = Helpers.AllocAlignedMemory(_size);
 
             _cts = new CancellationTokenSource();
@@ -243,9 +255,8 @@ namespace Nethermind.Db.Files
                                 fileStream.Write(toWrite);
                                 fileStream.Flush(true);
                             }
-                            MemoryMappedFile mmf = MemoryMappedFile.CreateFromFile(file);
-                            _files[chunkIndex] = mmf;
-                            Volatile.Write(ref _accessors[chunkIndex], mmf.CreateViewAccessor());
+
+                            SetMemoryMappedFile(file);
 
                             // write head
                             Volatile.Write(ref _head, _head + _chunkSize);
@@ -256,6 +267,15 @@ namespace Nethermind.Db.Files
             });
             thread.Start();
             return thread;
+        }
+
+        private void SetMemoryMappedFile(string file)
+        {
+            int chunk = int.Parse(new FileInfo(file).Name.Replace(_fileExtension, ""));
+            MemoryMappedFile mmf = MemoryMappedFile.CreateFromFile(file);
+
+            _files[chunk] = mmf;
+            Volatile.Write(ref _accessors[chunk], mmf.CreateViewAccessor());
         }
 
         private unsafe void WriteHeader(long tail, long length)
@@ -285,6 +305,36 @@ namespace Nethermind.Db.Files
             }
 
             Helpers.FreeAlignedMemory(_buffer);
+        }
+
+        public unsafe void RestoreFrom(FileStream checkpoint)
+        {
+            Span<byte> bytes = stackalloc byte[4];
+            checkpoint.Read(bytes);
+            int length = BinaryPrimitives.ReadInt32LittleEndian(bytes);
+
+            byte* pointer = (byte*)_buffer.ToPointer() + (_tail & _sizeMask);
+
+            checkpoint.Read(new Span<byte>(pointer, length));
+            Volatile.Write(ref _tail, _tail + length);
+        }
+
+        public unsafe void CheckpointTo(FileStream checkpoint)
+        {
+            long head = Interlocked.Read(ref _head);
+            long tail = Interlocked.Read(ref _tail);
+
+            int length = (int)(tail - head);
+
+            // write length first
+            Span<byte> bytes = stackalloc byte[4];
+            BinaryPrimitives.WriteInt32LittleEndian(bytes, length);
+            checkpoint.Write(bytes);
+
+            // payload second
+            byte* start = (byte*)_buffer.ToPointer() + (head & _sizeMask);
+            Span<byte> toWrite = new(start, length);
+            checkpoint.Write(toWrite);
         }
     }
 }

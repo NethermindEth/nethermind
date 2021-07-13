@@ -16,6 +16,7 @@
 // 
 
 using System;
+using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -161,6 +162,16 @@ namespace Nethermind.Db.Files
 
             value = default;
             return false;
+        }
+
+        public void RestoreFrom(FileStream checkpoint)
+        {
+            checkpoint.Read(MemoryMarshal.AsBytes<long>(_buckets));
+        }
+
+        public void CheckpointTo(FileStream checkpoint)
+        {
+            checkpoint.Write(MemoryMarshal.AsBytes<long>(_buckets));
         }
     }
 }

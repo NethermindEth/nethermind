@@ -89,6 +89,38 @@ namespace Nethermind.Db.Test
             }
         }
 
+        [Test]
+        public void Reopening()
+        {
+            const int size = 10;
+
+            static byte[] Key(int i) => Keccak.Compute(i.ToString()).Bytes;
+            static byte[] Value(int i) => BitConverter.GetBytes(i);
+
+            string directory = GetDirectory();
+
+            Files.Db db = new(directory, "", 1024);
+
+            for (int i = 0; i < size; i++)
+            {
+                db[Key(i)] = Value(i);
+                
+                // dispose twice
+                db.Dispose();
+                db.Dispose();
+
+                // recreate on each loop
+                db = new(directory, "", 1024);
+            }
+
+            for (int i = 0; i < size; i++)
+            {
+                CollectionAssert.AreEqual(Value(i), db[Key(i)]);
+            }
+
+            db.Dispose();
+        }
+
         private static string GetDirectory([CallerMemberName] string name = null)
         {
             string dir = Path.Combine(Environment.CurrentDirectory, nameof(name));

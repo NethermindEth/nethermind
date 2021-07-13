@@ -31,25 +31,34 @@ namespace Nethermind.Db.Files
         private readonly PersistentLog _log;
         private readonly PersistentLog _mapLog;
         private readonly ConcurrentQueue<InMemoryKeccakMap> _batches = new();
+        private readonly string _checkpoint;
 
         public Db(string basePath, string name, int buckets = 4 * 1024 * 1024)
         {
             Name = name;
 
-            string? fullPath = name.GetApplicationResourcePath(basePath);
+            string fullPath = name.GetApplicationResourcePath(basePath);
 
             if (!Directory.Exists(fullPath))
             {
                 Directory.CreateDirectory(fullPath);
             }
 
+            _checkpoint = Path.Combine(fullPath, "checkpoint.db");
+
             _log = new PersistentLog((int)256.MiB(), fullPath);
             _mapLog = new PersistentLog((int)128.MiB(), fullPath, ".keys");
 
-            _log.Write(new byte[] { 1 }); // write one to make only positive positions
-            _mapLog.Write(new byte[] { 1 }); // write one to make only positive positions
-
             _map = new PersistentKeccakMap(buckets, _mapLog);
+
+            if (File.Exists(_checkpoint))
+            {
+                using FileStream checkpoint = File.OpenRead(_checkpoint);
+                
+                _map.RestoreFrom(checkpoint);
+                _log.RestoreFrom(checkpoint);
+                _mapLog.RestoreFrom(checkpoint);
+            }
         }
 
         public byte[]? this[byte[] key]
@@ -65,6 +74,7 @@ namespace Nethermind.Db.Files
 
         public IBatch StartBatch() => new Batch(this);
 
+
         // TODO: make faster!
         public Span<byte> GetSpan(byte[] key) => !_map.TryGet(key, out long value) ? Span<byte>.Empty : GetAt(value);
 
@@ -74,8 +84,30 @@ namespace Nethermind.Db.Files
 
         public string Name { get; }
 
+        private bool _isDisposed;
+
         public void Dispose()
         {
+            if (_isDisposed)
+            {
+                return;
+            }
+
+            _isDisposed = true;
+
+            if (File.Exists(_checkpoint))
+            {
+                File.Delete(_checkpoint);
+            }
+
+            using FileStream checkpoint = File.OpenWrite(_checkpoint);
+
+            _map.CheckpointTo(checkpoint);
+            _log.CheckpointTo(checkpoint);
+            _mapLog.CheckpointTo(checkpoint);
+
+            checkpoint.Flush(true);
+
             _log.Dispose();
             _mapLog.Dispose();
         }
