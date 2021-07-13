@@ -102,9 +102,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         public async Task Eth_pending_transactions_1559_tx()
         {
             using Context ctx = await Context.CreateWithLondonEnabled();
-            ctx._test.AddTransactions(Build.A.Transaction.WithMaxPriorityFeePerGas(6.GWei()).WithMaxFeePerGas(11.GWei()).WithType(TxType.EIP1559).SignedAndResolved(TestItem.PrivateKeyD).TestObject);
+            ctx._test.AddTransactions(Build.A.Transaction.WithMaxPriorityFeePerGas(6.GWei()).WithMaxFeePerGas(11.GWei()).WithType(TxType.EIP1559).SignedAndResolved(TestItem.PrivateKeyC).TestObject);
             string serialized = ctx._test.TestEthRpc("eth_pendingTransactions");
-            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":[{\"hash\":\"0x629190363a5457ff385cb4770426d98590446c08783f2c96961156351657be67\",\"nonce\":\"0x0\",\"blockHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"blockNumber\":null,\"transactionIndex\":null,\"from\":\"0x475674cb523a0a2736b7f7534390288fce16982c\",\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"0x1\",\"gasPrice\":\"0x28fa6ae00\",\"maxPriorityFeePerGas\":\"0x165a0bc00\",\"maxFeePerGas\":\"0x28fa6ae00\",\"gas\":\"0x5208\",\"data\":\"0x\",\"input\":\"0x\",\"chainId\":\"0x1\",\"type\":\"0x2\",\"v\":\"0x0\",\"s\":\"0x4d8e9a47d74a88cdc49d5b56cd0466e920c39f2d28a98be0f657c1884ad4b32d\",\"r\":\"0xcb08c119a76bdb58f29423ea7b084ea14be24cfbdc75300d3dab06b35a1a124b\"}],\"id\":67}", serialized, serialized.Replace("\"", "\\\""));
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":[{\"hash\":\"0xc668c8940b7416fe06db0dac853210d6d64fb2e9528c439c135a53106517fca6\",\"nonce\":\"0x0\",\"blockHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"blockNumber\":null,\"transactionIndex\":null,\"from\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"0x1\",\"gasPrice\":\"0x28fa6ae00\",\"maxPriorityFeePerGas\":\"0x165a0bc00\",\"maxFeePerGas\":\"0x28fa6ae00\",\"gas\":\"0x5208\",\"data\":\"0x\",\"input\":\"0x\",\"chainId\":\"0x1\",\"type\":\"0x2\",\"v\":\"0x1\",\"s\":\"0x24e1404423c47d5c5fd9e0b6205811eaa3052f9acdb91a9c08821c2b7a0db1a4\",\"r\":\"0x408e34747109a32b924c61acb879d628505dbd0dcab15a3b1e3a4cfd589b65d2\"}],\"id\":67}", serialized, serialized.Replace("\"", "\\\""));
         }
 
         [Test]
@@ -778,7 +778,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             
             public static async Task<Context> CreateWithLondonEnabled()
             {
-                TestSpecProvider specProvider = new(London.Instance) {ChainId = ChainId.Mainnet};
+                OverridableReleaseSpec releaseSpec = new(London.Instance);
+                releaseSpec.Eip1559TransitionBlock = 1;
+                TestSpecProvider specProvider = new(releaseSpec) {ChainId = ChainId.Mainnet};
                 return await Create(specProvider);
             }
             
