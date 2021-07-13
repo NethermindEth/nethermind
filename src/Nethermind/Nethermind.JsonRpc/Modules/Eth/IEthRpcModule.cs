@@ -29,7 +29,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
     [RpcModule(ModuleType.Eth)]
     public interface IEthRpcModule : IRpcModule
     {
-        [JsonRpcMethod(IsImplemented = true, Description = "Returns ChainID", IsSharable = true)]
+        [JsonRpcMethod(IsImplemented = true,
+            Description = "Returns ETH protocol version", IsSharable = true, ExampleResponse = "0x5")]
         ResultWrapper<ulong> eth_chainId();
         
         [JsonRpcMethod(IsImplemented = true, Description = "Returns ETH protocol version", IsSharable = true)]
