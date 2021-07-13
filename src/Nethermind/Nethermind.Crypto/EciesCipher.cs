@@ -62,7 +62,7 @@ namespace Nethermind.Crypto
             return (true, plaintext);
         }
 
-        public byte[] Encrypt(PublicKey recipientPublicKey, byte[] plainText, byte[] macData)
+        public byte[] Encrypt(PublicKey recipientPublicKey, byte[] plainText, byte[]? macData)
         {
             byte[] iv = _cryptoRandom.GenerateRandomBytes(KeySize / 8);
             PrivateKey ephemeralPrivateKey = _keyGenerator.Generate();

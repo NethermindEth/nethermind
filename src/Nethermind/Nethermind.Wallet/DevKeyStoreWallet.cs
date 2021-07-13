@@ -34,10 +34,18 @@ namespace Nethermind.Wallet
         private readonly IKeyStore _keyStore;
         private readonly ILogger _logger;
 
-        private readonly Dictionary<Address, PrivateKey> _unlockedAccounts = new Dictionary<Address, PrivateKey>();
+        private readonly Dictionary<Address, PrivateKey> _unlockedAccounts = new();
         public event EventHandler<AccountLockedEventArgs> AccountLocked;
         public event EventHandler<AccountUnlockedEventArgs> AccountUnlocked;
 
+        public static readonly byte[] SampleKeyBytes;
+
+        static DevKeyStoreWallet()
+        {
+            SampleKeyBytes = new byte[32];
+            SampleKeyBytes[31] = 1;
+        }
+        
         public DevKeyStoreWallet(IKeyStore keyStore, ILogManager logManager, bool createTestAccounts = true)
         {
             _keyStore = keyStore;

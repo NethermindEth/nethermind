@@ -15,56 +15,51 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.Processing;
-using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Rewards;
-using Nethermind.Blockchain.Tracing;
-using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
-using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Db;
+using Nethermind.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
-using Nethermind.Logging;
 using Nethermind.Mev.Execution;
 using Nethermind.Mev.Source;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
+using Nethermind.TxPool;
 
 namespace Nethermind.Mev
 {
     public class MevModuleFactory : ModuleFactoryBase<IMevRpcModule>
     {
-        private readonly IMevConfig _mevConfig;
         private readonly IJsonRpcConfig _jsonRpcConfig;
         private readonly IBundlePool _bundlePool;
+        private readonly ITxSender _txSender;
         private readonly IBlockTree _blockTree;
         private readonly IStateReader _stateReader;
         private readonly ITracerFactory _tracerFactory;
+        private readonly IEciesCipher _eciesCipher;
         private readonly ISpecProvider _specProvider;
         private readonly ISigner? _signer;
         private readonly ulong _chainId;
 
-        public MevModuleFactory(
-            IMevConfig mevConfig, 
-            IJsonRpcConfig jsonRpcConfig,
-            IBundlePool bundlePool, 
+        public MevModuleFactory(IJsonRpcConfig jsonRpcConfig,
+            IBundlePool bundlePool,
+            ITxSender? txSender,
             IBlockTree blockTree,
             IStateReader stateReader,
             ITracerFactory tracerFactory,
+            IEciesCipher? eciesCipher,
             ISpecProvider specProvider,
             ISigner? signer,
             ulong chainId)
         {
-            _mevConfig = mevConfig;
             _jsonRpcConfig = jsonRpcConfig;
             _bundlePool = bundlePool;
+            _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
             _blockTree = blockTree;
             _stateReader = stateReader;
             _tracerFactory = tracerFactory;
+            _eciesCipher = eciesCipher ?? throw new ArgumentNullException(nameof(eciesCipher));
             _specProvider = specProvider;
             _signer = signer;
             _chainId = chainId;
@@ -75,9 +70,11 @@ namespace Nethermind.Mev
             return new MevRpcModule(
                 _jsonRpcConfig, 
                 _bundlePool,
+                _txSender,
                 _blockTree,
                 _stateReader, 
                 _tracerFactory,
+                _eciesCipher,
                 _specProvider,
                 _signer,
                 _chainId);

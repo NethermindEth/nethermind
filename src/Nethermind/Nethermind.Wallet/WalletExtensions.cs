@@ -34,7 +34,7 @@ namespace Nethermind.Wallet
             keySeed[31] = 1;
             for (int i = 0; i < count; i++)
             {
-                PrivateKey key = new PrivateKey(keySeed);
+                PrivateKey key = new(keySeed);
                 SecureString secureString = string.Empty.Secure();
                 if (wallet.GetAccounts().All(a => a != key.Address))
                 {

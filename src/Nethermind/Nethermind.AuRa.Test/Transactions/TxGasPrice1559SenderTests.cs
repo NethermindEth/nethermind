@@ -87,7 +87,7 @@ namespace Nethermind.AuRa.Test.Transactions
 
             Transaction transaction = Build.A.Transaction.WithGasPrice(0).TestObject;
 
-            txGasPriceSender.SendTransaction(transaction, TxHandlingOptions.None);
+            txGasPriceSender.SendTx(transaction, TxHandlingOptions.None);
 
             return (transaction.MaxFeePerGas, transaction.MaxPriorityFeePerGas);
         }

@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
@@ -24,12 +25,10 @@ using Nethermind.Mev.Data;
 
 namespace Nethermind.Mev
 {
-    // ReSharper disable once ClassNeverInstantiated.Global
-
     [RpcModule(ModuleType.Mev)]
     public interface IMevRpcModule : IRpcModule
     {        
-        [JsonRpcMethod(Description = "Adds bundle to the tx pool.", IsImplemented = true)]
+        [JsonRpcMethod(Description = "Adds bundle to the bundle pool.", IsImplemented = true)]
         ResultWrapper<bool> eth_sendBundle(byte[][] transactions, long blockNumber, UInt256? minTimestamp = null, UInt256? maxTimestamp = null, Keccak[]? revertingTxHashes = null);
         
         [JsonRpcMethod(Description = "Simulates the bundle behaviour.", IsImplemented = true)]
@@ -37,5 +36,13 @@ namespace Nethermind.Mev
         
         [JsonRpcMethod(Description = "Simulates the bundle behaviour.", IsImplemented = true)]
         ResultWrapper<TxsResults> eth_callBundleJson(TransactionForRpc[] transactions, BlockParameter? blockParameter = null, UInt256? timestamp = null, Keccak[]? revertingTxHashes = null);
+        
+        [JsonRpcMethod(
+            Description = "Publishes the MEV bundle using a carrier transaction encrypted for the specified validator.",
+            IsImplemented = true)]
+        Task<ResultWrapper<Keccak>> eth_publishBundle(
+            PublicKey targetValidator,
+            TransactionForRpc carrier,
+            TransactionForRpc[] bundle);
     }
 }

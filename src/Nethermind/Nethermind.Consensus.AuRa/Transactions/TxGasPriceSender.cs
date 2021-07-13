@@ -40,12 +40,12 @@ namespace Nethermind.Consensus.AuRa.Transactions
             _percentDelta = percentDelta;
         }
 
-        public ValueTask<(Keccak, AddTxResult?)> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
+        public ValueTask<(Keccak, AddTxResult?)> SendTx(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
             UInt256 minGasPrice =  CurrentMinGasPrice();
             UInt256 txGasPrice = minGasPrice * _percentDelta / 100;
             tx.GasPrice = UInt256.Max(txGasPrice, _miningConfig.MinGasPrice);
-            return _txSender.SendTransaction(tx, txHandlingOptions);
+            return _txSender.SendTx(tx, txHandlingOptions);
         }
 
         private UInt256 CurrentMinGasPrice() =>

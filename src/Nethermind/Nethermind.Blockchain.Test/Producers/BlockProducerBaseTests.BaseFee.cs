@@ -100,7 +100,7 @@ namespace Nethermind.Blockchain.Test.Producers
                     tx.GasLimit = 1000000;
                     tx.GasPrice = 20.GWei();
                     tx.SenderAddress = _address;
-                    await _testRpcBlockchain.TxSender.SendTransaction(tx, TxHandlingOptions.ManagedNonce | TxHandlingOptions.PersistentBroadcast);
+                    await _testRpcBlockchain.TxSender.SendTx(tx, TxHandlingOptions.ManagedNonce | TxHandlingOptions.PersistentBroadcast);
                     return this;
                 }
                 
@@ -132,7 +132,7 @@ namespace Nethermind.Blockchain.Test.Producers
                     tx.Nonce = _currentNonce;
                     ++_currentNonce;
                     
-                    await _testRpcBlockchain.TxSender.SendTransaction(tx, TxHandlingOptions.None);
+                    await _testRpcBlockchain.TxSender.SendTx(tx, TxHandlingOptions.None);
                     return this;
                 }
 

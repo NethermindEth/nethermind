@@ -345,7 +345,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             try
             {
                 (Keccak txHash, AddTxResult? addTxResult) =
-                    await _txSender.SendTransaction(tx, txHandlingOptions | TxHandlingOptions.PersistentBroadcast);
+                    await _txSender.SendTx(tx, txHandlingOptions | TxHandlingOptions.PersistentBroadcast);
 
                 return addTxResult == AddTxResult.Added
                     ? ResultWrapper<Keccak>.Success(txHash)

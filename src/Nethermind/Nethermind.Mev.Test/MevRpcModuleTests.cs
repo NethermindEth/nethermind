@@ -22,26 +22,20 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Rlp;
-using Nethermind.TxPool;
-using Nethermind.JsonRpc.Test;
 using Nethermind.Core.Extensions;
-using Nethermind.JsonRpc.Data;
 using Nethermind.Int256;
 using Nethermind.Crypto;
-using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc;
-using Nethermind.Facade;
-using NSubstitute;
 using NUnit.Framework;
-using Newtonsoft.Json;
 using FluentAssertions;
-using Google.Protobuf.WellKnownTypes;
 using Nethermind.Evm;
+using Nethermind.JsonRpc.Data;
+using Nethermind.Logging;
 using Nethermind.Mev.Data;
 using Nethermind.Specs.Forks;
+using Nethermind.Wallet;
 
 namespace Nethermind.Mev.Test
 
@@ -117,6 +111,43 @@ namespace Nethermind.Mev.Test
             resultOfBundle.GetResult().ResultType.Should().NotBe(ResultType.Failure);
             resultOfBundle.GetData().Should().Be(true);
             return new MevBundle(blockNumber, txs);
+        }
+      
+        [Test]
+        public async Task Publish_bundle_adds_the_bundle_to_the_tx_pool_wrapped_in_a_carrier_transaction()
+        {
+            TestMevRpcBlockchain chain = await CreateChain(2);
+
+            PrivateKey validatorPrivateKey = TestItem.PrivateKeyA;
+            PublicKey validatorPublicKey = validatorPrivateKey.PublicKey;
+
+            CryptoRandom cryptoRandom = new();
+            EciesCipher eciesCipher = new(cryptoRandom);
+            EthereumEcdsa ecdsa = new(chain.BlockTree.ChainId, LimboLogs.Instance);
+
+            // just using a builder for test
+            Transaction carrierTx = Build.A.Transaction.TestObject;
+            TransactionForRpc carrierTxForRpc = new(carrierTx);
+            carrierTxForRpc.From = new PrivateKey(DevKeyStoreWallet.SampleKeyBytes).Address;
+            carrierTxForRpc.Gas = 200000;
+
+            Transaction mevTx = Build.A.Transaction
+                .SignedAndResolved(ecdsa, TestItem.PrivateKeyB).TestObject;
+            TxDecoder decoder = new();
+            Rlp mevTxRlp = decoder.Encode(mevTx);
+
+            ResultWrapper<Keccak> result = await chain.MevRpcModule.eth_publishBundle(
+                validatorPublicKey,
+                carrierTxForRpc,
+                new[] {new TransactionForRpc(mevTx)});
+            result.Result.Should().Be(Result.Success);
+            result.Data.Should().NotBeNull();
+            
+            Transaction[] pendingTxs = chain.TxPool.GetPendingTransactions();
+            pendingTxs.Should().HaveCount(1);
+            (bool success, byte[] plainText) = eciesCipher.Decrypt(validatorPrivateKey, pendingTxs[0].Data!);
+            success.Should().BeTrue();
+            plainText.Should().AllBeEquivalentTo(mevTxRlp);
         }
         
         [Test]

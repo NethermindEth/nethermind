@@ -16,22 +16,18 @@
 
 using System;
 using System.Collections.Generic;
-using System.Numerics;
 using System.Linq;
-using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Int256;
 using Nethermind.Core;
-using Nethermind.Facade;
-using Nethermind.Logging;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Mev.Data;
 using Nethermind.Mev.Execution;
@@ -39,7 +35,7 @@ using Nethermind.Mev.Source;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.Trie;
-using Newtonsoft.Json;
+using Nethermind.TxPool;
 
 namespace Nethermind.Mev
 {
@@ -47,39 +43,46 @@ namespace Nethermind.Mev
     {
         private readonly IJsonRpcConfig _jsonRpcConfig;
         private readonly IBundlePool _bundlePool;
+        private readonly ITxSender _txSender;
         private readonly IBlockFinder _blockFinder;
         private readonly IStateReader _stateReader;
         private readonly ITracerFactory _tracerFactory;
+        private readonly IEciesCipher _cipher;
         private readonly ISpecProvider _specProvider;
         private readonly ISigner? _signer;
         private readonly ulong _chainId;
+        private readonly TxDecoder _txDecoder = new();
 
         static MevRpcModule()
         {
             Rlp.RegisterDecoders(typeof(BundleTxDecoder).Assembly);
         }
-        
-        public MevRpcModule(
-            IJsonRpcConfig jsonRpcConfig, 
-            IBundlePool bundlePool, 
-            IBlockFinder blockFinder, 
+
+        public MevRpcModule(IJsonRpcConfig jsonRpcConfig,
+            IBundlePool bundlePool,
+            ITxSender txSender,
+            IBlockFinder blockFinder,
             IStateReader stateReader,
             ITracerFactory tracerFactory,
+            IEciesCipher? cipher,
             ISpecProvider specProvider,
             ISigner? signer,
             ulong chainId)
         {
             _jsonRpcConfig = jsonRpcConfig;
             _bundlePool = bundlePool;
+            _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
             _blockFinder = blockFinder;
             _stateReader = stateReader;
             _tracerFactory = tracerFactory;
+            _cipher = cipher ?? throw new ArgumentNullException(nameof(cipher));
             _specProvider = specProvider;
             _signer = signer;
             _chainId = chainId;
         }
 
-        public ResultWrapper<bool> eth_sendBundle(byte[][] transactions, long blockNumber, UInt256? minTimestamp = null, UInt256? maxTimestamp = null, Keccak[]? revertingTxHashes = null)
+        public ResultWrapper<bool> eth_sendBundle(byte[][] transactions, long blockNumber, UInt256? minTimestamp = null,
+            UInt256? maxTimestamp = null, Keccak[]? revertingTxHashes = null)
         {
             BundleTransaction[] txs = Decode(transactions, revertingTxHashes?.ToHashSet());
             MevBundle bundle = new(blockNumber, txs, minTimestamp, maxTimestamp);
@@ -87,13 +90,15 @@ namespace Nethermind.Mev
             return ResultWrapper<bool>.Success(result);
         }
 
-        public ResultWrapper<TxsResults> eth_callBundle(byte[][] transactions, BlockParameter? blockParameter = null, UInt256? timestamp = null, Keccak[]? revertingTxHashes = null)
+        public ResultWrapper<TxsResults> eth_callBundle(byte[][] transactions, BlockParameter? blockParameter = null,
+            UInt256? timestamp = null, Keccak[]? revertingTxHashes = null)
         {
             BundleTransaction[] txs = Decode(transactions, revertingTxHashes?.ToHashSet());
             return CallBundle(txs, blockParameter, timestamp);
         }
 
-        private ResultWrapper<TxsResults> CallBundle(BundleTransaction[] txs, BlockParameter? blockParameter, UInt256? timestamp)
+        private ResultWrapper<TxsResults> CallBundle(BundleTransaction[] txs, BlockParameter? blockParameter,
+            UInt256? timestamp)
         {
             blockParameter ??= BlockParameter.Latest;
             if (txs.Length == 0)
@@ -108,7 +113,8 @@ namespace Nethermind.Mev
             BlockHeader header = searchResult.Object!;
             if (!HasStateForBlock(header!))
             {
-                return ResultWrapper<TxsResults>.Fail($"No state available for block {header.Hash}", ErrorCodes.ResourceUnavailable);
+                return ResultWrapper<TxsResults>.Fail($"No state available for block {header.Hash}",
+                    ErrorCodes.ResourceUnavailable);
             }
 
             using CancellationTokenSource cancellationTokenSource = new(_jsonRpcConfig.Timeout);
@@ -118,24 +124,50 @@ namespace Nethermind.Mev
                 header,
                 cancellationTokenSource.Token,
                 timestamp);
-            
+
             return ResultWrapper<TxsResults>.Success(results);
         }
 
-        public ResultWrapper<TxsResults> eth_callBundleJson(TransactionForRpc[] transactions, BlockParameter? blockParameter = null, UInt256? timestamp = null, Keccak[]? revertingTxHashes = null)
+        public ResultWrapper<TxsResults> eth_callBundleJson(TransactionForRpc[] transactions,
+            BlockParameter? blockParameter = null, UInt256? timestamp = null, Keccak[]? revertingTxHashes = null)
         {
             HashSet<Keccak> revertingTxHashesSet = revertingTxHashes?.ToHashSet() ?? new HashSet<Keccak>();
             BundleTransaction[] txs = transactions.Select(txForRpc =>
             {
                 FixCallTx(txForRpc);
                 BundleTransaction bundleTransaction = txForRpc.ToTransaction<BundleTransaction>(_chainId);
-                bundleTransaction.CanRevert = bundleTransaction.Hash is not null && revertingTxHashesSet.Contains(bundleTransaction.Hash);
+                bundleTransaction.CanRevert = bundleTransaction.Hash is not null &&
+                                              revertingTxHashesSet.Contains(bundleTransaction.Hash);
                 return bundleTransaction;
             }).ToArray();
-            
+
             return CallBundle(txs, blockParameter, timestamp);
         }
-        
+
+        public async Task<ResultWrapper<Keccak>> eth_publishBundle(
+            PublicKey targetValidator,
+            TransactionForRpc carrier,
+            TransactionForRpc[] bundle)
+        {
+            if (bundle.Length != 1)
+            {
+                throw new NotImplementedException("There can be only one.");
+            }
+
+            Rlp mevTxRlp = _txDecoder.Encode(bundle[0].ToTransaction());
+            byte[] ciphertext = _cipher.Encrypt(targetValidator, mevTxRlp.Bytes);
+            
+            Transaction carrierTx = carrier.ToTransaction();
+            carrierTx.Data = ciphertext;
+            (Keccak? hash, AddTxResult? addTxResult) = await _txSender.SendTx(carrierTx, TxHandlingOptions.ManagedNonce);
+            if (addTxResult != AddTxResult.Added)
+            {
+                return ResultWrapper<Keccak>.Fail(addTxResult.ToString()!, ErrorCodes.InternalError);
+            }
+
+            return ResultWrapper<Keccak>.Success(hash!);
+        }
+
         private static BundleTransaction[] Decode(byte[][] transactions, ISet<Keccak>? revertingTxHashes)
         {
             revertingTxHashes ??= new HashSet<Keccak>();
@@ -146,10 +178,10 @@ namespace Nethermind.Mev
                 Keccak transactionHash = bundleTransaction.Hash!;
                 bundleTransaction.CanRevert = revertingTxHashes.Contains(transactionHash);
                 revertingTxHashes.Remove(transactionHash);
-                
+
                 txs[i] = bundleTransaction;
             }
-            
+
             if (revertingTxHashes.Count > 0)
             {
                 throw new ArgumentException(
@@ -159,7 +191,7 @@ namespace Nethermind.Mev
 
             return txs;
         }
-        
+
         private bool HasStateForBlock(BlockHeader header)
         {
             RootCheckVisitor rootCheckVisitor = new();
@@ -167,11 +199,11 @@ namespace Nethermind.Mev
             _stateReader.RunTreeVisitor(rootCheckVisitor, header.StateRoot!);
             return rootCheckVisitor.HasRoot;
         }
-        
+
         private void FixCallTx(TransactionForRpc transactionCall)
         {
-            transactionCall.Gas = transactionCall.Gas == null || transactionCall.Gas == 0 
-                ? _jsonRpcConfig.GasCap ?? long.MaxValue 
+            transactionCall.Gas = transactionCall.Gas == null || transactionCall.Gas == 0
+                ? _jsonRpcConfig.GasCap ?? long.MaxValue
                 : Math.Min(_jsonRpcConfig.GasCap ?? long.MaxValue, transactionCall.Gas.Value);
 
             transactionCall.From ??= Address.SystemUser;

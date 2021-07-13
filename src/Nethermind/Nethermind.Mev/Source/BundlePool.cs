@@ -16,32 +16,27 @@
 // 
 
 using System;
-using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Drawing;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.Extensions.Logging;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Find;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
-using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Mev.Data;
 using Nethermind.Mev.Execution;
 using Nethermind.TxPool.Collections;
-using Org.BouncyCastle.Security;
 using ILogger = Nethermind.Logging.ILogger;
+
+[assembly:InternalsVisibleTo("Nethermind.Mev.Test")]
 
 namespace Nethermind.Mev.Source
 {
-
     public class BundlePool : IBundlePool, ISimulatedBundleSource, IDisposable
     {
         private readonly ITimestamper _timestamper;
@@ -80,7 +75,7 @@ namespace Nethermind.Mev.Source
         public Task<IEnumerable<MevBundle>> GetBundles(BlockHeader parent, UInt256 timestamp, long gasLimit, CancellationToken token = default) => 
             Task.FromResult(GetBundles(parent.Number + 1, timestamp, token));
 
-        public IEnumerable<MevBundle> GetBundles(long blockNumber, UInt256 timestamp, CancellationToken token = default) => 
+        internal IEnumerable<MevBundle> GetBundles(long blockNumber, UInt256 timestamp, CancellationToken token = default) => 
             GetBundles(blockNumber, timestamp, timestamp, token);
 
         private IEnumerable<MevBundle> GetBundles(long blockNumber, UInt256 minTimestamp, UInt256 maxTimestamp, CancellationToken token = default)

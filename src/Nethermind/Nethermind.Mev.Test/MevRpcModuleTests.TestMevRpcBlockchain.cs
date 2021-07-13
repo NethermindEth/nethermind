@@ -35,6 +35,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Facade;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
@@ -98,7 +99,7 @@ namespace Nethermind.Mev.Test
             {
                 MiningConfig miningConfig = new() {MinGasPrice = UInt256.One};
                 
-                MevBlockProducerEnvFactory blockProducerEnvFactory = new MevBlockProducerEnvFactory(
+                MevBlockProducerEnvFactory blockProducerEnvFactory = new(
                     DbProvider, 
                     BlockTree, 
                     ReadOnlyTrieStore, 
@@ -122,8 +123,7 @@ namespace Nethermind.Mev.Test
                         miningConfig,
                         LogManager);
 
-                Dictionary<IManualBlockProducer, IBeneficiaryBalanceSource> blockProducerDictionary =
-                    new Dictionary<IManualBlockProducer, IBeneficiaryBalanceSource>();
+                Dictionary<IManualBlockProducer, IBeneficiaryBalanceSource> blockProducerDictionary = new();
                     
                 // Add non-mev block
                 IManualBlockProducer standardProducer = CreateEth2BlockProducer();
@@ -172,14 +172,16 @@ namespace Nethermind.Mev.Test
                 return blockProcessor;
             }
 
-            protected override async Task<TestBlockchain> Build(ISpecProvider specProvider = null, UInt256? initialValues = null)
+            protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null)
             {
                 TestBlockchain chain = await base.Build(specProvider, initialValues);
                 MevRpcModule = new MevRpcModule(new JsonRpcConfig(),
                     BundlePool,
+                    TxSender,
                     BlockFinder,
                     StateReader,
                     _tracerFactory,
+                    new EciesCipher(new CryptoRandom()),
                     SpecProvider,
                     Signer,
                     SpecProvider.ChainId);

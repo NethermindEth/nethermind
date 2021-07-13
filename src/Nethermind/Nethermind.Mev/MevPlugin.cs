@@ -28,6 +28,7 @@ using Nethermind.Blockchain.Processing;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm.Tracing;
 using Nethermind.Facade;
@@ -113,13 +114,13 @@ namespace Nethermind.Mev
                 (IApiWithNetwork getFromApi, _) = _nethermindApi!.ForRpc;
                 IJsonRpcConfig rpcConfig = getFromApi.Config<IJsonRpcConfig>();
 
-                MevModuleFactory mevModuleFactory = new(
-                    _mevConfig!, 
-                    rpcConfig, 
+                MevModuleFactory mevModuleFactory = new(rpcConfig, 
                     _bundlePool!, 
+                    getFromApi.TxSender,
                     getFromApi.BlockTree!,
                     getFromApi.StateReader!,
                     TracerFactory,
+                    new EciesCipher(getFromApi.CryptoRandom),
                     getFromApi.SpecProvider!,
                     getFromApi.EngineSigner,
                     getFromApi.ChainSpec!.ChainId);
