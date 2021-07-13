@@ -39,7 +39,7 @@ namespace Nethermind.Db.Files
         private long _head; // where the flusher is
         private long _tail; // where the writers are
 
-        private const int MaxChunks = 1024;
+        private const int MaxChunks = 4 * 1024;
         private readonly MemoryMappedViewAccessor?[] _accessors = new MemoryMappedViewAccessor[MaxChunks];
         private readonly MemoryMappedFile?[] _files = new MemoryMappedFile[MaxChunks];
         private readonly CancellationTokenSource _cts;
