@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,24 +13,19 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System.Reflection;
-using Nethermind.JsonRpc;
-using Nethermind.JsonRpc.Modules;
-using Nethermind.JsonRpc.Data;
-using Nethermind.Mev.Data;
+using System;
+using Nethermind.Blockchain.Find;
+using Nethermind.Int256;
 
-namespace Nethermind.Mev
+namespace Nethermind.Mev.Data
 {
-    // ReSharper disable once ClassNeverInstantiated.Global
-
-    [RpcModule(ModuleType.Mev)]
-    public interface IMevRpcModule : IRpcModule
-    {        
-        [JsonRpcMethod(Description = "Adds bundle to the tx pool.", IsImplemented = true)]
-        ResultWrapper<bool> eth_sendBundle(MevBundleRpc mevBundleRpc);
-        
-        [JsonRpcMethod(Description = "Simulates the bundle behaviour.", IsImplemented = true)]
-        ResultWrapper<TxsResults> eth_callBundle(MevCallBundleRpc mevBundleRpc);
+    public class MevCallBundleRpc
+    {
+        public byte[][] Txs { get; set; } = Array.Empty<byte[]>();
+        public long? BlockNumber { get; set; } = null;
+        public BlockParameter StateBlockNumber { get; set; } = BlockParameter.Latest;
+        public UInt256? Timestamp { get; set; } = null;
     }
 }
