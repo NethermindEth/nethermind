@@ -28,7 +28,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Mev.Data;
 using Nethermind.Mev.Execution;
-using Nethermind.Mev.Source;
+using Nethermind.TxPool;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
@@ -145,7 +145,7 @@ namespace Nethermind.Mev.Test
                 1,
                 1,
                 null);
-            Block head = new Block(header);
+            Block head = new(header);
             ChainLevelInfo info = new(true, new[] {new BlockInfo(Keccak.Zero, 1)});
 
             blockTree.Head.Returns(head);
@@ -154,6 +154,7 @@ namespace Nethermind.Mev.Test
             TestBundlePool bundlePool = new(
                 blockTree,
                 Substitute.For<IBundleSimulator>(),
+                Substitute.For<ITxPool>(),
                 new ManualTimestamper(DateTimeOffset.UnixEpoch.DateTime),
                 new TxValidator(blockTree.ChainId),
                 new TestSpecProvider(London.Instance),

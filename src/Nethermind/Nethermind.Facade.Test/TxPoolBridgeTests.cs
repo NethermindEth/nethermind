@@ -45,7 +45,7 @@ namespace Nethermind.Facade.Test
         public void Timestamp_is_set_on_transactions()
         {
             Transaction tx = Build.A.Transaction.Signed(new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance), TestItem.PrivateKeyA).TestObject;
-            _txSender.SendTransaction(tx, TxHandlingOptions.PersistentBroadcast);
+            _txSender.SendTx(tx, TxHandlingOptions.PersistentBroadcast);
             _txPool.Received().SubmitTx(Arg.Is<Transaction>(tx => tx.Timestamp != UInt256.Zero), TxHandlingOptions.PersistentBroadcast);
         }
 

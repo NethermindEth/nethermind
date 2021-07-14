@@ -34,7 +34,7 @@ namespace Nethermind.TxPool
             if (sealers.Length == 0) throw new ArgumentException("Sealers can not be empty.", nameof(sealers));
         }
 
-        public ValueTask<(Keccak, AddTxResult?)> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
+        public ValueTask<(Keccak, AddTxResult?)> SendTx(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
             AddTxResult? result = null;
             

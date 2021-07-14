@@ -47,7 +47,7 @@ namespace Nethermind.Mev.Source
             IEnumerable<MevBundle> bundles = bundlesTasks.Result; // Is it ok as it will timeout on cancellation token and not create a deadlock?
             foreach (MevBundle bundle in bundles)
             {
-                foreach (Transaction transaction in bundle.Transactions)
+                foreach (BundleTransaction transaction in bundle.Transactions)
                 {
                     yield return transaction;
                 }

@@ -163,7 +163,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                 _                     => TxHandlingOptions.ManagedNonce
             };
             
-            txSender.SendTransaction(transaction, handlingOptions);
+            txSender.SendTx(transaction, handlingOptions);
         }
 
         private ITxSender SetSender(long blockNumber)

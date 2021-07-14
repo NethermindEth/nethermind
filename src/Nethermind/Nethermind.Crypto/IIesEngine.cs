@@ -22,6 +22,6 @@ namespace Nethermind.Crypto
             byte[] input,
             int inOff,
             int inLen,
-            byte[] macData);
+            byte[]? macData);
     }
 }

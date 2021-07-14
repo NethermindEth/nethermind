@@ -685,7 +685,7 @@ namespace Nethermind.Clique.Test
         [Test]
         public async Task Can_vote_a_validator_in()
         {
-            var goerli = On.FastGoerli;
+            On goerli = On.FastGoerli;
             goerli
                 .CreateNode(TestItem.PrivateKeyA)
                 .CreateNode(TestItem.PrivateKeyB)
@@ -713,7 +713,7 @@ namespace Nethermind.Clique.Test
         [Test, Retry(3)]
         public async Task Can_vote_a_validator_out()
         {
-            var goerli = On.FastGoerli;
+            On goerli = On.FastGoerli;
             goerli
                 .CreateNode(TestItem.PrivateKeyA)
                 .CreateNode(TestItem.PrivateKeyB)

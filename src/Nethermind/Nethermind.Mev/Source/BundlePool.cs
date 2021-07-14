@@ -16,34 +16,34 @@
 // 
 
 using System;
-using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Drawing;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.Extensions.Logging;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Find;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
-using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Mev.Data;
 using Nethermind.Mev.Execution;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Collections;
-using Org.BouncyCastle.Security;
 using ILogger = Nethermind.Logging.ILogger;
+
+[assembly:InternalsVisibleTo("Nethermind.Mev.Test")]
 
 namespace Nethermind.Mev.Source
 {
-
+    // TODO: split responsibilities of a source and simulator
+    // TODO: simulator should implement IBundleSource but should not be using sources
+    // TODO: this should be a pipeline
+    
     public class BundlePool : IBundlePool, ISimulatedBundleSource, IDisposable
     {
         private readonly ITimestamper _timestamper;
@@ -52,6 +52,8 @@ namespace Nethermind.Mev.Source
         private readonly ISpecProvider _specProvider;
         private readonly IBlockTree _blockTree;
         private readonly IBundleSimulator _simulator;
+        // ReSharper disable once PrivateFieldCanBeConvertedToLocalVariable
+        private readonly ITxPool _txPool;
         private readonly BundleSortedPool _bundles;
         private readonly ConcurrentDictionary<long, ConcurrentDictionary<(MevBundle Bundle, Keccak BlockHash), SimulatedMevBundleContext>> _simulatedBundles = new();
         private readonly ILogger _logger;
@@ -61,6 +63,7 @@ namespace Nethermind.Mev.Source
         public BundlePool(
             IBlockTree blockTree, 
             IBundleSimulator simulator,
+            ITxPool? txPool,
             ITimestamper timestamper,
             ITxValidator txValidator, 
             ISpecProvider specProvider,
@@ -73,22 +76,55 @@ namespace Nethermind.Mev.Source
             _specProvider = specProvider;
             _blockTree = blockTree;
             _simulator = simulator;
+            _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _logger = logManager.GetClassLogger();
+            _txPool.NewPending += TxPoolOnNewPending;
+            _blockTree.BlockAddedToMain += BlockTreeOnBlockAddedToMain;
             
+            _blockTree.NewHeadBlock += OnNewBlock;
             IComparer<MevBundle> comparer = CompareMevBundleByBlock.Default.ThenBy(CompareMevBundleByMinTimestamp.Default);
             _bundles = new BundleSortedPool(
                 _mevConfig.BundlePoolSize,
                 comparer,
                 logManager );
+            _nutCracker = new(_ourValidatorPrivateKey, _logger);
 
             _bundles.Removed += OnBundleRemoved;
             _blockTree.NewHeadBlock += OnNewBlock;
         }
 
+        private void BlockTreeOnBlockAddedToMain(object? sender, BlockReplacementEventArgs e)
+        {
+            // potentially non blocking maybe?
+            
+            // search through transactions
+            foreach (Transaction transaction in e.Block!.Transactions)
+            {
+                MevBundle? mevBundle = _nutCracker.ExtractBundleFromCarrier(transaction);
+                if (mevBundle is not null)
+                {
+                    _bundles.TryInsert(mevBundle, mevBundle);
+                }
+            }
+        }
+
+        private static readonly PrivateKey _ourValidatorPrivateKey = new(new byte[64]);
+
+        private readonly NutCracker _nutCracker;
+        
+        private void TxPoolOnNewPending(object? sender, TxEventArgs e)
+        {
+            MevBundle? bundle = _nutCracker.ExtractBundleFromCarrier(e.Transaction);
+            if (bundle is not null)
+            {
+                _bundles.TryInsert(bundle, bundle);
+            }
+        }
+
         public Task<IEnumerable<MevBundle>> GetBundles(BlockHeader parent, UInt256 timestamp, long gasLimit, CancellationToken token = default) => 
             Task.FromResult(GetBundles(parent.Number + 1, timestamp, token));
 
-        public IEnumerable<MevBundle> GetBundles(long blockNumber, UInt256 timestamp, CancellationToken token = default) => 
+        internal IEnumerable<MevBundle> GetBundles(long blockNumber, UInt256 timestamp, CancellationToken token = default) => 
             GetBundles(blockNumber, timestamp, timestamp, token);
 
         private IEnumerable<MevBundle> GetBundles(long blockNumber, UInt256 minTimestamp, UInt256 maxTimestamp, CancellationToken token = default)

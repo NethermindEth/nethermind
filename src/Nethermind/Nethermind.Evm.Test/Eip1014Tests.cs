@@ -21,7 +21,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.State;
 using Nethermind.Trie;
 using NUnit.Framework;
 

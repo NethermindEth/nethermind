@@ -26,6 +26,5 @@ namespace Nethermind.Mev.Source
     public interface IBundlePool : IBundleSource
     {
         bool AddBundle(MevBundle bundle);
-        IEnumerable<MevBundle> GetBundles(long block, UInt256 timestamp, CancellationToken token = default);
     }
 }

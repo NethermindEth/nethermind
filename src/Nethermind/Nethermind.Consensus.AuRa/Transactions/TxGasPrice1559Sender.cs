@@ -40,7 +40,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
             _percentDelta = percentDelta;
         }
 
-        public ValueTask<(Keccak, AddTxResult?)> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
+        public ValueTask<(Keccak, AddTxResult?)> SendTx(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
             (UInt256 minFeeCap, UInt256 minGasPremium) = CurrentMinGas();
             UInt256 txFeeCap = minFeeCap * _percentDelta / 100;
@@ -48,7 +48,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
             tx.DecodedMaxFeePerGas = UInt256.Max(txFeeCap, _miningConfig.MinGasPrice);
             tx.GasPrice = txGasPremium;
             tx.Type = TxType.EIP1559;
-            return _txSender.SendTransaction(tx, txHandlingOptions);
+            return _txSender.SendTx(tx, txHandlingOptions);
         }
 
         private (UInt256 FeeCap, UInt256 GasPremimum) CurrentMinGas()

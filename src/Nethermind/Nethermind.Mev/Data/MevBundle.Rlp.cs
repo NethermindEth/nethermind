@@ -28,7 +28,7 @@ namespace Nethermind.Mev.Data
             return Keccak.Compute(stream.Data);
         }
 
-        private static RlpStream EncodeRlp(MevBundle bundle)
+        public static RlpStream EncodeRlp(MevBundle bundle)
         {
             (int Content, int Tx) GetContentLength()
             {

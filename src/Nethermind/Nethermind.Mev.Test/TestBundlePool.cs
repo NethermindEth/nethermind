@@ -35,12 +35,13 @@ namespace Nethermind.Mev.Test
         
         public TestBundlePool(IBlockTree blockTree, 
             IBundleSimulator simulator,
+            ITxPool txPool,
             ITimestamper timestamper,
             ITxValidator txValidator, 
             ISpecProvider specProvider,
             IMevConfig mevConfig,
             ILogManager logManager)
-            : base(blockTree, simulator, timestamper, txValidator, specProvider, mevConfig, logManager)
+            : base(blockTree, simulator, txPool, timestamper, txValidator, specProvider, mevConfig, logManager)
         {
         }
 

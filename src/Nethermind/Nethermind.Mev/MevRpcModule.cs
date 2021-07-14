@@ -16,22 +16,19 @@
 
 using System;
 using System.Collections.Generic;
-using System.Numerics;
 using System.Linq;
-using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Int256;
 using Nethermind.Core;
-using Nethermind.Facade;
-using Nethermind.Logging;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Mev.Data;
 using Nethermind.Mev.Execution;
@@ -39,7 +36,7 @@ using Nethermind.Mev.Source;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.Trie;
-using Newtonsoft.Json;
+using Nethermind.TxPool;
 
 namespace Nethermind.Mev
 {
@@ -47,36 +44,42 @@ namespace Nethermind.Mev
     {
         private readonly IJsonRpcConfig _jsonRpcConfig;
         private readonly IBundlePool _bundlePool;
+        private readonly ITxSender _txSender;
         private readonly IBlockFinder _blockFinder;
         private readonly IStateReader _stateReader;
         private readonly ITracerFactory _tracerFactory;
+        private readonly IEciesCipher _cipher;
         private readonly ISpecProvider _specProvider;
         private readonly ISigner? _signer;
+        private readonly TxDecoder _txDecoder = new();
 
         static MevRpcModule()
         {
             Rlp.RegisterDecoders(typeof(BundleTxDecoder).Assembly);
         }
-        
-        public MevRpcModule(
-            IJsonRpcConfig jsonRpcConfig, 
-            IBundlePool bundlePool, 
-            IBlockFinder blockFinder, 
+
+        public MevRpcModule(IJsonRpcConfig jsonRpcConfig,
+            IBundlePool bundlePool,
+            ITxSender txSender,
+            IBlockFinder blockFinder,
             IStateReader stateReader,
             ITracerFactory tracerFactory,
+            IEciesCipher? cipher,
             ISpecProvider specProvider,
             ISigner? signer)
         {
             _jsonRpcConfig = jsonRpcConfig;
             _bundlePool = bundlePool;
+            _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
             _blockFinder = blockFinder;
             _stateReader = stateReader;
             _tracerFactory = tracerFactory;
+            _cipher = cipher ?? throw new ArgumentNullException(nameof(cipher));
             _specProvider = specProvider;
             _signer = signer;
         }
 
-        public ResultWrapper<bool> eth_sendBundle(MevBundleRpc mevBundleRpc)
+public ResultWrapper<bool> eth_sendBundle(MevBundleRpc mevBundleRpc)
         {
             BundleTransaction[] txs = Decode(mevBundleRpc.Txs, mevBundleRpc.RevertingTxHashes?.ToHashSet());
             MevBundle bundle = new(mevBundleRpc.BlockNumber, txs, mevBundleRpc.MinTimestamp, mevBundleRpc.MaxTimestamp);
@@ -109,18 +112,44 @@ namespace Nethermind.Mev
 
             if (!HasStateForBlock(header!))
             {
-                return ResultWrapper<TxsResults>.Fail($"No state available for block {header.Hash}", ErrorCodes.ResourceUnavailable);
+                return ResultWrapper<TxsResults>.Fail($"No state available for block {header.Hash}",
+                    ErrorCodes.ResourceUnavailable);
             }
 
             using CancellationTokenSource cancellationTokenSource = new(_jsonRpcConfig.Timeout);
 
             TxsResults results = new CallTxBundleExecutor(_tracerFactory, _specProvider, _signer).ExecuteBundle(
-                new MevBundle(header.Number + 1, txs, timestamp, timestamp),
+                new MevBundle(header.Number, txs, timestamp, timestamp),
                 header,
                 cancellationTokenSource.Token,
                 timestamp);
-            
+
             return ResultWrapper<TxsResults>.Success(results);
+        }
+
+        public async Task<ResultWrapper<Keccak>> eth_publishBundle(
+            PublicKey targetValidator,
+            TransactionForRpc carrier,
+            TransactionForRpc[] bundle)
+        {
+            if (bundle.Length != 1)
+            {
+                throw new NotImplementedException("There can be only one.");
+            }
+
+            Rlp mevTxRlp = _txDecoder.Encode(bundle[0].ToTransaction());
+            byte[] ciphertext = _cipher.Encrypt(targetValidator, mevTxRlp.Bytes);
+            
+            Transaction carrierTx = carrier.ToTransaction();
+            byte[] mevPrefix = new byte[0];
+            carrierTx.Data = Bytes.Concat(mevPrefix, targetValidator.Bytes, ciphertext); // here we could encrypt for multiple validators possibly
+            (Keccak? hash, AddTxResult? addTxResult) = await _txSender.SendTx(carrierTx, TxHandlingOptions.ManagedNonce);
+            if (addTxResult != AddTxResult.Added)
+            {
+                return ResultWrapper<Keccak>.Fail(addTxResult.ToString()!, ErrorCodes.InternalError);
+            }
+
+            return ResultWrapper<Keccak>.Success(hash!);
         }
 
         private static BundleTransaction[] Decode(byte[][] transactions, ISet<Keccak>? revertingTxHashes = null)
@@ -146,7 +175,7 @@ namespace Nethermind.Mev
 
             return txs;
         }
-        
+
         private bool HasStateForBlock(BlockHeader header)
         {
             RootCheckVisitor rootCheckVisitor = new();
