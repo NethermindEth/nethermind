@@ -1,8 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection.PortableExecutable;
-using Jint.Native;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
