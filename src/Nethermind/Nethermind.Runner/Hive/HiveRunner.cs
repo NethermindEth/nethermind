@@ -40,7 +40,6 @@ namespace Nethermind.Runner.Hive
         private SemaphoreSlim _resetEvent;
         
         public HiveRunner(IBlockTree blockTree,
-            IJsonSerializer jsonSerializer,
             IConfigProvider configurationProvider,
             ILogger logger,
             IFileSystem fileSystem)

@@ -43,7 +43,6 @@ namespace Nethermind.Runner.Ethereum.Steps
 
                 HiveRunner hiveRunner = new(
                     _api.BlockTree,
-                    _api.EthereumJsonSerializer,
                     _api.ConfigProvider,
                     _api.LogManager.GetClassLogger(),
                     _api.FileSystem

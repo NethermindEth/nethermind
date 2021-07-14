@@ -83,7 +83,7 @@ namespace Nethermind.Evm
         {
             bool notSystemTransaction = !transaction.IsSystem();
             bool wasSenderAccountCreatedInsideACall = false;
-            
+
             IReleaseSpec spec = _specProvider.GetSpec(block.Number);
             if (!notSystemTransaction)
             {
