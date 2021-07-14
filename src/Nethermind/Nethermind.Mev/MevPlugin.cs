@@ -143,11 +143,6 @@ namespace Nethermind.Mev
                 
                 getFromApi.RpcModuleProvider!.RegisterBoundedByCpuCount(mevModuleFactory, rpcConfig.Timeout);
 
-                if (getFromApi.TxPool != null)
-                {
-                    getFromApi.TxPool.NewPending += TxPoolOnNewPending;
-                }
-
                 if (_logger!.IsInfo) _logger.Info("Flashbots RPC plugin enabled");
             } 
             else 
@@ -201,17 +196,6 @@ namespace Nethermind.Mev
 
         public bool Enabled => _mevConfig.Enabled;
 
-        private void TxPoolOnNewPending(object? sender, TxPool.TxEventArgs e)
-        {
-            IBlockchainBridge bridge = _nethermindApi!.CreateBlockchainBridge();
-            // create a bundle
-            // submit the bundle to Flashbots MEV-Relay
-            // move to other class
-        }
-
-        public ValueTask DisposeAsync()
-        {
-            return ValueTask.CompletedTask;
-        }
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 }

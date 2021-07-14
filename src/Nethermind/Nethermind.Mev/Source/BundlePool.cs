@@ -75,7 +75,6 @@ namespace Nethermind.Mev.Source
             _simulator = simulator;
             _logger = logManager.GetClassLogger();
             
-            _blockTree.NewHeadBlock += OnNewBlock;
             IComparer<MevBundle> comparer = CompareMevBundleByBlock.Default.ThenBy(CompareMevBundleByMinTimestamp.Default);
             _bundles = new BundleSortedPool(
                 _mevConfig.BundlePoolSize,
@@ -83,6 +82,7 @@ namespace Nethermind.Mev.Source
                 logManager );
 
             _bundles.Removed += OnBundleRemoved;
+            _blockTree.NewHeadBlock += OnNewBlock;
         }
 
         public Task<IEnumerable<MevBundle>> GetBundles(BlockHeader parent, UInt256 timestamp, long gasLimit, CancellationToken token = default) => 
@@ -110,7 +110,6 @@ namespace Nethermind.Mev.Source
                     }
                 }
             }
-                    
         }
 
         public bool AddBundle(MevBundle bundle)
@@ -349,7 +348,6 @@ namespace Nethermind.Mev.Source
 
         public void Dispose()
         {
-            _blockTree.NewSuggestedBlock -= OnNewBlock;
             _blockTree.NewHeadBlock -= OnNewBlock;
             _bundles.Removed -= OnBundleRemoved;
         }
