@@ -133,7 +133,7 @@ namespace Nethermind.Mev
                 MevModuleFactory mevModuleFactory = new(
                     _mevConfig!, 
                     rpcConfig, 
-                    _bundlePool!, 
+                    BundlePool, 
                     getFromApi.BlockTree!,
                     getFromApi.StateReader!,
                     TracerFactory,
