@@ -38,9 +38,6 @@ namespace Nethermind.Db
         // BloomDB progress / config (does not contain blooms - they are kept in bloom storage)
         public IDb BloomDb => GetDb<IDb>(DbNames.Bloom);
 
-        // deleted on startup and built from empty each time
-        public IDb PendingTxsDb => GetDb<IDb>(DbNames.PendingTxs);
-
         // LES (ignore)
         public IDb ChtDb => GetDb<IDb>(DbNames.CHT);
         

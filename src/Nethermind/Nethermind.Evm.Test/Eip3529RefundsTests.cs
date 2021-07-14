@@ -26,6 +26,7 @@ using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Evm.Tracing.ParityStyle;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
@@ -35,7 +36,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
 {
-    // https://eips.ethereum.org/EIPS/eip-3529
+    // Vitalik Buterin, Martin Swende, "EIP-3529: Reduction in refunds [DRAFT]," Ethereum Improvement Proposals, no. 3529, April 2021. [Online serial]. Available: https://eips.ethereum.org/EIPS/eip-3529.
     public class Eip3529Tests : VirtualMachineTestsBase
     {
         const long LondonTestBlockNumber = 5;

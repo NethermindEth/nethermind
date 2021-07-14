@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain
 {
@@ -26,20 +25,7 @@ namespace Nethermind.Blockchain
         /// </summary>
         long LastFinalizedBlockLevel { get; }
         event EventHandler<FinalizeEventArgs> BlocksFinalized;
-        
-        /// <summary>
-        /// Get last level finalized by certain block hash.
-        /// </summary>
-        /// <param name="blockHash">Hash of block</param>
-        /// <returns>Last level that was finalized by block hash.</returns>
-        /// <remarks>This is used when we have nonconsecutive block processing, like just switching from Fast to Full sync or when producing blocks. It is used when trying to find a non-finalized InitChange event.</remarks>
-        long GetLastLevelFinalizedBy(Keccak blockHash);
 
-        /// <summary>
-        /// Gets level ath which the certain level was finalized.
-        /// </summary>
-        /// <param name="level">Level to check when was finalized.</param>
-        /// <returns>Level at which finalization happened. Null if checked level is not yet finalized.</returns>
-        long? GetFinalizationLevel(long level);
+        public bool IsFinalized(long level) => LastFinalizedBlockLevel >= level;
     }
 }

@@ -42,7 +42,6 @@ using Nethermind.Facade;
 using Nethermind.State;
 using Nethermind.Trie;
 using Nethermind.TxPool;
-using Nethermind.TxPool.Storages;
 using Nethermind.Wallet;
 using NSubstitute;
 using NUnit.Framework;
@@ -52,6 +51,7 @@ using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Spec;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core.Test;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.DataMarketplace.Test
@@ -137,8 +137,13 @@ namespace Nethermind.DataMarketplace.Test
             Block block =  Build.A.Block.WithNumber(0).TestObject;
             blockTree.Head.Returns(block);
             TransactionComparerProvider transactionComparerProvider = new TransactionComparerProvider(specProvider, blockTree);
-            _txPool = new TxPool.TxPool(new InMemoryTxStorage(),
-                new EthereumEcdsa(specProvider.ChainId, _logManager), new ChainHeadInfoProvider(specProvider, blockTree, _state), new TxPoolConfig(), new TxValidator(specProvider.ChainId), _logManager, transactionComparerProvider.GetDefaultComparer());
+            _txPool = new TxPool.TxPool(
+                new EthereumEcdsa(specProvider.ChainId, _logManager),
+                new ChainHeadInfoProvider(specProvider, blockTree, _state),
+                new TxPoolConfig(),
+                new TxValidator(specProvider.ChainId),
+                _logManager,
+                transactionComparerProvider.GetDefaultComparer());
             _ndmBridge = new NdmBlockchainBridge(_bridge, _bridge, _bridge, _bridge);
         }
 
@@ -149,7 +154,7 @@ namespace Nethermind.DataMarketplace.Test
             deployContract.GasLimit = 4000000;
             deployContract.Data = initCode;
             deployContract.Nonce = _bridge.GetNonce(_providerAccount);
-            Keccak txHash = await _bridge.SendTransaction(deployContract, TxHandlingOptions.None);
+            Keccak txHash = (await _bridge.SendTransaction(deployContract, TxHandlingOptions.None)).Hash;
             _bridge.IncrementNonce(_providerAccount);
             TxReceipt receipt = _bridge.GetReceipt(txHash);
             Assert.AreEqual(StatusCode.Success, receipt.StatusCode, $"contract deployed {receipt.Error}");
@@ -228,27 +233,32 @@ namespace Nethermind.DataMarketplace.Test
                 throw new NotImplementedException();
             }
 
-            public (TxReceipt Receipt, Transaction Transaction) GetTransaction(Keccak txHash)
+            public (TxReceipt Receipt, UInt256? EffectiveGasPrice) GetReceiptAndEffectiveGasPrice(Keccak txHash)
+            {
+                throw new NotImplementedException();
+            }
+
+            public (TxReceipt Receipt, Transaction Transaction, UInt256? baseFee) GetTransaction(Keccak txHash)
             {
                 return (new TxReceipt(), new Transaction
                 {
                     Hash = txHash
-                });
+                }, null);
             }
             
             private BlockReceiptsTracer _receiptsTracer;
 
             private int _txIndex;
 
-            public ValueTask<Keccak> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
+            public ValueTask<(Keccak Hash, AddTxResult? AddTxResult)> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
             {
                 tx.Nonce = GetNonce(tx.SenderAddress);
                 tx.Hash = tx.CalculateHash();
                 _headBlock.Transactions[_txIndex++] = tx;
-                _receiptsTracer.StartNewTxTrace(tx.Hash);
+                _receiptsTracer.StartNewTxTrace(tx);
                 _processor.Execute(tx, Head?.Header, _receiptsTracer);
                 _receiptsTracer.EndTxTrace();
-                return new ValueTask<Keccak>(tx.CalculateHash());
+                return new ValueTask<(Keccak, AddTxResult?)>((tx.CalculateHash(), null));
             }
 
             public TxReceipt GetReceipt(Keccak txHash) => _receiptsTracer.TxReceipts.Single(r => r?.TxHash == txHash);
@@ -282,7 +292,7 @@ namespace Nethermind.DataMarketplace.Test
 
             public Account GetAccount(Keccak stateRoot, Address address)
             {
-                throw new NotImplementedException();
+                return Account.TotallyEmpty.WithChangedNonce(GetNonce(stateRoot, address));
             }
 
             public UInt256 GetNonce(Keccak stateRoot, Address address)

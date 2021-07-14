@@ -92,9 +92,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             {
                 return new[]
                 {
-                    Build.A.Transaction.WithFeeCap(27).WithGasPrice(1).WithType(TxType.EIP1559).TestObject, //Min(27, 1 + 25) => 26
-                    Build.A.Transaction.WithFeeCap(27).WithGasPrice(2).WithType(TxType.EIP1559).TestObject, //Min(27, 2 + 25) => 27
-                    Build.A.Transaction.WithFeeCap(27).WithGasPrice(3).WithType(TxType.EIP1559).TestObject //Min(27, 3 + 25) => 27
+                    Build.A.Transaction.WithMaxFeePerGas(27).WithGasPrice(1).WithType(TxType.EIP1559).TestObject, //Min(27, 1 + 25) => 26
+                    Build.A.Transaction.WithMaxFeePerGas(27).WithGasPrice(2).WithType(TxType.EIP1559).TestObject, //Min(27, 2 + 25) => 27
+                    Build.A.Transaction.WithMaxFeePerGas(27).WithGasPrice(3).WithType(TxType.EIP1559).TestObject //Min(27, 3 + 25) => 27
                 };
             }
 
@@ -102,9 +102,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             {
                 return new[]
                 {
-                    Build.A.Transaction.WithFeeCap(27).WithGasPrice(9).TestObject, //Min(9, 9 + 25) => 9
-                    Build.A.Transaction.WithFeeCap(27).WithGasPrice(10).TestObject, //Min(10, 10 + 25) => 10
-                    Build.A.Transaction.WithFeeCap(27).WithGasPrice(11).TestObject //Min(11, 11 + 25) => 11
+                    Build.A.Transaction.WithMaxFeePerGas(27).WithGasPrice(9).TestObject, //Min(9, 9 + 25) => 9
+                    Build.A.Transaction.WithMaxFeePerGas(27).WithGasPrice(10).TestObject, //Min(10, 10 + 25) => 10
+                    Build.A.Transaction.WithMaxFeePerGas(27).WithGasPrice(11).TestObject //Min(11, 11 + 25) => 11
                 };
             }
             static ISpecProvider VariableReturnMockSpecProvider()

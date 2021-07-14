@@ -28,9 +28,9 @@ using Nethermind.Blockchain.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Db;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Ethash
 {
@@ -52,11 +52,11 @@ namespace Nethermind.Consensus.Ethash
             return Task.CompletedTask;
         }
 
-        public Task InitBlockProducer()
+        public Task<IBlockProducer> InitBlockProducer(ITxSource? txSource = null)
         {
             if (_nethermindApi!.SealEngineType != Nethermind.Core.SealEngineType.NethDev)
             {
-                return Task.CompletedTask;
+                return Task.FromResult((IBlockProducer)null);
             }
             var (getFromApi, setInApi) = _nethermindApi!.ForProducer;
 
@@ -66,11 +66,11 @@ namespace Nethermind.Consensus.Ethash
             ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(_nethermindApi.LogManager)
                 .WithBaseFeeFilter(getFromApi.SpecProvider)
                 .WithNullTxFilter()
+                .WithMinGasPriceFilter(_nethermindApi.Config<IMiningConfig>().MinGasPrice, getFromApi.SpecProvider)
                 .Build;
             
-            ITxSource txSource = new TxPoolTxSource(
-                getFromApi.TxPool, 
-                getFromApi.StateReader,
+            txSource ??= new TxPoolTxSource(
+                getFromApi.TxPool,
                 getFromApi.SpecProvider,
                 getFromApi.TransactionComparerProvider!,
                 getFromApi.LogManager,
@@ -91,10 +91,9 @@ namespace Nethermind.Consensus.Ethash
                 getFromApi!.SpecProvider,
                 getFromApi!.BlockValidator,
                 NoBlockRewards.Instance,
-                producerEnv.TransactionProcessor,
+                new BlockProcessor.BlockProductionTransactionsExecutor(producerEnv, getFromApi!.SpecProvider, getFromApi.LogManager),
                 producerEnv.StateProvider,
                 producerEnv.StorageProvider,
-                NullTxPool.Instance,
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,
                 getFromApi.LogManager);
@@ -106,7 +105,7 @@ namespace Nethermind.Consensus.Ethash
                 getFromApi.LogManager,
                 BlockchainProcessor.Options.NoReceipts);
             
-            setInApi.BlockProducer = new DevBlockProducer(
+            IBlockProducer blockProducer = setInApi.BlockProducer = new DevBlockProducer(
                 txSource.ServeTxsOneByOne(),
                 producerChainProcessor,
                 producerEnv.StateProvider,
@@ -120,7 +119,7 @@ namespace Nethermind.Consensus.Ethash
                 getFromApi.Config<IMiningConfig>(),
                 getFromApi.LogManager);
 
-            return Task.CompletedTask;
+            return Task.FromResult(blockProducer);
         }
 
         public string SealEngineType => Nethermind.Core.SealEngineType.NethDev;

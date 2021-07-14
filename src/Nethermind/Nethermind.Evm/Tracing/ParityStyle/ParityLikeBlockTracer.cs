@@ -23,7 +23,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
 {
     public class ParityLikeBlockTracer : BlockTracerBase<ParityLikeTxTrace, ParityLikeTxTracer>
     {
-        private Block _block;
+        private Block _block = null!;
         private readonly ParityTraceTypes _types;
 
         public ParityLikeBlockTracer(Keccak txHash, ParityTraceTypes types)
@@ -39,8 +39,8 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             IsTracingRewards = (types & ParityTraceTypes.Rewards) == ParityTraceTypes.Rewards;
         }
 
-        protected override ParityLikeTxTracer OnStart(Keccak txHash) => 
-            new(_block, txHash == null ? null : _block.Transactions.Single(t => t.Hash == txHash), _types);
+        protected override ParityLikeTxTracer OnStart(Transaction? tx) => 
+            new(_block, tx, _types);
 
         protected override ParityLikeTxTrace OnEnd(ParityLikeTxTracer txTracer) => txTracer.BuildResult();
 
@@ -62,6 +62,10 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         public override void StartNewBlockTrace(Block block)
         {
             _block = block;
+        }
+        
+        public override void EndBlockTrace()
+        {
         }
     }
 }

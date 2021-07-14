@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -39,7 +39,7 @@ namespace Nethermind.Config.Test
             var jsonRpcConfig = new JsonRpcConfig();
             var statsConfig = StatsParameters.Instance;
 
-            _configProvider = new JsonConfigProvider("SampleJsonConfig.cfg");
+            _configProvider = new JsonConfigProvider("SampleJson/SampleJsonConfig.cfg");
         }
 
         [Test]

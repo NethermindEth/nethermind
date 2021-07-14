@@ -53,7 +53,7 @@ namespace Nethermind.Core.Test.Encoding
             yield return (Build.A.Transaction
                 .WithData(new byte[] {1, 2, 3})
                 .WithType(TxType.EIP1559)
-                .WithFeeCap(30)
+                .WithMaxFeePerGas(30)
                 .WithChainId(1)
                 .WithAccessList(
                     new AccessList(
@@ -64,12 +64,12 @@ namespace Nethermind.Core.Test.Encoding
                 .SignedAndResolved().TestObject, "EIP1559 - access list");
             yield return (Build.A.Transaction
                 .WithType(TxType.EIP1559)
-                .WithFeeCap(50)
-                .WithGasPremium(10)
+                .WithMaxFeePerGas(50)
+                .WithMaxPriorityFeePerGas(10)
                 .WithChainId(0)
                 .SignedAndResolved().TestObject, "EIP 1559");
             yield return (Build.A.Transaction
-                .WithFeeCap(2.GWei())
+                .WithMaxFeePerGas(2.GWei())
                 .WithType(TxType.EIP1559)
                 .WithGasPrice(0)
                 .WithChainId(1559)

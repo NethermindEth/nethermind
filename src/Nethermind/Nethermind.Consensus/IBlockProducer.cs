@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Threading.Tasks;
+using Nethermind.Core;
 
 namespace Nethermind.Consensus
 {
@@ -23,5 +24,6 @@ namespace Nethermind.Consensus
         void Start();
         Task StopAsync();
         bool IsProducingBlocks(ulong? maxProducingInterval);
+        ITimestamper Timestamper { get; }
     }
 }

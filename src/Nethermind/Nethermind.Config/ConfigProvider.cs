@@ -45,31 +45,6 @@ namespace Nethermind.Config
                 {
                     Initialize();
                 }
-
-                object config = Activator.CreateInstance(_implementations[configType]);
-                _instances[configType] = config!;
-                foreach (PropertyInfo propertyInfo in config.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance))
-                {
-                    for (int i = 0; i < _configSource.Count; i++)
-                    {
-                        string category = config.GetType().Name;
-                        string name = propertyInfo.Name;
-                        (bool isSet, object value) = _configSource[i].GetValue(propertyInfo.PropertyType, category, name);
-                        if (isSet)
-                        {
-                            try
-                            {
-                                propertyInfo.SetValue(config, value);
-                            }
-                            catch (Exception e)
-                            {
-                                throw new InvalidOperationException($"Cannot set value of {category}.{name}", e);
-                            }
-
-                            break;
-                        }
-                    }
-                }
             }
             
             return _instances[configType];
@@ -116,8 +91,67 @@ namespace Nethermind.Config
                 {
                     Categories.Add(@interface.Name.Substring(1), Activator.CreateInstance(directImplementation));
                     _implementations[@interface] = directImplementation;
+
+                    object config = Activator.CreateInstance(_implementations[@interface]);
+                    _instances[@interface] = config!;
+
+                    foreach (PropertyInfo propertyInfo in config.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance))
+                    {
+                        for (int i = 0; i < _configSource.Count; i++)
+                        {
+                            string category = config.GetType().Name;
+                            string name = propertyInfo.Name;
+                            (bool isSet, object value) = _configSource[i].GetValue(propertyInfo.PropertyType, category, name);
+                            if (isSet)
+                            {
+                                try
+                                {
+                                    propertyInfo.SetValue(config, value);
+                                }
+                                catch (Exception e)
+                                {
+                                    throw new InvalidOperationException($"Cannot set value of {category}.{name}", e);
+                                }
+
+                                break;
+                            }
+                        }
+                    }
                 }
             }
+        }
+
+        public (string ErrorMsg, IList<(IConfigSource Source, string Category, string Name)> Errors) FindIncorrectSettings()
+        {
+            if(_instances.Count() == 0)
+            {
+                Initialize();
+            }
+
+            //var set = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var propertySet = _instances.Values.SelectMany(i => i.GetType().GetProperties().Select(p => GetKey(i.GetType().Name , p.Name))).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            List<(IConfigSource Source, string Category, string Name)> incorrectSettings = new();
+
+            foreach (var source in _configSource)
+            {
+                var configs = source.GetConfigKeys();
+
+                foreach (var conf in configs)
+                {
+                    if(!propertySet.Contains(GetKey(conf.Category ,conf.Name)))
+                    {
+                        incorrectSettings.Add((source, conf.Category, conf.Name));
+                    }
+                }
+            }
+
+            var msg = string.Join(Environment.NewLine, incorrectSettings.Select(s => s.Source.ToString() + ":" + s.Category + ":" + s.Name));
+
+
+            return (msg, incorrectSettings);
+
+            static string GetKey(string category, string name) => category + '.' + name;
         }
     }
 }
