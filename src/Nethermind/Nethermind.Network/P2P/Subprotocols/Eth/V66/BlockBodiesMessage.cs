@@ -23,17 +23,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
         public override string Protocol { get; } = "eth";
         public long RequestId { get; set; }
         public Eth.V62.BlockBodiesMessage EthMessage { get; set; }
-        public int BufferValue { get; set; }
-
+        
         public BlockBodiesMessage()
         {
         }
 
-        public BlockBodiesMessage(long requestId, Eth.V62.BlockBodiesMessage ethMessage, int bufferValue)
+        public BlockBodiesMessage(long requestId, Eth.V62.BlockBodiesMessage ethMessage)
         {
             RequestId = requestId;
             EthMessage = ethMessage;
-            BufferValue = bufferValue;
         }
     }
 }

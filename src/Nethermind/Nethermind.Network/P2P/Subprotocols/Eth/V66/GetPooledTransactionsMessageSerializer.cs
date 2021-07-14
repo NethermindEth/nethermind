@@ -20,12 +20,12 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 {
-    public class BlockBodiesMessageSerializer : IZeroMessageSerializer<BlockBodiesMessage>
+    public class GetPooledTransactionsMessageSerializer : IZeroMessageSerializer<GetPooledTransactionsMessage>
     {
-        public void Serialize(IByteBuffer byteBuffer, BlockBodiesMessage message)
+        public void Serialize(IByteBuffer byteBuffer, GetPooledTransactionsMessage message)
         {
-            Eth.V62.BlockBodiesMessageSerializer ethSerializer = new Eth.V62.BlockBodiesMessageSerializer();
-            Rlp ethMessage = new Rlp(ethSerializer.Serialize(message.EthMessage));
+            Eth.V65.GetPooledTransactionsMessageSerializer ethSerializer = new();
+            Rlp ethMessage = new(ethSerializer.Serialize(message.EthMessage));
             int contentLength = Rlp.LengthOf(message.RequestId) + ethMessage.Length;
 
             int totalLength = Rlp.GetSequenceRlpLength(contentLength);
@@ -38,19 +38,19 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             rlpStream.Encode(ethMessage);
         }
 
-        public BlockBodiesMessage Deserialize(IByteBuffer byteBuffer)
+        public GetPooledTransactionsMessage Deserialize(IByteBuffer byteBuffer)
         {
-            NettyRlpStream rlpStream = new NettyRlpStream(byteBuffer);
+            NettyRlpStream rlpStream = new(byteBuffer);
             return Deserialize(rlpStream);
         }
-
-        private static BlockBodiesMessage Deserialize(RlpStream rlpStream)
+        
+        private static GetPooledTransactionsMessage Deserialize(RlpStream rlpStream)
         {
-            BlockBodiesMessage blockBodiesMessage = new BlockBodiesMessage();
+            GetPooledTransactionsMessage getPooledTransactionsMessage = new GetPooledTransactionsMessage();
             rlpStream.ReadSequenceLength();
-            blockBodiesMessage.RequestId = rlpStream.DecodeLong();
-            blockBodiesMessage.EthMessage = Eth.V62.BlockBodiesMessageSerializer.Deserialize(rlpStream);
-            return blockBodiesMessage;
+            getPooledTransactionsMessage.RequestId = rlpStream.DecodeLong();
+            getPooledTransactionsMessage.EthMessage = Eth.V65.GetPooledTransactionsMessageSerializer.Deserialize(rlpStream);
+            return getPooledTransactionsMessage;
         }
     }
 }

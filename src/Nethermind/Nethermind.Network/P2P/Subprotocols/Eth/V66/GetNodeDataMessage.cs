@@ -15,9 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Collections.Generic;
-using Nethermind.Core.Crypto;
-
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 {
     public class GetNodeDataMessage : P2PMessage
@@ -26,7 +23,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
         public override string Protocol { get; } = "eth";
         public long RequestId;
         public Eth.V63.GetNodeDataMessage EthMessage;
-        
+
+        public GetNodeDataMessage()
+        {
+        }
         public GetNodeDataMessage(long requestId, Eth.V63.GetNodeDataMessage ethMessage)
         {
             RequestId = requestId;

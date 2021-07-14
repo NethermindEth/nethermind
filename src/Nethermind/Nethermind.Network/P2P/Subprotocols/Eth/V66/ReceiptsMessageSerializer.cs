@@ -35,7 +35,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
         {
             Eth.V63.ReceiptsMessageSerializer ethSerializer = new Eth.V63.ReceiptsMessageSerializer(_specProvider);
             Rlp ethMessage = new Rlp(ethSerializer.Serialize(message.EthMessage));
-            int contentLength = Rlp.LengthOf(message.RequestId) + Rlp.LengthOf(message.BufferValue) + ethMessage.Length;
+            int contentLength = Rlp.LengthOf(message.RequestId) + ethMessage.Length;
 
             int totalLength = Rlp.GetSequenceRlpLength(contentLength);
 
@@ -44,7 +44,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 
             rlpStream.StartSequence(contentLength);
             rlpStream.Encode(message.RequestId);
-            rlpStream.Encode(message.BufferValue);
             rlpStream.Encode(ethMessage);
         }
 
@@ -61,7 +60,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 
             rlpStream.ReadSequenceLength();
             receiptsMessage.RequestId = rlpStream.DecodeLong();
-            receiptsMessage.BufferValue = rlpStream.DecodeInt();
             receiptsMessage.EthMessage = ethSerializer.Deserialize(rlpStream);
             return receiptsMessage;
         }

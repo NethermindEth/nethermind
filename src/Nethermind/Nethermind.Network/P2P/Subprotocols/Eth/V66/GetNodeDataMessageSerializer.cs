@@ -20,12 +20,12 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 {
-    public class BlockBodiesMessageSerializer : IZeroMessageSerializer<BlockBodiesMessage>
+    public class GetNodeDataMessageSerializer : IZeroMessageSerializer<GetNodeDataMessage>
     {
-        public void Serialize(IByteBuffer byteBuffer, BlockBodiesMessage message)
+        public void Serialize(IByteBuffer byteBuffer, GetNodeDataMessage message)
         {
-            Eth.V62.BlockBodiesMessageSerializer ethSerializer = new Eth.V62.BlockBodiesMessageSerializer();
-            Rlp ethMessage = new Rlp(ethSerializer.Serialize(message.EthMessage));
+            Eth.V63.GetNodeDataMessageSerializer ethSerializer = new();
+            Rlp ethMessage = new(ethSerializer.Serialize(message.EthMessage));
             int contentLength = Rlp.LengthOf(message.RequestId) + ethMessage.Length;
 
             int totalLength = Rlp.GetSequenceRlpLength(contentLength);
@@ -38,19 +38,19 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             rlpStream.Encode(ethMessage);
         }
 
-        public BlockBodiesMessage Deserialize(IByteBuffer byteBuffer)
+        public GetNodeDataMessage Deserialize(IByteBuffer byteBuffer)
         {
-            NettyRlpStream rlpStream = new NettyRlpStream(byteBuffer);
+            NettyRlpStream rlpStream = new(byteBuffer);
             return Deserialize(rlpStream);
         }
 
-        private static BlockBodiesMessage Deserialize(RlpStream rlpStream)
+        private static GetNodeDataMessage Deserialize(RlpStream rlpStream)
         {
-            BlockBodiesMessage blockBodiesMessage = new BlockBodiesMessage();
+            GetNodeDataMessage getNodeDataMessage = new GetNodeDataMessage();
             rlpStream.ReadSequenceLength();
-            blockBodiesMessage.RequestId = rlpStream.DecodeLong();
-            blockBodiesMessage.EthMessage = Eth.V62.BlockBodiesMessageSerializer.Deserialize(rlpStream);
-            return blockBodiesMessage;
+            getNodeDataMessage.RequestId = rlpStream.DecodeLong();
+            getNodeDataMessage.EthMessage = Eth.V63.GetNodeDataMessageSerializer.Deserialize(rlpStream);
+            return getNodeDataMessage;
         }
     }
 }
