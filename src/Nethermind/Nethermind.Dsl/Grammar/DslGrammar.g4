@@ -21,9 +21,10 @@ CONTAINS : 'CONTAINS' ;
 IS: 'IS' ;
 NOT: 'NOT' ;
 
-PUBLISH_VALUE : WEBSOCKETS | TELEGRAM ;
-WEBSOCKETS : 'WebSockets' | 'webSockets' | 'websockets' ;
+PUBLISH_VALUE : WEBSOCKETS | TELEGRAM | DISCORD ;
+WEBSOCKETS : 'WebSockets' | 'webSockets' | 'websockets' | 'Websockets' ;
 TELEGRAM : 'Telegram' | 'telegram' ;
+DISCORD : 'Discord' | 'discord' ;
 
 WORD : [a-zA-Z]+ ;
 DIGIT : [0-9]+;
