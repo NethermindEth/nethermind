@@ -76,8 +76,7 @@ namespace Nethermind.Mev
                 _tracerFactory,
                 _eciesCipher,
                 _specProvider,
-                _signer,
-                _chainId);
+                _signer);
         }
     }
 }

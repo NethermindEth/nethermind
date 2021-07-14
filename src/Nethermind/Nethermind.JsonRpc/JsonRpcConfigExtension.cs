@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,21 +15,21 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
+using System.Collections.Generic;
 using System.Linq;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Int256;
-using Org.BouncyCastle.Asn1.Cms;
 
-namespace Nethermind.Mev.Data
+namespace Nethermind.JsonRpc
 {
-    public class BundleTransaction : Transaction
+    public static class JsonRpcConfigExtension
     {
-        public Keccak BundleHash { get; set; } = Keccak.Zero;
-        public bool CanRevert { get; set; } = false;
-        public UInt256 SimulatedBundleFee { get; set; } = UInt256.Zero;
-        public UInt256 SimulatedBundleGasUsed { get; set; } = UInt256.Zero;
-        public BundleTransaction Clone() => (BundleTransaction) MemberwiseClone();
+        public static void EnableModules(this IJsonRpcConfig config, params string[] modules)
+        {
+            HashSet<string> enabledModules = config.EnabledModules.ToHashSet();
+            for (int i = 0; i < modules.Length; i++)
+            {
+                enabledModules.Add(modules[i]);
+            }
+            config.EnabledModules = enabledModules.ToArray();
+        }
     }
 }

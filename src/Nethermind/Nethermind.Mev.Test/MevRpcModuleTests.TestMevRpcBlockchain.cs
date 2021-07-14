@@ -167,7 +167,7 @@ namespace Nethermind.Mev.Test
                     ProcessingOptions.ProducingBlock);
                 
                 TxBundleSimulator txBundleSimulator = new(_tracerFactory, GasLimitCalculator, Timestamper, TxPool, SpecProvider, Signer);
-                BundlePool = new TestBundlePool(BlockTree, txBundleSimulator, TxPool, Timestamper, _mevConfig, LogManager);
+                BundlePool = new TestBundlePool(BlockTree, txBundleSimulator, TxPool, Timestamper, new TxValidator(BlockTree.ChainId), SpecProvider, _mevConfig, LogManager);
 
                 return blockProcessor;
             }
@@ -183,8 +183,7 @@ namespace Nethermind.Mev.Test
                     _tracerFactory,
                     new EciesCipher(new CryptoRandom()),
                     SpecProvider,
-                    Signer,
-                    SpecProvider.ChainId);
+                    Signer);
                 
                 return chain;
             }
@@ -248,7 +247,8 @@ namespace Nethermind.Mev.Test
             {
                 byte[][] bundleBytes = txs.Select(t => Rlp.Encode(t).Bytes).ToArray();
                 Keccak[] revertingTxHashes = txs.Where(t => t.CanRevert).Select(t => t.Hash!).ToArray();
-                ResultWrapper<bool> resultOfBundle = MevRpcModule.eth_sendBundle(bundleBytes, blockNumber, default, default, revertingTxHashes);
+                MevBundleRpc mevBundleRpc = new() {BlockNumber = blockNumber, Txs = bundleBytes, RevertingTxHashes = revertingTxHashes};
+                ResultWrapper<bool> resultOfBundle = MevRpcModule.eth_sendBundle(mevBundleRpc);
                 resultOfBundle.GetResult().ResultType.Should().NotBe(ResultType.Failure);
                 resultOfBundle.GetData().Should().Be(true);
                 return new MevBundle(blockNumber, txs);

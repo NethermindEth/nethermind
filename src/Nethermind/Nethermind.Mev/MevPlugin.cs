@@ -77,8 +77,24 @@ namespace Nethermind.Mev
                 if (_bundlePool is null)
                 {
                     var (getFromApi, _) = _nethermindApi!.ForProducer;
-                    TxBundleSimulator txBundleSimulator = new(TracerFactory, getFromApi.GasLimitCalculator, getFromApi.Timestamper, getFromApi.TxPool!, getFromApi.SpecProvider!, getFromApi.EngineSigner);
-                    _bundlePool = new BundlePool(getFromApi.BlockTree!, txBundleSimulator, getFromApi.TxPool, getFromApi.Timestamper, _mevConfig, getFromApi.LogManager);
+                    
+                    TxBundleSimulator txBundleSimulator = new(
+                        TracerFactory, 
+                        getFromApi.GasLimitCalculator,
+                        getFromApi.Timestamper,
+                        getFromApi.TxPool!, 
+                        getFromApi.SpecProvider!, 
+                        getFromApi.EngineSigner);
+                    
+                    _bundlePool = new BundlePool(
+                        getFromApi.BlockTree!, 
+                        txBundleSimulator, 
+                        getFromApi.TxPool,
+                        getFromApi.Timestamper,
+                        getFromApi.TxValidator!,
+                        getFromApi.SpecProvider!,
+                        _mevConfig,
+                        getFromApi.LogManager);
                 }
 
                 return _bundlePool;
@@ -112,7 +128,9 @@ namespace Nethermind.Mev
             if (_mevConfig.Enabled) 
             {   
                 (IApiWithNetwork getFromApi, _) = _nethermindApi!.ForRpc;
+
                 IJsonRpcConfig rpcConfig = getFromApi.Config<IJsonRpcConfig>();
+                rpcConfig.EnableModules(ModuleType.Mev);
 
                 MevModuleFactory mevModuleFactory = new(rpcConfig, 
                     _bundlePool!, 
@@ -126,11 +144,6 @@ namespace Nethermind.Mev
                     getFromApi.ChainSpec!.ChainId);
                 
                 getFromApi.RpcModuleProvider!.RegisterBoundedByCpuCount(mevModuleFactory, rpcConfig.Timeout);
-
-                if (getFromApi.TxPool != null)
-                {
-                    getFromApi.TxPool.NewPending += TxPoolOnNewPending;
-                }
 
                 if (_logger!.IsInfo) _logger.Info("Flashbots RPC plugin enabled");
             } 
@@ -185,17 +198,6 @@ namespace Nethermind.Mev
 
         public bool Enabled => _mevConfig.Enabled;
 
-        private void TxPoolOnNewPending(object? sender, TxPool.TxEventArgs e)
-        {
-            IBlockchainBridge bridge = _nethermindApi!.CreateBlockchainBridge();
-            // create a bundle
-            // submit the bundle to Flashbots MEV-Relay
-            // move to other class
-        }
-
-        public ValueTask DisposeAsync()
-        {
-            return ValueTask.CompletedTask;
-        }
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 }

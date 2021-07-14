@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -16,20 +16,17 @@
 // 
 
 using System;
-using System.Linq;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
-using Org.BouncyCastle.Asn1.Cms;
 
 namespace Nethermind.Mev.Data
 {
-    public class BundleTransaction : Transaction
+    public class MevBundleRpc
     {
-        public Keccak BundleHash { get; set; } = Keccak.Zero;
-        public bool CanRevert { get; set; } = false;
-        public UInt256 SimulatedBundleFee { get; set; } = UInt256.Zero;
-        public UInt256 SimulatedBundleGasUsed { get; set; } = UInt256.Zero;
-        public BundleTransaction Clone() => (BundleTransaction) MemberwiseClone();
+        public byte[][] Txs { get; set; } = Array.Empty<byte[]>();
+        public long BlockNumber { get; set; }
+        public UInt256? MinTimestamp { get; set; } = null;
+        public UInt256? MaxTimestamp { get; set; } = null;
+        public Keccak[]? RevertingTxHashes { get; set; } = null;
     }
 }

@@ -21,33 +21,23 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Threading;
-using System.Threading.Tasks;
 using FluentAssertions;
-using FluentAssertions.Common;
-using Microsoft.AspNetCore.Mvc;
 using Nethermind.Blockchain;
-using Nethermind.Consensus.AuRa.Transactions;
+using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Mev.Data;
 using Nethermind.Mev.Execution;
 using Nethermind.Mev.Source;
-using Nethermind.Runner.Ethereum.Api;
 using NSubstitute;
-using NSubstitute.Exceptions;
-using NSubstitute.ReturnsExtensions;
 using NUnit.Framework;
-using Nethermind.Mev.Test;
 using Nethermind.TxPool;
-using Nethermind.TxPool.Collections;
-using Org.BouncyCastle.Utilities;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 
 namespace Nethermind.Mev.Test
 {
@@ -204,7 +194,7 @@ namespace Nethermind.Mev.Test
             TestContext test = new();
             Block block = Build.A.Block.WithNumber(5).TestObject;
             test.BlockTree.Head.Returns(block);
-            MevBundle mevBundle = new MevBundle(6, new[] {Build.A.TypedTransaction<BundleTransaction>().TestObject});
+            MevBundle mevBundle = new MevBundle(6, new[] {Build.A.TypedTransaction<BundleTransaction>().SignedAndResolved(TestItem.PrivateKeyA).TestObject});
             test.BundlePool.AddBundle(mevBundle);
             
             test.Simulator.Received(1).Simulate(mevBundle, block.Header, Arg.Any<CancellationToken>());
@@ -338,11 +328,15 @@ namespace Nethermind.Mev.Test
                 Simulator = bundleSimulator ?? Simulator;
                 TxPool = txPool ?? TxPool;
                 
+                BlockTree.ChainId.Returns((ulong) ChainId.Mainnet);
+                
                 BundlePool = new BundlePool(
                     BlockTree,
                     Simulator,
                     TxPool,
                     Timestamper,
+                    new TxValidator(BlockTree.ChainId),
+                    new TestSpecProvider(London.Instance),
                     config ?? new MevConfig(),
                     LimboLogs.Instance);
 
@@ -362,7 +356,6 @@ namespace Nethermind.Mev.Test
             }
 
             public IBundleSimulator Simulator { get; } = Substitute.For<IBundleSimulator>();
-
             public IBlockTree BlockTree { get; } = Substitute.For<IBlockTree>();
             public BundlePool BundlePool { get; }
             public ITxPool TxPool { get; } = Substitute.For<ITxPool>();

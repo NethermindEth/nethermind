@@ -20,7 +20,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Data;
-using Nethermind.Int256;
 using Nethermind.Mev.Data;
 
 namespace Nethermind.Mev
@@ -28,15 +27,12 @@ namespace Nethermind.Mev
     [RpcModule(ModuleType.Mev)]
     public interface IMevRpcModule : IRpcModule
     {        
-        [JsonRpcMethod(Description = "Adds bundle to the bundle pool.", IsImplemented = true)]
-        ResultWrapper<bool> eth_sendBundle(byte[][] transactions, long blockNumber, UInt256? minTimestamp = null, UInt256? maxTimestamp = null, Keccak[]? revertingTxHashes = null);
+        [JsonRpcMethod(Description = "Adds bundle to the tx pool.", IsImplemented = true)]
+        ResultWrapper<bool> eth_sendBundle(MevBundleRpc mevBundleRpc);
         
         [JsonRpcMethod(Description = "Simulates the bundle behaviour.", IsImplemented = true)]
-        ResultWrapper<TxsResults> eth_callBundle(byte[][] transactions, BlockParameter? blockParameter = null, UInt256? timestamp = null, Keccak[]? revertingTxHashes = null);
-        
-        [JsonRpcMethod(Description = "Simulates the bundle behaviour.", IsImplemented = true)]
-        ResultWrapper<TxsResults> eth_callBundleJson(TransactionForRpc[] transactions, BlockParameter? blockParameter = null, UInt256? timestamp = null, Keccak[]? revertingTxHashes = null);
-        
+        ResultWrapper<TxsResults> eth_callBundle(MevCallBundleRpc mevBundleRpc);
+
         [JsonRpcMethod(
             Description = "Publishes the MEV bundle using a carrier transaction encrypted for the specified validator.",
             IsImplemented = true)]
