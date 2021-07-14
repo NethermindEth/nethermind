@@ -25,10 +25,4 @@
     <Compile Remove="Pipeline\UniswapAbi.Designer.cs" />
   </ItemGroup>
 
-  <ItemGroup>
-    <None Update="Contracts\UniswapV2FactoryAbi.json">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-  </ItemGroup>
-
 </Project>

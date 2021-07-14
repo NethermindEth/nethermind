@@ -186,6 +186,8 @@ namespace Nethermind.Dsl.ANTLR
                     break;
                 case "discord": AddDiscordPublisher(value);
                     break;
+                case "slack": AddSlackPublisher(value);
+                    break;
             };
         }
 
@@ -222,6 +224,18 @@ namespace Nethermind.Dsl.ANTLR
             AddTransactionsPublisher(discordPublisher);
             AddPendingTransactionsPublisher(discordPublisher);
             AddEventsPublisher(discordPublisher);
+
+            BuildPipelines();
+        }
+
+        private void AddSlackPublisher(string chatId)
+        {
+            var slackPublisher = new SlackPublisher(_api.EthereumJsonSerializer, chatId);
+
+            AddBlocksPublisher(slackPublisher);
+            AddTransactionsPublisher(slackPublisher);
+            AddPendingTransactionsPublisher(slackPublisher);
+            AddEventsPublisher(slackPublisher);
 
             BuildPipelines();
         }
