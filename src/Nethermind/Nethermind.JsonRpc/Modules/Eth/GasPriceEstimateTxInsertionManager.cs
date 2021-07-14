@@ -1,7 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
 namespace Nethermind.JsonRpc.Modules.Eth
@@ -11,13 +10,13 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly IGasPriceOracle _gasPriceOracle;
         private readonly UInt256? _ignoreUnder;
         private readonly UInt256 _baseFee;
-        private readonly ISpecProvider _specProvider;
+        private readonly bool _isEip1559Enabled;
         public GasPriceEstimateTxInsertionManager(IGasPriceOracle gasPriceOracle, UInt256? ignoreUnder, 
-            UInt256 baseFee, ISpecProvider specProvider)
+            UInt256 baseFee, bool isEip1559Enabled)
         {
             _gasPriceOracle = gasPriceOracle;
             _ignoreUnder = ignoreUnder;
-            _specProvider = specProvider;
+            _isEip1559Enabled = isEip1559Enabled;
             _baseFee = baseFee;
         }
 
@@ -46,13 +45,13 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private int AddTxAndReturnCountAdded(Transaction[] txInBlock, Block block)
         {
             int countTxAdded = 0;
-            bool eip1559Enabled = _specProvider.GetSpec(block.Number).IsEip1559Enabled;
-            IEnumerable<Transaction> txsSortedByEffectiveGasPrice = txInBlock.OrderBy(tx => EffectiveGasPrice(tx, eip1559Enabled));
+            
+            IEnumerable<Transaction> txsSortedByEffectiveGasPrice = txInBlock.OrderBy(EffectiveGasPrice);
             foreach (Transaction tx in txsSortedByEffectiveGasPrice)
             {
-                if (TransactionCanBeAdded(tx, block, eip1559Enabled))
+                if (TransactionCanBeAdded(tx, block))
                 {
-                    GetTxGasPriceList().Add(EffectiveGasPrice(tx, eip1559Enabled));
+                    GetTxGasPriceList().Add(EffectiveGasPrice(tx));
                     countTxAdded++;
                 }
 
@@ -66,20 +65,20 @@ namespace Nethermind.JsonRpc.Modules.Eth
         }
 
 
-        private UInt256 EffectiveGasPrice(Transaction transaction, bool eip1559Enabled)
+        private UInt256 EffectiveGasPrice(Transaction transaction)
         {
-            return transaction.CalculateEffectiveGasPrice(eip1559Enabled, _baseFee);
+            return transaction.CalculateEffectiveGasPrice(_isEip1559Enabled, _baseFee);
         }
 
-        private bool TransactionCanBeAdded(Transaction transaction, Block block, bool eip1559Enabled)
+        private bool TransactionCanBeAdded(Transaction transaction, Block block)
         {
-            return transaction.GasPrice >= _ignoreUnder && Eip1559ModeCompatible(transaction, eip1559Enabled) &&
+            return transaction.GasPrice >= _ignoreUnder && Eip1559ModeCompatible(transaction) &&
                    TxNotSentByBeneficiary(transaction, block);
         }
 
-        private bool Eip1559ModeCompatible(Transaction transaction, bool eip1559Enabled)
+        private bool Eip1559ModeCompatible(Transaction transaction)
         {
-            return eip1559Enabled || !transaction.IsEip1559;
+            return _isEip1559Enabled || !transaction.IsEip1559;
         }
 
         private bool TxNotSentByBeneficiary(Transaction transaction, Block block)
