@@ -1,8 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection.PortableExecutable;
-using Jint.Native;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -15,7 +13,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
         public List<UInt256> TxGasPriceList { get; private set; }
         protected UInt256? LastGasPrice { get; private set; }
         private Block? LastHeadBlock { get; set; }
-        private readonly bool _isEip1559Enabled;
         private readonly UInt256? _ignoreUnder;
         private readonly int _blockLimit;
         private readonly int _softTxThreshold;
@@ -24,7 +21,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly IHeadBlockChangeManager _headBlockChangeManager;
 
         public GasPriceOracle(
-            IReleaseSpec? releaseSpec = null,
+            ISpecProvider specProvider,
             UInt256? ignoreUnder = null, 
             int? blockLimit = null, 
             UInt256? baseFee = null,
@@ -32,12 +29,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
             IHeadBlockChangeManager? headBlockChangeManager = null)
         {
             TxGasPriceList = new List<UInt256>();
-            _isEip1559Enabled = releaseSpec != null && releaseSpec!.IsEip1559Enabled;
             _ignoreUnder = ignoreUnder ?? UInt256.Zero;
             _blockLimit = blockLimit ?? EthGasPriceConstants.DefaultBlocksLimit;
             _softTxThreshold = (int) (blockLimit != null ? blockLimit * 2 : EthGasPriceConstants.SoftTxLimit);
             _baseFee = baseFee ?? EthGasPriceConstants.DefaultBaseFee;
-            _txInsertionManager = txInsertionManager ?? new GasPriceEstimateTxInsertionManager(this, _ignoreUnder, _baseFee, _isEip1559Enabled);
+            _txInsertionManager = txInsertionManager ?? new GasPriceEstimateTxInsertionManager(this, _ignoreUnder, _baseFee, specProvider);
             _headBlockChangeManager = headBlockChangeManager ?? new GasPriceEstimateHeadBlockChangeManager();
         }
 

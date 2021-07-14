@@ -56,7 +56,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly IWallet _wallet;
         private readonly ISpecProvider _specProvider;
         private readonly ILogger _logger;
-        private readonly IGasPriceOracle _gasPriceOracle;
+        protected IGasPriceOracle GasPriceOracle { get; set; }
         public Dictionary<long, Block> BlockNumberToBlockDictionary { get; private set; }
 
         private static bool HasStateForBlock(IBlockchainBridge blockchainBridge, BlockHeader header)
@@ -65,7 +65,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             blockchainBridge.RunTreeVisitor(rootCheckVisitor, header.StateRoot);
             return rootCheckVisitor.HasRoot;
         }
-
+        
         
         public EthRpcModule(
             IJsonRpcConfig rpcConfig,
@@ -76,8 +76,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             ITxSender txSender,
             IWallet wallet,
             ILogManager logManager,
-            ISpecProvider specProvider,
-            IGasPriceOracle gasPriceOracle)
+            ISpecProvider specProvider)
         {
             _logger = logManager.GetClassLogger();
             _rpcConfig = rpcConfig ?? throw new ArgumentNullException(nameof(rpcConfig));
@@ -88,9 +87,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _gasPriceOracle = gasPriceOracle ?? throw new ArgumentNullException(nameof(gasPriceOracle));
+            GasPriceOracle = new GasPriceOracle(_specProvider);
         }
-        
+
         public ResultWrapper<string> eth_protocolVersion()
         {
             return ResultWrapper<string>.Success("0x41");
@@ -147,7 +146,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             Block? headBlock = _blockFinder.FindHeadBlock();
             ThrowExceptionIfHeadBlockIsNull(headBlock);
             BlockNumberToBlockDictionary = CreateBlockNumberToBlockDictionary(headBlock);
-            return _gasPriceOracle!.GasPriceEstimate(headBlock, BlockNumberToBlockDictionary);
+            return GasPriceOracle!.GasPriceEstimate(headBlock, BlockNumberToBlockDictionary);
         }
 
         private void ThrowExceptionIfHeadBlockIsNull(Block? headBlock)
