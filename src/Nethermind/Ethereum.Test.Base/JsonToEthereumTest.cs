@@ -55,6 +55,7 @@ namespace Ethereum.Test.Base
                 "Byzantium" => Byzantium.Instance,
                 "Istanbul" => Istanbul.Instance,
                 "Berlin" => Berlin.Instance,
+                "London" => London.Instance,
                 _ => throw new NotSupportedException()
             };
         }
@@ -98,13 +99,19 @@ namespace Ethereum.Test.Base
             Block block = new(header, transactions, ommers);
             return block;
         }
-        
+
         public static Transaction Convert(PostStateJson postStateJson, TransactionJson transactionJson)
         {
             Transaction transaction = new();
+            if (transaction.AccessList != null)
+                transaction.Type = TxType.AccessList;
+            if (transactionJson.MaxFeePerGas != null)
+                transaction.Type = TxType.EIP1559;
+            
             transaction.Value = transactionJson.Value[postStateJson.Indexes.Value];
             transaction.GasLimit = transactionJson.GasLimit[postStateJson.Indexes.Gas];
-            transaction.GasPrice = transactionJson.GasPrice;
+            transaction.GasPrice = transactionJson.GasPrice ?? transactionJson.MaxPriorityFeePerGas ?? 0;
+            transaction.DecodedMaxFeePerGas = transactionJson.MaxFeePerGas ?? 0;
             transaction.Nonce = transactionJson.Nonce;
             transaction.To = transactionJson.To;
             transaction.Data = transactionJson.Data[postStateJson.Indexes.Data];
@@ -169,13 +176,22 @@ namespace Ethereum.Test.Base
             List<GeneralStateTest> blockchainTests = new();
             foreach (KeyValuePair<string, PostStateJson[]> postStateBySpec in testJson.Post)
             {
-                int testIndex = 0;
+                int iterationNumber = 0;
+                int testIndex = testJson.Info?.Labels?.Select(x => System.Convert.ToInt32(x.Key)).FirstOrDefault() ?? 0;
                 foreach (PostStateJson stateJson in postStateBySpec.Value)
                 {
                     GeneralStateTest test = new();
-                    test.Name = Path.GetFileName(name) + $"_d{stateJson.Indexes.Data}g{stateJson.Indexes.Gas}v{stateJson.Indexes.Value}_" +
-                                testJson.Info?.Labels?[testIndex.ToString()]?.Replace(":label ", string.Empty);
-                    
+                    test.Name = Path.GetFileName(name) +
+                                $"_d{stateJson.Indexes.Data}g{stateJson.Indexes.Gas}v{stateJson.Indexes.Value}_";
+                    if (testJson.Info?.Labels?.ContainsKey(iterationNumber.ToString()) ?? false)
+                    {
+                        test.Name += testJson.Info?.Labels?[iterationNumber.ToString()]?.Replace(":label ", string.Empty);
+                    }
+                    else
+                    {
+                        test.Name += string.Empty;
+                    }
+
                     test.ForkName = postStateBySpec.Key;
                     test.Fork = ParseSpec(postStateBySpec.Key);
                     test.PreviousHash = testJson.Env.PreviousHash;
@@ -184,6 +200,7 @@ namespace Ethereum.Test.Base
                     test.CurrentGasLimit = testJson.Env.CurrentGasLimit;
                     test.CurrentNumber = testJson.Env.CurrentNumber;
                     test.CurrentTimestamp = testJson.Env.CurrentTimestamp;
+                    test.CurrentBaseFee = testJson.Env.CurrentBaseFee;
                     test.PostReceiptsRoot = stateJson.Logs;
                     test.PostHash = stateJson.Hash;
                     test.Pre = testJson.Pre.ToDictionary(p => new Address(p.Key), p => Convert(p.Value));
@@ -194,6 +211,7 @@ namespace Ethereum.Test.Base
                     }
 
                     blockchainTests.Add(test);
+                    ++iterationNumber;
                 }
             }
 

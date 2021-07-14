@@ -25,7 +25,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
 {
-    [Ignore("Failing on MacOS GitHub Actions with stack overflow")]
+    [Explicit("Failing on MacOS GitHub Actions with stack overflow")]
     [TestFixture]
     public class GasPriceExtractorTests : VirtualMachineTestsBase
     {

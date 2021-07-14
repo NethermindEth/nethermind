@@ -22,7 +22,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.TxPool;
 
 namespace Nethermind.Blockchain.Processing
 {
@@ -55,10 +54,9 @@ namespace Nethermind.Blockchain.Processing
                 specProvider,
                 blockValidator,
                 rewardCalculator,
-                _txEnv.TransactionProcessor,
+                new BlockProcessor.BlockValidationTransactionsExecutor(_txEnv.TransactionProcessor, StateProvider),
                 StateProvider,
                 _txEnv.StorageProvider,
-                NullTxPool.Instance,
                 receiptStorage,
                 NullWitnessCollector.Instance,
                 logManager);

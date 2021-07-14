@@ -33,6 +33,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Evm;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
@@ -43,7 +44,6 @@ using Nethermind.Synchronization.Witness;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
-using Nethermind.TxPool.Storages;
 using Nethermind.Wallet;
 
 namespace Nethermind.Runner.Ethereum.Steps
@@ -52,7 +52,7 @@ namespace Nethermind.Runner.Ethereum.Steps
     public class InitializeBlockchain : IStep
     {
         private readonly INethermindApi _api;
-        private ILogger _logger;
+        private ILogger? _logger;
 
         // ReSharper disable once MemberCanBeProtected.Global
         public InitializeBlockchain(INethermindApi api)
@@ -130,7 +130,6 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             ReadOnlyDbProvider readOnly = new(getApi.DbProvider, false);
             
-            PersistentTxStorage txStorage = new(getApi.DbProvider.PendingTxsDb);
             IStateReader stateReader = setApi.StateReader = new StateReader(readOnlyTrieStore, readOnly.GetDb<IDb>(DbNames.Code), getApi.LogManager);
             
             setApi.TransactionComparerProvider =
@@ -155,11 +154,8 @@ namespace Nethermind.Runner.Ethereum.Steps
             
             var txValidator = setApi.TxValidator = new TxValidator(getApi.SpecProvider.ChainId);
             
-            ITxPool txPool = _api.TxPool = CreateTxPool(txStorage);
+            ITxPool txPool = _api.TxPool = CreateTxPool();
 
-            OnChainTxWatcher onChainTxWatcher = new(getApi.BlockTree, txPool, getApi.SpecProvider, _api.LogManager);
-            getApi.DisposeStack.Push(onChainTxWatcher);
-            
             ReceiptCanonicalityMonitor receiptCanonicalityMonitor = new(getApi.BlockTree, getApi.ReceiptStorage, _api.LogManager);
             getApi.DisposeStack.Push(receiptCanonicalityMonitor);
 
@@ -172,17 +168,17 @@ namespace Nethermind.Runner.Ethereum.Steps
                 getApi.LogManager);
 
             // blockchain processing
-            BlockhashProvider blockhashProvider = new BlockhashProvider(
+            BlockhashProvider blockhashProvider = new (
                 getApi.BlockTree, getApi.LogManager);
 
-            VirtualMachine virtualMachine = new VirtualMachine(
+            VirtualMachine virtualMachine = new (
                 stateProvider,
                 storageProvider,
                 blockhashProvider,
                 getApi.SpecProvider,
                 getApi.LogManager);
 
-            _api.TransactionProcessor = new TransactionProcessor(
+            ITransactionProcessor transactionProcessor = _api.TransactionProcessor = new TransactionProcessor(
                 getApi.SpecProvider,
                 stateProvider,
                 storageProvider,
@@ -193,22 +189,24 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_api.SealValidator == null) throw new StepDependencyException(nameof(_api.SealValidator));
 
             /* validation */
-            var headerValidator = setApi.HeaderValidator = CreateHeaderValidator();
+            IHeaderValidator? headerValidator = setApi.HeaderValidator = CreateHeaderValidator();
 
             OmmersValidator ommersValidator = new(
                 getApi.BlockTree,
                 headerValidator,
                 getApi.LogManager);
 
-            var blockValidator = setApi.BlockValidator = new BlockValidator(
+            IBlockValidator? blockValidator = setApi.BlockValidator = new BlockValidator(
                 txValidator,
                 headerValidator,
                 ommersValidator,
                 getApi.SpecProvider,
                 getApi.LogManager);
-                
-            setApi.TxPoolInfoProvider = new TxPoolInfoProvider(stateReader, txPool);
-            var mainBlockProcessor = setApi.MainBlockProcessor = CreateBlockProcessor();
+
+            IChainHeadInfoProvider chainHeadInfoProvider =
+                new ChainHeadInfoProvider(getApi.SpecProvider, getApi.BlockTree, stateReader);
+            setApi.TxPoolInfoProvider = new TxPoolInfoProvider(chainHeadInfoProvider.AccountStateProvider, txPool);
+            IBlockProcessor? mainBlockProcessor = setApi.MainBlockProcessor = CreateBlockProcessor();
 
             BlockchainProcessor blockchainProcessor = new(
                 getApi.BlockTree,
@@ -248,7 +246,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             setApi.TxSender = new TxPoolSender(txPool, nonceReservingTxSealer, standardSealer);
 
             // TODO: possibly hide it (but need to confirm that NDM does not really need it)
-            var filterStore = setApi.FilterStore = new FilterStore();
+            IFilterStore? filterStore = setApi.FilterStore = new FilterStore();
             setApi.FilterManager = new FilterManager(filterStore, mainBlockProcessor, txPool, getApi.LogManager);
             setApi.HealthHintService = CreateHealthHintService();
             return Task.CompletedTask;
@@ -264,9 +262,8 @@ namespace Nethermind.Runner.Ethereum.Steps
             new HealthHintService(_api.ChainSpec);
 
 
-        protected virtual TxPool.TxPool CreateTxPool(PersistentTxStorage txStorage) =>
+        protected virtual TxPool.TxPool CreateTxPool() =>
             new TxPool.TxPool(
-                txStorage,
                 _api.EthereumEcdsa,
                 new ChainHeadInfoProvider(_api.SpecProvider, _api.BlockTree, _api.StateReader),
                 _api.Config<ITxPoolConfig>(),
@@ -292,11 +289,10 @@ namespace Nethermind.Runner.Ethereum.Steps
             return new BlockProcessor(
                 _api.SpecProvider,
                 _api.BlockValidator,
-                _api.RewardCalculatorSource.Get(_api.TransactionProcessor),
-                _api.TransactionProcessor,
+                _api.RewardCalculatorSource.Get(_api.TransactionProcessor!),
+                new BlockProcessor.BlockValidationTransactionsExecutor(_api.TransactionProcessor, _api.StateProvider!),
                 _api.StateProvider,
                 _api.StorageProvider,
-                _api.TxPool,
                 _api.ReceiptStorage,
                 _api.WitnessCollector,
                 _api.LogManager);

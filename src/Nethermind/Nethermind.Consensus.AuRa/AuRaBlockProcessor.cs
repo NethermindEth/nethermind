@@ -31,7 +31,6 @@ using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa
 {
@@ -48,10 +47,9 @@ namespace Nethermind.Consensus.AuRa
             ISpecProvider specProvider,
             IBlockValidator blockValidator,
             IRewardCalculator rewardCalculator,
-            ITransactionProcessor transactionProcessor,
+            IBlockProcessor.IBlockTransactionsExecutor blockTransactionsExecutor,
             IStateProvider stateProvider,
             IStorageProvider storageProvider,
-            ITxPool txPool,
             IReceiptStorage receiptStorage,
             ILogManager logManager,
             IBlockTree blockTree,
@@ -61,10 +59,9 @@ namespace Nethermind.Consensus.AuRa
                 specProvider,
                 blockValidator,
                 rewardCalculator,
-                transactionProcessor,
+                blockTransactionsExecutor,
                 stateProvider,
                 storageProvider,
-                txPool,
                 receiptStorage,
                 NullWitnessCollector.Instance, // TODO: we will not support beam sync on AuRa chains for now
                 logManager)
@@ -74,6 +71,10 @@ namespace Nethermind.Consensus.AuRa
             _logger = logManager?.GetClassLogger<AuRaBlockProcessor>() ?? throw new ArgumentNullException(nameof(logManager));
             _txFilter = txFilter ?? NullTxFilter.Instance;
             _gasLimitOverride = gasLimitOverride;
+            if (blockTransactionsExecutor is IBlockProductionTransactionsExecutor produceBlockTransactionsStrategy)
+            {
+                produceBlockTransactionsStrategy.AddingTransaction += OnAddingTransaction;
+            }
         }
 
         public IAuRaValidator AuRaValidator
@@ -97,60 +98,79 @@ namespace Nethermind.Consensus.AuRa
         {
             if (!block.IsGenesis)
             {
-                BlockHeader? parentHeader = _blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None);
-                
-                ValidateGasLimit(block.Header, parentHeader);
-                ValidateTxs(block, parentHeader);
+                ValidateGasLimit(block);
+                ValidateTxs(block);
             }
         }
 
-        private void ValidateGasLimit(BlockHeader header, BlockHeader parentHeader)
+        private BlockHeader GetParentHeader(Block block) => 
+            _blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None)!;
+
+        private void ValidateGasLimit(Block block)
         {
+            BlockHeader parentHeader = GetParentHeader(block);
             long? expectedGasLimit = null;
-            if (_gasLimitOverride?.IsGasLimitValid(parentHeader, header.GasLimit, out expectedGasLimit) == false)
+            if (_gasLimitOverride?.IsGasLimitValid(parentHeader, block.GasLimit, out expectedGasLimit) == false)
             {
-                if (_logger.IsWarn) _logger.Warn($"Invalid gas limit for block {header.Number}, hash {header.Hash}, expected value from contract {expectedGasLimit}, but found {header.GasLimit}.");
-                throw new InvalidBlockException(header.Hash);
+                if (_logger.IsWarn) _logger.Warn($"Invalid gas limit for block {block.Number}, hash {block.Hash}, expected value from contract {expectedGasLimit}, but found {block.GasLimit}.");
+                throw new InvalidBlockException(block.Hash);
             }
         }
 
-        private void ValidateTxs(Block block, BlockHeader parentHeader)
+        private void ValidateTxs(Block block)
         {
-            (bool Allowed, string Reason)? TryRecoverSenderAddress(Transaction tx)
+            for (int i = 0; i < block.Transactions.Length; i++)
+            {
+                Transaction tx = block.Transactions[i];
+                AddingTxEventArgs args = CheckTxPosdaoRules(new AddingTxEventArgs(i, tx, block, block.Transactions));
+                if (args.Action != TxAction.Add)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Proposed block is not valid {block.ToString(Block.Format.FullHashAndNumber)}. {tx.ToShortString()} doesn't have required permissions. Reason: {args.Reason}.");
+                    throw new InvalidBlockException(block.Hash);
+                }
+            }
+        }
+        
+        private void OnAddingTransaction(object? sender, AddingTxEventArgs e)
+        {
+            CheckTxPosdaoRules(e);
+        }
+        
+        private AddingTxEventArgs CheckTxPosdaoRules(AddingTxEventArgs args)
+        {
+            (bool Allowed, string Reason)? TryRecoverSenderAddress(Transaction tx, BlockHeader header)
             {
                 if (tx.Signature != null)
                 {
-                    IReleaseSpec spec = _specProvider.GetSpec(block.Number);
+                    IReleaseSpec spec = _specProvider.GetSpec(args.Block.Number);
                     EthereumEcdsa ecdsa = new(_specProvider.ChainId, LimboLogs.Instance);
                     Address txSenderAddress = ecdsa.RecoverAddress(tx, !spec.ValidateChainId);
                     if (tx.SenderAddress != txSenderAddress)
                     {
-                        if (_logger.IsWarn) _logger.Warn($"Transaction {tx.ToShortString()} in block {block.ToString(Block.Format.FullHashAndNumber)} had recovered sender address on validation.");
+                        if (_logger.IsWarn) _logger.Warn($"Transaction {tx.ToShortString()} in block {args.Block.ToString(Block.Format.FullHashAndNumber)} had recovered sender address on validation.");
                         tx.SenderAddress = txSenderAddress;
-                        return _txFilter.IsAllowed(tx, parentHeader);
+                        return _txFilter.IsAllowed(tx, header);
                     }
                 }
 
                 return null;
             }
 
-            for (int i = 0; i < block.Transactions.Length; i++)
+            BlockHeader parentHeader = GetParentHeader(args.Block);
+            (bool Allowed, string Reason) txFilterResult = _txFilter.IsAllowed(args.Transaction, parentHeader);
+            if (!txFilterResult.Allowed)
             {
-                Transaction tx = block.Transactions[i];
-                (bool Allowed, string Reason) txFilterResult = _txFilter.IsAllowed(tx, parentHeader);
-                if (!txFilterResult.Allowed)
-                {
-                    txFilterResult = TryRecoverSenderAddress(tx) ?? txFilterResult;
-                }
-
-                if (!txFilterResult.Allowed)
-                {
-                    if (_logger.IsWarn) _logger.Warn($"Proposed block is not valid {block.ToString(Block.Format.FullHashAndNumber)}. {tx.ToShortString()} doesn't have required permissions. Reason: {txFilterResult.Reason}.");
-                    throw new InvalidBlockException(block.Hash);
-                }
+                txFilterResult = TryRecoverSenderAddress(args.Transaction, parentHeader) ?? txFilterResult;
             }
+
+            if (!txFilterResult.Allowed)
+            {
+                args.Set(TxAction.Skip, txFilterResult.Reason);
+            }
+
+            return args;
         }
-        
+
         private class NullAuRaValidator : IAuRaValidator
         {
             public Address[] Validators => Array.Empty<Address>();

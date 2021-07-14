@@ -18,6 +18,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Transport.Channels;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
@@ -54,17 +55,15 @@ namespace Nethermind.Network.Test
             session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Remote, "test");
         }
         
-        [TestCase(0)]
-        [TestCase(1)]
+        [Test]
         [Explicit("Travis fails here")]
-        public async Task Will_keep_pinging(int randomResult)
+        public async Task Will_keep_pinging()
         {
             ISession session1 = CreateSession();
             ISession session2 = CreateUnresponsiveSession();
 
             NetworkConfig networkConfig = new NetworkConfig();
             networkConfig.P2PPingInterval = 50;
-            TestRandom testRandom = new TestRandom((i) => randomResult);
             SessionMonitor sessionMonitor = new SessionMonitor(networkConfig, LimboLogs.Instance);
             sessionMonitor.AddSession(session1);
             sessionMonitor.AddSession(session2);
@@ -76,7 +75,7 @@ namespace Nethermind.Network.Test
             await _noPong.Received().SendPing();
             
             Assert.AreEqual(SessionState.Initialized, session1.State);
-            Assert.AreEqual(randomResult == 0? SessionState.Disconnected : SessionState.Initialized, session2.State);
+            Assert.AreEqual(SessionState.Disconnected, session2.State);
         }
 
         private ISession CreateSession()
@@ -91,6 +90,8 @@ namespace Nethermind.Network.Test
         private ISession CreateUnresponsiveSession()
         {
             ISession session = new Session(30312, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            session.RemoteHost = "1.2.3.4";
+            session.RemotePort = 12345;
             session.PingSender = _noPong;
             session.Handshake(TestItem.PublicKeyB);
             session.Init(5, Substitute.For<IChannelHandlerContext>(), Substitute.For<IPacketSender>());

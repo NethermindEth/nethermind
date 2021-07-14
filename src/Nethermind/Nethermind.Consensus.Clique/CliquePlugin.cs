@@ -33,7 +33,6 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
-using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Clique
 {
@@ -81,11 +80,11 @@ namespace Nethermind.Consensus.Clique
             return Task.CompletedTask;
         }
 
-        public Task InitBlockProducer()
+        public Task<IBlockProducer> InitBlockProducer(ITxSource? txSource = null)
         {
             if (_nethermindApi!.SealEngineType != Nethermind.Core.SealEngineType.Clique)
             {
-                return Task.CompletedTask;
+                return Task.FromResult((IBlockProducer)null);
             }
 
             var (getFromApi, setInApi) = _nethermindApi!.ForProducer;
@@ -113,15 +112,14 @@ namespace Nethermind.Consensus.Clique
                 readOnlyBlockTree,
                 getFromApi.SpecProvider,
                 getFromApi.LogManager);
-
+                
             BlockProcessor producerProcessor = new BlockProcessor(
                 getFromApi!.SpecProvider,
                 getFromApi!.BlockValidator,
                 NoBlockRewards.Instance,
-                producerEnv.TransactionProcessor,
+                new BlockProcessor.BlockProductionTransactionsExecutor(producerEnv, getFromApi!.SpecProvider, getFromApi.LogManager),
                 producerEnv.StateProvider,
-                producerEnv.StorageProvider,
-                NullTxPool.Instance, // do not remove transactions from the pool when preprocessing
+                producerEnv.StorageProvider, // do not remove transactions from the pool when preprocessing
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,
                 getFromApi.LogManager);
@@ -138,19 +136,21 @@ namespace Nethermind.Consensus.Clique
                 producerChainProcessor);
 
             ITxFilterPipeline txFilterPipeline =
-                TxFilterPipelineBuilder.CreateStandardFilteringPipeline(_nethermindApi.LogManager,
-                    getFromApi.SpecProvider);
+                TxFilterPipelineBuilder.CreateStandardFilteringPipeline(
+                    _nethermindApi.LogManager,
+                    getFromApi.SpecProvider,
+                    _miningConfig);
             
-            ITxSource txSource = new TxPoolTxSource(
+            txSource ??= new TxPoolTxSource(
                 getFromApi.TxPool,
-                getFromApi.StateReader,
                 getFromApi.SpecProvider,
                 transactionComparerProvider,
                 getFromApi.LogManager,
                 txFilterPipeline);
 
-            var gasLimitCalculator = new TargetAdjustedGasLimitCalculator(getFromApi.SpecProvider, _miningConfig);
-            setInApi.BlockProducer = new CliqueBlockProducer(
+            IGasLimitCalculator gasLimitCalculator = setInApi.GasLimitCalculator = new TargetAdjustedGasLimitCalculator(getFromApi.SpecProvider, _miningConfig);
+            
+            IBlockProducer blockProducer = setInApi.BlockProducer = new CliqueBlockProducer(
                 txSource,
                 chainProcessor,
                 producerEnv.StateProvider,
@@ -164,7 +164,7 @@ namespace Nethermind.Consensus.Clique
                 _cliqueConfig!,
                 getFromApi.LogManager);
 
-            return Task.CompletedTask;
+            return Task.FromResult(blockProducer);
         }
 
         public Task InitNetworkProtocol()

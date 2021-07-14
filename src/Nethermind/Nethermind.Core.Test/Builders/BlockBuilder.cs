@@ -44,9 +44,9 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
         
-        public BlockBuilder WithBaseFee(UInt256 baseFee)
+        public BlockBuilder WithBaseFeePerGas(UInt256 baseFeePerGas)
         {
-            TestObjectInternal.Header.BaseFee = baseFee;
+            TestObjectInternal.Header.BaseFeePerGas = baseFeePerGas;
             return this;
         }
 

@@ -14,7 +14,6 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -51,7 +50,8 @@ namespace Nethermind.Blockchain.Validators
                    /* if it is a call or a transfer then we require the 'To' field to have a value
                       while for an init it will be empty */
                    ValidateSignature(transaction.Signature, releaseSpec) &&
-                   ValidateChainId(transaction);
+                   ValidateChainId(transaction) &&
+                   Validate1559GasFields(transaction, releaseSpec);
         }
 
         private bool ValidateTxType(Transaction transaction, IReleaseSpec releaseSpec)
@@ -69,6 +69,14 @@ namespace Nethermind.Blockchain.Validators
             }
         }
         
+        private bool Validate1559GasFields(Transaction transaction, IReleaseSpec releaseSpec)
+        {
+            if (!releaseSpec.IsEip1559Enabled || !transaction.IsEip1559)
+                return true;
+
+            return transaction.MaxFeePerGas >= transaction.MaxPriorityFeePerGas;
+        }
+        
         private bool ValidateChainId(Transaction transaction)
         {
             switch (transaction.Type)
@@ -83,8 +91,13 @@ namespace Nethermind.Blockchain.Validators
             }
         }
         
-        private bool ValidateSignature(Signature signature, IReleaseSpec spec)
+        private bool ValidateSignature(Signature? signature, IReleaseSpec spec)
         {
+            if (signature is null)
+            {
+                return false;
+            }
+            
             BigInteger sValue = signature.SAsSpan.ToUnsignedBigInteger();
             BigInteger rValue = signature.RAsSpan.ToUnsignedBigInteger();
             

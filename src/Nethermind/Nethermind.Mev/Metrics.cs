@@ -16,18 +16,22 @@
 // 
 
 using System.ComponentModel;
+using Nethermind.Int256;
 
 namespace Nethermind.Mev
 {
     public static class Metrics
     {
-        [Description("Total number of bundles received or inclusion")]
-        public static int BundlesReceived { get; set; }
+        [Description("Total number of bundles received for inclusion")]
+        public static int BundlesReceived { get; set; } = 0;
         
+        [Description("Total number of valid bundles received for inclusion")]
+        public static int ValidBundlesReceived { get; set; } = 0;
+
         [Description("Total number of bundles simulated")]
-        public static int BundlesSimulated { get; set; }
-        
-        [Description("Total coinbase payments")]
-        public static int TotalCoinbasePayments { get; set; }
+        public static int BundlesSimulated { get; set; } = 0;
+
+        [Description("Total coinbase payments in wei")]
+        public static decimal TotalCoinbasePayments { get; set; } = 0;
     }
 }

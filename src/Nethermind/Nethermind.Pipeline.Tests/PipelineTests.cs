@@ -3,7 +3,6 @@ using System.IO.Abstractions;
 using System.Linq;
 using System.Net.WebSockets;
 using System.Threading;
-using Nethermind.Blockchain.Processing;
 using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Pipeline.Publishers;
@@ -11,20 +10,17 @@ using Nethermind.Serialization.Json;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
-using NUnit.Framework.Internal;
 
 namespace Nethermind.Pipeline.Tests
 {
     public class PipelineTests
     {
         private ITxPool _txPool;
-        private IBlockProcessor _blockProcessor;
 
         [SetUp]
         public void SetUp()
         {
             _txPool = Substitute.For<ITxPool>();
-            _blockProcessor = Substitute.For<IBlockProcessor>();
         }
 
         [Test]

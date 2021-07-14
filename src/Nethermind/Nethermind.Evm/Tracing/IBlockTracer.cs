@@ -23,13 +23,15 @@ namespace Nethermind.Evm.Tracing
     public interface IBlockTracer
     {
         bool IsTracingRewards { get; }
-        
+
         void ReportReward(Address author, string rewardType, UInt256 rewardValue);
-        
+
         void StartNewBlockTrace(Block block);
-        
-        ITxTracer StartNewTxTrace(Keccak? txHash);
-        
+
+        ITxTracer StartNewTxTrace(Transaction? tx);
+
         void EndTxTrace();
+
+        void EndBlockTrace();
     }
 }

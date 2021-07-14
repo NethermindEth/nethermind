@@ -11,6 +11,7 @@ namespace Ethereum.Test.Base
         public long CurrentGasLimit { get; set; }
         public long CurrentNumber { get; set; }
         public UInt256 CurrentTimestamp { get; set; }
+        public UInt256? CurrentBaseFee { get; set; }
         public Keccak PreviousHash { get; set; }
     }
 }

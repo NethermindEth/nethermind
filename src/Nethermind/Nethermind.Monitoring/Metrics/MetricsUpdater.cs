@@ -88,7 +88,7 @@ namespace Nethermind.Monitoring.Metrics
             _timer?.Change(Timeout.Infinite, 0);
         }
 
-        private void UpdateMetrics(object state)
+        public void UpdateMetrics(object state)
         {
             foreach (Type metricType in _metricTypes)
             {

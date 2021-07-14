@@ -23,6 +23,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Evm;
+using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
@@ -52,7 +53,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             
             long number = (parentHeader?.Number ?? 0) + 1;
             bool isEip1559Enabled = _specProvider.GetSpec(number).IsEip1559Enabled;
-            UInt256 gasPrice = isEip1559Enabled && tx.IsEip1559 ? tx.FeeCap : tx.GasPrice;
+            UInt256 gasPrice = isEip1559Enabled && tx.IsEip1559 ? tx.MaxFeePerGas : tx.GasPrice;
             
             return new object[]
             {

@@ -21,6 +21,7 @@ namespace Nethermind.Core.Test.Builders
         public TransactionBuilder<Transaction> Transaction => new TransactionBuilder<Transaction>();
         public TransactionBuilder<SystemTransaction> SystemTransaction => new TransactionBuilder<SystemTransaction>();
         public TransactionBuilder<GeneratedTransaction> GeneratedTransaction => new TransactionBuilder<GeneratedTransaction>();
+        public TransactionBuilder<T> TypedTransaction<T>() where T : Transaction, new() => new TransactionBuilder<T>();
 
         public TransactionBuilder<NamedTransaction> NamedTransaction(string name)
         {
