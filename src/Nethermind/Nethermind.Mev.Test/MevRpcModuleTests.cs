@@ -139,7 +139,7 @@ namespace Nethermind.Mev.Test
             string result = chain.TestSerializedRequest(chain.MevRpcModule, "eth_callBundle", parameters);
             result.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":{{\"{setTx.Hash!}\":{{\"value\":\"0x\"}},\"{getTx.Hash!}\":{{\"value\":\"0x000000000000000000000000000000000000000000000000000000000000000f\"}}}},\"id\":67}}");
         }
-        
+
         [Test]
         public async Task Should_execute_eth_callBundle_and_serialize_failed_response_properly() 
         {
@@ -150,6 +150,20 @@ namespace Nethermind.Mev.Test
             string result = chain.TestSerializedRequest(chain.MevRpcModule, "eth_callBundle", parameters);
             result.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":{{\"{failedTx.Hash!}\":{{\"error\":\"0x\"}}}},\"id\":67}}");
         }
+        
+        [Test]
+        public async Task Should_execute_eth_sendBundle_and_serialize_successful_response_properly() 
+        {
+            var chain = await CreateChain(2);
+
+            Address contractAddress = await Contracts.Deploy(chain, Contracts.CallableCode);
+            
+            Transaction getTx = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(1ul).WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.CallableInvokeGet)).WithValue(0).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            Transaction setTx = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(1ul).WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.CallableInvokeSet)).WithValue(0).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+            string parameters = $"{{\"txs\":[\"{Rlp.Encode(setTx).Bytes.ToHexString()}\",\"{Rlp.Encode(getTx).Bytes.ToHexString()}\"],\"blockNumber\":\"0x4\"}}";
+            string result = chain.TestSerializedRequest(chain.MevRpcModule, "eth_sendBundle", parameters);
+            result.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}}");
+        }        
 
         [Test]
         public async Task Should_pick_one_highest_scoring_bundle_from_several_with_no_pool_txs_with_1_maxMergedBundles()
