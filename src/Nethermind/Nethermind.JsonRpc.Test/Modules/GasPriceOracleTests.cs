@@ -194,7 +194,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             {
                 return _sortedTxList ?? base.GetSortedTxGasPriceList(headBlock, blockNumToBlockMap);
             }
-
+            
             public void AddToSortedTxList(params UInt256[] numbers)
             {
                 TxGasPriceList.AddRange(numbers.ToList());
