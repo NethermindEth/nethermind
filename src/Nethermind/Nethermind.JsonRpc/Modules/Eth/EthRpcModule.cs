@@ -146,6 +146,10 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return ResultWrapper<UInt256?>.Success(20.GWei());
         }
 
+        public ResultWrapper<FeeHistoryResult> eth_feeHistory()
+        {
+            
+        }
         public ResultWrapper<IEnumerable<Address>> eth_accounts()
         {
             try
