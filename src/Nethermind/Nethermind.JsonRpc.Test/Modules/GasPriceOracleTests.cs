@@ -109,7 +109,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             //Any blocks with zero/one tx doesn't count towards the blockLimit unless the number of 
             ITxInsertionManager txInsertionManager = Substitute.For<ITxInsertionManager>();
             TestableGasPriceOracle testableGasPriceOracle = GetTestableGasPriceOracle(txInsertionManager: txInsertionManager, blockLimit: 8);
-            SetUpTxInsertionManager(txInsertionManager, testableGasPriceOracle);
+            SetUpTxInsertionManagerForSpecificReturns(txInsertionManager, testableGasPriceOracle);
             Block headBlock = Build.A.Block.WithNumber(8).TestObject;
             IDictionary<long, Block> testNineEmptyBlocksDictionary = GetNumberToBlockMapForNineEmptyBlocks();
             
@@ -118,7 +118,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             txInsertionManager.Received(8).AddValidTxFromBlockAndReturnCount(Arg.Any<Block>());
         }
 
-        private static void SetUpTxInsertionManager(ITxInsertionManager txInsertionManager,
+        private static void SetUpTxInsertionManagerForSpecificReturns(ITxInsertionManager txInsertionManager,
             TestableGasPriceOracle testableGasPriceOracle)
         {
             txInsertionManager.AddValidTxFromBlockAndReturnCount(Arg.Is<Block>(b => b.Number >= 4)).Returns(3);
@@ -131,6 +131,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 .When(t => t.AddValidTxFromBlockAndReturnCount(Arg.Is<Block>(b => b.Number < 4)))
                 .Do(t => testableGasPriceOracle.AddToSortedTxList(4));
         }
+
         private static Dictionary<long, Block> GetNumberToBlockMapForNineEmptyBlocks()
         {
             Block[] blocks = {
@@ -163,7 +164,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             private readonly UInt256? _lastGasPrice;
             private readonly List<UInt256>? _sortedTxList;
             public TestableGasPriceOracle(
-                IReleaseSpec? releaseSpec = null, 
+                ISpecProvider? specProvider = null,
                 UInt256? ignoreUnder = null, 
                 int? blockLimit = null, 
                 UInt256? baseFee = null, 
@@ -172,7 +173,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 UInt256? lastGasPrice = null,
                 List<UInt256>? sortedTxList = null) : 
                 base(
-                    releaseSpec,
+                    specProvider ?? Substitute.For<ISpecProvider>(),
                     ignoreUnder,
                     blockLimit,
                     baseFee,
@@ -193,14 +194,14 @@ namespace Nethermind.JsonRpc.Test.Modules
             {
                 return _sortedTxList ?? base.GetSortedTxGasPriceList(headBlock, blockNumToBlockMap);
             }
-
+            
             public void AddToSortedTxList(params UInt256[] numbers)
             {
                 TxGasPriceList.AddRange(numbers.ToList());
             }
         }
         private TestableGasPriceOracle GetTestableGasPriceOracle(
-            IReleaseSpec? releaseSpec = null, 
+            ISpecProvider? specProvider = null, 
             UInt256? ignoreUnder = null, 
             int? blockLimit = null, 
             UInt256? baseFee = null, 
@@ -210,7 +211,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             List<UInt256>? sortedTxList = null)
         {
             return new TestableGasPriceOracle(
-                releaseSpec ?? Substitute.For<IReleaseSpec>(),
+                specProvider ?? Substitute.For<ISpecProvider>(),
                 ignoreUnder,
                 blockLimit,
                 baseFee,
