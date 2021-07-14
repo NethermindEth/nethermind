@@ -74,7 +74,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             ctx._test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockFinder).Build();
             ctx._test.TestEthRpc("eth_gasPrice");
             
-            //testEthRpcModule.BlockNumberToBlockDictionary.Should().BeEquivalentTo(expected);
+            ctx._test.EthRpcModule.BlockNumberToBlockDictionary.Should().BeEquivalentTo(expected);
         }
         [Test]
         public void Eth_gasPrice_ForBlockTreeWithBlocks_CreatesMatchingBlockDictPrev()
@@ -111,21 +111,6 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             ctx._test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockFinder)
                 .WithGasPriceOracle(gasPriceOracle).Build();
             ctx._test.TestEthRpc("eth_gasPrice");
-            
-            gasPriceOracle.Received(1).GasPriceEstimate(Arg.Any<Block>(), Arg.Any<Dictionary<long, Block>>());
-        }
-        [Test]
-        public void Eth_gasPrice_GivenValidHeadBlock_CallsGasPriceEstimateFromGasPriceOraclePrev()
-        {
-            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-            IGasPriceOracle gasPriceOracle = Substitute.For<IGasPriceOracle>();
-            TestEthRpcModule testEthRpcModule = GetTestEthRpcModule(blockFinder);
-            testEthRpcModule.SetGasPriceOracle(gasPriceOracle);
-            Block testBlock = Build.A.Block.Genesis.TestObject;
-            blockFinder.FindHeadBlock().Returns(testBlock);
-            blockFinder.FindBlock(Arg.Is<long>(a => a == 0)).Returns(testBlock);
-
-            testEthRpcModule.eth_gasPrice();
             
             gasPriceOracle.Received(1).GasPriceEstimate(Arg.Any<Block>(), Arg.Any<Dictionary<long, Block>>());
         }

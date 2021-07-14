@@ -29,6 +29,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
     [RpcModule(ModuleType.Eth)]
     public interface IEthRpcModule : IRpcModule
     {
+        public Dictionary<long, Block> BlockNumberToBlockDictionary { get; }
         [JsonRpcMethod(IsImplemented = true, Description = "Returns ChainID", IsSharable = true)]
         ResultWrapper<ulong> eth_chainId();
         

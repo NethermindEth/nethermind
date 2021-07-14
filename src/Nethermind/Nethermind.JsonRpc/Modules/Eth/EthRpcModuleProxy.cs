@@ -36,12 +36,13 @@ namespace Nethermind.JsonRpc.Modules.Eth
     {
         private readonly IEthJsonRpcClientProxy _proxy;
         private readonly IWallet _wallet;
-
+        public Dictionary<long, Block> BlockNumberToBlockDictionary { get; }
         public EthRpcModuleProxy(IEthJsonRpcClientProxy proxy, IWallet wallet)
         {
             _proxy = proxy;
             _wallet = wallet;
         }
+
 
         public ResultWrapper<ulong> eth_chainId()
         {
