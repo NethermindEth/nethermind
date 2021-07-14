@@ -96,7 +96,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             
             if (roundedIndex < 0)
             {
-                return UInt256.Zero;
+                return EthGasPriceConstants.DefaultGasPrice;
             }
             
             UInt256? gasPriceEstimate = txGasPriceList[roundedIndex];
