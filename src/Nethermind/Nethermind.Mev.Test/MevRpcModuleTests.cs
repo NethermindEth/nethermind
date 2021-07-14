@@ -109,16 +109,22 @@ namespace Nethermind.Mev.Test
             return result.Data;
         }
         
-        public static MevBundle SuccessfullySendBundle(TestMevRpcBlockchain chain, int blockNumber, params BundleTransaction[] txs)
+        public static MevBundle SuccessfullySendBundle(TestMevRpcBlockchain chain, int blockNumber, params BundleTransaction[] txs) =>
+            SendBundle(chain, blockNumber, txs, true);
+        
+        public static MevBundle UnSuccessfullySendBundle(TestMevRpcBlockchain chain, int blockNumber, params BundleTransaction[] txs) => 
+            SendBundle(chain, blockNumber, txs, false);
+
+        private static MevBundle SendBundle(TestMevRpcBlockchain chain, int blockNumber, BundleTransaction[] txs, bool success)
         {
             byte[][] bundleBytes = txs.Select(t => Rlp.Encode(t).Bytes).ToArray();
             List<Keccak> revertingTxHashes = txs.Where(tx => tx.CanRevert).Select(tx => tx.Hash!).ToList();
             ResultWrapper<bool> resultOfBundle = chain.MevRpcModule.eth_sendBundle(bundleBytes, blockNumber, default, default, revertingTxHashes.Count > 0 ? revertingTxHashes.ToArray() : null);
             resultOfBundle.GetResult().ResultType.Should().NotBe(ResultType.Failure);
-            resultOfBundle.GetData().Should().Be(true);
+            resultOfBundle.GetData().Should().Be(success);
             return new MevBundle(blockNumber, txs);
         }
-        
+
         [Test]
         public async Task Should_execute_eth_callBundle_and_serialize_successful_response_properly() 
         {
@@ -548,10 +554,7 @@ namespace Nethermind.Mev.Test
             GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { poolTx1 }));
             
             // sending bundleTx for blockNumber 1 which has already been mined
-            byte[][] bundleBytes = new[] {Rlp.Encode(bundleTx).Bytes.ToArray()};
-            ResultWrapper<bool> resultOfBundle = chain.MevRpcModule.eth_sendBundle(bundleBytes, 1);
-            resultOfBundle.GetResult().ResultType.Should().NotBe(ResultType.Failure);
-            resultOfBundle.GetData().Should().Be(false);
+            UnSuccessfullySendBundle(chain, 1, bundleTx);
 
             await SendSignedTransaction(chain, poolTx2);
             await chain.AddBlock(true);
@@ -642,6 +645,41 @@ namespace Nethermind.Mev.Test
             
             GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { bundleTx }));
         }
+        
+        
+        [Test]
+        public async Task Should_not_include_bundles_with_txs_not_passing_eip1559_consensus_checks_in_London()
+        {
+            var chain = await CreateChain(2, London.Instance, 0);
+            chain.GasLimitCalculator.GasLimit = 10_000_000;
+            
+            //# The total must be the larger of the two
+            // assert transaction.max_fee_per_gas >= transaction.max_priority_fee_per_gas
+            BundleTransaction invalidTx = Build.A.TypedTransaction<BundleTransaction>()
+                .WithType(TxType.EIP1559)
+                .WithGasLimit(GasCostOf.Transaction)
+                .WithMaxFeePerGas(95ul)
+                .WithMaxPriorityFeePerGas(100ul)
+                .WithChainId(chain.BlockTree.ChainId)
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+
+            //# the signer must be able to afford the transaction
+            // assert signer.balance >= transaction.gas_limit * transaction.max_fee_per_gas
+            BundleTransaction invalidTx2 = Build.A.TypedTransaction<BundleTransaction>()
+                .WithType(TxType.EIP1559)
+                .WithGasLimit(chain.GasLimitCalculator.GasLimit - 100000)
+                .WithMaxFeePerGas(1000000ul * 1_000_000_000)
+                .WithMaxPriorityFeePerGas(1ul)
+                .WithChainId(chain.BlockTree.ChainId)
+                .SignedAndResolved(TestItem.PrivateKeyC).TestObject;
+
+            UnSuccessfullySendBundle(chain, 1, invalidTx);
+            SuccessfullySendBundle(chain, 1, invalidTx2);
+            
+            await chain.AddBlock(true);
+            
+            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal();
+        }        
 
         [Test]
         public async Task Should_accept_reverting_bundle_with_RevertingTxHashes()

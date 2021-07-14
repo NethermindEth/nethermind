@@ -30,11 +30,13 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Mev.Data;
 using Nethermind.Mev.Execution;
+using Nethermind.TxPool;
 using Nethermind.TxPool.Collections;
 using Org.BouncyCastle.Security;
 using ILogger = Nethermind.Logging.ILogger;
@@ -45,7 +47,9 @@ namespace Nethermind.Mev.Source
     public class BundlePool : IBundlePool, ISimulatedBundleSource, IDisposable
     {
         private readonly ITimestamper _timestamper;
+        private readonly ITxValidator _txValidator;
         private readonly IMevConfig _mevConfig;
+        private readonly ISpecProvider _specProvider;
         private readonly IBlockTree _blockTree;
         private readonly IBundleSimulator _simulator;
         private readonly BundleSortedPool _bundles;
@@ -58,11 +62,15 @@ namespace Nethermind.Mev.Source
             IBlockTree blockTree, 
             IBundleSimulator simulator,
             ITimestamper timestamper,
+            ITxValidator txValidator, 
+            ISpecProvider specProvider,
             IMevConfig mevConfig,
             ILogManager logManager)
         {
             _timestamper = timestamper;
+            _txValidator = txValidator;
             _mevConfig = mevConfig;
+            _specProvider = specProvider;
             _blockTree = blockTree;
             _simulator = simulator;
             _logger = logManager.GetClassLogger();
@@ -156,6 +164,15 @@ namespace Nethermind.Mev.Source
             {
                 if (_logger.IsDebug) _logger.Debug($"Bundle rejected, because {nameof(bundle.MinTimestamp)} {bundle.MaxTimestamp} is further into the future than accepted horizon {_mevConfig.BundleHorizon}.");
                 return false;
+            }
+
+            IReleaseSpec spec = _specProvider.GetSpec(bundle.BlockNumber);
+            for (int i = 0; i < bundle.Transactions.Count; i++)
+            {
+                if (!_txValidator.IsWellFormed(bundle.Transactions[i], spec))
+                {
+                    return false;
+                }
             }
 
             return true;

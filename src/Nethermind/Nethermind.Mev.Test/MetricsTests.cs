@@ -19,6 +19,7 @@ using System;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -28,6 +29,8 @@ using Nethermind.Logging;
 using Nethermind.Mev.Data;
 using Nethermind.Mev.Execution;
 using Nethermind.Mev.Source;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 using NSubstitute;
 
@@ -51,10 +54,11 @@ namespace Nethermind.Mev.Test
             int beforeValidBundlesReceived = Metrics.ValidBundlesReceived;
             int beforeBundlesSimulated = Metrics.BundlesSimulated;
 
-            bundlePool.AddBundle(new MevBundle(1, new []{Build.A.TypedTransaction<BundleTransaction>().TestObject, Build.A.TypedTransaction<BundleTransaction>().WithNonce(1).TestObject}, 0, 0));
-            bundlePool.AddBundle(new MevBundle(1, new []{Build.A.TypedTransaction<BundleTransaction>().TestObject}, 0, 0));
-            bundlePool.AddBundle(new MevBundle(3, new []{Build.A.TypedTransaction<BundleTransaction>().TestObject}, 0, 0));
-            bundlePool.AddBundle(new MevBundle(4, new []{Build.A.TypedTransaction<BundleTransaction>().TestObject}, 0, 0));
+            bundlePool.AddBundle(new MevBundle(1, new []{Build.A.TypedTransaction<BundleTransaction>().SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+                Build.A.TypedTransaction<BundleTransaction>().SignedAndResolved(TestItem.PrivateKeyA).WithNonce(1).TestObject}, 0, 0));
+            bundlePool.AddBundle(new MevBundle(1, new []{Build.A.TypedTransaction<BundleTransaction>().SignedAndResolved(TestItem.PrivateKeyA).TestObject}, 0, 0));
+            bundlePool.AddBundle(new MevBundle(3, new []{Build.A.TypedTransaction<BundleTransaction>().SignedAndResolved(TestItem.PrivateKeyA).TestObject}, 0, 0));
+            bundlePool.AddBundle(new MevBundle(4, new []{Build.A.TypedTransaction<BundleTransaction>().SignedAndResolved(TestItem.PrivateKeyA).TestObject}, 0, 0));
             
             int deltaBundlesReceived = Metrics.BundlesReceived - beforeBundlesReceived;
             int deltaValidBundlesReceived = Metrics.ValidBundlesReceived - beforeValidBundlesReceived;
@@ -74,10 +78,10 @@ namespace Nethermind.Mev.Test
             int beforeValidBundlesReceived = Metrics.ValidBundlesReceived;
             int beforeBundlesSimulated = Metrics.BundlesSimulated;
 
-            bundlePool.AddBundle(new MevBundle(1, new []{Build.A.TypedTransaction<BundleTransaction>().TestObject}, 5, 0)); // invalid
-            bundlePool.AddBundle(new MevBundle(2, new []{Build.A.TypedTransaction<BundleTransaction>().TestObject}, 0, 0)); 
-            bundlePool.AddBundle(new MevBundle(3, new []{Build.A.TypedTransaction<BundleTransaction>().TestObject}, 0, long.MaxValue)); // invalid
-            bundlePool.AddBundle(new MevBundle(4, new []{Build.A.TypedTransaction<BundleTransaction>().TestObject}, 0, 0));
+            bundlePool.AddBundle(new MevBundle(1, new []{Build.A.TypedTransaction<BundleTransaction>().SignedAndResolved(TestItem.PrivateKeyA).TestObject}, 5, 0)); // invalid
+            bundlePool.AddBundle(new MevBundle(2, new []{Build.A.TypedTransaction<BundleTransaction>().SignedAndResolved(TestItem.PrivateKeyA).TestObject}, 0, 0)); 
+            bundlePool.AddBundle(new MevBundle(3, new []{Build.A.TypedTransaction<BundleTransaction>().SignedAndResolved(TestItem.PrivateKeyA).TestObject}, 0, long.MaxValue)); // invalid
+            bundlePool.AddBundle(new MevBundle(4, new []{Build.A.TypedTransaction<BundleTransaction>().SignedAndResolved(TestItem.PrivateKeyA).TestObject}, 0, 0));
             
             int deltaBundlesReceived = Metrics.BundlesReceived - beforeBundlesReceived;
             int deltaValidBundlesReceived = Metrics.ValidBundlesReceived - beforeValidBundlesReceived;
@@ -131,6 +135,7 @@ namespace Nethermind.Mev.Test
         private static TestBundlePool CreateTestBundlePool()
         {
             var blockTree = Substitute.For<IBlockTree>();
+            blockTree.ChainId.Returns((ulong)ChainId.Mainnet);
             BlockHeader header = new(
                 Keccak.Zero,
                 Keccak.Zero,
@@ -150,6 +155,8 @@ namespace Nethermind.Mev.Test
                 blockTree,
                 Substitute.For<IBundleSimulator>(),
                 new ManualTimestamper(DateTimeOffset.UnixEpoch.DateTime),
+                new TxValidator(blockTree.ChainId),
+                new TestSpecProvider(London.Instance),
                 new MevConfig(),
                 LimboLogs.Instance);
             return bundlePool;
