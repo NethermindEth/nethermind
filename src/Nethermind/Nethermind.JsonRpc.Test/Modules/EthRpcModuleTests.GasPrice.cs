@@ -45,7 +45,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             blockFinder.FindHeadBlock().Returns((Block) null);
-            EthRpcModule testEthRpcModule = GetTestableEthRpcModule(blockFinder: blockFinder);
+            TestableEthRpcModule testEthRpcModule = GetTestableEthRpcModule(blockFinder: blockFinder);
             
             Action gasPriceCall = () => testEthRpcModule.eth_gasPrice();
             
@@ -58,7 +58,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             Block testBlockA = GetTestBlockA();
             Block testBlockB = GetTestBlockB();
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-            EthRpcModule testEthRpcModule = GetTestableEthRpcModule(blockFinder:blockFinder);
+            TestableEthRpcModule testEthRpcModule = GetTestableEthRpcModule(blockFinder:blockFinder);
             blockFinder.FindBlock(0).Returns(testBlockA);
             blockFinder.FindBlock(1).Returns(testBlockB);
             blockFinder.FindHeadBlock().Returns(testBlockB);
@@ -78,7 +78,8 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             IGasPriceOracle gasPriceOracle = Substitute.For<IGasPriceOracle>();
-            EthRpcModule testEthRpcModule = GetTestableEthRpcModule(blockFinder);
+            TestableEthRpcModule testEthRpcModule = GetTestableEthRpcModule(blockFinder);
+            testEthRpcModule.SetGasPriceOracle(gasPriceOracle);
             Block testBlock = Build.A.Block.Genesis.TestObject;
             blockFinder.FindHeadBlock().Returns(testBlock);
             blockFinder.FindBlock(Arg.Is<long>(a => a == 0)).Returns(testBlock);
@@ -92,8 +93,9 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void Eth_gasPrice_BlocksAvailableLessThanBlocksToCheck_ShouldBeSuccessful()
         {
             Block[] blocks = GetThreeTestBlocks();
+            ISpecProvider specProvider = Substitute.For<ISpecProvider>();
 
-            BlockTreeSetup blockTreeSetup = new BlockTreeSetup(blocks: blocks, blockLimit: 4);
+            BlockTreeSetup blockTreeSetup = new BlockTreeSetup(blocks: blocks, blockLimit: 4, specProvider: specProvider);
             ResultWrapper<UInt256?> resultWrapper = blockTreeSetup.EthRpcModule.eth_gasPrice();
             
             resultWrapper.Result.Should().Be(Result.Success); 
@@ -103,7 +105,8 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void Eth_gasPrice_NumTxInMinBlocksGreaterThanBlockLimit_GetTxFromBlockLimitBlocks()
         {
             Block[] blocks = GetThreeTestBlocks();
-            BlockTreeSetup blockTreeSetup = new BlockTreeSetup(blocks: blocks, blockLimit: 2);
+            ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+            BlockTreeSetup blockTreeSetup = new BlockTreeSetup(blocks: blocks, blockLimit: 2, specProvider: specProvider);
             
             blockTreeSetup.EthRpcModule.eth_gasPrice();
             
@@ -161,7 +164,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 GasPriceOracle = gasPriceOracle;
             }
         }
-        private TestableEthRpcModule GetTestableEthRpcModule(IBlockFinder blockFinder = null)
+        private static TestableEthRpcModule GetTestableEthRpcModule(IBlockFinder blockFinder = null)
         {
             return new TestableEthRpcModule
             (
@@ -181,7 +184,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             public Block[] Blocks { get; private set; }
             private BlockTree BlockTree { get; set; }
-            public EthRpcModule EthRpcModule { get; }
+            public TestableEthRpcModule EthRpcModule { get; }
             public IGasPriceOracle GasPriceOracle { get; private set; }
 
             public BlockTreeSetup(
@@ -201,7 +204,9 @@ namespace Nethermind.JsonRpc.Test.Modules
 
                 GasPriceOracle = gasPriceOracle ?? GetGasPriceOracle(specProvider, ignoreUnder, blockLimit, baseFee, txInsertionManager, headBlockChangeManager);
 
-                EthRpcModule = new EthRpcModuleTests().GetTestableEthRpcModule(BlockTree);
+                EthRpcModule = GetTestableEthRpcModule(BlockTree);
+                
+                EthRpcModule.SetGasPriceOracle(GasPriceOracle);
             }
 
             private void InitializeAndAddToBlockTree()

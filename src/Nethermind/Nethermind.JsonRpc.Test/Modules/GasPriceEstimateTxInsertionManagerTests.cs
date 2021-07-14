@@ -87,11 +87,11 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Build.A.Transaction.WithFeeCap(27).WithGasPrice(11).TestObject  //Min(11, 11 + 25) => 11
             };
 
-            Block eip1559Block = Build.A.Block.WithNumber(1).WithParentHash(Keccak.Zero).WithTransactions(eip1559TxGroup).TestObject;
+            Block eip1559Block = Build.A.Block.Genesis.WithTransactions(eip1559TxGroup).TestObject;
             Block nonEip1559Block = Build.A.Block.WithNumber(1).WithParentHash(eip1559Block.Hash).WithTransactions(nonEip1559TxGroup).TestObject;
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-            specProvider.GetSpec(Arg.Is<long>(b => b >= 3)).IsEip1559Enabled.Returns(true);
-            specProvider.GetSpec(Arg.Is<long>(b => b >= 5)).IsEip1559Enabled.Returns(true);
+            specProvider.GetSpec(Arg.Is<long>(b => b == 0)).IsEip1559Enabled.Returns(true);
+            specProvider.GetSpec(Arg.Is<long>(b => b == 1)).IsEip1559Enabled.Returns(false);
             TestableGasPriceEstimateTxInsertionManager testableGasPriceEstimateTxInsertionManager = GetTestableTxInsertionManager(baseFee:25, specProvider: specProvider);
             List<UInt256> expected = new List<UInt256> {26, 27, 27, 9, 10, 11};
             
