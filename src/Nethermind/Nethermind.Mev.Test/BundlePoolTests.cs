@@ -27,6 +27,7 @@ using FluentAssertions;
 using FluentAssertions.Common;
 using Microsoft.AspNetCore.Mvc;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -45,6 +46,8 @@ using NSubstitute.Exceptions;
 using NSubstitute.ReturnsExtensions;
 using NUnit.Framework;
 using Nethermind.Mev.Test;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using Nethermind.TxPool.Collections;
 
 namespace Nethermind.Mev.Test
@@ -202,7 +205,7 @@ namespace Nethermind.Mev.Test
             TestContext test = new();
             Block block = Build.A.Block.WithNumber(5).TestObject;
             test.BlockTree.Head.Returns(block);
-            MevBundle mevBundle = new MevBundle(6, new[] {Build.A.TypedTransaction<BundleTransaction>().TestObject});
+            MevBundle mevBundle = new MevBundle(6, new[] {Build.A.TypedTransaction<BundleTransaction>().SignedAndResolved(TestItem.PrivateKeyA).TestObject});
             test.BundlePool.AddBundle(mevBundle);
             
             test.Simulator.Received(1).Simulate(mevBundle, block.Header, Arg.Any<CancellationToken>());
@@ -326,6 +329,8 @@ namespace Nethermind.Mev.Test
                     BlockTree.Head.Returns(Build.A.Block.WithNumber((long) blockTreeHead).TestObject);
                 }
 
+                BlockTree.ChainId.Returns((ulong) ChainId.Mainnet);
+
                 if (timestamper != null)
                 {
                     Timestamper = timestamper;
@@ -340,6 +345,8 @@ namespace Nethermind.Mev.Test
                     BlockTree,
                     Simulator,
                     Timestamper,
+                    new TxValidator(BlockTree.ChainId),
+                    new TestSpecProvider(London.Instance),
                     config ?? new MevConfig(),
                     LimboLogs.Instance);
 
@@ -359,7 +366,6 @@ namespace Nethermind.Mev.Test
             }
 
             public IBundleSimulator Simulator { get; } = Substitute.For<IBundleSimulator>();
-
             public IBlockTree BlockTree { get; } = Substitute.For<IBlockTree>();
             public BundlePool BundlePool { get; }
 

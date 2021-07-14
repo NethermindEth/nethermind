@@ -26,10 +26,12 @@ using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Mev.Data;
 using Nethermind.Mev.Execution;
+using Nethermind.TxPool;
 using Nethermind.TxPool.Collections;
 using ILogger = Nethermind.Logging.ILogger;
 
@@ -40,7 +42,9 @@ namespace Nethermind.Mev.Source
     public class BundlePool : IBundlePool, ISimulatedBundleSource, IDisposable
     {
         private readonly ITimestamper _timestamper;
+        private readonly ITxValidator _txValidator;
         private readonly IMevConfig _mevConfig;
+        private readonly ISpecProvider _specProvider;
         private readonly IBlockTree _blockTree;
         private readonly IBundleSimulator _simulator;
         private readonly BundleSortedPool _bundles;
@@ -53,16 +57,19 @@ namespace Nethermind.Mev.Source
             IBlockTree blockTree, 
             IBundleSimulator simulator,
             ITimestamper timestamper,
+            ITxValidator txValidator, 
+            ISpecProvider specProvider,
             IMevConfig mevConfig,
             ILogManager logManager)
         {
             _timestamper = timestamper;
+            _txValidator = txValidator;
             _mevConfig = mevConfig;
+            _specProvider = specProvider;
             _blockTree = blockTree;
             _simulator = simulator;
             _logger = logManager.GetClassLogger();
             
-            _blockTree.NewHeadBlock += OnNewBlock;
             IComparer<MevBundle> comparer = CompareMevBundleByBlock.Default.ThenBy(CompareMevBundleByMinTimestamp.Default);
             _bundles = new BundleSortedPool(
                 _mevConfig.BundlePoolSize,
@@ -70,6 +77,7 @@ namespace Nethermind.Mev.Source
                 logManager );
 
             _bundles.Removed += OnBundleRemoved;
+            _blockTree.NewHeadBlock += OnNewBlock;
         }
 
         public Task<IEnumerable<MevBundle>> GetBundles(BlockHeader parent, UInt256 timestamp, long gasLimit, CancellationToken token = default) => 
@@ -97,7 +105,6 @@ namespace Nethermind.Mev.Source
                     }
                 }
             }
-                    
         }
 
         public bool AddBundle(MevBundle bundle)
@@ -151,6 +158,15 @@ namespace Nethermind.Mev.Source
             {
                 if (_logger.IsDebug) _logger.Debug($"Bundle rejected, because {nameof(bundle.MinTimestamp)} {bundle.MaxTimestamp} is further into the future than accepted horizon {_mevConfig.BundleHorizon}.");
                 return false;
+            }
+
+            IReleaseSpec spec = _specProvider.GetSpec(bundle.BlockNumber);
+            for (int i = 0; i < bundle.Transactions.Count; i++)
+            {
+                if (!_txValidator.IsWellFormed(bundle.Transactions[i], spec))
+                {
+                    return false;
+                }
             }
 
             return true;
@@ -327,7 +343,6 @@ namespace Nethermind.Mev.Source
 
         public void Dispose()
         {
-            _blockTree.NewSuggestedBlock -= OnNewBlock;
             _blockTree.NewHeadBlock -= OnNewBlock;
             _bundles.Removed -= OnBundleRemoved;
         }
