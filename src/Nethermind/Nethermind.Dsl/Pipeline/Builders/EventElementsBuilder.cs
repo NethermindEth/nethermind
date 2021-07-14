@@ -77,7 +77,7 @@ namespace Nethermind.Dsl.Pipeline.Builders
 
             if (log == null) return false;
 
-            return log.Topics.First() == signatureHash;
+            return log.Topics.First().Equals(signatureHash);
         }
 
         private bool CheckIfContains(LogEntry logEntry,string key ,string value)

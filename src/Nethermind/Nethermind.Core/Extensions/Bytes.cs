@@ -428,6 +428,11 @@ namespace Nethermind.Core.Extensions
             return new(bytes, true);
         }
 
+        public static Int256.Int256 ToInt256(this byte[] bytes)
+        {
+            return new(bytes, true);
+        }
+
         private static byte Reverse(byte b)
         {
             b = (byte) ((b & 0xF0) >> 4 | (b & 0x0F) << 4);

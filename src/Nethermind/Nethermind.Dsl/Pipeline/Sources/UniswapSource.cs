@@ -16,62 +16,65 @@
 // 
 
 using System;
-using Nethermind.Blockchain.Find;
+using System.Linq;
+using Nethermind.Abi;
+using Nethermind.Int256;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Core;
-using Nethermind.Facade;
+using Nethermind.Core.Extensions;
 using Nethermind.Pipeline;
 
 namespace Nethermind.Dsl.Pipeline.Sources
 {
-    public class UniswapSource<TOut> : IPipelineElement<TOut> where TOut : Transaction
+    public class UniswapSource : IPipelineElement<UniswapData>
     {
-        public Action<TOut> Emit { get; set; }
+        public Action<UniswapData> Emit { private get; set; }
         private readonly IBlockProcessor _blockProcessor;
-        private readonly IBlockchainBridge _blockchainBridge;
-        private readonly IBlockFinder _blockFinder;
-        private readonly UniswapContract _contract;
-        private readonly Address _pairAddress;
+        private readonly AbiSignature _swapSignature;
 
-        public UniswapSource(IBlockProcessor blockProcessor, IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, string tokenA, string tokenB)
+        public UniswapSource(IBlockProcessor blockProcessor)
         {
             _blockProcessor = blockProcessor;
-            _blockchainBridge = blockchainBridge;
-            _blockFinder = blockFinder;
-            _contract = new UniswapContract(new Address("0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f"), blockchainBridge);
-            var header = blockFinder.FindHeader(10000835);
-            if (header is null)
-            {
-                throw new Exception("Could not find block header at 10000835 block.");
-            }
-            _pairAddress = _contract.getPair(header,new Address(tokenA), new Address(tokenB));
-
             _blockProcessor.TransactionProcessed += OnTransactionProcessed;
+            _swapSignature = new AbiSignature("Swap", AbiType.Address, AbiType.Address, AbiType.Int256, AbiType.Int256, AbiType.UInt160, AbiType.UInt128,
+                AbiType.Int24);
         }
 
         private void OnTransactionProcessed(object? sender, TxProcessedEventArgs args)
         {
-            if (args.Transaction.To == _pairAddress)
+            var logs = args.TxReceipt.Logs;
+            
+            if(logs is null || !logs.Any()) return;
+
+            var swapLogs = logs.Where(l => l.Topics.First().Equals(_swapSignature.Hash));
+
+            foreach (var log in swapLogs)
             {
-                Emit?.Invoke((TOut) args.Transaction);
+                var data = ConvertLogToData(log);
+                Emit?.Invoke(data);
             }
+        }
+
+        private UniswapData ConvertLogToData(LogEntry log)
+        {
+            return new()
+            {
+                Swapper = new Address(log.Topics[1]),
+                TokenADelta = log.Data.Take(32).ToArray().ToInt256(),
+                TokenBDelta = log.Data.Skip(32).Take(32).ToArray().ToInt256()
+            };
         }
     }
 
-    public class UniswapContract : BlockchainBridgeContract
+    public class UniswapData
     {
-        private IConstantContract ConstantContract { get; set; }
-        public readonly Address ContractAddress; 
+        public Address Swapper { get; set; }
+        public Address TokenA { get; set; }
+        public Address TokenB { get; set; }
+        public decimal TokenAPrice { get; set; }
+        public decimal TokenBPrice { get; set; }
+        public Int256.Int256 TokenADelta { get; set; }
         
-        public UniswapContract(Address contractAddress, IBlockchainBridge blockchainBridge) : base(contractAddress)
-        {
-            ContractAddress = contractAddress;
-            ConstantContract = GetConstant(blockchainBridge);
-        }
-
-        public Address getPair(BlockHeader header, Address tokenA, Address tokenB)
-        {
-            return ConstantContract.Call<Address>(header, nameof(getPair), Address.Zero, tokenA, tokenB);
-        }
+        public Int256.Int256 TokenBDelta { get; set; }
     }
 }

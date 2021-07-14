@@ -28,6 +28,7 @@ namespace Nethermind.Abi
 
         public static AbiBool Bool { get; } = AbiBool.Instance;
 
+        public static AbiInt Int24 { get; } = new(24);
         public static AbiInt Int256 { get; } = new(256);
 
         public static AbiUInt UInt256 { get; } = new(256);
@@ -37,6 +38,9 @@ namespace Nethermind.Abi
         public static AbiUInt UInt16 { get; } = new(16);
         
         public static AbiUInt UInt96 { get; } = new(96);
+        public static AbiUInt UInt160 { get; } = new(160);
+        
+        public static AbiUInt UInt128 { get; } = new(128);
 
         public static AbiString String { get; } = AbiString.Instance;
 
