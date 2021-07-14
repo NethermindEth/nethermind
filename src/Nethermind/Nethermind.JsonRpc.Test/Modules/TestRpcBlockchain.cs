@@ -95,6 +95,11 @@ namespace Nethermind.JsonRpc.Test.Modules
                 return this;
             }
             
+            public Builder<T> WithGasPriceOracle(IGasPriceOracle gasPriceOracle)
+            {
+                _blockchain.GasPriceOracle = gasPriceOracle;
+                return this;
+            }
             public async Task<T> Build(ISpecProvider specProvider = null, UInt256? initialValues = null)
             {
                 return (T)(await _blockchain.Build(specProvider, initialValues));
@@ -127,7 +132,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             ITxSealer txSealer1 = new NonceReservingTxSealer(txSigner, Timestamper, TxPool);
             TxSender ??= new TxPoolSender(TxPool, txSealer0, txSealer1);
             
-            GasPriceOracle = new GasPriceOracle(Substitute.For<ISpecProvider>());
+            GasPriceOracle = new GasPriceOracle(SpecProvider);
             
             EthRpcModule = new EthRpcModule(
                 new JsonRpcConfig(),
@@ -138,7 +143,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 TxSender,
                 TestWallet,
                 LimboLogs.Instance,
-                SpecProvider);
+                GasPriceOracle);
             
             return this;
         }

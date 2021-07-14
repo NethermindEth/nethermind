@@ -11,6 +11,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
     {
         public UInt256? FallbackGasPrice { get; private set; }
         public List<UInt256> TxGasPriceList { get; private set; }
+        public ISpecProvider SpecProvider { get; private set; }
         protected UInt256? LastGasPrice { get; private set; }
         private Block? LastHeadBlock { get; set; }
         private readonly UInt256? _ignoreUnder;
@@ -29,6 +30,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             IHeadBlockChangeManager? headBlockChangeManager = null)
         {
             TxGasPriceList = new List<UInt256>();
+            SpecProvider = specProvider;
             _ignoreUnder = ignoreUnder ?? UInt256.Zero;
             _blockLimit = blockLimit ?? EthGasPriceConstants.DefaultBlocksLimit;
             _softTxThreshold = (int) (blockLimit != null ? blockLimit * 2 : EthGasPriceConstants.SoftTxLimit);

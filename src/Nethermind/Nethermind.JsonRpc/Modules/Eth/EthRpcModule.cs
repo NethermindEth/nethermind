@@ -76,7 +76,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             ITxSender txSender,
             IWallet wallet,
             ILogManager logManager,
-            ISpecProvider specProvider)
+            IGasPriceOracle gasPriceOracle)
         {
             _logger = logManager.GetClassLogger();
             _rpcConfig = rpcConfig ?? throw new ArgumentNullException(nameof(rpcConfig));
@@ -86,8 +86,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _txPoolBridge = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
-            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            GasPriceOracle = new GasPriceOracle(_specProvider);
+            GasPriceOracle = gasPriceOracle ?? throw new ArgumentNullException(nameof(gasPriceOracle));
+            _specProvider = GasPriceOracle.SpecProvider;
         }
 
         public ResultWrapper<string> eth_protocolVersion()
@@ -151,14 +151,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             BlockNumberToBlockDictionary = CreateBlockNumberToBlockDictionary(headBlock);
             return GasPriceOracle!.GasPriceEstimate(headBlock, BlockNumberToBlockDictionary);
-        }
-
-        private void ThrowExceptionIfHeadBlockIsNull(Block? headBlock)
-        {
-            if (headBlock == null)
-            {
-                throw new Exception("Head Block was not found.");
-            }
         }
 
         private Dictionary<long, Block> CreateBlockNumberToBlockDictionary(Block? headBlock)
