@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth;
@@ -88,7 +89,10 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             Block eip1559Block = Build.A.Block.WithNumber(1).WithParentHash(Keccak.Zero).WithTransactions(eip1559TxGroup).TestObject;
             Block nonEip1559Block = Build.A.Block.WithNumber(1).WithParentHash(eip1559Block.Hash).WithTransactions(nonEip1559TxGroup).TestObject;
-            TestableGasPriceEstimateTxInsertionManager testableGasPriceEstimateTxInsertionManager = GetTestableTxInsertionManager(baseFee:25, isEip1559Enabled: true);
+            ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+            specProvider.GetSpec(Arg.Is<long>(b => b >= 3)).IsEip1559Enabled.Returns(true);
+            specProvider.GetSpec(Arg.Is<long>(b => b >= 5)).IsEip1559Enabled.Returns(true);
+            TestableGasPriceEstimateTxInsertionManager testableGasPriceEstimateTxInsertionManager = GetTestableTxInsertionManager(baseFee:25, specProvider: specProvider);
             List<UInt256> expected = new List<UInt256> {26, 27, 27, 9, 10, 11};
             
             testableGasPriceEstimateTxInsertionManager.AddValidTxFromBlockAndReturnCount(eip1559Block);
@@ -139,12 +143,12 @@ namespace Nethermind.JsonRpc.Test.Modules
             IGasPriceOracle gasPriceOracle,
             UInt256? ignoreUnder,
             UInt256 baseFee,
-            bool isEip1559Enabled,
+            ISpecProvider specProvider,
             List<UInt256> txGasPriceList = null) : 
             base(gasPriceOracle,
                 ignoreUnder,
                 baseFee,
-                isEip1559Enabled)
+                specProvider)
         {
             _txGasPriceList = txGasPriceList ?? new List<UInt256>();
         }
@@ -158,14 +162,14 @@ namespace Nethermind.JsonRpc.Test.Modules
             IGasPriceOracle gasPriceOracle = null,
             UInt256? ignoreUnder = null,
             UInt256? baseFee = null,
-            bool isEip1559Enabled = false,
+            ISpecProvider specProvider = null,
             List<UInt256> txGasPriceList = null)
         {
             return new TestableGasPriceEstimateTxInsertionManager(
                 gasPriceOracle ?? Substitute.For<IGasPriceOracle>(),
                 ignoreUnder ?? UInt256.Zero,
                 baseFee ?? UInt256.Zero,
-                isEip1559Enabled,
+                specProvider ?? Substitute.For<ISpecProvider>(),
                 txGasPriceList);
         }
     }

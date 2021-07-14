@@ -164,7 +164,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             private readonly UInt256? _lastGasPrice;
             private readonly List<UInt256>? _sortedTxList;
             public TestableGasPriceOracle(
-                IReleaseSpec? releaseSpec = null, 
+                ISpecProvider? specProvider = null,
                 UInt256? ignoreUnder = null, 
                 int? blockLimit = null, 
                 UInt256? baseFee = null, 
@@ -173,7 +173,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 UInt256? lastGasPrice = null,
                 List<UInt256>? sortedTxList = null) : 
                 base(
-                    releaseSpec,
+                    specProvider ?? Substitute.For<ISpecProvider>(),
                     ignoreUnder,
                     blockLimit,
                     baseFee,
@@ -201,7 +201,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             }
         }
         private TestableGasPriceOracle GetTestableGasPriceOracle(
-            IReleaseSpec? releaseSpec = null, 
+            ISpecProvider? specProvider = null, 
             UInt256? ignoreUnder = null, 
             int? blockLimit = null, 
             UInt256? baseFee = null, 
@@ -211,7 +211,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             List<UInt256>? sortedTxList = null)
         {
             return new TestableGasPriceOracle(
-                releaseSpec ?? Substitute.For<IReleaseSpec>(),
+                specProvider ?? Substitute.For<ISpecProvider>(),
                 ignoreUnder,
                 blockLimit,
                 baseFee,
