@@ -90,9 +90,15 @@ namespace Nethermind.JsonRpc.Test.Modules
             Block eip1559Block = Build.A.Block.Genesis.WithTransactions(eip1559TxGroup).TestObject;
             Block nonEip1559Block = Build.A.Block.WithNumber(1).WithParentHash(eip1559Block.Hash).WithTransactions(nonEip1559TxGroup).TestObject;
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-            specProvider.GetSpec(Arg.Is<long>(b => b == 0)).IsEip1559Enabled.Returns(true);
-            specProvider.GetSpec(Arg.Is<long>(b => b == 1)).IsEip1559Enabled.Returns(false);
-            TestableGasPriceEstimateTxInsertionManager testableGasPriceEstimateTxInsertionManager = GetTestableTxInsertionManager(baseFee:25, specProvider: specProvider);
+            IReleaseSpec trueEip1559 = Substitute.For<IReleaseSpec>();
+            trueEip1559.IsEip1559Enabled.Returns(true);
+            IReleaseSpec falseEip1559 = Substitute.For<IReleaseSpec>();
+            falseEip1559.IsEip1559Enabled.Returns(false);
+            specProvider.GetSpec(Arg.Is<long>(b => b == 0)).Returns(trueEip1559);
+            specProvider.GetSpec(Arg.Is<long>(b => b == 1)).Returns(falseEip1559);
+            IGasPriceOracle gasPriceOracle = Substitute.For<IGasPriceOracle>();
+            gasPriceOracle.FallbackGasPrice.Returns(UInt256.One);
+            TestableGasPriceEstimateTxInsertionManager testableGasPriceEstimateTxInsertionManager = GetTestableTxInsertionManager(baseFee:25, specProvider: specProvider,gasPriceOracle: gasPriceOracle);
             List<UInt256> expected = new List<UInt256> {26, 27, 27, 9, 10, 11};
             
             testableGasPriceEstimateTxInsertionManager.AddValidTxFromBlockAndReturnCount(eip1559Block);
