@@ -79,8 +79,7 @@ namespace Nethermind.Mev
                 _stateReader, 
                 _tracerFactory,
                 _specProvider,
-                _signer,
-                _chainId);
+                _signer);
         }
     }
 }

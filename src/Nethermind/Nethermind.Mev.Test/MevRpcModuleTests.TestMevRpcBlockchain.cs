@@ -181,8 +181,7 @@ namespace Nethermind.Mev.Test
                     StateReader,
                     _tracerFactory,
                     SpecProvider,
-                    Signer,
-                    SpecProvider.ChainId);
+                    Signer);
                 
                 return chain;
             }

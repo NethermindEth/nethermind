@@ -52,7 +52,6 @@ namespace Nethermind.Mev
         private readonly ITracerFactory _tracerFactory;
         private readonly ISpecProvider _specProvider;
         private readonly ISigner? _signer;
-        private readonly ulong _chainId;
 
         static MevRpcModule()
         {
@@ -66,8 +65,7 @@ namespace Nethermind.Mev
             IStateReader stateReader,
             ITracerFactory tracerFactory,
             ISpecProvider specProvider,
-            ISigner? signer,
-            ulong chainId)
+            ISigner? signer)
         {
             _jsonRpcConfig = jsonRpcConfig;
             _bundlePool = bundlePool;
@@ -76,7 +74,6 @@ namespace Nethermind.Mev
             _tracerFactory = tracerFactory;
             _specProvider = specProvider;
             _signer = signer;
-            _chainId = chainId;
         }
 
         public ResultWrapper<bool> eth_sendBundle(MevBundleRpc mevBundleRpc)
