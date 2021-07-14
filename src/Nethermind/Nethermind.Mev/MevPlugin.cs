@@ -126,7 +126,9 @@ namespace Nethermind.Mev
             if (_mevConfig.Enabled) 
             {   
                 (IApiWithNetwork getFromApi, _) = _nethermindApi!.ForRpc;
+
                 IJsonRpcConfig rpcConfig = getFromApi.Config<IJsonRpcConfig>();
+                rpcConfig.EnableModules(ModuleType.Mev);
 
                 MevModuleFactory mevModuleFactory = new(
                     _mevConfig!, 
