@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -73,38 +72,67 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void AddValidTxAndReturnCount_WhenEip1559Enabled_EffectiveGasPriceOfTxsCalculated()
         {
-            Transaction[] eip1559TxGroup =
-            {
-                Build.A.Transaction.WithFeeCap(27).WithGasPrice(1).WithType(TxType.EIP1559).TestObject, //Min(27, 1 + 25) => 26
-                Build.A.Transaction.WithFeeCap(27).WithGasPrice(2).WithType(TxType.EIP1559).TestObject, //Min(27, 2 + 25) => 27
-                Build.A.Transaction.WithFeeCap(27).WithGasPrice(3).WithType(TxType.EIP1559).TestObject  //Min(27, 3 + 25) => 27
-            };
-            
-            Transaction[] nonEip1559TxGroup =
-            {
-                Build.A.Transaction.WithFeeCap(27).WithGasPrice(9).TestObject,  //Min(9, 9 + 25) => 9
-                Build.A.Transaction.WithFeeCap(27).WithGasPrice(10).TestObject, //Min(10, 10 + 25) => 10
-                Build.A.Transaction.WithFeeCap(27).WithGasPrice(11).TestObject  //Min(11, 11 + 25) => 11
-            };
+            Transaction[] eip1559TxGroup = GetEip1559TxGroup();
+            Transaction[] nonEip1559TxGroup = GetNonEip1559TxGroup();
 
             Block eip1559Block = Build.A.Block.Genesis.WithTransactions(eip1559TxGroup).TestObject;
-            Block nonEip1559Block = Build.A.Block.WithNumber(1).WithParentHash(eip1559Block.Hash).WithTransactions(nonEip1559TxGroup).TestObject;
-            ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-            IReleaseSpec trueEip1559 = Substitute.For<IReleaseSpec>();
-            trueEip1559.IsEip1559Enabled.Returns(true);
-            IReleaseSpec falseEip1559 = Substitute.For<IReleaseSpec>();
-            falseEip1559.IsEip1559Enabled.Returns(false);
-            specProvider.GetSpec(Arg.Is<long>(b => b == 0)).Returns(trueEip1559);
-            specProvider.GetSpec(Arg.Is<long>(b => b == 1)).Returns(falseEip1559);
-            IGasPriceOracle gasPriceOracle = Substitute.For<IGasPriceOracle>();
-            gasPriceOracle.FallbackGasPrice.Returns(UInt256.One);
-            TestableGasPriceEstimateTxInsertionManager testableGasPriceEstimateTxInsertionManager = GetTestableTxInsertionManager(baseFee:25, specProvider: specProvider,gasPriceOracle: gasPriceOracle);
+            Block nonEip1559Block = Build.A.Block.WithNumber(1).WithParentHash(eip1559Block.Hash).
+                WithTransactions(nonEip1559TxGroup).TestObject;
+            ISpecProvider specProvider = VariableReturnMockSpecProvider();
+            TestableGasPriceEstimateTxInsertionManager testableGasPriceEstimateTxInsertionManager =
+                GasPriceEstimateTxInsertionManagerWith(specProvider);
             List<UInt256> expected = new List<UInt256> {26, 27, 27, 9, 10, 11};
             
             testableGasPriceEstimateTxInsertionManager.AddValidTxFromBlockAndReturnCount(eip1559Block);
             testableGasPriceEstimateTxInsertionManager.AddValidTxFromBlockAndReturnCount(nonEip1559Block);
             
             testableGasPriceEstimateTxInsertionManager._txGasPriceList.Should().BeEquivalentTo(expected);
+
+            Transaction[] GetEip1559TxGroup()
+            {
+                return new[]
+                {
+                    Build.A.Transaction.WithFeeCap(27).WithGasPrice(1).WithType(TxType.EIP1559).TestObject, //Min(27, 1 + 25) => 26
+                    Build.A.Transaction.WithFeeCap(27).WithGasPrice(2).WithType(TxType.EIP1559).TestObject, //Min(27, 2 + 25) => 27
+                    Build.A.Transaction.WithFeeCap(27).WithGasPrice(3).WithType(TxType.EIP1559).TestObject //Min(27, 3 + 25) => 27
+                };
+            }
+
+            Transaction[] GetNonEip1559TxGroup()
+            {
+                return new[]
+                {
+                    Build.A.Transaction.WithFeeCap(27).WithGasPrice(9).TestObject, //Min(9, 9 + 25) => 9
+                    Build.A.Transaction.WithFeeCap(27).WithGasPrice(10).TestObject, //Min(10, 10 + 25) => 10
+                    Build.A.Transaction.WithFeeCap(27).WithGasPrice(11).TestObject //Min(11, 11 + 25) => 11
+                };
+            }
+            static ISpecProvider VariableReturnMockSpecProvider()
+            {
+                ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+                
+                IReleaseSpec trueEip1559 = Substitute.For<IReleaseSpec>();
+                trueEip1559.IsEip1559Enabled.Returns(true);
+                IReleaseSpec falseEip1559 = Substitute.For<IReleaseSpec>();
+                falseEip1559.IsEip1559Enabled.Returns(false);
+                
+                specProvider.GetSpec(Arg.Is<long>(b => b == 0)).Returns(trueEip1559);
+                specProvider.GetSpec(Arg.Is<long>(b => b == 1)).Returns(falseEip1559);
+                
+                return specProvider;
+            }
+
+            TestableGasPriceEstimateTxInsertionManager GasPriceEstimateTxInsertionManagerWith(ISpecProvider specProvider1)
+            {
+                IGasPriceOracle gasPriceOracle = Substitute.For<IGasPriceOracle>();
+                gasPriceOracle.FallbackGasPrice.Returns(UInt256.One);
+               
+                TestableGasPriceEstimateTxInsertionManager testableGasPriceEstimateTxInsertionManager =
+                    GetTestableTxInsertionManager(baseFee: 25, specProvider: specProvider1, gasPriceOracle: gasPriceOracle);
+                
+                return testableGasPriceEstimateTxInsertionManager;
+            }
+
         }
 
         [Test]
