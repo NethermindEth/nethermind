@@ -26,10 +26,13 @@ using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Mev.Data;
 using Nethermind.Mev.Execution;
+using Nethermind.Serialization.Rlp;
+using Nethermind.TxPool;
 using Nethermind.TxPool.Collections;
 using ILogger = Nethermind.Logging.ILogger;
 
@@ -37,12 +40,18 @@ using ILogger = Nethermind.Logging.ILogger;
 
 namespace Nethermind.Mev.Source
 {
+    // TODO: split responsibilities of a source and simulator
+    // TODO: simulator should implement IBundleSource but should not be using sources
+    // TODO: this should be a pipeline
+    
     public class BundlePool : IBundlePool, ISimulatedBundleSource, IDisposable
     {
         private readonly ITimestamper _timestamper;
         private readonly IMevConfig _mevConfig;
         private readonly IBlockTree _blockTree;
         private readonly IBundleSimulator _simulator;
+        // ReSharper disable once PrivateFieldCanBeConvertedToLocalVariable
+        private readonly ITxPool _txPool;
         private readonly BundleSortedPool _bundles;
         private readonly ConcurrentDictionary<long, ConcurrentDictionary<(MevBundle Bundle, Keccak BlockHash), SimulatedMevBundleContext>> _simulatedBundles = new();
         private readonly ILogger _logger;
@@ -52,6 +61,7 @@ namespace Nethermind.Mev.Source
         public BundlePool(
             IBlockTree blockTree, 
             IBundleSimulator simulator,
+            ITxPool? txPool,
             ITimestamper timestamper,
             IMevConfig mevConfig,
             ILogManager logManager)
@@ -60,7 +70,11 @@ namespace Nethermind.Mev.Source
             _mevConfig = mevConfig;
             _blockTree = blockTree;
             _simulator = simulator;
+            _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _logger = logManager.GetClassLogger();
+            
+            _txPool.NewPending += TxPoolOnNewPending;
+            _blockTree.BlockAddedToMain += BlockTreeOnBlockAddedToMain;
             
             _blockTree.NewHeadBlock += OnNewBlock;
             IComparer<MevBundle> comparer = CompareMevBundleByBlock.Default.ThenBy(CompareMevBundleByMinTimestamp.Default);
@@ -68,8 +82,37 @@ namespace Nethermind.Mev.Source
                 _mevConfig.BundlePoolSize,
                 comparer,
                 logManager );
+            _nutCracker = new(_ourValidatorPrivateKey, _logger);
 
             _bundles.Removed += OnBundleRemoved;
+        }
+
+        private void BlockTreeOnBlockAddedToMain(object? sender, BlockReplacementEventArgs e)
+        {
+            // potentially non blocking maybe?
+            
+            // search through transactions
+            foreach (Transaction transaction in e.Block!.Transactions)
+            {
+                MevBundle? mevBundle = _nutCracker.ExtractBundleFromCarrier(transaction);
+                if (mevBundle is not null)
+                {
+                    _bundles.TryInsert(mevBundle, mevBundle);
+                }
+            }
+        }
+
+        private static readonly PrivateKey _ourValidatorPrivateKey = new(new byte[64]);
+
+        private readonly NutCracker _nutCracker;
+        
+        private void TxPoolOnNewPending(object? sender, TxEventArgs e)
+        {
+            MevBundle? bundle = _nutCracker.ExtractBundleFromCarrier(e.Transaction);
+            if (bundle is not null)
+            {
+                _bundles.TryInsert(bundle, bundle);
+            }
         }
 
         public Task<IEnumerable<MevBundle>> GetBundles(BlockHeader parent, UInt256 timestamp, long gasLimit, CancellationToken token = default) => 

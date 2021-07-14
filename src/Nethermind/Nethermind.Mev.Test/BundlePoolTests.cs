@@ -45,7 +45,9 @@ using NSubstitute.Exceptions;
 using NSubstitute.ReturnsExtensions;
 using NUnit.Framework;
 using Nethermind.Mev.Test;
+using Nethermind.TxPool;
 using Nethermind.TxPool.Collections;
+using Org.BouncyCastle.Utilities;
 
 namespace Nethermind.Mev.Test
 {
@@ -224,7 +226,7 @@ namespace Nethermind.Mev.Test
             bundleSimulator.Simulate(Arg.Any<MevBundle>(), Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>())
                             .Returns( Task.FromResult(successfulBundle))
                             .AndDoes(c => ss.Release());
-            TestContext tc = new(default, bundleSimulator, new MevConfig() {BundlePoolSize = 10}, head);
+            TestContext tc = new(default, bundleSimulator, null, new MevConfig() {BundlePoolSize = 10}, head);
             ISimulatedBundleSource simulatedBundleSource = tc.BundlePool;
             
             async Task<IEnumerable<SimulatedMevBundle>> GetSimulatedBundlesForBlock(int blockNumber)
@@ -318,7 +320,13 @@ namespace Nethermind.Mev.Test
         
         private class TestContext
         {
-            public TestContext(ITimestamper? timestamper = null, IBundleSimulator? bundleSimulator = null, IMevConfig? config = null, long? blockTreeHead = null, bool addTestBundles = true)
+            public TestContext(
+                ITimestamper? timestamper = null,
+                IBundleSimulator? bundleSimulator = null,
+                ITxPool? txPool = null,
+                IMevConfig? config = null,
+                long? blockTreeHead = null,
+                bool addTestBundles = true)
             {
                 BundleTransaction CreateTransaction(PrivateKey privateKey) => Build.A.TypedTransaction<BundleTransaction>().SignedAndResolved(privateKey).TestObject;
                 if (blockTreeHead != null)
@@ -326,19 +334,14 @@ namespace Nethermind.Mev.Test
                     BlockTree.Head.Returns(Build.A.Block.WithNumber((long) blockTreeHead).TestObject);
                 }
 
-                if (timestamper != null)
-                {
-                    Timestamper = timestamper;
-                }
-
-                if (bundleSimulator != null)
-                {
-                    Simulator = bundleSimulator;
-                }
+                Timestamper = timestamper ?? Timestamper;
+                Simulator = bundleSimulator ?? Simulator;
+                TxPool = txPool ?? TxPool;
                 
-                BundlePool = new(
+                BundlePool = new BundlePool(
                     BlockTree,
                     Simulator,
+                    TxPool,
                     Timestamper,
                     config ?? new MevConfig(),
                     LimboLogs.Instance);
@@ -362,6 +365,7 @@ namespace Nethermind.Mev.Test
 
             public IBlockTree BlockTree { get; } = Substitute.For<IBlockTree>();
             public BundlePool BundlePool { get; }
+            public ITxPool TxPool { get; } = Substitute.For<ITxPool>();
 
             public ITimestamper Timestamper { get; private set; } =
                  new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(DefaultTimestamp)); 

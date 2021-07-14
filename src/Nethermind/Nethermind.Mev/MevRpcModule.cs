@@ -26,6 +26,7 @@ using Nethermind.Int256;
 using Nethermind.Core;
 using Nethermind.Consensus;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.JsonRpc.Modules;
@@ -158,7 +159,8 @@ namespace Nethermind.Mev
             byte[] ciphertext = _cipher.Encrypt(targetValidator, mevTxRlp.Bytes);
             
             Transaction carrierTx = carrier.ToTransaction();
-            carrierTx.Data = ciphertext;
+            byte[] mevPrefix = new byte[0];
+            carrierTx.Data = Bytes.Concat(mevPrefix, targetValidator.Bytes, ciphertext); // here we could encrypt for multiple validators possibly
             (Keccak? hash, AddTxResult? addTxResult) = await _txSender.SendTx(carrierTx, TxHandlingOptions.ManagedNonce);
             if (addTxResult != AddTxResult.Added)
             {

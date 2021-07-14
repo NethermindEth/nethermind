@@ -78,7 +78,7 @@ namespace Nethermind.Mev
                 {
                     var (getFromApi, _) = _nethermindApi!.ForProducer;
                     TxBundleSimulator txBundleSimulator = new(TracerFactory, getFromApi.GasLimitCalculator, getFromApi.Timestamper, getFromApi.TxPool!, getFromApi.SpecProvider!, getFromApi.EngineSigner);
-                    _bundlePool = new BundlePool(getFromApi.BlockTree!, txBundleSimulator, getFromApi.Timestamper, _mevConfig, getFromApi.LogManager);
+                    _bundlePool = new BundlePool(getFromApi.BlockTree!, txBundleSimulator, getFromApi.TxPool, getFromApi.Timestamper, _mevConfig, getFromApi.LogManager);
                 }
 
                 return _bundlePool;

@@ -145,7 +145,11 @@ namespace Nethermind.Mev.Test
             
             Transaction[] pendingTxs = chain.TxPool.GetPendingTransactions();
             pendingTxs.Should().HaveCount(1);
-            (bool success, byte[] plainText) = eciesCipher.Decrypt(validatorPrivateKey, pendingTxs[0].Data!);
+            byte[] mevPrefix = new byte[0];
+            int metadataLength = mevPrefix.Length + PublicKey.LengthInBytes;
+            (bool success, byte[] plainText) = eciesCipher.Decrypt(
+                validatorPrivateKey,
+                pendingTxs[0].Data!.Slice(metadataLength));
             success.Should().BeTrue();
             plainText.Should().AllBeEquivalentTo(mevTxRlp);
         }

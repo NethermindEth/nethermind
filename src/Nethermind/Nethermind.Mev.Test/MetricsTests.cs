@@ -28,6 +28,7 @@ using Nethermind.Logging;
 using Nethermind.Mev.Data;
 using Nethermind.Mev.Execution;
 using Nethermind.Mev.Source;
+using Nethermind.TxPool;
 using NUnit.Framework;
 using NSubstitute;
 
@@ -149,6 +150,7 @@ namespace Nethermind.Mev.Test
             TestBundlePool bundlePool = new(
                 blockTree,
                 Substitute.For<IBundleSimulator>(),
+                Substitute.For<ITxPool>(),
                 new ManualTimestamper(DateTimeOffset.UnixEpoch.DateTime),
                 new MevConfig(),
                 LimboLogs.Instance);

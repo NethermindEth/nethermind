@@ -24,6 +24,7 @@ using Nethermind.Logging;
 using Nethermind.Mev.Data;
 using Nethermind.Mev.Execution;
 using Nethermind.Mev.Source;
+using Nethermind.TxPool;
 
 namespace Nethermind.Mev.Test
 {
@@ -31,8 +32,8 @@ namespace Nethermind.Mev.Test
     {
         private BlockingCollection<(MevBundle Bundle, SimulatedMevBundleContext? Context)> _queue = new(new ConcurrentQueue<(MevBundle, SimulatedMevBundleContext?)>());
         
-        public TestBundlePool(IBlockTree blockTree, IBundleSimulator simulator, ITimestamper timestamper, IMevConfig mevConfig, ILogManager logManager)
-            : base(blockTree, simulator, timestamper, mevConfig, logManager)
+        public TestBundlePool(IBlockTree blockTree, IBundleSimulator simulator, ITxPool txPool, ITimestamper timestamper, IMevConfig mevConfig, ILogManager logManager)
+            : base(blockTree, simulator, txPool, timestamper, mevConfig, logManager)
         {
         }
 
