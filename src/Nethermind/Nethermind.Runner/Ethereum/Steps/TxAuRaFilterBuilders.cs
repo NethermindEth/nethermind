@@ -24,6 +24,7 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Runner.Ethereum.Api;
 
 namespace Nethermind.Runner.Ethereum.Steps

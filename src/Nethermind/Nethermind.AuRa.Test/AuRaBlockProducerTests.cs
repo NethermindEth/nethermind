@@ -84,11 +84,7 @@ namespace Nethermind.AuRa.Test
                 BlockchainProcessor.Process(Arg.Any<Block>(), ProcessingOptions.ProducingBlock, Arg.Any<IBlockTracer>()).Returns(returnThis: c =>
                 {
                     Block block = c.Arg<Block>();
-                    if (block is BlockToProduce blockToProduce)
-                    {
-                        blockToProduce.Transactions = TransactionSource.GetTransactions(BlockTree.Head!.Header, block.GasLimit).ToArray();
-                    }
-
+                    block.TrySetTransactions(TransactionSource.GetTransactions(BlockTree.Head!.Header, block.GasLimit).ToArray());
                     return block;
                 });
                 InitProducer();

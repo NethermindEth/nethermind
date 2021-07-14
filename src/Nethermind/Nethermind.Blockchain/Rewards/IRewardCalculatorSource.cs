@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Evm;
+using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Blockchain.Rewards
 {

@@ -27,6 +27,7 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Synchronization.BeamSync;

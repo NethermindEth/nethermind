@@ -33,6 +33,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Evm;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
@@ -177,7 +178,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 getApi.SpecProvider,
                 getApi.LogManager);
 
-            _api.TransactionProcessor = new TransactionProcessor(
+            ITransactionProcessor transactionProcessor = _api.TransactionProcessor = new TransactionProcessor(
                 getApi.SpecProvider,
                 stateProvider,
                 storageProvider,
@@ -288,8 +289,8 @@ namespace Nethermind.Runner.Ethereum.Steps
             return new BlockProcessor(
                 _api.SpecProvider,
                 _api.BlockValidator,
-                _api.RewardCalculatorSource.Get(_api.TransactionProcessor),
-                _api.TransactionProcessor,
+                _api.RewardCalculatorSource.Get(_api.TransactionProcessor!),
+                new BlockProcessor.BlockValidationTransactionsExecutor(_api.TransactionProcessor, _api.StateProvider!),
                 _api.StateProvider,
                 _api.StorageProvider,
                 _api.ReceiptStorage,

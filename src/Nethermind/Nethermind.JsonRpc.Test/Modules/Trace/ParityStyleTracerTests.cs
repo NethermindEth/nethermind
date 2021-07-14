@@ -40,6 +40,7 @@ using NUnit.Framework;
 using Nethermind.Evm.Tracing.ParityStyle;
 using System.Threading;
 using System;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
 
@@ -78,7 +79,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
                 specProvider,
                 Always.Valid,
                 NoBlockRewards.Instance,
-                transactionProcessor,
+                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
                 stateProvider,
                 storageProvider,
                 NullReceiptStorage.Instance,

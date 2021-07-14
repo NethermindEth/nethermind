@@ -30,6 +30,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.State;
@@ -107,7 +108,7 @@ namespace Nethermind.AuRa.Test
                 RinkebySpecProvider.Instance,
                 TestBlockValidator.AlwaysValid,
                 NoBlockRewards.Instance,
-                transactionProcessor,
+                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
                 stateProvider,
                 new StorageProvider(trieStore, stateProvider, LimboLogs.Instance),
                 NullReceiptStorage.Instance,

@@ -40,6 +40,7 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Evm;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc.Modules;

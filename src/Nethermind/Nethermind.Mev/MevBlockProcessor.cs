@@ -32,12 +32,13 @@ namespace Nethermind.Mev
     public class MevBlockProcessor : BlockProcessor, IBeneficiaryBalanceSource
     {
         private readonly IStateProvider _stateProvider;
-
+        private readonly IStorageProvider _storageProvider;
+        
         public MevBlockProcessor(
             ISpecProvider? specProvider, 
             IBlockValidator? blockValidator, 
             IRewardCalculator? rewardCalculator,
-            ITransactionProcessor? transactionProcessor, 
+            IBlockProcessor.IBlockTransactionsExecutor? transactionProcessor,
             IStateProvider? stateProvider, 
             IStorageProvider? storageProvider,
             IReceiptStorage? receiptStorage, 
@@ -46,6 +47,7 @@ namespace Nethermind.Mev
             : base(specProvider, blockValidator, rewardCalculator, transactionProcessor, stateProvider, storageProvider, receiptStorage, witnessCollector, logManager)
         {
             _stateProvider = stateProvider!;
+            _storageProvider = storageProvider!;
         }
 
         protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options)

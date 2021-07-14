@@ -48,6 +48,7 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NUnit.Framework;
@@ -140,12 +141,11 @@ namespace Nethermind.Clique.Test
                 
                 StorageProvider storageProvider = new StorageProvider(trieStore, stateProvider, nodeLogManager);
                 TransactionProcessor transactionProcessor = new TransactionProcessor(goerliSpecProvider, stateProvider, storageProvider, new VirtualMachine(stateProvider, storageProvider, blockhashProvider, specProvider, nodeLogManager), nodeLogManager);
-
                 BlockProcessor blockProcessor = new BlockProcessor(
                     goerliSpecProvider,
                     Always.Valid,
                     NoBlockRewards.Instance,
-                    transactionProcessor,
+                    new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
                     stateProvider,
                     storageProvider,
                     NullReceiptStorage.Instance,
@@ -161,12 +161,12 @@ namespace Nethermind.Clique.Test
                 StorageProvider minerStorageProvider = new StorageProvider(minerTrieStore, minerStateProvider, nodeLogManager);
                 VirtualMachine minerVirtualMachine = new VirtualMachine(minerStateProvider, minerStorageProvider, blockhashProvider, specProvider, nodeLogManager);
                 TransactionProcessor minerTransactionProcessor = new TransactionProcessor(goerliSpecProvider, minerStateProvider, minerStorageProvider, minerVirtualMachine, nodeLogManager);
-
+                
                 BlockProcessor minerBlockProcessor = new BlockProcessor(
                     goerliSpecProvider,
                     Always.Valid,
                     NoBlockRewards.Instance,
-                    minerTransactionProcessor,
+                    new BlockProcessor.BlockProductionTransactionsExecutor(minerTransactionProcessor, minerStateProvider, minerStorageProvider, goerliSpecProvider, _logManager),
                     minerStateProvider,
                     minerStorageProvider,
                     NullReceiptStorage.Instance,
@@ -181,7 +181,7 @@ namespace Nethermind.Clique.Test
                 }
                 
                 ITxFilterPipeline txFilterPipeline = TxFilterPipelineBuilder.CreateStandardFilteringPipeline(nodeLogManager, specProvider);
-                TxPoolTxSource txPoolTxSource = new TxPoolTxSource(txPool, stateReader, specProvider, transactionComparerProvider, nodeLogManager, txFilterPipeline);
+                TxPoolTxSource txPoolTxSource = new TxPoolTxSource(txPool, specProvider, transactionComparerProvider, nodeLogManager, txFilterPipeline);
                 CliqueBlockProducer blockProducer = new CliqueBlockProducer(
                     txPoolTxSource,
                     minerProcessor,

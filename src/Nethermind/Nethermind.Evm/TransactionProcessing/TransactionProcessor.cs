@@ -21,14 +21,14 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
-using Nethermind.Specs;
-using Nethermind.Int256;
 using Nethermind.Evm.Tracing;
+using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Specs;
 using Nethermind.State;
 using Transaction = Nethermind.Core.Transaction;
 
-namespace Nethermind.Evm
+namespace Nethermind.Evm.TransactionProcessing
 {
     public class TransactionProcessor : ITransactionProcessor
     {
@@ -38,6 +38,30 @@ namespace Nethermind.Evm
         private readonly IStorageProvider _storageProvider;
         private readonly ISpecProvider _specProvider;
         private readonly IVirtualMachine _virtualMachine;
+        
+        [Flags]
+        private enum ExecutionOptions
+        {
+            /// <summary>
+            /// Just accumulate the state
+            /// </summary>
+            None = 0,
+            
+            /// <summary>
+            /// Commit the state after execution
+            /// </summary>
+            Commit = 1,
+            
+            /// <summary>
+            /// Restore state after execution
+            /// </summary>
+            Restore = 2,
+            
+            /// <summary>
+            /// Commit and later restore state, use for CallAndRestore
+            /// </summary>
+            CommitAndRestore = Commit | Restore
+        }
 
         public TransactionProcessor(
             ISpecProvider? specProvider,
@@ -56,15 +80,23 @@ namespace Nethermind.Evm
 
         public void CallAndRestore(Transaction transaction, BlockHeader block, ITxTracer txTracer)
         {
-            Execute(transaction, block, txTracer, true);
+            Execute(transaction, block, txTracer, ExecutionOptions.CommitAndRestore);
+        }
+
+        public void BuildUp(Transaction transaction, BlockHeader block, ITxTracer txTracer)
+        {
+            // we need to treat the result of previous transaction as the original value of next transaction
+            // when we do not commit
+            _storageProvider.TakeSnapshot(true);
+            Execute(transaction, block, txTracer, ExecutionOptions.None);
         }
 
         public void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer)
         {
-            Execute(transaction, block, txTracer, false);
+            Execute(transaction, block, txTracer, ExecutionOptions.Commit);
         }
 
-        private void QuickFail(Transaction tx, BlockHeader block, ITxTracer txTracer, string? reason)
+        private void QuickFail(Transaction tx, BlockHeader block, ITxTracer txTracer, bool eip658NotEnabled, string? reason)
         {
             block.GasUsed += tx.GasLimit;
             
@@ -72,17 +104,31 @@ namespace Nethermind.Evm
                 tx.SenderAddress ?? Address.Zero,
                 _stateProvider.GetNonce(tx.SenderAddress ?? Address.Zero));
             
-            // TODO: this is possibly an unnecessary calculation inside EIP-658
-            _stateProvider.RecalculateStateRoot();
-            Keccak? stateRoot = _specProvider.GetSpec(block.Number).IsEip658Enabled ? null : _stateProvider.StateRoot;
             if (txTracer.IsTracingReceipt)
+            {
+                Keccak? stateRoot = null;
+                if (eip658NotEnabled)
+                {
+                    _stateProvider.RecalculateStateRoot();
+                    stateRoot = _stateProvider.StateRoot;
+                }
+                
                 txTracer.MarkAsFailed(recipient, tx.GasLimit, Array.Empty<byte>(), reason ?? "invalid", stateRoot);
+            }
         }
 
-        private void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer, bool isCall)
+        private void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer, ExecutionOptions executionOptions)
         {
+            bool eip658NotEnabled = !_specProvider.GetSpec(block.Number).IsEip658Enabled;
+            
+            // restore is CallAndRestore - previous call, we will restore state after the execution
+            bool restore = (executionOptions & ExecutionOptions.Restore) != ExecutionOptions.None;
+            // commit - is for standard execute, we will commit thee state after execution 
+            bool commit = (executionOptions & ExecutionOptions.Commit) != ExecutionOptions.None || eip658NotEnabled;
+            //!commit - is for build up during block production, we won't commit state after each transaction to support rollbacks
+            //we commit only after all block is constructed 
             bool notSystemTransaction = !transaction.IsSystem();
-            bool wasSenderAccountCreatedInsideACall = false;
+            bool deleteCallerAccount = false;
             
             IReleaseSpec spec = _specProvider.GetSpec(block.Number);
             if (!notSystemTransaction)
@@ -92,10 +138,10 @@ namespace Nethermind.Evm
             
             UInt256 value = transaction.Value;
 
-            if (!transaction.TryCalculatePremiumPerGas(block.BaseFeePerGas, out UInt256 premiumPerGas) && !isCall)
+            if (!transaction.TryCalculatePremiumPerGas(block.BaseFeePerGas, out UInt256 premiumPerGas) && !restore)
             {
                 TraceLogInvalidTx(transaction, "MINER_PREMIUM_IS_NEGATIVE");
-                QuickFail(transaction, block, txTracer, "miner premium is negative");
+                QuickFail(transaction, block, txTracer, eip658NotEnabled, "miner premium is negative");
                 return;
             }
             
@@ -111,7 +157,7 @@ namespace Nethermind.Evm
             if (caller is null)
             {
                 TraceLogInvalidTx(transaction, "SENDER_NOT_SPECIFIED");
-                QuickFail(transaction, block, txTracer, "sender not specified");
+                QuickFail(transaction, block, txTracer, eip658NotEnabled, "sender not specified");
                 return;
             }
 
@@ -123,15 +169,15 @@ namespace Nethermind.Evm
                 if (gasLimit < intrinsicGas)
                 {
                     TraceLogInvalidTx(transaction, $"GAS_LIMIT_BELOW_INTRINSIC_GAS {gasLimit} < {intrinsicGas}");
-                    QuickFail(transaction, block, txTracer, "gas limit below intrinsic gas");
+                    QuickFail(transaction, block, txTracer, eip658NotEnabled, "gas limit below intrinsic gas");
                     return;
                 }
 
-                if (!isCall && gasLimit > block.GasLimit - block.GasUsed)
+                if (!restore && gasLimit > block.GasLimit - block.GasUsed)
                 {
                     TraceLogInvalidTx(transaction,
                         $"BLOCK_GAS_LIMIT_EXCEEDED {gasLimit} > {block.GasLimit} - {block.GasUsed}");
-                    QuickFail(transaction, block, txTracer, "block gas limit exceeded");
+                    QuickFail(transaction, block, txTracer, eip658NotEnabled, "block gas limit exceeded");
                     return;
                 }
             }
@@ -152,9 +198,9 @@ namespace Nethermind.Evm
                 else
                 {
                     TraceLogInvalidTx(transaction, $"SENDER_ACCOUNT_DOES_NOT_EXIST {caller}");
-                    if (isCall || gasPrice == UInt256.Zero)
+                    if (!commit || restore || gasPrice == UInt256.Zero)
                     {
-                        wasSenderAccountCreatedInsideACall = isCall;
+                        deleteCallerAccount = !commit || restore;
                         _stateProvider.CreateAccount(caller, UInt256.Zero);
                     }
                 }
@@ -166,29 +212,29 @@ namespace Nethermind.Evm
                 }
             }
 
-            UInt256 senderReservedGasPayment = isCall ? UInt256.Zero : (ulong) gasLimit * gasPrice;
+            UInt256 senderReservedGasPayment = restore ? UInt256.Zero : (ulong) gasLimit * gasPrice;
             
             if (notSystemTransaction)
             {
                 UInt256 senderBalance = _stateProvider.GetBalance(caller);
-                if (!isCall && ((ulong) intrinsicGas * gasPrice + value > senderBalance || senderReservedGasPayment > senderBalance))
+                if (!restore && ((ulong) intrinsicGas * gasPrice + value > senderBalance || senderReservedGasPayment > senderBalance))
                 {
                     TraceLogInvalidTx(transaction, $"INSUFFICIENT_SENDER_BALANCE: ({caller})_BALANCE = {senderBalance}");
-                    QuickFail(transaction, block, txTracer, "insufficient sender balance");
+                    QuickFail(transaction, block, txTracer, eip658NotEnabled, "insufficient sender balance");
                     return;
                 }
                 
-                if (!isCall && transaction.IsEip1559 && !transaction.IsServiceTransaction && senderBalance < (UInt256)transaction.GasLimit * transaction.MaxFeePerGas)
+                if (!restore && transaction.IsEip1559 && !transaction.IsServiceTransaction && senderBalance < (UInt256)transaction.GasLimit * transaction.MaxFeePerGas)
                 {
                     TraceLogInvalidTx(transaction, $"INSUFFICIENT_MAX_FEE_PER_GAS_FOR_SENDER_BALANCE: ({caller})_BALANCE = {senderBalance}, MAX_FEE_PER_GAS: {transaction.MaxFeePerGas}");
-                    QuickFail(transaction, block, txTracer, "insufficient MaxFeePerGas for sender balance");
+                    QuickFail(transaction, block, txTracer, eip658NotEnabled, "insufficient MaxFeePerGas for sender balance");
                     return;
                 }
 
                 if (transaction.Nonce != _stateProvider.GetNonce(caller))
                 {
                     TraceLogInvalidTx(transaction, $"WRONG_TRANSACTION_NONCE: {transaction.Nonce} (expected {_stateProvider.GetNonce(caller)})");
-                    QuickFail(transaction, block, txTracer, "wrong transaction nonce");
+                    QuickFail(transaction, block, txTracer, eip658NotEnabled, "wrong transaction nonce");
                     return;
                 }
 
@@ -196,7 +242,10 @@ namespace Nethermind.Evm
             }
 
             _stateProvider.SubtractFromBalance(caller, senderReservedGasPayment, spec);
-            _stateProvider.Commit(spec, txTracer.IsTracingState ? txTracer : NullTxTracer.Instance);
+            if (commit)
+            {
+                _stateProvider.Commit(spec, txTracer.IsTracingState ? txTracer : NullTxTracer.Instance);
+            }
 
             long unspentGas = gasLimit - intrinsicGas;
             long spentGas = gasLimit;
@@ -339,17 +388,11 @@ namespace Nethermind.Evm
                 }
             }
 
-            if (!isCall)
-            {
-                _storageProvider.Commit(txTracer.IsTracingState ? txTracer : NullStorageTracer.Instance);
-                _stateProvider.Commit(spec, txTracer.IsTracingState ? txTracer : NullStateTracer.Instance);
-            }
-            else
+            if (restore)
             {
                 _storageProvider.Reset();
                 _stateProvider.Reset();
-                
-                if (wasSenderAccountCreatedInsideACall)
+                if (deleteCallerAccount)
                 {
                     _stateProvider.DeleteAccount(caller);
                 }
@@ -360,12 +403,17 @@ namespace Nethermind.Evm
                     {
                         _stateProvider.DecrementNonce(caller);
                     }
+
+                    _stateProvider.Commit(spec);
                 }
-                
-                _stateProvider.Commit(spec);
+            }
+            else if (commit)
+            {
+                _storageProvider.Commit(txTracer.IsTracingState ? txTracer : NullStorageTracer.Instance);
+                _stateProvider.Commit(spec, txTracer.IsTracingState ? txTracer : NullStateTracer.Instance);
             }
 
-            if (!isCall && notSystemTransaction)
+            if (!restore && notSystemTransaction)
             {
                 block.GasUsed += spentGas;
             }
@@ -373,8 +421,7 @@ namespace Nethermind.Evm
             if (txTracer.IsTracingReceipt)
             {
                 Keccak stateRoot = null;
-                bool eip658Enabled = _specProvider.GetSpec(block.Number).IsEip658Enabled;
-                if (!eip658Enabled)
+                if (eip658NotEnabled)
                 {
                     _stateProvider.RecalculateStateRoot();
                     stateRoot = _stateProvider.StateRoot;

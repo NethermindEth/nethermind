@@ -46,6 +46,7 @@ using Nethermind.DataMarketplace.Infrastructure.Updaters;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Evm;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade;
 using Nethermind.Facade.Proxy;
 using Nethermind.Grpc;
