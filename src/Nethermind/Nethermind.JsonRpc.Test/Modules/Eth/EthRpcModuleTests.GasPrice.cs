@@ -36,7 +36,7 @@ using NSubstitute;
 using NUnit.Framework;
 using static Nethermind.JsonRpc.Test.Modules.TestBlockConstructor;
 
-namespace Nethermind.JsonRpc.Test.Modules
+namespace Nethermind.JsonRpc.Test.Modules.Eth
 {
     public partial class EthRpcModuleTests
     {
