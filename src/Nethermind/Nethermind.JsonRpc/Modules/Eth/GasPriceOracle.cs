@@ -93,12 +93,12 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private static UInt256? GetGasPriceAtPercentile(List<UInt256> txGasPriceList)
         {
             int roundedIndex = GetRoundedIndexAtPercentile(txGasPriceList.Count);
-#if DEBUG
+            
             if (roundedIndex < 0)
             {
                 return UInt256.Zero;
             }
-#endif
+            
             UInt256? gasPriceEstimate = txGasPriceList[roundedIndex];
 
             return gasPriceEstimate;
