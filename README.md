@@ -117,6 +117,16 @@ dotnet run -c Release --no-build -- --config mainnet
 
 Official Nethermind docker images are available on [Docker Hub](https://hub.docker.com/r/nethermind/nethermind).
 
+### Get digest of docker image
+
+In case of any docker image need to be updated in the repository, you can update the digest of this images with the next commands
+
+```sh
+docker inspect --format='{{index .RepoDigests 0}}' <image_name>
+```
+
+The output must show the image digest, and then you can copy that output in the `FROM` tag inside the Dockerfile
+
 ## Test
 
 If you want to run the Nethermind or Ethereum Foundation tests, then:

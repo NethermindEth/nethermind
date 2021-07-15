@@ -1,4 +1,4 @@
-FROM mcr.microsoft.com/dotnet/sdk:5.0-alpine AS build
+FROM mcr.microsoft.com/dotnet/sdk@sha256:6edc3ea5eb689712b9ec6ad5777e32c5bfa51db94a3e5fb069278ccf3b74b7c1 AS build
 
 COPY . .
 
@@ -6,7 +6,7 @@ RUN apk add git && \
  git submodule update --init src/Dirichlet src/int256 src/Math.Gmp.Native && \
  dotnet publish src/Nethermind/Nethermind.State.Test.Runner -c release -o out
 
-FROM mcr.microsoft.com/dotnet/sdk:5.0-alpine
+FROM mcr.microsoft.com/dotnet/sdk@sha256:6edc3ea5eb689712b9ec6ad5777e32c5bfa51db94a3e5fb069278ccf3b74b7c1
 
 COPY --from=build /out .
 
