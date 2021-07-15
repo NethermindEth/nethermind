@@ -76,6 +76,6 @@ namespace Nethermind.Mev.Data
 
         public override int GetHashCode() => Hash.GetHashCode();
 
-        public override string ToString() => $"Block:{BlockNumber}; Min:{MinTimestamp}; Max:{MaxTimestamp}; TxCount:{Transactions.Count};";
+        public override string ToString() => $"Hash:{Hash}; Block:{BlockNumber}; Min:{MinTimestamp}; Max:{MaxTimestamp}; TxCount:{Transactions.Count};";
     }
 }
