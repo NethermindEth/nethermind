@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,13 +13,24 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
+using Nethermind.Core;
 using Nethermind.Int256;
 
-namespace Nethermind.Consensus.Ethash
+namespace Nethermind.Consensus
 {
-    public interface IDifficultyCalculator
+    public class ConstantDifficultyCalculator : IDifficultyCalculator
     {
-        UInt256 Calculate(UInt256 parentDifficulty, UInt256 parentTimestamp, UInt256 currentTimestamp, long blockNumber, bool parentHasUncles);
+        private readonly UInt256 _constantDifficulty;
+
+        public static readonly IDifficultyCalculator One = new ConstantDifficultyCalculator(UInt256.One);
+
+        public ConstantDifficultyCalculator(UInt256 constantDifficulty)
+        {
+            _constantDifficulty = constantDifficulty;
+        }
+        
+        public UInt256 Calculate(BlockHeader header, BlockHeader parent) => _constantDifficulty;
     }
 }

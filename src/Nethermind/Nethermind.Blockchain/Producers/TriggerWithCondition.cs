@@ -33,10 +33,10 @@ namespace Nethermind.Blockchain.Producers
         {
             if (_checkCondition.Invoke())
             {
-                TriggerBlockProduction?.Invoke(this, EventArgs.Empty);
+                TriggerBlockProduction?.Invoke(this, new BlockProductionEventArgs());
             }
         }
 
-        public event EventHandler? TriggerBlockProduction;
+        public event EventHandler<BlockProductionEventArgs>? TriggerBlockProduction;
     }
 }

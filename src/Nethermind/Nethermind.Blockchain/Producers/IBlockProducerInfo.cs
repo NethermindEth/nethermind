@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,14 +15,13 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Threading;
-using System.Threading.Tasks;
-using Nethermind.Core;
+using Nethermind.Consensus;
 
-namespace Nethermind.Consensus
+namespace Nethermind.Blockchain.Producers
 {
-    public interface IManualBlockProducer : IBlockProducer
+    public interface IBlockProducerInfo
     {
-        Task<Block?> TryProduceBlock(BlockHeader parentHeader, CancellationToken cancellationToken = default);
+        public IBlockProducer BlockProducer { get; }
+        public IManualBlockProductionTrigger BlockProductionTrigger { get; }
     }
 }

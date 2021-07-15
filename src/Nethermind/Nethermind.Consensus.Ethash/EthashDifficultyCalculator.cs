@@ -15,22 +15,31 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Numerics;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
 namespace Nethermind.Consensus.Ethash
 {
-    public class DifficultyCalculator : IDifficultyCalculator
+    public class EthashDifficultyCalculator : IDifficultyCalculator
     {
         private readonly ISpecProvider _specProvider;
 
-        public DifficultyCalculator(ISpecProvider specProvider)
+        public EthashDifficultyCalculator(ISpecProvider specProvider)
         {
             _specProvider = specProvider;
         }
 
         private const long OfGenesisBlock = 131_072;
         
+        public UInt256 Calculate(BlockHeader header, BlockHeader parent) =>
+            Calculate(parent.Difficulty, 
+                parent.Timestamp, 
+                header.Timestamp,
+                header.Number,
+                parent.OmmersHash != Keccak.OfAnEmptySequenceRlp);
+
         public UInt256 Calculate(
             UInt256 parentDifficulty,
             UInt256 parentTimestamp,

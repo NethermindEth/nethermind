@@ -17,6 +17,7 @@
 
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
+using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Validators;
@@ -35,37 +36,8 @@ namespace Nethermind.Merge.Plugin.Test
 {
     public class Eth2TestBlockProducerFactory : Eth2BlockProducerFactory
     {
-        private readonly IGasLimitCalculator _gasLimitCalculator;
-
-        public Eth2TestBlockProducerFactory(IGasLimitCalculator gasLimitCalculator, ITxSource? txSource = null) : base(txSource)
+        public Eth2TestBlockProducerFactory(IGasLimitCalculator gasLimitCalculator, ITxSource? txSource = null) : base(txSource, gasLimitCalculator)
         {
-            _gasLimitCalculator = gasLimitCalculator;
-        }
-
-        public override Eth2BlockProducer Create(
-            IBlockProducerEnvFactory blockProducerEnvFactory, 
-            IBlockTree blockTree, 
-            IBlockProcessingQueue blockProcessingQueue, 
-            ISpecProvider specProvider, 
-            ISigner engineSigner, 
-            ITimestamper timestamper,
-            IMiningConfig miningConfig, 
-            ILogManager logManager)
-        {
-            BlockProducerEnv producerEnv = GetProducerEnv(blockProducerEnvFactory);
-            
-            return new Eth2TestBlockProducer(
-                producerEnv.TxSource,
-                producerEnv.ChainProcessor,
-                blockTree,
-                blockProcessingQueue,
-                producerEnv.ReadOnlyStateProvider,
-                _gasLimitCalculator,
-                engineSigner,
-                timestamper,
-                producerEnv.ReadOnlyTxProcessingEnv.StateReader,
-                specProvider,
-                logManager);
         }
     }
 }

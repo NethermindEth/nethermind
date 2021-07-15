@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,22 +13,14 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
 
-using System.Threading.Tasks;
-using Nethermind.Blockchain.Producers;
-using Nethermind.Consensus;
-using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Int256;
 
-namespace Nethermind.Api.Extensions
+namespace Nethermind.Consensus
 {
-    public interface IConsensusPlugin : INethermindPlugin
+    public interface IDifficultyCalculator
     {
-        Task<IBlockProducer> InitBlockProducer(IBlockProductionTrigger? blockProductionTrigger = null, ITxSource? additionalTxSource = null);
-        
-        string SealEngineType { get; }
-        
-        IBlockProductionTrigger DefaultBlockProductionTrigger { get; }
+        UInt256 Calculate(BlockHeader header, BlockHeader parent);
     }
 }

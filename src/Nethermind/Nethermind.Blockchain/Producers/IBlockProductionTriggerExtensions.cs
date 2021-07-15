@@ -17,25 +17,55 @@
 
 using System;
 using System.Linq;
+using Nethermind.Blockchain.Processing;
+using Nethermind.Logging;
 using Nethermind.TxPool;
 
 namespace Nethermind.Blockchain.Producers
 {
-    // ReSharper disable once InconsistentNaming
-    public static class IBlockProductionTriggerExtensions
+    public static class BlockProductionTriggerExtensions
     {
         public static IBlockProductionTrigger IfPoolIsNotEmpty(this IBlockProductionTrigger? trigger, ITxPool? txPool)
         {
             if (trigger == null) throw new ArgumentNullException(nameof(trigger));
             if (txPool == null) throw new ArgumentNullException(nameof(txPool));
-            return new TriggerWithCondition(trigger, () => txPool.GetPendingTransactions().Any());
+            return new TriggerWithCondition(trigger, () => txPool.GetPendingTransactionsCount() > 0);
+        }
+        
+        public static IBlockProductionTrigger IfNotProcessing(
+            this IBlockProductionTrigger? trigger, 
+            IBlockProcessingQueue? blockProcessingQueue,
+            IBlockTree? blockTree,
+            ILogManager logManager,
+            bool waitForInitialSync = true)
+        {
+            if (trigger == null) throw new ArgumentNullException(nameof(trigger));
+            if (blockProcessingQueue == null) throw new ArgumentNullException(nameof(blockProcessingQueue));
+            if (blockTree == null) throw new ArgumentNullException(nameof(blockTree));
+            if (logManager == null) throw new ArgumentNullException(nameof(logManager));
+
+            return new BuildBlocksOnlyWhenNotProcessing(trigger, blockProcessingQueue, blockTree, logManager, waitForInitialSync);
         }
         
         public static IBlockProductionTrigger Or(this IBlockProductionTrigger? trigger, IBlockProductionTrigger? alternative)
         {
             if (trigger == null) throw new ArgumentNullException(nameof(trigger));
             if (alternative == null) throw new ArgumentNullException(nameof(alternative));
-            return new CompositeBlockProductionTrigger(trigger, alternative);
+
+            if (trigger is CompositeBlockProductionTrigger composite1)
+            {
+                composite1.Add(alternative);
+                return composite1;
+            }
+            else if (alternative is CompositeBlockProductionTrigger composite2)
+            {
+                composite2.Add(trigger);
+                return composite2;
+            }
+            else
+            {
+                return new CompositeBlockProductionTrigger(trigger, alternative);
+            }
         }
     }
 }

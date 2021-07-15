@@ -22,6 +22,7 @@ using System.Threading.Tasks;
 using Castle.DynamicProxy.Generators.Emitters.SimpleAST;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
+using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
@@ -102,10 +103,10 @@ namespace Nethermind.AuRa.Test
                         AuRaBlockProducer = new AuRaBlockProducer(
                             TransactionSource,
                             BlockchainProcessor,
+                            new BuildBlocksOnAuRaSteps(LimboLogs.Instance, AuRaStepCalculator),
                             StateProvider,
                             Sealer,
                             BlockTree,
-                            BlockProcessingQueue,
                             Timestamper,
                             AuRaStepCalculator,
                             NullReportingValidator.Instance,
@@ -113,6 +114,8 @@ namespace Nethermind.AuRa.Test
                             new FollowOtherMiners(MainnetSpecProvider.Instance),
                             MainnetSpecProvider.Instance,
                             LimboLogs.Instance);
+
+                        var suggester = new ProducedBlockSuggester(BlockTree, AuRaBlockProducer);
                     }
         }
 

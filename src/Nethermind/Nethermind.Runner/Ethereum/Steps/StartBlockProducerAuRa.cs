@@ -82,10 +82,10 @@ namespace Nethermind.Runner.Ethereum.Steps
             _api.BlockProducer = new AuRaBlockProducer(
                 producerEnv.TxSource,
                 producerEnv.ChainProcessor,
+                new BuildBlocksOnAuRaSteps(_api.LogManager, stepCalculator),
                 producerEnv.ReadOnlyStateProvider,
                 _api.Sealer,
                 _api.BlockTree,
-                _api.BlockProcessingQueue,
                 _api.Timestamper,
                 stepCalculator,
                 _api.ReportingValidator,

@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -17,35 +17,22 @@
 
 using System;
 using System.Threading;
-using System.Timers;
+using System.Threading.Tasks;
 using Nethermind.Core;
-using Timer = System.Timers.Timer;
 
 namespace Nethermind.Blockchain.Producers
 {
-    public class BuildBlocksRegularly : IBlockProductionTrigger, IDisposable
+    public class BlockProductionEventArgs : EventArgs
     {
-        private readonly Timer _timer;
-        
-        public BuildBlocksRegularly(TimeSpan interval)
-        {
-            _timer = new Timer(interval.TotalMilliseconds);
-            _timer.Elapsed += TimerOnElapsed;
-            _timer.AutoReset = false;
-            _timer.Start();
-        }
-        
-        private void TimerOnElapsed(object sender, ElapsedEventArgs e)
-        {
-            TriggerBlockProduction?.Invoke(this, new BlockProductionEventArgs());
-            _timer.Enabled = true;
-        }
+        public static readonly Task<Block?> DefaultBlockProductionTask = Task.FromResult<Block?>(null);
+        public BlockHeader? ParentHeader { get; }
+        public CancellationToken CancellationToken { get; }
+        public Task<Block?> BlockProductionTask { get; set; } = DefaultBlockProductionTask;
 
-        public event EventHandler<BlockProductionEventArgs>? TriggerBlockProduction;
-
-        public void Dispose()
+        public BlockProductionEventArgs(BlockHeader? parentHeader = null, CancellationToken? cancellationToken = null)
         {
-            _timer.Dispose();
+            ParentHeader = parentHeader;
+            CancellationToken = cancellationToken ?? CancellationToken.None;
         }
     }
 }

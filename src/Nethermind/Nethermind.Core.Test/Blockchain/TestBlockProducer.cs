@@ -31,37 +31,33 @@ using Nethermind.State;
 
 namespace Nethermind.Core.Test.Blockchain
 {
-    public class TestBlockProducer : LoopBlockProducerBase, ITestBlockProducer
+    public class TestBlockProducer : BlockProducer
     {
         public TestBlockProducer(
-            ITxSource transactionSource,
+            ITxSource txSource,
             IBlockchainProcessor processor,
             IStateProvider stateProvider,
             ISealer sealer,
             IBlockTree blockTree,
-            IBlockProcessingQueue blockProcessingQueue,
+            IBlockProductionTrigger blockProductionTrigger,
             ITimestamper timestamper,
             ISpecProvider specProvider,
             ILogManager logManager)
             : base(
-                transactionSource,
+                txSource,
                 processor,
                 sealer,
                 blockTree,
-                blockProcessingQueue,
+                blockProductionTrigger,
                 stateProvider,
-                timestamper,
                 new FollowOtherMiners(specProvider),
+                timestamper,
                 specProvider,
                 logManager,
-                "test producer")
+                ConstantDifficultyCalculator.One)
         {
         }
-
-        public Block LastProducedBlock { get; private set; }
-        public event EventHandler<BlockEventArgs> LastProducedBlockChanged;
-
-        private readonly SemaphoreSlim _newBlockArrived = new SemaphoreSlim(0);
+        
         private BlockHeader? _blockParent = null;
         
         public BlockHeader? BlockParent
@@ -77,35 +73,5 @@ namespace Nethermind.Core.Test.Blockchain
         }
 
         protected override BlockHeader? GetProducedBlockParent(BlockHeader? parentHeader) => parentHeader ?? BlockParent;
-
-        public Task<bool> BuildNewBlock()
-        {
-            _newBlockArrived.Release(1);
-            return Task.FromResult(true);
-        }
-
-        protected override async ValueTask ProducerLoop()
-        {
-            _lastProducedBlockDateTime = DateTime.UtcNow;
-            while (!LoopCancellationTokenSource.IsCancellationRequested)
-            {
-                await _newBlockArrived.WaitAsync(LoopCancellationTokenSource.Token);
-                await TryProduceNewBlock(LoopCancellationTokenSource.Token);
-                // Console.WriteLine($"Produce new block result -> {result}");
-            }
-        }
-
-        protected override UInt256 CalculateDifficulty(BlockHeader parent, UInt256 timestamp)
-        {
-            return 1;
-        }
-
-        protected override async Task<Block> SealBlock(Block block, BlockHeader parent, CancellationToken token)
-        {
-            var result = await base.SealBlock(block, parent, token);
-            LastProducedBlock = result;
-            LastProducedBlockChanged?.Invoke(this, new BlockEventArgs(block));
-            return result;
-        }
     }
 }
