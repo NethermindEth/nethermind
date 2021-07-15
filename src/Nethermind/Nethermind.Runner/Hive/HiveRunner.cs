@@ -184,9 +184,10 @@ namespace Nethermind.Runner.Hive
                 await WaitAsync(_resetEvent, string.Empty);
                 if (_logger.IsInfo) _logger.Info($"HIVE suggested {block.ToString(Block.Format.Short)}, now best suggested header {_blockTree.BestSuggestedHeader}, head {_blockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}");
             }
-            catch (InvalidBlockException e)
+            catch (Exception e)
             {
                 _logger.Error($"HIVE Invalid block: {block.Hash}, ignoring", e);
+                _resetEvent.Release(1);
             }
         }
     }
