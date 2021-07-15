@@ -297,7 +297,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 env.CodeInfo = machineCode == null ? _virtualMachine.GetCachedCodeInfo(recipient, spec) : new CodeInfo(machineCode);
 
                 ExecutionType executionType = transaction.IsContractCreation ? ExecutionType.Create : ExecutionType.Call;
-                using (EvmState state = new(unspentGas, env, executionType, true, false))
+                using (EvmState state = new(unspentGas, env, executionType, true, stateSnapshot, storageSnapshot, false))
                 {
                     if (spec.UseTxAccessLists)
                     {
