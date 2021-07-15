@@ -21,12 +21,11 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66;
 using Nethermind.Network.Test.P2P.Subprotocols.Eth.V62;
 using NUnit.Framework;
-using BlockBodiesMessage = Nethermind.Network.P2P.Subprotocols.Eth.V66.BlockBodiesMessage;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
 {
     [TestFixture]
-    public class BlockBodiesSerializerTests
+    public class BlockBodiesMessageSerializerTests
     {
         //test from https://github.com/ethereum/EIPs/blob/master/EIPS/eip-2481.md
         [Test]
