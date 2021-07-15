@@ -146,10 +146,31 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return ResultWrapper<UInt256?>.Success(20.GWei());
         }
 
-        public ResultWrapper<FeeHistoryResult> eth_feeHistory()
+        public ResultWrapper<FeeHistoryResult> eth_feeHistory(long blockCount, long lastBlockNumber, float[]? rewardPercentiles = null)
         {
-            
+            if (blockCount < 0)
+            {
+                return ResultWrapper<FeeHistoryResult>.Fail($"blockCount: Block count, {blockCount}, is less than 0.");
+            }
+
+            if (blockCount > 1024)
+            {
+                blockCount = 1024;
+            }
+
+            int index = 1;
+            int count = rewardPercentiles.Length;
+            IEnumerable<int> incorrectIndexes = 
+                rewardPercentiles.Select(val => index).Where(val => index++ < count - 1 && rewardPercentiles[index] < rewardPercentiles[index - 1]);
+            if (incorrectIndexes.Any())
+            {
+                int firstIndex = incorrectIndexes.ElementAt(0);
+                return ResultWrapper<FeeHistoryResult>.Fail($"rewardPercentiles: Value at index {firstIndex}: {rewardPercentiles[firstIndex]} is less than value at previous index {firstIndex - 1}: {rewardPercentiles[firstIndex - 1]}  ");
+            }
+            return ResultWrapper<FeeHistoryResult>.Success(new FeeHistoryResult(0, Array.Empty<UInt256[]>(),
+                Array.Empty<UInt256>(), Array.Empty<UInt256>()));
         }
+
         public ResultWrapper<IEnumerable<Address>> eth_accounts()
         {
             try
