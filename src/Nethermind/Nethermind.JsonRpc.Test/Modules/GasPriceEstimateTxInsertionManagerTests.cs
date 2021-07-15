@@ -199,7 +199,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             ISpecProvider specProvider = null,
             List<UInt256> txGasPriceList = null)
         {
-            return new TestableGasPriceEstimateTxInsertionManager(
+            return new(
                 gasPriceOracle ?? Substitute.For<IGasPriceOracle>(),
                 ignoreUnder ?? UInt256.Zero,
                 baseFee ?? UInt256.Zero,

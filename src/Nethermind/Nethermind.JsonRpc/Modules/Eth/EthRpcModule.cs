@@ -143,31 +143,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
         public ResultWrapper<UInt256?> eth_gasPrice()
         {
             Block? headBlock = _blockFinder.FindHeadBlock();
-            if (headBlock == null)
-            {
-                return ResultWrapper<UInt256?>.Fail("Head Block was not found.");
-            }
-
-            return GasPriceOracle!.GasPriceEstimate(headBlock, _blockFinder);
+            return headBlock == null ? 
+                ResultWrapper<UInt256?>.Fail("Head Block was not found.") : 
+                GasPriceOracle!.GasPriceEstimate(headBlock, _blockFinder);
         }
 
-        private Dictionary<long, Block> CreateBlockNumberToBlockDictionary(Block? headBlock)
-        {
-            Dictionary<long, Block> blockToTxDict = new();
-            Block block;
-            for (long blockNumber = 0; blockNumber < headBlock!.Number + 1; blockNumber++)
-            {
-                block = _blockFinder.FindBlock(blockNumber);
-                if (block == null)
-                {
-                    throw new Exception("Block #" + blockNumber + "was not found.");
-                }
-                blockToTxDict.Add(blockNumber, block);
-            }
-
-            return blockToTxDict;
-        }
-        
         public ResultWrapper<IEnumerable<Address>> eth_accounts()
         {
             try
