@@ -31,7 +31,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             TestableGasPriceEstimateTxInsertionManager testableGasPriceEstimateTxInsertionManager = GetTestableTxInsertionManager(ignoreUnder: 3);
             Block testBlock = GetTestBlockB();
-            List<UInt256> expected = new List<UInt256> {5,6,7};
+            List<UInt256> expected = new() {5,6,7};
             
             testableGasPriceEstimateTxInsertionManager.AddValidTxFromBlockAndReturnCount(testBlock);
 
@@ -43,7 +43,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             Block testBlock = GetTestBlockA();
             TestableGasPriceEstimateTxInsertionManager testableGasPriceEstimateTxInsertionManager = GetTestableTxInsertionManager(ignoreUnder: 3);
-            List<UInt256> expected = new List<UInt256> {3, 4};
+            List<UInt256> expected = new() {3, 4};
             
             testableGasPriceEstimateTxInsertionManager.AddValidTxFromBlockAndReturnCount(testBlock);
 
@@ -62,77 +62,72 @@ namespace Nethermind.JsonRpc.Test.Modules
             };
             Block block = Build.A.Block.Genesis.WithBeneficiary(minerAddress).WithTransactions(transactions).TestObject;
             TestableGasPriceEstimateTxInsertionManager testableGasPriceEstimateTxInsertionManager = GetTestableTxInsertionManager();
-            List<UInt256> expected = new List<UInt256>{8,9};
+            List<UInt256> expected = new() {8,9};
             
             testableGasPriceEstimateTxInsertionManager.AddValidTxFromBlockAndReturnCount(block);
             
             testableGasPriceEstimateTxInsertionManager._txGasPriceList.Should().BeEquivalentTo(expected);
         }
-        
-        [Test]
-        public void AddValidTxAndReturnCount_WhenEip1559Enabled_EffectiveGasPriceOfTxsCalculated()
-        {
-            Transaction[] eip1559TxGroup = GetEip1559TxGroup();
-            Transaction[] nonEip1559TxGroup = GetNonEip1559TxGroup();
 
-            Block eip1559Block = Build.A.Block.Genesis.WithTransactions(eip1559TxGroup).TestObject;
-            Block nonEip1559Block = Build.A.Block.WithNumber(1).WithParentHash(eip1559Block.Hash).
-                WithTransactions(nonEip1559TxGroup).TestObject;
-            ISpecProvider specProvider = VariableReturnMockSpecProvider();
+        [Test]
+        public void AddValidTxAndReturnCount_WhenEip1559Txs_EffectiveGasPriceProperlyCalculated()
+        {  
+            Transaction[] eip1559TxGroup = {
+                Build.A.Transaction.WithMaxFeePerGas(27).WithMaxPriorityFeePerGas(25).WithType(TxType.EIP1559).TestObject, //Min(27, 25 + 1) => 26
+                Build.A.Transaction.WithMaxFeePerGas(27).WithMaxPriorityFeePerGas(26).WithType(TxType.EIP1559).TestObject, //Min(27, 26 + 1) => 27
+                Build.A.Transaction.WithMaxFeePerGas(27).WithMaxPriorityFeePerGas(27).WithType(TxType.EIP1559).TestObject  //Min(27, 27 + 1) => 27
+            };
+            Block eip1559Block = Build.A.Block.Genesis.WithTransactions(eip1559TxGroup).WithBaseFeePerGas(1).TestObject;
+            ISpecProvider specProvider = SpecProviderWithEip1559EnabledAs(true);
             TestableGasPriceEstimateTxInsertionManager testableGasPriceEstimateTxInsertionManager =
                 GasPriceEstimateTxInsertionManagerWith(specProvider);
-            List<UInt256> expected = new List<UInt256> {26, 27, 27, 9, 10, 11};
-            
+            List<UInt256> expected = new() {26, 27, 27};
+
             testableGasPriceEstimateTxInsertionManager.AddValidTxFromBlockAndReturnCount(eip1559Block);
-            testableGasPriceEstimateTxInsertionManager.AddValidTxFromBlockAndReturnCount(nonEip1559Block);
-            
+
             testableGasPriceEstimateTxInsertionManager._txGasPriceList.Should().BeEquivalentTo(expected);
+        }
 
-            Transaction[] GetEip1559TxGroup()
-            {
-                return new[]
-                {
-                    Build.A.Transaction.WithMaxFeePerGas(27).WithGasPrice(1).WithType(TxType.EIP1559).TestObject, //Min(27, 1 + 25) => 26
-                    Build.A.Transaction.WithMaxFeePerGas(27).WithGasPrice(2).WithType(TxType.EIP1559).TestObject, //Min(27, 2 + 25) => 27
-                    Build.A.Transaction.WithMaxFeePerGas(27).WithGasPrice(3).WithType(TxType.EIP1559).TestObject //Min(27, 3 + 25) => 27
-                };
-            }
+        [Test]
+        public void AddValidTxAndReturnCount_WhenNotEip1559Txs_EffectiveGasPriceProperlyCalculated()
+        {  
+            Transaction[] nonEip1559TxGroup = {
+                Build.A.Transaction.WithMaxFeePerGas(27).WithMaxPriorityFeePerGas(25).TestObject, //Min(25, 25 + 1) => 25
+                Build.A.Transaction.WithMaxFeePerGas(27).WithMaxPriorityFeePerGas(26).TestObject, //Min(26, 26 + 1) => 26
+                Build.A.Transaction.WithMaxFeePerGas(27).WithMaxPriorityFeePerGas(27).TestObject  //Min(27, 27 + 1) => 27
+            };
+            
+            Block eip1559Block = Build.A.Block.Genesis.WithTransactions(nonEip1559TxGroup).WithBaseFeePerGas(1).TestObject;
+            ISpecProvider specProvider = SpecProviderWithEip1559EnabledAs(false);
+            TestableGasPriceEstimateTxInsertionManager testableGasPriceEstimateTxInsertionManager =
+                GasPriceEstimateTxInsertionManagerWith(specProvider);
+            List<UInt256> expected = new() {25, 26, 27};
 
-            Transaction[] GetNonEip1559TxGroup()
-            {
-                return new[]
-                {
-                    Build.A.Transaction.WithMaxFeePerGas(27).WithGasPrice(9).TestObject, //Min(9, 9 + 25) => 9
-                    Build.A.Transaction.WithMaxFeePerGas(27).WithGasPrice(10).TestObject, //Min(10, 10 + 25) => 10
-                    Build.A.Transaction.WithMaxFeePerGas(27).WithGasPrice(11).TestObject //Min(11, 11 + 25) => 11
-                };
-            }
-            static ISpecProvider VariableReturnMockSpecProvider()
-            {
-                ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-                
-                IReleaseSpec trueEip1559 = Substitute.For<IReleaseSpec>();
-                trueEip1559.IsEip1559Enabled.Returns(true);
-                IReleaseSpec falseEip1559 = Substitute.For<IReleaseSpec>();
-                falseEip1559.IsEip1559Enabled.Returns(false);
-                
-                specProvider.GetSpec(Arg.Is<long>(b => b == 0)).Returns(trueEip1559);
-                specProvider.GetSpec(Arg.Is<long>(b => b == 1)).Returns(falseEip1559);
-                
-                return specProvider;
-            }
+            testableGasPriceEstimateTxInsertionManager.AddValidTxFromBlockAndReturnCount(eip1559Block);
 
-            TestableGasPriceEstimateTxInsertionManager GasPriceEstimateTxInsertionManagerWith(ISpecProvider specProvider1)
-            {
-                IGasPriceOracle gasPriceOracle = Substitute.For<IGasPriceOracle>();
-                gasPriceOracle.FallbackGasPrice.Returns(UInt256.One);
-               
-                TestableGasPriceEstimateTxInsertionManager testableGasPriceEstimateTxInsertionManager =
-                    GetTestableTxInsertionManager(baseFee: 25, specProvider: specProvider1, gasPriceOracle: gasPriceOracle);
-                
-                return testableGasPriceEstimateTxInsertionManager;
-            }
+            testableGasPriceEstimateTxInsertionManager._txGasPriceList.Should().BeEquivalentTo(expected);
+        }
+        
+        TestableGasPriceEstimateTxInsertionManager GasPriceEstimateTxInsertionManagerWith(ISpecProvider specProviderParam)
+        {
+            IGasPriceOracle gasPriceOracle = Substitute.For<IGasPriceOracle>();
+            gasPriceOracle.FallbackGasPrice.Returns(UInt256.One);
+           
+            TestableGasPriceEstimateTxInsertionManager testableManager =
+                GetTestableTxInsertionManager(specProvider: specProviderParam, gasPriceOracle: gasPriceOracle);
+            
+            return testableManager;
+        }
 
+        private ISpecProvider SpecProviderWithEip1559EnabledAs(bool isEip1559)
+        {
+            ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+            IReleaseSpec specEip1559 = Substitute.For<IReleaseSpec>();
+            specEip1559.IsEip1559Enabled.Returns(isEip1559);
+            
+            specProvider.GetSpec(Arg.Any<long>()).Returns(specEip1559);
+            
+            return specProvider;
         }
 
         [Test]
@@ -148,7 +143,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             IGasPriceOracle gasPriceOracle = Substitute.For<IGasPriceOracle>();
             gasPriceOracle.FallbackGasPrice.Returns((UInt256?) 7);
             TestableGasPriceEstimateTxInsertionManager testableGasPriceEstimateTxInsertionManager = GetTestableTxInsertionManager(gasPriceOracle:gasPriceOracle, ignoreUnder: 4);
-            List<UInt256> expected = new List<UInt256> {7};
+            List<UInt256> expected = new() {7};
 
             testableGasPriceEstimateTxInsertionManager.AddValidTxFromBlockAndReturnCount(block);
             
@@ -163,7 +158,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             IGasPriceOracle gasPriceOracle = Substitute.For<IGasPriceOracle>();
             gasPriceOracle.FallbackGasPrice.Returns((UInt256?) 3);
             TestableGasPriceEstimateTxInsertionManager testableGasPriceEstimateTxInsertionManager = GetTestableTxInsertionManager(gasPriceOracle:gasPriceOracle);
-            List<UInt256> expected = new List<UInt256> {3};
+            List<UInt256> expected = new() {3};
 
             testableGasPriceEstimateTxInsertionManager.AddValidTxFromBlockAndReturnCount(block);
             
@@ -176,12 +171,10 @@ namespace Nethermind.JsonRpc.Test.Modules
         public TestableGasPriceEstimateTxInsertionManager(
             IGasPriceOracle gasPriceOracle,
             UInt256? ignoreUnder,
-            UInt256 baseFee,
             ISpecProvider specProvider,
             List<UInt256> txGasPriceList = null) : 
             base(gasPriceOracle,
                 ignoreUnder,
-                baseFee,
                 specProvider)
         {
             _txGasPriceList = txGasPriceList ?? new List<UInt256>();
@@ -195,14 +188,12 @@ namespace Nethermind.JsonRpc.Test.Modules
         private TestableGasPriceEstimateTxInsertionManager GetTestableTxInsertionManager(
             IGasPriceOracle gasPriceOracle = null,
             UInt256? ignoreUnder = null,
-            UInt256? baseFee = null,
             ISpecProvider specProvider = null,
             List<UInt256> txGasPriceList = null)
         {
             return new(
                 gasPriceOracle ?? Substitute.For<IGasPriceOracle>(),
                 ignoreUnder ?? UInt256.Zero,
-                baseFee ?? UInt256.Zero,
                 specProvider ?? Substitute.For<ISpecProvider>(),
                 txGasPriceList);
         }

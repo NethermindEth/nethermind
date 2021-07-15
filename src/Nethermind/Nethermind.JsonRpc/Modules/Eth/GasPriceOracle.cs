@@ -34,7 +34,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _blockLimit = blockLimit ?? EthGasPriceConstants.DefaultBlocksLimit;
             _softTxThreshold = (int) (blockLimit != null ? blockLimit * 2 : EthGasPriceConstants.SoftTxLimit);
             _baseFee = baseFee ?? EthGasPriceConstants.DefaultBaseFee;
-            _txInsertionManager = txInsertionManager ?? new GasPriceEstimateTxInsertionManager(this, _ignoreUnder, _baseFee, specProvider);
+            _txInsertionManager = txInsertionManager ?? new GasPriceEstimateTxInsertionManager(this, _ignoreUnder, specProvider);
         }
 
         public ResultWrapper<UInt256?> GasPriceEstimate(Block? headBlock, IBlockFinder blockFinder)
