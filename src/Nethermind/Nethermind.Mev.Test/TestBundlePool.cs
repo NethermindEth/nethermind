@@ -61,7 +61,7 @@ namespace Nethermind.Mev.Test
             {
                 if (token.IsCancellationRequested)
                 {
-                    return;
+                    break;
                 }
 
                 if (bundle.Hash == simulatedBundle.Bundle.Hash)
@@ -71,7 +71,7 @@ namespace Nethermind.Mev.Test
                         await simulatedBundle.Item2.Task;
                     }
 
-                    return;
+                    break;
                 }
                 else
                 {

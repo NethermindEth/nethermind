@@ -72,6 +72,7 @@ namespace Nethermind.Mev.Test
         }
         
         [Test]
+        [Parallelizable(ParallelScope.None)]
         public void Should_count_invalid_bundles()
         {
             TestBundlePool bundlePool = CreateTestBundlePool();
@@ -91,13 +92,6 @@ namespace Nethermind.Mev.Test
             foreach (MevBundle mevBundle in bundles)
             {
                 bundlePool.AddBundle(mevBundle);
-            }
-            
-            CancellationTokenSource cts = new(TestBlockchain.DefaultTimeout);
-            
-            foreach (MevBundle mevBundle in bundles)
-            {
-                bundlePool.WaitForSimulationToFinish(mevBundle, cts.Token);
             }
 
             int deltaBundlesReceived = Metrics.BundlesReceived - beforeBundlesReceived;
