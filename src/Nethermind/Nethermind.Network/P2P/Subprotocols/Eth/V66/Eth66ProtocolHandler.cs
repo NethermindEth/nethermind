@@ -114,13 +114,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 
         private void Handle(GetBlockHeadersMessage getBlockHeaders)
         {
-            Eth.V62.BlockHeadersMessage ethBlockHeadersMessage = FulfillBlockHeadersRequest(getBlockHeaders.EthMessage);
+            Eth.V62.BlockHeadersMessage ethBlockHeadersMessage =
+                FulfillBlockHeadersRequest(getBlockHeaders.EthMessage);
             Send(new BlockHeadersMessage(getBlockHeaders.RequestId, ethBlockHeadersMessage));
         }
 
         private void Handle(GetBlockBodiesMessage getBlockBodies)
         {
-            Eth.V62.BlockBodiesMessage ethBlockBodiesMessage = FulfillBlockBodiesRequest(getBlockBodies.EthMessage);
+            Eth.V62.BlockBodiesMessage ethBlockBodiesMessage =
+                FulfillBlockBodiesRequest(getBlockBodies.EthMessage);
             Send(new BlockBodiesMessage(getBlockBodies.RequestId, ethBlockBodiesMessage));
         }
 
@@ -133,13 +135,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 
         private void Handle(GetReceiptsMessage getReceiptsMessage)
         {
-            Eth.V63.ReceiptsMessage receiptsMessage = FulfillReceiptsRequest(getReceiptsMessage.EthMessage);
+            Eth.V63.ReceiptsMessage receiptsMessage =
+                FulfillReceiptsRequest(getReceiptsMessage.EthMessage);
             Send(new ReceiptsMessage(getReceiptsMessage.RequestId, receiptsMessage));
         }
 
         private void Handle(GetNodeDataMessage getNodeDataMessage)
         {
-            Eth.V63.NodeDataMessage nodeDataMessage = FulfillNodeDataRequest(getNodeDataMessage.EthMessage);
+            Eth.V63.NodeDataMessage nodeDataMessage =
+                FulfillNodeDataRequest(getNodeDataMessage.EthMessage);
             Send(new NodeDataMessage(getNodeDataMessage.RequestId, nodeDataMessage));
         }
     }
