@@ -28,6 +28,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.Rlpx.Handshake;
+using Nethermind.Specs;
 using Nethermind.Stats;
 
 namespace Nethermind.Network.Test.Builders
@@ -88,6 +89,21 @@ namespace Nethermind.Network.Test.Builders
                 .With(new NewPooledTransactionHashesMessageSerializer())
                 .With(new GetPooledTransactionsMessageSerializer())
                 .With(new PooledTransactionsMessageSerializer());
+        }
+        
+        public SerializationBuilder WithEth66()
+        {
+            return WithEth65()
+                .With(new Network.P2P.Subprotocols.Eth.V66.GetBlockHeadersMessageSerializer())
+                .With(new Network.P2P.Subprotocols.Eth.V66.BlockHeadersMessageSerializer())
+                .With(new Network.P2P.Subprotocols.Eth.V66.GetBlockBodiesMessageSerializer())
+                .With(new Network.P2P.Subprotocols.Eth.V66.BlockBodiesMessageSerializer())
+                .With(new Network.P2P.Subprotocols.Eth.V66.GetPooledTransactionsMessageSerializer())
+                .With(new Network.P2P.Subprotocols.Eth.V66.PooledTransactionsMessageSerializer())
+                .With(new Network.P2P.Subprotocols.Eth.V66.GetNodeDataMessageSerializer())
+                .With(new Network.P2P.Subprotocols.Eth.V66.NodeDataMessageSerializer())
+                .With(new Network.P2P.Subprotocols.Eth.V66.GetReceiptsMessageSerializer())
+                .With(new Network.P2P.Subprotocols.Eth.V66.ReceiptsMessageSerializer(MainnetSpecProvider.Instance));
         }
 
         public SerializationBuilder WithDiscovery(PrivateKey privateKey)

@@ -106,8 +106,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                     ReportIn(nodeDataMessage);
                     Handle(nodeDataMessage.EthMessage, size);
                     break;
+                default:
+                    base.HandleMessage(message);
+                    break;
             }
-            base.HandleMessage(message);
         }
 
         private void Handle(GetBlockHeadersMessage getBlockHeaders)
