@@ -371,6 +371,39 @@ namespace Nethermind.Mev.Test
 
             GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { poolTx }));
         }
+        
+        [Test]
+        public async Task Should_handle_out_of_gas_and_reverting_txs()
+        {
+            var chain = await CreateChain(1);
+            chain.GasLimitCalculator.GasLimit = 10_000_000;
+            
+            Address contractAddress = await Contracts.Deploy(chain, Contracts.ReverterCode);
+
+            Transaction simpleTx = Build.A.Transaction
+                .WithGasLimit(GasCostOf.Transaction)
+                .WithGasPrice(110ul)
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            
+            Transaction outOfGasTx = Build.A.Transaction
+                .WithGasLimit(21_100) // not enough gas
+                .WithGasPrice(100ul)
+                .WithTo(contractAddress)
+                .WithData(Bytes.FromHexString(Contracts.ReverterInvokeFail))
+                .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+            
+            Transaction revertingTx = Build.A.Transaction
+                .WithGasLimit(1_000_000)
+                .WithGasPrice(90ul)
+                .WithTo(contractAddress)
+                .WithNonce(1)
+                .WithData(Bytes.FromHexString(Contracts.ReverterInvokeFail))
+                .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+            
+            await chain.AddBlock(true, simpleTx, outOfGasTx, revertingTx);
+
+            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { simpleTx, outOfGasTx, revertingTx }));
+        }
 
         [Test]
         public async Task Should_reject_bundle_with_failures()
