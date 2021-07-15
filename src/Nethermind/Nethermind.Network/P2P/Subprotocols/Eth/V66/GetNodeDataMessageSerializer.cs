@@ -46,10 +46,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 
         private static GetNodeDataMessage Deserialize(RlpStream rlpStream)
         {
-            GetNodeDataMessage getNodeDataMessage = new GetNodeDataMessage();
+            GetNodeDataMessage getNodeDataMessage = new();
             rlpStream.ReadSequenceLength();
             getNodeDataMessage.RequestId = rlpStream.DecodeLong();
-            getNodeDataMessage.EthMessage = Eth.V63.GetNodeDataMessageSerializer.Deserialize(rlpStream);
+            getNodeDataMessage.EthMessage = V63.GetNodeDataMessageSerializer.Deserialize(rlpStream);
             return getNodeDataMessage;
         }
     }

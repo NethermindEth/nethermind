@@ -27,6 +27,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
         public PooledTransactionsMessage() 
         {
         }
+        
         public PooledTransactionsMessage(long requestId, Eth.V65.PooledTransactionsMessage ethMessage)
         {
             RequestId = requestId;

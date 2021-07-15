@@ -35,11 +35,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             Keccak[] hashes = {a, b};
             var ethMessage = new Network.P2P.Subprotocols.Eth.V63.GetReceiptsMessage(hashes);
 
-            GetReceiptsMessage getReceiptsMessage = new GetReceiptsMessage(1111, ethMessage);
+            GetReceiptsMessage message = new GetReceiptsMessage(1111, ethMessage);
 
             GetReceiptsMessageSerializer serializer = new GetReceiptsMessageSerializer();
 
-            SerializerTester.TestZero(serializer, getReceiptsMessage, "f847820457f842a000000000000000000000000000000000000000000000000000000000deadc0dea000000000000000000000000000000000000000000000000000000000feedbeef");
+            SerializerTester.TestZero(serializer, message, "f847820457f842a000000000000000000000000000000000000000000000000000000000deadc0dea000000000000000000000000000000000000000000000000000000000feedbeef");
         }
     }
 }

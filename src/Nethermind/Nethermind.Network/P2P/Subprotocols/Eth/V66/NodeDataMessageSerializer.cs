@@ -25,7 +25,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
         public void Serialize(IByteBuffer byteBuffer, NodeDataMessage message)
         {
             Eth.V63.NodeDataMessageSerializer ethSerializer = new();
-            Rlp ethMessage = new Rlp(ethSerializer.Serialize(message.EthMessage));
+            Rlp ethMessage = new(ethSerializer.Serialize(message.EthMessage));
             int contentLength = Rlp.LengthOf(message.RequestId) + ethMessage.Length;
 
             int totalLength = Rlp.GetSequenceRlpLength(contentLength);
@@ -40,16 +40,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 
         public NodeDataMessage Deserialize(IByteBuffer byteBuffer)
         {
-            NettyRlpStream rlpStream = new NettyRlpStream(byteBuffer);
+            NettyRlpStream rlpStream = new(byteBuffer);
             return Deserialize(rlpStream);
         }
         
         private static NodeDataMessage Deserialize(RlpStream rlpStream)
         {
-            NodeDataMessage nodeDataMessage = new NodeDataMessage();
+            NodeDataMessage nodeDataMessage = new();
             rlpStream.ReadSequenceLength();
             nodeDataMessage.RequestId = rlpStream.DecodeLong();
-            nodeDataMessage.EthMessage = Eth.V63.NodeDataMessageSerializer.Deserialize(rlpStream);
+            nodeDataMessage.EthMessage = V63.NodeDataMessageSerializer.Deserialize(rlpStream);
             return nodeDataMessage;
         }
     }

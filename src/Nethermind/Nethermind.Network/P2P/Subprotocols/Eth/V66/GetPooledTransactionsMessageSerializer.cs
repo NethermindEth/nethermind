@@ -46,10 +46,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
         
         private static GetPooledTransactionsMessage Deserialize(RlpStream rlpStream)
         {
-            GetPooledTransactionsMessage getPooledTransactionsMessage = new GetPooledTransactionsMessage();
+            GetPooledTransactionsMessage getPooledTransactionsMessage = new();
             rlpStream.ReadSequenceLength();
             getPooledTransactionsMessage.RequestId = rlpStream.DecodeLong();
-            getPooledTransactionsMessage.EthMessage = Eth.V65.GetPooledTransactionsMessageSerializer.Deserialize(rlpStream);
+            getPooledTransactionsMessage.EthMessage = V65.GetPooledTransactionsMessageSerializer.Deserialize(rlpStream);
             return getPooledTransactionsMessage;
         }
     }

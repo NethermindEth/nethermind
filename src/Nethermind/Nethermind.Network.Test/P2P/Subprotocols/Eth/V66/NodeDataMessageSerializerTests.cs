@@ -31,11 +31,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             byte[][] data = {new byte[]{0xde, 0xad, 0xc0, 0xde}, new byte[]{0xfe, 0xed, 0xbe, 0xef}};
             var ethMessage = new Network.P2P.Subprotocols.Eth.V63.NodeDataMessage(data);
 
-            NodeDataMessage nodeDataMessage = new NodeDataMessage(1111, ethMessage);
+            NodeDataMessage message = new NodeDataMessage(1111, ethMessage);
             
             NodeDataMessageSerializer serializer = new NodeDataMessageSerializer();
             
-            SerializerTester.TestZero(serializer, nodeDataMessage, "ce820457ca84deadc0de84feedbeef");
+            SerializerTester.TestZero(serializer, message, "ce820457ca84deadc0de84feedbeef");
         }
     }
 }

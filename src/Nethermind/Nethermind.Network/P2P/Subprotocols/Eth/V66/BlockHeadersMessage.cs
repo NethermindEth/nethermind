@@ -27,6 +27,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
         public BlockHeadersMessage() 
         {
         }
+        
         public BlockHeadersMessage(long requestId, Eth.V62.BlockHeadersMessage ethMessage)
         {
             RequestId = requestId;

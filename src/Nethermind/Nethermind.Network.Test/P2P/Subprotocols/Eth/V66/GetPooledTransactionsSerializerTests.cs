@@ -34,11 +34,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             Keccak[] keys = {a, b};
             var ethMessage = new Network.P2P.Subprotocols.Eth.V65.GetPooledTransactionsMessage(keys);
 
-            GetPooledTransactionsMessage getPooledTransactionsMessage = new GetPooledTransactionsMessage(1111, ethMessage);
+            GetPooledTransactionsMessage message = new GetPooledTransactionsMessage(1111, ethMessage);
             
             GetPooledTransactionsMessageSerializer serializer = new GetPooledTransactionsMessageSerializer();
             
-            SerializerTester.TestZero(serializer, getPooledTransactionsMessage, "f847820457f842a000000000000000000000000000000000000000000000000000000000deadc0dea000000000000000000000000000000000000000000000000000000000feedbeef");
+            SerializerTester.TestZero(serializer, message, "f847820457f842a000000000000000000000000000000000000000000000000000000000deadc0dea000000000000000000000000000000000000000000000000000000000feedbeef");
         }
     }
 }

@@ -58,9 +58,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             txReceipt.Removed.Should().BeFalse();
             txReceipt.Index.Should().Be(0x0);
             
-            ReceiptsMessage receiptsMessage = new ReceiptsMessage(1111, ethMessage);
+            ReceiptsMessage message = new ReceiptsMessage(1111, ethMessage);
 
-            SerializerTester.TestZero(serializer, receiptsMessage, rlp);
+            SerializerTester.TestZero(serializer, message, rlp);
         }
     }
 }

@@ -24,8 +24,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
     {
         public void Serialize(IByteBuffer byteBuffer, BlockHeadersMessage message)
         {
-            Eth.V62.BlockHeadersMessageSerializer ethSerializer = new Eth.V62.BlockHeadersMessageSerializer();
-            Rlp ethMessage = new Rlp(ethSerializer.Serialize(message.EthMessage));
+            Eth.V62.BlockHeadersMessageSerializer ethSerializer = new();
+            Rlp ethMessage = new(ethSerializer.Serialize(message.EthMessage));
             int contentLength =
                 Rlp.LengthOf(message.RequestId) +
                 ethMessage.Length;
@@ -42,16 +42,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 
         public BlockHeadersMessage Deserialize(IByteBuffer byteBuffer)
         {
-            NettyRlpStream rlpStream = new NettyRlpStream(byteBuffer);
+            NettyRlpStream rlpStream = new(byteBuffer);
             return Deserialize(rlpStream);
         }
 
         private static BlockHeadersMessage Deserialize(RlpStream rlpStream)
         {
-            BlockHeadersMessage blockHeadersMessage = new BlockHeadersMessage();
+            BlockHeadersMessage blockHeadersMessage = new();
             rlpStream.ReadSequenceLength();
             blockHeadersMessage.RequestId = rlpStream.DecodeLong();
-            blockHeadersMessage.EthMessage = Eth.V62.BlockHeadersMessageSerializer.Deserialize(rlpStream);
+            blockHeadersMessage.EthMessage = V62.BlockHeadersMessageSerializer.Deserialize(rlpStream);
             return blockHeadersMessage;
         }
     }

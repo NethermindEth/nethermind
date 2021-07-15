@@ -51,6 +51,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             
             var ethMessage = new Network.P2P.Subprotocols.Eth.V62.BlockHeadersMessage();
             ethMessage.BlockHeaders = new[] { header };
+            
             BlockHeadersMessage message = new BlockHeadersMessage(1111, ethMessage);
 
             BlockHeadersMessageSerializer serializer = new BlockHeadersMessageSerializer();
