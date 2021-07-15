@@ -158,15 +158,22 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 blockCount = 1024;
             }
 
-            int index = 1;
-            int count = rewardPercentiles.Length;
-            IEnumerable<int> incorrectIndexes = 
-                rewardPercentiles.Select(val => index).Where(val => index++ < count - 1 && rewardPercentiles[index] < rewardPercentiles[index - 1]);
-            if (incorrectIndexes.Any())
+            if (rewardPercentiles != null)
             {
-                int firstIndex = incorrectIndexes.ElementAt(0);
-                return ResultWrapper<FeeHistoryResult>.Fail($"rewardPercentiles: Value at index {firstIndex}: {rewardPercentiles[firstIndex]} is less than value at previous index {firstIndex - 1}: {rewardPercentiles[firstIndex - 1]}  ");
+                int index = 1;
+                int count = rewardPercentiles.Length;
+                IEnumerable<int> incorrectlySortedIndexes =
+                    rewardPercentiles.Select(val => index).Where(val =>
+                        index++ < count && rewardPercentiles[index] < rewardPercentiles[index - 1]);
+                if (incorrectlySortedIndexes.Any())
+                {
+                    int firstIndex = incorrectlySortedIndexes.ElementAt(0);
+                    return ResultWrapper<FeeHistoryResult>.Fail(
+                        $"rewardPercentiles: Value at index {firstIndex}: {rewardPercentiles[firstIndex]} is less than " +
+                        $"the value at previous index {firstIndex - 1}: {rewardPercentiles[firstIndex - 1]}.");
+                }
             }
+
             return ResultWrapper<FeeHistoryResult>.Success(new FeeHistoryResult(0, Array.Empty<UInt256[]>(),
                 Array.Empty<UInt256>(), Array.Empty<UInt256>()));
         }
