@@ -48,7 +48,8 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             ctx._test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockFinder).Build();
             string serialized = ctx._test.TestEthRpc("eth_gasPrice");
             
-            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Head Block was not found.\"},\"id\":67}", serialized);
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Head Block was not found.\"},\"id\":67}",
+                serialized);
         }
         
         [Test]
@@ -118,7 +119,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
            
             return new[]{firstBlock, secondBlock, thirdBlock};
         }
-
+        
         public class TestEthRpcModule : EthRpcModule
         {
             public TestEthRpcModule(
