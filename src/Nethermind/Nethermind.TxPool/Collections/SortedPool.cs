@@ -102,6 +102,16 @@ namespace Nethermind.TxPool.Collections
         }
 
         /// <summary>
+        /// Gets all items of requested group.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public TValue[] GetBucketSnapshot(TGroupKey group)
+        {
+            if (group == null) throw new ArgumentNullException(nameof(group));
+            return _buckets.TryGetValue(group, out ICollection<TValue> bucket) ? bucket.ToArray() : Array.Empty<TValue>();
+        }
+        
+        /// <summary>
         /// Gets number of items in requested group.
         /// </summary>
         [MethodImpl(MethodImplOptions.Synchronized)]
