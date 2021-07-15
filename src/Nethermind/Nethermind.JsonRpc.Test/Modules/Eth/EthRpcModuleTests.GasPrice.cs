@@ -24,7 +24,6 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Facade;
@@ -36,7 +35,6 @@ using Nethermind.TxPool;
 using Nethermind.Wallet;
 using NSubstitute;
 using NUnit.Framework;
-using static Nethermind.JsonRpc.Test.Modules.TestBlockConstructor;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth
 {
@@ -56,49 +54,6 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         }
         
         [Test]
-        public async Task Eth_gasPrice_ForBlockTreeWithBlocks_CreatesMatchingBlockDict()
-        {
-            Context ctx = await Context.Create();
-            Block testBlockA = GetTestBlockA();
-            Block testBlockB = GetTestBlockB();
-            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-            blockFinder.FindBlock(0).Returns(testBlockA);
-            blockFinder.FindBlock(1).Returns(testBlockB);
-            blockFinder.FindHeadBlock().Returns(testBlockB);
-            Dictionary<long, Block> expected = new Dictionary<long, Block>
-            {
-                {0, testBlockA},
-                {1, testBlockB}
-            };
-            
-            ctx._test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockFinder).Build();
-            ctx._test.TestEthRpc("eth_gasPrice");
-            
-            ctx._test.EthRpcModule.BlockNumberToBlockDictionary.Should().BeEquivalentTo(expected);
-        }
-        [Test]
-        public void Eth_gasPrice_ForBlockTreeWithBlocks_CreatesMatchingBlockDictPrev()
-        {
-            Block testBlockA = GetTestBlockA();
-            Block testBlockB = GetTestBlockB();
-            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-            TestEthRpcModule testEthRpcModule = GetTestEthRpcModule(blockFinder:blockFinder);
-            blockFinder.FindBlock(0).Returns(testBlockA);
-            blockFinder.FindBlock(1).Returns(testBlockB);
-            blockFinder.FindHeadBlock().Returns(testBlockB);
-            Dictionary<long, Block> expected = new Dictionary<long, Block>
-            {
-                {0, testBlockA},
-                {1, testBlockB}
-            };
-            
-            testEthRpcModule.eth_gasPrice();
-            
-            testEthRpcModule.BlockNumberToBlockDictionary.Should().BeEquivalentTo(expected);
-        }
-
-        
-        [Test]
         public async Task Eth_gasPrice_GivenValidHeadBlock_CallsGasPriceEstimateFromGasPriceOracle()
         {
             Context ctx = await Context.Create(); 
@@ -112,29 +67,36 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                 .WithGasPriceOracle(gasPriceOracle).Build();
             ctx._test.TestEthRpc("eth_gasPrice");
             
-            gasPriceOracle.Received(1).GasPriceEstimate(Arg.Any<Block>(), Arg.Any<Dictionary<long, Block>>());
+            gasPriceOracle.Received(1).GasPriceEstimate(Arg.Any<Block>(), Arg.Any<IBlockFinder>());
         }
 
         [Test]
-        public void Eth_gasPrice_BlocksAvailableLessThanBlocksToCheck_ShouldBeSuccessful()
+        public async Task Eth_gasPrice_BlocksAvailableLessThanBlocksToCheck_ShouldBeSuccessful()
         {
+            Context ctx = await Context.Create();
             Block[] blocks = GetThreeTestBlocks();
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
 
             BlockTreeSetup blockTreeSetup = new BlockTreeSetup(blocks: blocks, blockLimit: 4, specProvider: specProvider);
-            ResultWrapper<UInt256?> resultWrapper = blockTreeSetup.EthRpcModule.eth_gasPrice();
+            ctx._test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockTreeSetup.BlockTree)
+                .Build();
             
-            resultWrapper.Result.Should().Be(Result.Success); 
+            string serialized = ctx._test.TestEthRpc("eth_gasPrice");
+            Assert.AreEqual(serialized.Substring(18, 6), "result");
+
         }
 
         [Test]
-        public void Eth_gasPrice_NumTxInMinBlocksGreaterThanBlockLimit_GetTxFromBlockLimitBlocks()
+        public async Task Eth_gasPrice_NumTxInMinBlocksGreaterThanBlockLimit_GetTxFromBlockLimitBlocks()
         {
+            Context ctx = await Context.Create();
             Block[] blocks = GetThreeTestBlocks();
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
             BlockTreeSetup blockTreeSetup = new BlockTreeSetup(blocks: blocks, blockLimit: 2, specProvider: specProvider);
-            
-            blockTreeSetup.EthRpcModule.eth_gasPrice();
+
+            ctx._test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockTreeSetup.BlockTree)
+                .WithGasPriceOracle(blockTreeSetup.GasPriceOracle).Build();
+            ctx._test.TestEthRpc("eth_gasPrice");
             
             List<UInt256> expected = new List<UInt256>{3, 4, 5, 6};
             blockTreeSetup.GasPriceOracle.TxGasPriceList.Should().Equal(expected);
@@ -147,12 +109,12 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                 Build.A.Transaction.WithGasPrice(2).SignedAndResolved(TestItem.PrivateKeyB).WithNonce(0).TestObject
             ).TestObject;
 
-            Block secondBlock = Build.A.Block.WithNumber(1).WithParentHash(firstBlock.Hash).WithTransactions(
+            Block secondBlock = Build.A.Block.WithNumber(1).WithParentHash(firstBlock.Hash!).WithTransactions(
                 Build.A.Transaction.WithGasPrice(3).SignedAndResolved(TestItem.PrivateKeyC).WithNonce(0).TestObject,
                 Build.A.Transaction.WithGasPrice(4).SignedAndResolved(TestItem.PrivateKeyD).WithNonce(0).TestObject
             ).TestObject;
 
-            Block thirdBlock = Build.A.Block.WithNumber(2).WithParentHash(secondBlock.Hash).WithTransactions(
+            Block thirdBlock = Build.A.Block.WithNumber(2).WithParentHash(secondBlock.Hash!).WithTransactions(
                 Build.A.Transaction.WithGasPrice(5).SignedAndResolved(TestItem.PrivateKeyA).WithNonce(1).TestObject,
                 Build.A.Transaction.WithGasPrice(6).SignedAndResolved(TestItem.PrivateKeyB).WithNonce(1).TestObject
             ).TestObject;
@@ -208,10 +170,10 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
 
         public class BlockTreeSetup
         {
-            public Block[] Blocks { get; private set; }
-            private BlockTree BlockTree { get; set; }
-            public TestEthRpcModule EthRpcModule { get; }
-            public IGasPriceOracle GasPriceOracle { get; private set; }
+            private Block[] Blocks { get; set; }
+            public BlockTree BlockTree { get; private set; }
+            private TestEthRpcModule EthRpcModule { get; }
+            public IGasPriceOracle GasPriceOracle { get; }
 
             public BlockTreeSetup(
                 Block[] blocks = null,
@@ -278,19 +240,19 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                         Build.A.Transaction.WithGasPrice(2).SignedAndResolved(TestItem.PrivateKeyB).WithNonce(0)
                             .TestObject)
                     .TestObject;
-                Block secondBlock = Build.A.Block.WithNumber(2).WithParentHash(firstBlock.Hash).WithTransactions(
+                Block secondBlock = Build.A.Block.WithNumber(2).WithParentHash(firstBlock.Hash!).WithTransactions(
                         Build.A.Transaction.WithGasPrice(3).SignedAndResolved(TestItem.PrivateKeyC).WithNonce(0)
                             .TestObject)
                     .TestObject;
-                Block thirdBlock = Build.A.Block.WithNumber(3).WithParentHash(secondBlock.Hash).WithTransactions(
+                Block thirdBlock = Build.A.Block.WithNumber(3).WithParentHash(secondBlock.Hash!).WithTransactions(
                         Build.A.Transaction.WithGasPrice(5).SignedAndResolved(TestItem.PrivateKeyD).WithNonce(0)
                             .TestObject)
                     .TestObject;
-                Block fourthBlock = Build.A.Block.WithNumber(4).WithParentHash(thirdBlock.Hash).WithTransactions(
+                Block fourthBlock = Build.A.Block.WithNumber(4).WithParentHash(thirdBlock.Hash!).WithTransactions(
                         Build.A.Transaction.WithGasPrice(4).SignedAndResolved(TestItem.PrivateKeyA).WithNonce(1)
                             .TestObject)
                     .TestObject;
-                Block fifthBlock = Build.A.Block.WithNumber(5).WithParentHash(fourthBlock.Hash).WithTransactions(
+                Block fifthBlock = Build.A.Block.WithNumber(5).WithParentHash(fourthBlock.Hash!).WithTransactions(
                         Build.A.Transaction.WithGasPrice(6).SignedAndResolved(TestItem.PrivateKeyB).WithNonce(1)
                             .TestObject)
                     .TestObject;

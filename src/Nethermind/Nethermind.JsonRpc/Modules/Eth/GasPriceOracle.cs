@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -39,7 +40,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _headBlockChangeManager = headBlockChangeManager ?? new GasPriceEstimateHeadBlockChangeManager();
         }
 
-        public ResultWrapper<UInt256?> GasPriceEstimate(Block? headBlock, IDictionary<long, Block> blockNumToBlockMap)
+        public ResultWrapper<UInt256?> GasPriceEstimate(Block? headBlock, IBlockFinder blockFinder)
         {
             LastGasPrice = GetLastGasPrice();
             bool shouldReturnSameGasPrice = _headBlockChangeManager.ShouldReturnSameGasPrice( LastHeadBlock, headBlock, LastGasPrice);
@@ -49,7 +50,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
 
             LastHeadBlock = headBlock;
-            TxGasPriceList = CreateSortedTxGasPriceList(headBlock, blockNumToBlockMap);
+            TxGasPriceList = CreateSortedTxGasPriceList(headBlock, blockFinder);
             
             UInt256? gasPriceEstimate = GetGasPriceAtPercentile(TxGasPriceList);
             gasPriceEstimate = UInt256.Min((UInt256) gasPriceEstimate!, EthGasPriceConstants._maxGasPrice);
@@ -62,27 +63,27 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return LastGasPrice;
         }
         
-        private List<UInt256> CreateSortedTxGasPriceList(Block? headBlock, IDictionary<long, Block> blockNumToBlockMap)
+        private List<UInt256> CreateSortedTxGasPriceList(Block? headBlock, IBlockFinder blockFinder)
         {
             FallbackGasPrice = LastGasPrice ?? EthGasPriceConstants.DefaultGasPrice;
 
-            return GetSortedTxGasPriceList(headBlock, blockNumToBlockMap);
+            return GetSortedTxGasPriceList(headBlock, blockFinder);
         }
 
-        protected virtual List<UInt256> GetSortedTxGasPriceList(Block? headBlock, IDictionary<long, Block> blockNumToBlockMap)
+        protected virtual List<UInt256> GetSortedTxGasPriceList(Block? headBlock, IBlockFinder blockFinder)
         {
-            AddTxGasPricesToList(headBlock, blockNumToBlockMap);
+            AddTxGasPricesToList(headBlock, blockFinder);
 
             return TxGasPriceList.OrderBy(gasPrice => gasPrice).ToList();
         }
 
-        private void AddTxGasPricesToList(Block? headBlock, IDictionary<long, Block> blockNumToBlockMap)
+        private void AddTxGasPricesToList(Block? headBlock, IBlockFinder blockFinder)
         {
             long currentBlockNumber = headBlock!.Number;
             int blocksToGoBack = _blockLimit;
             while (blocksToGoBack > 0 && currentBlockNumber > -1) 
             {
-                int txsAdded = _txInsertionManager.AddValidTxFromBlockAndReturnCount(blockNumToBlockMap[currentBlockNumber]);
+                int txsAdded = _txInsertionManager.AddValidTxFromBlockAndReturnCount(blockFinder.FindBlock(currentBlockNumber));
                 if (txsAdded > 1 || TxGasPriceList.Count + blocksToGoBack >= _softTxThreshold)
                 {
                     blocksToGoBack--;

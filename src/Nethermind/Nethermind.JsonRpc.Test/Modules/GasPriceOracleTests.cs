@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -21,14 +22,14 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             IHeadBlockChangeManager headBlockChangeManager = Substitute.For<IHeadBlockChangeManager>();
             TestableGasPriceOracle testableGasPriceOracle = GetTestableGasPriceOracle(headBlockChangeManager: headBlockChangeManager, lastGasPrice: 7);
-            Dictionary<long, Block> testDictionary = Substitute.For<Dictionary<long, Block>>();
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             Block testBlock = Build.A.Block.Genesis.TestObject;
             headBlockChangeManager.ShouldReturnSameGasPrice(
                     Arg.Any<Block?>(),
                     Arg.Any<Block?>(),
                     Arg.Any<UInt256?>()).Returns(true);
             
-            ResultWrapper<UInt256?> resultWrapper = testableGasPriceOracle.GasPriceEstimate(testBlock, testDictionary);
+            ResultWrapper<UInt256?> resultWrapper = testableGasPriceOracle.GasPriceEstimate(testBlock, blockFinder);
             
             resultWrapper.Data.Should().Be((UInt256?) 7);
         }
@@ -37,10 +38,10 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void GasPriceEstimate_IfPreviousGasPriceDoesNotExist_FallbackGasPriceSetToDefaultGasPrice()
         {
             TestableGasPriceOracle testableGasPriceOracle = GetTestableGasPriceOracle();
-            IDictionary<long, Block> testDictionary = Substitute.For<IDictionary<long, Block>>();
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             Block testBlock = Build.A.Block.Genesis.TestObject;
             
-            testableGasPriceOracle.GasPriceEstimate(testBlock, testDictionary);
+            testableGasPriceOracle.GasPriceEstimate(testBlock, blockFinder);
             
             testableGasPriceOracle.FallbackGasPrice.Should().BeEquivalentTo((UInt256?) EthGasPriceConstants.DefaultGasPrice);
         }
@@ -50,10 +51,10 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void GasPriceEstimate_IfPreviousGasPriceExists_FallbackGasPriceIsSetToPreviousGasPrice(int lastGasPrice)
         {
             TestableGasPriceOracle testableGasPriceOracle = GetTestableGasPriceOracle(lastGasPrice: (UInt256) lastGasPrice);
-            IDictionary<long, Block> testDictionary = Substitute.For<IDictionary<long, Block>>();
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             Block testBlock = Build.A.Block.Genesis.TestObject;
             
-            testableGasPriceOracle.GasPriceEstimate(testBlock, testDictionary);
+            testableGasPriceOracle.GasPriceEstimate(testBlock, blockFinder);
             
             testableGasPriceOracle.FallbackGasPrice.Should().BeEquivalentTo((UInt256?) lastGasPrice);
         }
@@ -64,10 +65,10 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             List<UInt256> listOfGasPrices = gasPrice.Select(n => (UInt256) n).ToList();
             TestableGasPriceOracle testableGasPriceOracle = GetTestableGasPriceOracle(sortedTxList: listOfGasPrices);
-            IDictionary<long, Block> testDictionary = Substitute.For<IDictionary<long, Block>>();
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             Block testBlock = Build.A.Block.Genesis.TestObject;
 
-            ResultWrapper<UInt256?> resultWrapper = testableGasPriceOracle.GasPriceEstimate(testBlock, testDictionary);
+            ResultWrapper<UInt256?> resultWrapper = testableGasPriceOracle.GasPriceEstimate(testBlock, blockFinder);
             
             resultWrapper.Data.Should().BeEquivalentTo((UInt256?) expected);
         }
@@ -81,10 +82,10 @@ namespace Nethermind.JsonRpc.Test.Modules
                 501
             }; 
             TestableGasPriceOracle testableGasPriceOracle = GetTestableGasPriceOracle(sortedTxList: listOfGasPrices);
-            IDictionary<long, Block> testDictionary = Substitute.For<IDictionary<long, Block>>();
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             Block testBlock = Build.A.Block.Genesis.TestObject;
 
-            ResultWrapper<UInt256?> resultWrapper = testableGasPriceOracle.GasPriceEstimate(testBlock, testDictionary);
+            ResultWrapper<UInt256?> resultWrapper = testableGasPriceOracle.GasPriceEstimate(testBlock, blockFinder);
             
             resultWrapper.Result.Should().Be(Result.Success);
             resultWrapper.Data.Should().BeEquivalentTo((UInt256?) EthGasPriceConstants._maxGasPrice);
@@ -97,9 +98,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             txInsertionManager.AddValidTxFromBlockAndReturnCount(Arg.Any<Block>()).Returns(2);
             TestableGasPriceOracle testableGasPriceOracle = GetTestableGasPriceOracle(txInsertionManager: txInsertionManager, blockLimit: 8);
             Block headBlock = Build.A.Block.WithNumber(8).TestObject;
-            IDictionary<long, Block> testDictionary = Substitute.For<IDictionary<long, Block>>();
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             
-            testableGasPriceOracle.GasPriceEstimate(headBlock, testDictionary);
+            testableGasPriceOracle.GasPriceEstimate(headBlock, blockFinder);
             
             txInsertionManager.Received(8).AddValidTxFromBlockAndReturnCount(Arg.Any<Block>());
         }
@@ -107,16 +108,43 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void GasPriceEstimate_IfLastFiveBlocksWithThreeTxAndFirstFourWithOne_CheckSixBlocks()
         {
-            //Any blocks with zero/one tx doesn't count towards the blockLimit unless the number of 
             ITxInsertionManager txInsertionManager = Substitute.For<ITxInsertionManager>();
             TestableGasPriceOracle testableGasPriceOracle = GetTestableGasPriceOracle(txInsertionManager: txInsertionManager, blockLimit: 8);
             SetUpTxInsertionManagerForSpecificReturns(txInsertionManager, testableGasPriceOracle);
             Block headBlock = Build.A.Block.WithNumber(8).TestObject;
-            IDictionary<long, Block> testNineEmptyBlocksDictionary = GetNumberToBlockMapForNineEmptyBlocks();
+            IBlockFinder blockFinder = BlockFinderForNineEmptyBlocks();
             
-            testableGasPriceOracle.GasPriceEstimate(headBlock, testNineEmptyBlocksDictionary);
+            testableGasPriceOracle.GasPriceEstimate(headBlock, blockFinder);
             
             txInsertionManager.Received(8).AddValidTxFromBlockAndReturnCount(Arg.Any<Block>());
+
+            static IBlockFinder BlockFinderForNineEmptyBlocks()
+            {
+                IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+                Block[] blocks = {
+                    Build.A.Block.Genesis.TestObject,
+                    Build.A.Block.WithNumber(1).TestObject,
+                    Build.A.Block.WithNumber(2).TestObject,
+                    Build.A.Block.WithNumber(3).TestObject,
+                    Build.A.Block.WithNumber(4).TestObject,
+                    Build.A.Block.WithNumber(5).TestObject,
+                    Build.A.Block.WithNumber(6).TestObject,
+                    Build.A.Block.WithNumber(7).TestObject,
+                    Build.A.Block.WithNumber(8).TestObject,
+                };
+            
+                blockFinder.FindBlock(0).Returns(blocks[0]);
+                blockFinder.FindBlock(1).Returns(blocks[1]);
+                blockFinder.FindBlock(2).Returns(blocks[2]);
+                blockFinder.FindBlock(3).Returns(blocks[3]);
+                blockFinder.FindBlock(4).Returns(blocks[4]);
+                blockFinder.FindBlock(5).Returns(blocks[5]);
+                blockFinder.FindBlock(6).Returns(blocks[6]);
+                blockFinder.FindBlock(7).Returns(blocks[7]);
+                blockFinder.FindBlock(8).Returns(blocks[8]);
+            
+                return blockFinder;
+            }
         }
 
         private static void SetUpTxInsertionManagerForSpecificReturns(ITxInsertionManager txInsertionManager,
@@ -131,33 +159,6 @@ namespace Nethermind.JsonRpc.Test.Modules
             txInsertionManager
                 .When(t => t.AddValidTxFromBlockAndReturnCount(Arg.Is<Block>(b => b.Number < 4)))
                 .Do(t => testableGasPriceOracle.AddToSortedTxList(4));
-        }
-
-        private static Dictionary<long, Block> GetNumberToBlockMapForNineEmptyBlocks()
-        {
-            Block[] blocks = {
-                Build.A.Block.Genesis.TestObject,
-                Build.A.Block.WithNumber(1).TestObject,
-                Build.A.Block.WithNumber(2).TestObject,
-                Build.A.Block.WithNumber(3).TestObject,
-                Build.A.Block.WithNumber(4).TestObject,
-                Build.A.Block.WithNumber(5).TestObject,
-                Build.A.Block.WithNumber(6).TestObject,
-                Build.A.Block.WithNumber(7).TestObject,
-                Build.A.Block.WithNumber(8).TestObject,
-            };
-            return new Dictionary<long, Block>()
-            {
-                {0, blocks[0]},
-                {1, blocks[1]},
-                {2, blocks[2]},
-                {3, blocks[3]},
-                {4, blocks[4]},
-                {5, blocks[5]},
-                {6, blocks[6]},
-                {7, blocks[7]},
-                {8, blocks[8]}
-            };
         }
 
         private class TestableGasPriceOracle : GasPriceOracle
@@ -191,9 +192,9 @@ namespace Nethermind.JsonRpc.Test.Modules
                 return _lastGasPrice ?? base.LastGasPrice;
             }
 
-            protected override List<UInt256> GetSortedTxGasPriceList(Block? headBlock, IDictionary<long, Block> blockNumToBlockMap)
+            protected override List<UInt256> GetSortedTxGasPriceList(Block? headBlock, IBlockFinder blockFinder)
             {
-                return _sortedTxList ?? base.GetSortedTxGasPriceList(headBlock, blockNumToBlockMap);
+                return _sortedTxList ?? base.GetSortedTxGasPriceList(headBlock, blockFinder);
             }
             
             public void AddToSortedTxList(params UInt256[] numbers)
