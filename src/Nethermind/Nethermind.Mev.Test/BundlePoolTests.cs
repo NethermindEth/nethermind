@@ -32,6 +32,7 @@ using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm;
@@ -259,7 +260,6 @@ namespace Nethermind.Mev.Test
         [Test]
         public async Task should_remove_bundle_when_simulation_fails()
         {
-            
             var chain = await MevRpcModuleTests.CreateChain(1);
             chain.GasLimitCalculator.GasLimit = 10_000_000;
             
@@ -277,6 +277,10 @@ namespace Nethermind.Mev.Test
 
             chain.BundlePool.AddBundle(failingBundle);
             chain.BundlePool.AddBundle(normalBundle);
+
+            CancellationTokenSource cts = new(TestBlockchain.DefaultTimeout);
+            await chain.BundlePool.WaitForSimulationToFinish(failingBundle, cts.Token);
+            await chain.BundlePool.WaitForSimulationToFinish(normalBundle, cts.Token);
 
             MevBundle[] bundlePoolBundles = chain.BundlePool.GetBundles(2, UInt256.Zero).ToArray();
             bundlePoolBundles.Should().NotContain(failingBundle);

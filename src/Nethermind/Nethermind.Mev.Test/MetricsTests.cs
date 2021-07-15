@@ -16,6 +16,7 @@
 // 
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
@@ -23,6 +24,7 @@ using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -78,11 +80,26 @@ namespace Nethermind.Mev.Test
             int beforeValidBundlesReceived = Metrics.ValidBundlesReceived;
             int beforeBundlesSimulated = Metrics.BundlesSimulated;
 
-            bundlePool.AddBundle(new MevBundle(1, new []{Build.A.TypedTransaction<BundleTransaction>().SignedAndResolved(TestItem.PrivateKeyA).TestObject}, 5, 0)); // invalid
-            bundlePool.AddBundle(new MevBundle(2, new []{Build.A.TypedTransaction<BundleTransaction>().SignedAndResolved(TestItem.PrivateKeyA).TestObject}, 0, 0)); 
-            bundlePool.AddBundle(new MevBundle(3, new []{Build.A.TypedTransaction<BundleTransaction>().SignedAndResolved(TestItem.PrivateKeyA).TestObject}, 0, long.MaxValue)); // invalid
-            bundlePool.AddBundle(new MevBundle(4, new []{Build.A.TypedTransaction<BundleTransaction>().SignedAndResolved(TestItem.PrivateKeyA).TestObject}, 0, 0));
+            MevBundle[] bundles = new[]
+            {
+                new MevBundle(1, new []{Build.A.TypedTransaction<BundleTransaction>().SignedAndResolved(TestItem.PrivateKeyA).TestObject}, 5, 0), // invalid
+                new MevBundle(2, new []{Build.A.TypedTransaction<BundleTransaction>().SignedAndResolved(TestItem.PrivateKeyA).TestObject}, 0, 0),
+                new MevBundle(3, new []{Build.A.TypedTransaction<BundleTransaction>().SignedAndResolved(TestItem.PrivateKeyA).TestObject}, 0, long.MaxValue), // invalid
+                new MevBundle(4, new []{Build.A.TypedTransaction<BundleTransaction>().SignedAndResolved(TestItem.PrivateKeyA).TestObject}, 0, 0)
+            };
+
+            foreach (MevBundle mevBundle in bundles)
+            {
+                bundlePool.AddBundle(mevBundle);
+            }
             
+            CancellationTokenSource cts = new(TestBlockchain.DefaultTimeout);
+            
+            foreach (MevBundle mevBundle in bundles)
+            {
+                bundlePool.WaitForSimulationToFinish(mevBundle, cts.Token);
+            }
+
             int deltaBundlesReceived = Metrics.BundlesReceived - beforeBundlesReceived;
             int deltaValidBundlesReceived = Metrics.ValidBundlesReceived - beforeValidBundlesReceived;
             int deltaBundlesSimulated = Metrics.BundlesSimulated - beforeBundlesSimulated;
