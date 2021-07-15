@@ -13,7 +13,7 @@ using static Nethermind.JsonRpc.Test.Modules.TestBlockConstructor;
 namespace Nethermind.JsonRpc.Test.Modules
 {
     [TestFixture]
-    class GasPriceEstimateTxInsertionManagerTests
+    partial class GasPriceEstimateTxInsertionManagerTests
     {
         [Test]
         public void AddValidTxAndReturnCount_IfBlockHasMoreThanThreeValidTx_AddOnlyThree()
@@ -164,27 +164,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             
             testableGasPriceEstimateTxInsertionManager._txGasPriceList.Should().Equal(expected); 
         }
-        
-    class TestableGasPriceEstimateTxInsertionManager : GasPriceEstimateTxInsertionManager
-    {
-        public readonly List<UInt256> _txGasPriceList;
-        public TestableGasPriceEstimateTxInsertionManager(
-            IGasPriceOracle gasPriceOracle,
-            UInt256? ignoreUnder,
-            ISpecProvider specProvider,
-            List<UInt256> txGasPriceList = null) : 
-            base(gasPriceOracle,
-                ignoreUnder,
-                specProvider)
-        {
-            _txGasPriceList = txGasPriceList ?? new List<UInt256>();
-        }
 
-        protected override List<UInt256> GetTxGasPriceList()
-        {
-            return _txGasPriceList;
-        }
-    }
         private TestableGasPriceEstimateTxInsertionManager GetTestableTxInsertionManager(
             IGasPriceOracle gasPriceOracle = null,
             UInt256? ignoreUnder = null,

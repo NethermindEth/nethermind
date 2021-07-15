@@ -15,7 +15,7 @@ using NUnit.Framework;
 namespace Nethermind.JsonRpc.Test.Modules
 {
     [TestFixture]
-    class GasPriceOracleTests
+    partial class GasPriceOracleTests
     {
         [Test]
         public void GasPriceEstimate_NoChangeInHeadBlock_ReturnsPreviousGasPrice()
@@ -29,29 +29,6 @@ namespace Nethermind.JsonRpc.Test.Modules
             resultWrapper.Data.Should().Be((UInt256?) 7);
         }
 
-        class ShouldReturnSameGasPriceGasPriceOracle : TestableGasPriceOracle
-        {
-            public ShouldReturnSameGasPriceGasPriceOracle(
-                ISpecProvider? specProvider = null,
-                UInt256? ignoreUnder = null, 
-                int? blockLimit = null, 
-                ITxInsertionManager? txInsertionManager = null,
-                UInt256? lastGasPrice = null):
-                base(
-                    specProvider ?? Substitute.For<ISpecProvider>(),
-                    ignoreUnder,
-                    blockLimit,
-                    txInsertionManager,
-                    lastGasPrice)
-            {
-            }
-
-            public override bool ShouldReturnSameGasPrice(Block? lastHead, Block? currentHead, UInt256? lastGasPrice)
-            {
-                return true;
-            }
-        }
-        
         private ShouldReturnSameGasPriceGasPriceOracle GetShouldReturnSameGasPriceGasPriceOracle(
             ISpecProvider? specProvider = null, 
             UInt256? ignoreUnder = null, 
@@ -238,43 +215,6 @@ namespace Nethermind.JsonRpc.Test.Modules
             result.Should().BeFalse();
         }
 
-        private class TestableGasPriceOracle : GasPriceOracle
-        {
-            private readonly UInt256? _lastGasPrice;
-            private readonly List<UInt256>? _sortedTxList;
-            public TestableGasPriceOracle(
-                ISpecProvider? specProvider = null,
-                UInt256? ignoreUnder = null, 
-                int? blockLimit = null, 
-                ITxInsertionManager? txInsertionManager = null,
-                UInt256? lastGasPrice = null,
-                List<UInt256>? sortedTxList = null) : 
-                base(
-                    specProvider ?? Substitute.For<ISpecProvider>(),
-                    ignoreUnder,
-                    blockLimit,
-                    txInsertionManager)
-            {
-                _lastGasPrice = lastGasPrice;
-                _sortedTxList = sortedTxList;
-            }
-
-            protected override UInt256? GetLastGasPrice()
-            {
-                return _lastGasPrice ?? base.LastGasPrice;
-            }
-
-            protected override List<UInt256> GetSortedTxGasPriceList(Block? headBlock, IBlockFinder blockFinder)
-            {
-                return _sortedTxList ?? base.GetSortedTxGasPriceList(headBlock, blockFinder);
-            }
-            
-            public void AddToSortedTxList(params UInt256[] numbers)
-            {
-                TxGasPriceList.AddRange(numbers.ToList());
-            }
-        }
-        
         private TestableGasPriceOracle GetTestableGasPriceOracle(
             ISpecProvider? specProvider = null, 
             UInt256? ignoreUnder = null, 
