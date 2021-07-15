@@ -78,7 +78,7 @@ namespace Nethermind.Core.Test.Builders
 
             return WithTransactions(txs);
         }
-        
+
         public BlockBuilder WithTransactions(int txCount, ISpecProvider specProvider)
         {
             Transaction[] txs = new Transaction[txCount];

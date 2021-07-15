@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Threading.Tasks;
-using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
@@ -40,6 +39,7 @@ using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Newtonsoft.Json;
+using NSubstitute;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
@@ -49,9 +49,11 @@ namespace Nethermind.JsonRpc.Test.Modules
         public IBlockchainBridge Bridge { get; private set; }
         public ITxSender TxSender { get; private set; }
         public ILogFinder LogFinder { get; private set; }
+        
+        public IGasPriceOracle GasPriceOracle { get; private set; }
+        
         public IKeyStore KeyStore { get; } = new MemKeyStore(TestItem.PrivateKeys);
         public IWallet TestWallet { get; } = new DevKeyStoreWallet(new MemKeyStore(TestItem.PrivateKeys), LimboLogs.Instance);
-
         public static Builder<TestRpcBlockchain> ForTest(string sealEngineType) => ForTest<TestRpcBlockchain>(sealEngineType);
 
         public static Builder<T> ForTest<T>(string sealEngineType) where T : TestRpcBlockchain, new() => 
@@ -93,6 +95,11 @@ namespace Nethermind.JsonRpc.Test.Modules
                 return this;
             }
             
+            public Builder<T> WithGasPriceOracle(IGasPriceOracle gasPriceOracle)
+            {
+                _blockchain.GasPriceOracle = gasPriceOracle;
+                return this;
+            }
             public async Task<T> Build(ISpecProvider specProvider = null, UInt256? initialValues = null)
             {
                 return (T)(await _blockchain.Build(specProvider, initialValues));
@@ -125,6 +132,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             ITxSealer txSealer1 = new NonceReservingTxSealer(txSigner, Timestamper, TxPool);
             TxSender ??= new TxPoolSender(TxPool, txSealer0, txSealer1);
             
+            GasPriceOracle ??= new GasPriceOracle(SpecProvider);
+            
             EthRpcModule = new EthRpcModule(
                 new JsonRpcConfig(),
                 Bridge,
@@ -134,7 +143,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 TxSender,
                 TestWallet,
                 LimboLogs.Instance,
-                SpecProvider);
+                GasPriceOracle);
             
             return this;
         }

@@ -24,9 +24,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
-using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -49,7 +47,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
     public partial class EthRpcModule : IEthRpcModule
     {
         private readonly Encoding _messageEncoding = Encoding.UTF8;
-
         private readonly IJsonRpcConfig _rpcConfig;
         private readonly IBlockchainBridge _blockchainBridge;
         private readonly IBlockFinder _blockFinder;
@@ -58,15 +55,17 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly ITxSender _txSender;
         private readonly IWallet _wallet;
         private readonly ISpecProvider _specProvider;
-
         private readonly ILogger _logger;
+        protected IGasPriceOracle GasPriceOracle { get; set; }
+
         private static bool HasStateForBlock(IBlockchainBridge blockchainBridge, BlockHeader header)
         {
             RootCheckVisitor rootCheckVisitor = new();
             blockchainBridge.RunTreeVisitor(rootCheckVisitor, header.StateRoot);
             return rootCheckVisitor.HasRoot;
         }
-
+        
+        
         public EthRpcModule(
             IJsonRpcConfig rpcConfig,
             IBlockchainBridge blockchainBridge,
@@ -76,7 +75,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             ITxSender txSender,
             IWallet wallet,
             ILogManager logManager,
-            ISpecProvider specProvider)
+            IGasPriceOracle gasPriceOracle)
         {
             _logger = logManager.GetClassLogger();
             _rpcConfig = rpcConfig ?? throw new ArgumentNullException(nameof(rpcConfig));
@@ -86,7 +85,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _txPoolBridge = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
-            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+            GasPriceOracle = gasPriceOracle ?? throw new ArgumentNullException(nameof(gasPriceOracle));
+            _specProvider = GasPriceOracle.SpecProvider;
         }
 
         public ResultWrapper<string> eth_protocolVersion()
@@ -140,10 +140,12 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return ResultWrapper<UInt256?>.Success(0);
         }
 
-        [Todo("Gas pricer to be implemented")]
         public ResultWrapper<UInt256?> eth_gasPrice()
         {
-            return ResultWrapper<UInt256?>.Success(20.GWei());
+            Block? headBlock = _blockFinder.FindHeadBlock();
+            return headBlock == null ? 
+                ResultWrapper<UInt256?>.Fail("Head Block was not found.") : 
+                GasPriceOracle!.GasPriceEstimate(headBlock, _blockFinder);
         }
 
         public ResultWrapper<IEnumerable<Address>> eth_accounts()
