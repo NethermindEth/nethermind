@@ -18,14 +18,12 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly UInt256? _ignoreUnder;
         private readonly int _blockLimit;
         private readonly int _softTxThreshold;
-        private readonly UInt256 _baseFee;
         private readonly ITxInsertionManager _txInsertionManager;
 
         public GasPriceOracle(
             ISpecProvider specProvider,
             UInt256? ignoreUnder = null, 
             int? blockLimit = null, 
-            UInt256? baseFee = null,
             ITxInsertionManager? txInsertionManager = null)
         {
             TxGasPriceList = new List<UInt256>();
@@ -33,7 +31,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _ignoreUnder = ignoreUnder ?? UInt256.Zero;
             _blockLimit = blockLimit ?? EthGasPriceConstants.DefaultBlocksLimit;
             _softTxThreshold = (int) (blockLimit != null ? blockLimit * 2 : EthGasPriceConstants.SoftTxLimit);
-            _baseFee = baseFee ?? EthGasPriceConstants.DefaultBaseFee;
             _txInsertionManager = txInsertionManager ?? new GasPriceEstimateTxInsertionManager(this, _ignoreUnder, specProvider);
         }
 

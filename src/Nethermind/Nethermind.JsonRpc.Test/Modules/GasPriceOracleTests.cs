@@ -35,14 +35,12 @@ namespace Nethermind.JsonRpc.Test.Modules
                 ISpecProvider? specProvider = null,
                 UInt256? ignoreUnder = null, 
                 int? blockLimit = null, 
-                UInt256? baseFee = null, 
                 ITxInsertionManager? txInsertionManager = null,
                 UInt256? lastGasPrice = null):
                 base(
                     specProvider ?? Substitute.For<ISpecProvider>(),
                     ignoreUnder,
                     blockLimit,
-                    baseFee,
                     txInsertionManager,
                     lastGasPrice)
             {
@@ -58,7 +56,6 @@ namespace Nethermind.JsonRpc.Test.Modules
             ISpecProvider? specProvider = null, 
             UInt256? ignoreUnder = null, 
             int? blockLimit = null, 
-            UInt256? baseFee = null, 
             ITxInsertionManager? txInsertionManager = null,
             UInt256? lastGasPrice = null)
         {
@@ -66,7 +63,6 @@ namespace Nethermind.JsonRpc.Test.Modules
                 specProvider ?? Substitute.For<ISpecProvider>(),
                 ignoreUnder,
                 blockLimit,
-                baseFee,
                 txInsertionManager ?? Substitute.For<ITxInsertionManager>(),
                 lastGasPrice);
         }
@@ -250,7 +246,6 @@ namespace Nethermind.JsonRpc.Test.Modules
                 ISpecProvider? specProvider = null,
                 UInt256? ignoreUnder = null, 
                 int? blockLimit = null, 
-                UInt256? baseFee = null, 
                 ITxInsertionManager? txInsertionManager = null,
                 UInt256? lastGasPrice = null,
                 List<UInt256>? sortedTxList = null) : 
@@ -258,7 +253,6 @@ namespace Nethermind.JsonRpc.Test.Modules
                     specProvider ?? Substitute.For<ISpecProvider>(),
                     ignoreUnder,
                     blockLimit,
-                    baseFee,
                     txInsertionManager)
             {
                 _lastGasPrice = lastGasPrice;
@@ -285,7 +279,6 @@ namespace Nethermind.JsonRpc.Test.Modules
             ISpecProvider? specProvider = null, 
             UInt256? ignoreUnder = null, 
             int? blockLimit = null, 
-            UInt256? baseFee = null, 
             ITxInsertionManager? txInsertionManager = null,
             UInt256? lastGasPrice = null,
             List<UInt256>? sortedTxList = null)
@@ -294,7 +287,6 @@ namespace Nethermind.JsonRpc.Test.Modules
                 specProvider ?? Substitute.For<ISpecProvider>(),
                 ignoreUnder,
                 blockLimit,
-                baseFee,
                 txInsertionManager ?? Substitute.For<ITxInsertionManager>(),
                 lastGasPrice,
                 sortedTxList);

@@ -181,14 +181,13 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                 int? blockLimit = null,
                 ISpecProvider specProvider = null,
                 UInt256? ignoreUnder = null,
-                UInt256? baseFee = null,
                 ITxInsertionManager txInsertionManager = null)
             {
                 GetBlocks(blocks, addBlocks);
 
                 InitializeAndAddToBlockTree(BlockTree);
 
-                GasPriceOracle = gasPriceOracle ?? GetGasPriceOracle(specProvider, ignoreUnder, blockLimit, baseFee, txInsertionManager);
+                GasPriceOracle = gasPriceOracle ?? GetGasPriceOracle(specProvider, ignoreUnder, blockLimit, txInsertionManager);
 
                 EthRpcModule = GetTestEthRpcModule(BlockTree);
                 
@@ -272,10 +271,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                 ISpecProvider specProvider, 
                 UInt256? ignoreUnder,
                 int? blockLimit, 
-                UInt256? baseFee,
                 ITxInsertionManager txInsertionManager)
             {
-                GasPriceOracle gasPriceOracle = new(specProvider, ignoreUnder, blockLimit, baseFee, 
+                GasPriceOracle gasPriceOracle = new(specProvider, ignoreUnder, blockLimit, 
                     txInsertionManager);
                 return gasPriceOracle;
             }
