@@ -31,7 +31,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Build.A.Transaction.WithGasPrice(2).SignedAndResolved(TestItem.PrivateKeyC).WithNonce(0).TestObject,
                 Build.A.Transaction.WithGasPrice(1).SignedAndResolved(TestItem.PrivateKeyD).WithNonce(0).TestObject,
             };
-
+            
             return Build.A.Block.Genesis.WithTransactions(transactions).TestObject;
         }
 
