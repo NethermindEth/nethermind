@@ -1,3 +1,4 @@
+#nullable enable
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -9,7 +10,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth;
 using NSubstitute;
-using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules
@@ -20,20 +20,57 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void GasPriceEstimate_NoChangeInHeadBlock_ReturnsPreviousGasPrice()
         {
-            IHeadBlockChangeManager headBlockChangeManager = Substitute.For<IHeadBlockChangeManager>();
-            TestableGasPriceOracle testableGasPriceOracle = GetTestableGasPriceOracle(headBlockChangeManager: headBlockChangeManager, lastGasPrice: 7);
+            ShouldReturnSameGasPriceGasPriceOracle testableGasPriceOracle = GetShouldReturnSameGasPriceGasPriceOracle(lastGasPrice: 7);
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             Block testBlock = Build.A.Block.Genesis.TestObject;
-            headBlockChangeManager.ShouldReturnSameGasPrice(
-                    Arg.Any<Block?>(),
-                    Arg.Any<Block?>(),
-                    Arg.Any<UInt256?>()).Returns(true);
             
             ResultWrapper<UInt256?> resultWrapper = testableGasPriceOracle.GasPriceEstimate(testBlock, blockFinder);
             
             resultWrapper.Data.Should().Be((UInt256?) 7);
         }
 
+        class ShouldReturnSameGasPriceGasPriceOracle : TestableGasPriceOracle
+        {
+            public ShouldReturnSameGasPriceGasPriceOracle(
+                ISpecProvider? specProvider = null,
+                UInt256? ignoreUnder = null, 
+                int? blockLimit = null, 
+                UInt256? baseFee = null, 
+                ITxInsertionManager? txInsertionManager = null,
+                UInt256? lastGasPrice = null):
+                base(
+                    specProvider ?? Substitute.For<ISpecProvider>(),
+                    ignoreUnder,
+                    blockLimit,
+                    baseFee,
+                    txInsertionManager,
+                    lastGasPrice)
+            {
+            }
+
+            public override bool ShouldReturnSameGasPrice(Block? lastHead, Block? currentHead, UInt256? lastGasPrice)
+            {
+                return true;
+            }
+        }
+        
+        private ShouldReturnSameGasPriceGasPriceOracle GetShouldReturnSameGasPriceGasPriceOracle(
+            ISpecProvider? specProvider = null, 
+            UInt256? ignoreUnder = null, 
+            int? blockLimit = null, 
+            UInt256? baseFee = null, 
+            ITxInsertionManager? txInsertionManager = null,
+            UInt256? lastGasPrice = null)
+        {
+            return new(
+                specProvider ?? Substitute.For<ISpecProvider>(),
+                ignoreUnder,
+                blockLimit,
+                baseFee,
+                txInsertionManager ?? Substitute.For<ITxInsertionManager>(),
+                lastGasPrice);
+        }
+        
         [Test]
         public void GasPriceEstimate_IfPreviousGasPriceDoesNotExist_FallbackGasPriceSetToDefaultGasPrice()
         {
@@ -171,7 +208,6 @@ namespace Nethermind.JsonRpc.Test.Modules
                 int? blockLimit = null, 
                 UInt256? baseFee = null, 
                 ITxInsertionManager? txInsertionManager = null,
-                IHeadBlockChangeManager? headBlockChangeManager = null,
                 UInt256? lastGasPrice = null,
                 List<UInt256>? sortedTxList = null) : 
                 base(
@@ -179,13 +215,11 @@ namespace Nethermind.JsonRpc.Test.Modules
                     ignoreUnder,
                     blockLimit,
                     baseFee,
-                    txInsertionManager,
-                    headBlockChangeManager)
+                    txInsertionManager)
             {
                 _lastGasPrice = lastGasPrice;
                 _sortedTxList = sortedTxList;
             }
-
 
             protected override UInt256? GetLastGasPrice()
             {
@@ -208,17 +242,15 @@ namespace Nethermind.JsonRpc.Test.Modules
             int? blockLimit = null, 
             UInt256? baseFee = null, 
             ITxInsertionManager? txInsertionManager = null,
-            IHeadBlockChangeManager? headBlockChangeManager = null,
             UInt256? lastGasPrice = null,
             List<UInt256>? sortedTxList = null)
         {
-            return new TestableGasPriceOracle(
+            return new(
                 specProvider ?? Substitute.For<ISpecProvider>(),
                 ignoreUnder,
                 blockLimit,
                 baseFee,
                 txInsertionManager ?? Substitute.For<ITxInsertionManager>(),
-                headBlockChangeManager ?? Substitute.For<IHeadBlockChangeManager>(),
                 lastGasPrice,
                 sortedTxList);
         }

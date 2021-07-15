@@ -20,15 +20,13 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly int _softTxThreshold;
         private readonly UInt256 _baseFee;
         private readonly ITxInsertionManager _txInsertionManager;
-        private readonly IHeadBlockChangeManager _headBlockChangeManager;
 
         public GasPriceOracle(
             ISpecProvider specProvider,
             UInt256? ignoreUnder = null, 
             int? blockLimit = null, 
             UInt256? baseFee = null,
-            ITxInsertionManager? txInsertionManager = null,
-            IHeadBlockChangeManager? headBlockChangeManager = null)
+            ITxInsertionManager? txInsertionManager = null)
         {
             TxGasPriceList = new List<UInt256>();
             SpecProvider = specProvider;
@@ -37,13 +35,12 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _softTxThreshold = (int) (blockLimit != null ? blockLimit * 2 : EthGasPriceConstants.SoftTxLimit);
             _baseFee = baseFee ?? EthGasPriceConstants.DefaultBaseFee;
             _txInsertionManager = txInsertionManager ?? new GasPriceEstimateTxInsertionManager(this, _ignoreUnder, _baseFee, specProvider);
-            _headBlockChangeManager = headBlockChangeManager ?? new GasPriceEstimateHeadBlockChangeManager();
         }
 
         public ResultWrapper<UInt256?> GasPriceEstimate(Block? headBlock, IBlockFinder blockFinder)
         {
             LastGasPrice = GetLastGasPrice();
-            bool shouldReturnSameGasPrice = _headBlockChangeManager.ShouldReturnSameGasPrice( LastHeadBlock, headBlock, LastGasPrice);
+            bool shouldReturnSameGasPrice = ShouldReturnSameGasPrice( LastHeadBlock, headBlock, LastGasPrice);
             if (shouldReturnSameGasPrice)
             {
                 return ResultWrapper<UInt256?>.Success(LastGasPrice);
@@ -61,6 +58,18 @@ namespace Nethermind.JsonRpc.Modules.Eth
         protected virtual UInt256? GetLastGasPrice()
         {
             return LastGasPrice;
+        }
+        
+        public virtual bool ShouldReturnSameGasPrice(Block? lastHead, Block? currentHead, UInt256? lastGasPrice)
+        { 
+            if (lastGasPrice != null && lastHead != null && lastHead!.Hash == currentHead!.Hash)
+            {
+                return true;
+            }
+            else
+            {
+                return false;
+            }
         }
         
         private List<UInt256> CreateSortedTxGasPriceList(Block? headBlock, IBlockFinder blockFinder)
