@@ -71,7 +71,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         }
 
         [Test]
-        public async Task Eth_gasPrice_BlocksAvailableLessThanBlocksToCheck_ShouldBeSuccessful()
+        public async Task Eth_gasPrice_BlocksAvailableLessThanBlocksToCheck_ShouldGiveCorrectResult()
         {
             Context ctx = await Context.Create();
             Block[] blocks = GetThreeTestBlocks();
@@ -81,9 +81,8 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             ctx._test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockTreeSetup.BlockTree)
                 .Build();
             
-            string serialized = ctx._test.TestEthRpc("eth_gasPrice");
-            Assert.AreEqual(serialized.Substring(18, 6), "result");
-
+            string serialized = ctx._test.TestEthRpc("eth_gasPrice"); //Gas Prices: 1,2,3,4,5,6 | Max Index: 5 | 60th Percentile: 5 * (3/5) = 3 | Result: 4 (0x4) 
+            Assert.AreEqual($"{{\"jsonrpc\":\"2.0\",\"result\":\"0x4\",\"id\":67}}", serialized);
         }
 
         [Test]
