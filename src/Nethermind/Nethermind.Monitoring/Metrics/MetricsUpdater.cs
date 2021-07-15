@@ -56,7 +56,7 @@ namespace Nethermind.Monitoring.Metrics
         {
             if (!_propertiesCache.ContainsKey(type))
             {
-                _propertiesCache[type] = type.GetProperties().Where(p => p.PropertyType == typeof(long)).Select(
+                _propertiesCache[type] = type.GetProperties().Where(p => p.PropertyType != typeof(ConcurrentDictionary<string, long>)).Select(
                     p => (p, GetGaugeNameKey(type.Name, p.Name))).ToArray();
             }
             
@@ -131,24 +131,22 @@ namespace Nethermind.Monitoring.Metrics
 
             if (_dynamicPropCache.TryGetValue(type, out var dict))
             {
-                foreach (var propName in dict.Dict.Keys)
+                foreach (var kvp in dict.Dict)
                 {
-                    var value = dict.Dict[propName];
-
-                    var gaugeKey = GetGaugeNameKey(dict.DictName, propName);
+                    var gaugeKey = GetGaugeNameKey(dict.DictName, kvp.Key);
 
                     if(_gauges.TryGetValue(gaugeKey, out var gauge))
                     {
-                        if (Math.Abs(gauge.Value - value) > double.Epsilon)
+                        if (Math.Abs(gauge.Value - kvp.Value) > double.Epsilon)
                         {
-                            gauge.Set(Convert.ToDouble(value));
+                            gauge.Set(Convert.ToDouble(kvp.Value));
                         }
                     }
                     else
                     {
-                        gauge = CreateGauge(BuildGaugeName(propName));
+                        gauge = CreateGauge(BuildGaugeName(kvp.Key));
                         _gauges[gaugeKey] = gauge;
-                        gauge.Set(Convert.ToDouble(value));
+                        gauge.Set(Convert.ToDouble(kvp.Value));
                     }
                 }
             }

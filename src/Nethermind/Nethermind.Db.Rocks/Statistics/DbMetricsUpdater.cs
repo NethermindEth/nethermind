@@ -41,20 +41,20 @@ namespace Nethermind.Db.Rocks.Statistics
         {
             try
             {
+                // It seems that currently there is no other option with .NET api to extract the compaction statistics than through the dumped string
                 var compactionStatsString = _db.GetProperty("rocksdb.stats");
-
                 ProcessCompactionStats(compactionStatsString);
 
                 if (_dbConfig.EnableDbStatistics)
                 {
                     var dbStatsString = _dbOptions.GetStatisticsString();
-                    // TODO: extract required stats
+                    // Currently we don't extract any DB statistics but we can do it here
                 }
             }
             catch (Exception exc)
             {
                 _logger.Error($"Error when updating metrics for {_dbName} database.", exc);
-                // TODO: Maybe we would like to stop the _timer here?
+                // Maybe we would like to stop the _timer here to avoid logging the same error all over again?
             }
         }
 
