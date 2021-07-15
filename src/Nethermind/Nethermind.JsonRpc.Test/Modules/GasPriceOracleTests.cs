@@ -197,6 +197,50 @@ namespace Nethermind.JsonRpc.Test.Modules
                 .When(t => t.AddValidTxFromBlockAndReturnCount(Arg.Is<Block>(b => b.Number < 4)))
                 .Do(t => testableGasPriceOracle.AddToSortedTxList(4));
         }
+        
+        [Test]
+        public void ShouldReturnSameGasPrice_IfLastHeadAndCurrentHeadAreSame_WillReturnTrue()
+        {
+            Block testBlock = Build.A.Block.Genesis.TestObject;
+            TestableGasPriceOracle testableGasPriceOracle = GetTestableGasPriceOracle();
+            bool result = testableGasPriceOracle.ShouldReturnSameGasPrice(testBlock, testBlock, 10);
+
+            result.Should().BeTrue();
+        }
+
+        [Test]
+        public void ShouldReturnSameGasPrice_IfLastHeadAndCurrentHeadAreNotSame_WillReturnFalse()
+        {
+            Block testBlock = Build.A.Block.Genesis.TestObject;
+            Block differentTestBlock = Build.A.Block.WithNumber(1).TestObject;
+            TestableGasPriceOracle testableGasPriceOracle = GetTestableGasPriceOracle();
+            
+            bool result = testableGasPriceOracle.ShouldReturnSameGasPrice(testBlock, differentTestBlock, 10);
+
+            result.Should().BeFalse();
+        }
+
+        [Test]
+        public void ShouldReturnSameGasPrice_IfLastHeadIsNull_WillReturnFalse()
+        {
+            Block testBlock = Build.A.Block.Genesis.TestObject;
+            TestableGasPriceOracle testableGasPriceOracle = GetTestableGasPriceOracle();
+            
+            bool result = testableGasPriceOracle.ShouldReturnSameGasPrice(null, testBlock, 10);
+
+            result.Should().BeFalse();
+        }
+        
+        [Test]
+        public void ShouldReturnSameGasPrice_IfLastGasPriceIsNull_WillReturnFalse()
+        {
+            Block testBlock = Build.A.Block.Genesis.TestObject;
+            TestableGasPriceOracle testableGasPriceOracle = GetTestableGasPriceOracle();
+            
+            bool result = testableGasPriceOracle.ShouldReturnSameGasPrice(testBlock, testBlock, null);
+
+            result.Should().BeFalse();
+        }
 
         private class TestableGasPriceOracle : GasPriceOracle
         {
@@ -236,6 +280,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 TxGasPriceList.AddRange(numbers.ToList());
             }
         }
+        
         private TestableGasPriceOracle GetTestableGasPriceOracle(
             ISpecProvider? specProvider = null, 
             UInt256? ignoreUnder = null, 
@@ -254,6 +299,5 @@ namespace Nethermind.JsonRpc.Test.Modules
                 lastGasPrice,
                 sortedTxList);
         }
-        
     }
 }
