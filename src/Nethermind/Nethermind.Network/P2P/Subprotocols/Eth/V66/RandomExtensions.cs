@@ -15,23 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
+
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 {
-    public abstract class Eth66Message<T> : P2PMessage where T : P2PMessage
+    internal static class RandomExtensions
     {
-        public override int PacketType => EthMessage.PacketType;
-        public override string Protocol => EthMessage.Protocol;
-        public long RequestId { get; set; } = Eth66MessageConstants.Random.NextLong();
-        public T EthMessage { get; set; }
-
-        protected Eth66Message() 
-        {
-        }
-
-        protected Eth66Message(long requestId, T ethMessage)
-        {
-            RequestId = requestId;
-            EthMessage = ethMessage;
-        }
+        public static long NextLong(this Random random) => ((long)random.Next() << 32) | (long)random.Next();
     }
 }
