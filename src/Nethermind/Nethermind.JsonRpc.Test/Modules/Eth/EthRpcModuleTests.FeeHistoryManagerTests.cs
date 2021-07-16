@@ -32,16 +32,17 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         [TestFixture]
         public class FeeHistoryManagerTests
         {
-            [Test]
-            public void GetFeeHistory_IfBlockCountGreaterThan1024_BlockCountSetTo1024()
+            [TestCase(1025, true)]
+            [TestCase(1024, false)]
+            public void GetFeeHistory_IfBlockCountGreaterThan1024_BlockCountSetTo1024(long blockCount, bool result)
             {
                 IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
                 blockFinder.FindPendingBlock().Returns(Build.A.Block.TestObject);
                 TestableFeeHistoryManager feeHistoryManager = new TestableFeeHistoryManager(blockFinder);
                 
-                feeHistoryManager.GetFeeHistory(1025, 0);
+                feeHistoryManager.GetFeeHistory(blockCount, 0);
 
-                feeHistoryManager.SetToMaxBlockCountCalled.Should().BeTrue();
+                feeHistoryManager.SetToMaxBlockCountCalled.Should().Be(result);
             }
             
             [TestCase(new double[]{-1,1,2}, "-1")]
