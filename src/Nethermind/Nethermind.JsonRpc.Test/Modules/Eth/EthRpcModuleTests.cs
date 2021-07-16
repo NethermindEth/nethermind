@@ -55,13 +55,12 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
     [TestFixture]
     public partial class EthRpcModuleTests
     {
-        [TestCase(0, true)]
-        [TestCase(1, false)]
+        [TestCase(-10, true)]
+        [TestCase(10, false)]
         public async Task Eth_feeHistory_IfBlockCountLessThanOne_ResultsInFailure(int blockCount, bool resultIsError)
         {
             using Context ctx = await Context.Create();
-            int lastBlockNumber = 0;
-            string serialized = ctx._test.TestEthRpc("eth_feeHistory", $"{blockCount:X}", $"{lastBlockNumber:X}");
+            string serialized = ctx._test.TestEthRpc("eth_feeHistory", $"{blockCount.ToString()}", "10");
             string expected =
                 $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32603,\"message\":\"blockCount: Block count, {blockCount}, is less than 1.\"}},\"id\":67}}"; 
             Assert.AreEqual(expected == serialized, resultIsError);
