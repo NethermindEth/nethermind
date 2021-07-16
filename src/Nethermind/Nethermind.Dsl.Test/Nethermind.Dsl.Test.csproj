@@ -23,5 +23,5 @@
   <ItemGroup>
     <Content Include="DSL\*.txt" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
-
+  
 </Project>

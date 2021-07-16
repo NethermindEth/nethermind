@@ -7,6 +7,8 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Dsl.Contracts;
+using Nethermind.Dsl.Pipeline.Sources;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using NSubstitute;
@@ -30,6 +32,7 @@ namespace Nethermind.Dsl.Test
         [Test]
         public async Task can_init_plugin_with_tree_listener()
         {
+            var x = typeof(DslPlugin).Assembly.GetManifestResourceNames();
             await _dslPlugin.Init(_api);
         }
 

@@ -15,10 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+#nullable enable
 using System;
 using System.Linq;
 using Nethermind.Abi;
-using Nethermind.Int256;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -60,6 +60,7 @@ namespace Nethermind.Dsl.Pipeline.Sources
             return new()
             {
                 Swapper = new Address(log.Topics[1]),
+                Pool = log.LoggersAddress,
                 TokenADelta = log.Data.Take(32).ToArray().ToInt256(),
                 TokenBDelta = log.Data.Skip(32).Take(32).ToArray().ToInt256()
             };
@@ -68,13 +69,13 @@ namespace Nethermind.Dsl.Pipeline.Sources
 
     public class UniswapData
     {
-        public Address Swapper { get; set; }
-        public Address TokenA { get; set; }
-        public Address TokenB { get; set; }
+        public Address? Swapper { get; set; }
+        public Address? Pool { get; set; }
+        public Address? TokenA { get; set; }
+        public Address? TokenB { get; set; }
         public decimal TokenAPrice { get; set; }
         public decimal TokenBPrice { get; set; }
         public Int256.Int256 TokenADelta { get; set; }
-        
         public Int256.Int256 TokenBDelta { get; set; }
     }
 }

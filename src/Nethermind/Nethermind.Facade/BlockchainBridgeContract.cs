@@ -16,10 +16,15 @@
 // 
 
 using System;
+using System.IO;
+using System.IO.Abstractions;
+using System.Linq;
 using System.Threading;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
+using Nethermind.Blockchain.Contracts.Json;
 using Nethermind.Core;
+using Nethermind.Logging;
 
 namespace Nethermind.Facade
 {
@@ -36,6 +41,22 @@ namespace Nethermind.Facade
         /// <returns>Constant version of the contract.</returns>
         protected IConstantContract GetConstant(IBlockchainBridge blockchainBridge) =>
             new ConstantBridgeContract(this, blockchainBridge);
+
+        protected AbiDefinition? GetAbiDefinition(string contractName)
+        {
+            var fileSystem = new FileSystem();
+            
+            var dirPath = fileSystem.Path.Combine(PathUtils.ExecutingDirectory, "Contracts");
+            
+            if (!fileSystem.Directory.Exists(dirPath)) return null;
+            
+            string file = fileSystem.Directory
+                .GetFiles("Contracts", $"{contractName}Abi.json").First();
+
+            var abiJson = fileSystem.File.ReadAllText(file);
+
+            return new AbiDefinitionParser().Parse(abiJson);
+        }
 
         private class ConstantBridgeContract : ConstantContractBase
         {
