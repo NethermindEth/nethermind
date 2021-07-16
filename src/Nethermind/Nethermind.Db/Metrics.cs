@@ -94,7 +94,7 @@ namespace Nethermind.Db
         [Description("Number of Witness DB writes.")]
         public static long WitnessDbWrites { get; set; }
 
-        [Description("test.")]
-        public static ConcurrentDictionary<string, long> MetricsDict { get; set; } = new ConcurrentDictionary<string, long>();
+        [Description("Metrics extracted from RocksDB Compacion Stats and DB Statistics")]
+        public static IDictionary<string, long> DbStats { get; set; } = new ConcurrentDictionary<string, long>();
     }
 } 

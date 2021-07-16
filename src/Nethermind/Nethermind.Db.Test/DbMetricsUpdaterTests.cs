@@ -28,7 +28,7 @@ namespace Nethermind.Db.Test
         [TearDown]
         public void TearDow()
         {
-            Metrics.MetricsDict.Clear();
+            Metrics.DbStats.Clear();
         }
 
         [Test]
@@ -39,18 +39,18 @@ namespace Nethermind.Db.Test
             var testDump = File.ReadAllText(@"InputFiles/CompactionStatsExample_AllData.txt");
             new DbMetricsUpdater("Test", null, null, null, logger).ProcessCompactionStats(testDump);
 
-            Assert.AreEqual(11, Metrics.MetricsDict.Count);
-            Assert.AreEqual(2, Metrics.MetricsDict["DbTestLevel0Files"]);
-            Assert.AreEqual(0, Metrics.MetricsDict["DbTestLevel0FilesCompacted"]);
-            Assert.AreEqual(4, Metrics.MetricsDict["DbTestLevel1Files"]);
-            Assert.AreEqual(2, Metrics.MetricsDict["DbTestLevel1FilesCompacted"]);
-            Assert.AreEqual(3, Metrics.MetricsDict["DbTestLevel2Files"]);
-            Assert.AreEqual(1, Metrics.MetricsDict["DbTestLevel2FilesCompacted"]);
-            Assert.AreEqual(10, Metrics.MetricsDict["DbTestIntervalCompactionGBWrite"]);
-            Assert.AreEqual(2, Metrics.MetricsDict["DbTestIntervalCompactionMBPerSecWrite"]);
-            Assert.AreEqual(123, Metrics.MetricsDict["DbTestIntervalCompactionGBRead"]);
-            Assert.AreEqual(0, Metrics.MetricsDict["DbTestIntervalCompactionMBPerSecRead"]);
-            Assert.AreEqual(111, Metrics.MetricsDict["DbTestIntervalCompactionSeconds"]);
+            Assert.AreEqual(11, Metrics.DbStats.Count);
+            Assert.AreEqual(2, Metrics.DbStats["DbTestLevel0Files"]);
+            Assert.AreEqual(0, Metrics.DbStats["DbTestLevel0FilesCompacted"]);
+            Assert.AreEqual(4, Metrics.DbStats["DbTestLevel1Files"]);
+            Assert.AreEqual(2, Metrics.DbStats["DbTestLevel1FilesCompacted"]);
+            Assert.AreEqual(3, Metrics.DbStats["DbTestLevel2Files"]);
+            Assert.AreEqual(1, Metrics.DbStats["DbTestLevel2FilesCompacted"]);
+            Assert.AreEqual(10, Metrics.DbStats["DbTestIntervalCompactionGBWrite"]);
+            Assert.AreEqual(2, Metrics.DbStats["DbTestIntervalCompactionMBPerSecWrite"]);
+            Assert.AreEqual(123, Metrics.DbStats["DbTestIntervalCompactionGBRead"]);
+            Assert.AreEqual(0, Metrics.DbStats["DbTestIntervalCompactionMBPerSecRead"]);
+            Assert.AreEqual(111, Metrics.DbStats["DbTestIntervalCompactionSeconds"]);
         }
 
         [Test]
@@ -61,12 +61,12 @@ namespace Nethermind.Db.Test
             var testDump = File.ReadAllText(@"InputFiles/CompactionStatsExample_MissingLevels.txt");
             new DbMetricsUpdater("Test", null, null, null, logger).ProcessCompactionStats(testDump);
 
-            Assert.AreEqual(5, Metrics.MetricsDict.Count);
-            Assert.AreEqual(10, Metrics.MetricsDict["DbTestIntervalCompactionGBWrite"]);
-            Assert.AreEqual(2, Metrics.MetricsDict["DbTestIntervalCompactionMBPerSecWrite"]);
-            Assert.AreEqual(123, Metrics.MetricsDict["DbTestIntervalCompactionGBRead"]);
-            Assert.AreEqual(0, Metrics.MetricsDict["DbTestIntervalCompactionMBPerSecRead"]);
-            Assert.AreEqual(111, Metrics.MetricsDict["DbTestIntervalCompactionSeconds"]);
+            Assert.AreEqual(5, Metrics.DbStats.Count);
+            Assert.AreEqual(10, Metrics.DbStats["DbTestIntervalCompactionGBWrite"]);
+            Assert.AreEqual(2, Metrics.DbStats["DbTestIntervalCompactionMBPerSecWrite"]);
+            Assert.AreEqual(123, Metrics.DbStats["DbTestIntervalCompactionGBRead"]);
+            Assert.AreEqual(0, Metrics.DbStats["DbTestIntervalCompactionMBPerSecRead"]);
+            Assert.AreEqual(111, Metrics.DbStats["DbTestIntervalCompactionSeconds"]);
         }
 
         [Test]
@@ -77,13 +77,13 @@ namespace Nethermind.Db.Test
             var testDump = File.ReadAllText(@"InputFiles/CompactionStatsExample_MissingIntervalCompaction.txt");
             new DbMetricsUpdater("Test", null, null, null, logger).ProcessCompactionStats(testDump);
 
-            Assert.AreEqual(6, Metrics.MetricsDict.Count);
-            Assert.AreEqual(2, Metrics.MetricsDict["DbTestLevel0Files"]);
-            Assert.AreEqual(0, Metrics.MetricsDict["DbTestLevel0FilesCompacted"]);
-            Assert.AreEqual(4, Metrics.MetricsDict["DbTestLevel1Files"]);
-            Assert.AreEqual(2, Metrics.MetricsDict["DbTestLevel1FilesCompacted"]);
-            Assert.AreEqual(3, Metrics.MetricsDict["DbTestLevel2Files"]);
-            Assert.AreEqual(1, Metrics.MetricsDict["DbTestLevel2FilesCompacted"]);
+            Assert.AreEqual(6, Metrics.DbStats.Count);
+            Assert.AreEqual(2, Metrics.DbStats["DbTestLevel0Files"]);
+            Assert.AreEqual(0, Metrics.DbStats["DbTestLevel0FilesCompacted"]);
+            Assert.AreEqual(4, Metrics.DbStats["DbTestLevel1Files"]);
+            Assert.AreEqual(2, Metrics.DbStats["DbTestLevel1FilesCompacted"]);
+            Assert.AreEqual(3, Metrics.DbStats["DbTestLevel2Files"]);
+            Assert.AreEqual(1, Metrics.DbStats["DbTestLevel2FilesCompacted"]);
 
             logger.Received().Warn(Arg.Is<string>(s => s.StartsWith("Cannot find 'Interval compaction' stats for Test database")));
         }
@@ -96,7 +96,7 @@ namespace Nethermind.Db.Test
             var testDump = string.Empty;
             new DbMetricsUpdater("Test", null, null, null, logger).ProcessCompactionStats(testDump);
 
-            Assert.AreEqual(0, Metrics.MetricsDict.Count);
+            Assert.AreEqual(0, Metrics.DbStats.Count);
 
             logger.Received().Warn("No RocksDB compaction stats available for Test databse.");
         }
@@ -109,7 +109,7 @@ namespace Nethermind.Db.Test
             string testDump = null;
             new DbMetricsUpdater("Test", null, null, null, logger).ProcessCompactionStats(testDump);
 
-            Assert.AreEqual(0, Metrics.MetricsDict.Count);
+            Assert.AreEqual(0, Metrics.DbStats.Count);
 
             logger.Received().Warn("No RocksDB compaction stats available for Test databse.");
         }

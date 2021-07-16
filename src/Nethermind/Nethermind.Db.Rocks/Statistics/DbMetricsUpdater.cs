@@ -80,7 +80,7 @@ namespace Nethermind.Db.Rocks.Statistics
             {
                 foreach (var stat in levelStats)
                 {
-                    Metrics.MetricsDict[$"Db{_dbName}{stat.Name}"] = stat.Value;
+                    Metrics.DbStats[$"{_dbName}Db{stat.Name}"] = stat.Value;
                 }
             }
         }
