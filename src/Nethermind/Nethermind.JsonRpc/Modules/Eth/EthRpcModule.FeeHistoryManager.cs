@@ -25,7 +25,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
     {
         public class FeeHistoryManager : IFeeHistoryManager
         {
-            public ResultWrapper<FeeHistoryResult> GetFeeHistory(long blockCount, long lastBlockNumber, float[]? rewardPercentiles = null)
+            public ResultWrapper<FeeHistoryResult> GetFeeHistory(long blockCount, long lastBlockNumber,
+                double[]? rewardPercentiles = null)
             {
                 if (blockCount < 1)
                 {
@@ -34,16 +35,16 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
                 if (blockCount > 1024)
                 {
-                    blockCount = 1024;
+                    blockCount = GetMaxBlockCount();
                 }
 
                 if (rewardPercentiles != null)
                 {
-                    int index = 1;
+                    int index = -1;
                     int count = rewardPercentiles.Length;
                     int[] incorrectlySortedIndexes =
-                        rewardPercentiles.Select(val => index).Where(val =>
-                            index++ < count && rewardPercentiles[index] < rewardPercentiles[index - 1])
+                        rewardPercentiles.Select(val => ++index).Where(val => index > 0 &&
+                            index < count && rewardPercentiles[index] < rewardPercentiles[index - 1])
                             .ToArray();
                     if (incorrectlySortedIndexes.Any())
                     {
@@ -52,14 +53,28 @@ namespace Nethermind.JsonRpc.Modules.Eth
                             $"rewardPercentiles: Value at index {firstIndex}: {rewardPercentiles[firstIndex]} is less than " +
                             $"the value at previous index {firstIndex - 1}: {rewardPercentiles[firstIndex - 1]}.");
                     }
+
+                    double[] invalidValues = rewardPercentiles.Select(val => val).Where(val => val < 0 || val > 100)
+                        .ToArray();
+                    if (invalidValues.Any())
+                    {
+                        return ResultWrapper<FeeHistoryResult>.Fail(
+                            $"rewardPercentiles: Values {String.Join(", ", invalidValues)} are below 0 or greater than 100."
+                            );
+                    }
                 }
 
                 return FeeHistoryLookup();
             }
 
+            public virtual int GetMaxBlockCount()
+            {
+                return 1024;
+            }
+
             private ResultWrapper<FeeHistoryResult> FeeHistoryLookup()
             {
-                throw new NotImplementedException();
+                return ResultWrapper<FeeHistoryResult>.Fail("");
             }
         }
     }

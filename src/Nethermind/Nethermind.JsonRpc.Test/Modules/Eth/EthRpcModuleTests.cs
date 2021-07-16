@@ -66,17 +66,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                 $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32603,\"message\":\"blockCount: Block count, {blockCount}, is less than 1.\"}},\"id\":67}}"; 
             Assert.AreEqual(expected == serialized, resultIsError);
         }
-        
-        public async Task Eth_feeHistory_IfRewardPercentilesContainInvalidNumber_ResultsInFailure()
-        {
-            
-        }
-        
-        public async Task Eth_feeHistory_IfRewardPercentilesNotInAscendingOrder_ResultsInFailure()
-        {
-            
-        }
-        
+
         [TestCase("earliest", "0x3635c9adc5dea00000")]
         [TestCase("latest", "0x3635c9adc5de9f09e5")]
         [TestCase("pending", "0x3635c9adc5de9f09e5")]

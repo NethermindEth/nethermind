@@ -148,7 +148,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return ResultWrapper<UInt256?>.Success(20.GWei());
         }
 
-        public ResultWrapper<FeeHistoryResult> eth_feeHistory(long blockCount, long lastBlockNumber, float[]? rewardPercentiles = null)
+        public ResultWrapper<FeeHistoryResult> eth_feeHistory(long blockCount, long lastBlockNumber, double[]? rewardPercentiles = null)
         {
             return _feeHistoryManager.GetFeeHistory(blockCount, lastBlockNumber, rewardPercentiles);
         }
