@@ -16,11 +16,10 @@
 // 
 
 using System;
-using System.Drawing;
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
-using Nethermind.Int256;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
@@ -81,6 +80,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
                     double[] invalidValues = rewardPercentiles.Select(val => val).Where(val => val < 0 || val > 100)
                         .ToArray();
+                    
                     if (invalidValues.Any())
                     {
                         {
@@ -105,9 +105,25 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 Block pendingBlock = _blockFinder.FindPendingBlock();
                 long pendingBlockNumber = pendingBlock.Number;
                 long firstBlockNumber = lastBlockNumber + 1 - blockCount;
-                for (int i = 0; i < blockCount; i++)
+                List<BlockFeeInfo> blockFeeInfos = new();
+                for (; firstBlockNumber < lastBlockNumber; firstBlockNumber++)
                 {
-                    
+                    BlockFeeInfo blockFeeInfo = new();
+                    if (firstBlockNumber > pendingBlockNumber)
+                    {
+                        blockFeeInfo.Block = pendingBlock;
+                        blockFeeInfo.BlockNumber = pendingBlockNumber;
+                        blockFeeInfo.BlockHeader = pendingBlock.Header;
+                    }
+                    else
+                    {
+                        Block block = _blockFinder.FindBlock(firstBlockNumber);
+                        blockFeeInfo.Block = block;
+                        blockFeeInfo.BlockNumber = firstBlockNumber;
+                        blockFeeInfo.BlockHeader = block.Header;
+                    }
+
+                    blockFeeInfos.Add(blockFeeInfo);
                 }
                 return ResultWrapper<FeeHistoryResult>.Fail("");
             }
