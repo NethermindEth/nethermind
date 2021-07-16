@@ -17,21 +17,14 @@
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 {
-    public class PooledTransactionsMessage : P2PMessage
+    public class PooledTransactionsMessage : Eth66Message<Eth.V65.PooledTransactionsMessage>
     {
-        public override int PacketType { get; } = Eth66MessageCode.PooledTransactions;
-        public override string Protocol { get; } = "eth";
-        public long RequestId { get; set; }
-        public Eth.V65.PooledTransactionsMessage EthMessage { get; set; }
-        
         public PooledTransactionsMessage() 
         {
         }
         
-        public PooledTransactionsMessage(long requestId, Eth.V65.PooledTransactionsMessage ethMessage)
+        public PooledTransactionsMessage(long requestId, Eth.V65.PooledTransactionsMessage ethMessage) : base(requestId, ethMessage)
         {
-            RequestId = requestId;
-            EthMessage = ethMessage;
         }
     }
 }

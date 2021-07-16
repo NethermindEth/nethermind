@@ -15,42 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using DotNetty.Buffers;
-using Nethermind.Serialization.Rlp;
-
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 {
-    public class PooledTransactionsMessageSerializer : IZeroMessageSerializer<PooledTransactionsMessage>
+    public class PooledTransactionsMessageSerializer : Eth66MessageSerializer<PooledTransactionsMessage, Eth.V65.PooledTransactionsMessage>
     {
-        public void Serialize(IByteBuffer byteBuffer, PooledTransactionsMessage message)
+        public PooledTransactionsMessageSerializer(IZeroMessageSerializer<V65.PooledTransactionsMessage> ethMessageSerializer) : base(ethMessageSerializer)
         {
-            Eth.V65.PooledTransactionsMessageSerializer ethSerializer = new();
-            Rlp ethMessage = new(ethSerializer.Serialize(message.EthMessage));
-            int contentLength = Rlp.LengthOf(message.RequestId) + ethMessage.Length;
-
-            int totalLength = Rlp.GetSequenceRlpLength(contentLength);
-
-            RlpStream rlpStream = new NettyRlpStream(byteBuffer);
-            byteBuffer.EnsureWritable(totalLength);
-
-            rlpStream.StartSequence(contentLength);
-            rlpStream.Encode(message.RequestId);
-            rlpStream.Encode(ethMessage);
-        }
-
-        public PooledTransactionsMessage Deserialize(IByteBuffer byteBuffer)
-        {
-            NettyRlpStream rlpStream = new(byteBuffer);
-            return Deserialize(rlpStream);
-        }
-        
-        private static PooledTransactionsMessage Deserialize(RlpStream rlpStream)
-        {
-            PooledTransactionsMessage pooledTransactionsMessage = new();
-            rlpStream.ReadSequenceLength();
-            pooledTransactionsMessage.RequestId = rlpStream.DecodeLong();
-            pooledTransactionsMessage.EthMessage = V65.PooledTransactionsMessageSerializer.Deserialize(rlpStream);
-            return pooledTransactionsMessage;
         }
     }
 }

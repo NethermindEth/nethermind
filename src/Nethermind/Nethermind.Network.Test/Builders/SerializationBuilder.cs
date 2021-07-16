@@ -26,6 +26,7 @@ using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Network.Discovery.Serializers;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
+using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Specs;
@@ -94,15 +95,15 @@ namespace Nethermind.Network.Test.Builders
         public SerializationBuilder WithEth66()
         {
             return WithEth65()
-                .With(new Network.P2P.Subprotocols.Eth.V66.GetBlockHeadersMessageSerializer())
-                .With(new Network.P2P.Subprotocols.Eth.V66.BlockHeadersMessageSerializer())
-                .With(new Network.P2P.Subprotocols.Eth.V66.GetBlockBodiesMessageSerializer())
-                .With(new Network.P2P.Subprotocols.Eth.V66.BlockBodiesMessageSerializer())
-                .With(new Network.P2P.Subprotocols.Eth.V66.GetPooledTransactionsMessageSerializer())
-                .With(new Network.P2P.Subprotocols.Eth.V66.PooledTransactionsMessageSerializer())
-                .With(new Network.P2P.Subprotocols.Eth.V66.GetNodeDataMessageSerializer())
-                .With(new Network.P2P.Subprotocols.Eth.V66.NodeDataMessageSerializer())
-                .With(new Network.P2P.Subprotocols.Eth.V66.GetReceiptsMessageSerializer())
+                .With(new Network.P2P.Subprotocols.Eth.V66.GetBlockHeadersMessageSerializer(new GetBlockHeadersMessageSerializer()))
+                .With(new Network.P2P.Subprotocols.Eth.V66.BlockHeadersMessageSerializer(new BlockHeadersMessageSerializer()))
+                .With(new Network.P2P.Subprotocols.Eth.V66.GetBlockBodiesMessageSerializer(new GetBlockBodiesMessageSerializer()))
+                .With(new Network.P2P.Subprotocols.Eth.V66.BlockBodiesMessageSerializer(new BlockBodiesMessageSerializer()))
+                .With(new Network.P2P.Subprotocols.Eth.V66.GetPooledTransactionsMessageSerializer(new GetPooledTransactionsMessageSerializer()))
+                .With(new Network.P2P.Subprotocols.Eth.V66.PooledTransactionsMessageSerializer(new PooledTransactionsMessageSerializer()))
+                .With(new Network.P2P.Subprotocols.Eth.V66.GetNodeDataMessageSerializer(new NodeDataMessageSerializer()))
+                .With(new Network.P2P.Subprotocols.Eth.V66.NodeDataMessageSerializer(new NodeDataMessageSerializer()))
+                .With(new Network.P2P.Subprotocols.Eth.V66.GetReceiptsMessageSerializer(new GetReceiptsMessageSerializer()))
                 .With(new Network.P2P.Subprotocols.Eth.V66.ReceiptsMessageSerializer(MainnetSpecProvider.Instance));
         }
 

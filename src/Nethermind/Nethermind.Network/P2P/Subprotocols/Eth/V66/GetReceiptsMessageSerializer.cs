@@ -20,37 +20,10 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 {
-    public class GetReceiptsMessageSerializer : IZeroMessageSerializer<GetReceiptsMessage>
+    public class GetReceiptsMessageSerializer : Eth66MessageSerializer<GetReceiptsMessage, Eth.V63.GetReceiptsMessage>
     {
-        public void Serialize(IByteBuffer byteBuffer, GetReceiptsMessage message)
+        public GetReceiptsMessageSerializer(IZeroMessageSerializer<V63.GetReceiptsMessage> ethMessageSerializer) : base(ethMessageSerializer)
         {
-            Eth.V63.GetReceiptsMessageSerializer ethSerializer = new();
-            Rlp ethMessage = new(ethSerializer.Serialize(message.EthMessage));
-            int contentLength = Rlp.LengthOf(message.RequestId) + ethMessage.Length;
-
-            int totalLength = Rlp.GetSequenceRlpLength(contentLength);
-
-            RlpStream rlpStream = new NettyRlpStream(byteBuffer);
-            byteBuffer.EnsureWritable(totalLength);
-
-            rlpStream.StartSequence(contentLength);
-            rlpStream.Encode(message.RequestId);
-            rlpStream.Encode(ethMessage);
-        }
-
-        public GetReceiptsMessage Deserialize(IByteBuffer byteBuffer)
-        {
-            NettyRlpStream rlpStream = new(byteBuffer);
-            return Deserialize(rlpStream);
-        }
-
-        public static GetReceiptsMessage Deserialize(RlpStream rlpStream)
-        {
-            GetReceiptsMessage getReceiptsMessage = new();
-            rlpStream.ReadSequenceLength();
-            getReceiptsMessage.RequestId = rlpStream.DecodeLong();
-            getReceiptsMessage.EthMessage = V63.GetReceiptsMessageSerializer.Deserialize(rlpStream);
-            return getReceiptsMessage;
         }
     }
 }

@@ -17,21 +17,14 @@
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 {
-    public class GetBlockBodiesMessage : P2PMessage
+    public class GetBlockBodiesMessage : Eth66Message<Eth.V62.GetBlockBodiesMessage>
     {
-        public override int PacketType { get; } = Eth66MessageCode.GetBlockBodies;
-        public override string Protocol { get; } = "eth";
-        public long RequestId;
-        public Eth.V62.GetBlockBodiesMessage EthMessage;
-
         public GetBlockBodiesMessage()
         {
         }
         
-        public GetBlockBodiesMessage(long requestId, Eth.V62.GetBlockBodiesMessage ethMessage)
+        public GetBlockBodiesMessage(long requestId, Eth.V62.GetBlockBodiesMessage ethMessage) : base(requestId, ethMessage)
         {
-            RequestId = requestId;
-            EthMessage = ethMessage;
         }
     }
 }

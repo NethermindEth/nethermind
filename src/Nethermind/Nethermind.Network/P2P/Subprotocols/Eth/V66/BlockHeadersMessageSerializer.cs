@@ -15,57 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using DotNetty.Buffers;
-using Nethermind.Serialization.Rlp;
-
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 {
     public class BlockHeadersMessageSerializer : Eth66MessageSerializer<BlockHeadersMessage, Eth.V62.BlockHeadersMessage>
     {
         public BlockHeadersMessageSerializer(IZeroMessageSerializer<V62.BlockHeadersMessage> ethMessageSerializer) : base(ethMessageSerializer)
         {
-        }
-    }
-
-    public class Eth66MessageSerializer<TEth66Message, TEthMessage> : IZeroMessageSerializer<TEth66Message>
-        where TEth66Message : Eth66Message<TEthMessage>, new()
-        where TEthMessage : P2PMessage
-    {
-        private readonly IZeroMessageSerializer<TEthMessage> _ethMessageSerializer;
-
-        public Eth66MessageSerializer(IZeroMessageSerializer<TEthMessage> ethMessageSerializer)
-        {
-            _ethMessageSerializer = ethMessageSerializer;
-        }
-        
-        public void Serialize(IByteBuffer byteBuffer, TEth66Message message)
-        {
-            int length = GetLength(message, out int contentLength);
-            byteBuffer.EnsureWritable(length, true);
-            RlpStream rlpStream = new NettyRlpStream(byteBuffer);
-            rlpStream.StartSequence(contentLength);
-            rlpStream.Encode(message.RequestId);
-            _ethMessageSerializer.Serialize(byteBuffer, message.EthMessage);
-        }
-
-        public TEth66Message Deserialize(IByteBuffer byteBuffer)
-        {
-            NettyRlpStream rlpStream = new(byteBuffer);
-            TEth66Message blockHeadersMessage = new();
-            rlpStream.ReadSequenceLength();
-            blockHeadersMessage.RequestId = rlpStream.DecodeLong();
-            blockHeadersMessage.EthMessage = _ethMessageSerializer.Deserialize(byteBuffer);
-            return blockHeadersMessage;
-        }
-
-        public int GetLength(TEth66Message message, out int contentLength)
-        {
-            int innerMessageLength = _ethMessageSerializer.GetLength(message.EthMessage, out _);
-            contentLength =
-                Rlp.LengthOf(message.RequestId) +
-                innerMessageLength;
-
-            return Rlp.GetSequenceRlpLength(contentLength);
         }
     }
 }

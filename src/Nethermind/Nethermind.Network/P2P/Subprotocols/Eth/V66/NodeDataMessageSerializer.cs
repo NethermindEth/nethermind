@@ -20,37 +20,10 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 {
-    public class NodeDataMessageSerializer : IZeroMessageSerializer<NodeDataMessage>
+    public class NodeDataMessageSerializer : Eth66MessageSerializer<NodeDataMessage, Eth.V63.NodeDataMessage>
     {
-        public void Serialize(IByteBuffer byteBuffer, NodeDataMessage message)
+        public NodeDataMessageSerializer(IZeroMessageSerializer<V63.NodeDataMessage> ethMessageSerializer) : base(ethMessageSerializer)
         {
-            Eth.V63.NodeDataMessageSerializer ethSerializer = new();
-            Rlp ethMessage = new(ethSerializer.Serialize(message.EthMessage));
-            int contentLength = Rlp.LengthOf(message.RequestId) + ethMessage.Length;
-
-            int totalLength = Rlp.GetSequenceRlpLength(contentLength);
-
-            RlpStream rlpStream = new NettyRlpStream(byteBuffer);
-            byteBuffer.EnsureWritable(totalLength);
-
-            rlpStream.StartSequence(contentLength);
-            rlpStream.Encode(message.RequestId);
-            rlpStream.Encode(ethMessage);
-        }
-
-        public NodeDataMessage Deserialize(IByteBuffer byteBuffer)
-        {
-            NettyRlpStream rlpStream = new(byteBuffer);
-            return Deserialize(rlpStream);
-        }
-        
-        private static NodeDataMessage Deserialize(RlpStream rlpStream)
-        {
-            NodeDataMessage nodeDataMessage = new();
-            rlpStream.ReadSequenceLength();
-            nodeDataMessage.RequestId = rlpStream.DecodeLong();
-            nodeDataMessage.EthMessage = V63.NodeDataMessageSerializer.Deserialize(rlpStream);
-            return nodeDataMessage;
         }
     }
 }

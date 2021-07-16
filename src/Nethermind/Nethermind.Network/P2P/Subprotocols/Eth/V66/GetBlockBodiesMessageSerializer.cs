@@ -15,42 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using DotNetty.Buffers;
-using Nethermind.Serialization.Rlp;
-
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 {
-    public class GetBlockBodiesMessageSerializer : IZeroMessageSerializer<GetBlockBodiesMessage>
+    public class GetBlockBodiesMessageSerializer : Eth66MessageSerializer<GetBlockBodiesMessage, Eth.V62.GetBlockBodiesMessage>
     {
-        public void Serialize(IByteBuffer byteBuffer, GetBlockBodiesMessage message)
+        public GetBlockBodiesMessageSerializer(IZeroMessageSerializer<V62.GetBlockBodiesMessage> ethMessageSerializer) : base(ethMessageSerializer)
         {
-            Eth.V62.GetBlockBodiesMessageSerializer ethSerializer = new();
-            Rlp ethMessage = new(ethSerializer.Serialize(message.EthMessage));
-            int contentLength = Rlp.LengthOf(message.RequestId) + ethMessage.Length;
-
-            int totalLength = Rlp.GetSequenceRlpLength(contentLength);
-
-            RlpStream rlpStream = new NettyRlpStream(byteBuffer);
-            byteBuffer.EnsureWritable(totalLength);
-
-            rlpStream.StartSequence(contentLength);
-            rlpStream.Encode(message.RequestId);
-            rlpStream.Encode(ethMessage);
-        }
-
-        public GetBlockBodiesMessage Deserialize(IByteBuffer byteBuffer)
-        {
-            NettyRlpStream rlpStream = new(byteBuffer);
-            return Deserialize(rlpStream);
-        }
-
-        private static GetBlockBodiesMessage Deserialize(RlpStream rlpStream)
-        {
-            GetBlockBodiesMessage getBlockBodiesMessage = new();
-            rlpStream.ReadSequenceLength();
-            getBlockBodiesMessage.RequestId = rlpStream.DecodeLong();
-            getBlockBodiesMessage.EthMessage = Eth.V62.GetBlockBodiesMessageSerializer.Deserialize(rlpStream);
-            return getBlockBodiesMessage;
         }
     }
 }
