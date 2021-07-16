@@ -20,9 +20,9 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 {
-    public class GetNodeDataMessageSerializer : Eth66MessageSerializer<NodeDataMessage, Eth.V63.NodeDataMessage>
+    public class GetNodeDataMessageSerializer : Eth66MessageSerializer<GetNodeDataMessage, Eth.V63.GetNodeDataMessage>
     {
-        public GetNodeDataMessageSerializer(IZeroMessageSerializer<V63.NodeDataMessage> ethMessageSerializer) : base(ethMessageSerializer)
+        public GetNodeDataMessageSerializer(IZeroMessageSerializer<V63.GetNodeDataMessage> ethMessageSerializer) : base(ethMessageSerializer)
         {
         }
     }
