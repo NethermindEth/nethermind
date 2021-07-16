@@ -17,8 +17,10 @@
 
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.JsonRpc.Modules.Eth;
+using NSubstitute;
 using NUnit.Framework;
 using static Nethermind.JsonRpc.Modules.Eth.EthRpcModule;
 
@@ -32,7 +34,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             [Test]
             public void GetFeeHistory_IfBlockCountGreaterThan1024_BlockCountSetTo1024()
             {
-                TestableFeeHistoryManager feeHistoryManager = new TestableFeeHistoryManager();
+                TestableFeeHistoryManager feeHistoryManager = new TestableFeeHistoryManager(Substitute.For<IBlockFinder>());
                 
                 feeHistoryManager.GetFeeHistory(1025, 0);
 
@@ -43,7 +45,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             [TestCase(new double[]{-2.2,1,2,101,102}, "-2.2, 101, 102")]
             public void GetFeeHistory_IfRewardPercentilesContainInvalidNumber_ResultsInFailure(double[] rewardPercentiles, string invalidNums)
             {
-                TestableFeeHistoryManager feeHistoryManager = new TestableFeeHistoryManager();
+                TestableFeeHistoryManager feeHistoryManager = new TestableFeeHistoryManager(Substitute.For<IBlockFinder>());
 
                 ResultWrapper<FeeHistoryResult> resultWrapper = feeHistoryManager.GetFeeHistory(10, 10, rewardPercentiles);
 
@@ -53,7 +55,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             [Test]
             public void GetFeeHistory_IfRewardPercentilesNotInAscendingOrder_ResultsInFailure()
             {
-                FeeHistoryManager feeHistoryManager = new FeeHistoryManager();
+                FeeHistoryManager feeHistoryManager = new FeeHistoryManager(Substitute.For<IBlockFinder>());
                 double[] rewardPercentiles = {0,2,3,5,1};
 
                 ResultWrapper<FeeHistoryResult> resultWrapper = feeHistoryManager.GetFeeHistory(10, 10, rewardPercentiles);
@@ -65,6 +67,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
 
             class TestableFeeHistoryManager : FeeHistoryManager
             {
+                public TestableFeeHistoryManager(IBlockFinder blockFinder) : base(blockFinder)
+                {
+                }
                 public bool SetToMaxBlockCountCalled { get; private set; } = false;
 
                 protected override int GetMaxBlockCount()
@@ -72,6 +77,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                     SetToMaxBlockCountCalled = true;
                     return (0);
                 }
+
             }
         }
     }

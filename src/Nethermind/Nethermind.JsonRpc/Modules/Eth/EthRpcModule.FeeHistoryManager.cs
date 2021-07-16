@@ -18,6 +18,9 @@
 using System;
 using System.Drawing;
 using System.Linq;
+using Nethermind.Blockchain.Find;
+using Nethermind.Core;
+using Nethermind.Int256;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
@@ -25,12 +28,29 @@ namespace Nethermind.JsonRpc.Modules.Eth
     {
         public class FeeHistoryManager : IFeeHistoryManager
         {
+            private IBlockFinder _blockFinder;
+            public FeeHistoryManager(IBlockFinder blockFinder)
+            {
+                _blockFinder = blockFinder;
+            }
             public ResultWrapper<FeeHistoryResult> GetFeeHistory(long blockCount, long lastBlockNumber,
                 double[]? rewardPercentiles = null)
             {
+                ResultWrapper<FeeHistoryResult> failingResultWrapper = null;
+                if (InitialChecksFailed(blockCount, rewardPercentiles, ref failingResultWrapper))
+                    return failingResultWrapper;
+
+                return FeeHistoryLookup(blockCount, lastBlockNumber, rewardPercentiles);
+            }
+
+            private bool InitialChecksFailed(long blockCount, double[] rewardPercentiles, ref ResultWrapper<FeeHistoryResult> fail)
+            {
                 if (blockCount < 1)
                 {
-                    return ResultWrapper<FeeHistoryResult>.Fail($"blockCount: Block count, {blockCount}, is less than 1.");
+                    {
+                        fail = ResultWrapper<FeeHistoryResult>.Fail($"blockCount: Block count, {blockCount}, is less than 1.");
+                        return true;
+                    }
                 }
 
                 if (blockCount > 1024)
@@ -42,29 +62,37 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 {
                     int index = -1;
                     int count = rewardPercentiles.Length;
-                    int[] incorrectlySortedIndexes =
-                        rewardPercentiles.Select(val => ++index).Where(val => index > 0 &&
-                            index < count && rewardPercentiles[index] < rewardPercentiles[index - 1])
-                            .ToArray();
+                    int[] incorrectlySortedIndexes = rewardPercentiles
+                        .Select(val => ++index)
+                        .Where(val => index > 0 
+                                      && index < count 
+                                      && rewardPercentiles[index] < rewardPercentiles[index - 1])
+                        .ToArray();
                     if (incorrectlySortedIndexes.Any())
                     {
                         int firstIndex = incorrectlySortedIndexes.ElementAt(0);
-                        return ResultWrapper<FeeHistoryResult>.Fail(
-                            $"rewardPercentiles: Value at index {firstIndex}: {rewardPercentiles[firstIndex]} is less than " +
-                            $"the value at previous index {firstIndex - 1}: {rewardPercentiles[firstIndex - 1]}.");
+                        {
+                            fail = ResultWrapper<FeeHistoryResult>.Fail(
+                                $"rewardPercentiles: Value at index {firstIndex}: {rewardPercentiles[firstIndex]} is less than " +
+                                $"the value at previous index {firstIndex - 1}: {rewardPercentiles[firstIndex - 1]}.");
+                            return true;
+                        }
                     }
 
                     double[] invalidValues = rewardPercentiles.Select(val => val).Where(val => val < 0 || val > 100)
                         .ToArray();
                     if (invalidValues.Any())
                     {
-                        return ResultWrapper<FeeHistoryResult>.Fail(
-                            $"rewardPercentiles: Values {String.Join(", ", invalidValues)} are below 0 or greater than 100."
+                        {
+                            fail = ResultWrapper<FeeHistoryResult>.Fail(
+                                $"rewardPercentiles: Values {String.Join(", ", invalidValues)} are below 0 or greater than 100."
                             );
+                            return true;
+                        }
                     }
                 }
 
-                return FeeHistoryLookup();
+                return false;
             }
 
             protected virtual int GetMaxBlockCount()
@@ -72,8 +100,15 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return 1024;
             }
 
-            private ResultWrapper<FeeHistoryResult> FeeHistoryLookup()
+            private ResultWrapper<FeeHistoryResult> FeeHistoryLookup(long blockCount, long lastBlockNumber, double[]? rewardPercentiles = null)
             {
+                Block pendingBlock = _blockFinder.FindPendingBlock();
+                long pendingBlockNumber = pendingBlock.Number;
+                long firstBlockNumber = lastBlockNumber + 1 - blockCount;
+                for (int i = 0; i < blockCount; i++)
+                {
+                    
+                }
                 return ResultWrapper<FeeHistoryResult>.Fail("");
             }
         }
