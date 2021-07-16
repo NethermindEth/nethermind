@@ -67,7 +67,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return FeeHistoryLookup();
             }
 
-            public virtual int GetMaxBlockCount()
+            protected virtual int GetMaxBlockCount()
             {
                 return 1024;
             }

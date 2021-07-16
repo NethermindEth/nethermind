@@ -66,7 +66,8 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             class TestableFeeHistoryManager : FeeHistoryManager
             {
                 public bool SetToMaxBlockCountCalled { get; private set; } = false;
-                public override int GetMaxBlockCount()
+
+                protected override int GetMaxBlockCount()
                 {
                     SetToMaxBlockCountCalled = true;
                     return (0);
