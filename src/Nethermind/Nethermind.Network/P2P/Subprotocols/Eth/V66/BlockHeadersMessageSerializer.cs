@@ -20,39 +20,52 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 {
-    public class BlockHeadersMessageSerializer : IZeroMessageSerializer<BlockHeadersMessage>
+    public class BlockHeadersMessageSerializer : Eth66MessageSerializer<BlockHeadersMessage, Eth.V62.BlockHeadersMessage>
     {
-        public void Serialize(IByteBuffer byteBuffer, BlockHeadersMessage message)
+        public BlockHeadersMessageSerializer(IZeroMessageSerializer<V62.BlockHeadersMessage> ethMessageSerializer) : base(ethMessageSerializer)
         {
-            Eth.V62.BlockHeadersMessageSerializer ethSerializer = new();
-            Rlp ethMessage = new(ethSerializer.Serialize(message.EthMessage));
-            int contentLength =
-                Rlp.LengthOf(message.RequestId) +
-                ethMessage.Length;
+        }
+    }
 
-            int totalLength = Rlp.GetSequenceRlpLength(contentLength);
+    public class Eth66MessageSerializer<TEth66Message, TEthMessage> : IZeroMessageSerializer<TEth66Message>
+        where TEth66Message : Eth66Message<TEthMessage>, new()
+        where TEthMessage : P2PMessage
+    {
+        private readonly IZeroMessageSerializer<TEthMessage> _ethMessageSerializer;
 
+        public Eth66MessageSerializer(IZeroMessageSerializer<TEthMessage> ethMessageSerializer)
+        {
+            _ethMessageSerializer = ethMessageSerializer;
+        }
+        
+        public void Serialize(IByteBuffer byteBuffer, TEth66Message message)
+        {
+            int length = GetLength(message, out int contentLength);
+            byteBuffer.EnsureWritable(length, true);
             RlpStream rlpStream = new NettyRlpStream(byteBuffer);
-            byteBuffer.EnsureWritable(totalLength, true);
-
             rlpStream.StartSequence(contentLength);
             rlpStream.Encode(message.RequestId);
-            rlpStream.Encode(ethMessage);
+            _ethMessageSerializer.Serialize(byteBuffer, message.EthMessage);
         }
 
-        public BlockHeadersMessage Deserialize(IByteBuffer byteBuffer)
+        public TEth66Message Deserialize(IByteBuffer byteBuffer)
         {
             NettyRlpStream rlpStream = new(byteBuffer);
-            return Deserialize(rlpStream);
-        }
-
-        private static BlockHeadersMessage Deserialize(RlpStream rlpStream)
-        {
-            BlockHeadersMessage blockHeadersMessage = new();
+            TEth66Message blockHeadersMessage = new();
             rlpStream.ReadSequenceLength();
             blockHeadersMessage.RequestId = rlpStream.DecodeLong();
-            blockHeadersMessage.EthMessage = V62.BlockHeadersMessageSerializer.Deserialize(rlpStream);
+            blockHeadersMessage.EthMessage = _ethMessageSerializer.Deserialize(byteBuffer);
             return blockHeadersMessage;
+        }
+
+        public int GetLength(TEth66Message message, out int contentLength)
+        {
+            int innerMessageLength = _ethMessageSerializer.GetLength(message.EthMessage, out _);
+            contentLength =
+                Rlp.LengthOf(message.RequestId) +
+                innerMessageLength;
+
+            return Rlp.GetSequenceRlpLength(contentLength);
         }
     }
 }

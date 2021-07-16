@@ -17,21 +17,14 @@
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 {
-    public class BlockHeadersMessage : P2PMessage
+    public class BlockHeadersMessage : Eth66Message<Eth.V62.BlockHeadersMessage>
     {
-        public override int PacketType { get; } = Eth66MessageCode.BlockHeaders;
-        public override string Protocol { get; } = "eth";
-        public long RequestId { get; set; }
-        public Eth.V62.BlockHeadersMessage EthMessage { get; set; }
-        
         public BlockHeadersMessage() 
         {
         }
         
-        public BlockHeadersMessage(long requestId, Eth.V62.BlockHeadersMessage ethMessage)
+        public BlockHeadersMessage(long requestId, Eth.V62.BlockHeadersMessage ethMessage) : base(requestId, ethMessage)
         {
-            RequestId = requestId;
-            EthMessage = ethMessage;
         }
     }
 }
