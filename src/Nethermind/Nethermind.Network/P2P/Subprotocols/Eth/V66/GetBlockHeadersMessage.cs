@@ -13,15 +13,18 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using DotNetty.Buffers;
-
-namespace Nethermind.Network
+namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 {
-    public interface IZeroMessageSerializer<T> where T : MessageBase
+    public class GetBlockHeadersMessage : Eth66Message<Eth.V62.GetBlockHeadersMessage>
     {
-        void Serialize(IByteBuffer byteBuffer, T message);
-        T Deserialize(IByteBuffer byteBuffer);
-        int GetLength(T message, out int contentLength);
+        public GetBlockHeadersMessage()
+        { 
+        }
+        
+        public GetBlockHeadersMessage(long requestId, Eth.V62.GetBlockHeadersMessage ethMessage) : base(requestId, ethMessage)
+        {
+        }
     }
 }
