@@ -39,6 +39,7 @@ using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Newtonsoft.Json;
+using static Nethermind.JsonRpc.Modules.Eth.EthRpcModule;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
@@ -50,7 +51,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public ILogFinder LogFinder { get; private set; }
         public IKeyStore KeyStore { get; } = new MemKeyStore(TestItem.PrivateKeys);
         public IWallet TestWallet { get; } = new DevKeyStoreWallet(new MemKeyStore(TestItem.PrivateKeys), LimboLogs.Instance);
-
+        public IFeeHistoryManager FeeHistoryManager { get; private set; }
         public static Builder<TestRpcBlockchain> ForTest(string sealEngineType) => ForTest<TestRpcBlockchain>(sealEngineType);
 
         public static Builder<T> ForTest<T>(string sealEngineType) where T : TestRpcBlockchain, new() => 
@@ -123,7 +124,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             ITxSealer txSealer0 = new TxSealer(txSigner, Timestamper);
             ITxSealer txSealer1 = new NonceReservingTxSealer(txSigner, Timestamper, TxPool);
             TxSender ??= new TxPoolSender(TxPool, txSealer0, txSealer1);
-            
+            FeeHistoryManager = new FeeHistoryManager();
             EthRpcModule = new EthRpcModule(
                 new JsonRpcConfig(),
                 Bridge,
@@ -133,7 +134,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                 TxSender,
                 TestWallet,
                 LimboLogs.Instance,
-                SpecProvider);
+                SpecProvider,
+                FeeHistoryManager);
             
             return this;
         }

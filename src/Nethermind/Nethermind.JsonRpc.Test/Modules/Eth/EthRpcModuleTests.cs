@@ -47,6 +47,7 @@ using Nethermind.TxPool;
 using Newtonsoft.Json.Linq;
 using NSubstitute;
 using NUnit.Framework;
+using static Nethermind.JsonRpc.Modules.Eth.EthRpcModule;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth
 {
@@ -54,6 +55,28 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
     [TestFixture]
     public partial class EthRpcModuleTests
     {
+        [TestCase(0, true)]
+        [TestCase(1, false)]
+        public async Task Eth_feeHistory_IfBlockCountLessThanOne_ResultsInFailure(int blockCount, bool resultIsError)
+        {
+            using Context ctx = await Context.Create();
+            int lastBlockNumber = 0;
+            string serialized = ctx._test.TestEthRpc("eth_feeHistory", $"{blockCount:X}", $"{lastBlockNumber:X}");
+            string expected =
+                $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32603,\"message\":\"blockCount: Block count, {blockCount}, is less than 1.\"}},\"id\":67}}"; 
+            Assert.AreEqual(expected == serialized, resultIsError);
+        }
+        
+        public async Task Eth_feeHistory_IfRewardPercentilesContainInvalidNumber_ResultsInFailure()
+        {
+            
+        }
+        
+        public async Task Eth_feeHistory_IfRewardPercentilesNotInAscendingOrder_ResultsInFailure()
+        {
+            
+        }
+        
         [TestCase("earliest", "0x3635c9adc5dea00000")]
         [TestCase("latest", "0x3635c9adc5de9f09e5")]
         [TestCase("pending", "0x3635c9adc5de9f09e5")]

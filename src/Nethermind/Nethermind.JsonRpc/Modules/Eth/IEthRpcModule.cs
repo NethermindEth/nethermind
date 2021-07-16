@@ -44,6 +44,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
         [JsonRpcMethod(IsImplemented = false, Description = "Returns mining status", IsSharable = true)]
         ResultWrapper<bool?> eth_mining();
         
+        [JsonRpcMethod(IsImplemented = false, Description = "Returns block fee history.", IsSharable = true)]
+        ResultWrapper<FeeHistoryResult> eth_feeHistory(long blockCount, long lastBlockNumber, float[]? rewardPercentiles = null);
+        
         [JsonRpcMethod(IsImplemented = false, Description = "Returns full state snapshot", IsSharable = true)]
         ResultWrapper<byte[]> eth_snapshot();
         

@@ -68,6 +68,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
             throw new NotSupportedException();
         }
 
+        public ResultWrapper<FeeHistoryResult> eth_feeHistory(long blockCount, long lastBlockNumber, float[]? rewardPercentiles = null)
+        {
+            throw new NotSupportedException();
+        }
+
         public ResultWrapper<byte[]> eth_snapshot()
         {
             throw new NotSupportedException();

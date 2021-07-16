@@ -58,8 +58,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly ITxSender _txSender;
         private readonly IWallet _wallet;
         private readonly ISpecProvider _specProvider;
-
         private readonly ILogger _logger;
+        private readonly IFeeHistoryManager _feeHistoryManager;
         private static bool HasStateForBlock(IBlockchainBridge blockchainBridge, BlockHeader header)
         {
             RootCheckVisitor rootCheckVisitor = new();
@@ -76,7 +76,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
             ITxSender txSender,
             IWallet wallet,
             ILogManager logManager,
-            ISpecProvider specProvider)
+            ISpecProvider specProvider,
+            IFeeHistoryManager feeHistoryManager)
         {
             _logger = logManager.GetClassLogger();
             _rpcConfig = rpcConfig ?? throw new ArgumentNullException(nameof(rpcConfig));
@@ -87,6 +88,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+            _feeHistoryManager = feeHistoryManager ?? throw new ArgumentNullException(nameof(feeHistoryManager));
         }
 
         public ResultWrapper<string> eth_protocolVersion()
@@ -148,34 +150,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public ResultWrapper<FeeHistoryResult> eth_feeHistory(long blockCount, long lastBlockNumber, float[]? rewardPercentiles = null)
         {
-            if (blockCount < 0)
-            {
-                return ResultWrapper<FeeHistoryResult>.Fail($"blockCount: Block count, {blockCount}, is less than 0.");
-            }
-
-            if (blockCount > 1024)
-            {
-                blockCount = 1024;
-            }
-
-            if (rewardPercentiles != null)
-            {
-                int index = 1;
-                int count = rewardPercentiles.Length;
-                IEnumerable<int> incorrectlySortedIndexes =
-                    rewardPercentiles.Select(val => index).Where(val =>
-                        index++ < count && rewardPercentiles[index] < rewardPercentiles[index - 1]);
-                if (incorrectlySortedIndexes.Any())
-                {
-                    int firstIndex = incorrectlySortedIndexes.ElementAt(0);
-                    return ResultWrapper<FeeHistoryResult>.Fail(
-                        $"rewardPercentiles: Value at index {firstIndex}: {rewardPercentiles[firstIndex]} is less than " +
-                        $"the value at previous index {firstIndex - 1}: {rewardPercentiles[firstIndex - 1]}.");
-                }
-            }
-
-            return ResultWrapper<FeeHistoryResult>.Success(new FeeHistoryResult(0, Array.Empty<UInt256[]>(),
-                Array.Empty<UInt256>(), Array.Empty<UInt256>()));
+            return _feeHistoryManager.GetFeeHistory(blockCount, lastBlockNumber, rewardPercentiles);
         }
 
         public ResultWrapper<IEnumerable<Address>> eth_accounts()
