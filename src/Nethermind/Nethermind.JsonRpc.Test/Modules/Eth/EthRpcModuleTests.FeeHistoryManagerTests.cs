@@ -19,6 +19,7 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
+using Nethermind.Core.Test.Builders;
 using Nethermind.JsonRpc.Modules.Eth;
 using NSubstitute;
 using NUnit.Framework;
@@ -34,7 +35,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             [Test]
             public void GetFeeHistory_IfBlockCountGreaterThan1024_BlockCountSetTo1024()
             {
-                TestableFeeHistoryManager feeHistoryManager = new TestableFeeHistoryManager(Substitute.For<IBlockFinder>());
+                IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+                blockFinder.FindPendingBlock().Returns(Build.A.Block.TestObject);
+                TestableFeeHistoryManager feeHistoryManager = new TestableFeeHistoryManager(blockFinder);
                 
                 feeHistoryManager.GetFeeHistory(1025, 0);
 
