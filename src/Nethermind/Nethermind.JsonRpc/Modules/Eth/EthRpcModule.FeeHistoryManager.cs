@@ -18,6 +18,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using MathNet.Numerics.Distributions;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Org.BouncyCastle.Crypto.Tls;
@@ -39,11 +40,12 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 ResultWrapper<FeeHistoryResult> failingResultWrapper = null;
                 if (InitialChecksFailed(blockCount, rewardPercentiles, ref failingResultWrapper))
                     return failingResultWrapper;
-                Block pendingBlock = ResolveBlockRange(lastBlockNumber, blockCount);
+                int maxHistory = 1;
+                ResultWrapper<ResolveBlockRangeInfo> pendingBlock = ResolveBlockRange(lastBlockNumber, blockCount, maxHistory);
                 return FeeHistoryLookup(blockCount, lastBlockNumber, rewardPercentiles);
             }
 
-            private Block ResolveBlockRange(long lastBlockNumber, long blockCount)
+            private ResultWrapper<ResolveBlockRangeInfo> ResolveBlockRange(long lastBlockNumber, long blockCount, int maxHistory)
             {
                 Block? pendingBlock = null;
                 long? headBlockNumber = null;
@@ -61,7 +63,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                         lastBlockNumber = LastBlockNumberConsts.LatestBlockNumber;
                         blockCount--;
                         if (blockCount == 0)
-                            throw new NotImplementedException(); //return fail results
+                            return ResultWrapper<ResolveBlockRangeInfo>.Fail("Invalid pending block reduced blockCount to 0."); //return fail results
                     }
                 }
 
@@ -70,7 +72,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     headBlockNumber = _blockFinder.FindHeadBlock()?.Number;
                     if (headBlockNumber == null)
                     {
-                        throw new NotImplementedException();
+                        return ResultWrapper<ResolveBlockRangeInfo>.Fail("Head block not found"); //return fail results
                     }
                 }
 
@@ -80,15 +82,43 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 }
                 else if (pendingBlock != null && lastBlockNumber > headBlockNumber)
                 {
-                    throw new NotImplementedException();
+                    return ResultWrapper<ResolveBlockRangeInfo>.Fail("Pending block not present and last block number greater than head number.");
                 }
-
+                if (maxHistory != 0)
+                {
+                    long tooOldCount = (long) (headBlockNumber! - maxHistory - lastBlockNumber - blockCount)!;
+                    if (blockCount > tooOldCount)
+                        blockCount = tooOldCount;
+                    else
+                    {
+                        return ResultWrapper<ResolveBlockRangeInfo>.Fail("Block count is less than old blocks to remove.");
+                    }
+                }
                 if (blockCount > lastBlockNumber + 1)
                 {
                     blockCount = lastBlockNumber + 1;
                 }
+                return ResultWrapper<ResolveBlockRangeInfo>.Success(new ResolveBlockRangeInfo(pendingBlock, lastBlockNumber, blockCount));
             }
 
+            class ResolveBlockRangeInfo
+            {
+                public Block? pendingBlock;
+                public long? LastBlockNumber;
+                public long? BlockCount;
+
+                public ResolveBlockRangeInfo(Block? block, long? lastBlockNumber, long? blockCount)
+                {
+                    pendingBlock = block;
+                    LastBlockNumber = lastBlockNumber;
+                    BlockCount = blockCount;
+                }
+
+                public ResolveBlockRangeInfo() : this(null, null, null)
+                {
+                    
+                }
+            }
             private bool InitialChecksFailed(long blockCount, double[] rewardPercentiles, ref ResultWrapper<FeeHistoryResult> fail)
             {
                 if (blockCount < 1)
