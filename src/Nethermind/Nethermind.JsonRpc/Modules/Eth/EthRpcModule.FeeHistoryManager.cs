@@ -20,12 +20,13 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
+using Org.BouncyCastle.Crypto.Tls;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
     public partial class EthRpcModule
     {
-        public class FeeHistoryManager : IFeeHistoryManager
+        public partial class FeeHistoryManager : IFeeHistoryManager
         {
             private IBlockFinder _blockFinder;
             public FeeHistoryManager(IBlockFinder blockFinder)
@@ -38,8 +39,54 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 ResultWrapper<FeeHistoryResult> failingResultWrapper = null;
                 if (InitialChecksFailed(blockCount, rewardPercentiles, ref failingResultWrapper))
                     return failingResultWrapper;
-
+                Block pendingBlock = ResolveBlockRange(lastBlockNumber, blockCount);
                 return FeeHistoryLookup(blockCount, lastBlockNumber, rewardPercentiles);
+            }
+
+            private Block ResolveBlockRange(long lastBlockNumber, long blockCount)
+            {
+                Block? pendingBlock = null;
+                long? headBlockNumber = null;
+                Block? latestBlock = _blockFinder.FindLatestBlock();
+                if (lastBlockNumber == LastBlockNumberConsts.PendingBlockNumber)
+                {
+                    pendingBlock = _blockFinder.FindPendingBlock();
+                    if (pendingBlock != null)
+                    {
+                        lastBlockNumber = pendingBlock.Number;
+                        headBlockNumber = pendingBlock.Number - 1;
+                    }
+                    else
+                    {
+                        lastBlockNumber = LastBlockNumberConsts.LatestBlockNumber;
+                        blockCount--;
+                        if (blockCount == 0)
+                            throw new NotImplementedException(); //return fail results
+                    }
+                }
+
+                if (headBlockNumber == null)
+                {
+                    headBlockNumber = _blockFinder.FindHeadBlock()?.Number;
+                    if (headBlockNumber == null)
+                    {
+                        throw new NotImplementedException();
+                    }
+                }
+
+                if (lastBlockNumber == LastBlockNumberConsts.LatestBlockNumber)
+                {
+                    lastBlockNumber = (long) headBlockNumber!;
+                }
+                else if (pendingBlock != null && lastBlockNumber > headBlockNumber)
+                {
+                    throw new NotImplementedException();
+                }
+
+                if (blockCount > lastBlockNumber + 1)
+                {
+                    blockCount = lastBlockNumber + 1;
+                }
             }
 
             private bool InitialChecksFailed(long blockCount, double[] rewardPercentiles, ref ResultWrapper<FeeHistoryResult> fail)
