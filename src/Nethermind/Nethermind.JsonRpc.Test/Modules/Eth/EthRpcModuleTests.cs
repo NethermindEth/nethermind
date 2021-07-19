@@ -44,10 +44,8 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.TxPool;
-using Newtonsoft.Json.Linq;
 using NSubstitute;
 using NUnit.Framework;
-using static Nethermind.JsonRpc.Modules.Eth.EthRpcModule;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth
 {

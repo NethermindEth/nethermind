@@ -21,6 +21,7 @@ using System.Linq;
 using MathNet.Numerics.Distributions;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
+using Nethermind.Int256;
 using Org.BouncyCastle.Crypto.Tls;
 
 namespace Nethermind.JsonRpc.Modules.Eth
@@ -46,15 +47,16 @@ namespace Nethermind.JsonRpc.Modules.Eth
             public ResultWrapper<FeeHistoryResult> GetFeeHistory(long blockCount, long lastBlockNumber,
                 double[]? rewardPercentiles = null)
             {
-                ResultWrapper<FeeHistoryResult> failingResultWrapper = null;
-                if (InitialChecksFailed(blockCount, rewardPercentiles, ref failingResultWrapper))
+                if (InitialChecksFailed(blockCount, rewardPercentiles, out ResultWrapper<FeeHistoryResult> failingResultWrapper))
+                {
                     return failingResultWrapper;
+                }
                 int maxHistory = 1;
-                ResultWrapper<ResolveBlockRangeInfo> pendingBlock = _blockRangeManager.ResolveBlockRange(lastBlockNumber, blockCount, maxHistory);
+                ResultWrapper<ResolveBlockRangeInfo> pendingBlock = _blockRangeManager.ResolveBlockRange(ref lastBlockNumber, ref blockCount, maxHistory);
                 return FeeHistoryLookup(blockCount, lastBlockNumber, rewardPercentiles);
             }
 
-            private bool InitialChecksFailed(long blockCount, double[] rewardPercentiles, ref ResultWrapper<FeeHistoryResult> fail)
+            private bool InitialChecksFailed(long blockCount, double[] rewardPercentiles, out ResultWrapper<FeeHistoryResult> fail)
             {
                 if (blockCount < 1)
                 {
@@ -103,7 +105,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                         }
                     }
                 }
-
+                fail = ResultWrapper<FeeHistoryResult>.Success(new FeeHistoryResult(0,Array.Empty<UInt256[]>(),Array.Empty<UInt256>(),Array.Empty<UInt256>()));
                 return false;
             }
 

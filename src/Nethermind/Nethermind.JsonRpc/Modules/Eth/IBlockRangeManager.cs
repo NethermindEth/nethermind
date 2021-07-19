@@ -19,6 +19,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
 {
     public interface IBlockRangeManager
     {
-        ResultWrapper<ResolveBlockRangeInfo> ResolveBlockRange(long lastBlockNumber, long blockCount, int maxHistory);
+        ResultWrapper<ResolveBlockRangeInfo> ResolveBlockRange(ref long lastBlockNumber, ref long blockCount, int maxHistory);
     }
 }

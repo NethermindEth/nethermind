@@ -21,16 +21,16 @@ using static Nethermind.JsonRpc.Modules.Eth.EthRpcModule.LastBlockNumberConsts;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
-    public class BlockRangeManager : IBlockRangeManager
+    public sealed class BlockRangeManager : IBlockRangeManager
     {
-        private IBlockFinder _blockFinder;
+        private readonly IBlockFinder _blockFinder;
 
         public BlockRangeManager(IBlockFinder blockFinder)
         {
             _blockFinder = blockFinder;
         }
 
-        public ResultWrapper<ResolveBlockRangeInfo> ResolveBlockRange(long lastBlockNumber, long blockCount, int maxHistory)
+        public ResultWrapper<ResolveBlockRangeInfo> ResolveBlockRange(ref long lastBlockNumber, ref long blockCount, int maxHistory)
         {
             Block? pendingBlock = null;
             long? headBlockNumber = null;
@@ -45,9 +45,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 else
                 {
                     lastBlockNumber = LatestBlockNumber;
-                    blockCount--;
+                    blockCount--; 
                     if (blockCount == 0)
-                        return ResultWrapper<ResolveBlockRangeInfo>.Fail("Invalid pending block reduced blockCount to 0."); 
+                    {
+                        return ResultWrapper<ResolveBlockRangeInfo>.Fail("Invalid pending block reduced blockCount to 0.");
+                    }
                 }
             }
 
@@ -70,7 +72,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
             if (maxHistory != 0)
             {
-                long tooOldCount = (long) (headBlockNumber! - maxHistory - lastBlockNumber - blockCount)!;
+                long tooOldCount = (long) (headBlockNumber! - maxHistory - lastBlockNumber - blockCount);
                 if (blockCount > tooOldCount)
                     blockCount = tooOldCount;
                 else
