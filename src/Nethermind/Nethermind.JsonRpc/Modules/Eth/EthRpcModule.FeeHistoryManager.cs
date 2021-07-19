@@ -27,16 +27,22 @@ namespace Nethermind.JsonRpc.Modules.Eth
 {
     public partial class EthRpcModule
     {
-        public partial class FeeHistoryManager : IFeeHistoryManager
+        public class FeeHistoryManager : IFeeHistoryManager
         {
             private readonly IBlockFinder _blockFinder;
-            private readonly BlockRangeManager _blockRangeManager;
+            private readonly IBlockRangeManager _blockRangeManager;
 
             public FeeHistoryManager(IBlockFinder blockFinder)
             {
                 _blockFinder = blockFinder;
-                _blockRangeManager = new BlockRangeManager(_blockFinder);
+                _blockRangeManager = GetBlockRangeManager(_blockFinder);
             }
+
+            protected virtual IBlockRangeManager GetBlockRangeManager(IBlockFinder blockFinder)
+            {
+                return new BlockRangeManager(blockFinder);
+            }
+            
             public ResultWrapper<FeeHistoryResult> GetFeeHistory(long blockCount, long lastBlockNumber,
                 double[]? rewardPercentiles = null)
             {

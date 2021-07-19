@@ -21,7 +21,7 @@ using static Nethermind.JsonRpc.Modules.Eth.EthRpcModule.LastBlockNumberConsts;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
-    public class BlockRangeManager
+    public class BlockRangeManager : IBlockRangeManager
     {
         private IBlockFinder _blockFinder;
 
