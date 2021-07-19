@@ -15,15 +15,21 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using Nethermind.Core;
+
 namespace Nethermind.JsonRpc.Modules.Eth
 {
-    public partial class EthRpcModule
+    public class ResolveBlockRangeInfo
     {
-        public class LastBlockNumberConsts
+        public Block? _pendingBlock;
+        public long? _lastBlockNumber;
+        public long? _blockCount;
+
+        public ResolveBlockRangeInfo(Block? block, long? lastBlockNumber, long? blockCount)
         {
-            public const int PendingBlockNumber = -2;
-            public const int LatestBlockNumber = -1;
-            public const int EarliestBlockNumber = 0;
+            _pendingBlock = block;
+            _lastBlockNumber = lastBlockNumber;
+            _blockCount = blockCount;
         }
     }
 }

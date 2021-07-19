@@ -29,10 +29,13 @@ namespace Nethermind.JsonRpc.Modules.Eth
     {
         public partial class FeeHistoryManager : IFeeHistoryManager
         {
-            private IBlockFinder _blockFinder;
+            private readonly IBlockFinder _blockFinder;
+            private readonly BlockRangeManager _blockRangeManager;
+
             public FeeHistoryManager(IBlockFinder blockFinder)
             {
                 _blockFinder = blockFinder;
+                _blockRangeManager = new BlockRangeManager(_blockFinder);
             }
             public ResultWrapper<FeeHistoryResult> GetFeeHistory(long blockCount, long lastBlockNumber,
                 double[]? rewardPercentiles = null)
@@ -41,84 +44,10 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 if (InitialChecksFailed(blockCount, rewardPercentiles, ref failingResultWrapper))
                     return failingResultWrapper;
                 int maxHistory = 1;
-                ResultWrapper<ResolveBlockRangeInfo> pendingBlock = ResolveBlockRange(lastBlockNumber, blockCount, maxHistory);
+                ResultWrapper<ResolveBlockRangeInfo> pendingBlock = _blockRangeManager.ResolveBlockRange(lastBlockNumber, blockCount, maxHistory);
                 return FeeHistoryLookup(blockCount, lastBlockNumber, rewardPercentiles);
             }
 
-            private ResultWrapper<ResolveBlockRangeInfo> ResolveBlockRange(long lastBlockNumber, long blockCount, int maxHistory)
-            {
-                Block? pendingBlock = null;
-                long? headBlockNumber = null;
-                Block? latestBlock = _blockFinder.FindLatestBlock();
-                if (lastBlockNumber == LastBlockNumberConsts.PendingBlockNumber)
-                {
-                    pendingBlock = _blockFinder.FindPendingBlock();
-                    if (pendingBlock != null)
-                    {
-                        lastBlockNumber = pendingBlock.Number;
-                        headBlockNumber = pendingBlock.Number - 1;
-                    }
-                    else
-                    {
-                        lastBlockNumber = LastBlockNumberConsts.LatestBlockNumber;
-                        blockCount--;
-                        if (blockCount == 0)
-                            return ResultWrapper<ResolveBlockRangeInfo>.Fail("Invalid pending block reduced blockCount to 0."); //return fail results
-                    }
-                }
-
-                if (headBlockNumber == null)
-                {
-                    headBlockNumber = _blockFinder.FindHeadBlock()?.Number;
-                    if (headBlockNumber == null)
-                    {
-                        return ResultWrapper<ResolveBlockRangeInfo>.Fail("Head block not found"); //return fail results
-                    }
-                }
-
-                if (lastBlockNumber == LastBlockNumberConsts.LatestBlockNumber)
-                {
-                    lastBlockNumber = (long) headBlockNumber!;
-                }
-                else if (pendingBlock != null && lastBlockNumber > headBlockNumber)
-                {
-                    return ResultWrapper<ResolveBlockRangeInfo>.Fail("Pending block not present and last block number greater than head number.");
-                }
-                if (maxHistory != 0)
-                {
-                    long tooOldCount = (long) (headBlockNumber! - maxHistory - lastBlockNumber - blockCount)!;
-                    if (blockCount > tooOldCount)
-                        blockCount = tooOldCount;
-                    else
-                    {
-                        return ResultWrapper<ResolveBlockRangeInfo>.Fail("Block count is less than old blocks to remove.");
-                    }
-                }
-                if (blockCount > lastBlockNumber + 1)
-                {
-                    blockCount = lastBlockNumber + 1;
-                }
-                return ResultWrapper<ResolveBlockRangeInfo>.Success(new ResolveBlockRangeInfo(pendingBlock, lastBlockNumber, blockCount));
-            }
-
-            class ResolveBlockRangeInfo
-            {
-                public Block? pendingBlock;
-                public long? LastBlockNumber;
-                public long? BlockCount;
-
-                public ResolveBlockRangeInfo(Block? block, long? lastBlockNumber, long? blockCount)
-                {
-                    pendingBlock = block;
-                    LastBlockNumber = lastBlockNumber;
-                    BlockCount = blockCount;
-                }
-
-                public ResolveBlockRangeInfo() : this(null, null, null)
-                {
-                    
-                }
-            }
             private bool InitialChecksFailed(long blockCount, double[] rewardPercentiles, ref ResultWrapper<FeeHistoryResult> fail)
             {
                 if (blockCount < 1)
