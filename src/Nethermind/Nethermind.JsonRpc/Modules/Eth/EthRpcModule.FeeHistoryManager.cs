@@ -117,7 +117,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             {
                 Block pendingBlock = _blockFinder.FindPendingBlock();
                 long pendingBlockNumber = pendingBlock.Number;
-                long firstBlockNumber = lastBlockNumber + 1 - blockCount;
+                long firstBlockNumber = Math.Max(lastBlockNumber + 1 - blockCount, 0);
                 List<BlockFeeInfo> blockFeeInfos = new();
                 for (; firstBlockNumber < lastBlockNumber; firstBlockNumber++)
                 {

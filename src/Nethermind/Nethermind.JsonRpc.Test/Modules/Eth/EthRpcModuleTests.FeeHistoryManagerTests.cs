@@ -38,7 +38,6 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             {
                 IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
                 blockFinder.FindPendingBlock().Returns(Build.A.Block.WithNumber(1).TestObject);
-                blockFinder.FindBlock(Arg.Is<UInt256>(n => n ))
                 IBlockRangeManager blockRangeManager = Substitute.For<IBlockRangeManager>();
                 blockRangeManager.ResolveBlockRange(ref Arg.Any<long>(), ref Arg.Any<long>(), Arg.Any<int>(), ref Arg.Any<long?>())
                     .Returns(ResultWrapper<BlockRangeInfo>.Success(new BlockRangeInfo()));
