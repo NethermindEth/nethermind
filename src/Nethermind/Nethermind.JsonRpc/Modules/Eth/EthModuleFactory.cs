@@ -40,6 +40,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly IWallet _wallet;
         private readonly IJsonRpcConfig _rpcConfig;
         private readonly ISpecProvider _specProvider;
+        private readonly IFeeHistoryManager _feeHistoryManager;
 
         public EthModuleFactory(
             ITxPool txPool,
@@ -50,7 +51,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
             ILogManager logManager,
             IStateReader stateReader,
             IBlockchainBridgeFactory blockchainBridgeFactory,
-            ISpecProvider specProvider)
+            ISpecProvider specProvider,
+            IFeeHistoryManager feeHistoryManager)
         {
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
@@ -60,6 +62,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
             _blockchainBridgeFactory = blockchainBridgeFactory ?? throw new ArgumentNullException(nameof(blockchainBridgeFactory));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+            _feeHistoryManager = feeHistoryManager ?? throw new ArgumentNullException(nameof(feeHistoryManager));
             _blockTree = blockTree.AsReadOnly();
         }
         
@@ -74,7 +77,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 _txSender,
                 _wallet,
                 _logManager,
-                _specProvider);
+                _specProvider,
+                _feeHistoryManager);
         }
 
         public static List<JsonConverter> Converters = new()

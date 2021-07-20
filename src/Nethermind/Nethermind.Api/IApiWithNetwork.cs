@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using Nethermind.Core.PubSub;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Monitoring;
 using Nethermind.Network;
 using Nethermind.Network.Discovery;
@@ -55,5 +56,6 @@ namespace Nethermind.Api
         ISyncPeerPool? SyncPeerPool { get; set; }
         ISyncServer? SyncServer { get; set; }
         IWebSocketsManager WebSocketsManager { get; set; }
+        IFeeHistoryManager FeeHistoryManager { get; set; }
     }
 }

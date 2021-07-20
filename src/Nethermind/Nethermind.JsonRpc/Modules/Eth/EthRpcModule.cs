@@ -58,8 +58,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly ITxSender _txSender;
         private readonly IWallet _wallet;
         private readonly ISpecProvider _specProvider;
-
         private readonly ILogger _logger;
+        private readonly IFeeHistoryManager _feeHistoryManager;
         private static bool HasStateForBlock(IBlockchainBridge blockchainBridge, BlockHeader header)
         {
             RootCheckVisitor rootCheckVisitor = new();
@@ -76,7 +76,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
             ITxSender txSender,
             IWallet wallet,
             ILogManager logManager,
-            ISpecProvider specProvider)
+            ISpecProvider specProvider,
+            IFeeHistoryManager feeHistoryManager)
         {
             _logger = logManager.GetClassLogger();
             _rpcConfig = rpcConfig ?? throw new ArgumentNullException(nameof(rpcConfig));
@@ -87,6 +88,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+            _feeHistoryManager = new FeeHistoryManager(_blockFinder);
         }
 
         public ResultWrapper<string> eth_protocolVersion()
@@ -144,6 +146,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
         public ResultWrapper<UInt256?> eth_gasPrice()
         {
             return ResultWrapper<UInt256?>.Success(20.GWei());
+        }
+
+        public ResultWrapper<FeeHistoryResult> eth_feeHistory(long blockCount, long lastBlockNumber, double[]? rewardPercentiles = null)
+        {
+            return _feeHistoryManager.GetFeeHistory(blockCount, lastBlockNumber, rewardPercentiles);
         }
 
         public ResultWrapper<IEnumerable<Address>> eth_accounts()

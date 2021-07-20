@@ -44,7 +44,6 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.TxPool;
-using Newtonsoft.Json.Linq;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -54,6 +53,17 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
     [TestFixture]
     public partial class EthRpcModuleTests
     {
+        [TestCase(-10, true)]
+        [TestCase(10, false)]
+        public async Task Eth_feeHistory_IfBlockCountLessThanOne_ResultsInFailure(int blockCount, bool resultIsError)
+        {
+            using Context ctx = await Context.Create();
+            string serialized = ctx._test.TestEthRpc("eth_feeHistory", $"{blockCount.ToString()}", "10");
+            string expected =
+                $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32603,\"message\":\"blockCount: Block count, {blockCount}, is less than 1.\"}},\"id\":67}}"; 
+            Assert.AreEqual(expected == serialized, resultIsError);
+        }
+
         [TestCase("earliest", "0x3635c9adc5dea00000")]
         [TestCase("latest", "0x3635c9adc5de9f09e5")]
         [TestCase("pending", "0x3635c9adc5de9f09e5")]
