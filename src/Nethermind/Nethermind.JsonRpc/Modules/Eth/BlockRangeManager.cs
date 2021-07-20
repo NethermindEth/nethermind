@@ -63,7 +63,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             if (maxHistory != 0)
             {
                 ResultWrapper<long> resultWrapper =
-                    CalculateTooOldCount(lastBlockNumber, ref blockCount, maxHistory, headBlockNumber);
+                    CalculateTooOldCount(lastBlockNumber, blockCount, maxHistory, headBlockNumber);
                 if (resultWrapper.Result.ResultType == ResultType.Failure)
                 {
                     return ResultWrapper<BlockRangeInfo>.Fail(resultWrapper.Result.Error!);
@@ -99,7 +99,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return ResultWrapper<BlockRangeInfo>.Success(new BlockRangeInfo());
         }
 
-        public virtual ResultWrapper<long> CalculateTooOldCount(long lastBlockNumber, ref long blockCount, int maxHistory,
+        public virtual ResultWrapper<long> CalculateTooOldCount(long lastBlockNumber, long blockCount, int maxHistory,
             long? headBlockNumber)
         {
             long tooOldCount = (long) (headBlockNumber! - maxHistory - lastBlockNumber - blockCount);

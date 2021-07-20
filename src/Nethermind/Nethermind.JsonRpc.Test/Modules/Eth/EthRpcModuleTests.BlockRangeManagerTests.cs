@@ -190,7 +190,17 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             public void
                 ResolveBlockRange_IfBlockCountMoreThanBlocksUptoLastBlockNumber_BlockCountSetToBlocksUptoLastBlockNumber()
             {
-                
+                long lastBlockNumber = 5;
+                long blockCount = 10;
+                long? headBlockNumber = null;
+                IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+                blockFinder.FindHeadBlock().Returns(Build.A.Block.WithNumber(11).TestObject);
+                TestableBlockRangeManager testableBlockRangeManager = new(blockFinder);
+
+                ResultWrapper<BlockRangeInfo> resultWrapper = testableBlockRangeManager.ResolveBlockRange(ref lastBlockNumber, ref blockCount, 1,
+                    ref headBlockNumber);
+
+                resultWrapper.Data.BlockCount.Should().Be(6);
             }
 
             public class TestableBlockRangeManager : BlockRangeManager
@@ -201,7 +211,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                     tooOldCountCalled = false;
                 }
 
-                public override ResultWrapper<long> CalculateTooOldCount(long lastBlockNumber, ref long blockCount, int maxHistory, long? headBlockNumber)
+                public override ResultWrapper<long> CalculateTooOldCount(long lastBlockNumber, long blockCount, int maxHistory, long? headBlockNumber)
                 {
                     tooOldCountCalled = true;
                     return ResultWrapper<long>.Success(0);
