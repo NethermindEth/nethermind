@@ -28,7 +28,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         public Block? Block { get; set; }
         public long[]? Reward { get; set; }
         public UInt256? BaseFee { get; set; }
-        public long NextBaseFee { get; set; }
+        public UInt256? NextBaseFee { get; set; }
         public double GasUsedRatio { get; set; }
     }
 }

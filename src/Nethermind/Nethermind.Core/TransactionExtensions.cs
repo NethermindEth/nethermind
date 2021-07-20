@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using Nethermind.Int256;
 
 namespace Nethermind.Core
@@ -58,6 +59,14 @@ namespace Nethermind.Core
         public static UInt256 CalculateEffectiveGasPrice(this Transaction tx, bool eip1559Enabled, UInt256 baseFee)
         {
             return eip1559Enabled ? UInt256.Min(tx.IsEip1559 ? tx.MaxFeePerGas : tx.GasPrice, tx.MaxPriorityFeePerGas + baseFee) : tx.GasPrice;
+        }
+        
+        
+        public static UInt256 CalculateEffectiveGasTip(this Transaction tx, UInt256 baseFee)
+        {
+            if (baseFee < tx.MaxFeePerGas)
+                throw new Exception("Base Fee is less than MaxFeePerGas.");
+            return UInt256.Min(tx.MaxFeePerGas - baseFee, tx.MaxPriorityFeePerGas);
         }
     }
 }

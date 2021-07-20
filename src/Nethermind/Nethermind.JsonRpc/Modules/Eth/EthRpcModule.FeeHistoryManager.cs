@@ -18,10 +18,13 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Microsoft.Extensions.Logging;
 using Microsoft.VisualBasic;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
+using Nethermind.Specs.Forks;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
@@ -168,8 +171,90 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             private void ProcessBlock(ref BlockFeeInfo blockFeeInfo, double[]? rewardPercentiles)
             {
+                IReleaseSpec london = London.Instance;
+                bool isLondonEnabled = blockFeeInfo.BlockNumber >= london.Eip1559TransitionBlock;
                 blockFeeInfo.BaseFee = blockFeeInfo.BlockHeader?.BaseFeePerGas ?? 0;
-                
+                blockFeeInfo.NextBaseFee = isLondonEnabled
+                    ? CalculateNextBaseFee(blockFeeInfo)
+                    : 0;
+                blockFeeInfo.GasUsedRatio = (double) blockFeeInfo.BlockHeader!.GasUsed / blockFeeInfo.BlockHeader!.GasLimit;
+                if (rewardPercentiles == null || rewardPercentiles.Length == 0)
+                {
+                    return;
+                }
+
+                if (blockFeeInfo.Block == null)
+                    //put error in log
+                {
+                    return;
+                }
+
+                UInt256[] rewards = new UInt256[rewardPercentiles.Length];
+                if (blockFeeInfo.Block.Transactions.Length == 0)
+                {
+                    for (int i = 0; i < rewardPercentiles.Length; i++)
+                    {
+                        rewards[i] = 0;
+                    }
+
+                    return;
+                }
+
+                BlockFeeInfo blockFeeInfoCopy = blockFeeInfo;
+                Transaction[] transactionsInBlock = blockFeeInfo.Block.Transactions;
+                GasPriceAndReward[] gasPriceAndRewardArray =
+                    transactionsInBlock.Select(ConvertTxToGasPriceAndReward(blockFeeInfoCopy)).ToArray();
+                gasPriceAndRewardArray.OrderBy(g => g.Reward).ToArray();
+
+                int txIndex;
+                int rewardsIndex = 0;
+                UInt256 totalGasUsed;
+                UInt256 thresholdGasUsed;
+                foreach (double percentile in rewardPercentiles)
+                {
+                    totalGasUsed = 0;
+                    thresholdGasUsed = (UInt256) (percentile * (blockFeeInfo.Block.GasUsed));
+                    for (txIndex = 0; totalGasUsed < thresholdGasUsed; txIndex++)
+                    {
+                        totalGasUsed += gasPriceAndRewardArray[txIndex].Reward;
+                    }
+
+                    rewards[rewardsIndex++] = gasPriceAndRewardArray[txIndex].Reward;
+                }
+            }
+
+            private UInt256 CalculateNextBaseFee(BlockFeeInfo blockFeeInfo)
+            {
+                throw new NotImplementedException();
+            }
+
+            private static Func<Transaction, GasPriceAndReward> ConvertTxToGasPriceAndReward(BlockFeeInfo blockFeeInfoCopy)
+            {
+                return tx =>
+                {
+                    UInt256 gasPrice = tx.GasPrice;
+                    UInt256 effectiveGasTip = tx.CalculateEffectiveGasTip((UInt256)blockFeeInfoCopy.BaseFee!);
+                    return new GasPriceAndReward(gasPrice, effectiveGasTip);
+                };
+            }
+
+            class GasPriceAndReward
+            {
+                public UInt256 GasPrice { get; private set; }
+                public UInt256 Reward { get; private set; }
+
+                public GasPriceAndReward (UInt256 gasPrice, UInt256 reward)
+                {
+                    GasPrice = gasPrice;
+                    Reward = reward;
+                }
+            }
+
+            public UInt256 EffectiveGasTip(UInt256 baseFee, Transaction transaction)
+            {
+                if (baseFee < transaction.MaxFeePerGas)
+                    throw new Exception("Base Fee is less than MaxFeePerGas.");
+                return UInt256.Min(transaction.MaxFeePerGas - baseFee, transaction.MaxPriorityFeePerGas);
             }
         }
     }
