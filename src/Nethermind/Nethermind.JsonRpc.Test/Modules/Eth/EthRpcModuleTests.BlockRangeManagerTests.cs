@@ -17,6 +17,7 @@
 
 using FluentAssertions;
 using Nethermind.Blockchain.Find;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.JsonRpc.Modules.Eth;
@@ -35,7 +36,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             [TestCase(7,7,6)]
             [TestCase(32,32,31)]
             public void
-                ResolveBlockRange_IfLastBlockIsPendingBlockAndPendingBlockExists_LastBlockNumberSetToPendingBlockNumber(long blockNumber, long lastBlockExpected, long headNumberExpected)
+                ResolveBlockRange_IfLastBlockIsPendingBlockAndPendingBlockExists_LastBlockNumberSetToPendingBlockNumber(long blockNumber, long lastBlockNumberExpected, long headBlockNumberExpected)
             {
                 long lastBlockNumber = PendingBlockNumber;
                 long blockCount = 1;
@@ -46,7 +47,8 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
 
                 blockRangeManager.ResolveBlockRange(ref lastBlockNumber, ref blockCount, 1, ref headBlockNumber);
 
-                lastBlockNumber.Should().Be(lastBlockExpected);
+                lastBlockNumber.Should().Be(lastBlockNumberExpected);
+                headBlockNumber.Should().Be(headBlockNumberExpected);
             }
             
             [Test]
@@ -128,7 +130,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             [TestCase(2,2)]
             [TestCase(7,7)]
             [TestCase(32,32)]
-            public void ResolveBlockRange_IfLastBlockIsEqualToLatestBlockNumber_SetLastBlockToHeadBlockNumber(long headBlockNumber, long expected)
+            public void ResolveBlockRange_IfLastBlockIsSetToLatestBlockNumberMode_SetLastBlockToHeadBlockNumber(long headBlockNumber, long headBlockNumberExpected)
             {
                 long lastBlockNumber = LatestBlockNumber;
                 long blockCount = 1;
@@ -140,7 +142,8 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
 
                 blockRangeManager.ResolveBlockRange(ref lastBlockNumber, ref blockCount, 1, ref headBlockNumberVar);
 
-                lastBlockNumber.Should().Be(expected);
+                lastBlockNumber.Should().Be(headBlockNumberExpected);
+                headBlockNumberVar.Should().Be(headBlockNumberExpected);
             }
 
             [TestCase(3,5)]
@@ -163,11 +166,26 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             }
 
             [Test]
-            public void ResolveBlockRange_IfMaxHistoryIsNot0_TooOldCountCalculatedCorrectly()
+            public void ResolveBlockRange_IfMaxHistoryIsNot0_CalculateTooOldCountCalled()
+            {
+                long lastBlockNumber = 0;
+                long blockCount = 1;
+                long? headBlockNumber = null;
+                IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+                blockFinder.FindHeadBlock().Returns(Build.A.Block.Genesis.TestObject);
+                TestableBlockRangeManager testableBlockRangeManager = new(blockFinder);
+
+                testableBlockRangeManager.tooOldCountCalled.Should().BeFalse();
+                testableBlockRangeManager.ResolveBlockRange(ref lastBlockNumber, ref blockCount, 1,
+                    ref headBlockNumber);
+
+                testableBlockRangeManager.tooOldCountCalled.Should().BeTrue();
+            }
+
+            public void CalculateTooOldCount_CalculatesOutputCorrectly()
             {
                 
             }
-
             [Test]
             public void
                 ResolveBlockRange_IfBlockCountMoreThanBlocksUptoLastBlockNumber_BlockCountSetToBlocksUptoLastBlockNumber()
@@ -177,10 +195,17 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
 
             public class TestableBlockRangeManager : BlockRangeManager
             {
+                public bool tooOldCountCalled;
                 public TestableBlockRangeManager(IBlockFinder blockFinder) : base(blockFinder)
                 {
+                    tooOldCountCalled = false;
                 }
 
+                public override ResultWrapper<long> CalculateTooOldCount(long lastBlockNumber, ref long blockCount, int maxHistory, long? headBlockNumber)
+                {
+                    tooOldCountCalled = true;
+                    return ResultWrapper<long>.Success(0);
+                }
             }
         }
     }

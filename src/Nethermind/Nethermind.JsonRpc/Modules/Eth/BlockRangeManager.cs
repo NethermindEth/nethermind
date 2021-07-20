@@ -99,7 +99,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return ResultWrapper<BlockRangeInfo>.Success(new BlockRangeInfo());
         }
 
-        private static ResultWrapper<long> CalculateTooOldCount(long lastBlockNumber, ref long blockCount, int maxHistory,
+        public virtual ResultWrapper<long> CalculateTooOldCount(long lastBlockNumber, ref long blockCount, int maxHistory,
             long? headBlockNumber)
         {
             long tooOldCount = (long) (headBlockNumber! - maxHistory - lastBlockNumber - blockCount);
