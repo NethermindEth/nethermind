@@ -15,9 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using DotNetty.Buffers;
-using Nethermind.Serialization.Rlp;
-
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 {
     public class NodeDataMessageSerializer : Eth66MessageSerializer<NodeDataMessage, Eth.V63.NodeDataMessage>

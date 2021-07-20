@@ -32,18 +32,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 forkIdContentLength = Rlp.LengthOf(forkId.ForkHash) + Rlp.LengthOf(forkId.Next);
                 forkIdSequenceLength = Rlp.LengthOfSequence(forkIdContentLength);
             }
-
+            
+            GetLength(message, out int contentLength);
+            int length = Rlp.LengthOfSequence(contentLength + forkIdSequenceLength);
+            
+            byteBuffer.EnsureWritable(length);
             NettyRlpStream rlpStream = new(byteBuffer);
-            int contentLength =
-                Rlp.LengthOf(message.ProtocolVersion) +
-                Rlp.LengthOf(message.ChainId) +
-                Rlp.LengthOf(message.TotalDifficulty) +
-                Rlp.LengthOf(message.BestHash) +
-                Rlp.LengthOf(message.GenesisHash) +
-                forkIdSequenceLength;
 
-            int totalLength = Rlp.LengthOfSequence(contentLength);
-            byteBuffer.EnsureWritable(totalLength);
             rlpStream.StartSequence(contentLength);
             rlpStream.Encode(message.ProtocolVersion);
             rlpStream.Encode(message.ChainId);
@@ -64,7 +59,19 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             RlpStream rlpStream = new NettyRlpStream(byteBuffer);
             return Deserialize(rlpStream);
         }
-        
+
+        public int GetLength(StatusMessage message, out int contentLength)
+        {
+            contentLength =
+                Rlp.LengthOf(message.ProtocolVersion) +
+                Rlp.LengthOf(message.ChainId) +
+                Rlp.LengthOf(message.TotalDifficulty) +
+                Rlp.LengthOf(message.BestHash) +
+                Rlp.LengthOf(message.GenesisHash);
+
+            return Rlp.LengthOfSequence(contentLength);
+        }
+
         private static StatusMessage Deserialize(RlpStream rlpStream)
         {
             StatusMessage statusMessage = new StatusMessage();

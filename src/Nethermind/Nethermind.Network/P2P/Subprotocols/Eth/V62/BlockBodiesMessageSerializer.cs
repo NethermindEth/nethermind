@@ -44,7 +44,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             NettyRlpStream rlpStream = new NettyRlpStream(byteBuffer);
             return Deserialize(rlpStream);
         }
-        
+
+        public int GetLength(BlockBodiesMessage message, out int contentLength)
+        {
+            throw new System.NotImplementedException();
+        }
+
         public static BlockBodiesMessage Deserialize(RlpStream rlpStream)
         {
             BlockBodiesMessage message = new();

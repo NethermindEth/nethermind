@@ -26,16 +26,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         
         public void Serialize(IByteBuffer byteBuffer, TransactionsMessage message)
         {
+            int length = GetLength(message, out int contentLength);
+            byteBuffer.EnsureWritable(length, true);
             NettyRlpStream nettyRlpStream = new NettyRlpStream(byteBuffer);
-
-            int contentLength = 0;
-            for (int i = 0; i < message.Transactions.Count; i++)
-            {
-                contentLength += _decoder.GetLength(message.Transactions[i], RlpBehaviors.None);
-            }
-
-            int totalLength = Rlp.LengthOfSequence(contentLength);
-            byteBuffer.EnsureWritable(totalLength, true);
             
             nettyRlpStream.StartSequence(contentLength);
             for (int i = 0; i < message.Transactions.Count; i++)
@@ -49,6 +42,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             NettyRlpStream rlpStream = new(byteBuffer);
             Transaction[] txs = DeserializeTxs(rlpStream);
             return new TransactionsMessage(txs);
+        }
+
+        public int GetLength(TransactionsMessage message, out int contentLength)
+        {
+            contentLength = 0;
+            for (int i = 0; i < message.Transactions.Count; i++)
+            {
+                contentLength += _decoder.GetLength(message.Transactions[i], RlpBehaviors.None);
+            }
+
+            return Rlp.LengthOfSequence(contentLength);
         }
 
         public Transaction[] DeserializeTxs(RlpStream rlpStream)
