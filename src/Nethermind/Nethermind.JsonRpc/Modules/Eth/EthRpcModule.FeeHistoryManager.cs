@@ -18,11 +18,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using MathNet.Numerics.Distributions;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Int256;
-using Org.BouncyCastle.Crypto.Tls;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
@@ -47,12 +45,13 @@ namespace Nethermind.JsonRpc.Modules.Eth
             public ResultWrapper<FeeHistoryResult> GetFeeHistory(long blockCount, long lastBlockNumber,
                 double[]? rewardPercentiles = null)
             {
+                long? headBlockNumber = null;
                 if (InitialChecksFailed(blockCount, rewardPercentiles, out ResultWrapper<FeeHistoryResult> failingResultWrapper))
                 {
                     return failingResultWrapper;
                 }
                 int maxHistory = 1;
-                ResultWrapper<ResolveBlockRangeInfo> pendingBlock = _blockRangeManager.ResolveBlockRange(ref lastBlockNumber, ref blockCount, maxHistory);
+                ResultWrapper<BlockRangeInfo> pendingBlock = _blockRangeManager.ResolveBlockRange(ref lastBlockNumber, ref blockCount, maxHistory, ref headBlockNumber);
                 return FeeHistoryLookup(blockCount, lastBlockNumber, rewardPercentiles);
             }
 

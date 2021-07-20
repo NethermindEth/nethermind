@@ -21,7 +21,7 @@ using static Nethermind.JsonRpc.Modules.Eth.EthRpcModule.LastBlockNumberConsts;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
-    public sealed class BlockRangeManager : IBlockRangeManager
+    public class BlockRangeManager : IBlockRangeManager
     {
         private readonly IBlockFinder _blockFinder;
 
@@ -30,35 +30,25 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _blockFinder = blockFinder;
         }
 
-        public ResultWrapper<ResolveBlockRangeInfo> ResolveBlockRange(ref long lastBlockNumber, ref long blockCount, int maxHistory)
+        public ResultWrapper<BlockRangeInfo> ResolveBlockRange(ref long lastBlockNumber, ref long blockCount, int maxHistory, ref long? headBlockNumber)
         {
             Block? pendingBlock = null;
-            long? headBlockNumber = null;
             if (lastBlockNumber == PendingBlockNumber)
             {
-                pendingBlock = _blockFinder.FindPendingBlock();
-                if (pendingBlock != null)
+                ResultWrapper<BlockRangeInfo> checkPendingBlockNumber =
+                    PendingBlockNumberCheck(ref lastBlockNumber, ref blockCount, ref pendingBlock, ref headBlockNumber);
+                if (checkPendingBlockNumber.Result.ResultType == ResultType.Failure)
                 {
-                    lastBlockNumber = pendingBlock.Number;
-                    headBlockNumber = pendingBlock.Number - 1;
-                }
-                else
-                {
-                    lastBlockNumber = LatestBlockNumber;
-                    blockCount--; 
-                    if (blockCount == 0)
-                    {
-                        return ResultWrapper<ResolveBlockRangeInfo>.Fail("Invalid pending block reduced blockCount to 0.");
-                    }
+                    return checkPendingBlockNumber;
                 }
             }
 
-            if (headBlockNumber == null)
+            if (pendingBlock == null)
             {
                 headBlockNumber = _blockFinder.FindHeadBlock()?.Number;
                 if (headBlockNumber == null)
                 {
-                    return ResultWrapper<ResolveBlockRangeInfo>.Fail("Head block not found"); //return fail results
+                    return ResultWrapper<BlockRangeInfo>.Fail("Head block not found."); //return fail results
                 }
             }
 
@@ -66,25 +56,61 @@ namespace Nethermind.JsonRpc.Modules.Eth
             {
                 lastBlockNumber = (long) headBlockNumber!;
             }
-            else if (pendingBlock != null && lastBlockNumber > headBlockNumber)
+            else if (pendingBlock == null && lastBlockNumber > headBlockNumber)
             {
-                return ResultWrapper<ResolveBlockRangeInfo>.Fail("Pending block not present and last block number greater than head number.");
+                return ResultWrapper<BlockRangeInfo>.Fail("Pending block not present and last block number greater than head number.");
             }
             if (maxHistory != 0)
             {
-                long tooOldCount = (long) (headBlockNumber! - maxHistory - lastBlockNumber - blockCount);
-                if (blockCount > tooOldCount)
-                    blockCount = tooOldCount;
-                else
+                ResultWrapper<long> resultWrapper =
+                    CalculateTooOldCount(lastBlockNumber, ref blockCount, maxHistory, headBlockNumber);
+                if (resultWrapper.Result.ResultType == ResultType.Failure)
                 {
-                    return ResultWrapper<ResolveBlockRangeInfo>.Fail("Block count is less than old blocks to remove.");
+                    return ResultWrapper<BlockRangeInfo>.Fail(resultWrapper.Result.Error!);
                 }
+
+                blockCount -= resultWrapper.Data;
             }
             if (blockCount > lastBlockNumber + 1)
             {
                 blockCount = lastBlockNumber + 1;
             }
-            return ResultWrapper<ResolveBlockRangeInfo>.Success(new ResolveBlockRangeInfo(pendingBlock, lastBlockNumber, blockCount));
+            return ResultWrapper<BlockRangeInfo>.Success(new BlockRangeInfo(pendingBlock: pendingBlock, blockCount: blockCount, headBlockNumber: headBlockNumber, lastBlockNumber: lastBlockNumber));
+        }
+
+        private ResultWrapper<BlockRangeInfo> PendingBlockNumberCheck(ref long lastBlockNumber, ref long blockCount, ref Block? pendingBlock, ref long? headBlockNumber)
+        {
+            pendingBlock = _blockFinder.FindPendingBlock();
+            if (pendingBlock != null)
+            {
+                lastBlockNumber = pendingBlock.Number;
+                headBlockNumber = pendingBlock.Number - 1;
+            }
+            else
+            {
+                lastBlockNumber = LatestBlockNumber;
+                blockCount--;
+                if (blockCount == 0)
+                {
+                    return ResultWrapper<BlockRangeInfo>.Fail("Invalid pending block reduced blockCount to 0.");
+                }
+            }
+
+            return ResultWrapper<BlockRangeInfo>.Success(new BlockRangeInfo());
+        }
+
+        private static ResultWrapper<long> CalculateTooOldCount(long lastBlockNumber, ref long blockCount, int maxHistory,
+            long? headBlockNumber)
+        {
+            long tooOldCount = (long) (headBlockNumber! - maxHistory - lastBlockNumber - blockCount);
+            if (blockCount > tooOldCount)
+            {
+                return ResultWrapper<long>.Success(tooOldCount);
+            }
+            else
+            {
+                return ResultWrapper<long>.Fail("Block count is less than old blocks to remove.");
+            }
         }
     }
 }

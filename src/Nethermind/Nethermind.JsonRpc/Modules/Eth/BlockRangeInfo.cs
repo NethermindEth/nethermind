@@ -19,17 +19,19 @@ using Nethermind.Core;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
-    public class ResolveBlockRangeInfo
+    public class BlockRangeInfo
     {
-        public Block? _pendingBlock;
-        public long? _lastBlockNumber;
-        public long? _blockCount;
+        public Block? PendingBlock { get; set; }
+        public long? HeadBlockNumber { get; set; }
+        public long? LastBlockNumber { get; set; }
+        public long? BlockCount { get; set; }
 
-        public ResolveBlockRangeInfo(Block? block, long? lastBlockNumber, long? blockCount)
+        public BlockRangeInfo(Block? pendingBlock = null, long? headBlockNumber = null, long? lastBlockNumber = null, long? blockCount = null)
         {
-            _pendingBlock = block;
-            _lastBlockNumber = lastBlockNumber;
-            _blockCount = blockCount;
+            PendingBlock = pendingBlock;
+            HeadBlockNumber = headBlockNumber;
+            LastBlockNumber = lastBlockNumber;
+            BlockCount = blockCount;
         }
     }
 }
