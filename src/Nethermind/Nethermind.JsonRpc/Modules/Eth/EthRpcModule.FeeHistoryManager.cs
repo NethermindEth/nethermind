@@ -42,32 +42,30 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return new BlockRangeManager(blockFinder);
             }
             
-            public ResultWrapper<FeeHistoryResult> GetFeeHistory(long blockCount, long lastBlockNumber,
+            public ResultWrapper<FeeHistoryResult> GetFeeHistory(ref long blockCount, long lastBlockNumber,
                 double[]? rewardPercentiles = null)
             {
                 long? headBlockNumber = null;
-                if (InitialChecksFailed(blockCount, rewardPercentiles, out ResultWrapper<FeeHistoryResult> failingResultWrapper))
+                ResultWrapper<FeeHistoryResult> initialCheckResult = InitialChecksPassed(ref blockCount, rewardPercentiles);
+                if (initialCheckResult.Result.ResultType == ResultType.Failure)
                 {
-                    return failingResultWrapper;
+                    return initialCheckResult;
                 }
                 int maxHistory = 1;
                 ResultWrapper<BlockRangeInfo> pendingBlock = _blockRangeManager.ResolveBlockRange(ref lastBlockNumber, ref blockCount, maxHistory, ref headBlockNumber);
                 return FeeHistoryLookup(blockCount, lastBlockNumber, rewardPercentiles);
             }
 
-            private bool InitialChecksFailed(long blockCount, double[] rewardPercentiles, out ResultWrapper<FeeHistoryResult> fail)
+            private ResultWrapper<FeeHistoryResult> InitialChecksPassed(ref long blockCount, double[] rewardPercentiles)
             {
                 if (blockCount < 1)
                 {
-                    {
-                        fail = ResultWrapper<FeeHistoryResult>.Fail($"blockCount: Block count, {blockCount}, is less than 1.");
-                        return true;
-                    }
+                    return ResultWrapper<FeeHistoryResult>.Fail($"blockCount: Block count, {blockCount}, is less than 1.");
                 }
 
                 if (blockCount > 1024)
                 {
-                    blockCount = GetMaxBlockCount();
+                    blockCount = 1024;
                 }
 
                 if (rewardPercentiles != null)
@@ -83,12 +81,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     if (incorrectlySortedIndexes.Any())
                     {
                         int firstIndex = incorrectlySortedIndexes.ElementAt(0);
-                        {
-                            fail = ResultWrapper<FeeHistoryResult>.Fail(
-                                $"rewardPercentiles: Value at index {firstIndex}: {rewardPercentiles[firstIndex]} is less than " +
-                                $"the value at previous index {firstIndex - 1}: {rewardPercentiles[firstIndex - 1]}.");
-                            return true;
-                        }
+                        return ResultWrapper<FeeHistoryResult>.Fail(
+                           $"rewardPercentiles: Value at index {firstIndex}: {rewardPercentiles[firstIndex]} is less than " +
+                           $"the value at previous index {firstIndex - 1}: {rewardPercentiles[firstIndex - 1]}.");
                     }
 
                     double[] invalidValues = rewardPercentiles.Select(val => val).Where(val => val < 0 || val > 100)
@@ -96,21 +91,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     
                     if (invalidValues.Any())
                     {
-                        {
-                            fail = ResultWrapper<FeeHistoryResult>.Fail(
-                                $"rewardPercentiles: Values {String.Join(", ", invalidValues)} are below 0 or greater than 100."
-                            );
-                            return true;
-                        }
+                        return ResultWrapper<FeeHistoryResult>.Fail(
+                            $"rewardPercentiles: Values {String.Join(", ", invalidValues)} are below 0 or greater than 100.");
                     }
                 }
-                fail = ResultWrapper<FeeHistoryResult>.Success(new FeeHistoryResult(0,Array.Empty<UInt256[]>(),Array.Empty<UInt256>(),Array.Empty<UInt256>()));
-                return false;
-            }
-
-            protected virtual int GetMaxBlockCount()
-            {
-                return 1024;
+                return ResultWrapper<FeeHistoryResult>.Success(new FeeHistoryResult(0,Array.Empty<UInt256[]>(),Array.Empty<UInt256>(),Array.Empty<UInt256>()));
             }
 
             private ResultWrapper<FeeHistoryResult> FeeHistoryLookup(long blockCount, long lastBlockNumber, double[]? rewardPercentiles = null)

@@ -150,7 +150,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public ResultWrapper<FeeHistoryResult> eth_feeHistory(long blockCount, long lastBlockNumber, double[]? rewardPercentiles = null)
         {
-            return _feeHistoryManager.GetFeeHistory(blockCount, lastBlockNumber, rewardPercentiles);
+            return _feeHistoryManager.GetFeeHistory(ref blockCount, lastBlockNumber, rewardPercentiles);
         }
 
         public ResultWrapper<IEnumerable<Address>> eth_accounts()
