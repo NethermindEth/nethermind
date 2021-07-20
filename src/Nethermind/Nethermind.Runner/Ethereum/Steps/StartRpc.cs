@@ -87,8 +87,12 @@ namespace Nethermind.Runner.Ethereum.Steps
                         logger.Error("Error during jsonRpc runner start", x.Exception);
                 }, cancellationToken);
 
+                JsonRpcIpcRunner jsonIpcRunner = new(jsonRpcProcessor, _api.ConfigProvider, _api.LogManager);
+                jsonIpcRunner.Start(cancellationToken);
+
 #pragma warning disable 4014
                 _api.DisposeStack.Push(new Reactive.AnonymousDisposable(() => jsonRpcRunner.StopAsync())); // do not await
+                _api.DisposeStack.Push(new Reactive.AnonymousDisposable(() => jsonIpcRunner.Dispose())); // do not await
 #pragma warning restore 4014
             }
             else
