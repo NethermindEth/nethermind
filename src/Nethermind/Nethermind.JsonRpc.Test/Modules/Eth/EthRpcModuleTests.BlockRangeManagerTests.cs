@@ -17,7 +17,6 @@
 
 using FluentAssertions;
 using Nethermind.Blockchain.Find;
-using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.JsonRpc.Modules.Eth;

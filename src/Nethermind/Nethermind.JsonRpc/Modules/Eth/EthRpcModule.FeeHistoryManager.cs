@@ -31,10 +31,10 @@ namespace Nethermind.JsonRpc.Modules.Eth
             private readonly IBlockFinder _blockFinder;
             private readonly IBlockRangeManager _blockRangeManager;
 
-            public FeeHistoryManager(IBlockFinder blockFinder)
+            public FeeHistoryManager(IBlockFinder blockFinder, IBlockRangeManager? blockRangeManager = null)
             {
                 _blockFinder = blockFinder;
-                _blockRangeManager = GetBlockRangeManager(_blockFinder);
+                _blockRangeManager = blockRangeManager ?? GetBlockRangeManager(_blockFinder);
             }
 
             protected virtual IBlockRangeManager GetBlockRangeManager(IBlockFinder blockFinder)
