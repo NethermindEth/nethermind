@@ -16,6 +16,7 @@
 // 
 
 using Nethermind.Core;
+using Nethermind.Int256;
 using Nethermind.State.Proofs;
 
 namespace Nethermind.JsonRpc.Modules.Eth
@@ -26,9 +27,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
         public BlockHeader? BlockHeader { get; set; }
         public Block? Block { get; set; }
         public long[]? Reward { get; set; }
-        public long BaseFee { get; set; }
+        public UInt256? BaseFee { get; set; }
         public long NextBaseFee { get; set; }
         public double GasUsedRatio { get; set; }
-        public Error? Error { get; set; }
     }
 }

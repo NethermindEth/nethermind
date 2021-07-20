@@ -107,8 +107,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             }
 
             [Test]
-            public void
-                ResolveBlockRange_IfLastBlockIsPendingBlockAndPendingBlockIsNull_ErrorReturned()
+            public void ResolveBlockRange_IfLastBlockIsPendingBlockAndPendingBlockIsNull_ErrorReturned()
             {
                 long lastBlockNumber = PendingBlockNumber;
                 long blockCount = 1;
@@ -148,8 +147,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             [TestCase(3,5)]
             [TestCase(4,10)]
             [TestCase(0,1)]
-            public void
-                ResolveBlockRange_IfPendingBlockDoesNotExistAndLastBlockNumberGreaterThanHeadNumber_ReturnsError(long headBlockNumber, long lastBlockNumber)
+            public void ResolveBlockRange_IfPendingBlockDoesNotExistAndLastBlockNumberGreaterThanHeadNumber_ReturnsError(long headBlockNumber, long lastBlockNumber)
             {
                 long blockCount = 1;
                 long? headBlockNumberVar = null;
@@ -205,8 +203,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                 resultWrapper.Data.Should().Be(tooOldCount);
             }
             [Test]
-            public void
-                ResolveBlockRange_IfBlockCountMoreThanBlocksUptoLastBlockNumber_BlockCountSetToBlocksUptoLastBlockNumber()
+            public void ResolveBlockRange_IfBlockCountMoreThanBlocksUptoLastBlockNumber_BlockCountSetToBlocksUptoLastBlockNumber()
             {
                 long lastBlockNumber = 5;
                 long blockCount = 10;

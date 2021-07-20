@@ -18,6 +18,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Microsoft.VisualBasic;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Int256;
@@ -51,9 +52,35 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 {
                     return initialCheckResult;
                 }
+                
                 int maxHistory = 1;
-                ResultWrapper<BlockRangeInfo> pendingBlock = _blockRangeManager.ResolveBlockRange(ref lastBlockNumber, ref blockCount, maxHistory, ref headBlockNumber);
+                ResultWrapper<BlockRangeInfo> blockRangeResult = _blockRangeManager.ResolveBlockRange(ref lastBlockNumber, ref blockCount, maxHistory, ref headBlockNumber);
+                if (blockRangeResult.Result.ResultType == ResultType.Failure)
+                {
+                    return ResultWrapper<FeeHistoryResult>.Fail(blockRangeResult.Result.Error ?? "Error message in ResolveBlockRange not set correctly.");
+                }
+
+                BlockRangeInfo blockRangeInfo = blockRangeResult.Data;
+                long? oldestBlockNumber = blockRangeInfo.LastBlockNumber + 1 - blockRangeInfo.BlockCount;
+                if (oldestBlockNumber == null)
+                {
+                    string output = StringOfNullElements(blockRangeInfo);
+                    return ResultWrapper<FeeHistoryResult>.Fail($"{output} is null");
+                }
+                
+                
                 return FeeHistoryLookup(blockCount, lastBlockNumber, rewardPercentiles);
+            }
+
+            private static string StringOfNullElements(BlockRangeInfo blockRangeInfo)
+            {
+                List<string> nullStrings = new();
+                if (blockRangeInfo.LastBlockNumber == null)
+                    nullStrings.Add("blockRangeInfo.LastBlockNumber");
+                if (blockRangeInfo.BlockCount == null)
+                    nullStrings.Add("blockRangeInfo.BlockCount");
+                string output = Strings.Join(nullStrings.ToArray(), ", ");
+                return output;
             }
 
             private ResultWrapper<FeeHistoryResult> InitialChecksPassed(ref long blockCount, double[] rewardPercentiles)
@@ -101,29 +128,48 @@ namespace Nethermind.JsonRpc.Modules.Eth
             private ResultWrapper<FeeHistoryResult> FeeHistoryLookup(long blockCount, long lastBlockNumber, double[]? rewardPercentiles = null)
             {
                 Block pendingBlock = _blockFinder.FindPendingBlock();
-                long pendingBlockNumber = pendingBlock.Number;
                 long firstBlockNumber = Math.Max(lastBlockNumber + 1 - blockCount, 0);
                 List<BlockFeeInfo> blockFeeInfos = new();
                 for (; firstBlockNumber < lastBlockNumber; firstBlockNumber++)
                 {
                     BlockFeeInfo blockFeeInfo = new();
-                    if (firstBlockNumber > pendingBlockNumber)
+                    if (pendingBlock != null && firstBlockNumber > pendingBlock.Number)
                     {
                         blockFeeInfo.Block = pendingBlock;
-                        blockFeeInfo.BlockNumber = pendingBlockNumber;
-                        blockFeeInfo.BlockHeader = pendingBlock.Header;
+                        blockFeeInfo.BlockNumber = pendingBlock.Number;
                     }
                     else
                     {
-                        Block block = _blockFinder.FindBlock(firstBlockNumber);
-                        blockFeeInfo.Block = block;
+                        Block block;
+                        if (rewardPercentiles != null && rewardPercentiles.Length != 0)
+                        {
+                            blockFeeInfo.Block = _blockFinder.FindBlock(firstBlockNumber);
+                        }
+                        else
+                        {
+                            blockFeeInfo.BlockHeader = _blockFinder.FindHeader(firstBlockNumber);
+                        }
                         blockFeeInfo.BlockNumber = firstBlockNumber;
-                        blockFeeInfo.BlockHeader = block.Header;
+                    }
+
+                    if (blockFeeInfo.Block != null)
+                    {
+                        blockFeeInfo.BlockHeader = blockFeeInfo.Block.Header;
+                    }
+
+                    if (blockFeeInfo.BlockHeader != null)
+                    {
+                        ProcessBlock(ref blockFeeInfo, rewardPercentiles);
                     }
 
                     blockFeeInfos.Add(blockFeeInfo);
                 }
-                return ResultWrapper<FeeHistoryResult>.Fail("");
+            }
+
+            private void ProcessBlock(ref BlockFeeInfo blockFeeInfo, double[]? rewardPercentiles)
+            {
+                blockFeeInfo.BaseFee = blockFeeInfo.BlockHeader?.BaseFeePerGas ?? 0;
+                
             }
         }
     }
