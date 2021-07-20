@@ -182,9 +182,28 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                 testableBlockRangeManager.tooOldCountCalled.Should().BeTrue();
             }
 
-            public void CalculateTooOldCount_CalculatesOutputCorrectly()
+            [TestCase(3, 1,1,7, 2)]
+            [TestCase(4, 4,2,15, 5)]
+            public void CalculateTooOldCount_IfTooOldCountGreaterThanOrEqualToThanBlockCount_ReturnsError(long lastBlockNumber, long blockCount, int maxHistory, long? headBlockNumber, long tooOldCount)
             {
+                IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+                BlockRangeManager blockRangeManager = new BlockRangeManager(blockFinder);
+
+                ResultWrapper<long> resultWrapper = blockRangeManager.CalculateTooOldCount(lastBlockNumber, blockCount, maxHistory, headBlockNumber);
                 
+                resultWrapper.Result.Error.Should().BeEquivalentTo($"Block count: {blockCount}, is less than old blocks to remove: {tooOldCount}.");
+            }
+            
+            [TestCase(3, 3,1,7, 0)]
+            [TestCase(4, 6,2,15, 3)]
+            public void CalculateTooOldCount_IfTooOldCountLessThanBlockCount_CalculatesOutputCorrectly(long lastBlockNumber, long blockCount, int maxHistory, long? headBlockNumber, long tooOldCount)
+            {
+                IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+                BlockRangeManager blockRangeManager = new BlockRangeManager(blockFinder);
+
+                ResultWrapper<long> resultWrapper = blockRangeManager.CalculateTooOldCount(lastBlockNumber, blockCount, maxHistory, headBlockNumber);
+                
+                resultWrapper.Data.Should().Be(tooOldCount);
             }
             [Test]
             public void

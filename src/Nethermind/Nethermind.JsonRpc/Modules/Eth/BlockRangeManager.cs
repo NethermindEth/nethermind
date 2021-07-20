@@ -109,7 +109,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
             else
             {
-                return ResultWrapper<long>.Fail("Block count is less than old blocks to remove.");
+                return ResultWrapper<long>.Fail($"Block count: {blockCount}, is less than old blocks to remove: {tooOldCount}.");
             }
         }
     }
