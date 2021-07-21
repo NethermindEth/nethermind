@@ -16,6 +16,7 @@
 // 
 
 #nullable enable
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
@@ -120,7 +121,43 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
 
                 result.BlockNumber.Should().Be(expected);
             }
+            
+            //ToDo
+            [TestCase(5, null,4,3)]
+            [TestCase(10,null, 10,5)]
+            [TestCase(5, new double[]{},4,3)]
+            [TestCase(10,new double[]{}, 10,5)]
+            public void GetBlockFeeInfo_IfBlockNumberIsValidAndRewardPercentilesIsNullOrEmpty_GetCorrespondingBlockFromBlockFinder(long pendingBlockNumber, double[] rewardPercentiles, long argBlockNumber, long expected)
+            {
+                IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+                blockFinder.FindBlock(Arg.Is<long>(n => n == argBlockNumber))
+                    .Returns(Build.A.Block.WithNumber(argBlockNumber).TestObject);
+                IBlockRangeManager blockRangeManager = Substitute.For<IBlockRangeManager>();
+                FeeHistoryManager feeHistoryManager = new FeeHistoryManager(blockFinder, blockRangeManager);
+                Block pendingBlock = (Build.A.Block.WithNumber(pendingBlockNumber).TestObject);
+                
+                BlockFeeInfo result = feeHistoryManager.GetBlockFeeInfo(argBlockNumber, rewardPercentiles, pendingBlock);
 
+                result.BlockNumber.Should().Be(expected);
+            }
+
+            //ToDo
+            [TestCase(3,new long[]{10}, 4,3)]
+            [TestCase(5,new long[]{10,20}, 10,5)]
+            [TestCase(3,new long[]{0,100}, 2,2)]
+            public void GetBlockFeeInfo_IfBlockNumberIsValidAndRewardPercentilesIsNotNullOrEmpty_GetCorrespondingHeaderFromBlockFinder(long pendingBlockNumber, long[] rewardPercentiles, long argBlockNumber, long expected)
+            {
+                IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+                IBlockRangeManager blockRangeManager = Substitute.For<IBlockRangeManager>();
+                FeeHistoryManager feeHistoryManager = new(blockFinder, blockRangeManager);
+                Block pendingBlock = (Build.A.Block.WithNumber(pendingBlockNumber).TestObject);
+                
+                BlockFeeInfo result = feeHistoryManager.GetBlockFeeInfo(argBlockNumber, null, pendingBlock);
+
+                result.BlockNumber.Should().Be(expected);
+            }
+            
+            
             class TestableFeeHistoryManager : FeeHistoryManager
             {
                 public long? BlockCount { get; private set; }
@@ -143,7 +180,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                     return ResultWrapper<FeeHistoryResult>.Success(new FeeHistoryResult());
                 }
 
-                protected internal override BlockFeeInfo GetBlockFeeInfo(long blockNumber, double[]? rewardPercentiles,
+                protected internal override BlockFeeInfo GetBlockFeeInfo(long blockNumber, float[]? rewardPercentiles,
                     Block? pendingBlock)
                 {
                     BlockFeeInfo blockFeeInfo = new() {BlockNumber = blockNumber};

@@ -47,7 +47,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
             
             public ResultWrapper<FeeHistoryResult> GetFeeHistory(ref long blockCount, long lastBlockNumber,
-                double[]? rewardPercentiles = null)
+                float[]? rewardPercentiles = null)
             {
                 long? headBlockNumber = null;
                 ResultWrapper<FeeHistoryResult> initialCheckResult = InitialChecksPassed(ref blockCount, rewardPercentiles);
@@ -86,7 +86,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return output;
             }
 
-            private ResultWrapper<FeeHistoryResult> InitialChecksPassed(ref long blockCount, double[] rewardPercentiles)
+            private ResultWrapper<FeeHistoryResult> InitialChecksPassed(ref long blockCount, float[] rewardPercentiles)
             {
                 if (blockCount < 1)
                 {
@@ -115,8 +115,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
                            $"rewardPercentiles: Value at index {firstIndex}: {rewardPercentiles[firstIndex]} is less than " +
                            $"the value at previous index {firstIndex - 1}: {rewardPercentiles[firstIndex - 1]}.");
                     }
-
-                    double[] invalidValues = rewardPercentiles.Select(val => val).Where(val => val < 0 || val > 100)
+                    
+                    float[] invalidValues = rewardPercentiles.Select(val => val).Where(val => val < 0 || val > 100)
                         .ToArray();
                     
                     if (invalidValues.Any())
@@ -128,7 +128,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return ResultWrapper<FeeHistoryResult>.Success(new FeeHistoryResult(0,Array.Empty<UInt256[]>(),Array.Empty<UInt256>(),Array.Empty<float>()));
             }
 
-            protected internal ResultWrapper<FeeHistoryResult> FeeHistoryLookup(long blockCount, long lastBlockNumber, double[]? rewardPercentiles = null)
+            protected internal ResultWrapper<FeeHistoryResult> FeeHistoryLookup(long blockCount, long lastBlockNumber, float[]? rewardPercentiles = null)
             {
                 Block pendingBlock = _blockFinder.FindPendingBlock();
                 long firstBlockNumber = Math.Max(lastBlockNumber + 1 - blockCount, 0);
@@ -148,7 +148,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return ResultWrapper<FeeHistoryResult>.Success(CreateFeeHistoryResult(blockFeeInfos, blockCount));
             }
 
-            protected internal virtual BlockFeeInfo GetBlockFeeInfo(long blockNumber, double[]? rewardPercentiles, Block? pendingBlock)
+            protected internal virtual BlockFeeInfo GetBlockFeeInfo(long blockNumber, float[]? rewardPercentiles, Block? pendingBlock)
             {
                 BlockFeeInfo blockFeeInfo = new();
                 if (pendingBlock != null && blockNumber > pendingBlock.Number)
@@ -204,7 +204,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return feeHistoryResult;
             }
 
-            private void ProcessBlock(ref BlockFeeInfo blockFeeInfo, double[]? rewardPercentiles)
+            private void ProcessBlock(ref BlockFeeInfo blockFeeInfo, float[]? rewardPercentiles)
             {
                 IReleaseSpec london = London.Instance;
                 bool isLondonEnabled = blockFeeInfo.BlockNumber >= london.Eip1559TransitionBlock;
@@ -244,7 +244,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 blockFeeInfo.GasUsedRatio = (float) blockFeeInfo.BlockHeader!.GasUsed / blockFeeInfo.BlockHeader!.GasLimit;
             }
 
-            private static void CalculateAndInsertRewards(BlockFeeInfo blockFeeInfo, double[] rewardPercentiles, UInt256[] rewards)
+            private static void CalculateAndInsertRewards(BlockFeeInfo blockFeeInfo, float[] rewardPercentiles, UInt256[] rewards)
             {
                 GasPriceAndReward[] gasPriceAndRewardArray = CalculateRewards(blockFeeInfo);
 
@@ -262,7 +262,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return gasPriceAndRewardArray;
             }
 
-            private static void InsertRewardsIntoBlockFeeInfo(BlockFeeInfo blockFeeInfo, double[] rewardPercentiles, UInt256[] rewards,
+            private static void InsertRewardsIntoBlockFeeInfo(BlockFeeInfo blockFeeInfo, float[] rewardPercentiles, UInt256[] rewards,
                 GasPriceAndReward[] gasPriceAndRewardArray)
             {
                 int txIndex;
