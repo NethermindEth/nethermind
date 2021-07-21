@@ -18,6 +18,7 @@ using System;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Specs;
@@ -183,12 +184,23 @@ namespace Nethermind.Evm.Test
         [TestCase(true, false)]
         [TestCase(false, true)]
         [TestCase(false, false)]
-        public void Can_handle_quick_fail_on_not_enough_balance(bool withStateDiff, bool withTrace)
+        public void Can_handle_quick_fail_on_not_enough_balance_on_intrinsic_gas(bool withStateDiff, bool withTrace)
         {
-            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithGasLimit(100000).TestObject;
-            tx.Value = 2.Ether();
+            AccessListBuilder accessListBuilder = new();
+            foreach (Address address in TestItem.Addresses)
+            {
+                accessListBuilder.AddAddress(address);
+            }
+            
+            Transaction tx = Build.A.Transaction
+                .WithGasLimit(GasCostOf.Transaction * 2)
+                .WithAccessList(accessListBuilder.ToAccessList())
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled)
+                .TestObject;
 
-            Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
+            tx.Value = 1.Ether() - 3 * GasCostOf.Transaction;
+
+            Block block = Build.A.Block.WithNumber(MainnetSpecProvider.BerlinBlockNumber).WithTransactions(tx).TestObject;
 
             BlockReceiptsTracer tracer = BuildTracer(block, tx, withStateDiff, withTrace);
             Execute(tracer, tx, block);
@@ -196,6 +208,26 @@ namespace Nethermind.Evm.Test
             Assert.AreEqual(StatusCode.Failure, tracer.TxReceipts[0].StatusCode);
         }
         
+        [TestCase(true, true)]
+        [TestCase(true, false)]
+        [TestCase(false, true)]
+        [TestCase(false, false)]
+        public void Can_handle_quick_fail_on_not_enough_balance_on_reserved_gas_payment(bool withStateDiff, bool withTrace)
+        {
+            Transaction tx = Build.A.Transaction
+                .WithGasLimit(GasCostOf.Transaction * 2)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled)
+                .TestObject;
+
+            tx.Value = 1.Ether() - GasCostOf.Transaction;
+
+            Block block = Build.A.Block.WithNumber(MainnetSpecProvider.BerlinBlockNumber).WithTransactions(tx).TestObject;
+
+            BlockReceiptsTracer tracer = BuildTracer(block, tx, withStateDiff, withTrace);
+            Execute(tracer, tx, block);
+
+            Assert.AreEqual(StatusCode.Failure, tracer.TxReceipts[0].StatusCode);
+        }
         
         [TestCase(true, true)]
         [TestCase(true, false)]
@@ -209,7 +241,7 @@ namespace Nethermind.Evm.Test
                 .WithType(TxType.EIP1559)
                 .WithGasLimit(100000).TestObject;
 
-            Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
+            Block block = Build.A.Block.WithNumber(MainnetSpecProvider.LondonBlockNumber).WithTransactions(tx).TestObject;
 
             BlockReceiptsTracer tracer = BuildTracer(block, tx, withStateDiff, withTrace);
             Execute(tracer, tx, block);
