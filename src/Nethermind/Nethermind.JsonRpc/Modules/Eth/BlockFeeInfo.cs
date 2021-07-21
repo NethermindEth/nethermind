@@ -32,5 +32,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         public float GasUsedRatio { get; set; }
         
         public const int ElasticityMultiplier = 8;
+        
+        
     }
 }

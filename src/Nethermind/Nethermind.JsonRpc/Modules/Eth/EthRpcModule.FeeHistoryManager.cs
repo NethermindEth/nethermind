@@ -128,14 +128,14 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return ResultWrapper<FeeHistoryResult>.Success(new FeeHistoryResult(0,Array.Empty<UInt256[]>(),Array.Empty<UInt256>(),Array.Empty<float>()));
             }
 
-            private ResultWrapper<FeeHistoryResult> FeeHistoryLookup(long blockCount, long lastBlockNumber, double[]? rewardPercentiles = null)
+            protected internal ResultWrapper<FeeHistoryResult> FeeHistoryLookup(long blockCount, long lastBlockNumber, double[]? rewardPercentiles = null)
             {
                 Block pendingBlock = _blockFinder.FindPendingBlock();
                 long firstBlockNumber = Math.Max(lastBlockNumber + 1 - blockCount, 0);
                 List<BlockFeeInfo> blockFeeInfos = new();
-                for (; firstBlockNumber < lastBlockNumber; firstBlockNumber++)
+                for (; firstBlockNumber <= lastBlockNumber; firstBlockNumber++)
                 {
-                    BlockFeeInfo blockFeeInfo = GetBlockFeeInfo(rewardPercentiles, pendingBlock, firstBlockNumber);
+                    BlockFeeInfo blockFeeInfo = GetBlockFeeInfo(firstBlockNumber, rewardPercentiles, pendingBlock); //rename firstBlockNumber
 
                     blockFeeInfos.Add(blockFeeInfo);
                 }
@@ -148,10 +148,10 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return ResultWrapper<FeeHistoryResult>.Success(CreateFeeHistoryResult(blockFeeInfos, blockCount));
             }
 
-            private BlockFeeInfo GetBlockFeeInfo(double[] rewardPercentiles, Block pendingBlock, long firstBlockNumber)
+            protected internal virtual BlockFeeInfo GetBlockFeeInfo(long blockNumber, double[]? rewardPercentiles, Block? pendingBlock)
             {
                 BlockFeeInfo blockFeeInfo = new();
-                if (pendingBlock != null && firstBlockNumber > pendingBlock.Number)
+                if (pendingBlock != null && blockNumber > pendingBlock.Number)
                 {
                     blockFeeInfo.Block = pendingBlock;
                     blockFeeInfo.BlockNumber = pendingBlock.Number;
@@ -160,14 +160,14 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 {
                     if (rewardPercentiles != null && rewardPercentiles.Length != 0)
                     {
-                        blockFeeInfo.Block = _blockFinder.FindBlock(firstBlockNumber);
+                        blockFeeInfo.Block = _blockFinder.FindBlock(blockNumber);
                     }
                     else
                     {
-                        blockFeeInfo.BlockHeader = _blockFinder.FindHeader(firstBlockNumber);
+                        blockFeeInfo.BlockHeader = _blockFinder.FindHeader(blockNumber);
                     }
 
-                    blockFeeInfo.BlockNumber = firstBlockNumber;
+                    blockFeeInfo.BlockNumber = blockNumber;
                 }
 
                 if (blockFeeInfo.Block != null)

@@ -15,6 +15,9 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+#nullable enable
+using System.Collections.Generic;
+using System.Linq;
 using FluentAssertions;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
@@ -71,6 +74,81 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                 string expectedMessage =
                     "rewardPercentiles: Value at index 4: 1 is less than the value at previous index 3: 5.";
                 resultWrapper.Result.Should().BeEquivalentTo(Result.Fail(expectedMessage));
+            }
+
+            [TestCase(5,10,6)]
+            [TestCase(23, 50, 28)]
+            [TestCase(5, 3, 0)]
+            public void FeeHistoryLookup_GivenValidInputs_FirstBlockNumberCalculatedCorrectly(long blockCount, long lastBlockNumber, long expectedFirstBlockNumber)
+            {
+                IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+                IBlockRangeManager blockRangeManager = Substitute.For<IBlockRangeManager>();
+                TestableFeeHistoryManager testableFeeHistoryManager = new(blockFinder, blockRangeManager);
+
+                ResultWrapper<FeeHistoryResult> resultWrapper = testableFeeHistoryManager.FeeHistoryLookup(blockCount, lastBlockNumber);
+
+                testableFeeHistoryManager.BlockFeeInfos![0].BlockNumber.Should().Be(expectedFirstBlockNumber);
+            }
+            
+            
+            [TestCase(5,10,new long[]{6,7,8,9,10})]
+            [TestCase(1, 5, new long[]{5})]
+            [TestCase(5, 3, new long[]{0,1,2,3})]
+            public void FeeHistoryLookup_GivenValidInputs_NumbersInBlockFeeInfoListCalculatedCorrectly(long blockCount, long lastBlockNumber, long[] expectedNumbers)
+            {
+                IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+                IBlockRangeManager blockRangeManager = Substitute.For<IBlockRangeManager>();
+                TestableFeeHistoryManager testableFeeHistoryManager = new(blockFinder, blockRangeManager);
+
+                ResultWrapper<FeeHistoryResult> resultWrapper = testableFeeHistoryManager.FeeHistoryLookup(blockCount, lastBlockNumber);
+
+                long[] numbersInList = testableFeeHistoryManager.BlockFeeInfos!.Select(b => b.BlockNumber).ToArray();
+                numbersInList.Should().BeEquivalentTo(expectedNumbers);
+            }
+
+            [TestCase(3,4,3)]
+            [TestCase(5,10,5)]
+            [TestCase(3,2,2)]
+            public void GetBlockFeeInfo_IfPendingBlockNumberLessThanBlockNumber_SetBlockNumberToPendingBlockNumber(long pendingBlockNumber, long argBlockNumber, long expected)
+            {
+                IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+                IBlockRangeManager blockRangeManager = Substitute.For<IBlockRangeManager>();
+                FeeHistoryManager feeHistoryManager = new FeeHistoryManager(blockFinder, blockRangeManager);
+                Block pendingBlock = (Build.A.Block.WithNumber(pendingBlockNumber).TestObject);
+                
+                BlockFeeInfo result = feeHistoryManager.GetBlockFeeInfo(argBlockNumber, null, pendingBlock);
+
+                result.BlockNumber.Should().Be(expected);
+            }
+
+            class TestableFeeHistoryManager : FeeHistoryManager
+            {
+                public long? BlockCount { get; private set; }
+                
+                public List<BlockFeeInfo>? BlockFeeInfos { get; private set; }
+                public TestableFeeHistoryManager(
+                    IBlockFinder blockFinder, 
+                    IBlockRangeManager? blockRangeManager = null) : 
+                    base(blockFinder, 
+                        blockRangeManager)
+                {
+                    BlockCount = null;
+                    BlockFeeInfos = null;
+                }
+
+                protected override ResultWrapper<FeeHistoryResult> SuccessfulResult(long blockCount, List<BlockFeeInfo> blockFeeInfos)
+                {
+                    BlockCount = blockCount;
+                    BlockFeeInfos = blockFeeInfos;
+                    return ResultWrapper<FeeHistoryResult>.Success(new FeeHistoryResult());
+                }
+
+                protected internal override BlockFeeInfo GetBlockFeeInfo(long blockNumber, double[]? rewardPercentiles,
+                    Block? pendingBlock)
+                {
+                    BlockFeeInfo blockFeeInfo = new() {BlockNumber = blockNumber};
+                    return blockFeeInfo;
+                }
             }
         }
     }
