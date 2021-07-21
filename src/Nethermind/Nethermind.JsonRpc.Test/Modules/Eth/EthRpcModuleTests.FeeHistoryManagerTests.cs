@@ -180,7 +180,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                     return ResultWrapper<FeeHistoryResult>.Success(new FeeHistoryResult());
                 }
 
-                protected internal override BlockFeeInfo GetBlockFeeInfo(long blockNumber, float[]? rewardPercentiles,
+                protected internal override BlockFeeInfo GetBlockFeeInfo(long blockNumber, double[]? rewardPercentiles,
                     Block? pendingBlock)
                 {
                     BlockFeeInfo blockFeeInfo = new() {BlockNumber = blockNumber};
