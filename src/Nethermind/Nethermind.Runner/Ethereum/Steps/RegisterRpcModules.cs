@@ -73,7 +73,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_api.TxSender == null) throw new StepDependencyException(nameof(_api.TxSender));
             if (_api.StateReader == null) throw new StepDependencyException(nameof(_api.StateReader));
             if (_api.PeerManager == null) throw new StepDependencyException(nameof(_api.PeerManager));
-
+            if (_api.FeeHistoryManager == null) throw new StepDependencyException(nameof(_api.FeeHistoryManager));
             if (jsonRpcConfig.Enabled)
             {
                 _api.RpcModuleProvider = new RpcModuleProvider(_api.FileSystem, jsonRpcConfig, _api.LogManager);
