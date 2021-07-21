@@ -217,7 +217,7 @@ namespace Nethermind.Evm.TransactionProcessing
             if (notSystemTransaction)
             {
                 UInt256 senderBalance = _stateProvider.GetBalance(caller);
-                if (!restore && ((ulong) intrinsicGas * gasPrice + value > senderBalance || senderReservedGasPayment > senderBalance))
+                if (!restore && ((ulong) intrinsicGas * gasPrice + value > senderBalance || senderReservedGasPayment + value > senderBalance))
                 {
                     TraceLogInvalidTx(transaction, $"INSUFFICIENT_SENDER_BALANCE: ({caller})_BALANCE = {senderBalance}");
                     QuickFail(transaction, block, txTracer, eip658NotEnabled, "insufficient sender balance");
