@@ -135,40 +135,52 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 List<BlockFeeInfo> blockFeeInfos = new();
                 for (; firstBlockNumber < lastBlockNumber; firstBlockNumber++)
                 {
-                    BlockFeeInfo blockFeeInfo = new();
-                    if (pendingBlock != null && firstBlockNumber > pendingBlock.Number)
-                    {
-                        blockFeeInfo.Block = pendingBlock;
-                        blockFeeInfo.BlockNumber = pendingBlock.Number;
-                    }
-                    else
-                    {
-                        Block block;
-                        if (rewardPercentiles != null && rewardPercentiles.Length != 0)
-                        {
-                            blockFeeInfo.Block = _blockFinder.FindBlock(firstBlockNumber);
-                        }
-                        else
-                        {
-                            blockFeeInfo.BlockHeader = _blockFinder.FindHeader(firstBlockNumber);
-                        }
-                        blockFeeInfo.BlockNumber = firstBlockNumber;
-                    }
-
-                    if (blockFeeInfo.Block != null)
-                    {
-                        blockFeeInfo.BlockHeader = blockFeeInfo.Block.Header;
-                    }
-
-                    if (blockFeeInfo.BlockHeader != null)
-                    {
-                        ProcessBlock(ref blockFeeInfo, rewardPercentiles);
-                    }
+                    BlockFeeInfo blockFeeInfo = GetBlockFeeInfo(rewardPercentiles, pendingBlock, firstBlockNumber);
 
                     blockFeeInfos.Add(blockFeeInfo);
                 }
 
+                return SuccessfulResult(blockCount, blockFeeInfos);
+            }
+
+            protected virtual ResultWrapper<FeeHistoryResult> SuccessfulResult(long blockCount, List<BlockFeeInfo> blockFeeInfos)
+            {
                 return ResultWrapper<FeeHistoryResult>.Success(CreateFeeHistoryResult(blockFeeInfos, blockCount));
+            }
+
+            private BlockFeeInfo GetBlockFeeInfo(double[] rewardPercentiles, Block pendingBlock, long firstBlockNumber)
+            {
+                BlockFeeInfo blockFeeInfo = new();
+                if (pendingBlock != null && firstBlockNumber > pendingBlock.Number)
+                {
+                    blockFeeInfo.Block = pendingBlock;
+                    blockFeeInfo.BlockNumber = pendingBlock.Number;
+                }
+                else
+                {
+                    if (rewardPercentiles != null && rewardPercentiles.Length != 0)
+                    {
+                        blockFeeInfo.Block = _blockFinder.FindBlock(firstBlockNumber);
+                    }
+                    else
+                    {
+                        blockFeeInfo.BlockHeader = _blockFinder.FindHeader(firstBlockNumber);
+                    }
+
+                    blockFeeInfo.BlockNumber = firstBlockNumber;
+                }
+
+                if (blockFeeInfo.Block != null)
+                {
+                    blockFeeInfo.BlockHeader = blockFeeInfo.Block.Header;
+                }
+
+                if (blockFeeInfo.BlockHeader != null)
+                {
+                    ProcessBlock(ref blockFeeInfo, rewardPercentiles);
+                }
+
+                return blockFeeInfo;
             }
 
             private FeeHistoryResult CreateFeeHistoryResult(List<BlockFeeInfo> blockFeeInfos, long blockCount)
@@ -182,7 +194,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 int index = 0;
                 foreach (BlockFeeInfo blockFeeInfo in blockFeeInfos)
                 {
-                    feeHistoryResult._reward![index] = blockFeeInfo.Reward; //could be null...
+                    feeHistoryResult._reward![index] = blockFeeInfo.Reward;
                     feeHistoryResult._baseFee![index] = blockFeeInfo.BaseFee;
                     feeHistoryResult._baseFee[index + 1] = blockFeeInfo.NextBaseFee;
                     feeHistoryResult._gasUsedRatio![index] = blockFeeInfo.GasUsedRatio;
@@ -196,11 +208,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             {
                 IReleaseSpec london = London.Instance;
                 bool isLondonEnabled = blockFeeInfo.BlockNumber >= london.Eip1559TransitionBlock;
-                blockFeeInfo.BaseFee = blockFeeInfo.BlockHeader?.BaseFeePerGas ?? 0;
-                blockFeeInfo.NextBaseFee = isLondonEnabled
-                    ? CalculateNextBaseFee(blockFeeInfo)
-                    : 0;
-                blockFeeInfo.GasUsedRatio = (float) blockFeeInfo.BlockHeader!.GasUsed / blockFeeInfo.BlockHeader!.GasLimit;
+                InitializeBlockFeeInfo(blockFeeInfo, isLondonEnabled);
                 if (rewardPercentiles == null || rewardPercentiles.Length == 0)
                 {
                     return;
@@ -224,12 +232,33 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     return;
                 }
 
-                BlockFeeInfo blockFeeInfoCopy = blockFeeInfo;
+                CalculateAndInsertRewards(blockFeeInfo, rewardPercentiles, rewards);
+            }
+
+            private void InitializeBlockFeeInfo(BlockFeeInfo blockFeeInfo, bool isLondonEnabled)
+            {
+                blockFeeInfo.BaseFee = blockFeeInfo.BlockHeader?.BaseFeePerGas ?? 0;
+                blockFeeInfo.NextBaseFee = isLondonEnabled
+                    ? CalculateNextBaseFee(blockFeeInfo)
+                    : 0;
+                blockFeeInfo.GasUsedRatio = (float) blockFeeInfo.BlockHeader!.GasUsed / blockFeeInfo.BlockHeader!.GasLimit;
+            }
+
+            private static void CalculateAndInsertRewards(BlockFeeInfo blockFeeInfo, double[] rewardPercentiles, UInt256[] rewards)
+            {
                 Transaction[] transactionsInBlock = blockFeeInfo.Block.Transactions;
                 GasPriceAndReward[] gasPriceAndRewardArray =
-                    transactionsInBlock.Select(ConvertTxToGasPriceAndReward(blockFeeInfoCopy)).ToArray();
+                    transactionsInBlock.Select(ConvertTxToGasPriceAndReward(blockFeeInfo)).ToArray();
                 gasPriceAndRewardArray.OrderBy(g => g.Reward).ToArray();
 
+                InsertRewardsIntoGasPriceArray(blockFeeInfo, rewardPercentiles, rewards, gasPriceAndRewardArray);
+
+                blockFeeInfo.Reward = rewards;
+            }
+
+            private static void InsertRewardsIntoGasPriceArray(BlockFeeInfo blockFeeInfo, double[] rewardPercentiles, UInt256[] rewards,
+                GasPriceAndReward[] gasPriceAndRewardArray)
+            {
                 int txIndex;
                 int gasPriceArrayLength = gasPriceAndRewardArray.Length;
                 int rewardsIndex = 0;
@@ -246,8 +275,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
                     rewards[rewardsIndex++] = gasPriceAndRewardArray[txIndex].Reward;
                 }
-
-                blockFeeInfo.Reward = rewards;
             }
 
             private static Func<Transaction, GasPriceAndReward> ConvertTxToGasPriceAndReward(BlockFeeInfo blockFeeInfoCopy)
