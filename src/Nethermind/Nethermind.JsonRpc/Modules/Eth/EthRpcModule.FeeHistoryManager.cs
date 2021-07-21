@@ -246,17 +246,23 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             private static void CalculateAndInsertRewards(BlockFeeInfo blockFeeInfo, double[] rewardPercentiles, UInt256[] rewards)
             {
-                Transaction[] transactionsInBlock = blockFeeInfo.Block.Transactions;
-                GasPriceAndReward[] gasPriceAndRewardArray =
-                    transactionsInBlock.Select(ConvertTxToGasPriceAndReward(blockFeeInfo)).ToArray();
-                gasPriceAndRewardArray.OrderBy(g => g.Reward).ToArray();
+                GasPriceAndReward[] gasPriceAndRewardArray = CalculateRewards(blockFeeInfo);
 
-                InsertRewardsIntoGasPriceArray(blockFeeInfo, rewardPercentiles, rewards, gasPriceAndRewardArray);
+                InsertRewardsIntoBlockFeeInfo(blockFeeInfo, rewardPercentiles, rewards, gasPriceAndRewardArray);
 
                 blockFeeInfo.Reward = rewards;
             }
 
-            private static void InsertRewardsIntoGasPriceArray(BlockFeeInfo blockFeeInfo, double[] rewardPercentiles, UInt256[] rewards,
+            private static GasPriceAndReward[] CalculateRewards(BlockFeeInfo blockFeeInfo)
+            {
+                Transaction[] transactionsInBlock = blockFeeInfo.Block.Transactions;
+                GasPriceAndReward[] gasPriceAndRewardArray =
+                    transactionsInBlock.Select(ConvertTxToGasPriceAndReward(blockFeeInfo)).ToArray();
+                gasPriceAndRewardArray.OrderBy(g => g.Reward).ToArray();
+                return gasPriceAndRewardArray;
+            }
+
+            private static void InsertRewardsIntoBlockFeeInfo(BlockFeeInfo blockFeeInfo, double[] rewardPercentiles, UInt256[] rewards,
                 GasPriceAndReward[] gasPriceAndRewardArray)
             {
                 int txIndex;
