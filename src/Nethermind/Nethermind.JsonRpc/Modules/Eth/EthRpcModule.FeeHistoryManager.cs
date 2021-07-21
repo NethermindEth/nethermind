@@ -182,10 +182,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 int index = 0;
                 foreach (BlockFeeInfo blockFeeInfo in blockFeeInfos)
                 {
-                    feeHistoryResult._reward![index] = blockFeeInfo.Reward;
+                    feeHistoryResult._reward![index] = blockFeeInfo.Reward; //could be null...
                     feeHistoryResult._baseFee![index] = blockFeeInfo.BaseFee;
                     feeHistoryResult._baseFee[index + 1] = blockFeeInfo.NextBaseFee;
                     feeHistoryResult._gasUsedRatio![index] = blockFeeInfo.GasUsedRatio;
+                    index++;
                 }
 
                 return feeHistoryResult;
