@@ -150,6 +150,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             protected internal virtual BlockFeeInfo GetBlockFeeInfo(long blockNumber, double[]? rewardPercentiles, Block? pendingBlock)
             {
+                if (blockNumber < 0)
+                {
+                    throw new ArgumentException($"Block number, {blockNumber}, is less than 0.");
+                }
+
                 BlockFeeInfo blockFeeInfo = new();
                 if (pendingBlock != null && blockNumber > pendingBlock.Number)
                 {
@@ -183,8 +188,10 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return blockFeeInfo;
             }
 
-            private FeeHistoryResult CreateFeeHistoryResult(List<BlockFeeInfo> blockFeeInfos, long blockCount)
+            protected internal FeeHistoryResult CreateFeeHistoryResult(List<BlockFeeInfo> blockFeeInfos, long blockCount)
             {
+                FeeHistoryArgumentChecks(blockFeeInfos, blockCount);
+
                 FeeHistoryResult feeHistoryResult = new(
                     blockFeeInfos[0].BlockNumber,
                     new UInt256[blockCount][],
@@ -202,6 +209,25 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 }
 
                 return feeHistoryResult;
+            }
+
+            private static void FeeHistoryArgumentChecks(List<BlockFeeInfo> blockFeeInfos, long blockCount)
+            {
+                if (blockFeeInfos.Count == 0)
+                {
+                    throw new ArgumentException("`blockFeeInfos` has 0 elements.");
+                }
+
+                if (blockCount == 0)
+                {
+                    throw new ArgumentException("`blockCount` is equal to 0.");
+                }
+
+                if (blockFeeInfos.Count != blockCount)
+                {
+                    throw new ArgumentException(
+                        $"`blockCount`: {blockCount} was not equal to number of blocks' information in `blockFeeInfos`: {blockFeeInfos.Count}.");
+                }
             }
 
             private void ProcessBlock(ref BlockFeeInfo blockFeeInfo, double[]? rewardPercentiles)

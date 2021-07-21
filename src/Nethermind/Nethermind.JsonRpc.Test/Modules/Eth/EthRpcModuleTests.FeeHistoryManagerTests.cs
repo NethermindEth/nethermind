@@ -167,6 +167,43 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                 result.Block.Should().BeEquivalentTo(correspondingBlock);
             }
             
+            [Test]
+            public void CreateFeeHistoryResult_IfBlockFeeInfosHas0Elements_ShouldThrowException()
+            {
+                IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+                IBlockRangeManager blockRangeManager = Substitute.For<IBlockRangeManager>();
+                FeeHistoryManager feeHistoryManager = new(blockFinder, blockRangeManager);
+                
+                Action action = () => feeHistoryManager.CreateFeeHistoryResult(new List<BlockFeeInfo>(), 0);
+
+                action.Should().Throw<ArgumentException>().WithMessage("`blockFeeInfos` has 0 elements.");
+            }
+            
+            [Test]
+            public void CreateFeeHistoryResult_IfBlockFeeInfosLengthNotEqualToBlockCount_ShouldThrowException()
+            {
+                IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+                IBlockRangeManager blockRangeManager = Substitute.For<IBlockRangeManager>();
+                FeeHistoryManager feeHistoryManager = new(blockFinder, blockRangeManager);
+                BlockFeeInfo blockFeeInfo = new();
+                
+                Action action = () => feeHistoryManager.CreateFeeHistoryResult(new List<BlockFeeInfo>{blockFeeInfo}, 2);
+
+                action.Should().Throw<ArgumentException>().WithMessage("`blockCount`: 2 was not equal to number of blocks' information in `blockFeeInfos`: 1.");
+            }
+            
+            [Test]
+            public void CreateFeeHistoryResult_IfBlockCountEqualTo0_ShouldThrowException()
+            {
+                IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+                IBlockRangeManager blockRangeManager = Substitute.For<IBlockRangeManager>();
+                FeeHistoryManager feeHistoryManager = new(blockFinder, blockRangeManager);
+                BlockFeeInfo blockFeeInfo = new();
+                
+                Action action = () => feeHistoryManager.CreateFeeHistoryResult(new List<BlockFeeInfo>{blockFeeInfo}, 0);
+
+                action.Should().Throw<ArgumentException>().WithMessage("`blockCount` is equal to 0.");
+            }
             
             class TestableFeeHistoryManager : FeeHistoryManager
             {
