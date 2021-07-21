@@ -18,13 +18,13 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Microsoft.Extensions.Logging;
 using Microsoft.VisualBasic;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
+using static Nethermind.Core.BlockHeader;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
@@ -225,7 +225,20 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             private UInt256 CalculateNextBaseFee(BlockFeeInfo blockFeeInfo)
             {
-                throw new NotImplementedException();
+                ulong gasLimit = (ulong) blockFeeInfo.BlockHeader!.GasLimit;
+                ulong gasTarget = gasLimit / GasTargetToLimitMultiplier;
+                ulong gasUsed = (ulong) blockFeeInfo.BlockHeader!.GasUsed;
+                UInt256 currentBaseFee = blockFeeInfo.BlockHeader!.BaseFeePerGas;
+                
+                if (gasTarget < gasUsed)
+                {
+                    currentBaseFee *= ((gasUsed - gasTarget) / gasTarget);
+                }
+                else if (gasTarget > gasUsed)
+                {
+                    currentBaseFee *= ((gasTarget - gasUsed) / gasTarget);
+                }
+                return currentBaseFee;
             }
 
             private static Func<Transaction, GasPriceAndReward> ConvertTxToGasPriceAndReward(BlockFeeInfo blockFeeInfoCopy)
