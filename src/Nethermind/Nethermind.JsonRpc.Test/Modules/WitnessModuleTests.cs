@@ -37,8 +37,8 @@ namespace Nethermind.JsonRpc.Test.Modules
         private const string ErrorResponse = 
             "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Can convert n (represent the number of witness to return) to int\"},\"id\":67}";
         
-        private static readonly Keccak KeccakA = Keccak.Compute("A");
-        private static readonly Keccak KeccakB = Keccak.Compute("B");
+        private static readonly Keccak _keccakA = Keccak.Compute("A");
+        private static readonly Keccak _keccakB = Keccak.Compute("B");
         private IWitnessCollector _witnessCollector;
         private WitnessRpcModule _witnessRpcModule;
 
@@ -52,8 +52,8 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void GetTwoWitnessHash()
         {
-            _witnessCollector.Add(KeccakA);
-            _witnessCollector.Add(KeccakB);
+            _witnessCollector.Add(_keccakA);
+            _witnessCollector.Add(_keccakB);
             string serialized =
                 RpcTest.TestSerializedRequest<IWitnessRpcModule>(_witnessRpcModule, "get_witnesses", "5");
             serialized.Should().Be(TwoNodesResponse);
@@ -62,8 +62,8 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void GetOneWitnessHash()
         {
-            _witnessCollector.Add(KeccakA);
-            _witnessCollector.Add(KeccakB);
+            _witnessCollector.Add(_keccakA);
+            _witnessCollector.Add(_keccakB);
             string serialized =
                 RpcTest.TestSerializedRequest<IWitnessRpcModule>(_witnessRpcModule, "get_witnesses", "1");
             serialized.Should().Be(OneNodeResponse);
@@ -72,7 +72,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void GetError()
         {
-            _witnessCollector.Add(KeccakA);
+            _witnessCollector.Add(_keccakA);
             string serialized =
                 RpcTest.TestSerializedRequest<IWitnessRpcModule>(_witnessRpcModule, "get_witnesses", "n");
             serialized.Should().Be(ErrorResponse);
