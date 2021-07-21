@@ -15,9 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Collections.Generic;
 using System.Threading.Tasks;
-using Nethermind.Core.Crypto;
 
 namespace Nethermind.JsonRpc.Modules.Witness
 {
