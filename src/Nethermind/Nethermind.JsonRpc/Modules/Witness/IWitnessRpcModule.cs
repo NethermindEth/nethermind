@@ -19,6 +19,7 @@ using System.Threading.Tasks;
 
 namespace Nethermind.JsonRpc.Modules.Witness
 {
+    [RpcModule(ModuleType.Witness)]
     public interface IWitnessRpcModule : IRpcModule
     {
         [JsonRpcMethod(Description = "Return last N witness blocks",
