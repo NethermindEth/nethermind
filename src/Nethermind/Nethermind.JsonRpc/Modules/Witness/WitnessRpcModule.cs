@@ -16,9 +16,12 @@
 // 
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Nethermind.Core.Crypto;
 using Nethermind.State;
+using Polly;
 
 namespace Nethermind.JsonRpc.Modules.Witness
 {
@@ -35,8 +38,10 @@ namespace Nethermind.JsonRpc.Modules.Witness
         {
             if (int.TryParse(n, out int numberOfBlocks) && _wrapper is not null)
             {
+                IEnumerable<Keccak> collected = _wrapper.Collected.Skip(Math.Max(0, _wrapper.Collected.Count - numberOfBlocks));
+                string result = string.Join(",", collected.Select(keccak => keccak.ToString()).ToArray());
                 return ResultWrapper<string>.Success(
-                    _wrapper.Collected.Skip(Math.Max(0, _wrapper.Collected.Count - numberOfBlocks)).ToString());
+                    result);
             }
 
             return ResultWrapper<string>.Fail("Can convert n (represent the number of witness to return) to int");
