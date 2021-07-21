@@ -41,7 +41,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 _blockRangeManager = blockRangeManager ?? GetBlockRangeManager(_blockFinder);
             }
 
-            protected virtual IBlockRangeManager GetBlockRangeManager(IBlockFinder blockFinder)
+            protected IBlockRangeManager GetBlockRangeManager(IBlockFinder blockFinder)
             {
                 return new BlockRangeManager(blockFinder);
             }
@@ -82,11 +82,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     nullStrings.Add("blockRangeInfo.LastBlockNumber");
                 if (blockRangeInfo.BlockCount == null)
                     nullStrings.Add("blockRangeInfo.BlockCount");
-                string output = Strings.Join(nullStrings.ToArray(), ", ");
+                string output = Strings.Join(nullStrings.ToArray(), ", ") ?? "";
                 return output;
             }
 
-            private ResultWrapper<FeeHistoryResult> InitialChecksPassed(ref long blockCount, double[] rewardPercentiles)
+            private ResultWrapper<FeeHistoryResult> InitialChecksPassed(ref long blockCount, double[]? rewardPercentiles)
             {
                 if (blockCount < 1)
                 {
@@ -103,8 +103,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     int index = -1;
                     int count = rewardPercentiles.Length;
                     int[] incorrectlySortedIndexes = rewardPercentiles
-                        .Select(val => ++index)
-                        .Where(val => index > 0 
+                        .Select(_ => ++index)
+                        .Where(_ => index > 0 
                                       && index < count 
                                       && rewardPercentiles[index] < rewardPercentiles[index - 1])
                         .ToArray();
@@ -122,7 +122,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     if (invalidValues.Any())
                     {
                         return ResultWrapper<FeeHistoryResult>.Fail(
-                            $"rewardPercentiles: Values {String.Join(", ", invalidValues)} are below 0 or greater than 100.");
+                            $"rewardPercentiles: Values {string.Join(", ", invalidValues)} are below 0 or greater than 100.");
                     }
                 }
                 return ResultWrapper<FeeHistoryResult>.Success(new FeeHistoryResult(0,Array.Empty<UInt256[]>(),Array.Empty<UInt256>(),Array.Empty<float>()));
@@ -288,7 +288,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return tx =>
                 {
                     UInt256 gasPrice = tx.GasPrice;
-                    UInt256 effectiveGasTip = tx.CalculateEffectiveGasTip((UInt256)blockFeeInfoCopy.BaseFee!);
+                    UInt256 effectiveGasTip = tx.CalculateEffectiveGasTip(blockFeeInfoCopy.BaseFee!);
                     return new GasPriceAndReward(gasPrice, effectiveGasTip);
                 };
             }
@@ -312,8 +312,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             class GasPriceAndReward
             {
-                public UInt256 GasPrice { get; private set; }
-                public UInt256 Reward { get; private set; }
+                public UInt256 GasPrice { get; }
+                public UInt256 Reward { get; }
 
                 public GasPriceAndReward (UInt256 gasPrice, UInt256 reward)
                 {

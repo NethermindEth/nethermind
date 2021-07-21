@@ -123,38 +123,48 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             }
             
             //ToDo
-            [TestCase(5, null,4,3)]
-            [TestCase(10,null, 10,5)]
-            [TestCase(5, new double[]{},4,3)]
-            [TestCase(10,new double[]{}, 10,5)]
-            public void GetBlockFeeInfo_IfBlockNumberIsValidAndRewardPercentilesIsNullOrEmpty_GetCorrespondingBlockFromBlockFinder(long pendingBlockNumber, double[] rewardPercentiles, long argBlockNumber, long expected)
+            [TestCase(null,4)]
+            [TestCase(null, 10)]
+            [TestCase( new double[]{},4)]
+            [TestCase(new double[]{}, 10)]
+            public void GetBlockFeeInfo_IfPendingBlockNumberIsValidAndRewardPercentilesIsNullOrEmpty_GetCorrespondingHeaderFromBlockFinder(double[] rewardPercentiles, long argBlockNumber)
             {
                 IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+                Block correspondingBlock = Build.A.Block.WithNumber(argBlockNumber).TestObject;
+                BlockHeader correspondingHeader = Build.A.BlockHeader.WithNumber(argBlockNumber).TestObject;
                 blockFinder.FindBlock(Arg.Is<long>(n => n == argBlockNumber))
-                    .Returns(Build.A.Block.WithNumber(argBlockNumber).TestObject);
+                    .Returns(correspondingBlock);
+                blockFinder.FindHeader(Arg.Is<long>(n => n == argBlockNumber))
+                    .Returns(correspondingHeader);
                 IBlockRangeManager blockRangeManager = Substitute.For<IBlockRangeManager>();
-                FeeHistoryManager feeHistoryManager = new FeeHistoryManager(blockFinder, blockRangeManager);
-                Block pendingBlock = (Build.A.Block.WithNumber(pendingBlockNumber).TestObject);
+                FeeHistoryManager feeHistoryManager = new(blockFinder, blockRangeManager);
                 
-                BlockFeeInfo result = feeHistoryManager.GetBlockFeeInfo(argBlockNumber, rewardPercentiles, pendingBlock);
+                BlockFeeInfo result = feeHistoryManager.GetBlockFeeInfo(argBlockNumber, rewardPercentiles, null);
 
-                result.BlockNumber.Should().Be(expected);
+                result.BlockHeader.Should().BeEquivalentTo(correspondingHeader);
+                result.Block.Should().BeNull();
             }
 
             //ToDo
-            [TestCase(3,new long[]{10}, 4,3)]
-            [TestCase(5,new long[]{10,20}, 10,5)]
-            [TestCase(3,new long[]{0,100}, 2,2)]
-            public void GetBlockFeeInfo_IfBlockNumberIsValidAndRewardPercentilesIsNotNullOrEmpty_GetCorrespondingHeaderFromBlockFinder(long pendingBlockNumber, long[] rewardPercentiles, long argBlockNumber, long expected)
+            [TestCase(new double[]{10}, 4)]
+            [TestCase(new double[]{10,20}, 10)]
+            [TestCase(new double[]{0,100}, 2)]
+            public void GetBlockFeeInfo_IfBlockNumberIsValidAndRewardPercentilesIsNotNullOrEmpty_GetCorrespondingBlockAndHeaderFromBlockFinder(double[] rewardPercentiles, long argBlockNumber)
             {
                 IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+                Block correspondingBlock = Build.A.Block.WithNumber(argBlockNumber).TestObject;
+                BlockHeader correspondingHeader = Build.A.BlockHeader.WithNumber(argBlockNumber).TestObject;
+                blockFinder.FindBlock(Arg.Is<long>(n => n == argBlockNumber))
+                    .Returns(correspondingBlock);
+                blockFinder.FindHeader(Arg.Is<long>(n => n == argBlockNumber))
+                    .Returns(correspondingHeader);
                 IBlockRangeManager blockRangeManager = Substitute.For<IBlockRangeManager>();
                 FeeHistoryManager feeHistoryManager = new(blockFinder, blockRangeManager);
-                Block pendingBlock = (Build.A.Block.WithNumber(pendingBlockNumber).TestObject);
                 
-                BlockFeeInfo result = feeHistoryManager.GetBlockFeeInfo(argBlockNumber, null, pendingBlock);
+                BlockFeeInfo result = feeHistoryManager.GetBlockFeeInfo(argBlockNumber, rewardPercentiles, null);
 
-                result.BlockNumber.Should().Be(expected);
+                result.BlockHeader.Should().BeEquivalentTo(correspondingHeader);
+                result.Block.Should().BeEquivalentTo(correspondingBlock);
             }
             
             
