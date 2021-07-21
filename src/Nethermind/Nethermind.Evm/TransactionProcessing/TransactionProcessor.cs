@@ -224,7 +224,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     return;
                 }
                 
-                if (!restore && transaction.IsEip1559 && !transaction.IsServiceTransaction && senderBalance < (UInt256)transaction.GasLimit * transaction.MaxFeePerGas)
+                if (!restore && spec.IsEip1559Enabled && !transaction.IsServiceTransaction && senderBalance < (UInt256)transaction.GasLimit * transaction.MaxFeePerGas + value)
                 {
                     TraceLogInvalidTx(transaction, $"INSUFFICIENT_MAX_FEE_PER_GAS_FOR_SENDER_BALANCE: ({caller})_BALANCE = {senderBalance}, MAX_FEE_PER_GAS: {transaction.MaxFeePerGas}");
                     QuickFail(transaction, block, txTracer, eip658NotEnabled, "insufficient MaxFeePerGas for sender balance");
