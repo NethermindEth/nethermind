@@ -19,6 +19,12 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.State
 {
+    /// <summary>
+    /// Allows to access persisted witnesses 
+    /// </summary>
+    /// <remarks>
+    /// Witnesses can be pruned (deleted) to decrease space that is used 
+    /// </remarks>
     public interface IWitnessRepository
     {
         Keccak[]? Load(Keccak blockHash);

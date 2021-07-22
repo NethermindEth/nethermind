@@ -20,6 +20,9 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.State
 {
+    /// <summary>
+    /// Collects witnesses during block processing, allows to persist them
+    /// </summary>
     public interface IWitnessCollector
     {
         IReadOnlyCollection<Keccak> Collected { get; }
