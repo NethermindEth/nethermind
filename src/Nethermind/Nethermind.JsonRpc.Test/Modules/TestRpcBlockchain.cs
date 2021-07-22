@@ -124,7 +124,6 @@ namespace Nethermind.JsonRpc.Test.Modules
             ITxSealer txSealer0 = new TxSealer(txSigner, Timestamper);
             ITxSealer txSealer1 = new NonceReservingTxSealer(txSigner, Timestamper, TxPool);
             TxSender ??= new TxPoolSender(TxPool, txSealer0, txSealer1);
-            FeeHistoryManager = new FeeHistoryManager(BlockFinder);
             EthRpcModule = new EthRpcModule(
                 new JsonRpcConfig(),
                 Bridge,
@@ -134,8 +133,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 TxSender,
                 TestWallet,
                 LimboLogs.Instance,
-                SpecProvider,
-                FeeHistoryManager);
+                SpecProvider);
             
             return this;
         }

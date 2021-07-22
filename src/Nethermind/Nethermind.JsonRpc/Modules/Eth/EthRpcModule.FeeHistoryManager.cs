@@ -26,6 +26,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
 using static Nethermind.Core.BlockHeader;
+using static Nethermind.JsonRpc.Modules.Eth.BlockFeeInfo;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
@@ -237,9 +238,16 @@ namespace Nethermind.JsonRpc.Modules.Eth
             {
                 bool isLondonEnabled = IsLondonEnabled(blockFeeInfo);
                 InitializeBlockFeeInfo(ref blockFeeInfo, isLondonEnabled);
+                return ArgumentErrorsExist(blockFeeInfo, rewardPercentiles) ? 
+                    null :
+                    ArrayOfRewards(blockFeeInfo, rewardPercentiles!);
+            }
+
+            private bool ArgumentErrorsExist(BlockFeeInfo blockFeeInfo, double[]? rewardPercentiles)
+            {
                 if (rewardPercentiles == null || rewardPercentiles.Length == 0)
                 {
-                    return null;
+                    return true;
                 }
 
                 if (blockFeeInfo.Block == null)
@@ -249,10 +257,10 @@ namespace Nethermind.JsonRpc.Modules.Eth
                         _logger.Error("Block missing when reward percentiles were requested.");
                     }
 
-                    return null;
+                    return true;
                 }
 
-                return ArrayOfRewards(blockFeeInfo, rewardPercentiles);
+                return false;
             }
 
             protected virtual UInt256[]? ArrayOfRewards(BlockFeeInfo blockFeeInfo, double[] rewardPercentiles)
@@ -306,7 +314,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 Transaction[] transactionsInBlock = blockFeeInfo.Block!.Transactions;
                 GasPriceAndReward[] gasPriceAndRewardArray =
                     transactionsInBlock.Select(ConvertTxToGasPriceAndReward(blockFeeInfo)).ToArray();
-                gasPriceAndRewardArray.OrderBy(g => g.Reward).ToArray();
+                gasPriceAndRewardArray = gasPriceAndRewardArray.OrderBy(g => g.Reward).ToArray();
                 return gasPriceAndRewardArray;
             }
 
@@ -356,7 +364,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     UInt256 baseFeeDelta = (UInt256) (gasUsed - gasTarget);
                     baseFeeDelta *= currentBaseFee;
                     baseFeeDelta /= gasTargetLong;
-                    baseFeeDelta = UInt256.Max(baseFeeDelta / 8, UInt256.One);
+                    baseFeeDelta = UInt256.Max(baseFeeDelta / ElasticityMultiplier, UInt256.One);
                     currentBaseFee += baseFeeDelta;
                 }
                 else if (gasTarget > gasUsed)
@@ -364,7 +372,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     UInt256 baseFeeDelta = (UInt256) (gasTarget - gasUsed);
                     baseFeeDelta *= currentBaseFee;
                     baseFeeDelta /= gasTargetLong;
-                    baseFeeDelta /= 8;
+                    baseFeeDelta /= ElasticityMultiplier;
                     currentBaseFee -= baseFeeDelta;
                 }
                 return currentBaseFee;
@@ -380,13 +388,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     GasPrice = gasPrice;
                     Reward = reward;
                 }
-            }
-
-            public UInt256 EffectiveGasTip(UInt256 baseFee, Transaction transaction)
-            {
-                if (baseFee < transaction.MaxFeePerGas)
-                    throw new Exception("Base Fee is less than MaxFeePerGas.");
-                return UInt256.Min(transaction.MaxFeePerGas - baseFee, transaction.MaxPriorityFeePerGas);
             }
         }
     }

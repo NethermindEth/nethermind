@@ -283,7 +283,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                 IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
                 ILogger logger = Substitute.For<ILogger>();
                 IBlockRangeManager blockRangeManager = Substitute.For<IBlockRangeManager>();
-                TestableFeeHistoryManager testableFeeHistoryManager = new(blockFinder, logger, blockRangeManager);
+                TestableFeeHistoryManager testableFeeHistoryManager = new(blockFinder, logger, blockRangeManager, londonEnabled: false);
                 BlockHeader blockHeader = Build.A.BlockHeader.WithBaseFee((UInt256) baseFee).WithGasLimit(gasLimit).WithGasUsed(gasUsed).TestObject;
                 BlockFeeInfo blockFeeInfo = new() {BlockHeader = blockHeader};
                 BlockFeeInfo expectedBlockFeeInfo = new()
@@ -295,7 +295,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                 
                 blockFeeInfo.Should().BeEquivalentTo(expectedBlockFeeInfo);
             }
-
+            //ToDo
             [TestCase(null, false)]
             [TestCase(new double[]{}, false)]
 
