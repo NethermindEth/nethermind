@@ -39,7 +39,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
         public int GetLength(PooledTransactionsMessage message, out int contentLength)
         {
-            throw new System.NotImplementedException();
+            contentLength = 0;
+            return 0;
         }
 
         public static PooledTransactionsMessage Deserialize(RlpStream rlpStream)
