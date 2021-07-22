@@ -18,12 +18,16 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Microsoft.Extensions.Logging;
 using Microsoft.VisualBasic;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
+using Nethermind.Logging.Microsoft;
+using Nethermind.Logging.NLog;
 using Nethermind.Specs.Forks;
+using NLog.Fluent;
 using static Nethermind.Core.BlockHeader;
 
 namespace Nethermind.JsonRpc.Modules.Eth
@@ -34,10 +38,12 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             private readonly IBlockFinder _blockFinder;
             private readonly IBlockRangeManager _blockRangeManager;
+            private NLogLogger _logger;
 
-            public FeeHistoryManager(IBlockFinder blockFinder, IBlockRangeManager? blockRangeManager = null)
+            public FeeHistoryManager(IBlockFinder blockFinder, ILogger logger, IBlockRangeManager? blockRangeManager = null)
             {
                 _blockFinder = blockFinder;
+                _logger = logger;
                 _blockRangeManager = blockRangeManager ?? GetBlockRangeManager(_blockFinder);
             }
 
@@ -240,24 +246,36 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 }
 
                 if (blockFeeInfo.Block == null)
-                    //put error in log
                 {
+                    if (_logger.IsWarn())
+                        _logger.Warn("Block is null in blockFeeInfo.");
                     return;
                 }
 
+                GetArrayOfRewards(blockFeeInfo, rewardPercentiles);
+            }
+
+            protected virtual void GetArrayOfRewards(BlockFeeInfo blockFeeInfo, double[] rewardPercentiles)
+            {
+                if (blockFeeInfo.Block!.Transactions.Length == 0)
+                {
+                    blockFeeInfo.Reward = GetZerosArrayAsLongAsRewardPercentiles(rewardPercentiles);
+                }
+                else
+                {
+                    blockFeeInfo.Reward = CalculateAndInsertRewards(blockFeeInfo, rewardPercentiles);
+                }
+            }
+
+            private static UInt256[] GetZerosArrayAsLongAsRewardPercentiles(double[] rewardPercentiles)
+            {
                 UInt256[] rewards = new UInt256[rewardPercentiles.Length];
-                if (blockFeeInfo.Block.Transactions.Length == 0)
+                for (int i = 0; i < rewardPercentiles.Length; i++)
                 {
-                    for (int i = 0; i < rewardPercentiles.Length; i++)
-                    {
-                        rewards[i] = 0;
-                    }
-
-                    blockFeeInfo.Reward = rewards;
-                    return;
+                    rewards[i] = 0;
                 }
 
-                CalculateAndInsertRewards(blockFeeInfo, rewardPercentiles, rewards);
+                return rewards;
             }
 
             protected virtual bool IsLondonEnabled(BlockFeeInfo blockFeeInfo)
@@ -267,7 +285,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return isLondonEnabled;
             }
 
-            private void InitializeBlockFeeInfo(ref BlockFeeInfo blockFeeInfo, bool isLondonEnabled)
+            protected virtual void InitializeBlockFeeInfo(ref BlockFeeInfo blockFeeInfo, bool isLondonEnabled)
             {
                 blockFeeInfo.BaseFee = blockFeeInfo.BlockHeader?.BaseFeePerGas ?? 0;
                 blockFeeInfo.NextBaseFee = isLondonEnabled
@@ -276,27 +294,26 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 blockFeeInfo.GasUsedRatio = (float) blockFeeInfo.BlockHeader!.GasUsed / blockFeeInfo.BlockHeader!.GasLimit;
             }
 
-            private static void CalculateAndInsertRewards(BlockFeeInfo blockFeeInfo, double[] rewardPercentiles, UInt256[] rewards)
+            private static UInt256[]? CalculateAndInsertRewards(BlockFeeInfo blockFeeInfo, double[] rewardPercentiles)
             {
-                GasPriceAndReward[] gasPriceAndRewardArray = CalculateRewards(blockFeeInfo);
+                GasPriceAndReward[] gasPriceAndRewardArray = GetEffectiveGasPriceAndRewards(blockFeeInfo);
 
-                InsertRewardsIntoBlockFeeInfo(blockFeeInfo, rewardPercentiles, rewards, gasPriceAndRewardArray);
-
-                blockFeeInfo.Reward = rewards;
+                return GetRewardsAtPercentiles(blockFeeInfo, rewardPercentiles, gasPriceAndRewardArray);
             }
 
-            private static GasPriceAndReward[] CalculateRewards(BlockFeeInfo blockFeeInfo)
+            private static GasPriceAndReward[] GetEffectiveGasPriceAndRewards(BlockFeeInfo blockFeeInfo)
             {
-                Transaction[] transactionsInBlock = blockFeeInfo.Block.Transactions;
+                Transaction[] transactionsInBlock = blockFeeInfo.Block!.Transactions;
                 GasPriceAndReward[] gasPriceAndRewardArray =
                     transactionsInBlock.Select(ConvertTxToGasPriceAndReward(blockFeeInfo)).ToArray();
                 gasPriceAndRewardArray.OrderBy(g => g.Reward).ToArray();
                 return gasPriceAndRewardArray;
             }
 
-            private static void InsertRewardsIntoBlockFeeInfo(BlockFeeInfo blockFeeInfo, double[] rewardPercentiles, UInt256[] rewards,
+            private static UInt256[] GetRewardsAtPercentiles(BlockFeeInfo blockFeeInfo, double[] rewardPercentiles,
                 GasPriceAndReward[] gasPriceAndRewardArray)
             {
+                UInt256[] rewards = new UInt256[rewardPercentiles.Length];
                 int txIndex;
                 int gasPriceArrayLength = gasPriceAndRewardArray.Length;
                 int rewardsIndex = 0;
@@ -305,7 +322,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 foreach (double percentile in rewardPercentiles)
                 {
                     totalGasUsed = 0;
-                    thresholdGasUsed = (UInt256) ((percentile / 100) * (blockFeeInfo.Block.GasUsed));
+                    thresholdGasUsed = (UInt256) ((percentile / 100) * (blockFeeInfo.Block!.GasUsed));
                     for (txIndex = 0; totalGasUsed < thresholdGasUsed && txIndex < gasPriceArrayLength; txIndex++)
                     {
                         totalGasUsed += gasPriceAndRewardArray[txIndex].Reward;
@@ -313,6 +330,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
                     rewards[rewardsIndex++] = gasPriceAndRewardArray[txIndex].Reward;
                 }
+
+                return rewards;
             }
 
             private static Func<Transaction, GasPriceAndReward> ConvertTxToGasPriceAndReward(BlockFeeInfo blockFeeInfoCopy)
