@@ -20,9 +20,11 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth;
 using NSubstitute;
 using NUnit.Framework;
@@ -203,6 +205,34 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                 Action action = () => feeHistoryManager.CreateFeeHistoryResult(new List<BlockFeeInfo>{blockFeeInfo}, 0);
 
                 action.Should().Throw<ArgumentException>().WithMessage("`blockCount` is equal to 0.");
+            }
+
+            [Test]
+            public void CreateFeeHistoryResult_GivenValidArguments_ShouldReturnProperFeeHistoryResult()
+            {
+                List<BlockFeeInfo> blockFeeInfos = new()
+                {
+                    new(){Reward = new UInt256[] {1, 4, 9}, BaseFee = 2, NextBaseFee = 3, GasUsedRatio = 4},
+                    new(){Reward = new UInt256[] {16, 25}, BaseFee = 3, NextBaseFee = 4, GasUsedRatio = 8},
+                    new(){Reward = new UInt256[] {36}, BaseFee = 4, NextBaseFee = 5, GasUsedRatio = 12},
+                    new(){Reward = new UInt256[] {}, BaseFee = 5, NextBaseFee = 6, GasUsedRatio = 15} //what if baseFee and nextBaseFees are not synced up?
+                };
+                
+                UInt256[][] expectedRewards = {
+                    new UInt256[]{1,4,9},
+                    new UInt256[]{16,25},
+                    new UInt256[]{36},
+                    new UInt256[]{}
+                };
+                UInt256[] expectedBaseFees = {2,3,4,5,6};
+                float[] expectedGasUsedRatio = {4,8,12,15};
+                FeeHistoryResult expected = new() {_reward = expectedRewards, _baseFee = expectedBaseFees, _gasUsedRatio = expectedGasUsedRatio};
+
+                IBlockTree blockTree = Substitute.For<IBlockTree>();
+                IBlockRangeManager blockRangeManager = Substitute.For<IBlockRangeManager>(); 
+                FeeHistoryManager feeHistoryManager = new FeeHistoryManager(blockTree, blockRangeManager);
+                
+                feeHistoryManager.CreateFeeHistoryResult(blockFeeInfos, 4).Should().BeEquivalentTo(expected);
             }
             
             class TestableFeeHistoryManager : FeeHistoryManager

@@ -190,7 +190,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             protected internal FeeHistoryResult CreateFeeHistoryResult(List<BlockFeeInfo> blockFeeInfos, long blockCount)
             {
-                FeeHistoryArgumentChecks(blockFeeInfos, blockCount);
+                CreateFeeHistoryArgumentChecks(blockFeeInfos, blockCount);
 
                 FeeHistoryResult feeHistoryResult = new(
                     blockFeeInfos[0].BlockNumber,
@@ -211,7 +211,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return feeHistoryResult;
             }
 
-            private static void FeeHistoryArgumentChecks(List<BlockFeeInfo> blockFeeInfos, long blockCount)
+            private static void CreateFeeHistoryArgumentChecks(List<BlockFeeInfo> blockFeeInfos, long blockCount)
             {
                 if (blockFeeInfos.Count == 0)
                 {
