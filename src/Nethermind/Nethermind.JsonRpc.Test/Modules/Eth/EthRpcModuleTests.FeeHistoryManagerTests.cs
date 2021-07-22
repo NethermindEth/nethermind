@@ -244,57 +244,28 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             [TestCase(20, 100, 95, 22, 0.95)] //Target gas used: 100/2 = 50 | Actual Gas used = 95 | Base Fee Delta = Max((((95-50)/50) * 20) / 8, 1) = 2 | Next Base Fee = 20 + 1 = 22
             [TestCase(20, 100, 40, 20, 0.4)] //Target gas used: 100/2 = 50 | Actual Gas used = 40 | Base Fee Delta = (((50-40)/50) * 20) / 8 = 0 | Next Base Fee = 20 - 0 = 20 
             [TestCase(50, 100, 40, 49, 0.4)] //Target gas used: 100/2 = 50 | Actual Gas used = 40 | Base Fee Delta = (((50-40)/50) * 50) / 8 = 1 | Next Base Fee = 50 - 1 = 49
-            public void ProcessBlock_IfLondonEnabled_NextBaseFeeAndBlockFeeInfoCalculatedCorrectly(long baseFee, long gasLimit, long gasUsed, long expectedNextBaseFee, double expectedGasUsedRatio)
+            public void ProcessBlock_IfLondonEnabled_NextBaseFeeCalculatedCorrectly(long baseFee, long gasLimit, long gasUsed, long expectedNextBaseFee, double expectedGasUsedRatio)
             {
+                UInt256 baseFeeUInt256 = (UInt256) baseFee;
+                UInt256 expectedNextBaseFeeUInt256 = (UInt256) expectedNextBaseFee;
                 IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
                 IBlockRangeManager blockRangeManager = Substitute.For<IBlockRangeManager>();
-                TestableFeeHistoryManager feeHistoryManager = new(blockFinder, blockRangeManager);
-                BlockHeader testBlockHeader = Build.A.BlockHeader.WithBaseFee((UInt256) baseFee).WithGasLimit(gasLimit).WithGasUsed(gasUsed).TestObject;
+                TestableFeeHistoryManager feeHistoryManager = new(blockFinder, blockRangeManager, true);
+                BlockHeader testBlockHeader = Build.A.BlockHeader.WithBaseFee(baseFeeUInt256).WithGasLimit(gasLimit).WithGasUsed(gasUsed).TestObject;
                 BlockFeeInfo blockFeeInfo = new() {BlockHeader = testBlockHeader};
-                BlockFeeInfo expectedBlockFeeInfo = new()
-                {
-                    BlockHeader = testBlockHeader, BaseFee = (UInt256) baseFee, NextBaseFee = (UInt256) expectedNextBaseFee, GasUsedRatio = (float) expectedGasUsedRatio
-                };
+                BlockFeeInfo expectedBlockFeeInfo = new() {BlockHeader = testBlockHeader};
+                expectedBlockFeeInfo.BaseFee = baseFeeUInt256;
+                expectedBlockFeeInfo.NextBaseFee = expectedNextBaseFeeUInt256;
+                expectedBlockFeeInfo.GasUsedRatio = (float) expectedGasUsedRatio;
                 
                 feeHistoryManager.ProcessBlock(ref blockFeeInfo, null);
 
                 blockFeeInfo.Should().BeEquivalentTo(expectedBlockFeeInfo);
             }
 
-            [TestCase(3,10,5, 0, 0.5)]
-            [TestCase(5, 24, 6, 0, 0.25)]
-            public void ProcessBlock_IfLondonNotEnabled_NextBaseFeeIs0AndBlockFeeInfoCalculatedCorrectly(long baseFee, long gasLimit, long gasUsed, long expectedNextBaseFee, double expectedGasUsedRatio)
+            public void ProcessBlock_IfLondonNotEnabled_NextBaseFeeIs0()
             {
-                IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-                IBlockRangeManager blockRangeManager = Substitute.For<IBlockRangeManager>();
-                TestableFeeHistoryManager testableFeeHistoryManager = new(blockFinder, blockRangeManager);
-                BlockHeader blockHeader = Build.A.BlockHeader.WithBaseFee((UInt256) baseFee).WithGasLimit(gasLimit).WithGasUsed(gasUsed).TestObject;
-                BlockFeeInfo blockFeeInfo = new() {BlockHeader = blockHeader};
-                BlockFeeInfo expectedBlockFeeInfo = new()
-                {
-                    BlockHeader = blockHeader, BaseFee = (UInt256) baseFee, NextBaseFee = (UInt256) expectedNextBaseFee, GasUsedRatio = (float) expectedGasUsedRatio
-                };
                 
-                testableFeeHistoryManager.ProcessBlock(ref blockFeeInfo, null);
-                
-                blockFeeInfo.Should().BeEquivalentTo(expectedBlockFeeInfo);
-            }
-
-            [TestCase(null, false)]
-            [TestCase(new double[]{}, false)]
-
-            public void ProcessBlock_IfRewardPercentilesIsNullOrEmpty_EarlyReturn(double[]? rewardPercentiles, bool expected)
-            {
-                IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-                IBlockRangeManager blockRangeManager = Substitute.For<IBlockRangeManager>();
-                TestableFeeHistoryManager testableFeeHistoryManager = new(blockFinder, blockRangeManager, 
-                    overrideInitializeBlockFeeInfo: true, overrideGetArrayOfRewards: true);
-                BlockFeeInfo blockFeeInfo = new() {Block = Build.A.Block.TestObject};
-
-                testableFeeHistoryManager.ArrayOfRewardsCalled.Should().BeFalse();
-                testableFeeHistoryManager.ProcessBlock(ref blockFeeInfo, rewardPercentiles);
-
-                testableFeeHistoryManager.ArrayOfRewardsCalled.Should().BeFalse();
             }
             class TestableFeeHistoryManager : FeeHistoryManager
             {
@@ -302,27 +273,16 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                 
                 public List<BlockFeeInfo>? BlockFeeInfos { get; private set; }
                 private bool LondonEnabled { get; set; }
-                public bool ArrayOfRewardsCalled { get; set; }
-
-                private readonly bool _overrideInitializeBlockFeeInfo;
-
-                private readonly bool _overrideGetArrayOfRewards; 
-
                 public TestableFeeHistoryManager(
-                    IBlockFinder blockFinder,
+                    IBlockFinder blockFinder, 
                     IBlockRangeManager? blockRangeManager = null,
-                    bool londonEnabled = true,
-                    bool overrideInitializeBlockFeeInfo = false,
-                    bool overrideGetArrayOfRewards = false) : 
+                    bool londonEnabled = true) : 
                     base(blockFinder, 
                         blockRangeManager)
                 {
                     BlockCount = null;
                     BlockFeeInfos = null;
-                    ArrayOfRewardsCalled = false;
                     LondonEnabled = londonEnabled;
-                    _overrideGetArrayOfRewards = overrideGetArrayOfRewards;
-                    _overrideInitializeBlockFeeInfo = overrideInitializeBlockFeeInfo;
                 }
 
                 protected override ResultWrapper<FeeHistoryResult> SuccessfulResult(long blockCount, List<BlockFeeInfo> blockFeeInfos)
@@ -342,26 +302,6 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                 protected override bool IsLondonEnabled(BlockFeeInfo blockFeeInfo)
                 {
                     return LondonEnabled;
-                }
-
-                protected override void InitializeBlockFeeInfo(ref BlockFeeInfo blockFeeInfo, bool isLondonEnabled)
-                {
-                    if (_overrideInitializeBlockFeeInfo == false)
-                    {
-                        base.InitializeBlockFeeInfo(ref blockFeeInfo, isLondonEnabled);
-                    }
-                }
-
-                protected override void GetArrayOfRewards(BlockFeeInfo blockFeeInfo, double[] rewardPercentiles)
-                {
-                    if (_overrideGetArrayOfRewards == false)
-                    {
-                        base.GetArrayOfRewards(blockFeeInfo, rewardPercentiles);
-                    }
-                    else
-                    {
-                        ArrayOfRewardsCalled = true;
-                    }
                 }
             }
         }

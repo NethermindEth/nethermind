@@ -88,7 +88,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _feeHistoryManager = new FeeHistoryManager(_blockFinder, _logger);
+            _feeHistoryManager = new FeeHistoryManager(_blockFinder);
         }
 
         public ResultWrapper<string> eth_protocolVersion()
