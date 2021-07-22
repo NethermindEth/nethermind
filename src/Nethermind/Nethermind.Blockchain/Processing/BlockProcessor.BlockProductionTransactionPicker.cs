@@ -95,7 +95,7 @@ namespace Nethermind.Blockchain.Processing
                     return false;
                 }
 
-                if (transaction.IsEip1559 && !transaction.IsServiceTransaction && senderBalance < (UInt256)transaction.GasLimit * transaction.MaxFeePerGas)
+                if (eip1559Enabled && !transaction.IsServiceTransaction && senderBalance < (UInt256)transaction.GasLimit * transaction.MaxFeePerGas + transaction.Value)
                 {
                     e.Set(TxAction.Skip, $"MaxFeePerGas ({transaction.MaxFeePerGas}) times GasLimit {transaction.GasLimit} is higher than sender balance ({senderBalance})");
                     return false;
