@@ -30,5 +30,10 @@ namespace Nethermind.Network.P2P
         {
             return PingMessage.Instance;
         }
+
+        public int GetLength(PingMessage message, out int contentLength)
+        {
+            throw new System.NotImplementedException();
+        }
     }
 }

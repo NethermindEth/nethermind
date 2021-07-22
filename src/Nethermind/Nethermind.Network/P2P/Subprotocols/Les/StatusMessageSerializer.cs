@@ -240,6 +240,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             return Deserialize(rlpStream);
         }
 
+        public int GetLength(StatusMessage message, out int contentLength)
+        {
+            throw new System.NotImplementedException();
+        }
+
         private static StatusMessage Deserialize(RlpStream rlpStream)
         {
             StatusMessage statusMessage = new StatusMessage();

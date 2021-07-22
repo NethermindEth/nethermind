@@ -62,5 +62,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Wit
 
             return new BlockWitnessHashesMessage(requestId, hashes);
         }
+
+        public int GetLength(BlockWitnessHashesMessage message, out int contentLength)
+        {
+            throw new System.NotImplementedException();
+        }
     }
 }

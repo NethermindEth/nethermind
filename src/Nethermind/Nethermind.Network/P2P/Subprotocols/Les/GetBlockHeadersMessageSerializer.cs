@@ -43,6 +43,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             return Deserialize(rlpStream);
         }
 
+        public int GetLength(GetBlockHeadersMessage message, out int contentLength)
+        {
+            throw new System.NotImplementedException();
+        }
+
         private static GetBlockHeadersMessage Deserialize(RlpStream rlpStream)
         {
             GetBlockHeadersMessage getBlockHeadersMessage = new GetBlockHeadersMessage();
