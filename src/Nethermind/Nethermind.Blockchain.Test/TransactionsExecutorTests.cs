@@ -179,21 +179,22 @@ namespace Nethermind.Blockchain.Test
                     GasLimit = 10000000
                 };
                 yield return new TestCaseData(balanceBelowMaxFeeTimesGasLimit).SetName("EIP1559 transactions: none transactions selected because balance is lower than MaxFeePerGas times GasLimit");
-                
-                ProperTransactionsSelectedTestCase balanceFailingWithMaxFeePerGasCheck = new ProperTransactionsSelectedTestCase()
-                {
-                    Eip1559Enabled = true,
-                    BaseFee = 5,
-                    AccountStates = {{TestItem.AddressA, (400, 1)}},
-                    Transactions =
+
+                ProperTransactionsSelectedTestCase balanceFailingWithMaxFeePerGasCheck =
+                    new ProperTransactionsSelectedTestCase()
                     {
-                        Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(1)
-                            .WithMaxFeePerGas(300).WithMaxPriorityFeePerGas(10).WithGasLimit(10).WithType(TxType.EIP1559).WithValue(101).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
-                    },
-                    GasLimit = 10000000
-                }
-                balanceFailingWithMaxFeePerGasCheck.ExpectedSelectedTransactions.AddRange(
-                    new[] .Select(i => balanceFailingWithMaxFeePerGasCheck.Transactions[i]));
+                        Eip1559Enabled = true,
+                        BaseFee = 5,
+                        AccountStates = {{TestItem.AddressA, (400, 1)}},
+                        Transactions =
+                        {
+                            Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(1)
+                                .WithMaxFeePerGas(300).WithMaxPriorityFeePerGas(10).WithGasLimit(10)
+                                .WithType(TxType.EIP1559).WithValue(101).SignedAndResolved(TestItem.PrivateKeyA)
+                                .TestObject,
+                        },
+                        GasLimit = 10000000
+                    };
                 yield return new TestCaseData(balanceFailingWithMaxFeePerGasCheck).SetName("EIP1559 transactions: None transactions selected - sender balance and max fee per gas check");
             }
         }
