@@ -232,9 +232,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             internal void ProcessBlock(ref BlockFeeInfo blockFeeInfo, double[]? rewardPercentiles)
             {
-                IReleaseSpec london = GetLondonInstance();
-                bool isLondonEnabled = blockFeeInfo.BlockNumber >= london.Eip1559TransitionBlock;
-                InitializeBlockFeeInfo(blockFeeInfo, isLondonEnabled);
+                bool isLondonEnabled = IsLondonEnabled(blockFeeInfo);
+                InitializeBlockFeeInfo(ref blockFeeInfo, isLondonEnabled);
                 if (rewardPercentiles == null || rewardPercentiles.Length == 0)
                 {
                     return;
@@ -261,12 +260,14 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 CalculateAndInsertRewards(blockFeeInfo, rewardPercentiles, rewards);
             }
 
-            protected virtual IReleaseSpec GetLondonInstance()
+            protected virtual bool IsLondonEnabled(BlockFeeInfo blockFeeInfo)
             {
-                return London.Instance;
+                IReleaseSpec london = London.Instance;
+                bool isLondonEnabled = blockFeeInfo.BlockNumber >= london.Eip1559TransitionBlock;
+                return isLondonEnabled;
             }
 
-            private void InitializeBlockFeeInfo(BlockFeeInfo blockFeeInfo, bool isLondonEnabled)
+            private void InitializeBlockFeeInfo(ref BlockFeeInfo blockFeeInfo, bool isLondonEnabled)
             {
                 blockFeeInfo.BaseFee = blockFeeInfo.BlockHeader?.BaseFeePerGas ?? 0;
                 blockFeeInfo.NextBaseFee = isLondonEnabled
@@ -325,22 +326,27 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
             private UInt256 CalculateNextBaseFee(BlockFeeInfo blockFeeInfo)
             {
-                ulong gasLimit = (ulong) blockFeeInfo.BlockHeader!.GasLimit;
+                UInt256 gasLimit = (UInt256) blockFeeInfo.BlockHeader!.GasLimit;
                 double gasTarget = (double) gasLimit / GasTargetToLimitMultiplier;
-                ulong gasTargetUlong = (ulong) gasTarget;
-                ulong gasUsed = (ulong) blockFeeInfo.BlockHeader!.GasUsed;
+                UInt256 gasTargetLong = (UInt256) gasTarget;
+                long gasUsed = blockFeeInfo.BlockHeader!.GasUsed;
                 UInt256 currentBaseFee = blockFeeInfo.BlockHeader!.BaseFeePerGas;
                 
                 if (gasTarget < gasUsed)
                 {
-                    ulong fractionChange = ((gasUsed - gasTargetUlong) / gasTargetUlong);
-                    UInt256 basePriceDeltaUInt = currentBaseFee * fractionChange;
-                    basePriceDeltaUInt = UInt256.Max(basePriceDeltaUInt, 1);
-                    
+                    UInt256 baseFeeDelta = (UInt256) (gasUsed - gasTarget);
+                    baseFeeDelta *= currentBaseFee;
+                    baseFeeDelta /= gasTargetLong;
+                    baseFeeDelta = UInt256.Max(baseFeeDelta / 8, UInt256.One);
+                    currentBaseFee += baseFeeDelta;
                 }
                 else if (gasTarget > gasUsed)
                 {
-                    ulong basePriceDelta = ((gasTargetUlong - gasUsed) / gasTargetUlong);
+                    UInt256 baseFeeDelta = (UInt256) (gasTarget - gasUsed);
+                    baseFeeDelta *= currentBaseFee;
+                    baseFeeDelta /= gasTargetLong;
+                    baseFeeDelta /= 8;
+                    currentBaseFee -= baseFeeDelta;
                 }
                 return currentBaseFee;
             }

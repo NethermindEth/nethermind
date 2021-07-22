@@ -23,6 +23,7 @@ using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth;
@@ -238,20 +239,24 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                 result.Should().BeEquivalentTo(expected);
             }
 
-            [TestCase(5, 3,3, 6)] //Target gas used: 3/2 = 1.5 | Actual Gas used = 3 | Base Fee Delta = Max((((3-1.5)/1.5) * 5) / 8, 1) = 1 | Next Base Fee = 5 + 1 = 6 
-            [TestCase(20, 100, 95, 9)] //Target gas used: 100/2 = 50 | Actual Gas used = 95 | Base Fee Delta = Max((((95-50)/50) * 20) / 8, 1) = 2 | Next Base Fee = 5 + 2 = 7
-            [TestCase(20, 100, 40, 5)] //Target gas used: 100/2 = 50 | Actual Gas used = 40 | Base Fee Delta = (((50-40)/50) * 20) / 8 = 0 | Next Base Fee = 5 - 0 = 5 
-            [TestCase(50, 100, 40, 4)] //Target gas used: 100/2 = 50 | Actual Gas used = 40 | Base Fee Delta = (((50-40)/50) * 50) / 8 = 1 | Next Base Fee = 5 - 1 = 4
-            public void ProcessBlock_IfLondonEnabled_NextBaseFeeCalculatedCorrectly(UInt256 baseFee, long gasLimit, long gasUsed, UInt256 expectedNextBaseFee)
+            [TestCase(5, 3,3, 6, 1)] //Target gas used: 3/2 = 1.5 | Actual Gas used = 3 | Base Fee Delta = Max((((3-1.5) * 5)/1 / 8, 1) = 1 | Next Base Fee = 5 + 1 = 6 
+            [TestCase(11, 3,3, 12, 1)] //Target gas used: 3/2 = 1.5 | Actual Gas used = 3 | Base Fee Delta = Max((((3-1.5)/1) * 11) / 8, 1) = 2 | Next Base Fee = 11 + 1 = 12 
+            [TestCase(20, 100, 95, 22, 0.95)] //Target gas used: 100/2 = 50 | Actual Gas used = 95 | Base Fee Delta = Max((((95-50)/50) * 20) / 8, 1) = 2 | Next Base Fee = 20 + 1 = 22
+            [TestCase(20, 100, 40, 20, 0.4)] //Target gas used: 100/2 = 50 | Actual Gas used = 40 | Base Fee Delta = (((50-40)/50) * 20) / 8 = 0 | Next Base Fee = 20 - 0 = 20 
+            [TestCase(50, 100, 40, 49, 0.4)] //Target gas used: 100/2 = 50 | Actual Gas used = 40 | Base Fee Delta = (((50-40)/50) * 50) / 8 = 1 | Next Base Fee = 50 - 1 = 49
+            public void ProcessBlock_IfLondonEnabled_NextBaseFeeCalculatedCorrectly(long baseFee, long gasLimit, long gasUsed, long expectedNextBaseFee, double expectedGasUsedRatio)
             {
+                UInt256 baseFeeUInt256 = (UInt256) baseFee;
+                UInt256 expectedNextBaseFeeUInt256 = (UInt256) expectedNextBaseFee;
                 IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
                 IBlockRangeManager blockRangeManager = Substitute.For<IBlockRangeManager>();
-                FeeHistoryManager feeHistoryManager = new(blockFinder, blockRangeManager);
-                BlockHeader testBlockHeader = Build.A.BlockHeader.WithBaseFee(baseFee).WithGasLimit(gasLimit).WithGasUsed(gasUsed).TestObject;
+                TestableFeeHistoryManager feeHistoryManager = new(blockFinder, blockRangeManager, true);
+                BlockHeader testBlockHeader = Build.A.BlockHeader.WithBaseFee(baseFeeUInt256).WithGasLimit(gasLimit).WithGasUsed(gasUsed).TestObject;
                 BlockFeeInfo blockFeeInfo = new() {BlockHeader = testBlockHeader};
-                BlockFeeInfo expectedBlockFeeInfo = blockFeeInfo;
-                expectedBlockFeeInfo.BaseFee = baseFee;
-                expectedBlockFeeInfo.NextBaseFee = expectedNextBaseFee;
+                BlockFeeInfo expectedBlockFeeInfo = new() {BlockHeader = testBlockHeader};
+                expectedBlockFeeInfo.BaseFee = baseFeeUInt256;
+                expectedBlockFeeInfo.NextBaseFee = expectedNextBaseFeeUInt256;
+                expectedBlockFeeInfo.GasUsedRatio = (float) expectedGasUsedRatio;
                 
                 feeHistoryManager.ProcessBlock(ref blockFeeInfo, null);
 
@@ -264,17 +269,20 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             }
             class TestableFeeHistoryManager : FeeHistoryManager
             {
-                public long? BlockCount { get; private set; }
+                private long? BlockCount { get; set; }
                 
                 public List<BlockFeeInfo>? BlockFeeInfos { get; private set; }
+                private bool LondonEnabled { get; set; }
                 public TestableFeeHistoryManager(
                     IBlockFinder blockFinder, 
-                    IBlockRangeManager? blockRangeManager = null) : 
+                    IBlockRangeManager? blockRangeManager = null,
+                    bool londonEnabled = true) : 
                     base(blockFinder, 
                         blockRangeManager)
                 {
                     BlockCount = null;
                     BlockFeeInfos = null;
+                    LondonEnabled = londonEnabled;
                 }
 
                 protected override ResultWrapper<FeeHistoryResult> SuccessfulResult(long blockCount, List<BlockFeeInfo> blockFeeInfos)
@@ -289,6 +297,11 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                 {
                     BlockFeeInfo blockFeeInfo = new() {BlockNumber = blockNumber};
                     return blockFeeInfo;
+                }
+
+                protected override bool IsLondonEnabled(BlockFeeInfo blockFeeInfo)
+                {
+                    return LondonEnabled;
                 }
             }
         }
