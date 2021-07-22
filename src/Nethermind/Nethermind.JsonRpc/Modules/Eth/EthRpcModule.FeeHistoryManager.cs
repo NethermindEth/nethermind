@@ -18,16 +18,13 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Microsoft.Extensions.Logging;
+using Nethermind.Logging;
 using Microsoft.VisualBasic;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
-using Nethermind.Logging.Microsoft;
-using Nethermind.Logging.NLog;
 using Nethermind.Specs.Forks;
-using NLog.Fluent;
 using static Nethermind.Core.BlockHeader;
 
 namespace Nethermind.JsonRpc.Modules.Eth
@@ -38,7 +35,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             private readonly IBlockFinder _blockFinder;
             private readonly IBlockRangeManager _blockRangeManager;
-            private NLogLogger _logger;
+            private ILogger _logger;
 
             public FeeHistoryManager(IBlockFinder blockFinder, ILogger logger, IBlockRangeManager? blockRangeManager = null)
             {
@@ -247,8 +244,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
                 if (blockFeeInfo.Block == null)
                 {
-                    if (_logger.IsWarn())
-                        _logger.Warn("Block is null in blockFeeInfo.");
+                    if (_logger.IsError)
+                    {
+                        _logger.Error("Block missing when reward percentiles were requested.");
+                    }
+
                     return;
                 }
 
