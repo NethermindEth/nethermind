@@ -229,7 +229,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             UInt256 senderReservedGasPayment = restore ? UInt256.Zero : (ulong) gasLimit * gasPrice;
             
-            if (isEthCallState)
+            if (isEthCallState && !isZeroGasPrice)
             {
                 senderReservedGasPayment = (ulong)gasLimit * gasPrice;
             }
