@@ -23,10 +23,10 @@ using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth;
+using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
 using static Nethermind.JsonRpc.Modules.Eth.EthRpcModule;
@@ -43,11 +43,12 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             public void GetFeeHistory_IfBlockCountGreaterThan1024_BlockCountSetTo1024(long blockCount)
             {
                 IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+                ILogger logger = Substitute.For<ILogger>();
                 blockFinder.FindPendingBlock().Returns(Build.A.Block.WithNumber(1).TestObject);
                 IBlockRangeManager blockRangeManager = Substitute.For<IBlockRangeManager>();
                 blockRangeManager.ResolveBlockRange(ref Arg.Any<long>(), ref Arg.Any<long>(), Arg.Any<int>(), ref Arg.Any<long?>())
                     .Returns(ResultWrapper<BlockRangeInfo>.Success(new BlockRangeInfo()));
-                FeeHistoryManager feeHistoryManager = new(blockFinder, blockRangeManager);
+                FeeHistoryManager feeHistoryManager = new(blockFinder, logger, blockRangeManager);
                 
                 feeHistoryManager.GetFeeHistory(ref blockCount, 0);
 
@@ -59,7 +60,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             public void GetFeeHistory_IfRewardPercentilesContainInvalidNumber_ResultsInFailure(double[] rewardPercentiles, string invalidNums)
             {
                 long blockCount = 10;
-                FeeHistoryManager feeHistoryManager = new(Substitute.For<IBlockFinder>());
+                IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+                ILogger logger = Substitute.For<ILogger>();
+                FeeHistoryManager feeHistoryManager = new(blockFinder, logger);
 
                 ResultWrapper<FeeHistoryResult> resultWrapper = feeHistoryManager.GetFeeHistory(ref blockCount, 10, rewardPercentiles);
 
@@ -70,7 +73,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             public void GetFeeHistory_IfRewardPercentilesNotInAscendingOrder_ResultsInFailure()
             {
                 long blockCount = 10;
-                FeeHistoryManager feeHistoryManager = new FeeHistoryManager(Substitute.For<IBlockFinder>());
+                IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+                ILogger logger = Substitute.For<ILogger>();
+                FeeHistoryManager feeHistoryManager = new FeeHistoryManager(blockFinder, logger);
                 double[] rewardPercentiles = {0,2,3,5,1};
 
                 ResultWrapper<FeeHistoryResult> resultWrapper = feeHistoryManager.GetFeeHistory(ref blockCount, 10, rewardPercentiles);
@@ -86,10 +91,11 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             public void FeeHistoryLookup_GivenValidInputs_FirstBlockNumberCalculatedCorrectly(long blockCount, long lastBlockNumber, long expectedFirstBlockNumber)
             {
                 IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+                ILogger logger = Substitute.For<ILogger>();
                 IBlockRangeManager blockRangeManager = Substitute.For<IBlockRangeManager>();
-                TestableFeeHistoryManager testableFeeHistoryManager = new(blockFinder, blockRangeManager);
+                TestableFeeHistoryManager testableFeeHistoryManager = new(blockFinder, logger, blockRangeManager);
 
-                ResultWrapper<FeeHistoryResult> resultWrapper = testableFeeHistoryManager.FeeHistoryLookup(blockCount, lastBlockNumber);
+                testableFeeHistoryManager.FeeHistoryLookup(blockCount, lastBlockNumber);
 
                 testableFeeHistoryManager.BlockFeeInfos![0].BlockNumber.Should().Be(expectedFirstBlockNumber);
             }
@@ -101,10 +107,11 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             public void FeeHistoryLookup_GivenValidInputs_NumbersInBlockFeeInfoListCalculatedCorrectly(long blockCount, long lastBlockNumber, long[] expectedNumbers)
             {
                 IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+                ILogger logger = Substitute.For<ILogger>();
                 IBlockRangeManager blockRangeManager = Substitute.For<IBlockRangeManager>();
-                TestableFeeHistoryManager testableFeeHistoryManager = new(blockFinder, blockRangeManager);
+                TestableFeeHistoryManager testableFeeHistoryManager = new(blockFinder, logger, blockRangeManager);
 
-                ResultWrapper<FeeHistoryResult> resultWrapper = testableFeeHistoryManager.FeeHistoryLookup(blockCount, lastBlockNumber);
+                testableFeeHistoryManager.FeeHistoryLookup(blockCount, lastBlockNumber);
 
                 long[] numbersInList = testableFeeHistoryManager.BlockFeeInfos!.Select(b => b.BlockNumber).ToArray();
                 numbersInList.Should().BeEquivalentTo(expectedNumbers);
@@ -116,8 +123,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             public void GetBlockFeeInfo_IfPendingBlockNumberLessThanBlockNumber_SetBlockNumberToPendingBlockNumber(long pendingBlockNumber, long argBlockNumber, long expected)
             {
                 IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+                ILogger logger = Substitute.For<ILogger>();
                 IBlockRangeManager blockRangeManager = Substitute.For<IBlockRangeManager>();
-                FeeHistoryManager feeHistoryManager = new FeeHistoryManager(blockFinder, blockRangeManager);
+                FeeHistoryManager feeHistoryManager = new FeeHistoryManager(blockFinder, logger, blockRangeManager);
                 Block pendingBlock = (Build.A.Block.WithNumber(pendingBlockNumber).TestObject);
                 
                 BlockFeeInfo result = feeHistoryManager.GetBlockFeeInfo(argBlockNumber, null, pendingBlock);
@@ -139,8 +147,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                     .Returns(correspondingBlock);
                 blockFinder.FindHeader(Arg.Is<long>(n => n == argBlockNumber))
                     .Returns(correspondingHeader);
+                ILogger logger = Substitute.For<ILogger>();
                 IBlockRangeManager blockRangeManager = Substitute.For<IBlockRangeManager>();
-                FeeHistoryManager feeHistoryManager = new(blockFinder, blockRangeManager);
+                FeeHistoryManager feeHistoryManager = new(blockFinder, logger, blockRangeManager);
                 
                 BlockFeeInfo result = feeHistoryManager.GetBlockFeeInfo(argBlockNumber, rewardPercentiles, null);
 
@@ -161,8 +170,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                     .Returns(correspondingBlock);
                 blockFinder.FindHeader(Arg.Is<long>(n => n == argBlockNumber))
                     .Returns(correspondingHeader);
+                ILogger logger = Substitute.For<ILogger>();
                 IBlockRangeManager blockRangeManager = Substitute.For<IBlockRangeManager>();
-                FeeHistoryManager feeHistoryManager = new(blockFinder, blockRangeManager);
+                FeeHistoryManager feeHistoryManager = new(blockFinder, logger, blockRangeManager);
                 
                 BlockFeeInfo result = feeHistoryManager.GetBlockFeeInfo(argBlockNumber, rewardPercentiles, null);
 
@@ -174,8 +184,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             public void CreateFeeHistoryResult_IfBlockFeeInfosHas0Elements_ShouldThrowException()
             {
                 IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+                ILogger logger = Substitute.For<ILogger>();
                 IBlockRangeManager blockRangeManager = Substitute.For<IBlockRangeManager>();
-                FeeHistoryManager feeHistoryManager = new(blockFinder, blockRangeManager);
+                FeeHistoryManager feeHistoryManager = new(blockFinder, logger, blockRangeManager);
                 
                 Action action = () => feeHistoryManager.CreateFeeHistoryResult(new List<BlockFeeInfo>(), 0);
 
@@ -186,8 +197,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             public void CreateFeeHistoryResult_IfBlockFeeInfosLengthNotEqualToBlockCount_ShouldThrowException()
             {
                 IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+                ILogger logger = Substitute.For<ILogger>();
                 IBlockRangeManager blockRangeManager = Substitute.For<IBlockRangeManager>();
-                FeeHistoryManager feeHistoryManager = new(blockFinder, blockRangeManager);
+                FeeHistoryManager feeHistoryManager = new(blockFinder, logger, blockRangeManager);
                 BlockFeeInfo blockFeeInfo = new();
                 
                 Action action = () => feeHistoryManager.CreateFeeHistoryResult(new List<BlockFeeInfo>{blockFeeInfo}, 2);
@@ -199,8 +211,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             public void CreateFeeHistoryResult_IfBlockCountEqualTo0_ShouldThrowException()
             {
                 IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+                ILogger logger = Substitute.For<ILogger>();
                 IBlockRangeManager blockRangeManager = Substitute.For<IBlockRangeManager>();
-                FeeHistoryManager feeHistoryManager = new(blockFinder, blockRangeManager);
+                FeeHistoryManager feeHistoryManager = new(blockFinder, logger, blockRangeManager);
                 BlockFeeInfo blockFeeInfo = new();
                 
                 Action action = () => feeHistoryManager.CreateFeeHistoryResult(new List<BlockFeeInfo>{blockFeeInfo}, 0);
@@ -231,8 +244,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                 FeeHistoryResult expected = new() {_reward = expectedRewards, _baseFee = expectedBaseFees, _gasUsedRatio = expectedGasUsedRatio};
 
                 IBlockTree blockTree = Substitute.For<IBlockTree>();
+                ILogger logger = Substitute.For<ILogger>();
                 IBlockRangeManager blockRangeManager = Substitute.For<IBlockRangeManager>(); 
-                FeeHistoryManager feeHistoryManager = new FeeHistoryManager(blockTree, blockRangeManager);
+                FeeHistoryManager feeHistoryManager = new FeeHistoryManager(blockTree, logger, blockRangeManager);
                 
                 FeeHistoryResult result = feeHistoryManager.CreateFeeHistoryResult(blockFeeInfos, 4);
 
@@ -247,8 +261,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             public void ProcessBlock_IfLondonEnabled_NextBaseFeeAndBlockFeeInfoCalculatedCorrectly(long baseFee, long gasLimit, long gasUsed, long expectedNextBaseFee, double expectedGasUsedRatio)
             {
                 IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+                ILogger logger = Substitute.For<ILogger>();
                 IBlockRangeManager blockRangeManager = Substitute.For<IBlockRangeManager>();
-                TestableFeeHistoryManager feeHistoryManager = new(blockFinder, blockRangeManager);
+                TestableFeeHistoryManager feeHistoryManager = new(blockFinder, logger, blockRangeManager);
                 BlockHeader testBlockHeader = Build.A.BlockHeader.WithBaseFee((UInt256) baseFee).WithGasLimit(gasLimit).WithGasUsed(gasUsed).TestObject;
                 BlockFeeInfo blockFeeInfo = new() {BlockHeader = testBlockHeader};
                 BlockFeeInfo expectedBlockFeeInfo = new()
@@ -266,8 +281,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             public void ProcessBlock_IfLondonNotEnabled_NextBaseFeeIs0AndBlockFeeInfoCalculatedCorrectly(long baseFee, long gasLimit, long gasUsed, long expectedNextBaseFee, double expectedGasUsedRatio)
             {
                 IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+                ILogger logger = Substitute.For<ILogger>();
                 IBlockRangeManager blockRangeManager = Substitute.For<IBlockRangeManager>();
-                TestableFeeHistoryManager testableFeeHistoryManager = new(blockFinder, blockRangeManager);
+                TestableFeeHistoryManager testableFeeHistoryManager = new(blockFinder, logger, blockRangeManager);
                 BlockHeader blockHeader = Build.A.BlockHeader.WithBaseFee((UInt256) baseFee).WithGasLimit(gasLimit).WithGasUsed(gasUsed).TestObject;
                 BlockFeeInfo blockFeeInfo = new() {BlockHeader = blockHeader};
                 BlockFeeInfo expectedBlockFeeInfo = new()
@@ -286,8 +302,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             public void ProcessBlock_IfRewardPercentilesIsNullOrEmpty_EarlyReturn(double[]? rewardPercentiles, bool expected)
             {
                 IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+                ILogger logger = Substitute.For<ILogger>();
                 IBlockRangeManager blockRangeManager = Substitute.For<IBlockRangeManager>();
-                TestableFeeHistoryManager testableFeeHistoryManager = new(blockFinder, blockRangeManager, 
+                TestableFeeHistoryManager testableFeeHistoryManager = new(blockFinder, logger, blockRangeManager, 
                     overrideInitializeBlockFeeInfo: true, overrideGetArrayOfRewards: true);
                 BlockFeeInfo blockFeeInfo = new() {Block = Build.A.Block.TestObject};
 
@@ -298,11 +315,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             }
             class TestableFeeHistoryManager : FeeHistoryManager
             {
-                private long? BlockCount { get; set; }
-                
                 public List<BlockFeeInfo>? BlockFeeInfos { get; private set; }
                 private bool LondonEnabled { get; set; }
-                public bool ArrayOfRewardsCalled { get; set; }
+                public bool ArrayOfRewardsCalled { get; private set; }
 
                 private readonly bool _overrideInitializeBlockFeeInfo;
 
@@ -310,14 +325,15 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
 
                 public TestableFeeHistoryManager(
                     IBlockFinder blockFinder,
+                    ILogger logger,
                     IBlockRangeManager? blockRangeManager = null,
                     bool londonEnabled = true,
                     bool overrideInitializeBlockFeeInfo = false,
                     bool overrideGetArrayOfRewards = false) : 
-                    base(blockFinder, 
+                    base(blockFinder,
+                        logger,
                         blockRangeManager)
                 {
-                    BlockCount = null;
                     BlockFeeInfos = null;
                     ArrayOfRewardsCalled = false;
                     LondonEnabled = londonEnabled;
@@ -327,7 +343,6 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
 
                 protected override ResultWrapper<FeeHistoryResult> SuccessfulResult(long blockCount, List<BlockFeeInfo> blockFeeInfos)
                 {
-                    BlockCount = blockCount;
                     BlockFeeInfos = blockFeeInfos;
                     return ResultWrapper<FeeHistoryResult>.Success(new FeeHistoryResult());
                 }
@@ -352,15 +367,16 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                     }
                 }
 
-                protected override void GetArrayOfRewards(BlockFeeInfo blockFeeInfo, double[] rewardPercentiles)
+                protected override UInt256[]? ArrayOfRewards(BlockFeeInfo blockFeeInfo, double[] rewardPercentiles)
                 {
                     if (_overrideGetArrayOfRewards == false)
                     {
-                        base.GetArrayOfRewards(blockFeeInfo, rewardPercentiles);
+                        return base.ArrayOfRewards(blockFeeInfo, rewardPercentiles);
                     }
                     else
                     {
                         ArrayOfRewardsCalled = true;
+                        return Array.Empty<UInt256>();
                     }
                 }
             }

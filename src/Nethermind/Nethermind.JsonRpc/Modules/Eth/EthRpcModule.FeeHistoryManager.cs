@@ -185,7 +185,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
                 if (blockFeeInfo.BlockHeader != null)
                 {
-                    ProcessBlock(ref blockFeeInfo, rewardPercentiles);
+                    blockFeeInfo.Reward = ProcessBlock(ref blockFeeInfo, rewardPercentiles);
                 }
 
                 return blockFeeInfo;
@@ -233,13 +233,13 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 }
             }
 
-            internal void ProcessBlock(ref BlockFeeInfo blockFeeInfo, double[]? rewardPercentiles)
+            internal UInt256[]? ProcessBlock(ref BlockFeeInfo blockFeeInfo, double[]? rewardPercentiles)
             {
                 bool isLondonEnabled = IsLondonEnabled(blockFeeInfo);
                 InitializeBlockFeeInfo(ref blockFeeInfo, isLondonEnabled);
                 if (rewardPercentiles == null || rewardPercentiles.Length == 0)
                 {
-                    return;
+                    return null;
                 }
 
                 if (blockFeeInfo.Block == null)
@@ -249,21 +249,21 @@ namespace Nethermind.JsonRpc.Modules.Eth
                         _logger.Error("Block missing when reward percentiles were requested.");
                     }
 
-                    return;
+                    return null;
                 }
 
-                GetArrayOfRewards(blockFeeInfo, rewardPercentiles);
+                return ArrayOfRewards(blockFeeInfo, rewardPercentiles);
             }
 
-            protected virtual void GetArrayOfRewards(BlockFeeInfo blockFeeInfo, double[] rewardPercentiles)
+            protected virtual UInt256[]? ArrayOfRewards(BlockFeeInfo blockFeeInfo, double[] rewardPercentiles)
             {
                 if (blockFeeInfo.Block!.Transactions.Length == 0)
                 {
-                    blockFeeInfo.Reward = GetZerosArrayAsLongAsRewardPercentiles(rewardPercentiles);
+                    return GetZerosArrayAsLongAsRewardPercentiles(rewardPercentiles);
                 }
                 else
                 {
-                    blockFeeInfo.Reward = CalculateAndInsertRewards(blockFeeInfo, rewardPercentiles);
+                    return CalculateAndInsertRewards(blockFeeInfo, rewardPercentiles);
                 }
             }
 
