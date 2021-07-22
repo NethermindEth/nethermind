@@ -213,12 +213,13 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                 List<BlockFeeInfo> blockFeeInfos = new()
                 {
                     new(){Reward = new UInt256[] {1, 4, 9}, BaseFee = 2, NextBaseFee = 3, GasUsedRatio = 4},
-                    new(){Reward = new UInt256[] {16, 25}, BaseFee = 3, NextBaseFee = 4, GasUsedRatio = 8},
-                    new(){Reward = new UInt256[] {36}, BaseFee = 4, NextBaseFee = 5, GasUsedRatio = 12},
-                    new(){Reward = new UInt256[] {}, BaseFee = 5, NextBaseFee = 6, GasUsedRatio = 15} //what if baseFee and nextBaseFees are not synced up?
+                    new(){Reward = new UInt256[] {16, 25}, BaseFee = 3, NextBaseFee = 3, GasUsedRatio = 8},
+                    new(){Reward = new UInt256[] {36}, BaseFee = 4, NextBaseFee = 6, GasUsedRatio = 12},
+                    new(){Reward = new UInt256[] {}, BaseFee = 5, NextBaseFee = 6, GasUsedRatio = 15}
                 };
                 
-                UInt256[][] expectedRewards = {
+                UInt256[][] expectedRewards = 
+                {
                     new UInt256[]{1,4,9},
                     new UInt256[]{16,25},
                     new UInt256[]{36},
@@ -232,9 +233,35 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                 IBlockRangeManager blockRangeManager = Substitute.For<IBlockRangeManager>(); 
                 FeeHistoryManager feeHistoryManager = new FeeHistoryManager(blockTree, blockRangeManager);
                 
-                feeHistoryManager.CreateFeeHistoryResult(blockFeeInfos, 4).Should().BeEquivalentTo(expected);
+                FeeHistoryResult result = feeHistoryManager.CreateFeeHistoryResult(blockFeeInfos, 4);
+
+                result.Should().BeEquivalentTo(expected);
             }
-            
+
+            [TestCase(5, 3,3, 6)] //Target gas used: 3/2 = 1.5 | Actual Gas used = 3 | Base Fee Delta = Max((((3-1.5)/1.5) * 5) / 8, 1) = 1 | Next Base Fee = 5 + 1 = 6 
+            [TestCase(20, 100, 95, 9)] //Target gas used: 100/2 = 50 | Actual Gas used = 95 | Base Fee Delta = Max((((95-50)/50) * 20) / 8, 1) = 2 | Next Base Fee = 5 + 2 = 7
+            [TestCase(20, 100, 40, 5)] //Target gas used: 100/2 = 50 | Actual Gas used = 40 | Base Fee Delta = (((50-40)/50) * 20) / 8 = 0 | Next Base Fee = 5 - 0 = 5 
+            [TestCase(50, 100, 40, 4)] //Target gas used: 100/2 = 50 | Actual Gas used = 40 | Base Fee Delta = (((50-40)/50) * 50) / 8 = 1 | Next Base Fee = 5 - 1 = 4
+            public void ProcessBlock_IfLondonEnabled_NextBaseFeeCalculatedCorrectly(UInt256 baseFee, long gasLimit, long gasUsed, UInt256 expectedNextBaseFee)
+            {
+                IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+                IBlockRangeManager blockRangeManager = Substitute.For<IBlockRangeManager>();
+                FeeHistoryManager feeHistoryManager = new(blockFinder, blockRangeManager);
+                BlockHeader testBlockHeader = Build.A.BlockHeader.WithBaseFee(baseFee).WithGasLimit(gasLimit).WithGasUsed(gasUsed).TestObject;
+                BlockFeeInfo blockFeeInfo = new() {BlockHeader = testBlockHeader};
+                BlockFeeInfo expectedBlockFeeInfo = blockFeeInfo;
+                expectedBlockFeeInfo.BaseFee = baseFee;
+                expectedBlockFeeInfo.NextBaseFee = expectedNextBaseFee;
+                
+                feeHistoryManager.ProcessBlock(ref blockFeeInfo, null);
+
+                blockFeeInfo.Should().BeEquivalentTo(expectedBlockFeeInfo);
+            }
+
+            public void ProcessBlock_IfLondonNotEnabled_NextBaseFeeIs0()
+            {
+                
+            }
             class TestableFeeHistoryManager : FeeHistoryManager
             {
                 public long? BlockCount { get; private set; }

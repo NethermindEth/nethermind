@@ -230,9 +230,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 }
             }
 
-            private void ProcessBlock(ref BlockFeeInfo blockFeeInfo, double[]? rewardPercentiles)
+            internal void ProcessBlock(ref BlockFeeInfo blockFeeInfo, double[]? rewardPercentiles)
             {
-                IReleaseSpec london = London.Instance;
+                IReleaseSpec london = GetLondonInstance();
                 bool isLondonEnabled = blockFeeInfo.BlockNumber >= london.Eip1559TransitionBlock;
                 InitializeBlockFeeInfo(blockFeeInfo, isLondonEnabled);
                 if (rewardPercentiles == null || rewardPercentiles.Length == 0)
@@ -259,6 +259,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 }
 
                 CalculateAndInsertRewards(blockFeeInfo, rewardPercentiles, rewards);
+            }
+
+            protected virtual IReleaseSpec GetLondonInstance()
+            {
+                return London.Instance;
             }
 
             private void InitializeBlockFeeInfo(BlockFeeInfo blockFeeInfo, bool isLondonEnabled)
@@ -321,17 +326,21 @@ namespace Nethermind.JsonRpc.Modules.Eth
             private UInt256 CalculateNextBaseFee(BlockFeeInfo blockFeeInfo)
             {
                 ulong gasLimit = (ulong) blockFeeInfo.BlockHeader!.GasLimit;
-                ulong gasTarget = gasLimit / GasTargetToLimitMultiplier;
+                double gasTarget = (double) gasLimit / GasTargetToLimitMultiplier;
+                ulong gasTargetUlong = (ulong) gasTarget;
                 ulong gasUsed = (ulong) blockFeeInfo.BlockHeader!.GasUsed;
                 UInt256 currentBaseFee = blockFeeInfo.BlockHeader!.BaseFeePerGas;
                 
                 if (gasTarget < gasUsed)
                 {
-                    currentBaseFee *= ((gasUsed - gasTarget) / gasTarget);
+                    ulong fractionChange = ((gasUsed - gasTargetUlong) / gasTargetUlong);
+                    UInt256 basePriceDeltaUInt = currentBaseFee * fractionChange;
+                    basePriceDeltaUInt = UInt256.Max(basePriceDeltaUInt, 1);
+                    
                 }
                 else if (gasTarget > gasUsed)
                 {
-                    currentBaseFee *= ((gasTarget - gasUsed) / gasTarget);
+                    ulong basePriceDelta = ((gasTargetUlong - gasUsed) / gasTargetUlong);
                 }
                 return currentBaseFee;
             }
