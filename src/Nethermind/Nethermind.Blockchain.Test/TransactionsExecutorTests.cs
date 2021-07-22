@@ -191,9 +191,9 @@ namespace Nethermind.Blockchain.Test
                             .WithMaxFeePerGas(300).WithMaxPriorityFeePerGas(10).WithGasLimit(10).WithType(TxType.EIP1559).WithValue(101).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
                     },
                     GasLimit = 10000000
-                };
+                }
                 balanceFailingWithMaxFeePerGasCheck.ExpectedSelectedTransactions.AddRange(
-                    new[] { 0 }.Select(i => balanceFailingWithMaxFeePerGasCheck.Transactions[i]));
+                    new[] .Select(i => balanceFailingWithMaxFeePerGasCheck.Transactions[i]));
                 yield return new TestCaseData(balanceFailingWithMaxFeePerGasCheck).SetName("EIP1559 transactions: None transactions selected - sender balance and max fee per gas check");
             }
         }
