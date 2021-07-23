@@ -84,11 +84,11 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         {
             BlockFeeInfo blockFeeInfo = new(){Block = Build.A.Block.WithGasUsed(gasUsed).TestObject};
             GasUsedAndReward[] gasUsedAndRewards = 
-            {                             //Cumulative Gas Used 
-                new(10, 1), //10
-                new(20, 3), //30
-                new(30, 5), //60
-                new(40, 7)  //100 
+            {                             
+                new(10, 1),
+                new(20, 3),
+                new(30, 5),
+                new(40, 7) 
             };
             UInt256[] expectedUInt256 = expected.Select(n => (UInt256) n).ToArray();
 
@@ -97,6 +97,21 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             result.Should().BeEquivalentTo(expectedUInt256);
         }
 
+        [TestCase(30, new double[] {20,40,60,80.5}, new ulong[]{10,10,13,13})]
+        [TestCase(40, new double[] {20,40,60,80.5}, new ulong[]{10,13,13,22})]
+        [TestCase(40, new double[] {10,20,30,40}, new ulong[]{7,10,10,13})]
+        public void CalculateAndInsertRewards_GivenValidInputs_CalculatesPercentilesCorrectly(long gasUsed, double[] rewardPercentiles, ulong[] expected)
+        {
+            var (blockchainBridge, transactions) = GetTestBlockchainBridgeAndTxsB();
+            RewardInsertionManager rewardInsertionManager = new(blockchainBridge);
+            BlockFeeInfo blockFeeInfo = new() {BaseFee = 3, Block = Build.A.Block.WithTransactions(transactions).WithGasUsed(gasUsed).TestObject};
+            UInt256[] expectedUInt256 = expected.Select(n => (UInt256) n).ToArray();
+            
+            UInt256[]? gasUsedAndRewards = rewardInsertionManager.CalculateAndInsertRewards(blockFeeInfo, rewardPercentiles);
+
+            gasUsedAndRewards.Should().BeEquivalentTo(expectedUInt256);
+        }
+        
         private (IBlockchainBridge blockchainBridge, Transaction[] transactions) GetTestBlockchainBridgeAndTxsA()
         {
             IBlockchainBridge blockchainBridge = Substitute.For<IBlockchainBridge>();
