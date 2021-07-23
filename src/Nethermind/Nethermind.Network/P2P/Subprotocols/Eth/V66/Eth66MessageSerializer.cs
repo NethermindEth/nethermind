@@ -20,13 +20,13 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 {
-    public class Eth66MessageSerializer<TEth66Message, TEthMessage> : IZeroMessageSerializer<TEth66Message>
+    public class Eth66MessageSerializer<TEth66Message, TEthMessage> : IEth66ReadyZeroMessageSerializer<TEth66Message>
         where TEth66Message : Eth66Message<TEthMessage>, new()
         where TEthMessage : P2PMessage
     {
-        private readonly IZeroMessageSerializer<TEthMessage> _ethMessageSerializer;
+        private readonly IEth66ReadyZeroMessageSerializer<TEthMessage> _ethMessageSerializer;
 
-        public Eth66MessageSerializer(IZeroMessageSerializer<TEthMessage> ethMessageSerializer)
+        public Eth66MessageSerializer(IEth66ReadyZeroMessageSerializer<TEthMessage> ethMessageSerializer)
         {
             _ethMessageSerializer = ethMessageSerializer;
         }

@@ -21,7 +21,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 {
-    public class PooledTransactionsMessageSerializer : IZeroMessageSerializer<PooledTransactionsMessage>
+    public class PooledTransactionsMessageSerializer : IEth66ReadyZeroMessageSerializer<PooledTransactionsMessage>
     {
         private static readonly TransactionsMessageSerializer _txsMessageDeserializer = new();
         

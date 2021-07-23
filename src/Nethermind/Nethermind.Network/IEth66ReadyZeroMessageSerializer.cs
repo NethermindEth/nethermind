@@ -13,14 +13,12 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-
-using DotNetty.Buffers;
+// 
 
 namespace Nethermind.Network
 {
-    public interface IZeroMessageSerializer<T> where T : MessageBase
+    public interface IEth66ReadyZeroMessageSerializer<T> : IZeroMessageSerializer<T> where T : MessageBase
     {
-        void Serialize(IByteBuffer byteBuffer, T message);
-        T Deserialize(IByteBuffer byteBuffer);
+        int GetLength(T message, out int contentLength);
     }
 }

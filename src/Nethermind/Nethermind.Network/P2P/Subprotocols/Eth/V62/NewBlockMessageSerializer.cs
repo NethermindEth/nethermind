@@ -41,7 +41,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             return Deserialize(rlpStream);
         }
 
-        public int GetLength(NewBlockMessage message, out int contentLength)
+        private int GetLength(NewBlockMessage message, out int contentLength)
         {
             contentLength = _blockDecoder.GetLength(message.Block, RlpBehaviors.None) +
                             Rlp.LengthOf(message.TotalDifficulty);

@@ -41,7 +41,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             return Deserialize(rlpStream);
         }
 
-        public int GetLength(AnnounceMessage message, out int contentLength)
+        private int GetLength(AnnounceMessage message, out int contentLength)
         {
             contentLength =
                 Rlp.LengthOf(message.HeadHash) +

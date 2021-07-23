@@ -43,11 +43,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             return Deserialize(rlpStream);
         }
 
-        public int GetLength(GetReceiptsMessage message, out int contentLength)
-        {
-            throw new System.NotImplementedException();
-        }
-
         public static GetReceiptsMessage Deserialize(RlpStream rlpStream)
         {
             GetReceiptsMessage getReceiptsMessage = new GetReceiptsMessage();

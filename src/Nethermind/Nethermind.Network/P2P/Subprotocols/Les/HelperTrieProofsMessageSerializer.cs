@@ -67,11 +67,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             return Deserialize(rlpStream);
         }
 
-        public int GetLength(HelperTrieProofsMessage message, out int contentLength)
-        {
-            throw new System.NotImplementedException();
-        }
-
         public HelperTrieProofsMessage Deserialize(RlpStream rlpStream)
         {
             HelperTrieProofsMessage message = new HelperTrieProofsMessage();

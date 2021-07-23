@@ -21,7 +21,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 {
-    public class BlockBodiesMessageSerializer : IZeroMessageSerializer<BlockBodiesMessage>
+    public class BlockBodiesMessageSerializer : IEth66ReadyZeroMessageSerializer<BlockBodiesMessage>
     {
         public byte[] Serialize(BlockBodiesMessage message)
         {

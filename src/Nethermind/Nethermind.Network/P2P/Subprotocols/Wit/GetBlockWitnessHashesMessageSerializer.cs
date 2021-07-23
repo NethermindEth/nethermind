@@ -24,10 +24,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Wit
     {
         public void Serialize(IByteBuffer byteBuffer, GetBlockWitnessHashesMessage message)
         {
-            GetLength(message, out int contentLength);
-
             NettyRlpStream nettyRlpStream = new NettyRlpStream(byteBuffer);
-
+            int contentLength =
+                Rlp.LengthOf(message.RequestId)
+                + (message.BlockHash == null ? 1 : Rlp.LengthOfKeccakRlp);
             nettyRlpStream.StartSequence(contentLength);
             nettyRlpStream.Encode(message.RequestId);
             nettyRlpStream.Encode(message.BlockHash);
@@ -40,14 +40,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Wit
             long requestId = rlpStream.DecodeLong();
             var hash = rlpStream.DecodeKeccak();
             return new GetBlockWitnessHashesMessage(requestId, hash);
-        }
-
-        public int GetLength(GetBlockWitnessHashesMessage message, out int contentLength)
-        {
-            contentLength =
-                Rlp.LengthOf(message.RequestId)
-                + (message.BlockHash == null ? 1 : Rlp.LengthOfKeccakRlp);
-            return contentLength;
         }
     }
 }
