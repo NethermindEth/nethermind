@@ -31,46 +31,58 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         [Test]
         public void RoundTrip()
         {
-            BlockHeader header = Build.A.BlockHeader.TestObject;
-            header.ParentHash = Keccak.Zero;
-            header.OmmersHash = Keccak.Zero;
-            header.Beneficiary = Address.Zero;
-            header.StateRoot = Keccak.Zero;
-            header.TxRoot = Keccak.Zero;
-            header.ReceiptsRoot = Keccak.Zero;
-            header.Bloom = Bloom.Empty;
-            header.Difficulty = 0x8ae;
-            header.Number = 0xd05;
-            header.GasLimit = 0x115c;
-            header.GasUsed = 0x15b3;
-            header.Timestamp = 0x1a0a;
-            header.ExtraData = new byte[]{0x77, 0x88};
-            header.MixHash = Keccak.Zero;
-            header.Nonce = 0;
-            header.Hash = new Keccak("0x8c2f2af15b7b563b6ab1e09bed0e9caade7ed730aec98b70a993597a797579a9");
+            BlockHeader header = new BlockHeader(
+                Keccak.Zero,
+                Keccak.Zero,
+                Address.Zero,
+                0x8ae,
+                0xd05,
+                0x115c,
+                0x1a0a,
+                new byte[] {0x77, 0x88})
+            {
+                StateRoot = Keccak.Zero,
+                TxRoot = Keccak.Zero,
+                ReceiptsRoot = Keccak.Zero,
+                Bloom = Bloom.Empty,
+                GasUsed = 0x15b3,
+                MixHash = Keccak.Zero,
+                Nonce = 0,
+                Hash = new Keccak("0x8c2f2af15b7b563b6ab1e09bed0e9caade7ed730aec98b70a993597a797579a9")
+            };
 
-            Transaction tx1 = new Transaction();
-            tx1.Nonce = 8;
-            tx1.GasPrice = 0x4a817c808;
-            tx1.GasLimit = 0x2e248;
-            tx1.To = new Address("0x3535353535353535353535353535353535353535");
-            tx1.Value = 0x200;
-            tx1.Data = new byte[]{};
-            tx1.Signature = new Signature(new Keccak("0x64b1702d9298fee62dfeccc57d322a463ad55ca201256d01f62b45b2e1c21c12").Bytes, new Keccak("0x64b1702d9298fee62dfeccc57d322a463ad55ca201256d01f62b45b2e1c21c10").Bytes, 0x25);
-            tx1.Hash = new Keccak("0x588df025c4c2d757d3e314bd3dfbfe352687324e6b8557ad1731585e96928aed");
-            
-            Transaction tx2 = new Transaction();
-            tx2.Nonce = 9;
-            tx2.GasPrice = 0x4a817c809;
-            tx2.GasLimit = 0x33450;
-            tx2.To = new Address("0x3535353535353535353535353535353535353535");
-            tx2.Value = 0x2d9;
-            tx2.Data = new byte[]{};
-            tx2.Signature = new Signature(new Keccak("0x52f8f61201b2b11a78d6e866abc9c3db2ae8631fa656bfe5cb53668255367afb").Bytes, new Keccak("0x52f8f61201b2b11a78d6e866abc9c3db2ae8631fa656bfe5cb53668255367afb").Bytes, 0x25);
-            tx2.Hash = new Keccak("0xf39c7dac06a9f3abf09faf5e30439a349d3717611b3ed337cd52b0d192bc72da");
+            Transaction tx1 = new Transaction
+            {
+                Nonce = 8,
+                GasPrice = 0x4a817c808,
+                GasLimit = 0x2e248,
+                To = new Address("0x3535353535353535353535353535353535353535"),
+                Value = 0x200,
+                Data = new byte[] { },
+                Signature = new Signature(
+                    new Keccak("0x64b1702d9298fee62dfeccc57d322a463ad55ca201256d01f62b45b2e1c21c12").Bytes,
+                    new Keccak("0x64b1702d9298fee62dfeccc57d322a463ad55ca201256d01f62b45b2e1c21c10").Bytes, 0x25),
+                Hash = new Keccak("0x588df025c4c2d757d3e314bd3dfbfe352687324e6b8557ad1731585e96928aed")
+            };
 
-            var ethMessage = new Network.P2P.Subprotocols.Eth.V62.BlockBodiesMessage();
-            ethMessage.Bodies = new[] {new BlockBody(new[] {tx1, tx2}, new[] {header})};
+            Transaction tx2 = new Transaction
+            {
+                Nonce = 9,
+                GasPrice = 0x4a817c809,
+                GasLimit = 0x33450,
+                To = new Address("0x3535353535353535353535353535353535353535"),
+                Value = 0x2d9,
+                Data = new byte[] { },
+                Signature = new Signature(
+                    new Keccak("0x52f8f61201b2b11a78d6e866abc9c3db2ae8631fa656bfe5cb53668255367afb").Bytes,
+                    new Keccak("0x52f8f61201b2b11a78d6e866abc9c3db2ae8631fa656bfe5cb53668255367afb").Bytes, 0x25),
+                Hash = new Keccak("0xf39c7dac06a9f3abf09faf5e30439a349d3717611b3ed337cd52b0d192bc72da")
+            };
+
+            var ethMessage = new Network.P2P.Subprotocols.Eth.V62.BlockBodiesMessage
+            {
+                Bodies = new[] {new BlockBody(new[] {tx1, tx2}, new[] {header})}
+            };
 
             BlockBodiesMessage message = new BlockBodiesMessage(1111, ethMessage);
 

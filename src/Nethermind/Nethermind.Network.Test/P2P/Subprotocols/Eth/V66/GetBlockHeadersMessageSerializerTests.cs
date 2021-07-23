@@ -29,12 +29,15 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         [Test]
         public void RoundTrip_number()
         {
-            var ethMessage = new Network.P2P.Subprotocols.Eth.V62.GetBlockHeadersMessage();
-            ethMessage.StartBlockHash = null;
-            ethMessage.StartBlockNumber = 9999;
-            ethMessage.MaxHeaders = 5;
-            ethMessage.Skip = 5;
-            ethMessage.Reverse = 0;
+            var ethMessage =
+                new Network.P2P.Subprotocols.Eth.V62.GetBlockHeadersMessage
+                {
+                    StartBlockHash = null,
+                    StartBlockNumber = 9999,
+                    MaxHeaders = 5,
+                    Skip = 5,
+                    Reverse = 0
+                };
 
             var message = new GetBlockHeadersMessage(1111, ethMessage);
 
@@ -47,12 +50,14 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         [Test]
         public void RoundTrip_hash()
         {
-            var ethMessage = new Network.P2P.Subprotocols.Eth.V62.GetBlockHeadersMessage();
-            ethMessage.StartBlockHash = new Keccak("0x00000000000000000000000000000000000000000000000000000000deadc0de");
-            ethMessage.StartBlockNumber = 0;
-            ethMessage.MaxHeaders = 5;
-            ethMessage.Skip = 5;
-            ethMessage.Reverse = 0;
+            var ethMessage = new Network.P2P.Subprotocols.Eth.V62.GetBlockHeadersMessage
+            {
+                StartBlockHash = new Keccak("0x00000000000000000000000000000000000000000000000000000000deadc0de"),
+                StartBlockNumber = 0,
+                MaxHeaders = 5,
+                Skip = 5,
+                Reverse = 0
+            };
 
             var message = new GetBlockHeadersMessage(1111, ethMessage);
 
