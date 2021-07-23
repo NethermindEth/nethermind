@@ -24,7 +24,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Facade;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth;
-using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
 using static Nethermind.JsonRpc.Modules.Eth.EthRpcModule.FeeHistoryManager;
@@ -61,7 +60,6 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             rewards.Should().BeEquivalentTo(expectedRewards);
         }
         
-        
         [Test]
         public void GetEffectiveGasPriceAndRewards_IfTxsRewardsOutOfOrder_RewardsInsertedInOrder()
         {
@@ -78,18 +76,20 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             rewards.Should().BeEquivalentTo(expectedRewards);
             gasUsed.Should().BeEquivalentTo(expectedGasUsed);
         }
-       
-        
-        
+
+        public void GetRewardsAtPercentiles_GivenValidInputs_CalculatesPercentilesCorrectly()
+        {
+            
+        }
         private (IBlockchainBridge blockchainBridge, Transaction[] transactions) GetTestBlockchainBridgeAndTxsA()
         {
             IBlockchainBridge blockchainBridge = Substitute.For<IBlockchainBridge>();
             Transaction[] transactions = new Transaction[]
-            {
-                Build.A.Transaction.WithHash(TestItem.KeccakA).WithMaxFeePerGas(5).WithMaxPriorityFeePerGas(1).WithType(TxType.EIP1559).TestObject,
-                Build.A.Transaction.WithHash(TestItem.KeccakB).WithMaxFeePerGas(5).WithMaxPriorityFeePerGas(3).WithType(TxType.EIP1559).TestObject,
-                Build.A.Transaction.WithHash(TestItem.KeccakC).WithMaxFeePerGas(6).WithMaxPriorityFeePerGas(2).WithType(TxType.EIP1559).TestObject,
-                Build.A.Transaction.WithHash(TestItem.KeccakD).WithMaxFeePerGas(6).WithMaxPriorityFeePerGas(3).WithType(TxType.EIP1559).TestObject
+            {                                                                                                                                       //Rewards: 
+                Build.A.Transaction.WithHash(TestItem.KeccakA).WithMaxFeePerGas(5).WithMaxPriorityFeePerGas(1).WithType(TxType.EIP1559).TestObject, //1
+                Build.A.Transaction.WithHash(TestItem.KeccakB).WithMaxFeePerGas(5).WithMaxPriorityFeePerGas(3).WithType(TxType.EIP1559).TestObject, //2
+                Build.A.Transaction.WithHash(TestItem.KeccakC).WithMaxFeePerGas(6).WithMaxPriorityFeePerGas(2).WithType(TxType.EIP1559).TestObject, //2
+                Build.A.Transaction.WithHash(TestItem.KeccakD).WithMaxFeePerGas(6).WithMaxPriorityFeePerGas(3).WithType(TxType.EIP1559).TestObject  //3
             };
             blockchainBridge
                 .GetReceiptAndEffectiveGasPrice(Arg.Is<Keccak>(k => k == TestItem.KeccakA))
@@ -110,11 +110,11 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         {
             IBlockchainBridge blockchainBridge = Substitute.For<IBlockchainBridge>();
             Transaction[] transactions = new Transaction[]
-            {
+            {                                                                                                                                         //Rewards: 
                 Build.A.Transaction.WithHash(TestItem.KeccakA).WithMaxFeePerGas(20).WithMaxPriorityFeePerGas(13).WithType(TxType.EIP1559).TestObject, //13
-                Build.A.Transaction.WithHash(TestItem.KeccakB).WithMaxFeePerGas(10).WithMaxPriorityFeePerGas(7).WithType(TxType.EIP1559).TestObject, //7
+                Build.A.Transaction.WithHash(TestItem.KeccakB).WithMaxFeePerGas(10).WithMaxPriorityFeePerGas(7).WithType(TxType.EIP1559).TestObject,  //7
                 Build.A.Transaction.WithHash(TestItem.KeccakC).WithMaxFeePerGas(25).WithMaxPriorityFeePerGas(24).WithType(TxType.EIP1559).TestObject, //22
-                Build.A.Transaction.WithHash(TestItem.KeccakD).WithMaxFeePerGas(15).WithMaxPriorityFeePerGas(10).WithType(TxType.EIP1559).TestObject //10
+                Build.A.Transaction.WithHash(TestItem.KeccakD).WithMaxFeePerGas(15).WithMaxPriorityFeePerGas(10).WithType(TxType.EIP1559).TestObject  //10
             };
             blockchainBridge
                 .GetReceiptAndEffectiveGasPrice(Arg.Is<Keccak>(k => k == TestItem.KeccakA))

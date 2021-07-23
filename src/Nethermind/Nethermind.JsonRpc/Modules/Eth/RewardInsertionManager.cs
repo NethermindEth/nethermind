@@ -47,7 +47,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return gasPriceAndRewardArray;
         }
 
-
         private GasUsedAndReward[] GetGasUsedAndRewardArrayFrom(Transaction[] transactions, BlockFeeInfo blockFeeInfo)
         {
             GasUsedAndReward[] gasUsedAndRewardArray = new GasUsedAndReward[transactions.Length];
