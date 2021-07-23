@@ -17,13 +17,12 @@
 using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
-using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 {
     public class PooledTransactionsMessageSerializer : IEth66ReadyZeroMessageSerializer<PooledTransactionsMessage>
     {
-        private static readonly TransactionsMessageSerializer _txsMessageDeserializer = new();
+        private readonly TransactionsMessageSerializer _txsMessageDeserializer = new();
         
         public void Serialize(IByteBuffer byteBuffer, PooledTransactionsMessage message)
         {
@@ -32,22 +31,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
         public PooledTransactionsMessage Deserialize(IByteBuffer byteBuffer)
         {
-            
-            NettyRlpStream rlpStream = new NettyRlpStream(byteBuffer);
-            return Deserialize(rlpStream);
+            NettyRlpStream rlpStream = new(byteBuffer);
+            Transaction[] txs = _txsMessageDeserializer.DeserializeTxs(rlpStream);
+            return new PooledTransactionsMessage(txs);
         }
 
         public int GetLength(PooledTransactionsMessage message, out int contentLength)
         {
             return _txsMessageDeserializer.GetLength(message, out contentLength);
         }
-
-        public static PooledTransactionsMessage Deserialize(RlpStream rlpStream)
-        {
-            Transaction[] txs = _txsMessageDeserializer.DeserializeTxs(rlpStream);
-            return new PooledTransactionsMessage(txs);
-        }
-        
-        
     }
 }

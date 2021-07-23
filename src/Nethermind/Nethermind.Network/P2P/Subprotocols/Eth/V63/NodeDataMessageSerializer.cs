@@ -37,7 +37,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
         public NodeDataMessage Deserialize(IByteBuffer byteBuffer)
         {
             RlpStream rlpStream = new NettyRlpStream(byteBuffer);
-            return Deserialize(rlpStream);
+            byte[][] result = rlpStream.DecodeArray(stream => stream.DecodeByteArray());
+            return new NodeDataMessage(result);
         }
 
         public int GetLength(NodeDataMessage message, out int contentLength)
@@ -49,12 +50,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             }
             
             return Rlp.LengthOfSequence(contentLength);
-        }
-
-        public static NodeDataMessage Deserialize(RlpStream rlpStream)
-        {
-            byte[][] result = rlpStream.DecodeArray(stream => stream.DecodeByteArray());
-            return new NodeDataMessage(result);
         }
     }
 }

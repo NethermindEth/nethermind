@@ -16,7 +16,6 @@
 
 using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
-using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 {
@@ -24,13 +23,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
     {
         public override GetNodeDataMessage Deserialize(IByteBuffer byteBuffer)
         {
-            NettyRlpStream rlpStream = new NettyRlpStream(byteBuffer);
-            return Deserialize(rlpStream);
-        }
-
-        public static GetNodeDataMessage Deserialize(RlpStream rlpStream)
-        {
-            Keccak[] keys = DeserializeHashes(rlpStream);
+            Keccak[] keys = DeserializeHashes(byteBuffer);
             return new GetNodeDataMessage(keys);
         }
     }

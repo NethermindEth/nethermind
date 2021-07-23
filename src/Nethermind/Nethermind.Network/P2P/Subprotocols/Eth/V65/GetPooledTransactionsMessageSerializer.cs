@@ -16,7 +16,6 @@
 
 using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
-using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 {
@@ -24,13 +23,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
     {
         public override GetPooledTransactionsMessage Deserialize(IByteBuffer byteBuffer)
         {
-            NettyRlpStream rlpStream = new NettyRlpStream(byteBuffer);
-            return Deserialize(rlpStream);
-        }
-
-        public static GetPooledTransactionsMessage Deserialize(RlpStream rlpStream)
-        {
-            Keccak[] hashes = DeserializeHashes(rlpStream);
+            Keccak[] hashes = DeserializeHashes(byteBuffer);
             return new GetPooledTransactionsMessage(hashes);
         }
     }
