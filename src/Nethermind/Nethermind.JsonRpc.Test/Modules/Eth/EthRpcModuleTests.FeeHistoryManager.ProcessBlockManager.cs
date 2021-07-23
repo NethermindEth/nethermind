@@ -22,7 +22,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         public void ProcessBlock_IfLondonEnabled_NextBaseFeeAndBlockFeeInfoCalculatedCorrectly(long baseFee, long gasLimit, long gasUsed, long expectedNextBaseFee, double expectedGasUsedRatio)
         {
             ILogger logger = Substitute.For<ILogger>();
-            EthRpcModuleTests.TestableProcessBlockManager testableProcessBlockManager = new(logger);
+            TestableProcessBlockManager testableProcessBlockManager = new(logger);
             BlockHeader testBlockHeader = Build.A.BlockHeader.WithBaseFee((UInt256) baseFee).WithGasLimit(gasLimit).WithGasUsed(gasUsed).TestObject;
             BlockFeeInfo blockFeeInfo = new() {BlockHeader = testBlockHeader};
             BlockFeeInfo expectedBlockFeeInfo = new()
@@ -40,7 +40,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         public void ProcessBlock_IfLondonNotEnabled_NextBaseFeeIs0AndBlockFeeInfoCalculatedCorrectly(long baseFee, long gasLimit, long gasUsed, long expectedNextBaseFee, double expectedGasUsedRatio)
         {
             ILogger logger = Substitute.For<ILogger>();
-            EthRpcModuleTests.TestableProcessBlockManager testableProcessBlockManager = new(logger, londonEnabled: false);
+            TestableProcessBlockManager testableProcessBlockManager = new(logger, londonEnabled: false);
             BlockHeader blockHeader = Build.A.BlockHeader.WithBaseFee((UInt256) baseFee).WithGasLimit(gasLimit).WithGasUsed(gasUsed).TestObject;
             BlockFeeInfo blockFeeInfo = new() {BlockHeader = blockHeader};
             BlockFeeInfo expectedBlockFeeInfo = new()
@@ -59,7 +59,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         public void ProcessBlock_IfRewardPercentilesIsNullOrEmpty_EarlyReturn(double[]? rewardPercentiles, bool expected)
         {
             ILogger logger = Substitute.For<ILogger>();
-            EthRpcModuleTests.TestableProcessBlockManager testableProcessBlockManager = new(logger, overrideInitializeBlockFeeInfo: true, 
+            TestableProcessBlockManager testableProcessBlockManager = new(logger, overrideInitializeBlockFeeInfo: true, 
                 overrideGetArrayOfRewards: true);
             BlockFeeInfo blockFeeInfo = new() {Block = Build.A.Block.TestObject};
 
@@ -73,7 +73,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         public void ProcessBlock_NoTxsInBlock_ReturnsArrayOfZerosAsBigAsRewardPercentiles()
         {
             ILogger logger = Substitute.For<ILogger>();
-            EthRpcModuleTests.TestableProcessBlockManager testableProcessBlockManager = new(logger);
+            TestableProcessBlockManager testableProcessBlockManager = new(logger);
             BlockFeeInfo blockFeeInfo = new()
             {
                 Block = Build.A.Block.WithTransactions(Array.Empty<Transaction>()).TestObject,
@@ -89,7 +89,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         public void ProcessBlock_BlockFeeInfoBlockParameterEmptyAfterInitialization_ReturnsNullAndLogsError()
         {
             ILogger logger = Substitute.For<ILogger>();
-            EthRpcModuleTests.TestableProcessBlockManager testableProcessBlockManager = new(logger);
+            TestableProcessBlockManager testableProcessBlockManager = new(logger);
             BlockFeeInfo blockFeeInfo = new()
             {
                 BlockHeader = Build.A.BlockHeader.TestObject
@@ -98,13 +98,23 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             UInt256[]? result = testableProcessBlockManager.ProcessBlock(ref blockFeeInfo, new double[]{1,2,3});
 
             result.Should().BeNull();
+            logger.Received().Error(Arg.Is("Block missing when reward percentiles were requested."));
         }
         
         //ToDo
         [Test]
         public void ProcessBlock_IfTxsInBlock_RewardsCalculatedCorrectly()
         {
-            
+            ILogger logger = Substitute.For<ILogger>();
+            TestableProcessBlockManager testableProcessBlockManager = new(logger);
+            Transaction[] transactions = new Transaction[]
+            {
+                Build.A.Transaction.WithGa
+            }
+            BlockFeeInfo blockFeeInfo = new()
+            {
+                Block = Build.A.Block.WithTransactions(new Transaction(){}).TestObject
+            };
         }
         
         //ToDo

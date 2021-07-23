@@ -60,8 +60,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             long blockCount = 1;
             long lastBlockNumber = 3;
 
-            ResultWrapper<FeeHistoryResult>
-                resultWrapper = feeHistoryManager.GetFeeHistory(ref blockCount, lastBlockNumber);
+            ResultWrapper<FeeHistoryResult> resultWrapper = feeHistoryManager.GetFeeHistory(ref blockCount, lastBlockNumber);
             
             resultWrapper.Should().BeEquivalentTo(expected);
         }
@@ -81,13 +80,13 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             long blockCount = 1;
             long lastBlockNumber = 3;
 
-            ResultWrapper<FeeHistoryResult>
-                resultWrapper = feeHistoryManager.GetFeeHistory(ref blockCount, lastBlockNumber);
+            ResultWrapper<FeeHistoryResult> resultWrapper = feeHistoryManager.GetFeeHistory(ref blockCount, lastBlockNumber);
             
             resultWrapper.Should().BeEquivalentTo(expected);
             
         }
-        public FeeHistoryManager GetSubstitutedFeeHistoryManager(
+
+        private FeeHistoryManager GetSubstitutedFeeHistoryManager(
             IBlockFinder? blockFinder = null, 
             ILogger? logger = null,
             IBlockRangeManager? blockRangeManager = null,
