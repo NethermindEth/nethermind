@@ -35,53 +35,6 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
 {
     public partial class EthRpcModuleTests
     {
-        [TestCase(1025)]
-        [TestCase(1024)]
-        public void GetFeeHistory_IfBlockCountGreaterThan1024_BlockCountSetTo1024(long blockCount)
-        {
-            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-            ILogger logger = Substitute.For<ILogger>();
-            blockFinder.FindPendingBlock().Returns(Build.A.Block.WithNumber(1).TestObject);
-            IBlockRangeManager blockRangeManager = Substitute.For<IBlockRangeManager>();
-            blockRangeManager.ResolveBlockRange(ref Arg.Any<long>(), ref Arg.Any<long>(), Arg.Any<int>(), ref Arg.Any<long?>())
-                .Returns(ResultWrapper<BlockRangeInfo>.Success(new BlockRangeInfo()));
-            FeeHistoryManager feeHistoryManager = new(blockFinder, logger, blockRangeManager);
-            
-            feeHistoryManager.GetFeeHistory(ref blockCount, 0);
-
-            blockCount.Should().Be(1024);
-        }
-        
-        [TestCase(new double[]{-1,1,2}, "-1")]
-        [TestCase(new[]{-2.2,1,2,101,102}, "-2.2, 101, 102")]
-        public void GetFeeHistory_IfRewardPercentilesContainInvalidNumber_ResultsInFailure(double[] rewardPercentiles, string invalidNums)
-        {
-            long blockCount = 10;
-            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-            ILogger logger = Substitute.For<ILogger>();
-            FeeHistoryManager feeHistoryManager = new(blockFinder, logger);
-
-            ResultWrapper<FeeHistoryResult> resultWrapper = feeHistoryManager.GetFeeHistory(ref blockCount, 10, rewardPercentiles);
-
-            resultWrapper.Result.Should().BeEquivalentTo(Result.Fail($"rewardPercentiles: Values {invalidNums} are below 0 or greater than 100."));
-        }
-
-        [Test]
-        public void GetFeeHistory_IfRewardPercentilesNotInAscendingOrder_ResultsInFailure()
-        {
-            long blockCount = 10;
-            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-            ILogger logger = Substitute.For<ILogger>();
-            FeeHistoryManager feeHistoryManager = new FeeHistoryManager(blockFinder, logger);
-            double[] rewardPercentiles = {0,2,3,5,1};
-
-            ResultWrapper<FeeHistoryResult> resultWrapper = feeHistoryManager.GetFeeHistory(ref blockCount, 10, rewardPercentiles);
-
-            string expectedMessage =
-                "rewardPercentiles: Value at index 4: 1 is less than the value at previous index 3: 5.";
-            resultWrapper.Result.Should().BeEquivalentTo(Result.Fail(expectedMessage));
-        }
-
         [TestCase(5,10,6)]
         [TestCase(23, 50, 28)]
         [TestCase(5, 3, 0)]

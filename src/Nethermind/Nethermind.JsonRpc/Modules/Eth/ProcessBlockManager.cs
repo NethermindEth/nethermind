@@ -60,6 +60,33 @@ namespace Nethermind.JsonRpc.Modules.Eth
             blockFeeInfo.GasUsedRatio = (float) blockFeeInfo.BlockHeader!.GasUsed / blockFeeInfo.BlockHeader!.GasLimit;
         }
 
+        private UInt256 CalculateNextBaseFee(BlockFeeInfo blockFeeInfo)
+        {
+            UInt256 gasLimit = (UInt256) blockFeeInfo.BlockHeader!.GasLimit;
+            double gasTarget = (double) gasLimit / BlockHeader.GasTargetToLimitMultiplier;
+            UInt256 gasTargetLong = (UInt256) gasTarget;
+            long gasUsed = blockFeeInfo.BlockHeader!.GasUsed;
+            UInt256 currentBaseFee = blockFeeInfo.BlockHeader!.BaseFeePerGas;
+                
+            if (gasTarget < gasUsed)
+            {
+                UInt256 baseFeeDelta = (UInt256) (gasUsed - gasTarget);
+                baseFeeDelta *= currentBaseFee;
+                baseFeeDelta /= gasTargetLong;
+                baseFeeDelta = UInt256.Max(baseFeeDelta / BlockFeeInfo.ElasticityMultiplier, UInt256.One);
+                currentBaseFee += baseFeeDelta;
+            }
+            else if (gasTarget > gasUsed)
+            {
+                UInt256 baseFeeDelta = (UInt256) (gasTarget - gasUsed);
+                baseFeeDelta *= currentBaseFee;
+                baseFeeDelta /= gasTargetLong;
+                baseFeeDelta /= BlockFeeInfo.ElasticityMultiplier;
+                currentBaseFee -= baseFeeDelta;
+            }
+            return currentBaseFee;
+        }
+        
         protected virtual bool ArgumentErrorsExist(BlockFeeInfo blockFeeInfo, double[]? rewardPercentiles)
         {
             if (rewardPercentiles == null || rewardPercentiles.Length == 0)
@@ -154,31 +181,5 @@ namespace Nethermind.JsonRpc.Modules.Eth
             };
         }
 
-        private UInt256 CalculateNextBaseFee(BlockFeeInfo blockFeeInfo)
-        {
-            UInt256 gasLimit = (UInt256) blockFeeInfo.BlockHeader!.GasLimit;
-            double gasTarget = (double) gasLimit / BlockHeader.GasTargetToLimitMultiplier;
-            UInt256 gasTargetLong = (UInt256) gasTarget;
-            long gasUsed = blockFeeInfo.BlockHeader!.GasUsed;
-            UInt256 currentBaseFee = blockFeeInfo.BlockHeader!.BaseFeePerGas;
-                
-            if (gasTarget < gasUsed)
-            {
-                UInt256 baseFeeDelta = (UInt256) (gasUsed - gasTarget);
-                baseFeeDelta *= currentBaseFee;
-                baseFeeDelta /= gasTargetLong;
-                baseFeeDelta = UInt256.Max(baseFeeDelta / BlockFeeInfo.ElasticityMultiplier, UInt256.One);
-                currentBaseFee += baseFeeDelta;
-            }
-            else if (gasTarget > gasUsed)
-            {
-                UInt256 baseFeeDelta = (UInt256) (gasTarget - gasUsed);
-                baseFeeDelta *= currentBaseFee;
-                baseFeeDelta /= gasTargetLong;
-                baseFeeDelta /= BlockFeeInfo.ElasticityMultiplier;
-                currentBaseFee -= baseFeeDelta;
-            }
-            return currentBaseFee;
-        }
     }
 }

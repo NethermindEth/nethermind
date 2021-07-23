@@ -17,12 +17,12 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Logging;
 using Microsoft.VisualBasic;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Int256;
+using static Nethermind.JsonRpc.Modules.Eth.FeeHistoryResult;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
@@ -33,14 +33,17 @@ namespace Nethermind.JsonRpc.Modules.Eth
             private readonly IBlockFinder _blockFinder;
             private readonly IBlockRangeManager _blockRangeManager;
             private readonly ILogger _logger;
-            internal IProcessBlockManager ProcessBlockManager { get; }
+            private IProcessBlockManager ProcessBlockManager { get; }
+            private IInitialCheckManager InitialCheckManager { get; }
 
-            public FeeHistoryManager(IBlockFinder blockFinder, ILogger logger, IBlockRangeManager? blockRangeManager = null, IProcessBlockManager? processBlockManager = null)
+            public FeeHistoryManager(IBlockFinder blockFinder, ILogger logger, IBlockRangeManager? blockRangeManager = null, IProcessBlockManager? processBlockManager = null,
+                IInitialCheckManager? initialCheckManager = null)
             {
                 _blockFinder = blockFinder;
                 _logger = logger;
                 _blockRangeManager = blockRangeManager ?? GetBlockRangeManager(_blockFinder);
                 ProcessBlockManager = processBlockManager ?? new ProcessBlockManager(_logger);
+                InitialCheckManager = initialCheckManager ?? new InitialCheckManager();
             }
 
 
@@ -52,15 +55,14 @@ namespace Nethermind.JsonRpc.Modules.Eth
             public ResultWrapper<FeeHistoryResult> GetFeeHistory(ref long blockCount, long lastBlockNumber,
                 double[]? rewardPercentiles = null)
             {
-                long? headBlockNumber = null;
-                ResultWrapper<FeeHistoryResult> initialCheckResult = InitialChecksPassed(ref blockCount, rewardPercentiles);
+                ResultWrapper<FeeHistoryResult> initialCheckResult = InitialCheckManager.InitialChecksPassed(ref blockCount, rewardPercentiles);
                 if (initialCheckResult.Result.ResultType == ResultType.Failure)
                 {
                     return initialCheckResult;
                 }
                 
-                int maxHistory = 1;
-                ResultWrapper<BlockRangeInfo> blockRangeResult = _blockRangeManager.ResolveBlockRange(ref lastBlockNumber, ref blockCount, maxHistory, ref headBlockNumber);
+                long? headBlockNumber = null;
+                ResultWrapper<BlockRangeInfo> blockRangeResult = _blockRangeManager.ResolveBlockRange(ref lastBlockNumber, ref blockCount, MaxHistory, ref headBlockNumber);
                 if (blockRangeResult.Result.ResultType == ResultType.Failure)
                 {
                     return ResultWrapper<FeeHistoryResult>.Fail(blockRangeResult.Result.Error ?? "Error message in ResolveBlockRange not set correctly.");
@@ -87,58 +89,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     nullStrings.Add("blockRangeInfo.BlockCount");
                 string output = Strings.Join(nullStrings.ToArray(), ", ") ?? "";
                 return output;
-            }
-
-            private ResultWrapper<FeeHistoryResult> InitialChecksPassed(ref long blockCount, double[]? rewardPercentiles)
-            {
-                if (blockCount < 1)
-                {
-                    return ResultWrapper<FeeHistoryResult>.Fail($"blockCount: Block count, {blockCount}, is less than 1.");
-                }
-
-                if (blockCount > 1024)
-                {
-                    blockCount = 1024;
-                }
-
-                if (rewardPercentiles != null)
-                {
-                    int[] incorrectlySortedIndexes = GetIncorrectlySortedIndexes(rewardPercentiles);
-                    if (incorrectlySortedIndexes.Any())
-                    {
-                        int firstIndex = incorrectlySortedIndexes.ElementAt(0);
-                        return ResultWrapper<FeeHistoryResult>.Fail(
-                           $"rewardPercentiles: Value at index {firstIndex}: {rewardPercentiles[firstIndex]} is less than " +
-                           $"the value at previous index {firstIndex - 1}: {rewardPercentiles[firstIndex - 1]}.");
-                    }
-
-                    double[] invalidValues = GetInvalidValues(rewardPercentiles);
-                    
-                    if (invalidValues.Any())
-                    {
-                        return ResultWrapper<FeeHistoryResult>.Fail(
-                            $"rewardPercentiles: Values {string.Join(", ", invalidValues)} are below 0 or greater than 100.");
-                    }
-                }
-                return ResultWrapper<FeeHistoryResult>.Success(new FeeHistoryResult(0,Array.Empty<UInt256[]>(),Array.Empty<UInt256>(),Array.Empty<float>()));
-            }
-
-            private static double[] GetInvalidValues(double[] rewardPercentiles)
-            {
-                return rewardPercentiles.Select(val => val).Where(val => val is < 0 or > 100)
-                    .ToArray();
-            }
-
-            private static int[] GetIncorrectlySortedIndexes(double[] rewardPercentiles)
-            {
-                int count = rewardPercentiles.Length;
-                int index = -1;
-                return rewardPercentiles
-                    .Select(_ => ++index)
-                    .Where(_ => index > 0 
-                                && index < count 
-                                && rewardPercentiles[index] < rewardPercentiles[index - 1])
-                    .ToArray();
             }
 
             protected internal ResultWrapper<FeeHistoryResult> FeeHistoryLookup(long blockCount, long lastBlockNumber, double[]? rewardPercentiles = null)

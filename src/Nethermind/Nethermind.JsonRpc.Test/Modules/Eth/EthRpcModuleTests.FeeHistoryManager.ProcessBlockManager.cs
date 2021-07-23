@@ -69,12 +69,50 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             testableProcessBlockManager.ArgumentErrorsExistResult.Should().BeTrue();
         }
 
+        [Test]
+        public void ProcessBlock_NoTxsInBlock_ReturnsArrayOfZerosAsBigAsRewardPercentiles()
+        {
+            ILogger logger = Substitute.For<ILogger>();
+            TestableProcessBlockManager testableProcessBlockManager = new(logger);
+            BlockFeeInfo blockFeeInfo = new()
+            {
+                Block = Build.A.Block.WithTransactions(Array.Empty<Transaction>()).TestObject,
+                BlockHeader = Build.A.BlockHeader.TestObject
+            };
+
+            UInt256[]? result = testableProcessBlockManager.ProcessBlock(ref blockFeeInfo, new double[] {1, 2, 3});
+
+            result.Should().BeEquivalentTo(new UInt256[] {0, 0, 0});
+        }
+        
+        [Test]
+        public void ProcessBlock_BlockFeeInfoBlockParameterEmptyAfterInitialization_ReturnsNullAndLogsError()
+        {
+            ILogger logger = Substitute.For<ILogger>();
+            TestableProcessBlockManager testableProcessBlockManager = new(logger);
+            BlockFeeInfo blockFeeInfo = new()
+            {
+                BlockHeader = Build.A.BlockHeader.TestObject
+            };
+
+            UInt256[]? result = testableProcessBlockManager.ProcessBlock(ref blockFeeInfo, new double[]{1,2,3});
+
+            result.Should().BeNull();
+        }
+        
+        //ToDo
+        [Test]
+        public void ProcessBlock_TxsInBlock_ReturnsArrayOfCalculatedRewardsAtPercentiles()
+        {
+            
+        }
+        
         class TestableProcessBlockManager : ProcessBlockManager
         {
             private readonly bool _overrideInitializeBlockFeeInfo;
             private readonly bool _overrideGetArrayOfRewards;
             private readonly bool _londonEnabled;
-            internal bool ArrayOfRewardsCalled { get; set; }
+            private bool ArrayOfRewardsCalled { get; set; }
             public bool? ArgumentErrorsExistResult { get; set; }
             
             public TestableProcessBlockManager(
@@ -100,6 +138,10 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                 if (_overrideInitializeBlockFeeInfo == false)
                 {
                     base.InitializeBlockFeeInfo(ref blockFeeInfo, isLondonEnabled);
+                }
+                else
+                {
+                    blockFeeInfo.Block = null;
                 }
             }
 
