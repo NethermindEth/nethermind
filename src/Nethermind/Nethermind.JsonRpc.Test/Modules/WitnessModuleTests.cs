@@ -15,13 +15,17 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Threading.Tasks;
 using FluentAssertions;
-using Nethermind.Core.Crypto;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
+using Nethermind.Core;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.JsonRpc.Modules.Witness;
 using Nethermind.Logging;
-using Nethermind.State;
 using Nethermind.State.Witnesses;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules
@@ -29,53 +33,37 @@ namespace Nethermind.JsonRpc.Test.Modules
     public class WitnessModuleTests
     {
         private const string OneNodeResponse =
-            "{\"jsonrpc\":\"2.0\",\"result\":\"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111\",\"id\":67}";
+            "{\"jsonrpc\":\"2.0\",\"result\":[\"0xa2a9f03b9493046696099d27b2612b99497aa1f392ec966716ab393c715a5bb6\"],\"id\":67}";
 
-        private const string TwoNodesResponse =
-            "{\"jsonrpc\":\"2.0\",\"result\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760,0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111\",\"id\":67}";
-        
-        private const string ErrorResponse = 
-            "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Can convert n (represent the number of witness to return) to int\"},\"id\":67}";
-        
-        private static readonly Keccak _keccakA = Keccak.Compute("A");
-        private static readonly Keccak _keccakB = Keccak.Compute("B");
-        private IWitnessCollector _witnessCollector;
+        private IBlockFinder _blockFinder;
+
+        private WitnessCollector _witnessRepository;
         private WitnessRpcModule _witnessRpcModule;
 
-        [SetUp]
-        public void Setup()
-        {
-            _witnessCollector = new WitnessCollector(new MemDb(), LimboLogs.Instance);
-            _witnessRpcModule = new WitnessRpcModule(_witnessCollector);
-        }
+        private Block _block;
 
-        [Test]
-        public void GetTwoWitnessHash()
+
+        [SetUp]
+        public async Task Setup()
         {
-            _witnessCollector.Add(_keccakA);
-            _witnessCollector.Add(_keccakB);
-            string serialized =
-                RpcTest.TestSerializedRequest<IWitnessRpcModule>(_witnessRpcModule, "get_witnesses", "5");
-            serialized.Should().Be(TwoNodesResponse);
+            _block =  Build.A.Block
+                .WithOmmers(Build.A.BlockHeader.TestObject, Build.A.BlockHeader.TestObject).TestObject;
+            _blockFinder = Substitute.For<IBlockTree>();
+            _blockFinder.FindBlock((BlockParameter)null).ReturnsForAnyArgs(_block);
+
+            _witnessRepository = new WitnessCollector(new MemDb(), LimboLogs.Instance);
+            
+            _witnessRepository.Add(_block.Hash);
+            _witnessRepository.Persist(_block.Hash);
+            _witnessRpcModule = new WitnessRpcModule(_witnessRepository, _blockFinder);
         }
 
         [Test]
         public void GetOneWitnessHash()
         {
-            _witnessCollector.Add(_keccakA);
-            _witnessCollector.Add(_keccakB);
             string serialized =
-                RpcTest.TestSerializedRequest<IWitnessRpcModule>(_witnessRpcModule, "get_witnesses", "1");
+                RpcTest.TestSerializedRequest<IWitnessRpcModule>(_witnessRpcModule, "get_witnesses", _block.Hash.ToString());
             serialized.Should().Be(OneNodeResponse);
-        }
-
-        [Test]
-        public void GetError()
-        {
-            _witnessCollector.Add(_keccakA);
-            string serialized =
-                RpcTest.TestSerializedRequest<IWitnessRpcModule>(_witnessRpcModule, "get_witnesses", "n");
-            serialized.Should().Be(ErrorResponse);
         }
     }
 }
