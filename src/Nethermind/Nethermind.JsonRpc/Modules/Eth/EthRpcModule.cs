@@ -38,6 +38,7 @@ using Nethermind.State.Proofs;
 using Nethermind.Trie;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
+using static Nethermind.JsonRpc.Modules.Eth.EthRpcModule.LastBlockNumberConsts;
 using Block = Nethermind.Core.Block;
 using BlockHeader = Nethermind.Core.BlockHeader;
 using Signature = Nethermind.Core.Crypto.Signature;
@@ -149,9 +150,31 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public ResultWrapper<FeeHistoryResult> eth_feeHistory(long blockCount, long lastBlockNumber, double[]? rewardPercentiles = null)
         {
-            return _feeHistoryManager.GetFeeHistory(ref blockCount, lastBlockNumber, rewardPercentiles);
+            return lastBlockNumber < -2 ? 
+                ResultWrapper<FeeHistoryResult>.Fail($"The last block number: {lastBlockNumber}, is less than -2. Use -2 for `pending block number`, -1 for `latest block number`, or explicitly type in the lastBlockNumber.") :
+                _feeHistoryManager.GetFeeHistory(ref blockCount, lastBlockNumber, rewardPercentiles);
         }
+        
+        public ResultWrapper<FeeHistoryResult> eth_feeHistory(long blockCount, string lastBlockNumber, double[]? rewardPercentiles = null)
+        {
+            long longLastBlockNumber;
+            switch (lastBlockNumber)
+            {
+                case "pending":
+                    longLastBlockNumber = PendingBlockNumber;
+                    break;
+                case "latest":
+                    longLastBlockNumber = LatestBlockNumber;
+                    break;
+                case "earliest":
+                    longLastBlockNumber = EarliestBlockNumber;
+                    break;
+                default:
+                    return ResultWrapper<FeeHistoryResult>.Fail($"LastBlockNumber can only be `pending`, `latest`, or `earliest`. You typed `${lastBlockNumber}`");
+            }
 
+            return eth_feeHistory(blockCount, longLastBlockNumber, rewardPercentiles);
+        }
         public ResultWrapper<IEnumerable<Address>> eth_accounts()
         {
             try

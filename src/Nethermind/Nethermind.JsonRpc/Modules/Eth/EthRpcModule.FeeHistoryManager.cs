@@ -31,19 +31,17 @@ namespace Nethermind.JsonRpc.Modules.Eth
         public class FeeHistoryManager : IFeeHistoryManager
         {
             private readonly IBlockRangeManager _blockRangeManager;
-            private readonly IBlockchainBridge _blockchainBridge;
             private IProcessBlockManager ProcessBlockManager { get; }
             private IInitialCheckManager InitialCheckManager { get; }
 
-            public IFeeHistoryGenerator FeeHistoryGenerator { get; }
+            private IFeeHistoryGenerator FeeHistoryGenerator { get; }
 
             public FeeHistoryManager(IBlockFinder blockFinder, ILogger logger, IBlockchainBridge blockchainBridge,
                 IBlockRangeManager? blockRangeManager = null, IProcessBlockManager? processBlockManager = null,
                 IInitialCheckManager? initialCheckManager = null, IFeeHistoryGenerator? feeHistoryGenerator = null)
             {
-                _blockchainBridge = blockchainBridge;
                 _blockRangeManager = blockRangeManager ?? new BlockRangeManager(blockFinder);
-                ProcessBlockManager = processBlockManager ?? new ProcessBlockManager(logger, _blockchainBridge);
+                ProcessBlockManager = processBlockManager ?? new ProcessBlockManager(logger, blockchainBridge);
                 InitialCheckManager = initialCheckManager ?? new InitialCheckManager();
                 FeeHistoryGenerator = feeHistoryGenerator ?? new FeeHistoryGenerator(blockFinder, ProcessBlockManager);
             }

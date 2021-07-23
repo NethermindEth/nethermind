@@ -64,6 +64,11 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             Assert.AreEqual(expected == serialized, resultIsError);
         }
 
+        public async Task Eth_feeHistory_GivenBlockNumberStrings_ConvertsToCorrectNumber()
+        {
+            
+        }
+
         [TestCase("earliest", "0x3635c9adc5dea00000")]
         [TestCase("latest", "0x3635c9adc5de9f09e5")]
         [TestCase("pending", "0x3635c9adc5de9f09e5")]
