@@ -79,7 +79,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
 
         public void GetRewardsAtPercentiles_GivenValidInputs_CalculatesPercentilesCorrectly()
         {
-            
+                
         }
         private (IBlockchainBridge blockchainBridge, Transaction[] transactions) GetTestBlockchainBridgeAndTxsA()
         {
