@@ -134,21 +134,21 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         private static UInt256[]? CalculateAndInsertRewards(BlockFeeInfo blockFeeInfo, double[] rewardPercentiles)
         {
-            GasPriceAndReward[] gasPriceAndRewardArray = GetEffectiveGasPriceAndRewards(blockFeeInfo);
+            EthRpcModule.FeeHistoryManager.GasPriceAndReward[] gasPriceAndRewardArray = GetEffectiveGasPriceAndRewards(blockFeeInfo);
 
             return GetRewardsAtPercentiles(blockFeeInfo, rewardPercentiles, gasPriceAndRewardArray);
         }
 
-        private static GasPriceAndReward[] GetEffectiveGasPriceAndRewards(BlockFeeInfo blockFeeInfo)
+        private static EthRpcModule.FeeHistoryManager.GasPriceAndReward[] GetEffectiveGasPriceAndRewards(BlockFeeInfo blockFeeInfo)
         {
             Transaction[] transactionsInBlock = blockFeeInfo.Block!.Transactions;
-            GasPriceAndReward[] gasPriceAndRewardArray =
-                transactionsInBlock.Select(ConvertTxToGasPriceAndReward(blockFeeInfo)).ToArray<GasPriceAndReward>();
+            EthRpcModule.FeeHistoryManager.GasPriceAndReward[] gasPriceAndRewardArray =
+                transactionsInBlock.Select(ConvertTxToGasPriceAndReward(blockFeeInfo)).ToArray<EthRpcModule.FeeHistoryManager.GasPriceAndReward>();
             gasPriceAndRewardArray = gasPriceAndRewardArray.OrderBy(g => g.Reward).ToArray();
             return gasPriceAndRewardArray;
         }
 
-        private static UInt256[] GetRewardsAtPercentiles(BlockFeeInfo blockFeeInfo, double[] rewardPercentiles, GasPriceAndReward[] gasPriceAndRewardArray)
+        private static UInt256[] GetRewardsAtPercentiles(BlockFeeInfo blockFeeInfo, double[] rewardPercentiles, EthRpcModule.FeeHistoryManager.GasPriceAndReward[] gasPriceAndRewardArray)
         {
             UInt256[] rewards = new UInt256[rewardPercentiles.Length];
             int txIndex;
@@ -171,13 +171,13 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return rewards;
         }
 
-        private static Func<Transaction, GasPriceAndReward> ConvertTxToGasPriceAndReward(BlockFeeInfo blockFeeInfoCopy)
+        private static Func<Transaction, EthRpcModule.FeeHistoryManager.GasPriceAndReward> ConvertTxToGasPriceAndReward(BlockFeeInfo blockFeeInfoCopy)
         {
             return tx =>
             {
                 UInt256 gasPrice = tx.GasPrice;
                 UInt256 effectiveGasTip = tx.CalculateEffectiveGasTip(blockFeeInfoCopy.BaseFee!);
-                return new GasPriceAndReward(gasPrice, effectiveGasTip);
+                return new EthRpcModule.FeeHistoryManager.GasPriceAndReward(gasPrice, effectiveGasTip);
             };
         }
 

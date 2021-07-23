@@ -35,7 +35,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         [Test]
         public async Task Eth_call_web3_sample()
         {
-            using Context ctx = await Context.Create();
+            using EthRpcModuleTests.Context ctx = await Context.Create();
             TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>(
                 "{\"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
             string serialized =
@@ -46,7 +46,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         [Test]
         public async Task Eth_call_web3_sample_not_enough_gas_system_account()
         {
-            using Context ctx = await Context.Create();
+            using EthRpcModuleTests.Context ctx = await Context.Create();
             ctx._test.ReadOnlyState.AccountExists(Address.SystemUser).Should().BeFalse();
             TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>(
                 "{\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
@@ -59,7 +59,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         [Test]
         public async Task Eth_call_web3_should_return_insufficient_balance_error()
         {
-            using Context ctx = await Context.Create();
+            using EthRpcModuleTests.Context ctx = await Context.Create();
             Address someAccount = new Address("0x0001020304050607080910111213141516171819");
             ctx._test.ReadOnlyState.AccountExists(someAccount).Should().BeFalse();
             TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>(
@@ -74,7 +74,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         [Test]
         public async Task Eth_call_web3_sample_not_enough_gas_other_account()
         {
-            using Context ctx = await Context.Create();
+            using EthRpcModuleTests.Context ctx = await Context.Create();
             Address someAccount = new Address("0x0001020304050607080910111213141516171819");
             ctx._test.ReadOnlyState.AccountExists(someAccount).Should().BeFalse();
             TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>(
@@ -88,7 +88,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         [Test]
         public async Task Eth_call_no_sender()
         {
-            using Context ctx = await Context.Create();
+            using EthRpcModuleTests.Context ctx = await Context.Create();
             TransactionForRpc transaction = new TransactionForRpc(Keccak.Zero, 1L, 1, new Transaction());
             transaction.To = TestItem.AddressB;
 
@@ -100,7 +100,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         [Test]
         public async Task Eth_call_no_recipient_should_work_as_init()
         {
-            using Context ctx = await Context.Create();
+            using EthRpcModuleTests.Context ctx = await Context.Create();
             TransactionForRpc transaction = new TransactionForRpc(Keccak.Zero, 1L, 1, new Transaction());
             transaction.From = TestItem.AddressA;
             transaction.Data = new byte[] {1, 2, 3};
@@ -115,7 +115,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         [Test]
         public async Task Eth_call_ethereum_recipient()
         {
-            using Context ctx = await Context.Create();
+            using EthRpcModuleTests.Context ctx = await Context.Create();
             string serialized = ctx._test.TestEthRpc("eth_call",
                 "{\"data\":\"0x12\",\"from\":\"0x7301cfa0e1756b71869e93d4e4dca5c7d0eb0aa6\",\"to\":\"ethereum\"}",
                 "latest");
@@ -125,7 +125,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         [Test]
         public async Task Eth_call_ok()
         {
-            using Context ctx = await Context.Create();
+            using EthRpcModuleTests.Context ctx = await Context.Create();
             TransactionForRpc transaction = new TransactionForRpc(Keccak.Zero, 1L, 1, new Transaction());
             transaction.From = TestItem.AddressA;
             transaction.To = TestItem.AddressB;
@@ -138,7 +138,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         [Test]
         public async Task Eth_call_missing_state_after_fast_sync()
         {
-            using Context ctx = await Context.Create();
+            using EthRpcModuleTests.Context ctx = await Context.Create();
             TransactionForRpc transaction = new TransactionForRpc(Keccak.Zero, 1L, 1, new Transaction());
             transaction.From = TestItem.AddressA;
             transaction.To = TestItem.AddressB;
@@ -171,7 +171,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         [Test]
         public async Task Eth_call_without_gas_pricing()
         {
-            using Context ctx = await Context.Create();
+            using EthRpcModuleTests.Context ctx = await Context.Create();
             TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>(
                 "{\"from\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
             string serialized = ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction));
@@ -181,7 +181,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         [Test]
         public async Task Eth_call_with_gas_pricing()
         {
-            using Context ctx = await Context.Create();
+            using EthRpcModuleTests.Context ctx = await Context.Create();
             TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>(
                 "{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"to\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"gasPrice\": \"0x10\"}");
             string serialized = ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction));
@@ -191,7 +191,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         [Test]
         public async Task Eth_call_without_gas_pricing_after_1559_legacy()
         {
-            using Context ctx = await Context.CreateWithLondonEnabled();
+            using EthRpcModuleTests.Context ctx = await Context.CreateWithLondonEnabled();
             TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>(
                 "{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"to\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"gasPrice\": \"0x10\"}");
             string serialized = ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction));
@@ -201,7 +201,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         [Test]
         public async Task Eth_call_without_gas_pricing_after_1559_new_type_of_transaction()
         {
-            using Context ctx = await Context.CreateWithLondonEnabled();
+            using EthRpcModuleTests.Context ctx = await Context.CreateWithLondonEnabled();
             TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>(
                 "{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"to\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"type\": \"0x2\"}");
             string serialized = ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction));
@@ -216,7 +216,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         [Test]
         public async Task Eth_call_with_base_fee_opcode()
         {
-            using Context ctx = await Context.CreateWithLondonEnabled();
+            using EthRpcModuleTests.Context ctx = await Context.CreateWithLondonEnabled();
 
             byte[] code = Prepare.EvmCode
                 .Op(Instruction.BASEFEE)

@@ -22,7 +22,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         public void ProcessBlock_IfLondonEnabled_NextBaseFeeAndBlockFeeInfoCalculatedCorrectly(long baseFee, long gasLimit, long gasUsed, long expectedNextBaseFee, double expectedGasUsedRatio)
         {
             ILogger logger = Substitute.For<ILogger>();
-            TestableProcessBlockManager testableProcessBlockManager = new(logger);
+            EthRpcModuleTests.TestableProcessBlockManager testableProcessBlockManager = new(logger);
             BlockHeader testBlockHeader = Build.A.BlockHeader.WithBaseFee((UInt256) baseFee).WithGasLimit(gasLimit).WithGasUsed(gasUsed).TestObject;
             BlockFeeInfo blockFeeInfo = new() {BlockHeader = testBlockHeader};
             BlockFeeInfo expectedBlockFeeInfo = new()
@@ -40,7 +40,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         public void ProcessBlock_IfLondonNotEnabled_NextBaseFeeIs0AndBlockFeeInfoCalculatedCorrectly(long baseFee, long gasLimit, long gasUsed, long expectedNextBaseFee, double expectedGasUsedRatio)
         {
             ILogger logger = Substitute.For<ILogger>();
-            TestableProcessBlockManager testableProcessBlockManager = new(logger, londonEnabled: false);
+            EthRpcModuleTests.TestableProcessBlockManager testableProcessBlockManager = new(logger, londonEnabled: false);
             BlockHeader blockHeader = Build.A.BlockHeader.WithBaseFee((UInt256) baseFee).WithGasLimit(gasLimit).WithGasUsed(gasUsed).TestObject;
             BlockFeeInfo blockFeeInfo = new() {BlockHeader = blockHeader};
             BlockFeeInfo expectedBlockFeeInfo = new()
@@ -59,7 +59,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         public void ProcessBlock_IfRewardPercentilesIsNullOrEmpty_EarlyReturn(double[]? rewardPercentiles, bool expected)
         {
             ILogger logger = Substitute.For<ILogger>();
-            TestableProcessBlockManager testableProcessBlockManager = new(logger, overrideInitializeBlockFeeInfo: true, 
+            EthRpcModuleTests.TestableProcessBlockManager testableProcessBlockManager = new(logger, overrideInitializeBlockFeeInfo: true, 
                 overrideGetArrayOfRewards: true);
             BlockFeeInfo blockFeeInfo = new() {Block = Build.A.Block.TestObject};
 
@@ -73,7 +73,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         public void ProcessBlock_NoTxsInBlock_ReturnsArrayOfZerosAsBigAsRewardPercentiles()
         {
             ILogger logger = Substitute.For<ILogger>();
-            TestableProcessBlockManager testableProcessBlockManager = new(logger);
+            EthRpcModuleTests.TestableProcessBlockManager testableProcessBlockManager = new(logger);
             BlockFeeInfo blockFeeInfo = new()
             {
                 Block = Build.A.Block.WithTransactions(Array.Empty<Transaction>()).TestObject,
@@ -89,7 +89,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         public void ProcessBlock_BlockFeeInfoBlockParameterEmptyAfterInitialization_ReturnsNullAndLogsError()
         {
             ILogger logger = Substitute.For<ILogger>();
-            TestableProcessBlockManager testableProcessBlockManager = new(logger);
+            EthRpcModuleTests.TestableProcessBlockManager testableProcessBlockManager = new(logger);
             BlockFeeInfo blockFeeInfo = new()
             {
                 BlockHeader = Build.A.BlockHeader.TestObject
@@ -102,11 +102,17 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         
         //ToDo
         [Test]
-        public void ProcessBlock_TxsInBlock_ReturnsArrayOfCalculatedRewardsAtPercentiles()
+        public void ProcessBlock_IfTxsInBlock_RewardsCalculatedCorrectly()
         {
             
         }
         
+        //ToDo
+        [Test]
+        public void ProcessBlock_IfTxsInBlock_RewardsAtPercentilesFoundCorrectly()
+        {
+            
+        }
         class TestableProcessBlockManager : ProcessBlockManager
         {
             private readonly bool _overrideInitializeBlockFeeInfo;
