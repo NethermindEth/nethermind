@@ -16,20 +16,21 @@
 // 
 
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Find;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.JsonRpc.Modules.Witness
 {
     [RpcModule(ModuleType.Witness)]
     public interface IWitnessRpcModule : IRpcModule
     {
-        [JsonRpcMethod(Description = "Return last N witness blocks",
-            EdgeCaseHint = "",
-            ResponseDescription = "Last n block witnesses",
+        [JsonRpcMethod(Description = "Return witness of Block provided",
+            ResponseDescription = "Keccak representation of Witness",
             ExampleResponse =
                 "[\"0xe686ead4169241f99b318240a0557ab5dd4d99444367ca4a28e60cda5717ef2c\"]",
             IsImplemented = true)]
-        Task<ResultWrapper<string>> get_witnesses(
-            [JsonRpcParameter(Description = "Number of witness blocks to return", ExampleValue = "1")]
-            string n);
+        Task<ResultWrapper<Keccak[]>> get_witnesses([JsonRpcParameter(Description = "Block to get witness",
+                ExampleValue = "[\"8934677\"]")]
+            string blockHash);
     }
 }
