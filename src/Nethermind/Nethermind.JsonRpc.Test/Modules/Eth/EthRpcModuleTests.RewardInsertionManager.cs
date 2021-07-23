@@ -16,6 +16,7 @@
 // 
 
 #nullable enable
+using System;
 using System.Linq;
 using FluentAssertions;
 using Nethermind.Core;
@@ -77,10 +78,25 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             gasUsed.Should().BeEquivalentTo(expectedGasUsed);
         }
 
-        public void GetRewardsAtPercentiles_GivenValidInputs_CalculatesPercentilesCorrectly()
+        [TestCase(100, new double[]{10,20,50,70,90}, new ulong[]{1,3,5,7,7})]
+        [TestCase(250, new double[]{1.5, 10, 13.75, 50.5, 80}, new ulong[]{1,3,5,7,7})]
+        public void GetRewardsAtPercentiles_GivenValidInputs_CalculatesPercentilesCorrectly(long gasUsed, double[] rewardPercentiles, ulong[] expected)
         {
-                
+            BlockFeeInfo blockFeeInfo = new(){Block = Build.A.Block.WithGasUsed(gasUsed).TestObject};
+            GasUsedAndReward[] gasUsedAndRewards = 
+            {                             //Cumulative Gas Used 
+                new(10, 1), //10
+                new(20, 3), //30
+                new(30, 5), //60
+                new(40, 7)  //100 
+            };
+            UInt256[] expectedUInt256 = expected.Select(n => (UInt256) n).ToArray();
+
+            RewardInsertionManager rewardInsertionManager = new(Substitute.For<IBlockchainBridge>());
+            UInt256[] result = rewardInsertionManager.GetRewardsAtPercentiles(blockFeeInfo, rewardPercentiles, gasUsedAndRewards);
+            result.Should().BeEquivalentTo(expectedUInt256);
         }
+
         private (IBlockchainBridge blockchainBridge, Transaction[] transactions) GetTestBlockchainBridgeAndTxsA()
         {
             IBlockchainBridge blockchainBridge = Substitute.For<IBlockchainBridge>();
@@ -133,7 +149,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
 
         private TxReceipt GetTxReceipt(int index, Transaction transaction, long gasUsed)
         {
-            return new TxReceipt()
+            return new()
             {
                 Bloom = new Bloom(),
                 Index = index,

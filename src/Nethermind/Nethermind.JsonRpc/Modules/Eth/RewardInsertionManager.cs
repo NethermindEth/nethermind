@@ -80,7 +80,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     totalGasUsed += gasPriceAndRewardArray[txIndex].GasUsed;
                 }
 
-                rewards[rewardsIndex++] = gasPriceAndRewardArray[txIndex].Reward;
+                rewards[rewardsIndex++] = gasPriceAndRewardArray[txIndex - 1].Reward;
             }
 
             return rewards;
