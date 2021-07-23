@@ -15,10 +15,9 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Find;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.State;
 
@@ -26,22 +25,21 @@ namespace Nethermind.JsonRpc.Modules.Witness
 {
     public class WitnessRpcModule : IWitnessRpcModule
     {
-        private readonly IWitnessCollector? _wrapper;
+        private readonly IBlockFinder _blockFinder;
+        private readonly IWitnessRepository _witnessRepository;
 
-        public WitnessRpcModule(IWitnessCollector? wrapper)
+        public WitnessRpcModule(IWitnessRepository witnessRepository, IBlockFinder finder)
         {
-            _wrapper = wrapper;
+            _witnessRepository = witnessRepository;
+            _blockFinder = finder;
         }
 
-        public async Task<ResultWrapper<string>> get_witnesses(string n)
+        public async Task<ResultWrapper<Keccak[]>> get_witnesses(string blockHash)
         {
-            if (!int.TryParse(n, out int numberOfBlocks) || _wrapper is null)
-                return ResultWrapper<string>.Fail("Can convert n (represent the number of witness to return) to int");
-            IEnumerable<Keccak> collected = _wrapper.Collected.Skip(Math.Max(0, _wrapper.Collected.Count - numberOfBlocks));
-            string result = string.Join(",", collected.Select(keccak => keccak.ToString()).ToArray());
-            return ResultWrapper<string>.Success(
-                result);
-
+            var blockParameter = new BlockParameter(new Keccak(blockHash));
+            Block block = _blockFinder.FindBlock(blockParameter);
+            Keccak[] result = _witnessRepository.Load(block.Hash);
+            return ResultWrapper<Keccak[]>.Success(result);
         }
     }
 }
