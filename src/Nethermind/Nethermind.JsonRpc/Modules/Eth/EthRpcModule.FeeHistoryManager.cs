@@ -22,11 +22,7 @@ using Nethermind.Logging;
 using Microsoft.VisualBasic;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Int256;
-using Nethermind.Specs.Forks;
-using static Nethermind.Core.BlockHeader;
-using static Nethermind.JsonRpc.Modules.Eth.BlockFeeInfo;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
@@ -36,14 +32,17 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             private readonly IBlockFinder _blockFinder;
             private readonly IBlockRangeManager _blockRangeManager;
-            private ILogger _logger;
+            private readonly ILogger _logger;
+            internal IProcessBlockManager ProcessBlockManager { get; }
 
-            public FeeHistoryManager(IBlockFinder blockFinder, ILogger logger, IBlockRangeManager? blockRangeManager = null)
+            public FeeHistoryManager(IBlockFinder blockFinder, ILogger logger, IBlockRangeManager? blockRangeManager = null, IProcessBlockManager? processBlockManager = null)
             {
                 _blockFinder = blockFinder;
                 _logger = logger;
                 _blockRangeManager = blockRangeManager ?? GetBlockRangeManager(_blockFinder);
+                ProcessBlockManager = processBlockManager ?? new ProcessBlockManager(_logger);
             }
+
 
             protected IBlockRangeManager GetBlockRangeManager(IBlockFinder blockFinder)
             {
@@ -104,14 +103,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
                 if (rewardPercentiles != null)
                 {
-                    int index = -1;
-                    int count = rewardPercentiles.Length;
-                    int[] incorrectlySortedIndexes = rewardPercentiles
-                        .Select(_ => ++index)
-                        .Where(_ => index > 0 
-                                      && index < count 
-                                      && rewardPercentiles[index] < rewardPercentiles[index - 1])
-                        .ToArray();
+                    int[] incorrectlySortedIndexes = GetIncorrectlySortedIndexes(rewardPercentiles);
                     if (incorrectlySortedIndexes.Any())
                     {
                         int firstIndex = incorrectlySortedIndexes.ElementAt(0);
@@ -120,8 +112,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                            $"the value at previous index {firstIndex - 1}: {rewardPercentiles[firstIndex - 1]}.");
                     }
 
-                    double[] invalidValues = rewardPercentiles.Select(val => val).Where(val => val < 0 || val > 100)
-                        .ToArray();
+                    double[] invalidValues = GetInvalidValues(rewardPercentiles);
                     
                     if (invalidValues.Any())
                     {
@@ -130,6 +121,24 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     }
                 }
                 return ResultWrapper<FeeHistoryResult>.Success(new FeeHistoryResult(0,Array.Empty<UInt256[]>(),Array.Empty<UInt256>(),Array.Empty<float>()));
+            }
+
+            private static double[] GetInvalidValues(double[] rewardPercentiles)
+            {
+                return rewardPercentiles.Select(val => val).Where(val => val is < 0 or > 100)
+                    .ToArray();
+            }
+
+            private static int[] GetIncorrectlySortedIndexes(double[] rewardPercentiles)
+            {
+                int count = rewardPercentiles.Length;
+                int index = -1;
+                return rewardPercentiles
+                    .Select(_ => ++index)
+                    .Where(_ => index > 0 
+                                && index < count 
+                                && rewardPercentiles[index] < rewardPercentiles[index - 1])
+                    .ToArray();
             }
 
             protected internal ResultWrapper<FeeHistoryResult> FeeHistoryLookup(long blockCount, long lastBlockNumber, double[]? rewardPercentiles = null)
@@ -186,7 +195,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
                 if (blockFeeInfo.BlockHeader != null)
                 {
-                    blockFeeInfo.Reward = ProcessBlock(ref blockFeeInfo, rewardPercentiles);
+                    blockFeeInfo.Reward = ProcessBlockManager.ProcessBlock(ref blockFeeInfo, rewardPercentiles);
                 }
 
                 return blockFeeInfo;
@@ -234,151 +243,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 }
             }
 
-            internal UInt256[]? ProcessBlock(ref BlockFeeInfo blockFeeInfo, double[]? rewardPercentiles)
-            {
-                bool isLondonEnabled = IsLondonEnabled(blockFeeInfo);
-                InitializeBlockFeeInfo(ref blockFeeInfo, isLondonEnabled);
-                return ArgumentErrorsExist(blockFeeInfo, rewardPercentiles) ? 
-                    null :
-                    ArrayOfRewards(blockFeeInfo, rewardPercentiles!);
-            }
-
-            private bool ArgumentErrorsExist(BlockFeeInfo blockFeeInfo, double[]? rewardPercentiles)
-            {
-                if (rewardPercentiles == null || rewardPercentiles.Length == 0)
-                {
-                    return true;
-                }
-
-                if (blockFeeInfo.Block == null)
-                {
-                    if (_logger.IsError)
-                    {
-                        _logger.Error("Block missing when reward percentiles were requested.");
-                    }
-
-                    return true;
-                }
-
-                return false;
-            }
-
-            protected virtual UInt256[]? ArrayOfRewards(BlockFeeInfo blockFeeInfo, double[] rewardPercentiles)
-            {
-                if (blockFeeInfo.Block!.Transactions.Length == 0)
-                {
-                    return GetZerosArrayAsLongAsRewardPercentiles(rewardPercentiles);
-                }
-                else
-                {
-                    return CalculateAndInsertRewards(blockFeeInfo, rewardPercentiles);
-                }
-            }
-
-            private static UInt256[] GetZerosArrayAsLongAsRewardPercentiles(double[] rewardPercentiles)
-            {
-                UInt256[] rewards = new UInt256[rewardPercentiles.Length];
-                for (int i = 0; i < rewardPercentiles.Length; i++)
-                {
-                    rewards[i] = 0;
-                }
-
-                return rewards;
-            }
-
-            protected virtual bool IsLondonEnabled(BlockFeeInfo blockFeeInfo)
-            {
-                IReleaseSpec london = London.Instance;
-                bool isLondonEnabled = blockFeeInfo.BlockNumber >= london.Eip1559TransitionBlock;
-                return isLondonEnabled;
-            }
-
-            protected virtual void InitializeBlockFeeInfo(ref BlockFeeInfo blockFeeInfo, bool isLondonEnabled)
-            {
-                blockFeeInfo.BaseFee = blockFeeInfo.BlockHeader?.BaseFeePerGas ?? 0;
-                blockFeeInfo.NextBaseFee = isLondonEnabled
-                    ? CalculateNextBaseFee(blockFeeInfo)
-                    : 0;
-                blockFeeInfo.GasUsedRatio = (float) blockFeeInfo.BlockHeader!.GasUsed / blockFeeInfo.BlockHeader!.GasLimit;
-            }
-
-            private static UInt256[]? CalculateAndInsertRewards(BlockFeeInfo blockFeeInfo, double[] rewardPercentiles)
-            {
-                GasPriceAndReward[] gasPriceAndRewardArray = GetEffectiveGasPriceAndRewards(blockFeeInfo);
-
-                return GetRewardsAtPercentiles(blockFeeInfo, rewardPercentiles, gasPriceAndRewardArray);
-            }
-
-            private static GasPriceAndReward[] GetEffectiveGasPriceAndRewards(BlockFeeInfo blockFeeInfo)
-            {
-                Transaction[] transactionsInBlock = blockFeeInfo.Block!.Transactions;
-                GasPriceAndReward[] gasPriceAndRewardArray =
-                    transactionsInBlock.Select(ConvertTxToGasPriceAndReward(blockFeeInfo)).ToArray();
-                gasPriceAndRewardArray = gasPriceAndRewardArray.OrderBy(g => g.Reward).ToArray();
-                return gasPriceAndRewardArray;
-            }
-
-            private static UInt256[] GetRewardsAtPercentiles(BlockFeeInfo blockFeeInfo, double[] rewardPercentiles,
-                GasPriceAndReward[] gasPriceAndRewardArray)
-            {
-                UInt256[] rewards = new UInt256[rewardPercentiles.Length];
-                int txIndex;
-                int gasPriceArrayLength = gasPriceAndRewardArray.Length;
-                int rewardsIndex = 0;
-                UInt256 totalGasUsed;
-                UInt256 thresholdGasUsed;
-                foreach (double percentile in rewardPercentiles)
-                {
-                    totalGasUsed = 0;
-                    thresholdGasUsed = (UInt256) ((percentile / 100) * (blockFeeInfo.Block!.GasUsed));
-                    for (txIndex = 0; totalGasUsed < thresholdGasUsed && txIndex < gasPriceArrayLength; txIndex++)
-                    {
-                        totalGasUsed += gasPriceAndRewardArray[txIndex].Reward;
-                    }
-
-                    rewards[rewardsIndex++] = gasPriceAndRewardArray[txIndex].Reward;
-                }
-
-                return rewards;
-            }
-
-            private static Func<Transaction, GasPriceAndReward> ConvertTxToGasPriceAndReward(BlockFeeInfo blockFeeInfoCopy)
-            {
-                return tx =>
-                {
-                    UInt256 gasPrice = tx.GasPrice;
-                    UInt256 effectiveGasTip = tx.CalculateEffectiveGasTip(blockFeeInfoCopy.BaseFee!);
-                    return new GasPriceAndReward(gasPrice, effectiveGasTip);
-                };
-            }
-            private UInt256 CalculateNextBaseFee(BlockFeeInfo blockFeeInfo)
-            {
-                UInt256 gasLimit = (UInt256) blockFeeInfo.BlockHeader!.GasLimit;
-                double gasTarget = (double) gasLimit / GasTargetToLimitMultiplier;
-                UInt256 gasTargetLong = (UInt256) gasTarget;
-                long gasUsed = blockFeeInfo.BlockHeader!.GasUsed;
-                UInt256 currentBaseFee = blockFeeInfo.BlockHeader!.BaseFeePerGas;
-                
-                if (gasTarget < gasUsed)
-                {
-                    UInt256 baseFeeDelta = (UInt256) (gasUsed - gasTarget);
-                    baseFeeDelta *= currentBaseFee;
-                    baseFeeDelta /= gasTargetLong;
-                    baseFeeDelta = UInt256.Max(baseFeeDelta / ElasticityMultiplier, UInt256.One);
-                    currentBaseFee += baseFeeDelta;
-                }
-                else if (gasTarget > gasUsed)
-                {
-                    UInt256 baseFeeDelta = (UInt256) (gasTarget - gasUsed);
-                    baseFeeDelta *= currentBaseFee;
-                    baseFeeDelta /= gasTargetLong;
-                    baseFeeDelta /= ElasticityMultiplier;
-                    currentBaseFee -= baseFeeDelta;
-                }
-                return currentBaseFee;
-            }
-
-            class GasPriceAndReward
+            public class GasPriceAndReward
             {
                 public UInt256 GasPrice { get; }
                 public UInt256 Reward { get; }
