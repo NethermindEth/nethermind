@@ -44,14 +44,14 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 ArrayOfRewards(blockFeeInfo, rewardPercentiles!);
         }
 
-        public virtual bool IsLondonEnabled(BlockFeeInfo blockFeeInfo)
+        protected virtual bool IsLondonEnabled(BlockFeeInfo blockFeeInfo)
         {
             IReleaseSpec london = London.Instance;
             bool isLondonEnabled = blockFeeInfo.BlockNumber >= london.Eip1559TransitionBlock;
             return isLondonEnabled;
         }
 
-        public virtual void InitializeBlockFeeInfo(ref BlockFeeInfo blockFeeInfo, bool isLondonEnabled)
+        protected virtual void InitializeBlockFeeInfo(ref BlockFeeInfo blockFeeInfo, bool isLondonEnabled)
         {
             blockFeeInfo.BaseFee = blockFeeInfo.BlockHeader?.BaseFeePerGas ?? 0;
             blockFeeInfo.NextBaseFee = isLondonEnabled
@@ -60,7 +60,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             blockFeeInfo.GasUsedRatio = (float) blockFeeInfo.BlockHeader!.GasUsed / blockFeeInfo.BlockHeader!.GasLimit;
         }
 
-        private bool ArgumentErrorsExist(BlockFeeInfo blockFeeInfo, double[]? rewardPercentiles)
+        protected virtual bool ArgumentErrorsExist(BlockFeeInfo blockFeeInfo, double[]? rewardPercentiles)
         {
             if (rewardPercentiles == null || rewardPercentiles.Length == 0)
             {
@@ -80,7 +80,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return false;
         }
 
-        public virtual UInt256[]? ArrayOfRewards(BlockFeeInfo blockFeeInfo, double[] rewardPercentiles)
+        protected virtual UInt256[]? ArrayOfRewards(BlockFeeInfo blockFeeInfo, double[] rewardPercentiles)
         {
             if (blockFeeInfo.Block!.Transactions.Length == 0)
             {

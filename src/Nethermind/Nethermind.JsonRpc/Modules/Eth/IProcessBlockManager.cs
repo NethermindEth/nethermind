@@ -22,8 +22,5 @@ namespace Nethermind.JsonRpc.Modules.Eth
     public interface IProcessBlockManager
     {
         UInt256[]? ProcessBlock(ref BlockFeeInfo blockFeeInfo, double[]? rewardPercentiles);
-        bool IsLondonEnabled(BlockFeeInfo blockFeeInfo);
-        void InitializeBlockFeeInfo(ref BlockFeeInfo blockFeeInfo, bool isLondonEnabled);
-        UInt256[]? ArrayOfRewards(BlockFeeInfo blockFeeInfo, double[] rewardPercentiles);
     }
 }

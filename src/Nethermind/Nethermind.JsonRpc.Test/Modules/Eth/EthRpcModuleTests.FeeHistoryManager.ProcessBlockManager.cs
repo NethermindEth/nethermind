@@ -52,7 +52,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             
             blockFeeInfo.Should().BeEquivalentTo(expectedBlockFeeInfo);
         }
-        //ToDo
+        
         [TestCase(null, false)]
         [TestCase(new double[]{}, false)]
 
@@ -63,10 +63,10 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                 overrideGetArrayOfRewards: true);
             BlockFeeInfo blockFeeInfo = new() {Block = Build.A.Block.TestObject};
 
-            testableProcessBlockManager.ArrayOfRewardsCalled.Should().BeFalse();
+            testableProcessBlockManager.ArgumentErrorsExistResult.Should().BeNull();
             testableProcessBlockManager.ProcessBlock(ref blockFeeInfo, rewardPercentiles);
 
-            testableProcessBlockManager.ArrayOfRewardsCalled.Should().BeFalse();
+            testableProcessBlockManager.ArgumentErrorsExistResult.Should().BeTrue();
         }
 
         class TestableProcessBlockManager : ProcessBlockManager
@@ -75,6 +75,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             private readonly bool _overrideGetArrayOfRewards;
             private readonly bool _londonEnabled;
             internal bool ArrayOfRewardsCalled { get; set; }
+            public bool? ArgumentErrorsExistResult { get; set; }
             
             public TestableProcessBlockManager(
                 ILogger logger,
@@ -86,14 +87,15 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                 _overrideGetArrayOfRewards = overrideGetArrayOfRewards;
                 _londonEnabled = londonEnabled;
                 ArrayOfRewardsCalled = false;
+                ArgumentErrorsExistResult = null;
             }
 
-            public override bool IsLondonEnabled(BlockFeeInfo blockFeeInfo)
+            protected override bool IsLondonEnabled(BlockFeeInfo blockFeeInfo)
             {
                 return _londonEnabled;
             }
 
-            public override void InitializeBlockFeeInfo(ref BlockFeeInfo blockFeeInfo, bool isLondonEnabled)
+            protected override void InitializeBlockFeeInfo(ref BlockFeeInfo blockFeeInfo, bool isLondonEnabled)
             {
                 if (_overrideInitializeBlockFeeInfo == false)
                 {
@@ -101,7 +103,13 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                 }
             }
 
-            public override UInt256[]? ArrayOfRewards(BlockFeeInfo blockFeeInfo, double[] rewardPercentiles)
+            protected override bool ArgumentErrorsExist(BlockFeeInfo blockFeeInfo, double[]? rewardPercentiles)
+            {
+                ArgumentErrorsExistResult = base.ArgumentErrorsExist(blockFeeInfo, rewardPercentiles);
+                return (bool) ArgumentErrorsExistResult!;
+            }
+
+            protected override UInt256[]? ArrayOfRewards(BlockFeeInfo blockFeeInfo, double[] rewardPercentiles)
             {
                 if (_overrideGetArrayOfRewards == false)
                 {
