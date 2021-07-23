@@ -104,7 +104,7 @@ namespace Nethermind.Network.Test.Builders
                 .With(new Network.P2P.Subprotocols.Eth.V66.GetNodeDataMessageSerializer(new GetNodeDataMessageSerializer()))
                 .With(new Network.P2P.Subprotocols.Eth.V66.NodeDataMessageSerializer(new NodeDataMessageSerializer()))
                 .With(new Network.P2P.Subprotocols.Eth.V66.GetReceiptsMessageSerializer(new GetReceiptsMessageSerializer()))
-                .With(new Network.P2P.Subprotocols.Eth.V66.ReceiptsMessageSerializer((new ReceiptsMessageSerializer(MainnetSpecProvider.Instance)) as IZeroMessageSerializer<ReceiptsMessage>));
+                .With(new Network.P2P.Subprotocols.Eth.V66.ReceiptsMessageSerializer(new ReceiptsMessageSerializer(MainnetSpecProvider.Instance)));
         }
 
         public SerializationBuilder WithDiscovery(PrivateKey privateKey)
