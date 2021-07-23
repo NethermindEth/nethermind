@@ -1,15 +1,19 @@
 #nullable enable
 using System;
+using System.Linq;
 using FluentAssertions;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Facade;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth;
 using NSubstitute;
 using Nethermind.Logging;
+using NSubstitute.Core;
 using NUnit.Framework;
+using static Nethermind.JsonRpc.Modules.Eth.EthRpcModule.FeeHistoryManager;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth
 {
@@ -108,38 +112,13 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             logger.Received().Error(Arg.Is("Block missing when reward percentiles were requested."));
         }
         
-        /*
-        //ToDo
-        [Test]
-        public void ProcessBlock_IfTxsInBlock_RewardsCalculatedCorrectly()
-        {
-            ILogger logger = Substitute.For<ILogger>();
-            IBlockchainBridge blockchainBridge = Substitute.For<IBlockchainBridge>();
-            TestableProcessBlockManager testableProcessBlockManager = new(logger, blockchainBridge);
-            Transaction[] transactions = new Transaction[]
-            {
-                
-            }
-            BlockFeeInfo blockFeeInfo = new()
-            {
-                Block = Build.A.Block.WithTransactions(new Transaction(){}).TestObject
-            };
-        }
-        
-        //ToDo
-        [Test]
-        public void ProcessBlock_IfTxsInBlock_RewardsAtPercentilesFoundCorrectly()
-        {
-            
-        }
-        */
         class TestableProcessBlockManager : ProcessBlockManager
         {
             private readonly bool _overrideInitializeBlockFeeInfo;
             private readonly bool _overrideGetArrayOfRewards;
             private readonly bool _londonEnabled;
             private bool ArrayOfRewardsCalled { get; set; }
-            public bool? ArgumentErrorsExistResult { get; set; }
+            public bool? ArgumentErrorsExistResult { get; private set; }
             
             public TestableProcessBlockManager(
                 ILogger logger,
