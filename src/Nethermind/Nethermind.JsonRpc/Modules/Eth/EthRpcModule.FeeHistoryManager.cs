@@ -58,7 +58,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 }
                 
                 long? headBlockNumber = null;
-                ResultWrapper<BlockRangeInfo> blockRangeResult = _blockRangeManager.ResolveBlockRange(ref lastBlockNumber, ref blockCount, MaxHistory, ref headBlockNumber);
+                ResultWrapper<BlockRangeInfo> blockRangeResult = _blockRangeManager.ResolveBlockRange(ref lastBlockNumber, ref blockCount, 
+                    MaxHistory, ref headBlockNumber);
                 if (blockRangeResult.Result.ResultType == ResultType.Failure)
                 {
                     return ResultWrapper<FeeHistoryResult>.Fail(blockRangeResult.Result.Error ?? "Error message in ResolveBlockRange not set correctly.");
@@ -71,8 +72,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     string output = StringOfNullElements(blockRangeInfo);
                     return ResultWrapper<FeeHistoryResult>.Fail($"{output} is null");
                 }
-                
-                
+
                 return FeeHistoryGenerator.FeeHistoryLookup(blockCount, lastBlockNumber, rewardPercentiles);
             }
 
@@ -80,16 +80,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
             {
                 List<string> nullStrings = new();
                 if (blockRangeInfo.LastBlockNumber == null)
-                    nullStrings.Add("blockRangeInfo.LastBlockNumber");
+                    nullStrings.Add("LastBlockNumber");
                 if (blockRangeInfo.BlockCount == null)
-                    nullStrings.Add("blockRangeInfo.BlockCount");
+                    nullStrings.Add("BlockCount");
                 string output = Strings.Join(nullStrings.ToArray(), ", ") ?? "";
                 return output;
-            }
-
-            protected internal virtual BlockFeeInfo GetBlockFeeInfo(long blockNumber, double[]? rewardPercentiles, Block? pendingBlock)
-            {
-                return FeeHistoryGenerator.GetBlockFeeInfo(blockNumber, rewardPercentiles, pendingBlock);
             }
 
             public class GasPriceAndReward
