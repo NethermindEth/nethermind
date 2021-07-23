@@ -4,6 +4,7 @@ using FluentAssertions;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Facade;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth;
 using NSubstitute;
@@ -22,7 +23,8 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         public void ProcessBlock_IfLondonEnabled_NextBaseFeeAndBlockFeeInfoCalculatedCorrectly(long baseFee, long gasLimit, long gasUsed, long expectedNextBaseFee, double expectedGasUsedRatio)
         {
             ILogger logger = Substitute.For<ILogger>();
-            TestableProcessBlockManager testableProcessBlockManager = new(logger);
+            IBlockchainBridge blockchainBridge = Substitute.For<IBlockchainBridge>();
+            TestableProcessBlockManager testableProcessBlockManager = new(logger, blockchainBridge);
             BlockHeader testBlockHeader = Build.A.BlockHeader.WithBaseFee((UInt256) baseFee).WithGasLimit(gasLimit).WithGasUsed(gasUsed).TestObject;
             BlockFeeInfo blockFeeInfo = new() {BlockHeader = testBlockHeader};
             BlockFeeInfo expectedBlockFeeInfo = new()
@@ -40,7 +42,8 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         public void ProcessBlock_IfLondonNotEnabled_NextBaseFeeIs0AndBlockFeeInfoCalculatedCorrectly(long baseFee, long gasLimit, long gasUsed, long expectedNextBaseFee, double expectedGasUsedRatio)
         {
             ILogger logger = Substitute.For<ILogger>();
-            TestableProcessBlockManager testableProcessBlockManager = new(logger, londonEnabled: false);
+            IBlockchainBridge blockchainBridge = Substitute.For<IBlockchainBridge>();
+            TestableProcessBlockManager testableProcessBlockManager = new(logger, blockchainBridge, londonEnabled: false);
             BlockHeader blockHeader = Build.A.BlockHeader.WithBaseFee((UInt256) baseFee).WithGasLimit(gasLimit).WithGasUsed(gasUsed).TestObject;
             BlockFeeInfo blockFeeInfo = new() {BlockHeader = blockHeader};
             BlockFeeInfo expectedBlockFeeInfo = new()
@@ -59,7 +62,8 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         public void ProcessBlock_IfRewardPercentilesIsNullOrEmpty_EarlyReturn(double[]? rewardPercentiles, bool expected)
         {
             ILogger logger = Substitute.For<ILogger>();
-            TestableProcessBlockManager testableProcessBlockManager = new(logger, overrideInitializeBlockFeeInfo: true, 
+            IBlockchainBridge blockchainBridge = Substitute.For<IBlockchainBridge>();
+            TestableProcessBlockManager testableProcessBlockManager = new(logger, blockchainBridge, overrideInitializeBlockFeeInfo: true, 
                 overrideGetArrayOfRewards: true);
             BlockFeeInfo blockFeeInfo = new() {Block = Build.A.Block.TestObject};
 
@@ -73,7 +77,8 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         public void ProcessBlock_NoTxsInBlock_ReturnsArrayOfZerosAsBigAsRewardPercentiles()
         {
             ILogger logger = Substitute.For<ILogger>();
-            TestableProcessBlockManager testableProcessBlockManager = new(logger);
+            IBlockchainBridge blockchainBridge = Substitute.For<IBlockchainBridge>();
+            TestableProcessBlockManager testableProcessBlockManager = new(logger, blockchainBridge);
             BlockFeeInfo blockFeeInfo = new()
             {
                 Block = Build.A.Block.WithTransactions(Array.Empty<Transaction>()).TestObject,
@@ -89,7 +94,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         public void ProcessBlock_BlockFeeInfoBlockParameterEmptyAfterInitialization_ReturnsNullAndLogsError()
         {
             ILogger logger = Substitute.For<ILogger>();
-            TestableProcessBlockManager testableProcessBlockManager = new(logger);
+            logger.IsError.Returns(true);
+            IBlockchainBridge blockchainBridge = Substitute.For<IBlockchainBridge>();
+            TestableProcessBlockManager testableProcessBlockManager = new(logger, blockchainBridge, overrideInitializeBlockFeeInfo: true);
             BlockFeeInfo blockFeeInfo = new()
             {
                 BlockHeader = Build.A.BlockHeader.TestObject
@@ -101,15 +108,17 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             logger.Received().Error(Arg.Is("Block missing when reward percentiles were requested."));
         }
         
+        /*
         //ToDo
         [Test]
         public void ProcessBlock_IfTxsInBlock_RewardsCalculatedCorrectly()
         {
             ILogger logger = Substitute.For<ILogger>();
-            TestableProcessBlockManager testableProcessBlockManager = new(logger);
+            IBlockchainBridge blockchainBridge = Substitute.For<IBlockchainBridge>();
+            TestableProcessBlockManager testableProcessBlockManager = new(logger, blockchainBridge);
             Transaction[] transactions = new Transaction[]
             {
-                Build.A.Transaction.WithGa
+                
             }
             BlockFeeInfo blockFeeInfo = new()
             {
@@ -123,6 +132,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         {
             
         }
+        */
         class TestableProcessBlockManager : ProcessBlockManager
         {
             private readonly bool _overrideInitializeBlockFeeInfo;
@@ -133,9 +143,12 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             
             public TestableProcessBlockManager(
                 ILogger logger,
+                IBlockchainBridge blockchainBridge,
                 bool overrideInitializeBlockFeeInfo = false,
                 bool overrideGetArrayOfRewards = false,
-                bool londonEnabled = true) : base(logger)
+                bool londonEnabled = true) : 
+                base(logger,
+                    blockchainBridge)
             {
                 _overrideInitializeBlockFeeInfo = overrideInitializeBlockFeeInfo;
                 _overrideGetArrayOfRewards = overrideGetArrayOfRewards;

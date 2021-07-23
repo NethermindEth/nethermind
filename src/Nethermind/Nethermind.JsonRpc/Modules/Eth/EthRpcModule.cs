@@ -26,7 +26,6 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -88,7 +87,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _feeHistoryManager = feeHistoryManager ?? new FeeHistoryManager(_blockFinder, _logger);
+            _feeHistoryManager = feeHistoryManager ?? new FeeHistoryManager(_blockFinder, _logger, _blockchainBridge);
         }
 
         public ResultWrapper<string> eth_protocolVersion()

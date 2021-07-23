@@ -20,6 +20,7 @@ using Nethermind.Logging;
 using Microsoft.VisualBasic;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
+using Nethermind.Facade;
 using Nethermind.Int256;
 using static Nethermind.JsonRpc.Modules.Eth.FeeHistoryResult;
 
@@ -29,23 +30,22 @@ namespace Nethermind.JsonRpc.Modules.Eth
     {
         public class FeeHistoryManager : IFeeHistoryManager
         {
-            private readonly IBlockFinder _blockFinder;
             private readonly IBlockRangeManager _blockRangeManager;
-            private readonly ILogger _logger;
+            private readonly IBlockchainBridge _blockchainBridge;
             private IProcessBlockManager ProcessBlockManager { get; }
             private IInitialCheckManager InitialCheckManager { get; }
 
             public IFeeHistoryGenerator FeeHistoryGenerator { get; }
 
-            public FeeHistoryManager(IBlockFinder blockFinder, ILogger logger, IBlockRangeManager? blockRangeManager = null, IProcessBlockManager? processBlockManager = null,
-                IInitialCheckManager? initialCheckManager = null, IFeeHistoryGenerator? feeHistoryGenerator = null )
+            public FeeHistoryManager(IBlockFinder blockFinder, ILogger logger, IBlockchainBridge blockchainBridge,
+                IBlockRangeManager? blockRangeManager = null, IProcessBlockManager? processBlockManager = null,
+                IInitialCheckManager? initialCheckManager = null, IFeeHistoryGenerator? feeHistoryGenerator = null)
             {
-                _blockFinder = blockFinder;
-                _logger = logger;
-                _blockRangeManager = blockRangeManager ?? new BlockRangeManager(_blockFinder);
-                ProcessBlockManager = processBlockManager ?? new ProcessBlockManager(_logger);
+                _blockchainBridge = blockchainBridge;
+                _blockRangeManager = blockRangeManager ?? new BlockRangeManager(blockFinder);
+                ProcessBlockManager = processBlockManager ?? new ProcessBlockManager(logger, _blockchainBridge);
                 InitialCheckManager = initialCheckManager ?? new InitialCheckManager();
-                FeeHistoryGenerator = feeHistoryGenerator ?? new FeeHistoryGenerator(_blockFinder, ProcessBlockManager);
+                FeeHistoryGenerator = feeHistoryGenerator ?? new FeeHistoryGenerator(blockFinder, ProcessBlockManager);
             }
 
             public ResultWrapper<FeeHistoryResult> GetFeeHistory(ref long blockCount, long lastBlockNumber,
@@ -87,14 +87,14 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return output;
             }
 
-            public class GasPriceAndReward
+            public class GasUsedAndReward
             {
-                public UInt256 GasPrice { get; }
+                public long GasUsed { get; }
                 public UInt256 Reward { get; }
 
-                public GasPriceAndReward (UInt256 gasPrice, UInt256 reward)
+                public GasUsedAndReward (long gasUsed, UInt256 reward)
                 {
-                    GasPrice = gasPrice;
+                    GasUsed = gasUsed;
                     Reward = reward;
                 }
             }

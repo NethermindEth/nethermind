@@ -15,10 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Facade;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
@@ -29,10 +29,12 @@ namespace Nethermind.JsonRpc.Modules.Eth
     public class ProcessBlockManager : IProcessBlockManager
     {
         private readonly ILogger _logger;
+        private readonly IBlockchainBridge _blockchainBridge;
 
-        public ProcessBlockManager(ILogger logger)
+        public ProcessBlockManager(ILogger logger, IBlockchainBridge blockchainBridge)
         {
             _logger = logger;
+            _blockchainBridge = blockchainBridge;
         }
 
         public UInt256[]? ProcessBlock(ref BlockFeeInfo blockFeeInfo, double[]? rewardPercentiles)
@@ -121,7 +123,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
 
 
-        private static UInt256[] GetZerosArrayAsLongAsRewardPercentiles(double[] rewardPercentiles)
+        private UInt256[] GetZerosArrayAsLongAsRewardPercentiles(double[] rewardPercentiles)
         {
             UInt256[] rewards = new UInt256[rewardPercentiles.Length];
             for (int i = 0; i < rewardPercentiles.Length; i++)
@@ -132,37 +134,51 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return rewards;
         }
 
-        private static UInt256[]? CalculateAndInsertRewards(BlockFeeInfo blockFeeInfo, double[] rewardPercentiles)
+        private UInt256[]? CalculateAndInsertRewards(BlockFeeInfo blockFeeInfo, double[] rewardPercentiles)
         {
-            EthRpcModule.FeeHistoryManager.GasPriceAndReward[] gasPriceAndRewardArray = GetEffectiveGasPriceAndRewards(blockFeeInfo);
+            GasUsedAndReward[] gasPriceAndRewardArray = GetEffectiveGasPriceAndRewards(blockFeeInfo);
 
             return GetRewardsAtPercentiles(blockFeeInfo, rewardPercentiles, gasPriceAndRewardArray);
         }
 
-        private static EthRpcModule.FeeHistoryManager.GasPriceAndReward[] GetEffectiveGasPriceAndRewards(BlockFeeInfo blockFeeInfo)
+        private GasUsedAndReward[] GetEffectiveGasPriceAndRewards(BlockFeeInfo blockFeeInfo)
         {
             Transaction[] transactionsInBlock = blockFeeInfo.Block!.Transactions;
-            EthRpcModule.FeeHistoryManager.GasPriceAndReward[] gasPriceAndRewardArray =
-                transactionsInBlock.Select(ConvertTxToGasPriceAndReward(blockFeeInfo)).ToArray<EthRpcModule.FeeHistoryManager.GasPriceAndReward>();
+            GasUsedAndReward[] gasPriceAndRewardArray = GetGasUsedAndRewardArrayFrom(transactionsInBlock, blockFeeInfo);
             gasPriceAndRewardArray = gasPriceAndRewardArray.OrderBy(g => g.Reward).ToArray();
             return gasPriceAndRewardArray;
         }
 
-        private static UInt256[] GetRewardsAtPercentiles(BlockFeeInfo blockFeeInfo, double[] rewardPercentiles, EthRpcModule.FeeHistoryManager.GasPriceAndReward[] gasPriceAndRewardArray)
+        private GasUsedAndReward[] GetGasUsedAndRewardArrayFrom(Transaction[] transactions, BlockFeeInfo blockFeeInfo)
+        {
+            GasUsedAndReward[] gasUsedAndRewardArray = new GasUsedAndReward[transactions.Length];
+            int index = 0;
+            foreach (Transaction transaction in transactions)
+            {
+                if (transaction.Hash != null)
+                {
+                    (TxReceipt Receipt, UInt256? EffectiveGasPrice) txInfo = _blockchainBridge.GetReceiptAndEffectiveGasPrice(transaction.Hash);
+                    gasUsedAndRewardArray[index++] = new GasUsedAndReward(txInfo.Receipt.GasUsed, transaction.CalculateEffectiveGasTip(blockFeeInfo.BaseFee));
+                }
+            }
+
+            return gasUsedAndRewardArray;
+        }
+        private static UInt256[] GetRewardsAtPercentiles(BlockFeeInfo blockFeeInfo, double[] rewardPercentiles, GasUsedAndReward[] gasPriceAndRewardArray)
         {
             UInt256[] rewards = new UInt256[rewardPercentiles.Length];
             int txIndex;
             int gasPriceArrayLength = gasPriceAndRewardArray.Length;
             int rewardsIndex = 0;
-            UInt256 totalGasUsed;
-            UInt256 thresholdGasUsed;
+            long totalGasUsed;
+            long thresholdGasUsed;
             foreach (double percentile in rewardPercentiles)
             {
                 totalGasUsed = 0;
-                thresholdGasUsed = (UInt256) ((percentile / 100) * (blockFeeInfo.Block!.GasUsed));
+                thresholdGasUsed = (long) ((percentile / 100) * (blockFeeInfo.Block!.GasUsed));
                 for (txIndex = 0; totalGasUsed < thresholdGasUsed && txIndex < gasPriceArrayLength; txIndex++)
                 {
-                    totalGasUsed += gasPriceAndRewardArray[txIndex].Reward;
+                    totalGasUsed += gasPriceAndRewardArray[txIndex].GasUsed;
                 }
 
                 rewards[rewardsIndex++] = gasPriceAndRewardArray[txIndex].Reward;
@@ -170,16 +186,5 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             return rewards;
         }
-
-        private static Func<Transaction, EthRpcModule.FeeHistoryManager.GasPriceAndReward> ConvertTxToGasPriceAndReward(BlockFeeInfo blockFeeInfoCopy)
-        {
-            return tx =>
-            {
-                UInt256 gasPrice = tx.GasPrice;
-                UInt256 effectiveGasTip = tx.CalculateEffectiveGasTip(blockFeeInfoCopy.BaseFee!);
-                return new EthRpcModule.FeeHistoryManager.GasPriceAndReward(gasPrice, effectiveGasTip);
-            };
-        }
-
     }
 }

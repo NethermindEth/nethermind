@@ -18,6 +18,7 @@
 #nullable enable
 using FluentAssertions;
 using Nethermind.Blockchain.Find;
+using Nethermind.Facade;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using NSubstitute;
@@ -89,6 +90,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         private FeeHistoryManager GetSubstitutedFeeHistoryManager(
             IBlockFinder? blockFinder = null, 
             ILogger? logger = null,
+            IBlockchainBridge? blockchainBridge = null,
             IBlockRangeManager? blockRangeManager = null,
             IProcessBlockManager? processBlockManager = null,
             IInitialCheckManager? initialCheckManager = null,
@@ -98,6 +100,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             return new(
                 blockFinder ?? Substitute.For<IBlockFinder>(),
                 logger ?? Substitute.For<ILogger>(),
+                blockchainBridge ?? Substitute.For<IBlockchainBridge>(),
                 blockRangeManager ?? Substitute.For<IBlockRangeManager>(),
                 processBlockManager ?? Substitute.For<IProcessBlockManager>(),
                 initialCheckManager ?? Substitute.For<IInitialCheckManager>(),
