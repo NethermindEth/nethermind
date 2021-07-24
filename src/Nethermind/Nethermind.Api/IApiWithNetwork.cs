@@ -56,6 +56,6 @@ namespace Nethermind.Api
         ISyncPeerPool? SyncPeerPool { get; set; }
         ISyncServer? SyncServer { get; set; }
         IWebSocketsManager WebSocketsManager { get; set; }
-        IFeeHistoryManager FeeHistoryManager { get; set; }
+        IFeeHistoryManager? FeeHistoryManager { get; set; }
     }
 }
