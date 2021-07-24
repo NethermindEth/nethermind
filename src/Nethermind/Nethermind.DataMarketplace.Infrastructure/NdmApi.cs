@@ -51,6 +51,7 @@ using Nethermind.Facade;
 using Nethermind.Facade.Proxy;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.KeyStore;
 using Nethermind.Logging;
 using Nethermind.Monitoring;
@@ -528,7 +529,13 @@ namespace Nethermind.DataMarketplace.Infrastructure
             get => _nethermindApi.WebSocketsManager;
             set => _nethermindApi.WebSocketsManager = value;
         }
-        
+
+        public IFeeHistoryManager? FeeHistoryManager
+        {
+            get => _nethermindApi.FeeHistoryManager;
+            set => _nethermindApi.FeeHistoryManager = value;
+        }
+
         public IWitnessCollector? WitnessCollector
         {
             get => _nethermindApi.WitnessCollector;
