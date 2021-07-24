@@ -139,7 +139,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                 TxSender,
                 TestWallet,
                 LimboLogs.Instance,
-                SpecProvider);
+                SpecProvider,
+                FeeHistoryManager);
             
             return this;
         }

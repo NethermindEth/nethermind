@@ -64,6 +64,45 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             Assert.AreEqual(expected == serialized, resultIsError);
         }
 
+        [TestCase("earliest", 0)]
+        [TestCase("latest", -1)]
+        [TestCase("pending", -2)]
+        [TestCase("0x1", 1)]
+        [TestCase("0xAA", 170)]
+        public async Task Eth_feeHistory_GivenBlockParameter_ConvertsItToCorrectNumber(string blockParameter, long expected)
+        {
+            using Context ctx = await Context.Create();
+            IFeeHistoryManager feeHistoryManager = Substitute.For<IFeeHistoryManager>();
+            ctx._test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithFeeHistoryManager(feeHistoryManager).Build();
+            
+            string serialized = ctx._test.TestEthRpc("eth_feeHistory", $"1", blockParameter);
+
+            feeHistoryManager.Received().GetFeeHistory(
+                ref Arg.Is<long>(l => l == 1),
+                Arg.Is<long>(l => l == expected),
+                Arg.Any<double[]?>());
+        }
+
+        public IBlockFinder GetTestBlockFinder()
+        {
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            Transaction txA = Build.A.Transaction.WithGasLimit(5).WithMaxFeePerGas(6).WithMaxPriorityFeePerGas(3).WithType(TxType.EIP1559)
+                .TestObject;
+            Transaction txB = Build.A.Transaction.WithGasLimit(10).WithMaxFeePerGas(12).WithMaxPriorityFeePerGas(6).WithType(TxType.EIP1559)
+                .TestObject;
+            Transaction txC = Build.A.Transaction.WithGasLimit(15).WithMaxFeePerGas(12).WithMaxPriorityFeePerGas(6).WithType(TxType.EIP1559)
+                .TestObject;
+            Block pendingBlock = Build.A.Block.WithNumber(3).WithGasUsed(3).WithTransactions(txA, txB).WithBaseFeePerGas(5).TestObject;
+            Block latestBlock = Build.A.Block.WithNumber(2).WithGasUsed(3).WithTransactions(txA, txC).WithBaseFeePerGas(5).TestObject;
+            Block earliestBlock = Build.A.Block.Genesis.WithGasUsed(3).WithTransactions(txA, txB).WithBaseFeePerGas(5).TestObject;
+            Block blockWithBlockNumber1 = Build.A.Block.WithNumber(1).WithGasUsed(3).WithTransactions(txA, txB).WithBaseFeePerGas(5).TestObject;
+            blockFinder.FindPendingBlock().Returns(pendingBlock);
+            blockFinder.FindHeadBlock().Returns(latestBlock);
+            blockFinder.FindBlock(Arg.Is<long>(l => l == 0)).Returns(earliestBlock);
+            blockFinder.FindBlock(Arg.Is<long>(l => l == 1)).Returns(blockWithBlockNumber1);
+            return blockFinder;
+        }
+        
         [TestCase("earliest", "0x3635c9adc5dea00000")]
         [TestCase("latest", "0x3635c9adc5de9f09e5")]
         [TestCase("pending", "0x3635c9adc5de9f09e5")]

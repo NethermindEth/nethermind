@@ -148,33 +148,27 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return ResultWrapper<UInt256?>.Success(20.GWei());
         }
 
-        public ResultWrapper<FeeHistoryResult> eth_feeHistory(long blockCount, long lastBlockNumber, double[]? rewardPercentiles = null)
+        public ResultWrapper<FeeHistoryResult> eth_feeHistory(long blockCount, BlockParameter lastBlockNumber, double[]? rewardPercentiles = null)
         {
-            return lastBlockNumber < -2 ? 
-                ResultWrapper<FeeHistoryResult>.Fail($"The last block number: {lastBlockNumber}, is less than -2. Use -2 for `pending block number`, -1 for `latest block number`, or explicitly type in the lastBlockNumber.") :
-                _feeHistoryManager.GetFeeHistory(ref blockCount, lastBlockNumber, rewardPercentiles);
-        }
-        
-        public ResultWrapper<FeeHistoryResult> eth_feeHistory(long blockCount, string lastBlockNumber, double[]? rewardPercentiles = null)
-        {
-            long longLastBlockNumber;
-            switch (lastBlockNumber)
+            long lastBlockNumberLong;
+            if (lastBlockNumber.Type == BlockParameterType.Earliest)
+                lastBlockNumberLong = EarliestBlockNumber;
+            else if (lastBlockNumber.Type == BlockParameterType.Latest)
+                lastBlockNumberLong = LatestBlockNumber;
+            else if (lastBlockNumber.Type == BlockParameterType.Pending)
+                lastBlockNumberLong = PendingBlockNumber;
+            else if (lastBlockNumber.Type == BlockParameterType.BlockNumber)
+                lastBlockNumberLong = (long) lastBlockNumber.BlockNumber!;
+            else
             {
-                case "pending":
-                    longLastBlockNumber = PendingBlockNumber;
-                    break;
-                case "latest":
-                    longLastBlockNumber = LatestBlockNumber;
-                    break;
-                case "earliest":
-                    longLastBlockNumber = EarliestBlockNumber;
-                    break;
-                default:
-                    return ResultWrapper<FeeHistoryResult>.Fail($"LastBlockNumber can only be `pending`, `latest`, or `earliest`. You typed `${lastBlockNumber}`");
+                return ResultWrapper<FeeHistoryResult>.Fail("BlockParameterType is not Earliest, Latest, Pending, or BlockNumber.");
             }
-
-            return eth_feeHistory(blockCount, longLastBlockNumber, rewardPercentiles);
+            
+            return lastBlockNumberLong < -2 ? 
+                ResultWrapper<FeeHistoryResult>.Fail($"The last block number: {lastBlockNumberLong}, is less than -2. Use -2 for `pending block number`, -1 for `latest block number`, or explicitly type in the lastBlockNumber.") :
+                _feeHistoryManager.GetFeeHistory(ref blockCount, lastBlockNumberLong, rewardPercentiles);
         }
+
         public ResultWrapper<IEnumerable<Address>> eth_accounts()
         {
             try

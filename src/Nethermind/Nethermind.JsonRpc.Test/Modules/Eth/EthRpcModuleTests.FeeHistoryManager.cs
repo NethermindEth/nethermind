@@ -87,7 +87,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             
         }
 
-        private FeeHistoryManager GetSubstitutedFeeHistoryManager(
+        public static FeeHistoryManager GetSubstitutedFeeHistoryManager(
             IBlockFinder? blockFinder = null, 
             ILogger? logger = null,
             IBlockchainBridge? blockchainBridge = null,
