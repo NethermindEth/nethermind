@@ -25,12 +25,12 @@ namespace Nethermind.JsonRpc.Modules.Witness
     public interface IWitnessRpcModule : IRpcModule
     {
         [JsonRpcMethod(Description = "Return witness of Block provided",
-            ResponseDescription = "Keccak representation of Witness",
+            ResponseDescription = "Table of hashes of state nodes that were read during block processing",
             ExampleResponse =
-                "[\"0xe686ead4169241f99b318240a0557ab5dd4d99444367ca4a28e60cda5717ef2c\"]",
+                "\"0x1\"",
             IsImplemented = true)]
         Task<ResultWrapper<Keccak[]>> get_witnesses([JsonRpcParameter(Description = "Block to get witness",
-                ExampleValue = "[\"8934677\"]")]
-            string blockHash);
+                ExampleValue = "{\"jsonrpc\":\"2.0\",\"result\":[\"0xa2a9f03b9493046696099d27b2612b99497aa1f392ec966716ab393c715a5bb6\"],\"id\":67}")]
+            BlockParameter blockParameter);
     }
 }
