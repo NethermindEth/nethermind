@@ -188,7 +188,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.PeerManager);
             _api.RpcModuleProvider.RegisterSingle<IParityRpcModule>(parityRpcModule);
 
-            WitnessRpcModule witnessRpcModule = new(_api.WitnessCollector);
+            WitnessRpcModule witnessRpcModule = new(_api.WitnessRepository, _api.BlockTree);
             _api.RpcModuleProvider.RegisterSingle<IWitnessRpcModule>(witnessRpcModule);
             
             SubscriptionFactory subscriptionFactory = new(
