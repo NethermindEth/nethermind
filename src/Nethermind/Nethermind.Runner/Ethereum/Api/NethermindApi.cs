@@ -138,6 +138,7 @@ namespace Nethermind.Runner.Ethereum.Api
         public ISignerStore? EngineSignerStore { get; set; }
         public IEnode? Enode { get; set; }
         public IEthereumEcdsa? EthereumEcdsa { get; set; }
+        public IFeeHistoryManager? FeeHistoryManager { get; set; }
         public IFileSystem FileSystem { get; set; } = new FileSystem();
         public IFilterStore? FilterStore { get; set; }
         public IFilterManager? FilterManager { get; set; }
@@ -195,7 +196,6 @@ namespace Nethermind.Runner.Ethereum.Api
         public IWallet? Wallet { get; set; }
         public ITransactionComparerProvider TransactionComparerProvider { get; set; }
         public IWebSocketsManager WebSocketsManager { get; set; } = new WebSocketsManager();
-        public IFeeHistoryManager FeeHistoryManager { get; set; }
 
         public ProtectedPrivateKey? NodeKey { get; set; }
         
