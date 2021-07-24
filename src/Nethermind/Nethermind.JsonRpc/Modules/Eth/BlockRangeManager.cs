@@ -35,8 +35,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             Block? pendingBlock = null;
             if (lastBlockNumber == PendingBlockNumber)
             {
-                ResultWrapper<BlockRangeInfo> checkPendingBlockNumber =
-                    PendingBlockNumberCheck(ref lastBlockNumber, ref blockCount, ref pendingBlock, ref headBlockNumber);
+                ResultWrapper<BlockRangeInfo> checkPendingBlockNumber = PendingBlockNumberCheck(ref lastBlockNumber, ref blockCount, ref pendingBlock, ref headBlockNumber);
                 if (checkPendingBlockNumber.Result.ResultType == ResultType.Failure)
                 {
                     return checkPendingBlockNumber;
@@ -46,24 +45,20 @@ namespace Nethermind.JsonRpc.Modules.Eth
             if (pendingBlock == null)
             {
                 headBlockNumber = _blockFinder.FindHeadBlock()?.Number;
-                if (headBlockNumber == null)
+                (bool returnEarly, ResultWrapper<BlockRangeInfo> fail) = HeadBlockNumberRelatedErrors(lastBlockNumber, headBlockNumber);
+                if (returnEarly)
                 {
-                    return ResultWrapper<BlockRangeInfo>.Fail("Head block not found."); //return fail results
+                    return fail;
                 }
             }
-
             if (lastBlockNumber == LatestBlockNumber)
             {
                 lastBlockNumber = (long) headBlockNumber!;
             }
-            else if (pendingBlock == null && lastBlockNumber > headBlockNumber)
-            {
-                return ResultWrapper<BlockRangeInfo>.Fail("Pending block not present and last block number greater than head number.");
-            }
+            
             if (maxHistory != 0)
             {
-                ResultWrapper<long> resultWrapper =
-                    CalculateTooOldCount(lastBlockNumber, blockCount, maxHistory, headBlockNumber);
+                ResultWrapper<long> resultWrapper = CalculateTooOldCount(lastBlockNumber, blockCount, maxHistory, headBlockNumber);
                 if (resultWrapper.Result.ResultType == ResultType.Failure)
                 {
                     return ResultWrapper<BlockRangeInfo>.Fail(resultWrapper.Result.Error!);
@@ -76,6 +71,24 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 blockCount = lastBlockNumber + 1;
             }
             return ResultWrapper<BlockRangeInfo>.Success(new BlockRangeInfo(pendingBlock: pendingBlock, blockCount: blockCount, headBlockNumber: headBlockNumber, lastBlockNumber: lastBlockNumber));
+        }
+
+        private static (bool returnEarly, ResultWrapper<BlockRangeInfo>) HeadBlockNumberRelatedErrors(long lastBlockNumber, long? headBlockNumber)
+        {
+            if (headBlockNumber == null)
+            {
+                return (true, ResultWrapper<BlockRangeInfo>.Fail("Head block not found."));
+            }
+
+            if (lastBlockNumber > headBlockNumber)
+            {
+                {
+                    return (true, ResultWrapper<BlockRangeInfo>.Fail(
+                        "Pending block not present and last block number greater than head number."));
+                }
+            }
+
+            return (false, ResultWrapper<BlockRangeInfo>.Success(new BlockRangeInfo()));
         }
 
         private ResultWrapper<BlockRangeInfo> PendingBlockNumberCheck(ref long lastBlockNumber, ref long blockCount, ref Block? pendingBlock, ref long? headBlockNumber)
@@ -102,7 +115,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         public virtual ResultWrapper<long> CalculateTooOldCount(long lastBlockNumber, long blockCount, int maxHistory,
             long? headBlockNumber)
         {
-            long tooOldCount = (long) (headBlockNumber! - maxHistory - lastBlockNumber - blockCount);
+            long tooOldCount = (long) headBlockNumber! - maxHistory - lastBlockNumber - blockCount;
             if (blockCount > tooOldCount)
             {
                 return ResultWrapper<long>.Success(tooOldCount);
