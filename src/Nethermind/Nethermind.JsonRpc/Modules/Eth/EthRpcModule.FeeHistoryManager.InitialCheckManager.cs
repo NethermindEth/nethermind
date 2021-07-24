@@ -57,7 +57,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 }
             }
 
-            return ResultWrapper<FeeHistoryResult>.Success(new FeeHistoryResult(0, Array.Empty<UInt256[]>(),
+            return ResultWrapper<FeeHistoryResult>.Success(new FeeHistoryResult(Array.Empty<UInt256[]>(),
                 Array.Empty<UInt256>(), Array.Empty<float>()));
         }
 
