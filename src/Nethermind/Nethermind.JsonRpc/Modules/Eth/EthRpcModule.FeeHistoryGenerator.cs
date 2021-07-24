@@ -100,7 +100,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
             {
                 CreateFeeHistoryArgumentChecks(blockFeeInfos, blockCount);
 
-                FeeHistoryResult feeHistoryResult = new(new UInt256[blockCount][],
+                FeeHistoryResult feeHistoryResult = new(
+                    blockFeeInfos[0].BlockNumber,
+                    new UInt256[blockCount][],
                     new UInt256[blockCount + 1],
                     new float[blockCount] 
                 );
