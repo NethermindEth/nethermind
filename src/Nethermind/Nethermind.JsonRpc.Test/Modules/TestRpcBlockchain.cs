@@ -92,6 +92,12 @@ namespace Nethermind.JsonRpc.Test.Modules
                 _blockchain.GenesisBlockBuilder = blockBuilder;
                 return this;
             }
+        
+            public Builder<T> WithFeeHistoryManager(IFeeHistoryManager feeHistoryManager)
+            {
+                _blockchain.FeeHistoryManager = feeHistoryManager;
+                return this;
+            }
             
             public async Task<T> Build(ISpecProvider specProvider = null, UInt256? initialValues = null)
             {

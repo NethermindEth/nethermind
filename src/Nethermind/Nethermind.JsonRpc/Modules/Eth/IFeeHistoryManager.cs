@@ -19,8 +19,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 {
     public interface IFeeHistoryManager
     {
-        ResultWrapper<FeeHistoryResult> GetFeeHistory(ref long blockCount, long lastBlockNumber, double[] rewardPercentiles);
-
-
+        ResultWrapper<FeeHistoryResult> GetFeeHistory(ref long blockCount, long lastBlockNumber, double[]? rewardPercentiles);
+        
     }
 }

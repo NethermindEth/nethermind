@@ -14,11 +14,10 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+#nullable enable
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Linq;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -37,6 +36,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Facade;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
+using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
@@ -62,11 +62,6 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             string expected =
                 $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32603,\"message\":\"blockCount: Block count, {blockCount}, is less than 1.\"}},\"id\":67}}"; 
             Assert.AreEqual(expected == serialized, resultIsError);
-        }
-
-        public async Task Eth_feeHistory_GivenBlockNumberStrings_ConvertsToCorrectNumber()
-        {
-            
         }
 
         [TestCase("earliest", "0x3635c9adc5dea00000")]
