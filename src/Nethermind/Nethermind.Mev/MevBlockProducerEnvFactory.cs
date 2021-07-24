@@ -54,17 +54,19 @@ namespace Nethermind.Mev
             IBlockValidator blockValidator, 
             IRewardCalculatorSource rewardCalculatorSource, 
             IReceiptStorage receiptStorage,
-            ILogManager logManager) =>
-            LastMevBlockProcessor = new MevBlockProcessor(
+            ILogManager logManager)
+        {
+            return LastMevBlockProcessor = new MevBlockProcessor(
                 specProvider,
                 blockValidator,
                 rewardCalculatorSource.Get(readOnlyTxProcessingEnv.TransactionProcessor),
-                readOnlyTxProcessingEnv.TransactionProcessor,
+                new MevBlockProductionTransactionsExecutor(readOnlyTxProcessingEnv, specProvider, logManager),
                 readOnlyTxProcessingEnv.StateProvider,
                 readOnlyTxProcessingEnv.StorageProvider,
                 receiptStorage,
                 NullWitnessCollector.Instance,
                 logManager);
+        }
 
         public MevBlockProcessor LastMevBlockProcessor { get; set; } = null!;
     }

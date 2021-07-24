@@ -141,7 +141,7 @@ namespace Nethermind.Blockchain
             ILogManager logManager)
         {
             ITxFilterPipeline txSourceFilterPipeline  = CreateTxSourceFilter(miningConfig);
-            return new TxPoolTxSource(txPool, processingEnv.StateReader, _specProvider, transactionComparerProvider, logManager, txSourceFilterPipeline);
+            return new TxPoolTxSource(txPool, _specProvider, transactionComparerProvider, logManager, txSourceFilterPipeline);
         }
 
         protected virtual ITxFilterPipeline CreateTxSourceFilter(IMiningConfig miningConfig) =>
@@ -154,11 +154,10 @@ namespace Nethermind.Blockchain
             IRewardCalculatorSource rewardCalculatorSource, 
             IReceiptStorage receiptStorage, 
             ILogManager logManager) =>
-            new(
-                specProvider,
+            new(specProvider,
                 blockValidator,
                 rewardCalculatorSource.Get(readOnlyTxProcessingEnv.TransactionProcessor),
-                readOnlyTxProcessingEnv.TransactionProcessor,
+                new BlockProcessor.BlockProductionTransactionsExecutor(readOnlyTxProcessingEnv, specProvider, logManager),
                 readOnlyTxProcessingEnv.StateProvider,
                 readOnlyTxProcessingEnv.StorageProvider,
                 receiptStorage,

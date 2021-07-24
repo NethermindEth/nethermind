@@ -43,6 +43,7 @@ using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Int256;
 using Nethermind.Evm;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
@@ -150,12 +151,14 @@ namespace Ethereum.Test.Base
                 specProvider,
                 blockValidator,
                 rewardCalculator,
-                new TransactionProcessor(
-                    specProvider,
-                    stateProvider,
-                    storageProvider,
-                    virtualMachine,
-                    _logManager),
+                new BlockProcessor.BlockValidationTransactionsExecutor(
+                    new TransactionProcessor(
+                        specProvider,
+                        stateProvider,
+                        storageProvider,
+                        virtualMachine,
+                        _logManager),
+                    stateProvider),
                 stateProvider,
                 storageProvider,
                 receiptStorage,

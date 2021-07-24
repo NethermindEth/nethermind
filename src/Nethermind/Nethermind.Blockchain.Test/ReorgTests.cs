@@ -32,6 +32,7 @@ using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.State;
@@ -90,11 +91,12 @@ namespace Nethermind.Blockchain.Test
                 storageProvider,
                 virtualMachine,
                 LimboLogs.Instance);
+            
             BlockProcessor blockProcessor = new (
                 MainnetSpecProvider.Instance,
                 Always.Valid,
                 new RewardCalculator(specProvider),
-                transactionProcessor,
+                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
                 stateProvider,
                 storageProvider,
                 NullReceiptStorage.Instance,

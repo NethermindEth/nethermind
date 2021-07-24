@@ -191,8 +191,11 @@ namespace Nethermind.Blockchain.Test.Visitors
             Block newParent = blockTree.Head;
             for (int i = 0; i < blockAmount; ++i)
             {
-                Block newBlock = Build.A.Block.WithNumber(newParent!.Number + 1)
-                    .WithDifficulty(newParent.Difficulty + 1).WithParent(newParent).TestObject;
+                Block newBlock = Build.A.Block
+                    .WithNumber(newParent!.Number + 1)
+                    .WithDifficulty(newParent.Difficulty + 1)
+                    .WithParent(newParent)
+                    .WithStateRoot(newParent.StateRoot!).TestObject;
                 blockTree.SuggestBlock(newBlock);
                 newParent = newBlock;
             }

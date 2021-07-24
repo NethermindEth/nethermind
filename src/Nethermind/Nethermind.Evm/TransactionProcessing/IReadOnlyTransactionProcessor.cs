@@ -14,12 +14,13 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core.Crypto;
+using System;
+using Nethermind.Core;
 
-namespace Nethermind.Evm
+namespace Nethermind.Evm.TransactionProcessing
 {
-    public interface IReadOnlyTxProcessorSource
+    public interface IReadOnlyTransactionProcessor : ITransactionProcessor, IDisposable
     {
-        IReadOnlyTransactionProcessor Build(Keccak stateRoot);
+        bool IsContractDeployed(Address address);
     }
 }

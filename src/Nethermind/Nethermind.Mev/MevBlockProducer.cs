@@ -47,7 +47,7 @@ namespace Nethermind.Mev
                 if (context.Block is not null)
                 {
                     UInt256 balance = _blockProducers[context.BlockProducer].BeneficiaryBalance;
-                    if (balance > maxBalance)
+                    if (balance > maxBalance || best is null)
                     {
                         best = context.Block;
                         maxBalance = balance;

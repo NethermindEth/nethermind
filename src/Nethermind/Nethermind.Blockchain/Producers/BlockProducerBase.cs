@@ -52,7 +52,6 @@ namespace Nethermind.Blockchain.Producers
         protected ISealer Sealer { get; }
         protected IStateProvider StateProvider { get; }
         private readonly IGasLimitCalculator _gasLimitCalculator;
-        private readonly ITimestamper _timestamper;
         private readonly ISpecProvider _specProvider;
         private readonly ITxSource _txSource;
 

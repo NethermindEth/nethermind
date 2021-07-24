@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,13 +14,26 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
 using Nethermind.Core;
+using Nethermind.Evm.Tracing;
 
-namespace Nethermind.Evm
+namespace Nethermind.Evm.TransactionProcessing
 {
-    public interface IReadOnlyTransactionProcessor : ITransactionProcessor, IDisposable
+    public interface ITransactionProcessor
     {
-        bool IsContractDeployed(Address address);
+        /// <summary>
+        /// Execute transaction, commit state
+        /// </summary>
+        void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer);
+        
+        /// <summary>
+        /// Call transaction, rollback state
+        /// </summary>
+        void CallAndRestore(Transaction transaction, BlockHeader block, ITxTracer txTracer);
+        
+        /// <summary>
+        /// Execute transaction, keep the state uncommitted
+        /// </summary>
+        void BuildUp(Transaction transaction, BlockHeader block, ITxTracer txTracer);
     }
 }
