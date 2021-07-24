@@ -34,6 +34,7 @@ using Nethermind.Db.Rocks;
 using Nethermind.Evm;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.KeyStore;
 using Nethermind.Monitoring;
 using Nethermind.Network.Discovery;
@@ -57,8 +58,8 @@ namespace Nethermind.Runner.Test.Ethereum
 {
     public static class Build
     {
-        public static Runner.Ethereum.Api.NethermindApi ContextWithMocks() =>
-            new Runner.Ethereum.Api.NethermindApi(Substitute.For<IConfigProvider>(), new EthereumJsonSerializer(), LimboLogs.Instance)
+        public static NethermindApi ContextWithMocks() =>
+            new NethermindApi(Substitute.For<IConfigProvider>(), new EthereumJsonSerializer(), LimboLogs.Instance)
             {
                 Enode = Substitute.For<IEnode>(),
                 TxPool = Substitute.For<ITxPool>(),
@@ -84,6 +85,7 @@ namespace Nethermind.Runner.Test.Ethereum
                 ConfigProvider = Substitute.For<IConfigProvider>(),
                 DiscoveryApp = Substitute.For<IDiscoveryApp>(),
                 EngineSigner = Substitute.For<ISigner>(),
+                FeeHistoryManager = Substitute.For<IFeeHistoryManager>(),
                 FileSystem = Substitute.For<IFileSystem>(),
                 FilterManager = Substitute.For<IFilterManager>(),
                 FilterStore = Substitute.For<IFilterStore>(),
