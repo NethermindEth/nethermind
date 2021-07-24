@@ -83,26 +83,6 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                 Arg.Any<double[]?>());
         }
 
-        public IBlockFinder GetTestBlockFinder()
-        {
-            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-            Transaction txA = Build.A.Transaction.WithGasLimit(5).WithMaxFeePerGas(6).WithMaxPriorityFeePerGas(3).WithType(TxType.EIP1559)
-                .TestObject;
-            Transaction txB = Build.A.Transaction.WithGasLimit(10).WithMaxFeePerGas(12).WithMaxPriorityFeePerGas(6).WithType(TxType.EIP1559)
-                .TestObject;
-            Transaction txC = Build.A.Transaction.WithGasLimit(15).WithMaxFeePerGas(12).WithMaxPriorityFeePerGas(6).WithType(TxType.EIP1559)
-                .TestObject;
-            Block pendingBlock = Build.A.Block.WithNumber(3).WithGasUsed(3).WithTransactions(txA, txB).WithBaseFeePerGas(5).TestObject;
-            Block latestBlock = Build.A.Block.WithNumber(2).WithGasUsed(3).WithTransactions(txA, txC).WithBaseFeePerGas(5).TestObject;
-            Block earliestBlock = Build.A.Block.Genesis.WithGasUsed(3).WithTransactions(txA, txB).WithBaseFeePerGas(5).TestObject;
-            Block blockWithBlockNumber1 = Build.A.Block.WithNumber(1).WithGasUsed(3).WithTransactions(txA, txB).WithBaseFeePerGas(5).TestObject;
-            blockFinder.FindPendingBlock().Returns(pendingBlock);
-            blockFinder.FindHeadBlock().Returns(latestBlock);
-            blockFinder.FindBlock(Arg.Is<long>(l => l == 0)).Returns(earliestBlock);
-            blockFinder.FindBlock(Arg.Is<long>(l => l == 1)).Returns(blockWithBlockNumber1);
-            return blockFinder;
-        }
-        
         [TestCase("earliest", "0x3635c9adc5dea00000")]
         [TestCase("latest", "0x3635c9adc5de9f09e5")]
         [TestCase("pending", "0x3635c9adc5de9f09e5")]
