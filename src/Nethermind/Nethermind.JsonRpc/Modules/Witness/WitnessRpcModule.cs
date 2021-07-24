@@ -19,6 +19,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 using Nethermind.State;
 
 namespace Nethermind.JsonRpc.Modules.Witness
@@ -34,12 +35,14 @@ namespace Nethermind.JsonRpc.Modules.Witness
             _blockFinder = finder;
         }
 
-        public async Task<ResultWrapper<Keccak[]>> get_witnesses(string blockHash)
+        public async Task<ResultWrapper<Keccak[]>> get_witnesses(BlockParameter blockParameter)
         {
-            var blockParameter = new BlockParameter(new Keccak(blockHash));
-            Block block = _blockFinder.FindBlock(blockParameter);
-            Keccak[] result = _witnessRepository.Load(block.Hash);
-            return ResultWrapper<Keccak[]>.Success(result);
+            BlockHeader blockHeader = _blockFinder.FindHeader(blockParameter);
+            if (blockHeader is null)
+                return ResultWrapper<Keccak[]>.Fail("Block not found");
+            Keccak hash = blockHeader.CalculateHash();
+            Keccak[] result = _witnessRepository.Load(hash);
+            return result is null ? ResultWrapper<Keccak[]>.Fail("Witness not found") : ResultWrapper<Keccak[]>.Success(result);
         }
     }
 }
