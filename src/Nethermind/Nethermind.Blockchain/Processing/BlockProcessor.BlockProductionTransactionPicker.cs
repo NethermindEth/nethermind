@@ -73,8 +73,9 @@ namespace Nethermind.Blockchain.Processing
                     return args.Set(TxAction.Skip, $"Invalid nonce - expected {expectedNonce}");
                 }
 
+                IReleaseSpec releaseSpec = _specProvider.GetSpec(block.Number);
                 UInt256 balance = stateProvider.GetBalance(currentTx.SenderAddress);
-                if (!HasEnoughFounds(currentTx, balance, args, block))
+                if (!HasEnoughFounds(currentTx, balance, args, block, releaseSpec))
                 {
                     return args;
                 }
@@ -83,9 +84,8 @@ namespace Nethermind.Blockchain.Processing
                 return args;
             }
 
-            private bool HasEnoughFounds(Transaction transaction, UInt256 senderBalance, AddingTxEventArgs e, Block block)
+            private bool HasEnoughFounds(Transaction transaction, UInt256 senderBalance, AddingTxEventArgs e, Block block, IReleaseSpec releaseSpec)
             {
-                IReleaseSpec releaseSpec = _specProvider.GetSpec(block.Number);
                 bool eip1559Enabled = releaseSpec.IsEip1559Enabled;
                 UInt256 transactionPotentialCost = transaction.CalculateTransactionPotentialCost(eip1559Enabled, block.BaseFeePerGas);
 

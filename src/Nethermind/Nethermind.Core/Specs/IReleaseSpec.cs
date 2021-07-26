@@ -245,6 +245,8 @@ namespace Nethermind.Core.Specs
         /// </summary>
         bool IsEip3541Enabled { get; }
         
+        bool IsEip3607Enabled { get; }
+        
         /// <summary>
         /// Should transactions be validated against chainId.
         /// </summary>

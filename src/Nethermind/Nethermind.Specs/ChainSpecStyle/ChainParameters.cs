@@ -64,6 +64,7 @@ namespace Nethermind.Specs.ChainSpecStyle
         public long? Eip3529Transition { get; set; }
         
         public long? Eip3541Transition { get; set; }
+        public long? Eip3607Transition { get; set; }
         
         /// <summary>
         ///  Transaction permission managing contract address.
@@ -86,5 +87,7 @@ namespace Nethermind.Specs.ChainSpecStyle
         /// </summary>
         /// <returns></returns>
         public long? ValidateReceiptsTransition { get; set; }
+
+        
     }
 }
