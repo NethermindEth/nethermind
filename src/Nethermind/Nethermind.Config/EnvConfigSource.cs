@@ -41,14 +41,30 @@ namespace Nethermind.Config
 
         public (bool IsSet, string Value) GetRawValue(string category, string name)
         {
-            var variableName = $"NETHERMIND_{category.ToUpperInvariant()}_{name.ToUpperInvariant()}";
+            var variableName = string.IsNullOrEmpty(category) ? $"NETHERMIND_{name.ToUpperInvariant()}" : $"NETHERMIND_{category.ToUpperInvariant()}_{name.ToUpperInvariant()}";
             var variableValueString = _environmentWrapper.GetEnvironmentVariable(variableName);
             return string.IsNullOrWhiteSpace(variableValueString) ? (false, null) : (true, variableValueString); 
         }
 
         public IEnumerable<(string Category, string Name)> GetConfigKeys()
         {
-            return _environmentWrapper.GetEnvironmentVariables().Keys.Cast<string>().Where(k => k.StartsWith("NETHERMIND_")).Select(v => v.Split('_')).Select(a => (a.Length > 1 ? a[1] : "", a.Length > 2 ? a[2] : ""));
+            return _environmentWrapper.GetEnvironmentVariables().Keys.Cast<string>().Where(k => k.StartsWith("NETHERMIND_")).Select(v => v.Split('_')).Select(a =>
+            {
+                if (a.Length <= 1)
+                {
+                    return (null, null);
+                }
+                if (a.Length == 2)
+                {
+                    return (null, a[1]);
+                }
+                if(a.Length > 2 && !a[1].EndsWith("config", StringComparison.OrdinalIgnoreCase))
+                {
+                    return (null, string.Join(null, a[1..]));
+                }
+
+                return (a[1], a[2]);
+            });
         }
     }
 
