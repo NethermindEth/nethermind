@@ -66,9 +66,6 @@
       <Link>chainspec\%(RecursiveDir)%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="git-hash">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
     <Content Include="configs\*.cfg">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
@@ -118,10 +115,20 @@
                       $(OutputPath)\Nethermind.Mev.dll;
                       $(OutputPath)\Nethermind.HealthChecks.dll" />
   </ItemGroup>
+  <ItemGroup>
+    <GitHash Include="git-hash"/>
+  </ItemGroup>
 
-  <Target Name="StoreGitHash" BeforeTargets="Build;Publish">
-    <Message Text="---> Generating Git Hash file" Importance="High" />
+  <Target Name="StoreGitHashBeforeBuild" BeforeTargets="Build">
+    <Message Text="---> Generating Git Hash file Before Build" Importance="High" />
     <Exec Command="git describe --tags --long --always &gt; git-hash" />
+    <Copy SourceFiles="@(GitHash)" DestinationFiles="$(OutDir)git-hash" />
+  </Target>
+
+  <Target Name="StoreGitHashBeforePublish" BeforeTargets="Publish">
+    <Message Text="---> Generating Git Hash file Before Publish" Importance="High" />
+    <Exec Command="git describe --tags --long --always &gt; git-hash" />
+    <Copy SourceFiles="@(GitHash)" DestinationFiles="$(PublishDir)git-hash" />
   </Target>
 
   <Target Name="CopyPluginsAfterBuild" AfterTargets="Build">
