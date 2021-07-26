@@ -5,7 +5,7 @@ expression : sourceExpression | watchExpression | whereExpression | publishExpre
 sourceExpression : SOURCE WORD ;
 watchExpression : WATCH WORD ;
 whereExpression : WHERE condition ;
-publishExpression : PUBLISH PUBLISH_VALUE ( WORD | DIGIT )+;
+publishExpression : PUBLISH PUBLISH_VALUE ( WORD | DIGIT );
 condition : WORD BOOLEAN_OPERATOR ( WORD | DIGIT | ADDRESS | BYTECODE ) ;
 andCondition : AND condition ;
 orCondition : OR condition ;
