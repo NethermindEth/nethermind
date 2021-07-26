@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using Antlr4.Runtime;
+using Antlr4.Runtime.Atn;
 using Antlr4.Runtime.Tree;
 using Microsoft.Extensions.Logging.Abstractions;
 using Nethermind.Api;
@@ -28,12 +29,14 @@ namespace Nethermind.Dsl.ANTLR
         private IPipelineBuilder<Transaction, Transaction> _transactionsPipelineBuilder;
         private IPipelineBuilder<LogEntry, LogEntry> _eventsPipelineBuilder;
         private IPipelineBuilder<Transaction, Transaction> _pendingTransactionsPipelineBuilder;
+        private IPipelineBuilder<UniswapData, UniswapData> _uniswapPipelineBuilder;
 
         //builders of elements in pipelines
         private readonly BlockElementsBuilder _blockElementsBuilder;
         private readonly TransactionElementsBuilder _transactionElementsBuilder;
         private readonly PendingTransactionElementsBuilder _pendingTransactionElementsBuilder;
         private readonly EventElementsBuilder _eventElementsBuilder;
+        private readonly UniswapElementsBuilder _uniswapElementsBuilder;
 
         public string Script { get; }
 
@@ -42,6 +45,7 @@ namespace Nethermind.Dsl.ANTLR
         public IPipeline TransactionsPipeline { get; private set; }
         public IPipeline PendingTransactionsPipeline { get; private set; }
         public IPipeline EventsPipeline { get; private set; }
+        public IPipeline UniswapPipeline { get; private set; }
 
         public Interpreter(
             INethermindApi api,
@@ -49,16 +53,18 @@ namespace Nethermind.Dsl.ANTLR
             BlockElementsBuilder blockElementsBuilder = null,
             TransactionElementsBuilder transactionElementsBuilder = null,
             PendingTransactionElementsBuilder pendingTransactionElementsBuilder = null,
-            EventElementsBuilder eventElementsBuilder = null)
+            EventElementsBuilder eventElementsBuilder = null,
+            UniswapElementsBuilder uniswapElementsBuilder = null)
         {
             Script = script;
             _api = api ?? throw new ArgumentNullException(nameof(api));
             _logger = api.LogManager.GetClassLogger();
+            
             _blockElementsBuilder = blockElementsBuilder ?? new BlockElementsBuilder(_api.MainBlockProcessor);
             _transactionElementsBuilder = transactionElementsBuilder ?? new TransactionElementsBuilder(_api.MainBlockProcessor);
             _pendingTransactionElementsBuilder = pendingTransactionElementsBuilder ?? new PendingTransactionElementsBuilder(_api.TxPool);
             _eventElementsBuilder = eventElementsBuilder ?? new EventElementsBuilder(_api.MainBlockProcessor);
-
+            _uniswapElementsBuilder = uniswapElementsBuilder ?? new UniswapElementsBuilder(_api.MainBlockProcessor);
 
             var inputStream = new AntlrInputStream(Script);
             var lexer = new DslGrammarLexer(inputStream);
@@ -111,6 +117,11 @@ namespace Nethermind.Dsl.ANTLR
                     _pipelineSource = PipelineSource.PendingTransactions;
 
                     break;
+                case "uniswap" :
+                    var uniswapSource = _uniswapElementsBuilder.GetSourceElement(_api);
+                    _uniswapPipelineBuilder = new PipelineBuilder<UniswapData, UniswapData>(uniswapSource);
+                    _pipelineSource = PipelineSource.Uniswap; 
+                    break;
             }
         }
 
@@ -133,6 +144,10 @@ namespace Nethermind.Dsl.ANTLR
                 case PipelineSource.Events:
                     PipelineElement<LogEntry, LogEntry> eventElement = _eventElementsBuilder.GetConditionElement(key, symbol, value);
                     _eventsPipelineBuilder = _eventsPipelineBuilder.AddElement(eventElement);
+                    break;
+                case PipelineSource.Uniswap:
+                    PipelineElement<UniswapData, UniswapData> uniswapElement = _uniswapElementsBuilder.GetConditionElement(key, symbol, value);
+                    _uniswapPipelineBuilder = _uniswapPipelineBuilder.AddElement(uniswapElement);
                     break;
             }
         }
@@ -171,6 +186,12 @@ namespace Nethermind.Dsl.ANTLR
                     var lastEventElement = (PipelineElement<LogEntry, LogEntry>) _eventsPipelineBuilder.LastElement;
                     lastEventElement.AddCondition(eventElementCondition);
                     break;
+                case PipelineSource.Uniswap:
+                    var uniswapElement = _uniswapElementsBuilder.GetConditionElement(key, symbol, value);
+                    var condition = uniswapElement.Conditions.Last();
+                    var lastElement = (PipelineElement<UniswapData, UniswapData>) _eventsPipelineBuilder.LastElement;
+                    lastElement.AddCondition(condition);
+                    break;
             }
         }
 
@@ -197,6 +218,7 @@ namespace Nethermind.Dsl.ANTLR
             AddTransactionsPublisher(telegramPublisher);
             AddPendingTransactionsPublisher(telegramPublisher);
             AddEventsPublisher(telegramPublisher);
+            AddUniswapPublisher(telegramPublisher);
 
             BuildPipelines();
         }
@@ -210,6 +232,7 @@ namespace Nethermind.Dsl.ANTLR
             AddTransactionsPublisher(webSocketsPublisher);
             AddPendingTransactionsPublisher(webSocketsPublisher);
             AddEventsPublisher(webSocketsPublisher);
+            AddUniswapPublisher(webSocketsPublisher);
 
             BuildPipelines();
         }
@@ -222,6 +245,7 @@ namespace Nethermind.Dsl.ANTLR
             AddTransactionsPublisher(discordPublisher);
             AddPendingTransactionsPublisher(discordPublisher);
             AddEventsPublisher(discordPublisher);
+            AddUniswapPublisher(discordPublisher);
 
             BuildPipelines();
         }
@@ -246,12 +270,18 @@ namespace Nethermind.Dsl.ANTLR
             _eventsPipelineBuilder = _eventsPipelineBuilder?.AddPublisher(publisher);
         }
 
+        private void AddUniswapPublisher(IPublisher publisher)
+        {
+            _uniswapPipelineBuilder = _uniswapPipelineBuilder?.AddPublisher(publisher);
+        }
+
         private void BuildPipelines()
         {
             BlocksPipeline = _blocksPipelineBuilder?.Build();
             TransactionsPipeline = _transactionsPipelineBuilder?.Build();
             PendingTransactionsPipeline = _pendingTransactionsPipelineBuilder?.Build();
             EventsPipeline = _eventsPipelineBuilder?.Build();
+            UniswapPipeline = _uniswapPipelineBuilder?.Build();
         }
     }
 }

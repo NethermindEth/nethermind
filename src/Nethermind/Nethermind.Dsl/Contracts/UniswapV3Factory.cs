@@ -25,7 +25,7 @@ namespace Nethermind.Dsl.Contracts
     {
         private IConstantContract ConstantContract { get; } 
         
-        public UniswapV3Factory(Address contractAddress, IBlockchainBridge blockchainBridge, AbiDefinition abiDefinition, AbiEncoder abiEncoder) : base(contractAddress, abiDefinition, abiEncoder)
+        public UniswapV3Factory(Address contractAddress, IBlockchainBridge blockchainBridge) : base(contractAddress)
         {
             ContractAddress = contractAddress;
             ConstantContract = GetConstant(blockchainBridge);

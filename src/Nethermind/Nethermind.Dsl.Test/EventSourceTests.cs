@@ -57,8 +57,6 @@ namespace Nethermind.Dsl.Test
                 Logs = new[] { log }
             };
 
-            IWebSocketsModule publisher = Substitute.For<IWebSocketsModule>();
-
             var mockWebSocket = Substitute.For<WebSocket>();
             mockWebSocket.State.Returns(WebSocketState.Open);
             _api.WebSocketsManager.AddModule(Arg.Do<IWebSocketsModule>(module => module.CreateClient(mockWebSocket, "test")));

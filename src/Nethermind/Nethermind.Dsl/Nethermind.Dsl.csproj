@@ -19,25 +19,26 @@
 
   <ItemGroup>
     <EmbeddedResource Remove="Pipeline\UniswapAbi.resx" />
+    <None Remove="Contracts\UniswapV2FactoryAbi.json" />
+    <EmbeddedResource Include="Contracts\UniswapV2Factory.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </EmbeddedResource>
+    <None Remove="Contracts\UniswapV2PoolAbi.json" />
+    <EmbeddedResource Include="Contracts\UniswapV2Pool.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </EmbeddedResource>
+    <None Remove="Contracts\UniswapV3Factory.json" />
+    <EmbeddedResource Include="Contracts\UniswapV3Factory.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </EmbeddedResource>
+    <None Remove="Contracts\UniswapV3Pool.json" />
+    <EmbeddedResource Include="Contracts\UniswapV3Pool.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </EmbeddedResource>
   </ItemGroup>
 
   <ItemGroup>
     <Compile Remove="Pipeline\UniswapAbi.Designer.cs" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <None Update="Contracts\UniswapV2FactoryAbi.json">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <None Update="Contracts\UniswapV2PoolAbi.json">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <None Update="Contracts\UniswapV3FactoryAbi.json">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <None Update="Contracts\UniswapV3PoolAbi.json">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
   </ItemGroup>
 
 </Project>

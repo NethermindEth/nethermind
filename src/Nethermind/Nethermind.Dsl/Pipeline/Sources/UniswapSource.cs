@@ -19,9 +19,11 @@
 using System;
 using System.Linq;
 using Nethermind.Abi;
+using Nethermind.Api;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Dsl.Contracts;
 using Nethermind.Pipeline;
 
 namespace Nethermind.Dsl.Pipeline.Sources
@@ -30,14 +32,21 @@ namespace Nethermind.Dsl.Pipeline.Sources
     {
         public Action<UniswapData> Emit { private get; set; }
         private readonly IBlockProcessor _blockProcessor;
-        private readonly AbiSignature _swapSignature;
+        private readonly AbiSignature _swapSignatureV3;
+        private readonly INethermindApi _api;
+        private readonly UniswapV3Factory _v3Factory;
+        private readonly UniswapV2Factory _uniswapV2Factory;
+        private Address _usdcAddress = new Address("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48");
+        private Address _v3FactoryAddress = new Address("0x1F98431c8aD98523631AE4a59f267346ea31F984");
 
-        public UniswapSource(IBlockProcessor blockProcessor)
+        public UniswapSource(IBlockProcessor blockProcessor, INethermindApi api)
         {
+            _api = api;
             _blockProcessor = blockProcessor;
             _blockProcessor.TransactionProcessed += OnTransactionProcessed;
-            _swapSignature = new AbiSignature("Swap", AbiType.Address, AbiType.Address, AbiType.Int256, AbiType.Int256, AbiType.UInt160, AbiType.UInt128,
+            _swapSignatureV3 = new AbiSignature("Swap", AbiType.Address, AbiType.Address, AbiType.Int256, AbiType.Int256, AbiType.UInt160, AbiType.UInt128,
                 AbiType.Int24);
+            _v3Factory = new UniswapV3Factory(_v3FactoryAddress ,_api.CreateBlockchainBridge());
         }
 
         private void OnTransactionProcessed(object? sender, TxProcessedEventArgs args)
@@ -46,7 +55,7 @@ namespace Nethermind.Dsl.Pipeline.Sources
             
             if(logs is null || !logs.Any()) return;
 
-            var swapLogs = logs.Where(l => l.Topics.First().Equals(_swapSignature.Hash));
+            var swapLogs = logs.Where(l => l.Topics.First().Equals(_swapSignatureV3.Hash));
 
             foreach (var log in swapLogs)
             {
@@ -57,12 +66,16 @@ namespace Nethermind.Dsl.Pipeline.Sources
 
         private UniswapData ConvertLogToData(LogEntry log)
         {
-            return new()
+            var pool = new UniswapV3Pool(log.LoggersAddress, _api.CreateBlockchainBridge());
+            
+            return new UniswapData()
             {
                 Swapper = new Address(log.Topics[1]),
                 Pool = log.LoggersAddress,
                 TokenADelta = log.Data.Take(32).ToArray().ToInt256(),
-                TokenBDelta = log.Data.Skip(32).Take(32).ToArray().ToInt256()
+                TokenBDelta = log.Data.Skip(32).Take(32).ToArray().ToInt256(),
+                Token0 = pool.token0(_api.BlockTree.Head.Header),
+                Token1 = pool.token1(_api.BlockTree.Head.Header)
             };
         }
     }
@@ -71,10 +84,10 @@ namespace Nethermind.Dsl.Pipeline.Sources
     {
         public Address? Swapper { get; set; }
         public Address? Pool { get; set; }
-        public Address? TokenA { get; set; }
-        public Address? TokenB { get; set; }
-        public decimal TokenAPrice { get; set; }
-        public decimal TokenBPrice { get; set; }
+        public Address? Token0 { get; set; }
+        public Address? Token1 { get; set; }
+        public decimal Token0Price { get; set; }
+        public decimal Token1Price { get; set; }
         public Int256.Int256 TokenADelta { get; set; }
         public Int256.Int256 TokenBDelta { get; set; }
     }

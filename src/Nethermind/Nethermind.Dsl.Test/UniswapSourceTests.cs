@@ -15,14 +15,32 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-namespace Nethermind.Dsl.Pipeline.Sources
+using Nethermind.Api;
+using Nethermind.Dsl.ANTLR;
+using Nethermind.Serialization.Json;
+using NSubstitute;
+using NUnit.Framework;
+
+namespace Nethermind.Dsl.Test
 {
-    public enum PipelineSource
+    public class UniswapSourceTests
     {
-       Transactions, 
-       PendingTransactions,
-       Blocks,
-       Events, 
-       Uniswap
+        private Interpreter _interpreter;
+        private INethermindApi _api;
+
+        [SetUp]
+        public void SetUp()
+        {
+            _interpreter = null;
+            _api = Substitute.For<INethermindApi>();
+            _api.EthereumJsonSerializer.Returns(new EthereumJsonSerializer());
+        }
+
+        [Test]
+        [TestCase("WATCH UNISWAP PUBLISH WEBSOCKETS")]
+        public void test(string script)
+        {
+            _interpreter = new Interpreter(_api, script);
+        }
     }
 }
