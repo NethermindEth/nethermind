@@ -79,13 +79,12 @@ namespace Nethermind.HealthChecks
                         {
                             string description = report.Entries["node-health"].Description;
 
-                            IPAddress externalIp = _api.IpResolver.ExternalIp;
-
                             IMetricsConfig metricsConfig;
                             metricsConfig = _api.Config<IMetricsConfig>();
-                            string nodeName = metricsConfig.NodeName;
 
-                            HealthChecksWebhookInfo info = new HealthChecksWebhookInfo(description, externalIp, nodeName);
+                            string hostname = Dns.GetHostName();
+
+                            HealthChecksWebhookInfo info = new HealthChecksWebhookInfo(description, _api.IpResolver, metricsConfig, hostname);
                             return info.GetFullInfo();
                         }
                         );

@@ -5,25 +5,34 @@ using Nethermind.JsonRpc;
 using NSubstitute;
 using NUnit.Framework;
 using Nethermind.HealthChecks;
+using Nethermind.Monitoring.Metrics;
+using Nethermind.Monitoring.Config;
+using Nethermind.Network;
 
 namespace Nethermind.HealthChecks.Test
 {
     public class HealthChecksWebhookInfoTests
     {
-        [TestCase(new byte[]{127, 64, 34, 0}, "description", "nodeName")]
-        [TestCase(new byte[]{0, 0, 0, 0}, "", "")]
-        [TestCase(new byte[]{127, 64, 34, 0}, "D_E S-C.R0IPTION", "n.o'd_e-N7a/m]e")]
-        public void HealthChecksWebhookInfo_returns_expected_results(byte[] ip_bytes, string description, string nodeName)
+        [Test]
+        public void HealthChecksWebhookInfo_returns_expected_results()
         {
-            IPAddress ip = new IPAddress(ip_bytes);
-            HealthChecksWebhookInfo healthChecksWebhookInfo = new HealthChecksWebhookInfo(description, ip, nodeName);
-            string hostname = Dns.GetHostName();
+            string description = "description";
+
+            IIPResolver ipResolver = Substitute.For<IIPResolver>();
+            byte[] ip = new byte[] {1, 2, 3, 4};
+            ipResolver.ExternalIp.Returns(new IPAddress(ip));
+
+            IMetricsConfig metricsConfig = new MetricsConfig(){NodeName = "nodeName"};
+
+            string hostname = "hostname";
+
+            HealthChecksWebhookInfo healthChecksWebhookInfo = new HealthChecksWebhookInfo(description, ipResolver, metricsConfig, hostname);
 
             string expected;
-            expected = "`" + description + "`" + Environment.NewLine
-                + "NodeName: `" + nodeName + "`" + Environment.NewLine
-                + "Hostname: `" + hostname + "`" + Environment.NewLine
-                + "IP (external): `" + ip_bytes[0] + "." + ip_bytes[1] + "." + ip_bytes[2] + "." + ip_bytes[3] + "`";;
+            expected = "`description`" + Environment.NewLine
+                + "NodeName: `nodeName`" + Environment.NewLine
+                + "Hostname: `hostname`" + Environment.NewLine
+                + "IP (external): `1.2.3.4`";;
 
             Assert.AreEqual(expected, healthChecksWebhookInfo.GetFullInfo());
         }
