@@ -108,9 +108,7 @@
                       $(OutDir)Nethermind.Merge.Plugin.pdb;
                       $(OutDir)Nethermind.Mev.dll;
                       $(OutDir)Nethermind.Mev.pdb;
-                      $(OutDir)Nethermind.HealthChecks.dll;
-                      $(OutDir)Nethermind.Dsl.dll;
-                      $(OutDir)Nethermind.Dsl.pdb" />
+                      $(OutDir)Nethermind.HealthChecks.dll" />
     <PluginsForPublish Include="$(OutputPath)\Nethermind.Merge.Plugin.dll;
                       $(OutputPath)\Nethermind.Mev.dll;
                       $(OutputPath)\Nethermind.HealthChecks.dll" />
@@ -134,6 +132,14 @@
   <Target Name="CopyPluginsAfterBuild" AfterTargets="Build">
     <Message Text="---> Copying Plugins After Build" Importance="High" />
     <Copy SourceFiles="@(PluginsForBuild)" DestinationFolder="$(OutDir)plugins" />
+    <Copy SourceFiles="$(SolutionDir)Nethermind.Dsl\bin\$(Configuration)\$(TargetFramework)\Nethermind.Dsl.dll" 
+   	  DestinationFolder="$(OutDir)plugins" 
+      Condition="Exists('$(SolutionDir)Nethermind.Dsl\bin\$(Configuration)\$(TargetFramework)\Nethermind.Dsl.dll')" 
+	    SkipUnchangedFiles="true" />
+   <Copy SourceFiles="$(SolutionDir)Nethermind.Dsl\bin\$(Configuration)\$(TargetFramework)\Nethermind.Dsl.pdb" 
+   	  DestinationFolder="$(OutDir)plugins" 
+      Condition="Exists('$(SolutionDir)Nethermind.Dsl\bin\$(Configuration)\$(TargetFramework)\Nethermind.Dsl.pdb')" 
+	    SkipUnchangedFiles="true" />
   </Target>
 
     <Target Name="CopyPluginsAfterPublish" AfterTargets="Publish">
