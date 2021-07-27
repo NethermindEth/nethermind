@@ -27,12 +27,11 @@ namespace Nethermind.Dsl.Contracts
     {
         private IConstantContract ConstantContract { get; }
 
-        public UniswapV2Pool(Address contractAddress, IBlockchainBridge blockchainBridge, AbiDefinition abiDefinition, AbiEncoder abiEncoder) : base(
-            contractAddress, abiDefinition, abiEncoder)
+        public UniswapV2Pool(Address contractAddress, IBlockchainBridge blockchainBridge) : base(
+            contractAddress)
         {
             ContractAddress = contractAddress;
             ConstantContract = GetConstant(blockchainBridge);
-            abiDefinition = GetAbiDefinition(nameof(UniswapV2Pool));
         }
 
         public Address token0(BlockHeader header)

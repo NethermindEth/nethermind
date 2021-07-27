@@ -15,9 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
+using System.Numerics;
 using Nethermind.Api;
 using Nethermind.Core.Extensions;
 using Nethermind.Dsl.ANTLR;
+using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using NSubstitute;
 using NUnit.Framework;
@@ -39,16 +42,21 @@ namespace Nethermind.Dsl.Test
 
         [Test]
         [TestCase("WATCH UNISWAP PUBLISH WEBSOCKETS")]
-        public void test(string script)
+        public void will_create_interpreter_without_exceptions(string script)
         {
             _interpreter = new Interpreter(_api, script);
         }
 
         [Test]
-        public void x()
+        public void test()
         {
-            var x = Bytes.FromHexString("0xf8b5d3c8c72539ee");
-            Int256.Int256 integer = x.ToInt256();
+            // Int256.Int256 integer = Int256.Int256.Max;
+            // var serializer = new EthereumJsonSerializer();
+            // serializer.Serialize(integer);
+
+            UInt256 x = 100;
+            UInt256 y = 150;
+
         }
     }
 }
