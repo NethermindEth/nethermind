@@ -156,6 +156,13 @@ namespace Nethermind.Specs.ChainSpecStyle
                                                        ?? GetTransitionForExpectedPricing("alt_bn128_mul", "price.alt_bn128_const_operations.price", 6000)
                                                        ?? GetTransitionForExpectedPricing("alt_bn128_pairing", "price.alt_bn128_pairing.base", 45000);
             chainSpec.Parameters.Eip2565Transition ??= GetTransitionIfInnerPathExists("modexp", "price.modexp2565");
+
+            Eip1559Constants.ElasticityMultiplier = 
+                chainSpecJson.Params.Eip1559ElasticityMultiplier ?? Eip1559Constants.ElasticityMultiplier;
+            Eip1559Constants.ForkBaseFee =
+                chainSpecJson.Params.Eip1559BaseFeeInitialValue ?? Eip1559Constants.ForkBaseFee;
+            Eip1559Constants.BaseFeeMaxChangeDenominator = chainSpecJson.Params.Eip1559BaseFeeMaxChangeDenominator ??
+                                                           Eip1559Constants.BaseFeeMaxChangeDenominator;
         }
 
         private static void ValidateParams(ChainSpecParamsJson parameters)
@@ -326,11 +333,11 @@ namespace Nethermind.Specs.ChainSpecStyle
             byte[] extraData = chainSpecJson.Genesis.ExtraData ?? Array.Empty<byte>();
             UInt256 gasLimit = chainSpecJson.Genesis.GasLimit;
             Address beneficiary = chainSpecJson.Genesis.Author ?? Address.Zero;
-            UInt256 baseFee = UInt256.Zero;
-            chainSpec.ForkBaseFee = chainSpecJson.Genesis.BaseFeePerGas ?? Eip1559Constants.DefaultForkBaseFee;
-            Eip1559Constants.ForkBaseFee = chainSpec.ForkBaseFee;
+            UInt256 baseFee = chainSpecJson.Genesis.BaseFeePerGas ?? UInt256.Zero;
             if (chainSpecJson.Params.Eip1559Transition != null)
-                baseFee = chainSpecJson.Params.Eip1559Transition == 0 ? chainSpec.ForkBaseFee : UInt256.Zero;
+                baseFee = chainSpecJson.Params.Eip1559Transition == 0
+                    ? (chainSpecJson.Genesis.BaseFeePerGas ?? Eip1559Constants.DefaultForkBaseFee)
+                    : UInt256.Zero;
 
             
             BlockHeader genesisHeader = new(
