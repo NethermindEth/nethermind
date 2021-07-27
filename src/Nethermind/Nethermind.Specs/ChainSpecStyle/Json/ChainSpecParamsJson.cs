@@ -115,7 +115,7 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
 
         public UInt256? Eip1559BaseFeeMaxChangeDenominator { get; set; }    
             
-        public int? Eip1559ElasticityMultiplier { get; set; }
+        public long? Eip1559ElasticityMultiplier { get; set; }
         
         public Address TransactionPermissionContract { get; set; }
 

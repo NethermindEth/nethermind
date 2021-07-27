@@ -32,6 +32,6 @@ namespace Nethermind.Core
         // The default fork base fee is 1 Gwei. However, we can override it in genesis
         public static UInt256 ForkBaseFee { get; set; } = DefaultForkBaseFee;
         public static UInt256 BaseFeeMaxChangeDenominator { get; set; } = DefaultBaseFeeMaxChangeDenominator;
-        public static int ElasticityMultiplier { get; set;  }= DefaultElasticityMultiplier;
+        public static long ElasticityMultiplier { get; set;  } = DefaultElasticityMultiplier;
     }
 }
