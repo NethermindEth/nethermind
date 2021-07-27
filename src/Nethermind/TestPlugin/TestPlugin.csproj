@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net5.0</TargetFramework>
+  </PropertyGroup>
+
+  <Target Name="CopyMergePluginOnBuildOrPublish" AfterTargets="AfterBuild;AfterPublish">
+    <Copy SourceFiles="$(OutDir)TestPlugin.dll" 
+          DestinationFolder="$(SolutionDir)Nethermind.Runner\bin\$(Configuration)\$(TargetFramework)\plugins\TestPlugin.dll"  
+          Condition="Exists('$(OutDir)TestPlugin.dll')" 
+          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(OutDir)TestPlugin.pdb" 
+          DestinationFolder="$(SolutionDir)Nethermind.Runner\bin\$(Configuration)\$(TargetFramework)\plugins\TestPlugin.pdb"  
+          Condition="Exists('$(OutDir)TestPlugin.pdb')" 
+          SkipUnchangedFiles="true" />
+  </Target>
+
+</Project>

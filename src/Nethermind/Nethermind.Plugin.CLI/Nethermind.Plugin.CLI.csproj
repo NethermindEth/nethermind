@@ -3,7 +3,7 @@
     <PropertyGroup>
         <OutputType>Exe</OutputType>
         <TargetFramework>net5.0</TargetFramework>
-	<PackAsTool>true</PackAsTool>
+	      <PackAsTool>true</PackAsTool>
     </PropertyGroup>
 
     <ItemGroup>

@@ -39,6 +39,8 @@ namespace Nethermind.Plugin.CLI
                 case "mac":
                     CreateMacPlugin.CreatePlugin(plugin,className);
                     break;
+                case "linux":
+                    
                 default:
                     Console.WriteLine("Not supported");
                     break;

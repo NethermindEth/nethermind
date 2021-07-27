@@ -17,24 +17,16 @@
 
 using System;
 using System.Diagnostics;
-using System.IO;
 using System.Linq;
 using System.Reflection;
-using System.Runtime.Versioning;
 
 namespace Nethermind.Plugin.CLI
 {
-    public static class CreateMacPlugin
+    public class CreateLinuxPlugin
     {
         public static string CreatePlugin(string pluginName, string className)
         {
-            string execPath = "src/Nethermind/Nethermind.Plugin.CLI/CreateMacPlugin.sh";
-            var asm = Assembly.GetExecutingAssembly();
-            var b = asm.CustomAttributes.FirstOrDefault(a => a.AttributeType == typeof(TargetFrameworkAttribute));
-            var strFramework = b.NamedArguments[0].TypedValue.Value;
-            Console.WriteLine("here here");
-            Console.WriteLine(strFramework);
-
+            string execPath = "src/Nethermind/Nethermind.Plugin.CLI/CreateLinuxPlugin.sh";
             ProcessStartInfo startInfo = new ProcessStartInfo()
             {
                 FileName = execPath,
