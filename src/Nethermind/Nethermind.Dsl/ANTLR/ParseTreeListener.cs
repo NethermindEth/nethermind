@@ -155,8 +155,7 @@ namespace Nethermind.Dsl.ANTLR
                 return;
             }
 
-            string value = context.WORD()?.GetText() ?? context.DIGIT()?.GetText();
-            
+            string value = context.URL()?.GetText() ?? context.WORD()?.GetText() ?? context.DIGIT()?.GetText();
             OnPublishExpression(context.PUBLISH_VALUE().GetText(), value);
         }
     }

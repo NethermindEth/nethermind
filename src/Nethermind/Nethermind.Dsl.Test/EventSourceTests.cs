@@ -111,5 +111,21 @@ namespace Nethermind.Dsl.Test
 
             _api.MainBlockProcessor.TransactionProcessed += Raise.Event<EventHandler<TxProcessedEventArgs>>(this, new TxProcessedEventArgs(receipt));
         }
+
+        [Test]
+        [TestCase("WATCH Events WHERE Topics CONTAINS  0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef PUBLISH Slack https://hooks.slack.com/services/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")]
+        public void Will_send_to_slack_given_log(string script)
+        {
+            var log = new LogEntry(Address.Zero, Array.Empty<byte>(), new[] { new Keccak("a2936cbec2f64887c9c65cbeee2c2fe8b44a0064a6e9436fd568f7e2311ba676")});
+
+            var receipt = new TxReceipt
+            {
+                Logs = new[] { log }
+            };
+
+            _interpreter = new Interpreter(_api, script);
+
+            _api.MainBlockProcessor.TransactionProcessed += Raise.Event<EventHandler<TxProcessedEventArgs>>(this, new TxProcessedEventArgs(receipt));
+        }
     }
 }
