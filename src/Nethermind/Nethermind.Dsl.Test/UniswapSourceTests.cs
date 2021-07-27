@@ -16,6 +16,7 @@
 // 
 
 using Nethermind.Api;
+using Nethermind.Core.Extensions;
 using Nethermind.Dsl.ANTLR;
 using Nethermind.Serialization.Json;
 using NSubstitute;
@@ -41,6 +42,13 @@ namespace Nethermind.Dsl.Test
         public void test(string script)
         {
             _interpreter = new Interpreter(_api, script);
+        }
+
+        [Test]
+        public void x()
+        {
+            var x = Bytes.FromHexString("0xf8b5d3c8c72539ee");
+            Int256.Int256 integer = x.ToInt256();
         }
     }
 }

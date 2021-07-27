@@ -23,6 +23,7 @@ using Nethermind.Abi;
 using Nethermind.Api;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Dsl.Contracts;
 using Nethermind.Pipeline;
@@ -61,6 +62,7 @@ namespace Nethermind.Dsl.Pipeline.Sources
             foreach (var log in swapLogs)
             {
                 var data = ConvertLogToData(log);
+                data.Transaction = args.Transaction.Hash;
                 Emit?.Invoke(data);
             }
         }
@@ -83,6 +85,7 @@ namespace Nethermind.Dsl.Pipeline.Sources
 
     public class UniswapData
     {
+        public Keccak? Transaction { get; set; }
         public Address? Swapper { get; set; }
         public Address? Pool { get; set; }
         public Address? Token0 { get; set; }
