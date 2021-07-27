@@ -15,30 +15,99 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.AccountAbstraction.Data;
+using Nethermind.AccountAbstraction.Executor;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Processing;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
+using Nethermind.Evm.Tracing;
+using Nethermind.Evm.Tracing.Access;
+using Nethermind.State;
+using Nethermind.TxPool.Collections;
 
 namespace Nethermind.AccountAbstraction.Source
 {
     public class UserOperationPool : IUserOperationPool
     {
+        private readonly IBlockTree _blockTree;
+        private readonly IStateProvider _stateProvider;
+        private readonly IBlockchainProcessor _blockchainProcessor;
         private readonly UserOperationSortedPool _userOperationSortedPool;
+        private readonly IUserOperationSimulator _userOperationSimulator;
+        private readonly ISimulatedUserOperationSource _simulatedUserOperationSource;
+        private readonly ConcurrentDictionary<UserOperation, SimulatedUserOperationContext> _simulatedUserOperations;
 
-
-        public UserOperationPool(UserOperationSortedPool userOperationSortedPool)
+        public UserOperationPool(
+            IBlockTree blockTree, 
+            IStateProvider stateProvider, 
+            IBlockchainProcessor blockchainProcessor, 
+            UserOperationSortedPool userOperationSortedPool, 
+            IUserOperationSimulator userOperationSimulator,
+            ISimulatedUserOperationSource simulatedUserOperationSource,
+            ConcurrentDictionary<UserOperation, SimulatedUserOperationContext> simulatedUserOperations)
         {
+            _blockTree = blockTree;
+            _stateProvider = stateProvider;
+            _blockchainProcessor = blockchainProcessor;
             _userOperationSortedPool = userOperationSortedPool;
+            _userOperationSimulator = userOperationSimulator;
+            _simulatedUserOperationSource = simulatedUserOperationSource;
+            _simulatedUserOperations = simulatedUserOperations;
+
+            blockTree.NewHeadBlock += OnNewBlock;
+            _userOperationSortedPool.Removed += UserOperationRemoved;
         }
-        
-        public IEnumerable<UserOperation> GetUserOperations(BlockHeader parent)
+
+        private void UserOperationRemoved(object? sender, SortedPool<UserOperation, UserOperation, Address>.SortedPoolRemovedEventArgs e)
         {
-            throw new System.NotImplementedException();
+            UserOperation userOperation = e.Key;
+            _simulatedUserOperations.TryRemove(userOperation, out _);
         }
+
+        private void OnNewBlock(object? sender, BlockEventArgs e)
+        {
+            Block block = e.Block;
+            AccessBlockTracer accessBlockTracer = new(Array.Empty<Address>());
+            ITracer tracer = new Tracer(_stateProvider, _blockchainProcessor);
+            tracer.Trace(block, accessBlockTracer);
+
+            IEnumerable<SimulatedUserOperation> simulatedUserOperations = _simulatedUserOperationSource.GetSimulatedUserOperations();
+            foreach (Address accessedAddress in accessBlockTracer.AddressesAccessed)
+            {
+                foreach (SimulatedUserOperation simulatedUserOperation in simulatedUserOperations)
+                {
+                    if (simulatedUserOperation.StateAccessed.Contains(accessedAddress))
+                    {
+                        _userOperationSimulator.Simulate(simulatedUserOperation.UserOperation, block.Header);
+                    }
+                }
+            }
+            
+
+        }
+
+        public IEnumerable<UserOperation> GetUserOperations() => _userOperationSortedPool.GetSnapshot();
 
         public bool AddUserOperation(UserOperation userOperation)
         {
-            throw new System.NotImplementedException();
+            if (ValidateUserOperation(userOperation))
+            {
+                return _userOperationSortedPool.TryInsert(userOperation, userOperation);
+            }
+            return false;
+        }
+
+        private bool ValidateUserOperation(UserOperation userOperation)
+        {
+            // make sure all fields present
+            // make sure all field values make sense
+            // make sure signature is correct
+            return true;
         }
     }
 }

@@ -15,24 +15,28 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Collections.Concurrent;
+using System.Threading;
+using System.Threading.Tasks;
+using Nethermind.AccountAbstraction.Data;
+using Nethermind.AccountAbstraction.Source;
 using Nethermind.Core;
-using Nethermind.Int256;
+using Nethermind.Evm.Tracing;
 
-namespace Nethermind.AccountAbstraction.Data
+namespace Nethermind.AccountAbstraction.Executor
 {
-    public class SimulatedUserOperation
+    public class UserOperationSimulator : IUserOperationSimulator
     {
-        public SimulatedUserOperation(UserOperation userOperation, bool success, UInt256 impliedGasPrice, Address[] stateAccessed)
+        private readonly ConcurrentDictionary<UserOperation, SimulatedUserOperationContext> _simulatedUserOperations;
+
+        public UserOperationSimulator(ConcurrentDictionary<UserOperation, SimulatedUserOperationContext> simulatedUserOperations)
         {
-            UserOperation = userOperation;
-            Success = success;
-            ImpliedGasPrice = impliedGasPrice;
-            StateAccessed = stateAccessed;
+            _simulatedUserOperations = simulatedUserOperations;
         }
-        
-        public UserOperation UserOperation { get; }
-        public bool Success { get; }
-        public UInt256 ImpliedGasPrice { get; }
-        public Address[] StateAccessed { get; }
+
+        public Task<SimulatedUserOperation> Simulate(UserOperation userOperation, BlockHeader parent, CancellationToken cancellationToken = default)
+        {
+            throw new System.NotImplementedException();
+        }
     }
 }

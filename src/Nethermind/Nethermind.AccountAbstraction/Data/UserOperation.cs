@@ -23,6 +23,16 @@ namespace Nethermind.AccountAbstraction.Data
 {
     public class UserOperation
     {
+        public UserOperation(Address target, UInt256 callGas, UInt256 postCallGas, UInt256 gasPrice, byte[] callData, Signature signature)
+        {
+            Target = target;
+            CallGas = callGas;
+            PostCallGas = postCallGas;
+            GasPrice = gasPrice;
+            CallData = callData;
+            Signature = signature;
+        }
+
         public Address Target { get; set; }
         public UInt256 CallGas { get; set; }
         public UInt256 PostCallGas { get; set; }

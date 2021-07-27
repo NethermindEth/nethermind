@@ -19,13 +19,26 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.AccountAbstraction.Data;
-using Nethermind.Core;
-using Nethermind.Int256;
+using System.Collections.Concurrent;
+using System.Linq;
 
 namespace Nethermind.AccountAbstraction.Source
 {
-    public interface ISimulatedUserOperationSource
+    public class SimulatedUserOperationSource : ISimulatedUserOperationSource
     {
-        IEnumerable<SimulatedUserOperation> GetSimulatedUserOperations(CancellationToken token = default);
+        private readonly ConcurrentDictionary<UserOperation, SimulatedUserOperationContext> _simulatedUserOperations;
+
+        public SimulatedUserOperationSource(ConcurrentDictionary<UserOperation, SimulatedUserOperationContext> simulatedUserOperations)
+        {
+            _simulatedUserOperations = simulatedUserOperations;
+        }
+
+        public IEnumerable<SimulatedUserOperation> GetSimulatedUserOperations(CancellationToken token = default)
+        {
+            return _simulatedUserOperations.Select(kv => kv.Value.Task)
+                .Where(t => t.IsCompletedSuccessfully)
+                .Select(t => t.Result)
+                .Where(t => t.Success);
+        }
     }
 }

@@ -15,24 +15,28 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Core;
-using Nethermind.Int256;
+using System.Collections.Generic;
+using System.Linq;
+using Nethermind.AccountAbstraction.Data;
 
-namespace Nethermind.AccountAbstraction.Data
+namespace Nethermind.AccountAbstraction.Source
 {
-    public class SimulatedUserOperation
+    public class UserOperationSource : IUserOperationSource
     {
-        public SimulatedUserOperation(UserOperation userOperation, bool success, UInt256 impliedGasPrice, Address[] stateAccessed)
+        private readonly UserOperationSortedPool _userOperationSortedPool;
+
+        public UserOperationSource(UserOperationSortedPool userOperationSortedPool)
         {
-            UserOperation = userOperation;
-            Success = success;
-            ImpliedGasPrice = impliedGasPrice;
-            StateAccessed = stateAccessed;
+            _userOperationSortedPool = userOperationSortedPool;
         }
-        
-        public UserOperation UserOperation { get; }
-        public bool Success { get; }
-        public UInt256 ImpliedGasPrice { get; }
-        public Address[] StateAccessed { get; }
+
+        public IEnumerable<UserOperation> GetUserOperations()
+        {
+            UserOperation[] ops = _userOperationSortedPool.GetSnapshot().ToArray();
+            foreach (var op in ops.OrderByDescending(op => op.GasPrice))
+            {
+                yield return op;
+            }
+        }
     }
 }

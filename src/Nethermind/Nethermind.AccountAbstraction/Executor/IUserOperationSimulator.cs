@@ -15,24 +15,15 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Threading;
+using System.Threading.Tasks;
+using Nethermind.AccountAbstraction.Data;
 using Nethermind.Core;
-using Nethermind.Int256;
 
-namespace Nethermind.AccountAbstraction.Data
+namespace Nethermind.AccountAbstraction.Executor
 {
-    public class SimulatedUserOperation
+    public interface IUserOperationSimulator
     {
-        public SimulatedUserOperation(UserOperation userOperation, bool success, UInt256 impliedGasPrice, Address[] stateAccessed)
-        {
-            UserOperation = userOperation;
-            Success = success;
-            ImpliedGasPrice = impliedGasPrice;
-            StateAccessed = stateAccessed;
-        }
-        
-        public UserOperation UserOperation { get; }
-        public bool Success { get; }
-        public UInt256 ImpliedGasPrice { get; }
-        public Address[] StateAccessed { get; }
+        Task<SimulatedUserOperation> Simulate(UserOperation userOperation, BlockHeader parent, CancellationToken cancellationToken = default);
     }
 }

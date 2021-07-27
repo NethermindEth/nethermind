@@ -15,24 +15,18 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
 namespace Nethermind.AccountAbstraction.Data
 {
-    public class SimulatedUserOperation
+    public class UserOperationRpc
     {
-        public SimulatedUserOperation(UserOperation userOperation, bool success, UInt256 impliedGasPrice, Address[] stateAccessed)
-        {
-            UserOperation = userOperation;
-            Success = success;
-            ImpliedGasPrice = impliedGasPrice;
-            StateAccessed = stateAccessed;
-        }
-        
-        public UserOperation UserOperation { get; }
-        public bool Success { get; }
-        public UInt256 ImpliedGasPrice { get; }
-        public Address[] StateAccessed { get; }
+        public byte[] Target { get; set; }
+        public UInt256 CallGas { get; set; }
+        public UInt256 PostCallGas { get; set; }
+        public UInt256 GasPrice { get; set; }
+        public byte[] CallData { get; set; }
+        public Signature Signature { get; set; }
     }
 }

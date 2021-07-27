@@ -23,31 +23,22 @@ using Nethermind.TxPool.Collections;
 
 namespace Nethermind.AccountAbstraction.Source
 {
-    public class UserOperationSortedPool : DistinctValueSortedPool<UserOperation, UserOperation, long>, IUserOperationSource
+    public class UserOperationSortedPool : DistinctValueSortedPool<UserOperation, UserOperation, Address>
     {
-        public UserOperationSortedPool(int capacity, IComparer<UserOperation> comparer, IEqualityComparer<UserOperation> distinctComparer, ILogManager logManager) : base(capacity, comparer, distinctComparer, logManager)
+        public UserOperationSortedPool(int capacity, IComparer<UserOperation> comparer, ILogManager logManager) : 
+            base(capacity, comparer, EqualityComparer<UserOperation>.Default, logManager)
         {
         }
 
-        protected override IComparer<UserOperation> GetUniqueComparer(IComparer<UserOperation> comparer)
-        {
-            throw new System.NotImplementedException();
-        }
+        protected override IComparer<UserOperation> GetUniqueComparer(IComparer<UserOperation> comparer) =>
+            comparer.ThenBy(CompareUserOperationsByGasPrice.Default);
 
-        protected override IComparer<UserOperation> GetGroupComparer(IComparer<UserOperation> comparer)
-        {
-            throw new System.NotImplementedException();
-        }
-
-        protected override long MapToGroup(UserOperation value)
-        {
-            throw new System.NotImplementedException();
-        }
-
-        public IEnumerable<UserOperation> GetUserOperations(BlockHeader parent)
-        {
-            TryGetBucket(parent.Number + 1, out UserOperation[] userOperations);
-            return userOperations;
-        }
+        protected override IComparer<UserOperation> GetGroupComparer(IComparer<UserOperation> comparer) =>
+            comparer.ThenBy(CompareUserOperationsByGasPrice.Default);
+        
+        protected override IComparer<UserOperation> GetReplacementComparer(IComparer<UserOperation> comparer) => 
+            comparer.ThenBy(CompareUserOperationsByGasPrice.Default);
+        
+        protected override Address MapToGroup(UserOperation value) => value.Target;
     }
 }

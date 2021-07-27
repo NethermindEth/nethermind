@@ -23,6 +23,6 @@ namespace Nethermind.AccountAbstraction.Source
 {
     public interface IUserOperationSource
     {
-        public IEnumerable<UserOperation> GetUserOperations(BlockHeader parent);
+        public IEnumerable<UserOperation> GetUserOperations();
     }
 }

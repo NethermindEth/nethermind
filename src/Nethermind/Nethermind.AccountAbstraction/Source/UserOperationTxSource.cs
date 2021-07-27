@@ -15,24 +15,17 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Collections.Generic;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
-using Nethermind.Int256;
 
-namespace Nethermind.AccountAbstraction.Data
+namespace Nethermind.AccountAbstraction.Source
 {
-    public class SimulatedUserOperation
+    public class UserOperationTxSource : ITxSource
     {
-        public SimulatedUserOperation(UserOperation userOperation, bool success, UInt256 impliedGasPrice, Address[] stateAccessed)
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
         {
-            UserOperation = userOperation;
-            Success = success;
-            ImpliedGasPrice = impliedGasPrice;
-            StateAccessed = stateAccessed;
+            throw new System.NotImplementedException();
         }
-        
-        public UserOperation UserOperation { get; }
-        public bool Success { get; }
-        public UInt256 ImpliedGasPrice { get; }
-        public Address[] StateAccessed { get; }
     }
 }

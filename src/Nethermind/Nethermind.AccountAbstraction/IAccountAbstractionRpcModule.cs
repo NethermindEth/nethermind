@@ -13,26 +13,20 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
 
-using Nethermind.Core;
-using Nethermind.Int256;
+using System.Reflection;
+using Nethermind.AccountAbstraction.Data;
+using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Data;
 
-namespace Nethermind.AccountAbstraction.Data
+namespace Nethermind.Mev
 {
-    public class SimulatedUserOperation
-    {
-        public SimulatedUserOperation(UserOperation userOperation, bool success, UInt256 impliedGasPrice, Address[] stateAccessed)
-        {
-            UserOperation = userOperation;
-            Success = success;
-            ImpliedGasPrice = impliedGasPrice;
-            StateAccessed = stateAccessed;
-        }
-        
-        public UserOperation UserOperation { get; }
-        public bool Success { get; }
-        public UInt256 ImpliedGasPrice { get; }
-        public Address[] StateAccessed { get; }
+
+    [RpcModule(ModuleType.AccountAbstraction)]
+    public interface IAccountAbstractionRpcModule : IRpcModule
+    {        
+        [JsonRpcMethod(Description = "Adds user operation to the user operation pool.", IsImplemented = true)]
+        ResultWrapper<bool> eth_sendUserOperation(UserOperation userOperationRpc);
     }
 }

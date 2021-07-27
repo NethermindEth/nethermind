@@ -15,24 +15,22 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Core;
-using Nethermind.Int256;
+using System.Collections.Generic;
+using Nethermind.AccountAbstraction.Data;
 
-namespace Nethermind.AccountAbstraction.Data
+namespace Nethermind.AccountAbstraction.Source
 {
-    public class SimulatedUserOperation
+    public class CompareUserOperationsByGasPrice : IComparer<UserOperation>
     {
-        public SimulatedUserOperation(UserOperation userOperation, bool success, UInt256 impliedGasPrice, Address[] stateAccessed)
+        public static readonly CompareUserOperationsByGasPrice Default = new();
+
+        public int Compare(UserOperation? x, UserOperation? y)
         {
-            UserOperation = userOperation;
-            Success = success;
-            ImpliedGasPrice = impliedGasPrice;
-            StateAccessed = stateAccessed;
+            if (ReferenceEquals(x, y)) return 0;
+            if (ReferenceEquals(null, y)) return 1;
+            if (ReferenceEquals(null, x)) return -1;
+            
+            return x.GasPrice.CompareTo(y.GasPrice);
         }
-        
-        public UserOperation UserOperation { get; }
-        public bool Success { get; }
-        public UInt256 ImpliedGasPrice { get; }
-        public Address[] StateAccessed { get; }
     }
 }

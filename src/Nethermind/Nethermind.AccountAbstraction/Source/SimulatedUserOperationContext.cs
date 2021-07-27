@@ -15,24 +15,27 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Core;
-using Nethermind.Int256;
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+using Nethermind.AccountAbstraction.Data;
 
-namespace Nethermind.AccountAbstraction.Data
+namespace Nethermind.AccountAbstraction.Source
 {
-    public class SimulatedUserOperation
+    public class SimulatedUserOperationContext : IDisposable
     {
-        public SimulatedUserOperation(UserOperation userOperation, bool success, UInt256 impliedGasPrice, Address[] stateAccessed)
+        public SimulatedUserOperationContext(Task<SimulatedUserOperation> task, CancellationTokenSource cancellationTokenSource)
         {
-            UserOperation = userOperation;
-            Success = success;
-            ImpliedGasPrice = impliedGasPrice;
-            StateAccessed = stateAccessed;
+            Task = task;
+            CancellationTokenSource = cancellationTokenSource;
         }
         
-        public UserOperation UserOperation { get; }
-        public bool Success { get; }
-        public UInt256 ImpliedGasPrice { get; }
-        public Address[] StateAccessed { get; }
+        public CancellationTokenSource CancellationTokenSource { get; }
+        public Task<SimulatedUserOperation> Task { get; }
+
+        public void Dispose()
+        {
+            CancellationTokenSource.Dispose();
+        }
     }
 }

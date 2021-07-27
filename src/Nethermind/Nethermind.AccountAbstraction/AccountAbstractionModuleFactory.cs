@@ -15,24 +15,24 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Core;
-using Nethermind.Int256;
+using Nethermind.AccountAbstraction.Source;
+using Nethermind.JsonRpc.Modules;
+using Nethermind.Mev;
 
-namespace Nethermind.AccountAbstraction.Data
+namespace Nethermind.AccountAbstraction
 {
-    public class SimulatedUserOperation
+    public class AccountAbstractionModuleFactory : ModuleFactoryBase<IAccountAbstractionRpcModule>
     {
-        public SimulatedUserOperation(UserOperation userOperation, bool success, UInt256 impliedGasPrice, Address[] stateAccessed)
+        private readonly UserOperationPool _userOperationPool;
+
+        public AccountAbstractionModuleFactory(UserOperationPool userOperationPool)
         {
-            UserOperation = userOperation;
-            Success = success;
-            ImpliedGasPrice = impliedGasPrice;
-            StateAccessed = stateAccessed;
+            _userOperationPool = userOperationPool;
         }
-        
-        public UserOperation UserOperation { get; }
-        public bool Success { get; }
-        public UInt256 ImpliedGasPrice { get; }
-        public Address[] StateAccessed { get; }
+
+        public override IAccountAbstractionRpcModule Create()
+        {
+            return new AccountAbstractionRpcModule(_userOperationPool);
+        }
     }
 }

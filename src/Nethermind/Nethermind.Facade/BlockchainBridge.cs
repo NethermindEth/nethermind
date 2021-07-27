@@ -34,6 +34,7 @@ using System.Threading;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.Tracing.Access;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.State;
 
