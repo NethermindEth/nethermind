@@ -109,6 +109,10 @@ namespace Nethermind.Dsl.Pipeline.Sources
 
             var token0Delta = log.Data.Take(32).ToArray().ToInt256();
             var token1Delta = log.Data.Skip(32).Take(32).ToArray().ToInt256();
+            var token0In = (UInt256) (token0Delta > 0 ? token0Delta : 0);
+            var token0Out = (UInt256) (token0Delta < 0 ? token0Delta : 0);
+            var token1In = (UInt256) (token1Delta > 0 ? token0Delta : 0);
+            var token1Out = (UInt256) (token1Delta < 0 ? token1Delta : 0);
             
             return new UniswapData
             {
@@ -116,10 +120,10 @@ namespace Nethermind.Dsl.Pipeline.Sources
                 Pool = log.LoggersAddress,
                 Token0 = pool.token0(_api.BlockTree.Head.Header),
                 Token1 = pool.token1(_api.BlockTree.Head.Header),
-                Token0In = (UInt256) (token0Delta > 0 ? token0Delta : 0),
-                Token0Out = (UInt256) (token0Delta < 0 ? token0Delta : 0),
-                Token1In = (UInt256) (token1Delta > 0 ? token0Delta : 0),
-                Token1Out = (UInt256) (token1Delta < 0 ? token1Delta : 0)
+                Token0In = token0In.ToString(),
+                Token0Out = token0Out.ToString(),
+                Token1In = token1In.ToString(),
+                Token1Out = token1Out.ToString()
             };
         }
         
@@ -133,10 +137,10 @@ namespace Nethermind.Dsl.Pipeline.Sources
                 Pool = log.LoggersAddress,
                 Token0 = pool.token0(_api.BlockTree.Head.Header),
                 Token1 = pool.token1(_api.BlockTree.Head.Header),
-                Token0In = log.Data.Take(32).ToArray().ToUInt256(),
-                Token0Out = log.Data.Skip(64).Take(32).ToArray().ToUInt256(),
-                Token1In = log.Data.Skip(32).Take(32).ToArray().ToUInt256(),
-                Token1Out = log.Data.Skip(96).ToArray().ToUInt256()
+                Token0In = log.Data.Take(32).ToArray().ToUInt256().ToString(),
+                Token0Out = log.Data.Skip(64).Take(32).ToArray().ToUInt256().ToString(),
+                Token1In = log.Data.Skip(32).Take(32).ToArray().ToUInt256().ToString(),
+                Token1Out = log.Data.Skip(96).ToArray().ToUInt256().ToString()
             };
         }
 
@@ -168,9 +172,9 @@ namespace Nethermind.Dsl.Pipeline.Sources
         public Address? Token1 { get; set; }
         public double? Token0Price { get; set; }
         public double? Token1Price { get; set; }
-        public UInt256? Token0In { get; set; }
-        public UInt256? Token0Out { get; set; }
-        public UInt256? Token1In { get; set; }
-        public UInt256? Token1Out { get; set; }
+        public string? Token0In { get; set; }
+        public string? Token0Out { get; set; }
+        public string? Token1In { get; set; }
+        public string? Token1Out { get; set; }
     }
 }
