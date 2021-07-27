@@ -1,11 +1,0 @@
---2021-07-26 14:26:58--  https://gist.githubusercontent.com/1swaraj/fce0d5d74fb7e23c1c547f663e0a7508/raw/a016b87f37a8c63c6bc086ee356bde3eb79f2ff9/Plugin.cs
-Resolving gist.githubusercontent.com (gist.githubusercontent.com)... 185.199.110.133, 185.199.111.133, 185.199.108.133, ...
-Connecting to gist.githubusercontent.com (gist.githubusercontent.com)|185.199.110.133|:443... connected.
-HTTP request sent, awaiting response... 200 OK
-Length: 1781 (1.7K) [text/plain]
-Saving to: ‘TestPlugin/PluginClassName.cs’
-
-TestPlugin/PluginClassName.cs                0%[                                                                                         ]       0  --.-KB/s               TestPlugin/PluginClassName.cs              100%[========================================================================================>]   1.74K  --.-KB/s    in 0s      
-
-2021-07-26 14:26:58 (12.6 MB/s) - ‘TestPlugin/PluginClassName.cs’ saved [1781/1781]
-
