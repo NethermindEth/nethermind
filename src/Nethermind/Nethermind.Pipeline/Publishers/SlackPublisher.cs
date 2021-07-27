@@ -47,9 +47,6 @@ namespace Nethermind.Pipeline.Publishers
 
             Start();
 
-            //TODO: Remove when done with testing
-            SubscribeToData<String>("this is a test");
-
         }
 
         public void SubscribeToData<T>(T data)
@@ -91,8 +88,6 @@ namespace Nethermind.Pipeline.Publishers
             try {
 
               var x = await _httpClient.PostAsync(uri, new StringContent(content, Encoding.UTF8, "application/json"));
-
-            Console.WriteLine(x);
 
             } catch (HttpRequestException) {
 
