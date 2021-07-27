@@ -149,6 +149,10 @@ namespace Nethermind.Specs.ChainSpecStyle
                 TransactionPermissionContractTransition = chainSpecJson.Params.TransactionPermissionContractTransition,
                 ValidateChainIdTransition = chainSpecJson.Params.ValidateChainIdTransition,
                 ValidateReceiptsTransition = chainSpecJson.Params.ValidateReceiptsTransition,
+                Eip1559ElasticityMultiplier = chainSpecJson.Params.Eip1559ElasticityMultiplier ?? Eip1559Constants.ElasticityMultiplier,
+                Eip1559BaseFeeInitialValue = chainSpecJson.Params.Eip1559BaseFeeInitialValue ?? Eip1559Constants.ForkBaseFee,
+                Eip1559BaseFeeMaxChangeDenominator = chainSpecJson.Params.Eip1559BaseFeeMaxChangeDenominator ??
+                                                     Eip1559Constants.BaseFeeMaxChangeDenominator
             };
 
             chainSpec.Parameters.Eip152Transition ??= GetTransitionForExpectedPricing("blake2_f", "price.blake2_f.gas_per_round", 1);
@@ -157,12 +161,9 @@ namespace Nethermind.Specs.ChainSpecStyle
                                                        ?? GetTransitionForExpectedPricing("alt_bn128_pairing", "price.alt_bn128_pairing.base", 45000);
             chainSpec.Parameters.Eip2565Transition ??= GetTransitionIfInnerPathExists("modexp", "price.modexp2565");
 
-            Eip1559Constants.ElasticityMultiplier = 
-                chainSpecJson.Params.Eip1559ElasticityMultiplier ?? Eip1559Constants.ElasticityMultiplier;
-            Eip1559Constants.ForkBaseFee =
-                chainSpecJson.Params.Eip1559BaseFeeInitialValue ?? Eip1559Constants.ForkBaseFee;
-            Eip1559Constants.BaseFeeMaxChangeDenominator = chainSpecJson.Params.Eip1559BaseFeeMaxChangeDenominator ??
-                                                           Eip1559Constants.BaseFeeMaxChangeDenominator;
+            Eip1559Constants.ElasticityMultiplier = chainSpec.Parameters.Eip1559ElasticityMultiplier;
+            Eip1559Constants.ForkBaseFee = chainSpec.Parameters.Eip1559BaseFeeInitialValue;
+            Eip1559Constants.BaseFeeMaxChangeDenominator = chainSpec.Parameters.Eip1559BaseFeeMaxChangeDenominator;
         }
 
         private static void ValidateParams(ChainSpecParamsJson parameters)

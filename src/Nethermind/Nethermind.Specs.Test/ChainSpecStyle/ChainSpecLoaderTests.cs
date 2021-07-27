@@ -62,7 +62,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(1, chainSpec.ChainId, $"{nameof(chainSpec.ChainId)}");
             Assert.NotNull(chainSpec.Genesis, $"{nameof(ChainSpec.Genesis)}");
             
-            Assert.AreEqual((UInt256)11, chainSpec.Parameters.Eip1559BaseFeeInitialValue, $"fork base fee");
+            Assert.AreEqual((UInt256)11, chainSpec.Genesis.BaseFeePerGas, $"genesis base fee");
             Assert.AreEqual(0xdeadbeefdeadbeef, chainSpec.Genesis.Header.Nonce, $"genesis {nameof(BlockHeader.Nonce)}");
             Assert.AreEqual(Keccak.Zero, chainSpec.Genesis.Header.MixHash, $"genesis {nameof(BlockHeader.MixHash)}");
             Assert.AreEqual(0x10, (long)chainSpec.Genesis.Header.Difficulty, $"genesis {nameof(BlockHeader.Difficulty)}");
