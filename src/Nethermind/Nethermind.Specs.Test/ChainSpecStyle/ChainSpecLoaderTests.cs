@@ -62,7 +62,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(1, chainSpec.ChainId, $"{nameof(chainSpec.ChainId)}");
             Assert.NotNull(chainSpec.Genesis, $"{nameof(ChainSpec.Genesis)}");
 
-            Assert.AreEqual((UInt256)10, chainSpec.Parameters.Eip1559BaseFeeInitialValue, $"initial base fee value");
+            Assert.AreEqual(1.GWei(), chainSpec.Parameters.Eip1559BaseFeeInitialValue, $"initial base fee value");
             Assert.AreEqual((long)1, chainSpec.Parameters.Eip1559ElasticityMultiplier, $"elasticity multiplier");
             Assert.AreEqual((UInt256)7, chainSpec.Parameters.Eip1559BaseFeeMaxChangeDenominator, $"base fee max change denominator");
             Assert.AreEqual((UInt256)11, chainSpec.Genesis.BaseFeePerGas, $"genesis base fee");

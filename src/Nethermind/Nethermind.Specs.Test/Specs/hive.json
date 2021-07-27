@@ -50,7 +50,7 @@
     "eip1283Transition": 7080000,
     "eip1559BaseFeeMaxChangeDenominator": "0x7",
     "eip1559ElasticityMultiplier": "0x1",
-    "eip1559BaseFeeInitialValue": "0xa"
+    "eip1559BaseFeeInitialValue": "0x3b9aca00"
   },
   "genesis": {
     "seal": {
