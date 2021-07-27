@@ -60,7 +60,7 @@ namespace Nethermind.Pipeline.Publishers
 
         private async Task SendMessageAsync(object data)
         {
-            var serializedData = _serializer.Serialize(data);
+            var serializedData = _serializer.Serialize(data,true);
             serializedData = serializedData.Replace("\"", "'");
 
             var uri = new Uri($"https://api.telegram.org/bot{_botToken}/sendMessage");
