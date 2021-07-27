@@ -55,7 +55,7 @@ namespace Nethermind.Dsl.Pipeline.Sources
             
             if(logs is null || !logs.Any()) return;
 
-            var swapLogs = logs.Where(l => l.Topics.First().Equals(_swapSignatureV3.Hash));
+            var swapLogs = logs.Where(l => l.Topics.Any() && l.Topics.First().Equals(_swapSignatureV3.Hash));
 
             foreach (var log in swapLogs)
             {
