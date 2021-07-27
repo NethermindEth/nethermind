@@ -104,13 +104,13 @@
     <None Remove="keystore\**" />
   </ItemGroup>
   <ItemGroup>
-    <PluginsForBuild Include="$(SolutionDir)Nethermind.Merge.Plugin\bin\$(Configuration)\$(TargetFramework)\Nethermind.Merge.Plugin.dll;
-                      $(SolutionDir)Nethermind.Merge.Plugin\bin\$(Configuration)\$(TargetFramework)\Nethermind.Merge.Plugin.pdb;
-                      $(SolutionDir)Nethermind.Mev\bin\$(Configuration)\$(TargetFramework)\Nethermind.Mev.dll;
-                      $(SolutionDir)Nethermind.Mev\bin\$(Configuration)\$(TargetFramework)\Nethermind.Mev.pdb;
-                      $(SolutionDir)Nethermind.HealthChecks\bin\$(Configuration)\$(TargetFramework)\Nethermind.HealthChecks.dll;
-                      $(SolutionDir)Nethermind.Dsl\bin\$(Configuration)\$(TargetFramework)\Nethermind.Dsl.dll;
-                      $(SolutionDir)Nethermind.Dsl\bin\$(Configuration)\$(TargetFramework)\Nethermind.Dsl.pdb" />
+    <PluginsForBuild Include="$(OutDir)Nethermind.Merge.Plugin.dll;
+                      $(OutDir)Nethermind.Merge.Plugin.pdb;
+                      $(OutDir)Nethermind.Mev.dll;
+                      $(OutDir)Nethermind.Mev.pdb;
+                      $(OutDir)Nethermind.HealthChecks.dll;
+                      $(OutDir)Nethermind.Dsl.dll;
+                      $(OutDir)Nethermind.Dsl.pdb" />
     <PluginsForPublish Include="$(OutputPath)\Nethermind.Merge.Plugin.dll;
                       $(OutputPath)\Nethermind.Mev.dll;
                       $(OutputPath)\Nethermind.HealthChecks.dll" />
