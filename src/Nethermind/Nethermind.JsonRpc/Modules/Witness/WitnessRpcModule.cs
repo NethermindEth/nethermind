@@ -37,12 +37,12 @@ namespace Nethermind.JsonRpc.Modules.Witness
 
         public async Task<ResultWrapper<Keccak[]>> get_witnesses(BlockParameter blockParameter)
         {
-            BlockHeader blockHeader = _blockFinder.FindHeader(blockParameter);
-            if (blockHeader is null)
-                return ResultWrapper<Keccak[]>.Fail("Block not found");
-            Keccak hash = blockHeader.CalculateHash();
+            SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
+            if (searchResult.Object is null)
+                return ResultWrapper<Keccak[]>.Fail("Block not found", ErrorCodes.ResourceNotFound);
+            Keccak hash = searchResult.Object.Hash;
             Keccak[] result = _witnessRepository.Load(hash);
-            return result is null ? ResultWrapper<Keccak[]>.Fail("Witness not found") : ResultWrapper<Keccak[]>.Success(result);
+            return result is null ? ResultWrapper<Keccak[]>.Fail("Witness unavailable",ErrorCodes.ResourceUnavailable) : ResultWrapper<Keccak[]>.Success(result);
         }
     }
 }
