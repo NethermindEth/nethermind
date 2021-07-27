@@ -104,13 +104,13 @@
     <None Remove="keystore\**" />
   </ItemGroup>
   <ItemGroup>
-    <PluginsForBuild Include="$(OutputPath)Nethermind.Merge.Plugin.dll;
-                      $(OutputPath)Nethermind.Merge.Plugin.pdb;
-                      $(OutputPath)Nethermind.Mev.dll;
-                      $(OutputPath)Nethermind.Mev.pdb;
-                      $(OutputPath)Nethermind.HealthChecks.dll;
-                      $(OutputPath)Nethermind.Dsl.dll;
-                      $(OutputPath)Nethermind.Dsl.pdb" />
+    <PluginsForBuild Include="$(OutputPath)\Nethermind.Merge.Plugin.dll;
+                      $(OutputPath)\Nethermind.Merge.Plugin.pdb;
+                      $(OutputPath)\Nethermind.Mev.dll;
+                      $(OutputPath)\Nethermind.Mev.pdb;
+                      $(OutputPath)\Nethermind.HealthChecks.dll;
+                      $(OutputPath)\Nethermind.Dsl.dll;
+                      $(OutputPath)\Nethermind.Dsl.pdb" />
     <PluginsForPublish Include="$(OutputPath)\Nethermind.Merge.Plugin.dll;
                       $(OutputPath)\Nethermind.Mev.dll;
                       $(OutputPath)\Nethermind.HealthChecks.dll" />
