@@ -152,8 +152,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         }
         private static TestEthRpcModule GetTestEthRpcModule(IBlockFinder blockFinder = null)
         {
-            return new TestEthRpcModule
-            (
+            return new(
                 Substitute.For<IJsonRpcConfig>(),
                 Substitute.For<IBlockchainBridge>(),
                 blockFinder ?? Substitute.For<IBlockFinder>(),
