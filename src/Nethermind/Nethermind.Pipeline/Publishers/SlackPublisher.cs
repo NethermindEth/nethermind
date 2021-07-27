@@ -72,25 +72,21 @@ namespace Nethermind.Pipeline.Publishers
         private async Task SendMessageAsync(object data)
         {
 
-
             var serializedData = _serializer.Serialize(data);
 
             var headers = _httpClient.DefaultRequestHeaders;
 
-            var uri = new Uri("https://hooks.slack.com/services/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");
+            var uri = new Uri(_chatId);
 
             var messageContents = new FormUrlEncodedContent(new[]
             {
-                new KeyValuePair<string, string>("chat_id", _chatId),
+                // new KeyValuePair<string, string>("chat_id", _chatId),
                 new KeyValuePair<string, string>("text", serializedData)
             });
 
             var message = await messageContents.ReadAsStringAsync();
 
-            // string channel = "{\"channel\":\"" + "C027XNR91M0" + "\",";
             string content = "{\"text\":\"" + message + "\"}";
-
-            // _httpClient.DefaultRequestHeaders.Add("Authorization", "Bearer " + _botToken);
 
             try {
 
@@ -105,7 +101,7 @@ namespace Nethermind.Pipeline.Publishers
 
         private string LoadBotToken()
         {
-            return "xoxb-224691004485-2282017559041-RixaKyCm2J6IFiPEyFho5egx";
+            return "";
         }
 
     }

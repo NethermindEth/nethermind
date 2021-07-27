@@ -372,3 +372,5 @@ mono_crash.mem.*.blob
 
 # Include development self-signed certificate 
 !src/Nethermind/Nethermind.BeaconNode.Host/Certificates/nethermind_dotnet_dev_cert.pfx
+
+src/Nethermind/Nethermind.Cli/mono_crash.21acb2c11b.0.json

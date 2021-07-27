@@ -5,7 +5,7 @@ expression : sourceExpression | watchExpression | whereExpression | publishExpre
 sourceExpression : SOURCE WORD ;
 watchExpression : WATCH WORD ;
 whereExpression : WHERE condition ;
-publishExpression : PUBLISH PUBLISH_VALUE ( WORD | DIGIT );
+publishExpression : PUBLISH PUBLISH_VALUE ( URL | WORD | DIGIT );
 condition : WORD BOOLEAN_OPERATOR ( WORD | DIGIT | ADDRESS | BYTECODE ) ;
 andCondition : AND condition ;
 orCondition : OR condition ;
@@ -29,8 +29,10 @@ TELEGRAM : 'Telegram' | 'telegram' ;
 DISCORD : 'Discord' | 'discord' ;
 SLACK : 'Slack' | 'slack' ;
 
+
 WORD : [a-zA-Z]+ ;
 DIGIT : [0-9]+;
 BYTECODE : [a-fA-F0-9]+ ;
 ADDRESS : '0x'[a-fA-F0-9]* ;
+URL: 'https'()+? ;
 WS : [ \t\r\n]+ -> skip ; // skip spaces, tabs, newlines
