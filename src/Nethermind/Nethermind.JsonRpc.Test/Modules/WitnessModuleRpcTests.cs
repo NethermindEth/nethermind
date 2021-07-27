@@ -23,10 +23,12 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
+using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Witness;
 using Nethermind.Logging;
 using Nethermind.State.Witnesses;
 using NSubstitute;
+using NSubstitute.Extensions;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules
@@ -36,9 +38,9 @@ namespace Nethermind.JsonRpc.Test.Modules
         private const string GetOneWitnessHashResponse =
             "{\"jsonrpc\":\"2.0\",\"result\":[\"0xa2a9f03b9493046696099d27b2612b99497aa1f392ec966716ab393c715a5bb6\"],\"id\":67}";
         private const string BlockNotFoundResponse = 
-            "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Block not found\"},\"id\":67}";
+            "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32001,\"message\":\"Block not found\"},\"id\":67}";
         private const string WitnessNotFoundResponse = 
-            "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Witness not found\"},\"id\":67}";
+            "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32002,\"message\":\"Witness unavailable\"},\"id\":67}";
 
         private IBlockFinder _blockFinder;
 
@@ -46,31 +48,27 @@ namespace Nethermind.JsonRpc.Test.Modules
         private WitnessRpcModule _witnessRpcModule;
 
         private Block _block;
-        
-        private Block _block2;
-        private Keccak _hash;
 
 
         [SetUp]
         public void Setup()
         {
-            _block2 = Build.An.Block.TestObject;
             _block =  Build.A.Block
                 .WithOmmers(Build.A.BlockHeader.TestObject, Build.A.BlockHeader.TestObject).TestObject;
             
-            _hash = _block.CalculateHash();
+            _blockFinder = Substitute.For<IBlockTree>();
+            _witnessRepository = new WitnessCollector(new MemDb(), LimboLogs.Instance);
+            _witnessRpcModule = new WitnessRpcModule(_witnessRepository, _blockFinder);
         }
 
         [Test]
         public void GetOneWitnessHash()
         {
-            _blockFinder = Substitute.For<IBlockTree>();
             _blockFinder.FindHeader((BlockParameter)null).ReturnsForAnyArgs(_block.Header);
+            _blockFinder.Head.Returns(_block);
 
-            _witnessRepository = new WitnessCollector(new MemDb(), LimboLogs.Instance);
-            _witnessRepository.Add(_hash);
-            _witnessRepository.Persist(_hash);
-            _witnessRpcModule = new WitnessRpcModule(_witnessRepository, _blockFinder);
+            _witnessRepository.Add(_block.Hash);
+            _witnessRepository.Persist(_block.Hash);
 
             string serialized =
                 RpcTest.TestSerializedRequest<IWitnessRpcModule>(_witnessRpcModule, "get_witnesses", _block.CalculateHash().ToString());
@@ -80,10 +78,6 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void BlockNotFound()
         {
-            _blockFinder = Substitute.For<IBlockTree>();
-            _witnessRepository = new WitnessCollector(new MemDb(), LimboLogs.Instance);
-            _witnessRpcModule = new WitnessRpcModule(_witnessRepository, _blockFinder);
-
             string serialized =
                 RpcTest.TestSerializedRequest<IWitnessRpcModule>(_witnessRpcModule, "get_witnesses", "0x583");
             serialized.Should().Be(BlockNotFoundResponse);
@@ -92,12 +86,8 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void WitnessNotFound()
         {
-            _blockFinder = Substitute.For<IBlockTree>();
-            _blockFinder.FindHeader((BlockParameter)null).ReturnsForAnyArgs(_block2.Header);
-
-            _witnessRepository = new WitnessCollector(new MemDb(), LimboLogs.Instance);
-            _witnessRpcModule = new WitnessRpcModule(_witnessRepository, _blockFinder);
-
+            _blockFinder.FindHeader((BlockParameter)null).ReturnsForAnyArgs(_block.Header);
+            _blockFinder.Head.Returns(_block);
 
             string serialized =
                 RpcTest.TestSerializedRequest<IWitnessRpcModule>(_witnessRpcModule, "get_witnesses", "0x1");
