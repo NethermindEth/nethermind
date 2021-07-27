@@ -18,6 +18,7 @@
 #nullable enable
 using System;
 using System.Linq;
+using System.Numerics;
 using Nethermind.Abi;
 using Nethermind.Api;
 using Nethermind.Blockchain.Processing;
@@ -72,8 +73,8 @@ namespace Nethermind.Dsl.Pipeline.Sources
             {
                 Swapper = new Address(log.Topics[1]),
                 Pool = log.LoggersAddress,
-                TokenADelta = log.Data.Take(32).ToArray().ToInt256(),
-                TokenBDelta = log.Data.Skip(32).Take(32).ToArray().ToInt256(),
+                TokenADelta = log.Data.Take(32).ToArray().ToSignedBigInteger(32),
+                TokenBDelta = log.Data.Skip(32).Take(32).ToArray().ToSignedBigInteger(32),
                 Token0 = pool.token0(_api.BlockTree.Head.Header),
                 Token1 = pool.token1(_api.BlockTree.Head.Header)
             };
@@ -88,7 +89,7 @@ namespace Nethermind.Dsl.Pipeline.Sources
         public Address? Token1 { get; set; }
         public decimal Token0Price { get; set; }
         public decimal Token1Price { get; set; }
-        public Int256.Int256 TokenADelta { get; set; }
-        public Int256.Int256 TokenBDelta { get; set; }
+        public BigInteger TokenADelta { get; set; }
+        public BigInteger TokenBDelta { get; set; }
     }
 }
