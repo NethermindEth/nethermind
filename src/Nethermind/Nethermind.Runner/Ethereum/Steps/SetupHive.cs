@@ -23,7 +23,7 @@ using Nethermind.Runner.Hive;
 namespace Nethermind.Runner.Ethereum.Steps
 {
     // TODO: hive should be a plugin and should be configured the standard way
-    [RunnerStepDependencies(typeof(SetupKeyStore), typeof(LoadGenesisBlock))]
+    [RunnerStepDependencies(typeof(SetupKeyStore), typeof(LoadGenesisBlock), typeof(InitRlp))]
     public class SetupHive : IStep
     {
         private readonly IApiWithBlockchain _api;
@@ -45,7 +45,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _api.BlockTree,
                     _api.ConfigProvider,
                     _api.LogManager.GetClassLogger(),
-                    _api.FileSystem
+                    _api.FileSystem,
+                    _api.BlockValidator!
                 );
                 
                 await hiveRunner.Start(cancellationToken);

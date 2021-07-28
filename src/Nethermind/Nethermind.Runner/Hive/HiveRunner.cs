@@ -22,6 +22,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Validators;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -37,18 +38,22 @@ namespace Nethermind.Runner.Hive
         private readonly ILogger _logger;
         private readonly IConfigProvider _configurationProvider;
         private readonly IFileSystem _fileSystem;
+        private readonly IBlockValidator _blockValidator;
         private SemaphoreSlim _resetEvent;
         
-        public HiveRunner(IBlockTree blockTree,
+        public HiveRunner(
+            IBlockTree blockTree,
             IConfigProvider configurationProvider,
             ILogger logger,
-            IFileSystem fileSystem)
+            IFileSystem fileSystem, 
+            IBlockValidator blockValidator)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _configurationProvider = configurationProvider ?? throw new ArgumentNullException(nameof(configurationProvider));
             _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
-            
+            _blockValidator = blockValidator;
+
             _resetEvent = new SemaphoreSlim(0);
         }
 
@@ -180,6 +185,8 @@ namespace Nethermind.Runner.Hive
         {
             try
             {
+                if (!_blockValidator.Validate(block.Header))
+                    return;
                 var result = _blockTree.SuggestBlock(block);
                 await WaitAsync(_resetEvent, string.Empty);
                 if (_logger.IsInfo) _logger.Info($"HIVE suggested {block.ToString(Block.Format.Short)}, now best suggested header {_blockTree.BestSuggestedHeader}, head {_blockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}");
