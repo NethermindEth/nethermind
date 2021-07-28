@@ -19,6 +19,7 @@ using System;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Facade;
 
 namespace Nethermind.Dsl.Contracts
@@ -38,9 +39,11 @@ namespace Nethermind.Dsl.Contracts
             ConstantContract = GetConstant(blockchainBridge);
         }
 
-        public UInt16 decimals()
+        public ushort decimals()
         {
-            return ConstantContract.Call<UInt16>(_blockTree.Head.Header, nameof(decimals), Address.Zero);
+            var result = ConstantContract.Call<byte>(_blockTree.Head.Header, nameof(decimals), Address.Zero);
+            var bytes = new [] {result};
+            return BitConverter.ToUInt16(bytes);
         }   
     }
 }
