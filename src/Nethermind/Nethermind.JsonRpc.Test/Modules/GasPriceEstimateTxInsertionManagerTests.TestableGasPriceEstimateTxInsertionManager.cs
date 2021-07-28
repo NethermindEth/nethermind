@@ -24,7 +24,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 {
     partial class GasPriceEstimateTxInsertionManagerTests
     {
-        private class TestableGasPriceEstimateTxInsertionManager : GasPriceEstimateTxInsertionManager
+        public class TestableGasPriceEstimateTxInsertionManager : GasPriceEstimateTxInsertionManager
         {
             public readonly List<UInt256> _txGasPriceList;
             public TestableGasPriceEstimateTxInsertionManager(

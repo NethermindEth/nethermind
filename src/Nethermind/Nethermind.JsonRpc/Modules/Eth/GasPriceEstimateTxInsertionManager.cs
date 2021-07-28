@@ -67,7 +67,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         }
 
 
-        private UInt256 EffectiveGasPrice(Transaction transaction, bool eip1559Enabled, UInt256 baseFee)
+        protected internal virtual UInt256 EffectiveGasPrice(Transaction transaction, bool eip1559Enabled, UInt256 baseFee)
         {
             return transaction.CalculateEffectiveGasPrice(eip1559Enabled, baseFee);
         }

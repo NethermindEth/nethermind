@@ -23,9 +23,12 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth;
+using Nethermind.Specs;
 using NSubstitute;
+using NSubstitute.Extensions;
 using NUnit.Framework;
 using static Nethermind.JsonRpc.Test.Modules.TestBlockConstructor;
+using Arg = NSubstitute.Arg;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
@@ -43,6 +46,30 @@ namespace Nethermind.JsonRpc.Test.Modules
             testableGasPriceEstimateTxInsertionManager._txGasPriceList.Count.Should().Be(3);
         }
 
+        [Test]
+        public void AddValidTxAndReturnCount_IfBlockHasMoreThanThreeValidTx_AddOnlyThreeNew()
+        {
+            List<UInt256> resultList = new();
+            IGasPriceOracle gasPriceOracle = Substitute.For<IGasPriceOracle>();
+            ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+            GasPriceEstimateTxInsertionManager
+                gasPriceEstimateTxInsertionManager = Substitute.ForPartsOf<GasPriceEstimateTxInsertionManager>(
+                    gasPriceOracle,
+                    (UInt256) 3,
+                    specProvider);
+            gasPriceEstimateTxInsertionManager.Configure().EffectiveGasPrice(
+                Arg.Any<Transaction>(),
+                Arg.Any<bool>(),
+                Arg.Any<UInt256>())
+                .Returns(UInt256.One);
+            gasPriceEstimateTxInsertionManager.Configure().GetTxGasPriceList()
+                .Returns(resultList);
+            Block testBlock = GetTestBlockB();
+            
+            gasPriceEstimateTxInsertionManager.AddValidTxFromBlockAndReturnCount(testBlock);
+
+            resultList.Count.Should().Be(3);
+        }
         [Test]
         public void AddValidTxAndReturnCount_IfBlockHasMoreThanThreeValidTxs_OnlyAddTxsWithLowestGasPrices()
         {
