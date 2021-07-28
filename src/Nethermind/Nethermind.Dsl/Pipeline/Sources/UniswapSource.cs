@@ -89,8 +89,8 @@ namespace Nethermind.Dsl.Pipeline.Sources
             {
                 var data = ConvertV3LogToData(log);
                 data.Transaction = args.Transaction.Hash;
-                data.Token0Price = GetV2PriceOfTokenInUSDC(data.Token0);
-                data.Token1Price = GetV2PriceOfTokenInUSDC(data.Token1);
+                data.Token0Price = GetV2PriceOfTokenInUSDC(data.Token0).ToString();
+                data.Token1Price = GetV2PriceOfTokenInUSDC(data.Token1).ToString();
                 Emit?.Invoke(data);
             }
 
@@ -98,8 +98,8 @@ namespace Nethermind.Dsl.Pipeline.Sources
             {
                 var data = ConvertV2LogToData(log);
                 data.Transaction = args.Transaction.Hash;
-                data.Token0Price = GetV2PriceOfTokenInUSDC(data.Token0);
-                data.Token1Price = GetV2PriceOfTokenInUSDC(data.Token1);
+                data.Token0Price = GetV2PriceOfTokenInUSDC(data.Token0).ToString();
+                data.Token1Price = GetV2PriceOfTokenInUSDC(data.Token1).ToString();
                 Emit?.Invoke(data);
             }
         }
@@ -190,8 +190,8 @@ namespace Nethermind.Dsl.Pipeline.Sources
         public Address? Pool { get; set; }
         public Address? Token0 { get; set; }
         public Address? Token1 { get; set; }
-        public UInt256? Token0Price { get; set; }
-        public UInt256? Token1Price { get; set; }
+        public string? Token0Price { get; set; }
+        public string? Token1Price { get; set; }
         public string? Token0In { get; set; }
         public string? Token0Out { get; set; }
         public string? Token1In { get; set; }
