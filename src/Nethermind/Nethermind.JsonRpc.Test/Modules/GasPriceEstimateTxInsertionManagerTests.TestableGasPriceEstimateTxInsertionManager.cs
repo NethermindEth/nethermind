@@ -39,7 +39,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 _txGasPriceList = txGasPriceList ?? new List<UInt256>();
             }
 
-            protected override List<UInt256> GetTxGasPriceList()
+            protected internal override List<UInt256> GetTxGasPriceList()
             {
                 return _txGasPriceList;
             }

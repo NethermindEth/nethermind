@@ -12,7 +12,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
     {
         public UInt256? FallbackGasPrice { get; private set; }
         public List<UInt256> TxGasPriceList { get; private set; }
-        public ISpecProvider SpecProvider { get; private set; }
+        public ISpecProvider SpecProvider { get; }
         protected UInt256? LastGasPrice { get; private set; }
         private Block? LastHeadBlock { get; set; }
         private readonly UInt256? _ignoreUnder;
