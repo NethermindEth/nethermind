@@ -24,7 +24,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth;
-using Nethermind.Specs;
 using NSubstitute;
 using NSubstitute.Extensions;
 using NUnit.Framework;
@@ -33,7 +32,7 @@ using static Nethermind.JsonRpc.Test.Modules.TestBlockConstructor;
 namespace Nethermind.JsonRpc.Test.Modules
 {
     [TestFixture]
-    partial class GasPriceEstimateTxInsertionManagerTests
+    class GasPriceEstimateTxInsertionManagerTests
     {
         [Test]
         public void AddValidTxAndReturnCount_IfBlockHasMoreThanThreeValidTx_AddOnlyThreeNew()
