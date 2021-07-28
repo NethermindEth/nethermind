@@ -147,6 +147,8 @@ namespace Nethermind.Dsl.Pipeline.Sources
         private double? GetPriceOfTokenInUSDC(Address token)
         {
             var poolAddress = _v2Factory.getPair(_api.BlockTree.Head.Header, token, _usdcAddress);
+            if (poolAddress == Address.Zero || poolAddress is null) return null; // there might not be any usdc-token pair on v2 for this exact token - fix for later to retrieve prices from v3 as well
+            
             var pool = new UniswapV2Pool(poolAddress, _api.CreateBlockchainBridge());
 
             var token0 = pool.token0(_api.BlockTree.Head.Header);
