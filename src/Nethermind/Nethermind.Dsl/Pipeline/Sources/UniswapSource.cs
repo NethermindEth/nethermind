@@ -146,7 +146,7 @@ namespace Nethermind.Dsl.Pipeline.Sources
         }
 
         //https://ethereum.stackexchange.com/questions/91441/how-can-you-get-the-price-of-token-on-uniswap-using-solidity
-        private uint? GetV2PriceOfTokenInUSDC(Address tokenAddress)
+        private UInt256? GetV2PriceOfTokenInUSDC(Address tokenAddress)
         {
             var poolAddress = _v2Factory.getPair(_api.BlockTree.Head.Header, tokenAddress, _usdcAddress);
             if (poolAddress == Address.Zero || poolAddress is null) return null; // there might not be any usdc-token pair on v2 for this exact token - fix for later to retrieve prices from v3 as well
@@ -167,19 +167,19 @@ namespace Nethermind.Dsl.Pipeline.Sources
             if (token0 == _usdcAddress)
             {
                 token = new ERC20(token1, _api);
-                usdcReserves = token0Reserves * (uint) Math.Pow(10, (double) token.decimals());
+                usdcReserves = token0Reserves * (UInt256) Math.Pow(10, (double) token.decimals());
                 tokenReserves = token1Reserves;
             }
             else if (token1 == _usdcAddress)
             {
                 token = new ERC20(token0, _api);
-                usdcReserves = token1Reserves * (uint) Math.Pow(10, (double) token.decimals());
+                usdcReserves = token1Reserves * (UInt256) Math.Pow(10, (double) token.decimals());
                 tokenReserves = token0Reserves;
             }
 
             if (token is null) return null;
 
-            return (uint?) (((uint) Math.Pow(10, (double) token.decimals()) * usdcReserves) / tokenReserves);
+            return (UInt256?) (((UInt256) Math.Pow(10, (double) token.decimals()) * usdcReserves) / tokenReserves);
         }
     }
 
@@ -190,8 +190,8 @@ namespace Nethermind.Dsl.Pipeline.Sources
         public Address? Pool { get; set; }
         public Address? Token0 { get; set; }
         public Address? Token1 { get; set; }
-        public double? Token0Price { get; set; }
-        public double? Token1Price { get; set; }
+        public UInt256? Token0Price { get; set; }
+        public UInt256? Token1Price { get; set; }
         public string? Token0In { get; set; }
         public string? Token0Out { get; set; }
         public string? Token1In { get; set; }
