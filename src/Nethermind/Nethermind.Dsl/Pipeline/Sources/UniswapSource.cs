@@ -41,6 +41,7 @@ namespace Nethermind.Dsl.Pipeline.Sources
         private readonly UniswapV3Factory _v3Factory;
         private readonly UniswapV2Factory _v2Factory;
         private Address _usdcAddress = new Address("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48");
+        private uint _usdcDecimals = 6;
         private Address _v2FactoryAddress = new Address("0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f");
         private Address _v3FactoryAddress = new Address("0x1F98431c8aD98523631AE4a59f267346ea31F984");
 
@@ -88,8 +89,8 @@ namespace Nethermind.Dsl.Pipeline.Sources
             {
                 var data = ConvertV3LogToData(log);
                 data.Transaction = args.Transaction.Hash;
-                data.Token0Price = GetPriceOfTokenInUSDC(data.Token0);
-                data.Token1Price = GetPriceOfTokenInUSDC(data.Token1);
+                data.Token0Price = GetV2PriceOfTokenInUSDC(data.Token0);
+                data.Token1Price = GetV2PriceOfTokenInUSDC(data.Token1);
                 Emit?.Invoke(data);
             }
 
@@ -97,8 +98,8 @@ namespace Nethermind.Dsl.Pipeline.Sources
             {
                 var data = ConvertV2LogToData(log);
                 data.Transaction = args.Transaction.Hash;
-                data.Token0Price = GetPriceOfTokenInUSDC(data.Token0);
-                data.Token1Price = GetPriceOfTokenInUSDC(data.Token1);
+                data.Token0Price = GetV2PriceOfTokenInUSDC(data.Token0);
+                data.Token1Price = GetV2PriceOfTokenInUSDC(data.Token1);
                 Emit?.Invoke(data);
             }
         }
@@ -144,24 +145,41 @@ namespace Nethermind.Dsl.Pipeline.Sources
             };
         }
 
-        private double? GetPriceOfTokenInUSDC(Address token)
+        //https://ethereum.stackexchange.com/questions/91441/how-can-you-get-the-price-of-token-on-uniswap-using-solidity
+        private uint? GetV2PriceOfTokenInUSDC(Address tokenAddress)
         {
-            var poolAddress = _v2Factory.getPair(_api.BlockTree.Head.Header, token, _usdcAddress);
+            var poolAddress = _v2Factory.getPair(_api.BlockTree.Head.Header, tokenAddress, _usdcAddress);
             if (poolAddress == Address.Zero || poolAddress is null) return null; // there might not be any usdc-token pair on v2 for this exact token - fix for later to retrieve prices from v3 as well
             
             var pool = new UniswapV2Pool(poolAddress, _api.CreateBlockchainBridge());
 
             var token0 = pool.token0(_api.BlockTree.Head.Header);
             var token1 = pool.token1(_api.BlockTree.Head.Header);
-            
+            UInt256 tokenReserves = 0;
+            UInt256 usdcReserves = 0;
+
             (UInt256, UInt256, uint) reserves = pool.getReserves(_api.BlockTree.Head.Header);
             var token0Reserves = reserves.Item1;
             var token1Reserves = reserves.Item2;
 
-            if (token0 == token) return (double)(token1Reserves / token0Reserves) * Math.Pow(10, 12);
-            if (token1 == token) return (double) (token0Reserves / token1Reserves) * Math.Pow(10, 12);
+            ERC20 token = null;
 
-            return null;
+            if (token0 == _usdcAddress)
+            {
+                token = new ERC20(token1, _api);
+                usdcReserves = token0Reserves * (uint) Math.Pow(10, token.decimals());
+                tokenReserves = token1Reserves;
+            }
+            else if (token1 == _usdcAddress)
+            {
+                token = new ERC20(token0, _api);
+                usdcReserves = token1Reserves * (uint) Math.Pow(10, token.decimals());
+                tokenReserves = token0Reserves;
+            }
+
+            if (token is null) return null;
+
+            return (uint?) (((uint) Math.Pow(10, token.decimals()) * usdcReserves) / tokenReserves);
         }
     }
 
