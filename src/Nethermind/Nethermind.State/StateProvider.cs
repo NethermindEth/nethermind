@@ -676,6 +676,8 @@ namespace Nethermind.State
 
         private void SetState(Address address, Account? account)
         {
+            _logger.Info($"Address {address}");
+            _logger.Info($"Account {account}");
             _needsStateRootUpdate = true;
             Metrics.StateTreeWrites++;
             _tree.Set(address, account);

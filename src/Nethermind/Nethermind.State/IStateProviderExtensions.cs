@@ -33,6 +33,11 @@ namespace Nethermind.State
         {
             return stateProvider.GetCodeHash(address) != Keccak.OfAnEmptyString;
         }
+
+        // public static string DumpAccounts(this IStateProvider stateProvider)
+        // {
+        //     
+        // }
         
         public static string DumpState(this IStateProvider stateProvider)
         {

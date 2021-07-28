@@ -180,7 +180,7 @@ namespace Nethermind.Runner.Hive
         {
             try
             {
-                _blockTree.SuggestBlock(block);
+                var result = _blockTree.SuggestBlock(block);
                 await WaitAsync(_resetEvent, string.Empty);
                 if (_logger.IsInfo) _logger.Info($"HIVE suggested {block.ToString(Block.Format.Short)}, now best suggested header {_blockTree.BestSuggestedHeader}, head {_blockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}");
             }
