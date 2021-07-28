@@ -35,6 +35,10 @@
     <EmbeddedResource Include="Contracts\UniswapV3Pool.json">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </EmbeddedResource>
+    <None Remove="Contracts\ERC20.json" />
+    <EmbeddedResource Include="Contracts\ERC20.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </EmbeddedResource>
   </ItemGroup>
 
   <ItemGroup>

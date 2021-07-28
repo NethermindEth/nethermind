@@ -16,37 +16,31 @@
 // 
 
 using System;
-using Nethermind.Abi;
+using Nethermind.Api;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Facade;
-using Nethermind.Int256;
 
 namespace Nethermind.Dsl.Contracts
 {
-    public class UniswapV2Pool : BlockchainBridgeContract
+    public class ERC20 : BlockchainBridgeContract
     {
         private IConstantContract ConstantContract { get; }
-
-        public UniswapV2Pool(Address contractAddress, IBlockchainBridge blockchainBridge) : base(
-            contractAddress)
+        private readonly IBlockTree _blockTree;
+        private readonly INethermindApi _api;
+        
+        public ERC20(Address contractAddress, INethermindApi api) : base(contractAddress)
         {
+            _api = api ?? throw new ArgumentNullException(nameof(api));
+            _blockTree = _api.BlockTree;
             ContractAddress = contractAddress;
+            var blockchainBridge = _api.CreateBlockchainBridge(); 
             ConstantContract = GetConstant(blockchainBridge);
         }
 
-        public Address token0(BlockHeader header)
+        public UInt16 decimals()
         {
-            return ConstantContract.Call<Address>(header, nameof(token0), Address.Zero);
-        }
-
-        public Address token1(BlockHeader header)
-        {
-            return ConstantContract.Call<Address>(header, nameof(token1), Address.Zero);
-        }
-        
-        public (UInt256, UInt256, uint) getReserves(BlockHeader header)
-        {
-            return ConstantContract.Call<UInt256, UInt256, uint>(header, nameof(getReserves), Address.Zero);
-        }
+            return ConstantContract.Call<UInt16>(_blockTree.Head.Header, nameof(decimals), Address.Zero);
+        }   
     }
 }

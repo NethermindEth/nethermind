@@ -88,8 +88,8 @@ namespace Nethermind.Dsl.Pipeline.Sources
             {
                 var data = ConvertV3LogToData(log);
                 data.Transaction = args.Transaction.Hash;
-                // data.Token0Price = GetPriceOfTokenInUSDC(data.Token0);
-                // data.Token1Price = GetPriceOfTokenInUSDC(data.Token1);
+                data.Token0Price = GetPriceOfTokenInUSDC(data.Token0);
+                data.Token1Price = GetPriceOfTokenInUSDC(data.Token1);
                 Emit?.Invoke(data);
             }
 
@@ -97,8 +97,8 @@ namespace Nethermind.Dsl.Pipeline.Sources
             {
                 var data = ConvertV2LogToData(log);
                 data.Transaction = args.Transaction.Hash;
-                // data.Token0Price = GetPriceOfTokenInUSDC(data.Token0);
-                // data.Token1Price = GetPriceOfTokenInUSDC(data.Token1);
+                data.Token0Price = GetPriceOfTokenInUSDC(data.Token0);
+                data.Token1Price = GetPriceOfTokenInUSDC(data.Token1);
                 Emit?.Invoke(data);
             }
         }

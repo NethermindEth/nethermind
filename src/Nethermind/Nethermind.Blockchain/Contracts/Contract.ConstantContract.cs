@@ -47,11 +47,20 @@ namespace Nethermind.Blockchain.Contracts
                 return ((T1) objects[0], (T2) objects[1]);
             }
             
+            public (T1, T2, T3) Call<T1, T2, T3>(CallInfo callInfo)
+            {
+                var objects = Call(callInfo);
+                return ((T1) objects[0], (T2) objects[1], (T3) objects[2]);
+            }
+            
             public T Call<T>(BlockHeader parentHeader, string functionName, Address sender, params object[] arguments) => 
                 Call<T>(new CallInfo(parentHeader, functionName, sender, arguments));
 
             public (T1, T2) Call<T1, T2>(BlockHeader parentHeader, string functionName, Address sender, params object[] arguments) => 
                 Call<T1,T2>(new CallInfo(parentHeader, functionName, sender, arguments));
+            
+            public (T1, T2, T3) Call<T1, T2, T3>(BlockHeader parentHeader, string functionName, Address sender, params object[] arguments) => 
+                Call<T1,T2, T3>(new CallInfo(parentHeader, functionName, sender, arguments));
             
             public T Call<T>(BlockHeader parentHeader, Address contractAddress, string functionName, Address sender, params object[] arguments) => 
                 Call<T>(new CallInfo(parentHeader, functionName, sender, arguments) {ContractAddress = contractAddress});
