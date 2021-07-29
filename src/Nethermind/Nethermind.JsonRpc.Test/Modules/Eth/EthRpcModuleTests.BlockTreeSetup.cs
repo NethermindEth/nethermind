@@ -38,6 +38,8 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             private EthRpcModule EthRpcModule { get; }
             public IGasPriceOracle GasPriceOracle { get; }
 
+            private static readonly Block[] _defaultBlocks = GetBlockArray();
+
             public BlockTreeSetup(
                 ISpecProvider specProvider,
                 Block[] blocks = null,
@@ -68,9 +70,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
 
             private void GetBlocks(Block[] blocks, bool shouldAddToBlocks)
             {
-                if (NoBlocksGiven(blocks) || shouldAddToBlocks)
+                if (blocks == null || shouldAddToBlocks)
                 {
-                    Blocks = GetBlockArray();
+                    Blocks = _defaultBlocks;
                     if (shouldAddToBlocks)
                     {
                         AddExtraBlocksToArray(blocks);
@@ -81,18 +83,13 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                     Blocks = blocks;
                 }
             }
-            
-            private static bool NoBlocksGiven(Block[] blocks)
-            {
-                return blocks == null;
-            }
 
             private BlockTree BuildABlockTreeWithGenesisBlock(Block genesisBlock)
             {
                 return Build.A.BlockTree(genesisBlock).TestObject;
             }
 
-            private Block[] GetBlockArray()
+            private static Block[] GetBlockArray()
             {
                 Block firstBlock = Build.A.Block.WithNumber(0).WithParentHash(Keccak.Zero).WithTransactions(
                         Build.A.Transaction.WithGasPrice(1).SignedAndResolved(TestItem.PrivateKeyA).WithNonce(0)

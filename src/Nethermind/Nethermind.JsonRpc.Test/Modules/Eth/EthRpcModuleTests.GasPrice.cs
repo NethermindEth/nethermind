@@ -158,6 +158,33 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
            
             return new[]{firstBlock, secondBlock, thirdBlock};
         }
+
+        private static Block[] DefaultBlocks()
+        {
+            Block firstBlock = Build.A.Block.WithNumber(0).WithParentHash(Keccak.Zero).WithTransactions(
+                    Build.A.Transaction.WithGasPrice(1).SignedAndResolved(TestItem.PrivateKeyA).WithNonce(0)
+                        .TestObject,
+                    Build.A.Transaction.WithGasPrice(2).SignedAndResolved(TestItem.PrivateKeyB).WithNonce(0)
+                        .TestObject)
+                .TestObject;
+            Block secondBlock = Build.A.Block.WithNumber(2).WithParentHash(firstBlock.Hash!).WithTransactions(
+                    Build.A.Transaction.WithGasPrice(3).SignedAndResolved(TestItem.PrivateKeyC).WithNonce(0)
+                        .TestObject)
+                .TestObject;
+            Block thirdBlock = Build.A.Block.WithNumber(3).WithParentHash(secondBlock.Hash!).WithTransactions(
+                    Build.A.Transaction.WithGasPrice(5).SignedAndResolved(TestItem.PrivateKeyD).WithNonce(0)
+                        .TestObject)
+                .TestObject;
+            Block fourthBlock = Build.A.Block.WithNumber(4).WithParentHash(thirdBlock.Hash!).WithTransactions(
+                    Build.A.Transaction.WithGasPrice(4).SignedAndResolved(TestItem.PrivateKeyA).WithNonce(1)
+                        .TestObject)
+                .TestObject;
+            Block fifthBlock = Build.A.Block.WithNumber(5).WithParentHash(fourthBlock.Hash!).WithTransactions(
+                    Build.A.Transaction.WithGasPrice(6).SignedAndResolved(TestItem.PrivateKeyB).WithNonce(1)
+                        .TestObject)
+                .TestObject;
+            return new[] {firstBlock, secondBlock, thirdBlock, fourthBlock, fifthBlock};
+        }
         private static EthRpcModule GetTestEthRpcModule(IBlockFinder? blockFinder = null, IGasPriceOracle? gasPriceOracle = null)
         {
             return new(
