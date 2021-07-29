@@ -165,20 +165,19 @@ namespace Nethermind.Dsl.Pipeline.Sources
             if (token0 == _usdcAddress)
             {
                 token = new ERC20(token1, _api);
-                usdcReserves = token0Reserves * (UInt256) Math.Pow(10, (double) token.decimals());
+                usdcReserves = token0Reserves; 
                 tokenReserves = token1Reserves;
             }
             else if (token1 == _usdcAddress)
             {
                 token = new ERC20(token0, _api);
-                usdcReserves = token1Reserves * (UInt256) Math.Pow(10, (double) token.decimals());
+                usdcReserves = token1Reserves;
                 tokenReserves = token0Reserves;
             }
 
             if (token is null) return null;
 
-            var price = ((((UInt256) Math.Pow(10, (double) token.decimals()) * usdcReserves) / tokenReserves));
-            return (decimal) (price / 1000000000000);
+            return ((decimal)usdcReserves / (decimal)tokenReserves) * (decimal)Math.Pow(10, 12);
         }
     }
 
