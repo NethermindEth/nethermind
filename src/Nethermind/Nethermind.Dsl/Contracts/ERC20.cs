@@ -15,25 +15,36 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Abi;
+using System;
+using Nethermind.Api;
+using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Facade;
+using Nethermind.Int256;
 
 namespace Nethermind.Dsl.Contracts
 {
-    public class UniswapV2Factory : BlockchainBridgeContract
+    public class ERC20 : BlockchainBridgeContract
     {
-        private IConstantContract ConstantContract { get; } 
+        private IConstantContract ConstantContract { get; }
+        private readonly IBlockTree _blockTree;
+        private readonly INethermindApi _api;
         
-        public UniswapV2Factory(Address contractAddress, IBlockchainBridge blockchainBridge) : base(contractAddress)
+        public ERC20(Address contractAddress, INethermindApi api) : base(contractAddress)
         {
+            _api = api ?? throw new ArgumentNullException(nameof(api));
+            _blockTree = _api.BlockTree;
             ContractAddress = contractAddress;
+            var blockchainBridge = _api.CreateBlockchainBridge(); 
             ConstantContract = GetConstant(blockchainBridge);
         }
 
-        public Address getPair(BlockHeader header, Address tokenA, Address tokenB)
+        public UInt256 decimals()
         {
-            return ConstantContract.Call<Address>(header, nameof(getPair), Address.Zero, tokenA, tokenB);
-        }  
+            var result = ConstantContract.Call<byte>(_blockTree.Head.Header, nameof(decimals), Address.Zero);
+            var bytes = new [] {result};
+            return bytes.ToUInt256();
+        }   
     }
 }

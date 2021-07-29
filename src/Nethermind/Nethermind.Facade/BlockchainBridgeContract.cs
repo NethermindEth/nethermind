@@ -42,22 +42,6 @@ namespace Nethermind.Facade
         protected IConstantContract GetConstant(IBlockchainBridge blockchainBridge) =>
             new ConstantBridgeContract(this, blockchainBridge);
 
-        protected AbiDefinition? GetAbiDefinition(string contractName)
-        {
-            var fileSystem = new FileSystem();
-            
-            var dirPath = fileSystem.Path.Combine(PathUtils.ExecutingDirectory, "Contracts");
-            
-            if (!fileSystem.Directory.Exists(dirPath)) return null;
-            
-            string file = fileSystem.Directory
-                .GetFiles("Contracts", $"{contractName}Abi.json").First();
-
-            var abiJson = fileSystem.File.ReadAllText(file);
-
-            return new AbiDefinitionParser().Parse(abiJson);
-        }
-
         private class ConstantBridgeContract : ConstantContractBase
         {
             private readonly IBlockchainBridge _blockchainBridge;
