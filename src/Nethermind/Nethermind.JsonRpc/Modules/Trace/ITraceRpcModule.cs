@@ -25,7 +25,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
     [RpcModule(ModuleType.Trace)]
     public interface ITraceRpcModule : IRpcModule
     {
-        [JsonRpcMethod(Description = "", IsImplemented = false, IsSharable = false)]
+        [JsonRpcMethod(Description = "", IsImplemented = true, IsSharable = false)]
         ResultWrapper<ParityTxTraceFromReplay> trace_call(TransactionForRpc message, string[] traceTypes, BlockParameter blockParameter);
         
         [JsonRpcMethod(Description = "", IsImplemented = false, IsSharable = false)]
