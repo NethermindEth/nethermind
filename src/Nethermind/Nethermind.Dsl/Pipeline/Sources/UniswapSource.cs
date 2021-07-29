@@ -90,8 +90,8 @@ namespace Nethermind.Dsl.Pipeline.Sources
             {
                 var data = ConvertV3LogToData(log);
                 data.Transaction = args.Transaction.Hash;
-                data.Token0V2Price = $"{GetV2PriceOfTokenInUSDC(data.Token0, data)} USDC";
-                data.Token1V2Price = $"{GetV2PriceOfTokenInUSDC(data.Token1, data)} USDC";
+                data.Token0V2Price = $"{GetV2PriceOfTokenInUSDC(data.Token0)} USDC";
+                data.Token1V2Price = $"{GetV2PriceOfTokenInUSDC(data.Token1)} USDC";
                 Emit?.Invoke(data);
             }
 
@@ -99,8 +99,8 @@ namespace Nethermind.Dsl.Pipeline.Sources
             {
                 var data = ConvertV2LogToData(log);
                 data.Transaction = args.Transaction.Hash;
-                data.Token0V2Price = $"{GetV2PriceOfTokenInUSDC(data.Token0, data)} USDC";
-                data.Token1V2Price = $"{GetV2PriceOfTokenInUSDC(data.Token1, data)} USDC";
+                data.Token0V2Price = $"{GetV2PriceOfTokenInUSDC(data.Token0)} USDC";
+                data.Token1V2Price = $"{GetV2PriceOfTokenInUSDC(data.Token1)} USDC";
                 Emit?.Invoke(data);
             }
         }
@@ -147,7 +147,7 @@ namespace Nethermind.Dsl.Pipeline.Sources
         }
 
         //https://ethereum.stackexchange.com/questions/91441/how-can-you-get-the-price-of-token-on-uniswap-using-solidity
-        private double? GetV2PriceOfTokenInUSDC(Address tokenAddress, UniswapData data)
+        private double? GetV2PriceOfTokenInUSDC(Address tokenAddress)
         {
             var poolAddress = _v2Factory.getPair(_api.BlockTree.Head.Header, tokenAddress, _usdcAddress);
             if (poolAddress == Address.Zero || poolAddress is null) return null; // there might not be any usdc-token pair on v2 for this exact token - fix for later to retrieve prices from v3 as well
@@ -162,8 +162,6 @@ namespace Nethermind.Dsl.Pipeline.Sources
             (UInt256, UInt256, uint) reserves = pool.getReserves(_api.BlockTree.Head.Header);
             var token0Reserves = reserves.Item1;
             var token1Reserves = reserves.Item2;
-            data.Token0V2Reserves = token0Reserves.ToString();
-            data.Token1V2Reserves = token1Reserves.ToString();
 
             ERC20 token = null;
 
@@ -181,6 +179,8 @@ namespace Nethermind.Dsl.Pipeline.Sources
             }
 
             if (token is null) return null;
+
+            if (token.decimals() == 6) return (double) usdcReserves / (double) tokenReserves;
 
             return ((double)usdcReserves / (double)tokenReserves) * Math.Pow(10, 12);
         }
