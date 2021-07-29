@@ -56,7 +56,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly IWallet _wallet;
         private readonly ISpecProvider _specProvider;
         private readonly ILogger _logger;
-        protected IGasPriceOracle GasPriceOracle { get; set; }
 
         private static bool HasStateForBlock(IBlockchainBridge blockchainBridge, BlockHeader header)
         {
@@ -86,13 +85,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            GasPriceOracle = GetGasPriceOracle(specProvider);
         }
 
-        public IGasPriceOracle GetGasPriceOracle(ISpecProvider specProvider)
-        {
-            return new GasPriceOracle(specProvider);
-        }
+        public virtual IGasPriceOracle GasPriceOracle => new GasPriceOracle(_specProvider);
 
         public ResultWrapper<string> eth_protocolVersion()
         {

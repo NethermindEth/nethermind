@@ -22,7 +22,6 @@ using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Facade.Proxy;
 using Nethermind.Facade.Proxy.Models;
@@ -37,6 +36,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
     {
         private readonly IEthJsonRpcClientProxy _proxy;
         private readonly IWallet _wallet;
+        public IGasPriceOracle GasPriceOracle { get; }
         public EthRpcModuleProxy(IEthJsonRpcClientProxy proxy, IWallet wallet)
         {
             _proxy = proxy;
@@ -281,11 +281,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public ResultWrapper<AccountProof> eth_getProof(Address accountAddress, byte[][] hashRate,
             BlockParameter blockParameter)
-        {
-            throw new NotSupportedException();
-        }
-
-        public IGasPriceOracle GetGasPriceOracle(ISpecProvider specProvider)
         {
             throw new NotSupportedException();
         }

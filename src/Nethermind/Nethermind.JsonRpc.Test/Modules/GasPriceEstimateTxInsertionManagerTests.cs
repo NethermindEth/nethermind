@@ -19,6 +19,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -39,7 +40,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void AddValidTxAndReturnCount_IfBlockHasMoreThanThreeValidTx_AddOnlyThreeNew()
         {
             (List<UInt256> results, GasPriceEstimateTxInsertionManager txInsertionManager) = GetTestableTxInsertionManager(ignoreUnder: 3);
-            txInsertionManager.Configure().GetTxGasPriceList().Returns(results);
+            txInsertionManager.Configure().GetTxGasPriceList(Arg.Any<IGasPriceOracle>()).Returns(results);
             Block testBlock = GetTestBlockB();
             
             txInsertionManager.AddValidTxFromBlockAndReturnCount(testBlock);
@@ -51,7 +52,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void AddValidTxAndReturnCount_IfBlockHasMoreThanThreeValidTxs_OnlyAddTxsWithLowestGasPrices()
         {
             (List<UInt256> results, GasPriceEstimateTxInsertionManager txInsertionManager) = GetTestableTxInsertionManager(ignoreUnder: 3);
-            txInsertionManager.Configure().GetTxGasPriceList().Returns(results);
+            txInsertionManager.Configure().GetTxGasPriceList(Arg.Any<IGasPriceOracle>()).Returns(results);
             Block testBlock = GetTestBlockB();
             List<UInt256> expected = new() {5,6,7};
             
@@ -65,7 +66,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             Block testBlock = GetTestBlockA();
             (List<UInt256> results, GasPriceEstimateTxInsertionManager txInsertionManager) = GetTestableTxInsertionManager(ignoreUnder: 3);
-            txInsertionManager.Configure().GetTxGasPriceList().Returns(results);
+            txInsertionManager.Configure().GetTxGasPriceList(Arg.Any<IGasPriceOracle>()).Returns(results);
             List<UInt256> expected = new() {3, 4};
             
             txInsertionManager.AddValidTxFromBlockAndReturnCount(testBlock);
@@ -180,7 +181,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                     ignoreUnder ?? UInt256.Zero,
                     specProvider ?? Substitute.For<ISpecProvider>());
             List<UInt256> results = new();
-            txInsertionManager.Configure().GetTxGasPriceList().Returns(results);
+            txInsertionManager.Configure().GetTxGasPriceList(Arg.Any<IGasPriceOracle>()).Returns(results);
 
             return (results, txInsertionManager);
         }

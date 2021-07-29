@@ -21,7 +21,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public int AddValidTxFromBlockAndReturnCount(Block block)
         {
-            List<UInt256> txGasPriceList = GetTxGasPriceList();
+            List<UInt256> txGasPriceList = GetTxGasPriceList(_gasPriceOracle);
             if (block.Transactions.Length > 0)
             {
                 Transaction[] transactionsInBlock = block.Transactions;
@@ -52,7 +52,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             {
                 if (TransactionCanBeAdded(tx, block, eip1559Enabled))
                 {
-                    List<UInt256> txGasPriceList = GetTxGasPriceList();
+                    List<UInt256> txGasPriceList = GetTxGasPriceList(_gasPriceOracle);
                     txGasPriceList.Add(EffectiveGasPrice(tx, eip1559Enabled, baseFee));
                     countTxAdded++;
                 }
@@ -93,9 +93,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return block.Beneficiary != transaction.SenderAddress;
         }
 
-        internal List<UInt256> GetTxGasPriceList()
+        internal List<UInt256> GetTxGasPriceList(IGasPriceOracle gasPriceOracle)
         {
-            return _gasPriceOracle.TxGasPriceList;
+            return gasPriceOracle.TxGasPriceList;
         }
     }
 }

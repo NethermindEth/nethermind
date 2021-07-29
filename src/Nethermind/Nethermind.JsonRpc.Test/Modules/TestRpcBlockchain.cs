@@ -130,7 +130,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             ITxSealer txSealer1 = new NonceReservingTxSealer(txSigner, Timestamper, TxPool);
             TxSender ??= new TxPoolSender(TxPool, txSealer0, txSealer1);
              
-            EthRpcModule = new EthRpcModule(
+            EthRpcModule = Substitute.ForPartsOf<EthRpcModule>(
                 new JsonRpcConfig(),
                 Bridge,
                 BlockFinder,
