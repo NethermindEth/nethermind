@@ -260,6 +260,7 @@ namespace Nethermind.Dsl.ANTLR
             AddTransactionsPublisher(slackPublisher);
             AddPendingTransactionsPublisher(slackPublisher);
             AddEventsPublisher(slackPublisher);
+            AddUniswapPublisher(slackPublisher);
 
             BuildPipelines();
         }

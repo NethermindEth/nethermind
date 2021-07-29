@@ -42,7 +42,6 @@ namespace Nethermind.Pipeline.Publishers
         {
             _serializer = serializer;
             _chatId = $"{chatId}";
-            _botToken = LoadBotToken();
             _httpClient = new HttpClient();
 
             Start();
@@ -77,7 +76,6 @@ namespace Nethermind.Pipeline.Publishers
 
             var messageContents = new FormUrlEncodedContent(new[]
             {
-                // new KeyValuePair<string, string>("chat_id", _chatId),
                 new KeyValuePair<string, string>("text", serializedData)
             });
 
@@ -92,11 +90,6 @@ namespace Nethermind.Pipeline.Publishers
             } catch (HttpRequestException) {
 
             }
-        }
-
-        private string LoadBotToken()
-        {
-            return "";
         }
 
     }

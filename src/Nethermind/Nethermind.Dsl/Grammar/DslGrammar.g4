@@ -1,8 +1,7 @@
 grammar DslGrammar;
 
 tree: (expression)* ;
-expression : sourceExpression | watchExpression | whereExpression | publishExpression | andCondition | orCondition ;
-sourceExpression : SOURCE WORD ;
+expression : watchExpression | whereExpression | publishExpression | andCondition | orCondition ;
 watchExpression : WATCH WORD ;
 whereExpression : WHERE condition ;
 publishExpression : PUBLISH PUBLISH_VALUE ( URL | WORD | DIGIT );
@@ -13,7 +12,6 @@ orCondition : OR condition ;
 BOOLEAN_OPERATOR : ARITHMETIC_SYMBOL | CONTAINS ;
 ARITHMETIC_SYMBOL : '==' | '!=' | '<' | '>' | '<=' | '>=' | IS | NOT ;
 
-SOURCE : 'SOURCE' ;
 WATCH : 'WATCH' ;
 WHERE : 'WHERE' ;
 PUBLISH : 'PUBLISH' ;
