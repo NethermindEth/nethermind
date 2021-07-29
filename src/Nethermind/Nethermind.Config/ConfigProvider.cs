@@ -128,7 +128,6 @@ namespace Nethermind.Config
                 Initialize();
             }
 
-            //var set = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             var propertySet = _instances.Values.SelectMany(i => i.GetType().GetProperties().Select(p => GetKey(i.GetType().Name , p.Name))).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
             List<(IConfigSource Source, string Category, string Name)> incorrectSettings = new();

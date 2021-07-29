@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -18,36 +18,50 @@
 using System;
 using System.Collections.Generic;
 
-namespace Nethermind.Core
+namespace Nethermind.Core.Collections
 {
-    public class BlockToProduce : Block
+    public class StackList<T> : List<T>
     {
-        private IEnumerable<Transaction>? _transactions;
-
-        public new IEnumerable<Transaction> Transactions
+        public T Peek() => this[^1];
+        
+        public bool TryPeek(out T? item)
         {
-            get => _transactions ?? base.Transactions;
-            set
+            if (Count > 0)
             {
-                _transactions = value;
-                if (_transactions is Transaction[] transactionsArray)
-                {
-                    base.Transactions = transactionsArray;
-                }
+                item = Peek();
+                return true;
+            }
+            else
+            {
+                item = default;
+                return false;
             }
         }
 
-        public BlockToProduce(BlockHeader blockHeader, BlockBody body) : base(blockHeader, body)
+        public T Pop()
         {
+            T value = this[^1];
+            RemoveAt(Count -1);
+            return value;
+        }
+        
+        public bool TryPop(out T? item)
+        {
+            if (Count > 0)
+            {
+                item = Pop();
+                return true;
+            }
+            else
+            {
+                item = default;
+                return false;
+            }
         }
 
-        public BlockToProduce(BlockHeader blockHeader, IEnumerable<Transaction> transactions, IEnumerable<BlockHeader> ommers) : base(blockHeader, Array.Empty<Transaction>(), ommers)
+        public void Push(T item)
         {
-            Transactions = transactions;
-        }
-
-        public BlockToProduce(BlockHeader blockHeader) : base(blockHeader)
-        {
+            Add(item);
         }
     }
 }

@@ -57,12 +57,12 @@ namespace Nethermind.TxPool.Collections
 
         protected override void InsertCore(TKey key, TValue value, TGroupKey groupKey, ICollection<TValue> bucketCollection)
         {
-            base.InsertCore(key, value, groupKey, bucketCollection);
-
             if (_distinctDictionary.TryGetValue(value, out KeyValuePair<TKey, TValue> oldKvp))
             {
                 TryRemove(oldKvp.Key);
             }
+            
+            base.InsertCore(key, value, groupKey, bucketCollection);
 
             _distinctDictionary[value] = new KeyValuePair<TKey, TValue>(key, value);
         }

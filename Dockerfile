@@ -9,11 +9,9 @@ COPY . .
 
 RUN if [ "$TARGETARCH" = "amd64" ] ; \
     then git submodule update --init src/Dirichlet src/int256 src/rocksdb-sharp src/Math.Gmp.Native && \
-    dotnet publish src/Nethermind/Nethermind.Runner -r $TARGETOS-x64 -c release -o out && \
-    git describe --tags --always --long > out/git-hash ; \
+    dotnet publish src/Nethermind/Nethermind.Runner -r $TARGETOS-x64 -c release -o out ; \
     else git submodule update --init src/Dirichlet src/int256 src/rocksdb-sharp src/Math.Gmp.Native && \
-    dotnet publish src/Nethermind/Nethermind.Runner -r $TARGETOS-$TARGETARCH -c release -o out && \
-    git describe --tags --always --long > out/git-hash ; \
+    dotnet publish src/Nethermind/Nethermind.Runner -r $TARGETOS-$TARGETARCH -c release -o out ; \
     fi
 
 FROM --platform=$TARGETPLATFORM mcr.microsoft.com/dotnet/aspnet@sha256:1d75db770c7ce82b128744770271bd87dc9d119f0ef15b94cab0f84477abfaec 

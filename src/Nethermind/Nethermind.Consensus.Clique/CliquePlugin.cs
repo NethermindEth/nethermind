@@ -112,12 +112,12 @@ namespace Nethermind.Consensus.Clique
                 readOnlyBlockTree,
                 getFromApi.SpecProvider,
                 getFromApi.LogManager);
-
+                
             BlockProcessor producerProcessor = new BlockProcessor(
                 getFromApi!.SpecProvider,
                 getFromApi!.BlockValidator,
                 NoBlockRewards.Instance,
-                producerEnv.TransactionProcessor,
+                new BlockProcessor.BlockProductionTransactionsExecutor(producerEnv, getFromApi!.SpecProvider, getFromApi.LogManager),
                 producerEnv.StateProvider,
                 producerEnv.StorageProvider, // do not remove transactions from the pool when preprocessing
                 NullReceiptStorage.Instance,
@@ -143,7 +143,6 @@ namespace Nethermind.Consensus.Clique
             
             txSource ??= new TxPoolTxSource(
                 getFromApi.TxPool,
-                getFromApi.StateReader,
                 getFromApi.SpecProvider,
                 transactionComparerProvider,
                 getFromApi.LogManager,

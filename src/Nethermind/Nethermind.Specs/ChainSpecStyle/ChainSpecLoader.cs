@@ -370,13 +370,13 @@ namespace Nethermind.Specs.ChainSpecStyle
             chainSpec.Allocations = new Dictionary<Address, ChainSpecAllocation>();
             foreach (KeyValuePair<string, AllocationJson> account in chainSpecJson.Accounts)
             {
-                if (account.Value.BuiltIn != null && account.Value.Balance == UInt256.Zero)
+                if (account.Value.BuiltIn != null && account.Value.Balance == null)
                 {
                     continue;
                 }
                 
                 chainSpec.Allocations[new Address(account.Key)] = new ChainSpecAllocation(
-                    account.Value.Balance,
+                    account.Value.Balance ?? UInt256.Zero,
                     account.Value.Nonce,
                     account.Value.Code,
                     account.Value.Constructor,

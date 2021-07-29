@@ -38,6 +38,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Specs.ChainSpecStyle;
@@ -138,7 +139,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.SpecProvider,
                 _api.BlockValidator,
                 _api.RewardCalculatorSource.Get(changableTxProcessingEnv.TransactionProcessor),
-                changableTxProcessingEnv.TransactionProcessor,
+                new BlockProcessor.BlockProductionTransactionsExecutor(changableTxProcessingEnv, _api.SpecProvider, _api.LogManager),
                 changableTxProcessingEnv.StateProvider,
                 changableTxProcessingEnv.StorageProvider, 
                 _api.ReceiptStorage,
@@ -262,7 +263,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 .WithCustomTxFilter(txSourceFilter)
                 .WithBaseFeeFilter(_api.SpecProvider)
                 .Build;
-            return new TxPoolTxSource(_api.TxPool, processingEnv.StateReader, _api.SpecProvider, _api.TransactionComparerProvider, _api.LogManager, txFilterPipeline);
+            return new TxPoolTxSource(_api.TxPool, _api.SpecProvider, _api.TransactionComparerProvider, _api.LogManager, txFilterPipeline);
         }
 
         private ITxFilter CreateAuraTxFilterForProducer(IReadOnlyTxProcessorSource readOnlyTxProcessorSource, ISpecProvider specProvider) =>

@@ -20,10 +20,12 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Mev.Data;
 using Nethermind.Mev.Execution;
 using Nethermind.Mev.Source;
+using Nethermind.TxPool;
 
 namespace Nethermind.Mev.Test
 {
@@ -31,8 +33,14 @@ namespace Nethermind.Mev.Test
     {
         private BlockingCollection<(MevBundle Bundle, SimulatedMevBundleContext? Context)> _queue = new(new ConcurrentQueue<(MevBundle, SimulatedMevBundleContext?)>());
         
-        public TestBundlePool(IBlockTree blockTree, IBundleSimulator simulator, ITimestamper timestamper, IMevConfig mevConfig, ILogManager logManager)
-            : base(blockTree, simulator, timestamper, mevConfig, logManager)
+        public TestBundlePool(IBlockTree blockTree, 
+            IBundleSimulator simulator,
+            ITimestamper timestamper,
+            ITxValidator txValidator, 
+            ISpecProvider specProvider,
+            IMevConfig mevConfig,
+            ILogManager logManager)
+            : base(blockTree, simulator, timestamper, txValidator, specProvider, mevConfig, logManager)
         {
         }
 
@@ -53,7 +61,7 @@ namespace Nethermind.Mev.Test
             {
                 if (token.IsCancellationRequested)
                 {
-                    return;
+                    break;
                 }
 
                 if (bundle.Hash == simulatedBundle.Bundle.Hash)
@@ -63,7 +71,7 @@ namespace Nethermind.Mev.Test
                         await simulatedBundle.Item2.Task;
                     }
 
-                    return;
+                    break;
                 }
                 else
                 {

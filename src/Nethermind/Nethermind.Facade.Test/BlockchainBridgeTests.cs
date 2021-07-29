@@ -39,6 +39,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Trie.Pruning;
 using System.Threading.Tasks;
+using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Facade.Test
 {

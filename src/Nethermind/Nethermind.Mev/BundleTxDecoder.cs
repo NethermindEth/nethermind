@@ -13,15 +13,14 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using Nethermind.Core;
-using Nethermind.Evm.Tracing;
+using Nethermind.Mev.Data;
+using Nethermind.Serialization.Rlp;
 
-namespace Nethermind.Evm
+namespace Nethermind.Mev
 {
-    public interface ITransactionProcessor
+    public class BundleTxDecoder : TxDecoder<BundleTransaction>
     {
-        void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer);
-        void CallAndRestore(Transaction transaction, BlockHeader block, ITxTracer txTracer);
     }
 }

@@ -46,6 +46,7 @@ using Nethermind.DataMarketplace.Infrastructure.Updaters;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Evm;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade;
 using Nethermind.Facade.Proxy;
 using Nethermind.Grpc;
@@ -478,6 +479,12 @@ namespace Nethermind.DataMarketplace.Infrastructure
         {
             get => _nethermindApi.TxPoolInfoProvider;
             set => _nethermindApi.TxPoolInfoProvider = value;
+        }
+
+        public IWitnessRepository? WitnessRepository
+        {
+            get => _nethermindApi.WitnessRepository;
+            set => _nethermindApi.WitnessRepository = value;
         }
 
         public IHealthHintService? HealthHintService        

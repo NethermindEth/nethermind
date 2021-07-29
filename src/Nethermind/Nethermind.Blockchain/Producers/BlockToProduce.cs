@@ -15,35 +15,36 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
+using Nethermind.Core;
 
-namespace Nethermind.Core
-{
-    public static class BlockExtensions
+//TODO: Redo clique block producer
+[assembly: InternalsVisibleTo("Nethermind.Consensus.Clique")]
+
+namespace Nethermind.Blockchain.Producers
+{   
+    internal class BlockToProduce : Block
     {
-        public static IEnumerable<Transaction> GetTransactions(this Block block, out bool transactionsChangeable)
+        private IEnumerable<Transaction>? _transactions;
+
+        public new IEnumerable<Transaction> Transactions
         {
-            if (block is BlockToProduce {Transactions: not ICollection<Transaction>} blockToProduce)
+            get => _transactions ?? base.Transactions;
+            set
             {
-                transactionsChangeable = true;
-                return blockToProduce.Transactions;
-            }
-            else
-            {
-                transactionsChangeable = false;
-                return block.Transactions;
+                _transactions = value;
+                if (_transactions is Transaction[] transactionsArray)
+                {
+                    base.Transactions = transactionsArray;
+                }
             }
         }
 
-        public static bool TrySetTransactions(this Block block, Transaction[] transactions)
+        public BlockToProduce(BlockHeader blockHeader, IEnumerable<Transaction> transactions, IEnumerable<BlockHeader> ommers) : base(blockHeader, Array.Empty<Transaction>(), ommers)
         {
-            if (block is BlockToProduce blockToProduce)
-            {
-                blockToProduce.Transactions = transactions;
-                return true;
-            }
-
-            return false;
+            Transactions = transactions; 
         }
     }
 }

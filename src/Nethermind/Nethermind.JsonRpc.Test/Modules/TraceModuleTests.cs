@@ -47,6 +47,7 @@ using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Spec;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Specs.Forks;
 using Nethermind.Trie.Pruning;
 
@@ -106,7 +107,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 specProvider,
                 Always.Valid,
                 new RewardCalculator(specProvider),
-                txProcessor,
+                new BlockProcessor.BlockValidationTransactionsExecutor(txProcessor, _stateProvider),
                 _stateProvider,
                 storageProvider,
                 receiptStorage,

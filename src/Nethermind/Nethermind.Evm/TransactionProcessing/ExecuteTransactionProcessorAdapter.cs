@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,16 +13,23 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using NUnit.Framework;
+using Nethermind.Core;
+using Nethermind.Evm.Tracing;
 
-namespace Nethermind.Synchronization.Test.BeamSync
+namespace Nethermind.Evm.TransactionProcessing
 {
-    
-    
-    [TestFixture]
-    [Parallelizable(ParallelScope.All)]
-    public class BeamSyncTests
+    public class ExecuteTransactionProcessorAdapter : ITransactionProcessorAdapter
     {
+        private readonly ITransactionProcessor _transactionProcessor;
+
+        public ExecuteTransactionProcessorAdapter(ITransactionProcessor transactionProcessor)
+        {
+            _transactionProcessor = transactionProcessor;
+        }
+        
+        public void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer) =>
+            _transactionProcessor.Execute(transaction, block, txTracer);
     }
 }

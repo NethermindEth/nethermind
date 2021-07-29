@@ -185,7 +185,7 @@ namespace Nethermind.AuRa.Test.Validators
         {
             _validator = GetValidator(validatorType);
             IAuRaValidator validator = new MultiValidator(_validator, _factory, _blockTree, _validatorStore, _finalizationManager, default, _logManager);
-            _validator.Validators.ToList().TryGetForActivation(in blockNumber, (l, pair) => l.CompareTo(pair.Key), out var validatorInfo);
+            _validator.Validators.ToList().TryGetSearchedItem(in blockNumber, (l, pair) => l.CompareTo(pair.Key), out var validatorInfo);
             _finalizationManager.GetFinalizationLevel(validatorInfo.Key).Returns(finalizedLastValidatorBlockLevel ? blockNumber - 2 : (long?) null);
             _block.Header.Number = blockNumber;
             validator.OnBlockProcessingStart(_block);
