@@ -12,8 +12,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
     {
         public UInt256? FallbackGasPrice { get; private set; }
         public List<UInt256> TxGasPriceList { get; private set; }
-        public ISpecProvider SpecProvider { get; }
-        protected UInt256? LastGasPrice { get; private set; }
+        private ISpecProvider SpecProvider { get; }
+        private UInt256? LastGasPrice { get; set; }
         private Block? LastHeadBlock { get; set; }
         private UInt256? IgnoreUnder => GetIgnoreUnder();
         private int BlockLimit => GetBlockLimit();
