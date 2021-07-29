@@ -33,7 +33,7 @@ namespace Nethermind.HealthChecks
         [ConfigItem(Description = "The Webhooks endpoint e.g. Slack WebHooks", DefaultValue = "null")]
         public string WebhooksUri { get; set; }
 
-        [ConfigItem(Description = "Payload is the json payload that will be send on Failure and must be escaped.", DefaultValue = "{\"attachments\":[{\"color\":\"#FFCC00\",\"pretext\":\"Health Check Status :warning:\",\"fields\":[{\"title\":\"Details\",\"value\":\"More details available at `/healthchecks-ui`\",\"short\":false},{\"title\":\"Description\",\"value\":\"`[[DESCRIPTIONS]]`\",\"short\":false}]}]}")]
+        [ConfigItem(Description = "Payload is the json payload that will be send on Failure and must be escaped.", DefaultValue = "{\"attachments\":[{\"color\":\"#FFCC00\",\"pretext\":\"Health Check Status :warning:\",\"fields\":[{\"title\":\"Details\",\"value\":\"More details available at `/healthchecks-ui`\",\"short\":false},{\"title\":\"Description\",\"value\":\"[[DESCRIPTIONS]]\",\"short\":false}]}]}")]
         public string WebhooksPayload { get; set; }
 
         [ConfigItem(Description = "RestorePayload is the json payload that will be send on Recovery and must be escaped.", DefaultValue = "{\"attachments\":[{\"color\":\"#36a64f\",\"pretext\":\"Health Check Status :+1:\",\"fields\":[{\"title\":\"Details\",\"value\":\"`More details available at /healthchecks-ui`\",\"short\":false},{\"title\":\"description\",\"value\":\"The HealthCheck `[[LIVENESS]]` is recovered. All is up and running\",\"short\":false}]}]}")]
