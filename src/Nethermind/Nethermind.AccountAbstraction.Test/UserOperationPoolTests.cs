@@ -8,12 +8,17 @@ using Nethermind.AccountAbstraction.Executor;
 using Nethermind.AccountAbstraction.Source;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
+using NUnit.Framework.Internal.Commands;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 
 namespace Nethermind.AccountAbstraction.Test
 {
@@ -31,7 +36,7 @@ namespace Nethermind.AccountAbstraction.Test
                 Substitute.For<IStateProvider>(),
                 Substitute.For<IBlockchainProcessor>(),
                 userOperationSortedPool,
-                new UserOperationSimulator(simulatedUserOperations),
+                Substitute.For<IUserOperationSimulator>(),
                 new SimulatedUserOperationSource(simulatedUserOperations),
                 simulatedUserOperations
             );

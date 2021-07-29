@@ -16,17 +16,20 @@
 // 
 
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Eip2930;
+using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing.Access
 {
     public class AccessBlockTracer : BlockTracerBase<AccessTxTracer, AccessTxTracer>
     {
         private readonly Address[] _addressesToOptimize;
-        private IList<Address> _addressesAccessed = new List<Address>();
+        private IDictionary<Address, HashSet<UInt256>> _accessListData = new Dictionary<Address, HashSet<UInt256>>();
 
-        public Address[] AddressesAccessed => _addressesAccessed.ToArray();
+        public AccessList AccessList => new(_accessListData as IReadOnlyDictionary<Address, IReadOnlySet<UInt256>>);
 
         public AccessBlockTracer(Address[] addressesToOptimize)
         {
@@ -39,9 +42,17 @@ namespace Nethermind.Evm.Tracing.Access
         {
             if (txTracer.AccessList is not null)
             {
-                foreach (Address address in txTracer.AccessList?.Data.Keys)
+                IReadOnlyDictionary<Address, IReadOnlySet<UInt256>> accessListData = txTracer.AccessList.Data;
+                foreach (Address address in accessListData.Keys)
                 {
-                    _addressesAccessed.Add(address);
+                    if (_accessListData.ContainsKey(address))
+                    {
+                        _accessListData[address].UnionWith(accessListData[address]);
+                    }
+                    else
+                    {
+                        _accessListData.Add(address, new HashSet<UInt256>(accessListData[address]));
+                    }
                 }
             }
             return txTracer;

@@ -15,28 +15,174 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Abi;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Source;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Processing;
+using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Rewards;
+using Nethermind.Blockchain.Tracing;
+using Nethermind.Blockchain.Validators;
+using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
+using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Evm.Tracing;
+using Nethermind.Int256;
+using Nethermind.Logging;
+using Nethermind.State;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.AccountAbstraction.Executor
 {
     public class UserOperationSimulator : IUserOperationSimulator
     {
         private readonly ConcurrentDictionary<UserOperation, SimulatedUserOperationContext> _simulatedUserOperations;
+        private readonly IStateProvider _stateProvider;
+        private readonly ISigner _signer;
+        private readonly IAccountAbstractionConfig _config;
+        private readonly ISpecProvider _specProvider;
+        private readonly IBlockTree _blockTree;
+        private readonly IReadOnlyDbProvider _dbProvider;
+        private readonly IReadOnlyTrieStore _trieStore;
+        private readonly ILogManager _logManager;
+        private readonly IBlockPreprocessorStep _recoveryStep;
 
-        public UserOperationSimulator(ConcurrentDictionary<UserOperation, SimulatedUserOperationContext> simulatedUserOperations)
+        public UserOperationSimulator(
+            ConcurrentDictionary<UserOperation, SimulatedUserOperationContext> simulatedUserOperations, 
+            IStateProvider stateProvider,
+            ISigner signer,
+            IAccountAbstractionConfig config,
+            ISpecProvider specProvider,
+            IBlockTree blockTree,
+            IDbProvider dbProvider,
+            IReadOnlyTrieStore trieStore,
+            ILogManager logManager,
+            IBlockPreprocessorStep recoveryStep)
         {
             _simulatedUserOperations = simulatedUserOperations;
+            _stateProvider = stateProvider;
+            _signer = signer;
+            _config = config;
+            _specProvider = specProvider;
+            _blockTree = blockTree;
+            _dbProvider = dbProvider.AsReadOnly(false);
+            _trieStore = trieStore;
+            _logManager = logManager;
+            _recoveryStep = recoveryStep;
         }
 
-        public Task<SimulatedUserOperation> Simulate(UserOperation userOperation, BlockHeader parent, CancellationToken cancellationToken = default)
+        public Task<SimulatedUserOperation> Simulate(UserOperation userOperation, BlockHeader parent, CancellationToken cancellationToken = default, UInt256? timestamp = null)
         {
-            throw new System.NotImplementedException();
+            Transaction userOperationTransaction = BuildTransactionFromUserOperation(userOperation, parent, _config.MinimumGasPrice);
+            Block block = BuildBlock(userOperationTransaction, parent, timestamp);
+            UserOperationBlockTracer blockTracer = CreateBlockTracer(userOperationTransaction, parent);
+            ITracer tracer = CreateTracer();
+            tracer.Trace(block, blockTracer.WithCancellation(cancellationToken));
+            return Task.FromResult(BuildResult(userOperation, blockTracer));
+        }
+
+        public SimulatedUserOperation BuildResult(UserOperation userOperation, UserOperationBlockTracer userOperationBlockTracer)
+        {
+            UInt256 impliedGasPrice = userOperationBlockTracer.Reward / (UInt256)userOperationBlockTracer.GasUsed;
+            
+            SimulatedUserOperation simulatedUserOperation = new(
+                userOperation,
+                userOperationBlockTracer.Success,
+                impliedGasPrice);
+
+            return simulatedUserOperation;
+        }
+
+        public Transaction BuildTransactionFromUserOperation(UserOperation userOperation, BlockHeader parent, UInt256 minimumGasPrice)
+        {
+            Address.TryParse(_config.SingletonContractAddress, out Address singletonContractAddress);
+            IReleaseSpec currentSpec = _specProvider.GetSpec(parent.Number + 1);
+
+            IReadOnlyDictionary<string, AbiType> userOperationRlp = new Dictionary<string, AbiType>
+            {
+                {"target", new AbiBytes(20)},
+                {"callGas", new AbiUInt(64)},
+                {"postCallGas", new AbiUInt(64)},
+                {"gasPrice", AbiType.UInt256},
+                {"callData", AbiType.DynamicBytes},
+                {"signature", AbiType.DynamicBytes}
+            };
+            AbiSignature abiSignature = new AbiSignature("handleOps", 
+                new AbiArray(new AbiTuple(userOperationRlp)), AbiType.UInt256);
+
+            IAbiEncoder abiEncoder = new AbiEncoder();
+            byte[] computedCallData = abiEncoder.Encode(
+                AbiEncodingStyle.None,
+                abiSignature,
+                userOperation, minimumGasPrice);
+
+            Transaction transaction = new()
+            {
+                GasPrice = 0, // the bundler should in real scenarios be the miner
+                GasLimit = userOperation.CallGas + userOperation.PostCallGas + 10000,
+                To = singletonContractAddress,
+                ChainId = _specProvider.ChainId,
+                Nonce = _stateProvider.GetNonce(_signer.Address),
+                Value = 0,
+                Data = computedCallData
+            };
+            if (currentSpec.IsEip1559Enabled)
+            {
+                transaction.Type = TxType.EIP1559;
+                transaction.DecodedMaxFeePerGas = BaseFeeCalculator.Calculate(parent, currentSpec);
+            }
+            else
+            {
+                transaction.Type = TxType.Legacy;
+            }
+            
+            _signer.Sign(transaction);
+            transaction.Hash = transaction.CalculateHash();
+
+            return transaction;
+        }
+        
+        private UserOperationBlockTracer CreateBlockTracer(Transaction userOperationTransaction, BlockHeader parent) => new(parent.GasLimit, _signer.Address);
+        
+        private ITracer CreateTracer()
+        {
+            ReadOnlyTxProcessingEnv txProcessingEnv = new(
+                _dbProvider, _trieStore, _blockTree, _specProvider, _logManager);
+            
+            ReadOnlyChainProcessingEnv chainProcessingEnv = new(
+                txProcessingEnv, Always.Valid, _recoveryStep, NoBlockRewards.Instance, new InMemoryReceiptStorage(), _dbProvider, _specProvider, _logManager);
+
+            return new Tracer(txProcessingEnv.StateProvider, chainProcessingEnv.ChainProcessor, ProcessingOptions.ProducingBlock | ProcessingOptions.IgnoreParentNotOnMainChain);
+        }
+
+        private Block BuildBlock(Transaction transaction, BlockHeader parent, UInt256? timestamp)
+        {
+            BlockHeader header = new(
+                parent.Hash ?? Keccak.OfAnEmptySequenceRlp, 
+                Keccak.OfAnEmptySequenceRlp, 
+                _signer.Address, 
+                parent.Difficulty,  
+                parent.Number + 1, 
+                parent.GasLimit, 
+                timestamp ?? parent.Timestamp, 
+                Bytes.Empty)
+            {
+                TotalDifficulty = parent.TotalDifficulty + parent.Difficulty
+            };
+
+            header.BaseFeePerGas = BaseFeeCalculator.Calculate(parent, _specProvider.GetSpec(header.Number));
+
+            return new Block(header, new []{transaction}, Array.Empty<BlockHeader>());
         }
     }
 }

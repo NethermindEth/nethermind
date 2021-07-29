@@ -22,17 +22,15 @@ namespace Nethermind.AccountAbstraction.Data
 {
     public class SimulatedUserOperation
     {
-        public SimulatedUserOperation(UserOperation userOperation, bool success, UInt256 impliedGasPrice, Address[] stateAccessed)
+        public SimulatedUserOperation(UserOperation userOperation, bool success, UInt256 impliedGasPrice)
         {
             UserOperation = userOperation;
             Success = success;
             ImpliedGasPrice = impliedGasPrice;
-            StateAccessed = stateAccessed;
         }
         
         public UserOperation UserOperation { get; }
         public bool Success { get; }
         public UInt256 ImpliedGasPrice { get; }
-        public Address[] StateAccessed { get; }
     }
 }

@@ -16,6 +16,7 @@
 // 
 
 using Nethermind.Config;
+using Nethermind.Int256;
 
 namespace Nethermind.AccountAbstraction
 {
@@ -30,5 +31,15 @@ namespace Nethermind.AccountAbstraction
             Description = "Defines the maximum number of UserOperations that can be kept in memory by clients", 
             DefaultValue = "300")]
         int UserOperationPoolSize { get; set; }
+        
+        [ConfigItem(
+            Description = "Defines the hex string representation of the address of the singleton contract to which transactions will be made", 
+            DefaultValue = "")]
+        string SingletonContractAddress { get; set; }
+        
+        [ConfigItem(
+            Description = "Defines the minimum gas price for a user operation to be accepted", 
+            DefaultValue = "")]
+        UInt256 MinimumGasPrice { get; set; }
     }
 }

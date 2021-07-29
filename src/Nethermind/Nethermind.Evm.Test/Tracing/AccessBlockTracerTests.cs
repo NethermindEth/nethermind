@@ -15,18 +15,35 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Threading;
-using System.Threading.Tasks;
-using Nethermind.AccountAbstraction.Data;
+using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using FluentAssertions;
 using Nethermind.Core;
+using Nethermind.Core.Eip2930;
+using Nethermind.Evm.Tracing.Access;
 using Nethermind.Int256;
+using NUnit.Framework;
+using System.Collections.Generic;
+using Nethermind.Blockchain.Tracing;
 
-namespace Nethermind.AccountAbstraction.Executor
+namespace Nethermind.Evm.Test.Tracing
 {
-    public interface IUserOperationSimulator
+    [TestFixture]
+    public class AccessBlockTracerTests
     {
-        Task<SimulatedUserOperation> Simulate(UserOperation userOperation, BlockHeader parent, CancellationToken cancellationToken = default, UInt256? timestamp = null);
-
-        SimulatedUserOperation BuildResult(UserOperation userOperation, UserOperationBlockTracer userOperationBlockTracer);
+        [Test]
+        public void Starts_with_empty_addresses_accessed()
+        {
+            AccessBlockTracer blockTracer = new(Array.Empty<Address>());
+            blockTracer.AccessList.Data.Should().BeNullOrEmpty();
+        }
+        
+        [Test]
+        public void Should_trace_correctly()
+        {
+            AccessBlockTracer blockTracer = new(Array.Empty<Address>());
+            blockTracer.AccessList.Data.Should().BeNullOrEmpty();
+        }
     }
 }

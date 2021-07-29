@@ -66,7 +66,17 @@ namespace Nethermind.AccountAbstraction
                 {
                     var (getFromApi, _) = _nethermindApi!.ForProducer;
 
-                    UserOperationSimulator userOperationSimulator = new(_simulatedUserOperations);
+                    _userOperationSimulator = new(
+                        _simulatedUserOperations,
+                        getFromApi.StateProvider,
+                        getFromApi.EngineSigner,
+                        _accountAbstractionConfig,
+                        getFromApi.SpecProvider,
+                        getFromApi.BlockTree,
+                        getFromApi.DbProvider,
+                        getFromApi.ReadOnlyTrieStore,
+                        getFromApi.LogManager,
+                        getFromApi.BlockPreprocessor);
                 }
                 return _userOperationSimulator;
             }
@@ -114,6 +124,11 @@ namespace Nethermind.AccountAbstraction
 
         public Task<IBlockProducer> InitBlockProducer(IConsensusPlugin consensusPlugin, ITxSource? txSource = null)
         {
+            if (!Enabled)
+            {
+                throw new InvalidOperationException("Plugin is disabled");
+            }
+            
             UserOperationTxSource userOperationTxSource = new();
             return consensusPlugin.InitBlockProducer(userOperationTxSource);
         }

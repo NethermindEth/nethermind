@@ -77,17 +77,7 @@ namespace Nethermind.AccountAbstraction.Source
             tracer.Trace(block, accessBlockTracer);
 
             IEnumerable<SimulatedUserOperation> simulatedUserOperations = _simulatedUserOperationSource.GetSimulatedUserOperations();
-            foreach (Address accessedAddress in accessBlockTracer.AddressesAccessed)
-            {
-                foreach (SimulatedUserOperation simulatedUserOperation in simulatedUserOperations)
-                {
-                    if (simulatedUserOperation.StateAccessed.Contains(accessedAddress))
-                    {
-                        _userOperationSimulator.Simulate(simulatedUserOperation.UserOperation, block.Header);
-                    }
-                }
-            }
-            
+            // verify each one still has enough balance, nonce is correct etc.
 
         }
 
