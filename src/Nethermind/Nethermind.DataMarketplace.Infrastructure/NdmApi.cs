@@ -481,6 +481,12 @@ namespace Nethermind.DataMarketplace.Infrastructure
             set => _nethermindApi.TxPoolInfoProvider = value;
         }
 
+        public IWitnessRepository? WitnessRepository
+        {
+            get => _nethermindApi.WitnessRepository;
+            set => _nethermindApi.WitnessRepository = value;
+        }
+
         public IHealthHintService? HealthHintService        
         {
             get => _nethermindApi.HealthHintService;

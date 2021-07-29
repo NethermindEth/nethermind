@@ -1,4 +1,4 @@
-//  Copyright (c) 2020 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,22 +15,22 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Collections.Generic;
-using Nethermind.Core.Crypto;
+using Nethermind.Blockchain;
+using Nethermind.Logging;
+using Nethermind.State;
 
-namespace Nethermind.State
+namespace Nethermind.Synchronization.Witness
 {
-    /// <summary>
-    /// Collects witnesses during block processing, allows to persist them
-    /// </summary>
-    public interface IWitnessCollector
+    public static class WitnessCollectorExtensions
     {
-        IReadOnlyCollection<Keccak> Collected { get; }
-        
-        void Add(Keccak hash);
-
-        void Reset();
-        
-        void Persist(Keccak blockHash);
+        public static IWitnessRepository WithPruning(
+            this IWitnessRepository repository,
+            IBlockTree blockTree,
+            ILogManager logManager,
+            int followDistance = 16)
+        {
+            new WitnessPruner(blockTree, repository, logManager, followDistance).Start();
+            return repository;
+        }
     }
 }
