@@ -144,7 +144,7 @@ namespace Nethermind.Dsl.Pipeline.Sources
         }
 
         //https://ethereum.stackexchange.com/questions/91441/how-can-you-get-the-price-of-token-on-uniswap-using-solidity
-        private decimal? GetV2PriceOfTokenInUSDC(Address tokenAddress)
+        private double? GetV2PriceOfTokenInUSDC(Address tokenAddress)
         {
             var poolAddress = _v2Factory.getPair(_api.BlockTree.Head.Header, tokenAddress, _usdcAddress);
             if (poolAddress == Address.Zero || poolAddress is null) return null; // there might not be any usdc-token pair on v2 for this exact token - fix for later to retrieve prices from v3 as well
@@ -177,7 +177,7 @@ namespace Nethermind.Dsl.Pipeline.Sources
 
             if (token is null) return null;
 
-            return ((decimal)usdcReserves / (decimal)tokenReserves) * (decimal)Math.Pow(10, 12);
+            return ((double)usdcReserves / (double)tokenReserves) * (double)Math.Pow(10, 12);
         }
     }
 
