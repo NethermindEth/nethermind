@@ -28,6 +28,7 @@ using NSubstitute;
 using NSubstitute.Extensions;
 using NUnit.Framework;
 using static Nethermind.JsonRpc.Test.Modules.TestBlockConstructor;
+using static Nethermind.JsonRpc.Test.Modules.Eth.EthRpcModuleTests;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
@@ -134,17 +135,6 @@ namespace Nethermind.JsonRpc.Test.Modules
             results.Should().BeEquivalentTo(expectedList);
         }
 
-        private ISpecProvider SpecProviderWithEip1559EnabledAs(bool isEip1559)
-        {
-            ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-            IReleaseSpec specEip1559 = Substitute.For<IReleaseSpec>();
-            specEip1559.IsEip1559Enabled.Returns(isEip1559);
-            
-            specProvider.GetSpec(Arg.Any<long>()).Returns(specEip1559);
-            
-            return specProvider;
-        }
-        
         [Test]
         public void AddValidTxAndReturnCount_IfNoValidTxsInABlock_DefaultPriceAddedToListInstead()
         {
