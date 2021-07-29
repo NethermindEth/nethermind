@@ -24,6 +24,8 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth;
+using NSubstitute;
+using NSubstitute.Extensions;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth
 {
@@ -37,11 +39,11 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             public IGasPriceOracle GasPriceOracle { get; }
 
             public BlockTreeSetup(
+                ISpecProvider specProvider,
                 Block[] blocks = null,
                 bool addBlocks = false,
-                IGasPriceOracle gasPriceOracle = null, 
+                IGasPriceOracle gasPriceOracle = null,
                 int? blockLimit = null,
-                ISpecProvider specProvider = null,
                 UInt256? ignoreUnder = null,
                 ITxInsertionManager txInsertionManager = null)
             {
@@ -49,10 +51,11 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
 
                 InitializeAndAddToBlockTree(BlockTree);
 
-                GasPriceOracle = gasPriceOracle ?? GetGasPriceOracle(specProvider, ignoreUnder, blockLimit, txInsertionManager);
+                GasPriceOracle = gasPriceOracle ?? GetGasPriceOracle(specProvider, txInsertionManager, blockLimit, ignoreUnder);
 
                 EthRpcModule = GetTestEthRpcModule(BlockTree, GasPriceOracle);
             }
+
 
             private void InitializeAndAddToBlockTree(IBlockTree blockTree)
             {
@@ -127,14 +130,19 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                 Blocks = listBlocks.ToArray();
             }
             
-            private IGasPriceOracle GetGasPriceOracle(
-                ISpecProvider specProvider, 
-                UInt256? ignoreUnder,
-                int? blockLimit, 
-                ITxInsertionManager txInsertionManager)
+            private IGasPriceOracle GetGasPriceOracle(ISpecProvider specProvider, ITxInsertionManager txInsertionManager, int? blockLimit, UInt256? ignoreUnder)
             {
-                GasPriceOracle gasPriceOracle = new(specProvider, 
-                    txInsertionManager);
+                GasPriceOracle gasPriceOracle = Substitute.For<GasPriceOracle>(specProvider, txInsertionManager);
+                if (blockLimit != null)
+                {
+                    gasPriceOracle.Configure().GetBlockLimit().Returns((int) blockLimit);
+                }
+
+                if (ignoreUnder != null)
+                {
+                    gasPriceOracle.Configure().GetIgnoreUnder().Returns((UInt256) ignoreUnder);
+                }
+
                 return gasPriceOracle;
             }
         }

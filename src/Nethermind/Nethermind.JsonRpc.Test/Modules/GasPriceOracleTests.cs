@@ -8,7 +8,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth;
-using Nethermind.Specs;
 using NSubstitute;
 using NSubstitute.Extensions;
 using NUnit.Framework;
@@ -75,7 +74,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
         [TestCase(new[]{1,3,5,7,8,9}, 7)] //Last index: 6 - 1 = 5, 60th percentile: 5 * 3/5 = 3, Value: 7
         [TestCase(new[]{0,0,7,9,10,27,83,101}, 10)] //Last index: 8 - 1 = 7, 60th percentile: 7 * 3/5 rounds to 4, Value: 10
-        public void GasPriceEstimate_BlockcountEqualToBlocksToCheck_SixtiethPercentileOfMaxIndexReturned(int[] gasPrice, int expected)
+        public void GasPriceEstimate_BlockCountEqualToBlocksToCheck_SixtiethPercentileOfMaxIndexReturned(int[] gasPrice, int expected)
         {
             List<UInt256> listOfGasPrices = gasPrice.Select(n => (UInt256) n).ToList();
             GasPriceOracle testableGasPriceOracle = GetTestableGasPriceOracle(sortedTxList: listOfGasPrices);
@@ -124,7 +123,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             ITxInsertionManager txInsertionManager = Substitute.For<ITxInsertionManager>();
             GasPriceOracle testableGasPriceOracle = GetTestableGasPriceOracle(txInsertionManager: txInsertionManager, blockLimit: 8);
-            SetUpTxInsertionManagerForSpecificReturns(txInsertionManager, testableGasPriceOracle);
+            SetUpTxInsertionManagerForSpecificReturns(txInsertionManager);
             Block headBlock = Build.A.Block.WithNumber(8).TestObject;
             IBlockFinder blockFinder = BlockFinderForNineEmptyBlocks();
             
@@ -160,18 +159,10 @@ namespace Nethermind.JsonRpc.Test.Modules
                 return blockFinder;
             }
         }
-        private static void SetUpTxInsertionManagerForSpecificReturns(ITxInsertionManager txInsertionManager,
-            GasPriceOracle testableGasPriceOracle)
+        private static void SetUpTxInsertionManagerForSpecificReturns(ITxInsertionManager txInsertionManager)
         {
             txInsertionManager.AddValidTxFromBlockAndReturnCount(Arg.Is<Block>(b => b.Number >= 4)).Returns(3);
-            //txInsertionManager
-            //    .When(t => t.AddValidTxFromBlockAndReturnCount(Arg.Is<Block>(b => b.Number >= 4)))
-            //    .Do(_ => testableGasPriceOracle.TxGasPriceList.AddRange(new List<UInt256> {1,2,3}));
-            
             txInsertionManager.AddValidTxFromBlockAndReturnCount(Arg.Is<Block>(b => b.Number < 4)).Returns(1);
-            //txInsertionManager
-            //    .When(t => t.AddValidTxFromBlockAndReturnCount(Arg.Is<Block>(b => b.Number < 4)))
-            //    .Do(_ => testableGasPriceOracle.TxGasPriceList.AddRange(new List<UInt256> {4}));
         }
         
         [Test]
