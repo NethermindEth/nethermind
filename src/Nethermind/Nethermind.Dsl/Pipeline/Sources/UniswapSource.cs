@@ -27,6 +27,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Dsl.Contracts;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Pipeline;
 
 namespace Nethermind.Dsl.Pipeline.Sources
@@ -38,6 +39,7 @@ namespace Nethermind.Dsl.Pipeline.Sources
         private readonly Keccak _swapSignatureV3;
         private readonly Keccak _swapSignatureV2;
         private readonly INethermindApi _api;
+        private readonly ILogger _logger;
         private readonly UniswapV3Factory _v3Factory;
         private readonly UniswapV2Factory _v2Factory;
         private Address _usdcAddress = new Address("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48");
@@ -48,6 +50,7 @@ namespace Nethermind.Dsl.Pipeline.Sources
         public UniswapSource(IBlockProcessor blockProcessor, INethermindApi api)
         {
             _api = api;
+            _logger = _api.LogManager.GetClassLogger();
             _blockProcessor = blockProcessor;
             
             _swapSignatureV3 = new AbiSignature("Swap",
@@ -87,8 +90,8 @@ namespace Nethermind.Dsl.Pipeline.Sources
             {
                 var data = ConvertV3LogToData(log);
                 data.Transaction = args.Transaction.Hash;
-                data.Token0Price = $"{GetV2PriceOfTokenInUSDC(data.Token0)} USDC";
-                data.Token1Price = $"{GetV2PriceOfTokenInUSDC(data.Token1)} USDC";
+                data.Token0V2Price = $"{GetV2PriceOfTokenInUSDC(data.Token0, data)} USDC";
+                data.Token1V2Price = $"{GetV2PriceOfTokenInUSDC(data.Token1, data)} USDC";
                 Emit?.Invoke(data);
             }
 
@@ -96,8 +99,8 @@ namespace Nethermind.Dsl.Pipeline.Sources
             {
                 var data = ConvertV2LogToData(log);
                 data.Transaction = args.Transaction.Hash;
-                data.Token0Price = $"{GetV2PriceOfTokenInUSDC(data.Token0)} USDC";
-                data.Token1Price = $"{GetV2PriceOfTokenInUSDC(data.Token1)} USDC";
+                data.Token0V2Price = $"{GetV2PriceOfTokenInUSDC(data.Token0, data)} USDC";
+                data.Token1V2Price = $"{GetV2PriceOfTokenInUSDC(data.Token1, data)} USDC";
                 Emit?.Invoke(data);
             }
         }
@@ -144,7 +147,7 @@ namespace Nethermind.Dsl.Pipeline.Sources
         }
 
         //https://ethereum.stackexchange.com/questions/91441/how-can-you-get-the-price-of-token-on-uniswap-using-solidity
-        private double? GetV2PriceOfTokenInUSDC(Address tokenAddress)
+        private double? GetV2PriceOfTokenInUSDC(Address tokenAddress, UniswapData data)
         {
             var poolAddress = _v2Factory.getPair(_api.BlockTree.Head.Header, tokenAddress, _usdcAddress);
             if (poolAddress == Address.Zero || poolAddress is null) return null; // there might not be any usdc-token pair on v2 for this exact token - fix for later to retrieve prices from v3 as well
@@ -159,6 +162,8 @@ namespace Nethermind.Dsl.Pipeline.Sources
             (UInt256, UInt256, uint) reserves = pool.getReserves(_api.BlockTree.Head.Header);
             var token0Reserves = reserves.Item1;
             var token1Reserves = reserves.Item2;
+            data.Token0V2Reserves = token0Reserves;
+            data.Token1V2Reserves = token1Reserves;
 
             ERC20 token = null;
 
@@ -177,7 +182,7 @@ namespace Nethermind.Dsl.Pipeline.Sources
 
             if (token is null) return null;
 
-            return ((double)usdcReserves / (double)tokenReserves) * (double)Math.Pow(10, 12);
+            return ((double)usdcReserves / (double)tokenReserves) * Math.Pow(10, 12);
         }
     }
 
@@ -188,8 +193,10 @@ namespace Nethermind.Dsl.Pipeline.Sources
         public Address? Pool { get; set; }
         public Address? Token0 { get; set; }
         public Address? Token1 { get; set; }
-        public string? Token0Price { get; set; }
-        public string? Token1Price { get; set; }
+        public UInt256 Token0V2Reserves { get; set; }
+        public UInt256 Token1V2Reserves { get; set; }
+        public string? Token0V2Price { get; set; }
+        public string? Token1V2Price { get; set; }
         public string? Token0In { get; set; }
         public string? Token0Out { get; set; }
         public string? Token1In { get; set; }
