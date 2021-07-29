@@ -78,11 +78,21 @@ namespace Nethermind.Runner.Ethereum.Steps
             BlockProducerEnv producerEnv = GetProducerChain();
 
             IGasLimitCalculator gasLimitCalculator = _api.GasLimitCalculator = CreateGasLimitCalculator(producerEnv.ReadOnlyTxProcessingEnv);
+
+            BuildBlocksOnAuRaSteps onAuRaSteps = new(_api.LogManager, stepCalculator);
+            BuildBlocksOnlyWhenNotProcessing onlyWhenNotProcessing = new(
+                onAuRaSteps, 
+                _api.BlockProcessingQueue, 
+                _api.BlockTree, 
+                _api.LogManager, 
+                !_auraConfig.AllowAuRaPrivateChains);
+            
+            _api.DisposeStack.Push(onlyWhenNotProcessing);
             
             _api.BlockProducer = new AuRaBlockProducer(
                 producerEnv.TxSource,
                 producerEnv.ChainProcessor,
-                new BuildBlocksOnAuRaSteps(_api.LogManager, stepCalculator),
+                onlyWhenNotProcessing,
                 producerEnv.ReadOnlyStateProvider,
                 _api.Sealer,
                 _api.BlockTree,

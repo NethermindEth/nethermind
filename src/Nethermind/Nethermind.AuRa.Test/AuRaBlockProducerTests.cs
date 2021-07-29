@@ -100,10 +100,18 @@ namespace Nethermind.AuRa.Test
                     
                     public void InitProducer(IAuraConfig auraConfig)
                     {
+                        IBlockProductionTrigger onAuRaSteps = new BuildBlocksOnAuRaSteps(LimboLogs.Instance, AuRaStepCalculator);
+                        IBlockProductionTrigger onlyWhenNotProcessing = new BuildBlocksOnlyWhenNotProcessing(
+                            onAuRaSteps, 
+                            BlockProcessingQueue, 
+                            BlockTree, 
+                            LimboLogs.Instance, 
+                            !auraConfig.AllowAuRaPrivateChains);
+
                         AuRaBlockProducer = new AuRaBlockProducer(
                             TransactionSource,
                             BlockchainProcessor,
-                            new BuildBlocksOnAuRaSteps(LimboLogs.Instance, AuRaStepCalculator),
+                            onlyWhenNotProcessing,
                             StateProvider,
                             Sealer,
                             BlockTree,

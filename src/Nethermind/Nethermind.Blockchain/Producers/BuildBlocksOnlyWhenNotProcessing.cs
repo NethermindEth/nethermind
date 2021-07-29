@@ -105,6 +105,11 @@ namespace Nethermind.Blockchain.Producers
             _blockProductionTrigger.TriggerBlockProduction -= OnTriggerBlockProduction;
             _blockTree.NewBestSuggestedBlock -= BlockTreeOnNewBestSuggestedBlock;
             _blockProcessingQueue.ProcessingQueueEmpty -= OnBlockProcessorQueueEmpty;
+
+            if (_blockProductionTrigger is IDisposable disposableTrigger)
+            {
+                disposableTrigger.Dispose();
+            }
         }
     }
 }
