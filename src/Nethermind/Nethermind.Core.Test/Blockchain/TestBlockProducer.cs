@@ -31,7 +31,7 @@ using Nethermind.State;
 
 namespace Nethermind.Core.Test.Blockchain
 {
-    public class TestBlockProducer : BlockProducer
+    public class TestBlockProducer : BlockProducerBase
     {
         public TestBlockProducer(
             ITxSource txSource,

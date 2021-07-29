@@ -94,7 +94,7 @@ namespace Nethermind.Blockchain.Producers
             {
                 if (_logger.IsDebug) _logger.Debug($"Delaying producing block, chain not processed yet. BlockProcessingQueue count {_blockProcessingQueue.Count}.");
                 e.BlockProductionTask = Task.Delay(ChainNotYetProcessedMillisecondsDelay, e.CancellationToken)
-                    .ContinueWith(t => (Block?)null);;
+                    .ContinueWith(t => (Block?)null);
             }
         }
 

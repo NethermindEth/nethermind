@@ -33,7 +33,7 @@ using Nethermind.State;
 
 namespace Nethermind.Merge.Plugin.Handlers
 {
-    public class Eth2BlockProducer : BlockProducer
+    public class Eth2BlockProducer : BlockProducerBase
     {
         public Eth2BlockProducer(ITxSource txSource,
             IBlockchainProcessor processor,

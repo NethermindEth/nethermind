@@ -37,7 +37,7 @@ namespace Nethermind.Blockchain.Test.Producers
     [TestFixture]
     public partial class BlockProducerBaseTests
     {
-        private class ProducerUnderTest : BlockProducer
+        private class ProducerUnderTest : BlockProducerBase
         {
             public ProducerUnderTest(ITxSource txSource, IBlockchainProcessor processor, ISealer sealer, IBlockTree blockTree, IBlockProductionTrigger blockProductionTrigger, IStateProvider stateProvider, IGasLimitCalculator gasLimitCalculator, ITimestamper timestamper,  ILogManager logManager)
                 : base(txSource, processor, sealer, blockTree, blockProductionTrigger, stateProvider, gasLimitCalculator, timestamper, MainnetSpecProvider.Instance, logManager, new TimestampDifficultyCalculator())

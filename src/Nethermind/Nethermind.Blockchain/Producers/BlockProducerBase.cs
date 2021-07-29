@@ -45,7 +45,7 @@ namespace Nethermind.Blockchain.Producers
     /// And each separate component can be tested independently
     /// This would also simplify injection of various behaviours into NethDev pipeline
     /// </summary>
-    public class BlockProducer : IBlockProducer
+    public abstract class BlockProducerBase : IBlockProducer
     {
         private IBlockchainProcessor Processor { get; }
         protected IBlockTree BlockTree { get; }
@@ -66,7 +66,7 @@ namespace Nethermind.Blockchain.Producers
         private DateTime _lastProducedBlockDateTime;
         protected ILogger Logger { get; }
 
-        protected BlockProducer(
+        protected BlockProducerBase(
             ITxSource? txSource,
             IBlockchainProcessor? processor,
             ISealer? sealer,
@@ -299,7 +299,7 @@ namespace Nethermind.Blockchain.Producers
             header.BaseFeePerGas = BaseFeeCalculator.Calculate(parent, _specProvider.GetSpec(header.Number));
 
             IEnumerable<Transaction> transactions = GetTransactions(parent);
-            return new BlockToProduce(header, transactions, Array.Empty<BlockHeader>());;
+            return new BlockToProduce(header, transactions, Array.Empty<BlockHeader>());
         }
 
         private byte[] GetExtraData(BlockHeader parent) => Encoding.UTF8.GetBytes("Nethermind");

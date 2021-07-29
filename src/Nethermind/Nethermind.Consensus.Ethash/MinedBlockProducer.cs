@@ -31,7 +31,7 @@ using Nethermind.State;
 
 namespace Nethermind.Consensus.Ethash
 {
-    public class MinedBlockProducer : BlockProducer
+    public class MinedBlockProducer : BlockProducerBase
     {
         public MinedBlockProducer(ITxSource txSource,
             IBlockchainProcessor processor,

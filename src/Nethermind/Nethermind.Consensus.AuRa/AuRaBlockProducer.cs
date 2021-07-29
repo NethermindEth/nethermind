@@ -32,7 +32,7 @@ using Nethermind.State;
 
 namespace Nethermind.Consensus.AuRa
 {
-    public class AuRaBlockProducer : BlockProducer
+    public class AuRaBlockProducer : BlockProducerBase
     {
         private readonly IAuRaStepCalculator _auRaStepCalculator;
         private readonly IReportingValidator _reportingValidator;

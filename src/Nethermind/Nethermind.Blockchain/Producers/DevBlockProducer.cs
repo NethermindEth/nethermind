@@ -28,7 +28,7 @@ using Nethermind.State;
 
 namespace Nethermind.Blockchain.Producers
 {
-    public class DevBlockProducer : BlockProducer, IDisposable
+    public class DevBlockProducer : BlockProducerBase, IDisposable
     {
         private readonly IMiningConfig _miningConfig;
         

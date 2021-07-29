@@ -28,11 +28,10 @@ namespace Nethermind.HealthChecks.Test
 
             HealthChecksWebhookInfo healthChecksWebhookInfo = new HealthChecksWebhookInfo(description, ipResolver, metricsConfig, hostname);
 
-            string expected;
-            expected = "`description`" + Environment.NewLine
-                + "NodeName: `nodeName`" + Environment.NewLine
-                + "Hostname: `hostname`" + Environment.NewLine
-                + "IP (external): `1.2.3.4`";;
+            string expected = "`description`" + Environment.NewLine
+                                              + "NodeName: `nodeName`" + Environment.NewLine
+                                              + "Hostname: `hostname`" + Environment.NewLine
+                                              + "IP (external): `1.2.3.4`";
 
             Assert.AreEqual(expected, healthChecksWebhookInfo.GetFullInfo());
         }
