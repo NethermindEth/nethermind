@@ -10,7 +10,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
     {
         public ISpecProvider SpecProvider { get; }
         public UInt256? FallbackGasPrice { get; }
-        public List<UInt256> TxGasPriceList { get; }
+        public List<UInt256> TxGasPriceList { get; } 
         ResultWrapper<UInt256?> GasPriceEstimate(Block? headBlock, IBlockFinder blockFinder);
     }
 }

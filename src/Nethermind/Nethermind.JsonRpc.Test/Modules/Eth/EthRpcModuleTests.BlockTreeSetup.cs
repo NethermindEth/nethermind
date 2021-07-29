@@ -133,7 +133,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                 int? blockLimit, 
                 ITxInsertionManager txInsertionManager)
             {
-                GasPriceOracle gasPriceOracle = new(specProvider, ignoreUnder, blockLimit, 
+                GasPriceOracle gasPriceOracle = new(specProvider, 
                     txInsertionManager);
                 return gasPriceOracle;
             }

@@ -15,25 +15,29 @@ namespace Nethermind.JsonRpc.Modules.Eth
         public ISpecProvider SpecProvider { get; }
         protected UInt256? LastGasPrice { get; private set; }
         private Block? LastHeadBlock { get; set; }
-        private readonly UInt256? _ignoreUnder;
-        private readonly int _blockLimit;
-        private readonly int _softTxThreshold;
+        private UInt256? IgnoreUnder => GetIgnoreUnder();
+        private int BlockLimit => GetBlockLimit();
+        private int SoftTxThreshold => GetBlockLimit() * 2;
         private readonly ITxInsertionManager _txInsertionManager;
 
         public GasPriceOracle(
-            ISpecProvider specProvider,
-            UInt256? ignoreUnder = null, 
-            int? blockLimit = null, 
+            ISpecProvider specProvider, 
             ITxInsertionManager? txInsertionManager = null)
         {
             TxGasPriceList = new List<UInt256>();
             SpecProvider = specProvider;
-            _ignoreUnder = ignoreUnder ?? UInt256.Zero;
-            _blockLimit = blockLimit ?? EthGasPriceConstants.DefaultBlocksLimit;
-            _softTxThreshold = (int) (blockLimit != null ? blockLimit * 2 : EthGasPriceConstants.SoftTxLimit);
-            _txInsertionManager = txInsertionManager ?? new GasPriceEstimateTxInsertionManager(this, _ignoreUnder, specProvider);
+            _txInsertionManager = txInsertionManager ?? new GasPriceEstimateTxInsertionManager(this, IgnoreUnder, specProvider);
         }
 
+        protected internal virtual UInt256 GetIgnoreUnder()
+        {
+            return UInt256.Zero;
+        }
+
+        protected internal virtual int GetBlockLimit()
+        {
+            return EthGasPriceConstants.DefaultBlocksLimit;
+        }
         public ResultWrapper<UInt256?> GasPriceEstimate(Block? headBlock, IBlockFinder blockFinder)
         {
             LastGasPrice = GetLastGasPrice();
@@ -76,7 +80,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return GetSortedTxGasPriceList(headBlock, blockFinder);
         }
 
-        protected virtual List<UInt256> GetSortedTxGasPriceList(Block? headBlock, IBlockFinder blockFinder)
+        protected internal virtual List<UInt256> GetSortedTxGasPriceList(Block? headBlock, IBlockFinder blockFinder)
         {
             AddTxGasPricesToList(headBlock, blockFinder);
 
@@ -86,11 +90,14 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private void AddTxGasPricesToList(Block? headBlock, IBlockFinder blockFinder)
         {
             long currentBlockNumber = headBlock!.Number;
-            int blocksToGoBack = _blockLimit;
+            int blocksToGoBack = BlockLimit;
+            int softTxThreshold = SoftTxThreshold;
+            int txGasPriceListCount = 0;
             while (blocksToGoBack > 0 && currentBlockNumber > -1) 
             {
                 int txsAdded = _txInsertionManager.AddValidTxFromBlockAndReturnCount(blockFinder.FindBlock(currentBlockNumber));
-                if (txsAdded > 1 || TxGasPriceList.Count + blocksToGoBack >= _softTxThreshold)
+                txGasPriceListCount += txsAdded;
+                if (txsAdded > 1 || txGasPriceListCount + blocksToGoBack >= softTxThreshold)
                 {
                     blocksToGoBack--;
                 }
