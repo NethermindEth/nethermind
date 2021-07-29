@@ -83,14 +83,12 @@ namespace Nethermind.Dsl.Pipeline.Sources
 
             var swapLogsV3 = logs.Where(l => l.Topics.Any() && l.Topics.First().Equals(_swapSignatureV3));
 
-            var swapLogsV2 = logs.Where(l => l.Topics.Any() && l.Topics.First().Equals(_swapSignatureV2));
-
-            foreach (var log in swapLogsV3)
+            var swapLogsV2 = logs.Where(l => l.Topics.Any() && l.Topics.First().Equals(_swapSignatureV2)); foreach (var log in swapLogsV3)
             {
                 var data = ConvertV3LogToData(log);
                 data.Transaction = args.Transaction.Hash;
-                data.Token0Price = GetV2PriceOfTokenInUSDC(data.Token0).ToString();
-                data.Token1Price = GetV2PriceOfTokenInUSDC(data.Token1).ToString();
+                data.Token0Price = $"{GetV2PriceOfTokenInUSDC(data.Token0)} USDC";
+                data.Token1Price = $"{GetV2PriceOfTokenInUSDC(data.Token1)} USDC";
                 Emit?.Invoke(data);
             }
 
@@ -98,8 +96,8 @@ namespace Nethermind.Dsl.Pipeline.Sources
             {
                 var data = ConvertV2LogToData(log);
                 data.Transaction = args.Transaction.Hash;
-                data.Token0Price = GetV2PriceOfTokenInUSDC(data.Token0).ToString();
-                data.Token1Price = GetV2PriceOfTokenInUSDC(data.Token1).ToString();
+                data.Token0Price = $"{GetV2PriceOfTokenInUSDC(data.Token0)} USDC";
+                data.Token1Price = $"{GetV2PriceOfTokenInUSDC(data.Token1)} USDC";
                 Emit?.Invoke(data);
             }
         }
@@ -146,7 +144,7 @@ namespace Nethermind.Dsl.Pipeline.Sources
         }
 
         //https://ethereum.stackexchange.com/questions/91441/how-can-you-get-the-price-of-token-on-uniswap-using-solidity
-        private UInt256? GetV2PriceOfTokenInUSDC(Address tokenAddress)
+        private decimal? GetV2PriceOfTokenInUSDC(Address tokenAddress)
         {
             var poolAddress = _v2Factory.getPair(_api.BlockTree.Head.Header, tokenAddress, _usdcAddress);
             if (poolAddress == Address.Zero || poolAddress is null) return null; // there might not be any usdc-token pair on v2 for this exact token - fix for later to retrieve prices from v3 as well
@@ -179,7 +177,8 @@ namespace Nethermind.Dsl.Pipeline.Sources
 
             if (token is null) return null;
 
-            return (UInt256?) (((UInt256) Math.Pow(10, (double) token.decimals()) * usdcReserves) / tokenReserves);
+            var price = ((((UInt256) Math.Pow(10, (double) token.decimals()) * usdcReserves) / tokenReserves));
+            return (decimal) (price / 1000000000000);
         }
     }
 
