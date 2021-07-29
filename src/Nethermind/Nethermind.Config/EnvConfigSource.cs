@@ -50,19 +50,25 @@ namespace Nethermind.Config
         {
             return _environmentWrapper.GetEnvironmentVariables().Keys.Cast<string>().Where(k => k.StartsWith("NETHERMIND_")).Select(v => v.Split('_')).Select(a =>
             {
+                // actually only possible value is "NETHERMIND_"
                 if (a.Length <= 1)
                 {
                     return (null, null);
                 }
+
+                // variables like "NETHERMIND_URL", "NETHERMIND_CONFIG" ...
                 if (a.Length == 2)
                 {
                     return (null, a[1]);
                 }
-                if(a.Length > 2 && !a[1].EndsWith("config", StringComparison.OrdinalIgnoreCase))
+
+                // VARIABLES like "NETHERMIND_CLI_SWITCH_LOCAL", "NETHERMIND_MONITORING_JOB" ...
+                if (a.Length > 2 && !a[1].EndsWith("config", StringComparison.OrdinalIgnoreCase))
                 {
                     return (null, string.Join(null, a[1..]));
                 }
 
+                // Variables like "NETHERMIND_JSONRPCCONFIG_ENABLED" ...
                 return (a[1], a[2]);
             });
         }

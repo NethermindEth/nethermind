@@ -98,7 +98,7 @@ namespace Nethermind.Config
                     {
                         for (int i = 0; i < _configSource.Count; i++)
                         {
-                            string category = @interface.Name == nameof(INoCategoryConfig) ? null : config.GetType().Name;
+                            string category = @interface.IsAssignableFrom(typeof(INoCategoryConfig)) ? null : config.GetType().Name;
                             string name = propertyInfo.Name;
                             (bool isSet, object value) = _configSource[i].GetValue(propertyInfo.PropertyType, category, name);
                             if (isSet)
@@ -127,7 +127,7 @@ namespace Nethermind.Config
                 Initialize();
             }
 
-            var propertySet = _instances.Values.SelectMany(i => i.GetType().GetProperties().Select(p => GetKey(i.GetType().Name , p.Name))).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            HashSet<string> propertySet = _instances.Values.SelectMany(i => i.GetType().GetProperties().Select(p => GetKey(i.GetType().Name , p.Name))).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
             List<(IConfigSource Source, string Category, string Name)> incorrectSettings = new();
 
