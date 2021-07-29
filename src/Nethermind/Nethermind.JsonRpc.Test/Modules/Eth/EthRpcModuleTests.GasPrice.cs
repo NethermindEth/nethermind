@@ -71,8 +71,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             gasPriceOracle.Received(1).GasPriceEstimate(Arg.Any<Block>(), Arg.Any<IBlockFinder>());
         }
 
-        [Test]
-        public async Task Eth_gasPrice_BlocksAvailableLessThanBlocksToCheck_ShouldGiveCorrectResult()
+        [TestCase(true, "0x4")]
+        [TestCase(false, "0x4")]
+        public async Task Eth_gasPrice_BlocksAvailableLessThanBlocksToCheck_ShouldGiveCorrectResult(bool eip1559Enabled, string expected)
         {
             Context ctx = await Context.Create();
             Block[] blocks = GetThreeTestBlocks();
@@ -83,22 +84,23 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                 .Build();
             
             string serialized = ctx._test.TestEthRpc("eth_gasPrice"); //Gas Prices: 1,2,3,4,5,6 | Max Index: 5 | 60th Percentile: 5 * (3/5) = 3 | Result: 4 (0x4) 
-            Assert.AreEqual($"{{\"jsonrpc\":\"2.0\",\"result\":\"0x4\",\"id\":67}}", serialized);
+            Assert.AreEqual($"{{\"jsonrpc\":\"2.0\",\"result\":\"{expected}\",\"id\":67}}", serialized);
         }
         
-        [Test]
-        public async Task Eth_gasPrice_BlocksAvailableLessThanBlocksToCheckWith1559Tx_ShouldGiveCorrectResult()
+        [TestCase(true, "0x3")] //Gas Prices: 1,2,3,3,4,5 | Max Index: 5 | 60th Percentile: 5 * (3/5) = 3 | Result: 3 (0x4)
+        [TestCase(false, "0x1")] //Gas Prices: 1,1,1 | Max Index: 2 | 60th Percentile: 2 * (3/5) = 1 | Result: 1 (0x1)
+        public async Task Eth_gasPrice_BlocksAvailableLessThanBlocksToCheckWith1559Tx_ShouldGiveCorrectResult(bool eip1559Enabled, string expected)
         {
             Context ctx = await Context.Create();
             Block[] blocks = GetThreeTestBlocksWith1559Tx();
             BlockTree blockTree = Build.A.BlockTree(blocks[0]).WithBlocks(blocks).TestObject;
-            ISpecProvider specProvider = SpecProviderWithEip1559EnabledAs(true);
+            ISpecProvider specProvider = SpecProviderWithEip1559EnabledAs(eip1559Enabled);
             GasPriceOracle gasPriceOracle = Substitute.ForPartsOf<GasPriceOracle>(specProvider, null);
             ctx._test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockTree).WithGasPriceOracle(gasPriceOracle)
                 .Build();
             
-            string serialized = ctx._test.TestEthRpc("eth_gasPrice"); //Gas Prices: 1,2,3,3,4,5 | Max Index: 5 | 60th Percentile: 5 * (3/5) = 3 | Result: 3 (0x4) 
-            Assert.AreEqual($"{{\"jsonrpc\":\"2.0\",\"result\":\"0x3\",\"id\":67}}", serialized);
+            string serialized = ctx._test.TestEthRpc("eth_gasPrice");  
+            Assert.AreEqual($"{{\"jsonrpc\":\"2.0\",\"result\":\"{expected}\",\"id\":67}}", serialized);
         }
         
         public static ISpecProvider SpecProviderWithEip1559EnabledAs(bool isEip1559)
