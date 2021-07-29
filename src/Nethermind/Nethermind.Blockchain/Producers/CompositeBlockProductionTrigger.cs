@@ -52,7 +52,12 @@ namespace Nethermind.Blockchain.Producers
         {
             for (int index = 0; index < _triggers.Count; index++)
             {
-                _triggers[index].TriggerBlockProduction -= BlockProductionTriggerOnTriggerBlockProduction;
+                var trigger = _triggers[index];
+                trigger.TriggerBlockProduction -= BlockProductionTriggerOnTriggerBlockProduction;
+                if (trigger is IDisposable disposable)
+                {
+                    disposable.Dispose();
+                }
             }
         }
     }
