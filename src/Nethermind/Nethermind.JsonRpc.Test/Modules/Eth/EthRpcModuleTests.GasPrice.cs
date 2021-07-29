@@ -58,9 +58,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             Block testBlock = Build.A.Block.Genesis.TestObject;
             blockFinder.FindHeadBlock().Returns(testBlock);
             blockFinder.FindBlock(Arg.Is<long>(a => a == 0)).Returns(testBlock);
+            ctx._test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockFinder).Build();
+            ctx._test.EthRpcModule.GetGasPriceOracle(Arg.Any<ISpecProvider>()).Returns(gasPriceOracle);
             
-            ctx._test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockFinder)
-                .WithGasPriceOracle(gasPriceOracle).Build();
             ctx._test.TestEthRpc("eth_gasPrice");
             
             gasPriceOracle.Received(1).GasPriceEstimate(Arg.Any<Block>(), Arg.Any<IBlockFinder>());
@@ -75,6 +75,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
 
             BlockTree blockTree = Build.A.BlockTree(blocks[0]).WithBlocks(blocks).TestObject;
+            
             ctx._test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockTree)
                 .Build();
             
@@ -86,12 +87,11 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         [TestCase(false, "0x1")] //Gas Prices: 1,1,1 | Max Index: 2 | 60th Percentile: 2 * (3/5) = 1 | Result: 1 (0x1)
         public async Task Eth_gasPrice_BlocksAvailableLessThanBlocksToCheckWith1559Tx_ShouldGiveCorrectResult(bool eip1559Enabled, string expected)
         {
-            Context ctx = await Context.Create();
             Block[] blocks = GetThreeTestBlocksWith1559Tx();
             BlockTree blockTree = Build.A.BlockTree(blocks[0]).WithBlocks(blocks).TestObject;
             ISpecProvider specProvider = SpecProviderWithEip1559EnabledAs(eip1559Enabled);
-            GasPriceOracle gasPriceOracle = Substitute.ForPartsOf<GasPriceOracle>(specProvider, null);
-            ctx._test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockTree).WithGasPriceOracle(gasPriceOracle)
+            Context ctx = await Context.Create();
+            ctx._test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockTree).WithSpecProvider(specProvider)
                 .Build();
             
             string serialized = ctx._test.TestEthRpc("eth_gasPrice");  
@@ -119,7 +119,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             gasPriceOracle.Configure().GetBlockLimit().Returns(2);
 
             ctx._test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockTree)
-                .WithGasPriceOracle(gasPriceOracle).Build();
+                .Build();
+            ctx._test = Substitute.ForPartsOf<TestRpcBlockchain>();
+            ctx._test.EthRpcModule.GetGasPriceOracle(Arg.Is<ISpecProvider>(n => n == specProvider)).Returns(gasPriceOracle);
             ctx._test.TestEthRpc("eth_gasPrice");
             
             List<UInt256> expected = new() {3, 4, 5, 6};

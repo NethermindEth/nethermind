@@ -50,8 +50,6 @@ namespace Nethermind.JsonRpc.Test.Modules
         public ITxSender TxSender { get; private set; }
         public ILogFinder LogFinder { get; private set; }
         
-        public IGasPriceOracle GasPriceOracle { get; private set; }
-        
         public IKeyStore KeyStore { get; } = new MemKeyStore(TestItem.PrivateKeys);
         public IWallet TestWallet { get; } = new DevKeyStoreWallet(new MemKeyStore(TestItem.PrivateKeys), LimboLogs.Instance);
         public static Builder<TestRpcBlockchain> ForTest(string sealEngineType) => ForTest<TestRpcBlockchain>(sealEngineType);
@@ -95,9 +93,9 @@ namespace Nethermind.JsonRpc.Test.Modules
                 return this;
             }
             
-            public Builder<T> WithGasPriceOracle(IGasPriceOracle gasPriceOracle)
+            public Builder<T> WithSpecProvider(ISpecProvider specProvider)
             {
-                _blockchain.GasPriceOracle = gasPriceOracle;
+                _blockchain.SpecProvider = specProvider;
                 return this;
             }
             public async Task<T> Build(ISpecProvider specProvider = null, UInt256? initialValues = null)
@@ -131,7 +129,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             ITxSealer txSealer0 = new TxSealer(txSigner, Timestamper);
             ITxSealer txSealer1 = new NonceReservingTxSealer(txSigner, Timestamper, TxPool);
             TxSender ??= new TxPoolSender(TxPool, txSealer0, txSealer1);
-            
+             
             EthRpcModule = new EthRpcModule(
                 new JsonRpcConfig(),
                 Bridge,

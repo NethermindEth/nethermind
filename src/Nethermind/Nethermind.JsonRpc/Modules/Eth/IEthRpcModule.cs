@@ -20,6 +20,7 @@ using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.State.Proofs;
@@ -169,5 +170,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         
         [JsonRpcMethod(Description = "https://github.com/ethereum/EIPs/issues/1186", IsImplemented = true, IsSharable = true)]
         ResultWrapper<AccountProof> eth_getProof(Address accountAddress, byte[][] hashRate, BlockParameter blockParameter);
+
+        public IGasPriceOracle GetGasPriceOracle(ISpecProvider specProvider);
     }
 }

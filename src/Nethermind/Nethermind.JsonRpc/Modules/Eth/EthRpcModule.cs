@@ -89,7 +89,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             GasPriceOracle = GetGasPriceOracle(specProvider);
         }
 
-        private IGasPriceOracle GetGasPriceOracle(ISpecProvider specProvider)
+        public IGasPriceOracle GetGasPriceOracle(ISpecProvider specProvider)
         {
             return new GasPriceOracle(specProvider);
         }
