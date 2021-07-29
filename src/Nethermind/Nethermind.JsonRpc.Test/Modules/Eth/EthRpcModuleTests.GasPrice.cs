@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+#nullable enable
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -118,38 +119,8 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
            
             return new[]{firstBlock, secondBlock, thirdBlock};
         }
-        
-        public class TestEthRpcModule : EthRpcModule
-        {
-            public TestEthRpcModule(
-                IJsonRpcConfig rpcConfig,
-                IBlockchainBridge blockchainBridge,
-                IBlockFinder blockFinder,
-                IStateReader stateReader,
-                ITxPool txPool,
-                ITxSender txSender,
-                IWallet wallet,
-                ILogManager logManager,
-                IGasPriceOracle gasPriceOracle)
-                : base(
-                    rpcConfig, 
-                    blockchainBridge, 
-                    blockFinder, 
-                    stateReader, 
-                    txPool, 
-                    txSender, 
-                    wallet, 
-                    logManager,
-                    gasPriceOracle)
-            {
-            }
 
-            public void SetGasPriceOracle(IGasPriceOracle gasPriceOracle)
-            {
-                GasPriceOracle = gasPriceOracle;
-            }
-        }
-        private static TestEthRpcModule GetTestEthRpcModule(IBlockFinder blockFinder = null)
+        private static EthRpcModule GetTestEthRpcModule(IBlockFinder? blockFinder = null, IGasPriceOracle? gasPriceOracle = null)
         {
             return new(
                 Substitute.For<IJsonRpcConfig>(),
@@ -160,7 +131,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                 Substitute.For<ITxSender>(),
                 Substitute.For<IWallet>(),
                 Substitute.For<ILogManager>(),
-                Substitute.For<IGasPriceOracle>()
+                gasPriceOracle ?? Substitute.For<IGasPriceOracle>()
             );
         }
     }

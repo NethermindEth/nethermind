@@ -33,7 +33,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         {
             private Block[] Blocks { get; set; }
             public BlockTree BlockTree { get; private set; }
-            private TestEthRpcModule EthRpcModule { get; }
+            private EthRpcModule EthRpcModule { get; }
             public IGasPriceOracle GasPriceOracle { get; }
 
             public BlockTreeSetup(
@@ -51,9 +51,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
 
                 GasPriceOracle = gasPriceOracle ?? GetGasPriceOracle(specProvider, ignoreUnder, blockLimit, txInsertionManager);
 
-                EthRpcModule = GetTestEthRpcModule(BlockTree);
-                
-                EthRpcModule.SetGasPriceOracle(GasPriceOracle);
+                EthRpcModule = GetTestEthRpcModule(BlockTree, GasPriceOracle);
             }
 
             private void InitializeAndAddToBlockTree(IBlockTree blockTree)
