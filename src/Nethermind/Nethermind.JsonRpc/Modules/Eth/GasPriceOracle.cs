@@ -52,7 +52,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return ResultWrapper<UInt256?>.Success((UInt256) gasPriceEstimate!);
         }
 
-        protected virtual UInt256? GetLastGasPrice()
+        protected internal virtual UInt256? GetLastGasPrice()
         {
             return LastGasPrice;
         }

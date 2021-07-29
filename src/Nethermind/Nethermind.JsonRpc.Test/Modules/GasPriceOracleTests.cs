@@ -8,7 +8,9 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth;
+using Nethermind.Specs;
 using NSubstitute;
+using NSubstitute.Extensions;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules
@@ -19,7 +21,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void GasPriceEstimate_NoChangeInHeadBlock_ReturnsPreviousGasPrice()
         {
-            ShouldReturnSameGasPriceGasPriceOracle testableGasPriceOracle = GetShouldReturnSameGasPriceGasPriceOracle(lastGasPrice: 7);
+            GasPriceOracle testableGasPriceOracle = GetReturnsSameGasPriceGasPriceOracle(lastGasPrice: 7);
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             Block testBlock = Build.A.Block.Genesis.TestObject;
             
@@ -28,19 +30,25 @@ namespace Nethermind.JsonRpc.Test.Modules
             resultWrapper.Data.Should().Be((UInt256?) 7);
         }
 
-        private ShouldReturnSameGasPriceGasPriceOracle GetShouldReturnSameGasPriceGasPriceOracle(
+        private GasPriceOracle GetReturnsSameGasPriceGasPriceOracle(
             ISpecProvider? specProvider = null, 
             UInt256? ignoreUnder = null, 
             int? blockLimit = null, 
             ITxInsertionManager? txInsertionManager = null,
             UInt256? lastGasPrice = null)
         {
-            return new(
+            GasPriceOracle gasPriceOracle = Substitute.ForPartsOf<GasPriceOracle>(
                 specProvider ?? Substitute.For<ISpecProvider>(),
                 ignoreUnder,
                 blockLimit,
-                txInsertionManager ?? Substitute.For<ITxInsertionManager>(),
-                lastGasPrice);
+                txInsertionManager ?? Substitute.For<ITxInsertionManager>());
+            if (lastGasPrice != null)
+            {
+                gasPriceOracle.Configure().GetLastGasPrice().Returns(lastGasPrice);
+            }
+            gasPriceOracle.Configure().ShouldReturnSameGasPrice(Arg.Any<Block?>(), Arg.Any<Block?>(), Arg.Any<UInt256?>())
+                .Returns(true);
+            return gasPriceOracle;
         }
         
         [Test]

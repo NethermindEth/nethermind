@@ -49,7 +49,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 _sortedTxList = sortedTxList;
             }
 
-            protected override UInt256? GetLastGasPrice()
+            protected internal override UInt256? GetLastGasPrice()
             {
                 return _lastGasPrice ?? base.LastGasPrice;
             }
