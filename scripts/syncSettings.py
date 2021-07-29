@@ -61,6 +61,22 @@ configs = {
         "blockReduced": 8192,
         "multiplierRequirement": 10000
     },
+    # mev sections
+    "mainnet_mev": {
+        "url": "api.etherscan.io",
+        "blockReduced": 2000,
+        "multiplierRequirement": 2000
+    },
+    "goerli_mev": {
+        "url": "api-goerli.etherscan.io",
+        "blockReduced": 8192,
+        "multiplierRequirement": 30000 
+    },
+    "xdai_mev": {
+        "url": "https://dai.poa.network",
+        "blockReduced": 8192,
+        "multiplierRequirement": 10000
+    },
     # beam sections
     "mainnet_beam": {
         "url": "api.etherscan.io",
