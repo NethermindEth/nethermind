@@ -162,8 +162,8 @@ namespace Nethermind.Dsl.Pipeline.Sources
             (UInt256, UInt256, uint) reserves = pool.getReserves(_api.BlockTree.Head.Header);
             var token0Reserves = reserves.Item1;
             var token1Reserves = reserves.Item2;
-            data.Token0V2Reserves = token0Reserves;
-            data.Token1V2Reserves = token1Reserves;
+            data.Token0V2Reserves = token0Reserves.ToString();
+            data.Token1V2Reserves = token1Reserves.ToString();
 
             ERC20 token = null;
 
@@ -193,8 +193,8 @@ namespace Nethermind.Dsl.Pipeline.Sources
         public Address? Pool { get; set; }
         public Address? Token0 { get; set; }
         public Address? Token1 { get; set; }
-        public UInt256 Token0V2Reserves { get; set; }
-        public UInt256 Token1V2Reserves { get; set; }
+        public string Token0V2Reserves { get; set; }
+        public string Token1V2Reserves { get; set; }
         public string? Token0V2Price { get; set; }
         public string? Token1V2Price { get; set; }
         public string? Token0In { get; set; }
