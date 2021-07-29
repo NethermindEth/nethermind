@@ -75,7 +75,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             ITxSender txSender,
             IWallet wallet,
             ILogManager logManager,
-            IGasPriceOracle gasPriceOracle)
+            ISpecProvider specProvider)
         {
             _logger = logManager.GetClassLogger();
             _rpcConfig = rpcConfig ?? throw new ArgumentNullException(nameof(rpcConfig));
@@ -85,8 +85,13 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _txPoolBridge = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
-            GasPriceOracle = gasPriceOracle ?? throw new ArgumentNullException(nameof(gasPriceOracle));
-            _specProvider = GasPriceOracle.SpecProvider;
+            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+            GasPriceOracle = GetGasPriceOracle(specProvider);
+        }
+
+        private IGasPriceOracle GetGasPriceOracle(ISpecProvider specProvider)
+        {
+            return new GasPriceOracle(specProvider);
         }
 
         public ResultWrapper<string> eth_protocolVersion()
