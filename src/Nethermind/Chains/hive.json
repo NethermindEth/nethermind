@@ -13,7 +13,8 @@
           "0x0": "0x1BC16D674EC80000"
         },
         "difficultyBombDelays": {
-          "0x0": 700000
+          "0x0": 2000000,
+          "0x7d0": 700000
         }
       }
     }
@@ -45,11 +46,11 @@
     "eip2718Transition": "0x0",
     "eip2929Transition": "0x0",
     "eip2930Transition": "0x0",
-    "eip1559Transition": "0x0",
-    "eip3238Transition": "0x0",
-    "eip3529Transition": "0x0",
-    "eip3541Transition": "0x0",
-    "eip3198Transition": "0x0",
+    "eip1559Transition": "0x7d0",
+    "eip3238Transition": "0x7d0",
+    "eip3529Transition": "0x7d0",
+    "eip3541Transition": "0x7d0",
+    "eip3198Transition": "0x7d0",
     "chainID": "0x1"
   },
   "genesis": {
@@ -61,25 +62,22 @@
     },
     "difficulty": "0x20000",
     "author": "0x2adc25665018aa1fe0e6bc666dac8fc2697ff9ba",
-    "timestamp": "0x3b6",
+    "timestamp": "0x0",
     "parentHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
-    "extraData": "0x42",
-    "gasLimit": "0x40000000",
-    "baseFeePerGas": "0x3e8"
+    "extraData": "0x00",
+    "gasLimit": "0x7fffffffffffffff"
   },
   "accounts": {
-    "0x1111111111111111111111111111111111111111": {
-      "code": "0xfe",
-      "balance": "0x10000000000",
-      "nonce": "0x1"
+    "0x1000000000000000000000000000000000000000": {
+      "code": "0x600060006000600060007310000000000000000000000000000000000000016707fffffffffffffff250630fffffff6000630fffffff600060007310000000000000000000000000000000000000016707fffffffffffffff25063ffffffff600063ffffffff600060007310000000000000000000000000000000000000016707fffffffffffffff2506000630fffffff6000630fffffff60007310000000000000000000000000000000000000016707fffffffffffffff250600063ffffffff600063ffffffff60007310000000000000000000000000000000000000016707fffffffffffffff250600067ffffffffffffffff600067ffffffffffffffff60007310000000000000000000000000000000000000016707fffffffffffffff25060006fffffffffffffffffffffffffffffffff60006fffffffffffffffffffffffffffffffff60007310000000000000000000000000000000000000016707fffffffffffffff25060007fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff60007fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff60007310000000000000000000000000000000000000016707fffffffffffffff200",
+      "balance": "0x0"
+    },
+    "0x1000000000000000000000000000000000000001": {
+      "code": "0x60005460010160005500",
+      "balance": "0x0"
     },
     "0xa94f5374fce5edbc8e2a8697c15331677e6ebf0b": {
-      "balance": "0x10000000000",
-      "nonce": "0x1"
-    },
-    "0xd02d72e067e77158444ef2020ff2d325f929b363": {
-      "balance": "0x1000000000000",
-      "nonce": "0x1"
+      "balance": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
     },
     "0x0000000000000000000000000000000000000001": {
       "builtin": {

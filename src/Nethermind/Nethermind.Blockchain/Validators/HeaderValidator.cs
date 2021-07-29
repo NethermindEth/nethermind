@@ -168,7 +168,14 @@ namespace Nethermind.Blockchain.Validators
             long adjustedParentGasLimit = Eip1559GasLimitAdjuster.AdjustGasLimit(spec, parent.GasLimit, header.Number);
             long maxGasLimitDifference = adjustedParentGasLimit / spec.GasLimitBoundDivisor;
 
-            bool gasLimitNotTooHigh = header.GasLimit < adjustedParentGasLimit + maxGasLimitDifference;
+            long maxNextGasLimit = adjustedParentGasLimit + maxGasLimitDifference;
+            bool gasLimitNotTooHigh = header.GasLimit < maxNextGasLimit;
+            // the edge case used in hive tests
+            if (long.MaxValue - maxGasLimitDifference < adjustedParentGasLimit)
+            {
+                gasLimitNotTooHigh = true;
+            }
+            
             if (!gasLimitNotTooHigh)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - gas limit too high");
