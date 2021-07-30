@@ -56,6 +56,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly IWallet _wallet;
         private readonly ISpecProvider _specProvider;
         private readonly ILogger _logger;
+        private readonly IGasPriceOracle _gasPriceOracle;
 
         private static bool HasStateForBlock(IBlockchainBridge blockchainBridge, BlockHeader header)
         {
@@ -74,7 +75,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
             ITxSender txSender,
             IWallet wallet,
             ILogManager logManager,
-            ISpecProvider specProvider)
+            ISpecProvider specProvider,
+            IGasPriceOracle? gasPriceOracle = null)
         {
             _logger = logManager.GetClassLogger();
             _rpcConfig = rpcConfig ?? throw new ArgumentNullException(nameof(rpcConfig));
@@ -85,9 +87,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+            _gasPriceOracle = gasPriceOracle ?? new GasPriceOracle(_specProvider);
         }
 
-        public virtual IGasPriceOracle GasPriceOracle => new GasPriceOracle(_specProvider);
         public ResultWrapper<string> eth_protocolVersion()
         {
             return ResultWrapper<string>.Success("0x41");
@@ -144,7 +146,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             Block? headBlock = _blockFinder.FindHeadBlock();
             return headBlock == null ? 
                 ResultWrapper<UInt256?>.Fail("Head Block was not found.") : 
-                GasPriceOracle.GasPriceEstimate(headBlock, _blockFinder);
+                _gasPriceOracle.GasPriceEstimate(headBlock, _blockFinder);
         }
 
         public ResultWrapper<IEnumerable<Address>> eth_accounts()

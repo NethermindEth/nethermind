@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+#nullable enable
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
@@ -45,12 +46,12 @@ namespace Nethermind.JsonRpc.Test.Modules
 {
     public class TestRpcBlockchain : TestBlockchain
     {
-        public IEthRpcModule EthRpcModule { get; private set; }
-        public IBlockchainBridge Bridge { get; private set; }
-        public ITxSender TxSender { get; private set; }
-        public ILogFinder LogFinder { get; private set; }
+        public IEthRpcModule? EthRpcModule { get; private set; }
+        public IBlockchainBridge? Bridge { get; private set; }
+        public ITxSender? TxSender { get; private set; }
+        public ILogFinder? LogFinder { get; private set; }
         
-        public IGasPriceOracle GasPriceOracle { get; private set; }
+        public IGasPriceOracle? GasPriceOracle { get; private set; }
         
         public IKeyStore KeyStore { get; } = new MemKeyStore(TestItem.PrivateKeys);
         public IWallet TestWallet { get; } = new DevKeyStoreWallet(new MemKeyStore(TestItem.PrivateKeys), LimboLogs.Instance);
@@ -140,7 +141,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                 TxSender,
                 TestWallet,
                 LimboLogs.Instance,
-                SpecProvider);
+                SpecProvider,
+                GasPriceOracle ?? new GasPriceOracle(SpecProvider));
             
             return this;
         }
