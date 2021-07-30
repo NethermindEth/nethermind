@@ -47,7 +47,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         ResultWrapper<ParityTxTraceFromReplay[]> trace_replayBlockTransactions([JsonRpcParameter(ExampleValue = "[\"0x88df42\",[\"trace\"]]")] BlockParameter numberOrTag, string[] traceTypes);
         
         [JsonRpcMethod(Description = "", IsImplemented = true, IsSharable = false)]
-        ResultWrapper<ParityTxTraceFromStore[]> trace_filter(TraceFilter traceFilter);
+        ResultWrapper<ParityTxTraceFromStore[]> trace_filter(TraceFilterForRpc traceFilterForRpc);
         
         [JsonRpcMethod(Description = "", 
             IsImplemented = true, 

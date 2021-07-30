@@ -53,7 +53,7 @@ namespace Nethermind.Evm.Tracing
 
         ITxTracer IBlockTracer.StartNewTxTrace(Transaction? tx)
         {
-            if (IsTracingEntireBlock || tx?.Hash == _txHash)
+            if (ShouldTraceTx(tx))
             {
                 CurrentTxTracer = OnStart(tx);
                 return CurrentTxTracer;
@@ -72,6 +72,11 @@ namespace Nethermind.Evm.Tracing
         }
         
         public abstract void EndBlockTrace();
+
+        protected virtual bool ShouldTraceTx(Transaction? tx)
+        {
+            return IsTracingEntireBlock || tx?.Hash == _txHash;
+        }
 
         protected List<TTrace> TxTraces { get; }
 

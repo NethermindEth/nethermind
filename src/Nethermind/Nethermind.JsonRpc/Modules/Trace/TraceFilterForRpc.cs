@@ -17,10 +17,11 @@
 
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
+using Nethermind.Evm.Tracing;
 
 namespace Nethermind.JsonRpc.Modules.Trace
 {
-    public class TraceFilter
+    public class TraceFilterForRpc
     {
         public BlockParameter FromBlock { get; set; }
         
@@ -33,5 +34,10 @@ namespace Nethermind.JsonRpc.Modules.Trace
         public int After { get; set; } 
         
         public int Count { get; set; }
+
+        public TxTraceFilter ToTxTracerFilter()
+        {
+            return new TxTraceFilter()
+        }
     }
 }

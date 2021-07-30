@@ -137,9 +137,22 @@ namespace Nethermind.JsonRpc.Modules.Trace
             return ResultWrapper<ParityTxTraceFromReplay[]>.Success(txTraces.Select(t => new ParityTxTraceFromReplay(t, true)).ToArray());
         }
 
-        public ResultWrapper<ParityTxTraceFromStore[]> trace_filter(BlockParameter fromBlock, BlockParameter toBlock, Address toAddress, int after, int count)
+        public ResultWrapper<ParityTxTraceFromStore[]> trace_filter(TraceFilterForRpc traceFilterForRpc)
         {
-            throw new NotImplementedException();
+            var fromBlockNumber = 0;
+            var toBlockNumber = 1;
+            for (int i = fromBlockNumber; i < toBlockNumber; ++i)
+            {
+                SearchResult<Block> blockSearch = _blockFinder.SearchForBlock(new BlockParameter(i));
+                if (blockSearch.IsError)
+                {
+                    return ResultWrapper<ParityTxTraceFromStore[]>.Fail(blockSearch);
+                }
+                Block block = blockSearch.Object;
+                
+                IReadOnlyCollection<ParityLikeTxTrace> txTraces = TraceBlock(block, ParityTraceTypes.Trace | ParityTraceTypes.Rewards, );
+                return ResultWrapper<ParityTxTraceFromStore[]>.Success(txTraces.SelectMany(ParityTxTraceFromStore.FromTxTrace).ToArray());
+            }
         }
 
         public ResultWrapper<ParityTxTraceFromStore[]> trace_block(BlockParameter blockParameter)
@@ -181,12 +194,12 @@ namespace Nethermind.JsonRpc.Modules.Trace
             return ResultWrapper<ParityTxTraceFromStore[]>.Success(ParityTxTraceFromStore.FromTxTrace(txTrace));
         }
 
-        private IReadOnlyCollection<ParityLikeTxTrace> TraceBlock(Block block, ParityTraceTypes traceTypes)
+        private IReadOnlyCollection<ParityLikeTxTrace> TraceBlock(Block block, ParityTraceTypes traceTypes, TxTraceFilter txTraceFilter = null)
         {
             using CancellationTokenSource cancellationTokenSource = new(_cancellationTokenTimeout);
             CancellationToken cancellationToken = cancellationTokenSource.Token;
 
-            ParityLikeBlockTracer listener = new(traceTypes);
+            ParityLikeBlockTracer listener = new(traceTypes, txTraceFilter);
             _tracer.Trace(block, listener.WithCancellation(cancellationToken));
 
             return listener.BuildResult();
