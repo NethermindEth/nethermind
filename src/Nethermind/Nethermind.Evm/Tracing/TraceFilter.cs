@@ -32,9 +32,9 @@ namespace Nethermind.Evm.Tracing
             After = after;
             Count = count;
         }
-        public Address? FromAddress { get; private set; }
+        public Address? FromAddress { get; }
         
-        public Address? ToAddress { get; private set; }
+        public Address? ToAddress { get; }
         
         public int After { get; private set; } 
         
@@ -42,15 +42,21 @@ namespace Nethermind.Evm.Tracing
 
         public bool ShouldTraceTx(Transaction? tx)
         {
-            if (tx == null)
+            if (tx == null ||
+                (FromAddress != null && tx.SenderAddress != FromAddress) ||
+                (ToAddress != null && tx.To != ToAddress) ||
+                Count <= 0)
+            {
                 return false;
-            if (FromAddress != null && tx.SenderAddress != FromAddress)
-                return false;
-            if (ToAddress != null && tx.To != ToAddress)
-                return false;
-            // if (After > 0)
-            //     Af
+            }
 
+            if (After > 0)
+            {
+                --After;
+                return false;
+            }
+            
+            --Count;
             return true;
         }
     }

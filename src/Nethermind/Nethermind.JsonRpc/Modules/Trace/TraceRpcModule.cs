@@ -139,11 +139,11 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         public ResultWrapper<ParityTxTraceFromStore[]> trace_filter(TraceFilterForRpc traceFilterForRpc)
         {
-            var fromBlockNumber = 0;
-            var toBlockNumber = 1;
+            var fromBlockNumber = traceFilterForRpc.FromBlock.BlockNumber ?? 0;
+            var toBlockNumber = traceFilterForRpc.ToBlock.BlockNumber ?? 0;
             var txTracerFilter = traceFilterForRpc.ToTxTracerFilter();
             List<ParityLikeTxTrace> txTraces = new();
-            for (int i = fromBlockNumber; i < toBlockNumber; ++i)
+            for (long i = fromBlockNumber; i < toBlockNumber; ++i)
             {
                 if (txTracerFilter.Count <= 0)
                     break;
