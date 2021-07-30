@@ -44,7 +44,7 @@ using Transaction = Nethermind.Core.Transaction;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
-    public partial class EthRpcModule : IEthRpcModuleWithOracle
+    public partial class EthRpcModule : IEthRpcModule
     {
         private readonly Encoding _messageEncoding = Encoding.UTF8;
         private readonly IJsonRpcConfig _rpcConfig;

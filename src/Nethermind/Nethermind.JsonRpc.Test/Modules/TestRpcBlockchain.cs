@@ -45,7 +45,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 {
     public class TestRpcBlockchain : TestBlockchain
     {
-        public IEthRpcModuleWithOracle EthRpcModule { get; private set; }
+        public IEthRpcModule EthRpcModule { get; private set; }
         public IBlockchainBridge Bridge { get; private set; }
         public ITxSender TxSender { get; private set; }
         public ILogFinder LogFinder { get; private set; }
