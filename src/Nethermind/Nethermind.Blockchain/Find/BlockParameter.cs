@@ -76,7 +76,7 @@ namespace Nethermind.Blockchain.Find
                 case null:
                     return Latest;
                 case { } hash when hash.Length == 66 && hash.StartsWith("0x"):
-                    return Latest;
+                    return new BlockParameter(new Keccak(hash));
                 default:
                     return new BlockParameter(LongConverter.FromString(jsonValue.Trim('"')));
             }
