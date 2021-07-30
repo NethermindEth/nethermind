@@ -103,8 +103,8 @@ namespace Nethermind.AuRa.Test.Contract
             object[] expected =
             {
                 new TxPriorityContract.Destination(TestItem.AddressB, FnSignature, 3, TxPriorityContract.DestinationSource.Contract, 2),
-                new TxPriorityContract.Destination(TestItem.AddressA, FnSignature2, 1, TxPriorityContract.DestinationSource.Contract, 1),
-                new TxPriorityContract.Destination(TestItem.AddressB, FnSignature2, 4, TxPriorityContract.DestinationSource.Contract, 1),
+                new TxPriorityContract.Destination(TestItem.AddressA, FnSignature2, 1, TxPriorityContract.DestinationSource.Contract, 2),
+                new TxPriorityContract.Destination(TestItem.AddressB, FnSignature2, 4, TxPriorityContract.DestinationSource.Contract, 2),
             };
             
             priorities.Should().BeEquivalentTo(expected, o => o.ComparingByMembers<TxPriorityContract.Destination>()
