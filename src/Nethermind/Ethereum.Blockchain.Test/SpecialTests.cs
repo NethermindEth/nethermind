@@ -26,8 +26,7 @@ namespace Ethereum.Blockchain.Test
     [TestFixture][Parallelizable(ParallelScope.All)]
     public class SpecialTests : GeneralStateTestBase
     {
-        //[TestCaseSource(nameof(LoadTests))]
-        [Todo("Test not working in master.")]
+        [TestCaseSource(nameof(LoadTests))]
         public void Test(GeneralStateTest test)
         {
             Assert.True(RunTest(test).Pass);
