@@ -44,7 +44,7 @@ using Transaction = Nethermind.Core.Transaction;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
-    public partial class EthRpcModule : IEthRpcModule
+    public partial class EthRpcModule : IEthRpcModuleWithOracle
     {
         private readonly Encoding _messageEncoding = Encoding.UTF8;
         private readonly IJsonRpcConfig _rpcConfig;
@@ -88,7 +88,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
         }
 
         public virtual IGasPriceOracle GasPriceOracle => new GasPriceOracle(_specProvider);
-
         public ResultWrapper<string> eth_protocolVersion()
         {
             return ResultWrapper<string>.Success("0x41");
@@ -145,7 +144,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             Block? headBlock = _blockFinder.FindHeadBlock();
             return headBlock == null ? 
                 ResultWrapper<UInt256?>.Fail("Head Block was not found.") : 
-                GasPriceOracle!.GasPriceEstimate(headBlock, _blockFinder);
+                GasPriceOracle.GasPriceEstimate(headBlock, _blockFinder);
         }
 
         public ResultWrapper<IEnumerable<Address>> eth_accounts()

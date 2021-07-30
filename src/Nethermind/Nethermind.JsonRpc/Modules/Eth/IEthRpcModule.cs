@@ -171,7 +171,5 @@ namespace Nethermind.JsonRpc.Modules.Eth
         [JsonRpcMethod(Description = "https://github.com/ethereum/EIPs/issues/1186", IsImplemented = true, IsSharable = true)]
         ResultWrapper<AccountProof> eth_getProof(Address accountAddress, byte[][] hashRate, BlockParameter blockParameter);
 
-        public IGasPriceOracle GasPriceOracle { get; }
-        
     }
 }
