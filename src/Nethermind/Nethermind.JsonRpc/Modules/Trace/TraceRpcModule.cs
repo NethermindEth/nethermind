@@ -141,8 +141,12 @@ namespace Nethermind.JsonRpc.Modules.Trace
         {
             var fromBlockNumber = 0;
             var toBlockNumber = 1;
+            var txTracerFilter = traceFilterForRpc.ToTxTracerFilter();
+            List<ParityLikeTxTrace> txTraces = new();
             for (int i = fromBlockNumber; i < toBlockNumber; ++i)
             {
+                if (txTracerFilter.Count <= 0)
+                    break;
                 SearchResult<Block> blockSearch = _blockFinder.SearchForBlock(new BlockParameter(i));
                 if (blockSearch.IsError)
                 {
@@ -150,9 +154,10 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 }
                 Block block = blockSearch.Object;
                 
-                IReadOnlyCollection<ParityLikeTxTrace> txTraces = TraceBlock(block, ParityTraceTypes.Trace | ParityTraceTypes.Rewards, );
-                return ResultWrapper<ParityTxTraceFromStore[]>.Success(txTraces.SelectMany(ParityTxTraceFromStore.FromTxTrace).ToArray());
+                txTraces.AddRange(TraceBlock(block, ParityTraceTypes.Trace | ParityTraceTypes.Rewards, txTracerFilter));
             }
+            
+            return ResultWrapper<ParityTxTraceFromStore[]>.Success(txTraces.SelectMany(ParityTxTraceFromStore.FromTxTrace).ToArray());
         }
 
         public ResultWrapper<ParityTxTraceFromStore[]> trace_block(BlockParameter blockParameter)

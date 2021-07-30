@@ -37,7 +37,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         public TxTraceFilter ToTxTracerFilter()
         {
-            return new TxTraceFilter()
+            return new TxTraceFilter(FromAddress, ToAddress, After, Count);
         }
     }
 }
