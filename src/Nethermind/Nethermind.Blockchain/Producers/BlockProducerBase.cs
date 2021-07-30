@@ -64,6 +64,7 @@ namespace Nethermind.Blockchain.Producers
         private CancellationTokenSource? _producerCancellationToken;
 
         private DateTime _lastProducedBlockDateTime;
+        private const int BlockProductionTimeout = 1000;
         protected ILogger Logger { get; }
 
         protected BlockProducerBase(
@@ -128,7 +129,7 @@ namespace Nethermind.Blockchain.Producers
             token = tokenSource.Token;
             
             Block? block = null;
-            if (await _producingBlockLock.WaitOneAsync(1000, token))
+            if (await _producingBlockLock.WaitOneAsync(BlockProductionTimeout, token))
             {
                 try
                 {
@@ -148,6 +149,10 @@ namespace Nethermind.Blockchain.Producers
                 {
                     _producingBlockLock.Set();
                 }
+            }
+            else
+            {
+                if (Logger.IsInfo) Logger.Info("Failed to produce block, previous block is still being produced");
             }
 
             return block;

@@ -28,6 +28,7 @@ using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Services;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Core.Attributes;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules;
@@ -193,7 +194,7 @@ namespace Nethermind.Consensus.Clique
 
         public string SealEngineType => Nethermind.Core.SealEngineType.Clique;
         
-        //TODO: redo clique producer
+        [Todo("Redo clique producer to support triggers and MEV")]
         public IBlockProductionTrigger DefaultBlockProductionTrigger => _nethermindApi.ManualBlockProductionTrigger;
 
         public ValueTask DisposeAsync() { return ValueTask.CompletedTask; }

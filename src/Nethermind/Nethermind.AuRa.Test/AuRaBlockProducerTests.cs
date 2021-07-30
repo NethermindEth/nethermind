@@ -108,6 +108,8 @@ namespace Nethermind.AuRa.Test
                             LimboLogs.Instance, 
                             !auraConfig.AllowAuRaPrivateChains);
 
+                        FollowOtherMiners gasLimitCalculator = new(MainnetSpecProvider.Instance);
+                        
                         AuRaBlockProducer = new AuRaBlockProducer(
                             TransactionSource,
                             BlockchainProcessor,
@@ -119,7 +121,7 @@ namespace Nethermind.AuRa.Test
                             AuRaStepCalculator,
                             NullReportingValidator.Instance,
                             auraConfig,
-                            new FollowOtherMiners(MainnetSpecProvider.Instance),
+                            gasLimitCalculator,
                             MainnetSpecProvider.Instance,
                             LimboLogs.Instance);
 

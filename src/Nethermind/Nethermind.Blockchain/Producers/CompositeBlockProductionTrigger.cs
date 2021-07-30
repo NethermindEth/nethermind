@@ -41,9 +41,9 @@ namespace Nethermind.Blockchain.Producers
         }
         
         private void HookTrigger(IBlockProductionTrigger trigger) =>
-            trigger.TriggerBlockProduction += BlockProductionTriggerOnTriggerBlockProduction;
+            trigger.TriggerBlockProduction += OnInnerTriggerBlockProduction;
 
-        private void BlockProductionTriggerOnTriggerBlockProduction(object? sender, BlockProductionEventArgs e) =>
+        private void OnInnerTriggerBlockProduction(object? sender, BlockProductionEventArgs e) =>
             TriggerBlockProduction?.Invoke(sender, e);
 
         public event EventHandler<BlockProductionEventArgs>? TriggerBlockProduction;
@@ -53,7 +53,7 @@ namespace Nethermind.Blockchain.Producers
             for (int index = 0; index < _triggers.Count; index++)
             {
                 var trigger = _triggers[index];
-                trigger.TriggerBlockProduction -= BlockProductionTriggerOnTriggerBlockProduction;
+                trigger.TriggerBlockProduction -= OnInnerTriggerBlockProduction;
                 if (trigger is IDisposable disposable)
                 {
                     disposable.Dispose();
