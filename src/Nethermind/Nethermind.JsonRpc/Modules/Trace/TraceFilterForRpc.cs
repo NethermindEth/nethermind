@@ -27,13 +27,13 @@ namespace Nethermind.JsonRpc.Modules.Trace
         
         public BlockParameter ToBlock { get; set; }
         
-        public Address FromAddress { get; set; }
+        public Address[]? FromAddress { get; set; }
         
-        public Address ToAddress { get; set; }
+        public Address[]? ToAddress { get; set; }
         
         public int After { get; set; } 
         
-        public int Count { get; set; }
+        public int? Count { get; set; }
 
         public TxTraceFilter ToTxTracerFilter()
         {

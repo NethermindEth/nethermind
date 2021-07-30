@@ -25,6 +25,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.ParityStyle;
+using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Serialization.Rlp;
 
@@ -82,6 +83,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
             if (header.IsGenesis)
             {
+                UInt256 baseFee = header.BaseFeePerGas;
                 header = new BlockHeader(
                     header.Hash,
                     Keccak.OfAnEmptySequenceRlp,
@@ -93,6 +95,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                     header.ExtraData);
 
                 header.TotalDifficulty = 2 * header.Difficulty;
+                header.BaseFeePerGas = baseFee;
             }
 
             Block block = new(header, new[] {tx}, Enumerable.Empty<BlockHeader>());
@@ -139,13 +142,13 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         public ResultWrapper<ParityTxTraceFromStore[]> trace_filter(TraceFilterForRpc traceFilterForRpc)
         {
-            var fromBlockNumber = traceFilterForRpc.FromBlock.BlockNumber ?? 0;
-            var toBlockNumber = traceFilterForRpc.ToBlock.BlockNumber ?? 0;
-            var txTracerFilter = traceFilterForRpc.ToTxTracerFilter();
+            long fromBlockNumber = traceFilterForRpc.FromBlock.BlockNumber ?? 0;
+            long toBlockNumber = traceFilterForRpc.ToBlock.BlockNumber ?? 0;
+            TxTraceFilter txTracerFilter = traceFilterForRpc.ToTxTracerFilter();
             List<ParityLikeTxTrace> txTraces = new();
             for (long i = fromBlockNumber; i < toBlockNumber; ++i)
             {
-                if (txTracerFilter.Count <= 0)
+                if (!txTracerFilter.ShouldContinue())
                     break;
                 SearchResult<Block> blockSearch = _blockFinder.SearchForBlock(new BlockParameter(i));
                 if (blockSearch.IsError)
@@ -153,8 +156,12 @@ namespace Nethermind.JsonRpc.Modules.Trace
                     return ResultWrapper<ParityTxTraceFromStore[]>.Fail(blockSearch);
                 }
                 Block block = blockSearch.Object;
-                
-                txTraces.AddRange(TraceBlock(block, ParityTraceTypes.Trace | ParityTraceTypes.Rewards, txTracerFilter));
+                if (!txTracerFilter.ShouldTraceBlock(block))
+                    continue;
+
+                IReadOnlyCollection<ParityLikeTxTrace> txTracesFromOneBlock =
+                    TraceBlock(block, ParityTraceTypes.Trace | ParityTraceTypes.Rewards, txTracerFilter);
+                txTraces.AddRange(txTracesFromOneBlock);
             }
             
             return ResultWrapper<ParityTxTraceFromStore[]>.Success(txTraces.SelectMany(ParityTxTraceFromStore.FromTxTrace).ToArray());

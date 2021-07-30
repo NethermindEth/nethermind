@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Linq;
 using Nethermind.Core;
 
 namespace Nethermind.Evm.Tracing
@@ -22,19 +23,19 @@ namespace Nethermind.Evm.Tracing
     public class TxTraceFilter
     {
         public TxTraceFilter(
-            Address fromAddress,
-            Address toAddress,
+            Address[]? fromAddresses,
+            Address[]? toAddresses,
             int after,
             int count)
         {
-            FromAddress = fromAddress;
-            ToAddress = toAddress;
+            FromAddresses = fromAddresses;
+            ToAddresses = toAddresses;
             After = after;
             Count = count;
         }
-        public Address? FromAddress { get; }
+        public Address[]? FromAddresses { get; }
         
-        public Address? ToAddress { get; }
+        public Address[]? ToAddresses { get; }
         
         public int After { get; private set; } 
         
@@ -43,9 +44,8 @@ namespace Nethermind.Evm.Tracing
         public bool ShouldTraceTx(Transaction? tx)
         {
             if (tx == null ||
-                (FromAddress != null && tx.SenderAddress != FromAddress) ||
-                (ToAddress != null && tx.To != ToAddress) ||
-                Count <= 0)
+                TxMatchesAddresses(tx) ||
+                (Count <= 0))
             {
                 return false;
             }
@@ -58,6 +58,49 @@ namespace Nethermind.Evm.Tracing
             
             --Count;
             return true;
+        }
+
+        public bool ShouldContinue()
+        {
+            return Count == null ||  Count > 0;
+        }
+
+        public bool ShouldTraceBlock(Block? block)
+        {
+            if (block == null)
+                return false;
+            
+            int txCount = CountMatchingTransactions(block);
+            if (After >= txCount)
+            {
+                // we can skip the block if it don't achieve after
+                After -= txCount;
+                return false;
+            }
+
+            return true;
+        }
+
+        private int CountMatchingTransactions(Block block)
+        {
+            if (FromAddresses == null && ToAddresses == null)
+                return block.Transactions.Length;
+
+            int counter = 0;
+            for (int index = 0; index < block.Transactions.Length; index++)
+            {
+                Transaction tx = block.Transactions[index];
+                if (TxMatchesAddresses(tx))
+                    ++counter;
+            }
+
+            return counter;
+        }
+
+        private bool TxMatchesAddresses(Transaction tx)
+        {
+            return FromAddresses != null && !FromAddresses.Contains(tx.SenderAddress) ||
+                ToAddresses != null && !ToAddresses.Contains(tx.To))
         }
     }
 }
