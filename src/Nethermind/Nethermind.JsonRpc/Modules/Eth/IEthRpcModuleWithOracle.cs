@@ -20,6 +20,10 @@ namespace Nethermind.JsonRpc.Modules.Eth
     [RpcModule(ModuleType.Eth)]
     public interface IEthRpcModuleWithOracle : IEthRpcModule
     {
-        public IGasPriceOracle GasPriceOracle { get; }
+        public IGasPriceOracle GasPriceOracle
+        {
+            [JsonRpcMethod(IsImplemented = true, Description = "Creates new GasPriceOracle using spec provider and provides a way to manually test GasPriceOracle.")]
+            get;
+        }
     }
 }
