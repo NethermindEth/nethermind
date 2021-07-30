@@ -32,6 +32,7 @@ using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm;
@@ -219,14 +220,14 @@ namespace Nethermind.Mev.Test
         [TestCase(5, new int[] {0, 0, 0, 0, 0, 3})]
         public async Task should_remove_simulations_on_eviction(long headDelta, int[] expectedSimulations)
         {
-            SemaphoreSlim ss = new SemaphoreSlim(0);
             int head = 3;
             IBundleSimulator bundleSimulator = Substitute.For<IBundleSimulator>();
-            SimulatedMevBundle successfulBundle = new SimulatedMevBundle(new MevBundle(1, Array.Empty<BundleTransaction>()),
+            SimulatedMevBundle successfulBundle = new(new MevBundle(1, Array.Empty<BundleTransaction>()),
                 0, true, UInt256.Zero, UInt256.Zero, UInt256.Zero);
+
             bundleSimulator.Simulate(Arg.Any<MevBundle>(), Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>())
-                            .Returns( Task.FromResult(successfulBundle))
-                            .AndDoes(c => ss.Release());
+                .Returns(Task.FromResult(successfulBundle));
+
             TestContext tc = new(default, bundleSimulator, new MevConfig() {BundlePoolSize = 10}, head);
             ISimulatedBundleSource simulatedBundleSource = tc.BundlePool;
             
@@ -237,29 +238,31 @@ namespace Nethermind.Mev.Test
                         tc.Timestamper.UnixTime.Seconds,
                         long.MaxValue);
             }
-            
+
+            long buildBlockNumber = head + headDelta;
+
             async Task CheckSimulatedBundles(int[] expectedSimulationsLenght)
             {
-                int index = 0;
-                for (int i = 3; i <= 8; i++)
+                CancellationTokenSource cts = new(TestBlockchain.DefaultTimeout);
+                foreach (MevBundle bundle in tc.Bundles.Where(b => b.BlockNumber == buildBlockNumber + 1))
                 {
-                    for (int j = 0; j < expectedSimulationsLenght[index]; j++)
-                    {
-                        await ss.WaitAsync(TimeSpan.FromMilliseconds(10));
-                    }
-                    SimulatedMevBundle[] simulatedBundles = (await GetSimulatedBundlesForBlock(i)).ToArray();
-                    simulatedBundles.Length.Should().Be(expectedSimulationsLenght[index++]);
+                    await tc.BundlePool.WaitForSimulationToFinish(bundle, cts.Token);
+                }
+                
+                for (int i = 0; i < expectedSimulationsLenght.Length; i++)
+                {
+                    SimulatedMevBundle[] simulatedBundles = (await GetSimulatedBundlesForBlock(i + head)).ToArray();
+                    simulatedBundles.Length.Should().Be(expectedSimulationsLenght[i]);
                 }
             }
-            
-            tc.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.WithNumber(head+headDelta).TestObject));
+
+            tc.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.WithNumber(buildBlockNumber).TestObject));
             await CheckSimulatedBundles(expectedSimulations);
         }
         
         [Test]
         public async Task should_remove_bundle_when_simulation_fails()
         {
-            
             var chain = await MevRpcModuleTests.CreateChain(1);
             chain.GasLimitCalculator.GasLimit = 10_000_000;
             
@@ -277,6 +280,10 @@ namespace Nethermind.Mev.Test
 
             chain.BundlePool.AddBundle(failingBundle);
             chain.BundlePool.AddBundle(normalBundle);
+
+            CancellationTokenSource cts = new(TestBlockchain.DefaultTimeout);
+            await chain.BundlePool.WaitForSimulationToFinish(failingBundle, cts.Token);
+            await chain.BundlePool.WaitForSimulationToFinish(normalBundle, cts.Token);
 
             MevBundle[] bundlePoolBundles = chain.BundlePool.GetBundles(2, UInt256.Zero).ToArray();
             bundlePoolBundles.Should().NotContain(failingBundle);
@@ -341,7 +348,7 @@ namespace Nethermind.Mev.Test
                     Simulator = bundleSimulator;
                 }
                 
-                BundlePool = new(
+                BundlePool = new TestBundlePool(
                     BlockTree,
                     Simulator,
                     Timestamper,
@@ -355,19 +362,26 @@ namespace Nethermind.Mev.Test
                 BundleTransaction tx2 = CreateTransaction(TestItem.PrivateKeyB);
                 BundleTransaction tx3 = CreateTransaction(TestItem.PrivateKeyC);
 
-                BundlePool.AddBundle(CreateBundle(4, tx1));
-                BundlePool.AddBundle(CreateBundle(5, tx2));
-                BundlePool.AddBundle(CreateBundle(6, tx2));
-                BundlePool.AddBundle(new MevBundle(9, new []{tx1}, 0, 0));
-                BundlePool.AddBundle(new MevBundle(9, new []{tx2}, 10, 100));
-                BundlePool.AddBundle(new MevBundle(9, new []{tx3}, 5, 50));
-                BundlePool.AddBundle(CreateBundle(12, tx1, tx2, tx3));
-                BundlePool.AddBundle(CreateBundle(15, tx1, tx2));
+                AddBundle(CreateBundle(4, tx1));
+                AddBundle(CreateBundle(5, tx2));
+                AddBundle(CreateBundle(6, tx2));
+                AddBundle(new MevBundle(9, new []{tx1}, 0, 0));
+                AddBundle(new MevBundle(9, new []{tx2}, 10, 100));
+                AddBundle(new MevBundle(9, new []{tx3}, 5, 50));
+                AddBundle(CreateBundle(12, tx1, tx2, tx3));
+                AddBundle(CreateBundle(15, tx1, tx2));
             }
 
+            private void AddBundle(MevBundle bundle)
+            {
+                Bundles.Add(bundle);
+                BundlePool.AddBundle(bundle);
+            }
+
+            public List<MevBundle> Bundles = new();
             public IBundleSimulator Simulator { get; } = Substitute.For<IBundleSimulator>();
             public IBlockTree BlockTree { get; } = Substitute.For<IBlockTree>();
-            public BundlePool BundlePool { get; }
+            public TestBundlePool BundlePool { get; }
 
             public ITimestamper Timestamper { get; private set; } =
                  new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(DefaultTimestamp)); 
