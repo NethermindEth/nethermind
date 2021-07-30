@@ -28,7 +28,7 @@ namespace Ethereum.Blockchain.Test
         [TestCaseSource(nameof(LoadTests))]
         public void Test(GeneralStateTest test)
         {
-            Assert.True(RunTest(test).Pass);
+            Assert.False(RunTest(test).Pass);
         }
         
         public static IEnumerable<GeneralStateTest> LoadTests() { var loader = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stSpecialTest");
