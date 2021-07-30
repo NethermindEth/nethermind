@@ -93,7 +93,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return block.Beneficiary != transaction.SenderAddress;
         }
 
-        internal List<UInt256> GetTxGasPriceList(IGasPriceOracle gasPriceOracle)
+        protected internal virtual List<UInt256> GetTxGasPriceList(IGasPriceOracle gasPriceOracle)
         {
             return gasPriceOracle.TxGasPriceList;
         }

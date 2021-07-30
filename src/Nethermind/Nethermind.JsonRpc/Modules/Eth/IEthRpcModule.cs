@@ -172,5 +172,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
         ResultWrapper<AccountProof> eth_getProof(Address accountAddress, byte[][] hashRate, BlockParameter blockParameter);
 
         public IGasPriceOracle GasPriceOracle { get; }
+        
     }
 }

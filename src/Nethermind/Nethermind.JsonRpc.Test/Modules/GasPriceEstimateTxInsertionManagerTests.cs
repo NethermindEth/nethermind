@@ -176,13 +176,14 @@ namespace Nethermind.JsonRpc.Test.Modules
             UInt256? ignoreUnder = null,
             ISpecProvider specProvider = null)
         {
-            GasPriceEstimateTxInsertionManager txInsertionManager = Substitute.ForPartsOf<GasPriceEstimateTxInsertionManager>(
+            GasPriceEstimateTxInsertionManager txInsertionManager = 
+                Substitute.ForPartsOf<GasPriceEstimateTxInsertionManager>(
                     gasPriceOracle ?? Substitute.For<IGasPriceOracle>(),
                     ignoreUnder ?? UInt256.Zero,
                     specProvider ?? Substitute.For<ISpecProvider>());
             List<UInt256> results = new();
             txInsertionManager.Configure().GetTxGasPriceList(Arg.Any<IGasPriceOracle>()).Returns(results);
-
+            
             return (results, txInsertionManager);
         }
     }
