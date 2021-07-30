@@ -94,7 +94,7 @@ namespace Nethermind.AuRa.Test.Contract
             whiteListInContract.Should().BeEquivalentTo(expected);
         }
         
-        [Todo("Needs to be fixed, configuration error in master.")]
+        [Test]
         public async Task 
             priority_should_return_correctly()
         {
