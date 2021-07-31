@@ -158,10 +158,9 @@ namespace Nethermind.TxPool.Collections
                     if (_buckets.TryGetValue(groupMapping, out bucket))
                     {
                         bucket!.Remove(value);
+                        Removed?.Invoke(this, new SortedPoolRemovedEventArgs(key, value, groupMapping, evicted));
                         return true;
                     }
-
-                    Removed?.Invoke(this, new SortedPoolRemovedEventArgs(key, value, groupMapping, evicted));
                 }
             }
 

@@ -157,14 +157,13 @@ namespace Nethermind.AccountAbstraction.Source
 
         private bool ValidateUserOperation(UserOperation userOperation, out SimulatedUserOperation simulatedUserOperation)
         {
-            bool success = true;
-            
             // make sure target account exists
             if (
                 userOperation.Target == Address.Zero
                 || !_stateProvider.AccountExists(userOperation.Target))
             {
-                success = false;
+                simulatedUserOperation = SimulatedUserOperation.FailedSimulatedUserOperation(userOperation);
+                return false;
             }
 
             // make sure paymaster is a contract (if paymaster is used) and is not on banned list
@@ -174,33 +173,27 @@ namespace Nethermind.AccountAbstraction.Source
                     || !_stateProvider.IsContract(userOperation.PaymasterAddress)
                     || _bannedPaymasters.Contains(userOperation.PaymasterAddress))
                 {
-                    success = false;
+                    simulatedUserOperation = SimulatedUserOperation.FailedSimulatedUserOperation(userOperation);
+                    return false;
                 }
             }
 
             // make sure op not already in pool
             if (_userOperationSortedPool.GetSnapshot().Contains(userOperation))
             {
-                success = false;
+                simulatedUserOperation = SimulatedUserOperation.FailedSimulatedUserOperation(userOperation);
+                return false;
             }
 
             // simulate
-            Task<SimulatedUserOperation> simulatedUserOperationTask = _userOperationSimulator.Simulate(userOperation, _blockTree.Head.Header, CancellationToken.None, _timestamper.UnixTime.Seconds);
-            if (!simulatedUserOperationTask.IsCompletedSuccessfully)
-            {
-                success = false;
-            }
-
-            if (success)
-            {
-                simulatedUserOperation = simulatedUserOperationTask.Result;
-                return true;
-            }
-            else
+            simulatedUserOperation = Task.Run(() => _userOperationSimulator.Simulate(userOperation, _blockTree.Head.Header, CancellationToken.None, _timestamper.UnixTime.Seconds)).Result;
+            if (simulatedUserOperation.Success == false)
             {
                 simulatedUserOperation = SimulatedUserOperation.FailedSimulatedUserOperation(userOperation);
                 return false;
             }
+
+            return true;
         }
 
         private async void SimulateAndAddToPool(UserOperation userOperation, BlockHeader parent)
