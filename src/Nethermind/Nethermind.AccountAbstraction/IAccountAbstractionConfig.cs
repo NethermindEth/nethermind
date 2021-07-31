@@ -26,20 +26,26 @@ namespace Nethermind.AccountAbstraction
             Description = "Defines whether UserOperations are allowed.",
             DefaultValue = "false")]
         bool Enabled { get; set; }
-        
+
         [ConfigItem(
-            Description = "Defines the maximum number of UserOperations that can be kept in memory by clients", 
+            Description = "Defines the maximum number of UserOperations that can be kept in memory by clients",
             DefaultValue = "300")]
         int UserOperationPoolSize { get; set; }
-        
+
         [ConfigItem(
-            Description = "Defines the hex string representation of the address of the singleton contract to which transactions will be made", 
+            Description =
+                "Defines the hex string representation of the address of the singleton contract to which transactions will be made",
             DefaultValue = "")]
         string SingletonContractAddress { get; set; }
+
+        [ConfigItem(
+            Description = "Defines the minimum gas price for a user operation to be accepted",
+            DefaultValue = "200")]
+        UInt256 MinimumGasPrice { get; set; }
         
         [ConfigItem(
-            Description = "Defines the minimum gas price for a user operation to be accepted", 
-            DefaultValue = "")]
-        UInt256 MinimumGasPrice { get; set; }
+            Description = "Defines the maximum amount of times a user operation can be resimulated before it is dropped",
+            DefaultValue = "5")]
+        int MaxResimulations { get; set; }
     }
 }

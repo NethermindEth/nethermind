@@ -28,9 +28,7 @@ namespace Nethermind.Evm.Tracing.Access
     {
         private readonly Address[] _addressesToOptimize;
         private IDictionary<Address, HashSet<UInt256>> _accessListData = new Dictionary<Address, HashSet<UInt256>>();
-
-        public AccessList AccessList => new(_accessListData as IReadOnlyDictionary<Address, IReadOnlySet<UInt256>>);
-
+        
         public AccessBlockTracer(Address[] addressesToOptimize)
         {
             _addressesToOptimize = addressesToOptimize;
@@ -38,25 +36,7 @@ namespace Nethermind.Evm.Tracing.Access
 
         protected override AccessTxTracer OnStart(Transaction? tx) => new(_addressesToOptimize);
 
-        protected override AccessTxTracer OnEnd(AccessTxTracer txTracer)
-        {
-            if (txTracer.AccessList is not null)
-            {
-                IReadOnlyDictionary<Address, IReadOnlySet<UInt256>> accessListData = txTracer.AccessList.Data;
-                foreach (Address address in accessListData.Keys)
-                {
-                    if (_accessListData.ContainsKey(address))
-                    {
-                        _accessListData[address].UnionWith(accessListData[address]);
-                    }
-                    else
-                    {
-                        _accessListData.Add(address, new HashSet<UInt256>(accessListData[address]));
-                    }
-                }
-            }
-            return txTracer;
-        }
+        protected override AccessTxTracer OnEnd(AccessTxTracer txTracer) => txTracer;
 
         public override void StartNewBlockTrace(Block block)
         {

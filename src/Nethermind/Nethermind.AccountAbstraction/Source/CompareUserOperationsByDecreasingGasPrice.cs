@@ -16,29 +16,21 @@
 // 
 
 using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.AccountAbstraction.Data;
-using System.Collections.Concurrent;
-using System.Linq;
 
 namespace Nethermind.AccountAbstraction.Source
 {
-    public class SimulatedUserOperationSource : ISimulatedUserOperationSource
+    public class CompareUserOperationsByDecreasingGasPrice : IComparer<UserOperation>
     {
-        private readonly ConcurrentDictionary<UserOperation, SimulatedUserOperationContext> _simulatedUserOperations;
+        public static readonly CompareUserOperationsByDecreasingGasPrice Default = new();
 
-        public SimulatedUserOperationSource(ConcurrentDictionary<UserOperation, SimulatedUserOperationContext> simulatedUserOperations)
+        public int Compare(UserOperation? x, UserOperation? y)
         {
-            _simulatedUserOperations = simulatedUserOperations;
-        }
+            if (ReferenceEquals(x, y)) return 0;
+            if (ReferenceEquals(null, y)) return 1;
+            if (ReferenceEquals(null, x)) return -1;
 
-        public IEnumerable<SimulatedUserOperation> GetSimulatedUserOperations(CancellationToken token = default)
-        {
-            return _simulatedUserOperations.Select(kv => kv.Value.Task)
-                .Where(t => t.IsCompletedSuccessfully)
-                .Select(t => t.Result)
-                .Where(t => t.Success);
+            return y.GasPrice.CompareTo(x.GasPrice);
         }
     }
 }

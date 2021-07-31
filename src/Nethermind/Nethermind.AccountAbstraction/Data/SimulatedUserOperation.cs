@@ -28,9 +28,12 @@ namespace Nethermind.AccountAbstraction.Data
             Success = success;
             ImpliedGasPrice = impliedGasPrice;
         }
-        
+
         public UserOperation UserOperation { get; }
         public bool Success { get; }
         public UInt256 ImpliedGasPrice { get; }
+
+        public static SimulatedUserOperation FailedSimulatedUserOperation(UserOperation userOperation) =>
+            new SimulatedUserOperation(userOperation, false, UInt256.Zero);
     }
 }

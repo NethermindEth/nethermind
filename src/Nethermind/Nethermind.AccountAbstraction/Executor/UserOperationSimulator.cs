@@ -46,7 +46,7 @@ namespace Nethermind.AccountAbstraction.Executor
 {
     public class UserOperationSimulator : IUserOperationSimulator
     {
-        private readonly ConcurrentDictionary<UserOperation, SimulatedUserOperationContext> _simulatedUserOperations;
+        private readonly ConcurrentDictionary<UserOperation, SimulatedUserOperation> _simulatedUserOperations;
         private readonly IStateProvider _stateProvider;
         private readonly ISigner _signer;
         private readonly IAccountAbstractionConfig _config;
@@ -58,7 +58,7 @@ namespace Nethermind.AccountAbstraction.Executor
         private readonly IBlockPreprocessorStep _recoveryStep;
 
         public UserOperationSimulator(
-            ConcurrentDictionary<UserOperation, SimulatedUserOperationContext> simulatedUserOperations, 
+            ConcurrentDictionary<UserOperation, SimulatedUserOperation> simulatedUserOperations,
             IStateProvider stateProvider,
             ISigner signer,
             IAccountAbstractionConfig config,
@@ -81,7 +81,11 @@ namespace Nethermind.AccountAbstraction.Executor
             _recoveryStep = recoveryStep;
         }
 
-        public Task<SimulatedUserOperation> Simulate(UserOperation userOperation, BlockHeader parent, CancellationToken cancellationToken = default, UInt256? timestamp = null)
+        public Task<SimulatedUserOperation> Simulate(
+            UserOperation userOperation, 
+            BlockHeader parent,
+            CancellationToken cancellationToken = default, 
+            UInt256? timestamp = null)
         {
             Transaction userOperationTransaction = BuildTransactionFromUserOperation(userOperation, parent, _config.MinimumGasPrice);
             Block block = BuildBlock(userOperationTransaction, parent, timestamp);
@@ -91,10 +95,12 @@ namespace Nethermind.AccountAbstraction.Executor
             return Task.FromResult(BuildResult(userOperation, blockTracer));
         }
 
-        public SimulatedUserOperation BuildResult(UserOperation userOperation, UserOperationBlockTracer userOperationBlockTracer)
+        public SimulatedUserOperation BuildResult(
+            UserOperation userOperation,
+            UserOperationBlockTracer userOperationBlockTracer)
         {
             UInt256 impliedGasPrice = userOperationBlockTracer.Reward / (UInt256)userOperationBlockTracer.GasUsed;
-            
+
             SimulatedUserOperation simulatedUserOperation = new(
                 userOperation,
                 userOperationBlockTracer.Success,
@@ -103,7 +109,10 @@ namespace Nethermind.AccountAbstraction.Executor
             return simulatedUserOperation;
         }
 
-        public Transaction BuildTransactionFromUserOperation(UserOperation userOperation, BlockHeader parent, UInt256 minimumGasPrice)
+        public Transaction BuildTransactionFromUserOperation(
+            UserOperation userOperation, 
+            BlockHeader parent,
+            UInt256 minimumGasPrice)
         {
             Address.TryParse(_config.SingletonContractAddress, out Address singletonContractAddress);
             IReleaseSpec currentSpec = _specProvider.GetSpec(parent.Number + 1);
@@ -117,7 +126,7 @@ namespace Nethermind.AccountAbstraction.Executor
                 {"callData", AbiType.DynamicBytes},
                 {"signature", AbiType.DynamicBytes}
             };
-            AbiSignature abiSignature = new AbiSignature("handleOps", 
+            AbiSignature abiSignature = new AbiSignature("handleOps",
                 new AbiArray(new AbiTuple(userOperationRlp)), AbiType.UInt256);
 
             IAbiEncoder abiEncoder = new AbiEncoder();
@@ -145,44 +154,44 @@ namespace Nethermind.AccountAbstraction.Executor
             {
                 transaction.Type = TxType.Legacy;
             }
-            
+
             _signer.Sign(transaction);
             transaction.Hash = transaction.CalculateHash();
 
             return transaction;
         }
-        
-        private UserOperationBlockTracer CreateBlockTracer(Transaction userOperationTransaction, BlockHeader parent) => new(parent.GasLimit, _signer.Address);
-        
+
+        private UserOperationBlockTracer CreateBlockTracer(Transaction userOperationTransaction, BlockHeader parent) =>
+            new(parent.GasLimit, _signer.Address);
+
         private ITracer CreateTracer()
         {
             ReadOnlyTxProcessingEnv txProcessingEnv = new(
                 _dbProvider, _trieStore, _blockTree, _specProvider, _logManager);
-            
-            ReadOnlyChainProcessingEnv chainProcessingEnv = new(
-                txProcessingEnv, Always.Valid, _recoveryStep, NoBlockRewards.Instance, new InMemoryReceiptStorage(), _dbProvider, _specProvider, _logManager);
 
-            return new Tracer(txProcessingEnv.StateProvider, chainProcessingEnv.ChainProcessor, ProcessingOptions.ProducingBlock | ProcessingOptions.IgnoreParentNotOnMainChain);
+            ReadOnlyChainProcessingEnv chainProcessingEnv = new(
+                txProcessingEnv, Always.Valid, _recoveryStep, NoBlockRewards.Instance, new InMemoryReceiptStorage(),
+                _dbProvider, _specProvider, _logManager);
+
+            return new Tracer(txProcessingEnv.StateProvider, chainProcessingEnv.ChainProcessor,
+                ProcessingOptions.ProducingBlock | ProcessingOptions.IgnoreParentNotOnMainChain);
         }
 
         private Block BuildBlock(Transaction transaction, BlockHeader parent, UInt256? timestamp)
         {
             BlockHeader header = new(
-                parent.Hash ?? Keccak.OfAnEmptySequenceRlp, 
-                Keccak.OfAnEmptySequenceRlp, 
-                _signer.Address, 
-                parent.Difficulty,  
-                parent.Number + 1, 
-                parent.GasLimit, 
-                timestamp ?? parent.Timestamp, 
-                Bytes.Empty)
-            {
-                TotalDifficulty = parent.TotalDifficulty + parent.Difficulty
-            };
+                parent.Hash ?? Keccak.OfAnEmptySequenceRlp,
+                Keccak.OfAnEmptySequenceRlp,
+                _signer.Address,
+                parent.Difficulty,
+                parent.Number + 1,
+                parent.GasLimit,
+                timestamp ?? parent.Timestamp,
+                Bytes.Empty) {TotalDifficulty = parent.TotalDifficulty + parent.Difficulty};
 
             header.BaseFeePerGas = BaseFeeCalculator.Calculate(parent, _specProvider.GetSpec(header.Number));
 
-            return new Block(header, new []{transaction}, Array.Empty<BlockHeader>());
+            return new Block(header, new[] {transaction}, Array.Empty<BlockHeader>());
         }
     }
 }

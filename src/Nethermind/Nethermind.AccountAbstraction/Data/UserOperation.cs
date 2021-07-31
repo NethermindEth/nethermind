@@ -17,15 +17,24 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Eip2930;
 using Nethermind.Int256;
 
 namespace Nethermind.AccountAbstraction.Data
 {
     public class UserOperation
     {
-        public UserOperation(Address target, long callGas, long postCallGas, UInt256 gasPrice, byte[] callData, Signature signature)
+        public UserOperation(
+            Address target, 
+            Address paymasterAddress,
+            long callGas, 
+            long postCallGas, 
+            UInt256 gasPrice, 
+            byte[] callData,
+            Signature signature)
         {
             Target = target;
+            PaymasterAddress = paymasterAddress;
             CallGas = callGas;
             PostCallGas = postCallGas;
             GasPrice = gasPrice;
@@ -34,10 +43,13 @@ namespace Nethermind.AccountAbstraction.Data
         }
 
         public Address Target { get; set; }
+        public Address PaymasterAddress { get; set; }
         public long CallGas { get; set; }
         public long PostCallGas { get; set; }
         public UInt256 GasPrice { get; set; }
         public byte[] CallData { get; set; }
         public Signature Signature { get; set; }
+        public AccessList AccessList { get; set; }
+        public int ResimulationCounter { get; set; } = 0;
     }
 }

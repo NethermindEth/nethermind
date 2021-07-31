@@ -22,10 +22,9 @@ using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.Mev
 {
-
     [RpcModule(ModuleType.AccountAbstraction)]
     public interface IAccountAbstractionRpcModule : IRpcModule
-    {        
+    {
         [JsonRpcMethod(Description = "Adds user operation to the user operation pool.", IsImplemented = true)]
         ResultWrapper<bool> eth_sendUserOperation(UserOperation userOperationRpc);
     }

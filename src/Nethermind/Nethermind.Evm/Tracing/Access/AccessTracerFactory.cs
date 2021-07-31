@@ -15,22 +15,22 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Collections.Generic;
-using Nethermind.AccountAbstraction.Data;
+using Nethermind.Core;
 
-namespace Nethermind.AccountAbstraction.Source
+namespace Nethermind.Evm.Tracing.Access
 {
-    public class CompareUserOperationsByGasPrice : IComparer<UserOperation>
+    public class AccessTracerFactory : IBlockTracerFactory
     {
-        public static readonly CompareUserOperationsByGasPrice Default = new();
+        private readonly AccessBlockTracer _accessBlockTracer;
 
-        public int Compare(UserOperation? x, UserOperation? y)
+        public AccessTracerFactory(AccessBlockTracer accessBlockTracer)
         {
-            if (ReferenceEquals(x, y)) return 0;
-            if (ReferenceEquals(null, y)) return 1;
-            if (ReferenceEquals(null, x)) return -1;
-            
-            return x.GasPrice.CompareTo(y.GasPrice);
+            _accessBlockTracer = accessBlockTracer;
+        }
+
+        public IBlockTracer Create()
+        {
+            return _accessBlockTracer;
         }
     }
 }

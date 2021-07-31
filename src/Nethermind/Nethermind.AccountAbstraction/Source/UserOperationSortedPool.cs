@@ -25,20 +25,19 @@ namespace Nethermind.AccountAbstraction.Source
 {
     public class UserOperationSortedPool : DistinctValueSortedPool<UserOperation, UserOperation, Address>
     {
-        public UserOperationSortedPool(int capacity, IComparer<UserOperation> comparer, ILogManager logManager) : 
+        public UserOperationSortedPool(int capacity, IComparer<UserOperation> comparer, ILogManager logManager) :
             base(capacity, comparer, EqualityComparer<UserOperation>.Default, logManager)
         {
         }
 
-        protected override IComparer<UserOperation> GetUniqueComparer(IComparer<UserOperation> comparer) =>
-            comparer.ThenBy(CompareUserOperationsByGasPrice.Default);
+        protected override IComparer<UserOperation> GetUniqueComparer(IComparer<UserOperation> comparer) => comparer;
 
         protected override IComparer<UserOperation> GetGroupComparer(IComparer<UserOperation> comparer) =>
-            comparer.ThenBy(CompareUserOperationsByGasPrice.Default);
-        
-        protected override IComparer<UserOperation> GetReplacementComparer(IComparer<UserOperation> comparer) => 
-            comparer.ThenBy(CompareUserOperationsByGasPrice.Default);
-        
+            comparer.ThenBy(CompareUserOperationsByDecreasingGasPrice.Default);
+
+        protected override IComparer<UserOperation> GetReplacementComparer(IComparer<UserOperation> comparer) =>
+            comparer.ThenBy(CompareUserOperationsByDecreasingGasPrice.Default);
+
         protected override Address MapToGroup(UserOperation value) => value.Target;
     }
 }

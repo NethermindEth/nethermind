@@ -25,8 +25,14 @@ namespace Nethermind.AccountAbstraction.Executor
 {
     public interface IUserOperationSimulator
     {
-        Task<SimulatedUserOperation> Simulate(UserOperation userOperation, BlockHeader parent, CancellationToken cancellationToken = default, UInt256? timestamp = null);
+        Task<SimulatedUserOperation> Simulate(
+            UserOperation userOperation, 
+            BlockHeader parent,
+            CancellationToken cancellationToken = default, 
+            UInt256? timestamp = null);
 
-        SimulatedUserOperation BuildResult(UserOperation userOperation, UserOperationBlockTracer userOperationBlockTracer);
+        SimulatedUserOperation BuildResult(
+            UserOperation userOperation,
+            UserOperationBlockTracer userOperationBlockTracer);
     }
 }

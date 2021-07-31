@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Executor;
@@ -8,10 +9,11 @@ using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Core;
+using Nethermind.Evm.Tracing.Access;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
-using Nethermind.Network;
 
 namespace Nethermind.AccountAbstraction
 {
@@ -20,8 +22,12 @@ namespace Nethermind.AccountAbstraction
         private IAccountAbstractionConfig _accountAbstractionConfig = null!;
         private UserOperationPool? _userOperationPool;
         private UserOperationSimulator? _userOperationSimulator;
-        private ConcurrentDictionary<UserOperation, SimulatedUserOperationContext> _simulatedUserOperations =
-            new ConcurrentDictionary<UserOperation, SimulatedUserOperationContext>();
+        private AccessBlockTracer _accessBlockTracer = null!;
+        private IDictionary<Address, int> _paymasterOffenseCounter = new Dictionary<Address, int>();
+        private ISet<Address> _bannedPaymasters = new HashSet<Address>();
+
+        private ConcurrentDictionary<UserOperation, SimulatedUserOperation> _simulatedUserOperations = new();
+
         private INethermindApi _nethermindApi = null!;
         private ILogger _logger;
 
@@ -30,7 +36,7 @@ namespace Nethermind.AccountAbstraction
         public string Description => "Implements account abstraction via alternative mempool";
 
         public string Author => "Nethermind";
-        
+
         private UserOperationPool UserOperationPool
         {
             get
@@ -41,23 +47,28 @@ namespace Nethermind.AccountAbstraction
 
                     UserOperationSortedPool userOperationSortedPool = new(
                         _accountAbstractionConfig.UserOperationPoolSize,
-                        CompareUserOperationsByGasPrice.Default,
+                        CompareUserOperationsByDecreasingGasPrice.Default,
                         getFromApi.LogManager);
 
                     _userOperationPool = new UserOperationPool(
                         _nethermindApi.BlockTree,
                         _nethermindApi.StateProvider,
+                        _nethermindApi.Timestamper,
                         _nethermindApi.BlockchainProcessor,
+                        AccessBlockTracer,
+                        _accountAbstractionConfig,
+                        _paymasterOffenseCounter,
+                        _bannedPaymasters,
                         userOperationSortedPool,
                         UserOperationSimulator,
-                        new SimulatedUserOperationSource(_simulatedUserOperations),
                         _simulatedUserOperations
                     );
                 }
+
                 return _userOperationPool;
             }
         }
-        
+
         private UserOperationSimulator UserOperationSimulator
         {
             get
@@ -78,7 +89,23 @@ namespace Nethermind.AccountAbstraction
                         getFromApi.LogManager,
                         getFromApi.BlockPreprocessor);
                 }
+
                 return _userOperationSimulator;
+            }
+        }
+        
+        private AccessBlockTracer AccessBlockTracer
+        {
+            get
+            {
+                if (_accessBlockTracer is null)
+                {
+                    var (getFromApi, _) = _nethermindApi!.ForProducer;
+
+                    _accessBlockTracer = new AccessBlockTracer(Array.Empty<Address>());
+                }
+
+                return _accessBlockTracer;
             }
         }
 
@@ -88,6 +115,11 @@ namespace Nethermind.AccountAbstraction
             _accountAbstractionConfig = _nethermindApi.Config<IAccountAbstractionConfig>();
             _logger = _nethermindApi.LogManager.GetClassLogger();
 
+            if (_accountAbstractionConfig.Enabled)
+            {
+                _nethermindApi.BlockchainProcessor!.BlockTracerFactory.AddChildFactory(new AccessTracerFactory(AccessBlockTracer));
+            }
+            
             return Task.CompletedTask;
         }
 
@@ -95,8 +127,8 @@ namespace Nethermind.AccountAbstraction
 
         public Task InitRpcModules()
         {
-            if (Enabled) 
-            {   
+            if (Enabled)
+            {
                 (IApiWithNetwork getFromApi, _) = _nethermindApi!.ForRpc;
 
                 IJsonRpcConfig rpcConfig = getFromApi.Config<IJsonRpcConfig>();
@@ -104,12 +136,13 @@ namespace Nethermind.AccountAbstraction
 
                 AccountAbstractionModuleFactory accountAbstractionModuleFactory = new(
                     UserOperationPool);
-                
-                getFromApi.RpcModuleProvider!.RegisterBoundedByCpuCount(accountAbstractionModuleFactory, rpcConfig.Timeout);
+
+                getFromApi.RpcModuleProvider!.RegisterBoundedByCpuCount(accountAbstractionModuleFactory,
+                    rpcConfig.Timeout);
 
                 if (_logger!.IsInfo) _logger.Info("Account Abstraction RPC plugin enabled");
-            } 
-            else 
+            }
+            else
             {
                 if (_logger!.IsWarn) _logger.Info("Skipping Account Abstraction RPC plugin");
             }
@@ -128,7 +161,7 @@ namespace Nethermind.AccountAbstraction
             {
                 throw new InvalidOperationException("Plugin is disabled");
             }
-            
+
             UserOperationTxSource userOperationTxSource = new();
             return consensusPlugin.InitBlockProducer(userOperationTxSource);
         }

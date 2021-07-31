@@ -24,12 +24,13 @@ namespace Nethermind.AccountAbstraction.Source
 {
     public class SimulatedUserOperationContext : IDisposable
     {
-        public SimulatedUserOperationContext(Task<SimulatedUserOperation> task, CancellationTokenSource cancellationTokenSource)
+        public SimulatedUserOperationContext(Task<SimulatedUserOperation> task,
+            CancellationTokenSource cancellationTokenSource)
         {
             Task = task;
             CancellationTokenSource = cancellationTokenSource;
         }
-        
+
         public CancellationTokenSource CancellationTokenSource { get; }
         public Task<SimulatedUserOperation> Task { get; }
 

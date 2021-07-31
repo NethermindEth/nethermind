@@ -19,13 +19,13 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Executor;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
-using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
-using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.Access;
 using Nethermind.State;
 using Nethermind.TxPool.Collections;
@@ -36,31 +36,48 @@ namespace Nethermind.AccountAbstraction.Source
     {
         private readonly IBlockTree _blockTree;
         private readonly IStateProvider _stateProvider;
-        private readonly IBlockchainProcessor _blockchainProcessor;
+        private readonly ITimestamper _timestamper;
+        private readonly AccessBlockTracer _accessBlockTracer;
+        private readonly IAccountAbstractionConfig _accountAbstractionConfig;
+        private readonly IDictionary<Address, int> _paymasterOffenseCounter;
+        private readonly ISet<Address> _bannedPaymasters;
         private readonly UserOperationSortedPool _userOperationSortedPool;
         private readonly IUserOperationSimulator _userOperationSimulator;
-        private readonly ISimulatedUserOperationSource _simulatedUserOperationSource;
-        private readonly ConcurrentDictionary<UserOperation, SimulatedUserOperationContext> _simulatedUserOperations;
+        private readonly ConcurrentDictionary<UserOperation, SimulatedUserOperation> _simulatedUserOperations;
 
         public UserOperationPool(
-            IBlockTree blockTree, 
-            IStateProvider stateProvider, 
-            IBlockchainProcessor blockchainProcessor, 
-            UserOperationSortedPool userOperationSortedPool, 
+            IBlockTree blockTree,
+            IStateProvider stateProvider,
+            ITimestamper timestamper,
+            IBlockchainProcessor blockchainProcessor,
+            AccessBlockTracer accessBlockTracer,
+            IAccountAbstractionConfig accountAbstractionConfig,
+            IDictionary<Address, int> paymasterOffenseCounter,
+            ISet<Address> bannedPaymasters,
+            UserOperationSortedPool userOperationSortedPool,
             IUserOperationSimulator userOperationSimulator,
-            ISimulatedUserOperationSource simulatedUserOperationSource,
-            ConcurrentDictionary<UserOperation, SimulatedUserOperationContext> simulatedUserOperations)
+            ConcurrentDictionary<UserOperation, SimulatedUserOperation> simulatedUserOperations)
         {
             _blockTree = blockTree;
             _stateProvider = stateProvider;
-            _blockchainProcessor = blockchainProcessor;
+            _timestamper = timestamper;
+            _accessBlockTracer = accessBlockTracer;
+            _accountAbstractionConfig = accountAbstractionConfig;
+            _paymasterOffenseCounter = paymasterOffenseCounter;
+            _bannedPaymasters = bannedPaymasters;
             _userOperationSortedPool = userOperationSortedPool;
             _userOperationSimulator = userOperationSimulator;
-            _simulatedUserOperationSource = simulatedUserOperationSource;
             _simulatedUserOperations = simulatedUserOperations;
 
             blockTree.NewHeadBlock += OnNewBlock;
+            _userOperationSortedPool.Inserted += UserOperationInserted;
             _userOperationSortedPool.Removed += UserOperationRemoved;
+        }
+
+        private void UserOperationInserted(object? sender, SortedPool<UserOperation, UserOperation, Address>.SortedPoolEventArgs e)
+        {
+            UserOperation userOperation = e.Key;
+            SimulateAndAddToPool(userOperation, _blockTree.Head!.Header);
         }
 
         private void UserOperationRemoved(object? sender, SortedPool<UserOperation, UserOperation, Address>.SortedPoolRemovedEventArgs e)
@@ -72,32 +89,137 @@ namespace Nethermind.AccountAbstraction.Source
         private void OnNewBlock(object? sender, BlockEventArgs e)
         {
             Block block = e.Block;
-            AccessBlockTracer accessBlockTracer = new(Array.Empty<Address>());
-            ITracer tracer = new Tracer(_stateProvider, _blockchainProcessor);
-            tracer.Trace(block, accessBlockTracer);
 
-            IEnumerable<SimulatedUserOperation> simulatedUserOperations = _simulatedUserOperationSource.GetSimulatedUserOperations();
+            IEnumerable<AccessTxTracer> blockAccessTxTracers = _accessBlockTracer.BuildResult();
+
+            HashSet<Address> blockAccessedAddresses = new();
+
+            foreach (AccessTxTracer blockAccessTxTracer in blockAccessTxTracers)
+            {
+                foreach (Address blockAccessedAddress in blockAccessTxTracer.AccessList.Data.Keys)
+                {
+                    blockAccessedAddresses.Add(blockAccessedAddress);
+                }
+            }
+
+            blockAccessedAddresses.Remove(block.Beneficiary);
+            blockAccessedAddresses.Remove(new Address(_accountAbstractionConfig.SingletonContractAddress));
+
+            _userOperationSortedPool.GetSnapshot().Select(op => op.AccessList);
+
+            foreach (UserOperation op in _userOperationSortedPool.GetSnapshot())
+            {
+                if (blockAccessedAddresses.Overlaps(op.AccessList.Data.Keys))
+                {
+                    if (op.ResimulationCounter > _accountAbstractionConfig.MaxResimulations)
+                    {
+                        _userOperationSortedPool.TryRemove(op);
+                        _simulatedUserOperations.Remove(op, out _);
+
+                        if (op.PaymasterAddress == Address.Zero)
+                        {
+                            _paymasterOffenseCounter[op.Target]++;
+                            if (_paymasterOffenseCounter[op.Target] > _accountAbstractionConfig.MaxResimulations)
+                            {
+                                _bannedPaymasters.Add(op.Target);
+                            }
+                        }
+                        else
+                        {
+                            _paymasterOffenseCounter[op.PaymasterAddress]++;
+                            if (_paymasterOffenseCounter[op.PaymasterAddress] > _accountAbstractionConfig.MaxResimulations)
+                            {
+                                _bannedPaymasters.Add(op.PaymasterAddress);
+                            }
+                        }
+                    }
+                    op.ResimulationCounter++;
+                    _simulatedUserOperations.TryRemove(op, out _);
+                    SimulateAndAddToPool(op, block.Header);
+                }
+            } 
+            
+            
             // verify each one still has enough balance, nonce is correct etc.
-
         }
 
         public IEnumerable<UserOperation> GetUserOperations() => _userOperationSortedPool.GetSnapshot();
 
         public bool AddUserOperation(UserOperation userOperation)
         {
-            if (ValidateUserOperation(userOperation))
+            if (ValidateUserOperation(userOperation, out SimulatedUserOperation simulatedUserOperation))
             {
                 return _userOperationSortedPool.TryInsert(userOperation, userOperation);
             }
+
             return false;
         }
 
-        private bool ValidateUserOperation(UserOperation userOperation)
+        private bool ValidateUserOperation(UserOperation userOperation, out SimulatedUserOperation simulatedUserOperation)
         {
-            // make sure all fields present
-            // make sure all field values make sense
-            // make sure signature is correct
-            return true;
+            bool success = true;
+            
+            // make sure target account exists
+            if (
+                userOperation.Target == Address.Zero
+                || !_stateProvider.AccountExists(userOperation.Target))
+            {
+                success = false;
+            }
+
+            // make sure paymaster is a contract (if paymaster is used) and is not on banned list
+            if (userOperation.PaymasterAddress != Address.Zero)
+            {
+                if (!_stateProvider.AccountExists(userOperation.PaymasterAddress) 
+                    || !_stateProvider.IsContract(userOperation.PaymasterAddress)
+                    || _bannedPaymasters.Contains(userOperation.PaymasterAddress))
+                {
+                    success = false;
+                }
+            }
+
+            // make sure op not already in pool
+            if (_userOperationSortedPool.GetSnapshot().Contains(userOperation))
+            {
+                success = false;
+            }
+
+            // simulate
+            Task<SimulatedUserOperation> simulatedUserOperationTask = _userOperationSimulator.Simulate(userOperation, _blockTree.Head.Header, CancellationToken.None, _timestamper.UnixTime.Seconds);
+            if (!simulatedUserOperationTask.IsCompletedSuccessfully)
+            {
+                success = false;
+            }
+
+            if (success)
+            {
+                simulatedUserOperation = simulatedUserOperationTask.Result;
+                return true;
+            }
+            else
+            {
+                simulatedUserOperation = SimulatedUserOperation.FailedSimulatedUserOperation(userOperation);
+                return false;
+            }
+        }
+
+        private async void SimulateAndAddToPool(UserOperation userOperation, BlockHeader parent)
+        {
+            SimulatedUserOperation simulatedUserOperation = await _userOperationSimulator.Simulate(
+                userOperation, 
+                parent, 
+                CancellationToken.None, 
+                _timestamper.UnixTime.Seconds);
+
+            if (simulatedUserOperation.Success)
+            {
+                _simulatedUserOperations[userOperation] = simulatedUserOperation;
+            }
+            else
+            {
+                _userOperationSortedPool.TryRemove(userOperation);
+            }
+
         }
     }
 }

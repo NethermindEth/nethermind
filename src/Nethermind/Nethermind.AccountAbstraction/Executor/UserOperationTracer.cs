@@ -32,7 +32,7 @@ namespace Nethermind.AccountAbstraction.Executor
 
         private UserOperationTxTracer? _tracer;
         private Block? _block;
-            
+
         private UInt256? _beneficiaryBalanceBefore;
         private UInt256? _beneficiaryBalanceAfter;
 
@@ -42,8 +42,9 @@ namespace Nethermind.AccountAbstraction.Executor
             _gasLimit = gasLimit;
             _beneficiary = beneficiary;
         }
-        
+
         public bool Success { get; private set; }
+
         public UInt256 Reward
         {
             get
@@ -56,9 +57,10 @@ namespace Nethermind.AccountAbstraction.Executor
                 return _beneficiaryBalanceAfter ?? 0 - _beneficiaryBalanceBefore ?? 0;
             }
         }
+
         public long GasUsed { get; private set; }
         public bool IsTracingRewards => true;
-        
+
         public void ReportReward(Address author, string rewardType, UInt256 rewardValue)
         {
         }
@@ -70,8 +72,8 @@ namespace Nethermind.AccountAbstraction.Executor
 
         public ITxTracer StartNewTxTrace(Transaction? tx)
         {
-            return tx is null 
-                ? new UserOperationTxTracer(_beneficiary, null) 
+            return tx is null
+                ? new UserOperationTxTracer(_beneficiary, null)
                 : _tracer = new UserOperationTxTracer(_beneficiary, tx);
         }
 
@@ -84,7 +86,7 @@ namespace Nethermind.AccountAbstraction.Executor
                 Success = false;
                 return;
             }
-                
+
             _beneficiaryBalanceBefore ??= (_tracer.BeneficiaryBalanceBefore ?? 0);
             _beneficiaryBalanceAfter = _tracer.BeneficiaryBalanceAfter;
             if (_beneficiaryBalanceAfter >= _beneficiaryBalanceBefore) Success = true;
@@ -97,16 +99,15 @@ namespace Nethermind.AccountAbstraction.Executor
 
     public class UserOperationTxTracer : ITxTracer
     {
-
         public UserOperationTxTracer(Address beneficiary, Transaction? transaction)
         {
             _beneficiary = beneficiary;
             Transaction = transaction;
         }
-        
+
         private readonly Address _beneficiary;
-        
-        
+
+
         public Transaction? Transaction { get; }
         public bool Success { get; private set; }
         public string? Error { get; private set; }
@@ -126,20 +127,22 @@ namespace Nethermind.AccountAbstraction.Executor
         public bool IsTracingStorage => false;
         public bool IsTracingBlockHash => false;
         public bool IsTracingAccess => false;
-        
-        public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
+
+        public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs,
+            Keccak? stateRoot = null)
         {
             GasSpent = gasSpent;
             Success = true;
         }
 
-        public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak? stateRoot = null)
+        public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error,
+            Keccak? stateRoot = null)
         {
             GasSpent = gasSpent;
             Success = false;
             Error = error;
         }
-        
+
         public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
         {
             if (address == _beneficiary)
@@ -173,7 +176,7 @@ namespace Nethermind.AccountAbstraction.Executor
         {
             throw new NotImplementedException();
         }
-        
+
         public void StartOperation(int depth, long gas, Instruction opcode, int pc)
         {
             throw new NotImplementedException();
@@ -219,7 +222,8 @@ namespace Nethermind.AccountAbstraction.Executor
             throw new NotImplementedException();
         }
 
-        public void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
+        public void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue,
+            ReadOnlySpan<byte> currentValue)
         {
             throw new NotImplementedException();
         }
@@ -229,7 +233,8 @@ namespace Nethermind.AccountAbstraction.Executor
             throw new NotImplementedException();
         }
 
-        public void ReportAction(long gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType,
+        public void ReportAction(long gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input,
+            ExecutionType callType,
             bool isPrecompileCall = false)
         {
             throw new NotImplementedException();
@@ -275,7 +280,8 @@ namespace Nethermind.AccountAbstraction.Executor
             throw new NotImplementedException();
         }
 
-        public void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells)
+        public void ReportAccess(IReadOnlySet<Address> accessedAddresses,
+            IReadOnlySet<StorageCell> accessedStorageCells)
         {
             throw new NotImplementedException();
         }
