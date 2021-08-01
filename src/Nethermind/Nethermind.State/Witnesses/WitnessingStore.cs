@@ -18,6 +18,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Db;
 
 namespace Nethermind.State.Witnesses
 {
@@ -25,23 +26,28 @@ namespace Nethermind.State.Witnesses
     {
         public static IKeyValueStoreWithBatching WitnessedBy(
             this IKeyValueStoreWithBatching @this,
-            IWitnessCollector witnessCollector)
+            IWitnessCollector witnessCollector, IDb stateDb, IDb codeDb)
         {
             return witnessCollector == NullWitnessCollector.Instance
                 ? @this
-                : new WitnessingStore(@this, witnessCollector);
+                : new WitnessingStore(@this, witnessCollector, stateDb, codeDb);
         }
     }
-    
+
     public class WitnessingStore : IKeyValueStoreWithBatching
     {
         private readonly IKeyValueStoreWithBatching _wrapped;
         private readonly IWitnessCollector _witnessCollector;
+        private readonly IDb _stateDb;
+        private readonly IDb _codeDb;
 
-        public WitnessingStore(IKeyValueStoreWithBatching? wrapped, IWitnessCollector? witnessCollector)
+        public WitnessingStore(IKeyValueStoreWithBatching? wrapped, IWitnessCollector? witnessCollector, IDb stateDb,
+            IDb codeDb)
         {
             _wrapped = wrapped ?? throw new ArgumentNullException(nameof(wrapped));
             _witnessCollector = witnessCollector ?? throw new ArgumentNullException(nameof(witnessCollector));
+            _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
+            _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
         }
 
         public byte[]? this[byte[] key]
@@ -54,7 +60,14 @@ namespace Nethermind.State.Witnesses
                 }
                 
                 Touch(key);
-                return _wrapped[key];
+                if (_wrapped[key] is not null)
+                {
+                    return _stateDb.KeyExists(_wrapped[key])
+                        ? _stateDb[_wrapped[key]]
+                        : (_codeDb.KeyExists(_wrapped[key]) ? _codeDb[_wrapped[key]] : null);
+                }
+
+                return null;
             }
             set => _wrapped[key] = value;
         }
