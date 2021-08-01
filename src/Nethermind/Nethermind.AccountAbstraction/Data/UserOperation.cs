@@ -31,7 +31,8 @@ namespace Nethermind.AccountAbstraction.Data
             long postCallGas, 
             UInt256 gasPrice, 
             byte[] callData,
-            Signature signature)
+            Signature signature, 
+            AccessList accessList)
         {
             Target = target;
             PaymasterAddress = paymasterAddress;
@@ -40,6 +41,7 @@ namespace Nethermind.AccountAbstraction.Data
             GasPrice = gasPrice;
             CallData = callData;
             Signature = signature;
+            AccessList = accessList;
         }
 
         public Address Target { get; set; }

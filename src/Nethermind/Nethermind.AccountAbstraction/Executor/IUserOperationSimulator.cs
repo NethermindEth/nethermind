@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.AccountAbstraction.Data;
@@ -34,5 +35,9 @@ namespace Nethermind.AccountAbstraction.Executor
         SimulatedUserOperation BuildResult(
             UserOperation userOperation,
             UserOperationBlockTracer userOperationBlockTracer);
+
+        public Transaction BuildTransactionFromUserOperations(
+            IList<UserOperation> userOperations,
+            BlockHeader parent);
     }
 }

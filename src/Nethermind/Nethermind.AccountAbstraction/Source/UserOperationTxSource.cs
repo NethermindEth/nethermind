@@ -15,7 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
+using Nethermind.AccountAbstraction.Data;
+using Nethermind.AccountAbstraction.Executor;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 
@@ -23,9 +28,48 @@ namespace Nethermind.AccountAbstraction.Source
 {
     public class UserOperationTxSource : ITxSource
     {
+        private readonly IUserOperationPool _userOperationPool;
+        private readonly ConcurrentDictionary<UserOperation, SimulatedUserOperation> _simulatedUserOperations;
+        private readonly IUserOperationSimulator _userOperationSimulator;
+        private readonly ISigner _signer;
+
+        public UserOperationTxSource(IUserOperationPool userOperationPool, 
+            ConcurrentDictionary<UserOperation, SimulatedUserOperation> simulatedUserOperations,
+            IUserOperationSimulator userOperationSimulator,
+            ISigner signer)
+        {
+            _userOperationPool = userOperationPool;
+            _simulatedUserOperations = simulatedUserOperations;
+            _userOperationSimulator = userOperationSimulator;
+            _signer = signer;
+        }
+
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
         {
-            throw new System.NotImplementedException();
+            IList<Address> usedAddresses = new List<Address>();
+            IList<UserOperation> userOperations = new List<UserOperation>();
+            long gasUsed = 0;
+            
+            IEnumerable<SimulatedUserOperation> simulatedUserOperations = _simulatedUserOperations.Values.OrderByDescending(op => op.ImpliedGasPrice);
+            foreach (SimulatedUserOperation simulatedUserOperation in simulatedUserOperations)
+            {
+                if (gasUsed >= gasLimit)
+                {
+                    break;
+                }
+                
+                // no intersect of accessed addresses
+                if (usedAddresses.Intersect(simulatedUserOperation.UserOperation.AccessList.Data.Keys).Any())
+                {
+                    break;
+                }
+                
+                userOperations.Add(simulatedUserOperation.UserOperation);
+                gasUsed += simulatedUserOperation.UserOperation.CallGas; // TODO FIX THIS AFTER WE FIGURE OUT HOW CONTRACT WORKS
+            }
+
+            Transaction userOperationTransaction = _userOperationSimulator.BuildTransactionFromUserOperations(userOperations, parent);
+            return new List<Transaction>{userOperationTransaction};
         }
     }
 }

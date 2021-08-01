@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
@@ -24,7 +23,6 @@ using System.Threading.Tasks;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Executor;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Processing;
 using Nethermind.Core;
 using Nethermind.Evm.Tracing.Access;
 using Nethermind.State;
@@ -49,7 +47,6 @@ namespace Nethermind.AccountAbstraction.Source
             IBlockTree blockTree,
             IStateProvider stateProvider,
             ITimestamper timestamper,
-            IBlockchainProcessor blockchainProcessor,
             AccessBlockTracer accessBlockTracer,
             IAccountAbstractionConfig accountAbstractionConfig,
             IDictionary<Address, int> paymasterOffenseCounter,
@@ -157,6 +154,12 @@ namespace Nethermind.AccountAbstraction.Source
 
         private bool ValidateUserOperation(UserOperation userOperation, out SimulatedUserOperation simulatedUserOperation)
         {
+            if (userOperation.GasPrice < _accountAbstractionConfig.MinimumGasPrice)
+            {
+                simulatedUserOperation = SimulatedUserOperation.FailedSimulatedUserOperation(userOperation);
+                return false;
+            }
+            
             // make sure target account exists
             if (
                 userOperation.Target == Address.Zero

@@ -18,6 +18,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Abi;
@@ -87,7 +88,7 @@ namespace Nethermind.AccountAbstraction.Executor
             CancellationToken cancellationToken = default, 
             UInt256? timestamp = null)
         {
-            Transaction userOperationTransaction = BuildTransactionFromUserOperation(userOperation, parent, _config.MinimumGasPrice);
+            Transaction userOperationTransaction = BuildTransactionFromUserOperations(new List<UserOperation>{userOperation}, parent);
             Block block = BuildBlock(userOperationTransaction, parent, timestamp);
             UserOperationBlockTracer blockTracer = CreateBlockTracer(userOperationTransaction, parent);
             ITracer tracer = CreateTracer();
@@ -109,10 +110,9 @@ namespace Nethermind.AccountAbstraction.Executor
             return simulatedUserOperation;
         }
 
-        public Transaction BuildTransactionFromUserOperation(
-            UserOperation userOperation, 
-            BlockHeader parent,
-            UInt256 minimumGasPrice)
+        public Transaction BuildTransactionFromUserOperations(
+            IList<UserOperation> userOperations, 
+            BlockHeader parent)
         {
             Address.TryParse(_config.SingletonContractAddress, out Address singletonContractAddress);
             IReleaseSpec currentSpec = _specProvider.GetSpec(parent.Number + 1);
@@ -127,18 +127,18 @@ namespace Nethermind.AccountAbstraction.Executor
                 {"signature", AbiType.DynamicBytes}
             };
             AbiSignature abiSignature = new AbiSignature("handleOps",
-                new AbiArray(new AbiTuple(userOperationRlp)), AbiType.UInt256);
+                new AbiArray(new AbiTuple(userOperationRlp)));
 
             IAbiEncoder abiEncoder = new AbiEncoder();
             byte[] computedCallData = abiEncoder.Encode(
                 AbiEncodingStyle.None,
                 abiSignature,
-                userOperation, minimumGasPrice);
+                userOperations);
 
             Transaction transaction = new()
             {
                 GasPrice = 0, // the bundler should in real scenarios be the miner
-                GasLimit = userOperation.CallGas + userOperation.PostCallGas + 10000,
+                GasLimit = userOperations.Select(op => op.CallGas).Sum() + userOperations.Select(op => op.PostCallGas).Sum() + 10000*userOperations.Count,
                 To = singletonContractAddress,
                 ChainId = _specProvider.ChainId,
                 Nonce = _stateProvider.GetNonce(_signer.Address),

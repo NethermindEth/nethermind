@@ -54,7 +54,6 @@ namespace Nethermind.AccountAbstraction
                         _nethermindApi.BlockTree,
                         _nethermindApi.StateProvider,
                         _nethermindApi.Timestamper,
-                        _nethermindApi.BlockchainProcessor,
                         AccessBlockTracer,
                         _accountAbstractionConfig,
                         _paymasterOffenseCounter,
@@ -162,10 +161,10 @@ namespace Nethermind.AccountAbstraction
                 throw new InvalidOperationException("Plugin is disabled");
             }
 
-            UserOperationTxSource userOperationTxSource = new();
+            UserOperationTxSource userOperationTxSource = new(UserOperationPool, _simulatedUserOperations, UserOperationSimulator, _nethermindApi.EngineSigner);
             return consensusPlugin.InitBlockProducer(userOperationTxSource);
         }
 
-        public bool Enabled => _accountAbstractionConfig.Enabled;
+        public bool Enabled => _nethermindApi.Config<IMiningConfig>().Enabled && _accountAbstractionConfig.Enabled;
     }
 }
