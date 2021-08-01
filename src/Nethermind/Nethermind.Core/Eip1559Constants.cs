@@ -22,13 +22,16 @@ namespace Nethermind.Core
 {
     public class Eip1559Constants
     {
-        public static readonly UInt256 BaseFeeMaxChangeDenominator = 8;
-        
+                
         public static readonly UInt256 DefaultForkBaseFee = 1.GWei();
         
-        // The default fork base fee is 1 Gwei. However, we can override it in genesis
+        public static readonly UInt256 DefaultBaseFeeMaxChangeDenominator = 8;
+        
+        public static readonly int DefaultElasticityMultiplier = 2;
+        
+        // The above values are the default ones. However, we're allowing to override it from genesis
         public static UInt256 ForkBaseFee { get; set; } = DefaultForkBaseFee;
-
-        public const int ElasticityMultiplier = 2;
+        public static UInt256 BaseFeeMaxChangeDenominator { get; set; } = DefaultBaseFeeMaxChangeDenominator;
+        public static long ElasticityMultiplier { get; set;  } = DefaultElasticityMultiplier;
     }
 }

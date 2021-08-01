@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -142,6 +142,11 @@ namespace Nethermind.Config
 
         public (bool IsSet, string Value) GetRawValue(string category, string name)
         {
+            if(string.IsNullOrEmpty(category) || string.IsNullOrEmpty(name))
+            {
+                return (false, null);
+            }
+
             bool isSet = _values.ContainsKey(category) && _values[category].ContainsKey(name);
             return (isSet, isSet ? _values[category][name] : null);
         }
