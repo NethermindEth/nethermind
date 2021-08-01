@@ -70,13 +70,13 @@ namespace Nethermind.Runner.Ethereum.Steps
         {
             BlockTraceDumper.Converters.AddRange(DebugModuleFactory.Converters);
             BlockTraceDumper.Converters.AddRange(TraceModuleFactory.Converters);
-            
+
             var (getApi, setApi) = _api.ForBlockchain;
-            
+
             if (getApi.ChainSpec == null) throw new StepDependencyException(nameof(getApi.ChainSpec));
             if (getApi.DbProvider == null) throw new StepDependencyException(nameof(getApi.DbProvider));
             if (getApi.SpecProvider == null) throw new StepDependencyException(nameof(getApi.SpecProvider));
-            
+
             _logger = getApi.LogManager.GetClassLogger();
             IInitConfig initConfig = getApi.Config<IInitConfig>();
             ISyncConfig syncConfig = getApi.Config<ISyncConfig>();
@@ -84,10 +84,11 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             if (syncConfig.DownloadReceiptsInFastSync && !syncConfig.DownloadBodiesInFastSync)
             {
-                _logger.Warn($"{nameof(syncConfig.DownloadReceiptsInFastSync)} is selected but {nameof(syncConfig.DownloadBodiesInFastSync)} - enabling bodies to support receipts download.");
+                _logger.Warn(
+                    $"{nameof(syncConfig.DownloadReceiptsInFastSync)} is selected but {nameof(syncConfig.DownloadBodiesInFastSync)} - enabling bodies to support receipts download.");
                 syncConfig.DownloadBodiesInFastSync = true;
             }
-            
+
             Account.AccountStartNonce = getApi.ChainSpec.Parameters.AccountStartNonce;
 
             IWitnessCollector witnessCollector;
@@ -107,13 +108,14 @@ namespace Nethermind.Runner.Ethereum.Steps
                 .Cached(Trie.MemoryAllowance.TrieNodeCacheCount);
             setApi.MainStateDbWithCache = cachedStateDb;
             IKeyValueStore codeDb = getApi.DbProvider.CodeDb
-                .WitnessedBy(witnessCollector);
+                .WitnessedBy(witnessCollector, getApi.DbProvider.StateDb, getApi.DbProvider.CodeDb);
 
             TrieStore trieStore;
             if (pruningConfig.Enabled)
             {
                 setApi.TrieStore = trieStore = new TrieStore(
-                    setApi.MainStateDbWithCache.WitnessedBy(witnessCollector),
+                    setApi.MainStateDbWithCache.WitnessedBy(witnessCollector, getApi.DbProvider.StateDb,
+                        getApi.DbProvider.CodeDb),
                     Prune.WhenCacheReaches(pruningConfig.CacheMb.MB()), // TODO: memory hint should define this
                     Persist.IfBlockOlderThan(pruningConfig.PersistenceInterval), // TODO: this should be based on time
                     getApi.LogManager);
@@ -121,12 +123,13 @@ namespace Nethermind.Runner.Ethereum.Steps
             else
             {
                 setApi.TrieStore = trieStore = new TrieStore(
-                    setApi.MainStateDbWithCache.WitnessedBy(witnessCollector),
+                    setApi.MainStateDbWithCache.WitnessedBy(witnessCollector, getApi.DbProvider.StateDb,
+                        getApi.DbProvider.CodeDb),
                     No.Pruning,
                     Persist.EveryBlock,
                     getApi.LogManager);
             }
-            
+
             getApi.DisposeStack.Push(trieStore);
             trieStore.ReorgBoundaryReached += ReorgBoundaryReached;
             ITrieStore readOnlyTrieStore = setApi.ReadOnlyTrieStore = trieStore.AsReadOnly(cachedStateDb);
@@ -137,9 +140,10 @@ namespace Nethermind.Runner.Ethereum.Steps
                 getApi.LogManager);
 
             ReadOnlyDbProvider readOnly = new(getApi.DbProvider, false);
-            
-            IStateReader stateReader = setApi.StateReader = new StateReader(readOnlyTrieStore, readOnly.GetDb<IDb>(DbNames.Code), getApi.LogManager);
-            
+
+            IStateReader stateReader = setApi.StateReader =
+                new StateReader(readOnlyTrieStore, readOnly.GetDb<IDb>(DbNames.Code), getApi.LogManager);
+
             setApi.TransactionComparerProvider =
                 new TransactionComparerProvider(getApi.SpecProvider!, getApi.BlockTree.AsReadOnly());
             setApi.ChainHeadStateProvider = new ChainHeadReadOnlyStateProvider(getApi.BlockTree, stateReader);
@@ -151,7 +155,9 @@ namespace Nethermind.Runner.Ethereum.Steps
             {
                 _logger.Info("Collecting trie stats and verifying that no nodes are missing...");
                 TrieStats stats = stateProvider.CollectStats(getApi.DbProvider.CodeDb, _api.LogManager);
-                _logger.Info($"Starting from {getApi.BlockTree.Head?.Number} {getApi.BlockTree.Head?.StateRoot}{Environment.NewLine}" + stats);
+                _logger.Info(
+                    $"Starting from {getApi.BlockTree.Head?.Number} {getApi.BlockTree.Head?.StateRoot}{Environment.NewLine}" +
+                    stats);
             }
 
             // Init state if we need system calls before actual processing starts
@@ -159,27 +165,28 @@ namespace Nethermind.Runner.Ethereum.Steps
             {
                 stateProvider.StateRoot = getApi.BlockTree.Head.StateRoot;
             }
-            
+
             var txValidator = setApi.TxValidator = new TxValidator(getApi.SpecProvider.ChainId);
-            
+
             ITxPool txPool = _api.TxPool = CreateTxPool();
 
-            ReceiptCanonicalityMonitor receiptCanonicalityMonitor = new(getApi.BlockTree, getApi.ReceiptStorage, _api.LogManager);
+            ReceiptCanonicalityMonitor receiptCanonicalityMonitor =
+                new(getApi.BlockTree, getApi.ReceiptStorage, _api.LogManager);
             getApi.DisposeStack.Push(receiptCanonicalityMonitor);
 
             _api.BlockPreprocessor.AddFirst(
                 new RecoverSignatures(getApi.EthereumEcdsa, txPool, getApi.SpecProvider, getApi.LogManager));
-            
+
             IStorageProvider storageProvider = setApi.StorageProvider = new StorageProvider(
                 trieStore,
                 stateProvider,
                 getApi.LogManager);
 
             // blockchain processing
-            BlockhashProvider blockhashProvider = new (
+            BlockhashProvider blockhashProvider = new(
                 getApi.BlockTree, getApi.LogManager);
 
-            VirtualMachine virtualMachine = new (
+            VirtualMachine virtualMachine = new(
                 stateProvider,
                 storageProvider,
                 blockhashProvider,
@@ -223,8 +230,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 getApi.LogManager,
                 new BlockchainProcessor.Options
                 {
-                    AutoProcess = !syncConfig.BeamSync,
-                    StoreReceiptsByDefault = initConfig.StoreReceipts,
+                    AutoProcess = !syncConfig.BeamSync, StoreReceiptsByDefault = initConfig.StoreReceipts,
                 });
 
             setApi.BlockProcessingQueue = blockchainProcessor;
@@ -259,13 +265,13 @@ namespace Nethermind.Runner.Ethereum.Steps
             setApi.HealthHintService = CreateHealthHintService();
             return Task.CompletedTask;
         }
-        
+
         private void ReorgBoundaryReached(object? sender, ReorgBoundaryReached e)
         {
             if (_logger.IsDebug) _logger.Debug($"Saving reorg boundary {e.BlockNumber}");
             (_api.BlockTree as BlockTree)!.SavePruningReorganizationBoundary(e.BlockNumber);
         }
-        
+
         protected virtual IHealthHintService CreateHealthHintService() =>
             new HealthHintService(_api.ChainSpec);
 
@@ -279,7 +285,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.LogManager,
                 CreateTxPoolTxComparer());
 
-        protected IComparer<Transaction> CreateTxPoolTxComparer() => _api.TransactionComparerProvider.GetDefaultComparer();
+        protected IComparer<Transaction> CreateTxPoolTxComparer() =>
+            _api.TransactionComparerProvider.GetDefaultComparer();
 
         protected virtual HeaderValidator CreateHeaderValidator() =>
             new HeaderValidator(
@@ -292,7 +299,8 @@ namespace Nethermind.Runner.Ethereum.Steps
         protected virtual BlockProcessor CreateBlockProcessor()
         {
             if (_api.DbProvider == null) throw new StepDependencyException(nameof(_api.DbProvider));
-            if (_api.RewardCalculatorSource == null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
+            if (_api.RewardCalculatorSource == null)
+                throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
 
             return new BlockProcessor(
                 _api.SpecProvider,
