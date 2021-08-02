@@ -144,7 +144,9 @@ namespace Nethermind.JsonRpc.Modules.Trace
         {
             TxTraceFilter txTracerFilter = traceFilterForRpc.ToTxTracerFilter();
             List<ParityLikeTxTrace> txTraces = new();
-            foreach (SearchResult<Block> blockSearch in _blockFinder.SearchForBlocksOnMainChain(traceFilterForRpc.FromBlock, traceFilterForRpc.ToBlock))
+            IEnumerable<SearchResult<Block>> blocksSearch =
+                _blockFinder.SearchForBlocksOnMainChain(traceFilterForRpc.FromBlock ?? BlockParameter.Latest, traceFilterForRpc.ToBlock ?? BlockParameter.Latest);
+            foreach (SearchResult<Block> blockSearch in blocksSearch)
             {
                 if (!txTracerFilter.ShouldContinue())
                     break;

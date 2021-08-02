@@ -23,9 +23,9 @@ namespace Nethermind.JsonRpc.Modules.Trace
 {
     public class TraceFilterForRpc
     {
-        public BlockParameter FromBlock { get; set; }
+        public BlockParameter? FromBlock{ get; set; }
         
-        public BlockParameter ToBlock { get; set; }
+        public BlockParameter? ToBlock { get; set; }
         
         public Address[]? FromAddress { get; set; }
         
