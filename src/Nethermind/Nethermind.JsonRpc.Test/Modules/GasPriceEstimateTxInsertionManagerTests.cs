@@ -38,31 +38,6 @@ namespace Nethermind.JsonRpc.Test.Modules
     class GasPriceEstimateTxInsertionManagerTests
     {
         [Test]
-        public void AddValidTxAndReturnCount_IfBlockHasMoreThanThreeValidTx_AddOnlyThreeNew()
-        {
-            (List<UInt256> results, GasPriceEstimateTxInsertionManager txInsertionManager) = GetTestableTxInsertionManager(ignoreUnder: 3);
-            txInsertionManager.Configure().GetTxGasPriceList(Arg.Any<IGasPriceOracle>()).Returns(results);
-            Block testBlock = GetTestBlockB();
-            
-            txInsertionManager.GetTxPrices(testBlock);
-
-            results.Count.Should().Be(3);
-        }
-        
-        [Test]
-        public void AddValidTxAndReturnCount_IfBlockHasMoreThanThreeValidTxs_OnlyAddTxsWithLowestGasPrices()
-        {
-            (List<UInt256> results, GasPriceEstimateTxInsertionManager txInsertionManager) = GetTestableTxInsertionManager(ignoreUnder: 3);
-            txInsertionManager.Configure().GetTxGasPriceList(Arg.Any<IGasPriceOracle>()).Returns(results);
-            Block testBlock = GetTestBlockB();
-            List<UInt256> expected = new() {5,6,7};
-            
-            txInsertionManager.GetTxPrices(testBlock);
-
-            results.Should().BeEquivalentTo(expected);
-        }
-        
-        [Test]
         public void AddValidTxAndReturnCount_TxsWithPriceLessThanIgnoreUnder_ShouldNotHaveGasPriceInTxGasPriceList()
         {
             Block testBlock = GetTestBlockA();
@@ -75,88 +50,6 @@ namespace Nethermind.JsonRpc.Test.Modules
             results.Should().BeEquivalentTo(expected);
         }
         
-        [Test]
-        public void AddValidTxAndReturnCount_TxsSentByMiner_ShouldNotHaveGasPriceInTxGasPriceList()
-        {
-            Address minerAddress = TestItem.PrivateKeyA.Address;
-            Transaction[] transactions =
-            {
-                Build.A.Transaction.WithGasPrice(7).SignedAndResolved(TestItem.PrivateKeyA).WithNonce(0).TestObject,
-                Build.A.Transaction.WithGasPrice(8).SignedAndResolved(TestItem.PrivateKeyB).WithNonce(0).TestObject,
-                Build.A.Transaction.WithGasPrice(9).SignedAndResolved(TestItem.PrivateKeyC).WithNonce(0).TestObject,
-            };
-            Block block = Build.A.Block.Genesis.WithBeneficiary(minerAddress).WithTransactions(transactions).TestObject;
-            (List<UInt256> results, GasPriceEstimateTxInsertionManager txInsertionManager) = GetTestableTxInsertionManager();
-            List<UInt256> expected = new() {8,9};
-            
-            txInsertionManager.GetTxPrices(block);
-            
-            results.Should().BeEquivalentTo(expected);
-        }
-        
-        [TestCase(true, new ulong[]{26,27,27})]
-        [TestCase(false, new ulong[]{1})]
-        public void AddValidTxAndReturnCount_WhenEip1559Txs_EffectiveGasPriceProperlyCalculated(bool eip1559Enabled, ulong[] expected)
-        {  
-            Transaction[] eip1559TxGroup = {
-                Build.A.Transaction.WithMaxFeePerGas(27).WithMaxPriorityFeePerGas(25).WithType(TxType.EIP1559).TestObject,
-                Build.A.Transaction.WithMaxFeePerGas(27).WithMaxPriorityFeePerGas(26).WithType(TxType.EIP1559).TestObject, 
-                Build.A.Transaction.WithMaxFeePerGas(27).WithMaxPriorityFeePerGas(27).WithType(TxType.EIP1559).TestObject  
-            };
-            Block eip1559Block = Build.A.Block.Genesis.WithTransactions(eip1559TxGroup).WithBaseFeePerGas(1).TestObject;
-            ISpecProvider specProvider = SpecProviderWithEip1559EnabledAs(eip1559Enabled);
-            IGasPriceOracle gasPriceOracle = Substitute.For<IGasPriceOracle>();
-            gasPriceOracle.FallbackGasPrice.Returns(UInt256.One);
-            (List<UInt256> results, GasPriceEstimateTxInsertionManager txInsertionManager) =
-                GetTestableTxInsertionManager(gasPriceOracle: gasPriceOracle, specProvider: specProvider);
-
-            txInsertionManager.GetTxPrices(eip1559Block);
-
-            List<UInt256> expectedList = expected.Select(n => (UInt256) n).ToList();
-            results.Should().BeEquivalentTo(expectedList);
-        }
-         
-        [TestCase(true, new ulong[]{25,26,27})]
-        [TestCase(false, new ulong[]{25,26,27})]
-        public void AddValidTxAndReturnCount_WhenNotEip1559Txs_EffectiveGasPriceProperlyCalculated(bool eip1559Enabled, ulong[] expected)
-        {  
-            Transaction[] nonEip1559TxGroup = {
-                Build.A.Transaction.WithMaxFeePerGas(27).WithMaxPriorityFeePerGas(25).TestObject,
-                Build.A.Transaction.WithMaxFeePerGas(27).WithMaxPriorityFeePerGas(26).TestObject,
-                Build.A.Transaction.WithMaxFeePerGas(27).WithMaxPriorityFeePerGas(27).TestObject 
-            };
-            
-            Block eip1559Block = Build.A.Block.Genesis.WithTransactions(nonEip1559TxGroup).WithBaseFeePerGas(1).TestObject;
-            ISpecProvider specProvider = SpecProviderWithEip1559EnabledAs(eip1559Enabled);
-            (List<UInt256> results, GasPriceEstimateTxInsertionManager txInsertionManager) =
-                GetTestableTxInsertionManager(specProvider: specProvider);
-
-            txInsertionManager.GetTxPrices(eip1559Block);
-
-            List<UInt256> expectedList = expected.Select(n => (UInt256) n).ToList();
-            results.Should().BeEquivalentTo(expectedList);
-        }
-
-        [Test]
-        public void AddValidTxAndReturnCount_IfNoValidTxsInABlock_DefaultPriceAddedToListInstead()
-        {
-            Transaction[] transactions =
-            {
-                Build.A.Transaction.WithGasPrice(1).TestObject, 
-                Build.A.Transaction.WithGasPrice(2).TestObject,
-                Build.A.Transaction.WithGasPrice(3).TestObject
-            };
-            Block block = Build.A.Block.Genesis.WithTransactions(transactions).TestObject;
-            IGasPriceOracle gasPriceOracle = Substitute.For<IGasPriceOracle>();
-            gasPriceOracle.FallbackGasPrice.Returns((UInt256?) 7);
-            (List<UInt256> results, GasPriceEstimateTxInsertionManager txInsertionManager) = GetTestableTxInsertionManager(gasPriceOracle:gasPriceOracle, ignoreUnder: 4);
-            List<UInt256> expected = new() {7};
-
-            txInsertionManager.GetTxPrices(block);
-            
-            results.Should().BeEquivalentTo(expected); 
-        }
-
         [Test]
         public void AddValidTxAndReturnCount_IfNoTxsInABlock_DefaultPriceAddedToListInstead()
         {

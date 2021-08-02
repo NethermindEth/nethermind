@@ -27,6 +27,8 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -174,16 +176,16 @@ namespace Nethermind.JsonRpc.Test.Modules
             results.Count().Should().Be(3);
         }
         
-        
         [Test]
-        public void AddValidTxAndReturnCount_IfBlockHasMoreThanThreeValidTxs_OnlyAddTxsWithLowestGasPrices()
+        public void GetGasPricesFromRecentBlocks_IfBlockHasMoreThanThreeValidTxs_OnlyAddTxsWithLowestGasPrices()
         {
-            (List<UInt256> results, GasPriceEstimateTxInsertionManager txInsertionManager) = GetTestableTxInsertionManager(ignoreUnder: 3);
-            txInsertionManager.Configure().GetTxGasPriceList(Arg.Any<IGasPriceOracle>()).Returns(results);
-            Block testBlock = GetTestBlockB();
-            List<UInt256> expected = new() {5,6,7};
+            Block testBlock = Build.A.Block.WithTransactions(GetFiveTransactionsWithDifferentGasPrices()).TestObject;
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            blockFinder.FindBlock(0).Returns(testBlock);
+            GasPriceOracle testGasPriceOracle = new(blockFinder, Substitute.For<ISpecProvider>());
+            List<UInt256> expected = new() {1,2,3};
             
-            txInsertionManager.GetTxPrices(testBlock);
+            IEnumerable<UInt256> results = testGasPriceOracle.GetGasPricesFromRecentBlocks(0);
 
             results.Should().BeEquivalentTo(expected);
         }
@@ -199,6 +201,94 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Build.A.Transaction.WithGasPrice(3).TestObject
             } ;
             return transactions;
+        }
+        
+        [Test]
+        public void GetGasPricesFromRecentBlocks_TxsSentByMiner_ShouldNotHaveGasPriceInTxGasPriceList()
+        {
+            Address minerAddress = TestItem.PrivateKeyA.Address;
+            Transaction[] transactions =
+            {
+                Build.A.Transaction.WithGasPrice(7).SignedAndResolved(TestItem.PrivateKeyA).WithNonce(0).TestObject,
+                Build.A.Transaction.WithGasPrice(8).SignedAndResolved(TestItem.PrivateKeyB).WithNonce(0).TestObject,
+                Build.A.Transaction.WithGasPrice(9).SignedAndResolved(TestItem.PrivateKeyC).WithNonce(0).TestObject,
+            };
+            Block block = Build.A.Block.Genesis.WithBeneficiary(minerAddress).WithTransactions(transactions).TestObject;
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            blockFinder.FindBlock(0).Returns(block);
+            GasPriceOracle gasPriceOracle = new(blockFinder, Substitute.For<ISpecProvider>());
+            List<UInt256> expected = new() {8,9};
+            
+            IEnumerable<UInt256> results = gasPriceOracle.GetGasPricesFromRecentBlocks(0);
+            
+            results.Should().BeEquivalentTo(expected);
+        }
+        
+        [TestCase(true, new ulong[]{26,27,27})]
+        [TestCase(false, new ulong[]{1})]
+        public void AddValidTxAndReturnCount_GivenEip1559Txs_EffectiveGasPriceProperlyCalculated(bool eip1559Enabled, ulong[] expected)
+        {  
+            Transaction[] eip1559TxGroup = {
+                Build.A.Transaction.WithMaxFeePerGas(27).WithMaxPriorityFeePerGas(25).WithType(TxType.EIP1559).TestObject,
+                Build.A.Transaction.WithMaxFeePerGas(27).WithMaxPriorityFeePerGas(26).WithType(TxType.EIP1559).TestObject, 
+                Build.A.Transaction.WithMaxFeePerGas(27).WithMaxPriorityFeePerGas(27).WithType(TxType.EIP1559).TestObject  
+            };
+            Block eip1559Block = Build.A.Block.Genesis.WithTransactions(eip1559TxGroup).WithBaseFeePerGas(1).TestObject;
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            blockFinder.FindBlock(0).Returns(eip1559Block);
+            ISpecProvider specProvider = SpecProviderWithEip1559EnabledAs(eip1559Enabled);
+            GasPriceOracle gasPriceOracle = new(blockFinder, specProvider);
+
+            IEnumerable<UInt256> results = gasPriceOracle.GetGasPricesFromRecentBlocks(0);
+
+            List<UInt256> expectedList = expected.Select(n => (UInt256) n).ToList();
+            results.Should().BeEquivalentTo(expectedList);
+        }
+        
+        [TestCase(true, new ulong[]{25,26,27})]
+        [TestCase(false, new ulong[]{25,26,27})]
+        public void AddValidTxAndReturnCount_GivenNonEip1559Txs_EffectiveGasPriceProperlyCalculated(bool eip1559Enabled, ulong[] expected)
+        {  
+            Transaction[] nonEip1559TxGroup = {
+                Build.A.Transaction.WithMaxFeePerGas(27).WithMaxPriorityFeePerGas(25).TestObject,
+                Build.A.Transaction.WithMaxFeePerGas(27).WithMaxPriorityFeePerGas(26).TestObject,
+                Build.A.Transaction.WithMaxFeePerGas(27).WithMaxPriorityFeePerGas(27).TestObject 
+            };
+            
+            Block nonEip1559Block = Build.A.Block.Genesis.WithTransactions(nonEip1559TxGroup).WithBaseFeePerGas(1).TestObject;
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            blockFinder.FindBlock(0).Returns(nonEip1559Block);
+            ISpecProvider specProvider = SpecProviderWithEip1559EnabledAs(eip1559Enabled);
+            GasPriceOracle gasPriceOracle = new(blockFinder, specProvider);
+
+            IEnumerable<UInt256> results = gasPriceOracle.GetGasPricesFromRecentBlocks(0);
+
+            List<UInt256> expectedList = expected.Select(n => (UInt256) n).ToList();
+            results.Should().BeEquivalentTo(expectedList);
+        }
+        
+        public static ISpecProvider SpecProviderWithEip1559EnabledAs(bool isEip1559) => 
+            new CustomSpecProvider((0, isEip1559 ? London.Instance : Berlin.Instance));
+        
+        [Test]
+        public void GetGasPricesFromRecentBlocks_IfNoValidTxsInABlock_DefaultPriceAddedToListInstead()
+        {
+            Transaction[] transactions =
+            {
+                Build.A.Transaction.WithGasPrice(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject, 
+                Build.A.Transaction.WithGasPrice(2).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+                Build.A.Transaction.WithGasPrice(3).SignedAndResolved(TestItem.PrivateKeyA).TestObject
+            };
+            Block block = Build.A.Block.Genesis.WithTransactions(transactions).WithBeneficiary(TestItem.PrivateKeyA.Address).TestObject;
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            blockFinder.FindBlock(0).Returns(block);
+            GasPriceOracle gasPriceOracle =
+                new(blockFinder, Substitute.For<ISpecProvider>()) {LastGasPrice = 7};
+            List<UInt256> expected = new() {7};
+
+            IEnumerable<UInt256> results = gasPriceOracle.GetGasPricesFromRecentBlocks(0);
+            
+            results.Should().BeEquivalentTo(expected); 
         }
     }
 }

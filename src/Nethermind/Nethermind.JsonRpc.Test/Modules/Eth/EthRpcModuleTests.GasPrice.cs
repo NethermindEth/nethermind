@@ -64,8 +64,6 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             Assert.AreEqual($"{{\"jsonrpc\":\"2.0\",\"result\":\"{expected}\",\"id\":67}}", serialized);
         }
         
-        public static ISpecProvider SpecProviderWithEip1559EnabledAs(bool isEip1559) => 
-            new CustomSpecProvider((0, isEip1559 ? London.Instance : Berlin.Instance));
 
         private static Block[] GetThreeTestBlocks()
         {
