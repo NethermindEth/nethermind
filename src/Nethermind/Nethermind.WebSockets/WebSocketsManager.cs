@@ -21,10 +21,9 @@ namespace Nethermind.WebSockets
 {
     public class WebSocketsManager : IWebSocketsManager
     {
-        private readonly ConcurrentDictionary<string, IWebSocketsModule> _modules =
-            new ConcurrentDictionary<string, IWebSocketsModule>();
+        private readonly ConcurrentDictionary<string, IWebSocketsModule> _modules = new();
 
-        private IWebSocketsModule defaultModule = null;
+        private IWebSocketsModule _defaultModule = null;
 
         public void AddModule(IWebSocketsModule module, bool isDefault = false)
         {
@@ -32,19 +31,10 @@ namespace Nethermind.WebSockets
             
             if (isDefault)
             {
-                defaultModule = module;
+                _defaultModule = module;
             }
         }
 
-        public IWebSocketsModule GetModule(string name)
-            => _modules.TryGetValue(name, out var module) ? module : defaultModule;
-
-        public IWebSocketsClient CreateClient(IWebSocketsModule module, WebSocket webSocket, string client)
-        {
-            var socketsClient = module.CreateClient(webSocket, client);
-            _modules.TryAdd(module.Name, module);
-
-            return socketsClient;
-        }
+        public IWebSocketsModule GetModule(string name) => _modules.TryGetValue(name, out var module) ? module : _defaultModule;
     }
 }

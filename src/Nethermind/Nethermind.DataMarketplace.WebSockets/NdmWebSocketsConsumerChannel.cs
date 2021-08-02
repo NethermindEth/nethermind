@@ -23,16 +23,16 @@ namespace Nethermind.DataMarketplace.WebSockets
 {
     public class NdmWebSocketsConsumerChannel : INdmConsumerChannel
     {
-        private readonly IWebSocketsClient _client;
+        private readonly ISocketsClient _client;
         public NdmConsumerChannelType Type => NdmConsumerChannelType.WebSockets;
 
-        public NdmWebSocketsConsumerChannel(IWebSocketsClient client)
+        public NdmWebSocketsConsumerChannel(ISocketsClient client)
         {
             _client = client;
         }
 
         public Task PublishAsync(Keccak depositId, string client, string data)
-            => _client.SendAsync(new WebSocketsMessage("data_received", client, new
+            => _client.SendAsync(new SocketsMessage("data_received", client, new
             {
                 depositId,
                 data

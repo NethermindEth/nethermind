@@ -16,13 +16,13 @@
 
 namespace Nethermind.WebSockets
 {
-    public class WebSocketsMessage
+    public class SocketsMessage
     {
         public string Type { get; }
         public string Client { get; }
         public object Data { get; }
 
-        public WebSocketsMessage(string type, string client, object data)
+        public SocketsMessage(string type, string client, object data)
         {
             Type = type;
             Client = client;

@@ -41,11 +41,11 @@ namespace Nethermind.WebSockets
             app.Use(async (context, next) =>
             {
                 var id = string.Empty;
-                var client = string.Empty;
+                var clientName = string.Empty;
                 IWebSocketsModule module = null;
                 try
                 {
-                    string moduleName = String.Empty;
+                    string moduleName = string.Empty;
                     if (context.Request.Path.HasValue)
                     {
                         var path = context.Request.Path.Value;
@@ -59,21 +59,15 @@ namespace Nethermind.WebSockets
                         return;
                     }
 
-                    if (!module.TryInit(context.Request))
-                    {
-                        context.Response.StatusCode = 400;
-                        return;
-                    }
-
-                    client = context.Request.Query.TryGetValue("client", out var clientValues)
+                    clientName = context.Request.Query.TryGetValue("client", out var clientValues)
                         ? clientValues.FirstOrDefault()
                         : string.Empty;
 
-                    if (logger.IsInfo) logger.Info($"Initializing WebSockets for client: '{client}'.");
+                    if (logger.IsInfo) logger.Info($"Initializing WebSockets for client: '{clientName}'.");
                     var webSocket = await context.WebSockets.AcceptWebSocketAsync();
-                    var socketsClient = webSocketsManager.CreateClient(module, webSocket, client);
+                    var socketsClient = module.CreateClient(webSocket, clientName);
                     id = socketsClient.Id;
-                    await webSocket.ReceiveAsync(socketsClient);
+                    await socketsClient.ReceiveAsync();
                 }
                 catch (Exception ex)
                 {
@@ -84,92 +78,10 @@ namespace Nethermind.WebSockets
                     if (!(module is null) && !string.IsNullOrWhiteSpace(id))
                     {
                         module.RemoveClient(id);
-                        if (logger.IsInfo) logger.Info($"Closing WebSockets for client: '{client}'.");
+                        if (logger.IsInfo) logger.Info($"Closing WebSockets for client: '{clientName}'.");
                     }
                 }
             });
-        }
-
-        public const int _maxPooledSize = 1024 * 1024;
-
-        public static async Task ReceiveAsync(this WebSocket webSocket, IWebSocketsClient client)
-        {
-            int currentMessageLength = 0;
-            byte[] buffer = new byte[1024 * 4];
-            byte[] combinedData = Array.Empty<byte>();
-
-            WebSocketReceiveResult result = null;
-            Task<WebSocketReceiveResult> receiveBeforeTheLoop = webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
-            await receiveBeforeTheLoop.ContinueWith(t =>
-            {
-                if (t.IsFaulted)
-                { 
-                    // TODO: how to log it from here
-                }
-
-                if (t.IsCompletedSuccessfully)
-                {
-                    result = t.Result;
-                }
-            });
-
-            if (result == null)
-            {
-                // TODO: how to log it from here
-                return;
-            }
-
-            while (result.MessageType != WebSocketMessageType.Close)
-            {
-                int newMessageLength = currentMessageLength + result.Count;
-                if (newMessageLength > _maxPooledSize)
-                {
-                    throw new InvalidOperationException("Message too long");
-                }
-
-                byte[] newBytes = ArrayPool<byte>.Shared.Rent(newMessageLength);
-                buffer.AsSpan(0, result.Count).CopyTo(newBytes.AsSpan(currentMessageLength, result.Count));
-                if (!ReferenceEquals(combinedData, Array.Empty<byte>()))
-                {
-                    combinedData.AsSpan(0, currentMessageLength).CopyTo(newBytes.AsSpan(0, currentMessageLength));
-                    ArrayPool<byte>.Shared.Return(combinedData);
-                }
-
-                combinedData = newBytes;
-                currentMessageLength = newMessageLength;
-
-                if (result.EndOfMessage)
-                {
-                    Memory<byte> data = combinedData.AsMemory().Slice(0, currentMessageLength);
-                    await client.ReceiveAsync(data);
-                    currentMessageLength = 0;
-                    ArrayPool<byte>.Shared.Return(combinedData);
-                    combinedData = Array.Empty<byte>();
-                }
-
-                Task<WebSocketReceiveResult> receiveInTheLoop = webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
-                await receiveInTheLoop.ContinueWith(t =>
-                {
-                    if (t.IsFaulted)
-                    {
-                        result = null;
-                        // TODO: how to log it from here
-                    }
-
-                    if (t.IsCompletedSuccessfully)
-                    {
-                        result = t.Result;
-                    }
-                });
-
-                if (result == null)
-                {
-                    // TODO: how to log it from here
-                    return;
-                }
-            }
-
-            await webSocket.CloseAsync(result.CloseStatus ?? WebSocketCloseStatus.Empty, result.CloseStatusDescription, CancellationToken.None);
         }
     }
 }

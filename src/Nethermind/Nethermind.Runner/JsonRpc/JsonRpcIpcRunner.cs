@@ -9,33 +9,44 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.WebSockets;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
+using Nethermind.WebSockets;
 using Newtonsoft.Json;
 
 namespace Nethermind.Runner.JsonRpc
 {
-    public class JsonRpcIpcRunner
+    public class JsonRpcIpcRunner : IDisposable
     {
         private readonly ILogger _logger;
-        private readonly IConfigProvider _configurationProvider;
+        private readonly ILogManager _logManager;
+        private readonly IJsonRpcLocalStats _jsonRpcLocalStats;
+        private readonly IJsonSerializer _jsonSerializer;
         private readonly IJsonRpcProcessor _jsonRpcProcessor;
+        private readonly IJsonRpcService _jsonRpcService;
         private readonly IJsonRpcConfig _jsonRpcConfig;
-        private readonly IJsonSerializer _jsonSerializer = new EthereumJsonSerializer();
 
         private string _path;
         private Socket _server;
-        private ManualResetEvent _resetEvent = new ManualResetEvent(false);
+        private readonly ManualResetEvent _resetEvent = new(false);
 
         public JsonRpcIpcRunner(
             IJsonRpcProcessor jsonRpcProcessor,
+            IJsonRpcService jsonRpcService,
             IConfigProvider configurationProvider,
-            ILogManager logManager)
+            ILogManager logManager,
+            IJsonRpcLocalStats jsonRpcLocalStats,
+            IJsonSerializer jsonSerializer)
         {
             _jsonRpcConfig = configurationProvider.GetConfig<IJsonRpcConfig>();
-            _configurationProvider = configurationProvider;
             _jsonRpcProcessor = jsonRpcProcessor;
+            _jsonRpcService = jsonRpcService;
             _logger = logManager.GetClassLogger();
+            _logManager = logManager;
+            _jsonRpcLocalStats = jsonRpcLocalStats;
+            _jsonSerializer = jsonSerializer;
         }
 
         public void Start(CancellationToken cancellationToken)
@@ -46,12 +57,7 @@ namespace Nethermind.Runner.JsonRpc
             {
                 _logger.Info($"Starting IPC JSON RPC service over '{_path}'");
 
-                var task = Task.Factory.StartNew((x) =>
-                {
-                    StartServer(_path);
-                },
-                cancellationToken,
-                TaskCreationOptions.LongRunning);
+                Task.Factory.StartNew(_ => StartServer(_path), cancellationToken, TaskCreationOptions.LongRunning);
             }
         }
 
@@ -73,7 +79,7 @@ namespace Nethermind.Runner.JsonRpc
                     _resetEvent.Reset();
 
                     _logger.Info("Waiting for a IPC connection...");
-                    _server.BeginAccept(new AsyncCallback(AcceptCallback), null);
+                    _server.BeginAccept(AcceptCallback, null);
 
                     _resetEvent.WaitOne();
                 }
@@ -100,105 +106,49 @@ namespace Nethermind.Runner.JsonRpc
             }
         }
 
-        private void AcceptCallback(IAsyncResult ar)
+        private async void AcceptCallback(IAsyncResult ar)
         {
-            Socket clientSocket = null;
+            JsonRpcSocketsClient socketsClient = null;
 
             try
             {
-                clientSocket = _server.EndAccept(ar);
-                clientSocket.ReceiveTimeout = _jsonRpcConfig.Timeout;
-                clientSocket.SendTimeout = _jsonRpcConfig.Timeout;
+                Socket socket = _server.EndAccept(ar);
+                socket.ReceiveTimeout = _jsonRpcConfig.Timeout;
+                socket.SendTimeout = _jsonRpcConfig.Timeout;
 
                 _resetEvent.Set();
 
-                StateObject state = new(clientSocket);
-                clientSocket.BeginReceive(state.Buffer, 0, StateObject.BufferSize, SocketFlags.None, new AsyncCallback(ReadCallback), state);
+                socketsClient = new JsonRpcSocketsClient(
+                    string.Empty,
+                    new IpcSocketsHandler(socket, _logManager),
+                    RpcEndpoint.IPC,
+                    _jsonRpcProcessor,
+                    _jsonRpcService,
+                    _jsonRpcLocalStats,
+                    _jsonSerializer);
+                
+                await socketsClient.ReceiveAsync();
             }
             catch (IOException exc) when (exc.InnerException != null && exc.InnerException is SocketException se && se.SocketErrorCode == SocketError.ConnectionReset)
             {
                 LogInfo("Client disconnected.");
-                clientSocket?.Dispose();
+                socketsClient?.Dispose();
             }
             catch (SocketException exc) when (exc.SocketErrorCode == SocketError.ConnectionReset)
             {
                 LogInfo("Client disconnected.");
-                clientSocket?.Dispose();
+                socketsClient?.Dispose();
             }
             catch (SocketException exc)
             {
                 _logger.Warn($"Error {exc.ErrorCode}:{exc.Message}");
-                clientSocket?.Dispose();
+                socketsClient?.Dispose();
             }
             catch (Exception exc)
             {
                 _logger.Error("Error when handling IPC communication with a client.", exc);
 
-                clientSocket?.Dispose();
-            }
-        }
-
-        private async void ReadCallback(IAsyncResult ar)
-        {
-            Socket clientSocket = null;
-
-            try
-            {
-                StateObject state = ar.AsyncState as StateObject;
-                clientSocket = state.ClientSocket;
-
-                // Read data from the client socket.  
-                int read = clientSocket.EndReceive(ar);
-
-                // Data was read from the client socket.  
-                if (read > 0)
-                {
-                    Interlocked.Add(ref Nethermind.JsonRpc.Metrics.JsonRpcBytesReceivedIpc, read);
-
-                    var incoming = Encoding.UTF8.GetString(state.Buffer, 0, read);
-                    state.MsgBuilder.Append(incoming);
-
-                    if (read < StateObject.BufferSize || read == StateObject.BufferSize && clientSocket.Available == 0)
-                    {
-
-                        // PROCESS the message
-                        using JsonRpcResult result = await _jsonRpcProcessor.ProcessAsync(state.MsgBuilder.ToString(), JsonRpcContext.IPC);
-                        var serialized = result.IsCollection ? _jsonSerializer.Serialize(result.Responses) : _jsonSerializer.Serialize(result.Response);
-
-                        var bytesToSend = Encoding.UTF8.GetBytes(serialized);                       
-                        clientSocket.Send(bytesToSend);
-                        Interlocked.Add(ref Nethermind.JsonRpc.Metrics.JsonRpcBytesSentIpc, bytesToSend.Length);
-
-                        state.MsgBuilder.Clear();
-                    }
-
-                    clientSocket.BeginReceive(state.Buffer, 0, StateObject.BufferSize, 0, new AsyncCallback(ReadCallback), state);
-                }
-                else
-                {
-                    LogInfo("Closing IPC session.");
-                    clientSocket.Dispose();
-                }
-            }
-            catch (IOException exc) when (exc.InnerException != null && exc.InnerException is SocketException se && se.SocketErrorCode == SocketError.ConnectionReset)
-            {
-                LogInfo("Client disconnected.");
-                clientSocket?.Dispose();
-            }
-            catch (SocketException exc) when (exc.SocketErrorCode == SocketError.ConnectionReset)
-            {
-                LogInfo("Client disconnected.");
-                clientSocket?.Dispose();
-            }
-            catch (SocketException exc)
-            {
-                _logger.Warn($"Error {exc.ErrorCode}:{exc.Message}");
-                clientSocket?.Dispose();
-            }
-            catch (Exception exc)
-            {
-                _logger.Error("Error when handling IPC communication with a client.", exc);
-                clientSocket?.Dispose();
+                socketsClient?.Dispose();
             }
         }
 
@@ -233,19 +183,6 @@ namespace Nethermind.Runner.JsonRpc
         private void LogInfo(string msg)
         {
             if (_logger.IsInfo) _logger.Info(msg);
-        }
-
-        private class StateObject
-        {
-            public StateObject(Socket socket)
-            {
-                ClientSocket = socket;
-            }
-            public Socket ClientSocket;
-            public const int BufferSize = 4096;
-            public byte[] Buffer = new byte[BufferSize];
-
-            public StringBuilder MsgBuilder = new StringBuilder();
         }
     }
 }

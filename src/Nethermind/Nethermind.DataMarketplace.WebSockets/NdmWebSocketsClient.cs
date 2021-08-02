@@ -16,45 +16,43 @@
 
 using System;
 using System.Linq;
+using System.Net.WebSockets;
 using System.Text;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Core;
 using Nethermind.DataMarketplace.Core.Domain;
+using Nethermind.Serialization.Json;
 using Nethermind.WebSockets;
 
 namespace Nethermind.DataMarketplace.WebSockets
 {
-    public class NdmWebSocketsClient : IWebSocketsClient
+    public class NdmWebSocketsClient : SocketClientBase
     {
-        private readonly IWebSocketsClient _client;
         private readonly INdmDataPublisher _dataPublisher;
-        public string Id => _client.Id;
-        public string Client { get; }
 
-        public NdmWebSocketsClient(IWebSocketsClient client, INdmDataPublisher dataPublisher)
+        public NdmWebSocketsClient(string clientName, ISocketHandler handler, INdmDataPublisher dataPublisher, IJsonSerializer jsonSerializer) 
+            :base(clientName, handler, jsonSerializer)
         {
-            _client = client;
             _dataPublisher = dataPublisher;
-            Client = client.Client;
         }
 
-        public Task ReceiveAsync(Memory<byte> data)
+        public override async Task ProcessAsync(Memory<byte> data)
         {
             if (data.Length == 0)
             {
-                return Task.CompletedTask;
+                return;
             }
 
             (Keccak? dataAssetId, string? headerData) = GetDataInfo(data.ToArray());
             if (dataAssetId is null || string.IsNullOrWhiteSpace(headerData))
             {
-                return Task.CompletedTask;
+                return;
             }
 
             _dataPublisher.Publish(new DataAssetData(dataAssetId, headerData));
 
-            return Task.CompletedTask;
+            return;
         }
 
         private static (Keccak? dataAssetId, string? data) GetDataInfo(byte[] bytes)
@@ -73,8 +71,5 @@ namespace Nethermind.DataMarketplace.WebSockets
 
             return dataAssetId.Length != 64 ? (null, null) : (new Keccak(dataAssetId), data);
         }
-
-        public Task SendRawAsync(string data) => _client.SendRawAsync(data);
-        public Task SendAsync(WebSocketsMessage message) => _client.SendAsync(message);
     }
 }

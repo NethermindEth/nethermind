@@ -17,16 +17,15 @@
 using System.Net.WebSockets;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
+using Nethermind.Logging;
 
 namespace Nethermind.WebSockets
 {
     public interface IWebSocketsModule
     {
         string Name { get; }
-        bool TryInit(HttpRequest request);
-        IWebSocketsClient CreateClient(WebSocket webSocket, string client);
-        Task SendRawAsync(string rawMessage);
-        Task SendAsync(WebSocketsMessage message);
+        ISocketsClient CreateClient(WebSocket webSocket, string client);
         void RemoveClient(string clientId);
+        Task SendAsync(SocketsMessage message);
     }
 }

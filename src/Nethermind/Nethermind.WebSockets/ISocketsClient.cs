@@ -19,12 +19,11 @@ using System.Threading.Tasks;
 
 namespace Nethermind.WebSockets
 {
-    public interface IWebSocketsClient
+    public interface ISocketsClient : IDisposable
     {
         string Id { get; }
-        string Client { get; }
-        Task SendRawAsync(string data);
-        Task SendAsync(WebSocketsMessage message);
-        Task ReceiveAsync(Memory<byte> data);
+        string ClientName { get; }
+        Task ReceiveAsync();
+        Task SendAsync(SocketsMessage message);
     }
 }
