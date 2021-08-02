@@ -29,6 +29,7 @@ Commands:
   status|st          Displays the current status of Nethermind service
   tail|t             Tails the latest Nethermind live logs
   up|u               Starts the Nethermind service
+  version            Checks the current Node version by sending RPC request to the Node
   *                  Help
 "
   exit 1

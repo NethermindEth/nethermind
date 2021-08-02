@@ -23,6 +23,7 @@ Commands:
   status|st          Displays the current status of Nethermind docker-compose
   tail|t             Tails the latest Nethermind live logs
   up|u               Starts the Nethermind docker-compose stack
+  version            Checks the current Node version by sending RPC request to the Node
   *                  Help
 "
   exit 1
