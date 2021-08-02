@@ -16,16 +16,28 @@
 // 
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain;
-using Nethermind.Consensus;
+using Nethermind.Blockchain.Producers;
+using Nethermind.Logging;
 
-namespace Nethermind.Core.Test.Blockchain
+namespace Nethermind.Consensus.AuRa
 {
-    public interface ITestBlockProducer : IBlockProducer
+    public class BuildBlocksOnAuRaSteps : BuildBlocksInALoop
     {
-        Block LastProducedBlock { get; }
-        event EventHandler<BlockEventArgs> LastProducedBlockChanged;
-        Task<bool> BuildNewBlock();
+        private readonly IAuRaStepCalculator _auRaStepCalculator;
+
+        public BuildBlocksOnAuRaSteps(ILogManager logManager, IAuRaStepCalculator auRaStepCalculator) : base(logManager)
+        {
+            _auRaStepCalculator = auRaStepCalculator;
+        }
+
+        protected override async Task ProducerLoopStep(CancellationToken token)
+        {
+            await base.ProducerLoopStep(token);
+            TimeSpan timeToNextStep = _auRaStepCalculator.TimeToNextStep;
+            if (Logger.IsDebug) Logger.Debug($"Waiting {timeToNextStep} for next AuRa step.");
+            await TaskExt.DelayAtLeast(timeToNextStep, token);
+        }
     }
 }

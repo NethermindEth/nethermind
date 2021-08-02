@@ -152,7 +152,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.SyncPeerPool,
                 _api.SyncModeSelector,
                 _api.Config<ISyncConfig>(),
-                _api.WitnessCollector,
+                _api.WitnessRepository,
                 _api.LogManager,
                 cht);
 

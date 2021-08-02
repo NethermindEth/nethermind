@@ -56,15 +56,14 @@ namespace Nethermind.Blockchain.Test.Producers
                 testRpc.BlockchainProcessor,
                 testRpc.State,
                 testRpc.BlockTree,
-                Substitute.For<IBlockProcessingQueue>(),
-                new BuildBlocksRegularly(TimeSpan.FromMilliseconds(200)).IfPoolIsNotEmpty(testRpc.TxPool),
+                Substitute.For<IBlockProductionTrigger>(),
                 testRpc.Timestamper, 
                 testRpc.SpecProvider,
                 new MiningConfig(),
                 LimboLogs.Instance);
             await AssertIsProducingBlocks(blockProducer);
         }
-        
+
         [Test]
         public async Task TestBlockProducer_IsProducingBlocks_returns_expected_results()
         {
@@ -75,7 +74,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 testRpc.State,
                 Substitute.For<ISealer>(),
                 testRpc.BlockTree,
-                Substitute.For<IBlockProcessingQueue>(),
+                Substitute.For<IBlockProductionTrigger>(),
                 testRpc.Timestamper,
                 testRpc.SpecProvider,
                 LimboLogs.Instance);
@@ -91,13 +90,12 @@ namespace Nethermind.Blockchain.Test.Producers
                 testRpc.BlockchainProcessor,
                 Substitute.For<ISealer>(),
                 testRpc.BlockTree,
-                Substitute.For<IBlockProcessingQueue>(),
+                Substitute.For<IBlockProductionTrigger>(),
                 testRpc.State,
                 Substitute.For<IGasLimitCalculator>(),
                 testRpc.Timestamper,
                 testRpc.SpecProvider,
-                LimboLogs.Instance,
-                Substitute.For<IDifficultyCalculator>());
+                LimboLogs.Instance);
             await AssertIsProducingBlocks(blockProducer);
         }
         
@@ -109,10 +107,10 @@ namespace Nethermind.Blockchain.Test.Producers
             AuRaBlockProducer blockProducer = new AuRaBlockProducer(
                 Substitute.For<ITxSource>(),
                 Substitute.For<IBlockchainProcessor>(),
+                Substitute.For<IBlockProductionTrigger>(),
                 Substitute.For<IStateProvider>(),
                 Substitute.For<ISealer>(),
                 Substitute.For<IBlockTree>(),
-                Substitute.For<IBlockProcessingQueue>(),
                 Substitute.For<ITimestamper>(),
                 Substitute.For<IAuRaStepCalculator>(),
                 Substitute.For<IReportingValidator>(),

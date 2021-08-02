@@ -15,14 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-namespace Nethermind.Consensus.Transactions
+namespace Nethermind.Evm.Tracing
 {
-    // ReSharper disable once InconsistentNaming
-    public static class ITxSourceExtensions
+    public interface ITracerBag
     {
-        public static ITxSource ServeTxsOneByOne(this ITxSource source)
-        {
-            return new OneByOneTxSource(source);
-        }
+        void Add(IBlockTracer tracer);
+        void AddRange(params IBlockTracer[] tracers);
+        void Remove(IBlockTracer tracer);
     }
 }

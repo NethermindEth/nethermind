@@ -13,13 +13,31 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using Nethermind.Int256;
+using System;
+using System.Linq;
+using Nethermind.Consensus;
+using Nethermind.Core;
 
-namespace Nethermind.Consensus.Ethash
+namespace Nethermind.Blockchain.Producers
 {
-    public interface IDifficultyCalculator
+    public class ProducedBlockSuggester : IDisposable
     {
-        UInt256 Calculate(UInt256 parentDifficulty, UInt256 parentTimestamp, UInt256 currentTimestamp, long blockNumber, bool parentHasUncles);
+        private readonly IBlockTree _blockTree;
+        private readonly IBlockProducer _blockProducer;
+
+        public ProducedBlockSuggester(IBlockTree blockTree, IBlockProducer blockProducer)
+        {
+            _blockTree = blockTree;
+            _blockProducer = blockProducer;
+            _blockProducer.BlockProduced += OnBlockProduced;
+        }
+
+        private void OnBlockProduced(object? sender, BlockEventArgs e) =>
+            _blockTree.SuggestBlock(e.Block);
+
+        public void Dispose() =>
+            _blockProducer.BlockProduced -= OnBlockProduced;
     }
 }

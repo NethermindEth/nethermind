@@ -90,10 +90,18 @@ namespace Nethermind.Runner.Ethereum.Steps
             
             Account.AccountStartNonce = getApi.ChainSpec.Parameters.AccountStartNonce;
 
-            IWitnessCollector witnessCollector = setApi.WitnessCollector = syncConfig.WitnessProtocolEnabled
-                ? new WitnessCollector(getApi.DbProvider.WitnessDb, _api.LogManager)
-                    .WithPruning(getApi.BlockTree!, getApi.LogManager)
-                : NullWitnessCollector.Instance;
+            IWitnessCollector witnessCollector;
+            if (syncConfig.WitnessProtocolEnabled)
+            {
+                WitnessCollector witnessCollectorImpl = new(getApi.DbProvider.WitnessDb, _api.LogManager);
+                witnessCollector = setApi.WitnessCollector = witnessCollectorImpl;
+                setApi.WitnessRepository = witnessCollectorImpl.WithPruning(getApi.BlockTree!, getApi.LogManager);
+            }
+            else
+            {
+                witnessCollector = setApi.WitnessCollector = NullWitnessCollector.Instance;
+                setApi.WitnessRepository = NullWitnessCollector.Instance;
+            }
 
             IKeyValueStoreWithBatching cachedStateDb = getApi.DbProvider.StateDb
                 .Cached(Trie.MemoryAllowance.TrieNodeCacheCount);

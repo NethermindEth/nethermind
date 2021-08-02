@@ -135,7 +135,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         private Address[] DecodeAddresses(byte[] data)
         {
             var objects = DecodeReturnData(nameof(GetValidators), data);
-            return (Address[]) objects[0];;
+            return (Address[]) objects[0];
         }
         
         public void EnsureSystemAccount()

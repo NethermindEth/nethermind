@@ -16,7 +16,10 @@
 // 
 
 using System;
+using System.Threading;
 using System.Timers;
+using Nethermind.Core;
+using Timer = System.Timers.Timer;
 
 namespace Nethermind.Blockchain.Producers
 {
@@ -34,11 +37,11 @@ namespace Nethermind.Blockchain.Producers
         
         private void TimerOnElapsed(object sender, ElapsedEventArgs e)
         {
-            TriggerBlockProduction?.Invoke(this, EventArgs.Empty);
+            TriggerBlockProduction?.Invoke(this, new BlockProductionEventArgs());
             _timer.Enabled = true;
         }
 
-        public event EventHandler? TriggerBlockProduction;
+        public event EventHandler<BlockProductionEventArgs>? TriggerBlockProduction;
 
         public void Dispose()
         {
