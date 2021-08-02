@@ -133,7 +133,7 @@ tail() {
 # Start of version
 version() {
   cli_log "Checking the current version of Nethermind..."
-  curl --silent --data '{"method":"web3_clientVersion","params":[],"id":1,"jsonrpc":"2.0"}' -H "Content-Type: application/json" -X POST localhost:$RPC_PORT | jq ".result" | tr -d '"'
+  curl --silent --data '{"method":"web3_clientVersion","params":[],"id":1,"jsonrpc":"2.0"}' -H "Content-Type: application/json" -X POST localhost:$RPC_PORT | tr { '\n' | tr , '\n' | tr } '\n' | grep "result" | awk  -F'"' '{print $4}'
 }
 # End of version
 
