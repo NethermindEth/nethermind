@@ -16,17 +16,12 @@
 // 
 
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth;
-using Nethermind.JsonRpc.Modules.Eth.GasPrice;
-using NSubstitute;
 using NSubstitute.Extensions;
 using NUnit.Framework;
 using static Nethermind.JsonRpc.Test.Modules.TestBlockConstructor;
@@ -37,6 +32,7 @@ namespace Nethermind.JsonRpc.Test.Modules
     [TestFixture]
     class GasPriceEstimateTxInsertionManagerTests
     {
+        /*
         [Test]
         public void AddValidTxAndReturnCount_TxsWithPriceLessThanIgnoreUnder_ShouldNotHaveGasPriceInTxGasPriceList()
         {
@@ -49,36 +45,6 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             results.Should().BeEquivalentTo(expected);
         }
-        
-        [Test]
-        public void AddValidTxAndReturnCount_IfNoTxsInABlock_DefaultPriceAddedToListInstead()
-        {
-            Transaction[] transactions = Array.Empty<Transaction>();
-            Block block = Build.A.Block.Genesis.WithTransactions(transactions).TestObject;
-            IGasPriceOracle gasPriceOracle = Substitute.For<IGasPriceOracle>();
-            gasPriceOracle.FallbackGasPrice.Returns((UInt256?) 3);
-            (List<UInt256> results, GasPriceEstimateTxInsertionManager txInsertionManager) = GetTestableTxInsertionManager(gasPriceOracle:gasPriceOracle, ignoreUnder: 4);
-            List<UInt256> expected = new() {3};
-
-            txInsertionManager.GetTxPrices(block);
-            
-            results.Should().BeEquivalentTo(expected); 
-        }
-        
-        private (List<UInt256>, GasPriceEstimateTxInsertionManager) GetTestableTxInsertionManager(
-            IGasPriceOracle gasPriceOracle = null,
-            UInt256? ignoreUnder = null,
-            ISpecProvider specProvider = null)
-        {
-            GasPriceEstimateTxInsertionManager txInsertionManager = 
-                Substitute.ForPartsOf<GasPriceEstimateTxInsertionManager>(
-                    gasPriceOracle ?? Substitute.For<IGasPriceOracle>(),
-                    ignoreUnder ?? UInt256.Zero,
-                    specProvider ?? Substitute.For<ISpecProvider>());
-            List<UInt256> results = new();
-            txInsertionManager.Configure().GetTxGasPriceList(Arg.Any<IGasPriceOracle>()).Returns(results);
-            
-            return (results, txInsertionManager);
-        }
+        */
     }
 }

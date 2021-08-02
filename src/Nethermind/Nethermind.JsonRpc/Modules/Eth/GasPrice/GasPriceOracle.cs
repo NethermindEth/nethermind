@@ -92,36 +92,38 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
             {
                 Transaction[] currentBlockTransactions = currentBlock.Transactions;
                 int txFromCurrentBlock = 0;
-                if (currentBlockTransactions.Length > 0)
+                bool eip1559Enabled = SpecProvider.GetSpec(currentBlock.Number).IsEip1559Enabled;
+                UInt256 baseFee = currentBlock.BaseFeePerGas;
+                IEnumerable<UInt256> effectiveGasPrices = 
+                    currentBlockTransactions.Where(tx => TransactionCanBeAdded(tx, currentBlock.Beneficiary!))
+                        .Select(tx => tx.CalculateEffectiveGasPrice(eip1559Enabled, baseFee))
+                        .OrderBy(g => g);
+
+                foreach (UInt256 gasPrice in effectiveGasPrices)
                 {
-                    bool eip1559Enabled = SpecProvider.GetSpec(currentBlock.Number).IsEip1559Enabled;
-                    UInt256 baseFee = currentBlock.BaseFeePerGas;
-                    IEnumerable<UInt256> effectiveGasPrices = 
-                        currentBlockTransactions.Where(tx => TransactionCanBeAdded(tx, currentBlock.Beneficiary!))
-                            .Select(tx => tx.CalculateEffectiveGasPrice(eip1559Enabled, baseFee))
-                            .OrderBy(g => g);
+                    yield return gasPrice;
+                    txFromCurrentBlock++;
+                    txCount++;
 
-                    foreach (UInt256 gasPrice in effectiveGasPrices)
-                    {
-                        yield return gasPrice;
-                        txFromCurrentBlock++;
-                        txCount++;
-
-                        if (txFromCurrentBlock >= EthGasPriceConstants.TxLimitFromABlock)
-                        {
-                            break;
-                        }
-                    }
-                    
-                    if (txFromCurrentBlock > 1 || txCount + blocksToGoBack >= SoftTxThreshold)
-                    {
-                        blocksToGoBack--;
-                    }
-
-                    if (blocksToGoBack < 1)
+                    if (txFromCurrentBlock >= EthGasPriceConstants.TxLimitFromABlock)
                     {
                         break;
                     }
+                }
+
+                if (txFromCurrentBlock == 0)
+                {
+                    yield return FallbackGasPrice;
+                }
+
+                if (txFromCurrentBlock > 1 || txCount + blocksToGoBack >= SoftTxThreshold)
+                {
+                    blocksToGoBack--;
+                }
+
+                if (blocksToGoBack < 1)
+                {
+                    break;
                 }
             }
         }

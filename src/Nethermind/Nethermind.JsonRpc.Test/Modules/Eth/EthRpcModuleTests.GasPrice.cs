@@ -27,6 +27,7 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using NSubstitute;
 using NUnit.Framework;
+using static Nethermind.JsonRpc.Test.Modules.GasPriceOracleTests;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth
 {
@@ -39,7 +40,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             using Context ctx = await Context.Create();
             Block[] blocks = GetThreeTestBlocks();
             BlockTree blockTree = Build.A.BlockTree(blocks[0]).WithBlocks(blocks).TestObject;
-            GasPriceOracle gasPriceOracle = Substitute.ForPartsOf<GasPriceOracle>(SpecProviderWithEip1559EnabledAs(eip1559Enabled), null);
+            GasPriceOracle gasPriceOracle = new(blockTree, SpecProviderWithEip1559EnabledAs(eip1559Enabled));
             ctx._test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockTree).WithGasPriceOracle(gasPriceOracle)
                 .Build();
             
@@ -55,7 +56,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             using Context ctx = await Context.Create();
             Block[] blocks = GetThreeTestBlocksWith1559Tx();
             BlockTree blockTree = Build.A.BlockTree(blocks[0]).WithBlocks(blocks).TestObject;
-            GasPriceOracle gasPriceOracle = Substitute.ForPartsOf<GasPriceOracle>(SpecProviderWithEip1559EnabledAs(eip1559Enabled), null);
+            GasPriceOracle gasPriceOracle = new(blockTree, SpecProviderWithEip1559EnabledAs(eip1559Enabled));
             ctx._test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockTree).WithGasPriceOracle(gasPriceOracle)
                 .Build();
             

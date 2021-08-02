@@ -143,7 +143,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 TestWallet,
                 LimboLogs.Instance,
                 SpecProvider,
-                GasPriceOracle ?? new GasPriceOracle(SpecProvider));
+                GasPriceOracle ?? new GasPriceOracle(BlockFinder, SpecProvider));
             
             return this;
         }

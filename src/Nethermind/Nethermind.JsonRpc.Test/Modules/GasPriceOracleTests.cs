@@ -225,7 +225,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
         
         [TestCase(true, new ulong[]{26,27,27})]
-        [TestCase(false, new ulong[]{1})]
+        [TestCase(false, new ulong[]{25,26,27})]
         public void AddValidTxAndReturnCount_GivenEip1559Txs_EffectiveGasPriceProperlyCalculated(bool eip1559Enabled, ulong[] expected)
         {  
             Transaction[] eip1559TxGroup = {
@@ -288,7 +288,22 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             IEnumerable<UInt256> results = gasPriceOracle.GetGasPricesFromRecentBlocks(0);
             
-            results.Should().BeEquivalentTo(expected); 
+            results.ToList().Should().BeEquivalentTo(expected); 
+        }
+        
+        [Test]
+        public void AddValidTxAndReturnCount_IfNoTxsInABlock_DefaultPriceAddedToListInstead()
+        {
+            Transaction[] transactions = Array.Empty<Transaction>();
+            Block block = Build.A.Block.Genesis.WithTransactions(transactions).TestObject;
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            blockFinder.FindBlock(0).Returns(block);
+            GasPriceOracle gasPriceOracle = new(blockFinder, Substitute.For<ISpecProvider>()) {LastGasPrice = 7};
+            List<UInt256> expected = new() {7};
+
+            IEnumerable<UInt256> results = gasPriceOracle.GetGasPricesFromRecentBlocks(0);
+            
+            results.ToList().Should().BeEquivalentTo(expected); 
         }
     }
 }
