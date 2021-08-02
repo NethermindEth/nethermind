@@ -21,6 +21,7 @@ using System.Linq;
 using FluentAssertions;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -107,9 +108,9 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void GasPriceEstimate_IfCalculatedGasPriceGreaterThanMax_MaxGasPriceReturned()
         {
             
-            List<UInt256> listOfGasPrices = new List<UInt256>
+            List<UInt256> listOfGasPrices = new()
             {
-                501
+                501.GWei()
             }; 
             GasPriceOracle testableGasPriceOracle = GetTestableGasPriceOracle(sortedTxList: listOfGasPrices);
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
