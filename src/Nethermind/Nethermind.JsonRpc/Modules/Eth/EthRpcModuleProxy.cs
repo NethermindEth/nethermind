@@ -26,6 +26,7 @@ using Nethermind.Int256;
 using Nethermind.Facade.Proxy;
 using Nethermind.Facade.Proxy.Models;
 using Nethermind.JsonRpc.Data;
+using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using Nethermind.Wallet;

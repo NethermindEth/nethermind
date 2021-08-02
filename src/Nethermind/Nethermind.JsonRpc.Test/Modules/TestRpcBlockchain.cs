@@ -33,6 +33,7 @@ using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using Nethermind.Db.Blooms;
 using Nethermind.Int256;
+using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.KeyStore;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;

@@ -27,6 +27,9 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth;
+using Nethermind.JsonRpc.Modules.Eth.GasPrice;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using NSubstitute;
 using NSubstitute.Extensions;
 using NUnit.Framework;
@@ -35,37 +38,8 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
 {
     public partial class EthRpcModuleTests
     {
-        [Test]
-        public async Task Eth_gasPrice_WhenHeadBlockIsNull_ThrowsException()
-        {
-            using Context ctx = await Context.Create();
-            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-            blockFinder.FindHeadBlock().Returns(null as Block);
-            ctx._test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockFinder).Build();
-          
-            string serialized = ctx._test.TestEthRpc("eth_gasPrice");
-            
-            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Head Block was not found.\"},\"id\":67}",
-                serialized);
-        }
         
-        [Test]
-        public async Task Eth_gasPrice_GivenValidHeadBlock_CallsGasPriceEstimateFromGasPriceOracle()
-        {
-            using Context ctx = await Context.Create(); 
-            Block testBlock = Build.A.Block.Genesis.TestObject;
-            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-            blockFinder.FindHeadBlock().Returns(testBlock);
-            blockFinder.FindBlock(Arg.Is<long>(a => a == 0)).Returns(testBlock);
-            IGasPriceOracle gasPriceOracle = Substitute.For<IGasPriceOracle>();
-            ctx._test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockFinder).WithGasPriceOracle(gasPriceOracle).Build();
-            
-            ctx._test.TestEthRpc("eth_gasPrice");
-            
-            gasPriceOracle.Received(1).GasPriceEstimate(Arg.Any<Block>(), Arg.Any<IBlockFinder>());
-        }
-
-        [TestCase(true, "0x4")] //Gas Prices: 1,2,3,4,5,6 | Max Index: 5 | 60th Percentile: 5 * (3/5) = 3 | Result: 4 (0x4)
+       [TestCase(true, "0x4")] //Gas Prices: 1,2,3,4,5,6 | Max Index: 5 | 60th Percentile: 5 * (3/5) = 3 | Result: 4 (0x4)
         [TestCase(false, "0x4")] //Gas Prices: 1,2,3,4,5,6 | Max Index: 5 | 60th Percentile: 5 * (3/5) = 3 | Result: 4 (0x4)
         public async Task Eth_gasPrice_BlocksAvailableLessThanBlocksToCheck_ShouldGiveCorrectResult(bool eip1559Enabled, string expected)
         {
@@ -97,30 +71,8 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             Assert.AreEqual($"{{\"jsonrpc\":\"2.0\",\"result\":\"{expected}\",\"id\":67}}", serialized);
         }
         
-        public static ISpecProvider SpecProviderWithEip1559EnabledAs(bool isEip1559)
-        {
-            IReleaseSpec specEip1559 = Substitute.For<IReleaseSpec>();
-            specEip1559.IsEip1559Enabled.Returns(isEip1559);
-            ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-            specProvider.GetSpec(Arg.Any<long>()).Returns(specEip1559);
-            return specProvider;
-        }
-        [Test]
-        public async Task Eth_gasPrice_NumTxInMinBlocksGreaterThanBlockLimit_GetTxFromBlockLimitBlocks()
-        {
-            using Context ctx = await Context.Create();
-            Block[] blocks = GetThreeTestBlocks();
-            BlockTree blockTree = Build.A.BlockTree(blocks[0]).WithBlocks(blocks).TestObject;
-            GasPriceOracle gasPriceOracle = Substitute.ForPartsOf<GasPriceOracle>(Substitute.For<ISpecProvider>(), null);
-            gasPriceOracle.Configure().GetBlockLimit().Returns(2);
-            ctx._test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockTree).WithGasPriceOracle(gasPriceOracle)
-                .Build();
-            List<UInt256> expected = new() {3, 4, 5, 6};
-            
-            ctx._test.TestEthRpc("eth_gasPrice");
-            
-            gasPriceOracle.TxGasPriceList.Should().Equal(expected);
-        }
+        public static ISpecProvider SpecProviderWithEip1559EnabledAs(bool isEip1559) => 
+            new CustomSpecProvider((0, isEip1559 ? London.Instance : Berlin.Instance));
 
         private static Block[] GetThreeTestBlocks()
         {

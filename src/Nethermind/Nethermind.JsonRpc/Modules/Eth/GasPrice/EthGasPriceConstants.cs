@@ -1,3 +1,4 @@
+
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
@@ -13,18 +14,20 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System.Collections.Generic;
-using Nethermind.Blockchain.Find;
-using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
-namespace Nethermind.JsonRpc.Modules.Eth
+namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
 {
-    public interface IGasPriceOracle
+    public static class EthGasPriceConstants
     {
-        public UInt256? FallbackGasPrice { get; }
-        public List<UInt256> TxGasPriceList { get; } 
-        ResultWrapper<UInt256?> GasPriceEstimate(Block? headBlock, IBlockFinder blockFinder);
+        public const int PercentileOfSortedTxs = 60; //Percentile of sortedTxList indexes to choose as gas price
+        public const int DefaultBlocksLimit = 20; //Limit for how many blocks we check txs in to add to sortedTxList
+        public const int DefaultGasPrice = 1; //Tx price added to sortedTxList for a block that has 0 txs (now adds 1 price)
+        public const int TxLimitFromABlock = 3; //Maximum number of tx we can add to sortedTxList from one block
+        // ReSharper disable once InconsistentNaming
+        public static readonly UInt256 MaxGasPrice = 500.GWei(); //Maximum gas price we can return
     }
 }

@@ -26,6 +26,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth;
+using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using NSubstitute;
 using NSubstitute.Extensions;
 using NUnit.Framework;
@@ -42,7 +43,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             Block testBlock = Build.A.Block.Genesis.TestObject;
             
-            ResultWrapper<UInt256?> resultWrapper = testableGasPriceOracle.GasPriceEstimate(testBlock, blockFinder);
+            ResultWrapper<UInt256?> resultWrapper = testableGasPriceOracle.GetGasPriceEstimate(testBlock, blockFinder);
             
             resultWrapper.Data.Should().Be((UInt256?) 7);
         }
@@ -72,7 +73,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             Block testBlock = Build.A.Block.Genesis.TestObject;
             
-            testableGasPriceOracle.GasPriceEstimate(testBlock, blockFinder);
+            testableGasPriceOracle.GetGasPriceEstimate(testBlock, blockFinder);
             
             testableGasPriceOracle.FallbackGasPrice.Should().BeEquivalentTo((UInt256?) EthGasPriceConstants.DefaultGasPrice);
         }
@@ -85,7 +86,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             Block testBlock = Build.A.Block.Genesis.TestObject;
             
-            testableGasPriceOracle.GasPriceEstimate(testBlock, blockFinder);
+            testableGasPriceOracle.GetGasPriceEstimate(testBlock, blockFinder);
             
             testableGasPriceOracle.FallbackGasPrice.Should().BeEquivalentTo((UInt256?) lastGasPrice);
         }
@@ -99,7 +100,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             Block testBlock = Build.A.Block.Genesis.TestObject;
 
-            ResultWrapper<UInt256?> resultWrapper = testableGasPriceOracle.GasPriceEstimate(testBlock, blockFinder);
+            ResultWrapper<UInt256?> resultWrapper = testableGasPriceOracle.GetGasPriceEstimate(testBlock, blockFinder);
             
             resultWrapper.Data.Should().BeEquivalentTo((UInt256?) expected);
         }
@@ -116,7 +117,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             Block testBlock = Build.A.Block.Genesis.TestObject;
 
-            ResultWrapper<UInt256?> resultWrapper = testableGasPriceOracle.GasPriceEstimate(testBlock, blockFinder);
+            ResultWrapper<UInt256?> resultWrapper = testableGasPriceOracle.GetGasPriceEstimate(testBlock, blockFinder);
             
             resultWrapper.Result.Should().Be(Result.Success);
             resultWrapper.Data.Should().BeEquivalentTo((UInt256?) EthGasPriceConstants.MaxGasPrice);
@@ -131,7 +132,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             Block headBlock = Build.A.Block.WithNumber(8).TestObject;
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             
-            testableGasPriceOracle.GasPriceEstimate(headBlock, blockFinder);
+            testableGasPriceOracle.GetGasPriceEstimate(headBlock, blockFinder);
             
             txInsertionManager.Received(8).AddValidTxFromBlockAndReturnCount(Arg.Any<Block>());
         }
@@ -145,7 +146,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             Block headBlock = Build.A.Block.WithNumber(8).TestObject;
             IBlockFinder blockFinder = BlockFinderForNineEmptyBlocks();
             
-            testableGasPriceOracle.GasPriceEstimate(headBlock, blockFinder);
+            testableGasPriceOracle.GetGasPriceEstimate(headBlock, blockFinder);
             
             txInsertionManager.Received(8).AddValidTxFromBlockAndReturnCount(Arg.Any<Block>());
 
@@ -246,7 +247,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             
             if (sortedTxList != null)
             {
-                gasPriceOracle.Configure().GetSortedTxGasPriceList(Arg.Any<Block?>(), Arg.Any<IBlockFinder>()).Returns(sortedTxList);
+                gasPriceOracle.Configure().GetSortedTxGasPrices(Arg.Any<Block?>(), Arg.Any<IBlockFinder>()).Returns(sortedTxList);
             }
 
             if (ignoreUnder != null)
