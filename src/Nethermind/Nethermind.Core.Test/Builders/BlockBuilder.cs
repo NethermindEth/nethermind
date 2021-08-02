@@ -31,7 +31,7 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal = new Block(header);
             header.Hash = TestObjectInternal.CalculateHash();
         }
-
+        
         public BlockBuilder WithHeader(BlockHeader header)
         {
             TestObjectInternal = TestObjectInternal.WithReplacedHeader(header);

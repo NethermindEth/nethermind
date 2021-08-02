@@ -16,6 +16,7 @@
 //
 
 #nullable enable
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
@@ -25,10 +26,8 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
-using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using NSubstitute;
-using NSubstitute.Extensions;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules
@@ -39,228 +38,167 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void GasPriceEstimate_NoChangeInHeadBlock_ReturnsPreviousGasPrice()
         {
-            GasPriceOracle testableGasPriceOracle = GetReturnsSameGasPriceGasPriceOracle(lastGasPrice: 7);
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-            Block testBlock = Build.A.Block.Genesis.TestObject;
+            Block testHeadBlock = Build.A.Block.Genesis.TestObject;
+            GasPriceOracle testGasPriceOracle =
+                new(blockFinder, Substitute.For<ISpecProvider>()) {LastHeadBlock = testHeadBlock, LastGasPrice = 7};
             
-            ResultWrapper<UInt256?> resultWrapper = testableGasPriceOracle.GetGasPriceEstimate(testBlock, blockFinder);
+            UInt256 result = testGasPriceOracle.GetGasPriceEstimate();
             
-            resultWrapper.Data.Should().Be((UInt256?) 7);
+            result.Should().Be((UInt256) 7);
         }
 
-        private GasPriceOracle GetReturnsSameGasPriceGasPriceOracle(
-            ISpecProvider? specProvider = null, 
-            UInt256? ignoreUnder = null, 
-            int? blockLimit = null, 
-            ITxInsertionManager? txInsertionManager = null,
-            UInt256? lastGasPrice = null)
-        {
-            GasPriceOracle gasPriceOracle = GetTestableGasPriceOracle(specProvider, ignoreUnder, blockLimit,
-                txInsertionManager, lastGasPrice);
-            if (lastGasPrice != null)
-            {
-                gasPriceOracle.Configure().GetLastGasPrice().Returns(lastGasPrice);
-            }
-            gasPriceOracle.Configure().ShouldReturnSameGasPrice(Arg.Any<Block?>(), Arg.Any<Block?>(), Arg.Any<UInt256?>())
-                .Returns(true);
-            return gasPriceOracle;
-        }
-        
         [Test]
         public void GasPriceEstimate_IfPreviousGasPriceDoesNotExist_FallbackGasPriceSetToDefaultGasPrice()
         {
-            GasPriceOracle testableGasPriceOracle = GetTestableGasPriceOracle();
-            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-            Block testBlock = Build.A.Block.Genesis.TestObject;
+            GasPriceOracle testGasPriceOracle = new(Substitute.For<IBlockFinder>(), Substitute.For<ISpecProvider>()){LastGasPrice = null};
             
-            testableGasPriceOracle.GetGasPriceEstimate(testBlock, blockFinder);
+            testGasPriceOracle.GetGasPriceEstimate();
             
-            testableGasPriceOracle.FallbackGasPrice.Should().BeEquivalentTo((UInt256?) EthGasPriceConstants.DefaultGasPrice);
+            testGasPriceOracle.FallbackGasPrice.Should().BeEquivalentTo((UInt256?) EthGasPriceConstants.DefaultGasPrice);
         }
 
         [TestCase(3)]
         [TestCase(10)]
         public void GasPriceEstimate_IfPreviousGasPriceExists_FallbackGasPriceIsSetToPreviousGasPrice(int lastGasPrice)
         {
-            GasPriceOracle testableGasPriceOracle = GetTestableGasPriceOracle(lastGasPrice: (UInt256) lastGasPrice);
-            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-            Block testBlock = Build.A.Block.Genesis.TestObject;
+            GasPriceOracle testGasPriceOracle = new(Substitute.For<IBlockFinder>(), Substitute.For<ISpecProvider>()){LastGasPrice = (UInt256) lastGasPrice};
             
-            testableGasPriceOracle.GetGasPriceEstimate(testBlock, blockFinder);
+            testGasPriceOracle.GetGasPriceEstimate();
             
-            testableGasPriceOracle.FallbackGasPrice.Should().BeEquivalentTo((UInt256?) lastGasPrice);
-        }
-
-        [TestCase(new[]{1,3,5,7,8,9}, 7)] //Last index: 6 - 1 = 5, 60th percentile: 5 * 3/5 = 3, Value: 7
-        [TestCase(new[]{0,0,7,9,10,27,83,101}, 10)] //Last index: 8 - 1 = 7, 60th percentile: 7 * 3/5 rounds to 4, Value: 10
-        public void GasPriceEstimate_BlockCountEqualToBlocksToCheck_SixtiethPercentileOfMaxIndexReturned(int[] gasPrice, int expected)
-        {
-            List<UInt256> listOfGasPrices = gasPrice.Select(n => (UInt256) n).ToList();
-            GasPriceOracle testableGasPriceOracle = GetTestableGasPriceOracle(sortedTxList: listOfGasPrices);
-            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-            Block testBlock = Build.A.Block.Genesis.TestObject;
-
-            ResultWrapper<UInt256?> resultWrapper = testableGasPriceOracle.GetGasPriceEstimate(testBlock, blockFinder);
-            
-            resultWrapper.Data.Should().BeEquivalentTo((UInt256?) expected);
+            testGasPriceOracle.FallbackGasPrice.Should().BeEquivalentTo((UInt256?) lastGasPrice);
         }
 
         [Test]
         public void GasPriceEstimate_IfCalculatedGasPriceGreaterThanMax_MaxGasPriceReturned()
         {
-            
-            List<UInt256> listOfGasPrices = new()
-            {
-                501.GWei()
-            }; 
-            GasPriceOracle testableGasPriceOracle = GetTestableGasPriceOracle(sortedTxList: listOfGasPrices);
+            Transaction tx = Build.A.Transaction.WithGasPrice(501.GWei()).TestObject;
+            Block headBlock = Build.A.Block.WithTransactions(tx).TestObject;
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-            Block testBlock = Build.A.Block.Genesis.TestObject;
+            blockFinder.FindBlock(0).Returns(headBlock);
+            blockFinder.FindHeadBlock().Returns(headBlock);
+            GasPriceOracle testGasPriceOracle = new GasPriceOracle(blockFinder, Substitute.For<ISpecProvider>());
 
-            ResultWrapper<UInt256?> resultWrapper = testableGasPriceOracle.GetGasPriceEstimate(testBlock, blockFinder);
+            UInt256 result = testGasPriceOracle.GetGasPriceEstimate();
             
-            resultWrapper.Result.Should().Be(Result.Success);
-            resultWrapper.Data.Should().BeEquivalentTo((UInt256?) EthGasPriceConstants.MaxGasPrice);
+            result.Should().Be((UInt256) 500);
         }
         
         [Test]
-        public void GasPriceEstimate_IfEightBlocksWithTwoTransactions_CheckEightBlocks()
+        public void GetGasPricesFromRecentBlocks_IfEightBlocksWithTwoTransactions_CheckEightBlocks()
         {
-            ITxInsertionManager txInsertionManager = Substitute.For<ITxInsertionManager>();
-            txInsertionManager.AddValidTxFromBlockAndReturnCount(Arg.Any<Block>()).Returns(2);
-            GasPriceOracle testableGasPriceOracle = GetTestableGasPriceOracle(txInsertionManager: txInsertionManager, blockLimit: 8);
-            Block headBlock = Build.A.Block.WithNumber(8).TestObject;
+            IBlockFinder blockFinder = GetBlockFinderForNineBlocksWithTwoTransactions();
+            GasPriceOracle testGasPriceOracle = new(blockFinder, Substitute.For<ISpecProvider>());
+
+            testGasPriceOracle.GetGasPricesFromRecentBlocks(8);
+            
+            long[] receivedBlockNumbers = {1,2,3,4,5,6,7,8};
+            receivedBlockNumbers
+                .Select(x => blockFinder.Received(1).FindBlock(Arg.Is<long>(l => l == x)));
+            blockFinder.DidNotReceive().FindBlock(Arg.Is<long>(l => l == 0));
+        }
+
+        private IBlockFinder GetBlockFinderForNineBlocksWithTwoTransactions()
+        {
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-            
-            testableGasPriceOracle.GetGasPriceEstimate(headBlock, blockFinder);
-            
-            txInsertionManager.Received(8).AddValidTxFromBlockAndReturnCount(Arg.Any<Block>());
+            Transaction tx = Build.A.Transaction.TestObject;
+            Block blockWithTwoTx = Build.A.Block.WithTransactions(tx, tx).TestObject;
+            for (int i = 0; i <= 8; i++)
+            {
+                blockFinder.FindBlock(i).Returns(blockWithTwoTx);
+            }
+
+            blockFinder.FindHeadBlock().Returns(Build.A.Block.WithNumber(8).TestObject);
+
+            return blockFinder;
         }
 
         [Test]
-        public void GasPriceEstimate_IfLastFiveBlocksWithThreeTxAndFirstFourWithOne_CheckSixBlocks()
+        public void GetGasPricesFromRecentBlocks_IfLastFiveBlocksWithThreeTxAndFirstFourWithOne_CheckSixBlocks()
         {
-            ITxInsertionManager txInsertionManager = Substitute.For<ITxInsertionManager>();
-            GasPriceOracle testableGasPriceOracle = GetTestableGasPriceOracle(txInsertionManager: txInsertionManager, blockLimit: 8);
-            SetUpTxInsertionManagerForSpecificReturns(txInsertionManager);
-            Block headBlock = Build.A.Block.WithNumber(8).TestObject;
-            IBlockFinder blockFinder = BlockFinderForNineEmptyBlocks();
+            IBlockFinder blockFinder = GetBlockFinderForLastFiveBlocksWithThreeTxAndFirstFourWithOne();
+            GasPriceOracle testGasPriceOracle = new GasPriceOracle(blockFinder,Substitute.For<ISpecProvider>());
             
-            testableGasPriceOracle.GetGasPriceEstimate(headBlock, blockFinder);
-            
-            txInsertionManager.Received(8).AddValidTxFromBlockAndReturnCount(Arg.Any<Block>());
+            IEnumerable<UInt256> result = testGasPriceOracle.GetGasPricesFromRecentBlocks(8);
 
-            static IBlockFinder BlockFinderForNineEmptyBlocks()
-            {
-                IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-                Block[] blocks = {
-                    Build.A.Block.Genesis.TestObject,
-                    Build.A.Block.WithNumber(1).TestObject,
-                    Build.A.Block.WithNumber(2).TestObject,
-                    Build.A.Block.WithNumber(3).TestObject,
-                    Build.A.Block.WithNumber(4).TestObject,
-                    Build.A.Block.WithNumber(5).TestObject,
-                    Build.A.Block.WithNumber(6).TestObject,
-                    Build.A.Block.WithNumber(7).TestObject,
-                    Build.A.Block.WithNumber(8).TestObject,
-                };
-            
-                blockFinder.FindBlock(0).Returns(blocks[0]);
-                blockFinder.FindBlock(1).Returns(blocks[1]);
-                blockFinder.FindBlock(2).Returns(blocks[2]);
-                blockFinder.FindBlock(3).Returns(blocks[3]);
-                blockFinder.FindBlock(4).Returns(blocks[4]);
-                blockFinder.FindBlock(5).Returns(blocks[5]);
-                blockFinder.FindBlock(6).Returns(blocks[6]);
-                blockFinder.FindBlock(7).Returns(blocks[7]);
-                blockFinder.FindBlock(8).Returns(blocks[8]);
-            
-                return blockFinder;
-            }
+
+            long[] receivedBlockNumbers = {3,4,5,6,7,8};
+            receivedBlockNumbers
+                .Select(x => blockFinder.Received(1).FindBlock(Arg.Is<long>(l => l == x)));
+            blockFinder.DidNotReceive().FindBlock(Arg.Is<long>(l => l <= 2));
         }
-        private static void SetUpTxInsertionManagerForSpecificReturns(ITxInsertionManager txInsertionManager)
+
+        private IBlockFinder GetBlockFinderForLastFiveBlocksWithThreeTxAndFirstFourWithOne()
         {
-            txInsertionManager.AddValidTxFromBlockAndReturnCount(Arg.Is<Block>(b => b.Number >= 4)).Returns(3);
-            txInsertionManager.AddValidTxFromBlockAndReturnCount(Arg.Is<Block>(b => b.Number < 4)).Returns(1);
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            Transaction tx = Build.A.Transaction.TestObject;
+            Block blockWithOneTx = Build.A.Block.WithTransactions(Enumerable.Repeat(tx, 1).ToArray()).TestObject;
+            Block blockWithThreeTx = Build.A.Block.WithTransactions(Enumerable.Repeat(tx, 3).ToArray()).TestObject;
+            for (int i = 0; i < 4; i++)
+            {
+                blockFinder.FindBlock(i).Returns(blockWithOneTx);
+            }
+            for (int i = 4; i <= 8; i++)
+            {
+                blockFinder.FindBlock(i).Returns(blockWithThreeTx);
+            }
+
+            blockFinder.FindHeadBlock().Returns(Build.A.Block.WithNumber(8).TestObject);
+
+            return blockFinder;
+        }
+
+        [Test]
+        public void GetGasPriceEstimate_IfLastGasPriceIsNull_WillNotReturnLastGasPrice()
+        {
+            GasPriceOracle testGasPriceOracle = new(Substitute.For<IBlockFinder>(), Substitute.For<ISpecProvider>());
+            
+            Action act = () => testGasPriceOracle.GetGasPriceEstimate();
+
+            act.Should().NotThrow();
         }
         
-        [Test]
-        public void ShouldReturnSameGasPrice_IfLastHeadAndCurrentHeadAreSame_WillReturnTrue()
-        {
-            Block testBlock = Build.A.Block.Genesis.TestObject;
-            GasPriceOracle testableGasPriceOracle = GetTestableGasPriceOracle();
-            bool result = testableGasPriceOracle.ShouldReturnSameGasPrice(testBlock, testBlock, 10);
-
-            result.Should().BeTrue();
-        }
-
-        [Test]
-        public void ShouldReturnSameGasPrice_IfLastHeadAndCurrentHeadAreNotSame_WillReturnFalse()
-        {
-            Block testBlock = Build.A.Block.Genesis.TestObject;
-            Block differentTestBlock = Build.A.Block.WithNumber(1).TestObject;
-            GasPriceOracle testableGasPriceOracle = GetTestableGasPriceOracle();
-            
-            bool result = testableGasPriceOracle.ShouldReturnSameGasPrice(testBlock, differentTestBlock, 10);
-
-            result.Should().BeFalse();
-        }
-
-        [Test]
-        public void ShouldReturnSameGasPrice_IfLastHeadIsNull_WillReturnFalse()
-        {
-            Block testBlock = Build.A.Block.Genesis.TestObject;
-            GasPriceOracle testableGasPriceOracle = GetTestableGasPriceOracle();
-            
-            bool result = testableGasPriceOracle.ShouldReturnSameGasPrice(null, testBlock, 10);
-
-            result.Should().BeFalse();
-        }
         
         [Test]
-        public void ShouldReturnSameGasPrice_IfLastGasPriceIsNull_WillReturnFalse()
+        public void GetGasPricesFromRecentBlocks_IfBlockHasMoreThanThreeValidTx_AddOnlyThreeNew()
         {
-            Block testBlock = Build.A.Block.Genesis.TestObject;
-            GasPriceOracle testableGasPriceOracle = GetTestableGasPriceOracle();
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            Transaction tx = Build.A.Transaction.WithGasPrice(1).TestObject;
+            Block headBlock = Build.A.Block.Genesis.WithTransactions(tx,tx,tx,tx,tx).TestObject;
+            blockFinder.FindHeadBlock().Returns(headBlock);
+            blockFinder.FindBlock(0).Returns(headBlock);
+            GasPriceOracle testGasPriceOracle = new(blockFinder, Substitute.For<ISpecProvider>());
             
-            bool result = testableGasPriceOracle.ShouldReturnSameGasPrice(testBlock, testBlock, null);
+            IEnumerable<UInt256> results = testGasPriceOracle.GetGasPricesFromRecentBlocks(0);
 
-            result.Should().BeFalse();
+            results.Count().Should().Be(3);
+        }
+        
+        
+        [Test]
+        public void AddValidTxAndReturnCount_IfBlockHasMoreThanThreeValidTxs_OnlyAddTxsWithLowestGasPrices()
+        {
+            (List<UInt256> results, GasPriceEstimateTxInsertionManager txInsertionManager) = GetTestableTxInsertionManager(ignoreUnder: 3);
+            txInsertionManager.Configure().GetTxGasPriceList(Arg.Any<IGasPriceOracle>()).Returns(results);
+            Block testBlock = GetTestBlockB();
+            List<UInt256> expected = new() {5,6,7};
+            
+            txInsertionManager.GetTxPrices(testBlock);
+
+            results.Should().BeEquivalentTo(expected);
         }
 
-        private GasPriceOracle GetTestableGasPriceOracle(
-            ISpecProvider? specProvider = null, 
-            UInt256? ignoreUnder = null, 
-            int? blockLimit = null, 
-            ITxInsertionManager? txInsertionManager = null,
-            UInt256? lastGasPrice = null,
-            List<UInt256>? sortedTxList = null)
+        public Transaction[] GetFiveTransactionsWithDifferentGasPrices()
         {
-            GasPriceOracle gasPriceOracle = Substitute.ForPartsOf<GasPriceOracle>(
-            specProvider ?? Substitute.For<ISpecProvider>(),
-            txInsertionManager ?? Substitute.For<ITxInsertionManager>());
-            
-            if (lastGasPrice != null)
+            Transaction[] transactions = 
             {
-                gasPriceOracle.Configure().GetLastGasPrice().Returns(lastGasPrice);
-            }
-            
-            if (sortedTxList != null)
-            {
-                gasPriceOracle.Configure().GetSortedTxGasPrices(Arg.Any<Block?>(), Arg.Any<IBlockFinder>()).Returns(sortedTxList);
-            }
-
-            if (ignoreUnder != null)
-            {
-                gasPriceOracle.Configure().GetIgnoreUnder().Returns((UInt256) ignoreUnder);
-            }
-
-            if (blockLimit != null)
-            {
-                gasPriceOracle.Configure().GetBlockLimit().Returns((int) blockLimit);
-            }
-
-            return gasPriceOracle;
+                Build.A.Transaction.WithGasPrice(1).TestObject,
+                Build.A.Transaction.WithGasPrice(2).TestObject,
+                Build.A.Transaction.WithGasPrice(4).TestObject,
+                Build.A.Transaction.WithGasPrice(5).TestObject,
+                Build.A.Transaction.WithGasPrice(3).TestObject
+            } ;
+            return transactions;
         }
     }
 }

@@ -28,11 +28,11 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
     public class GasPriceOracle : IGasPriceOracle
     {
         private readonly IBlockFinder _blockFinder;
-        private UInt256 FallbackGasPrice => LastGasPrice ?? EthGasPriceConstants.DefaultGasPrice;
+        public UInt256 FallbackGasPrice => LastGasPrice ?? EthGasPriceConstants.DefaultGasPrice;
         private ISpecProvider SpecProvider { get; }
-        private UInt256? LastGasPrice { get; set; }
-        private Block? LastHeadBlock { get; set; }
-        public UInt256 IgnoreUnder { get; set; } = UInt256.Zero;
+        public UInt256? LastGasPrice { get; set; }
+        public Block? LastHeadBlock { get; set; }
+        public UInt256 IgnoreUnder { get; set; } = UInt256.Zero; //ToDo not sure if ignoreUnder should only be set in testing
         public int BlockLimit { get; set; } = EthGasPriceConstants.DefaultBlocksLimit;
         public int SoftTxThreshold { get; set; } = EthGasPriceConstants.DefaultBlocksLimit * 2;
 
