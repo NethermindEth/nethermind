@@ -35,16 +35,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
         public void FromJson(string jsonValue)
         {
             var filter = _jsonSerializer.Deserialize<JObject>(jsonValue);
-            FromBlock = GetBlockParameter(filter["fromBlock"]?.ToObject<string>());
-            ToBlock = GetBlockParameter(filter["toBlock"]?.ToObject<string>());
+            FromBlock = BlockParameterConverter.GetBlockParameter(filter["fromBlock"]?.ToObject<string>());
+            ToBlock = BlockParameterConverter.GetBlockParameter(filter["toBlock"]?.ToObject<string>());
             Address = GetAddress(filter["address"]);
             Topics = GetTopics(filter["topics"] as JArray);
         }
-
-        private static BlockParameter GetBlockParameter(string? value) => 
-            string.IsNullOrWhiteSpace(value) 
-                ? new BlockParameter(BlockParameterType.Latest) 
-                : BlockParameterConverter.GetBlockParameter(value);
 
         private static object? GetAddress(JToken? token) => GetSingleOrMany(token);
 
