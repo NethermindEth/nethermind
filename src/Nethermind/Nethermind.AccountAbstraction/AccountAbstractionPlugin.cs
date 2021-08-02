@@ -7,6 +7,7 @@ using Nethermind.AccountAbstraction.Executor;
 using Nethermind.AccountAbstraction.Source;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Blockchain.Producers;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
@@ -116,7 +117,7 @@ namespace Nethermind.AccountAbstraction
 
             if (_accountAbstractionConfig.Enabled)
             {
-                _nethermindApi.BlockchainProcessor!.BlockTracerFactory.AddChildFactory(new AccessTracerFactory(AccessBlockTracer));
+                _nethermindApi.BlockchainProcessor!.Tracers.Add(AccessBlockTracer);
             }
             
             return Task.CompletedTask;
@@ -161,8 +162,9 @@ namespace Nethermind.AccountAbstraction
                 throw new InvalidOperationException("Plugin is disabled");
             }
 
+            IManualBlockProductionTrigger trigger = new BuildBlocksWhenRequested();
             UserOperationTxSource userOperationTxSource = new(UserOperationPool, _simulatedUserOperations, UserOperationSimulator, _nethermindApi.EngineSigner);
-            return consensusPlugin.InitBlockProducer(userOperationTxSource);
+            return consensusPlugin.InitBlockProducer(trigger, userOperationTxSource);
         }
 
         public bool Enabled => _nethermindApi.Config<IMiningConfig>().Enabled && _accountAbstractionConfig.Enabled;

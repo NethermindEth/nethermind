@@ -74,7 +74,7 @@ namespace Nethermind.JsonRpc.Modules
             Vault,
             Deposit,
             Health,
-            Witness
+            Witness,
             AccountAbstraction
         };
 
