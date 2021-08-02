@@ -181,7 +181,7 @@ namespace Nethermind.HealthChecks
             SyncingResult ethSyncing)
         {
             messages.Add(("Still syncing",
-                $"The node is still syncing, CurrentBlock: {ethSyncing.CurrentBlock}, HighestBlock: {ethSyncing.HighestBlock}"));
+                $"The node is still syncing, CurrentBlock: {ethSyncing.CurrentBlock}, HighestBlock: {ethSyncing.HighestBlock}. The status will change to healthy once synced"));
         }
 
         private static void AddFullySyncMessage(ICollection<(string Description, string LongDescription)> messages)
