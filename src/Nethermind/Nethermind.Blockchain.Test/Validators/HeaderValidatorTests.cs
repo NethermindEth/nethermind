@@ -49,7 +49,7 @@ namespace Nethermind.Blockchain.Test.Validators
         [SetUp]
         public void Setup()
         {
-            DifficultyCalculator calculator = new DifficultyCalculator(new SingleReleaseSpecProvider(Frontier.Instance, ChainId.Mainnet));
+            EthashDifficultyCalculator calculator = new EthashDifficultyCalculator(new SingleReleaseSpecProvider(Frontier.Instance, ChainId.Mainnet));
             _ethash = new EthashSealValidator(LimboLogs.Instance, calculator, new CryptoRandom(), new Ethash(LimboLogs.Instance));
             _testLogger = new TestLogger();
             MemDb blockInfoDb = new MemDb();

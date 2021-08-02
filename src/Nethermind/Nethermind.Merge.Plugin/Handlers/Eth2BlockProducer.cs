@@ -33,50 +33,33 @@ using Nethermind.State;
 
 namespace Nethermind.Merge.Plugin.Handlers
 {
-    public class Eth2BlockProducer : BlockProducerBase, IManualBlockProducer
+    public class Eth2BlockProducer : BlockProducerBase
     {
-        private int _stated;
-        private readonly SemaphoreSlim _locker = new(1, 1);
-        
         public Eth2BlockProducer(ITxSource txSource,
             IBlockchainProcessor processor,
             IBlockTree blockTree,
-            IBlockProcessingQueue blockProcessingQueue,
+            IBlockProductionTrigger blockProductionTrigger,
             IStateProvider stateProvider,
             IGasLimitCalculator gasLimitCalculator,
             ISigner signer,
             ITimestamper timestamper,
             ISpecProvider specProvider,
             ILogManager logManager) 
-            : base(txSource, processor, new Eth2SealEngine(signer), blockTree, blockProcessingQueue, stateProvider, gasLimitCalculator, timestamper, specProvider, logManager)
+            : base(
+                txSource, 
+                processor, 
+                new Eth2SealEngine(signer), 
+                blockTree, 
+                blockProductionTrigger, 
+                stateProvider, 
+                gasLimitCalculator, 
+                timestamper, 
+                specProvider, 
+                logManager,
+                ConstantDifficultyCalculator.One)
         {
         }
 
-        public override void Start() => Interlocked.Exchange(ref _stated, 1);
-
-        public override Task StopAsync()
-        {
-            Interlocked.Exchange(ref _stated, 0);
-            return Task.CompletedTask;
-        }
-
-        public async Task<Block?> TryProduceBlock(BlockHeader parentHeader, CancellationToken cancellationToken = default)
-        {
-            await _locker.WaitAsync(cancellationToken);
-            try
-            {
-                return await TryProduceNewBlock(cancellationToken, false, parentHeader);
-            }
-            finally
-            {
-                _locker.Release();
-            }
-        }
-
-        protected override bool IsRunning() => _stated == 1;
-
-        protected override UInt256 CalculateDifficulty(BlockHeader parent, UInt256 timestamp) => UInt256.One;
-        
         protected override Block PrepareBlock(BlockHeader parent)
         {
             Block block = base.PrepareBlock(parent);

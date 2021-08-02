@@ -87,7 +87,7 @@ namespace Nethermind.Blockchain.Processing
 
         private void OnNewHeadBlock(object? sender, BlockEventArgs e)
         {
-            _lastProcessedBlock = DateTime.UtcNow;;
+            _lastProcessedBlock = DateTime.UtcNow;
         }
 
         private void OnNewBestBlock(object sender, BlockEventArgs blockEventArgs)

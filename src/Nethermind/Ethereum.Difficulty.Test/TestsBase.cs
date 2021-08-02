@@ -22,6 +22,7 @@ using System.Globalization;
 using System.Linq;
 using System.Numerics;
 using Ethereum.Test.Base;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -92,7 +93,7 @@ namespace Ethereum.Difficulty.Test
 
         protected void RunTest(DifficultyTests test, ISpecProvider specProvider)
         {
-            IDifficultyCalculator calculator = new DifficultyCalculator(specProvider);
+            EthashDifficultyCalculator calculator = new EthashDifficultyCalculator(specProvider);
 
             UInt256 difficulty = calculator.Calculate(
                 test.ParentDifficulty,

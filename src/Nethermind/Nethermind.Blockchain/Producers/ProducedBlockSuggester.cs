@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,14 +15,29 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-namespace Nethermind.Consensus.Transactions
+using System;
+using System.Linq;
+using Nethermind.Consensus;
+using Nethermind.Core;
+
+namespace Nethermind.Blockchain.Producers
 {
-    // ReSharper disable once InconsistentNaming
-    public static class ITxSourceExtensions
+    public class ProducedBlockSuggester : IDisposable
     {
-        public static ITxSource ServeTxsOneByOne(this ITxSource source)
+        private readonly IBlockTree _blockTree;
+        private readonly IBlockProducer _blockProducer;
+
+        public ProducedBlockSuggester(IBlockTree blockTree, IBlockProducer blockProducer)
         {
-            return new OneByOneTxSource(source);
+            _blockTree = blockTree;
+            _blockProducer = blockProducer;
+            _blockProducer.BlockProduced += OnBlockProduced;
         }
+
+        private void OnBlockProduced(object? sender, BlockEventArgs e) =>
+            _blockTree.SuggestBlock(e.Block);
+
+        public void Dispose() =>
+            _blockProducer.BlockProduced -= OnBlockProduced;
     }
 }
