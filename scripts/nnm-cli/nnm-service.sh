@@ -49,8 +49,9 @@ save_log() {
 
 # start of pullandbuild
 gitPullOrigin() {
-	cli_log "Pulling origin master from Github..."
-	git pull origin master
+	cli_log "Pulling master from Github..."
+	git stash
+  git pull
 }
 
 gitCheckout() {
@@ -124,7 +125,7 @@ up() {
 # End of up
 
 # Start of tail
-tail() {
+tailLogs() {
   cli_log "Getting live logs from nethermind.service..."
   tail -f $NETHERMIND_LOGS_PATH
 }
@@ -138,7 +139,7 @@ version() {
 # End of version
 
 case "$1" in
-  pullndbuild|pb)
+  pullandbuild|pb)
     pullandbuild "$BRANCH" | save_log $1
     ;;
   up|u)
@@ -154,7 +155,7 @@ case "$1" in
     status | save_log $1
     ;;
   tail|t)
-    tail
+    tailLogs
     ;;
   version|v)
     version | save_log $1
