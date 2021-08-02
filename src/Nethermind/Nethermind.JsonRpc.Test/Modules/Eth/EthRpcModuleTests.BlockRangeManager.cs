@@ -41,7 +41,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                 long blockCount = 1;
                 long? headBlockNumber = null;
                 IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-                blockFinder.FindPendingBlock().Returns((Block) Build.A.Block.WithNumber(blockNumber).TestObject);
+                blockFinder.FindPendingBlock().Returns(Build.A.Block.WithNumber(blockNumber).TestObject);
                 BlockRangeManager blockRangeManager = new(blockFinder);
 
                 blockRangeManager.ResolveBlockRange(ref lastBlockNumber, ref blockCount, 1, ref headBlockNumber);
@@ -79,9 +79,6 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
 
                 ResultWrapper<BlockRangeInfo> resultWrapper = blockRangeManager.ResolveBlockRange(ref lastBlockNumber, ref blockCount, 1, ref headBlockNumber);
 
-                ResultWrapper<BlockRangeInfo> expected =
-                    ResultWrapper<BlockRangeInfo>.Fail("Invalid pending block reduced blockCount to 0.");
-                
                 resultWrapper.Result.Error.Should().Be("Invalid pending block reduced blockCount to 0.");
                 resultWrapper.Result.ResultType.Should().Be(ResultType.Failure);
             }
@@ -99,9 +96,6 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
 
                 ResultWrapper<BlockRangeInfo> resultWrapper = blockRangeManager.ResolveBlockRange(ref lastBlockNumber, ref blockCount, 1, ref headBlockNumber);
 
-                ResultWrapper<BlockRangeInfo> expected =
-                    ResultWrapper<BlockRangeInfo>.Fail("Invalid pending block reduced blockCount to 0.");
-                
                 resultWrapper.Result.Error.Should().Be("Head block not found.");
                 resultWrapper.Result.ResultType.Should().Be(ResultType.Failure);
             }
@@ -118,9 +112,6 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
 
                 ResultWrapper<BlockRangeInfo> resultWrapper = blockRangeManager.ResolveBlockRange(ref lastBlockNumber, ref blockCount, 1, ref headBlockNumber);
 
-                ResultWrapper<BlockRangeInfo> expected =
-                    ResultWrapper<BlockRangeInfo>.Fail("Invalid pending block reduced blockCount to 0.");
-                
                 resultWrapper.Result.Error.Should().Be("Invalid pending block reduced blockCount to 0.");
                 resultWrapper.Result.ResultType.Should().Be(ResultType.Failure);
             }
@@ -134,7 +125,6 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                 long blockCount = 1;
                 long? headBlockNumberVar = null;
                 IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-                BlockRangeInfo blockRangeInfo = new();
                 blockFinder.FindHeadBlock().Returns(Build.A.Block.WithNumber(headBlockNumber).TestObject);
                 BlockRangeManager blockRangeManager = new(blockFinder);
 
@@ -170,13 +160,15 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                 long? headBlockNumber = null;
                 IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
                 blockFinder.FindHeadBlock().Returns(Build.A.Block.Genesis.TestObject);
-                TestableBlockRangeManager testableBlockRangeManager = new(blockFinder);
+                BlockRangeManager testBlockRangeManager = GetTestableBlockRangeManger(blockFinder);
 
-                testableBlockRangeManager.tooOldCountCalled.Should().BeFalse();
-                testableBlockRangeManager.ResolveBlockRange(ref lastBlockNumber, ref blockCount, 1,
+                testBlockRangeManager.Received(0).CalculateTooOldCount(Arg.Any<long>(), Arg.Any<long>(), Arg.Any<int>(),
+                    Arg.Any<long?>());
+                testBlockRangeManager.ResolveBlockRange(ref lastBlockNumber, ref blockCount, 1,
                     ref headBlockNumber);
 
-                testableBlockRangeManager.tooOldCountCalled.Should().BeTrue();
+                testBlockRangeManager.Received(1).CalculateTooOldCount(Arg.Any<long>(), Arg.Any<long>(), Arg.Any<int>(),
+                    Arg.Any<long?>());
             }
 
             [TestCase(3, 1,1,7, 2)]
@@ -184,7 +176,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             public void CalculateTooOldCount_IfTooOldCountGreaterThanOrEqualToThanBlockCount_ReturnsError(long lastBlockNumber, long blockCount, int maxHistory, long? headBlockNumber, long tooOldCount)
             {
                 IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-                BlockRangeManager blockRangeManager = new BlockRangeManager(blockFinder);
+                BlockRangeManager blockRangeManager = new(blockFinder);
 
                 ResultWrapper<long> resultWrapper = blockRangeManager.CalculateTooOldCount(lastBlockNumber, blockCount, maxHistory, headBlockNumber);
                 
@@ -196,7 +188,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             public void CalculateTooOldCount_IfTooOldCountLessThanBlockCount_CalculatesOutputCorrectly(long lastBlockNumber, long blockCount, int maxHistory, long? headBlockNumber, long tooOldCount)
             {
                 IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-                BlockRangeManager blockRangeManager = new BlockRangeManager(blockFinder);
+                BlockRangeManager blockRangeManager = new(blockFinder);
 
                 ResultWrapper<long> resultWrapper = blockRangeManager.CalculateTooOldCount(lastBlockNumber, blockCount, maxHistory, headBlockNumber);
                 
@@ -210,27 +202,20 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                 long? headBlockNumber = null;
                 IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
                 blockFinder.FindHeadBlock().Returns(Build.A.Block.WithNumber(11).TestObject);
-                TestableBlockRangeManager testableBlockRangeManager = new(blockFinder);
+                BlockRangeManager blockRangeManager = new(blockFinder);
 
-                ResultWrapper<BlockRangeInfo> resultWrapper = testableBlockRangeManager.ResolveBlockRange(ref lastBlockNumber, ref blockCount, 1,
+                ResultWrapper<BlockRangeInfo> resultWrapper = blockRangeManager.ResolveBlockRange(ref lastBlockNumber, ref blockCount, 1,
                     ref headBlockNumber);
 
                 resultWrapper.Data.BlockCount.Should().Be(6);
             }
 
-            public class TestableBlockRangeManager : BlockRangeManager
+            private BlockRangeManager GetTestableBlockRangeManger(IBlockFinder blockFinder)
             {
-                public bool tooOldCountCalled;
-                public TestableBlockRangeManager(IBlockFinder blockFinder) : base(blockFinder)
-                {
-                    tooOldCountCalled = false;
-                }
-
-                public override ResultWrapper<long> CalculateTooOldCount(long lastBlockNumber, long blockCount, int maxHistory, long? headBlockNumber)
-                {
-                    tooOldCountCalled = true;
-                    return ResultWrapper<long>.Success(0);
-                }
+                BlockRangeManager blockRangeManager = Substitute.ForPartsOf<BlockRangeManager>(blockFinder);
+                blockRangeManager.CalculateTooOldCount(Arg.Any<long>(), Arg.Any<long>(), Arg.Any<int>(), Arg.Any<long?>())
+                    .Returns(ResultWrapper<long>.Success(0));
+                return blockRangeManager;
             }
         }
     }
