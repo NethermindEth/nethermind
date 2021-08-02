@@ -100,7 +100,7 @@ namespace Nethermind.Evm.Tracing
         private bool TxMatchesAddresses(Transaction tx)
         {
             return FromAddresses != null && !FromAddresses.Contains(tx.SenderAddress) ||
-                ToAddresses != null && !ToAddresses.Contains(tx.To))
+                ToAddresses != null && !ToAddresses.Contains(tx.To);
         }
     }
 }

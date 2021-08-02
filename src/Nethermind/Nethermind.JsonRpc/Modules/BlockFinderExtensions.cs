@@ -18,6 +18,7 @@ using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.JsonRpc.Modules
 {
@@ -92,23 +93,29 @@ namespace Nethermind.JsonRpc.Modules
                     yield return new SearchResult<Block>(finalBlockHeader.Error ?? string.Empty, finalBlockHeader.ErrorCode);
                 bool isFinalBlockOnMainChain =  blockFinder.IsMainChain(finalBlockHeader.Object!);
                 bool isStartingBlockOnMainChain =  blockFinder.IsMainChain(startingBlock.Object.Header);
-                if (isFinalBlockOnMainChain || isStartingBlockOnMainChain)
+                if (!isFinalBlockOnMainChain || !isStartingBlockOnMainChain)
                 {
-                    // throw not supported
+                    Keccak? notCanonicalBlockHash = isFinalBlockOnMainChain
+                        ? startingBlock.Object.Hash
+                        : finalBlockHeader.Object.Hash;
+                    yield return new SearchResult<Block>($"{notCanonicalBlockHash} block is not canonical", ErrorCodes.InvalidInput);
+                }
+                else
+                {
+                    yield return startingBlock;
+                    long startingBlockNumber = startingBlock.Object.Number;
+                    long finalBlockNumber = finalBlockHeader.Object.Number;
+                    if (startingBlockNumber > finalBlockNumber)
+                    {
+                        yield return new SearchResult<Block>($"From block number: {startingBlockNumber} is greater than to block number {finalBlockNumber}", ErrorCodes.InvalidInput);
+                    }
+                    
+                    for (long i = startingBlock.Object.Number + 1; i < finalBlockHeader.Object.Number; ++i)
+                    {
+                        yield return SearchForBlock(blockFinder, new BlockParameter(i));
+                    }
                 }
 
-                yield return startingBlock;
-                long startingBlockNumber = startingBlock.Object.Number;
-                long finalBlockNumber = finalBlockHeader.Object.Number;
-                if (startingBlockNumber > finalBlockNumber)
-                {
-                    
-                }
-                    
-                for (long i = startingBlock.Object.Number + 1; i < finalBlockHeader.Object.Number; ++i)
-                {
-                    yield return SearchForBlock(blockFinder, new BlockParameter(i));
-                }
             }
             
         }
