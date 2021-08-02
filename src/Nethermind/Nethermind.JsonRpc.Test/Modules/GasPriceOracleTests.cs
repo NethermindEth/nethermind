@@ -118,7 +118,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             ResultWrapper<UInt256?> resultWrapper = testableGasPriceOracle.GasPriceEstimate(testBlock, blockFinder);
             
             resultWrapper.Result.Should().Be(Result.Success);
-            resultWrapper.Data.Should().BeEquivalentTo((UInt256?) EthGasPriceConstants._maxGasPrice);
+            resultWrapper.Data.Should().BeEquivalentTo((UInt256?) EthGasPriceConstants.MaxGasPrice);
         }
         
         [Test]

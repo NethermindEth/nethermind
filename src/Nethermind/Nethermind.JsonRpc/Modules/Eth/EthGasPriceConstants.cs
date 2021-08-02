@@ -16,6 +16,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
 namespace Nethermind.JsonRpc.Modules.Eth
@@ -26,6 +27,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         public const int DefaultBlocksLimit = 20; //Limit for how many blocks we check txs in to add to sortedTxList
         public const int DefaultGasPrice = 1; //Tx price added to sortedTxList for a block that has 0 txs (now adds 1 price)
         public const int TxLimitFromABlock = 3; //Maximum number of tx we can add to sortedTxList from one block
-        public static readonly UInt256 _maxGasPrice = 500; //Maximum gas price we can return
+        // ReSharper disable once InconsistentNaming
+        public static readonly UInt256 MaxGasPrice = 500.GWei(); //Maximum gas price we can return
     }
 }
