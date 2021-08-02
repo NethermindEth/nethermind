@@ -78,12 +78,12 @@ namespace Nethermind.JsonRpc.Test.Modules
             Block headBlock = Build.A.Block.WithTransactions(tx).TestObject;
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             blockFinder.FindBlock(0).Returns(headBlock);
-            blockFinder.FindHeadBlock().Returns(headBlock);
+            blockFinder.Head.Returns(headBlock);
             GasPriceOracle testGasPriceOracle = new GasPriceOracle(blockFinder, Substitute.For<ISpecProvider>());
 
             UInt256 result = testGasPriceOracle.GetGasPriceEstimate();
             
-            result.Should().Be((UInt256) 500);
+            result.Should().Be(500.GWei());
         }
         
         [Test]
@@ -282,8 +282,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             Block block = Build.A.Block.Genesis.WithTransactions(transactions).WithBeneficiary(TestItem.PrivateKeyA.Address).TestObject;
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             blockFinder.FindBlock(0).Returns(block);
-            GasPriceOracle gasPriceOracle =
-                new(blockFinder, Substitute.For<ISpecProvider>()) {LastGasPrice = 7};
+            GasPriceOracle gasPriceOracle = new(blockFinder, Substitute.For<ISpecProvider>()) {LastGasPrice = 7};
             List<UInt256> expected = new() {7};
 
             IEnumerable<UInt256> results = gasPriceOracle.GetGasPricesFromRecentBlocks(0);
