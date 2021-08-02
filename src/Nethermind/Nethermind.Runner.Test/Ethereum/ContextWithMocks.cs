@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.IO.Abstractions;
+using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
@@ -58,9 +59,10 @@ namespace Nethermind.Runner.Test.Ethereum
 {
     public static class Build
     {
-        public static Runner.Ethereum.Api.NethermindApi ContextWithMocks() =>
-            new Runner.Ethereum.Api.NethermindApi(Substitute.For<IConfigProvider>(), new EthereumJsonSerializer(), LimboLogs.Instance)
+        public static NethermindApi ContextWithMocks() =>
+            new NethermindApi()
             {
+                LogManager = LimboLogs.Instance,
                 Enode = Substitute.For<IEnode>(),
                 TxPool = Substitute.For<ITxPool>(),
                 Wallet = Substitute.For<IWallet>(),

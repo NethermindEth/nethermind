@@ -20,6 +20,7 @@ using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Config;
@@ -29,6 +30,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
+using Nethermind.Init.Steps;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Proof;
@@ -58,7 +60,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         {
             JsonRpcConfig jsonRpcConfig = new JsonRpcConfig {Enabled = true};
 
-            Runner.Ethereum.Api.NethermindApi context = Build.ContextWithMocks();
+            NethermindApi context = Build.ContextWithMocks();
             context.ConfigProvider.GetConfig<IJsonRpcConfig>().Returns(jsonRpcConfig);
             
             RegisterRpcModules registerRpcModules = new RegisterRpcModules(context);
@@ -72,7 +74,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         {
             JsonRpcConfig jsonRpcConfig = new JsonRpcConfig {Enabled = false};
 
-            Runner.Ethereum.Api.NethermindApi context = Build.ContextWithMocks();
+            NethermindApi context = Build.ContextWithMocks();
             context.ConfigProvider.GetConfig<IJsonRpcConfig>().Returns(jsonRpcConfig);
             context.RpcModuleProvider.Enabled.Returns(Array.Empty<string>());
 

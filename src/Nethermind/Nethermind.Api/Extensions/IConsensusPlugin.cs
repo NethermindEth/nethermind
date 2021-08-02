@@ -25,7 +25,7 @@ namespace Nethermind.Api.Extensions
     public interface IConsensusPlugin : INethermindPlugin
     {
         Task<IBlockProducer> InitBlockProducer(ITxSource? txSource = null);
-        
         string SealEngineType { get; }
+        INethermindApi CreateApi() => new NethermindApi();
     }
 }

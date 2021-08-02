@@ -27,13 +27,13 @@ using Microsoft.Extensions.CommandLineUtils;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Config;
+using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Core;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 using Nethermind.Logging.NLog;
-using Nethermind.Mev;
 using Nethermind.Runner.Ethereum;
 using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Runner.Logging;
@@ -111,7 +111,7 @@ namespace Nethermind.Runner
             
             string pluginsDirectoryPath = LoadPluginsDirectory(args);
             PluginLoader pluginLoader = new(pluginsDirectoryPath, fileSystem, 
-                typeof(CliquePlugin), typeof(EthashPlugin), typeof(NethDevPlugin));
+                typeof(AuRaPlugin), typeof(CliquePlugin), typeof(EthashPlugin), typeof(NethDevPlugin));
 
             // leaving here as an example of adding Debug plugin
             // IPluginLoader mevLoader = SinglePluginLoader<MevPlugin>.Instance;
@@ -172,15 +172,19 @@ namespace Nethermind.Runner
                 if (_logger.IsDebug) _logger.Debug($"Nethermind config:{Environment.NewLine}{serializer.Serialize(initConfig, true)}{Environment.NewLine}");
 
                 ApiBuilder apiBuilder = new(configProvider, logManager);
-                INethermindApi nethermindApi = apiBuilder.Create();
+                
+                IList<INethermindPlugin> plugins = new List<INethermindPlugin>();
                 foreach (Type pluginType in pluginLoader.PluginTypes)
                 {
                     if (Activator.CreateInstance(pluginType) is INethermindPlugin plugin)
                     {
-                        ((IList<INethermindPlugin>)nethermindApi.Plugins).Add(plugin);
+                        plugins.Add(plugin);
                     }
                 }
-
+                
+                INethermindApi nethermindApi = apiBuilder.Create(plugins.OfType<IConsensusPlugin>());
+                ((List<INethermindPlugin>)nethermindApi.Plugins).AddRange(plugins);
+                
                 EthereumRunner ethereumRunner = new(nethermindApi);
                 await ethereumRunner.Start(_processCloseCancellationSource.Token).ContinueWith(x =>
                 {
