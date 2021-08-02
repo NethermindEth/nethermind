@@ -26,7 +26,7 @@ namespace Nethermind.Evm.Tracing
             Address[]? fromAddresses,
             Address[]? toAddresses,
             int after,
-            int count)
+            int? count)
         {
             FromAddresses = fromAddresses;
             ToAddresses = toAddresses;

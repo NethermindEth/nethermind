@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
@@ -62,7 +63,7 @@ namespace Nethermind.JsonRpc.Modules
                 block = blockFinder.FindBlock(blockParameter.BlockHash, BlockTreeLookupOptions.RequireCanonical);
                 if (block == null && !allowNulls)
                 {
-                    var header = blockFinder.FindHeader(blockParameter.BlockHash);
+                    BlockHeader? header = blockFinder.FindHeader(blockParameter.BlockHash);
                     if (header != null)
                     {
                         return new SearchResult<Block>($"{blockParameter.BlockHash} block is not canonical", ErrorCodes.InvalidInput);
@@ -77,6 +78,39 @@ namespace Nethermind.JsonRpc.Modules
             return block == null && !allowNulls
                 ? new SearchResult<Block>($"{blockParameter.BlockHash?.ToString() ?? blockParameter.BlockNumber?.ToString() ?? blockParameter.Type.ToString()} could not be found", ErrorCodes.ResourceNotFound)
                 : new SearchResult<Block>(block);
+        }
+
+        public static IEnumerable<SearchResult<Block>> SearchForBlocksOnMainChain(this IBlockFinder blockFinder, BlockParameter fromBlock, BlockParameter toBlock)
+        {
+            SearchResult<Block> startingBlock = SearchForBlock(blockFinder, fromBlock);
+            if (startingBlock.IsError || startingBlock.Object == null)
+                yield return startingBlock;
+            else
+            {
+                SearchResult<BlockHeader> finalBlockHeader = SearchForHeader(blockFinder, toBlock);
+                if (finalBlockHeader.IsError || finalBlockHeader.Object == null)
+                    yield return new SearchResult<Block>(finalBlockHeader.Error ?? string.Empty, finalBlockHeader.ErrorCode);
+                bool isFinalBlockOnMainChain =  blockFinder.IsMainChain(finalBlockHeader.Object!);
+                bool isStartingBlockOnMainChain =  blockFinder.IsMainChain(startingBlock.Object.Header);
+                if (isFinalBlockOnMainChain || isStartingBlockOnMainChain)
+                {
+                    // throw not supported
+                }
+
+                yield return startingBlock;
+                long startingBlockNumber = startingBlock.Object.Number;
+                long finalBlockNumber = finalBlockHeader.Object.Number;
+                if (startingBlockNumber > finalBlockNumber)
+                {
+                    
+                }
+                    
+                for (long i = startingBlock.Object.Number + 1; i < finalBlockHeader.Object.Number; ++i)
+                {
+                    yield return SearchForBlock(blockFinder, new BlockParameter(i));
+                }
+            }
+            
         }
     }
 }
