@@ -14,47 +14,6 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
 {
     partial class EthRpcModuleTests
     {
-        [TestCase(5, 3,3, 6, 1)] //Target gas used: 3/2 = 1.5 | Actual Gas used = 3 | Base Fee Delta = Max((((3-1.5) * 5)/1 / 8, 1) = 1 | Next Base Fee = 5 + 1 = 6 
-        [TestCase(11, 3,3, 12, 1)] //Target gas used: 3/2 = 1.5 | Actual Gas used = 3 | Base Fee Delta = Max((((3-1.5)/1) * 11) / 8, 1) = 2 | Next Base Fee = 11 + 1 = 12 
-        [TestCase(20, 100, 95, 22, 0.95)] //Target gas used: 100/2 = 50 | Actual Gas used = 95 | Base Fee Delta = Max((((95-50)/50) * 20) / 8, 1) = 2 | Next Base Fee = 20 + 1 = 22
-        [TestCase(20, 100, 40, 20, 0.4)] //Target gas used: 100/2 = 50 | Actual Gas used = 40 | Base Fee Delta = (((50-40)/50) * 20) / 8 = 0 | Next Base Fee = 20 - 0 = 20 
-        [TestCase(50, 100, 40, 49, 0.4)] //Target gas used: 100/2 = 50 | Actual Gas used = 40 | Base Fee Delta = (((50-40)/50) * 50) / 8 = 1 | Next Base Fee = 50 - 1 = 49
-        public void ProcessBlock_IfLondonEnabled_NextBaseFeeAndBlockFeeInfoCalculatedCorrectly(long baseFee, long gasLimit, long gasUsed, long expectedNextBaseFee, double expectedGasUsedRatio)
-        {
-            ILogger logger = Substitute.For<ILogger>();
-            IBlockchainBridge blockchainBridge = Substitute.For<IBlockchainBridge>();
-            TestableProcessBlockManager testableProcessBlockManager = new(logger, blockchainBridge);
-            BlockHeader testBlockHeader = Build.A.BlockHeader.WithBaseFee((UInt256) baseFee).WithGasLimit(gasLimit).WithGasUsed(gasUsed).TestObject;
-            BlockFeeInfo blockFeeInfo = new() {BlockHeader = testBlockHeader};
-            BlockFeeInfo expectedBlockFeeInfo = new()
-            {
-                BlockHeader = testBlockHeader, BaseFee = (UInt256) baseFee, NextBaseFee = (UInt256) expectedNextBaseFee, GasUsedRatio = (float) expectedGasUsedRatio
-            };
-            
-            testableProcessBlockManager.ProcessBlock(ref blockFeeInfo, null);
-
-            blockFeeInfo.Should().BeEquivalentTo(expectedBlockFeeInfo);
-        }
-
-        [TestCase(3,10,5, 0, 0.5)]
-        [TestCase(5, 24, 6, 0, 0.25)]
-        public void ProcessBlock_IfLondonNotEnabled_NextBaseFeeIs0AndBlockFeeInfoCalculatedCorrectly(long baseFee, long gasLimit, long gasUsed, long expectedNextBaseFee, double expectedGasUsedRatio)
-        {
-            ILogger logger = Substitute.For<ILogger>();
-            IBlockchainBridge blockchainBridge = Substitute.For<IBlockchainBridge>();
-            TestableProcessBlockManager testableProcessBlockManager = new(logger, blockchainBridge, londonEnabled: false);
-            BlockHeader blockHeader = Build.A.BlockHeader.WithBaseFee((UInt256) baseFee).WithGasLimit(gasLimit).WithGasUsed(gasUsed).TestObject;
-            BlockFeeInfo blockFeeInfo = new() {BlockHeader = blockHeader};
-            BlockFeeInfo expectedBlockFeeInfo = new()
-            {
-                BlockHeader = blockHeader, BaseFee = (UInt256) baseFee, NextBaseFee = (UInt256) expectedNextBaseFee, GasUsedRatio = (float) expectedGasUsedRatio
-            };
-            
-            testableProcessBlockManager.ProcessBlock(ref blockFeeInfo, null);
-            
-            blockFeeInfo.Should().BeEquivalentTo(expectedBlockFeeInfo);
-        }
-        
         [TestCase(null, false)]
         [TestCase(new double[]{}, false)]
 

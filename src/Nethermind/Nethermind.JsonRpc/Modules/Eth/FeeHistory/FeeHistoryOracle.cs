@@ -50,24 +50,23 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                 }
 
                 long oldestBlock = block!.Number;
-                IList<UInt256> baseFeePerGas = new List<UInt256>(blockCount + 1)
-                {
-                    BaseFeeCalculator.Calculate(block!.Header, _specProvider.GetSpec(block!.Number + 1))
-                };
-                IList<double> gasUsedRatio = new List<double>(blockCount);
-                IList<UInt256[]>? rewards = rewardPercentiles is null ? null : new List<UInt256[]>(blockCount);
+                Stack<UInt256> baseFeePerGas = new(blockCount + 1);
+                baseFeePerGas.Push(BaseFeeCalculator.Calculate(block!.Header, _specProvider.GetSpec(block!.Number + 1)));
+                Stack<double> gasUsedRatio = new Stack<double>(blockCount);
+                
+                Stack<UInt256[]>? rewards = rewardPercentiles is null ? null : new Stack<UInt256[]>(blockCount);
 
                 while (block is not null && blockCount > 0)
                 {
                     oldestBlock = block.Number;
-                    baseFeePerGas.Add(block.BaseFeePerGas);
-                    gasUsedRatio.Add(block.GasUsed / (double) block.GasLimit);
-                    if (rewards is not null)
+                    baseFeePerGas.Push(block.BaseFeePerGas);
+                    gasUsedRatio.Push(block.GasUsed / (double) block.GasLimit);
+                    if (rewards is not null && rewards.Any())
                     {
                         List<UInt256> rewardsInBlock = CalculateRewardsPercentiles(block, rewardPercentiles);
                         if (rewardsInBlock is not null)
                         {
-                            rewards.Add(rewardsInBlock.ToArray());
+                            rewards.Push(rewardsInBlock.ToArray());
                         }
                     }
 

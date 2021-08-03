@@ -23,13 +23,13 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Facade;
+using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
-using static Nethermind.JsonRpc.Modules.Eth.EthRpcModule;
-
+using static Nethermind.JsonRpc.Test.Modules.GasPriceOracleTests;
 namespace Nethermind.JsonRpc.Test.Modules.Eth
 {
     public partial class EthRpcModuleTests
@@ -54,7 +54,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         [Test]
         public void GetFeeHistory_BlockCountIsLessThanOne_ReturnsFailingWrapper()
         {
-            FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle();
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            blockFinder.FindBlock(Arg.Any<long>()).Returns(Build.A.Block.TestObject);
+            FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockFinder: blockFinder);
             ResultWrapper<FeeHistoryResults> expected = 
                     ResultWrapper<FeeHistoryResults>.Fail("newestBlock: Block is not available", 
                         ErrorCodes.ResourceUnavailable);
@@ -70,7 +72,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         {
             int blockCount = 10;
             double[] rewardPercentiles = {0, 2, 3, 5, 1};
-            FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle();
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            blockFinder.FindBlock(Arg.Any<long>()).Returns(Build.A.Block.TestObject);
+            FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockFinder: blockFinder);
             ResultWrapper<FeeHistoryResults> expected = ResultWrapper<FeeHistoryResults>.Fail($"rewardPercentiles: Some values are below 0 or greater than 100.", 
                                 ErrorCodes.InvalidParams);
             
@@ -80,13 +84,14 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             resultWrapper.Result.Should().BeEquivalentTo(expected);
         }
         
-        [TestCase(new double[] {-1, 1, 2}, "-1")]
-        [TestCase(new[] {-2.2, 1, 2, 101, 102}, "-2.2, 101, 102")]
-        public void GetFeeHistory_IfRewardPercentilesContainInvalidNumber_ResultsInFailure(double[] rewardPercentiles,
-            string invalidNums)
+        [TestCase(new double[] {-1, 1, 2})]
+        [TestCase(new[] {1, 2.2, 101, 102})]
+        public void GetFeeHistory_IfRewardPercentilesContainInvalidNumber_ResultsInFailure(double[] rewardPercentiles)
         {
             int blockCount = 10;
-            FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle();
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            blockFinder.FindBlock(Arg.Any<long>()).Returns(Build.A.Block.TestObject);
+            FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockFinder: blockFinder);
             
             ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(blockCount, new BlockParameter(), rewardPercentiles);
 
@@ -94,7 +99,114 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                                 ErrorCodes.InvalidParams));
         }
         
-        public static FeeHistoryOracle GetSubstitutedFeeHistoryOracle(
+        [TestCase(new double[] {1, 2, 3})]
+        [TestCase(new[] {1, 1.5, 2, 66, 67.5, 100})]
+        public void GetFeeHistory_IfNewestBlockAndBlockCountAndRewardPercentilesAreValid_ResultIsSuccessful(double[] rewardPercentiles)
+        {
+            int blockCount = 10;
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            blockFinder.FindBlock(Arg.Any<long>()).Returns(Build.A.Block.TestObject);
+            FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockFinder: blockFinder);
+            
+            ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(blockCount, new BlockParameter(), rewardPercentiles);
+
+            resultWrapper.Result.Should().BeEquivalentTo(ResultWrapper<FeeHistoryResults>.Success(null));
+        }
+
+        [TestCase(5,  6)] //Target gas used: 3/2 = 1.5 | Actual Gas used = 3 | Base Fee Delta = Max((((3-1.5) * 5)/1 / 8, 1) = 1 | Next Base Fee = 5 + 1 = 6 
+        [TestCase(11, 12)] //Target gas used: 3/2 = 1.5 | Actual Gas used = 3 | Base Fee Delta = Max((((3-1.5)/1) * 11) / 8, 1) = 1 | Next Base Fee = 11 + 1 = 12 
+        [TestCase(20, 22)] //Target gas used: 100/2 = 50 | Actual Gas used = 95 | Base Fee Delta = Max((((95-50)/50) * 20) / 8, 1) = 2 | Next Base Fee = 20 + 2 = 22
+        [TestCase(20, 20)] //Target gas used: 100/2 = 50 | Actual Gas used = 40 | Base Fee Delta = (((50-40)/50) * 20) / 8 = 0 | Next Base Fee = 20 - 0 = 20 
+        [TestCase(50,  49)] //Target gas used: 100/2 = 50 | Actual Gas used = 40 | Base Fee Delta = (((50-40)/50) * 50) / 8 = 1 | Next Base Fee = 50 - 1 = 49
+        public void GetFeeHistory_IfLondonEnabled_NextBaseFeePerGasCalculatedCorrectly(long baseFee, long expectedNextBaseFee)
+        {
+            int blockCount = 1;
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            BlockHeader blockHeader = Build.A.BlockHeader.WithBaseFee((UInt256) baseFee).TestObject;
+            Block headBlock = Build.A.Block.Genesis.WithHeader(blockHeader).TestObject;
+            blockFinder.FindBlock(Arg.Is<long>(l => l == 0)).Returns(headBlock);
+            ISpecProvider specProvider = GetSpecProviderWithEip1559EnabledAs(true);
+            
+            FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockFinder: blockFinder, specProvider: specProvider);
+
+            ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(blockCount, new BlockParameter((long) 0), null);
+
+            resultWrapper.Data.BaseFeePerGas![1].Should().Be((UInt256) expectedNextBaseFee);
+            resultWrapper.Data.BaseFeePerGas![0].Should().Be((UInt256) baseFee);
+        }
+
+        [TestCase(3, 3, 1)] 
+        [TestCase(100, 95,0.95)]  
+        [TestCase(12, 3, 0.25)] 
+        [TestCase(100, 40,  0.4)]  
+        [TestCase(3, 1, 0.33)] 
+        public void GetFeeHistory_IfLondonEnabled_GasUsedRatioCalculatedCorrectly(long gasLimit, long gasUsed, double expectedGasUsedRatio)
+        {
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            BlockHeader blockHeader = Build.A.BlockHeader.WithGasLimit(gasLimit).WithGasUsed(gasUsed).TestObject;
+            Block headBlock = Build.A.Block.Genesis.WithHeader(blockHeader).TestObject;
+            blockFinder.FindBlock(Arg.Is<long>(l => l == 0)).Returns(headBlock);
+            ISpecProvider specProvider = GetSpecProviderWithEip1559EnabledAs(true);
+            FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockFinder: blockFinder, specProvider: specProvider);
+
+            ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, new BlockParameter((long) 0), null);
+
+            resultWrapper.Data.GasUsedRatio![0].Should().Be(expectedGasUsedRatio);
+        }
+        
+        [TestCase(3,3)]
+        [TestCase(5,5)]
+        public void GetFeeHistory_IfLondonNotEnabled_NextBaseFeeIsParentBaseFee(long baseFee, long expectedNextBaseFee)
+        {
+            ISpecProvider specProvider = GetSpecProviderWithEip1559EnabledAs(false);
+            BlockHeader blockHeader = Build.A.BlockHeader.WithBaseFee((UInt256) baseFee).TestObject;
+            Block headBlock = Build.A.Block.Genesis.WithHeader(blockHeader).TestObject;
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            blockFinder.FindBlock(Arg.Is<long>(l => l == 0)).Returns(headBlock);
+            FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockFinder: blockFinder, specProvider: specProvider);
+            
+            ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, new BlockParameter((long) 0), null);
+            
+            resultWrapper.Data.BaseFeePerGas![1].Should().Be((UInt256) expectedNextBaseFee);
+            resultWrapper.Data.BaseFeePerGas![0].Should().Be((UInt256) baseFee);
+        }
+        
+        [TestCase(3, 3, 1)] 
+        [TestCase(100, 95,0.95)]  
+        [TestCase(12, 3, 0.25)] 
+        [TestCase(100, 40,  0.4)]  
+        [TestCase(3, 1, 0.33)] 
+        public void GetFeeHistory_IfLondonNotEnabled_GasUsedRatioCalculatedCorrectly(long gasLimit, long gasUsed, double expectedGasUsedRatio)
+        {
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            BlockHeader blockHeader = Build.A.BlockHeader.WithGasLimit(gasLimit).WithGasUsed(gasUsed).TestObject;
+            Block headBlock = Build.A.Block.Genesis.WithHeader(blockHeader).TestObject;
+            blockFinder.FindBlock(Arg.Is<long>(l => l == 0)).Returns(headBlock);
+            ISpecProvider specProvider = GetSpecProviderWithEip1559EnabledAs(false);
+            FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockFinder: blockFinder, specProvider: specProvider);
+
+            ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, new BlockParameter((long) 0), null);
+
+            resultWrapper.Data.GasUsedRatio![0].Should().Be(expectedGasUsedRatio);
+        }
+        
+        [TestCase(null, false)]
+        [TestCase(new double[]{}, false)]
+        public void ProcessBlock_IfRewardPercentilesIsNullOrEmpty_EarlyReturn(double[]? rewardPercentiles, bool expected)
+        {
+            ILogger logger = Substitute.For<ILogger>();
+            IBlockchainBridge blockchainBridge = Substitute.For<IBlockchainBridge>();
+            TestableProcessBlockManager testableProcessBlockManager = new(logger, blockchainBridge, overrideInitializeBlockFeeInfo: true, 
+                overrideGetArrayOfRewards: true);
+            BlockFeeInfo blockFeeInfo = new() {Block = Build.A.Block.TestObject};
+
+            testableProcessBlockManager.ArgumentErrorsExistResult.Should().BeNull();
+            testableProcessBlockManager.ProcessBlock(ref blockFeeInfo, rewardPercentiles);
+
+            testableProcessBlockManager.ArgumentErrorsExistResult.Should().BeTrue();
+        }
+        
+        private static FeeHistoryOracle GetSubstitutedFeeHistoryOracle(
             IBlockFinder? blockFinder = null, 
             IReceiptStorage? receiptStorage = null,
             ISpecProvider? specProvider = null)
