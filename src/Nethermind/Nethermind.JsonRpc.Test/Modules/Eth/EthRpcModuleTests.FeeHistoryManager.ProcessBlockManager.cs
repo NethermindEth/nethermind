@@ -1,19 +1,14 @@
 #nullable enable
 using System;
-using System.Linq;
 using FluentAssertions;
-using Nethermind.Blockchain.Find;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Facade;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth;
 using NSubstitute;
 using Nethermind.Logging;
-using NSubstitute.Core;
 using NUnit.Framework;
-using static Nethermind.JsonRpc.Modules.Eth.EthRpcModule.FeeHistoryOracle;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth
 {

@@ -142,6 +142,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             ITxSealer txSealer0 = new TxSealer(txSigner, Timestamper);
             ITxSealer txSealer1 = new NonceReservingTxSealer(txSigner, Timestamper, TxPool);
             TxSender ??= new TxPoolSender(TxPool, txSealer0, txSealer1);
+            GasPriceOracle ??= new GasPriceOracle(BlockFinder, SpecProvider);
             EthRpcModule = new EthRpcModule(
                 new JsonRpcConfig(),
                 Bridge,
@@ -152,8 +153,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                 TestWallet,
                 LimboLogs.Instance,
                 SpecProvider,
-                GasPriceOracle ?? new GasPriceOracle(BlockFinder, SpecProvider)),
-            FeeHistoryOracle);
+                GasPriceOracle,
+                FeeHistoryOracle);
             
             return this;
         }

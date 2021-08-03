@@ -26,8 +26,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
 {
-    
-            public class FeeHistoryOracle : IFeeHistoryOracle
+        public class FeeHistoryOracle : IFeeHistoryOracle
         {
             private readonly IBlockFinder _blockFinder;
             private readonly IReceiptStorage _receiptStorage;
@@ -131,11 +130,11 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                 return percentileValues;
             }
 
-            public ResultWrapper<FeeHistoryResults> Validate(ref int blockCount, Block? newestBlock, double[]? rewardPercentiles)
+            private ResultWrapper<FeeHistoryResults> Validate(ref int blockCount, Block? newestBlock, double[]? rewardPercentiles)
             {
                 if (newestBlock is null)
                 {
-                    ResultWrapper<FeeHistoryResults>.Fail("newestBlock: Block is not available", ErrorCodes.ResourceUnavailable);
+                    return ResultWrapper<FeeHistoryResults>.Fail("newestBlock: Block is not available", ErrorCodes.ResourceUnavailable);
                 }
 
                 if (blockCount < 1)

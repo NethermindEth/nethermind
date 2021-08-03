@@ -59,7 +59,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly ISpecProvider _specProvider;
         private readonly ILogger _logger;
         private readonly IGasPriceOracle _gasPriceOracle;
-
         private readonly IFeeHistoryOracle _feeHistoryOracle;
         private static bool HasStateForBlock(IBlockchainBridge blockchainBridge, BlockHeader header)
         {
@@ -152,7 +151,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public ResultWrapper<FeeHistoryResults> eth_feeHistory(int blockCount, BlockParameter newestBlock, double[]? rewardPercentiles = null)
         {
-            return  _feeHistoryOracle.GetFeeHistory(blockCount, newestBlock, rewardPercentiles);
+            return _feeHistoryOracle.GetFeeHistory(blockCount, newestBlock, rewardPercentiles);
         }
 
         public ResultWrapper<IEnumerable<Address>> eth_accounts()

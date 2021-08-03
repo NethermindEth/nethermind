@@ -22,7 +22,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.JsonRpc.Modules.Eth;
 using NSubstitute;
 using NUnit.Framework;
-using static Nethermind.JsonRpc.Modules.Eth.EthRpcModule.LastBlockNumberConsts;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth
 {
@@ -34,8 +33,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             [TestCase(2,2,1)]
             [TestCase(7,7,6)]
             [TestCase(32,32,31)]
-            public void
-                ResolveBlockRange_IfLastBlockIsPendingBlockAndPendingBlockExists_LastBlockNumberSetToPendingBlockNumber(long blockNumber, long lastBlockNumberExpected, long headBlockNumberExpected)
+            public void ResolveBlockRange_IfLastBlockIsPendingBlockAndPendingBlockExists_LastBlockNumberSetToPendingBlockNumber(long blockNumber, long lastBlockNumberExpected, long headBlockNumberExpected)
             {
                 long lastBlockNumber = PendingBlockNumber;
                 long blockCount = 1;

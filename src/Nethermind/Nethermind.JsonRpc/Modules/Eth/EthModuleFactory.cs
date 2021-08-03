@@ -79,8 +79,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 _wallet,
                 _logManager,
                 _specProvider,
-                new GasPriceOracle(_blockTree, _specProvider));
-            _feeHistoryOracle);
+                new GasPriceOracle(_blockTree, _specProvider),
+                _feeHistoryOracle);
         }
 
         public static List<JsonConverter> Converters = new()
