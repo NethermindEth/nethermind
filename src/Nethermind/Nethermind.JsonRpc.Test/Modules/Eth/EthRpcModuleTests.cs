@@ -37,6 +37,7 @@ using Nethermind.Facade;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
+using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
@@ -72,12 +73,12 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         public async Task Eth_feeHistory_GivenBlockParameter_ConvertsItToCorrectNumber(string blockParameter, long expected)
         {
             using Context ctx = await Context.Create();
-            IFeeHistoryManager feeHistoryManager = Substitute.For<IFeeHistoryManager>();
-            ctx._test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithFeeHistoryManager(feeHistoryManager).Build();
+            IFeeHistoryOracle feeHistoryOracle = Substitute.For<IFeeHistoryOracle>();
+            ctx._test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithFeeHistoryManager(feeHistoryOracle).Build();
             
             string serialized = ctx._test.TestEthRpc("eth_feeHistory", $"1", blockParameter);
 
-            feeHistoryManager.Received().GetFeeHistory(
+            feeHistoryOracle.Received().GetFeeHistory(
                 ref Arg.Is<long>(l => l == 1),
                 Arg.Is<long>(l => l == expected),
                 Arg.Any<double[]?>());

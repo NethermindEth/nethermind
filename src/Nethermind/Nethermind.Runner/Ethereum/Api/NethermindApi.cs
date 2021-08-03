@@ -45,6 +45,7 @@ using Nethermind.Facade;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
+using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.KeyStore;
 using Nethermind.Logging;
 using Nethermind.Monitoring;
@@ -195,7 +196,7 @@ namespace Nethermind.Runner.Ethereum.Api
         public IWallet? Wallet { get; set; }
         public ITransactionComparerProvider TransactionComparerProvider { get; set; }
         public IWebSocketsManager WebSocketsManager { get; set; } = new WebSocketsManager();
-        public IFeeHistoryManager? FeeHistoryManager { get; set; }
+        public IFeeHistoryOracle? FeeHistoryManager { get; set; }
 
         public ProtectedPrivateKey? NodeKey { get; set; }
         

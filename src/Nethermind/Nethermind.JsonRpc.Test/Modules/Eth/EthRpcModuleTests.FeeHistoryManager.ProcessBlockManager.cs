@@ -13,7 +13,7 @@ using NSubstitute;
 using Nethermind.Logging;
 using NSubstitute.Core;
 using NUnit.Framework;
-using static Nethermind.JsonRpc.Modules.Eth.EthRpcModule.FeeHistoryManager;
+using static Nethermind.JsonRpc.Modules.Eth.EthRpcModule.FeeHistoryOracle;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth
 {

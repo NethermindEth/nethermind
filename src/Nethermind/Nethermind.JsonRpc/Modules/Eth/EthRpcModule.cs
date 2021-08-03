@@ -31,6 +31,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Facade;
 using Nethermind.JsonRpc.Data;
+using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
@@ -38,7 +39,6 @@ using Nethermind.State.Proofs;
 using Nethermind.Trie;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
-using static Nethermind.JsonRpc.Modules.Eth.EthRpcModule.LastBlockNumberConsts;
 using Block = Nethermind.Core.Block;
 using BlockHeader = Nethermind.Core.BlockHeader;
 using Signature = Nethermind.Core.Crypto.Signature;
@@ -59,7 +59,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly IWallet _wallet;
         private readonly ISpecProvider _specProvider;
         private readonly ILogger _logger;
-        private readonly IFeeHistoryManager _feeHistoryManager;
+        private readonly IFeeHistoryOracle _feeHistoryOracle;
         private static bool HasStateForBlock(IBlockchainBridge blockchainBridge, BlockHeader header)
         {
             RootCheckVisitor rootCheckVisitor = new();
@@ -77,7 +77,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             IWallet wallet,
             ILogManager logManager,
             ISpecProvider specProvider,
-            IFeeHistoryManager? feeHistoryManager = null)
+            IFeeHistoryOracle feeHistoryOracle)
         {
             _logger = logManager.GetClassLogger();
             _rpcConfig = rpcConfig ?? throw new ArgumentNullException(nameof(rpcConfig));
@@ -88,7 +88,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _feeHistoryManager = feeHistoryManager ?? new FeeHistoryManager(_blockFinder, _logger, _blockchainBridge);
+            _feeHistoryOracle = feeHistoryOracle ?? throw new ArgumentNullException(nameof(feeHistoryOracle));
         }
 
         public ResultWrapper<string> eth_protocolVersion()
@@ -148,25 +148,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return ResultWrapper<UInt256?>.Success(20.GWei());
         }
 
-        public ResultWrapper<FeeHistoryResult> eth_feeHistory(long blockCount, BlockParameter lastBlockNumber, double[]? rewardPercentiles = null)
+        public ResultWrapper<FeeHistoryResults> eth_feeHistory(int blockCount, BlockParameter newestBlock, double[]? rewardPercentiles = null)
         {
-            long lastBlockNumberLong;
-            if (lastBlockNumber.Type == BlockParameterType.Earliest)
-                lastBlockNumberLong = EarliestBlockNumber;
-            else if (lastBlockNumber.Type == BlockParameterType.Latest)
-                lastBlockNumberLong = LatestBlockNumber;
-            else if (lastBlockNumber.Type == BlockParameterType.Pending)
-                lastBlockNumberLong = PendingBlockNumber;
-            else if (lastBlockNumber.Type == BlockParameterType.BlockNumber)
-                lastBlockNumberLong = (long) lastBlockNumber.BlockNumber!;
-            else
-            {
-                return ResultWrapper<FeeHistoryResult>.Fail("BlockParameterType is not Earliest, Latest, Pending, or BlockNumber.");
-            }
-            
-            return lastBlockNumberLong < -2 ? 
-                ResultWrapper<FeeHistoryResult>.Fail($"The last block number: {lastBlockNumberLong}, is less than -2. Use -2 for `pending block number`, -1 for `latest block number`, or explicitly type in the lastBlockNumber.") :
-                _feeHistoryManager.GetFeeHistory(ref blockCount, lastBlockNumberLong, rewardPercentiles);
+            return  _feeHistoryOracle.GetFeeHistory(blockCount, newestBlock, rewardPercentiles);
         }
 
         public ResultWrapper<IEnumerable<Address>> eth_accounts()
