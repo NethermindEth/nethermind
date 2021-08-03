@@ -32,7 +32,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
         private ISpecProvider SpecProvider { get; }
         public UInt256? LastGasPrice { get; set; }
         public Block? LastHeadBlock { get; set; }
-        public UInt256 IgnoreUnder { get; set; } = UInt256.Zero; //ToDo not sure if ignoreUnder should only be set in testing
+        public UInt256 IgnoreUnder { get; set; } = EthGasPriceConstants.DefaultIgnoreUnder;
         public int BlockLimit { get; set; } = EthGasPriceConstants.DefaultBlocksLimit;
         public int SoftTxThreshold { get; set; } = EthGasPriceConstants.DefaultBlocksLimit * 2;
 

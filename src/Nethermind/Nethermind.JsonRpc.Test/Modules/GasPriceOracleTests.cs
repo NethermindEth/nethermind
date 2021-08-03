@@ -165,7 +165,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void GetGasPricesFromRecentBlocks_IfBlockHasMoreThanThreeValidTx_AddOnlyThreeNew()
         {
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-            Transaction tx = Build.A.Transaction.WithGasPrice(1).TestObject;
+            Transaction tx = Build.A.Transaction.WithGasPrice(2).TestObject;
             Block headBlock = Build.A.Block.Genesis.WithTransactions(tx,tx,tx,tx,tx).TestObject;
             blockFinder.FindHeadBlock().Returns(headBlock);
             blockFinder.FindBlock(0).Returns(headBlock);
@@ -183,7 +183,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             blockFinder.FindBlock(0).Returns(testBlock);
             GasPriceOracle testGasPriceOracle = new(blockFinder, Substitute.For<ISpecProvider>());
-            List<UInt256> expected = new() {1,2,3};
+            List<UInt256> expected = new() {2,3,4};
             
             IEnumerable<UInt256> results = testGasPriceOracle.GetGasPricesFromRecentBlocks(0);
 
@@ -194,12 +194,12 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             Transaction[] transactions = 
             {
-                Build.A.Transaction.WithGasPrice(1).TestObject,
+                Build.A.Transaction.WithGasPrice(6).TestObject,
                 Build.A.Transaction.WithGasPrice(2).TestObject,
                 Build.A.Transaction.WithGasPrice(4).TestObject,
                 Build.A.Transaction.WithGasPrice(5).TestObject,
                 Build.A.Transaction.WithGasPrice(3).TestObject
-            } ;
+            };
             return transactions;
         }
         
@@ -303,6 +303,37 @@ namespace Nethermind.JsonRpc.Test.Modules
             IEnumerable<UInt256> results = gasPriceOracle.GetGasPricesFromRecentBlocks(0);
             
             results.ToList().Should().BeEquivalentTo(expected); 
+        }
+        
+        [Test]
+        public void AddValidTxAndReturnCount_TxsWithPriceLessThanIgnoreUnder_ShouldNotHaveGasPriceInTxGasPriceList()
+        {
+            Transaction[] transactions = 
+            {
+                Build.A.Transaction.WithGasPrice(1).TestObject,
+                Build.A.Transaction.WithGasPrice(2).TestObject,
+                Build.A.Transaction.WithGasPrice(4).TestObject,
+            };
+            Block testBlock = Build.A.Block.Genesis.WithTransactions(transactions).TestObject;
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            blockFinder.FindBlock(0).Returns(testBlock);
+            GasPriceOracle gasPriceOracle = new(blockFinder, Substitute.For<ISpecProvider>());
+            List<UInt256> expected = new() {2, 4};
+
+            IEnumerable<UInt256> results = gasPriceOracle.GetGasPricesFromRecentBlocks(0);
+
+            results.Should().BeEquivalentTo(expected);
+        }
+        
+        public Transaction[] GetThreeTransactionsWithSomeGasPricesLessThanIgnoreUnder()
+        {
+            Transaction[] transactions = 
+            {
+                Build.A.Transaction.WithGasPrice(1).TestObject,
+                Build.A.Transaction.WithGasPrice(2).TestObject,
+                Build.A.Transaction.WithGasPrice(4).TestObject,
+            };
+            return transactions;
         }
     }
 }
