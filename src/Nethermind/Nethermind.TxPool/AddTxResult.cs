@@ -86,9 +86,9 @@ namespace Nethermind.TxPool
         /// (I would like to change this behaviour to allow local replacement)
         /// </summary>
         OwnNonceAlreadyUsed,
+        
         /// <summary>
-        /// ...
-        ///
+        /// Transaction sender has code hash that is not null.
         /// </summary>
         SenderHasCode
     }
