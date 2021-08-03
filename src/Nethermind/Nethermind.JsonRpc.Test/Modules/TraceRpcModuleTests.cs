@@ -208,6 +208,15 @@ namespace Nethermind.JsonRpc.Test.Modules
             var traces = _traceRpcModule.trace_filter(traceFilterRequest);
             Assert.AreEqual(3, traces.Data.Length);
         }
+        
+        [Test]
+        public void Trace_filter_skip_and_get_given_amount_of_traces()
+        {
+            var traceFilterRequest = new TraceFilterForRpc();
+            traceFilterRequest.Count = 3;
+            var traces = _traceRpcModule.trace_filter(traceFilterRequest);
+            Assert.AreEqual(3, traces.Data.Length);
+        }
 
         [Test]
         public async Task trace_timeout_is_separate_for_rpc_calls()
