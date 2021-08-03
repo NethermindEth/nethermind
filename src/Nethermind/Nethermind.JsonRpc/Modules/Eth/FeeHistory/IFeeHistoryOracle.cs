@@ -15,10 +15,13 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-namespace Nethermind.JsonRpc.Modules.Eth
+using Nethermind.Blockchain.Find;
+
+namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
 {
-    public interface IBlockRangeManager
+    public interface IFeeHistoryOracle
     {
-        ResultWrapper<BlockRangeInfo> ResolveBlockRange(ref long lastBlockNumber, ref long blockCount, int maxHistory, ref long? headBlockNumber);
+        ResultWrapper<FeeHistoryResults> GetFeeHistory(int blockCount, BlockParameter newestBlock, double[]? rewardPercentiles);
+        
     }
 }

@@ -33,6 +33,7 @@ using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using Nethermind.Db.Blooms;
 using Nethermind.Int256;
+using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.KeyStore;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -52,7 +53,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public ILogFinder LogFinder { get; private set; }
         public IKeyStore KeyStore { get; } = new MemKeyStore(TestItem.PrivateKeys);
         public IWallet TestWallet { get; } = new DevKeyStoreWallet(new MemKeyStore(TestItem.PrivateKeys), LimboLogs.Instance);
-        public IFeeHistoryManager FeeHistoryManager { get; private set; }
+        public IFeeHistoryOracle FeeHistoryOracle { get; private set; }
         public static Builder<TestRpcBlockchain> ForTest(string sealEngineType) => ForTest<TestRpcBlockchain>(sealEngineType);
 
         public static Builder<T> ForTest<T>(string sealEngineType) where T : TestRpcBlockchain, new() => 
@@ -94,9 +95,9 @@ namespace Nethermind.JsonRpc.Test.Modules
                 return this;
             }
         
-            public Builder<T> WithFeeHistoryManager(IFeeHistoryManager feeHistoryManager)
+            public Builder<T> WithFeeHistoryManager(IFeeHistoryOracle feeHistoryOracle)
             {
-                _blockchain.FeeHistoryManager = feeHistoryManager;
+                _blockchain.FeeHistoryOracle = feeHistoryOracle;
                 return this;
             }
             
@@ -141,7 +142,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 TestWallet,
                 LimboLogs.Instance,
                 SpecProvider,
-                FeeHistoryManager);
+                FeeHistoryOracle);
             
             return this;
         }

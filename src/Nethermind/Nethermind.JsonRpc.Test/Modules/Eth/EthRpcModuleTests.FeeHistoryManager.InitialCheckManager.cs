@@ -48,7 +48,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             long blockCount = 10;
             InitialCheckManager initialCheckManager = new();
             
-            ResultWrapper<FeeHistoryResult> resultWrapper = initialCheckManager.InitialChecksPassed(ref blockCount, rewardPercentiles);
+            ResultWrapper<FeeHistoryResults> resultWrapper = initialCheckManager.InitialChecksPassed(ref blockCount, rewardPercentiles);
 
             resultWrapper.Result.Should().BeEquivalentTo(
                 Result.Fail($"rewardPercentiles: Values {invalidNums} are below 0 or greater than 100."));
@@ -61,7 +61,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             double[] rewardPercentiles = {0, 2, 3, 5, 1};
             InitialCheckManager initialCheckManager = new();
             
-            ResultWrapper<FeeHistoryResult> resultWrapper =
+            ResultWrapper<FeeHistoryResults> resultWrapper =
                 initialCheckManager.InitialChecksPassed(ref blockCount, rewardPercentiles);
 
             string expectedMessage =

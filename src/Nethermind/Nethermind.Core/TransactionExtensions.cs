@@ -62,13 +62,9 @@ namespace Nethermind.Core
         }
         
         
-        public static UInt256 CalculateEffectiveGasTip(this Transaction tx, UInt256 baseFee)
+        public static UInt256? CalculateEffectiveGasTip(this Transaction tx, UInt256 baseFee)
         {
-            if (baseFee > tx.MaxFeePerGas)
-            {
-                throw new Exception("Base Fee is more than MaxFeePerGas."); 
-            }
-            return UInt256.Min(tx.MaxFeePerGas - baseFee, tx.MaxPriorityFeePerGas);
+            return baseFee > tx.MaxFeePerGas ? null : UInt256.Min(tx.MaxFeePerGas - baseFee, tx.MaxPriorityFeePerGas);
         }
     }
 }

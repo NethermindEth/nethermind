@@ -1,0 +1,179 @@
+//  Copyright (c) 2021 Demerzel Solutions Limited
+//  This file is part of the Nethermind library.
+// 
+//  The Nethermind library is free software: you can redistribute it and/or modify
+//  it under the terms of the GNU Lesser General Public License as published by
+//  the Free Software Foundation, either version 3 of the License, or
+//  (at your option) any later version.
+// 
+//  The Nethermind library is distributed in the hope that it will be useful,
+//  but WITHOUT ANY WARRANTY; without even the implied warranty of
+//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+//  GNU Lesser General Public License for more details.
+// 
+//  You should have received a copy of the GNU Lesser General Public License
+//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
+
+using System.Collections.Generic;
+using System.Linq;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Receipts;
+using Nethermind.Core;
+using Nethermind.Core.Specs;
+using Nethermind.Int256;
+
+namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
+{
+    
+            public class FeeHistoryOracle : IFeeHistoryOracle
+        {
+            private readonly IBlockFinder _blockFinder;
+            private readonly IReceiptStorage _receiptStorage;
+            private readonly ISpecProvider _specProvider;
+
+            public FeeHistoryOracle(IBlockFinder blockFinder, IReceiptStorage receiptStorage, ISpecProvider specProvider)
+            {
+                _blockFinder = blockFinder;
+                _receiptStorage = receiptStorage;
+                _specProvider = specProvider;
+            }
+
+            public ResultWrapper<FeeHistoryResults> GetFeeHistory(int blockCount, BlockParameter newestBlock, double[]? rewardPercentiles)
+            {
+                newestBlock.RequireCanonical = true;
+                Block? block = _blockFinder.FindBlock(newestBlock);
+                ResultWrapper<FeeHistoryResults> initialCheckResult = Validate(ref blockCount, block, rewardPercentiles);
+                if (initialCheckResult.Result.ResultType == ResultType.Failure)
+                {
+                    return initialCheckResult;
+                }
+
+                long oldestBlock = block!.Number;
+                IList<UInt256> baseFeePerGas = new List<UInt256>(blockCount + 1)
+                {
+                    BaseFeeCalculator.Calculate(block!.Header, _specProvider.GetSpec(block!.Number + 1))
+                };
+                IList<double> gasUsedRatio = new List<double>(blockCount);
+                IList<UInt256[]>? rewards = rewardPercentiles is null ? null : new List<UInt256[]>(blockCount);
+
+                while (block is not null && blockCount > 0)
+                {
+                    oldestBlock = block.Number;
+                    baseFeePerGas.Add(block.BaseFeePerGas);
+                    gasUsedRatio.Add(block.GasUsed / (double) block.GasLimit);
+                    if (rewards is not null)
+                    {
+                        List<UInt256> rewardsInBlock = CalculateRewardsPercentiles(block, rewardPercentiles);
+                        if (rewardsInBlock is not null)
+                        {
+                            rewards.Add(rewardsInBlock.ToArray());
+                        }
+                    }
+
+                    blockCount--;
+                    block = _blockFinder.FindParent(block, BlockTreeLookupOptions.RequireCanonical);
+                }
+
+                FeeHistoryResults feeHistoryResults = new(oldestBlock, baseFeePerGas.ToArray(), gasUsedRatio.ToArray(), rewards?.ToArray());
+                return ResultWrapper<FeeHistoryResults>.Success(feeHistoryResults);                
+            }
+
+            private List<UInt256>? CalculateRewardsPercentiles(Block block, double[] rewardPercentiles)
+            {
+                var rewardsInBlock = GetRewardsInBlock(block);
+                return rewardsInBlock is null ? null : CalculatePercentileValues(block, rewardPercentiles, rewardsInBlock);
+            }
+
+            private List<(long GasUsed, UInt256 PremiumPerGas)>? GetRewardsInBlock(Block block)
+            {
+                TxReceipt[]? receipts = _receiptStorage.Get(block);
+
+                if (receipts is null)
+                {
+                    return null;
+                }
+
+                Transaction[] txs = block.Transactions;
+                List<(long GasUsed, UInt256 PremiumPerGas)> valueTuples = new(txs.Length);
+                for (int i = 0; i < txs.Length; i++)
+                {
+                    Transaction tx = txs[i];
+                    tx.TryCalculatePremiumPerGas(block.BaseFeePerGas, out UInt256 premiumPerGas);
+                    valueTuples.Add((receipts[i].GasUsed, premiumPerGas));
+                }
+
+                valueTuples.Sort((i1, i2) => i1.PremiumPerGas.CompareTo(i2.PremiumPerGas));
+
+                return valueTuples;
+            }
+
+            private static List<UInt256> CalculatePercentileValues(Block block, double[] rewardPercentiles, IReadOnlyList<(long GasUsed, UInt256 PremiumPerGas)> rewardsInBlock)
+            {
+                long sumGasUsed = 0;
+                int txIndex = 0;
+                List<UInt256> percentileValues = new(rewardPercentiles.Length);
+
+                for (int i = 0; i < rewardPercentiles.Length; i++)
+                {
+                    double percentile = rewardPercentiles[i];
+                    double thresholdGasUsed = (ulong) (block.GasUsed * percentile / 100);
+                    while (txIndex < rewardsInBlock.Count && sumGasUsed < thresholdGasUsed)
+                    {
+                        txIndex++;
+                        sumGasUsed += rewardsInBlock[txIndex].GasUsed;
+                    }
+
+                    percentileValues.Add(rewardsInBlock[txIndex].PremiumPerGas);
+                }
+
+                return percentileValues;
+            }
+
+            public ResultWrapper<FeeHistoryResults> Validate(ref int blockCount, Block? newestBlock, double[]? rewardPercentiles)
+            {
+                if (newestBlock is null)
+                {
+                    ResultWrapper<FeeHistoryResults>.Fail("newestBlock: Block is not available", ErrorCodes.ResourceUnavailable);
+                }
+
+                if (blockCount < 1)
+                {
+                    return ResultWrapper<FeeHistoryResults>.Fail($"blockCount: Value {blockCount} is less than 1", 
+                        ErrorCodes.InvalidParams);
+                }
+
+                if (blockCount > 1024)
+                {
+                    blockCount = 1024;
+                }
+
+                if (rewardPercentiles is not null)
+                {
+                    double previousPercentile = -1;
+                    for (int i = 0; i < rewardPercentiles.Length; i++)
+                    {
+                        double currentPercentile = rewardPercentiles[i];
+                        if (currentPercentile > 100 || currentPercentile < 0)
+                        {
+                            return ResultWrapper<FeeHistoryResults>.Fail($"rewardPercentiles: Some values are below 0 or greater than 100.", 
+                                ErrorCodes.InvalidParams);
+                        }
+                        else if (currentPercentile <= previousPercentile)
+                        {
+                            return ResultWrapper<FeeHistoryResults>.Fail(
+                                $"rewardPercentiles: Value at index {i}: {currentPercentile} is less than the value at previous index {i - 1}: {rewardPercentiles[i - 1]}.", 
+                                ErrorCodes.InvalidParams);
+                        }
+                        else
+                        {
+                            previousPercentile = currentPercentile;
+                        }
+                    }
+                }
+
+                return ResultWrapper<FeeHistoryResults>.Success(null);
+            }
+        }
+}

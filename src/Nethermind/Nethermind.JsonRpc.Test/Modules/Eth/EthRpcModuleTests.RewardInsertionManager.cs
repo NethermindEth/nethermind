@@ -27,7 +27,7 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth;
 using NSubstitute;
 using NUnit.Framework;
-using static Nethermind.JsonRpc.Modules.Eth.EthRpcModule.FeeHistoryManager;
+using static Nethermind.JsonRpc.Modules.Eth.EthRpcModule.FeeHistoryOracle;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth
 {

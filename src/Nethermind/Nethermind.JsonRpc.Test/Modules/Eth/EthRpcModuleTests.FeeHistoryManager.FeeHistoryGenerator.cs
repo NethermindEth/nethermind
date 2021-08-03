@@ -119,15 +119,15 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             };
             UInt256[] expectedBaseFees = {2,3,4,5,6};
             float[] expectedGasUsedRatio = {4,8,12,15};
-            FeeHistoryResult expected = new() {_reward = expectedRewards, _baseFee = expectedBaseFees, _gasUsedRatio = expectedGasUsedRatio};
+            FeeHistoryResults expected = new() {Reward = expectedRewards, BaseFeePerGas = expectedBaseFees, GasUsedRatio = expectedGasUsedRatio};
 
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             IProcessBlockManager processBlockManager = Substitute.For<IProcessBlockManager>();
             FeeHistoryGenerator feeHistoryGenerator = new(blockFinder, processBlockManager);
             
-            FeeHistoryResult result = feeHistoryGenerator.CreateFeeHistoryResult(blockFeeInfos, 4);
+            FeeHistoryResults results = feeHistoryGenerator.CreateFeeHistoryResult(blockFeeInfos, 4);
 
-            result.Should().BeEquivalentTo(expected);
+            results.Should().BeEquivalentTo(expected);
         }
         
         [TestCase(3,4,3)]
@@ -206,12 +206,12 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                 OverrideGetBlockFeeInfo = overrideGetBlockFeeInfo;
             }
 
-            protected override ResultWrapper<FeeHistoryResult> SuccessfulResult(long blockCount, List<BlockFeeInfo> blockFeeInfos)
+            protected override ResultWrapper<FeeHistoryResults> SuccessfulResult(long blockCount, List<BlockFeeInfo> blockFeeInfos)
             {
                 if (OverrideSuccessfulResult)
                 {
                     BlockFeeInfos = blockFeeInfos;
-                    return ResultWrapper<FeeHistoryResult>.Success(new FeeHistoryResult());
+                    return ResultWrapper<FeeHistoryResults>.Success(new FeeHistoryResults());
                 }
                 else
                 {

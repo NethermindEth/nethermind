@@ -21,6 +21,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Facade;
 using Nethermind.JsonRpc.Data;
+using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.TxPool;
@@ -40,7 +41,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly IWallet _wallet;
         private readonly IJsonRpcConfig _rpcConfig;
         private readonly ISpecProvider _specProvider;
-        private readonly IFeeHistoryManager _feeHistoryManager;
+        private readonly IFeeHistoryOracle _feeHistoryOracle;
 
         public EthModuleFactory(
             ITxPool txPool,
@@ -52,7 +53,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             IStateReader stateReader,
             IBlockchainBridgeFactory blockchainBridgeFactory,
             ISpecProvider specProvider,
-            IFeeHistoryManager feeHistoryManager)
+            IFeeHistoryOracle feeHistoryOracle)
         {
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
@@ -62,7 +63,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
             _blockchainBridgeFactory = blockchainBridgeFactory ?? throw new ArgumentNullException(nameof(blockchainBridgeFactory));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _feeHistoryManager = feeHistoryManager ?? throw new ArgumentNullException(nameof(feeHistoryManager));
+            _feeHistoryOracle = feeHistoryOracle ?? throw new ArgumentNullException(nameof(feeHistoryOracle));
             _blockTree = blockTree.AsReadOnly();
         }
         
@@ -78,7 +79,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 _wallet,
                 _logManager,
                 _specProvider,
-                _feeHistoryManager);
+                _feeHistoryOracle);
         }
 
         public static List<JsonConverter> Converters = new()

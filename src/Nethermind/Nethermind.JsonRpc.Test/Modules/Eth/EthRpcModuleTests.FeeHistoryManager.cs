@@ -20,6 +20,7 @@ using FluentAssertions;
 using Nethermind.Blockchain.Find;
 using Nethermind.Facade;
 using Nethermind.JsonRpc.Modules.Eth;
+using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
@@ -33,14 +34,14 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         public void GetFeeHistory_IfInitialCheckResultFails_ReturnsError()
         {
             IInitialCheckManager initialCheckManager = Substitute.For<IInitialCheckManager>();
-            ResultWrapper<FeeHistoryResult> expected = ResultWrapper<FeeHistoryResult>.Fail("Failed at Initial Check.");
+            ResultWrapper<FeeHistoryResults> expected = ResultWrapper<FeeHistoryResults>.Fail("Failed at Initial Check.");
             initialCheckManager.InitialChecksPassed(ref Arg.Any<long>(), Arg.Any<double[]>())
                 .Returns(expected);
-            FeeHistoryManager feeHistoryManager = GetSubstitutedFeeHistoryManager(initialCheckManager: initialCheckManager);
+            FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryManager(initialCheckManager: initialCheckManager);
             long blockCount = 1;
             long lastBlockNumber = 3;
 
-            ResultWrapper<FeeHistoryResult> resultWrapper = feeHistoryManager.GetFeeHistory(ref blockCount, lastBlockNumber);
+            ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(ref blockCount, lastBlockNumber);
                 
             resultWrapper.Should().BeEquivalentTo(expected);
         }
@@ -50,18 +51,18 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         {
             IInitialCheckManager initialCheckManager = Substitute.For<IInitialCheckManager>();
             string expectedMessage = "Failed at ResolveBlockRange";
-            ResultWrapper<FeeHistoryResult> expected = ResultWrapper<FeeHistoryResult>.Fail(expectedMessage);
+            ResultWrapper<FeeHistoryResults> expected = ResultWrapper<FeeHistoryResults>.Fail(expectedMessage);
             initialCheckManager.InitialChecksPassed(ref Arg.Any<long>(), Arg.Any<double[]>())
-                .Returns(ResultWrapper<FeeHistoryResult>.Success(new FeeHistoryResult()));
+                .Returns(ResultWrapper<FeeHistoryResults>.Success(new FeeHistoryResults()));
             IBlockRangeManager blockRangeManager = Substitute.For<IBlockRangeManager>();
             blockRangeManager
                 .ResolveBlockRange(ref Arg.Any<long>(), ref Arg.Any<long>(), Arg.Any<int>(), ref Arg.Any<long?>())
                 .Returns(ResultWrapper<BlockRangeInfo>.Fail(expectedMessage));
-            FeeHistoryManager feeHistoryManager = GetSubstitutedFeeHistoryManager(initialCheckManager: initialCheckManager, blockRangeManager: blockRangeManager);
+            FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryManager(initialCheckManager: initialCheckManager, blockRangeManager: blockRangeManager);
             long blockCount = 1;
             long lastBlockNumber = 3;
 
-            ResultWrapper<FeeHistoryResult> resultWrapper = feeHistoryManager.GetFeeHistory(ref blockCount, lastBlockNumber);
+            ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(ref blockCount, lastBlockNumber);
             
             resultWrapper.Should().BeEquivalentTo(expected);
         }
@@ -70,24 +71,24 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         public void GetFeeHistory_OldestBlockNumberIsNull_ReturnsFailingWrapper()
         {
             IInitialCheckManager initialCheckManager = Substitute.For<IInitialCheckManager>();
-            ResultWrapper<FeeHistoryResult> expected = ResultWrapper<FeeHistoryResult>.Fail("LastBlockNumber, BlockCount is null");
+            ResultWrapper<FeeHistoryResults> expected = ResultWrapper<FeeHistoryResults>.Fail("LastBlockNumber, BlockCount is null");
             initialCheckManager.InitialChecksPassed(ref Arg.Any<long>(), Arg.Any<double[]>())
-                .Returns(ResultWrapper<FeeHistoryResult>.Success(new FeeHistoryResult()));
+                .Returns(ResultWrapper<FeeHistoryResults>.Success(new FeeHistoryResults()));
             IBlockRangeManager blockRangeManager = Substitute.For<IBlockRangeManager>();
             blockRangeManager
                 .ResolveBlockRange(ref Arg.Any<long>(), ref Arg.Any<long>(), Arg.Any<int>(), ref Arg.Any<long?>())
                 .Returns(ResultWrapper<BlockRangeInfo>.Success(new BlockRangeInfo {LastBlockNumber = null, BlockCount = null}));
-            FeeHistoryManager feeHistoryManager = GetSubstitutedFeeHistoryManager(initialCheckManager: initialCheckManager, blockRangeManager: blockRangeManager);
+            FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryManager(initialCheckManager: initialCheckManager, blockRangeManager: blockRangeManager);
             long blockCount = 1;
             long lastBlockNumber = 3;
 
-            ResultWrapper<FeeHistoryResult> resultWrapper = feeHistoryManager.GetFeeHistory(ref blockCount, lastBlockNumber);
+            ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(ref blockCount, lastBlockNumber);
             
             resultWrapper.Should().BeEquivalentTo(expected);
             
         }
 
-        public static FeeHistoryManager GetSubstitutedFeeHistoryManager(
+        public static FeeHistoryOracle GetSubstitutedFeeHistoryManager(
             IBlockFinder? blockFinder = null, 
             ILogger? logger = null,
             IBlockchainBridge? blockchainBridge = null,

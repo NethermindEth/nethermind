@@ -34,6 +34,7 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
+using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.KeyStore;
 using Nethermind.Monitoring;
 using Nethermind.Network.Discovery;
@@ -84,7 +85,7 @@ namespace Nethermind.Runner.Test.Ethereum
                 ConfigProvider = Substitute.For<IConfigProvider>(),
                 DiscoveryApp = Substitute.For<IDiscoveryApp>(),
                 EngineSigner = Substitute.For<ISigner>(),
-                FeeHistoryManager = Substitute.For<IFeeHistoryManager>(),
+                FeeHistoryManager = Substitute.For<IFeeHistoryOracle>(),
                 FileSystem = Substitute.For<IFileSystem>(),
                 FilterManager = Substitute.For<IFilterManager>(),
                 FilterStore = Substitute.For<IFilterStore>(),
