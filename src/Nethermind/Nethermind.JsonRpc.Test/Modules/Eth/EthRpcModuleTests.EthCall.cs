@@ -167,7 +167,10 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             string serialized = test.TestEthRpc("eth_call", test.JsonSerializer.Serialize(transaction), "0x0");
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x010203\",\"id\":67}", serialized);
         }
-
+        
+        /// <summary>
+        /// 1. Prior to 1559, if you don't specify a gas price, 0 is used and you can call with no-balance accounts.
+        /// </summary>
         [Test]
         public async Task Eth_call_without_gas_pricing()
         {
@@ -177,7 +180,10 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             string serialized = ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction));
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}", serialized);
         }
-
+        
+        /// <summary>
+        /// 2. Prior to 1559, if you do specify a gas price, that is used and your account balance is checked against it.
+        /// </summary>
         [Test]
         public async Task Eth_call_with_gas_pricing()
         {
@@ -187,7 +193,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             string serialized = ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction));
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32015,\"message\":\"VM execution error.\",\"data\":\"insufficient sender balance\"},\"id\":67}", serialized);
         }
-
+        
         [Test]
         public async Task Eth_call_without_gas_pricing_after_1559_legacy()
         {
@@ -197,7 +203,23 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             string serialized = ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction));
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}", serialized);
         }
+        
+        /// <summary>
+        /// 3. Prior to 1559, if you do specify a 1559 gas pricing, those get ignored and you revert to gasPrice = 0.
+        /// </summary>
+        [Test]
+        public async Task Eth_call_with_1559_gas_pricing_after_1559_legacy()
+        {
+            using Context ctx = await Context.CreateWithLondonEnabled();
+            TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>(
+                "{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"to\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"maxFeePerGas\": \"0x100\"}");
+            string serialized = ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction));
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}", serialized);
+        }
 
+        /// <summary>
+        /// 4. After 1559, if you don't specify a gas price, 0 is used and you can call with no-balance accounts. The basefee is forced to zero!
+        /// </summary>
         [Test]
         public async Task Eth_call_without_gas_pricing_after_1559_new_type_of_transaction()
         {
@@ -206,17 +228,15 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                 "{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"to\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"type\": \"0x2\"}");
             string serialized = ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction));
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}", serialized);
-            byte[] code = Prepare.EvmCode
-                .Op(Instruction.BASEFEE)
-                .PushData(0)
-                .Op(Instruction.SSTORE)
-                .Done;
         }
         
         /// <summary>
-        /// After 1559, if you do specify a gas price: In nethermind GasPrice = MaxPriorityFeePerGas ?? 0
+        /// 5. After 1559, if you do specify a gas price: In nethermind GasPrice = MaxPriorityFeePerGas ?? 0
         /// gasPrice is ignored
+        /// In geth : After 1559, if you do specify a gas price, that is interpreted as both the max and priority fee
+        /// and your account balance is checked against them + the current base fee.
         /// </summary>
+        /// TODO maybe needs to be changed to ``geth``
         [Test]
         public async Task Eth_call_with_gas_pricing_after_1559_new_type_of_transaction()
         {
@@ -225,11 +245,6 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                 "{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"to\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"type\": \"0x2\", \"gasPrice\": \"0x2DA2830C\"}");
             string serialized = ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction));
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}", serialized);
-            byte[] code = Prepare.EvmCode
-                .Op(Instruction.BASEFEE)
-                .PushData(0)
-                .Op(Instruction.SSTORE)
-                .Done;
         }
         
         [Test]
@@ -240,28 +255,27 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                 "{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"to\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"type\": \"0x2\", \"gas\": \"0x1000\"}");
             string serialized = ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction));
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32015,\"message\":\"VM execution error.\",\"data\":\"gas limit below intrinsic gas\"},\"id\":67}", serialized);
-            byte[] code = Prepare.EvmCode
-                .Op(Instruction.BASEFEE)
-                .PushData(0)
-                .Op(Instruction.SSTORE)
-                .Done;
         }
         
+        /// <summary>
+        /// 6. After 1559, if you do specify a 1559 gas pricing, those are interpreted as specified (no auto filling of missing ones) and
+        /// your account balance is checked against them + the current basefee.
+        /// </summary>
         [Test]
         public async Task Eth_call_with_max_fee_after_1559_new_type_of_transaction()
         {
             using Context ctx = await Context.CreateWithLondonEnabled();
+            //using Context ctx = await Context.Create();
             TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>(
                 "{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"to\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"type\": \"0x2\", \"maxFeePerGas\": \"0x2DA2830C\"}");
             string serialized = ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction));
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32015,\"message\":\"VM execution error.\",\"data\":\"insufficient sender balance\"},\"id\":67}", serialized);
-            byte[] code = Prepare.EvmCode
-                .Op(Instruction.BASEFEE)
-                .PushData(0)
-                .Op(Instruction.SSTORE)
-                .Done;
         }
         
+        /// <summary>
+        /// 6. After 1559, if you do specify a 1559 gas pricing, those are interpreted as specified (no auto filling of missing ones) a
+        /// nd your account balance is checked against them + the current basefee.
+        /// </summary>
         [Test]
         public async Task Eth_call_with_max__priority_fee_after_1559_new_type_of_transaction()
         {
@@ -270,13 +284,8 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                 "{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"to\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"type\": \"0x2\", \"maxPriorityFeePerGas\": \"0x2D\"}");
             string serialized = ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction));
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32015,\"message\":\"VM execution error.\",\"data\":\"max priority fee per gas higher than max fee per gas\"},\"id\":67}", serialized);
-            byte[] code = Prepare.EvmCode
-                .Op(Instruction.BASEFEE)
-                .PushData(0)
-                .Op(Instruction.SSTORE)
-                .Done;
         }
-
+        
         [Test]
         public async Task Eth_call_with_base_fee_opcode()
         {

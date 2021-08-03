@@ -128,10 +128,16 @@ namespace Nethermind.Evm.TransactionProcessing
             
             // restore is CallAndRestore - previous call, we will restore state after the execution
             bool restore = (executionOptions & ExecutionOptions.Restore) != ExecutionOptions.None;
+            
             // commit - is for standard execute, we will commit thee state after execution 
             bool commit = (executionOptions & ExecutionOptions.Commit) != ExecutionOptions.None || eip658NotEnabled;
             //!commit - is for build up during block production, we won't commit state after each transaction to support rollbacks
-            //we commit only after all block is constructed 
+            //we commit only after all block is constructed
+
+            // commitAndRestore - is for transactions that will not be sent to the network
+            // TODO should I add eip658NotEnabled
+            bool commitAndRestore = (executionOptions & ExecutionOptions.CommitAndRestore) != ExecutionOptions.None;
+            
             bool notSystemTransaction = !transaction.IsSystem();
             bool deleteCallerAccount = false;
             
@@ -143,21 +149,26 @@ namespace Nethermind.Evm.TransactionProcessing
             
             UInt256 value = transaction.Value;
 
-            bool isEthCallState = commit && restore;
-            bool isZeroGasPrice = transaction.GasPrice.IsZero && (!transaction.IsEip1559 || transaction.MaxFeePerGas.IsZero);
+            bool isZeroGasPrice = spec.IsEip1559Enabled
+                ? (transaction.IsEip1559
+                    ? (transaction.MaxFeePerGas.IsZero && transaction.MaxPriorityFeePerGas.IsZero)
+                    : transaction.GasPrice.IsZero)
+                : transaction.GasPrice.IsZero;
             
-            if ((isEthCallState && !isZeroGasPrice) && transaction.MaxPriorityFeePerGas > transaction.MaxFeePerGas) 
+            bool isCommitAndRestoreWithoutZeroGasPrice = commitAndRestore && !isZeroGasPrice; 
+
+            if (isCommitAndRestoreWithoutZeroGasPrice && transaction.MaxPriorityFeePerGas > transaction.MaxFeePerGas) 
             { 
                 TraceLogInvalidTx(transaction, "MAX PRIORITY FEE PER GAS HIGHER THAN MAX FEE PER GAS");
-                QuickFail(transaction, block, txTracer, eip658NotEnabled, "max priority fee per gas higher than max fee per gas", deleteCallerAccount);
+                QuickFail(transaction, block, txTracer, eip658NotEnabled, "max priority fee per gas higher than max fee per gas");
                 return; 
             }
 
-            if (!transaction.TryCalculatePremiumPerGas(block.BaseFeePerGas, out UInt256 premiumPerGas) && (!restore || (isEthCallState && !isZeroGasPrice)))
+            if (!transaction.TryCalculatePremiumPerGas(block.BaseFeePerGas, out UInt256 premiumPerGas) && (!restore || isCommitAndRestoreWithoutZeroGasPrice))
             {
                 // max fee per gas (feeCap) less than block base fee
                 TraceLogInvalidTx(transaction, "MINER_PREMIUM_IS_NEGATIVE");
-                QuickFail(transaction, block, txTracer, eip658NotEnabled, "miner premium is negative", deleteCallerAccount);
+                QuickFail(transaction, block, txTracer, eip658NotEnabled, "miner premium is negative");
                 return;
             }
             
@@ -185,14 +196,14 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (gasLimit < intrinsicGas)
                 {
                     TraceLogInvalidTx(transaction, $"GAS_LIMIT_BELOW_INTRINSIC_GAS {gasLimit} < {intrinsicGas}");
-                    QuickFail(transaction, block, txTracer, eip658NotEnabled, "gas limit below intrinsic gas", deleteCallerAccount);
+                    QuickFail(transaction, block, txTracer, eip658NotEnabled, "gas limit below intrinsic gas");
                     return;
                 }
 
                 if (!restore && gasLimit > block.GasLimit - block.GasUsed)
                 {
                     TraceLogInvalidTx(transaction, $"BLOCK_GAS_LIMIT_EXCEEDED {gasLimit} > {block.GasLimit} - {block.GasUsed}");
-                    QuickFail(transaction, block, txTracer, eip658NotEnabled, "block gas limit exceeded", deleteCallerAccount);
+                    QuickFail(transaction, block, txTracer, eip658NotEnabled, "block gas limit exceeded");
                     return;
                 }
             }
@@ -229,7 +240,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             UInt256 senderReservedGasPayment = restore ? UInt256.Zero : (ulong) gasLimit * gasPrice;
             
-            if (isEthCallState && !isZeroGasPrice)
+            if (isCommitAndRestoreWithoutZeroGasPrice)
             {
                 senderReservedGasPayment = (ulong)gasLimit * gasPrice;
             }
@@ -237,14 +248,14 @@ namespace Nethermind.Evm.TransactionProcessing
             if (notSystemTransaction)
             {
                 UInt256 senderBalance = _stateProvider.GetBalance(caller);
-                if ((!restore || (isEthCallState && !isZeroGasPrice)) && ((ulong) intrinsicGas * gasPrice + value > senderBalance || senderReservedGasPayment > senderBalance))
+                if ((!restore || isCommitAndRestoreWithoutZeroGasPrice) && ((ulong) intrinsicGas * gasPrice + value > senderBalance || senderReservedGasPayment > senderBalance))
                 {
                     TraceLogInvalidTx(transaction, $"INSUFFICIENT_SENDER_BALANCE: ({caller})_BALANCE = {senderBalance}");
                     QuickFail(transaction, block, txTracer, eip658NotEnabled, "insufficient sender balance", deleteCallerAccount);
                     return;
                 }
                 
-                if ((!restore || (isEthCallState && !isZeroGasPrice)) && transaction.IsEip1559 && !transaction.IsServiceTransaction && senderBalance < (UInt256)transaction.GasLimit * transaction.MaxFeePerGas)
+                if ((!restore || isCommitAndRestoreWithoutZeroGasPrice) && transaction.IsEip1559 && !transaction.IsServiceTransaction && senderBalance < (UInt256)transaction.GasLimit * transaction.MaxFeePerGas)
                 {
                     TraceLogInvalidTx(transaction, $"INSUFFICIENT_MAX_FEE_PER_GAS_FOR_SENDER_BALANCE: ({caller})_BALANCE = {senderBalance}, MAX_FEE_PER_GAS: {transaction.MaxFeePerGas}");
                     QuickFail(transaction, block, txTracer, eip658NotEnabled, "insufficient MaxFeePerGas for sender balance", deleteCallerAccount);
