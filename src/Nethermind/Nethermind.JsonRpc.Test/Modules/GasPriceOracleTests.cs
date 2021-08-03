@@ -100,12 +100,12 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void GetGasPricesFromRecentBlocks_IfEightBlocksWithTwoTransactions_CheckEightBlocks()
         {
-            IBlockFinder blockFinder = GetBlockFinderForNineBlocksWithTwoTransactions();
+            int blockNumber = 8;
+            IBlockFinder blockFinder = BuildTree(blockNumber);
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
             GasPriceOracle testGasPriceOracle = new(blockFinder, specProvider);
 
-            int blockNumber = 8;
-            testGasPriceOracle.GetGasPricesFromRecentBlocks(blockNumber).ToArray();
+            testGasPriceOracle.GetGasPriceEstimate();
 
             foreach (long receivedBlockNumber in Enumerable.Range(0, blockNumber + 1))
             {
@@ -113,17 +113,17 @@ namespace Nethermind.JsonRpc.Test.Modules
             }
         }
 
-        private IBlockFinder GetBlockFinderForNineBlocksWithTwoTransactions()
+        private IBlockFinder BuildTree(int maxBlock)
         {
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             Transaction tx = Build.A.Transaction.TestObject;
             Block blockWithTwoTx = Build.A.Block.WithTransactions(tx, tx).TestObject;
-            for (int i = 0; i <= 8; i++)
+            for (int i = 0; i <= maxBlock; i++)
             {
                 blockFinder.FindBlock(i).Returns(blockWithTwoTx);
             }
 
-            blockFinder.FindHeadBlock().Returns(Build.A.Block.WithNumber(8).TestObject);
+            blockFinder.Head.Returns(Build.A.Block.WithNumber(maxBlock).TestObject);
 
             return blockFinder;
         }
@@ -137,12 +137,10 @@ namespace Nethermind.JsonRpc.Test.Modules
                 IgnoreUnder = 1,
                 BlockLimit = 6
             };
-            
-            testGasPriceOracle.GetGasPricesFromRecentBlocks(8).ToArray();
-            
-            long[] receivedBlockNumbers = {3,4,5,6,7,8};
-            
-            foreach (long receivedBlockNumber in receivedBlockNumbers)
+
+            testGasPriceOracle.GetGasPriceEstimate();
+
+            foreach (long receivedBlockNumber in Enumerable.Range(3, 5))
             {
                 blockFinder.Received(1).FindBlock(Arg.Is<long>(l => l == receivedBlockNumber));
             }
@@ -165,7 +163,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 blockFinder.FindBlock(i).Returns(blockWithThreeTx);
             }
 
-            blockFinder.FindHeadBlock().Returns(Build.A.Block.WithNumber(8).TestObject);
+            blockFinder.Head.Returns(Build.A.Block.WithNumber(8).TestObject);
 
             return blockFinder;
         }
