@@ -59,6 +59,8 @@ namespace Nethermind.Core
 
         public AccessList? AccessList { get; set; } // eip2930
         
+        public UInt256? EffectiveGasPrice { get; set; }
+        
         /// <summary>
         /// Service transactions are free. The field added to handle baseFee validation after 1559
         /// </summary>

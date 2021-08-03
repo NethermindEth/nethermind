@@ -236,7 +236,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             Block eip1559Block = Build.A.Block.Genesis.WithTransactions(eip1559TxGroup).WithBaseFeePerGas(1).TestObject;
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             blockFinder.FindBlock(0).Returns(eip1559Block);
-            ISpecProvider specProvider = SpecProviderWithEip1559EnabledAs(eip1559Enabled);
+            ISpecProvider specProvider = GetSpecProviderWithEip1559EnabledAs(eip1559Enabled);
             GasPriceOracle gasPriceOracle = new(blockFinder, specProvider);
 
             IEnumerable<UInt256> results = gasPriceOracle.GetGasPricesFromRecentBlocks(0);
@@ -258,7 +258,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             Block nonEip1559Block = Build.A.Block.Genesis.WithTransactions(nonEip1559TxGroup).WithBaseFeePerGas(1).TestObject;
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             blockFinder.FindBlock(0).Returns(nonEip1559Block);
-            ISpecProvider specProvider = SpecProviderWithEip1559EnabledAs(eip1559Enabled);
+            ISpecProvider specProvider = GetSpecProviderWithEip1559EnabledAs(eip1559Enabled);
             GasPriceOracle gasPriceOracle = new(blockFinder, specProvider);
 
             IEnumerable<UInt256> results = gasPriceOracle.GetGasPricesFromRecentBlocks(0);
@@ -267,7 +267,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             results.Should().BeEquivalentTo(expectedList);
         }
         
-        public static ISpecProvider SpecProviderWithEip1559EnabledAs(bool isEip1559) => 
+        public static ISpecProvider GetSpecProviderWithEip1559EnabledAs(bool isEip1559) => 
             new CustomSpecProvider((0, isEip1559 ? London.Instance : Berlin.Instance));
         
         [Test]
@@ -306,34 +306,43 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
         
         [Test]
-        public void AddValidTxAndReturnCount_TxsWithPriceLessThanIgnoreUnder_ShouldNotHaveGasPriceInTxGasPriceList()
+        public void AddValidTxAndReturnCount_Eip1559NotEnabled_EffectiveGasPricesShouldBeMoreThanIgnoreUnder()
         {
             Transaction[] transactions = 
             {
-                Build.A.Transaction.WithGasPrice(1).TestObject,
-                Build.A.Transaction.WithGasPrice(2).TestObject,
-                Build.A.Transaction.WithGasPrice(4).TestObject,
+                Build.A.Transaction.WithGasPrice(1).TestObject, //1
+                Build.A.Transaction.WithGasPrice(2).WithType(TxType.EIP1559).TestObject, //2
+                Build.A.Transaction.WithGasPrice(3).WithType(TxType.EIP1559).TestObject, //3
             };
-            Block testBlock = Build.A.Block.Genesis.WithTransactions(transactions).TestObject;
+            Block testBlock = Build.A.Block.Genesis.WithBaseFeePerGas(1).WithTransactions(transactions).TestObject;
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             blockFinder.FindBlock(0).Returns(testBlock);
-            GasPriceOracle gasPriceOracle = new(blockFinder, Substitute.For<ISpecProvider>());
-            List<UInt256> expected = new() {2, 4};
+            GasPriceOracle gasPriceOracle = new(blockFinder, GetSpecProviderWithEip1559EnabledAs(false));
+            List<UInt256> expected = new() {2,3};
 
             IEnumerable<UInt256> results = gasPriceOracle.GetGasPricesFromRecentBlocks(0);
 
             results.Should().BeEquivalentTo(expected);
         }
         
-        public Transaction[] GetThreeTransactionsWithSomeGasPricesLessThanIgnoreUnder()
+        [Test]
+        public void AddValidTxAndReturnCount_Eip1559Enabled_EffectiveGasPricesShouldBeMoreThanIgnoreUnder()
         {
             Transaction[] transactions = 
             {
-                Build.A.Transaction.WithGasPrice(1).TestObject,
-                Build.A.Transaction.WithGasPrice(2).TestObject,
-                Build.A.Transaction.WithGasPrice(4).TestObject,
+                Build.A.Transaction.WithMaxFeePerGas(3).WithGasPrice(1).TestObject, //Min(1, 1+1) => 1
+                Build.A.Transaction.WithMaxFeePerGas(4).WithGasPrice(2).WithType(TxType.EIP1559).TestObject, //Min(4, 2 + 1) => 3
+                Build.A.Transaction.WithMaxFeePerGas(5).WithGasPrice(3).WithType(TxType.EIP1559).TestObject, //Min(5, 3 + 1) => 4
             };
-            return transactions;
+            Block testBlock = Build.A.Block.Genesis.WithBaseFeePerGas(1).WithTransactions(transactions).TestObject;
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            blockFinder.FindBlock(0).Returns(testBlock);
+            GasPriceOracle gasPriceOracle = new(blockFinder, GetSpecProviderWithEip1559EnabledAs(true));
+            List<UInt256> expected = new() {3,4};
+
+            IEnumerable<UInt256> results = gasPriceOracle.GetGasPricesFromRecentBlocks(0);
+
+            results.Should().BeEquivalentTo(expected);
         }
     }
 }
