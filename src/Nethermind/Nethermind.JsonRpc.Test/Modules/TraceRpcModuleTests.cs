@@ -180,12 +180,33 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
         
         [Test]
-        public void Tx_filter()
+        public void Trace_filter()
         {
             var traceFilterRequest = new TraceFilterForRpc();
             string serialized = RpcTest.TestSerializedRequest(EthModuleFactory.Converters.Union(TraceModuleFactory.Converters).ToList(), _traceRpcModule, "trace_filter", new EthereumJsonSerializer().Serialize(traceFilterRequest));
             
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":[{\"action\":{\"callType\":\"call\",\"from\":\"0x723847c97bc651c7e8c013dbbe65a70712f02ad3\",\"gas\":\"0x5208\",\"input\":\"0x\",\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"0x1\"},\"blockHash\":\"0x7a4597196e0e3c1e6c843bcdad49a0946b2096b1817f49eca911627748950d8b\",\"blockNumber\":9,\"result\":{\"gasUsed\":\"0x0\",\"output\":null},\"subtraces\":0,\"transactionHash\":\"0x1fb701b713c746b25ac9b0b82345aef86c7541b001ee4c7be4922c71e66e073a\",\"transactionPosition\":0,\"type\":null},{\"action\":{\"callType\":\"call\",\"from\":\"0xd1f6f7a9c6abafb69ee7964a8e2c57f305a85d50\",\"gas\":\"0x5208\",\"input\":\"0x\",\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"0x1\"},\"blockHash\":\"0x7a4597196e0e3c1e6c843bcdad49a0946b2096b1817f49eca911627748950d8b\",\"blockNumber\":9,\"result\":{\"gasUsed\":\"0x0\",\"output\":null},\"subtraces\":0,\"transactionHash\":\"0xd8b53c2348158e637009af277981ab3169ef8a8bff2a67fe52c2aaebe752ff58\",\"transactionPosition\":1,\"type\":null},{\"action\":{\"callType\":\"call\",\"from\":\"0x58e52229bbd8470b4323248eaa3e8d6dbedc1c4b\",\"gas\":\"0x5208\",\"input\":\"0x\",\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"0x1\"},\"blockHash\":\"0x7a4597196e0e3c1e6c843bcdad49a0946b2096b1817f49eca911627748950d8b\",\"blockNumber\":9,\"result\":{\"gasUsed\":\"0x0\",\"output\":null},\"subtraces\":0,\"transactionHash\":\"0x4afaa014dcb4fd2fc7bd3af982277ab2f413d8ae7d907ad76afb59f3079fea43\",\"transactionPosition\":2,\"type\":null},{\"action\":{\"callType\":\"call\",\"from\":\"0x32e3aa7a76512638020fbd76682770444783150b\",\"gas\":\"0x5208\",\"input\":\"0x\",\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"0x1\"},\"blockHash\":\"0x7a4597196e0e3c1e6c843bcdad49a0946b2096b1817f49eca911627748950d8b\",\"blockNumber\":9,\"result\":{\"gasUsed\":\"0x0\",\"output\":null},\"subtraces\":0,\"transactionHash\":\"0xeb27dfdd845ebbaa62d47b0950d6a38c43873539b71556e9381aeae4ba269f85\",\"transactionPosition\":3,\"type\":null},{\"action\":{\"callType\":\"call\",\"from\":\"0xbadf2a39f1373c41d0acd2b72e109de7154137f8\",\"gas\":\"0x5208\",\"input\":\"0x\",\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"0x1\"},\"blockHash\":\"0x7a4597196e0e3c1e6c843bcdad49a0946b2096b1817f49eca911627748950d8b\",\"blockNumber\":9,\"result\":{\"gasUsed\":\"0x0\",\"output\":null},\"subtraces\":0,\"transactionHash\":\"0xe4e9d78d3cf7eebb776da25f4fad66eb04a025801291dfffdf06ddd547d09498\",\"transactionPosition\":4,\"type\":null},{\"action\":{\"callType\":\"call\",\"from\":\"0x90b071326047073a0ec2677fd189e67d6a0ce533\",\"gas\":\"0x5208\",\"input\":\"0x\",\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"0x1\"},\"blockHash\":\"0x7a4597196e0e3c1e6c843bcdad49a0946b2096b1817f49eca911627748950d8b\",\"blockNumber\":9,\"result\":{\"gasUsed\":\"0x0\",\"output\":null},\"subtraces\":0,\"transactionHash\":\"0x7256da5a198bc98aff7e4213e9e2a645e78bcde658dab20a9ab5d4a606c135cf\",\"transactionPosition\":5,\"type\":null},{\"action\":{\"callType\":\"call\",\"from\":\"0xc7199565e1b3939b3668c304e0ee251c8aa29415\",\"gas\":\"0x5208\",\"input\":\"0x\",\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"0x1\"},\"blockHash\":\"0x7a4597196e0e3c1e6c843bcdad49a0946b2096b1817f49eca911627748950d8b\",\"blockNumber\":9,\"result\":{\"gasUsed\":\"0x0\",\"output\":null},\"subtraces\":0,\"transactionHash\":\"0x89163ade4d1f29be8edc38a83403a7a889ebdf3cc9bd4bfe5254e7eabff57e4c\",\"transactionPosition\":6,\"type\":null},{\"action\":{\"callType\":\"call\",\"from\":\"0xd1acdb7a39fdb41e5b674b8e483663a69d5e9d92\",\"gas\":\"0x5208\",\"input\":\"0x\",\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"0x1\"},\"blockHash\":\"0x7a4597196e0e3c1e6c843bcdad49a0946b2096b1817f49eca911627748950d8b\",\"blockNumber\":9,\"result\":{\"gasUsed\":\"0x0\",\"output\":null},\"subtraces\":0,\"transactionHash\":\"0xffc2757cbc0e467c287e757c6afcf33802ac4fc1bae7e322cd63dbdb04da3a57\",\"transactionPosition\":7,\"type\":null},{\"action\":{\"callType\":\"call\",\"from\":\"0x86ef57e31aa45d3dcb35d044297b5e22f1ae62e7\",\"gas\":\"0x5208\",\"input\":\"0x\",\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"0x1\"},\"blockHash\":\"0x7a4597196e0e3c1e6c843bcdad49a0946b2096b1817f49eca911627748950d8b\",\"blockNumber\":9,\"result\":{\"gasUsed\":\"0x0\",\"output\":null},\"subtraces\":0,\"transactionHash\":\"0xbe9381d3d6f137e202ec390a2a024223e62e1abf2875b7227ca146a74df2e19c\",\"transactionPosition\":8,\"type\":null},{\"action\":{\"author\":\"0x0000000000000000000000000000000000000000\",\"rewardType\":\"block\",\"value\":\"0x4563918244f40000\"},\"blockHash\":\"0x7a4597196e0e3c1e6c843bcdad49a0946b2096b1817f49eca911627748950d8b\",\"blockNumber\":9,\"subtraces\":0,\"traceAddress\":[],\"type\":\"reward\"}],\"id\":67}", serialized, serialized.Replace("\"", "\\\""));
+        }
+
+        [Test]
+        public void Trace_filter_skip_expected_number_of_traces()
+        {
+            var traceFilterRequest = new TraceFilterForRpc();
+            var traces = _traceRpcModule.trace_filter(traceFilterRequest);
+            Assert.AreEqual(9, traces.Data.Length);
+            var secondRequest = new TraceFilterForRpc();
+            secondRequest.After = 3;
+            var secondTraces = _traceRpcModule.trace_filter(traceFilterRequest);
+            Assert.AreEqual(6, secondTraces.Data.Length);
+        }
+        
+        [Test]
+        public void Trace_filter_get_given_amount_of_traces()
+        {
+            var traceFilterRequest = new TraceFilterForRpc();
+            traceFilterRequest.Count = 3;
+            var traces = _traceRpcModule.trace_filter(traceFilterRequest);
+            Assert.AreEqual(3, traces.Data.Length);
         }
 
         [Test]
