@@ -36,14 +36,13 @@ namespace Nethermind.Evm.Test.Tracing
         public void Starts_with_empty_addresses_accessed()
         {
             AccessBlockTracer blockTracer = new(Array.Empty<Address>());
-            blockTracer.AccessList.Data.Should().BeNullOrEmpty();
+            blockTracer.BuildResult().Should().BeNullOrEmpty();
         }
-        
+
         [Test]
-        public void Should_trace_correctly()
+        public void Can_trace_correctly()
         {
-            AccessBlockTracer blockTracer = new(Array.Empty<Address>());
-            blockTracer.AccessList.Data.Should().BeNullOrEmpty();
+            
         }
     }
 }
