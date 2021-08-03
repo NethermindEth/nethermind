@@ -42,8 +42,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             Block testHeadBlock = Build.A.Block.Genesis.TestObject;
-            GasPriceOracle testGasPriceOracle =
-                new(blockFinder, Substitute.For<ISpecProvider>()) {LastHeadBlock = testHeadBlock, LastGasPrice = 7};
+            GasPriceOracle testGasPriceOracle = new(blockFinder, Substitute.For<ISpecProvider>()) {LastHeadBlock = testHeadBlock, LastGasPrice = 7};
             
             UInt256 result = testGasPriceOracle.GetGasPriceEstimate();
             
@@ -79,7 +78,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             blockFinder.FindBlock(0).Returns(headBlock);
             blockFinder.Head.Returns(headBlock);
-            GasPriceOracle testGasPriceOracle = new GasPriceOracle(blockFinder, Substitute.For<ISpecProvider>());
+            GasPriceOracle testGasPriceOracle = new(blockFinder, Substitute.For<ISpecProvider>());
 
             UInt256 result = testGasPriceOracle.GetGasPriceEstimate();
             
@@ -95,8 +94,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             testGasPriceOracle.GetGasPricesFromRecentBlocks(8);
             
             long[] receivedBlockNumbers = {1,2,3,4,5,6,7,8};
-            receivedBlockNumbers
-                .Select(x => blockFinder.Received(1).FindBlock(Arg.Is<long>(l => l == x)));
+            receivedBlockNumbers.Select(x => blockFinder.Received(1).FindBlock(Arg.Is<long>(l => l == x)));
             blockFinder.DidNotReceive().FindBlock(Arg.Is<long>(l => l == 0));
         }
 
@@ -119,14 +117,12 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void GetGasPricesFromRecentBlocks_IfLastFiveBlocksWithThreeTxAndFirstFourWithOne_CheckSixBlocks()
         {
             IBlockFinder blockFinder = GetBlockFinderForLastFiveBlocksWithThreeTxAndFirstFourWithOne();
-            GasPriceOracle testGasPriceOracle = new GasPriceOracle(blockFinder,Substitute.For<ISpecProvider>());
+            GasPriceOracle testGasPriceOracle = new(blockFinder,Substitute.For<ISpecProvider>());
             
-            IEnumerable<UInt256> result = testGasPriceOracle.GetGasPricesFromRecentBlocks(8);
-
-
+            testGasPriceOracle.GetGasPricesFromRecentBlocks(8);
+            
             long[] receivedBlockNumbers = {3,4,5,6,7,8};
-            receivedBlockNumbers
-                .Select(x => blockFinder.Received(1).FindBlock(Arg.Is<long>(l => l == x)));
+            receivedBlockNumbers.Select(x => blockFinder.Received(1).FindBlock(Arg.Is<long>(l => l == x)));
             blockFinder.DidNotReceive().FindBlock(Arg.Is<long>(l => l <= 2));
         }
 
@@ -160,7 +156,6 @@ namespace Nethermind.JsonRpc.Test.Modules
             act.Should().NotThrow();
         }
         
-        
         [Test]
         public void GetGasPricesFromRecentBlocks_IfBlockHasMoreThanThreeValidTx_AddOnlyThreeNew()
         {
@@ -190,7 +185,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             results.Should().BeEquivalentTo(expected);
         }
 
-        public Transaction[] GetFiveTransactionsWithDifferentGasPrices()
+        private Transaction[] GetFiveTransactionsWithDifferentGasPrices()
         {
             Transaction[] transactions = 
             {
@@ -236,8 +231,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             Block eip1559Block = Build.A.Block.Genesis.WithTransactions(eip1559TxGroup).WithBaseFeePerGas(1).TestObject;
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             blockFinder.FindBlock(0).Returns(eip1559Block);
-            ISpecProvider specProvider = GetSpecProviderWithEip1559EnabledAs(eip1559Enabled);
-            GasPriceOracle gasPriceOracle = new(blockFinder, specProvider);
+            GasPriceOracle gasPriceOracle = new(blockFinder, GetSpecProviderWithEip1559EnabledAs(eip1559Enabled));
 
             IEnumerable<UInt256> results = gasPriceOracle.GetGasPricesFromRecentBlocks(0);
 
@@ -254,12 +248,10 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Build.A.Transaction.WithMaxFeePerGas(27).WithMaxPriorityFeePerGas(26).TestObject,
                 Build.A.Transaction.WithMaxFeePerGas(27).WithMaxPriorityFeePerGas(27).TestObject 
             };
-            
             Block nonEip1559Block = Build.A.Block.Genesis.WithTransactions(nonEip1559TxGroup).WithBaseFeePerGas(1).TestObject;
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             blockFinder.FindBlock(0).Returns(nonEip1559Block);
-            ISpecProvider specProvider = GetSpecProviderWithEip1559EnabledAs(eip1559Enabled);
-            GasPriceOracle gasPriceOracle = new(blockFinder, specProvider);
+            GasPriceOracle gasPriceOracle = new(blockFinder, GetSpecProviderWithEip1559EnabledAs(eip1559Enabled));
 
             IEnumerable<UInt256> results = gasPriceOracle.GetGasPricesFromRecentBlocks(0);
 
