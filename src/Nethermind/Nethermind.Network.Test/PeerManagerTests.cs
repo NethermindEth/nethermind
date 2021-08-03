@@ -588,7 +588,7 @@ namespace Nethermind.Network.Test
                 SessionCreated?.Invoke(this, new SessionEventArgs(session));
                 return Task.CompletedTask;
             }
- 
+
             public void CreateRandomIncoming()
             {
                 var session = new Session(30313, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance,

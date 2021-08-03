@@ -26,7 +26,6 @@ using Nethermind.Int256;
 using Nethermind.Facade.Proxy;
 using Nethermind.Facade.Proxy.Models;
 using Nethermind.JsonRpc.Data;
-using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using Nethermind.Wallet;
@@ -37,13 +36,12 @@ namespace Nethermind.JsonRpc.Modules.Eth
     {
         private readonly IEthJsonRpcClientProxy _proxy;
         private readonly IWallet _wallet;
-        public IGasPriceOracle GasPriceOracle { get; }
+
         public EthRpcModuleProxy(IEthJsonRpcClientProxy proxy, IWallet wallet)
         {
             _proxy = proxy;
             _wallet = wallet;
         }
-
 
         public ResultWrapper<ulong> eth_chainId()
         {

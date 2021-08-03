@@ -61,6 +61,7 @@ namespace Nethermind.Overseer.Test.JsonRpc
                 {
                     return null;
                 }
+
                 return t.Result;
             });
 
