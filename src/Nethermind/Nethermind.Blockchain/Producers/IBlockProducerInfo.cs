@@ -15,17 +15,13 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
-using System.Threading.Tasks;
-using Nethermind.Blockchain;
 using Nethermind.Consensus;
 
-namespace Nethermind.Core.Test.Blockchain
+namespace Nethermind.Blockchain.Producers
 {
-    public interface ITestBlockProducer : IBlockProducer
+    public interface IBlockProducerInfo
     {
-        Block LastProducedBlock { get; }
-        event EventHandler<BlockEventArgs> LastProducedBlockChanged;
-        Task<bool> BuildNewBlock();
+        public IBlockProducer BlockProducer { get; }
+        public IManualBlockProductionTrigger BlockProductionTrigger { get; }
     }
 }

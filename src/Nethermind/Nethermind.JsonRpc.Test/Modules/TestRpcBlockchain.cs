@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Threading.Tasks;
-using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
@@ -33,6 +32,7 @@ using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using Nethermind.Db.Blooms;
 using Nethermind.Int256;
+using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.KeyStore;
 using Nethermind.Specs;
@@ -41,6 +41,7 @@ using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Newtonsoft.Json;
+using NSubstitute;
 using static Nethermind.JsonRpc.Modules.Eth.EthRpcModule;
 
 namespace Nethermind.JsonRpc.Test.Modules
@@ -51,6 +52,9 @@ namespace Nethermind.JsonRpc.Test.Modules
         public IBlockchainBridge Bridge { get; private set; }
         public ITxSender TxSender { get; private set; }
         public ILogFinder LogFinder { get; private set; }
+        
+        public IGasPriceOracle GasPriceOracle { get; private set; }
+        
         public IKeyStore KeyStore { get; } = new MemKeyStore(TestItem.PrivateKeys);
         public IWallet TestWallet { get; } = new DevKeyStoreWallet(new MemKeyStore(TestItem.PrivateKeys), LimboLogs.Instance);
         public IFeeHistoryOracle FeeHistoryOracle { get; private set; }
@@ -92,6 +96,12 @@ namespace Nethermind.JsonRpc.Test.Modules
             public Builder<T> WithGenesisBlockBuilder(BlockBuilder blockBuilder)
             {
                 _blockchain.GenesisBlockBuilder = blockBuilder;
+                return this;
+            }
+            
+            public Builder<T> WithGasPriceOracle(IGasPriceOracle gasPriceOracle)
+            {
+                _blockchain.GasPriceOracle = gasPriceOracle;
                 return this;
             }
         
@@ -142,7 +152,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                 TestWallet,
                 LimboLogs.Instance,
                 SpecProvider,
-                FeeHistoryOracle);
+                GasPriceOracle ?? new GasPriceOracle(BlockFinder, SpecProvider)),
+            FeeHistoryOracle);
             
             return this;
         }

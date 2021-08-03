@@ -94,7 +94,7 @@ namespace Nethermind.Mev.Test
 
             public override ILogManager LogManager => NUnitLogManager.Instance;
 
-            protected override ITestBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, IBlockProcessingQueue blockProcessingQueue, ISealer sealer)
+            protected override IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer)
             {
                 MiningConfig miningConfig = new() {MinGasPrice = UInt256.One};
                 
@@ -111,36 +111,42 @@ namespace Nethermind.Mev.Test
                     miningConfig,
                     LogManager);
 
-                Eth2BlockProducer CreateEth2BlockProducer(ITxSource? txSource = null) =>
+                Eth2BlockProducer CreateEth2BlockProducer(IBlockProductionTrigger blockProductionTrigger, ITxSource? txSource = null) =>
                     new Eth2TestBlockProducerFactory(GasLimitCalculator, txSource).Create(
                         blockProducerEnvFactory,
                         BlockTree,
-                        BlockProcessingQueue,
+                        blockProductionTrigger,
                         SpecProvider,
                         Signer,
                         Timestamper,
                         miningConfig,
                         LogManager);
+                
+                MevBlockProducer.MevBlockProducerInfo CreateProducer(ITxSource? additionalTxSource = null)
+                {
+                    IManualBlockProductionTrigger trigger = new BuildBlocksWhenRequested();
+                    IBlockProducer producer = CreateEth2BlockProducer(trigger, additionalTxSource);
+                    IBeneficiaryBalanceSource beneficiaryBalanceSource = blockProducerEnvFactory.LastMevBlockProcessor;
+                    return new MevBlockProducer.MevBlockProducerInfo(producer, trigger, beneficiaryBalanceSource);
+                }
 
-                Dictionary<IManualBlockProducer, IBeneficiaryBalanceSource> blockProducerDictionary =
-                    new Dictionary<IManualBlockProducer, IBeneficiaryBalanceSource>();
+                List<MevBlockProducer.MevBlockProducerInfo> blockProducers =
+                    new(_maxMergedBundles + 1);
                     
                 // Add non-mev block
-                IManualBlockProducer standardProducer = CreateEth2BlockProducer();
-                IBeneficiaryBalanceSource standardProducerBeneficiaryBalanceSource = blockProducerEnvFactory.LastMevBlockProcessor;
-                blockProducerDictionary.Add(standardProducer, standardProducerBeneficiaryBalanceSource);
+                MevBlockProducer.MevBlockProducerInfo standardProducer = CreateProducer();
+                blockProducers.Add(standardProducer);
 
                 // Try blocks with all bundle numbers <= maxMergedBundles
                 for (int bundleLimit = 1; bundleLimit <= _maxMergedBundles; bundleLimit++)
                 {
                     BundleSelector bundleSelector = new(BundlePool, bundleLimit);
                     BundleTxSource bundleTxSource = new(bundleSelector, Timestamper);
-                    IManualBlockProducer bundleProducer = CreateEth2BlockProducer(bundleTxSource);
-                    IBeneficiaryBalanceSource bundleProducerBeneficiaryBalanceSource = blockProducerEnvFactory.LastMevBlockProcessor;
-                    blockProducerDictionary.Add(bundleProducer, bundleProducerBeneficiaryBalanceSource);
+                    MevBlockProducer.MevBlockProducerInfo bundleProducer = CreateProducer(bundleTxSource);
+                    blockProducers.Add(bundleProducer);
                 }
 
-                return new MevTestBlockProducer(BlockTree, blockProducerDictionary);
+                return new MevBlockProducer(BlockProductionTrigger, blockProducers.ToArray());
             }
 
             protected override BlockProcessor CreateBlockProcessor()
@@ -199,47 +205,6 @@ namespace Nethermind.Mev.Test
             }
 
             protected override Task AddBlocksOnStart() => Task.CompletedTask;
-
-            internal class MevTestBlockProducer : MevBlockProducer, ITestBlockProducer
-            {
-                private readonly IBlockTree _blockTree;
-                private Block? _lastProducedBlock;
-                
-                public MevTestBlockProducer(IBlockTree blockTree, IDictionary<IManualBlockProducer, IBeneficiaryBalanceSource> blockProducers) : base(blockProducers)
-                {
-                    _blockTree = blockTree;
-                }
-        
-                public Block? LastProducedBlock
-                {
-                    get
-                    {
-                        return _lastProducedBlock!;
-                    }
-                    private set
-                    {
-                        _lastProducedBlock = value;
-                        if (value != null)
-                        {
-                            LastProducedBlockChanged?.Invoke(this, new BlockEventArgs(value));
-                        }
-                    }
-                }
-
-                public event EventHandler<BlockEventArgs> LastProducedBlockChanged = null!;
-        
-                public async Task<bool> BuildNewBlock()
-                {
-                    Block? block = await TryProduceBlock(_blockTree.Head!.Header, CancellationToken.None);
-                    if (block is not null)
-                    {
-                        _blockTree.SuggestBlock(block);
-                        return true;
-                    }
-
-                    return false;
-                }
-            }
             
             public MevBundle SendBundle(int blockNumber, params BundleTransaction[] txs)
             {

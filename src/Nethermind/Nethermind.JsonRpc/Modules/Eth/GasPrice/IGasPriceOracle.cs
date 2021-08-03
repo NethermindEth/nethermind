@@ -13,16 +13,16 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
 
-using System.Threading;
-using System.Threading.Tasks;
+using System.Collections.Generic;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
+using Nethermind.Int256;
 
-namespace Nethermind.Consensus
+namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
 {
-    public interface IManualBlockProducer : IBlockProducer
+    public interface IGasPriceOracle
     {
-        Task<Block?> TryProduceBlock(BlockHeader parentHeader, CancellationToken cancellationToken = default);
+        UInt256 GetGasPriceEstimate();
     }
 }

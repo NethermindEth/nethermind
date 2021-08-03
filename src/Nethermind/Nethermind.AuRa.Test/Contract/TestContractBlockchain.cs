@@ -51,7 +51,7 @@ namespace Nethermind.AuRa.Test.Contract
 
             var provider = GetSpecProvider();
             var test = new TTest() {ChainSpec = provider.ChainSpec};
-            return (TTest) await test.Build(provider.SpecProvider);;
+            return (TTest) await test.Build(provider.SpecProvider);
         }
 
         protected override Block GetGenesisBlock() =>

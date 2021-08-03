@@ -24,7 +24,6 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
-using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -32,6 +31,7 @@ using Nethermind.Int256;
 using Nethermind.Facade;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
+using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
@@ -49,7 +49,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
     public partial class EthRpcModule : IEthRpcModule
     {
         private readonly Encoding _messageEncoding = Encoding.UTF8;
-
         private readonly IJsonRpcConfig _rpcConfig;
         private readonly IBlockchainBridge _blockchainBridge;
         private readonly IBlockFinder _blockFinder;
@@ -59,6 +58,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly IWallet _wallet;
         private readonly ISpecProvider _specProvider;
         private readonly ILogger _logger;
+        private readonly IGasPriceOracle _gasPriceOracle;
+
         private readonly IFeeHistoryOracle _feeHistoryOracle;
         private static bool HasStateForBlock(IBlockchainBridge blockchainBridge, BlockHeader header)
         {
@@ -77,6 +78,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             IWallet wallet,
             ILogManager logManager,
             ISpecProvider specProvider,
+            IGasPriceOracle gasPriceOracle,
             IFeeHistoryOracle feeHistoryOracle)
         {
             _logger = logManager.GetClassLogger();
@@ -88,6 +90,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+            _gasPriceOracle = gasPriceOracle ?? throw new ArgumentNullException(nameof(gasPriceOracle));
             _feeHistoryOracle = feeHistoryOracle ?? throw new ArgumentNullException(nameof(feeHistoryOracle));
         }
 
@@ -142,10 +145,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return ResultWrapper<UInt256?>.Success(0);
         }
 
-        [Todo("Gas pricer to be implemented")]
         public ResultWrapper<UInt256?> eth_gasPrice()
         {
-            return ResultWrapper<UInt256?>.Success(20.GWei());
+            return ResultWrapper<UInt256?>.Success(_gasPriceOracle.GetGasPriceEstimate());
         }
 
         public ResultWrapper<FeeHistoryResults> eth_feeHistory(int blockCount, BlockParameter newestBlock, double[]? rewardPercentiles = null)

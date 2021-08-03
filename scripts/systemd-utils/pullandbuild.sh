@@ -30,7 +30,8 @@ gitSubmoduleUpdate() {
 
 buildNethermind() {
 	echo -e "${On_Green} Building Nethermind... ${Color_Off}"
-	dotnet build src/Nethermind/Nethermind.sln -c Release -o $HOME/$BUILD_NEW_DIR
+	cd $HOME/nethermind/src/Nethermind/Nethermind.Runner
+	dotnet build -c Release -o $HOME/$BUILD_NEW_DIR
 }
 
 replaceOldBuild() {
