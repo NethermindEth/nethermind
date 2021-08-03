@@ -33,12 +33,12 @@ VOLUME /nethermind/keystore
 
 FROM build2 AS rootless-false
 
-COPY --from=build /out .
+COPY --from=build1 /out .
 
 FROM build2 AS rootless-true
 
 RUN useradd --create-home nethermind
-COPY --from=build /out /home/nethermind
+COPY --from=build1 /out /home/nethermind
 RUN chown -R nethermind:nethermind /home/nethermind
 WORKDIR /home/nethermind
 USER nethermind
