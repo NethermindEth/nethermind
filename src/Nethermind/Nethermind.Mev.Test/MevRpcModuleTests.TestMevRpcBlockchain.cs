@@ -98,7 +98,7 @@ namespace Nethermind.Mev.Test
             {
                 MiningConfig miningConfig = new() {MinGasPrice = UInt256.One};
                 
-                MevBlockProducerEnvFactory blockProducerEnvFactory = new MevBlockProducerEnvFactory(
+                BlockProducerEnvFactory blockProducerEnvFactory = new BlockProducerEnvFactory(
                     DbProvider, 
                     BlockTree, 
                     ReadOnlyTrieStore, 
@@ -126,8 +126,7 @@ namespace Nethermind.Mev.Test
                 {
                     IManualBlockProductionTrigger trigger = new BuildBlocksWhenRequested();
                     IBlockProducer producer = CreateEth2BlockProducer(trigger, additionalTxSource);
-                    IBeneficiaryBalanceSource beneficiaryBalanceSource = blockProducerEnvFactory.LastMevBlockProcessor;
-                    return new MevBlockProducer.MevBlockProducerInfo(producer, trigger, beneficiaryBalanceSource);
+                    return new MevBlockProducer.MevBlockProducerInfo(producer, trigger, new BeneficiaryTracer());
                 }
 
                 List<MevBlockProducer.MevBlockProducerInfo> blockProducers =

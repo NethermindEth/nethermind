@@ -45,7 +45,7 @@ namespace Nethermind.Blockchain.Processing
         
             public event EventHandler<TxProcessedEventArgs>? TransactionProcessed; 
         
-            public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, IBlockTracer blockTracer, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec)
+            public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec)
             {
                 for (int i = 0; i < block.Transactions.Length; i++)
                 {

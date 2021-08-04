@@ -67,7 +67,7 @@ namespace Nethermind.Mev
             _storageProvider = storageProvider;
         }
         
-        public override TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, IBlockTracer blockTracer, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec)
+        public override TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec)
         {
             IEnumerable<Transaction> transactions = GetTransactions(block);
             LinkedHashSet<Transaction> transactionsInBlock = new(ByHashTxComparer.Instance);

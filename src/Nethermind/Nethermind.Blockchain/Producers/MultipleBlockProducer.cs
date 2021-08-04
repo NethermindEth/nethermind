@@ -97,7 +97,7 @@ namespace Nethermind.Blockchain.Producers
             for (int i = 0; i < _blockProducers.Length; i++)
             {
                 T blockProducerInfo = _blockProducers[i];
-                produceTasks[i] = blockProducerInfo.BlockProductionTrigger.BuildBlock(parentHeader, cancellationToken);
+                produceTasks[i] = blockProducerInfo.BlockProductionTrigger.BuildBlock(parentHeader, cancellationToken, blockProducerInfo.BlockTracer);
             }
            
             IEnumerable<(Block? Block, T BlockProducer)> blocksWithProducers;
