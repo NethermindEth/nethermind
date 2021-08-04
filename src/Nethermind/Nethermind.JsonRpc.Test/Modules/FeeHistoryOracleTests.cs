@@ -97,15 +97,14 @@ namespace Nethermind.JsonRpc.Test.Modules
             int blockCount = 10;
             double[] rewardPercentiles = {0, 2, 3, 5, 1};
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-            blockFinder.FindBlock(Arg.Any<long>()).Returns(Build.A.Block.TestObject);
+            blockFinder.FindBlock(BlockParameter.Latest).Returns(Build.A.Block.TestObject);
             FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockFinder: blockFinder);
-            ResultWrapper<FeeHistoryResults> expected = ResultWrapper<FeeHistoryResults>.Fail($"rewardPercentiles: Some values are below 0 or greater than 100.", 
-                                ErrorCodes.InvalidParams);
             
             ResultWrapper<FeeHistoryResults> resultWrapper =
                 feeHistoryOracle.GetFeeHistory(blockCount, BlockParameter.Latest, rewardPercentiles);
 
-            resultWrapper.Result.Should().BeEquivalentTo(expected);
+            resultWrapper.Result.Error.Should().Be("rewardPercentiles: Value at index 4: 1 is less than or equal to the value at previous index 3: 5.");
+            resultWrapper.Result.ResultType.Should().Be(ResultType.Failure);
         }
         
         [TestCase(new double[] {-1, 1, 2})]
@@ -220,11 +219,12 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             Block noTxBlock = Build.A.Block.TestObject;
-            blockFinder.FindBlock(0).Returns(noTxBlock);
-            FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle();
+            BlockParameter newestBlock = new BlockParameter((long) 0);
+            blockFinder.FindBlock(newestBlock).Returns(noTxBlock);
+            FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockFinder: blockFinder);
             double[] rewardPercentiles = Enumerable.Range(1, sizeOfRewardPercentiles).Select(x => (double) x).ToArray();
 
-            ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, new BlockParameter((long) 0), rewardPercentiles);
+            ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, newestBlock, rewardPercentiles);
             
             resultWrapper.Data.Reward.Should().BeEquivalentTo(Enumerable.Repeat(0, sizeOfRewardPercentiles));
         }
