@@ -70,7 +70,7 @@ namespace Nethermind.AccountAbstraction.Source
             _userOperationSortedPool.Inserted += UserOperationInserted;
             _userOperationSortedPool.Removed += UserOperationRemoved;
         }
-
+        
         private void UserOperationInserted(object? sender, SortedPool<UserOperation, UserOperation, Address>.SortedPoolEventArgs e)
         {
             UserOperation userOperation = e.Key;

@@ -130,17 +130,58 @@ namespace Nethermind.AccountAbstraction.Test
             simulatedUserOperations.Keys.Should().BeEquivalentTo(op2);
         }
 
-        // add testcases here
-        [TestCase(null)]
+        private static IEnumerable<UserOperation> BadOperations
+        {
+            get
+            {
+                // if callGas < Gas Cost of Transaction
+                yield return new UserOperation(Address.SystemUser,
+                    Address.SystemUser,
+                    19_000,
+                    20_000,
+                    20,
+                    Address.Zero.Bytes,
+                    new Signature(0, 1, 1000),
+                    new AccessList(null));
+                // if target does not exist
+                yield return new UserOperation(Address.Zero,
+                    Address.SystemUser,
+                    25_000,
+                    20_000,
+                    20,
+                    Address.Zero.Bytes,
+                    new Signature(0, 1, 1000),
+                    new AccessList(null));
+                // if target is not a contract
+                yield return new UserOperation(new Address(new Keccak("0x373f2D08b1C195fF08B9AbEdE3C78575FAAC2aCf")),
+                    Address.SystemUser,
+                    25_000,
+                    20_000,
+                    20,
+                    Address.Zero.Bytes,
+                    new Signature(0, 1, 1000),
+                    new AccessList(null));
+                // if paymaster is not a contract
+                yield return new UserOperation(Address.SystemUser,
+                    new Address(new Keccak("0x373f2D08b1C195fF08B9AbEdE3C78575FAAC2aCf")),
+                    25_000,
+                    20_000,
+                    20,
+                    Address.Zero.Bytes,
+                    new Signature(0, 1, 1000),
+                    new AccessList(null));
+            }
+        }
+        
+        // currently failing: issue with Keccak
+        [TestCaseSource(nameof(BadOperations))]
         public void Does_not_accept_obviously_bad_user_operations_into_pool(UserOperation userOperation)
         {
-            
-        }
+            var (userOperationPool, _, _) = GenerateUserOperationPool(1);
 
-        [Test]
-        public void Deletes_simulated_op_if_op_gets_evicted_from_pool()
-        {
-            
+            userOperationPool.AddUserOperation(userOperation);
+            UserOperation[] userOperations = userOperationPool.GetUserOperations().ToArray();
+            userOperations.Length.Should().Be(0);
         }
 
         [Test]
@@ -161,16 +202,67 @@ namespace Nethermind.AccountAbstraction.Test
             
         }
         
+        // currently failing
         [Test]
         public void Deletes_op_if_resimulated_too_many_times()
         {
+            var (userOperationPool, simulator, simulatedUserOperations) = GenerateUserOperationPool(10);
+            UserOperation op = new UserOperation(Address.SystemUser,
+                Address.SystemUser, 
+                25_000,
+                20_000,
+                20,
+                Address.Zero.Bytes,
+                new Signature(0, 1, 1000),
+                new AccessList(null));
+
+            userOperationPool.AddUserOperation(op);
             
+            for (int i = 0; i < 7; i++) 
+            {
+                simulator.Received()
+                    .Simulate(op, Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>(), Arg.Any<UInt256>());
+            }
+            
+            UserOperation[] userOperations = userOperationPool.GetUserOperations().ToArray();
+            userOperations.Length.Should().Be(0);
+            Console.WriteLine(op.ResimulationCounter);
         }
 
+        // currently failing
         [Test]
         public void Bans_paymaster_if_it_uses_too_much_gas_for_simulation_too_many_times()
         {
+            var (userOperationPool, simulator, simulatedUserOperations) = GenerateUserOperationPool(10);
+            UserOperation op = new UserOperation(Address.SystemUser,
+                Address.SystemUser, 
+                25_000,
+                20_000,
+                20,
+                Address.Zero.Bytes,
+                new Signature(0, 1, 1000),
+                new AccessList(null));
+
+            userOperationPool.AddUserOperation(op);
             
+            for (int i = 0; i < 7; i++) 
+            {
+                simulator.Received()
+                    .Simulate(op, Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>(), Arg.Any<UInt256>());
+            }
+            
+            UserOperation op2 = new UserOperation(Address.SystemUser,
+                Address.SystemUser, 
+                25_000,
+                20_000,
+                20,
+                Address.Zero.Bytes,
+                new Signature(0, 1, 1000),
+                new AccessList(null));
+            
+            userOperationPool.AddUserOperation(op2);
+            UserOperation[] userOperations = userOperationPool.GetUserOperations().ToArray();
+            userOperations.Length.Should().Be(0);
         }
 
         private (UserOperationPool, IUserOperationSimulator, ConcurrentDictionary<UserOperation, SimulatedUserOperation>) GenerateUserOperationPool(int capacity = 10)
