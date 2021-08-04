@@ -154,12 +154,13 @@ namespace Nethermind.AccountAbstraction.Source
 
         private bool ValidateUserOperation(UserOperation userOperation, out SimulatedUserOperation simulatedUserOperation)
         {
-            if (userOperation.GasPrice < _accountAbstractionConfig.MinimumGasPrice)
+            if (userOperation.GasPrice < _accountAbstractionConfig.MinimumGasPrice 
+                || userOperation.CallGas < Transaction.BaseTxGasCost)
             {
                 simulatedUserOperation = SimulatedUserOperation.FailedSimulatedUserOperation(userOperation);
                 return false;
             }
-            
+
             // make sure target account exists
             if (
                 userOperation.Target == Address.Zero
