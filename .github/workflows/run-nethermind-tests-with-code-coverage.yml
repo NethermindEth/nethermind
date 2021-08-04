@@ -156,9 +156,9 @@ jobs:
     - name: Nethermind.DataMarketplace.Subprotocols.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.DataMarketplace.Subprotocols.Test
-    - name: Nethermind.DataMarketplace.Sockets.Test
+    - name: Nethermind.DataMarketplace.WebSockets.Test
       run: |
-        dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.DataMarketplace.Sockets.Test
+        dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.DataMarketplace.WebSockets.Test
     - name: MathGmp.Native
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Math.Gmp.Native/MathGmp.Native.UnitTests                
