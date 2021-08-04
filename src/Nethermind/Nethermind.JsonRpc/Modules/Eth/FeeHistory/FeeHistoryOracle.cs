@@ -81,6 +81,10 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
 
             private List<UInt256>? CalculateRewardsPercentiles(Block block, double[] rewardPercentiles)
             {
+                if (block.Transactions.Length == 0)
+                {
+                    return Enumerable.Repeat(UInt256.Zero, rewardPercentiles.Length).ToList();
+                }
                 var rewardsInBlock = GetRewardsInBlock(block);
                 return rewardsInBlock is null ? null : CalculatePercentileValues(block, rewardPercentiles, rewardsInBlock);
             }

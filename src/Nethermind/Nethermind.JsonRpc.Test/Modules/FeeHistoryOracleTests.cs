@@ -196,20 +196,21 @@ namespace Nethermind.JsonRpc.Test.Modules
             resultWrapper.Data.Reward.Should().BeNull();
         }
         
-        [TestCase(5)]
-        [TestCase(7)]
-        public void GetFeeHistory_NoTxsInBlock_ReturnsArrayOfZerosAsBigAsRewardPercentiles(int sizeOfRewardPercentiles)
+        [TestCase(5, new ulong[]{0,0,0,0,0})]
+        [TestCase(7, new ulong[]{0,0,0,0,0,0,0})]
+        public void GetFeeHistory_NoTxsInBlock_ReturnsArrayOfZerosAsBigAsRewardPercentiles(int sizeOfRewardPercentiles, ulong[] expectedRewards)
         {
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             Block noTxBlock = Build.A.Block.TestObject;
-            BlockParameter newestBlock = new BlockParameter((long) 0);
+            BlockParameter newestBlock = new((long) 0);
             blockFinder.FindBlock(newestBlock).Returns(noTxBlock);
             FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockFinder: blockFinder);
             double[] rewardPercentiles = Enumerable.Range(1, sizeOfRewardPercentiles).Select(x => (double) x).ToArray();
 
             ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, newestBlock, rewardPercentiles);
-            
-            resultWrapper.Data.Reward.Should().BeEquivalentTo(Enumerable.Repeat(0, sizeOfRewardPercentiles));
+
+            UInt256[] expectedRewardsUInt256 = expectedRewards.Select(x => (UInt256)x).ToArray();
+            resultWrapper.Data.Reward![0].Should().BeEquivalentTo(expectedRewardsUInt256);
         }
         
         
@@ -323,22 +324,22 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void GetFeeHistory_ResultsSortedInOrderOfAscendingBlockNumber()
         {
             Transaction txFirstBlock = Build.A.Transaction.WithGasPrice(3).WithMaxPriorityFeePerGas(2).TestObject; //Reward: Min (3 - 2, 2) => 1 
-            Transaction txSecondBlock = Build.A.Transaction.WithGasPrice(2).WithMaxPriorityFeePerGas(3).TestObject; //BaseFee > FeeCap => 0
-            Block firstBlock = Build.A.Block.Genesis.WithBaseFeePerGas(2).WithGasUsed(2).WithGasLimit(5).WithTransactions(txFirstBlock).TestObject;
-            Block secondBlock = Build.A.Block.Genesis.WithBaseFeePerGas(3).WithGasUsed(4).WithGasLimit(8).WithTransactions(txSecondBlock).TestObject;
+            Transaction txSecondBlock = Build.A.Transaction.WithGasPrice(2).WithMaxPriorityFeePerGas(3).TestObject; //Reward: BaseFee > FeeCap => 0
+            Block firstBlock = Build.A.Block.Genesis.WithBaseFeePerGas(2).WithGasUsed(3).WithGasLimit(5).WithTransactions(txFirstBlock).TestObject;
+            Block secondBlock = Build.A.Block.Genesis.WithBaseFeePerGas(3).WithGasUsed(2).WithGasLimit(8).WithTransactions(txSecondBlock).TestObject;
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-            BlockParameter lastBlockParameter = new BlockParameter(1);
-            blockFinder.FindBlock(lastBlockParameter).Returns(secondBlock);
+            BlockParameter newestBlockParameter = new(1);
+            blockFinder.FindBlock(newestBlockParameter).Returns(secondBlock);
             blockFinder.FindParent(secondBlock, BlockTreeLookupOptions.RequireCanonical).Returns(firstBlock);
 
-            IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
-            receiptFinder.Get(firstBlock).Returns(new TxReceipt[] {new() {GasUsed = 3}});
-            receiptFinder.Get(secondBlock).Returns(new TxReceipt[] {new() {GasUsed = 2}});
-            FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockFinder: blockFinder);
+            IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
+            receiptStorage.Get(firstBlock).Returns(new TxReceipt[] {new() {GasUsed = 3}});
+            receiptStorage.Get(secondBlock).Returns(new TxReceipt[] {new() {GasUsed = 2}});
+            FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockFinder: blockFinder, receiptStorage: receiptStorage);
             double[] rewardPercentiles = {0};
-            FeeHistoryResults expected = new FeeHistoryResults(0, new UInt256[]{5,6}, new double[]{0.4, 0.5}, new UInt256[][]{new UInt256[]{1}, new UInt256[]{0}});
+            FeeHistoryResults expected = new(0, new UInt256[]{2,3,3}, new double[]{0.6, 0.25}, new UInt256[][]{new UInt256[]{1}, new UInt256[]{0}});
             
-            ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(2, lastBlockParameter, rewardPercentiles);
+            ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(2, newestBlockParameter, rewardPercentiles);
             
             resultWrapper.Data.Should().BeEquivalentTo(expected);
         }
