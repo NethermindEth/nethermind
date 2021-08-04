@@ -565,6 +565,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         }
         
         [Test]
+        [Ignore("This test is flaky on CI. It could be connected with timeouts in block production.")]
         public async Task Eth_getTransactionReceipt_return_info_about_mined_1559tx()
         {
             using Context ctx = await Context.CreateWithLondonEnabled();
@@ -578,6 +579,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         }
         
         [Test]
+        [Ignore("This test is flaky on CI. It could be connected with timeouts in block production.")]
         public async Task Eth_getTransactionByHash_return_info_about_mined_1559tx()
         {
             using Context ctx = await Context.CreateWithLondonEnabled();
