@@ -50,7 +50,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                     return initialCheckResult;
                 }
 
-                long oldestBlock = block!.Number;
+                long newestBlockNumber = block!.Number;
                 Stack<UInt256> baseFeePerGas = new(blockCount + 1);
                 baseFeePerGas.Push(BaseFeeCalculator.Calculate(block!.Header, _specProvider.GetSpec(block!.Number + 1)));
                 Stack<double> gasUsedRatio = new Stack<double>(blockCount);
@@ -59,7 +59,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
 
                 while (block is not null && blockCount > 0)
                 {
-                    oldestBlock = block.Number;
+                    newestBlockNumber = block.Number;
                     baseFeePerGas.Push(block.BaseFeePerGas);
                     gasUsedRatio.Push(Math.Round(block.GasUsed / (double) block.GasLimit, 2));
                     if (rewards is not null)
@@ -75,7 +75,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                     block = _blockFinder.FindParent(block, BlockTreeLookupOptions.RequireCanonical);
                 }
 
-                FeeHistoryResults feeHistoryResults = new(oldestBlock, baseFeePerGas.ToArray(), gasUsedRatio.ToArray(), rewards?.ToArray());
+                FeeHistoryResults feeHistoryResults = new(newestBlockNumber, baseFeePerGas.ToArray(), gasUsedRatio.ToArray(), rewards?.ToArray());
                 return ResultWrapper<FeeHistoryResults>.Success(feeHistoryResults);                
             }
 

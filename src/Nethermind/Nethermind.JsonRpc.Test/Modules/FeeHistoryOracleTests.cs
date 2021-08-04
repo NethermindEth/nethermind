@@ -323,10 +323,10 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void GetFeeHistory_ResultsSortedInOrderOfAscendingBlockNumber()
         {
-            Transaction txFirstBlock = Build.A.Transaction.WithGasPrice(3).WithMaxPriorityFeePerGas(2).TestObject; //Reward: Min (3 - 2, 2) => 1 
-            Transaction txSecondBlock = Build.A.Transaction.WithGasPrice(2).WithMaxPriorityFeePerGas(3).TestObject; //Reward: BaseFee > FeeCap => 0
+            Transaction txFirstBlock = Build.A.Transaction.WithGasPrice(3).TestObject; //Reward: Min (3, 3-2) => 1 
+            Transaction txSecondBlock = Build.A.Transaction.WithGasPrice(2).TestObject; //Reward: BaseFee > FeeCap => 0
             Block firstBlock = Build.A.Block.Genesis.WithBaseFeePerGas(2).WithGasUsed(3).WithGasLimit(5).WithTransactions(txFirstBlock).TestObject;
-            Block secondBlock = Build.A.Block.Genesis.WithBaseFeePerGas(3).WithGasUsed(2).WithGasLimit(8).WithTransactions(txSecondBlock).TestObject;
+            Block secondBlock = Build.A.Block.WithNumber(1).WithBaseFeePerGas(3).WithGasUsed(2).WithGasLimit(8).WithTransactions(txSecondBlock).TestObject;
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             BlockParameter newestBlockParameter = new(1);
             blockFinder.FindBlock(newestBlockParameter).Returns(secondBlock);
