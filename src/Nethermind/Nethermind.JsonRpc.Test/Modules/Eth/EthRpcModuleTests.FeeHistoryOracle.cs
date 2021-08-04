@@ -16,6 +16,8 @@
 // 
 
 #nullable enable
+using System;
+using System.Linq;
 using FluentAssertions;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -35,6 +37,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
     public partial class EthRpcModuleTests
     {
         //Todo do a test about greater than 1024 blocks?
+        //Todo a test for if pendingblock less than blockNumber?
         [Test]
         public void GetFeeHistory_NewestBlockIsNull_ReturnsFailingWrapper()
         {
@@ -190,22 +193,46 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             resultWrapper.Data.GasUsedRatio![0].Should().Be(expectedGasUsedRatio);
         }
         
-        [TestCase(null, false)]
-        [TestCase(new double[]{}, false)]
-        public void ProcessBlock_IfRewardPercentilesIsNullOrEmpty_EarlyReturn(double[]? rewardPercentiles, bool expected)
+        [TestCase(null)]
+        [TestCase(new double[]{})]
+        public void GetFeeHistory_IfRewardPercentilesIsNullOrEmpty_RewardsIsNull(double[]? rewardPercentiles)
         {
-            ILogger logger = Substitute.For<ILogger>();
-            IBlockchainBridge blockchainBridge = Substitute.For<IBlockchainBridge>();
-            TestableProcessBlockManager testableProcessBlockManager = new(logger, blockchainBridge, overrideInitializeBlockFeeInfo: true, 
-                overrideGetArrayOfRewards: true);
-            BlockFeeInfo blockFeeInfo = new() {Block = Build.A.Block.TestObject};
+            FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle();
 
-            testableProcessBlockManager.ArgumentErrorsExistResult.Should().BeNull();
-            testableProcessBlockManager.ProcessBlock(ref blockFeeInfo, rewardPercentiles);
+            ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, new BlockParameter(), rewardPercentiles);
 
-            testableProcessBlockManager.ArgumentErrorsExistResult.Should().BeTrue();
+            resultWrapper.Data.Reward.Should().BeNull();
         }
         
+        [TestCase(5)]
+        [TestCase(7)]
+        public void GetFeeHistory_NoTxsInBlock_ReturnsArrayOfZerosAsBigAsRewardPercentiles(int sizeOfRewardPercentiles)
+        {
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            Block noTxBlock = Build.A.Block.TestObject;
+            blockFinder.FindBlock(0).Returns(noTxBlock);
+            FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle();
+            double[] rewardPercentiles = Enumerable.Range(1, sizeOfRewardPercentiles).Select(x => (double) x).ToArray();
+
+            ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, new BlockParameter((long) 0), rewardPercentiles);
+            
+            resultWrapper.Data.Reward.Should().BeEquivalentTo(Enumerable.Repeat(0, sizeOfRewardPercentiles));
+        }
+        
+        
+        [TestCase(5,10,6)]
+        [TestCase(23, 50, 28)]
+        [TestCase(5, 3, 0)]
+        public void GetFeeHistory_GivenValidInputs_FirstBlockNumberCalculatedCorrectly(int blockCount, long newestBlockNumber, long expectedOldestBlockNumber)
+        {
+            FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle();
+            
+            ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(blockCount, new BlockParameter(newestBlockNumber), null);
+
+            resultWrapper.Data.OldestBlock.Should().Be(expectedOldestBlockNumber);
+        }
+
+
         private static FeeHistoryOracle GetSubstitutedFeeHistoryOracle(
             IBlockFinder? blockFinder = null, 
             IReceiptStorage? receiptStorage = null,

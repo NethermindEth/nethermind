@@ -54,14 +54,14 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                 baseFeePerGas.Push(BaseFeeCalculator.Calculate(block!.Header, _specProvider.GetSpec(block!.Number + 1)));
                 Stack<double> gasUsedRatio = new Stack<double>(blockCount);
                 
-                Stack<UInt256[]>? rewards = rewardPercentiles is null ? null : new Stack<UInt256[]>(blockCount);
+                Stack<UInt256[]>? rewards = rewardPercentiles is null || rewardPercentiles.Any() is false ? null : new Stack<UInt256[]>(blockCount);
 
                 while (block is not null && blockCount > 0)
                 {
                     oldestBlock = block.Number;
                     baseFeePerGas.Push(block.BaseFeePerGas);
                     gasUsedRatio.Push(block.GasUsed / (double) block.GasLimit);
-                    if (rewards is not null && rewards.Any())
+                    if (rewards is not null)
                     {
                         List<UInt256> rewardsInBlock = CalculateRewardsPercentiles(block, rewardPercentiles);
                         if (rewardsInBlock is not null)
@@ -87,12 +87,6 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             private List<(long GasUsed, UInt256 PremiumPerGas)>? GetRewardsInBlock(Block block)
             {
                 TxReceipt[]? receipts = _receiptStorage.Get(block);
-
-                if (receipts is null)
-                {
-                    return null;
-                }
-
                 Transaction[] txs = block.Transactions;
                 List<(long GasUsed, UInt256 PremiumPerGas)> valueTuples = new(txs.Length);
                 for (int i = 0; i < txs.Length; i++)
@@ -161,7 +155,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                         else if (currentPercentile <= previousPercentile)
                         {
                             return ResultWrapper<FeeHistoryResults>.Fail(
-                                $"rewardPercentiles: Value at index {i}: {currentPercentile} is less than the value at previous index {i - 1}: {rewardPercentiles[i - 1]}.", 
+                                $"rewardPercentiles: Value at index {i}: {currentPercentile} is less than or equal to the value at previous index {i - 1}: {rewardPercentiles[i - 1]}.", 
                                 ErrorCodes.InvalidParams);
                         }
                         else
