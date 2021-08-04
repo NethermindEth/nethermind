@@ -5,10 +5,13 @@ using System.Net.WebSockets;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 using NSubstitute;
 using NUnit.Framework;
+using NUnit.Framework.Constraints;
 
-namespace Nethermind.WebSockets.Test
+namespace Nethermind.Sockets.Test
 {
     public class WebSocketExtensionsTests
     {
@@ -88,12 +91,12 @@ namespace Nethermind.WebSockets.Test
             receiveResult.Enqueue(new WebSocketReceiveResult(4096, WebSocketMessageType.Text, false));
             receiveResult.Enqueue(new WebSocketReceiveResult(1024, WebSocketMessageType.Text, true));
             receiveResult.Enqueue(new WebSocketReceiveResult(0, WebSocketMessageType.Close, true));
-            WebSocketMock mock = new WebSocketMock(receiveResult);
+            WebSocketMock mock = new (receiveResult);
 
-            IWebSocketsClient webSocketsClient = Substitute.For<IWebSocketsClient>();
+            SocketClient webSocketsClient = Substitute.ForPartsOf<SocketClient>("TestClient", new WebSocketHandler(mock, Substitute.For<ILogManager>()), Substitute.For<IJsonSerializer>());
 
-            await mock.ReceiveAsync(webSocketsClient);
-            await webSocketsClient.Received().ReceiveAsync(Arg.Is<Memory<byte>>(ba => ba.Length == 2 * 4096 + 1024));
+            await webSocketsClient.ReceiveAsync();
+            await webSocketsClient.Received().ProcessAsync(Arg.Is<Memory<byte>>(ba => ba.Length == 2 * 4096 + 1024));
         }
 
         [Test]
@@ -107,11 +110,11 @@ namespace Nethermind.WebSockets.Test
 
             receiveResult.Enqueue(new WebSocketReceiveResult(0, WebSocketMessageType.Close, true));
 
-            WebSocketMock mock = new WebSocketMock(receiveResult);
-            IWebSocketsClient webSocketsClient = Substitute.For<IWebSocketsClient>();
+            WebSocketMock mock = new (receiveResult);
+            SocketClient webSocketsClient = Substitute.ForPartsOf<SocketClient>("TestClient", new WebSocketHandler(mock, Substitute.For<ILogManager>()), Substitute.For<IJsonSerializer>());
 
-            await mock.ReceiveAsync(webSocketsClient);
-            await webSocketsClient.Received(1000).ReceiveAsync(Arg.Is<Memory<byte>>(ba => ba.Length == 1234));
+            await webSocketsClient.ReceiveAsync();
+            await webSocketsClient.Received(1000).ProcessAsync(Arg.Is<Memory<byte>>(ba => ba.Length == 1234));
         }
 
         [Test]
@@ -125,12 +128,12 @@ namespace Nethermind.WebSockets.Test
 
             receiveResult.Enqueue(new WebSocketReceiveResult(1, WebSocketMessageType.Text, true));
             receiveResult.Enqueue(new WebSocketReceiveResult(0, WebSocketMessageType.Close, true));
-            WebSocketMock mock = new WebSocketMock(receiveResult);
+            WebSocketMock mock = new (receiveResult);
 
-            IWebSocketsClient webSocketsClient = Substitute.For<IWebSocketsClient>();
+            SocketClient webSocketsClient = Substitute.ForPartsOf<SocketClient>("TestClient", new WebSocketHandler(mock, Substitute.For<ILogManager>()), Substitute.For<IJsonSerializer>());
 
-            await mock.ReceiveAsync(webSocketsClient);
-            await webSocketsClient.Received().ReceiveAsync(Arg.Is<Memory<byte>>(ba => ba.Length == 6 * 2000 + 1));
+            await webSocketsClient.ReceiveAsync();
+            await webSocketsClient.Received().ProcessAsync(Arg.Is<Memory<byte>>(ba => ba.Length == 6 * 2000 + 1));
         }
 
         [Test]
@@ -144,12 +147,12 @@ namespace Nethermind.WebSockets.Test
 
             receiveResult.Enqueue(new WebSocketReceiveResult(1, WebSocketMessageType.Text, true));
             receiveResult.Enqueue(new WebSocketReceiveResult(0, WebSocketMessageType.Close, true));
-            WebSocketMock mock = new WebSocketMock(receiveResult);
+            WebSocketMock mock = new (receiveResult);
 
-            IWebSocketsClient webSocketsClient = Substitute.For<IWebSocketsClient>();
-            
-            Assert.ThrowsAsync<InvalidOperationException>(async () => await mock.ReceiveAsync(webSocketsClient));
-            await webSocketsClient.DidNotReceive().ReceiveAsync(Arg.Any<Memory<byte>>());
+            SocketClient webSocketsClient = Substitute.ForPartsOf<SocketClient>("TestClient", new WebSocketHandler(mock, Substitute.For<ILogManager>()), Substitute.For<IJsonSerializer>());
+
+            Assert.ThrowsAsync<InvalidOperationException>(async () => await webSocketsClient.ReceiveAsync());
+            await webSocketsClient.DidNotReceive().ProcessAsync(Arg.Any<Memory<byte>>());
         }
         
         [Test, Timeout(5000)]
@@ -157,12 +160,12 @@ namespace Nethermind.WebSockets.Test
         {
             Queue<WebSocketReceiveResult> receiveResult = new Queue<WebSocketReceiveResult>();
             receiveResult.Enqueue(new WebSocketReceiveResult(1, WebSocketMessageType.Text, true));
-            WebSocketMock mock = new WebSocketMock(receiveResult);
+            WebSocketMock mock = new (receiveResult);
             mock.ReturnTaskWithFaultOnEmptyQueue = true;
 
-            IWebSocketsClient webSocketsClient = Substitute.For<IWebSocketsClient>();
-            
-            await mock.ReceiveAsync(webSocketsClient);
+            SocketClient webSocketsClient = Substitute.ForPartsOf<SocketClient>("TestClient", new WebSocketHandler(mock, Substitute.For<ILogManager>()), Substitute.For<IJsonSerializer>());
+
+            await webSocketsClient.ReceiveAsync();
         }
     }
 }

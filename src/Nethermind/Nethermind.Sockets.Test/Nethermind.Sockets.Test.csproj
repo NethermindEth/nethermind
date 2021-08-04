@@ -18,7 +18,8 @@
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\Nethermind.WebSockets\Nethermind.WebSockets.csproj" />
+      <ProjectReference Include="..\Nethermind.Sockets\Nethermind.Sockets.csproj" />
+      <ProjectReference Include="..\Nethermind.WebSockets\Nethermind.Sockets.csproj" />
     </ItemGroup>
 
 </Project>

@@ -3,7 +3,7 @@ using Nethermind.Blockchain.Processing;
 using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.State;
-using Nethermind.WebSockets;
+using Nethermind.Sockets;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Updaters
 {
@@ -48,7 +48,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Updaters
             }
 
             _balance = balanceOnNewBlock;
-            await _webSocketsModule.SendAsync(new WebSocketsMessage("update-balance", "", _balance));
+            await _webSocketsModule.SendAsync(new SocketsMessage("update-balance", "", _balance));
         }
             
         private async void UpdateColdWalletBalance(object? sender, BlockProcessedEventArgs? args)
@@ -61,7 +61,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Updaters
             }
 
             _coldBalance = balanceOnNewBlock;
-            await _webSocketsModule.SendAsync(new WebSocketsMessage("update-cold-balance", "", _coldBalance));
+            await _webSocketsModule.SendAsync(new SocketsMessage("update-cold-balance", "", _coldBalance));
         }
 
         private async void UpdateAccountNonce(object? sender, BlockProcessedEventArgs? args)
@@ -74,7 +74,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Updaters
             }
 
             _nonce = nonceOnNewBlock;
-            await _webSocketsModule.SendAsync(new WebSocketsMessage("update-nonce", "", _nonce));
+            await _webSocketsModule.SendAsync(new SocketsMessage("update-nonce", "", _nonce));
         }
 
         private async void UpdateColdWalletNonce(object? sender, BlockProcessedEventArgs? args)
@@ -87,7 +87,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Updaters
             }
 
             _coldNonce = nonceOnNewBlock;
-            await _webSocketsModule.SendAsync(new WebSocketsMessage("update-cold-nonce", "", _coldNonce));
+            await _webSocketsModule.SendAsync(new SocketsMessage("update-cold-nonce", "", _coldNonce));
         }
     }
 }
