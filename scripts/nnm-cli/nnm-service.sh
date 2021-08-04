@@ -6,7 +6,6 @@ RPC_PORT=8545
 BUILD_DIR="build"
 BUILD_NEW_DIR="build_new"
 NETHERMIND_DIR="nethermind"
-NETHERMIND_LOGS_PATH="$HOME/data/logs/*.logs.txt"
 
 mkdir -p $WORKDIR/.nnm/logs
 
@@ -127,7 +126,7 @@ up() {
 # Start of tail
 tailLogs() {
   cli_log "Getting live logs from nethermind.service..."
-  tail -f $NETHERMIND_LOGS_PATH
+  sudo journalctl -u nethermind -f
 }
 # End of tail
 
