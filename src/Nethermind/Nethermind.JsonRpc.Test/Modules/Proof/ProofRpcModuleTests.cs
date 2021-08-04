@@ -69,7 +69,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
         public async Task Setup()
         {
             InMemoryReceiptStorage receiptStorage = new InMemoryReceiptStorage();
-            _specProvider = new TestSpecProvider(Homestead.Instance);
+            _specProvider = new TestSpecProvider(London.Instance);
             _blockTree = Build.A.BlockTree().WithTransactions(receiptStorage, _specProvider).OfChainLength(10).TestObject;
             _dbProvider = await TestMemDbProvider.InitAsync();
 
