@@ -147,6 +147,12 @@ namespace Nethermind.JsonRpc.Test.Modules
                 {
                     transactions.Add(Build.A.Transaction.WithNonce((UInt256)j).SignedAndResolved().TestObject);
                 }
+
+                if (i == 8)
+                {
+                    transactions.Add(Build.A.Transaction.WithNonce((UInt256)i + 1).WithTo(TestItem.AddressA).SignedAndResolved().TestObject);
+                    
+                }
                 
                 BlockBuilder builder = Build.A.Block.WithNumber(i).WithParent(previousBlock).WithTransactions(transactions.ToArray()).WithStateRoot(new Keccak("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"));
                 if (auRa)
@@ -191,12 +197,9 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void Trace_filter_skip_expected_number_of_traces()
         {
-            var traceFilterRequest = new TraceFilterForRpc();
-            var traces = _traceRpcModule.trace_filter(traceFilterRequest);
-            Assert.AreEqual(9, traces.Data.Length);
-            var secondRequest = new TraceFilterForRpc();
-            secondRequest.After = 3;
-            var secondTraces = _traceRpcModule.trace_filter(traceFilterRequest);
+            var traceRequest = new TraceFilterForRpc();
+            traceRequest.After = 3;
+            var secondTraces = _traceRpcModule.trace_filter(traceRequest);
             Assert.AreEqual(6, secondTraces.Data.Length);
         }
         
