@@ -60,7 +60,17 @@ namespace Nethermind.Evm.TransactionProcessing
             /// <summary>
             /// Commit and later restore state, use for CallAndRestore
             /// </summary>
-            CommitAndRestore = Commit | Restore
+            CommitAndRestore = Commit | Restore,
+            
+            /// <summary>
+            /// Zero Gas price
+            /// </summary>
+            ZeroGasPrice = 4,
+            
+            /// <summary>
+            /// Commit and restore with zero gas price
+            /// </summary>
+            CommitAndRestoreWithZeroGasPrice = CommitAndRestore | ZeroGasPrice 
         }
 
         public TransactionProcessor(
@@ -80,7 +90,17 @@ namespace Nethermind.Evm.TransactionProcessing
 
         public void CallAndRestore(Transaction transaction, BlockHeader block, ITxTracer txTracer)
         {
-            Execute(transaction, block, txTracer, ExecutionOptions.CommitAndRestore);
+            IReleaseSpec spec = _specProvider.GetSpec(block.Number);
+            spec = new SystemTransactionReleaseSpec(spec);
+            
+            bool isZeroGasPrice = spec.IsEip1559Enabled
+                ? (transaction.IsEip1559
+                    ? (transaction.MaxFeePerGas.IsZero && transaction.MaxPriorityFeePerGas.IsZero)
+                    : transaction.GasPrice.IsZero)
+                : transaction.GasPrice.IsZero;
+
+            Execute(transaction, block, txTracer,
+                isZeroGasPrice ? ExecutionOptions.CommitAndRestoreWithZeroGasPrice : ExecutionOptions.CommitAndRestore);
         }
 
         public void BuildUp(Transaction transaction, BlockHeader block, ITxTracer txTracer)
@@ -134,9 +154,8 @@ namespace Nethermind.Evm.TransactionProcessing
             //!commit - is for build up during block production, we won't commit state after each transaction to support rollbacks
             //we commit only after all block is constructed
 
-            // commitAndRestore - is for transactions that will not be sent to the network
-            // TODO should I add eip658NotEnabled
-            bool commitAndRestore = (executionOptions & ExecutionOptions.CommitAndRestore) != ExecutionOptions.None;
+            // commitAndRestoreWithoutZeroGasPrice is CallAndRestore without a zero gas price
+            bool isCommitAndRestoreWithoutZeroGasPrice = commit && restore && ((executionOptions & ExecutionOptions.ZeroGasPrice) == ExecutionOptions.None);
             
             bool notSystemTransaction = !transaction.IsSystem();
             bool deleteCallerAccount = false;
@@ -148,14 +167,6 @@ namespace Nethermind.Evm.TransactionProcessing
             }
             
             UInt256 value = transaction.Value;
-
-            bool isZeroGasPrice = spec.IsEip1559Enabled
-                ? (transaction.IsEip1559
-                    ? (transaction.MaxFeePerGas.IsZero && transaction.MaxPriorityFeePerGas.IsZero)
-                    : transaction.GasPrice.IsZero)
-                : transaction.GasPrice.IsZero;
-            
-            bool isCommitAndRestoreWithoutZeroGasPrice = commitAndRestore && !isZeroGasPrice; 
 
             if (isCommitAndRestoreWithoutZeroGasPrice && transaction.MaxPriorityFeePerGas > transaction.MaxFeePerGas) 
             { 
@@ -226,7 +237,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     TraceLogInvalidTx(transaction, $"SENDER_ACCOUNT_DOES_NOT_EXIST {caller}");
                     if (!commit || restore || gasPrice == UInt256.Zero)
                     {
-                        deleteCallerAccount = !commit || restore;
+                        deleteCallerAccount = !commit || restore; //true
                         _stateProvider.CreateAccount(caller, UInt256.Zero);
                     }
                 }
