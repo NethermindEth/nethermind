@@ -72,7 +72,7 @@ namespace Nethermind.Blockchain
             _logManager = logManager;
         }
         
-        public BlockProducerEnv Create(ITxSource? txSource = null)
+        public BlockProducerEnv Create(ITxSource? additionalTxSource = null)
         {
             ReadOnlyDbProvider readOnlyDbProvider = _dbProvider.AsReadOnly(false);
             ReadOnlyBlockTree readOnlyBlockTree = _blockTree.AsReadOnly();
@@ -106,13 +106,13 @@ namespace Nethermind.Blockchain
             {
                 ChainProcessor = chainProcessor,
                 ReadOnlyStateProvider = txProcessingEnv.StateProvider,
-                TxSource = GetTxSource(txSource, txProcessingEnv, _txPool, _miningConfig, transactionComparerProvider, _logManager),
+                TxSource = GetTxSource(additionalTxSource, txProcessingEnv, _txPool, _miningConfig, transactionComparerProvider, _logManager),
                 ReadOnlyTxProcessingEnv = txProcessingEnv
             };
         }
         
         protected virtual ITxSource GetTxSource(
-            ITxSource? txSource, 
+            ITxSource? additionalTxSource, 
             ReadOnlyTxProcessingEnv txProcessingEnv, 
             ITxPool txPool, 
             IMiningConfig miningConfig,
@@ -120,9 +120,7 @@ namespace Nethermind.Blockchain
             ILogManager logManager)
         {
             ITxSource txSourceForProducer = CreateTxSourceForProducer(txProcessingEnv, txPool, miningConfig, transactionComparerProvider, logManager);
-            return txSource is null 
-                ? txSourceForProducer 
-                : new CompositeTxSource(txSource, txSourceForProducer);
+            return additionalTxSource.Then(txSourceForProducer); 
         }
 
         protected virtual ITxSource CreateTxSourceForProducer(
