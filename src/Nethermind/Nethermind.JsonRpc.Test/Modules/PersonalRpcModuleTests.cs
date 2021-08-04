@@ -29,7 +29,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 {
     [Parallelizable(ParallelScope.None)]
     [TestFixture]
-    public class PersonalModuleTests
+    public class PersonalRpcModuleTests
     {
         [SetUp]
         public void Initialize()
