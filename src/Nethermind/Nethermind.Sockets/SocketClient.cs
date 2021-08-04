@@ -2,16 +2,12 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
-using System.Net.WebSockets;
-using System.Text;
-using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 
-namespace Nethermind.WebSockets
+namespace Nethermind.Sockets
 {
-    public class SocketClientBase : ISocketsClient
+    public class SocketClient : ISocketsClient
     {
         public const int MAX_POOLED_SIZE = 1024 * 1024;
 
@@ -21,7 +17,7 @@ namespace Nethermind.WebSockets
         public string Id { get; } = Guid.NewGuid().ToString("N");
         public string ClientName { get; }
 
-        public SocketClientBase(string clientName, ISocketHandler handler, IJsonSerializer jsonSerializer)
+        public SocketClient(string clientName, ISocketHandler handler, IJsonSerializer jsonSerializer)
         {
             ClientName = clientName;
             _handler = handler;

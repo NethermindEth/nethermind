@@ -14,18 +14,20 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Net.WebSockets;
+using System;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.Http;
-using Nethermind.Logging;
 
-namespace Nethermind.WebSockets
+namespace Nethermind.Sockets
 {
-    public interface IWebSocketsModule
+    /// <summary>
+    /// Interface that defines logic (higher level operations) behind a socket communication not linked to any socket implementation like WebSockets or network sockets
+    /// The lower level communication is provided by implementing <see cref="ISocketHandler"/>.
+    /// </summary>
+    public interface ISocketsClient : IDisposable
     {
-        string Name { get; }
-        ISocketsClient CreateClient(WebSocket webSocket, string client);
-        void RemoveClient(string clientId);
+        string Id { get; }
+        string ClientName { get; }
+        Task ReceiveAsync();
         Task SendAsync(SocketsMessage message);
     }
 }

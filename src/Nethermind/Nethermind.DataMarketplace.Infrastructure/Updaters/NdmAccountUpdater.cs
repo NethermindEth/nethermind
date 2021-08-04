@@ -3,7 +3,7 @@ using Nethermind.Blockchain.Processing;
 using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.State;
-using Nethermind.WebSockets;
+using Nethermind.Sockets;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Updaters
 {

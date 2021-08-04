@@ -15,16 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Buffers;
 using System.Linq;
-using System.Net.WebSockets;
-using System.Threading;
-using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Logging;
 
-namespace Nethermind.WebSockets
+namespace Nethermind.Sockets
 {
     public static class Extensions
     {

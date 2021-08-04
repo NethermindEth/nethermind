@@ -22,7 +22,7 @@ using Microsoft.AspNetCore.Http;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
-using Nethermind.WebSockets;
+using Nethermind.Sockets;
 
 namespace Nethermind.JsonRpc.WebSockets
 {

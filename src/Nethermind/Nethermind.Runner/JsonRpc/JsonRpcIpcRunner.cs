@@ -13,7 +13,7 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.WebSockets;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
-using Nethermind.WebSockets;
+using Nethermind.Sockets;
 using Newtonsoft.Json;
 
 namespace Nethermind.Runner.JsonRpc
@@ -21,7 +21,6 @@ namespace Nethermind.Runner.JsonRpc
     public class JsonRpcIpcRunner : IDisposable
     {
         private readonly ILogger _logger;
-        private readonly ILogManager _logManager;
         private readonly IJsonRpcLocalStats _jsonRpcLocalStats;
         private readonly IJsonSerializer _jsonSerializer;
         private readonly IJsonRpcProcessor _jsonRpcProcessor;
@@ -44,7 +43,6 @@ namespace Nethermind.Runner.JsonRpc
             _jsonRpcProcessor = jsonRpcProcessor;
             _jsonRpcService = jsonRpcService;
             _logger = logManager.GetClassLogger();
-            _logManager = logManager;
             _jsonRpcLocalStats = jsonRpcLocalStats;
             _jsonSerializer = jsonSerializer;
         }
@@ -120,7 +118,7 @@ namespace Nethermind.Runner.JsonRpc
 
                 socketsClient = new JsonRpcSocketsClient(
                     string.Empty,
-                    new IpcSocketsHandler(socket, _logManager),
+                    new IpcSocketsHandler(socket),
                     RpcEndpoint.IPC,
                     _jsonRpcProcessor,
                     _jsonRpcService,

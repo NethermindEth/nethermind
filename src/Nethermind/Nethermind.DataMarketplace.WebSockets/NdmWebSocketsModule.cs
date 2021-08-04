@@ -24,7 +24,7 @@ using Nethermind.DataMarketplace.Core;
 using Nethermind.DataMarketplace.Infrastructure;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
-using Nethermind.WebSockets;
+using Nethermind.Sockets;
 
 namespace Nethermind.DataMarketplace.WebSockets
 {

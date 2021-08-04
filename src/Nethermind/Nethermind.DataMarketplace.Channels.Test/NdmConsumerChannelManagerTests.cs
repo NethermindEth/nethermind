@@ -21,7 +21,7 @@ using Nethermind.DataMarketplace.Channels.Grpc;
 using Nethermind.DataMarketplace.WebSockets;
 using Nethermind.Grpc;
 using Nethermind.Logging;
-using Nethermind.WebSockets;
+using Nethermind.Sockets;
 using NSubstitute;
 using NUnit.Framework;
 

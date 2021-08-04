@@ -22,7 +22,7 @@ using Nethermind.DataMarketplace.Channels;
 using Nethermind.DataMarketplace.Core;
 using Nethermind.DataMarketplace.Infrastructure;
 using Nethermind.Serialization.Json;
-using Nethermind.WebSockets;
+using Nethermind.Sockets;
 using NSubstitute;
 using NUnit.Framework;
 

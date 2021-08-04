@@ -1,13 +1,14 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net.Sockets;
 using System.Net.WebSockets;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Logging;
 
-namespace Nethermind.WebSockets
+namespace Nethermind.Sockets
 {
     public class WebSocketHandler : ISocketHandler
     {
@@ -42,13 +43,26 @@ namespace Nethermind.WebSockets
                 if (t.IsFaulted)
                 {
                     result = null;
-                    // Probably we shouldn't log every error. We should handle differently every exception type (for example forcefully disconnected client)
-                    _logger.Error($"Error when reading from WebSockets.", t.Exception);
+
+                    Exception innerException = t.Exception;
+                    while (innerException?.InnerException != null)
+                    {
+                        innerException = innerException.InnerException;
+                    }
+
+                    if (innerException is SocketException socketException && socketException.SocketErrorCode == SocketError.ConnectionReset)
+                    {
+                        _logger.Info("Client disconnected.");
+                    }
+                    else
+                    {
+                        _logger.Error($"Error when reading from WebSockets.", t.Exception);
+                    }
                 }
 
                 if (t.IsCompletedSuccessfully)
                 {
-                    result = new ReceiveResult()
+                    result = new WebSocketsReceiveResult()
                     {
                         Closed = t.Result.MessageType == WebSocketMessageType.Close,
                         Read = t.Result.Count,
@@ -64,7 +78,9 @@ namespace Nethermind.WebSockets
 
         public async Task CloseAsync(ReceiveResult result)
         {
-            await _webSocket.CloseAsync(result.CloseStatus ?? WebSocketCloseStatus.Empty, result.CloseStatusDescription, CancellationToken.None);
+            await _webSocket.CloseAsync((result is WebSocketsReceiveResult r && r.CloseStatus.HasValue) ? r.CloseStatus.Value : WebSocketCloseStatus.Empty, 
+                result.CloseStatusDescription, 
+                CancellationToken.None);
         }
 
         public void Dispose()

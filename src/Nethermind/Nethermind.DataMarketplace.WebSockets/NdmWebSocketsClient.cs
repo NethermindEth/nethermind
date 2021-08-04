@@ -23,11 +23,11 @@ using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Core;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.Serialization.Json;
-using Nethermind.WebSockets;
+using Nethermind.Sockets;
 
 namespace Nethermind.DataMarketplace.WebSockets
 {
-    public class NdmWebSocketsClient : SocketClientBase
+    public class NdmWebSocketsClient : SocketClient
     {
         private readonly INdmDataPublisher _dataPublisher;
 
@@ -37,22 +37,22 @@ namespace Nethermind.DataMarketplace.WebSockets
             _dataPublisher = dataPublisher;
         }
 
-        public override async Task ProcessAsync(Memory<byte> data)
+        public override Task ProcessAsync(Memory<byte> data)
         {
             if (data.Length == 0)
             {
-                return;
+                return Task.CompletedTask;
             }
 
             (Keccak? dataAssetId, string? headerData) = GetDataInfo(data.ToArray());
             if (dataAssetId is null || string.IsNullOrWhiteSpace(headerData))
             {
-                return;
+                return Task.CompletedTask;
             }
 
             _dataPublisher.Publish(new DataAssetData(dataAssetId, headerData));
 
-            return;
+            return Task.CompletedTask;
         }
 
         private static (Keccak? dataAssetId, string? data) GetDataInfo(byte[] bytes)

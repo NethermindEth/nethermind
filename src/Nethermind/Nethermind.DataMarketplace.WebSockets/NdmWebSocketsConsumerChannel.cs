@@ -17,7 +17,7 @@
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Channels;
-using Nethermind.WebSockets;
+using Nethermind.Sockets;
 
 namespace Nethermind.DataMarketplace.WebSockets
 {

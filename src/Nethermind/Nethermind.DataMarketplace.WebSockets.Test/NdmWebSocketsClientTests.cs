@@ -24,7 +24,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.DataMarketplace.Core;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.Serialization.Json;
-using Nethermind.WebSockets;
+using Nethermind.Sockets;
 using NSubstitute;
 using NUnit.Framework;
 

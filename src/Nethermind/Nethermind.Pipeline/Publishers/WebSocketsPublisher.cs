@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
-using Nethermind.WebSockets;
+using Nethermind.Sockets;
 
 namespace Nethermind.Pipeline.Publishers
 {
@@ -27,7 +27,7 @@ namespace Nethermind.Pipeline.Publishers
 
         public ISocketsClient CreateClient(WebSocket webSocket, string clientName)
         {
-            var newClient = new SocketClientBase(clientName, new WebSocketHandler(webSocket, _logManager), _jsonSerializer);
+            var newClient = new SocketClient(clientName, new WebSocketHandler(webSocket, _logManager), _jsonSerializer);
             _clients.TryAdd(clientName, newClient);
 
             return newClient;

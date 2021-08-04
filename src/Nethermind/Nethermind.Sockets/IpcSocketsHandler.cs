@@ -4,19 +4,16 @@ using System.Linq;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading.Tasks;
-using Nethermind.Logging;
 
-namespace Nethermind.WebSockets
+namespace Nethermind.Sockets
 {
     public class IpcSocketsHandler : ISocketHandler
     {
         private readonly Socket _socket;
-        private readonly ILogger _logger;
 
-        public IpcSocketsHandler(Socket socket, ILogManager logManager)
+        public IpcSocketsHandler(Socket socket)
         {
             _socket = socket;
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         public Task SendRawAsync(string data)
@@ -37,7 +34,6 @@ namespace Nethermind.WebSockets
                 Closed = read == 0,
                 Read = read,
                 EndOfMessage = read < buffer.Length || _socket.Available == 0,
-                CloseStatus = null,
                 CloseStatusDescription = null
             };
         }

@@ -17,7 +17,7 @@
 using System.Threading.Tasks;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Services;
-using Nethermind.WebSockets;
+using Nethermind.Sockets;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Notifiers
 {

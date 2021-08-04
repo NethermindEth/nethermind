@@ -23,7 +23,7 @@ using Microsoft.AspNetCore.Http;
 using Nethermind.Core.PubSub;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
-using Nethermind.WebSockets;
+using Nethermind.Sockets;
 
 namespace Nethermind.Analytics
 {
@@ -44,7 +44,7 @@ namespace Nethermind.Analytics
 
         public ISocketsClient CreateClient(WebSocket webSocket, string clientName)
         {
-            var socketsClient = new SocketClientBase(clientName, new WebSocketHandler(webSocket, _logManager), _jsonSerializer);
+            var socketsClient = new SocketClient(clientName, new WebSocketHandler(webSocket, _logManager), _jsonSerializer);
             _clients.TryAdd(socketsClient.Id, socketsClient);
 
             return socketsClient;

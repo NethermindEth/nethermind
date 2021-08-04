@@ -24,11 +24,11 @@ using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
-using Nethermind.WebSockets;
+using Nethermind.Sockets;
 
 namespace Nethermind.JsonRpc.WebSockets
 {
-    public class JsonRpcSocketsClient : SocketClientBase, IJsonRpcDuplexClient
+    public class JsonRpcSocketsClient : SocketClient, IJsonRpcDuplexClient
     {
         public event EventHandler Closed;
 

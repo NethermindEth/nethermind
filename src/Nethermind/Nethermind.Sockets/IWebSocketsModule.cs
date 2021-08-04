@@ -15,12 +15,15 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Net.WebSockets;
+using System.Threading.Tasks;
 
-namespace Nethermind.WebSockets
+namespace Nethermind.Sockets
 {
-    public interface IWebSocketsManager
+    public interface IWebSocketsModule
     {
-        void AddModule(IWebSocketsModule module, bool isDefault = false);
-        IWebSocketsModule GetModule(string name);
+        string Name { get; }
+        ISocketsClient CreateClient(WebSocket webSocket, string client);
+        void RemoveClient(string clientId);
+        Task SendAsync(SocketsMessage message);
     }
 }
