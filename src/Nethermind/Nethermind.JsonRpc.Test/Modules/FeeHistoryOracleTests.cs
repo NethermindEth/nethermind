@@ -205,7 +205,9 @@ namespace Nethermind.JsonRpc.Test.Modules
         [TestCase(new double[]{})]
         public void GetFeeHistory_IfRewardPercentilesIsNullOrEmpty_RewardsIsNull(double[]? rewardPercentiles)
         {
-            FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle();
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            blockFinder.FindBlock(BlockParameter.Latest).Returns(Build.A.Block.TestObject);
+            FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockFinder: blockFinder);
 
             ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, BlockParameter.Latest, rewardPercentiles);
 
