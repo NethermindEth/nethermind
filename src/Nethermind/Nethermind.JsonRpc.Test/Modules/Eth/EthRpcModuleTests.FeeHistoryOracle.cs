@@ -54,6 +54,24 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             resultWrapper.Should().BeEquivalentTo(expected);
         }
         
+        
+        [TestCase(3,5)]
+        [TestCase(4,10)]
+        [TestCase(0,1)]
+        public void GetFeeHistory_IfPendingBlockDoesNotExistAndLastBlockNumberGreaterThanHeadNumber_ReturnsError(long pendingBlockNumber, long lastBlockNumber)
+        {
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            blockFinder.FindPendingBlock().Returns(Build.A.Block.WithNumber(pendingBlockNumber).TestObject);
+            FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockFinder: blockFinder);
+            ResultWrapper<FeeHistoryResults> expected = 
+                    ResultWrapper<FeeHistoryResults>.Fail("newestBlock: Block is not available", 
+                        ErrorCodes.ResourceUnavailable);
+            
+            ResultWrapper<FeeHistoryResults> resultWrapper =
+                feeHistoryOracle.GetFeeHistory(1, new BlockParameter(lastBlockNumber), null);
+    
+            resultWrapper.Should().BeEquivalentTo(expected);
+        }
         [Test]
         public void GetFeeHistory_BlockCountIsLessThanOne_ReturnsFailingWrapper()
         {
@@ -232,7 +250,36 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             resultWrapper.Data.OldestBlock.Should().Be(expectedOldestBlockNumber);
         }
 
+        [TestCase(2,2)]
+        [TestCase(7,7)]
+        [TestCase(32,32)]
+        public void ResolveBlockRange_IfLastBlockIsPendingBlock_LastBlockNumberSetToPendingBlockNumber(long blockNumber, long lastBlockNumberExpected)
+        {
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            blockFinder.FindPendingBlock().Returns(Build.A.Block.WithNumber(blockNumber).TestObject);
+            FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockFinder: blockFinder);
 
+            ResultWrapper<FeeHistoryResults> resultWrapper =
+                feeHistoryOracle.GetFeeHistory(1, BlockParameter.Pending, null);
+            
+            resultWrapper.Data.OldestBlock.Should().Be(lastBlockNumberExpected);
+        }
+        
+        [TestCase(2,2)]
+        [TestCase(7,7)]
+        [TestCase(32,32)]
+        public void ResolveBlockRange_IfLastBlockIsLatestBlock_LastBlockNumberSetToHeadBlockNumber(long blockNumber, long lastBlockNumberExpected)
+        {
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            blockFinder.FindHeadBlock().Returns(Build.A.Block.WithNumber(blockNumber).TestObject);
+            FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockFinder: blockFinder);
+
+            ResultWrapper<FeeHistoryResults> resultWrapper =
+                feeHistoryOracle.GetFeeHistory(1, BlockParameter.Latest, null);
+            
+            resultWrapper.Data.OldestBlock.Should().Be(lastBlockNumberExpected);
+        }
+        
         private static FeeHistoryOracle GetSubstitutedFeeHistoryOracle(
             IBlockFinder? blockFinder = null, 
             IReceiptStorage? receiptStorage = null,
