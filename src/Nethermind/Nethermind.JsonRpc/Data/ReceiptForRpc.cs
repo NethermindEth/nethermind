@@ -37,6 +37,7 @@ namespace Nethermind.JsonRpc.Data
             BlockNumber = receipt.BlockNumber;
             CumulativeGasUsed = receipt.GasUsedTotal;
             GasUsed = receipt.GasUsed;
+            EffectiveGasPrice = effectiveGasPrice;
             From = receipt.Sender;
             To = receipt.Recipient;
             ContractAddress = receipt.ContractAddress;
