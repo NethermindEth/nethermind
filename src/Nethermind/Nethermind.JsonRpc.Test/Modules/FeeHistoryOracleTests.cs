@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-#nullable enable
 using System;
 using System.Linq;
 using FluentAssertions;
@@ -32,9 +31,10 @@ using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
 using static Nethermind.JsonRpc.Test.Modules.GasPriceOracleTests;
-namespace Nethermind.JsonRpc.Test.Modules.Eth
+
+namespace Nethermind.JsonRpc.Test.Modules
 {
-    public partial class EthRpcModuleTests
+    public class FeeHistoryOracleTests
     {
         //Todo do a test about greater than 1024 blocks?
         //Todo a test for if pendingblock less than blockNumber?
@@ -83,7 +83,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                         ErrorCodes.ResourceUnavailable);
 
             ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(0, 
-                new BlockParameter(), null);
+                BlockParameter.Latest, null);
             
             resultWrapper.Should().BeEquivalentTo(expected);
         }
@@ -100,7 +100,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                                 ErrorCodes.InvalidParams);
             
             ResultWrapper<FeeHistoryResults> resultWrapper =
-                feeHistoryOracle.GetFeeHistory(blockCount, new BlockParameter(), rewardPercentiles);
+                feeHistoryOracle.GetFeeHistory(blockCount, BlockParameter.Latest, rewardPercentiles);
 
             resultWrapper.Result.Should().BeEquivalentTo(expected);
         }
@@ -114,7 +114,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             blockFinder.FindBlock(Arg.Any<long>()).Returns(Build.A.Block.TestObject);
             FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockFinder: blockFinder);
             
-            ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(blockCount, new BlockParameter(), rewardPercentiles);
+            ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(blockCount, BlockParameter.Latest, rewardPercentiles);
 
             resultWrapper.Result.Should().BeEquivalentTo(ResultWrapper<FeeHistoryResults>.Fail($"rewardPercentiles: Some values are below 0 or greater than 100.", 
                                 ErrorCodes.InvalidParams));
@@ -129,7 +129,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             blockFinder.FindBlock(Arg.Any<long>()).Returns(Build.A.Block.TestObject);
             FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockFinder: blockFinder);
             
-            ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(blockCount, new BlockParameter(), rewardPercentiles);
+            ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(blockCount, BlockParameter.Latest, rewardPercentiles);
 
             resultWrapper.Result.Should().BeEquivalentTo(ResultWrapper<FeeHistoryResults>.Success(null));
         }
@@ -217,7 +217,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         {
             FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle();
 
-            ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, new BlockParameter(), rewardPercentiles);
+            ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, BlockParameter.Latest, rewardPercentiles);
 
             resultWrapper.Data.Reward.Should().BeNull();
         }

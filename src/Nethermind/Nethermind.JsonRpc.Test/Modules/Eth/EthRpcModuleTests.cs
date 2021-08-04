@@ -60,9 +60,8 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         {
             using Context ctx = await Context.Create();
             string serialized = ctx._test.TestEthRpc("eth_feeHistory", $"{blockCount.ToString()}", "10");
-            string expected =
-                $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32603,\"message\":\"blockCount: Block count, {blockCount}, is less than 1.\"}},\"id\":67}}"; 
-            Assert.AreEqual(expected == serialized, resultIsError);
+            string expected = $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32603,\"message\":\"blockCount: Block count, {blockCount}, is less than 1.\"}},\"id\":67}}";
+            serialized.Should().Be(expected);
         }
 
         [TestCase("earliest", 0)]
@@ -74,13 +73,13 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         {
             using Context ctx = await Context.Create();
             IFeeHistoryOracle feeHistoryOracle = Substitute.For<IFeeHistoryOracle>();
-            ctx._test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithFeeHistoryManager(feeHistoryOracle).Build();
+            ctx._test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithFeeHistoryOracle(feeHistoryOracle).Build();
             
             string serialized = ctx._test.TestEthRpc("eth_feeHistory", $"1", blockParameter);
 
             feeHistoryOracle.Received().GetFeeHistory(
-                ref Arg.Is<long>(l => l == 1),
-                Arg.Is<long>(l => l == expected),
+                Arg.Is<int>(l => l == 1),
+                Arg.Is<BlockParameter>(l => l.BlockNumber == 1),
                 Arg.Any<double[]?>());
         }
 
@@ -814,7 +813,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                 return await Create(specProvider);
             }
             
-            public static async Task<Context> Create(ISpecProvider specProvider = null) =>
+            public static async Task<Context> Create(ISpecProvider? specProvider = null) =>
                 new()
                 {
                     _test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(specProvider), 

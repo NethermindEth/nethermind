@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Core.Specs;
 using Nethermind.Facade;
 using Nethermind.JsonRpc.Data;
@@ -41,7 +42,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly IWallet _wallet;
         private readonly IJsonRpcConfig _rpcConfig;
         private readonly ISpecProvider _specProvider;
-        private readonly IFeeHistoryOracle _feeHistoryOracle;
+        private readonly IReceiptStorage _receiptStorage;
 
         public EthModuleFactory(
             ITxPool txPool,
@@ -53,7 +54,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             IStateReader stateReader,
             IBlockchainBridgeFactory blockchainBridgeFactory,
             ISpecProvider specProvider,
-            IFeeHistoryOracle feeHistoryOracle)
+            IReceiptStorage receiptStorage)
         {
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
@@ -63,7 +64,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
             _blockchainBridgeFactory = blockchainBridgeFactory ?? throw new ArgumentNullException(nameof(blockchainBridgeFactory));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _feeHistoryOracle = feeHistoryOracle ?? throw new ArgumentNullException(nameof(feeHistoryOracle));
+            _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _blockTree = blockTree.AsReadOnly();
         }
         
@@ -80,7 +81,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 _logManager,
                 _specProvider,
                 new GasPriceOracle(_blockTree, _specProvider),
-                _feeHistoryOracle);
+                new FeeHistoryOracle(_blockTree, _receiptStorage, _specProvider));
         }
 
         public static List<JsonConverter> Converters = new()

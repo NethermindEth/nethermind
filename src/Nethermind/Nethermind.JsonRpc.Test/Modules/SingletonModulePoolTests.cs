@@ -66,7 +66,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Substitute.For<IStateReader>(),
                 Substitute.For<IBlockchainBridgeFactory>(),
                 Substitute.For<ISpecProvider>(),
-                Substitute.For<IFeeHistoryOracle>());
+                Substitute.For<IReceiptStorage>());
         }
 
         [Test]

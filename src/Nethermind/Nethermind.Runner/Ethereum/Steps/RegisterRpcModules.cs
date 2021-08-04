@@ -36,6 +36,7 @@ using Nethermind.JsonRpc.Modules.Witness;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Core;
+using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.JsonRpc.Modules.Evm;
 using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.JsonRpc.Modules.Web3;
@@ -74,7 +75,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_api.TxSender == null) throw new StepDependencyException(nameof(_api.TxSender));
             if (_api.StateReader == null) throw new StepDependencyException(nameof(_api.StateReader));
             if (_api.PeerManager == null) throw new StepDependencyException(nameof(_api.PeerManager));
-            if (_api.FeeHistoryManager == null) throw new StepDependencyException(nameof(_api.FeeHistoryManager));
+            
             if (jsonRpcConfig.Enabled)
             {
                 _api.RpcModuleProvider = new RpcModuleProvider(_api.FileSystem, jsonRpcConfig, _api.LogManager);
@@ -105,7 +106,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.StateReader,
                 _api,
                 _api.SpecProvider,
-                _api.FeeHistoryManager);
+                _api.ReceiptStorage);
             _api.RpcModuleProvider.RegisterBounded(ethModuleFactory, rpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, rpcConfig.Timeout);
             
             if (_api.DbProvider == null) throw new StepDependencyException(nameof(_api.DbProvider));

@@ -61,10 +61,6 @@ namespace Nethermind.Blockchain.Find
             RequireCanonical = requireCanonical;
         }
 
-        public BlockParameter()
-        {
-        }
-
         public override string ToString() => $"{Type}, {BlockNumber?.ToString() ?? BlockHash?.ToString()}";
 
         public bool Equals(BlockParameter? other)

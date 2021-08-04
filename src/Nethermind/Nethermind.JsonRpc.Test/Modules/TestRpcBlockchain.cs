@@ -105,7 +105,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 return this;
             }
         
-            public Builder<T> WithFeeHistoryManager(IFeeHistoryOracle feeHistoryOracle)
+            public Builder<T> WithFeeHistoryOracle(IFeeHistoryOracle feeHistoryOracle)
             {
                 _blockchain.FeeHistoryOracle = feeHistoryOracle;
                 return this;
@@ -143,6 +143,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             ITxSealer txSealer1 = new NonceReservingTxSealer(txSigner, Timestamper, TxPool);
             TxSender ??= new TxPoolSender(TxPool, txSealer0, txSealer1);
             GasPriceOracle ??= new GasPriceOracle(BlockFinder, SpecProvider);
+            FeeHistoryOracle ??= new FeeHistoryOracle(BlockFinder, ReceiptStorage, SpecProvider);
             EthRpcModule = new EthRpcModule(
                 new JsonRpcConfig(),
                 Bridge,

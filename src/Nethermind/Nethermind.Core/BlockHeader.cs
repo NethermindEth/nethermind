@@ -79,7 +79,6 @@ namespace Nethermind.Core
 
         public bool HasBody => OmmersHash != Keccak.OfAnEmptySequenceRlp || TxRoot != Keccak.EmptyTreeHash;
         public string SealEngineType { get; set; } = Nethermind.Core.SealEngineType.Ethash;
-        public const long GasTargetToLimitMultiplier = 2;
 
         public string ToString(string indent)
         {

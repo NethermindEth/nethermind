@@ -536,12 +536,6 @@ namespace Nethermind.DataMarketplace.Infrastructure
             set => _nethermindApi.WebSocketsManager = value;
         }
 
-        public IFeeHistoryManager? FeeHistoryManager
-        {
-            get => _nethermindApi.FeeHistoryManager;
-            set => _nethermindApi.FeeHistoryManager = value;
-        }
-
         public IWitnessCollector? WitnessCollector
         {
             get => _nethermindApi.WitnessCollector;

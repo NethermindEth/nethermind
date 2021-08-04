@@ -60,11 +60,5 @@ namespace Nethermind.Core
         {
             return eip1559Enabled ? UInt256.Min(tx.IsEip1559 ? tx.MaxFeePerGas : tx.GasPrice, tx.MaxPriorityFeePerGas + baseFee) : tx.GasPrice;
         }
-        
-        
-        public static UInt256? CalculateEffectiveGasTip(this Transaction tx, UInt256 baseFee)
-        {
-            return baseFee > tx.MaxFeePerGas ? null : UInt256.Min(tx.MaxFeePerGas - baseFee, tx.MaxPriorityFeePerGas);
-        }
     }
 }

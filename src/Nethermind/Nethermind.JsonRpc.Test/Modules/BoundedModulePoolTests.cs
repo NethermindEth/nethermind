@@ -16,6 +16,7 @@
 
 using System;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
@@ -70,7 +71,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Substitute.For<IStateReader>(),
                 Substitute.For<IBlockchainBridgeFactory>(),
                 Substitute.For<ISpecProvider>(),
-                Substitute.For<IFeeHistoryOracle>()),
+                Substitute.For<IReceiptStorage>()),
                  1, 1000);
         }
 
