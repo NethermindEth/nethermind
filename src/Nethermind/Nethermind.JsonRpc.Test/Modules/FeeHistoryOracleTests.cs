@@ -37,8 +37,10 @@ namespace Nethermind.JsonRpc.Test.Modules
 {
     public class FeeHistoryOracleTests
     {
-        //Todo do a test about greater than 1024 blocks?
-        //Todo a test for if pendingblock less than blockNumber?
+        //Todo A test to check if blocksToCheck is greater than 1024 blocks
+        //Todo A test to check if EffectiveGasTip is calculated correctly
+        //Todo A test to check if PendingBlock's BlockNumber is less than blockNumber
+        
         [Test]
         public void GetFeeHistory_NewestBlockIsNull_ReturnsFailingWrapper()
         {
@@ -145,13 +147,14 @@ namespace Nethermind.JsonRpc.Test.Modules
             int blockCount = 1;
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             BlockHeader blockHeader = Build.A.BlockHeader.WithBaseFee((UInt256) baseFee).TestObject;
+            BlockParameter newestBlock = new((long) 0); 
             Block headBlock = Build.A.Block.Genesis.WithHeader(blockHeader).TestObject;
-            blockFinder.FindBlock(Arg.Is<long>(l => l == 0)).Returns(headBlock);
+            blockFinder.FindBlock(newestBlock).Returns(headBlock);
             ISpecProvider specProvider = GetSpecProviderWithEip1559EnabledAs(true);
             
             FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockFinder: blockFinder, specProvider: specProvider);
 
-            ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(blockCount, new BlockParameter((long) 0), null);
+            ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(blockCount, newestBlock, null);
 
             resultWrapper.Data.BaseFeePerGas![1].Should().Be((UInt256) expectedNextBaseFee);
             resultWrapper.Data.BaseFeePerGas![0].Should().Be((UInt256) baseFee);
@@ -162,7 +165,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [TestCase(12, 3, 0.25)] 
         [TestCase(100, 40,  0.4)]  
         [TestCase(3, 1, 0.33)] 
-        public void GetFeeHistory_IfLondonEnabled_GasUsedRatioCalculatedCorrectly(long gasLimit, long gasUsed, double expectedGasUsedRatio)
+        public void GetFeeHistory_GasUsedRatioCalculatedCorrectly(long gasLimit, long gasUsed, double expectedGasUsedRatio)
         {
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             BlockHeader blockHeader = Build.A.BlockHeader.WithGasLimit(gasLimit).WithGasUsed(gasUsed).TestObject;
@@ -184,33 +187,15 @@ namespace Nethermind.JsonRpc.Test.Modules
             ISpecProvider specProvider = GetSpecProviderWithEip1559EnabledAs(false);
             BlockHeader blockHeader = Build.A.BlockHeader.WithBaseFee((UInt256) baseFee).TestObject;
             Block headBlock = Build.A.Block.Genesis.WithHeader(blockHeader).TestObject;
+            BlockParameter newestBlock = new((long) 0);
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-            blockFinder.FindBlock(Arg.Is<long>(l => l == 0)).Returns(headBlock);
+            blockFinder.FindBlock(newestBlock).Returns(headBlock);
             FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockFinder: blockFinder, specProvider: specProvider);
             
-            ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, new BlockParameter((long) 0), null);
+            ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, newestBlock, null);
             
             resultWrapper.Data.BaseFeePerGas![1].Should().Be((UInt256) expectedNextBaseFee);
             resultWrapper.Data.BaseFeePerGas![0].Should().Be((UInt256) baseFee);
-        }
-        
-        [TestCase(3, 3, 1)] 
-        [TestCase(100, 95,0.95)]  
-        [TestCase(12, 3, 0.25)] 
-        [TestCase(100, 40,  0.4)]  
-        [TestCase(3, 1, 0.33)] 
-        public void GetFeeHistory_IfLondonNotEnabled_GasUsedRatioCalculatedCorrectly(long gasLimit, long gasUsed, double expectedGasUsedRatio)
-        {
-            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-            BlockHeader blockHeader = Build.A.BlockHeader.WithGasLimit(gasLimit).WithGasUsed(gasUsed).TestObject;
-            Block headBlock = Build.A.Block.Genesis.WithHeader(blockHeader).TestObject;
-            blockFinder.FindBlock(Arg.Is<long>(l => l == 0)).Returns(headBlock);
-            ISpecProvider specProvider = GetSpecProviderWithEip1559EnabledAs(false);
-            FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockFinder: blockFinder, specProvider: specProvider);
-
-            ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, new BlockParameter((long) 0), null);
-
-            resultWrapper.Data.GasUsedRatio![0].Should().Be(expectedGasUsedRatio);
         }
         
         [TestCase(null)]
