@@ -25,19 +25,19 @@ namespace Nethermind.Evm.Tracing
         public TxTraceFilter(
             Address[]? fromAddresses,
             Address[]? toAddresses,
-            int after,
+            int afterMatchingTxAmount,
             int? count)
         {
             FromAddresses = fromAddresses;
             ToAddresses = toAddresses;
-            After = after;
+            AfterMatchingTxAmount = afterMatchingTxAmount;
             Count = count;
         }
         public Address[]? FromAddresses { get; }
         
         public Address[]? ToAddresses { get; }
         
-        public int After { get; private set; } 
+        public int AfterMatchingTxAmount { get; private set; } 
         
         public int? Count { get; private set; }
 
@@ -50,9 +50,9 @@ namespace Nethermind.Evm.Tracing
                 return false;
             }
 
-            if (After > 0)
+            if (AfterMatchingTxAmount > 0)
             {
-                --After;
+                --AfterMatchingTxAmount;
                 return false;
             }
             
@@ -71,10 +71,10 @@ namespace Nethermind.Evm.Tracing
                 return false;
             
             int txCount = CountMatchingTransactions(block);
-            if (After >= txCount)
+            if (AfterMatchingTxAmount >= txCount)
             {
                 // we can skip the block if it don't achieve after
-                After -= txCount;
+                AfterMatchingTxAmount -= txCount;
                 return false;
             }
 

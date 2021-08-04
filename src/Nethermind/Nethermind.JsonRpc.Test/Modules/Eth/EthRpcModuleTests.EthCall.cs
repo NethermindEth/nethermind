@@ -36,10 +36,8 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         public async Task Eth_call_web3_sample()
         {
             using Context ctx = await Context.Create();
-            Assert._test.State.AccountExists()
             TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>(
                 "{\"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
-            ctx._test.State.AccountExists()
             string serialized =
                 ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction), "0x0");
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}", serialized);

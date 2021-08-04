@@ -210,12 +210,13 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
         
         [Test]
-        public void Trace_filter_skip_and_get_given_amount_of_traces()
+        public void Trace_filter_skip_and_get_the_rest_of_traces()
         {
             var traceFilterRequest = new TraceFilterForRpc();
             traceFilterRequest.Count = 3;
+            traceFilterRequest.After = 7;
             var traces = _traceRpcModule.trace_filter(traceFilterRequest);
-            Assert.AreEqual(3, traces.Data.Length);
+            Assert.AreEqual(2, traces.Data.Length);
         }
 
         [Test]
