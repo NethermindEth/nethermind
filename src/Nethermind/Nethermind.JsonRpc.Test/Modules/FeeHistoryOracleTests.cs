@@ -114,13 +114,13 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             int blockCount = 10;
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-            blockFinder.FindBlock(Arg.Any<long>()).Returns(Build.A.Block.TestObject);
+            blockFinder.FindBlock(BlockParameter.Latest).Returns(Build.A.Block.TestObject);
             FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockFinder: blockFinder);
             
             ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(blockCount, BlockParameter.Latest, rewardPercentiles);
 
-            resultWrapper.Result.Should().BeEquivalentTo(ResultWrapper<FeeHistoryResults>.Fail($"rewardPercentiles: Some values are below 0 or greater than 100.", 
-                                ErrorCodes.InvalidParams));
+            resultWrapper.Result.Error.Should().Be("rewardPercentiles: Some values are below 0 or greater than 100.");
+            resultWrapper.Result.ResultType.Should().Be(ResultType.Failure);
         }
         
         [TestCase(new double[] {1, 2, 3})]
@@ -129,7 +129,10 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             int blockCount = 10;
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-            blockFinder.FindBlock(Arg.Any<long>()).Returns(Build.A.Block.TestObject);
+            Block headBlock = Build.A.Block.TestObject; 
+            blockFinder.FindBlock(BlockParameter.Latest).Returns(headBlock);
+            IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
+            receiptFinder.Get(headBlock).Returns(new TxReceipt[] { });
             FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockFinder: blockFinder);
             
             ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(blockCount, BlockParameter.Latest, rewardPercentiles);
@@ -332,7 +335,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
             receiptFinder.Get(firstBlock).Returns(new TxReceipt[] {new TxReceipt() {GasUsed = 3}});
-            receiptFinder.Get(firstBlock).Returns(new TxReceipt[] {new TxReceipt() {GasUsed = 2}});
+            receiptFinder.Get(secondBlock).Returns(new TxReceipt[] {new TxReceipt() {GasUsed = 2}});
             FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockFinder: blockFinder);
             double[] rewardPercentiles = {0};
             FeeHistoryResults expected = new FeeHistoryResults(0, new UInt256[]{5,6}, new double[]{0.4, 0.5}, new UInt256[][]{new UInt256[]{1}, new UInt256[]{0}});
