@@ -19,8 +19,6 @@ using System.Collections.Generic;
 using Nethermind.Core.PubSub;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc.Modules;
-using Nethermind.JsonRpc.Modules.Eth;
-using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.Monitoring;
 using Nethermind.Network;
 using Nethermind.Network.Discovery;
