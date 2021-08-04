@@ -20,6 +20,7 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Producers;
 using Nethermind.Consensus;
 using Nethermind.Logging;
 
@@ -40,7 +41,7 @@ namespace Nethermind.Init.Steps
             IMiningConfig miningConfig = _api.Config<IMiningConfig>();
             if (miningConfig.Enabled)
             {
-                await BuildProducer();
+                _api.BlockProducer = await BuildProducer();
                 
                 if (_api.BlockProducer == null) throw new StepDependencyException(nameof(_api.BlockProducer));
                 if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.BlockTree));
@@ -53,7 +54,7 @@ namespace Nethermind.Init.Steps
             }
         }
 
-        protected virtual async Task BuildProducer()
+        protected virtual async Task<IBlockProducer> BuildProducer()
         {
             _api.BlockProducerEnvFactory = new BlockProducerEnvFactory(_api.DbProvider,
                 _api.BlockTree,
@@ -70,19 +71,14 @@ namespace Nethermind.Init.Steps
             if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
             IConsensusPlugin? consensusPlugin = _api.GetConsensusPlugin();
             
-            if (consensusPlugin != null)
+            if (consensusPlugin is not null)
             {
-                bool shouldInitPluginDirectly = true;
                 foreach (IConsensusWrapperPlugin wrapperPlugin in _api.GetConsensusWrapperPlugins())
                 {
-                    shouldInitPluginDirectly = false;
-                    await wrapperPlugin.InitBlockProducer(consensusPlugin);
+                    return await wrapperPlugin.InitBlockProducer(consensusPlugin);
                 }
 
-                if (shouldInitPluginDirectly)
-                {
-                    await consensusPlugin.InitBlockProducer();
-                }
+                return await consensusPlugin.InitBlockProducer();
             }
             else
             {

@@ -18,6 +18,7 @@
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Blockchain.Producers;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
@@ -28,6 +29,7 @@ namespace Nethermind.Consensus.AuRa
 {
     public class AuRaPlugin : IConsensusPlugin
     {
+        private AuRaNethermindApi _nethermindApi;
         public string Name => SealEngineType;
 
         public string Description => $"{SealEngineType} Consensus Engine";
@@ -35,7 +37,8 @@ namespace Nethermind.Consensus.AuRa
         public string Author => "Nethermind";
 
         public string SealEngineType => Core.SealEngineType.AuRa;
-        
+
+
         public ValueTask DisposeAsync()
         {
             return default;
@@ -43,6 +46,7 @@ namespace Nethermind.Consensus.AuRa
 
         public Task Init(INethermindApi nethermindApi)
         {
+            _nethermindApi = (AuRaNethermindApi)nethermindApi;
             return Task.CompletedTask;
         }
 
@@ -56,10 +60,14 @@ namespace Nethermind.Consensus.AuRa
             return Task.CompletedTask;
         }
 
-        public Task<IBlockProducer> InitBlockProducer(ITxSource? txSource = null)
+        public Task<IBlockProducer> InitBlockProducer(IBlockProductionTrigger? blockProductionTrigger = null, ITxSource? additionalTxSource = null)
         {
-            return Task.FromResult((IBlockProducer)null);
+            StartBlockProducerAuRa blockProducerStarter = new(_nethermindApi);
+            DefaultBlockProductionTrigger = blockProducerStarter.CreateTrigger();
+            return blockProducerStarter.BuildProducer(blockProductionTrigger ?? DefaultBlockProductionTrigger, additionalTxSource);
         }
+        
+        public IBlockProductionTrigger DefaultBlockProductionTrigger { get; private set; }
         
         public INethermindApi CreateApi() => new AuRaNethermindApi();
     }

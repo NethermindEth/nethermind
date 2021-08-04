@@ -38,12 +38,12 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa.InitializationSteps
 {
-    [RunnerStepDependencies(typeof(InitializeNetwork), typeof(SetupKeyStore))]
-    public class StartBlockProducerAuRa : StartBlockProducer
+    public class StartBlockProducerAuRa
     {
         private new readonly AuRaNethermindApi _api;
         
@@ -55,27 +55,25 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
         private DictionaryContractDataStore<TxPriorityContract.Destination>? _minGasPricesContractDataStore;
         private TxPriorityContract? _txPriorityContract;
         private TxPriorityContract.LocalDataSource? _localDataSource;
+        private IAuRaStepCalculator? _stepCalculator;
 
-        public StartBlockProducerAuRa(AuRaNethermindApi api) : base(api)
+        public StartBlockProducerAuRa(AuRaNethermindApi api)
         {
             _api = api;
             _auraConfig = NethermindApi.Config<IAuraConfig>();
         }
 
-        protected override Task BuildProducer()
+        private IAuRaStepCalculator StepCalculator
         {
-            if (_api.EngineSigner == null) throw new StepDependencyException(nameof(_api.EngineSigner));
-            if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
-            
-            ILogger logger = _api.LogManager.GetClassLogger();
-            if (logger.IsWarn) logger.Warn("Starting AuRa block producer & sealer");
-            
-            IAuRaStepCalculator stepCalculator = new AuRaStepCalculator(_api.ChainSpec.AuRa.StepDuration, _api.Timestamper, _api.LogManager);
-            BlockProducerEnv producerEnv = GetProducerChain();
+            get
+            {
+                return _stepCalculator ?? (_stepCalculator = new AuRaStepCalculator(_api.ChainSpec.AuRa.StepDuration, _api.Timestamper, _api.LogManager));
+            }
+        }
 
-            IGasLimitCalculator gasLimitCalculator = _api.GasLimitCalculator = CreateGasLimitCalculator(producerEnv.ReadOnlyTxProcessingEnv);
-
-            BuildBlocksOnAuRaSteps onAuRaSteps = new(_api.LogManager, stepCalculator);
+        public IBlockProductionTrigger CreateTrigger()
+        {
+            BuildBlocksOnAuRaSteps onAuRaSteps = new(_api.LogManager, StepCalculator);
             BuildBlocksOnlyWhenNotProcessing onlyWhenNotProcessing = new(
                 onAuRaSteps, 
                 _api.BlockProcessingQueue, 
@@ -84,26 +82,41 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                 !_auraConfig.AllowAuRaPrivateChains);
             
             _api.DisposeStack.Push(onlyWhenNotProcessing);
+
+            return onlyWhenNotProcessing;
+        }
+
+        public Task<IBlockProducer> BuildProducer(IBlockProductionTrigger blockProductionTrigger, ITxSource? additionalTxSource = null)
+        {
+            if (_api.EngineSigner == null) throw new StepDependencyException(nameof(_api.EngineSigner));
+            if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
             
-            _api.BlockProducer = new AuRaBlockProducer(
+            ILogger logger = _api.LogManager.GetClassLogger();
+            if (logger.IsWarn) logger.Warn("Starting AuRa block producer & sealer");
+            
+            BlockProducerEnv producerEnv = GetProducerChain(additionalTxSource);
+
+            IGasLimitCalculator gasLimitCalculator = _api.GasLimitCalculator = CreateGasLimitCalculator(producerEnv.ReadOnlyTxProcessingEnv);
+            
+            IBlockProducer blockProducer = new AuRaBlockProducer(
                 producerEnv.TxSource,
                 producerEnv.ChainProcessor,
-                onlyWhenNotProcessing,
+                blockProductionTrigger,
                 producerEnv.ReadOnlyStateProvider,
                 _api.Sealer,
                 _api.BlockTree,
                 _api.Timestamper,
-                stepCalculator,
+                StepCalculator,
                 _api.ReportingValidator,
                 _auraConfig,
                 gasLimitCalculator,
                 _api.SpecProvider,
                 _api.LogManager);
             
-            return Task.CompletedTask;
+            return Task.FromResult(blockProducer);
         }
 
-        private BlockProcessor CreateBlockProcessor(ReadOnlyTxProcessingEnv changableTxProcessingEnv, ReadOnlyTxProcessingEnv constantContractTxProcessingEnv)
+        private BlockProcessor CreateBlockProcessor(ReadOnlyTxProcessingEnv changeableTxProcessingEnv, ReadOnlyTxProcessingEnv constantContractTxProcessingEnv)
         {
             if (_api.RewardCalculatorSource == null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
             if (_api.ValidatorStore == null) throw new StepDependencyException(nameof(_api.ValidatorStore));
@@ -120,9 +133,9 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                 _api.SpecProvider);
 
             _validator = new AuRaValidatorFactory(_api.AbiEncoder,
-                    changableTxProcessingEnv.StateProvider,
-                    changableTxProcessingEnv.TransactionProcessor,
-                    changableTxProcessingEnv.BlockTree,
+                    changeableTxProcessingEnv.StateProvider,
+                    changeableTxProcessingEnv.TransactionProcessor,
+                    changeableTxProcessingEnv.BlockTree,
                     constantContractTxProcessingEnv,
                     _api.ReceiptStorage,
                     _api.ValidatorStore,
@@ -144,13 +157,13 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             return new AuRaBlockProcessor(
                 _api.SpecProvider,
                 _api.BlockValidator,
-                _api.RewardCalculatorSource.Get(changableTxProcessingEnv.TransactionProcessor),
-                new BlockProcessor.BlockProductionTransactionsExecutor(changableTxProcessingEnv, _api.SpecProvider, _api.LogManager),
-                changableTxProcessingEnv.StateProvider,
-                changableTxProcessingEnv.StorageProvider, 
+                _api.RewardCalculatorSource.Get(changeableTxProcessingEnv.TransactionProcessor),
+                new BlockProcessor.BlockProductionTransactionsExecutor(changeableTxProcessingEnv, _api.SpecProvider, _api.LogManager),
+                changeableTxProcessingEnv.StateProvider,
+                changeableTxProcessingEnv.StorageProvider, 
                 _api.ReceiptStorage,
                 _api.LogManager,
-                changableTxProcessingEnv.BlockTree,
+                changeableTxProcessingEnv.BlockTree,
                 auRaTxFilter,
                 CreateGasLimitCalculator(constantContractTxProcessingEnv) as AuRaContractGasLimitOverride)
             {
@@ -217,11 +230,11 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
         }
         
         // TODO: Use BlockProducerEnvFactory
-        private BlockProducerEnv GetProducerChain()
+        private BlockProducerEnv GetProducerChain(ITxSource? additionalTxSource)
         {
             ReadOnlyTxProcessingEnv CreateReadonlyTxProcessingEnv(ReadOnlyDbProvider dbProvider, ReadOnlyBlockTree blockTree)
             {
-                return new ReadOnlyTxProcessingEnv(dbProvider, _api.ReadOnlyTrieStore, blockTree, _api.SpecProvider, _api.LogManager);
+                return new(dbProvider, _api.ReadOnlyTrieStore, blockTree, _api.SpecProvider, _api.LogManager);
             }
 
             BlockProducerEnv Create()
@@ -249,7 +262,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                 {
                     ChainProcessor = chainProcessor,
                     ReadOnlyStateProvider = txProcessingEnv.StateProvider,
-                    TxSource = CreateTxSourceForProducer(txProcessingEnv, constantContractsProcessingEnv),
+                    TxSource = CreateTxSourceForProducer(txProcessingEnv, constantContractsProcessingEnv, additionalTxSource),
                     ReadOnlyTxProcessingEnv = constantContractsProcessingEnv
                 };
             }
@@ -280,7 +293,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                 _minGasPricesContractDataStore,
                 specProvider);
 
-        private ITxSource CreateTxSourceForProducer(ReadOnlyTxProcessingEnv processingEnv, IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
+        private ITxSource CreateTxSourceForProducer(ReadOnlyTxProcessingEnv processingEnv, IReadOnlyTxProcessorSource readOnlyTxProcessorSource, ITxSource? additionalTxSource)
         {
             bool CheckAddPosdaoTransactions(IList<ITxSource> list, long auRaPosdaoTransition)
             {
@@ -335,6 +348,10 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             IList<ITxSource> txSources = new List<ITxSource> {CreateStandardTxSourceForProducer(processingEnv, readOnlyTxProcessorSource)};
             bool needSigner = false;
 
+            if (additionalTxSource is not null)
+            {
+                txSources.Insert(0, additionalTxSource);
+            }
             needSigner |= CheckAddPosdaoTransactions(txSources, _api.ChainSpec.AuRa.PosdaoTransition);
             needSigner |= CheckAddRandomnessTransactions(txSources, _api.ChainSpec.AuRa.RandomnessContractAddress, _api.EngineSigner);
 

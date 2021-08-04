@@ -154,7 +154,7 @@ namespace Nethermind.Mev
             return Task.CompletedTask;
         }
 
-        public async Task<IBlockProducer> InitBlockProducer(IConsensusPlugin consensusPlugin, ITxSource? txSource = null)
+        public async Task<IBlockProducer> InitBlockProducer(IConsensusPlugin consensusPlugin)
         {
             if (!_mevConfig.Enabled)
             {
