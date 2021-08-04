@@ -122,23 +122,6 @@ namespace Nethermind.JsonRpc.Test.Modules
             resultWrapper.Result.ResultType.Should().Be(ResultType.Failure);
         }
         
-        [TestCase(new double[] {1, 2, 3})]
-        [TestCase(new[] {1, 1.5, 2, 66, 67.5, 100})]
-        public void GetFeeHistory_IfNewestBlockAndBlockCountAndRewardPercentilesAreValid_ResultIsSuccessful(double[] rewardPercentiles)
-        {
-            int blockCount = 10;
-            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-            Block headBlock = Build.A.Block.TestObject; 
-            blockFinder.FindBlock(BlockParameter.Latest).Returns(headBlock);
-            IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
-            receiptFinder.Get(headBlock).Returns(new TxReceipt[] { });
-            FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockFinder: blockFinder);
-            
-            ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(blockCount, BlockParameter.Latest, rewardPercentiles);
-
-            resultWrapper.Result.Should().BeEquivalentTo(ResultWrapper<FeeHistoryResults>.Success(null));
-        }
-
         [TestCase(3, 3,5,  6)] //Target gas used: 3/2 = 1.5 | Actual Gas used = 3 | Base Fee Delta = Max((((3-1.5)/1.5 * 5) / 8, 1) = 1 | Next Base Fee = 5 + 1 = 6 
         [TestCase(3, 3, 11, 13)] //Target gas used: 3/2 = 1.5 | Actual Gas used = 3 | Base Fee Delta = Max((((3-1.5)/1.5) * 11) / 8, 1) = 2 | Next Base Fee = 11 + 2 = 13 
         [TestCase(100,95, 20, 22)] //Target gas used: 100/2 = 50 | Actual Gas used = 95 | Base Fee Delta = Max((((95-50)/50) * 20) / 8, 1) = 2 | Next Base Fee = 20 + 2 = 22
@@ -349,8 +332,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             blockFinder.FindParent(secondBlock, BlockTreeLookupOptions.RequireCanonical).Returns(firstBlock);
 
             IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
-            receiptFinder.Get(firstBlock).Returns(new TxReceipt[] {new TxReceipt() {GasUsed = 3}});
-            receiptFinder.Get(secondBlock).Returns(new TxReceipt[] {new TxReceipt() {GasUsed = 2}});
+            receiptFinder.Get(firstBlock).Returns(new TxReceipt[] {new() {GasUsed = 3}});
+            receiptFinder.Get(secondBlock).Returns(new TxReceipt[] {new() {GasUsed = 2}});
             FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockFinder: blockFinder);
             double[] rewardPercentiles = {0};
             FeeHistoryResults expected = new FeeHistoryResults(0, new UInt256[]{5,6}, new double[]{0.4, 0.5}, new UInt256[][]{new UInt256[]{1}, new UInt256[]{0}});
