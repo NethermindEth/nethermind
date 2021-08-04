@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain;
@@ -60,7 +61,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                 {
                     oldestBlock = block.Number;
                     baseFeePerGas.Push(block.BaseFeePerGas);
-                    gasUsedRatio.Push(block.GasUsed / (double) block.GasLimit);
+                    gasUsedRatio.Push(Math.Round(block.GasUsed / (double) block.GasLimit, 2));
                     if (rewards is not null)
                     {
                         List<UInt256> rewardsInBlock = CalculateRewardsPercentiles(block, rewardPercentiles);
