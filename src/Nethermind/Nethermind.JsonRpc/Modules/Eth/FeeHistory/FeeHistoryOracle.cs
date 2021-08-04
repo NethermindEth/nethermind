@@ -104,7 +104,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
 
             private static List<UInt256> CalculatePercentileValues(Block block, double[] rewardPercentiles, IReadOnlyList<(long GasUsed, UInt256 PremiumPerGas)> rewardsInBlock)
             {
-                long sumGasUsed = 0;
+                long sumGasUsed = rewardsInBlock[0].GasUsed;
                 int txIndex = 0;
                 List<UInt256> percentileValues = new(rewardPercentiles.Length);
 
@@ -150,7 +150,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                         double currentPercentile = rewardPercentiles[i];
                         if (currentPercentile > 100 || currentPercentile < 0)
                         {
-                            return ResultWrapper<FeeHistoryResults>.Fail($"rewardPercentiles: Some values are below 0 or greater than 100.", 
+                            return ResultWrapper<FeeHistoryResults>.Fail("rewardPercentiles: Some values are below 0 or greater than 100.", 
                                 ErrorCodes.InvalidParams);
                         }
                         else if (currentPercentile <= previousPercentile)

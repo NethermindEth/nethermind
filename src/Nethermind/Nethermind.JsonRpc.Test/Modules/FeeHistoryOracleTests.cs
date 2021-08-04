@@ -299,37 +299,41 @@ namespace Nethermind.JsonRpc.Test.Modules
             resultWrapper.Data.OldestBlock.Should().Be(0);
         }
         
-        [TestCase(30, new double[] {20,40,60,80.5}, new ulong[]{10,10,13,13})]
-        [TestCase(40, new double[] {20,40,60,80.5}, new ulong[]{10,13,13,22})]
-        [TestCase(40, new double[] {10,20,30,40}, new ulong[]{7,10,10,13})]
-        public void CalculateAndInsertRewards_GivenValidInputs_CalculatesPercentilesCorrectly(long gasUsed, double[] rewardPercentiles, ulong[] expected)
+        [TestCase(new double[] {20,40,60,80.5}, new ulong[]{4,10,10,22})]
+        [TestCase(new double[] {10,20,30,40}, new ulong[]{4,4,10,10})]
+        public void CalculateAndInsertRewards_GivenValidInputs_CalculatesPercentilesCorrectly( double[] rewardPercentiles, ulong[] expected)
         {
             //create transaction receipts with gas used for each tx
             Transaction[] transactions = new Transaction[]
             {                                                                                                                                         //Rewards: 
                 Build.A.Transaction.WithHash(TestItem.KeccakA).WithMaxFeePerGas(20).WithMaxPriorityFeePerGas(13).WithType(TxType.EIP1559).TestObject, //13
-                Build.A.Transaction.WithHash(TestItem.KeccakB).WithMaxFeePerGas(10).WithMaxPriorityFeePerGas(7).WithType(TxType.EIP1559).TestObject,  //7
+                Build.A.Transaction.WithHash(TestItem.KeccakB).WithMaxFeePerGas(10).WithMaxPriorityFeePerGas(7).TestObject,                           //4
                 Build.A.Transaction.WithHash(TestItem.KeccakC).WithMaxFeePerGas(25).WithMaxPriorityFeePerGas(24).WithType(TxType.EIP1559).TestObject, //22
                 Build.A.Transaction.WithHash(TestItem.KeccakD).WithMaxFeePerGas(15).WithMaxPriorityFeePerGas(10).WithType(TxType.EIP1559).TestObject  //10
             };
             IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             BlockParameter newestBlock = new BlockParameter((long) 0);
-            Block headBlock = Build.A.Block.Genesis.WithBaseFeePerGas(3).WithTransactions(transactions).TestObject;
+            Block headBlock = Build.A.Block.Genesis.WithBaseFeePerGas(3).WithGasUsed(100).WithTransactions(transactions).TestObject;
             blockFinder.FindBlock(newestBlock).Returns(headBlock);
             receiptStorage.Get(headBlock).Returns(new TxReceipt[]
             {
-               new(){GasUsed = 3},
-               new(){GasUsed = 4},
-               new(){GasUsed = 5},
-               new(){GasUsed = 6}
+               new(){GasUsed = 10},
+               new(){GasUsed = 20},
+               new(){GasUsed = 30},
+               new(){GasUsed = 40}
             });
-            FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockFinder: blockFinder);
+            
+            //Rewards: 4,10,13,22
+            //GasUsed: 20,40,10,30
+            
+            FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockFinder: blockFinder, receiptStorage: receiptStorage);
 
             ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, newestBlock, rewardPercentiles);
 
+            UInt256[] expectedUInt256 = expected.Select(x => (UInt256) x).ToArray();
             resultWrapper.Data.Reward!.Length.Should().Be(1);
-            resultWrapper.Data.Reward[0].Should().BeEquivalentTo(expected);
+            resultWrapper.Data.Reward[0].Should().BeEquivalentTo(expectedUInt256);
         }
         
         [Test]
