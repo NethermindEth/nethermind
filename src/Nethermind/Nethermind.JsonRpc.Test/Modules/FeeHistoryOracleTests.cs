@@ -253,7 +253,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [TestCase(2,2)]
         [TestCase(7,7)]
         [TestCase(32,32)]
-        public void ResolveBlockRange_IfLastBlockIsPendingBlock_LastBlockNumberSetToPendingBlockNumber(long blockNumber, long lastBlockNumberExpected)
+        public void GetFeeHistory_IfLastBlockIsPendingBlock_LastBlockNumberSetToPendingBlockNumber(long blockNumber, long lastBlockNumberExpected)
         {
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             blockFinder.FindPendingBlock().Returns(Build.A.Block.WithNumber(blockNumber).TestObject);
@@ -268,7 +268,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [TestCase(2,2)]
         [TestCase(7,7)]
         [TestCase(32,32)]
-        public void ResolveBlockRange_IfLastBlockIsLatestBlock_LastBlockNumberSetToHeadBlockNumber(long blockNumber, long lastBlockNumberExpected)
+        public void GetFeeHistory_IfLastBlockIsLatestBlock_LastBlockNumberSetToHeadBlockNumber(long blockNumber, long lastBlockNumberExpected)
         {
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             blockFinder.FindHeadBlock().Returns(Build.A.Block.WithNumber(blockNumber).TestObject);
@@ -278,6 +278,109 @@ namespace Nethermind.JsonRpc.Test.Modules
                 feeHistoryOracle.GetFeeHistory(1, BlockParameter.Latest, null);
             
             resultWrapper.Data.OldestBlock.Should().Be(lastBlockNumberExpected);
+        }
+        
+        [TestCase(2,2)]
+        [TestCase(7,7)]
+        [TestCase(32,32)]
+        public void GetFeeHistory_IfLastBlockIsEarliestBlock_LastBlockNumberSetToGenesisBlockNumber(long blockNumber, long lastBlockNumberExpected)
+        {
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            blockFinder.FindGenesisBlock().Returns(Build.A.Block.Genesis.TestObject);
+            FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockFinder: blockFinder);
+
+            ResultWrapper<FeeHistoryResults> resultWrapper =
+                feeHistoryOracle.GetFeeHistory(1, BlockParameter.Earliest, null);
+            
+            resultWrapper.Data.OldestBlock.Should().Be(lastBlockNumberExpected);
+        }
+        
+        [Test]
+        public void GetFeeHistory_IfEip1559TxsInBlock_RewardsCalculatedAndInsertedCorrectly()
+        {
+            Transaction[] transactions = {
+                //Rewards: 
+                Build.A.Transaction.WithHash(TestItem.KeccakA).WithMaxFeePerGas(5).WithMaxPriorityFeePerGas(1)
+                    .WithType(TxType.EIP1559).TestObject, //Min(5 - 3, 1) => 1
+                Build.A.Transaction.WithHash(TestItem.KeccakB).WithMaxFeePerGas(5).WithMaxPriorityFeePerGas(3)
+                    .WithType(TxType.EIP1559).TestObject, //Min(5 - 3, 3) => 2
+                Build.A.Transaction.WithHash(TestItem.KeccakC).WithMaxFeePerGas(6).WithMaxPriorityFeePerGas(2)
+                    .WithType(TxType.EIP1559).TestObject, //Min(6 - 3, 2) => 2
+                Build.A.Transaction.WithHash(TestItem.KeccakD).WithMaxFeePerGas(6).WithMaxPriorityFeePerGas(3)
+                    .WithType(TxType.EIP1559).TestObject //Min(6 - 3, 3) => 3
+            };
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            blockFinder.FindBlock(0).Returns(Build.A.Block.Genesis.WithBaseFeePerGas(3).WithTransactions(transactions).TestObject);
+            FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockFinder: blockFinder);
+            long[] expectedGasUsed = {1,2,2,3};
+            
+            ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, new BlockParameter((long) 0), null);
+
+            resultWrapper.Data.Reward!.Length.Should().Be(1);
+            resultWrapper.Data.Reward![0].Should().BeEquivalentTo(expectedGasUsed);
+        }
+        
+        
+        [Test]
+        public void GetFeeHistory_IfRegularTxsInBlock_RewardsCalculatedAndInsertedCorrectly()
+        {
+            Transaction[] transactions = {
+                //Rewards: 
+                Build.A.Transaction.WithHash(TestItem.KeccakA).WithGasPrice(5).WithMaxPriorityFeePerGas(1).TestObject, //Min(5 - 3, 1) => 1
+                Build.A.Transaction.WithHash(TestItem.KeccakB).WithGasPrice(6).WithMaxPriorityFeePerGas(3).TestObject, //Min(6 - 3, 3) => 3
+                Build.A.Transaction.WithHash(TestItem.KeccakC).WithGasPrice(6).WithMaxPriorityFeePerGas(2).TestObject, //Min(6 - 3, 2) => 2
+                Build.A.Transaction.WithHash(TestItem.KeccakD).WithGasPrice(6).WithMaxPriorityFeePerGas(3).TestObject //Min(5 - 3, 3) => 2
+            };
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            blockFinder.FindBlock(0).Returns(Build.A.Block.Genesis.WithBaseFeePerGas(3).WithTransactions(transactions).TestObject);
+            FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockFinder: blockFinder);
+            long[] expectedGasUsed = {1,2,2,3};
+            
+            ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, new BlockParameter((long) 0), null);
+
+            resultWrapper.Data.Reward!.Length.Should().Be(1);
+            resultWrapper.Data.Reward![0].Should().BeEquivalentTo(expectedGasUsed);
+        }
+        //Todo remove above two tests?
+        [TestCase(30, new double[] {20,40,60,80.5}, new ulong[]{10,10,13,13})]
+        [TestCase(40, new double[] {20,40,60,80.5}, new ulong[]{10,13,13,22})]
+        [TestCase(40, new double[] {10,20,30,40}, new ulong[]{7,10,10,13})]
+        public void CalculateAndInsertRewards_GivenValidInputs_CalculatesPercentilesCorrectly(long gasUsed, double[] rewardPercentiles, ulong[] expected)
+        {
+            Transaction[] transactions = new Transaction[]
+            {                                                                                                                                         //Rewards: 
+                Build.A.Transaction.WithHash(TestItem.KeccakA).WithMaxFeePerGas(20).WithMaxPriorityFeePerGas(13).WithType(TxType.EIP1559).TestObject, //13
+                Build.A.Transaction.WithHash(TestItem.KeccakB).WithMaxFeePerGas(10).WithMaxPriorityFeePerGas(7).WithType(TxType.EIP1559).TestObject,  //7
+                Build.A.Transaction.WithHash(TestItem.KeccakC).WithMaxFeePerGas(25).WithMaxPriorityFeePerGas(24).WithType(TxType.EIP1559).TestObject, //22
+                Build.A.Transaction.WithHash(TestItem.KeccakD).WithMaxFeePerGas(15).WithMaxPriorityFeePerGas(10).WithType(TxType.EIP1559).TestObject  //10
+            };
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            blockFinder.FindBlock(0)
+                .Returns(Build.A.Block.Genesis.WithBaseFeePerGas(3).WithTransactions(transactions).TestObject);
+            FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockFinder: blockFinder);
+
+            ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, new BlockParameter((long) 0), rewardPercentiles);
+
+            resultWrapper.Data.Reward!.Length.Should().Be(1);
+            resultWrapper.Data.Reward[0].Should().BeEquivalentTo(expected);
+        }
+        
+        [Test]
+        public void GetFeeHistory_ResultsSortedInOrderOfAscendingBlockNumber()
+        {
+            Transaction txFirstBlock = Build.A.Transaction.WithGasPrice(1).WithMaxPriorityFeePerGas(2).TestObject;
+            Transaction txSecondBlock = Build.A.Transaction.WithGasPrice(2).WithMaxPriorityFeePerGas(3).TestObject;
+            Block firstBlock = Build.A.Block.Genesis.WithBaseFeePerGas(5).WithTransactions(txFirstBlock).TestObject;
+            Block secondBlock = Build.A.Block.Genesis.WithBaseFeePerGas(6).WithTransactions(txSecondBlock).TestObject;
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            blockFinder.FindBlock(0).Returns(firstBlock);
+            blockFinder.FindBlock(1).Returns(secondBlock);
+            FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockFinder: blockFinder);
+            double[] rewardPercentiles = new double[] {0};
+            
+            ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(2, new BlockParameter(1), rewardPercentiles);
+            
+            resultWrapper.Data.
         }
         
         private static FeeHistoryOracle GetSubstitutedFeeHistoryOracle(
