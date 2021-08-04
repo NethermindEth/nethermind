@@ -82,7 +82,7 @@ up() {
 # Start of tail
 tail() {
   cli_log "Getting live logs from docker-compose stack..."
-  docker-compose logs -f
+  docker-compose logs -f --tail="100"
 }
 # End of tail
 
