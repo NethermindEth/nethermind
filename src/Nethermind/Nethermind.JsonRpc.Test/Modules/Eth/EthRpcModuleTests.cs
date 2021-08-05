@@ -52,35 +52,6 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
     [TestFixture]
     public partial class EthRpcModuleTests
     {
-        [TestCase(-10, true)]
-        [TestCase(10, false)]
-        public async Task Eth_feeHistory_IfBlockCountLessThanOne_ResultsInFailure(int blockCount, bool resultIsError)
-        {
-            using Context ctx = await Context.Create();
-            string serialized = ctx._test.TestEthRpc("eth_feeHistory", $"{blockCount.ToString()}", "10");
-            string expected = $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32603,\"message\":\"blockCount: Block count, {blockCount}, is less than 1.\"}},\"id\":67}}";
-            serialized.Should().Be(expected);
-        }
-
-        [TestCase("earliest", 0)]
-        [TestCase("latest", -1)]
-        [TestCase("pending", -2)]
-        [TestCase("0x1", 1)]
-        [TestCase("0xAA", 170)]
-        public async Task Eth_feeHistory_GivenBlockParameter_ConvertsItToCorrectNumber(string blockParameter, long expected)
-        {
-            using Context ctx = await Context.Create();
-            IFeeHistoryOracle feeHistoryOracle = Substitute.For<IFeeHistoryOracle>();
-            ctx._test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithFeeHistoryOracle(feeHistoryOracle).Build();
-            
-            string serialized = ctx._test.TestEthRpc("eth_feeHistory", $"1", blockParameter);
-
-            feeHistoryOracle.Received().GetFeeHistory(
-                Arg.Is<int>(l => l == 1),
-                Arg.Is<BlockParameter>(l => l.BlockNumber == 1),
-                Arg.Any<double[]?>());
-        }
-
         [TestCase("earliest", "0x3635c9adc5dea00000")]
         [TestCase("latest", "0x3635c9adc5de9f09e5")]
         [TestCase("pending", "0x3635c9adc5de9f09e5")]
