@@ -148,7 +148,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                     transactions.Add(Build.A.Transaction.WithNonce((UInt256)j).SignedAndResolved().TestObject);
                 }
 
-                if (i == 8)
+                if (i == 9)
                 {
                     transactions.Add(Build.A.Transaction.WithNonce((UInt256)i + 1).WithTo(TestItem.AddressA).SignedAndResolved().TestObject);
                     
@@ -218,6 +218,15 @@ namespace Nethermind.JsonRpc.Test.Modules
             var traceFilterRequest = new TraceFilterForRpc();
             traceFilterRequest.Count = 3;
             traceFilterRequest.After = 7;
+            var traces = _traceRpcModule.trace_filter(traceFilterRequest);
+            Assert.AreEqual(2, traces.Data.Length);
+        }
+        
+        [Test]
+        public void Trace_filter_with_filtering_by_receiver_address()
+        {
+            var traceFilterRequest = new TraceFilterForRpc();
+            traceFilterRequest.ToAddress = new Address[TestItem.AddressA];
             var traces = _traceRpcModule.trace_filter(traceFilterRequest);
             Assert.AreEqual(2, traces.Data.Length);
         }
