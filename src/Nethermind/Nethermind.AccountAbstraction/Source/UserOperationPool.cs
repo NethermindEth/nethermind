@@ -35,7 +35,7 @@ namespace Nethermind.AccountAbstraction.Source
         private readonly IBlockTree _blockTree;
         private readonly IStateProvider _stateProvider;
         private readonly ITimestamper _timestamper;
-        private readonly AccessBlockTracer _accessBlockTracer;
+        private readonly IAccessListSource _accessListSource;
         private readonly IAccountAbstractionConfig _accountAbstractionConfig;
         private readonly IDictionary<Address, int> _paymasterOffenseCounter;
         private readonly ISet<Address> _bannedPaymasters;
@@ -47,7 +47,7 @@ namespace Nethermind.AccountAbstraction.Source
             IBlockTree blockTree,
             IStateProvider stateProvider,
             ITimestamper timestamper,
-            AccessBlockTracer accessBlockTracer,
+            IAccessListSource accessListSource,
             IAccountAbstractionConfig accountAbstractionConfig,
             IDictionary<Address, int> paymasterOffenseCounter,
             ISet<Address> bannedPaymasters,
@@ -58,7 +58,7 @@ namespace Nethermind.AccountAbstraction.Source
             _blockTree = blockTree;
             _stateProvider = stateProvider;
             _timestamper = timestamper;
-            _accessBlockTracer = accessBlockTracer;
+            _accessListSource = accessListSource;
             _accountAbstractionConfig = accountAbstractionConfig;
             _paymasterOffenseCounter = paymasterOffenseCounter;
             _bannedPaymasters = bannedPaymasters;
@@ -86,18 +86,8 @@ namespace Nethermind.AccountAbstraction.Source
         private void OnNewBlock(object? sender, BlockEventArgs e)
         {
             Block block = e.Block;
-
-            IEnumerable<AccessTxTracer> blockAccessTxTracers = _accessBlockTracer.BuildResult();
-
-            HashSet<Address> blockAccessedAddresses = new();
-
-            foreach (AccessTxTracer blockAccessTxTracer in blockAccessTxTracers)
-            {
-                foreach (Address blockAccessedAddress in blockAccessTxTracer.AccessList.Data.Keys)
-                {
-                    blockAccessedAddresses.Add(blockAccessedAddress);
-                }
-            }
+            
+            HashSet<Address> blockAccessedAddresses = _accessListSource.AccessList.Data.Keys.ToHashSet();
 
             blockAccessedAddresses.Remove(block.Beneficiary);
             blockAccessedAddresses.Remove(new Address(_accountAbstractionConfig.SingletonContractAddress));

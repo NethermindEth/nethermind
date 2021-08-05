@@ -24,7 +24,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing.Access
 {
-    public class AccessBlockTracer : BlockTracerBase<AccessTxTracer, AccessTxTracer>
+    public class AccessBlockTracer : BlockTracerBase<AccessTxTracer, AccessTxTracer>, IAccessListSource
     {
         private readonly Address[] _addressesToOptimize;
         private IDictionary<Address, HashSet<UInt256>> _accessListData = new Dictionary<Address, HashSet<UInt256>>();
@@ -45,5 +45,7 @@ namespace Nethermind.Evm.Tracing.Access
         public override void EndBlockTrace()
         {
         }
+
+        public AccessList? AccessList { get; set; }
     }
 }

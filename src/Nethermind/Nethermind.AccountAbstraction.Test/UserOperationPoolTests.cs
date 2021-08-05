@@ -244,15 +244,13 @@ namespace Nethermind.AccountAbstraction.Test
                 20,
                 Address.Zero.Bytes,
                 new Signature(0, 1, 1000),
-                new AccessList(new Dictionary<Address, IReadOnlySet<UInt256>>{{Address.Zero, new HashSet<UInt256>{0}}}));
-
-            BlockBody blockBody = new BlockBody(new[] {Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject}, default);
+                new AccessList(new Dictionary<Address, IReadOnlySet<UInt256>>{{new("0x0000000000000000000000000000000000000001"), new HashSet<UInt256>{0}}}));
             
             userOperationPool.AddUserOperation(op);
             
             for (int i = 0; i < 7; i++) 
             {
-                blockTree.NewHeadBlock += Raise.EventWith(new object(), new BlockEventArgs(Build.A.Block.TestObject.WithReplacedBody(blockBody)));
+                blockTree.NewHeadBlock += Raise.EventWith(new object(), new BlockEventArgs(Build.A.Block.TestObject));
             }
             
             UserOperation op2 = new UserOperation(Address.SystemUser,
@@ -294,12 +292,17 @@ namespace Nethermind.AccountAbstraction.Test
             IAccountAbstractionConfig config = Substitute.For<IAccountAbstractionConfig>();
             config.SingletonContractAddress.Returns("0x8595dd9e0438640b5e1254f9df579ac12a86865f");
             config.MaxResimulations.Returns(5);
+
+            IAccessListSource accessListSource = Substitute.For<IAccessListSource>();
+
+            accessListSource.AccessList.Returns(new AccessList(
+                new Dictionary<Address, IReadOnlySet<UInt256>> {{new("0x0000000000000000000000000000000000000001"), new HashSet<UInt256> {0}}}));
             
             UserOperationPool userOperationPool = new(
                 blockTree,
                 stateProvider,
                 Substitute.For<ITimestamper>(),
-                new AccessBlockTracer(Array.Empty<Address>()),
+                accessListSource,
                 config,
                 new Dictionary<Address, int>(),
                 new HashSet<Address>(), 
