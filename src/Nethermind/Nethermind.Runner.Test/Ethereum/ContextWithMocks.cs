@@ -17,6 +17,7 @@
 using System.IO.Abstractions;
 using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Processing;
@@ -119,7 +120,8 @@ namespace Nethermind.Runner.Test.Ethereum
                 TrieStore = Substitute.For<ITrieStore>(),
                 ReadOnlyTrieStore = Substitute.For<IReadOnlyTrieStore>(),
                 ChainSpec = new ChainSpec(),
-                BlockProducerEnvFactory = Substitute.For<IBlockProducerEnvFactory>()
+                BlockProducerEnvFactory = Substitute.For<IBlockProducerEnvFactory>(),
+                TransactionComparerProvider = Substitute.For<ITransactionComparerProvider>()
             };
     }
 }
