@@ -40,6 +40,7 @@
     <ProjectReference Include="..\Nethermind.Init\Nethermind.Init.csproj" />
     <ProjectReference Include="..\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj" />
     <ProjectReference Include="..\Nethermind.Logging.NLog\Nethermind.Logging.NLog.csproj" />
+    <ProjectReference Include="..\Nethermind.Merge.Plugin\Nethermind.Merge.Plugin.csproj" />
     <ProjectReference Include="..\Nethermind.Mev\Nethermind.Mev.csproj" />
     <ProjectReference Include="..\Nethermind.Monitoring\Nethermind.Monitoring.csproj" />
     <ProjectReference Include="..\Nethermind.Network\Nethermind.Network.csproj" />
@@ -104,14 +105,18 @@
     <None Remove="keystore\**" />
   </ItemGroup>
   <ItemGroup>
-    <PluginsForBuild Include="$(OutputPath)\Nethermind.Merge.Plugin.*;                      &#xD;&#xA;                      $(OutputPath)\Nethermind.Mev.*;                      &#xD;&#xA;                      $(OutputPath)\Nethermind.HealthChecks.*;&#xD;&#xA;					  $(OutputPath)\Nethermind.Consensus.*.*" />
-    <PluginsForPublish Include="$(OutputPath)\Nethermind.Merge.Plugin.dll;&#xD;&#xA;                      $(OutputPath)\Nethermind.Mev.dll;&#xD;&#xA;                      $(OutputPath)\Nethermind.HealthChecks.dll;&#xD;&#xA;					  $(OutputPath)\Nethermind.Consensus.*.dll" />
+    <PluginsForBuild Include="$(OutputPath)\Nethermind.Merge.Plugin.*;
+                              $(OutputPath)\Nethermind.Mev.*;
+                              $(OutputPath)\Nethermind.HealthChecks.*;
+                              $(OutputPath)\Nethermind.Consensus.*.*" />
+    
+    <PluginsForPublish Include="$(OutputPath)\Nethermind.Merge.Plugin.dll;
+                                $(OutputPath)\Nethermind.Mev.dll;
+                                $(OutputPath)\Nethermind.HealthChecks.dll;
+                                $(OutputPath)\Nethermind.Consensus.*.dll" />
   </ItemGroup>
   <ItemGroup>
     <GitHash Include="git-hash" />
-  </ItemGroup>
-  <ItemGroup>
-    <Folder Include="Ethereum\Publishers" />
   </ItemGroup>
 
   <Target Name="StoreGitHashBeforeBuild" BeforeTargets="Build">
