@@ -14,15 +14,15 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-namespace Nethermind.WebSockets
+namespace Nethermind.Sockets
 {
-    public class WebSocketsMessage
+    public class SocketsMessage
     {
         public string Type { get; }
         public string Client { get; }
         public object Data { get; }
 
-        public WebSocketsMessage(string type, string client, object data)
+        public SocketsMessage(string type, string client, object data)
         {
             Type = type;
             Client = client;

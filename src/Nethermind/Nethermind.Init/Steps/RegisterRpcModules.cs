@@ -183,6 +183,7 @@ namespace Nethermind.Init.Steps
                 _api.Enode,
                 _api.EngineSignerStore,
                 _api.KeyStore,
+                _api.SpecProvider,
                 _api.LogManager,
                 _api.PeerManager);
             _api.RpcModuleProvider.RegisterSingle<IParityRpcModule>(parityRpcModule);

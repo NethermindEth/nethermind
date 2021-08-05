@@ -13,24 +13,21 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
 
-using Nethermind.JsonRpc.Modules;
+using System;
+using System.Threading.Tasks;
 
-namespace Nethermind.JsonRpc
+namespace Nethermind.Sockets
 {
-    public class JsonRpcContext
+    /// <summary>
+    /// Interface that defines logic (higher level operations) behind a socket communication not linked to any socket implementation like WebSockets or network sockets
+    /// The lower level communication is provided by implementing <see cref="ISocketHandler"/>.
+    /// </summary>
+    public interface ISocketsClient : IDisposable
     {
-        public static readonly JsonRpcContext Http = new(RpcEndpoint.Http);
-        public static readonly JsonRpcContext IPC = new(RpcEndpoint.IPC);
-
-        public RpcEndpoint RpcEndpoint { get; }
-        public IJsonRpcDuplexClient? DuplexClient { get; }
-
-        public JsonRpcContext(RpcEndpoint rpcEndpoint, IJsonRpcDuplexClient? duplexClient = null)
-        {
-            RpcEndpoint = rpcEndpoint;
-            DuplexClient = duplexClient;
-        }
+        string Id { get; }
+        string ClientName { get; }
+        Task ReceiveAsync();
+        Task SendAsync(SocketsMessage message);
     }
 }

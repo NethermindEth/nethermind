@@ -15,44 +15,51 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Buffers;
 using System.Diagnostics;
-using System.Reflection;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.Logging;
 using Nethermind.Serialization.Json;
-using Nethermind.WebSockets;
+using Nethermind.Sockets;
 
 namespace Nethermind.JsonRpc.WebSockets
 {
-    public class JsonRpcWebSocketsClient : IWebSocketsClient, IJsonRpcDuplexClient
+    public class JsonRpcSocketsClient : SocketClient, IJsonRpcDuplexClient
     {
-        private readonly IWebSocketsClient _client;
-        private readonly JsonRpcProcessor _jsonRpcProcessor;
-        private readonly JsonRpcService _jsonRpcService;
-        private readonly IJsonSerializer _jsonSerializer;
+        public event EventHandler Closed;
+
+        private readonly IJsonRpcProcessor _jsonRpcProcessor;
+        private readonly IJsonRpcService _jsonRpcService;
         private readonly IJsonRpcLocalStats _jsonRpcLocalStats;
         private readonly JsonRpcContext _jsonRpcContext;
-        public string Id => _client.Id;
-        public string Client { get; }
 
-        public JsonRpcWebSocketsClient(IWebSocketsClient client,
-            JsonRpcProcessor jsonRpcProcessor,
-            JsonRpcService jsonRpcService, 
-            IJsonSerializer jsonSerializer,
-            IJsonRpcLocalStats jsonRpcLocalStats)
+        public JsonRpcSocketsClient(
+            string clientName,
+            ISocketHandler handler,
+            RpcEndpoint endpointType,
+            IJsonRpcProcessor jsonRpcProcessor,
+            IJsonRpcService jsonRpcService,
+            IJsonRpcLocalStats jsonRpcLocalStats,
+            IJsonSerializer jsonSerializer)
+            : base(clientName, handler, jsonSerializer)
         {
-            _client = client;
             _jsonRpcProcessor = jsonRpcProcessor;
             _jsonRpcService = jsonRpcService;
-            _jsonSerializer = jsonSerializer;
             _jsonRpcLocalStats = jsonRpcLocalStats;
-            _jsonRpcContext = new JsonRpcContext(RpcEndpoint.WebSocket, this);
+            _jsonRpcContext = new JsonRpcContext(endpointType, this);
         }
 
-        public async Task ReceiveAsync(Memory<byte> data)
+        public override void Dispose()
+        {
+            base.Dispose();
+            Closed?.Invoke(this, EventArgs.Empty);
+        }
+
+        public override async Task ProcessAsync(Memory<byte> data)
         {
             Stopwatch stopwatch = Stopwatch.StartNew();
             Interlocked.Add(ref Metrics.JsonRpcBytesReceivedWebSockets, data.Length);
@@ -70,7 +77,7 @@ namespace Nethermind.JsonRpc.WebSockets
             {
                 _jsonRpcLocalStats.ReportCall(result.Report, handlingTimeMicroseconds, size);
             }
-            
+
             Interlocked.Add(ref Metrics.JsonRpcBytesSentWebSockets, data.Length);
         }
 
@@ -97,19 +104,9 @@ namespace Nethermind.JsonRpc.WebSockets
                 resultData = SerializeTimeoutException();
             }
             
-            await SendRawAsync(resultData);
+            await _handler.SendRawAsync(resultData);
 
             return resultData.Length;
         }
-
-        public event EventHandler Closed;
-
-        public void Dispose()
-        {
-            Closed?.Invoke(this, EventArgs.Empty);
-        }
-
-        public Task SendRawAsync(string data) => _client.SendRawAsync(data);
-        public Task SendAsync(WebSocketsMessage message) => _client.SendAsync(message);
     }
 }

@@ -14,17 +14,26 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
-using System.Threading.Tasks;
+using System.Collections.Concurrent;
 
-namespace Nethermind.WebSockets
+namespace Nethermind.Sockets
 {
-    public interface IWebSocketsClient
+    public class WebSocketsManager : IWebSocketsManager
     {
-        string Id { get; }
-        string Client { get; }
-        Task SendRawAsync(string data);
-        Task SendAsync(WebSocketsMessage message);
-        Task ReceiveAsync(Memory<byte> data);
+        private readonly ConcurrentDictionary<string, IWebSocketsModule> _modules = new();
+
+        private IWebSocketsModule _defaultModule = null;
+
+        public void AddModule(IWebSocketsModule module, bool isDefault = false)
+        {
+            _modules.TryAdd(module.Name, module);
+            
+            if (isDefault)
+            {
+                _defaultModule = module;
+            }
+        }
+
+        public IWebSocketsModule GetModule(string name) => _modules.TryGetValue(name, out var module) ? module : _defaultModule;
     }
 }

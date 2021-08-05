@@ -60,7 +60,7 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
-using Nethermind.WebSockets;
+using Nethermind.Sockets;
 
 namespace Nethermind.Api
 {

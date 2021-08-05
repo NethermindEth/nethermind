@@ -39,7 +39,7 @@ using Nethermind.HealthChecks;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
-using Nethermind.WebSockets;
+using Nethermind.Sockets;
 using Newtonsoft.Json;
 
 namespace Nethermind.Runner.JsonRpc

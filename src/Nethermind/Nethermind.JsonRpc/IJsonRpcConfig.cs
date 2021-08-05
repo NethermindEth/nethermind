@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -56,7 +56,10 @@ namespace Nethermind.JsonRpc
             Description = "Port number for JSON RPC web sockets calls. By default same port is used as regular JSON RPC. Ensure the firewall is configured when enabling JSON RPC.",
             DefaultValue = "8545")]
         int WebSocketsPort { get; set; }
-        
+
+        [ConfigItem(Description = "The path to connect a unix domain socket over.")]
+        string IpcUnixDomainSocketPath { get; set; }
+
         [ConfigItem(
             Description = "Defines which RPC modules should be enabled. Built in modules are: Admin, Baseline, Clique, Consensus, Db, Debug, Deposit, Erc20, Eth, Evm, Health Mev, NdmConsumer, NdmProvider, Net, Nft, Parity, Personal, Proof, Subscribe, Trace, TxPool, Vault, Web3.",
             DefaultValue = "[Eth, Subscribe, Trace, TxPool, Web3, Personal, Proof, Net, Parity, Health]")]

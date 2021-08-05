@@ -14,14 +14,12 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Net.WebSockets;
 
-namespace Nethermind.WebSockets
+namespace Nethermind.Sockets
 {
     public interface IWebSocketsManager
     {
         void AddModule(IWebSocketsModule module, bool isDefault = false);
         IWebSocketsModule GetModule(string name);
-        IWebSocketsClient CreateClient(IWebSocketsModule module, WebSocket webSocket, string client);
     }
 }
