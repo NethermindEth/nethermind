@@ -286,7 +286,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         
         [TestCase(new double[] {20,40,60,80.5}, new ulong[]{4,10,10,22})]
         [TestCase(new double[] {10,20,30,40}, new ulong[]{4,4,10,10})]
-        public void CalculateAndInsertRewards_GivenValidInputs_CalculatesPercentilesCorrectly( double[] rewardPercentiles, ulong[] expected)
+        public void GetFeeHistory_GivenValidInputs_CalculatesPercentilesCorrectly( double[] rewardPercentiles, ulong[] expected)
         {
             Transaction[] transactions = GetTestTransactions();
             Block headBlock = Build.A.Block.Genesis.WithBaseFeePerGas(3).WithGasUsed(100).WithTransactions(transactions).TestObject;
