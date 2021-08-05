@@ -17,10 +17,11 @@
 
 using Nethermind.Consensus.Transactions;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Blockchain.Producers
 {
     public interface IBlockProducerEnvFactory
     {
+        IBlockTransactionsExecutorFactory TransactionsExecutorFactory { get; set; }
         BlockProducerEnv Create(ITxSource? additionalTxSource = null);
     }
 }

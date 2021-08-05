@@ -98,7 +98,7 @@ namespace Nethermind.Mev.Test
             {
                 MiningConfig miningConfig = new() {MinGasPrice = UInt256.One};
                 
-                BlockProducerEnvFactory blockProducerEnvFactory = new BlockProducerEnvFactory(
+                BlockProducerEnvFactory blockProducerEnvFactory = new(
                     DbProvider, 
                     BlockTree, 
                     ReadOnlyTrieStore, 
@@ -109,7 +109,10 @@ namespace Nethermind.Mev.Test
                     BlockPreprocessorStep,
                     TxPool,
                     miningConfig,
-                    LogManager);
+                    LogManager)
+                {
+                    TransactionsExecutorFactory = new MevBlockProducerTransactionsExecutorFactory(SpecProvider, LogManager)
+                };
 
                 Eth2BlockProducer CreateEth2BlockProducer(IBlockProductionTrigger blockProductionTrigger, ITxSource? txSource = null) =>
                     new Eth2TestBlockProducerFactory(GasLimitCalculator, txSource).Create(

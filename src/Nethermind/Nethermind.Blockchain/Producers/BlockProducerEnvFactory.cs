@@ -17,7 +17,6 @@
 
 using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Processing;
-using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Validators;
@@ -30,7 +29,7 @@ using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Blockchain.Producers
 {
     public class BlockProducerEnvFactory : IBlockProducerEnvFactory
     {
@@ -45,6 +44,8 @@ namespace Nethermind.Blockchain
         private readonly ITxPool _txPool;
         private readonly IMiningConfig _miningConfig;
         private readonly ILogManager _logManager;
+
+        public IBlockTransactionsExecutorFactory TransactionsExecutorFactory { get; set; }
 
         public BlockProducerEnvFactory(
             IDbProvider dbProvider,
@@ -70,6 +71,8 @@ namespace Nethermind.Blockchain
             _txPool = txPool;
             _miningConfig = miningConfig;
             _logManager = logManager;
+
+            TransactionsExecutorFactory = new BlockProducerTransactionsExecutorFactory(specProvider, logManager);
         }
         
         public BlockProducerEnv Create(ITxSource? additionalTxSource = null)
@@ -110,7 +113,7 @@ namespace Nethermind.Blockchain
                 ReadOnlyTxProcessingEnv = txProcessingEnv
             };
         }
-        
+
         protected virtual ITxSource GetTxSource(
             ITxSource? additionalTxSource, 
             ReadOnlyTxProcessingEnv txProcessingEnv, 
@@ -155,7 +158,7 @@ namespace Nethermind.Blockchain
             new(specProvider,
                 blockValidator,
                 rewardCalculatorSource.Get(readOnlyTxProcessingEnv.TransactionProcessor),
-                new BlockProcessor.BlockProductionTransactionsExecutor(readOnlyTxProcessingEnv, specProvider, logManager),
+                TransactionsExecutorFactory.Create(readOnlyTxProcessingEnv),
                 readOnlyTxProcessingEnv.StateProvider,
                 readOnlyTxProcessingEnv.StorageProvider,
                 receiptStorage,

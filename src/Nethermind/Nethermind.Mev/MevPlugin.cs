@@ -158,6 +158,8 @@ namespace Nethermind.Mev
             {
                 throw new InvalidOperationException("Plugin is disabled");
             }
+
+            _nethermindApi.BlockProducerEnvFactory.TransactionsExecutorFactory = new MevBlockProducerTransactionsExecutorFactory(_nethermindApi.SpecProvider!, _nethermindApi.LogManager);
             
             List<MevBlockProducer.MevBlockProducerInfo> blockProducers =
                 new(_mevConfig.MaxMergedBundles + 1);

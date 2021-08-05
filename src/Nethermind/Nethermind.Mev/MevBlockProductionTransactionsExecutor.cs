@@ -137,8 +137,8 @@ namespace Nethermind.Mev
                 ProcessBundle(block, bundleTransactions, transactionsInBlock, receiptsTracer, processingOptions);
             }
 
-            _stateProvider.Commit(spec);
-            _storageProvider.Commit();
+            _stateProvider.Commit(spec, receiptsTracer);
+            _storageProvider.Commit(receiptsTracer);
             
             SetTransactions(block, transactionsInBlock);
             return receiptsTracer.TxReceipts.ToArray();
