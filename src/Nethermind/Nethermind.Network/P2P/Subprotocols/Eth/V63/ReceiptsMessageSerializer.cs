@@ -51,7 +51,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
         public ReceiptsMessage Deserialize(IByteBuffer byteBuffer)
         {
-            if (byteBuffer.Array.Length == 0) return new ReceiptsMessage(null);
+            if (byteBuffer.Array.Length == 0 || byteBuffer.Array.First() == Rlp.OfEmptySequence[0]) return new ReceiptsMessage(null);
             
             RlpStream rlpStream = new NettyRlpStream(byteBuffer);
             return Deserialize(rlpStream);
