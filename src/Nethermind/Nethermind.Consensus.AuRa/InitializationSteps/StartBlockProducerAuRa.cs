@@ -158,7 +158,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                 _api.SpecProvider,
                 _api.BlockValidator,
                 _api.RewardCalculatorSource.Get(changeableTxProcessingEnv.TransactionProcessor),
-                new BlockProcessor.BlockProductionTransactionsExecutor(changeableTxProcessingEnv, _api.SpecProvider, _api.LogManager),
+                _api.BlockProducerEnvFactory.TransactionsExecutorFactory.Create(changeableTxProcessingEnv),
                 changeableTxProcessingEnv.StateProvider,
                 changeableTxProcessingEnv.StorageProvider, 
                 _api.ReceiptStorage,
@@ -372,12 +372,6 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
 
             return txSource;
         }
-        
-        private ITxFilter CreateAuraTxFilter(IReadOnlyTxProcessorSource readOnlyTxProcessorSource, ISpecProvider specProvider) =>
-            TxAuRaFilterBuilders.CreateAuRaTxFilter(
-                _api,
-                readOnlyTxProcessorSource,
-                specProvider);
 
         private IGasLimitCalculator CreateGasLimitCalculator(IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {

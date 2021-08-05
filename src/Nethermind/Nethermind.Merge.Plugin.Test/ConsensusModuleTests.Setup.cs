@@ -19,6 +19,7 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Rewards;
@@ -76,7 +77,7 @@ namespace Nethermind.Merge.Plugin.Test
 
             private ISigner Signer { get; }
 
-            protected override IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer)
+            protected override IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
             {
                 MiningConfig miningConfig = new();
                 TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator = new(SpecProvider, miningConfig);
@@ -91,6 +92,7 @@ namespace Nethermind.Merge.Plugin.Test
                     ReceiptStorage,
                     BlockPreprocessorStep,
                     TxPool,
+                    transactionComparerProvider,
                     miningConfig,
                     LogManager);
                 

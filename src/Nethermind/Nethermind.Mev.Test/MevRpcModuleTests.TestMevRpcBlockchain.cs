@@ -23,6 +23,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Rewards;
@@ -94,7 +95,7 @@ namespace Nethermind.Mev.Test
 
             public override ILogManager LogManager => NUnitLogManager.Instance;
 
-            protected override IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer)
+            protected override IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
             {
                 MiningConfig miningConfig = new() {MinGasPrice = UInt256.One};
                 
@@ -108,6 +109,7 @@ namespace Nethermind.Mev.Test
                     ReceiptStorage,
                     BlockPreprocessorStep,
                     TxPool,
+                    transactionComparerProvider,
                     miningConfig,
                     LogManager)
                 {

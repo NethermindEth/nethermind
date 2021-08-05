@@ -42,6 +42,7 @@ namespace Nethermind.Blockchain.Producers
         private readonly IReceiptStorage _receiptStorage;
         private readonly IBlockPreprocessorStep _blockPreprocessorStep;
         private readonly ITxPool _txPool;
+        private readonly ITransactionComparerProvider _transactionComparerProvider;
         private readonly IMiningConfig _miningConfig;
         private readonly ILogManager _logManager;
 
@@ -57,6 +58,7 @@ namespace Nethermind.Blockchain.Producers
             IReceiptStorage receiptStorage,
             IBlockPreprocessorStep blockPreprocessorStep,
             ITxPool txPool,
+            ITransactionComparerProvider transactionComparerProvider,
             IMiningConfig miningConfig,
             ILogManager logManager)
         {
@@ -69,19 +71,20 @@ namespace Nethermind.Blockchain.Producers
             _receiptStorage = receiptStorage;
             _blockPreprocessorStep = blockPreprocessorStep;
             _txPool = txPool;
+            _transactionComparerProvider = transactionComparerProvider;
             _miningConfig = miningConfig;
             _logManager = logManager;
 
             TransactionsExecutorFactory = new BlockProducerTransactionsExecutorFactory(specProvider, logManager);
         }
         
-        public BlockProducerEnv Create(ITxSource? additionalTxSource = null)
+        public virtual BlockProducerEnv Create(ITxSource? additionalTxSource = null)
         {
             ReadOnlyDbProvider readOnlyDbProvider = _dbProvider.AsReadOnly(false);
             ReadOnlyBlockTree readOnlyBlockTree = _blockTree.AsReadOnly();
 
             ReadOnlyTxProcessingEnv txProcessingEnv =
-                new(readOnlyDbProvider, _readOnlyTrieStore, readOnlyBlockTree, _specProvider, _logManager);
+                CreateReadonlyTxProcessingEnv(readOnlyDbProvider, readOnlyBlockTree);
                 
             BlockProcessor blockProcessor =
                 CreateBlockProcessor(txProcessingEnv, 
@@ -89,7 +92,8 @@ namespace Nethermind.Blockchain.Producers
                     _blockValidator, 
                     _rewardCalculatorSource, 
                     _receiptStorage, 
-                    _logManager);
+                    _logManager, 
+                    _miningConfig);
 
             IBlockchainProcessor blockchainProcessor =
                 new BlockchainProcessor(
@@ -103,36 +107,29 @@ namespace Nethermind.Blockchain.Producers
                 readOnlyDbProvider,
                 blockchainProcessor);
 
-            TransactionComparerProvider transactionComparerProvider = new(_specProvider, readOnlyBlockTree);
-            
             return new BlockProducerEnv
             {
                 ChainProcessor = chainProcessor,
                 ReadOnlyStateProvider = txProcessingEnv.StateProvider,
-                TxSource = GetTxSource(additionalTxSource, txProcessingEnv, _txPool, _miningConfig, transactionComparerProvider, _logManager),
+                TxSource = CreateTxSourceForProducer(additionalTxSource, txProcessingEnv, _txPool, _miningConfig, _transactionComparerProvider, _logManager),
                 ReadOnlyTxProcessingEnv = txProcessingEnv
             };
         }
 
-        protected virtual ITxSource GetTxSource(
-            ITxSource? additionalTxSource, 
-            ReadOnlyTxProcessingEnv txProcessingEnv, 
-            ITxPool txPool, 
-            IMiningConfig miningConfig,
-            ITransactionComparerProvider transactionComparerProvider,
-            ILogManager logManager)
-        {
-            ITxSource txSourceForProducer = CreateTxSourceForProducer(txProcessingEnv, txPool, miningConfig, transactionComparerProvider, logManager);
-            return additionalTxSource.Then(txSourceForProducer); 
-        }
+        protected virtual ReadOnlyTxProcessingEnv CreateReadonlyTxProcessingEnv(ReadOnlyDbProvider readOnlyDbProvider, ReadOnlyBlockTree readOnlyBlockTree) => 
+            new(readOnlyDbProvider, _readOnlyTrieStore, readOnlyBlockTree, _specProvider, _logManager);
 
         protected virtual ITxSource CreateTxSourceForProducer(
+            ITxSource? additionalTxSource, 
             ReadOnlyTxProcessingEnv processingEnv, 
             ITxPool txPool, 
             IMiningConfig miningConfig, 
             ITransactionComparerProvider transactionComparerProvider, 
-            ILogManager logManager) =>
-            CreateTxPoolTxSource(processingEnv, txPool, miningConfig, transactionComparerProvider, logManager);
+            ILogManager logManager)
+        {
+            TxPoolTxSource txPoolSource = CreateTxPoolTxSource(processingEnv, txPool, miningConfig, transactionComparerProvider, logManager);
+            return additionalTxSource.Then(txPoolSource); 
+        }
 
         protected virtual TxPoolTxSource CreateTxPoolTxSource(
             ReadOnlyTxProcessingEnv processingEnv, 
@@ -148,13 +145,12 @@ namespace Nethermind.Blockchain.Producers
         protected virtual ITxFilterPipeline CreateTxSourceFilter(IMiningConfig miningConfig) =>
             TxFilterPipelineBuilder.CreateStandardFilteringPipeline(_logManager, _specProvider, miningConfig);
 
-        protected virtual BlockProcessor CreateBlockProcessor(
-            ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv,
-            ISpecProvider specProvider, 
-            IBlockValidator blockValidator, 
-            IRewardCalculatorSource rewardCalculatorSource, 
-            IReceiptStorage receiptStorage, 
-            ILogManager logManager) =>
+        protected virtual BlockProcessor CreateBlockProcessor(ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv,
+            ISpecProvider specProvider,
+            IBlockValidator blockValidator,
+            IRewardCalculatorSource rewardCalculatorSource,
+            IReceiptStorage receiptStorage,
+            ILogManager logManager, IMiningConfig miningConfig) =>
             new(specProvider,
                 blockValidator,
                 rewardCalculatorSource.Get(readOnlyTxProcessingEnv.TransactionProcessor),

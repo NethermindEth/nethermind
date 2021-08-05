@@ -65,6 +65,7 @@ namespace Nethermind.Init.Steps
                 _api.ReceiptStorage,
                 _api.BlockPreprocessor,
                 _api.TxPool,
+                _api.TransactionComparerProvider,
                 _api.Config<IMiningConfig>(),
                 _api.LogManager);
             

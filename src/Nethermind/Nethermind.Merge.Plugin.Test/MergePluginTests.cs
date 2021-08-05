@@ -56,6 +56,7 @@ namespace Nethermind.Merge.Plugin.Test
                 _context.ReceiptStorage!,
                 _context.BlockPreprocessor!,
                 _context.TxPool!,
+                _context.TransactionComparerProvider,
                 new MiningConfig(),
                 _context.LogManager!);
             _plugin = new MergePlugin();
