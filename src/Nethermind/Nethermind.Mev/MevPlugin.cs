@@ -176,7 +176,7 @@ namespace Nethermind.Mev
                 blockProducers.Add(bundleProducer);
             }
 
-            return new MevBlockProducer(consensusPlugin.DefaultBlockProductionTrigger, blockProducers.ToArray());
+            return new MevBlockProducer(consensusPlugin.DefaultBlockProductionTrigger, _nethermindApi.LogManager, blockProducers.ToArray());
         }
 
         private static async Task<MevBlockProducer.MevBlockProducerInfo> CreateProducer(

@@ -150,7 +150,7 @@ namespace Nethermind.Mev.Test
                     blockProducers.Add(bundleProducer);
                 }
 
-                return new MevBlockProducer(BlockProductionTrigger, blockProducers.ToArray());
+                return new MevBlockProducer(BlockProductionTrigger, LogManager, blockProducers.ToArray());
             }
 
             protected override BlockProcessor CreateBlockProcessor()

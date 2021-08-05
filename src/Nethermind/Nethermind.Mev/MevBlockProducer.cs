@@ -21,13 +21,14 @@ using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
+using Nethermind.Logging;
 
 namespace Nethermind.Mev
 {
     public class MevBlockProducer : MultipleBlockProducer<MevBlockProducer.MevBlockProducerInfo>
     {
-        public MevBlockProducer(IBlockProductionTrigger blockProductionTrigger, params MevBlockProducerInfo[] blockProducers) 
-            : base(blockProductionTrigger, new MevBestBlockPicker(), blockProducers)
+        public MevBlockProducer(IBlockProductionTrigger blockProductionTrigger, ILogManager logManager, params MevBlockProducerInfo[] blockProducers) 
+            : base(blockProductionTrigger, new MevBestBlockPicker(), logManager, blockProducers)
         {
         }
 
