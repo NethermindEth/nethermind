@@ -116,7 +116,7 @@ namespace Nethermind.Evm.TransactionProcessing
             Execute(transaction, block, txTracer, ExecutionOptions.Commit);
         }
 
-        private void QuickFail(Transaction tx, BlockHeader block, ITxTracer txTracer, bool eip658NotEnabled, string? reason)
+        private void QuickFail(Transaction tx, BlockHeader block, ITxTracer txTracer, bool eip658NotEnabled, string? reason, bool deleteCallerAccount = false)
         {
             block.GasUsed += tx.GasLimit;
             
@@ -134,6 +134,11 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
                 
                 txTracer.MarkAsFailed(recipient, tx.GasLimit, Array.Empty<byte>(), reason ?? "invalid", stateRoot);
+            }
+            
+            if (deleteCallerAccount)
+            {
+                _stateProvider.DeleteAccount(tx.SenderAddress ?? throw new InvalidOperationException());
             }
         }
 
@@ -163,8 +168,9 @@ namespace Nethermind.Evm.TransactionProcessing
             
             UInt256 value = transaction.Value;
 
-            if (!transaction.TryCalculatePremiumPerGas(block.BaseFeePerGas, out UInt256 premiumPerGas) && !restore)
+            if (!transaction.TryCalculatePremiumPerGas(block.BaseFeePerGas, out UInt256 premiumPerGas) && (!restore || isCommitAndRestoreWithoutZeroGasPrice))
             {
+                // max fee per gas (feeCap) less than block base fee
                 TraceLogInvalidTx(transaction, "MINER_PREMIUM_IS_NEGATIVE");
                 QuickFail(transaction, block, txTracer, eip658NotEnabled, "miner premium is negative");
                 return;
@@ -239,27 +245,32 @@ namespace Nethermind.Evm.TransactionProcessing
 
             UInt256 senderReservedGasPayment = restore ? UInt256.Zero : (ulong) gasLimit * gasPrice;
             
+            if (isCommitAndRestoreWithoutZeroGasPrice)
+            {
+                senderReservedGasPayment = (ulong)gasLimit * gasPrice;
+            }
+            
             if (notSystemTransaction)
             {
                 UInt256 senderBalance = _stateProvider.GetBalance(caller);
-                if (!restore && ((ulong) intrinsicGas * gasPrice + value > senderBalance || senderReservedGasPayment + value > senderBalance))
+                if ((!restore || isCommitAndRestoreWithoutZeroGasPrice) && ((ulong) intrinsicGas * gasPrice + value > senderBalance || senderReservedGasPayment + value > senderBalance))
                 {
                     TraceLogInvalidTx(transaction, $"INSUFFICIENT_SENDER_BALANCE: ({caller})_BALANCE = {senderBalance}");
-                    QuickFail(transaction, block, txTracer, eip658NotEnabled, "insufficient sender balance");
+                    QuickFail(transaction, block, txTracer, eip658NotEnabled, "insufficient sender balance", deleteCallerAccount);
                     return;
                 }
                 
-                if (!restore && spec.IsEip1559Enabled && !transaction.IsServiceTransaction && senderBalance < (UInt256)transaction.GasLimit * transaction.MaxFeePerGas + value)
+                if ((!restore || deleteCallerAccount) && spec.IsEip1559Enabled && !transaction.IsServiceTransaction && senderBalance < (UInt256)transaction.GasLimit * transaction.MaxFeePerGas + value)
                 {
                     TraceLogInvalidTx(transaction, $"INSUFFICIENT_MAX_FEE_PER_GAS_FOR_SENDER_BALANCE: ({caller})_BALANCE = {senderBalance}, MAX_FEE_PER_GAS: {transaction.MaxFeePerGas}");
-                    QuickFail(transaction, block, txTracer, eip658NotEnabled, "insufficient MaxFeePerGas for sender balance");
+                    QuickFail(transaction, block, txTracer, eip658NotEnabled, "insufficient MaxFeePerGas for sender balance", deleteCallerAccount);
                     return;
                 }
 
                 if (transaction.Nonce != _stateProvider.GetNonce(caller))
                 {
                     TraceLogInvalidTx(transaction, $"WRONG_TRANSACTION_NONCE: {transaction.Nonce} (expected {_stateProvider.GetNonce(caller)})");
-                    QuickFail(transaction, block, txTracer, eip658NotEnabled, "wrong transaction nonce");
+                    QuickFail(transaction, block, txTracer, eip658NotEnabled, "wrong transaction nonce", deleteCallerAccount);
                     return;
                 }
 
@@ -352,7 +363,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
                 else
                 {
-                    // tks: there is similar code fo contract creation from init and from CREATE
+                    // tks: there is similar code for contract creation from init and from CREATE
                     // this may lead to inconsistencies (however it is tested extensively in blockchain tests)
                     if (transaction.IsContractCreation)
                     {
