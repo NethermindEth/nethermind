@@ -15,12 +15,18 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
+using System.IO;
+using Nethermind.Consensus;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
+using Newtonsoft.Json;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -98,7 +104,7 @@ namespace Nethermind.Core.Test
             BlockHeader blockHeader = Build.A.BlockHeader.TestObject;
             blockHeader.Number = 2001;
             blockHeader.GasLimit = 100;
-            UInt256 baseFee = BlockHeader.CalculateBaseFee(blockHeader, releaseSpec);
+            UInt256 baseFee = BaseFeeCalculator.Calculate(blockHeader, releaseSpec);
             Assert.AreEqual(UInt256.Zero, baseFee);
         }
         
@@ -115,11 +121,47 @@ namespace Nethermind.Core.Test
             
             BlockHeader blockHeader = Build.A.BlockHeader.TestObject;
             blockHeader.Number = 2001;
-            blockHeader.GasLimit = gasTarget;
-            blockHeader.BaseFee = (UInt256)baseFee;
+            blockHeader.GasLimit = gasTarget * Eip1559Constants.ElasticityMultiplier;
+            blockHeader.BaseFeePerGas = (UInt256)baseFee;
             blockHeader.GasUsed = gasUsed;
-            UInt256 actualBaseFee = BlockHeader.CalculateBaseFee(blockHeader, releaseSpec);
+            UInt256 actualBaseFee = BaseFeeCalculator.Calculate(blockHeader, releaseSpec);
             Assert.AreEqual((UInt256)expectedBaseFee, actualBaseFee);
+        }
+        
+        [SuppressMessage("ReSharper", "ClassNeverInstantiated.Global")]
+        [SuppressMessage("ReSharper", "UnusedAutoPropertyAccessor.Global")]
+        public class BaseFeeTestCases
+        {
+            public int ParentBaseFee { get; set; }
+            public int ParentGasUsed { get; set; }
+            public int ParentTargetGasUsed { get; set; }
+            public int ExpectedBaseFee { get; set; }
+        }
+        
+        [TestCaseSource(nameof(TestCaseSource))]
+        public void Eip_1559_CalculateBaseFee_shared_test_cases((BaseFeeTestCases Info, string Description) testCase)
+        {
+            IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
+            releaseSpec.IsEip1559Enabled.Returns(true);
+            
+            BlockHeader blockHeader = Build.A.BlockHeader.TestObject;
+            blockHeader.Number = 2001;
+            blockHeader.GasLimit = testCase.Info.ParentTargetGasUsed * Eip1559Constants.ElasticityMultiplier;
+            blockHeader.BaseFeePerGas = (UInt256)testCase.Info.ParentBaseFee;
+            blockHeader.GasUsed = testCase.Info.ParentGasUsed;
+            UInt256 actualBaseFee = BaseFeeCalculator.Calculate(blockHeader, releaseSpec);
+            Assert.AreEqual((UInt256)testCase.Info.ExpectedBaseFee, actualBaseFee, testCase.Description);
+        }
+        
+        public static IEnumerable<(BaseFeeTestCases, string)> TestCaseSource()
+        {
+            string testCases = File.ReadAllText("TestFiles/BaseFeeTestCases.json");
+            BaseFeeTestCases[] deserializedTestCases = JsonConvert.DeserializeObject<BaseFeeTestCases[]>(testCases);
+
+            for (int i = 0; i < deserializedTestCases.Length; ++i)
+            {
+                yield return (deserializedTestCases[i], $"Test case number {i}");
+            }
         }
     }
 }

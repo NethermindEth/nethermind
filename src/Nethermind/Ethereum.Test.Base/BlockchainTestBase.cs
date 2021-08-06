@@ -24,6 +24,7 @@ using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
@@ -42,6 +43,7 @@ using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Int256;
 using Nethermind.Evm;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
@@ -50,7 +52,6 @@ using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
-using Nethermind.TxPool.Storages;
 using NUnit.Framework;
 
 namespace Ethereum.Test.Base
@@ -78,7 +79,7 @@ namespace Ethereum.Test.Base
         {
             public IDifficultyCalculator? Wrapped { get; set; }
 
-            public UInt256 Calculate(UInt256 parentDifficulty, UInt256 parentTimestamp, UInt256 currentTimestamp, long blockNumber, bool parentHasUncles)
+            public UInt256 Calculate(BlockHeader header, BlockHeader parent)
             {
                 if (Wrapped is null)
                 {
@@ -86,7 +87,7 @@ namespace Ethereum.Test.Base
                         $"Cannot calculate difficulty before the {nameof(Wrapped)} calculator is set.");
                 }
                 
-                return Wrapped.Calculate(parentDifficulty, parentTimestamp, currentTimestamp, blockNumber, parentHasUncles);
+                return Wrapped.Calculate(header, parent);
             }
         }
 
@@ -118,16 +119,19 @@ namespace Ethereum.Test.Base
                 Assert.Fail("Expected genesis spec to be Frontier for blockchain tests");
             }
 
-            DifficultyCalculator.Wrapped = new DifficultyCalculator(specProvider);
+            DifficultyCalculator.Wrapped = new EthashDifficultyCalculator(specProvider);
             IRewardCalculator rewardCalculator = new RewardCalculator(specProvider);
 
             IEthereumEcdsa ecdsa = new EthereumEcdsa(specProvider.ChainId, _logManager);
 
             TrieStore trieStore = new(stateDb, _logManager);
             IStateProvider stateProvider = new StateProvider(trieStore, codeDb, _logManager);
-            var blockInfoDb = new MemDb();
+            MemDb blockInfoDb = new MemDb();
             IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), specProvider, NullBloomStorage.Instance,  _logManager);
-            ITxPool transactionPool = new TxPool(NullTxStorage.Instance, ecdsa, new ChainHeadSpecProvider(specProvider, blockTree), new TxPoolConfig(), stateProvider, new TxValidator(specProvider.ChainId), _logManager);
+            ITransactionComparerProvider transactionComparerProvider = new TransactionComparerProvider(specProvider, blockTree);
+            IStateReader stateReader = new StateReader(trieStore, codeDb, _logManager);
+            IChainHeadInfoProvider chainHeadInfoProvider = new ChainHeadInfoProvider(specProvider, blockTree, stateReader);
+            ITxPool transactionPool = new TxPool(ecdsa, chainHeadInfoProvider, new TxPoolConfig(),  new TxValidator(specProvider.ChainId), _logManager, transactionComparerProvider.GetDefaultComparer());
 
             IReceiptStorage receiptStorage = NullReceiptStorage.Instance;
             IBlockhashProvider blockhashProvider = new BlockhashProvider(blockTree, _logManager);
@@ -147,15 +151,16 @@ namespace Ethereum.Test.Base
                 specProvider,
                 blockValidator,
                 rewardCalculator,
-                new TransactionProcessor(
-                    specProvider,
-                    stateProvider,
-                    storageProvider,
-                    virtualMachine,
-                    _logManager),
+                new BlockProcessor.BlockValidationTransactionsExecutor(
+                    new TransactionProcessor(
+                        specProvider,
+                        stateProvider,
+                        storageProvider,
+                        virtualMachine,
+                        _logManager),
+                    stateProvider),
                 stateProvider,
                 storageProvider,
-                transactionPool,
                 receiptStorage,
                 NullWitnessCollector.Instance,
                 _logManager);

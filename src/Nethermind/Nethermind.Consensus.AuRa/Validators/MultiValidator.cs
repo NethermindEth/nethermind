@@ -22,6 +22,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
 
@@ -33,7 +34,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         private readonly IBlockTree _blockTree;
         private readonly IValidatorStore _validatorStore;
         private readonly bool _forSealing;
-        private IBlockFinalizationManager _blockFinalizationManager;
+        private IAuRaBlockFinalizationManager _blockFinalizationManager;
         private readonly IDictionary<long, AuRaParameters.Validator> _validators;
         private readonly ILogger _logger;
         private IAuRaValidator _currentValidator;
@@ -45,7 +46,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             IAuRaValidatorFactory validatorFactory,
             IBlockTree blockTree,
             IValidatorStore validatorStore,
-            IBlockFinalizationManager finalizationManager,
+            IAuRaBlockFinalizationManager finalizationManager,
             BlockHeader parentHeader,
             ILogManager logManager,
             bool forSealing = false)
@@ -178,7 +179,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             }
         }
 
-        public void SetFinalizationManager(IBlockFinalizationManager finalizationManager, BlockHeader parentHeader)
+        public void SetFinalizationManager(IAuRaBlockFinalizationManager finalizationManager, BlockHeader parentHeader)
         {
             _blockFinalizationManager = finalizationManager ?? throw new ArgumentNullException(nameof(finalizationManager));
             _blockFinalizationManager.BlocksFinalized += OnBlocksFinalized;

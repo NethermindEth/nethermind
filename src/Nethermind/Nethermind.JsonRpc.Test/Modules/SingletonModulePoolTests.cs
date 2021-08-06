@@ -54,7 +54,6 @@ namespace Nethermind.JsonRpc.Test.Modules
             ISpecProvider specProvider = MainnetSpecProvider.Instance;
             ITxPool txPool = NullTxPool.Instance;
             IDbProvider dbProvider = await TestMemDbProvider.InitAsync();
-
             BlockTree blockTree = new BlockTree(dbProvider.BlocksDb, dbProvider.HeadersDb, dbProvider.BlockInfosDb, new ChainLevelInfoRepository(dbProvider.BlockInfosDb), specProvider, NullBloomStorage.Instance, new SyncConfig(), LimboLogs.Instance);
             _factory = new EthModuleFactory(
                 txPool,
@@ -64,7 +63,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                 new JsonRpcConfig(),
                 LimboLogs.Instance,
                 Substitute.For<IStateReader>(),
-                Substitute.For<IBlockchainBridgeFactory>());
+                Substitute.For<IBlockchainBridgeFactory>(),
+                Substitute.For<ISpecProvider>());
         }
 
         [Test]

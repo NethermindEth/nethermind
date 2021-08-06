@@ -25,6 +25,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
@@ -71,7 +72,8 @@ namespace Nethermind.JsonRpc.Test
         public void GetBlockByNumberTest()
         {
             IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
-            ethRpcModule.eth_getBlockByNumber(Arg.Any<BlockParameter>(), true).ReturnsForAnyArgs(x => ResultWrapper<BlockForRpc>.Success(new BlockForRpc(Build.A.Block.WithNumber(2).TestObject, true)));
+            ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+            ethRpcModule.eth_getBlockByNumber(Arg.Any<BlockParameter>(), true).ReturnsForAnyArgs(x => ResultWrapper<BlockForRpc>.Success(new BlockForRpc(Build.A.Block.WithNumber(2).TestObject, true, specProvider)));
             JsonRpcSuccessResponse response = TestRequest(ethRpcModule, "eth_getBlockByNumber", "0x1b4", "true") as JsonRpcSuccessResponse;
             Assert.AreEqual(2L, (response?.Result as BlockForRpc)?.Number);
         }
@@ -80,7 +82,8 @@ namespace Nethermind.JsonRpc.Test
         public void Eth_module_populates_size_when_returning_block_data()
         {
             IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
-            ethRpcModule.eth_getBlockByNumber(Arg.Any<BlockParameter>(), true).ReturnsForAnyArgs(x => ResultWrapper<BlockForRpc>.Success(new BlockForRpc(Build.A.Block.WithNumber(2).TestObject, true)));
+            ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+            ethRpcModule.eth_getBlockByNumber(Arg.Any<BlockParameter>(), true).ReturnsForAnyArgs(x => ResultWrapper<BlockForRpc>.Success(new BlockForRpc(Build.A.Block.WithNumber(2).TestObject, true, specProvider)));
             JsonRpcSuccessResponse response = TestRequest(ethRpcModule, "eth_getBlockByNumber", "0x1b4", "true") as JsonRpcSuccessResponse;
             Assert.AreEqual(513L, (response?.Result as BlockForRpc)?.Size);
         }

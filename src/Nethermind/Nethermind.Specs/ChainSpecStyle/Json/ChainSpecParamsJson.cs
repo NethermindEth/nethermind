@@ -105,6 +105,18 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
         
         public long? Eip2930Transition { get; set; }
         
+        public long? Eip3198Transition { get; set; }
+        
+        public long? Eip3529Transition { get; set; }
+
+        public long? Eip3541Transition { get; set; }
+
+        public UInt256? Eip1559BaseFeeInitialValue { get; set; }
+
+        public UInt256? Eip1559BaseFeeMaxChangeDenominator { get; set; }    
+            
+        public long? Eip1559ElasticityMultiplier { get; set; }
+        
         public Address TransactionPermissionContract { get; set; }
 
         public long ? TransactionPermissionContractTransition { get; set; }

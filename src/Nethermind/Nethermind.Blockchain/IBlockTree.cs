@@ -112,17 +112,18 @@ namespace Nethermind.Blockchain
         bool WasProcessed(long number, Keccak blockHash);
 
         /// <summary>
-        /// Marks all <paramref name="processedBlocks"/> as processed, changes chain head to the last of them and updates all the chain levels./>
+        /// Marks all <paramref name="blocks"/> as processed, changes chain head to the last of them and updates all the chain levels./>
         /// </summary>
-        /// <param name="processedBlocks">Blocks that will now be at the top of the chain</param>
+        /// <param name="blocks">Blocks that will now be at the top of the chain</param>
         /// <param name="wereProcessed"></param>
-        void UpdateMainChain(Block[] processedBlocks, bool wereProcessed);
+        /// <param name="forceHeadBlock">Force updating <seealso cref="IBlockFinder.Head"/> block regardless of <see cref="Block.TotalDifficulty"/></param>
+        void UpdateMainChain(Block[] blocks, bool wereProcessed, bool forceHeadBlock = false);
 
         bool CanAcceptNewBlocks { get; }
 
         Task Accept(IBlockTreeVisitor blockTreeVisitor, CancellationToken cancellationToken);
 
-        ChainLevelInfo FindLevel(long number);
+        ChainLevelInfo? FindLevel(long number);
 
         BlockInfo FindCanonicalBlockInfo(long blockNumber);
 
@@ -139,7 +140,7 @@ namespace Nethermind.Blockchain
         event EventHandler<BlockEventArgs> NewSuggestedBlock;
         event EventHandler<BlockReplacementEventArgs> BlockAddedToMain;
         event EventHandler<BlockEventArgs> NewHeadBlock;
-
+        
         int DeleteChainSlice(in long startNumber, long? endNumber = null);
 
         bool IsBetterThanHead(BlockHeader? header)

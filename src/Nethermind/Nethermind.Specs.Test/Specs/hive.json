@@ -47,7 +47,10 @@
     "eip145Transition": 7080000,
     "eip1014Transition": 7080000,
     "eip1052Transition": 7080000,
-    "eip1283Transition": 7080000
+    "eip1283Transition": 7080000,
+    "eip1559BaseFeeMaxChangeDenominator": "0x7",
+    "eip1559ElasticityMultiplier": "0x1",
+    "eip1559BaseFeeInitialValue": "0x3b9aca00"
   },
   "genesis": {
     "seal": {
@@ -61,7 +64,8 @@
     "timestamp": "0x0",
     "parentHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
     "extraData": "0x0000000000000000000000000000000000000000000000000000000000000000",
-    "gasLimit": "0x8000000"
+    "gasLimit": "0x8000000",
+    "baseFeePerGas": "0xb"                                                        
   },
   "nodes": [],
   "accounts": {

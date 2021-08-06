@@ -31,7 +31,7 @@ namespace Nethermind.Blockchain.Test.Producers
         public void Does_not_trigger_when_empty(int txCount, bool shouldTrigger)
         {
             var pool = Substitute.For<ITxPool>();
-            pool.GetPendingTransactions().Returns(new Transaction[txCount]);
+            pool.GetPendingTransactionsCount().Returns(txCount);
             bool triggered = false;
             BuildBlocksWhenRequested trigger = new BuildBlocksWhenRequested();
             IBlockProductionTrigger withCondition = trigger.IfPoolIsNotEmpty(pool);

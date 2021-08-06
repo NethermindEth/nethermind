@@ -32,6 +32,7 @@ using Nethermind.JsonRpc.Modules.Personal;
 using Nethermind.JsonRpc.Modules.Proof;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.JsonRpc.Modules.TxPool;
+using Nethermind.JsonRpc.Modules.Witness;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Core;
@@ -102,7 +103,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.Config<IJsonRpcConfig>(),
                 _api.LogManager,
                 _api.StateReader,
-                _api);
+                _api,
+                _api.SpecProvider);
             _api.RpcModuleProvider.RegisterBounded(ethModuleFactory, rpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, rpcConfig.Timeout);
             
             if (_api.DbProvider == null) throw new StepDependencyException(nameof(_api.DbProvider));
@@ -165,7 +167,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             
             if (_api.TxPoolInfoProvider == null) throw new StepDependencyException(nameof(_api.TxPoolInfoProvider));
 
-            TxPoolRpcModule txPoolRpcModule = new(_api.BlockTree, _api.TxPoolInfoProvider, _api.LogManager);
+            TxPoolRpcModule txPoolRpcModule = new(_api.TxPoolInfoProvider, _api.LogManager);
             _api.RpcModuleProvider.RegisterSingle<ITxPoolRpcModule>(txPoolRpcModule);
             
             if (_api.SyncServer == null) throw new StepDependencyException(nameof(_api.SyncServer));
@@ -182,10 +184,14 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.Enode,
                 _api.EngineSignerStore,
                 _api.KeyStore,
+                _api.SpecProvider,
                 _api.LogManager,
                 _api.PeerManager);
             _api.RpcModuleProvider.RegisterSingle<IParityRpcModule>(parityRpcModule);
 
+            WitnessRpcModule witnessRpcModule = new(_api.WitnessRepository, _api.BlockTree);
+            _api.RpcModuleProvider.RegisterSingle<IWitnessRpcModule>(witnessRpcModule);
+            
             SubscriptionFactory subscriptionFactory = new(
                 _api.LogManager,
                 _api.BlockTree,

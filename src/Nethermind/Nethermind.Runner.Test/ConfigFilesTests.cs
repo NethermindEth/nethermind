@@ -33,7 +33,6 @@ using Nethermind.Grpc;
 using Nethermind.JsonRpc;
 using Nethermind.Monitoring.Config;
 using Nethermind.Network.Config;
-using Nethermind.PubSub.Kafka;
 using Nethermind.Db.Blooms;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.TxPool;
@@ -83,6 +82,21 @@ namespace Nethermind.Runner.Test
         public void Sync_is_disabled_when_needed(string configWildcard, bool isSyncEnabled)
         {
             Test<ISyncConfig, bool>(configWildcard, c => c.SynchronizationEnabled, isSyncEnabled);
+        }
+        
+        [TestCase("archive", true)]
+        [TestCase("fast", true)]
+        [TestCase("beam", true)]
+        [TestCase("spaceneth", false)]
+        [TestCase("baseline", true)]
+        [TestCase("ndm_consumer_goerli.cfg", true)]
+        [TestCase("ndm_consumer_local.cfg", true)]
+        [TestCase("ndm_consumer_mainnet_proxy.cfg", false)]
+        [TestCase("ndm_consumer_ropsten.cfg", true)]
+        [TestCase("ndm_consumer_ropsten_proxy.cfg", false)]
+        public void Networking_is_disabled_when_needed(string configWildcard, bool isEnabled)
+        {
+            Test<ISyncConfig, bool>(configWildcard, c => c.NetworkingEnabled, isEnabled);
         }
 
         [TestCase("ropsten", "ws://ropsten-stats.parity.io/api")]
@@ -189,7 +203,7 @@ namespace Nethermind.Runner.Test
         [TestCase("volta archive", 256000000)]
         [TestCase("volta ^archive", 256000000)]
         [TestCase("goerli archive", 768000000)]
-        [TestCase("goerli ^archive", 384000000)]
+        [TestCase("goerli ^archive", 768000000)]
         [TestCase("rinkeby archive", 1536000000)]
         [TestCase("rinkeby ^archive", 1024000000)]
         [TestCase("ropsten archive", 1536000000)]
@@ -263,12 +277,6 @@ namespace Nethermind.Runner.Test
         public void Tracer_timeout_default_is_correct(string configWildcard)
         {
             Test<IJsonRpcConfig, int>(configWildcard, c => c.Timeout, 20000);
-        }
-
-        [TestCase("*")]
-        public void Kafka_disabled_by_default(string configWildcard)
-        {
-            Test<IKafkaConfig, bool>(configWildcard, c => c.Enabled, false);
         }
 
         [TestCase("^mainnet ^validators ^beam ^archive", true, true)]
@@ -362,8 +370,6 @@ namespace Nethermind.Runner.Test
             }
 
             Test<IInitConfig, string>(configWildcard, c => c.LogFileName, (cf, p) => p.Should().Be(cf.Replace("cfg", "logs.txt"), cf));
-
-            Test<IInitConfig, string>(configWildcard, c => c.PluginsDirectory, "plugins");
         }
 
 

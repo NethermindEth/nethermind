@@ -18,16 +18,19 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using Nethermind.Blockchain.Comparers;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.State;
 using Nethermind.Trie;
 using Nethermind.TxPool;
+using Nethermind.TxPool.Comparison;
 
 [assembly:InternalsVisibleTo("Nethermind.AuRa.Test")]
 
@@ -36,153 +39,75 @@ namespace Nethermind.Blockchain.Producers
     public class TxPoolTxSource : ITxSource
     {
         private readonly ITxPool _transactionPool;
-        private readonly IStateReader _stateReader;
-        private readonly ITxFilter _txFilter;
+        private readonly ITransactionComparerProvider _transactionComparerProvider;
+        private readonly ITxFilterPipeline _txFilterPipeline;
+        private readonly ISpecProvider _specProvider;
         protected readonly ILogger _logger;
 
-        public TxPoolTxSource(ITxPool? transactionPool, IStateReader? stateReader, ILogManager? logManager, ITxFilter? txFilter = null)
+        public TxPoolTxSource(
+            ITxPool? transactionPool, 
+            ISpecProvider? specProvider,
+            ITransactionComparerProvider transactionComparerProvider, 
+            ILogManager? logManager,
+            ITxFilterPipeline? txFilterPipeline)
         {
             _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
-            _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
-            _txFilter = txFilter ?? new MinGasPriceTxFilter(UInt256.Zero);
+            _transactionComparerProvider = transactionComparerProvider ?? throw new ArgumentNullException(nameof(transactionComparerProvider));
+            _txFilterPipeline = txFilterPipeline ?? throw new ArgumentNullException(nameof(txFilterPipeline));
+            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _logger = logManager?.GetClassLogger<TxPoolTxSource>() ?? throw new ArgumentNullException(nameof(logManager));
         }
         
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
         {
-            T GetFromState<T>(Func<Keccak, Address, T> stateGetter, Address address, T defaultValue)
-            {
-                T value = defaultValue;
-                try
-                {
-                    value = stateGetter(parent.StateRoot, address);
-                }
-                catch (TrieException e)
-                {
-                    if (_logger.IsDebug) _logger.Debug($"Couldn't get state for address {address}.{Environment.NewLine}{e}");
-                }
-                catch (RlpException e)
-                {
-                    if (_logger.IsError) _logger.Error($"Couldn't deserialize state for address {address}.", e);
-                }
-
-                return value;
-            }
-
-            UInt256 GetCurrentNonce(IDictionary<Address, UInt256> noncesDictionary, Address address)
-            {
-                if (!noncesDictionary.TryGetValue(address, out UInt256 nonce))
-                {
-                    noncesDictionary[address] = nonce = GetFromState(_stateReader.GetNonce, address, UInt256.Zero);
-                }
-                
-                return nonce;
-            }
-
-            UInt256 GetRemainingBalance(IDictionary<Address, UInt256> balances, Address address)
-            {
-                if (!balances.TryGetValue(address, out UInt256 balance))
-                {
-                    balances[address] = balance = GetFromState(_stateReader.GetBalance, address, UInt256.Zero);
-                }
-
-                return balance;
-            }
-
-            bool HasEnoughFounds(IDictionary<Address, UInt256> balances, Transaction transaction)
-            {
-                UInt256 balance = GetRemainingBalance(balances, transaction.SenderAddress!);
-                UInt256 transactionPotentialCost = transaction.GasPrice * (ulong) transaction.GasLimit + transaction.Value;
-
-                if (balance < transactionPotentialCost)
-                {
-                    if (_logger.IsDebug) _logger.Debug($"Rejecting transaction - transaction cost ({transactionPotentialCost}) is higher than sender balance ({balance}).");
-                    return false;
-                }
-
-                balances[transaction.SenderAddress] = balance - transactionPotentialCost;
-                return true;
-            }
-
+            long blockNumber = parent.Number + 1;
+            IReleaseSpec releaseSpec = _specProvider.GetSpec(blockNumber);
+            UInt256 baseFee = BaseFeeCalculator.Calculate(parent, releaseSpec);
             IDictionary<Address, Transaction[]> pendingTransactions = _transactionPool.GetPendingTransactionsBySender();
-            IComparer<Transaction> comparer = GetComparer(parent)
-                .ThenBy(DistinctCompareTx.Instance); // in order to sort properly and not loose transactions we need to differentiate on their identity which provided comparer might not be doing
+            IComparer<Transaction> comparer = GetComparer(parent, new BlockPreparationContext(baseFee, blockNumber))
+                .ThenBy(ByHashTxComparer.Instance); // in order to sort properly and not loose transactions we need to differentiate on their identity which provided comparer might not be doing
             
             IEnumerable<Transaction> transactions = GetOrderedTransactions(pendingTransactions, comparer);
-            IDictionary<Address, UInt256> remainingBalance = new Dictionary<Address, UInt256>();
-            Dictionary<Address, UInt256> nonces = new();
-            List<Transaction> selected = new();
-            long gasRemaining = gasLimit;
+            if (_logger.IsDebug) _logger.Debug($"Collecting pending transactions at block gas limit {gasLimit}.");
 
-            if (_logger.IsDebug) _logger.Debug($"Collecting pending transactions at block gas limit {gasRemaining}.");
-
+            int selectedTransactions = 0;
+            int i = 0;
+            
+            // TODO: removing transactions from TX pool here seems to be a bad practice since they will
+            // not come back if the block is ignored?
             foreach (Transaction tx in transactions)
             {
-                if (gasRemaining < Transaction.BaseTxGasCost)
-                {
-                    break;
-                }
-
-                if (tx.GasLimit > gasRemaining)
-                {
-                    if (_logger.IsDebug) _logger.Debug($"Rejecting (tx gas limit {tx.GasLimit} above remaining block gas {gasRemaining}) {tx.ToShortString()}");
-                    continue;
-                }
+                i++;
                 
-                if (tx.SenderAddress == null)
+                if (tx.SenderAddress is null)
                 {
                     _transactionPool.RemoveTransaction(tx.Hash!);
                     if (_logger.IsDebug) _logger.Debug($"Rejecting (null sender) {tx.ToShortString()}");
                     continue;
                 }
 
-                (bool allowed, string reason) = _txFilter.IsAllowed(tx, parent);
-                if (!allowed)
+                bool success = _txFilterPipeline.Execute(tx, parent);
+                if (!success)
                 {
                     _transactionPool.RemoveTransaction(tx.Hash!);
-                    if (_logger.IsDebug) _logger.Debug($"Rejecting ({reason}) {tx.ToShortString()}");
                     continue;
                 }
-
-                UInt256 expectedNonce = GetCurrentNonce(nonces, tx.SenderAddress);
-                if (expectedNonce != tx.Nonce)
-                {
-                    if (tx.Nonce < expectedNonce)
-                    {
-                        _transactionPool.RemoveTransaction(tx.Hash!, true);    
-                    }
-                    
-                    if (tx.Nonce > expectedNonce + _transactionPool.FutureNonceRetention)
-                    {
-                        _transactionPool.RemoveTransaction(tx.Hash!);
-                    }
-                    
-                    if (_logger.IsDebug) _logger.Debug($"Rejecting (invalid nonce - expected {expectedNonce}) {tx.ToShortString()}");
-                    continue;
-                }
-
-                if (!HasEnoughFounds(remainingBalance, tx))
-                {
-                    _transactionPool.RemoveTransaction(tx.Hash!);
-                    if (_logger.IsDebug) _logger.Debug($"Rejecting (sender balance too low) {tx.ToShortString()}");
-                    continue;
-                }
-
-                selected.Add(tx);
-                if (_logger.IsTrace) _logger.Trace($"Selected {tx.ToShortString()} to be included in block.");
-                nonces[tx.SenderAddress!] = tx.Nonce + 1;
-                gasRemaining -= tx.GasLimit;
+                
+                if (_logger.IsTrace) _logger.Trace($"Selected {tx.ToShortString()} to be potentially included in block.");
+                
+                selectedTransactions++;
+                yield return tx;
             }
 
-            if (_logger.IsDebug) _logger.Debug($"Collected {selected.Count} out of {pendingTransactions.Sum(g => g.Value.Length)} pending transactions.");
-
-            return selected;
+            if (_logger.IsDebug) _logger.Debug($"Potentially selected {selectedTransactions} out of {i} pending transactions checked.");
+            
         }
-
+        
         protected virtual IEnumerable<Transaction> GetOrderedTransactions(IDictionary<Address,Transaction[]> pendingTransactions, IComparer<Transaction> comparer) => 
             Order(pendingTransactions, comparer);
 
-        protected virtual IComparer<Transaction> GetComparer(BlockHeader parent) => TxPool.TxPool.DefaultComparer;
+        protected virtual IComparer<Transaction> GetComparer(BlockHeader parent, BlockPreparationContext blockPreparationContext) 
+            => _transactionComparerProvider.GetDefaultProducerComparer(blockPreparationContext);
 
         internal static IEnumerable<Transaction> Order(IDictionary<Address,Transaction[]> pendingTransactions, IComparer<Transaction> comparerWithIdentity)
         {

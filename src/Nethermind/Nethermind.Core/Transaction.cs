@@ -39,9 +39,11 @@ namespace Nethermind.Core
 
         public UInt256 Nonce { get; set; }
         public UInt256 GasPrice { get; set; }
-        public UInt256 GasPremium => GasPrice; 
-        public UInt256 FeeCap { get; set; }
-        public bool IsEip1559 => FeeCap > UInt256.Zero;
+        public UInt256 GasBottleneck { get; set; }
+        public UInt256 MaxPriorityFeePerGas => GasPrice; 
+        public UInt256 DecodedMaxFeePerGas { get; set; }
+        public UInt256 MaxFeePerGas => IsEip1559 ? DecodedMaxFeePerGas : GasPrice;
+        public bool IsEip1559 => Type == TxType.EIP1559;
         public long GasLimit { get; set; }
         public Address? To { get; set; }
         public UInt256 Value { get; set; }
@@ -56,6 +58,12 @@ namespace Nethermind.Core
         public UInt256 Timestamp { get; set; }
 
         public AccessList? AccessList { get; set; } // eip2930
+
+        /// <summary>
+        /// Service transactions are free. The field added to handle baseFee validation after 1559
+        /// </summary>
+        /// <remarks>Used for AuRa consensus.</remarks>
+        public bool IsServiceTransaction { get; set; }
         
         /// <summary>
         /// In-memory only property, representing order of transactions going to TxPool.
@@ -63,8 +71,12 @@ namespace Nethermind.Core
         /// <remarks>Used for sorting in edge cases.</remarks>
         public ulong PoolIndex { get; set; }
 
-        public string ToShortString() => 
-            $"[TX: hash {Hash} from {SenderAddress} to {To} with data {Data?.ToHexString()}, gas price {GasPrice} and limit {GasLimit}, nonce {Nonce}]";
+        public string ToShortString()
+        {
+            string gasPriceString =
+                IsEip1559 ? $"maxPriorityFeePerGas: {MaxPriorityFeePerGas}, MaxFeePerGas: {MaxFeePerGas}" : $"gas price {GasPrice}";
+            return $"[TX: hash {Hash} from {SenderAddress} to {To} with data {Data?.ToHexString()}, {gasPriceString} and limit {GasLimit}, nonce {Nonce}]";
+        }
 
         public string ToString(string indent)
         {
@@ -72,7 +84,16 @@ namespace Nethermind.Core
             builder.AppendLine($"{indent}Hash:      {Hash}");
             builder.AppendLine($"{indent}From:      {SenderAddress}");
             builder.AppendLine($"{indent}To:        {To}");
-            builder.AppendLine($"{indent}Gas Price: {GasPrice}");
+            if (IsEip1559)
+            {
+                builder.AppendLine($"{indent}MaxPriorityFeePerGas: {MaxPriorityFeePerGas}");
+                builder.AppendLine($"{indent}MaxFeePerGas: {MaxFeePerGas}");
+            }
+            else
+            {
+                builder.AppendLine($"{indent}Gas Price: {GasPrice}");
+            }
+            
             builder.AppendLine($"{indent}Gas Limit: {GasLimit}");
             builder.AppendLine($"{indent}Nonce:     {Nonce}");
             builder.AppendLine($"{indent}Value:     {Value}");
@@ -81,6 +102,8 @@ namespace Nethermind.Core
             builder.AppendLine($"{indent}V:         {Signature?.V}");
             builder.AppendLine($"{indent}ChainId:   {Signature?.ChainId}");
             builder.AppendLine($"{indent}Timestamp: {Timestamp}");
+            
+
             return builder.ToString();
         }
 
@@ -96,12 +119,4 @@ namespace Nethermind.Core
     /// System transaction that is to be executed by the node without including in the block. 
     /// </summary>
     public class SystemTransaction : Transaction { }
-
-    public static class TransactionExtensions
-    {
-        public static bool IsSystem(this Transaction tx)
-        {
-            return tx is SystemTransaction || tx.SenderAddress == Address.SystemUser;
-        }
-    }
 }

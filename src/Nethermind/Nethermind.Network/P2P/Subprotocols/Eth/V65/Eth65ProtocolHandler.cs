@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
@@ -33,15 +34,19 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
     /// </summary>
     public class Eth65ProtocolHandler : Eth64ProtocolHandler
     {
+        private readonly IPooledTxsRequestor _pooledTxsRequestor;
+
         public Eth65ProtocolHandler(ISession session,
             IMessageSerializationService serializer,
             INodeStatsManager nodeStatsManager,
             ISyncServer syncServer,
             ITxPool txPool,
+            IPooledTxsRequestor pooledTxsRequestor,
             ISpecProvider specProvider,
             ILogManager logManager)
             : base(session, serializer, nodeStatsManager, syncServer, txPool, specProvider, logManager)
         {
+            _pooledTxsRequestor = pooledTxsRequestor;
         }
 
         public override string Name => "eth65";
@@ -56,6 +61,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                 case Eth65MessageCode.PooledTransactions:
                     PooledTransactionsMessage pooledTxMsg
                         = Deserialize<PooledTransactionsMessage>(message.Content);
+                    Metrics.Eth65PooledTransactionsReceived++;
                     ReportIn(pooledTxMsg);
                     Handle(pooledTxMsg);
                     break;
@@ -66,9 +72,25 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                     Handle(getPooledTxMsg);
                     break;
                 case Eth65MessageCode.NewPooledTransactionHashes:
-                    Metrics.Eth65NewPooledTransactionHashesReceived++;
+                    NewPooledTransactionHashesMessage newPooledTxMsg =
+                        Deserialize<NewPooledTransactionHashesMessage>(message.Content);
+                    ReportIn(newPooledTxMsg);
+                    Handle(newPooledTxMsg);
                     break;
             }
+        }
+
+        private void Handle(NewPooledTransactionHashesMessage msg)
+        {
+            Metrics.Eth65NewPooledTransactionHashesReceived++;
+            Stopwatch stopwatch = Stopwatch.StartNew();
+
+            _pooledTxsRequestor.RequestTransactions(Send, msg.Hashes.ToArray());
+            
+            stopwatch.Stop();
+            if (Logger.IsTrace)
+                Logger.Trace($"OUT {Counter:D5} {nameof(NewPooledTransactionHashesMessage)} to {Node:c} " +
+                             $"in {stopwatch.Elapsed.TotalMilliseconds}ms");
         }
 
         private void Handle(GetPooledTransactionsMessage msg)

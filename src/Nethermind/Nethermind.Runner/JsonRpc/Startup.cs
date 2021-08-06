@@ -17,6 +17,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Security.Authentication;
 using System.Text;
@@ -27,6 +28,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -37,7 +39,7 @@ using Nethermind.HealthChecks;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
-using Nethermind.WebSockets;
+using Nethermind.Sockets;
 using Newtonsoft.Json;
 
 namespace Nethermind.Runner.JsonRpc
@@ -70,6 +72,14 @@ namespace Nethermind.Runner.JsonRpc
             string corsOrigins = Environment.GetEnvironmentVariable("NETHERMIND_CORS_ORIGINS") ?? "*";
             services.AddCors(c => c.AddPolicy("Cors",
                 p => p.AllowAnyMethod().AllowAnyHeader().WithOrigins(corsOrigins)));
+            
+            services.AddResponseCompression(options =>
+            {
+                options.Providers.Add<BrotliCompressionProvider>();
+                options.Providers.Add<GzipCompressionProvider>();
+                options.MimeTypes = ResponseCompressionDefaults.MimeTypes;
+                options.EnableForHttps = true;
+            });
         }
 
         public void Configure(IApplicationBuilder app, IWebHostEnvironment env, IJsonRpcProcessor jsonRpcProcessor, IJsonRpcService jsonRpcService, IJsonRpcLocalStats jsonRpcLocalStats)
@@ -90,6 +100,7 @@ namespace Nethermind.Runner.JsonRpc
 
             app.UseCors("Cors");
             app.UseRouting();
+            app.UseResponseCompression();
 
             IConfigProvider? configProvider = app.ApplicationServices.GetService<IConfigProvider>();
             if (configProvider == null)
@@ -132,7 +143,7 @@ namespace Nethermind.Runner.JsonRpc
                     }
                 }
             });
-
+            
             app.Use(async (ctx, next) =>
             {
                 if (ctx.Request.Method == "GET")
@@ -142,8 +153,18 @@ namespace Nethermind.Runner.JsonRpc
                 if (ctx.Connection.LocalPort == jsonRpcConfig.Port && ctx.Request.Method == "POST")
                 {
                     Stopwatch stopwatch = Stopwatch.StartNew();
-                    using StreamReader reader = new StreamReader(ctx.Request.Body, Encoding.UTF8);
-                    string request = await reader.ReadToEndAsync();
+                    string request;
+                    try
+                    {                    
+                        using StreamReader reader = new(ctx.Request.Body, Encoding.UTF8);
+                        request = await reader.ReadToEndAsync();
+                    }
+                    catch (Microsoft.AspNetCore.Http.BadHttpRequestException e)
+                    {
+                        if (logger.IsDebug) logger.Debug($"Couldn't read request.{Environment.NewLine}{e}");
+                        return;
+                    }
+
                     Interlocked.Add(ref Nethermind.JsonRpc.Metrics.JsonRpcBytesReceivedHttp, ctx.Request.ContentLength ?? request.Length);
                     using JsonRpcResult result = await jsonRpcProcessor.ProcessAsync(request, JsonRpcContext.Http);
 

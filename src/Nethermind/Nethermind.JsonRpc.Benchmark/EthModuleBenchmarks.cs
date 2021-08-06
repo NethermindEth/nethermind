@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -44,12 +44,11 @@ using BlockTree = Nethermind.Blockchain.BlockTree;
 
 namespace Nethermind.JsonRpc.Benchmark
 {
-    [MemoryDiagnoser]
     public class EthModuleBenchmarks
     {
         private IVirtualMachine _virtualMachine;
         private IBlockhashProvider _blockhashProvider;
-        private EthModule _ethModule;
+        private EthRpcModule _ethModule;
 
         [GlobalSetup]
         public void GlobalSetup()
@@ -85,7 +84,7 @@ namespace Nethermind.JsonRpc.Benchmark
                  = new TransactionProcessor(MainnetSpecProvider.Instance, stateProvider, storageProvider, _virtualMachine, LimboLogs.Instance);
             
             BlockProcessor blockProcessor = new BlockProcessor(specProvider, Always.Valid, new RewardCalculator(specProvider), transactionProcessor,
-                stateProvider, storageProvider, NullTxPool.Instance, NullReceiptStorage.Instance, NullWitnessCollector.Instance, LimboLogs.Instance);
+                stateProvider, storageProvider, NullReceiptStorage.Instance, NullWitnessCollector.Instance, LimboLogs.Instance);
 
             EthereumEcdsa ecdsa = new EthereumEcdsa(specProvider.ChainId, LimboLogs.Instance);
             BlockchainProcessor blockchainProcessor = new BlockchainProcessor(
@@ -125,10 +124,11 @@ namespace Nethermind.JsonRpc.Benchmark
                 ecdsa,
                 Timestamper.Default,
                 logFinder,
+                specProvider,
                 false,
                 false);
             
-            _ethModule = new EthModule(
+            _ethModule = new EthRpcModule(
                 new JsonRpcConfig(),
                 bridge,
                 blockTree,
@@ -136,7 +136,8 @@ namespace Nethermind.JsonRpc.Benchmark
                 NullTxPool.Instance,
                 NullTxSender.Instance,
                 NullWallet.Instance,
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                specProvider);
         }
 
         [Benchmark]

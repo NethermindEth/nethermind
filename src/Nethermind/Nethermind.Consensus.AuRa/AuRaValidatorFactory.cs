@@ -21,11 +21,13 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.Db.Blooms;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa
@@ -39,29 +41,31 @@ namespace Nethermind.Consensus.AuRa
         private readonly IBlockTree _blockTree;
         private readonly IReceiptFinder _receiptFinder;
         private readonly IValidatorStore _validatorStore;
-        private readonly IBlockFinalizationManager _finalizationManager;
+        private readonly IAuRaBlockFinalizationManager _finalizationManager;
         private readonly ITxSender _txSender;
         private readonly ITxPool _txPool;
         private readonly IMiningConfig _miningConfig;
         private readonly ILogManager _logManager;
         private readonly ISigner _signer;
+        private readonly ISpecProvider _specProvider;
         private readonly ReportingContractBasedValidator.Cache _reportingValidatorCache;
         private readonly long _posdaoTransition;
         private readonly bool _forSealing;
 
-        public AuRaValidatorFactory(IStateProvider stateProvider,
-            IAbiEncoder abiEncoder,
+        public AuRaValidatorFactory(IAbiEncoder abiEncoder,
+            IStateProvider stateProvider,
             ITransactionProcessor transactionProcessor,
-            IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
             IBlockTree blockTree,
+            IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
             IReceiptFinder receiptFinder,
             IValidatorStore validatorStore,
-            IBlockFinalizationManager finalizationManager,
+            IAuRaBlockFinalizationManager finalizationManager,
             ITxSender txSender,
             ITxPool txPool,
             IMiningConfig miningConfig,
             ILogManager logManager,
             ISigner signer,
+            ISpecProvider specProvider,
             ReportingContractBasedValidator.Cache reportingValidatorCache,
             long posdaoTransition,
             bool forSealing = false)
@@ -82,6 +86,7 @@ namespace Nethermind.Consensus.AuRa
             _reportingValidatorCache = reportingValidatorCache;
             _posdaoTransition = posdaoTransition;
             _forSealing = forSealing;
+            _specProvider = specProvider;
         }
 
         public IAuRaValidator CreateValidatorProcessor(AuRaParameters.Validator validator, BlockHeader parentHeader = null, long? startBlock = null)
@@ -129,6 +134,7 @@ namespace Nethermind.Consensus.AuRa
                         _miningConfig,
                         _stateProvider,
                         _reportingValidatorCache,
+                        _specProvider,
                         _logManager),
                 
                 AuRaParameters.ValidatorType.Multi => 

@@ -28,7 +28,7 @@ namespace Nethermind.Blockchain
     /// <summary>
     /// Safe to be reused for all classes reading the same wrapped block tree.
     /// </summary>
-    public class ReadOnlyBlockTree : IBlockTree
+    public class ReadOnlyBlockTree : IReadOnlyBlockTree
     {
         private readonly IBlockTree _wrapped;
 
@@ -169,6 +169,6 @@ namespace Nethermind.Blockchain
 
         }
 
-        public void UpdateMainChain(Block[] processedBlocks, bool wereProcessed) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(UpdateMainChain)} calls");
+        public void UpdateMainChain(Block[] blocks, bool wereProcessed, bool forceHeadBlock = false) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(UpdateMainChain)} calls");
     }
 }

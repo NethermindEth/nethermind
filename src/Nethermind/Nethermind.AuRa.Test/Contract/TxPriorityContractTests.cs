@@ -37,6 +37,7 @@ using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Core.Attributes;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
@@ -94,7 +95,8 @@ namespace Nethermind.AuRa.Test.Contract
         }
         
         [Test]
-        public async Task priority_should_return_correctly()
+        public async Task 
+            priority_should_return_correctly()
         {
             using var chain = await TestContractBlockchain.ForTest<TxPermissionContractBlockchainWithBlocks, TxPriorityContractTests>();
             var priorities = chain.TxPriorityContract.Priorities.GetAllItemsFromBlock(chain.BlockTree.Head.Header);
@@ -123,6 +125,7 @@ namespace Nethermind.AuRa.Test.Contract
                 new TxPriorityContract.Destination(TestItem.AddressB, FnSignature2, 4, TxPriorityContract.DestinationSource.Contract, 1),
                 new TxPriorityContract.Destination(TestItem.AddressB, FnSignature, 2, TxPriorityContract.DestinationSource.Contract, 2),
             };
+
             minGasPrices.Should().BeEquivalentTo(expected, o => o.ComparingByMembers<TxPriorityContract.Destination>()
                 .Excluding(su => su.SelectedMemberPath.EndsWith("BlockNumber")));
             
@@ -274,7 +277,7 @@ namespace Nethermind.AuRa.Test.Contract
             {
                 TxPoolTxSource txPoolTxSource = base.CreateTxPoolTxSource();
                 
-                TxPriorityContract = new TxPriorityContract(new AbiEncoder(), TestItem.AddressA, 
+                TxPriorityContract = new TxPriorityContract(AbiEncoder.Instance, TestItem.AddressA, 
                     new ReadOnlyTxProcessingEnv(DbProvider, TrieStore.AsReadOnly(), BlockTree, SpecProvider, LimboLogs.Instance));
 
                 Priorities = new DictionaryContractDataStore<TxPriorityContract.Destination>(

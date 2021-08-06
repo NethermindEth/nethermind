@@ -29,7 +29,7 @@ namespace Nethermind.Abi.Test
     [TestFixture]
     public class AbiTests
     {
-        private readonly AbiEncoder _abiEncoder = new AbiEncoder();
+        private readonly AbiEncoder _abiEncoder = AbiEncoder.Instance;
 
         [TestCase(AbiEncodingStyle.IncludeSignature)]
         [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]

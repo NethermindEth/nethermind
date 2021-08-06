@@ -22,7 +22,6 @@ using Nethermind.Int256;
 
 namespace Nethermind.JsonRpc.Benchmark
 {
-    [MemoryDiagnoser]
     public class UInt256ToHexStringBenchmark
     {
         private UInt256[] _scenarios = new UInt256[4];

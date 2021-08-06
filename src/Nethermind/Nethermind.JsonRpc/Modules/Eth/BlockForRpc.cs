@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Serialization.Json;
@@ -37,7 +38,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             
         }
         
-        public BlockForRpc(Block block, bool includeFullTransactionData)
+        public BlockForRpc(Block block, bool includeFullTransactionData, ISpecProvider? specProvider = null)
         {
             _isAuRaBlock = block.Header.AuRaSignature != null;
             Author = block.Author ?? block.Beneficiary;
@@ -60,6 +61,15 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 Signature = block.Header.AuRaSignature;                    
             }
 
+            if (specProvider != null)
+            {
+                var spec = specProvider.GetSpec(block.Number);
+                if (spec.IsEip1559Enabled)
+                {
+                    BaseFeePerGas = block.Header.BaseFeePerGas;
+                }
+            }
+
             Number = block.Number;
             ParentHash = block.ParentHash;
             ReceiptsRoot = block.ReceiptsRoot;
@@ -68,7 +78,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             StateRoot = block.StateRoot;
             Timestamp = block.Timestamp;
             TotalDifficulty = block.TotalDifficulty ?? 0;
-            Transactions = includeFullTransactionData ? block.Transactions.Select((t, idx) => new TransactionForRpc(block.Hash, block.Number, idx, t)).ToArray() : block.Transactions.Select(t => t.Hash).OfType<object>().ToArray();
+            Transactions = includeFullTransactionData ? block.Transactions.Select((t, idx) => new TransactionForRpc(block.Hash, block.Number, idx, t, block.BaseFeePerGas)).ToArray() : block.Transactions.Select(t => t.Hash).OfType<object>().ToArray();
             TransactionsRoot = block.TxRoot;
             Uncles = block.Ommers.Select(o => o.Hash);
         }
@@ -108,6 +118,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
         public bool ShouldSerializeStep() => _isAuRaBlock;
         public UInt256 TotalDifficulty { get; set; }
         public UInt256 Timestamp { get; set; }
+        
+        public UInt256? BaseFeePerGas { get; set; }
         public IEnumerable<object> Transactions { get; set; }
         public Keccak TransactionsRoot { get; set; }
         public IEnumerable<Keccak> Uncles { get; set; }

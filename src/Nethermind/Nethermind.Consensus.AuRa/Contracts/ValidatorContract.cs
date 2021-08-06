@@ -24,6 +24,7 @@ using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.State;
 using Nethermind.Blockchain.Find;
+using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
@@ -77,7 +78,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             IStateProvider stateProvider,
             IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
             ISigner signer) 
-            : base(transactionProcessor, abiEncoder, contractAddress)
+            : base(transactionProcessor, abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)))
         {
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _signer = signer ?? throw new ArgumentNullException(nameof(signer));
@@ -134,7 +135,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         private Address[] DecodeAddresses(byte[] data)
         {
             var objects = DecodeReturnData(nameof(GetValidators), data);
-            return (Address[]) objects[0];;
+            return (Address[]) objects[0];
         }
         
         public void EnsureSystemAccount()

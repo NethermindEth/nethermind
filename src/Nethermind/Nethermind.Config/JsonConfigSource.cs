@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using Newtonsoft.Json.Linq;
+using System.Linq;
 
 namespace Nethermind.Config
 {
@@ -31,10 +32,17 @@ namespace Nethermind.Config
 
         private void ApplyJsonConfig(string jsonContent)
         {
-            var json = (JObject) JToken.Parse(jsonContent);
-            foreach (var moduleEntry in json)
+            try
             {
-                LoadModule(moduleEntry.Key, (JObject)moduleEntry.Value);
+                var json = (JObject)JToken.Parse(jsonContent);
+                foreach (var moduleEntry in json)
+                {
+                    LoadModule(moduleEntry.Key, (JObject)moduleEntry.Value);
+                }
+            }
+            catch (Newtonsoft.Json.JsonReaderException e)
+            {
+                throw new System.Configuration.ConfigurationErrorsException($"Config is not correctly formed JSon. See inner exception for details.", e);
             }
         }
 
@@ -113,7 +121,7 @@ namespace Nethermind.Config
         private void ParseValue(Type type, string category, string name)
         {
             string valueString = _values[category][name];
-            _parsedValues[category][name] = ConfigSourceHelper.ParseValue(type, valueString);
+            _parsedValues[category][name] = ConfigSourceHelper.ParseValue(type, valueString, category, name);
         }
 
         public (bool IsSet, object Value) GetValue(Type type, string category, string name)
@@ -134,8 +142,18 @@ namespace Nethermind.Config
 
         public (bool IsSet, string Value) GetRawValue(string category, string name)
         {
+            if(string.IsNullOrEmpty(category) || string.IsNullOrEmpty(name))
+            {
+                return (false, null);
+            }
+
             bool isSet = _values.ContainsKey(category) && _values[category].ContainsKey(name);
             return (isSet, isSet ? _values[category][name] : null);
+        }
+
+        public IEnumerable<(string Category, string Name)> GetConfigKeys()
+        {
+            return _values.SelectMany(m => m.Value.Keys.Select(n => (m.Key, n)));
         }
     }
 }

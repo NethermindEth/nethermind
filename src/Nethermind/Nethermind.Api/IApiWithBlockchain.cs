@@ -17,6 +17,7 @@
 
 #nullable enable
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
@@ -26,6 +27,7 @@ using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Evm;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
@@ -72,7 +74,21 @@ namespace Nethermind.Api
         ITxPool? TxPool { get; set; }
         ITxPoolInfoProvider? TxPoolInfoProvider { get; set; }
         IWitnessCollector? WitnessCollector { get; set; }
+        IWitnessRepository? WitnessRepository { get; set; }
         IHealthHintService? HealthHintService { get; set; }
+        ITransactionComparerProvider? TransactionComparerProvider { get; set; }
         TxValidator? TxValidator { get; set; }
+        
+        /// <summary>
+        /// Manager of block finalization
+        /// </summary>
+        /// <remarks>
+        /// Currently supported in <see cref="SealEngineType.AuRa"/> and Eth2Merge.
+        /// </remarks>
+        IBlockFinalizationManager? FinalizationManager { get; set; }
+        
+        IGasLimitCalculator GasLimitCalculator { get; set; }
+        
+        IBlockProducerEnvFactory BlockProducerEnvFactory { get; set; }
     }
 }

@@ -30,7 +30,9 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Db.Blooms;
+using Nethermind.Db.Rocks;
 using Nethermind.Evm;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.KeyStore;
@@ -39,6 +41,7 @@ using Nethermind.Network.Discovery;
 using Nethermind.Network.Rlpx;
 using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Serialization.Json;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Stats;
@@ -48,7 +51,7 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
-using Nethermind.WebSockets;
+using Nethermind.Sockets;
 using NSubstitute;
 
 namespace Nethermind.Runner.Test.Ethereum
@@ -111,7 +114,9 @@ namespace Nethermind.Runner.Test.Ethereum
                 WebSocketsManager = Substitute.For<IWebSocketsManager>(),
                 ChainLevelInfoRepository = Substitute.For<IChainLevelInfoRepository>(),
                 TrieStore = Substitute.For<ITrieStore>(),
-                ReadOnlyTrieStore = Substitute.For<IReadOnlyTrieStore>()
+                ReadOnlyTrieStore = Substitute.For<IReadOnlyTrieStore>(),
+                ChainSpec = new ChainSpec(),
+                BlockProducerEnvFactory = Substitute.For<IBlockProducerEnvFactory>()
             };
     }
 }

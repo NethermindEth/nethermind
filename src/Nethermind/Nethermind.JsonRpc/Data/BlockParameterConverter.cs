@@ -128,16 +128,22 @@ namespace Nethermind.JsonRpc.Data
             }
 
             string value = reader.Value as string;
+            return GetBlockParameter(value);
+        }
+
+        public static BlockParameter GetBlockParameter(string? value)
+        {
             switch (value)
             {
-                case "":
+                case null:
+                case { } empty when string.IsNullOrWhiteSpace(empty):
                 case { } latest when latest.Equals("latest", StringComparison.InvariantCultureIgnoreCase):
                     return BlockParameter.Latest;
                 case { } latest when latest.Equals("earliest", StringComparison.InvariantCultureIgnoreCase):
                     return BlockParameter.Earliest;
                 case { } latest when latest.Equals("pending", StringComparison.InvariantCultureIgnoreCase):
                     return BlockParameter.Pending;
-                case {} hash when hash.Length == 66 && hash.StartsWith("0x"):
+                case { } hash when hash.Length == 66 && hash.StartsWith("0x"):
                     return new BlockParameter(new Keccak(hash));
                 default:
                     return new BlockParameter(LongConverter.FromString(value));

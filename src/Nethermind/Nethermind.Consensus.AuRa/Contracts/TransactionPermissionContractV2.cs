@@ -21,6 +21,7 @@ using Nethermind.Blockchain.Contracts.Json;
 using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Evm;
+using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
@@ -32,11 +33,11 @@ namespace Nethermind.Consensus.AuRa.Contracts
             IAbiEncoder abiEncoder,
             Address contractAddress,
             IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
-            : base(abiEncoder, contractAddress, readOnlyTxProcessorSource)
+            : base(abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)), readOnlyTxProcessorSource)
         {
         }
 
-        protected override object[] GetAllowedTxTypesParameters(Transaction tx) => 
+        protected override object[] GetAllowedTxTypesParameters(Transaction tx, BlockHeader parentHeader) => 
             new object[] {tx.SenderAddress, tx.To ?? Address.Zero, tx.Value};
 
         public override UInt256 Version => Two;

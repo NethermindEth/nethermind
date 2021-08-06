@@ -305,7 +305,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 Value = transaction.Value
             };
         }
-
+        
         private static ReceiptForRpc? MapReceipt(ReceiptModel? receipt)
         {
             if (receipt is null)
@@ -326,7 +326,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 To = receipt.To,
                 TransactionHash = receipt.TransactionHash,
                 TransactionIndex = (long)receipt.TransactionIndex,
-                LogsBloom = receipt.LogsBloom is null ? null : new Bloom(receipt.LogsBloom)
+                LogsBloom = receipt.LogsBloom is null ? null : new Bloom(receipt.LogsBloom),
+                EffectiveGasPrice = receipt.EffectiveGasPrice
             };
         }
 

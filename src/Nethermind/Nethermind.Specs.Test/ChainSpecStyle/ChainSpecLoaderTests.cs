@@ -61,6 +61,11 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
 
             Assert.AreEqual(1, chainSpec.ChainId, $"{nameof(chainSpec.ChainId)}");
             Assert.NotNull(chainSpec.Genesis, $"{nameof(ChainSpec.Genesis)}");
+
+            Assert.AreEqual(1.GWei(), chainSpec.Parameters.Eip1559BaseFeeInitialValue, $"initial base fee value");
+            Assert.AreEqual((long)1, chainSpec.Parameters.Eip1559ElasticityMultiplier, $"elasticity multiplier");
+            Assert.AreEqual((UInt256)7, chainSpec.Parameters.Eip1559BaseFeeMaxChangeDenominator, $"base fee max change denominator");
+            Assert.AreEqual((UInt256)11, chainSpec.Genesis.BaseFeePerGas, $"genesis base fee");
             
             Assert.AreEqual(0xdeadbeefdeadbeef, chainSpec.Genesis.Header.Nonce, $"genesis {nameof(BlockHeader.Nonce)}");
             Assert.AreEqual(Keccak.Zero, chainSpec.Genesis.Header.MixHash, $"genesis {nameof(BlockHeader.MixHash)}");
@@ -139,7 +144,8 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(3, chainSpec.ChainId, $"{nameof(chainSpec.ChainId)}");
             Assert.AreEqual("Ropsten Testnet", chainSpec.Name, $"{nameof(chainSpec.Name)}");
             Assert.NotNull(chainSpec.Genesis, $"{nameof(ChainSpec.Genesis)}");
-
+            
+            Assert.AreEqual(1.GWei(), chainSpec.Parameters.Eip1559BaseFeeInitialValue, $"fork base fee");
             Assert.AreEqual(0x0000000000000042UL, chainSpec.Genesis.Header.Nonce, $"genesis {nameof(BlockHeader.Nonce)}");
             Assert.AreEqual(Keccak.Zero, chainSpec.Genesis.Header.MixHash, $"genesis {nameof(BlockHeader.MixHash)}");
             Assert.AreEqual(0x100000L, (long)chainSpec.Genesis.Header.Difficulty, $"genesis {nameof(BlockHeader.Difficulty)}");
@@ -197,6 +203,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/goerli.json");
             ChainSpec chainSpec = LoadChainSpec(path);
             
+            Assert.AreEqual(1.GWei(), chainSpec.Parameters.Eip1559BaseFeeInitialValue, $"fork base fee");
             Assert.AreEqual(5, chainSpec.ChainId, $"{nameof(chainSpec.ChainId)}");
             Assert.AreEqual("Görli Testnet", chainSpec.Name, $"{nameof(chainSpec.Name)}");
             Assert.AreEqual("goerli", chainSpec.DataDir, $"{nameof(chainSpec.DataDir)}");
@@ -219,11 +226,29 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
         }
         
         [Test]
+        public void Can_load_xdai()
+        {
+            string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/xdai.json");
+            ChainSpec chainSpec = LoadChainSpec(path);
+            
+            Assert.AreEqual(1.GWei(), chainSpec.Parameters.Eip1559BaseFeeInitialValue, $"fork base fee");
+            Assert.AreEqual(100, chainSpec.ChainId, $"{nameof(chainSpec.ChainId)}");
+            Assert.AreEqual("DaiChain", chainSpec.Name, $"{nameof(chainSpec.Name)}");
+            Assert.AreEqual(SealEngineType.AuRa, chainSpec.SealEngineType, "engine");
+
+            int berlinXdaiBlockNumber = 16101500;
+            chainSpec.Parameters.Eip2565Transition.Should().Be(berlinXdaiBlockNumber);
+            chainSpec.Parameters.Eip2929Transition.Should().Be(berlinXdaiBlockNumber);
+            chainSpec.Parameters.Eip2930Transition.Should().Be(berlinXdaiBlockNumber);
+        }
+        
+        [Test]
         public void Can_load_rinkeby()
         {
             string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/rinkeby.json");
             ChainSpec chainSpec = LoadChainSpec(path);
-
+            
+            Assert.AreEqual(1.GWei(), chainSpec.Parameters.Eip1559BaseFeeInitialValue, $"fork base fee");
             Assert.AreEqual(4, chainSpec.ChainId, $"{nameof(chainSpec.ChainId)}");
             Assert.AreEqual("Rinkeby", chainSpec.Name, $"{nameof(chainSpec.Name)}");
             Assert.AreEqual(SealEngineType.Clique, chainSpec.SealEngineType, "engine");
@@ -246,6 +271,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/foundation.json");
             ChainSpec chainSpec = LoadChainSpec(path);
             
+            Assert.AreEqual(1.GWei(), chainSpec.Parameters.Eip1559BaseFeeInitialValue, $"fork base fee");
             Assert.AreEqual(1, chainSpec.ChainId, $"{nameof(chainSpec.ChainId)}");
             Assert.AreEqual("Ethereum", chainSpec.Name, $"{nameof(chainSpec.Name)}");
             Assert.AreEqual("ethereum", chainSpec.DataDir, $"{nameof(chainSpec.Name)}");
@@ -269,6 +295,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/sokol.json");
             ChainSpec chainSpec = LoadChainSpec(path);
             
+            Assert.AreEqual(1.GWei(), chainSpec.Parameters.Eip1559BaseFeeInitialValue, $"fork base fee");
             Assert.AreEqual(0x4d, chainSpec.ChainId, $"{nameof(chainSpec.ChainId)}");
             Assert.AreEqual("Sokol", chainSpec.Name, $"{nameof(chainSpec.Name)}");
             Assert.AreEqual(SealEngineType.AuRa, chainSpec.SealEngineType, "engine");
@@ -328,6 +355,25 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             chainSpec.IstanbulBlockNumber.Should().Be(0L);
             chainSpec.MuirGlacierNumber.Should().Be(null);
             chainSpec.BerlinBlockNumber.Should().Be(0L);
+        }
+        
+        [Test]
+        public void Can_load_catalyst()
+        {
+            string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/catalyst.json");
+            ChainSpec chainSpec = LoadChainSpec(path);
+            
+            chainSpec.HomesteadBlockNumber.Should().Be(0L);
+            chainSpec.DaoForkBlockNumber.Should().Be(null);
+            chainSpec.TangerineWhistleBlockNumber.Should().Be(0L);
+            chainSpec.SpuriousDragonBlockNumber.Should().Be(0L);
+            chainSpec.ByzantiumBlockNumber.Should().Be(0L);
+            chainSpec.ConstantinopleBlockNumber.Should().Be(0L);
+            chainSpec.ConstantinopleFixBlockNumber.Should().Be(0L);
+            chainSpec.IstanbulBlockNumber.Should().Be(0L);
+            chainSpec.MuirGlacierNumber.Should().Be(null);
+            chainSpec.BerlinBlockNumber.Should().Be(0L);
+            chainSpec.SealEngineType.Should().Be("Eth2Merge");
         }
 
         [Test]

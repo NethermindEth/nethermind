@@ -19,6 +19,7 @@ using System.IO;
 using System.Threading;
 using Nethermind.Api;
 using Nethermind.Config;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -53,15 +54,14 @@ namespace Nethermind.Runner.Ethereum.Api
                 throw new NotSupportedException("Creation of multiple APIs not supported.");
             }
             
-            SealEngineType engine = chainSpec.SealEngineType;
-            NethermindApi nethermindApi = engine switch
-            {
-                SealEngineType.AuRa => new AuRaNethermindApi(_configProvider, _jsonSerializer, _logManager),
-                _ => new NethermindApi(_configProvider, _jsonSerializer, _logManager)
-            };
+            string engine = chainSpec.SealEngineType;
+            NethermindApi nethermindApi = engine == SealEngineType.AuRa 
+                ? new AuRaNethermindApi(_configProvider, _jsonSerializer, _logManager) 
+                : new NethermindApi(_configProvider, _jsonSerializer, _logManager);
 
             nethermindApi.SealEngineType = engine;
             nethermindApi.SpecProvider = new ChainSpecBasedSpecProvider(chainSpec);
+            nethermindApi.GasLimitCalculator = new FollowOtherMiners(nethermindApi.SpecProvider);
             nethermindApi.ChainSpec = chainSpec;
 
             SetLoggerVariables(chainSpec);

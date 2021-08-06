@@ -2,13 +2,12 @@
 
     <PropertyGroup>
         <TargetFramework>net5.0</TargetFramework>
-        <OutputType>Exe</OutputType>
         <LangVersion>8.0</LangVersion>
         <RootNamespace>Nethermind.Network.Benchmarks</RootNamespace>
     </PropertyGroup>
 
     <ItemGroup>
-      <PackageReference Include="BenchmarkDotNet" Version="0.12.0" />
+      <PackageReference Include="BenchmarkDotNet" Version="0.12.1" />
     </ItemGroup>
 
     <ItemGroup>

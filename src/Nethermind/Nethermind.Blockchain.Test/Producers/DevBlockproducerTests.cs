@@ -30,12 +30,12 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Evm;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Trie.Pruning;
-using Nethermind.TxPool;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Producers
@@ -87,10 +87,9 @@ namespace Nethermind.Blockchain.Test.Producers
                 specProvider,
                 Always.Valid,
                 NoBlockRewards.Instance,
-                txProcessor,
+                new BlockProcessor.BlockValidationTransactionsExecutor(txProcessor, stateProvider),
                 stateProvider,
                 storageProvider,
-                NullTxPool.Instance,
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,
                 LimboLogs.Instance);
@@ -107,7 +106,6 @@ namespace Nethermind.Blockchain.Test.Producers
                 blockchainProcessor,
                 stateProvider,
                 blockTree,
-                blockchainProcessor,
                 trigger,
                 timestamper,
                 specProvider,
@@ -115,6 +113,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 LimboLogs.Instance);
 
             blockchainProcessor.Start();
+            var suggester = new ProducedBlockSuggester(blockTree, devBlockProducer);
             devBlockProducer.Start();
 
             AutoResetEvent autoResetEvent = new AutoResetEvent(false);

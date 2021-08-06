@@ -60,7 +60,12 @@ namespace Nethermind.Specs
                 return MuirGlacier.Instance;
             }
 
-            return Berlin.Instance;
+            if (blockNumber < LondonBlockNumber)
+            {
+                return Berlin.Instance;
+            }
+            
+            return London.Instance;
         }
 
         public long? DaoBlockNumber => null;
@@ -71,6 +76,7 @@ namespace Nethermind.Specs
         public const long IstanbulBlockNumber  = 6_485_846;
         public const long MuirGlacierBlockNumber  = 7_117_117;
         public const long BerlinBlockNumber  = 9_812_189;
+        public const long LondonBlockNumber = 10_499_401;
 
         public ulong ChainId => Core.ChainId.Ropsten;
         public long[] TransitionBlocks => new[]
@@ -81,7 +87,8 @@ namespace Nethermind.Specs
             ConstantinopleFixBlockNumber,
             IstanbulBlockNumber,
             MuirGlacierBlockNumber,
-            BerlinBlockNumber
+            BerlinBlockNumber,
+            LondonBlockNumber
         };
 
         private RopstenSpecProvider() { }

@@ -31,7 +31,7 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal = new Block(header);
             header.Hash = TestObjectInternal.CalculateHash();
         }
-
+        
         public BlockBuilder WithHeader(BlockHeader header)
         {
             TestObjectInternal = TestObjectInternal.WithReplacedHeader(header);
@@ -41,6 +41,12 @@ namespace Nethermind.Core.Test.Builders
         public BlockBuilder WithNumber(long number)
         {
             TestObjectInternal.Header.Number = number;
+            return this;
+        }
+        
+        public BlockBuilder WithBaseFeePerGas(UInt256 baseFeePerGas)
+        {
+            TestObjectInternal.Header.BaseFeePerGas = baseFeePerGas;
             return this;
         }
 
@@ -72,7 +78,7 @@ namespace Nethermind.Core.Test.Builders
 
             return WithTransactions(txs);
         }
-        
+
         public BlockBuilder WithTransactions(int txCount, ISpecProvider specProvider)
         {
             Transaction[] txs = new Transaction[txCount];

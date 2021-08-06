@@ -48,7 +48,7 @@ namespace Nethermind.State.Proofs
                 byte[] receiptRlp = Decoder.EncodeNew(currentReceipt,
                     (releaseSpec.IsEip658Enabled
                         ? RlpBehaviors.Eip658Receipts
-                        : RlpBehaviors.None) | RlpBehaviors.ForTreeRoot);
+                        : RlpBehaviors.None) | RlpBehaviors.SkipTypedWrapping);
                 
                 
                 Set(Rlp.Encode(i).Bytes, receiptRlp);
@@ -66,7 +66,7 @@ namespace Nethermind.State.Proofs
             }
             
             ProofCollector proofCollector = new(Rlp.Encode(index).Bytes);
-            Accept(proofCollector, RootHash, false);
+            Accept(proofCollector, RootHash, VisitingOptions.None);
             return proofCollector.BuildResult();
         }
     }

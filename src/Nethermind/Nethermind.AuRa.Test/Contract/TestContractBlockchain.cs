@@ -33,7 +33,7 @@ namespace Nethermind.AuRa.Test.Contract
         
         protected TestContractBlockchain()
         {
-            SealEngineType = SealEngineType.AuRa;
+            SealEngineType = Nethermind.Core.SealEngineType.AuRa;
         }
 
         public static async Task<TTest> ForTest<TTest, TTestClass>(string testSuffix = null) where TTest : TestContractBlockchain, new()
@@ -51,7 +51,7 @@ namespace Nethermind.AuRa.Test.Contract
 
             var provider = GetSpecProvider();
             var test = new TTest() {ChainSpec = provider.ChainSpec};
-            return (TTest) await test.Build(provider.SpecProvider);;
+            return (TTest) await test.Build(provider.SpecProvider);
         }
 
         protected override Block GetGenesisBlock() =>

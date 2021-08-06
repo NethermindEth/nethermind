@@ -25,6 +25,7 @@ using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
@@ -52,7 +53,8 @@ namespace Nethermind.Consensus.AuRa.Contracts
     {
         public long Activation { get; }
 
-        public RewardContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress, long transitionBlock) : base(transactionProcessor, abiEncoder, contractAddress)
+        public RewardContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress, long transitionBlock) 
+            : base(transactionProcessor, abiEncoder, contractAddress?? throw new ArgumentNullException(nameof(contractAddress)))
         {
             Activation = transitionBlock;
         }

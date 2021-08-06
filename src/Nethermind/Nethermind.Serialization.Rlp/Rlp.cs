@@ -87,7 +87,7 @@ namespace Nethermind.Serialization.Rlp
         {
             foreach (var type in assembly.GetExportedTypes())
             {
-                if (!type.IsClass)
+                if (!type.IsClass || type.IsAbstract || type.IsGenericTypeDefinition)
                 {
                     continue;
                 }
@@ -237,7 +237,7 @@ namespace Nethermind.Serialization.Rlp
             ulong chainId = 0)
         {
             bool includeSigChainIdHack = isEip155Enabled && chainId != 0 && transaction.Type == TxType.Legacy;
-            int extraItems = transaction.IsEip1559 ? 2 : 0; // 2 extra gas fields for eip-1559
+            int extraItems = transaction.IsEip1559 ? 1 : 0; // one extra gas field for 1559. 1559: GasPremium, FeeCap. Legacy: GasPrice
             if (!forSigning || includeSigChainIdHack)
             {
                 extraItems += 3; // sig fields
@@ -253,26 +253,30 @@ namespace Nethermind.Serialization.Rlp
 
             if (transaction.Type != TxType.Legacy)
             {
-                sequence[position++] = Encode(transaction.ChainId!.Value);
+                sequence[position++] = Encode(transaction.ChainId ?? 0);
             }
 
             sequence[position++] = Encode(transaction.Nonce);
-            sequence[position++] = Encode(transaction.IsEip1559 ? 0 : transaction.GasPrice);
+
+            if (transaction.IsEip1559)
+            {
+                sequence[position++] = Encode(transaction.MaxPriorityFeePerGas);
+                sequence[position++] = Encode(transaction.DecodedMaxFeePerGas);
+            }
+            else
+            {
+                sequence[position++] = Encode(transaction.GasPrice);
+            }
+            
             sequence[position++] = Encode(transaction.GasLimit);
             sequence[position++] = Encode(transaction.To);
             sequence[position++] = Encode(transaction.Value);
             sequence[position++] = Encode(transaction.Data);
-            if (transaction.Type == TxType.AccessList)
+            if (transaction.Type != TxType.Legacy)
             {
                 sequence[position++] = Encode(transaction.AccessList);    
             }
             
-            if (transaction.IsEip1559)
-            {
-                sequence[position++] = Encode(transaction.GasPrice);
-                sequence[position++] = Encode(transaction.FeeCap);
-            }
-
             if (forSigning)
             {
                 if (includeSigChainIdHack)
@@ -293,7 +297,7 @@ namespace Nethermind.Serialization.Rlp
                 }
                 else
                 {
-                    sequence[position++] = Encode(transaction.Type == TxType.Legacy ? signature.V : (ulong)signature.RecoveryId);
+                    sequence[position++] = Encode(transaction.Type == TxType.Legacy ? signature.V : signature.RecoveryId);
                     sequence[position++] = Encode(signature.RAsSpan.WithoutLeadingZeros());
                     sequence[position++] = Encode(signature.SAsSpan.WithoutLeadingZeros());   
                 }

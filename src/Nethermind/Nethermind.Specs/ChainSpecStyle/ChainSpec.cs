@@ -18,6 +18,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Int256;
 
 namespace Nethermind.Specs.ChainSpecStyle
 {
@@ -41,7 +42,7 @@ namespace Nethermind.Specs.ChainSpecStyle
         
         public Block Genesis { get; set; }
         
-        public SealEngineType SealEngineType { get; set; }
+        public string SealEngineType { get; set; }
         
         public AuRaParameters AuRa { get; set; }
         
@@ -74,5 +75,7 @@ namespace Nethermind.Specs.ChainSpecStyle
         public long? MuirGlacierNumber { get; set; }
         
         public long? BerlinBlockNumber { get; set; }
+        
+        public long? LondonBlockNumber { get; set; }
     }
 }

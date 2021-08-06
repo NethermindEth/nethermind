@@ -16,23 +16,46 @@
 // 
 
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
 namespace Nethermind.Consensus.Transactions
 {
-    public class MinGasPriceTxFilter : ITxFilter
+    /// <summary>The filter for transactions below minimum gas price threshold. It is the minimal value for gas that the miner/validator would receive.
+    /// Before 1559: EffectivePriorityFeePerGas = transaction.GasPrice.
+    /// After 1559: EffectivePriorityFeePerGas = transaction.EffectiveGasPrice - BaseFee.</summary>
+    public class MinGasPriceTxFilter : IMinGasPriceTxFilter
     {
         private readonly UInt256 _minGasPrice;
+        private readonly ISpecProvider _specProvider;
 
-        public MinGasPriceTxFilter(UInt256 minGasPrice)
+        public MinGasPriceTxFilter(
+            UInt256 minGasPrice,
+            ISpecProvider specProvider)
         {
             _minGasPrice = minGasPrice;
+            _specProvider = specProvider;
         }
-        
+
         public (bool Allowed, string Reason) IsAllowed(Transaction tx, BlockHeader parentHeader)
         {
-           // ToDo 1559 tx.FeeCap >= _minGasPrice && tx.FeeCap >= parentHeader.BaseFee
-            return (tx.GasPrice >= _minGasPrice, $"gas price too low {tx.GasPrice} < {_minGasPrice}");
+            return IsAllowed(tx, parentHeader, _minGasPrice);
+        }
+
+        public (bool Allowed, string Reason) IsAllowed(Transaction tx, BlockHeader? parentHeader, UInt256 minGasPriceFloor)
+        {
+            UInt256 premiumPerGas = tx.GasPrice;
+            UInt256 baseFeePerGas = UInt256.Zero;
+            long blockNumber = (parentHeader?.Number ?? 0) + 1;
+            IReleaseSpec spec = _specProvider.GetSpec(blockNumber);
+            if (spec.IsEip1559Enabled)
+            {
+                baseFeePerGas = BaseFeeCalculator.Calculate(parentHeader, spec);
+                tx.TryCalculatePremiumPerGas(baseFeePerGas, out premiumPerGas);
+            }
+
+            bool allowed = premiumPerGas >= minGasPriceFloor;
+            return (allowed, allowed ? string.Empty : $"EffectivePriorityFeePerGas too low {premiumPerGas} < {minGasPriceFloor}, BaseFee: {baseFeePerGas}");
         }
     }
 }

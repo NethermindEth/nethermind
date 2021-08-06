@@ -60,13 +60,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
                 if (initConfig.WebSocketsEnabled)
                 {
-                    // TODO: I do not like passing both service and processor to any of the types
-                    JsonRpcWebSocketsModule webSocketsModule = new JsonRpcWebSocketsModule(
-                        jsonRpcProcessor,
-                        jsonRpcService,
-                        _api.EthereumJsonSerializer,
-                        jsonRpcLocalStats);
-
+                    JsonRpcWebSocketsModule webSocketsModule = new (jsonRpcProcessor, jsonRpcService, jsonRpcLocalStats, _api.LogManager, _api.EthereumJsonSerializer);
                     _api.WebSocketsManager!.AddModule(webSocketsModule, true);
                 }
 
@@ -87,8 +81,12 @@ namespace Nethermind.Runner.Ethereum.Steps
                         logger.Error("Error during jsonRpc runner start", x.Exception);
                 }, cancellationToken);
 
+                JsonRpcIpcRunner jsonIpcRunner = new(jsonRpcProcessor, jsonRpcService, _api.ConfigProvider, _api.LogManager, jsonRpcLocalStats, _api.EthereumJsonSerializer);
+                jsonIpcRunner.Start(cancellationToken);
+
 #pragma warning disable 4014
                 _api.DisposeStack.Push(new Reactive.AnonymousDisposable(() => jsonRpcRunner.StopAsync())); // do not await
+                _api.DisposeStack.Push(jsonIpcRunner); // do not await
 #pragma warning restore 4014
             }
             else

@@ -13,6 +13,7 @@
     <WarningsAsErrors />
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="Antlr4.Runtime.Standard" Version="4.9.2" />
     <PackageReference Include="AspNetCore.HealthChecks.UI" Version="5.0.1" />
     <PackageReference Include="AspNetCore.HealthChecks.UI.Client" Version="5.0.1" />
     <PackageReference Include="AspNetCore.HealthChecks.UI.InMemory.Storage" Version="5.0.1" />
@@ -38,16 +39,19 @@
     <ProjectReference Include="..\Nethermind.Grpc\Nethermind.Grpc.csproj" />
     <ProjectReference Include="..\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj" />
     <ProjectReference Include="..\Nethermind.Logging.NLog\Nethermind.Logging.NLog.csproj" />
+    <ProjectReference Include="..\Nethermind.Merge.Plugin\Nethermind.Merge.Plugin.csproj" />
+    <ProjectReference Include="..\Nethermind.Mev\Nethermind.Mev.csproj" />
     <ProjectReference Include="..\Nethermind.Monitoring\Nethermind.Monitoring.csproj" />
     <ProjectReference Include="..\Nethermind.Network\Nethermind.Network.csproj" />
-    <ProjectReference Include="..\Nethermind.PubSub.Kafka\Nethermind.PubSub.Kafka.csproj" />
-    <ProjectReference Include="..\Nethermind.PubSub\Nethermind.PubSub.csproj" />
+    <ProjectReference Include="..\Nethermind.Pipeline\Nethermind.Pipeline.csproj" />
     <ProjectReference Include="..\Nethermind.Specs\Nethermind.Specs.csproj" />
     <ProjectReference Include="..\Nethermind.Db.Rpc\Nethermind.Db.Rpc.csproj" />
     <ProjectReference Include="..\Nethermind.Synchronization\Nethermind.Synchronization.csproj" />
-    <ProjectReference Include="..\Nethermind.WebSockets\Nethermind.WebSockets.csproj" />
+    <ProjectReference Include="..\Nethermind.Sockets\Nethermind.Sockets.csproj" />
     <ProjectReference Include="..\Nethermind.Seq\Nethermind.Seq.csproj" />
     <ProjectReference Include="..\Nethermind.HealthChecks\Nethermind.HealthChecks.csproj" />
+    <ProjectReference Include="..\Nethermind.Pipeline\Nethermind.Pipeline.csproj" />
+	  <ProjectReference Include="..\Nethermind.Merge.Plugin\Nethermind.Merge.Plugin.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="..\..\..\Nethermind Data Marketplace - Terms and Conditions 20190831.pdf">
@@ -62,9 +66,6 @@
       <Link>chainspec\%(RecursiveDir)%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="git-hash">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
     <Content Include="configs\*.cfg">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
@@ -73,11 +74,7 @@
     </Content>
     <Content Remove="out\**" />
     <Content Remove="keystore\**" />
-    <None Remove="plugins\readme.txt" />
-    <Content Include="plugins\**">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Include="ndm-plugins\**">
+    <Content Include="DSL\**">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Include="nethermind.css">
@@ -106,19 +103,47 @@
     <None Remove="out\**" />
     <None Remove="keystore\**" />
   </ItemGroup>
-  <Target Name="CreatePluginsFolder" AfterTargets="AfterPublish">
-    <MakeDir Directories="$(PublishDir)plugins" Condition="!Exists('$(PublishDir)plugins')" /> 
-  </Target>
-  <Target Name="CreateNdmPluginsFolder" AfterTargets="AfterPublish">
-    <MakeDir Directories="$(PublishDir)ndm-plugins" Condition="!Exists('$(PublishDir)ndm-plugins')" /> 
-  </Target>
-  <Target Name="CopyHealthChecksPluginOnPublish" AfterTargets="AfterPublish">
-    <Copy SourceFiles="$(OutputPath)Nethermind.HealthChecks.dll" DestinationFolder="$(PublishDir)plugins" />
-  </Target>
-  <Target Name="StoreGitHashBeforeBuild" BeforeTargets="BeforeBuild">
+  <ItemGroup>
+    <PluginsForBuild Include="$(OutputPath)\Nethermind.Merge.Plugin.dll;
+                      $(OutputPath)\Nethermind.Merge.Plugin.pdb;
+                      $(OutputPath)\Nethermind.Mev.dll;
+                      $(OutputPath)\Nethermind.Mev.pdb;
+                      $(OutputPath)\Nethermind.HealthChecks.dll" />
+    <PluginsForPublish Include="$(OutputPath)\Nethermind.Merge.Plugin.dll;
+                      $(OutputPath)\Nethermind.Mev.dll;
+                      $(OutputPath)\Nethermind.HealthChecks.dll" />
+  </ItemGroup>
+  <ItemGroup>
+    <GitHash Include="git-hash"/>
+  </ItemGroup>
+
+  <Target Name="StoreGitHashBeforeBuild" BeforeTargets="Build">
+    <Message Text="---> Generating Git Hash file Before Build" Importance="High" />
     <Exec Command="git describe --tags --long --always &gt; git-hash" />
+    <Copy SourceFiles="@(GitHash)" DestinationFiles="$(OutDir)git-hash" />
   </Target>
-  <Target Name="StoreGitHash" BeforeTargets="BeforePublish">
+
+  <Target Name="StoreGitHashBeforePublish" BeforeTargets="Publish">
+    <Message Text="---> Generating Git Hash file Before Publish" Importance="High" />
     <Exec Command="git describe --tags --long --always &gt; git-hash" />
+    <Copy SourceFiles="@(GitHash)" DestinationFiles="$(PublishDir)git-hash" />
+  </Target>
+
+  <Target Name="CopyPluginsAfterBuild" AfterTargets="Build">
+    <Message Text="---> Copying Plugins After Build" Importance="High" />
+    <Copy SourceFiles="@(PluginsForBuild)" DestinationFolder="$(OutDir)plugins" />
+    <Copy SourceFiles="$(SolutionDir)Nethermind.Dsl\bin\$(Configuration)\$(TargetFramework)\Nethermind.Dsl.dll" 
+   	  DestinationFolder="$(OutDir)plugins" 
+      Condition="Exists('$(SolutionDir)Nethermind.Dsl\bin\$(Configuration)\$(TargetFramework)\Nethermind.Dsl.dll')" 
+	    SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(SolutionDir)Nethermind.Dsl\bin\$(Configuration)\$(TargetFramework)\Nethermind.Dsl.pdb" 
+   	  DestinationFolder="$(OutDir)plugins" 
+      Condition="Exists('$(SolutionDir)Nethermind.Dsl\bin\$(Configuration)\$(TargetFramework)\Nethermind.Dsl.pdb')" 
+	    SkipUnchangedFiles="true" />
+  </Target>
+
+    <Target Name="CopyPluginsAfterPublish" AfterTargets="Publish">
+    <Message Text="---> Copying Plugins After Publish" Importance="High" />
+    <Copy SourceFiles="@(PluginsForPublish)" DestinationFolder="$(PublishDir)plugins" /> 
   </Target>
  </Project>

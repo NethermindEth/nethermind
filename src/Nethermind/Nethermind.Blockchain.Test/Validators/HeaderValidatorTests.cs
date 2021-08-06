@@ -29,6 +29,7 @@ using Nethermind.Db.Blooms;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.State.Repositories;
 using NSubstitute;
 using NUnit.Framework;
@@ -43,25 +44,26 @@ namespace Nethermind.Blockchain.Test.Validators
         private TestLogger _testLogger;
         private Block _parentBlock;
         private Block _block;
+        private IBlockTree _blockTree;
 
         [SetUp]
         public void Setup()
         {
-            DifficultyCalculator calculator = new DifficultyCalculator(new SingleReleaseSpecProvider(Frontier.Instance, ChainId.Mainnet));
+            EthashDifficultyCalculator calculator = new EthashDifficultyCalculator(new SingleReleaseSpecProvider(Frontier.Instance, ChainId.Mainnet));
             _ethash = new EthashSealValidator(LimboLogs.Instance, calculator, new CryptoRandom(), new Ethash(LimboLogs.Instance));
             _testLogger = new TestLogger();
-            var blockInfoDb = new MemDb();
-            BlockTree blockStore = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), FrontierSpecProvider.Instance, Substitute.For<IBloomStorage>(), LimboLogs.Instance);
+            MemDb blockInfoDb = new MemDb();
+            _blockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), FrontierSpecProvider.Instance, Substitute.For<IBloomStorage>(), LimboLogs.Instance);
             
-            _validator = new HeaderValidator(blockStore, _ethash, new SingleReleaseSpecProvider(Byzantium.Instance, 3), new OneLoggerLogManager(_testLogger));
+            _validator = new HeaderValidator(_blockTree, _ethash, new SingleReleaseSpecProvider(Byzantium.Instance, 3), new OneLoggerLogManager(_testLogger));
             _parentBlock = Build.A.Block.WithDifficulty(1).TestObject;
             _block = Build.A.Block.WithParent(_parentBlock)
                 .WithDifficulty(131072)
                 .WithMixHash(new Keccak("0xd7db5fdd332d3a65d6ac9c4c530929369905734d3ef7a91e373e81d0f010b8e8"))
                 .WithNonce(0).TestObject;
 
-            blockStore.SuggestBlock(_parentBlock);
-            blockStore.SuggestBlock(_block);
+            _blockTree.SuggestBlock(_parentBlock);
+            _blockTree.SuggestBlock(_block);
         }
         
         [Test]
@@ -83,7 +85,7 @@ namespace Nethermind.Blockchain.Test.Validators
         [Test]
         public void When_gas_limit_too_high()
         {
-            _block.Header.GasLimit = _parentBlock.Header.GasLimit + (long)BigInteger.Divide(_parentBlock.Header.GasLimit, 1024) + 1;
+            _block.Header.GasLimit = _parentBlock.Header.GasLimit + (long)BigInteger.Divide(_parentBlock.Header.GasLimit, 1024);
             _block.Header.SealEngineType = SealEngineType.None;
             _block.Header.Hash = _block.CalculateHash();
             
@@ -94,7 +96,7 @@ namespace Nethermind.Blockchain.Test.Validators
         [Test]
         public void When_gas_limit_just_correct_high()
         {
-            _block.Header.GasLimit = _parentBlock.Header.GasLimit + (long)BigInteger.Divide(_parentBlock.Header.GasLimit, 1024);
+            _block.Header.GasLimit = _parentBlock.Header.GasLimit + (long)BigInteger.Divide(_parentBlock.Header.GasLimit, 1024) - 1;
             _block.Header.SealEngineType = SealEngineType.None;
             _block.Header.Hash = _block.CalculateHash();
             
@@ -103,25 +105,25 @@ namespace Nethermind.Blockchain.Test.Validators
         }
         
         [Test]
-        public void When_gas_limit_too_low()
+        public void When_gas_limit_just_correct_low()
         {
-            _block.Header.GasLimit = _parentBlock.Header.GasLimit - (long)BigInteger.Divide(_parentBlock.Header.GasLimit, 1024) - 1;
+            _block.Header.GasLimit = _parentBlock.Header.GasLimit - (long)BigInteger.Divide(_parentBlock.Header.GasLimit, 1024) + 1;
             _block.Header.SealEngineType = SealEngineType.None;
             _block.Header.Hash = _block.CalculateHash();
             
             bool result = _validator.Validate(_block.Header);
-            Assert.False(result);
+            Assert.True(result);
         }
         
         [Test]
-        public void When_gas_limit_just_correct_low()
+        public void When_gas_limit_is_just_too_low()
         {
             _block.Header.GasLimit = _parentBlock.Header.GasLimit - (long)BigInteger.Divide(_parentBlock.Header.GasLimit, 1024);
             _block.Header.SealEngineType = SealEngineType.None;
             _block.Header.Hash = _block.CalculateHash();
             
             bool result = _validator.Validate(_block.Header);
-            Assert.True(result);
+            Assert.False(result);
         }
         
         [Test]
@@ -189,6 +191,46 @@ namespace Nethermind.Blockchain.Test.Validators
             
             bool result = _validator.Validate(_block.Header);
             Assert.False(result);
+        }
+        
+        [TestCase(10000000, 4, 20000000, true)]
+        [TestCase(10000000, 4, 20019530, true)]
+        [TestCase(10000000, 4, 20019531, false)]
+        [TestCase(10000000, 4, 19980470, true)]
+        [TestCase(10000000, 4, 19980469, false)]
+        [TestCase(20000000, 5, 20000000, true)]
+        [TestCase(20000000, 5, 20019530, true)]
+        [TestCase(20000000, 5, 20019531, false)]
+        [TestCase(20000000, 5, 19980470, true)]
+        [TestCase(20000000, 5, 19980469, false)]
+        [TestCase(40000000, 5, 40039061, true)]
+        [TestCase(40000000, 5, 40039062, false)]
+        [TestCase(40000000, 5, 39960939, true)]
+        [TestCase(40000000, 5, 39960938, false)]
+        public void When_gaslimit_is_on_london_fork(long parentGasLimit, long blockNumber, long gasLimit, bool expectedResult)
+        {
+            OverridableReleaseSpec spec = new OverridableReleaseSpec(London.Instance)
+            {
+                Eip1559TransitionBlock = 5
+            };
+            TestSpecProvider specProvider = new TestSpecProvider(spec);
+            _validator = new HeaderValidator(_blockTree, _ethash, specProvider, new OneLoggerLogManager(_testLogger));
+            _parentBlock = Build.A.Block.WithDifficulty(1)
+                            .WithGasLimit(parentGasLimit)
+                            .WithNumber(blockNumber)
+                            .TestObject;
+            _block = Build.A.Block.WithParent(_parentBlock)
+                .WithDifficulty(131072)
+                .WithMixHash(new Keccak("0xd7db5fdd332d3a65d6ac9c4c530929369905734d3ef7a91e373e81d0f010b8e8"))
+                .WithGasLimit(gasLimit)
+                .WithNumber(_parentBlock.Number + 1)
+                .WithBaseFeePerGas(BaseFeeCalculator.Calculate(_parentBlock.Header, specProvider.GetSpec(_parentBlock.Number + 1)))
+                .WithNonce(0).TestObject;
+            _block.Header.SealEngineType = SealEngineType.None;
+            _block.Header.Hash = _block.CalculateHash();
+            
+            bool result = _validator.Validate(_block.Header, _parentBlock.Header);
+            Assert.AreEqual(expectedResult, result);
         }
     }
 }

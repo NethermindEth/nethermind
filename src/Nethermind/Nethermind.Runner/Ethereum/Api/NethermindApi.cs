@@ -21,6 +21,7 @@ using Nethermind.Abi;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Processing;
@@ -32,12 +33,14 @@ using Nethermind.Blockchain.Validators;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Core.PubSub;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Evm;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc.Modules;
@@ -48,7 +51,6 @@ using Nethermind.Network;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.P2P;
 using Nethermind.Network.Rlpx;
-using Nethermind.PubSub;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
@@ -60,7 +62,7 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
-using Nethermind.WebSockets;
+using Nethermind.Sockets;
 
 namespace Nethermind.Runner.Ethereum.Api
 {
@@ -108,14 +110,15 @@ namespace Nethermind.Runner.Ethereum.Api
                 EthereumEcdsa,
                 Timestamper,
                 LogFinder,
+                SpecProvider!,
                 miningConfig.Enabled,
                 syncConfig.BeamSync && syncConfig.FastSync
             );
         }
 
-        public IAbiEncoder AbiEncoder { get; } = new AbiEncoder();
+        public IAbiEncoder AbiEncoder { get; } = Nethermind.Abi.AbiEncoder.Instance;
         public IBlockchainProcessor? BlockchainProcessor { get; set; }
-        public CompositeBlockPreprocessorStep BlockPreprocessor { get; } = new(); 
+        public CompositeBlockPreprocessorStep BlockPreprocessor { get; } = new();
         public IBlockProcessingQueue? BlockProcessingQueue { get; set; }
         public IBlockProcessor? MainBlockProcessor { get; set; }
         public IBlockProducer? BlockProducer { get; set; }
@@ -156,12 +159,13 @@ namespace Nethermind.Runner.Ethereum.Api
         public IProtocolValidator? ProtocolValidator { get; set; }
         public IReceiptStorage? ReceiptStorage { get; set; }
         public IWitnessCollector? WitnessCollector { get; set; }
+        public IWitnessRepository? WitnessRepository { get; set; }
         public IReceiptFinder? ReceiptFinder { get; set; }
         public IRewardCalculatorSource? RewardCalculatorSource { get; set; } = NoBlockRewards.Instance;
         public IRlpxPeer? RlpxPeer { get; set; }
         public IRpcModuleProvider RpcModuleProvider { get; set; } = NullModuleProvider.Instance;
         public ISealer? Sealer { get; set; } = NullSealEngine.Instance;
-        public SealEngineType SealEngineType { get; set; } = SealEngineType.None;
+        public string SealEngineType { get; set; } = Nethermind.Core.SealEngineType.None;
         public ISealValidator? SealValidator { get; set; } = NullSealEngine.Instance;
         public ISessionMonitor? SessionMonitor { get; set; }
         public ISpecProvider? SpecProvider { get; set; }
@@ -184,15 +188,24 @@ namespace Nethermind.Runner.Ethereum.Api
         public ITxPoolInfoProvider? TxPoolInfoProvider { get; set; }
         public IHealthHintService? HealthHintService { get; set; }
         public TxValidator? TxValidator { get; set; }
+        public IBlockFinalizationManager? FinalizationManager { get; set; }
+        public IGasLimitCalculator GasLimitCalculator { get; set; }
+        
+        public IBlockProducerEnvFactory BlockProducerEnvFactory { get; set; }
         public IWallet? Wallet { get; set; }
+        public ITransactionComparerProvider TransactionComparerProvider { get; set; }
         public IWebSocketsManager WebSocketsManager { get; set; } = new WebSocketsManager();
 
         public ProtectedPrivateKey? NodeKey { get; set; }
-        public ProtectedPrivateKey? OriginalSignerKey { get; set; } // TODO: please explain what it does
+        
+        /// <summary>
+        /// Key used for signing blocks. Original as its loaded on startup. This can later be changed via RPC in <see cref="Signer"/>. 
+        /// </summary>
+        public ProtectedPrivateKey? OriginalSignerKey { get; set; }
 
         public ChainSpec? ChainSpec { get; set; }
         public DisposableStack DisposeStack { get; } = new();
-        public IList<INethermindPlugin> Plugins { get; } = new List<INethermindPlugin>();
+        public IReadOnlyList<INethermindPlugin> Plugins { get; } = new List<INethermindPlugin>();
         public IList<IPublisher> Publishers { get; } = new List<IPublisher>(); // this should be called publishers
     }
 }

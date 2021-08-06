@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -33,6 +33,7 @@ using Nethermind.Core;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 using Nethermind.Logging.NLog;
+using Nethermind.Mev;
 using Nethermind.Runner.Ethereum;
 using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Runner.Logging;
@@ -92,27 +93,34 @@ namespace Nethermind.Runner
             _logger.Info("Nethermind starting initialization.");
 
             AppDomain.CurrentDomain.ProcessExit += CurrentDomainOnProcessExit;
-            IFileSystem fileSystem = new FileSystem(); ;
-
-            PluginLoader pluginLoader = new("plugins", fileSystem, typeof(CliquePlugin), typeof(EthashPlugin), typeof(NethDevPlugin));
-            pluginLoader.Load(SimpleConsoleLogManager.Instance);
-
-            Type configurationType = typeof(IConfig);
-            IEnumerable<Type> configTypes = new TypeDiscovery().FindNethermindTypes(configurationType)
-                .Where(ct => ct.IsInterface);
-
+            
+            GlobalDiagnosticsContext.Set("version", ClientVersion.Version);
             CommandLineApplication app = new() { Name = "Nethermind.Runner" };
             _ = app.HelpOption("-?|-h|--help");
             _ = app.VersionOption("-v|--version", () => ClientVersion.Version, () => ClientVersion.Description);
-
-            GlobalDiagnosticsContext.Set("version", ClientVersion.Version);
-
+            
             CommandOption dataDir = app.Option("-dd|--datadir <dataDir>", "data directory", CommandOptionType.SingleValue);
             CommandOption configFile = app.Option("-c|--config <configFile>", "config file path", CommandOptionType.SingleValue);
             CommandOption dbBasePath = app.Option("-d|--baseDbPath <baseDbPath>", "base db path", CommandOptionType.SingleValue);
             CommandOption logLevelOverride = app.Option("-l|--log <logLevel>", "log level", CommandOptionType.SingleValue);
             CommandOption configsDirectory = app.Option("-cd|--configsDirectory <configsDirectory>", "configs directory", CommandOptionType.SingleValue);
             CommandOption loggerConfigSource = app.Option("-lcs|--loggerConfigSource <loggerConfigSource>", "path to the NLog config file", CommandOptionType.SingleValue);
+            _ = app.Option("-pd|--pluginsDirectory <pluginsDirectory>", "plugins directory", CommandOptionType.SingleValue);
+            
+            IFileSystem fileSystem = new FileSystem();
+            
+            string pluginsDirectoryPath = LoadPluginsDirectory(args);
+            PluginLoader pluginLoader = new(pluginsDirectoryPath, fileSystem, 
+                typeof(CliquePlugin), typeof(EthashPlugin), typeof(NethDevPlugin));
+
+            // leaving here as an example of adding Debug plugin
+            // IPluginLoader mevLoader = SinglePluginLoader<MevPlugin>.Instance;
+            // CompositePluginLoader pluginLoader = new (pluginLoader, mevLoader);
+            pluginLoader.Load(SimpleConsoleLogManager.Instance);
+
+            Type configurationType = typeof(IConfig);
+            IEnumerable<Type> configTypes = new TypeDiscovery().FindNethermindTypes(configurationType)
+                .Where(ct => ct.IsInterface);
 
             foreach (Type configType in configTypes.OrderBy(c => c.Name))
             {
@@ -169,7 +177,7 @@ namespace Nethermind.Runner
                 {
                     if (Activator.CreateInstance(pluginType) is INethermindPlugin plugin)
                     {
-                        nethermindApi.Plugins.Add(plugin);
+                        ((IList<INethermindPlugin>)nethermindApi.Plugins).Add(plugin);
                     }
                 }
 
@@ -192,6 +200,41 @@ namespace Nethermind.Runner
 
             _ = app.Execute(args);
             appClosed.Wait();
+        }
+
+        private static string LoadPluginsDirectory(string[] args)
+        {
+            string shortCommand = "-pd";
+            string longCommand = "--pluginsDirectory";
+            
+            string[] GetPluginArgs()
+            {
+                for (int i = 0; i < args.Length; i++)
+                {
+                    string arg = args[i];
+                    if (arg == shortCommand || arg == longCommand)
+                    {
+                        return i == args.Length - 1 ? new[] {arg} : new[] {arg, args[i + 1]};
+                    }
+                }
+
+                return Array.Empty<string>();
+            }
+            
+            CommandLineApplication pluginsApp = new() {Name = "Nethermind.Runner.Plugins"};
+            CommandOption pluginsAppDirectory = pluginsApp.Option($"{shortCommand}|{longCommand} <pluginsDirectory>", "plugins directory", CommandOptionType.SingleValue);
+            string pluginDirectory = "plugins";
+            pluginsApp.OnExecute(() =>
+            {
+                if (pluginsAppDirectory.HasValue())
+                {
+                    pluginDirectory = pluginsAppDirectory.Value();
+                }
+
+                return 0;
+            });
+            pluginsApp.Execute(GetPluginArgs());
+            return pluginDirectory;
         }
 
         private static IConfigProvider BuildConfigProvider(
@@ -292,6 +335,12 @@ namespace Nethermind.Runner
             logger.Info($"Reading config file from {configFilePath}");
             configProvider.AddSource(new JsonConfigSource(configFilePath));
             configProvider.Initialize();
+            var incorrectSettings = configProvider.FindIncorrectSettings();
+            if(incorrectSettings.Errors.Count() > 0)
+            {
+                logger.Warn($"Incorrect config settings found:{Environment.NewLine}{incorrectSettings.ErrorMsg}");
+            }
+
             logger.Info("Configuration initialized.");
             return configProvider;
         }

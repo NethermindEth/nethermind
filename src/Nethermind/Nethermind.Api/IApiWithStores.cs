@@ -22,6 +22,7 @@ using Nethermind.Consensus;
 using Nethermind.Crypto;
 using Nethermind.Db.Blooms;
 using Nethermind.State.Repositories;
+using Nethermind.TxPool;
 using Nethermind.Wallet;
 
 namespace Nethermind.Api

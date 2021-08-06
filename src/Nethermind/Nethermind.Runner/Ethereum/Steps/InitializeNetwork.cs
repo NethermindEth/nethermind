@@ -33,6 +33,7 @@ using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Network.Discovery.Serializers;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
+using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Network.StaticNodes;
@@ -151,7 +152,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.SyncPeerPool,
                 _api.SyncModeSelector,
                 _api.Config<ISyncConfig>(),
-                _api.WitnessCollector,
+                _api.WitnessRepository,
                 _api.LogManager,
                 cht);
 
@@ -347,16 +348,24 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_api.Synchronizer == null) throw new StepDependencyException(nameof(_api.Synchronizer));
             if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.BlockTree));
 
-            if (!_api.Config<ISyncConfig>().SynchronizationEnabled)
+            ISyncConfig syncConfig = _api.Config<ISyncConfig>();
+            if (syncConfig.NetworkingEnabled)
             {
-                if (_logger.IsWarn) _logger.Warn($"Skipping blockchain synchronization init due to {nameof(ISyncConfig.SynchronizationEnabled)} set to false");
-                return Task.CompletedTask;
+                _api.SyncPeerPool!.Start();
+
+                if (syncConfig.SynchronizationEnabled)
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Starting synchronization from block {_api.BlockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}.");
+                    _api.Synchronizer!.Start();
+                }
+                else
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Skipping blockchain synchronization init due to {nameof(ISyncConfig.SynchronizationEnabled)} set to false");
+                }
             }
+            else if (_logger.IsWarn) _logger.Warn($"Skipping connecting to peers due to {nameof(ISyncConfig.NetworkingEnabled)} set to false");
 
-            if (_logger.IsDebug) _logger.Debug($"Starting synchronization from block {_api.BlockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}.");
-
-            _api.SyncPeerPool.Start();
-            _api.Synchronizer.Start();
+            
             return Task.CompletedTask;
         }
 
@@ -425,10 +434,12 @@ namespace Nethermind.Runner.Ethereum.Steps
             NetworkStorage peerStorage = new(peersDb, _api.LogManager);
 
             ProtocolValidator protocolValidator = new(_api.NodeStatsManager, _api.BlockTree, _api.LogManager);
+            PooledTxsRequestor pooledTxsRequestor = new(_api.TxPool);
             _api.ProtocolsManager = new ProtocolsManager(
                 _api.SyncPeerPool,
                 _api.SyncServer,
                 _api.TxPool,
+                pooledTxsRequestor,
                 _api.DiscoveryApp,
                 _api.MessageSerializationService,
                 _api.RlpxPeer,

@@ -44,12 +44,16 @@ namespace Nethermind.Evm.Tracing
         {
         }
 
-        public ITxTracer StartNewTxTrace(Keccak txHash)
+        public ITxTracer StartNewTxTrace(Transaction? tx)
         {
             return AlwaysCancelTxTracer.Instance;
         }
 
         public void EndTxTrace()
+        {
+        }
+        
+        public void EndBlockTrace()
         {
         }
     }

@@ -26,41 +26,43 @@ namespace Nethermind.State
     public interface IStateProvider : IReadOnlyStateProvider
     {
         void RecalculateStateRoot();
-        
+
         new Keccak StateRoot { get; set; }
 
         void DeleteAccount(Address address);
 
         void CreateAccount(Address address, in UInt256 balance);
+        
+        void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce);
 
-        void UpdateCodeHash(Address address, Keccak codeHash, IReleaseSpec spec);
+        void UpdateCodeHash(Address address, Keccak codeHash, IReleaseSpec spec, bool isGenesis = false);
 
         void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec);
-        
+
         void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec);
 
         void UpdateStorageRoot(Address address, Keccak storageRoot);
 
         void IncrementNonce(Address address);
-        
+
         void DecrementNonce(Address address);
-        
+
         Keccak UpdateCode(ReadOnlyMemory<byte> code);
 
         /* snapshots */
-        
-        void Commit(IReleaseSpec releaseSpec);
-        
-        void Commit(IReleaseSpec releaseSpec, IStateTracer? stateTracer);
-        
+
+        void Commit(IReleaseSpec releaseSpec, bool isGenesis = false);
+
+        void Commit(IReleaseSpec releaseSpec, IStateTracer? stateTracer, bool isGenesis = false);
+
         void Reset();
 
         void Restore(int snapshot);
-        
+
         void CommitTree(long blockNumber);
-        
+
         int TakeSnapshot();
-        
+
         /// <summary>
         /// For witness
         /// </summary>

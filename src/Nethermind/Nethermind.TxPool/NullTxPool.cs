@@ -33,17 +33,18 @@ namespace Nethermind.TxPool
         public Transaction[] GetPendingTransactions() => Array.Empty<Transaction>();
         
         public Transaction[] GetOwnPendingTransactions() => Array.Empty<Transaction>();
+        
         public IDictionary<Address, Transaction[]> GetPendingTransactionsBySender() => new Dictionary<Address, Transaction[]>();
 
         public void AddPeer(ITxPoolPeer peer) { }
 
         public void RemovePeer(PublicKey nodeId) { }
-
-        public AddTxResult AddTransaction(Transaction tx, TxHandlingOptions txHandlingOptions) => AddTxResult.Added;
-
-        public bool RemoveTransaction(Keccak hash, bool removeBelowThisTxNonce) => false;
         
-        public bool IsInHashCache(Keccak hash) => false;
+        public AddTxResult SubmitTx(Transaction tx, TxHandlingOptions txHandlingOptions) => AddTxResult.Added;
+
+        public bool RemoveTransaction(Keccak? hash) => false;
+        
+        public bool IsKnown(Keccak hash) => false;
 
         public bool TryGetPendingTransaction(Keccak hash, out Transaction? transaction)
         {
@@ -70,8 +71,5 @@ namespace Nethermind.TxPool
             add { }
             remove { }
         }
-
-        public uint FutureNonceRetention { get; } = 16;
-        public long? BlockGasLimit { get; set; }
     }
 }

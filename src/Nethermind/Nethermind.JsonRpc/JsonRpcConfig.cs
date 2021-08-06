@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -27,8 +27,10 @@ namespace Nethermind.JsonRpc
         public bool Enabled { get; set; }
         public string Host { get; set; } = "127.0.0.1";
         public int Timeout { get; set; } = 20000;
-        public string RpcRecorderBaseFilePath { get; set; } = "logs/rpc.{counter}.txt"; 
-        public bool RpcRecorderEnabled { get; set; }
+        public string RpcRecorderBaseFilePath { get; set; } = "logs/rpc.{counter}.txt";
+        
+        public RpcRecorderState RpcRecorderState { get; set; } = RpcRecorderState.None;
+
         public int Port { get; set; } = 8545;
  
         public int WebSocketsPort
@@ -37,7 +39,9 @@ namespace Nethermind.JsonRpc
             set => _webSocketsPort = value;
         }
 
-        public string[] EnabledModules { get; set; } = Enum.GetValues(typeof(ModuleType)).OfType<ModuleType>().Select(mt => mt.ToString()).ToArray();
+        public string? IpcUnixDomainSocketPath { get; set; } = null;
+
+        public string[] EnabledModules { get; set; } = ModuleType.DefaultModules.ToArray();
         public int FindLogBlockDepthLimit { get; set; } = 1000;
         public long? GasCap { get; set; } = 100000000;
         public int ReportIntervalSeconds { get; set; } = 300;

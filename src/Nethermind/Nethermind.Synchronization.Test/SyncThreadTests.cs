@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Receipts;
@@ -27,6 +28,7 @@ using Nethermind.Blockchain.Spec;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -42,11 +44,11 @@ using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Stats;
 using Nethermind.Db.Blooms;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
-using Nethermind.TxPool.Storages;
 using NSubstitute;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
@@ -177,7 +179,7 @@ namespace Nethermind.Synchronization.Test
                 transaction.GasPrice = 20.GWei();
                 transaction.Hash = transaction.CalculateHash();
                 _originPeer.Ecdsa.Sign(TestItem.PrivateKeyA, transaction);
-                _originPeer.TxPool.AddTransaction(transaction, TxHandlingOptions.None);
+                _originPeer.TxPool.SubmitTx(transaction, TxHandlingOptions.None);
                 if (!resetEvent.WaitOne(1000))
                 {
                     throw new Exception($"Failed to produce block {i + 1}");
@@ -278,8 +280,11 @@ namespace Nethermind.Synchronization.Test
             EthereumEcdsa ecdsa = new(specProvider.ChainId, logManager);
             BlockTree tree = new(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb),
                 specProvider, NullBloomStorage.Instance, logManager);
-            TxPool.TxPool txPool = new(new InMemoryTxStorage(), ecdsa, new ChainHeadSpecProvider(specProvider, tree), 
-                new TxPoolConfig(), stateProvider, new TxValidator(specProvider.ChainId), logManager);
+            ITransactionComparerProvider transactionComparerProvider =
+                new TransactionComparerProvider(specProvider, tree);
+
+            TxPool.TxPool txPool = new(ecdsa, new ChainHeadInfoProvider(specProvider, tree, stateReader), 
+                new TxPoolConfig(), new TxValidator(specProvider.ChainId), logManager, transactionComparerProvider.GetDefaultComparer());
             BlockhashProvider blockhashProvider = new(tree, LimboLogs.Instance);
             VirtualMachine virtualMachine =
                 new(stateProvider, storageProvider, blockhashProvider, specProvider, logManager);
@@ -303,10 +308,9 @@ namespace Nethermind.Synchronization.Test
                 specProvider,
                 blockValidator,
                 rewardCalculator,
-                txProcessor,
+                new BlockProcessor.BlockValidationTransactionsExecutor(txProcessor, stateProvider),
                 stateProvider,
                 storageProvider,
-                txPool,
                 receiptStorage,
                 NullWitnessCollector.Instance,
                 logManager);
@@ -328,22 +332,22 @@ namespace Nethermind.Synchronization.Test
                 specProvider,
                 blockValidator,
                 rewardCalculator,
-                devTxProcessor,
+                new BlockProcessor.BlockProductionTransactionsExecutor(devTxProcessor, devState, devStorage, specProvider, logManager),
                 devState,
                 devStorage,
-                txPool,
                 receiptStorage,
                 NullWitnessCollector.Instance,
                 logManager);
 
             BlockchainProcessor devChainProcessor = new(tree, devBlockProcessor, step, logManager,
                 BlockchainProcessor.Options.NoReceipts);
-            TxPoolTxSource transactionSelector = new(txPool, stateReader, logManager);
+            ITxFilterPipeline txFilterPipeline = TxFilterPipelineBuilder.CreateStandardFilteringPipeline(LimboLogs.Instance, specProvider);
+            TxPoolTxSource transactionSelector = new(txPool, specProvider, transactionComparerProvider, logManager, txFilterPipeline);
             DevBlockProducer producer = new(
                 transactionSelector,
                 devChainProcessor,
-                stateProvider, tree,
-                processor,
+                stateProvider, 
+                tree,
                 new BuildBlocksRegularly(TimeSpan.FromMilliseconds(50)).IfPoolIsNotEmpty(txPool),
                 Timestamper.Default,
                 specProvider,

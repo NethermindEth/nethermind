@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
@@ -21,18 +22,13 @@ using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Precompiles.Benchmark
 {
-    [HtmlExporter]
-    // [NativeMemoryProfiler]
-    // [MemoryDiagnoser]
-    // [ShortRunJob(RuntimeMoniker.NetCoreApp50)]
-    [SimpleJob(RuntimeMoniker.NetCoreApp50)]
     public class ModExpBenchmark : PrecompileBenchmarkBase
     {
         protected override IEnumerable<IPrecompile> Precompiles => new[] {ModExpPrecompile.Instance};
         protected override string InputsDirectory => "modexp";
         
         [Benchmark]
-        public (byte[], bool) BigInt()
+        public (ReadOnlyMemory<byte>, bool) BigInt()
         {
             return ModExpPrecompile.OldRun(Input.Bytes);
         }

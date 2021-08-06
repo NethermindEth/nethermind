@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.IO;
 using System.IO.Abstractions;
 using Nethermind.Logging;
 
@@ -49,28 +50,30 @@ namespace Nethermind.JsonRpc
             }
 
             _currentRecorderFilePath = _recorderBaseFilePath.Replace("{counter}", _recorderFileCounter.ToString());
-            _fileSystem.File.Create(_currentRecorderFilePath);
+            using Stream stream =_fileSystem.File.Create(_currentRecorderFilePath);
             _recorderFileCounter++;
             _currentRecorderFileLength = 0;
         }
 
-        public void RecordRequest(string request)
+        public void RecordRequest(string request) => Record(request);
+        
+        public void RecordResponse(string result) => Record(result);
+        
+        private void Record(string data)
         {
-            if (!_isEnabled)
+            if (_isEnabled)
             {
-                return;
-            }
-
-            lock (_recorderSync)
-            {
-                _currentRecorderFileLength += request.Length;
-                if (_currentRecorderFileLength > 4 * 1024 * 2014)
+                lock (_recorderSync)
                 {
-                    CreateNewRecorderFile();
-                }
+                    _currentRecorderFileLength += data.Length;
+                    if (_currentRecorderFileLength > 4 * 1024 * 2014)
+                    {
+                        CreateNewRecorderFile();
+                    }
 
-                string singleLineRequest = request.Replace(Environment.NewLine, "");
-                _fileSystem.File.AppendAllText(_currentRecorderFilePath, singleLineRequest + Environment.NewLine);
+                    string singleLineRequest = data.Replace(Environment.NewLine, "");
+                    _fileSystem.File.AppendAllText(_currentRecorderFilePath, singleLineRequest + Environment.NewLine);
+                }
             }
         }
     }

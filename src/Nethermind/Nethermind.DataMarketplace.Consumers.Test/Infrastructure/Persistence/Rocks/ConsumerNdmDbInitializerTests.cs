@@ -19,6 +19,7 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core.Test.IO;
 using Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks;
 using Nethermind.DataMarketplace.Core.Configs;
 using Nethermind.Db;
@@ -41,15 +42,16 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence.R
         [OneTimeSetUp]
         public void Initialize()
         {
-            _folderWithDbs = Guid.NewGuid().ToString();
+            _folderWithDbs = TempPath.GetTempDirectory().Path;
+            Directory.CreateDirectory(_folderWithDbs);
         }
 
         [Test]
         public async Task ProviderInitTests_MemDbProvider()
         {
-            var dbProvider = new DbProvider(DbModeHint.Mem);
-            var rocksDbFactory = new RocksDbFactory(new DbConfig(), LimboLogs.Instance, Path.Combine(_folderWithDbs, "mem"));
-            var initializer = new ConsumerNdmDbInitializer(dbProvider, new NdmConfig(), rocksDbFactory, new MemDbFactory());
+            using DbProvider dbProvider = new DbProvider(DbModeHint.Mem);
+            RocksDbFactory rocksDbFactory = new RocksDbFactory(new DbConfig(), LimboLogs.Instance, Path.Combine(_folderWithDbs, "mem"));
+            ConsumerNdmDbInitializer initializer = new ConsumerNdmDbInitializer(dbProvider, new NdmConfig(), rocksDbFactory, new MemDbFactory());
             initializer.Reset();
             await initializer.InitAsync();
             Assert.AreEqual(4, dbProvider.RegisteredDbs.Count());
@@ -62,8 +64,8 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence.R
         [Test]
         public async Task ProviderInitTests_RocksDbProvider()
         {
-            var rocksDbFactory = new RocksDbFactory(new DbConfig(), LimboLogs.Instance, Path.Combine(_folderWithDbs, "rocks"));
-            var dbProvider = new DbProvider(DbModeHint.Persisted);
+            RocksDbFactory rocksDbFactory = new RocksDbFactory(new DbConfig(), LimboLogs.Instance, Path.Combine(_folderWithDbs, "rocks"));
+            using var dbProvider = new DbProvider(DbModeHint.Persisted);
             var initializer = new ConsumerNdmDbInitializer(dbProvider, new NdmConfig(), rocksDbFactory, new MemDbFactory());
             initializer.Reset();
             await initializer.InitAsync();
@@ -77,10 +79,12 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence.R
         [Test]
         public async Task ProviderInitTests_ReadonlyDbProvider()
         {
-            var dbProvider = new DbProvider(DbModeHint.Persisted);
-            var rocksDbFactory = new RocksDbFactory(new DbConfig(), LimboLogs.Instance, Path.Combine(_folderWithDbs, "readonly"));
-            var readonlyDbProvider = new ReadOnlyDbProvider(dbProvider, true);
-            var initializer = new ConsumerNdmDbInitializer(readonlyDbProvider, new NdmConfig(), rocksDbFactory, new MemDbFactory());
+            using DbProvider dbProvider = new DbProvider(DbModeHint.Persisted);
+            RocksDbFactory rocksDbFactory = new RocksDbFactory(new DbConfig(), LimboLogs.Instance,
+                Path.Combine(_folderWithDbs, "readonly"));
+            using ReadOnlyDbProvider readonlyDbProvider = new ReadOnlyDbProvider(dbProvider, true);
+            ConsumerNdmDbInitializer initializer = new ConsumerNdmDbInitializer(readonlyDbProvider, new NdmConfig(), rocksDbFactory,
+                new MemDbFactory());
             initializer.Reset();
             await initializer.InitAsync();
             Assert.AreEqual(4, readonlyDbProvider.RegisteredDbs.Count());
@@ -93,11 +97,11 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence.R
         [Test]
         public async Task ProviderInitTests_BeamSyncDbProvider()
         {
-            var syncModeSelector = Substitute.For<ISyncModeSelector>();
-            var dbProvider = await TestMemDbProvider.InitAsync();
-            var rocksDbFactory = new RocksDbFactory(new DbConfig(), LimboLogs.Instance, Path.Combine(_folderWithDbs, "beam"));
+            ISyncModeSelector syncModeSelector = Substitute.For<ISyncModeSelector>();
+            using IDbProvider dbProvider = await TestMemDbProvider.InitAsync();
+            RocksDbFactory rocksDbFactory = new RocksDbFactory(new DbConfig(), LimboLogs.Instance, Path.Combine(_folderWithDbs, "beam"));
             IDbProvider beamSyncDbProvider = new BeamSyncDbProvider(syncModeSelector, dbProvider, new SyncConfig(), LimboLogs.Instance);
-            var initializer = new ConsumerNdmDbInitializer(beamSyncDbProvider, new NdmConfig(), rocksDbFactory, new MemDbFactory());
+            ConsumerNdmDbInitializer initializer = new ConsumerNdmDbInitializer(beamSyncDbProvider, new NdmConfig(), rocksDbFactory, new MemDbFactory());
             initializer.Reset();
             await initializer.InitAsync();
             Assert.IsTrue(beamSyncDbProvider.GetDb<IDb>(ConsumerNdmDbNames.ConsumerDepositApprovals) is MemDb);

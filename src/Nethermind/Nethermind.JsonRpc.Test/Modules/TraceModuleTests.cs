@@ -20,6 +20,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
@@ -42,11 +43,11 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.TxPool;
-using Nethermind.TxPool.Storages;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Spec;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Specs.Forks;
 using Nethermind.Trie.Pruning;
 
@@ -70,11 +71,12 @@ namespace Nethermind.JsonRpc.Test.Modules
             ISpecProvider specProvider = MainnetSpecProvider.Instance;
             _jsonRpcConfig = new JsonRpcConfig();
             IEthereumEcdsa ethereumEcdsa = new EthereumEcdsa(specProvider.ChainId, LimboLogs.Instance);
-            ITxStorage txStorage = new InMemoryTxStorage();
 
             _stateDb = new MemDb();
             ITrieStore trieStore = new TrieStore(_stateDb, LimboLogs.Instance);
-            _stateProvider = new StateProvider(trieStore, new MemDb(), LimboLogs.Instance);
+            MemDb codeDb = new MemDb();
+            _stateProvider = new StateProvider(trieStore, codeDb, LimboLogs.Instance);
+            _stateReader = new StateReader(trieStore, codeDb, LimboLogs.Instance);
 
             _stateProvider.CreateAccount(TestItem.AddressA, 1000.Ether());
             _stateProvider.CreateAccount(TestItem.AddressB, 1000.Ether());
@@ -90,11 +92,13 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             _stateProvider.Commit(specProvider.GenesisSpec);
             _stateProvider.CommitTree(0);
-
+            
             IChainLevelInfoRepository chainLevels = new ChainLevelInfoRepository(dbProvider);
             IBlockTree blockTree = new BlockTree(dbProvider, chainLevels, specProvider, NullBloomStorage.Instance, LimboLogs.Instance);
-            ITxPool txPool = new TxPool.TxPool(txStorage, ethereumEcdsa, new ChainHeadSpecProvider(specProvider, blockTree), 
-                new TxPoolConfig(), _stateProvider, new TxValidator(specProvider.ChainId), LimboLogs.Instance);
+            ITransactionComparerProvider transactionComparerProvider =
+                new TransactionComparerProvider(specProvider, blockTree);
+            ITxPool txPool = new TxPool.TxPool(ethereumEcdsa, new ChainHeadInfoProvider(specProvider, blockTree, _stateReader), 
+                new TxPoolConfig(), new TxValidator(specProvider.ChainId), LimboLogs.Instance, transactionComparerProvider.GetDefaultComparer());
             
             IReceiptStorage receiptStorage = new InMemoryReceiptStorage();
             VirtualMachine virtualMachine = new VirtualMachine(_stateProvider, storageProvider, new BlockhashProvider(blockTree, LimboLogs.Instance), specProvider, LimboLogs.Instance);
@@ -103,10 +107,9 @@ namespace Nethermind.JsonRpc.Test.Modules
                 specProvider,
                 Always.Valid,
                 new RewardCalculator(specProvider),
-                txProcessor,
+                new BlockProcessor.BlockValidationTransactionsExecutor(txProcessor, _stateProvider),
                 _stateProvider,
                 storageProvider,
-                txPool,
                 receiptStorage,
                 NullWitnessCollector.Instance, 
                 LimboLogs.Instance);
@@ -165,6 +168,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
         private ITraceRpcModule _traceRpcModule;
         private IStateProvider _stateProvider;
+        private IStateReader _stateReader;
         private MemDb _stateDb;
 
         [Test]

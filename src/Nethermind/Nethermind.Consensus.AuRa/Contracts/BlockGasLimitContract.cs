@@ -15,12 +15,14 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Blockchain.Contracts.Json;
 using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Evm;
+using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
@@ -39,7 +41,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             Address contractAddress,
             long transitionBlock,
             IReadOnlyTxProcessorSource readOnlyTxProcessorSource) 
-            : base(abiEncoder, contractAddress)
+            : base(abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)))
         {
             Activation = transitionBlock;
             Constant = GetConstant(readOnlyTxProcessorSource);

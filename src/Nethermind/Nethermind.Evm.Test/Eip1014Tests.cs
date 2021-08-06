@@ -172,7 +172,7 @@ namespace Nethermind.Evm.Test
 
             Execute(code);
 
-            TestState.GetAccount(expectedAddress).Should().BeNull();
+            TestState.AccountExists(expectedAddress).Should().BeFalse();
         }
 
         /// <summary>
