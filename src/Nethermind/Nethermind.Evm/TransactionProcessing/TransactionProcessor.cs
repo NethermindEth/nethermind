@@ -60,7 +60,17 @@ namespace Nethermind.Evm.TransactionProcessing
             /// <summary>
             /// Commit and later restore state, use for CallAndRestore
             /// </summary>
-            CommitAndRestore = Commit | Restore
+            CommitAndRestore = Commit | Restore,
+            
+            /// <summary>
+            /// Zero Gas price
+            /// </summary>
+            ZeroGasPrice = 4,
+
+            /// <summary>
+            /// Commit and restore with zero gas price
+            /// </summary>
+            CommitAndRestoreWithZeroGasPrice = CommitAndRestore | ZeroGasPrice
         }
 
         public TransactionProcessor(
