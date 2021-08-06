@@ -97,7 +97,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
                         byte[] bytes;
                         try
                         {
-                            using PrivateKey privateKey = _signer.Key.Unprotect();
+                            using PrivateKey privateKey = _signer.Key;
                             bytes = _eciesCipher.Decrypt(privateKey, cipher).Item2;
                         }
                         catch (InvalidCipherTextException)
