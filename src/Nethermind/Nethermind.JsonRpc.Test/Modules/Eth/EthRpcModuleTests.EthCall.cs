@@ -168,6 +168,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x010203\",\"id\":67}", serialized);
         }
 
+        /// <summary>
+        /// 1. Before 1559: If you do not specify the gas price, 0 is used and you can call with accounts with 0 balance.
+        /// </summary>
         [Test]
         public async Task Eth_call_without_gas_pricing()
         {
@@ -178,6 +181,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}", serialized);
         }
 
+        /// <summary>
+        /// 2. Before 1559: If you specify the gas price, it is used and checked with the account balance.
+        /// </summary>
         [Test]
         public async Task Eth_call_with_gas_pricing()
         {
@@ -198,6 +204,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}", serialized);
         }
         
+        /// <summary>
+        /// 3. Before 1559: If you specify a gas price of type 1559, it will be ignored and the gas price will be 0.
+        /// </summary>
         [Test]
         public async Task Eth_call_with_1559_gas_pricing_after_1559_legacy()
         {
@@ -208,6 +217,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}", serialized);
         }
 
+        /// <summary>
+        /// 4. After 1559: If you do not specify the gas price, 0 is used and you can call with accounts with 0 balance. The basefee will be 0.
+        /// </summary>
         [Test]
         public async Task Eth_call_without_gas_pricing_after_1559_new_type_of_transaction()
         {
@@ -218,6 +230,13 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}", serialized);
         }
         
+        /// <summary>
+        /// 5. After 1559: if you do specify a gas price: In nethermind GasPrice = MaxPriorityFeePerGas ?? 0
+        /// gasPrice is ignored
+        /// In geth : After 1559, if you do specify a gas price, that is interpreted as both the max and priority fee
+        /// and your account balance is checked against them + the current base fee.
+        /// </summary>
+        /// TODO maybe needs to be changed to ``geth``
         [Test]
         public async Task Eth_call_with_gas_pricing_after_1559_new_type_of_transaction()
         {
@@ -238,6 +257,11 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32015,\"message\":\"VM execution error.\",\"data\":\"gas limit below intrinsic gas\"},\"id\":67}", serialized);
         }
         
+        /// <summary>
+        /// 6. After 1559: If you specify a gas price of type 1559 and transaction type 0x2,
+        /// the transaction will be of type 1559 and your account balance is checked against them + the current basefee.
+        /// (maxFeePerGas)
+        /// </summary>
         [Test]
         public async Task Eth_call_with_max_fee_after_1559_new_type_of_transaction()
         {
@@ -249,6 +273,11 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32015,\"message\":\"VM execution error.\",\"data\":\"insufficient sender balance\"},\"id\":67}", serialized);
         }
         
+        /// <summary>
+        /// 6. After 1559: If you specify a gas price of type 1559 and transaction type 0x2,
+        /// the transaction will be of type 1559 and your account balance is checked against them + the current basefee.
+        /// (maxFeePerGas)
+        /// </summary>
         [Test]
         public async Task Eth_call_with_max__priority_fee_after_1559_new_type_of_transaction()
         {
