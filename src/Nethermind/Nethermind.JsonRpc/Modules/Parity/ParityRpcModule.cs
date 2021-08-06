@@ -78,6 +78,8 @@ namespace Nethermind.JsonRpc.Modules.Parity
             }
 
             Block block = searchResult.Object;
+            long no = block.Number;
+            Transaction[] tab = block.Transactions;
             TxReceipt[] receipts = _receiptFinder.Get(block) ?? new TxReceipt[block.Transactions.Length];
             IEnumerable<ReceiptForRpc> result = receipts.Zip(block.Transactions, (r, t) => new ReceiptForRpc(t.Hash, r));
             ReceiptForRpc[] resultAsArray = result.ToArray();
