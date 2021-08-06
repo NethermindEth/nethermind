@@ -25,6 +25,7 @@ using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
+using Nethermind.Blockchain.Producers;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
@@ -174,24 +175,33 @@ namespace Nethermind.Mev
 
             _nethermindApi.BlockProducerEnvFactory = producerEnvFactory;
 
-            Dictionary<IManualBlockProducer, IBeneficiaryBalanceSource> blockProducerDictionary = 
-                new Dictionary<IManualBlockProducer, IBeneficiaryBalanceSource>();
+            List<MevBlockProducer.MevBlockProducerInfo> blockProducers =
+                new(_mevConfig.MaxMergedBundles + 1);
                 
             // Add non-mev block
-            IManualBlockProducer standardProducer = (IManualBlockProducer)await consensusPlugin.InitBlockProducer(); 
-            IBeneficiaryBalanceSource standardProducerBeneficiaryBalanceSource = producerEnvFactory.LastMevBlockProcessor;
-            blockProducerDictionary.Add(standardProducer, standardProducerBeneficiaryBalanceSource);
+            MevBlockProducer.MevBlockProducerInfo standardProducer = await CreateProducer(consensusPlugin, producerEnvFactory);
+            blockProducers.Add(standardProducer);
             
             // Try blocks with all bundle numbers <= MaxMergedBundles
             for (int bundleLimit = 1; bundleLimit <= _mevConfig.MaxMergedBundles; bundleLimit++)
             {
                 BundleSelector bundleSelector = new(BundlePool, bundleLimit);
-                IManualBlockProducer bundleProducer = (IManualBlockProducer)await consensusPlugin.InitBlockProducer(new BundleTxSource(bundleSelector, standardProducer.Timestamper));
-                IBeneficiaryBalanceSource bundleProducerBeneficiaryBalanceSource = producerEnvFactory.LastMevBlockProcessor;
-                blockProducerDictionary.Add(bundleProducer, bundleProducerBeneficiaryBalanceSource);
+                MevBlockProducer.MevBlockProducerInfo bundleProducer = await CreateProducer(consensusPlugin, producerEnvFactory, new BundleTxSource(bundleSelector, _nethermindApi.Timestamper));
+                blockProducers.Add(bundleProducer);
             }
-                
-            return _nethermindApi.BlockProducer = new MevBlockProducer(blockProducerDictionary);
+
+            return _nethermindApi.BlockProducer = new MevBlockProducer(consensusPlugin.DefaultBlockProductionTrigger, blockProducers.ToArray());
+        }
+
+        private static async Task<MevBlockProducer.MevBlockProducerInfo> CreateProducer(
+            IConsensusPlugin consensusPlugin, 
+            MevBlockProducerEnvFactory producerEnvFactory,
+            ITxSource? additionalTxSource = null)
+        {
+            IManualBlockProductionTrigger trigger = new BuildBlocksWhenRequested();
+            IBlockProducer producer = await consensusPlugin.InitBlockProducer(trigger, additionalTxSource);
+            IBeneficiaryBalanceSource beneficiaryBalanceSource = producerEnvFactory.LastMevBlockProcessor;
+            return new MevBlockProducer.MevBlockProducerInfo(producer, trigger, beneficiaryBalanceSource);
         }
 
         public bool Enabled => _mevConfig.Enabled;

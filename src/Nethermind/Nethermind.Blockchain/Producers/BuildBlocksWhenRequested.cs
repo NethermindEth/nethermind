@@ -16,16 +16,21 @@
 // 
 
 using System;
+using System.Threading;
+using System.Threading.Tasks;
+using Nethermind.Core;
 
 namespace Nethermind.Blockchain.Producers
 {
     public class BuildBlocksWhenRequested : IManualBlockProductionTrigger
     {
-        public void BuildBlock()
+        public event EventHandler<BlockProductionEventArgs>? TriggerBlockProduction;
+        
+        public Task<Block?> BuildBlock(BlockHeader? parentHeader = null, CancellationToken? cancellationToken = null)
         {
-            TriggerBlockProduction?.Invoke(this, EventArgs.Empty);
+            BlockProductionEventArgs args = new(parentHeader, cancellationToken);
+            TriggerBlockProduction?.Invoke(this, args);
+            return args.BlockProductionTask;
         }
-
-        public event EventHandler? TriggerBlockProduction;
     }
 }

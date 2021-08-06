@@ -178,9 +178,9 @@ jobs:
     - name: Nethermind.Wallet.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Wallet.Test
-    - name: Nethermind.WebSockets.Test
+    - name: Nethermind.Sockets.Test
       run: |
-        dotnet test -c Release src/Nethermind/Nethermind.WebSockets.Test
+        dotnet test -c Release src/Nethermind/Nethermind.Sockets.Test
     - name: Nethermind.DataMarketplace.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.DataMarketplace.Test

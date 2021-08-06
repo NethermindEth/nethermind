@@ -17,6 +17,7 @@
 using System;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
+using Nethermind.HashLib;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.Blockchain.Find
@@ -29,7 +30,7 @@ namespace Nethermind.Blockchain.Find
 
         public static BlockParameter Latest = new(BlockParameterType.Latest);
 
-        public BlockParameterType Type { get; set; }
+        public BlockParameterType Type { get; }
         public long? BlockNumber { get; }
         
         public Keccak? BlockHash { get; }
@@ -60,32 +61,8 @@ namespace Nethermind.Blockchain.Find
             RequireCanonical = requireCanonical;
         }
 
-        [Todo(Improve.Refactor,"Move it to converters")]
-        public static BlockParameter FromJson(string jsonValue)
-        {
-            switch (jsonValue)
-            {
-                case { } earliest when string.Equals(earliest, "earliest", StringComparison.InvariantCultureIgnoreCase):
-                    return Earliest;
-                case { } pending when string.Equals(pending, "pending", StringComparison.InvariantCultureIgnoreCase):
-                    return Pending;
-                case { } latest when string.Equals(latest, "latest", StringComparison.InvariantCultureIgnoreCase):
-                    return Latest;
-                case { } empty when string.IsNullOrWhiteSpace(empty):
-                    return Latest;
-                case null:
-                    return Latest;
-                case { } hash when hash.Length == 66 && hash.StartsWith("0x"):
-                    return Latest;
-                default:
-                    return new BlockParameter(LongConverter.FromString(jsonValue.Trim('"')));
-            }
-        }
+        public override string ToString() => $"{Type}, {BlockNumber?.ToString() ?? BlockHash?.ToString()}";
 
-        public override string ToString()
-        {
-            return $"{Type}, {BlockNumber?.ToString() ?? BlockHash?.ToString()}";
-        }
         public bool Equals(BlockParameter? other)
         {
             if (ReferenceEquals(null, other)) return false;
@@ -97,13 +74,10 @@ namespace Nethermind.Blockchain.Find
         {
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;
-            if (obj.GetType() != this.GetType()) return false;
+            if (obj.GetType() != GetType()) return false;
             return Equals((BlockParameter) obj);
         }
 
-        public override int GetHashCode()
-        {
-            throw new NotSupportedException();
-        }
+        public override int GetHashCode() => HashCode.Combine(Type, BlockNumber, BlockHash, RequireCanonical);
     }
 }

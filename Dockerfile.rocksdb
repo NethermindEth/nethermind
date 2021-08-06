@@ -1,4 +1,4 @@
-FROM debian:10 AS rocksdb
+FROM debian@sha256:acf7795dc91df17e10effee064bd229580a9c34213b4dba578d64768af5d8c51 AS rocksdb
 WORKDIR /source
 
 ARG TARGETPLATFORM
@@ -10,6 +10,6 @@ RUN PORTABLE=1 make -j16 shared_lib
 
 RUN strip librocksdb.so
 
-FROM debian:10 AS librocksdb
+FROM debian@sha256:acf7795dc91df17e10effee064bd229580a9c34213b4dba578d64768af5d8c51 AS librocksdb
 WORKDIR /nethermind
 COPY --from=rocksdb /source/librocksdb.so .

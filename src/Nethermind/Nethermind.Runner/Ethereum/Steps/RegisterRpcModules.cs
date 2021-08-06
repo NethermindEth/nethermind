@@ -32,6 +32,7 @@ using Nethermind.JsonRpc.Modules.Personal;
 using Nethermind.JsonRpc.Modules.Proof;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.JsonRpc.Modules.TxPool;
+using Nethermind.JsonRpc.Modules.Witness;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Core;
@@ -183,10 +184,14 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.Enode,
                 _api.EngineSignerStore,
                 _api.KeyStore,
+                _api.SpecProvider,
                 _api.LogManager,
                 _api.PeerManager);
             _api.RpcModuleProvider.RegisterSingle<IParityRpcModule>(parityRpcModule);
 
+            WitnessRpcModule witnessRpcModule = new(_api.WitnessRepository, _api.BlockTree);
+            _api.RpcModuleProvider.RegisterSingle<IWitnessRpcModule>(witnessRpcModule);
+            
             SubscriptionFactory subscriptionFactory = new(
                 _api.LogManager,
                 _api.BlockTree,

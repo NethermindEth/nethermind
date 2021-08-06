@@ -21,6 +21,6 @@ namespace Nethermind.Blockchain
 {
     public interface IBlockProducerEnvFactory
     {
-        BlockProducerEnv Create(ITxSource? txSource = null);
+        BlockProducerEnv Create(ITxSource? additionalTxSource = null);
     }
 }

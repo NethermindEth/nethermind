@@ -70,7 +70,7 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
-using Nethermind.WebSockets;
+using Nethermind.Sockets;
 
 namespace Nethermind.DataMarketplace.Infrastructure
 {
@@ -479,6 +479,12 @@ namespace Nethermind.DataMarketplace.Infrastructure
         {
             get => _nethermindApi.TxPoolInfoProvider;
             set => _nethermindApi.TxPoolInfoProvider = value;
+        }
+
+        public IWitnessRepository? WitnessRepository
+        {
+            get => _nethermindApi.WitnessRepository;
+            set => _nethermindApi.WitnessRepository = value;
         }
 
         public IHealthHintService? HealthHintService        
