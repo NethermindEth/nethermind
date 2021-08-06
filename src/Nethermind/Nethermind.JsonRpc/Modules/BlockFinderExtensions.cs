@@ -110,7 +110,7 @@ namespace Nethermind.JsonRpc.Modules
                         yield return new SearchResult<Block>($"From block number: {startingBlockNumber} is greater than to block number {finalBlockNumber}", ErrorCodes.InvalidInput);
                     }
                     
-                    for (long i = startingBlock.Object.Number + 1; i < finalBlockHeader.Object.Number; ++i)
+                    for (long i = startingBlock.Object.Number + 1; i <= finalBlockHeader.Object.Number; ++i)
                     {
                         yield return SearchForBlock(blockFinder, new BlockParameter(i));
                     }

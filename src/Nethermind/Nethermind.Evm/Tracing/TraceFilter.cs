@@ -25,34 +25,34 @@ namespace Nethermind.Evm.Tracing
         public TxTraceFilter(
             Address[]? fromAddresses,
             Address[]? toAddresses,
-            int afterMatchingTxAmount,
+            int after,
             int? count)
         {
             FromAddresses = fromAddresses;
             ToAddresses = toAddresses;
-            AfterMatchingTxAmount = afterMatchingTxAmount;
+            After = after;
             Count = count;
         }
         public Address[]? FromAddresses { get; }
         
         public Address[]? ToAddresses { get; }
         
-        public int AfterMatchingTxAmount { get; private set; } 
+        public int After { get; private set; } 
         
         public int? Count { get; private set; }
 
         public bool ShouldTraceTx(Transaction? tx)
         {
             if (tx == null ||
-                TxMatchesAddresses(tx) ||
+                !TxMatchesAddresses(tx) ||
                 (Count <= 0))
             {
                 return false;
             }
 
-            if (AfterMatchingTxAmount > 0)
+            if (After > 0)
             {
-                --AfterMatchingTxAmount;
+                --After;
                 return false;
             }
             
@@ -71,10 +71,10 @@ namespace Nethermind.Evm.Tracing
                 return false;
             
             int txCount = CountMatchingTransactions(block);
-            if (AfterMatchingTxAmount >= txCount)
+            if (After >= txCount)
             {
                 // we can skip the block if it don't achieve after
-                AfterMatchingTxAmount -= txCount;
+                After -= txCount;
                 return false;
             }
 
@@ -99,8 +99,8 @@ namespace Nethermind.Evm.Tracing
 
         private bool TxMatchesAddresses(Transaction tx)
         {
-            return FromAddresses != null && !FromAddresses.Contains(tx.SenderAddress) ||
-                ToAddresses != null && !ToAddresses.Contains(tx.To);
+            return (FromAddresses == null || FromAddresses.Contains(tx.SenderAddress)) &&
+                (ToAddresses == null || ToAddresses.Contains(tx.To));
         }
     }
 }
