@@ -174,8 +174,11 @@ namespace Nethermind.Mev
                 // if we need to stop on not first tx in the bundle, we actually want to skip the bundle
                 txAction = txAction == TxAction.Stop && index != 0 ? TxAction.Skip : txAction;
             }
-            
-            bundleSucceeded &= CheckFeeNotManipulated();
+
+            if (bundleSucceeded)
+            {
+                bundleSucceeded &= CheckFeeNotManipulated();
+            }
 
             if (bundleSucceeded)
             {
