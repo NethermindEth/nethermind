@@ -197,6 +197,16 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             string serialized = ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction));
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}", serialized);
         }
+        
+        [Test]
+        public async Task Eth_call_with_1559_gas_pricing_after_1559_legacy()
+        {
+            using Context ctx = await Context.CreateWithLondonEnabled();
+            TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>(
+                "{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"to\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"maxFeePerGas\": \"0x100\"}");
+            string serialized = ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction));
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}", serialized);
+        }
 
         [Test]
         public async Task Eth_call_without_gas_pricing_after_1559_new_type_of_transaction()
@@ -206,11 +216,47 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                 "{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"to\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"type\": \"0x2\"}");
             string serialized = ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction));
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}", serialized);
-            byte[] code = Prepare.EvmCode
-                .Op(Instruction.BASEFEE)
-                .PushData(0)
-                .Op(Instruction.SSTORE)
-                .Done;
+        }
+        
+        [Test]
+        public async Task Eth_call_with_gas_pricing_after_1559_new_type_of_transaction()
+        {
+            using Context ctx = await Context.CreateWithLondonEnabled();
+            TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>(
+                "{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"to\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"type\": \"0x2\", \"gasPrice\": \"0x2DA2830C\"}");
+            string serialized = ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction));
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}", serialized);
+        }
+        
+        [Test]
+        public async Task Eth_call_with_gas_limit_after_1559_new_type_of_transaction()
+        {
+            using Context ctx = await Context.CreateWithLondonEnabled();
+            TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>(
+                "{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"to\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"type\": \"0x2\", \"gas\": \"0x1000\"}");
+            string serialized = ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction));
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32015,\"message\":\"VM execution error.\",\"data\":\"gas limit below intrinsic gas\"},\"id\":67}", serialized);
+        }
+        
+        [Test]
+        public async Task Eth_call_with_max_fee_after_1559_new_type_of_transaction()
+        {
+            using Context ctx = await Context.CreateWithLondonEnabled();
+            //using Context ctx = await Context.Create();
+            TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>(
+                "{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"to\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"type\": \"0x2\", \"maxFeePerGas\": \"0x2DA2830C\"}");
+            string serialized = ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction));
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32015,\"message\":\"VM execution error.\",\"data\":\"insufficient sender balance\"},\"id\":67}", serialized);
+        }
+        
+        [Test]
+        public async Task Eth_call_with_max__priority_fee_after_1559_new_type_of_transaction()
+        {
+            using Context ctx = await Context.CreateWithLondonEnabled();
+            TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>(
+                "{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"to\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"type\": \"0x2\", \"maxPriorityFeePerGas\": \"0x2D\"}");
+            string serialized = ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction));
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32015,\"message\":\"VM execution error.\",\"data\":\"max priority fee per gas higher than max fee per gas\"},\"id\":67}", serialized);
         }
 
         [Test]
