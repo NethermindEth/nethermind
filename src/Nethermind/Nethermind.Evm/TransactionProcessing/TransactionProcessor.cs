@@ -90,7 +90,17 @@ namespace Nethermind.Evm.TransactionProcessing
 
         public void CallAndRestore(Transaction transaction, BlockHeader block, ITxTracer txTracer)
         {
-            Execute(transaction, block, txTracer, ExecutionOptions.CommitAndRestore);
+            IReleaseSpec spec = _specProvider.GetSpec(block.Number);
+            spec = new SystemTransactionReleaseSpec(spec);
+
+            bool isZeroGasPrice = spec.IsEip1559Enabled
+                ? (transaction.IsEip1559
+                    ? (transaction.MaxFeePerGas.IsZero && transaction.MaxPriorityFeePerGas.IsZero)
+                    : transaction.GasPrice.IsZero)
+                : transaction.GasPrice.IsZero;
+
+            Execute(transaction, block, txTracer,
+                isZeroGasPrice ? ExecutionOptions.CommitAndRestoreWithZeroGasPrice : ExecutionOptions.CommitAndRestore);
         }
 
         public void BuildUp(Transaction transaction, BlockHeader block, ITxTracer txTracer)
