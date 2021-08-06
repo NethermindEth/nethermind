@@ -167,6 +167,13 @@ namespace Nethermind.Evm.TransactionProcessing
             }
             
             UInt256 value = transaction.Value;
+            
+            if (isCommitAndRestoreWithoutZeroGasPrice && transaction.MaxPriorityFeePerGas > transaction.MaxFeePerGas) 
+            { 
+                TraceLogInvalidTx(transaction, "MAX PRIORITY FEE PER GAS HIGHER THAN MAX FEE PER GAS");
+                QuickFail(transaction, block, txTracer, eip658NotEnabled, "max priority fee per gas higher than max fee per gas");
+                return; 
+            }
 
             if (!transaction.TryCalculatePremiumPerGas(block.BaseFeePerGas, out UInt256 premiumPerGas) && (!restore || isCommitAndRestoreWithoutZeroGasPrice))
             {
