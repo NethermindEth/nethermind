@@ -65,7 +65,7 @@ namespace Nethermind.Consensus
             return default;
         }
 
-        public PrivateKey Key => _key is null ? null : new PrivateKey(_key.KeyBytes); 
+        public PrivateKey? Key => _key is null ? null : new PrivateKey(_key.KeyBytes); 
 
         public void SetSigner(PrivateKey? key)
         {
@@ -76,11 +76,13 @@ namespace Nethermind.Consensus
 
         public void SetSigner(ProtectedPrivateKey? key)
         {
+            PrivateKey? pk = null; 
             if (key is not null)
             {
-                PrivateKey pk = key.Unprotect();
-                SetSigner(pk);
+                pk = key.Unprotect();
             }
+            
+            SetSigner(pk);
         }
     }
 }
