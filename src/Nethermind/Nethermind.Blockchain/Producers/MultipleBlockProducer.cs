@@ -125,10 +125,6 @@ namespace Nethermind.Blockchain.Producers
                 if (_logger.IsInfo) _logger.Info($"Picked block {bestBlock} to be included to the chain.");
                 BlockProduced?.Invoke(this, new BlockEventArgs(bestBlock));
             }
-            else
-            {
-                if (_logger.IsInfo) _logger.Info($"Didn't pick any block to be included in the chain.");
-            }
 
             return bestBlock;
         }
