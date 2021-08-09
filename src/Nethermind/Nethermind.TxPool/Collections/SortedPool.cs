@@ -274,8 +274,11 @@ namespace Nethermind.TxPool.Collections
         /// </summary>
         protected virtual bool Remove(TKey key, TValue value)
         {
-            _sortedValues.Remove(value);
-            return _cacheMap.Remove(key);
+            bool sortedValueRemoveResult = _sortedValues.Remove(value);
+            bool cacheMapRemoveResult = _cacheMap.Remove(key);
+            if (sortedValueRemoveResult != cacheMapRemoveResult)
+                throw new Exception($"Invalid transacaction removal {key}, {value}");
+            return sortedValueRemoveResult;
         }
         
 

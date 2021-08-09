@@ -171,6 +171,8 @@ namespace Nethermind.TxPool
                         if (i > 1)
                         {
                             var value = _transactions.SortedValues.Max.Value;
+                            _logger.Warn(
+                                $"Sorted values count: {_transactions.SortedValues.Count}, CacheMap: {_transactions.CacheMap.Count}");
                             _logger.Warn($"Current max value {value}");
                             bool cacheMapResult = _transactions.CacheMap.TryGetValue(value, out Transaction tx2);
                             if (tx2 == null)
