@@ -15,17 +15,22 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Threading.Tasks.Dataflow;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Executor;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Evm.Tracing.Access;
+using Nethermind.Network;
+using Nethermind.Network.P2P;
 using Nethermind.State;
+using Nethermind.Stats.Model;
 using Nethermind.TxPool.Collections;
 
 namespace Nethermind.AccountAbstraction.Source
@@ -42,15 +47,18 @@ namespace Nethermind.AccountAbstraction.Source
         private readonly UserOperationSortedPool _userOperationSortedPool;
         private readonly IUserOperationSimulator _userOperationSimulator;
         private readonly ConcurrentDictionary<UserOperation, SimulatedUserOperation> _simulatedUserOperations;
+        private readonly IPeerManager _peerManager;
+        private readonly IP2PProtocolHandler _p2pProtocolHandler;
 
-        public UserOperationPool(
-            IBlockTree blockTree,
+        public UserOperationPool(IBlockTree blockTree,
             IStateProvider stateProvider,
             ITimestamper timestamper,
             IAccessListSource accessListSource,
             IAccountAbstractionConfig accountAbstractionConfig,
             IDictionary<Address, int> paymasterOffenseCounter,
             ISet<Address> bannedPaymasters,
+            IPeerManager? peerManager, 
+            IP2PProtocolHandler? protocolHandler,
             UserOperationSortedPool userOperationSortedPool,
             IUserOperationSimulator userOperationSimulator,
             ConcurrentDictionary<UserOperation, SimulatedUserOperation> simulatedUserOperations)
@@ -65,16 +73,33 @@ namespace Nethermind.AccountAbstraction.Source
             _userOperationSortedPool = userOperationSortedPool;
             _userOperationSimulator = userOperationSimulator;
             _simulatedUserOperations = simulatedUserOperations;
+            _peerManager = peerManager;
+            _p2pProtocolHandler = protocolHandler;
 
             blockTree.NewHeadBlock += OnNewBlock;
             _userOperationSortedPool.Inserted += UserOperationInserted;
             _userOperationSortedPool.Removed += UserOperationRemoved;
+
         }
         
         private void UserOperationInserted(object? sender, SortedPool<UserOperation, UserOperation, Address>.SortedPoolEventArgs e)
         {
             UserOperation userOperation = e.Key;
             SimulateAndAddToPool(userOperation, _blockTree.Head!.Header);
+            BroadcastToCompatiblePeers(userOperation, _peerManager.ConnectedPeers, _p2pProtocolHandler);
+        }
+
+        private void BroadcastToCompatiblePeers(UserOperation userOperation, IReadOnlyCollection<Peer> peers,
+            IP2PProtocolHandler protocolHandler)
+        {
+            Capability? aaCapabiltiy = new Capability(Protocol.AA, 0);
+            foreach (var peer in peers)
+            {
+                if (protocolHandler.HasAgreedCapability(aaCapabiltiy))
+                {
+                    // TODO : Broadcast
+                }
+            }
         }
 
         private void UserOperationRemoved(object? sender, SortedPool<UserOperation, UserOperation, Address>.SortedPoolRemovedEventArgs e)

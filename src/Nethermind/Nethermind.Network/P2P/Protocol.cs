@@ -50,5 +50,9 @@ namespace Nethermind.Network.P2P
         /// Witness
         /// </summary>
         public const string Wit = "wit";
+        /// <summary>
+        /// Account Abstraction
+        /// </summary>
+        public const string AA = "aa";
     }
 }

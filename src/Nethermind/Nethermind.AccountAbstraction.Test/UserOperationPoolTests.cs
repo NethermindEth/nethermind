@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Microsoft.Extensions.Logging;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Executor;
 using Nethermind.AccountAbstraction.Source;
@@ -21,6 +22,9 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.Access;
 using Nethermind.Int256;
+using Nethermind.Network;
+using Nethermind.Network.P2P;
+using Nethermind.Stats.Model;
 
 namespace Nethermind.AccountAbstraction.Test
 {
@@ -103,7 +107,6 @@ namespace Nethermind.AccountAbstraction.Test
         public void Evicted_user_operation_has_its_simulated_removed_automatically()
         {
             var (userOperationPool, simulator, simulatedUserOperations, _) = GenerateUserOperationPool(1);
-
             UserOperation op = new(Address.SystemUser,
                 Address.SystemUser,
                 25_000,
@@ -298,6 +301,12 @@ namespace Nethermind.AccountAbstraction.Test
             accessListSource.AccessList.Returns(new AccessList(
                 new Dictionary<Address, IReadOnlySet<UInt256>> {{new("0x0000000000000000000000000000000000000001"), new HashSet<UInt256> {0}}}));
             
+            IPeerManager peerManager = Substitute.For<IPeerManager>();
+            peerManager.MaxActivePeers.Returns(10);
+            
+            IP2PProtocolHandler p2pProtocolHandler = Substitute.For<IP2PProtocolHandler>();
+            p2pProtocolHandler.AddSupportedCapability(new Capability(Protocol.AA, 0));
+            
             UserOperationPool userOperationPool = new(
                 blockTree,
                 stateProvider,
@@ -306,6 +315,8 @@ namespace Nethermind.AccountAbstraction.Test
                 config,
                 new Dictionary<Address, int>(),
                 new HashSet<Address>(), 
+                peerManager,
+                p2pProtocolHandler,
                 userOperationSortedPool,
                 simulator,
                 simulatedUserOperations
