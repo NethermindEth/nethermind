@@ -18,10 +18,13 @@
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Evm.Tracing;
+using Nethermind.JsonRpc.Data;
+using Nethermind.Serialization.Json;
+using Newtonsoft.Json.Linq;
 
 namespace Nethermind.JsonRpc.Modules.Trace
 {
-    public class TraceFilterForRpc
+    public class TraceFilterForRpc : IJsonRpcRequest
     {
         public BlockParameter? FromBlock{ get; set; }
         
@@ -34,10 +37,19 @@ namespace Nethermind.JsonRpc.Modules.Trace
         public int After { get; set; } 
         
         public int? Count { get; set; }
+        
+        private readonly IJsonSerializer _jsonSerializer = new EthereumJsonSerializer();
 
         public TxTraceFilter ToTxTracerFilter()
         {
             return new(FromAddress, ToAddress, After, Count);
+        }
+
+        public void FromJson(string jsonValue)
+        {
+            var filter = _jsonSerializer.Deserialize<JObject>(jsonValue);
+            FromBlock = BlockParameterConverter.GetBlockParameter(filter["fromBlock"]?.ToObject<string>());
+            ToBlock = BlockParameterConverter.GetBlockParameter(filter["toBlock"]?.ToObject<string>());
         }
     }
 }
