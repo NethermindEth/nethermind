@@ -134,17 +134,28 @@ namespace Nethermind.TxPool
             _hashCache.ClearCurrentBlockCache();
             // we don't want this to be on main processing thread
             // TODO: I think this is dangerous if many blocks are processed one after another
-            Task.Run(() => OnHeadChange(e.Block!, e.PreviousBlock))
-                .ContinueWith(t =>
-                {
-                    if (t.IsFaulted)
-                    {
-                        if (_logger.IsError)
-                            _logger.Error(
-                                $"Couldn't correctly add or remove transactions from txpool after processing block {e.Block!.ToString(Block.Format.FullHashAndNumber)}.",
-                                t.Exception);
-                    }
-                });
+            try
+            {
+                OnHeadChange(e.Block!, e.PreviousBlock))
+            }
+            catch (Exception exception)
+            {
+                if (_logger.IsError)
+                    _logger.Error(
+                        $"Couldn't correctly add or remove transactions from txpool after processing block {e.Block!.ToString(Block.Format.FullHashAndNumber)}.", exception);
+            }
+            //
+            // Task.Run(() => OnHeadChange(e.Block!, e.PreviousBlock))
+            //     .ContinueWith(t =>
+            //     {
+            //         if (t.IsFaulted)
+            //         {
+            //             if (_logger.IsError)
+            //                 _logger.Error(
+            //                     $"Couldn't correctly add or remove transactions from txpool after processing block {e.Block!.ToString(Block.Format.FullHashAndNumber)}.",
+            //                     t.Exception);
+            //         }
+            //     });
         }
 
         private void OnHeadChange(Block block, Block? previousBlock)

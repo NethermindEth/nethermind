@@ -68,11 +68,11 @@ namespace Nethermind.TxPool.Collections
         [MethodImpl(MethodImplOptions.Synchronized)]
         private void UpdateElement(Transaction tx, Action<Transaction> change)
         {
-            // if (_sortedValues.Remove(tx))
-            // {
-            //     change(tx);
-            //     _sortedValues.Add(tx, tx.Hash);
-            // }
+            if (_sortedValues.Remove(tx))
+            {
+                change(tx);
+                _sortedValues.Add(tx, tx.Hash);
+            }
         }
     }
 }
