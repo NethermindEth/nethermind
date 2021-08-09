@@ -23,6 +23,5 @@ namespace Nethermind.Core
     {
         Account GetAccount(Address address);
         Keccak GetCodeHash(Address address);
-
     }
 }

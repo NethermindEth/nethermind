@@ -245,6 +245,9 @@ namespace Nethermind.Core.Specs
         /// </summary>
         bool IsEip3541Enabled { get; }
         
+        /// <summary>
+        /// Reject transactions where senders have non-empty code hash
+        /// </summary>
         bool IsEip3607Enabled { get; }
         
         /// <summary>
