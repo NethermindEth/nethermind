@@ -17,6 +17,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
@@ -31,16 +32,15 @@ namespace Nethermind.AccountAbstraction.Executor
         private readonly Address _beneficiary;
 
         private UserOperationTxTracer? _tracer;
-        private Block? _block;
 
         private UInt256? _beneficiaryBalanceBefore;
         private UInt256? _beneficiaryBalanceAfter;
-
-
+        
         public UserOperationBlockTracer(long gasLimit, Address beneficiary)
         {
             _gasLimit = gasLimit;
             _beneficiary = beneficiary;
+            AccessedStorage = new Dictionary<Address, HashSet<UInt256>>();
         }
 
         public bool Success { get; private set; }
@@ -59,6 +59,7 @@ namespace Nethermind.AccountAbstraction.Executor
         }
 
         public long GasUsed { get; private set; }
+        public IDictionary<Address, HashSet<UInt256>> AccessedStorage { get; private set; }
         public bool IsTracingRewards => true;
 
         public void ReportReward(Address author, string rewardType, UInt256 rewardValue)
@@ -67,7 +68,6 @@ namespace Nethermind.AccountAbstraction.Executor
 
         public void StartNewBlockTrace(Block block)
         {
-            _block = block;
         }
 
         public ITxTracer StartNewTxTrace(Transaction? tx)
@@ -87,9 +87,11 @@ namespace Nethermind.AccountAbstraction.Executor
                 return;
             }
 
+            AccessedStorage = _tracer.AccessedStorage;
+
             _beneficiaryBalanceBefore ??= (_tracer.BeneficiaryBalanceBefore ?? 0);
             _beneficiaryBalanceAfter = _tracer.BeneficiaryBalanceAfter;
-            if (_beneficiaryBalanceAfter >= _beneficiaryBalanceBefore) Success = true;
+            if (_beneficiaryBalanceAfter >= _beneficiaryBalanceBefore) Success = true; // TODO CHANGE CONDITION FOR SIMULATION
         }
 
         public void EndBlockTrace()
@@ -103,28 +105,47 @@ namespace Nethermind.AccountAbstraction.Executor
         {
             _beneficiary = beneficiary;
             Transaction = transaction;
+            AccessedStorage = new Dictionary<Address, HashSet<UInt256>>();
+            AccessedBalance = new HashSet<Address>();
+            _currentExecutor = transaction?.To ?? Address.Zero;
         }
 
-        private readonly Address _beneficiary;
-
-
         public Transaction? Transaction { get; }
-        public bool Success { get; private set; }
+        public IDictionary<Address, HashSet<UInt256>> AccessedStorage { get; private set; }
+        public HashSet<Address> AccessedBalance { get; private set; }
+        public bool Success { get; private set; } = true;
         public string? Error { get; private set; }
         public long GasSpent { get; set; }
         public UInt256? BeneficiaryBalanceBefore { get; private set; }
         public UInt256? BeneficiaryBalanceAfter { get; private set; }
 
+        private static readonly Instruction[] _bannedOpcodes = 
+        {
+            Instruction.GASPRICE,
+            Instruction.GASLIMIT,
+            Instruction.DIFFICULTY,
+            Instruction.TIMESTAMP,
+            Instruction.BASEFEE,
+            Instruction.BLOCKHASH,
+            Instruction.NUMBER,
+            Instruction.BALANCE,
+            Instruction.ORIGIN
+        };
+        private readonly Address _beneficiary;
+        private Address _currentExecutor { get; set; }
+        
+
+
         public bool IsTracingReceipt => true;
         public bool IsTracingActions => false;
         public bool IsTracingOpLevelStorage => false;
         public bool IsTracingMemory => false;
-        public bool IsTracingInstructions => false;
+        public bool IsTracingInstructions => true;
         public bool IsTracingRefunds => false;
         public bool IsTracingCode => false;
         public bool IsTracingStack => false;
         public bool IsTracingState => true;
-        public bool IsTracingStorage => false;
+        public bool IsTracingStorage => true;
         public bool IsTracingBlockHash => false;
         public bool IsTracingAccess => false;
 
@@ -132,7 +153,6 @@ namespace Nethermind.AccountAbstraction.Executor
             Keccak? stateRoot = null)
         {
             GasSpent = gasSpent;
-            Success = true;
         }
 
         public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error,
@@ -154,42 +174,53 @@ namespace Nethermind.AccountAbstraction.Executor
 
         public void ReportCodeChange(Address address, byte[]? before, byte[]? after)
         {
-            throw new NotImplementedException();
+            _currentExecutor = address;
         }
 
         public void ReportNonceChange(Address address, UInt256? before, UInt256? after)
         {
-            throw new NotImplementedException();
         }
 
         public void ReportAccountRead(Address address)
         {
-            throw new NotImplementedException();
         }
 
         public void ReportStorageChange(StorageCell storageCell, byte[] before, byte[] after)
         {
-            throw new NotImplementedException();
+            // not allowed during verification
+            Success = false;
         }
 
         public void ReportStorageRead(StorageCell storageCell)
         {
-            throw new NotImplementedException();
+            if (AccessedStorage.ContainsKey(storageCell.Address))
+            {
+                AccessedStorage[storageCell.Address].Add(storageCell.Index);
+                return;
+            }
+            AccessedStorage.Add(storageCell.Address, new HashSet<UInt256>{storageCell.Index});
+            
         }
 
         public void StartOperation(int depth, long gas, Instruction opcode, int pc)
         {
-            throw new NotImplementedException();
+            if (_bannedOpcodes.Contains(opcode))
+            {
+                Success = false;
+            }
+
+            if (opcode == Instruction.SELFBALANCE)
+            {
+                AccessedBalance.Add(_currentExecutor);
+            }
         }
 
         public void ReportOperationError(EvmExceptionType error)
         {
-            throw new NotImplementedException();
         }
 
         public void ReportOperationRemainingGas(long gas)
         {
-            throw new NotImplementedException();
         }
 
         public void SetOperationStack(List<string> stackTrace)
@@ -199,7 +230,6 @@ namespace Nethermind.AccountAbstraction.Executor
 
         public void ReportStackPush(in ReadOnlySpan<byte> stackItem)
         {
-            throw new NotImplementedException();
         }
 
         public void SetOperationMemory(List<string> memoryTrace)
@@ -214,12 +244,10 @@ namespace Nethermind.AccountAbstraction.Executor
 
         public void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)
         {
-            throw new NotImplementedException();
         }
 
         public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
         {
-            throw new NotImplementedException();
         }
 
         public void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue,
@@ -267,7 +295,6 @@ namespace Nethermind.AccountAbstraction.Executor
 
         public void ReportGasUpdateForVmTrace(long refund, long gasAvailable)
         {
-            throw new NotImplementedException();
         }
 
         public void ReportRefund(long refund)

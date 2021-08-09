@@ -16,6 +16,7 @@
     <ItemGroup>
       <ProjectReference Include="..\Nethermind.AccountAbstraction\Nethermind.AccountAbstraction.csproj" />
       <ProjectReference Include="..\Nethermind.Config.Test\Nethermind.Config.Test.csproj" />
+      <ProjectReference Include="..\Nethermind.Evm.Test\Nethermind.Evm.Test.csproj" />
       <ProjectReference Include="..\Nethermind.JsonRpc.Test\Nethermind.JsonRpc.Test.csproj" />
     </ItemGroup>
 
