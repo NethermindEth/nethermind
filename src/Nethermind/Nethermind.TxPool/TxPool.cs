@@ -152,7 +152,7 @@ namespace Nethermind.TxPool
             ReAddReorganisedTransactions(previousBlock);
             RemoveProcessedTransactions(block.Transactions);
             EnsureCapacity();
-            //  UpdateBuckets();
+            UpdateBuckets();
         }
 
         private void EnsureCapacity()
