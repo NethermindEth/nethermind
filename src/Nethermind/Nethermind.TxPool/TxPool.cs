@@ -136,7 +136,7 @@ namespace Nethermind.TxPool
             // TODO: I think this is dangerous if many blocks are processed one after another
             try
             {
-                OnHeadChange(e.Block!, e.PreviousBlock))
+                OnHeadChange(e.Block!, e.PreviousBlock);
             }
             catch (Exception exception)
             {
