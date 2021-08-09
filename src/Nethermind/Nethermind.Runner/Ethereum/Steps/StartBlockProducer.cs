@@ -35,7 +35,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
-    [RunnerStepDependencies(typeof(StartBlockProcessor), typeof(SetupKeyStore), typeof(ReviewBlockTree))]
+    [RunnerStepDependencies(typeof(StartBlockProcessor), typeof(SetupKeyStore))]
     public class StartBlockProducer : IStep
     {
         protected IApiWithBlockchain _api;
