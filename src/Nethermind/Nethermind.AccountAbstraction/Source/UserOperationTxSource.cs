@@ -31,17 +31,14 @@ namespace Nethermind.AccountAbstraction.Source
         private readonly IUserOperationPool _userOperationPool;
         private readonly ConcurrentDictionary<UserOperation, SimulatedUserOperation> _simulatedUserOperations;
         private readonly IUserOperationSimulator _userOperationSimulator;
-        private readonly ISigner _signer;
 
         public UserOperationTxSource(IUserOperationPool userOperationPool, 
             ConcurrentDictionary<UserOperation, SimulatedUserOperation> simulatedUserOperations,
-            IUserOperationSimulator userOperationSimulator,
-            ISigner signer)
+            IUserOperationSimulator userOperationSimulator)
         {
             _userOperationPool = userOperationPool;
             _simulatedUserOperations = simulatedUserOperations;
             _userOperationSimulator = userOperationSimulator;
-            _signer = signer;
         }
 
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)

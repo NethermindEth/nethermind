@@ -15,29 +15,14 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Collections.Generic;
-using System.Linq;
-using Nethermind.AccountAbstraction.Data;
+using Nethermind.Consensus;
+using Nethermind.Core;
 
-namespace Nethermind.AccountAbstraction.Source
+namespace Nethermind.Consensus.Test
 {
-    public class UserOperationSource : IUserOperationSource
+    public class ManualGasLimitCalculator : IGasLimitCalculator
     {
-        private readonly UserOperationSortedPool _userOperationSortedPool;
-
-        public UserOperationSource(UserOperationSortedPool userOperationSortedPool)
-        {
-            _userOperationSortedPool = userOperationSortedPool;
-        }
-
-        public IEnumerable<UserOperation> GetUserOperations()
-        {
-            UserOperation[] ops = _userOperationSortedPool.GetSnapshot().ToArray();
-            //TODO Implement effective gas price sorting
-            foreach (var op in ops.OrderByDescending(op => op.MaxPriorityFeePerGas))
-            {
-                yield return op;
-            }
-        }
+        public long GasLimit { get; set; }
+        public long GetGasLimit(BlockHeader parentHeader) => GasLimit;
     }
 }

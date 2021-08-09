@@ -15,14 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Consensus;
-using Nethermind.Core;
-
-namespace Nethermind.Mev.Test
+namespace Nethermind.AccountAbstraction.Test
 {
-    public class ManualGasLimitCalculator : IGasLimitCalculator
+    public partial class AccountAbstractionRpcModuleTests
     {
-        public long GasLimit { get; set; }
-        public long GetGasLimit(BlockHeader parentHeader) => GasLimit;
+
     }
 }

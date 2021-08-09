@@ -20,7 +20,7 @@ using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Data;
 
-namespace Nethermind.Mev
+namespace Nethermind.AccountAbstraction
 {
     [RpcModule(ModuleType.AccountAbstraction)]
     public interface IAccountAbstractionRpcModule : IRpcModule

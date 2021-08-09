@@ -163,7 +163,7 @@ namespace Nethermind.AccountAbstraction
             }
 
             IManualBlockProductionTrigger trigger = new BuildBlocksWhenRequested();
-            UserOperationTxSource userOperationTxSource = new(UserOperationPool, _simulatedUserOperations, UserOperationSimulator, _nethermindApi.EngineSigner);
+            UserOperationTxSource userOperationTxSource = new(UserOperationPool, _simulatedUserOperations, UserOperationSimulator);
             return consensusPlugin.InitBlockProducer(trigger, userOperationTxSource);
         }
 

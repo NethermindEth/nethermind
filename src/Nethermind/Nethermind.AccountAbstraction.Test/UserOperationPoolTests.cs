@@ -35,11 +35,13 @@ namespace Nethermind.AccountAbstraction.Test
             var (userOperationPool, _, _, _) = GenerateUserOperationPool();
 
             UserOperation op = new(Address.SystemUser,
-                Address.SystemUser,
-                25_000,
-                20_000,
-                50,
+                0,
                 Address.Zero.Bytes,
+                25_000,
+                50,
+                50, 
+                Address.SystemUser, 
+                Address.SystemUser, 
                 new Signature(0, 1, 1000),
                 new AccessList(null));
 
@@ -56,19 +58,23 @@ namespace Nethermind.AccountAbstraction.Test
             var (userOperationPool, _, _, _) = GenerateUserOperationPool(1);
 
             UserOperation op = new(Address.SystemUser,
-                Address.SystemUser,
-                25_000,
-                20_000,
-                20,
+                0,
                 Address.Zero.Bytes,
+                25_000,
+                20,
+                20, 
+                Address.SystemUser, 
+                Address.SystemUser, 
                 new Signature(0, 1, 1000),
                 new AccessList(null));
             UserOperation op2 = new(Address.SystemUser,
-                Address.SystemUser,
-                25_000,
-                10_000,
-                50,
+                0,
                 Address.Zero.Bytes,
+                25_000,
+                50,
+                50, 
+                Address.SystemUser, 
+                Address.SystemUser, 
                 new Signature(0, 1, 1000),
                 new AccessList(null));
 
@@ -86,11 +92,13 @@ namespace Nethermind.AccountAbstraction.Test
             var (userOperationPool, simulator, _, _) = GenerateUserOperationPool();
 
             UserOperation op = new(Address.SystemUser,
-                Address.SystemUser,
-                25_000,
-                20_000,
-                50,
+                0,
                 Address.Zero.Bytes,
+                25_000,
+                50,
+                50, 
+                Address.SystemUser, 
+                Address.SystemUser, 
                 new Signature(0, 1, 1000),
                 new AccessList(null));
 
@@ -105,19 +113,23 @@ namespace Nethermind.AccountAbstraction.Test
             var (userOperationPool, simulator, simulatedUserOperations, _) = GenerateUserOperationPool(1);
 
             UserOperation op = new(Address.SystemUser,
-                Address.SystemUser,
-                25_000,
-                20_000,
-                20,
+                0,
                 Address.Zero.Bytes,
+                25_000,
+                20,
+                20, 
+                Address.SystemUser, 
+                Address.SystemUser, 
                 new Signature(0, 1, 1000),
                 new AccessList(null));
             UserOperation op2 = new(Address.SystemUser,
-                Address.SystemUser,
-                25_000,
-                10_000,
-                50,
+                0,
                 Address.Zero.Bytes,
+                25_000,
+                50,
+                50, 
+                Address.SystemUser, 
+                Address.SystemUser, 
                 new Signature(0, 1, 1000),
                 new AccessList(null));
 
@@ -138,39 +150,47 @@ namespace Nethermind.AccountAbstraction.Test
             get
             {
                 // if callGas < Gas Cost of Transaction
-                yield return new UserOperation(Address.SystemUser,
-                    Address.SystemUser,
-                    19_000,
-                    20_000,
-                    20,
+                yield return new(Address.SystemUser,
+                    0,
                     Address.Zero.Bytes,
+                    20_000,
+                    50,
+                    50, 
+                    Address.SystemUser, 
+                    Address.SystemUser, 
                     new Signature(0, 1, 1000),
                     new AccessList(null));
                 // if target is zero address
-                yield return new UserOperation(Address.Zero,
-                    Address.SystemUser,
-                    25_000,
-                    20_000,
-                    20,
+                yield return new(Address.Zero,
+                    0,
                     Address.Zero.Bytes,
+                    25_000,
+                    50,
+                    50, 
+                    Address.SystemUser, 
+                    Address.SystemUser, 
                     new Signature(0, 1, 1000),
                     new AccessList(null));
                 // if target is not a contract
-                yield return new UserOperation(_notAnAddress,
-                    Address.SystemUser,
-                    25_000,
-                    20_000,
-                    20,
+                yield return new(_notAnAddress,
+                    0,
                     Address.Zero.Bytes,
+                    25_000,
+                    50,
+                    50, 
+                    Address.SystemUser, 
+                    Address.SystemUser, 
                     new Signature(0, 1, 1000),
                     new AccessList(null));
                 // if paymaster is not a contract
-                yield return new UserOperation(Address.SystemUser,
-                    _notAnAddress,
-                    25_000,
-                    20_000,
-                    20,
+                yield return new(Address.SystemUser,
+                    0,
                     Address.Zero.Bytes,
+                    25_000,
+                    50,
+                    50, 
+                    _notAnAddress, 
+                    Address.SystemUser, 
                     new Signature(0, 1, 1000),
                     new AccessList(null));
             }
@@ -210,12 +230,14 @@ namespace Nethermind.AccountAbstraction.Test
         public void Deletes_op_if_resimulated_too_many_times()
         {
             var (userOperationPool, simulator, simulatedUserOperations, _) = GenerateUserOperationPool(10);
-            UserOperation op = new UserOperation(Address.SystemUser,
-                Address.SystemUser, 
-                25_000,
-                20_000,
-                20,
+            UserOperation op = new(Address.SystemUser,
+                0,
                 Address.Zero.Bytes,
+                25_000,
+                50,
+                50, 
+                Address.SystemUser, 
+                Address.SystemUser, 
                 new Signature(0, 1, 1000),
                 new AccessList(null));
 
@@ -237,12 +259,14 @@ namespace Nethermind.AccountAbstraction.Test
         public void Bans_paymaster_if_it_uses_too_much_gas_for_simulation_too_many_times()
         {
             var (userOperationPool, simulator, simulatedUserOperations, blockTree) = GenerateUserOperationPool(10);
-            UserOperation op = new UserOperation(Address.SystemUser,
-                Address.SystemUser, 
-                25_000,
-                20_000,
-                20,
+            UserOperation op = new(Address.SystemUser,
+                0,
                 Address.Zero.Bytes,
+                25_000,
+                50,
+                50, 
+                Address.SystemUser, 
+                Address.SystemUser, 
                 new Signature(0, 1, 1000),
                 new AccessList(new Dictionary<Address, IReadOnlySet<UInt256>>{{new("0x0000000000000000000000000000000000000001"), new HashSet<UInt256>{0}}}));
             
@@ -253,12 +277,14 @@ namespace Nethermind.AccountAbstraction.Test
                 blockTree.NewHeadBlock += Raise.EventWith(new object(), new BlockEventArgs(Build.A.Block.TestObject));
             }
             
-            UserOperation op2 = new UserOperation(Address.SystemUser,
-                Address.SystemUser, 
-                25_000,
-                20_000,
-                20,
+            UserOperation op2 = new(Address.SystemUser,
+                0,
                 Address.Zero.Bytes,
+                25_000,
+                50,
+                50, 
+                Address.SystemUser, 
+                Address.SystemUser, 
                 new Signature(0, 1, 1000),
                 new AccessList(null));
             
