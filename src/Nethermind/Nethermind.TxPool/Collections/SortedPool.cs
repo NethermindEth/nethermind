@@ -161,7 +161,7 @@ namespace Nethermind.TxPool.Collections
                         return true;
                     }
 
-                    Removed?.Invoke(this, new SortedPoolRemovedEventArgs(key, value, groupMapping, evicted));
+              //      Removed?.Invoke(this, new SortedPoolRemovedEventArgs(key, value, groupMapping, evicted));
                 }
             }
 
