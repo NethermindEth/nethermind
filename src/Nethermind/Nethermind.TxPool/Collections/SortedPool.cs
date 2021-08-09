@@ -20,6 +20,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Collections;
+using Nethermind.Logging;
 
 namespace Nethermind.TxPool.Collections
 {
@@ -169,8 +170,11 @@ namespace Nethermind.TxPool.Collections
             bucket = null;
             return false;
         }
+        
+        
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
+        public IDictionary<TGroupKey, ICollection<TValue>> Buckets => _buckets;
+
         public bool TryRemove(TKey key, [MaybeNullWhen(false)] out TValue value) => TryRemove(key, out value, out _);
         
         [MethodImpl(MethodImplOptions.Synchronized)]
@@ -235,7 +239,11 @@ namespace Nethermind.TxPool.Collections
         {
             TryRemove(_sortedValues.Max.Value, true, out removed, out _);
         }
-        
+
+        public DictionarySortedSet<TValue, TKey> SortedValues => _sortedValues;
+
+        public IDictionary<TKey, TValue> CacheMap => _cacheMap;
+
         /// <summary>
         /// Checks if element can be inserted.
         /// </summary>
