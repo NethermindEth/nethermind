@@ -170,6 +170,9 @@ namespace Nethermind.TxPool
         {
             lock (_locker)
             {
+                if (_transactions.SortedValues.Count !=_transactions.CacheMap.Count)
+                    _logger.Warn(
+                    $"Sorted value is changed. Sorted values count: {_transactions.SortedValues.Count}, CacheMap: {_transactions.CacheMap.Count}");
                 try
                 {
                     int i = 0;
