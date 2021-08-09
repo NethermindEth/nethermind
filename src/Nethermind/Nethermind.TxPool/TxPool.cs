@@ -152,7 +152,7 @@ namespace Nethermind.TxPool
             ReAddReorganisedTransactions(previousBlock);
             RemoveProcessedTransactions(block.Transactions);
             EnsureCapacity();
-            UpdateBuckets();
+            //  UpdateBuckets();
         }
 
         private void EnsureCapacity()
@@ -284,8 +284,8 @@ namespace Nethermind.TxPool
                 tx.GasBottleneck = tx.CalculateEffectiveGasPrice(eip1559Enabled, _headInfo.CurrentBaseFee);
                 bool inserted = _transactions.TryInsert(tx.Hash, tx, out Transaction? removed);
                 if (inserted)
-                {
-                    _transactions.UpdateGroup(tx.SenderAddress!, UpdateBucketWithAddedTransaction);
+                { 
+                    // _transactions.UpdateGroup(tx.SenderAddress!, UpdateBucketWithAddedTransaction);
                     Metrics.PendingTransactionsAdded++;
                     if (tx.IsEip1559) { Metrics.Pending1559TransactionsAdded++; }
 
