@@ -64,7 +64,8 @@ namespace Nethermind.TxPool.Collections
                 UpdateElement(elementChanged.Tx, elementChanged.Change);
             }
         }
-
+        
+        [MethodImpl(MethodImplOptions.Synchronized)]
         private void UpdateElement(Transaction tx, Action<Transaction> change)
         {
             if (_sortedValues.Remove(tx))
