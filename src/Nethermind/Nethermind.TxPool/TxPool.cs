@@ -159,20 +159,30 @@ namespace Nethermind.TxPool
         {
             lock (_locker)
             {
-                int i = 0;
-                while (_transactions.Count > _txPoolConfig.Size)
+                try
                 {
-                    ++i;
-                    _logger.Warn($"Adjusting txPool size {_transactions.Count} / {_txPoolConfig.Size}");
-                    _transactions.RemoveLast(out Transaction tx);
-                    _logger.Warn($"Removed transaction {tx}, iteration {i}");
-                    if (i > 1)
+                    int i = 0;
+                    while (_transactions.Count > _txPoolConfig.Size)
                     {
-                        var value = _transactions.SortedValues.Max.Value;
-                        bool cacheMapResult = _transactions.CacheMap.TryGetValue(value, out Transaction tx2);
-                        bool bucketsResult = _transactions.Buckets.TryGetValue(tx2.SenderAddress, out ICollection<Transaction> transactions);
-                        _logger.Warn($"Cache map result {cacheMapResult}, tx {tx2}, BucketsResult {bucketsResult}, Bucket count {transactions?.Count}");
+                        ++i;
+                        _logger.Warn($"Adjusting txPool size {_transactions.Count} / {_txPoolConfig.Size}");
+                        _transactions.RemoveLast(out Transaction tx);
+                        _logger.Warn($"Removed transaction {tx}, iteration {i}");
+                        if (i > 1)
+                        {
+                            var value = _transactions.SortedValues.Max.Value;
+                            _logger.Warn($"Current max value {value}");
+                            bool cacheMapResult = _transactions.CacheMap.TryGetValue(value, out Transaction tx2);
+                            bool bucketsResult = _transactions.Buckets.TryGetValue(tx2.SenderAddress,
+                                out ICollection<Transaction> transactions);
+                            _logger.Warn(
+                                $"Cache map result {cacheMapResult}, tx {tx2}, BucketsResult {bucketsResult}, Bucket count {transactions?.Count}");
+                        }
                     }
+                }
+                catch (Exception ex)
+                {
+                    _logger.Error("exc", ex);
                 }
             }
         }
