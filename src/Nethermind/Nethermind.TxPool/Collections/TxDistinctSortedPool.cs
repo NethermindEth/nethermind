@@ -70,7 +70,7 @@ namespace Nethermind.TxPool.Collections
         {
             if (_sortedValues.Remove(tx))
             {
-                change(tx);
+             //   change(tx);
                 _sortedValues.Add(tx, tx.Hash);
             }
         }
