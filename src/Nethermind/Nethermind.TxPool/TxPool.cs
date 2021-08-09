@@ -173,6 +173,10 @@ namespace Nethermind.TxPool
                             var value = _transactions.SortedValues.Max.Value;
                             _logger.Warn($"Current max value {value}");
                             bool cacheMapResult = _transactions.CacheMap.TryGetValue(value, out Transaction tx2);
+                            if (tx2 == null)
+                            {
+                                _logger.Warn($"Transaction value: {tx2}");
+                            }
                             bool bucketsResult = _transactions.Buckets.TryGetValue(tx2.SenderAddress,
                                 out ICollection<Transaction> transactions);
                             _logger.Warn(
