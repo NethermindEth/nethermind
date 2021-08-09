@@ -27,9 +27,11 @@ namespace Nethermind.TxPool.Collections
 {
     public class TxDistinctSortedPool : DistinctValueSortedPool<Keccak, Transaction, Address>
     {
+        private ILogger _logger;
         public TxDistinctSortedPool(int capacity, IComparer<Transaction> comparer, ILogManager logManager) 
             : base(capacity, comparer, CompetingTransactionEqualityComparer.Instance, logManager)
         {
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         protected override IComparer<Transaction> GetUniqueComparer(IComparer<Transaction> comparer) => comparer.GetPoolUniqueTxComparer();
@@ -68,10 +70,22 @@ namespace Nethermind.TxPool.Collections
         [MethodImpl(MethodImplOptions.Synchronized)]
         private void UpdateElement(Transaction tx, Action<Transaction> change)
         {
+            var hash = tx.Hash;
             if (_sortedValues.Remove(tx))
             {
-               //  change(tx);
-                _sortedValues.Add(tx, tx.Hash);
+
+                 change(tx);
+                 if (hash != tx.Hash)
+                 {
+                     _logger.Error("Wrong hash....");
+                 }
+                 
+                 _sortedValues.Add(tx, tx.Hash);
+                
+                if (_sortedValues.Count != Count)
+                {
+                    _logger.Error($"count is different {tx} gas bottleneck {tx.GasBottleneck}");
+                }
             }
         }
     }
