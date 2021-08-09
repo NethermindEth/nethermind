@@ -230,7 +230,8 @@ namespace Nethermind.TxPool.Collections
         [MethodImpl(MethodImplOptions.Synchronized)]
         public bool TryInsert(TKey key, TValue value) => TryInsert(key, value, out _);
 
-        private void RemoveLast(out TValue? removed)
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public void RemoveLast(out TValue? removed)
         {
             TryRemove(_sortedValues.Max.Value, true, out removed, out _);
         }
