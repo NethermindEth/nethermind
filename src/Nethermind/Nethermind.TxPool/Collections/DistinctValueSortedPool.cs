@@ -57,23 +57,20 @@ namespace Nethermind.TxPool.Collections
 
         protected override void InsertCore(TKey key, TValue value, TGroupKey groupKey, ICollection<TValue> bucketCollection)
         {
-            base.InsertCore(key, value, groupKey, bucketCollection);
-
             if (_distinctDictionary.TryGetValue(value, out KeyValuePair<TKey, TValue> oldKvp))
             {
                 TryRemove(oldKvp.Key);
             }
+            
+            base.InsertCore(key, value, groupKey, bucketCollection);
 
             _distinctDictionary[value] = new KeyValuePair<TKey, TValue>(key, value);
         }
 
         protected override bool Remove(TKey key, TValue value)
         {
-            bool result1 = _distinctDictionary.Remove(value);
-            bool result2 = base.Remove(key, value);
-            if (result1 != result2)
-                throw new Exception($"DistincValueSortedPool {result1}, {result2}");
-            return result1 && result2;
+            _distinctDictionary.Remove(value);
+            return base.Remove(key, value);
         }
         
         protected virtual bool AllowSameKeyReplacement => false; 
