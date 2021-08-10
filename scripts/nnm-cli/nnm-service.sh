@@ -15,8 +15,8 @@ cli_help() {
 Nethermind Node Management CLI for Systemd Service
    _  __ _  __ __  ___  _____ __    ____
   / |/ // |/ //  |/  / / ___// /   /  _/
- /    //    // /|_/ / / /__ / /__ _/ /  
-/_/|_//_/|_//_/  /_/  \___//____//___/  
+ /    //    // /|_/ / / /__ / /__ _/ /
+/_/|_//_/|_//_/  /_/  \___//____//___/
 
 Version: 0.0.1
 Usage: $cli_name [command]
@@ -49,8 +49,8 @@ save_log() {
 # start of pullandbuild
 gitPullOrigin() {
 	cli_log "Pulling master from Github..."
-	git stash
-  git pull
+  git fetch origin
+  git reset --hard origin/master
 }
 
 gitCheckout() {
@@ -58,9 +58,27 @@ gitCheckout() {
   git checkout $BRANCH
 }
 
+git_ref_type() {
+    [ -n "$1" ] || die "Missing ref name"
+
+    if git show-ref -q --verify "refs/heads/$1" 2>/dev/null; then
+        echo "branch"
+    elif git show-ref -q --verify "refs/tags/$1" 2>/dev/null; then
+        echo "tag"
+    elif git show-ref -q --verify "refs/remote/$1" 2>/dev/null; then
+        echo "remote"
+    elif git rev-parse --verify "$1^{commit}" >/dev/null 2>&1; then
+        echo "hash"
+    else
+        echo "unknown"
+    fi
+    return 0
+}
+
 gitPull() {
   cli_log "Pulling latest changes from Github..."
-  git pull
+  ref_type=$(git_ref_type $BRANCH)
+  if [ ! $ref_type = "tag" ]; then git pull; fi
 }
 
 gitSubmoduleUpdate() {
