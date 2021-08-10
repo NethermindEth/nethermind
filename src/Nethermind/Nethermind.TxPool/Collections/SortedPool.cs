@@ -20,7 +20,6 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Collections;
-using Nethermind.Logging;
 
 namespace Nethermind.TxPool.Collections
 {
@@ -170,7 +169,8 @@ namespace Nethermind.TxPool.Collections
             bucket = null;
             return false;
         }
-
+        
+        [MethodImpl(MethodImplOptions.Synchronized)]
         public bool TryRemove(TKey key, [MaybeNullWhen(false)] out TValue value) => TryRemove(key, out value, out _);
         
         [MethodImpl(MethodImplOptions.Synchronized)]
