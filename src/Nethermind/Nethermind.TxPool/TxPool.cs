@@ -322,7 +322,7 @@ namespace Nethermind.TxPool
                 bool inserted = _transactions.TryInsert(tx.Hash, tx, out Transaction? removed);
                 if (inserted)
                 { 
-                    // _transactions.UpdateGroup(tx.SenderAddress!, UpdateBucketWithAddedTransaction);
+                    _transactions.UpdateGroup(tx.SenderAddress!, UpdateBucketWithAddedTransaction);
                     Metrics.PendingTransactionsAdded++;
                     if (tx.IsEip1559) { Metrics.Pending1559TransactionsAdded++; }
 
@@ -368,7 +368,7 @@ namespace Nethermind.TxPool
         private IEnumerable<(Transaction Tx, Action<Transaction> Change)> UpdateGasBottleneck(
             ICollection<Transaction> transactions, long currentNonce, UInt256 balance)
         {
-            UInt256 previousTxBottleneck = UInt256.MaxValue;
+            UInt256? previousTxBottleneck = null;
             int i = 0;
 
             foreach (Transaction tx in transactions)
@@ -384,7 +384,7 @@ namespace Nethermind.TxPool
                 }
                 else
                 {
-                    if (previousTxBottleneck == UInt256.MaxValue)
+                    if (previousTxBottleneck == null)
                     {
                         previousTxBottleneck = tx.CalculateAffordableGasPrice(_specProvider.GetSpec().IsEip1559Enabled,
                             _headInfo.CurrentBaseFee, balance);
@@ -395,7 +395,7 @@ namespace Nethermind.TxPool
                         UInt256 effectiveGasPrice =
                             tx.CalculateEffectiveGasPrice(_specProvider.GetSpec().IsEip1559Enabled,
                                 _headInfo.CurrentBaseFee);
-                        gasBottleneck = UInt256.Min(effectiveGasPrice, previousTxBottleneck);
+                        gasBottleneck = UInt256.Min(effectiveGasPrice, previousTxBottleneck ?? 0);
                     }
 
                     if (tx.GasBottleneck != gasBottleneck)
@@ -412,7 +412,7 @@ namespace Nethermind.TxPool
         private static Action<Transaction> SetGasBottleneckChange(UInt256 gasBottleneck)
         {
             
-            return t => t.GasBottleneck = gasBottleneck == 0 ? 1 : gasBottleneck;
+            return t => t.GasBottleneck = gasBottleneck;
         }
 
         private void UpdateBuckets()
