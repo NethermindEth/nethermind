@@ -131,11 +131,10 @@ namespace Nethermind.TxPool
 
         private void OnHeadChange(object? sender, BlockReplacementEventArgs e)
         {
-            _hashCache.ClearCurrentBlockCache();
-            // we don't want this to be on main processing thread
             // TODO: I think this is dangerous if many blocks are processed one after another
             try
             {
+                _hashCache.ClearCurrentBlockCache();
                 OnHeadChange(e.Block!, e.PreviousBlock);
             }
             catch (Exception exception)
@@ -144,18 +143,6 @@ namespace Nethermind.TxPool
                     _logger.Error(
                         $"Couldn't correctly add or remove transactions from txpool after processing block {e.Block!.ToString(Block.Format.FullHashAndNumber)}.", exception);
             }
-            //
-            // Task.Run(() => OnHeadChange(e.Block!, e.PreviousBlock))
-            //     .ContinueWith(t =>
-            //     {
-            //         if (t.IsFaulted)
-            //         {
-            //             if (_logger.IsError)
-            //                 _logger.Error(
-            //                     $"Couldn't correctly add or remove transactions from txpool after processing block {e.Block!.ToString(Block.Format.FullHashAndNumber)}.",
-            //                     t.Exception);
-            //         }
-            //     });
         }
 
         private void OnHeadChange(Block block, Block? previousBlock)
@@ -411,7 +398,6 @@ namespace Nethermind.TxPool
 
         private static Action<Transaction> SetGasBottleneckChange(UInt256 gasBottleneck)
         {
-            
             return t => t.GasBottleneck = gasBottleneck;
         }
 
@@ -419,6 +405,8 @@ namespace Nethermind.TxPool
         {
             lock (_locker)
             {
+                if (_transactions.Count > _txPoolConfig.Size)
+                    if (_logger.IsWarn) _logger.Warn($"TxPool exceeds the config size {_transactions.Count}/{_txPoolConfig}");
                 _transactions.UpdatePool(UpdateBucket);
             }
         }
