@@ -17,6 +17,7 @@ GIT_HASH="$(tail git-hash.txt)"
 
 cd ~/repo_pub/$RELEASE_DIRECTORY
 cd $LIN_RELEASE && zip -r $LIN-$GIT_SHORT_TAG-$GIT_HASH.zip . && cd ..
+cd $LIN_RELEASE && zip -r $LIN-latest.zip . && cd ..
 cd $OSX_RELEASE && zip -r $OSX-$GIT_SHORT_TAG-$GIT_HASH.zip . && cd ..
 cd $WIN_RELEASE && zip -r $WIN-$GIT_SHORT_TAG-$GIT_HASH.zip . && cd ..
 
