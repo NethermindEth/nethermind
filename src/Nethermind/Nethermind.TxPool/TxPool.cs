@@ -365,7 +365,7 @@ namespace Nethermind.TxPool
             {
                 // ensure the capacity of the pool
                 if (_transactions.Count > _txPoolConfig.Size)
-                    if (_logger.IsWarn) _logger.Warn($"TxPool exceeds the config size {_transactions.Count}/{_txPoolConfig}");
+                    if (_logger.IsWarn) _logger.Warn($"TxPool exceeds the config size {_transactions.Count}/{_txPoolConfig.Size}");
                 _transactions.UpdatePool(UpdateBucket);
             }
         }
