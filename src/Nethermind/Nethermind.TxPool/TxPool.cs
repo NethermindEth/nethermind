@@ -412,7 +412,7 @@ namespace Nethermind.TxPool
         private static Action<Transaction> SetGasBottleneckChange(UInt256 gasBottleneck)
         {
             
-            return t => t.GasBottleneck = gasBottleneck;// == 0 ? 1 : gasBottleneck;
+            return t => t.GasBottleneck = gasBottleneck == 0 ? 1 : gasBottleneck;
         }
 
         private void UpdateBuckets()
