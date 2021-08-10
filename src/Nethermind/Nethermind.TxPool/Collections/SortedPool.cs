@@ -170,10 +170,6 @@ namespace Nethermind.TxPool.Collections
             bucket = null;
             return false;
         }
-        
-        
-
-        public IDictionary<TGroupKey, ICollection<TValue>> Buckets => _buckets;
 
         public bool TryRemove(TKey key, [MaybeNullWhen(false)] out TValue value) => TryRemove(key, out value, out _);
         
@@ -233,16 +229,11 @@ namespace Nethermind.TxPool.Collections
 
         [MethodImpl(MethodImplOptions.Synchronized)]
         public bool TryInsert(TKey key, TValue value) => TryInsert(key, value, out _);
-
-        [MethodImpl(MethodImplOptions.Synchronized)]
-        public void RemoveLast(out TValue? removed)
+        
+        private void RemoveLast(out TValue? removed)
         {
             TryRemove(_sortedValues.Max.Value, true, out removed, out _);
         }
-
-        public DictionarySortedSet<TValue, TKey> SortedValues => _sortedValues;
-
-        public IDictionary<TKey, TValue> CacheMap => _cacheMap;
 
         /// <summary>
         /// Checks if element can be inserted.

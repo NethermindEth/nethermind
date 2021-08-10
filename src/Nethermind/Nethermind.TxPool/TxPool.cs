@@ -149,49 +149,7 @@ namespace Nethermind.TxPool
         {
             ReAddReorganisedTransactions(previousBlock);
             RemoveProcessedTransactions(block.Transactions);
-            EnsureCapacity();
             UpdateBuckets();
-        }
-
-        private void EnsureCapacity()
-        {
-            lock (_locker)
-            {
-                if (_transactions.SortedValues.Count !=_transactions.CacheMap.Count)
-                    _logger.Warn(
-                    $"Sorted value is changed. Sorted values count: {_transactions.SortedValues.Count}, CacheMap: {_transactions.CacheMap.Count}");
-                try
-                {
-                    int i = 0;
-                    while (_transactions.Count > _txPoolConfig.Size)
-                    {
-                        ++i;
-                        _logger.Warn($"Adjusting txPool size {_transactions.Count} / {_txPoolConfig.Size}");
-                        _transactions.RemoveLast(out Transaction tx);
-                        _logger.Warn($"Removed transaction {tx}, iteration {i}");
-                        if (i > 1)
-                        {
-                            var value = _transactions.SortedValues.Max.Value;
-                            _logger.Warn(
-                                $"Sorted values count: {_transactions.SortedValues.Count}, CacheMap: {_transactions.CacheMap.Count}");
-                            _logger.Warn($"Current max value {value}");
-                            bool cacheMapResult = _transactions.CacheMap.TryGetValue(value, out Transaction tx2);
-                            if (tx2 == null)
-                            {
-                                _logger.Warn($"Transaction value: {tx2}");
-                            }
-                            bool bucketsResult = _transactions.Buckets.TryGetValue(tx2.SenderAddress,
-                                out ICollection<Transaction> transactions);
-                            _logger.Warn(
-                                $"Cache map result {cacheMapResult}, tx {tx2}, BucketsResult {bucketsResult}, Bucket count {transactions?.Count}");
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.Error("exc", ex);
-                }
-            }
         }
 
         private void ReAddReorganisedTransactions(Block? previousBlock)
@@ -405,6 +363,7 @@ namespace Nethermind.TxPool
         {
             lock (_locker)
             {
+                // ensure the capacity of the pool
                 if (_transactions.Count > _txPoolConfig.Size)
                     if (_logger.IsWarn) _logger.Warn($"TxPool exceeds the config size {_transactions.Count}/{_txPoolConfig}");
                 _transactions.UpdatePool(UpdateBucket);
