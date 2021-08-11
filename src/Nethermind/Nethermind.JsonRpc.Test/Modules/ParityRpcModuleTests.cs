@@ -125,6 +125,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             blockTree.UpdateMainChain(new[] {genesis}, true);
 
             Block previousBlock = genesis;
+            //three transactions in one block
             Block block = Build.A.Block.WithNumber(blockNumber).WithParent(previousBlock)
                     .WithStateRoot(new Keccak("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"))
                     .WithTransactions(transaction1, transaction2, transaction3)
