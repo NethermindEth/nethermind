@@ -472,7 +472,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             PopAction();
         }
 
-        public void ReportActionError(EvmExceptionType evmExceptionType)
+        public void ReportActionError(EvmExceptionType evmExceptionType, long? gasLeft = null)
         {
             _currentAction.Result = null;
             _currentAction.Error = GetErrorDescription(evmExceptionType);

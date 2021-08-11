@@ -94,7 +94,7 @@ namespace Nethermind.Evm.Tracing
         public void ReportAction(long gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false) => throw new OperationCanceledException(ErrorMessage);
 
         public void ReportActionEnd(long gas, ReadOnlyMemory<byte> output) => throw new OperationCanceledException(ErrorMessage);
-        public void ReportActionError(EvmExceptionType exceptionType) => throw new OperationCanceledException(ErrorMessage);
+        public void ReportActionError(EvmExceptionType exceptionType, long? gasLeft = null) => throw new OperationCanceledException(ErrorMessage);
 
         public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode) => throw new OperationCanceledException(ErrorMessage);
         public void ReportBlockHash(Keccak blockHash) => throw new OperationCanceledException(ErrorMessage);

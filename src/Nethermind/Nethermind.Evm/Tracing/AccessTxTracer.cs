@@ -155,7 +155,7 @@ namespace Nethermind.Evm.Tracing
             throw new NotImplementedException();
         }
 
-        public void ReportActionError(EvmExceptionType evmExceptionType)
+        public void ReportActionError(EvmExceptionType evmExceptionType, long? gasLeft = null)
         {
             throw new NotImplementedException();
         }

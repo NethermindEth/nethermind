@@ -142,7 +142,7 @@ namespace Nethermind.Evm.Test
         {
         }
 
-        public void ReportActionError(EvmExceptionType exceptionType)
+        public void ReportActionError(EvmExceptionType exceptionType, long? gasLeft = null)
         {
             ReportedActionErrors.Add(exceptionType);
         }

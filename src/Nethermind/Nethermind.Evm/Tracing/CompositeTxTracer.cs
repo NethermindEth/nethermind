@@ -365,14 +365,14 @@ namespace Nethermind.Evm.Tracing
             }
         }
 
-        public void ReportActionError(EvmExceptionType evmExceptionType)
+        public void ReportActionError(EvmExceptionType evmExceptionType, long? gasLeft = null)
         {
             for (int index = 0; index < _txTracers.Count; index++)
             {
                 ITxTracer innerTracer = _txTracers[index];
                 if (innerTracer.IsTracingActions)
                 {
-                    innerTracer.ReportActionError(evmExceptionType);
+                    innerTracer.ReportActionError(evmExceptionType, gasLeft);
                 }
             }
         }
