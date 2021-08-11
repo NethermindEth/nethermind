@@ -1,12 +1,12 @@
-name: '[RELEASE] Nethermind'
+name: 'TEMP [RELEASE] Nethermind'
 
-on: 
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: 'The TAG of the version you want to release.'
-        required: false
-        default: 'master'
+on: push
+  # workflow_dispatch:
+  #   inputs:
+  #     tag:
+  #       description: 'The TAG of the version you want to release.'
+  #       required: false
+  #       default: 'master'
 
 jobs:
   build-nethermind:
