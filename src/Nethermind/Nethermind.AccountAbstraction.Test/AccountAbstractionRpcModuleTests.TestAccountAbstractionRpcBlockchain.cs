@@ -49,6 +49,8 @@ using Nethermind.Mev.Data;
 using Nethermind.Mev.Execution;
 using Nethermind.Mev.Source;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using Nethermind.State;
 using NSubstitute;
 
@@ -56,6 +58,14 @@ namespace Nethermind.AccountAbstraction.Test
 {
     public partial class AccountAbstractionRpcModuleTests
     {
+        public static Task<TestAccountAbstractionRpcBlockchain> CreateChain(IReleaseSpec? releaseSpec = null, UInt256? initialBaseFeePerGas = null)
+        {
+            TestAccountAbstractionRpcBlockchain testMevRpcBlockchain = new(initialBaseFeePerGas);
+            TestSpecProvider testSpecProvider = releaseSpec is not null ? new TestSpecProvider(releaseSpec) : new TestSpecProvider(Berlin.Instance);
+            testSpecProvider.ChainId = 1;
+            return TestRpcBlockchain.ForTest(testMevRpcBlockchain).Build(testSpecProvider);
+        }
+        
         public class TestAccountAbstractionRpcBlockchain : TestRpcBlockchain
         {
             public UserOperationPool UserOperationPool { get; private set; } = null!;

@@ -129,7 +129,8 @@ namespace Nethermind.AccountAbstraction.Executor
             Instruction.BLOCKHASH,
             Instruction.NUMBER,
             Instruction.BALANCE,
-            Instruction.ORIGIN
+            Instruction.ORIGIN,
+            Instruction.GAS
         };
         private readonly Address _beneficiary;
         private Address _currentExecutor { get; set; }
