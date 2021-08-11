@@ -204,14 +204,13 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void Trace_filter_return_fail_with_not_existing_block()
         {
             Context context = new();
-            TraceFilterForRpc traceFilterRequest = new();
-            traceFilterRequest.FromBlock = new BlockParameter(340);
+            string request = "{\"fromBlock\":\"0x154\",\"after\":0}";
             string serialized = RpcTest.TestSerializedRequest(
                 EthModuleFactory.Converters.Union(TraceModuleFactory.Converters).ToList(), context.TraceRpcModule,
-                "trace_filter", new EthereumJsonSerializer().Serialize(traceFilterRequest));
+                "trace_filter", request);
 
             Assert.AreEqual(
-                "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Invalid params\"},\"id\":67}",
+                "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32001,\"message\":\"Block 340 could not be found\"},\"id\":67}",
                 serialized, serialized.Replace("\"", "\\\""));
         }
         
@@ -219,15 +218,13 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void Trace_filter_return_fail_from_block_higher_than_to_block()
         {
             Context context = new();
-            TraceFilterForRpc traceFilterRequest = new();
-            traceFilterRequest.FromBlock = new BlockParameter(6);
-            traceFilterRequest.ToBlock = new BlockParameter(8);
+            string request = "{\"fromBlock\":\"0x8\",\"toBlock\":\"0x6\"}";
             string serialized = RpcTest.TestSerializedRequest(
                 EthModuleFactory.Converters.Union(TraceModuleFactory.Converters).ToList(), context.TraceRpcModule,
-                "trace_filter", new EthereumJsonSerializer().Serialize(traceFilterRequest));
+                "trace_filter", request);
 
             Assert.AreEqual(
-                "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Invalid params\"},\"id\":67}",
+                "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"From block number: 8 is greater than to block number 6\"},\"id\":67}",
                 serialized, serialized.Replace("\"", "\\\""));
         }
         
