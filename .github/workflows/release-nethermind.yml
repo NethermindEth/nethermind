@@ -51,8 +51,6 @@ jobs:
       run: ./nethermind/scripts/deployment/setup-packages.sh
     - name: Building Runner
       run: ./nethermind/scripts/deployment/build-runner.sh
-    - name: Building BeamWallet
-      run: ./nethermind/scripts/deployment/build-wallet.sh
     - name: Building Cli
       run: ./nethermind/scripts/deployment/build-cli.sh
     - name: Building Launcher
@@ -61,7 +59,7 @@ jobs:
       run: |
         cd nethermind/
         docker buildx build --platform=linux/arm64 -t tmp-launcher -f Dockerfile.launcher . --load
-        docker run -v $PWD:/opt/mount --rm -ti tmp-launcher bash -c "cp /nethermind/Nethermind.Launcher /opt/mount/"
+        docker run -v $PWD:/opt/mount --rm tmp-launcher bash -c "cp /nethermind/Nethermind.Launcher /opt/mount/"
         mv Nethermind.Launcher ${{ env.RELEASE_DIRECTORY }}/{{ env.$LIN_ARM64_RELEASE }}/Nethermind.Launcher
     - name: Archiving packages
       run: ./nethermind/scripts/deployment/archive-packages.sh
