@@ -62,6 +62,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             testGasPriceOracle.GetGasPriceEstimate();
             
+            testGasPriceOracle.FallbackGasPrice.Should().BeEquivalentTo((UInt256?) 20.GWei());
             testGasPriceOracle.FallbackGasPrice.Should().BeEquivalentTo((UInt256?) EthGasPriceConstants.DefaultGasPrice);
         }
 
