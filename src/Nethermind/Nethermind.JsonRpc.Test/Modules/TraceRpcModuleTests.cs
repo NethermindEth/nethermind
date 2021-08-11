@@ -228,6 +228,20 @@ namespace Nethermind.JsonRpc.Test.Modules
                 serialized, serialized.Replace("\"", "\\\""));
         }
         
+        [Test]
+        public void Trace_filter_return_empty_result_with_count_0()
+        {
+            Context context = new();
+            string request = "{\"count\":0x0, \"fromBlock\":\"0x3\",\"toBlock\":\"0x3\"}";
+            string serialized = RpcTest.TestSerializedRequest(
+                EthModuleFactory.Converters.Union(TraceModuleFactory.Converters).ToList(), context.TraceRpcModule,
+                "trace_filter", request);
+
+            Assert.AreEqual(
+                "{\"jsonrpc\":\"2.0\",\"result\":[],\"id\":67}",
+                serialized, serialized.Replace("\"", "\\\""));
+        }
+        
 
         [Test]
         public void Trace_filter_return_expected_json()

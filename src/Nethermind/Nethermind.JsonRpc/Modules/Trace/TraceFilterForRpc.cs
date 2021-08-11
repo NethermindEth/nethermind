@@ -18,6 +18,7 @@
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Evm.Tracing;
+using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules.Trace
 {
@@ -33,6 +34,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         
         public int After { get; set; } 
         
+        [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public int? Count { get; set; }
 
         public TxTraceFilter ToTxTracerFilter()
