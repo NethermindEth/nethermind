@@ -40,6 +40,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         private readonly TxDecoder _txDecoder = new();
         private readonly IJsonRpcConfig _jsonRpcConfig;
         private readonly ILogManager _logManager;
+        private readonly ILogger _logger;
         private readonly TimeSpan _cancellationTokenTimeout;
 
         public TraceRpcModule(IReceiptFinder receiptFinder, ITracer tracer, IBlockFinder blockFinder, IJsonRpcConfig jsonRpcConfig, ILogManager logManager)
@@ -48,7 +49,8 @@ namespace Nethermind.JsonRpc.Modules.Trace
             _tracer = tracer ?? throw new ArgumentNullException(nameof(tracer));
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
             _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
-            _logManager = logManager;
+            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager.GetClassLogger();
             _cancellationTokenTimeout = TimeSpan.FromMilliseconds(_jsonRpcConfig.Timeout);
         }
 
@@ -145,6 +147,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         public ResultWrapper<ParityTxTraceFromStore[]> trace_filter(TraceFilterForRpc traceFilterForRpc)
         {
+            if (_logger.IsTrace) _logger.Trace("Executing trace_filter");
             TxTraceFilter txTracerFilter = new(traceFilterForRpc.FromAddress, traceFilterForRpc.ToAddress, traceFilterForRpc.After, traceFilterForRpc.Count, _logManager);
             List<ParityLikeTxTrace> txTraces = new();
             IEnumerable<SearchResult<Block>> blocksSearch =

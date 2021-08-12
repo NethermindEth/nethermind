@@ -14,7 +14,6 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -46,10 +45,8 @@ using Nethermind.TxPool;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.Spec;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Serialization.Json;
-using Nethermind.Specs.Forks;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.JsonRpc.Test.Modules

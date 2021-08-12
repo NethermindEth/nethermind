@@ -74,6 +74,9 @@ namespace Nethermind.Evm.Tracing
                 return false;
             
             int txCount = CountMatchingTransactions(block);
+            if (_logger.IsTrace)
+                _logger.Trace(
+                    $"Checking if we should trace block {block}, matching tx count: {txCount}, after: {_after}");
             if (_after >= txCount)
             {
                 // we can skip the block if it don't achieve after
