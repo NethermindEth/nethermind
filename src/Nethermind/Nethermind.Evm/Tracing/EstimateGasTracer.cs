@@ -248,7 +248,12 @@ namespace Nethermind.Evm.Tracing
             }
         }
 
-        public void ReportActionError(EvmExceptionType exceptionType, long? gasLeft = null)
+        public void ReportActionError(EvmExceptionType exceptionType)
+        {
+            UpdateAdditionalGas();
+        }
+
+        public void ReportActionError(EvmExceptionType exceptionType, long gasLeft)
         {
             UpdateAdditionalGas(gasLeft);
         }

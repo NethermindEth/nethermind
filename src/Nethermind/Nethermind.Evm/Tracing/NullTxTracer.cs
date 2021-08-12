@@ -102,7 +102,7 @@ namespace Nethermind.Evm.Tracing
 
         public void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
             => throw new InvalidOperationException(ErrorMessage);
-        public void ReportActionError(EvmExceptionType exceptionType, long? gasLeft = null)
+        public void ReportActionError(EvmExceptionType exceptionType)
             => throw new InvalidOperationException(ErrorMessage);
 
         public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)

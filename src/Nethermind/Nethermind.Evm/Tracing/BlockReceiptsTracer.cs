@@ -156,7 +156,10 @@ namespace Nethermind.Evm.Tracing
         public void ReportActionEnd(long gas, ReadOnlyMemory<byte> output) =>
             _currentTxTracer!.ReportActionEnd(gas, output);
         
-        public void ReportActionError(EvmExceptionType exceptionType, long? gasLeft = null) =>
+        public void ReportActionError(EvmExceptionType exceptionType) =>
+            _currentTxTracer!.ReportActionError(exceptionType);
+
+        public void ReportActionError(EvmExceptionType exceptionType, long gasLeft) =>
             _currentTxTracer!.ReportActionError(exceptionType, gasLeft);
         
         public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode) =>

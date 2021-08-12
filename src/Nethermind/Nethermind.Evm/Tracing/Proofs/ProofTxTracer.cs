@@ -219,7 +219,7 @@ namespace Nethermind.Evm.Tracing.Proofs
             throw new NotSupportedException();
         }
 
-        public void ReportActionError(EvmExceptionType evmExceptionType, long? gasLeft = null)
+        public void ReportActionError(EvmExceptionType evmExceptionType)
         {
             throw new NotSupportedException();
         }
