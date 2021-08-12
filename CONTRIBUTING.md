@@ -32,7 +32,6 @@ Please add, if possible, a reviewer, assignees and labels to your issue and PR.
 
 Please do:
 
-* **DO** follow our [coding style](https://docs.nethermind.io/nethermind/guides-and-helpers/coding-style). (C# code-specific)
 * **DO** give priority to the current style of the project or file you're changing even if it diverges from the general guidelines.
 * **DO** include tests when adding new features. When fixing bugs, start with adding a test that highlights how the current behavior is broken.
 * **DO** especially follow our rules in the [Contributing](https://github.com/NethermindEth/nethermind/blob/master/CODE_OF_CONDUCT.md#contributing) section of our code of conduct.
