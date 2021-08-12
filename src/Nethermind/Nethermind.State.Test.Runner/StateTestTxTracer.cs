@@ -170,7 +170,7 @@ namespace Nethermind.State.Test.Runner
             throw new NotSupportedException();
         }
 
-        public void ReportActionError(EvmExceptionType exceptionType, long? gasLeft = null)
+        public void ReportActionError(EvmExceptionType exceptionType)
         {
             throw new NotSupportedException();
         }
