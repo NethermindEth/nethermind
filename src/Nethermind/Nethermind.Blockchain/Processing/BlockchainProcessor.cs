@@ -373,11 +373,17 @@ namespace Nethermind.Blockchain.Processing
                 TraceFailingBranch(
                     processingBranch,
                     options,
-                    new GethLikeBlockTracer(GethTraceOptions.Default));
+                    new BlockReceiptsTracer());
+                
                 TraceFailingBranch(
                     processingBranch,
                     options,
                     new ParityLikeBlockTracer(ParityTraceTypes.StateDiff | ParityTraceTypes.Trace));
+                
+                TraceFailingBranch(
+                    processingBranch,
+                    options,
+                    new GethLikeBlockTracer(GethTraceOptions.Default));
 
                 Keccak invalidBlockHash = ex.InvalidBlockHash;
                 for (int i = 0; i < processingBranch.BlocksToProcess.Count; i++)

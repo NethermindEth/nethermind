@@ -32,7 +32,9 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Evm;
+using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.JsonRpc.Converters;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
@@ -69,6 +71,7 @@ namespace Nethermind.Init.Steps
         {
             BlockTraceDumper.Converters.AddRange(DebugModuleFactory.Converters);
             BlockTraceDumper.Converters.AddRange(TraceModuleFactory.Converters);
+            BlockTraceDumper.Converters.Add(new TxReceiptConverter());
             
             var (getApi, setApi) = _api.ForBlockchain;
             
