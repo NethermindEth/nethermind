@@ -15,9 +15,11 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.AccountAbstraction.Data;
@@ -27,6 +29,11 @@ using Nethermind.Core;
 using Nethermind.Evm.Tracing.Access;
 using Nethermind.State;
 using Nethermind.TxPool.Collections;
+using Nethermind.AccountAbstraction.Flashbots;
+using Nethermind.Core.Timers;
+using Nethermind.AccountAbstraction.Executor;
+using Nethermind.Api;
+using Nethermind.Logging;
 
 namespace Nethermind.AccountAbstraction.Source
 {
@@ -42,6 +49,7 @@ namespace Nethermind.AccountAbstraction.Source
         private readonly UserOperationSortedPool _userOperationSortedPool;
         private readonly IUserOperationSimulator _userOperationSimulator;
         private readonly ConcurrentDictionary<UserOperation, SimulatedUserOperation> _simulatedUserOperations;
+        private readonly ITimer _timer;
 
         public UserOperationPool(
             IBlockTree blockTree,
@@ -53,7 +61,8 @@ namespace Nethermind.AccountAbstraction.Source
             ISet<Address> bannedPaymasters,
             UserOperationSortedPool userOperationSortedPool,
             IUserOperationSimulator userOperationSimulator,
-            ConcurrentDictionary<UserOperation, SimulatedUserOperation> simulatedUserOperations)
+            ConcurrentDictionary<UserOperation, SimulatedUserOperation> simulatedUserOperations,
+            ITimerFactory timerFactory)
         {
             _blockTree = blockTree;
             _stateProvider = stateProvider;
@@ -69,6 +78,11 @@ namespace Nethermind.AccountAbstraction.Source
             blockTree.NewHeadBlock += OnNewBlock;
             _userOperationSortedPool.Inserted += UserOperationInserted;
             _userOperationSortedPool.Removed += UserOperationRemoved;
+            
+            _timer = timerFactory.CreateTimer(TimeSpan.FromMilliseconds(5000));
+            _timer.Elapsed += TimerOnElapsed;
+            _timer.AutoReset = false;
+            _timer.Start();
         }
         
         private void UserOperationInserted(object? sender, SortedPool<UserOperation, UserOperation, Address>.SortedPoolEventArgs e)
@@ -207,6 +221,38 @@ namespace Nethermind.AccountAbstraction.Source
                 _userOperationSortedPool.TryRemove(userOperation);
             }
 
+        }
+        
+        private void TimerOnElapsed(object sender, EventArgs args)
+        {
+            INethermindApi _nethermindApi = null!;
+            ILogger _logger = null!;
+            FlashbotsSender flashbotsSender = new FlashbotsSender(new HttpClient(), _nethermindApi.EngineSigner, _logger);
+            
+            IList<UserOperation> userOperations = new List<UserOperation>();
+            IEnumerable<SimulatedUserOperation> simulatedUserOperations = _simulatedUserOperations.Values.OrderByDescending(op => op.ImpliedGasPrice);
+            foreach (SimulatedUserOperation operations in simulatedUserOperations)
+            {
+                userOperations.Add(operations.UserOperation);
+            }
+            
+            if (_userOperationSortedPool.GetSnapshot().Length > 0)
+            {
+                // turn ops into txs
+                Transaction transaction = new Transaction();
+                foreach (UserOperation op in _userOperationSortedPool.GetSnapshot())
+                {
+                    transaction = _userOperationSimulator.BuildTransactionFromUserOperations(userOperations, _blockTree.Head.Header);
+                }
+                
+                // turn txs into MevBundle
+                FlashbotsSender.MevBundle bundle = new FlashbotsSender.MevBundle(_blockTree.Head.Header.Number + 1, new []{transaction});
+                
+                // send MevBundle using SendBundle()
+                flashbotsSender.SendBundle(bundle, _accountAbstractionConfig.FlashbotsEndpoint);
+            }
+            
+            _timer.Enabled = true;
         }
     }
 }
