@@ -77,10 +77,10 @@ namespace Nethermind.DataMarketplace.Initializers
             // TODO: ensure we can override during Register calls
             if (_ndmApi.Config<INdmConfig>().ProxyEnabled)
             {
-                EthModuleProxyFactory proxyFactory = new EthModuleProxyFactory(
+                EthModuleProxyFactory proxyFactory = new(
                     _ndmApi.EthJsonRpcClientProxy,
                     _ndmApi.Wallet);
-                _ndmApi.RpcModuleProvider.Register(new SingletonModulePool<IEthModule>(proxyFactory, true));
+                _ndmApi.RpcModuleProvider?.Register(new SingletonModulePool<IEthRpcModule>(proxyFactory, true));
                 if (logger.IsInfo) logger.Info("Enabled JSON RPC Proxy for NDM.");
             }
 
@@ -125,8 +125,8 @@ namespace Nethermind.DataMarketplace.Initializers
                         $"NDM enabled but the initializer {initializerName} has not been found. Ensure that a plugin exists with the properly set {nameof(NdmInitializerAttribute)}");
                 }
 
-                NdmModule ndmModule = new NdmModule(_ndmApi);
-                NdmConsumersModule ndmConsumersModule = new NdmConsumersModule(_ndmApi);
+                NdmModule ndmModule = new(_ndmApi);
+                NdmConsumersModule ndmConsumersModule = new(_ndmApi);
                 _ndmInitializer =
                     new NdmInitializerFactory(ndmInitializerType, ndmModule, ndmConsumersModule, api.LogManager)
                         .CreateOrFail();
@@ -137,19 +137,16 @@ namespace Nethermind.DataMarketplace.Initializers
                     _ndmApi.NdmConsumerChannelManager.Add(grpcChannel);
                 }
 
-                NdmWebSocketsModule ndmWebSocketsModule =
-                    new NdmWebSocketsModule(
-                        _ndmApi.NdmConsumerChannelManager,
-                        _ndmApi.NdmDataPublisher,
-                        api.EthereumJsonSerializer); 
+                NdmWebSocketsModule ndmWebSocketsModule = new( _ndmApi); 
                 api.WebSocketsManager.AddModule(ndmWebSocketsModule);
             }
 
             return Task.CompletedTask;
         }
 
-        public void Dispose()
+        public ValueTask DisposeAsync()
         {
+            return ValueTask.CompletedTask;
         }
     }
 }

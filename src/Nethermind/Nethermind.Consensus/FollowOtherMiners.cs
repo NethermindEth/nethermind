@@ -16,20 +16,25 @@
 // 
 
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Consensus
 {
     public class FollowOtherMiners : IGasLimitCalculator
     {
-        private FollowOtherMiners()
+        private readonly ISpecProvider _specProvider;
+        public FollowOtherMiners(ISpecProvider specProvider) 
         {
+            _specProvider = specProvider;
         }
-
-        public static FollowOtherMiners Instance { get; } = new FollowOtherMiners();
         
         public long GetGasLimit(BlockHeader parentHeader)
         {
-            return parentHeader.GasLimit;
+            long gasLimit = parentHeader.GasLimit;
+            long newBlockNumber = parentHeader.Number + 1;
+            IReleaseSpec spec = _specProvider.GetSpec(newBlockNumber);
+            gasLimit = Eip1559GasLimitAdjuster.AdjustGasLimit(spec, gasLimit, newBlockNumber);
+            return gasLimit;
         }
     }
 }

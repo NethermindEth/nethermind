@@ -48,7 +48,6 @@ namespace Nethermind.Db
             RegisterDb(BuildRocksDbSettings(DbNames.BlockInfos, () => Metrics.BlockInfosDbReads++, () => Metrics.BlockInfosDbWrites++));
             RegisterDb(BuildRocksDbSettings(DbNames.State, () => Metrics.StateDbReads++, () => Metrics.StateDbWrites++));
             RegisterDb(BuildRocksDbSettings(DbNames.Code, () => Metrics.CodeDbReads++, () => Metrics.CodeDbWrites++));
-            RegisterDb(BuildRocksDbSettings(DbNames.PendingTxs, () => Metrics.PendingTxsDbReads++, () => Metrics.PendingTxsDbWrites++));
             RegisterDb(BuildRocksDbSettings(DbNames.Bloom, () => Metrics.BloomDbReads++, () => Metrics.BloomDbWrites++));
             RegisterDb(BuildRocksDbSettings(DbNames.CHT, () => Metrics.CHTDbReads++, () => Metrics.CHTDbWrites++));
             RegisterDb(BuildRocksDbSettings(DbNames.Witness, () => Metrics.WitnessDbReads++, () => Metrics.WitnessDbWrites++));
@@ -64,15 +63,8 @@ namespace Nethermind.Db
 
         private RocksDbSettings BuildRocksDbSettings(string dbName, Action updateReadsMetrics, Action updateWriteMetrics)
         {
-            return BuildRocksDbSettings(GetTitleDbName(dbName), dbName, updateReadsMetrics, updateWriteMetrics);
-        }
-
-        private RocksDbSettings BuildRocksDbSettings(string dbName, string dbPath, Action updateReadsMetrics, Action updateWriteMetrics)
-        {
-            return new()
+            return new(GetTitleDbName(dbName), dbName)
             {
-                DbName = dbName,
-                DbPath = dbPath,
                 UpdateReadMetrics = updateReadsMetrics,
                 UpdateWriteMetrics = updateWriteMetrics
             };

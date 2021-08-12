@@ -16,7 +16,6 @@
 
 using System;
 using BenchmarkDotNet.Attributes;
-using BenchmarkDotNet.Jobs;
 using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.Logging;
@@ -26,8 +25,6 @@ using Nethermind.Network.Test;
 
 namespace Nethermind.Network.Benchmarks
 {
-    [MemoryDiagnoser]
-    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
     public class HandshakeBenchmarks
     {
         [GlobalSetup]

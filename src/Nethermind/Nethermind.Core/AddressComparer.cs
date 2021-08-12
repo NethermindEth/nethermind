@@ -24,7 +24,7 @@ namespace Nethermind.Core
         {
         }
             
-        public static AddressComparer Instance { get; } = new AddressComparer();
+        public static AddressComparer Instance { get; } = new();
 
         public int Compare(Address? x, Address? y)
         {

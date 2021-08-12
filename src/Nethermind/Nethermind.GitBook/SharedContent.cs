@@ -1,3 +1,19 @@
+//  Copyright (c) 2021 Demerzel Solutions Limited
+//  This file is part of the Nethermind library.
+// 
+//  The Nethermind library is free software: you can redistribute it and/or modify
+//  it under the terms of the GNU Lesser General Public License as published by
+//  the Free Software Foundation, either version 3 of the License, or
+//  (at your option) any later version.
+// 
+//  The Nethermind library is distributed in the hope that it will be useful,
+//  but WITHOUT ANY WARRANTY; without even the implied warranty of
+//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+//  GNU Lesser General Public License for more details.
+// 
+//  You should have received a copy of the GNU Lesser General Public License
+//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -5,6 +21,7 @@ using System.Linq;
 using System.Reflection;
 using System.Text;
 using Nethermind.Blockchain.Find;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.GitBook.Extensions;
 
@@ -36,7 +53,9 @@ namespace Nethermind.GitBook
                 "Object[]" => "Array",
                 "String" => "String",
                 "String[]" => "Array",
+                "UInt64" => "Quantity",
                 "UInt256" => "Quantity",
+                "UInt256[]" => "Array",
                 _ => $"{type.Name} object",
             };
             return replacedType;
@@ -44,8 +63,6 @@ namespace Nethermind.GitBook
         
         public void AddObjectsDescription(StringBuilder moduleBuilder, List<Type> typesToDescribe)
         {
-            moduleBuilder.AppendLine(@$"### Objects definition");
-
             foreach (Type type in typesToDescribe.Distinct().Where(type => ReplaceType(type).Contains("object")))
             {
                 moduleBuilder.AppendLine();
@@ -58,10 +75,19 @@ namespace Nethermind.GitBook
                     moduleBuilder.AppendLine();
                     continue;
                 }
+                
+                if(type == typeof(TxType))
+                {
+                    moduleBuilder.AppendLine("- [EIP2718](https://eips.ethereum.org/EIPS/eip-2718) transaction type");
+                    moduleBuilder.AppendLine();
+                    continue;
+                }
+                
+                Type typeToDescribe = type.IsArray ? type.GetElementType() : type;
 
-                PropertyInfo[] properties = type.GetProperties();
+                PropertyInfo[] properties = typeToDescribe.GetProperties();
 
-                moduleBuilder.AppendLine("| Fields name | Type |");
+                moduleBuilder.AppendLine("| Field name | Type |");
                 moduleBuilder.AppendLine("| :--- | :--- |");
 
                 string propertyType;

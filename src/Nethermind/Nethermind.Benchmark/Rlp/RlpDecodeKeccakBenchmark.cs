@@ -25,8 +25,6 @@ using NUnit.Framework;
 
 namespace Nethermind.Benchmarks.Rlp
 {
-    [MemoryDiagnoser]
-    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
     public class RlpDecodeKeccakBenchmark
     {
         private RlpStream[] _scenariosContext;

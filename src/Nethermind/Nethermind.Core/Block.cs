@@ -44,15 +44,25 @@ namespace Nethermind.Core
         {
         }
 
-        public BlockHeader Header { get; set; }
+        public Block WithReplacedHeader(BlockHeader newHeader)
+        {
+            return new(newHeader, Body);
+        }
 
-        public BlockBody? Body { get; set; }
+        public Block WithReplacedBody(BlockBody newBody)
+        {
+            return new(Header, newBody);
+        }
+        
+        public BlockHeader Header { get; }
+
+        public BlockBody Body { get; }
 
         public bool IsGenesis => Header.IsGenesis;
 
-        public Transaction[]? Transactions => Body?.Transactions; // do not add setter here
+        public Transaction[] Transactions { get => Body.Transactions; protected set => Body.Transactions = value; } // setter needed to produce blocks with unknown transaction count on start
 
-        public BlockHeader[]? Ommers => Body?.Ommers; // do not add setter here
+        public BlockHeader[] Ommers => Body.Ommers; // do not add setter here
 
         public Keccak? Hash => Header.Hash; // do not add setter here
 
@@ -91,6 +101,8 @@ namespace Nethermind.Core
         public UInt256 Difficulty => Header.Difficulty; // do not add setter here
 
         public UInt256? TotalDifficulty => Header.TotalDifficulty; // do not add setter here
+        
+        public UInt256 BaseFeePerGas => Header.BaseFeePerGas; // do not add setter here
 
         public override string ToString()
         {
@@ -104,24 +116,24 @@ namespace Nethermind.Core
                 Format.Full => ToFullString(),
                 Format.FullHashAndNumber => Hash == null ? $"{Number} null" : $"{Number} ({Hash})",
                 Format.HashNumberAndTx => Hash == null
-                    ? $"{Number} null, tx count: {Body?.Transactions.Length}"
-                    : $"{Number} {TimestampDate:HH:mm:ss} ({Hash?.ToShortString()}), tx count: {Body?.Transactions.Length}",
+                    ? $"{Number} null, tx count: {Body.Transactions.Length}"
+                    : $"{Number} {TimestampDate:HH:mm:ss} ({Hash?.ToShortString()}), tx count: {Body.Transactions.Length}",
                 Format.HashNumberDiffAndTx => Hash == null
-                    ? $"{Number} null, diff: {Difficulty}, tx count: {Body?.Transactions.Length}"
-                    : $"{Number} ({Hash?.ToShortString()}), diff: {Difficulty}, tx count: {Body?.Transactions.Length}",
+                    ? $"{Number} null, diff: {Difficulty}, tx count: {Body.Transactions.Length}"
+                    : $"{Number} ({Hash?.ToShortString()}), diff: {Difficulty}, tx count: {Body.Transactions.Length}",
                 _ => Hash == null ? $"{Number} null" : $"{Number} ({Hash?.ToShortString()})"
             };
         }
 
         private string ToFullString()
         {
-            StringBuilder builder = new StringBuilder();
+            StringBuilder builder = new();
             builder.AppendLine($"Block {Number}");
             builder.AppendLine("  Header:");
             builder.Append($"{Header.ToString("    ")}");
 
             builder.AppendLine("  Ommers:");
-            foreach (BlockHeader ommer in Body?.Ommers ?? Array.Empty<BlockHeader>())
+            foreach (BlockHeader ommer in Body.Ommers ?? Array.Empty<BlockHeader>())
             {
                 builder.Append($"{ommer.ToString("    ")}");
             }

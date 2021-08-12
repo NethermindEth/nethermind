@@ -16,6 +16,7 @@
 
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Int256;
 
 namespace Nethermind.Consensus.Transactions
 {
@@ -23,4 +24,6 @@ namespace Nethermind.Consensus.Transactions
     {
         IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit);
     }
+    
+    
 }

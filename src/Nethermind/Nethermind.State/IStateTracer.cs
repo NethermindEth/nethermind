@@ -21,8 +21,9 @@ namespace Nethermind.State
 {
     public interface IStateTracer
     {
+        bool IsTracingState { get; }
         void ReportBalanceChange(Address address, UInt256? before, UInt256? after);
-        void ReportCodeChange(Address address, byte[] before, byte[] after);
+        void ReportCodeChange(Address address, byte[]? before, byte[]? after);
         void ReportNonceChange(Address address, UInt256? before, UInt256? after);
         void ReportAccountRead(Address address);
     }

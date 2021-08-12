@@ -55,18 +55,21 @@ namespace Nethermind.Specs.ChainSpecStyle
         public long? Eip2028Transition { get; set; }
         public long? Eip2200Transition { get; set; }
         public long? Eip1559Transition { get; set; }
-        public long? Eip1559MigrationDuration { get; set; }
-        
         public long? Eip2315Transition { get; set; }
-        
         public long? Eip2537Transition { get; set; }
         public long? Eip2565Transition { get; set; }
-        
-        public long? Eip2718Transition { get; set; }
-        
         public long? Eip2929Transition { get; set; }
-
         public long? Eip2930Transition { get; set; }
+        public long? Eip3198Transition { get; set; }
+        public long? Eip3529Transition { get; set; }
+        
+        public long? Eip3541Transition { get; set; }
+        
+        public UInt256 Eip1559BaseFeeInitialValue { get; set; }
+
+        public UInt256 Eip1559BaseFeeMaxChangeDenominator { get; set; }    
+            
+        public long Eip1559ElasticityMultiplier { get; set; }
         
         /// <summary>
         ///  Transaction permission managing contract address.

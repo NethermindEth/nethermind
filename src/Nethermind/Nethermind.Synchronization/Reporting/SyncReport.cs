@@ -113,23 +113,23 @@ namespace Nethermind.Synchronization.Reporting
             _timer.Enabled = true;
         }
 
-        private readonly Timer _timer = new Timer();
+        private readonly Timer _timer = new();
 
         private long _fastBlocksPivotNumber;
 
-        public MeasuredProgress HeadersInQueue { get; } = new MeasuredProgress();
+        public MeasuredProgress HeadersInQueue { get; } = new();
 
-        public MeasuredProgress BodiesInQueue { get; } = new MeasuredProgress();
+        public MeasuredProgress BodiesInQueue { get; } = new();
 
-        public MeasuredProgress ReceiptsInQueue { get; } = new MeasuredProgress();
+        public MeasuredProgress ReceiptsInQueue { get; } = new();
 
-        public MeasuredProgress FastBlocksHeaders { get; } = new MeasuredProgress();
+        public MeasuredProgress FastBlocksHeaders { get; } = new();
 
-        public MeasuredProgress FastBlocksBodies { get; } = new MeasuredProgress();
+        public MeasuredProgress FastBlocksBodies { get; } = new();
 
-        public MeasuredProgress FastBlocksReceipts { get; } = new MeasuredProgress();
+        public MeasuredProgress FastBlocksReceipts { get; } = new();
 
-        public MeasuredProgress FullSyncBlocksDownloaded { get; } = new MeasuredProgress();
+        public MeasuredProgress FullSyncBlocksDownloaded { get; } = new();
 
         public long FullSyncBlocksKnown { get; set; }
 
@@ -175,7 +175,7 @@ namespace Nethermind.Synchronization.Reporting
                 }
             }
 
-            if (currentSyncMode == SyncMode.Disconnected)
+            if (currentSyncMode == SyncMode.Disconnected && _syncConfig.SynchronizationEnabled)
             {
                 WriteNotStartedReport();
             }
@@ -230,7 +230,7 @@ namespace Nethermind.Synchronization.Reporting
             bool bodiesInFastBlocks = _syncConfig.DownloadBodiesInFastSync;
             bool receiptsInFastBlocks = _syncConfig.DownloadReceiptsInFastSync;
 
-            StringBuilder builder = new StringBuilder();
+            StringBuilder builder = new();
             if (isFastSync && isFastBlocks)
             {
                 builder.Append($"Sync config - fast sync with fast blocks from block {_syncConfig.PivotNumber}");

@@ -18,6 +18,7 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Blockchain.Processing
@@ -39,6 +40,11 @@ namespace Nethermind.Blockchain.Processing
             List<Block> suggestedBlocks,
             ProcessingOptions processingOptions,
             IBlockTracer blockTracer);
+
+        /// <summary>
+        /// Fired when a branch is being processed.
+        /// </summary>
+        event EventHandler<BlocksProcessingEventArgs> BlocksProcessing;
         
         /// <summary>
         /// Fired after a block has been processed.
@@ -49,5 +55,11 @@ namespace Nethermind.Blockchain.Processing
         /// Fired after a transaction has been processed (even if inside the block).
         /// </summary>
         event EventHandler<TxProcessedEventArgs> TransactionProcessed;
+        
+        public interface IBlockTransactionsExecutor
+        {
+            TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec);
+            event EventHandler<TxProcessedEventArgs> TransactionProcessed;
+        }
     }
 }

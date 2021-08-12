@@ -28,9 +28,9 @@ namespace Nethermind.Blockchain
     {
         private static int _maxDepth = 256;
         private readonly IBlockTree _blockTree;
-        private ILogger _logger;
+        private readonly ILogger _logger;
 
-        public BlockhashProvider(IBlockTree blockTree, ILogManager logManager)
+        public BlockhashProvider(IBlockTree blockTree, ILogManager? logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));

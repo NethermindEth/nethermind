@@ -21,12 +21,12 @@ using System.Threading.Tasks;
 
 namespace Nethermind.JsonRpc.Modules
 {
-    public class BoundedModulePool<T> : IRpcModulePool<T> where T : IModule
+    public class BoundedModulePool<T> : IRpcModulePool<T> where T : IRpcModule
     {
         private readonly int _timeout;
         private readonly T _shared;
         private readonly Task<T> _sharedAsTask;
-        private readonly ConcurrentQueue<T> _pool = new ConcurrentQueue<T>();
+        private readonly ConcurrentQueue<T> _pool = new();
         private readonly SemaphoreSlim _semaphore;
 
         public BoundedModulePool(IRpcModuleFactory<T> factory, int exclusiveCapacity, int timeout)
@@ -44,16 +44,13 @@ namespace Nethermind.JsonRpc.Modules
             _sharedAsTask = Task.FromResult(_shared);
         }
         
-        public Task<T> GetModule(bool canBeShared)
-        {
-            return canBeShared ? _sharedAsTask : SlowPath();
-        }
+        public Task<T> GetModule(bool canBeShared) => canBeShared ? _sharedAsTask : SlowPath();
 
         private async Task<T> SlowPath()
         {
             if (! await _semaphore.WaitAsync(_timeout))
             {
-                throw new TimeoutException($"Unable to rent an instance of {typeof(T).Name}. Too many concurrent requests.");
+                throw new ModuleRentalTimeoutException($"Unable to rent an instance of {typeof(T).Name}. Too many concurrent requests.");
             }
 
             _pool.TryDequeue(out T result);

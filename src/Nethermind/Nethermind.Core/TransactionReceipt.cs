@@ -17,6 +17,7 @@
 using System;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 
 namespace Nethermind.Core
 {
@@ -51,6 +52,7 @@ namespace Nethermind.Core
         public Bloom? Bloom { get; set; }
         public LogEntry[]? Logs { get; set; }
         public string? Error { get; set; }
+        public bool Removed { get; set; }
 
         /// <summary>
         /// Ignores receipt output on RLP serialization.

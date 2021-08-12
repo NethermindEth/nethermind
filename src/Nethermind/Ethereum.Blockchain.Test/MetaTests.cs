@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018 Demerzel Solutions Limited
+ * Copyright (c) 2021 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
  * The Nethermind library is free software: you can redistribute it and/or modify
@@ -27,6 +27,16 @@ namespace Ethereum.Blockchain.Test
     [TestFixture][Parallelizable(ParallelScope.All)]
     public class MetaTests
     {
+        private List<string> excludesDirectories = new List<string>()
+        {
+            "stEWASMTests",
+            "VMTests",
+            "Specs",
+            "runtimes",
+            "ref",
+            "TestFiles"
+        };
+        
         [Test]
         public void All_categories_are_tested()
         {
@@ -39,14 +49,14 @@ namespace Ethereum.Blockchain.Test
             {
                 string expectedTypeName = ExpectedTypeName(directory);
                 Type type = types.SingleOrDefault(t => string.Equals(t.Name, expectedTypeName, StringComparison.InvariantCultureIgnoreCase));
-                if(type == null && directory != "stEWASMTests" && directory != "Specs" && directory != "runtimes" && directory != "ref")
+                if(type == null && !excludesDirectories.Contains(directory))
                 {
                     if (new DirectoryInfo(directory).GetFiles().Any(f => f.Name.Contains(".resources.")))
                     {
                         continue;
                     }
                     
-                    missingCategories.Add(directory);
+                    missingCategories.Add(directory + " - " + expectedTypeName);
                 }
             }
 
@@ -73,6 +83,11 @@ namespace Ethereum.Blockchain.Test
                 }
             }
 
+            if (directory.StartsWith("vm"))
+            {
+                return "Vm" + expectedTypeName;    
+            }
+            
             return expectedTypeName;
         }
     }

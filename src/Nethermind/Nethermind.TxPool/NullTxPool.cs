@@ -26,31 +26,32 @@ namespace Nethermind.TxPool
     {
         private NullTxPool() { }
 
-        public static NullTxPool Instance { get; } = new NullTxPool();
+        public static NullTxPool Instance { get; } = new();
+
+        public int GetPendingTransactionsCount() => 0;
 
         public Transaction[] GetPendingTransactions() => Array.Empty<Transaction>();
         
         public Transaction[] GetOwnPendingTransactions() => Array.Empty<Transaction>();
+        
         public IDictionary<Address, Transaction[]> GetPendingTransactionsBySender() => new Dictionary<Address, Transaction[]>();
 
         public void AddPeer(ITxPoolPeer peer) { }
 
         public void RemovePeer(PublicKey nodeId) { }
-
-        public AddTxResult AddTransaction(Transaction tx, TxHandlingOptions txHandlingOptions) => AddTxResult.Added;
         
-        public void RemoveTransaction(Keccak hash, long blockNumber) { }
+        public AddTxResult SubmitTx(Transaction tx, TxHandlingOptions txHandlingOptions) => AddTxResult.Added;
 
-        public void RemoveTransaction(Keccak hash, long blockNumber, bool removeBelowThisTxNonce)
-        {
-        }
+        public bool RemoveTransaction(Keccak? hash) => false;
+        
+        public bool IsKnown(Keccak hash) => false;
 
-        public bool TryGetPendingTransaction(Keccak hash, out Transaction transaction)
+        public bool TryGetPendingTransaction(Keccak hash, out Transaction? transaction)
         {
             transaction = null;
             return false;
         }
-        
+
         public UInt256 ReserveOwnTransactionNonce(Address address) => UInt256.Zero;
 
         public event EventHandler<TxEventArgs> NewDiscovered

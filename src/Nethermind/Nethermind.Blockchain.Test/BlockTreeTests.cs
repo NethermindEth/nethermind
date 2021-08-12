@@ -133,6 +133,31 @@ namespace Nethermind.Blockchain.Test
         }
 
         [Test]
+        public void Shall_notify_new_head_block_once_and_block_added_to_main_multiple_times_when_adding_multiple_blocks_at_once()
+        {
+            int newHeadBlockNotifications = 0;
+            int blockAddedToMainNotifications = 0;
+
+            BlockTree blockTree = BuildBlockTree();
+            Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
+            Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
+            Block block2 = Build.A.Block.WithNumber(2).WithDifficulty(0).WithParent(block1).TestObject;
+            Block block3 = Build.A.Block.WithNumber(3).WithDifficulty(0).WithParent(block2).TestObject;
+
+            blockTree.SuggestBlock(block0);
+            blockTree.NewHeadBlock += (sender, args) => { newHeadBlockNotifications++; };
+            blockTree.BlockAddedToMain += (sender, args) => { blockAddedToMainNotifications++; };
+
+            blockTree.SuggestBlock(block1);
+            blockTree.SuggestBlock(block2);
+            blockTree.SuggestBlock(block3);
+            blockTree.UpdateMainChain(new Block[] {block1, block2, block3}, true);
+
+            newHeadBlockNotifications.Should().Be(1, "new head block");
+            blockAddedToMainNotifications.Should().Be(3, "block added to main");
+        }
+
+        [Test]
         public void Shall_notify_on_new_suggested_block_after_genesis()
         {
             bool hasNotified = false;
@@ -1344,65 +1369,6 @@ namespace Nethermind.Blockchain.Test
         }
 
         [Test]
-        public async Task When_block_is_moved_to_main_transactions_are_removed_from_tx_pool()
-        {
-            MemDb blocksDb = new MemDb();
-            MemDb headersDb = new MemDb();
-            MemDb blockInfosDb = new MemDb();
-
-            Transaction t1 = Build.A.Transaction.TestObject;
-            Transaction t2 = Build.A.Transaction.TestObject;
-
-            ITxPool txPoolMock = Substitute.For<ITxPool>();
-            BlockTree blockTree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), OlympicSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
-            new OnChainTxWatcher(blockTree, txPoolMock, OlympicSpecProvider.Instance, LimboLogs.Instance);
-            Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
-            Block block1A = Build.A.Block.WithNumber(1).WithDifficulty(2).WithTransactions(MuirGlacier.Instance, t1).WithParent(block0).TestObject;
-            Block block1B = Build.A.Block.WithNumber(1).WithDifficulty(3).WithTransactions(MuirGlacier.Instance, t2).WithParent(block0).TestObject;
-
-            AddToMain(blockTree, block0);
-
-            blockTree.SuggestBlock(block1B);
-            blockTree.SuggestBlock(block1A);
-            blockTree.UpdateMainChain(block1A);
-
-            await Task.Delay(100); // await for OnChainTxWatcher
-
-            txPoolMock.Received().RemoveTransaction(t1.Hash, 1, true);
-        }
-
-        [TestCase(true)]
-        [TestCase(false)]
-        public async Task When_block_is_moved_out_of_main_transactions_are_removed_from_tx_pool(bool isEip155Enabled)
-        {
-            MemDb blocksDb = new MemDb();
-            MemDb headersDb = new MemDb();
-            MemDb blockInfosDb = new MemDb();
-
-            Transaction t1 = Build.A.Transaction.TestObject;
-            Transaction t2 = Build.A.Transaction.TestObject;
-
-            ITxPool txPoolMock = Substitute.For<ITxPool>();
-            ISpecProvider specProvider = isEip155Enabled ? (ISpecProvider)GoerliSpecProvider.Instance : OlympicSpecProvider.Instance;
-            BlockTree blockTree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), specProvider, NullBloomStorage.Instance, LimboLogs.Instance);
-            new OnChainTxWatcher(blockTree, txPoolMock, specProvider, LimboLogs.Instance);
-            Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
-            Block block1A = Build.A.Block.WithNumber(1).WithDifficulty(2).WithTransactions(MuirGlacier.Instance, t1).WithParent(block0).TestObject;
-            Block block1B = Build.A.Block.WithNumber(1).WithDifficulty(3).WithTransactions(MuirGlacier.Instance, t2).WithParent(block0).TestObject;
-
-            AddToMain(blockTree, block0);
-
-            blockTree.SuggestBlock(block1B);
-            blockTree.SuggestBlock(block1A);
-            blockTree.UpdateMainChain(block1A);
-            blockTree.UpdateMainChain(block1B);
-
-            await Task.Delay(100); // await for OnChainTxWatcher
-
-            txPoolMock.Received().AddTransaction(t1, isEip155Enabled ? TxHandlingOptions.None : TxHandlingOptions.PreEip155Signing);
-        }
-
-        [Test]
         public void When_block_is_moved_to_main_blooms_are_stored()
         {
             MemDb blocksDb = new MemDb();
@@ -1415,8 +1381,8 @@ namespace Nethermind.Blockchain.Test
             var bloomStorage = Substitute.For<IBloomStorage>();
             BlockTree blockTree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), OlympicSpecProvider.Instance, bloomStorage, LimboLogs.Instance);
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
-            Block block1A = Build.A.Block.WithNumber(1).WithDifficulty(2).WithTransactions(MuirGlacier.Instance, t1).WithParent(block0).TestObject;
-            Block block1B = Build.A.Block.WithNumber(1).WithDifficulty(3).WithTransactions(MuirGlacier.Instance, t2).WithParent(block0).TestObject;
+            Block block1A = Build.A.Block.WithNumber(1).WithDifficulty(2).WithTransactions(t1).WithParent(block0).TestObject;
+            Block block1B = Build.A.Block.WithNumber(1).WithDifficulty(3).WithTransactions(t2).WithParent(block0).TestObject;
 
             AddToMain(blockTree, block0);
 

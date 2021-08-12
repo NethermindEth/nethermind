@@ -30,7 +30,7 @@ using Nethermind.JsonRpc.Modules.Personal;
 namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
 {
     [RpcModule(ModuleType.NdmConsumer)]
-    public interface INdmRpcConsumerModule : IModule
+    public interface INdmRpcConsumerModule : IRpcModule
     {
         ResultWrapper<AccountForRpc[]> ndm_listAccounts();
         ResultWrapper<Address> ndm_getConsumerAddress();
@@ -58,8 +58,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
         Task<ResultWrapper<FaucetResponseForRpc>> ndm_requestEth(Address address);
         Task<ResultWrapper<NdmProxyResponseForRpc>> ndm_getProxy();
         Task<ResultWrapper<bool>> ndm_setProxy(string[] urls);
-        ResultWrapper<UsdPriceForRpc> ndm_getEthUsdPrice();
-        ResultWrapper<UsdPriceForRpc> ndm_getDaiUsdPrice();
+        ResultWrapper<UsdPriceForRpc> ndm_getUsdPrice(string currency);
         ResultWrapper<GasPriceTypesForRpc> ndm_getGasPrice();
         Task<ResultWrapper<bool>> ndm_setGasPrice(string gasPriceOrType);
         Task<ResultWrapper<bool>> ndm_setRefundGasPrice(UInt256 gasPrice);

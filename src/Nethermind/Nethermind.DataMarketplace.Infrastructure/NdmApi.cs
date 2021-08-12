@@ -20,16 +20,20 @@ using Nethermind.Abi;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Processing;
+using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Core.PubSub;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.DataMarketplace.Channels;
 using Nethermind.DataMarketplace.Consumers.Shared;
@@ -42,6 +46,7 @@ using Nethermind.DataMarketplace.Infrastructure.Updaters;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Evm;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade;
 using Nethermind.Facade.Proxy;
 using Nethermind.Grpc;
@@ -53,7 +58,6 @@ using Nethermind.Network;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.P2P;
 using Nethermind.Network.Rlpx;
-using Nethermind.PubSub;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
@@ -66,7 +70,7 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
-using Nethermind.WebSockets;
+using Nethermind.Sockets;
 
 namespace Nethermind.DataMarketplace.Infrastructure
 {
@@ -166,7 +170,11 @@ namespace Nethermind.DataMarketplace.Infrastructure
             set => _nethermindApi.ChainLevelInfoRepository = value;
         }
 
-        public IConfigProvider ConfigProvider => _nethermindApi.ConfigProvider;
+        public IConfigProvider ConfigProvider
+        {
+            get => _nethermindApi.ConfigProvider;
+            set => _nethermindApi.ConfigProvider = value;
+        }
 
         public ICryptoRandom CryptoRandom => _nethermindApi.CryptoRandom;
 
@@ -242,13 +250,23 @@ namespace Nethermind.DataMarketplace.Infrastructure
             set => _nethermindApi.HeaderValidator = value;
         }
 
+        public IManualBlockProductionTrigger ManualBlockProductionTrigger
+        {
+            get => _nethermindApi.ManualBlockProductionTrigger;
+            set => _nethermindApi.ManualBlockProductionTrigger = value;
+        }
+
         public IIPResolver? IpResolver
         {
             get => _nethermindApi.IpResolver;
             set => _nethermindApi.IpResolver = value;
         }
         
-        public IJsonSerializer EthereumJsonSerializer => _nethermindApi.EthereumJsonSerializer;
+        public IJsonSerializer EthereumJsonSerializer         
+        {
+            get => _nethermindApi.EthereumJsonSerializer;
+            set => _nethermindApi.EthereumJsonSerializer = value;
+        }
 
         public IKeyStore? KeyStore
         {
@@ -263,7 +281,11 @@ namespace Nethermind.DataMarketplace.Infrastructure
         }
 
 
-        public ILogManager LogManager => _nethermindApi.LogManager;
+        public ILogManager LogManager         
+        {
+            get => _nethermindApi.LogManager;
+            set => _nethermindApi.LogManager = value;
+        }
         
         public IKeyValueStoreWithBatching? MainStateDbWithCache
         {
@@ -357,9 +379,12 @@ namespace Nethermind.DataMarketplace.Infrastructure
             set => _nethermindApi.EngineSignerStore = value;
         }
 
-        public SealEngineType SealEngineType      {
+        public string SealEngineType              
+        {
             get => _nethermindApi.SealEngineType;
+            set => _nethermindApi.SealEngineType = value;
         }
+
         public ISpecProvider? SpecProvider
         {
             get => _nethermindApi.SpecProvider;
@@ -433,6 +458,7 @@ namespace Nethermind.DataMarketplace.Infrastructure
         }
 
         public ITimestamper Timestamper => _nethermindApi.Timestamper;
+        public ITimerFactory TimerFactory => _nethermindApi.TimerFactory;
 
         public ITransactionProcessor? TransactionProcessor
         {
@@ -446,7 +472,7 @@ namespace Nethermind.DataMarketplace.Infrastructure
             set => _nethermindApi.TrieStore = value;
         }
         
-        public ReadOnlyTrieStore? ReadOnlyTrieStore
+        public IReadOnlyTrieStore? ReadOnlyTrieStore
         {
             get => _nethermindApi.ReadOnlyTrieStore;
             set => _nethermindApi.ReadOnlyTrieStore = value;
@@ -470,16 +496,52 @@ namespace Nethermind.DataMarketplace.Infrastructure
             set => _nethermindApi.TxPoolInfoProvider = value;
         }
 
+        public IWitnessRepository? WitnessRepository
+        {
+            get => _nethermindApi.WitnessRepository;
+            set => _nethermindApi.WitnessRepository = value;
+        }
+
         public IHealthHintService? HealthHintService        
         {
             get => _nethermindApi.HealthHintService;
             set => _nethermindApi.HealthHintService = value;
         }
 
+        public TxValidator? TxValidator
+        {
+            get => _nethermindApi.TxValidator; 
+            set => _nethermindApi.TxValidator = value;
+        }
+
+        public IBlockFinalizationManager? FinalizationManager
+        {
+            get => _nethermindApi.FinalizationManager;
+            set => _nethermindApi.FinalizationManager = value;
+        }
+        
+        public IGasLimitCalculator GasLimitCalculator
+        {
+            get => _nethermindApi.GasLimitCalculator;
+            set => _nethermindApi.GasLimitCalculator = value;
+        }
+        
+        public IBlockProducerEnvFactory BlockProducerEnvFactory
+        {
+            get => _nethermindApi.BlockProducerEnvFactory;
+            set => _nethermindApi.BlockProducerEnvFactory = value;
+        }
+
         public IWallet? Wallet
         {
             get => _nethermindApi.Wallet;
             set => _nethermindApi.Wallet = value;
+        }
+
+        public ITransactionComparerProvider TransactionComparerProvider
+        {
+            get => _nethermindApi.TransactionComparerProvider;
+            set => _nethermindApi.TransactionComparerProvider = value;
         }
 
         public IWebSocketsManager? WebSocketsManager
@@ -508,7 +570,7 @@ namespace Nethermind.DataMarketplace.Infrastructure
         
         public IList<IPublisher> Publishers => _nethermindApi.Publishers;
         
-        public IList<INethermindPlugin> Plugins => _nethermindApi.Plugins;
+        public IReadOnlyList<INethermindPlugin> Plugins => _nethermindApi.Plugins;
 
         public IBlockchainBridge CreateBlockchainBridge()
         {

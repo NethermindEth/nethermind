@@ -24,9 +24,11 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Evm;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.TxPool;
@@ -46,21 +48,20 @@ namespace Nethermind.AuRa.Test
             var stateDb = Substitute.For<IDb>();
             stateDb[Arg.Any<byte[]>()].Returns((byte[]) null);
             
-            var factory = new AuRaValidatorFactory(Substitute.For<IStateProvider>(),
-                Substitute.For<IAbiEncoder>(), 
+            var factory = new AuRaValidatorFactory(Substitute.For<IAbiEncoder>(), 
+                Substitute.For<IStateProvider>(),
                 Substitute.For<ITransactionProcessor>(),
-                Substitute.For<IReadOnlyTxProcessorSource>(),
                 Substitute.For<IBlockTree>(),
+                Substitute.For<IReadOnlyTxProcessorSource>(),
                 Substitute.For<IReceiptStorage>(),
                 Substitute.For<IValidatorStore>(),
-                Substitute.For<IBlockFinalizationManager>(),
-                Substitute.For<ITxSender>(),
+                Substitute.For<IAuRaBlockFinalizationManager>(),
+                Substitute.For<ITxSender>(), 
                 Substitute.For<ITxPool>(),
-                new MiningConfig(), 
+                new MiningConfig(),
                 LimboLogs.Instance,
                 Substitute.For<ISigner>(),
-                new ReportingContractBasedValidator.Cache(),
-                long.MaxValue);
+                Substitute.For<ISpecProvider>(), new ReportingContractBasedValidator.Cache(), long.MaxValue);
 
             var validator = new AuRaParameters.Validator()
             {

@@ -19,6 +19,7 @@ using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
 using Nethermind.Evm;
+using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
@@ -32,7 +33,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         private static readonly object[] MissingCertifiedResult = {false};
         internal const string ServiceTransactionContractRegistryName = "service_transaction_checker";
         
-        private ConstantContract Constant { get; }
+        private IConstantContract Constant { get; }
         
         public CertifierContract(
             IAbiEncoder abiEncoder,
@@ -44,6 +45,6 @@ namespace Nethermind.Consensus.AuRa.Contracts
         }
 
         public bool Certified(BlockHeader parentHeader, Address sender) =>
-            Constant.Call<bool>(new ConstantContract.CallInfo(parentHeader, nameof(Certified), Address.Zero, sender) {MissingContractResult = MissingCertifiedResult});
+            Constant.Call<bool>(new CallInfo(parentHeader, nameof(Certified), Address.Zero, sender) {MissingContractResult = MissingCertifiedResult});
     }
 }

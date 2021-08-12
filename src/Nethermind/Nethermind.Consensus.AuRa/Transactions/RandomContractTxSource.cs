@@ -67,15 +67,15 @@ namespace Nethermind.Consensus.AuRa.Transactions
         {
             if (_contracts.TryGetForBlock(parent.Number + 1, out var contract))
             {
-                var tx = GetTransaction(contract, parent);
-                if (tx != null && tx.GasLimit <= gasLimit)
+                Transaction? tx = GetTransaction(contract, parent);
+                if (tx != null)
                 {
                     yield return tx;
                 }
             }
         }
 
-        private Transaction GetTransaction(in IRandomContract contract, in BlockHeader parent)
+        private Transaction? GetTransaction(in IRandomContract contract, in BlockHeader parent)
         {
             try
             {
@@ -87,9 +87,15 @@ namespace Nethermind.Consensus.AuRa.Transactions
                         byte[] bytes = new byte[32];
                         _random.GenerateRandomBytes(bytes);
                         var hash = Keccak.Compute(bytes);
-                        var cipher = _eciesCipher.Encrypt(_signer.Key.PublicKey, bytes);
-                        Metrics.CommitHashTransaction++;
-                        return contract.CommitHash(hash, cipher);
+                        PrivateKey? privateKey = _signer.Key;
+                        if (privateKey is not null)
+                        {
+                            var cipher = _eciesCipher.Encrypt(privateKey.PublicKey, bytes);
+                            Metrics.CommitHashTransaction++;
+                            return contract.CommitHash(hash, cipher);
+                        }
+
+                        return null;
                     }
                     case IRandomContract.Phase.Reveal:
                     {
@@ -97,8 +103,18 @@ namespace Nethermind.Consensus.AuRa.Transactions
                         byte[] bytes;
                         try
                         {
-                            using PrivateKey privateKey = _signer.Key.Unprotect();
-                            bytes = _eciesCipher.Decrypt(privateKey, cipher).Item2;
+                            PrivateKey privateKey = _signer.Key;
+                            if (privateKey is not null)
+                            {
+                                using (privateKey)
+                                {
+                                    bytes = _eciesCipher.Decrypt(privateKey, cipher).Item2;
+                                }
+                            }
+                            else
+                            {
+                                return null;
+                            }
                         }
                         catch (InvalidCipherTextException)
                         {

@@ -25,9 +25,6 @@ using Nethermind.Crypto;
 
 namespace Nethermind.Benchmarks.Evm
 {
-    [MemoryDiagnoser]
-    [DisassemblyDiagnoser]
-    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
     public class Blake2Benchmark
     {
         private Blake2Compression _blake2Compression = new Blake2Compression();

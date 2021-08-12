@@ -101,7 +101,7 @@ namespace Nethermind.Core.Test.Builders
         
         public BlockHeaderBuilder WithBaseFee(UInt256 baseFee)
         {
-            TestObjectInternal.BaseFee = baseFee;
+            TestObjectInternal.BaseFeePerGas = baseFee;
             return this;
         }
 
@@ -149,7 +149,7 @@ namespace Nethermind.Core.Test.Builders
 
         public BlockHeaderBuilder WithGasUsed(long gasUsed)
         {
-            TestObjectInternal.GasUsedLegacy = gasUsed;
+            TestObjectInternal.GasUsed = gasUsed;
             return this;
         }
 

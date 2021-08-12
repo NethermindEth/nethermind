@@ -1,5 +1,5 @@
 ﻿/*
- * Copyright (c) 2018 Demerzel Solutions Limited
+ * Copyright (c) 2021 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
  * The Nethermind library is free software: you can redistribute it and/or modify
@@ -50,8 +50,7 @@ namespace Nethermind.State.Test.Runner
         public static void Main(params string[] args)
         {
             ParserResult<Options> result = Parser.Default.ParseArguments<Options>(args);
-            Parsed<Options> options = result as Parsed<Options>;
-            if (options != null)
+            if (result is Parsed<Options> options)
             {
                 Run(options.Value);
             }

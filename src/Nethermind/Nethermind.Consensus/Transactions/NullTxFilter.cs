@@ -23,6 +23,6 @@ namespace Nethermind.Consensus.Transactions
     {
         public (bool Allowed, string Reason) IsAllowed(Transaction tx, BlockHeader parentHeader) => (true, string.Empty);
         
-        public static readonly NullTxFilter Instance = new NullTxFilter(); 
+        public static readonly NullTxFilter Instance = new(); 
     }
 }

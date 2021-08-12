@@ -14,10 +14,12 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Evm;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
@@ -37,30 +39,30 @@ namespace Nethermind.Blockchain.Processing
         public IVirtualMachine Machine { get; }
 
         public ReadOnlyTxProcessingEnv(
-            IDbProvider dbProvider,
-            ITrieNodeResolver trieStore,
-            IBlockTree blockTree,
-            ISpecProvider specProvider,
-            ILogManager logManager) 
-            : this(dbProvider.AsReadOnly(false), trieStore.AsReadOnly(), blockTree.AsReadOnly(), specProvider, logManager)
+            IDbProvider? dbProvider,
+            IReadOnlyTrieStore? trieStore,
+            IBlockTree? blockTree,
+            ISpecProvider? specProvider,
+            ILogManager? logManager) 
+            : this(dbProvider?.AsReadOnly(false), trieStore, blockTree?.AsReadOnly(), specProvider, logManager)
         {
         }
 
         public ReadOnlyTxProcessingEnv(
-            IReadOnlyDbProvider readOnlyDbProvider,
-            ReadOnlyTrieStore readOnlyTrieStore,
-            ReadOnlyBlockTree readOnlyBlockTree,
-            ISpecProvider specProvider,
-            ILogManager logManager)
+            IReadOnlyDbProvider? readOnlyDbProvider,
+            IReadOnlyTrieStore? readOnlyTrieStore,
+            IReadOnlyBlockTree? readOnlyBlockTree,
+            ISpecProvider? specProvider,
+            ILogManager? logManager)
         {
-            DbProvider = readOnlyDbProvider;
+            DbProvider = readOnlyDbProvider ?? throw new ArgumentNullException(nameof(readOnlyDbProvider));
             _codeDb = readOnlyDbProvider.CodeDb.AsReadOnly(true);
-            
+
             StateReader = new StateReader(readOnlyTrieStore, _codeDb, logManager);
             StateProvider = new StateProvider(readOnlyTrieStore, _codeDb, logManager);
             StorageProvider = new StorageProvider(readOnlyTrieStore, StateProvider, logManager);
 
-            BlockTree = readOnlyBlockTree;
+            BlockTree = readOnlyBlockTree ?? throw new ArgumentNullException(nameof(readOnlyBlockTree));
             BlockhashProvider = new BlockhashProvider(BlockTree, logManager);
 
             Machine = new VirtualMachine(StateProvider, StorageProvider, BlockhashProvider, specProvider, logManager);

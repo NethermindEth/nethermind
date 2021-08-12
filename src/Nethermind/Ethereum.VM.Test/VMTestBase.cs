@@ -1,5 +1,5 @@
 ﻿/*
- * Copyright (c) 2018 Demerzel Solutions Limited
+ * Copyright (c) 2021 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
  * The Nethermind library is free software: you can redistribute it and/or modify
@@ -152,7 +152,7 @@ namespace Ethereum.VM.Test
             ExecutionEnvironment environment = new ExecutionEnvironment();
             environment.Value = test.Execution.Value;
             environment.CallDepth = 0;
-            environment.Sender = test.Execution.Caller;
+            environment.Caller = test.Execution.Caller;
             environment.ExecutingAccount = test.Execution.Address;
 
             
@@ -164,13 +164,12 @@ namespace Ethereum.VM.Test
                 test.Environment.CurrentNumber,
                 (long)test.Environment.CurrentGasLimit,
                 test.Environment.CurrentTimestamp, Bytes.Empty);
-            
-            environment.CurrentBlock = header;
 
-            environment.GasPrice = test.Execution.GasPrice;
+            environment.TxExecutionContext = new TxExecutionContext(header, test.Execution.Origin, test.Execution.GasPrice);
+            
             environment.InputData = test.Execution.Data;
             environment.CodeInfo = new CodeInfo(test.Execution.Code);
-            environment.Originator = test.Execution.Origin;
+
 
             foreach (KeyValuePair<Address, AccountState> accountState in test.Pre)
             {
@@ -194,7 +193,7 @@ namespace Ethereum.VM.Test
                 }
             }
 
-            EvmState state = new EvmState((long)test.Execution.Gas, environment, ExecutionType.Transaction, true, false);
+            EvmState state = new EvmState((long)test.Execution.Gas, environment, ExecutionType.Transaction, true, 0, 0, false);
 
             _storageProvider.Commit();
             _stateProvider.Commit(Olympic.Instance);
@@ -206,8 +205,8 @@ namespace Ethereum.VM.Test
                 return;
             }
 
-            Assert.True(Bytes.AreEqual(test.Out, substate.Output),
-                $"Exp: {test.Out.ToHexString(true)} != Actual: {substate.Output.ToHexString(true)}");
+            Assert.True(Bytes.AreEqual(test.Out, substate.Output.ToArray()),
+                $"Exp: {test.Out.ToHexString(true)} != Actual: {substate.Output.ToArray().ToHexString(true)}");
             Assert.AreEqual((long)test.Gas, state.GasAvailable, "gas available");
             foreach (KeyValuePair<Address, AccountState> accountState in test.Post)
             {

@@ -32,6 +32,9 @@ using Nethermind.TxPool;
 using Block = Nethermind.Core.Block;
 using System.Threading;
 using Nethermind.Blockchain.Processing;
+using Nethermind.Core.Eip2930;
+using Nethermind.Core.Specs;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.State;
 
 namespace Nethermind.Facade
@@ -57,16 +60,18 @@ namespace Nethermind.Facade
         private readonly IReceiptFinder _receiptFinder;
         private readonly ITransactionProcessor _transactionProcessor;
         private readonly ILogFinder _logFinder;
+        private readonly ISpecProvider _specProvider;
 
         public BlockchainBridge(
             ReadOnlyTxProcessingEnv processingEnv,
-            ITxPool txPool,
-            IReceiptFinder receiptStorage,
-            IFilterStore filterStore,
-            IFilterManager filterManager,
-            IEthereumEcdsa ecdsa,
-            ITimestamper timestamper,
-            ILogFinder logFinder,
+            ITxPool? txPool,
+            IReceiptFinder? receiptStorage,
+            IFilterStore? filterStore,
+            IFilterManager? filterManager,
+            IEthereumEcdsa? ecdsa,
+            ITimestamper? timestamper,
+            ILogFinder? logFinder,
+            ISpecProvider specProvider,
             bool isMining,
             bool isBeamSyncing)
         {
@@ -82,6 +87,7 @@ namespace Nethermind.Facade
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
             _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
             _logFinder = logFinder ?? throw new ArgumentNullException(nameof(logFinder));
+            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _isBeamSyncing = isBeamSyncing;
             IsMining = isMining;
         }
@@ -113,27 +119,43 @@ namespace Nethermind.Facade
 
         public bool IsMining { get; }
 
-        public (TxReceipt Receipt, Transaction Transaction) GetTransaction(Keccak txHash)
+        public (TxReceipt Receipt, UInt256? EffectiveGasPrice) GetReceiptAndEffectiveGasPrice(Keccak txHash)
         {
             Keccak blockHash = _receiptFinder.FindBlockHash(txHash);
             if (blockHash != null)
             {
                 Block block = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                 TxReceipt txReceipt = _receiptFinder.Get(block).ForTransaction(txHash);
-                return (txReceipt, block?.Transactions[txReceipt.Index]);
-            }
-
-            if (_txPool.TryGetPendingTransaction(txHash, out var transaction))
-            {
-                return (null, transaction);
+                Transaction tx = block?.Transactions[txReceipt.Index];
+                bool is1559Enabled = _specProvider.GetSpec(block.Number).IsEip1559Enabled;
+                UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(is1559Enabled, block.Header.BaseFeePerGas);
+                return (txReceipt, effectiveGasPrice);
             }
 
             return (null, null);
         }
 
+        public (TxReceipt Receipt, Transaction Transaction, UInt256? baseFee) GetTransaction(Keccak txHash)
+        {
+            Keccak blockHash = _receiptFinder.FindBlockHash(txHash);
+            if (blockHash != null)
+            {
+                Block block = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                TxReceipt txReceipt = _receiptFinder.Get(block).ForTransaction(txHash);
+                return (txReceipt, block?.Transactions[txReceipt.Index], block?.BaseFeePerGas);
+            }
+
+            if (_txPool.TryGetPendingTransaction(txHash, out Transaction? transaction))
+            {
+                return (null, transaction, null);
+            }
+
+            return (null, null, null);
+        }
+
         public TxReceipt GetReceipt(Keccak txHash)
         {
-            var blockHash = _receiptFinder.FindBlockHash(txHash);
+            Keccak blockHash = _receiptFinder.FindBlockHash(txHash);
             return blockHash != null ? _receiptFinder.Get(blockHash).ForTransaction(txHash) : null;
         }
 
@@ -143,58 +165,103 @@ namespace Nethermind.Facade
             {
             }
 
-            public CallOutput(byte[] outputData, long gasSpent, string error)
+            public CallOutput(byte[] outputData, long gasSpent, string error, bool inputError = false)
             {
                 Error = error;
                 OutputData = outputData;
                 GasSpent = gasSpent;
+                InputError = inputError;
             }
 
-            public string Error { get; set; }
+            public string? Error { get; set; }
 
             public byte[] OutputData { get; set; }
 
             public long GasSpent { get; set; }
+            
+            public bool InputError { get; set; }
+            
+            public AccessList? AccessList { get; set; }
         }
 
-        public CallOutput Call(BlockHeader blockHeader, Transaction transaction, CancellationToken cancellationToken)
+        public CallOutput Call(BlockHeader header, Transaction tx, CancellationToken cancellationToken)
         {
-            CallOutputTracer callOutputTracer = new CallOutputTracer();
-            CallAndRestore(blockHeader, blockHeader.Number, blockHeader.Timestamp, transaction,
-                new CancellationTxTracer(callOutputTracer, cancellationToken)
-                {
-                    IsTracingActions = true, 
-                    IsTracingOpLevelStorage = true,
-                    IsTracingInstructions = true, // a little bit costly but almost all are simple calls
-                    IsTracingRefunds = true
-                });
+            CallOutputTracer callOutputTracer = new();
+            (bool Success, string Error) tryCallResult = TryCallAndRestore(header, header.Timestamp, tx, false,
+                callOutputTracer.WithCancellation(cancellationToken));
             return new CallOutput
             {
-                Error = callOutputTracer.Error,
+                Error = tryCallResult.Success ? callOutputTracer.Error : tryCallResult.Error,
                 GasSpent = callOutputTracer.GasSpent,
-                OutputData = callOutputTracer.ReturnValue
+                OutputData = callOutputTracer.ReturnValue,
+                InputError = !tryCallResult.Success
             };
         }
 
         public CallOutput EstimateGas(BlockHeader header, Transaction tx, CancellationToken cancellationToken)
         {
-            EstimateGasTracer estimateGasTracer = new EstimateGasTracer();
-            CallAndRestore(
+            EstimateGasTracer estimateGasTracer = new();
+            (bool Success, string Error) tryCallResult = TryCallAndRestore(
                 header,
-                header.Number + 1,
                 UInt256.Max(header.Timestamp + 1, _timestamper.UnixTime.Seconds),
                 tx,
+                true,
                 estimateGasTracer.WithCancellation(cancellationToken));
             
-            long estimate = estimateGasTracer.CalculateEstimate(tx);
-            return new CallOutput {Error = estimateGasTracer.Error, GasSpent = estimate};
+            long estimate = estimateGasTracer.CalculateEstimate(tx, _specProvider.GetSpec(header.Number + 1));
+            
+            return new CallOutput 
+            {
+                Error = tryCallResult.Success ? estimateGasTracer.Error : tryCallResult.Error, 
+                GasSpent = estimate, 
+                InputError = !tryCallResult.Success
+            };
+        }
+
+        public CallOutput CreateAccessList(BlockHeader header, Transaction tx, CancellationToken cancellationToken, bool optimize)
+        {
+            CallOutputTracer callOutputTracer = new();
+            AccessTxTracer accessTxTracer = optimize 
+                ? new(tx.SenderAddress, 
+                    tx.GetRecipient(tx.IsContractCreation ? _stateReader.GetNonce(header.StateRoot, tx.SenderAddress) : 0)) 
+                : new();
+
+            (bool Success, string Error) tryCallResult = TryCallAndRestore(header, header.Timestamp, tx, false,
+                new CompositeTxTracer(callOutputTracer, accessTxTracer).WithCancellation(cancellationToken));
+            
+            return new CallOutput
+            {
+                Error = tryCallResult.Success ? callOutputTracer.Error : tryCallResult.Error,
+                GasSpent = accessTxTracer.GasSpent,
+                OutputData = callOutputTracer.ReturnValue,
+                InputError = !tryCallResult.Success,
+                AccessList = accessTxTracer.AccessList
+            };
+        }
+
+        private (bool Success, string Error) TryCallAndRestore(
+            BlockHeader blockHeader,
+            UInt256 timestamp,
+            Transaction transaction,
+            bool treatBlockHeaderAsParentBlock,
+            ITxTracer tracer)
+        {
+            try
+            {
+                CallAndRestore(blockHeader, timestamp, transaction, treatBlockHeaderAsParentBlock, tracer);
+                return (true, string.Empty);
+            }
+            catch (InsufficientBalanceException ex)
+            {
+                return (false, ex.Message);
+            }
         }
 
         private void CallAndRestore(
             BlockHeader blockHeader,
-            long number,
             UInt256 timestamp,
             Transaction transaction,
+            bool treatBlockHeaderAsParentBlock,
             ITxTracer tracer)
         {
             if (transaction.SenderAddress == null)
@@ -210,15 +277,19 @@ namespace Nethermind.Facade
                     transaction.Nonce = GetNonce(_stateProvider.StateRoot, transaction.SenderAddress);
                 }
 
-                BlockHeader callHeader = new BlockHeader(
+                BlockHeader callHeader = new(
                     blockHeader.Hash,
                     Keccak.OfAnEmptySequenceRlp,
                     Address.Zero,
                     0,
-                    number,
+                    treatBlockHeaderAsParentBlock ? blockHeader.Number + 1 : blockHeader.Number,
                     blockHeader.GasLimit,
                     timestamp,
                     Array.Empty<byte>());
+
+                callHeader.BaseFeePerGas = treatBlockHeaderAsParentBlock
+                    ? BaseFeeCalculator.Calculate(blockHeader, _specProvider.GetSpec(callHeader.Number))
+                    : blockHeader.BaseFeePerGas;
 
                 transaction.Hash = transaction.CalculateHash();
                 _transactionProcessor.CallAndRestore(transaction, callHeader, tracer);
@@ -285,7 +356,7 @@ namespace Nethermind.Facade
         {
             for (int i = 0; i < block.Transactions.Length; i++)
             {
-                var transaction = block.Transactions[i];
+                Transaction transaction = block.Transactions[i];
                 if (transaction.SenderAddress == null)
                 {
                     RecoverTxSender(transaction);

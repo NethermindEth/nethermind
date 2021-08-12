@@ -61,8 +61,8 @@ namespace Nethermind.DataMarketplace.Subprotocols
         protected readonly PublicKey ConfiguredNodeId;
         protected readonly IConsumerService ConsumerService;
         protected readonly INdmConsumerChannelManager NdmConsumerChannelManager;
-        protected Address ConfiguredProviderAddress;
-        protected Address ConfiguredConsumerAddress;
+        protected Address? ConfiguredProviderAddress;
+        protected Address? ConfiguredConsumerAddress;
         protected readonly bool VerifySignature;
         protected bool HiReceived;
         public override string Name => "ndm";
@@ -96,8 +96,8 @@ namespace Nethermind.DataMarketplace.Subprotocols
             IWallet wallet,
             INdmFaucet faucet,
             PublicKey configuredNodeId,
-            Address configuredProviderAddress,
-            Address configuredConsumerAddress,
+            Address? configuredProviderAddress,
+            Address? configuredConsumerAddress,
             bool verifySignature = true)
             : base(p2PSession, nodeStatsManager, serializer, logManager)
         {

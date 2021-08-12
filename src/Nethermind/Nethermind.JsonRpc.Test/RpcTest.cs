@@ -17,6 +17,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using FluentAssertions;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
@@ -29,18 +30,26 @@ namespace Nethermind.JsonRpc.Test
 {
     public static class RpcTest
     {
-        public static JsonRpcResponse TestRequest<T>(T module, string method, params string[] parameters) where T : class, IModule
+        public static JsonRpcResponse TestRequest<T>(T module, string method, params string[] parameters) where T : class, IRpcModule
         {
             IJsonRpcService service = BuildRpcService(module);
             JsonRpcRequest request = GetJsonRequest(method, parameters);
-            return service.SendRequestAsync(request).Result;
+            return service.SendRequestAsync(request, JsonRpcContext.Http).Result;
         }
         
-        public static string TestSerializedRequest<T>(IReadOnlyCollection<JsonConverter> converters, T module, string method, params string[] parameters) where T : class, IModule
+        public static string TestSerializedRequest<T>(IReadOnlyCollection<JsonConverter> converters, T module, string method, params string[] parameters) where T : class, IRpcModule
         {
             IJsonRpcService service = BuildRpcService(module);
             JsonRpcRequest request = GetJsonRequest(method, parameters);
-            JsonRpcResponse response = service.SendRequestAsync(request).Result;
+            
+            JsonRpcContext context = JsonRpcContext.Http;
+            if (module is IContextAwareRpcModule contextAwareModule
+                && contextAwareModule.Context != null)
+            {
+                context = contextAwareModule.Context;
+            }
+            JsonRpcResponse response = service.SendRequestAsync(request, context).Result;
+            
             EthereumJsonSerializer serializer = new EthereumJsonSerializer();
             foreach (JsonConverter converter in converters)
             {
@@ -48,7 +57,7 @@ namespace Nethermind.JsonRpc.Test
             }
             
             Stream stream = new MemoryStream();
-            serializer.Serialize(stream, response);
+            long size = serializer.Serialize(stream, response);
             
             // for coverage (and to prove that it does not throw
             Stream indentedStream = new MemoryStream();
@@ -58,15 +67,18 @@ namespace Nethermind.JsonRpc.Test
             string serialized = new StreamReader(stream).ReadToEnd(); 
             TestContext.Out?.WriteLine("Serialized:");
             TestContext.Out?.WriteLine(serialized);
+            
+            size.Should().Be(serialized.Length);
+            
             return serialized;
         }
         
-        public static string TestSerializedRequest<T>(T module, string method, params string[] parameters) where T : class, IModule
+        public static string TestSerializedRequest<T>(T module, string method, params string[] parameters) where T : class, IRpcModule
         {
             return TestSerializedRequest(new JsonConverter[0], module, method, parameters);
         }
         
-        public static IJsonRpcService BuildRpcService<T>(T module) where T : class, IModule
+        public static IJsonRpcService BuildRpcService<T>(T module) where T : class, IRpcModule
         {
             var moduleProvider = new TestRpcModuleProvider<T>(module);
             moduleProvider.Register(new SingletonModulePool<T>(new SingletonFactory<T>(module), true));

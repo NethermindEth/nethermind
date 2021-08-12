@@ -61,7 +61,10 @@ namespace Nethermind.Serialization.Json
             }
         }
 
-        public override UInt256 ReadJson(JsonReader reader, Type objectType, UInt256 existingValue, bool hasExistingValue, JsonSerializer serializer)
+        public override UInt256 ReadJson(JsonReader reader, Type objectType, UInt256 existingValue, bool hasExistingValue, JsonSerializer serializer) => 
+            ReaderJson(reader);
+
+        public static UInt256 ReaderJson(JsonReader reader)
         {
             if (reader.Value is long || reader.Value is int)
             {
@@ -86,7 +89,7 @@ namespace Nethermind.Serialization.Json
 
             if (s.StartsWith("0x"))
             {
-                Span<char> withZero = new Span<char>(new char[s.Length - 1]);
+                Span<char> withZero = new(new char[s.Length - 1]);
                 withZero[0] = '0';
                 s.AsSpan(2).CopyTo(withZero.Slice(1));
                 return UInt256.Parse(withZero, NumberStyles.AllowHexSpecifier);

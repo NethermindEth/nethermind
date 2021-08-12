@@ -26,29 +26,18 @@ namespace Nethermind.Core.Crypto
     {
         public const int VOffset = 27;
         
-        public Signature(byte[] bytes, int recoveryId)
+        public Signature(ReadOnlySpan<byte> bytes, int recoveryId)
         {
             if (bytes.Length != 64)
             {
                 throw new ArgumentException();
             }
 
-            Buffer.BlockCopy(bytes, 0, Bytes, 0, 64);
+            bytes.CopyTo(Bytes.AsSpan());
             V = (ulong)recoveryId + VOffset;
         }
 
-        public Signature(byte[] bytes)
-        {
-            if (bytes.Length != 65)
-            {
-                throw new ArgumentException();
-            }
-
-            Buffer.BlockCopy(bytes, 0, Bytes, 0, 64);
-            V = bytes[64];
-        }
-        
-        public Signature(Span<byte> bytes)
+        public Signature(ReadOnlySpan<byte> bytes)
         {
             if (bytes.Length != 65)
             {

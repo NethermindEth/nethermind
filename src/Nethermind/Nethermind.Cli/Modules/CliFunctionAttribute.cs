@@ -26,8 +26,8 @@ namespace Nethermind.Cli.Modules
         
         public string? Description { get; set; }
         
-        public string? ExampleRequest { get; set; }
-        
+        public string? ResponseDescription { get; set; }
+
         public string? ExampleResponse { get; set; }
 
         public CliFunctionAttribute(string objectName, string functionName)

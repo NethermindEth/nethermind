@@ -99,7 +99,7 @@ namespace Nethermind.Core.Crypto
 
         public static KeccakHash Create(int size = HASH_SIZE)
         {
-            return new KeccakHash(size);
+            return new(size);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -374,27 +374,27 @@ namespace Nethermind.Core.Crypto
             st[24] = asu;
         }
 
-        public static Span<byte> ComputeHash(Span<byte> input, int size = HASH_SIZE)
+        public static Span<byte> ComputeHash(ReadOnlySpan<byte> input, int size = HASH_SIZE)
         {
             Span<byte> output = new byte[size];
             ComputeHash(input, output);
             return output;
         }
 
-        public static byte[] ComputeHashBytes(Span<byte> input, int size = HASH_SIZE)
+        public static byte[] ComputeHashBytes(ReadOnlySpan<byte> input, int size = HASH_SIZE)
         {
             var output = new byte[HASH_SIZE];
             ComputeHash(input, output);
             return output;
         }
         
-        public static void ComputeHashBytesToSpan(Span<byte> input, Span<byte> output, int size = HASH_SIZE)
+        public static void ComputeHashBytesToSpan(ReadOnlySpan<byte> input, Span<byte> output, int size = HASH_SIZE)
         {
             ComputeHash(input, output);
         }        
 
         // compute a keccak hash (md) of given byte length from "in"
-        public static void ComputeHash(Span<byte> input, Span<byte> output)
+        public static void ComputeHash(ReadOnlySpan<byte> input, Span<byte> output)
         {
             if (output.Length <= 0 || output.Length > STATE_SIZE)
             {

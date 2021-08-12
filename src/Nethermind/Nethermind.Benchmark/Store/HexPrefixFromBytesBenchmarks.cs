@@ -23,8 +23,6 @@ using Nethermind.Trie;
 
 namespace Nethermind.Benchmarks.Store
 {
-    [MemoryDiagnoser]
-    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
     public class HexPrefixFromBytesBenchmarks
     {
         private byte[] _a;

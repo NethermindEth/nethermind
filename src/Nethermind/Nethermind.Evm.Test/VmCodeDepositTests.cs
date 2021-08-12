@@ -49,7 +49,7 @@ namespace Nethermind.Evm.Test
         public void Regression_mainnet_6108276()
         {
             Address deployed = ContractAddress.From(TestItem.AddressC, 0);
-            StorageCell storageCell = new StorageCell(deployed, 1);
+            StorageCell storageCell = new(deployed, 1);
 
             byte[] deployedCode = new byte[100]; // cost is * 200
 
@@ -90,7 +90,7 @@ namespace Nethermind.Evm.Test
         {
             _blockNumber = 1;
             Address deployed = ContractAddress.From(TestItem.AddressC, 0);
-            StorageCell storageCell = new StorageCell(deployed, 1);
+            StorageCell storageCell = new(deployed, 1);
 
             byte[] deployedCode = new byte[106]; // cost is * 200
 

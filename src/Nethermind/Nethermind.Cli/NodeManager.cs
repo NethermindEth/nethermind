@@ -30,28 +30,26 @@ namespace Nethermind.Cli
 {
     public class NodeManager : INodeManager
     {
-        private readonly ICliEngine _cliEngine;
-
         private readonly ILogManager _logManager;
 
         private readonly IJsonSerializer _serializer;
 
         private readonly ICliConsole _cliConsole;
 
-        private JsonParser _jsonParser;
+        private readonly JsonParser _jsonParser;
 
-        private Dictionary<Uri, IJsonRpcClient> _clients = new Dictionary<Uri, IJsonRpcClient>();
+        private readonly Dictionary<Uri, IJsonRpcClient> _clients = new();
 
         private IJsonRpcClient? _currentClient;
 
         public NodeManager(ICliEngine cliEngine, IJsonSerializer serializer, ICliConsole cliConsole, ILogManager logManager)
         {
-            _cliEngine = cliEngine ?? throw new ArgumentNullException(nameof(cliEngine));
+            ICliEngine cliEngine1 = cliEngine ?? throw new ArgumentNullException(nameof(cliEngine));
             _serializer = serializer ?? throw new ArgumentNullException(nameof(serializer));
             _cliConsole = cliConsole ?? throw new ArgumentNullException(nameof(cliConsole));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
 
-            _jsonParser = new JsonParser(_cliEngine.JintEngine);
+            _jsonParser = new JsonParser(cliEngine1.JintEngine);
         }
 
         public string? CurrentUri { get; private set; }
@@ -84,7 +82,7 @@ namespace Nethermind.Cli
                 }
                 else
                 {
-                    Stopwatch stopwatch = new Stopwatch();
+                    Stopwatch stopwatch = new();
                     stopwatch.Start();
                     object? result = await _currentClient.Post<object>(method, parameters);
                     stopwatch.Stop();
@@ -119,14 +117,14 @@ namespace Nethermind.Cli
             return returnValue;
         }
 
-        public async Task<string> Post(string method, params object[] parameters)
+        public async Task<string?> Post(string method, params object?[] parameters)
         {
             return await Post<string>(method, parameters);
         }
 
-        public async Task<T> Post<T>(string method, params object[] parameters)
+        public async Task<T?> Post<T>(string method, params object?[] parameters)
         {
-            T result = default;
+            T? result = default;
             try
             {
                 if (_currentClient == null)
@@ -135,7 +133,7 @@ namespace Nethermind.Cli
                 }
                 else
                 {
-                    Stopwatch stopwatch = new Stopwatch();
+                    Stopwatch stopwatch = new();
                     stopwatch.Start();
                     result = await _currentClient.Post<T>(method, parameters);
                     stopwatch.Stop();

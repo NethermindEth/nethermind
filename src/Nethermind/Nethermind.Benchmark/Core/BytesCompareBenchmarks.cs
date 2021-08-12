@@ -24,8 +24,6 @@ using Nethermind.Core.Test.Builders;
 
 namespace Nethermind.Benchmarks.Core
 {
-    [MemoryDiagnoser]
-    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
     public class BytesCompareBenchmarks
     {
         private byte[] _a;

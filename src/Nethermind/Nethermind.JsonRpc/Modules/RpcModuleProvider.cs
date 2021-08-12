@@ -31,14 +31,14 @@ namespace Nethermind.JsonRpc.Modules
         private ILogger _logger;
         private IJsonRpcConfig _jsonRpcConfig;
         
-        private List<ModuleType> _modules = new List<ModuleType>();
-        private List<ModuleType> _enabledModules = new List<ModuleType>();
+        private List<string> _modules = new();
+        private List<string> _enabledModules = new();
         
         private Dictionary<string, ResolvedMethodInfo> _methods
-            = new Dictionary<string, ResolvedMethodInfo>(StringComparer.InvariantCulture);
+            = new(StringComparer.InvariantCulture);
         
-        private Dictionary<ModuleType, (Func<bool, Task<IModule>> RentModule, Action<IModule> ReturnModule)> _pools
-            = new Dictionary<ModuleType, (Func<bool, Task<IModule>> RentModule, Action<IModule> ReturnModule)>();
+        private readonly Dictionary<string, (Func<bool, Task<IRpcModule>> RentModule, Action<IRpcModule> ReturnModule)> _pools
+            = new();
         
         private IRpcMethodFilter _filter = NullRpcMethodFilter.Instance;
 
@@ -55,11 +55,11 @@ namespace Nethermind.JsonRpc.Modules
 
         public IReadOnlyCollection<JsonConverter> Converters { get; } = new List<JsonConverter>();
 
-        public IReadOnlyCollection<ModuleType> Enabled => _enabledModules;
+        public IReadOnlyCollection<string> Enabled => _enabledModules;
 
-        public IReadOnlyCollection<ModuleType> All => _modules;
+        public IReadOnlyCollection<string> All => _modules;
 
-        public void Register<T>(IRpcModulePool<T> pool) where T : IModule
+        public void Register<T>(IRpcModulePool<T> pool) where T : IRpcModule
         {
             RpcModuleAttribute attribute = typeof(T).GetCustomAttribute<RpcModuleAttribute>();
             if (attribute == null)
@@ -69,32 +69,34 @@ namespace Nethermind.JsonRpc.Modules
                 return;
             }
             
-            ModuleType moduleType = attribute.ModuleType;
+            string moduleType = attribute.ModuleType;
 
             _pools[moduleType] = (async canBeShared => await pool.GetModule(canBeShared), m => pool.ReturnModule((T) m));
             _modules.Add(moduleType);
 
             ((List<JsonConverter>) Converters).AddRange(pool.Factory.GetConverters());
 
-            foreach ((string name, (MethodInfo info, bool readOnly)) in GetMethodDict(typeof(T)))
+            foreach ((string name, (MethodInfo info, bool readOnly, RpcEndpoint availability)) in GetMethodDict(typeof(T)))
             {
-                ResolvedMethodInfo resolvedMethodInfo = new ResolvedMethodInfo(moduleType, info, readOnly);
+                ResolvedMethodInfo resolvedMethodInfo = new(moduleType, info, readOnly, availability);
                 if (_filter.AcceptMethod(resolvedMethodInfo.ToString()))
                 {
                     _methods[name] = resolvedMethodInfo;
                 }
             }
 
-            if (_jsonRpcConfig.EnabledModules.Contains(moduleType.ToString(), StringComparer.InvariantCultureIgnoreCase))
+            if (_jsonRpcConfig.EnabledModules.Contains(moduleType, StringComparer.InvariantCultureIgnoreCase))
             {
                 _enabledModules.Add(moduleType);
             }
         }
 
-        public ModuleResolution Check(string methodName)
+        public ModuleResolution Check(string methodName, RpcEndpoint rpcEndpoint)
         {
             if (!_methods.TryGetValue(methodName, out ResolvedMethodInfo result)) return ModuleResolution.Unknown;
 
+            if ((result.Availability & rpcEndpoint) == RpcEndpoint.None) return ModuleResolution.EndpointDisabled;
+            
             return _enabledModules.Contains(result.ModuleType) ? ModuleResolution.Enabled : ModuleResolution.Disabled;
         }
 
@@ -105,44 +107,51 @@ namespace Nethermind.JsonRpc.Modules
             return (result.MethodInfo, result.ReadOnly);
         }
 
-        public Task<IModule> Rent(string methodName, bool canBeShared)
+        public Task<IRpcModule> Rent(string methodName, bool canBeShared)
         {
             if (!_methods.TryGetValue(methodName, out ResolvedMethodInfo result)) return null;
 
             return _pools[result.ModuleType].RentModule(canBeShared);
         }
 
-        public void Return(string methodName, IModule module)
+        public void Return(string methodName, IRpcModule rpcModule)
         {
             if (!_methods.TryGetValue(methodName, out ResolvedMethodInfo result))
                 throw new InvalidOperationException("Not possible to return an unresolved module");
 
-            _pools[result.ModuleType].ReturnModule(module);
+            _pools[result.ModuleType].ReturnModule(rpcModule);
         }
 
-        private IDictionary<string, (MethodInfo, bool)> GetMethodDict(Type type)
+        private IDictionary<string, (MethodInfo, bool, RpcEndpoint)> GetMethodDict(Type type)
         {
             var methods = type.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly);
             return methods.ToDictionary(
                 x => x.Name.Trim(),
-                x => (x, x.GetCustomAttribute<JsonRpcMethodAttribute>()?.IsSharable ?? true));
+                x =>
+                {
+                    JsonRpcMethodAttribute? jsonRpcMethodAttribute = x.GetCustomAttribute<JsonRpcMethodAttribute>();
+                    return (x, jsonRpcMethodAttribute?.IsSharable ?? true, jsonRpcMethodAttribute?.Availability ?? RpcEndpoint.All);
+                });
         }
         
         private class ResolvedMethodInfo
         {
             public ResolvedMethodInfo(
-                ModuleType moduleType,
+                string moduleType,
                 MethodInfo methodInfo,
-                bool readOnly)
+                bool readOnly,
+                RpcEndpoint availability)
             {
                 ModuleType = moduleType;
                 MethodInfo = methodInfo;
                 ReadOnly = readOnly;
+                Availability = availability;
             }
             
-            public ModuleType ModuleType { get; }
+            public string ModuleType { get; }
             public MethodInfo MethodInfo { get; }
             public bool ReadOnly { get; }
+            public RpcEndpoint Availability { get; }
 
             public override string ToString()
             {

@@ -34,23 +34,23 @@ namespace Nethermind.Trie
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static HexPrefix Leaf(params byte[] path)
         {
-            return new HexPrefix(true, path);
+            return new(true, path);
         }
 
         public static HexPrefix Leaf(string path)
         {
-            return new HexPrefix(true, Bytes.FromHexString(path));
+            return new(true, Bytes.FromHexString(path));
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static HexPrefix Extension(params byte[] path)
         {
-            return new HexPrefix(false, path);
+            return new(false, path);
         }
 
         public static HexPrefix Extension(string path)
         {
-            return new HexPrefix(false, Bytes.FromHexString(path));
+            return new(false, Bytes.FromHexString(path));
         }
 
         public byte[] Path { get; private set; }
@@ -90,7 +90,7 @@ namespace Nethermind.Trie
 
         public static HexPrefix FromBytes(ReadOnlySpan<byte> bytes)
         {
-            HexPrefix hexPrefix = new HexPrefix(bytes[0] >= 32);
+            HexPrefix hexPrefix = new(bytes[0] >= 32);
             bool isEven = (bytes[0] & 16) == 0;
             int nibblesCount = bytes.Length * 2 - (isEven ? 2 : 1);
             hexPrefix.Path = new byte[nibblesCount];

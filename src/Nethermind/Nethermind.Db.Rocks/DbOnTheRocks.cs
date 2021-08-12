@@ -22,27 +22,30 @@ using System.Reflection;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Db.Rocks.Config;
+using Nethermind.Db.Rocks.Statistics;
 using Nethermind.Logging;
 using RocksDbSharp;
 
 namespace Nethermind.Db.Rocks
 {
-    public abstract class DbOnTheRocks : IDbWithSpan
+    public class DbOnTheRocks : IDbWithSpan
     {
         private ILogger _logger;
         
         private string? _fullPath;
         
-        private static readonly ConcurrentDictionary<string, RocksDb> DbsByPath = new();
+        private static readonly ConcurrentDictionary<string, RocksDb> _dbsByPath = new();
 
         private bool _isDisposed;
 
         private readonly HashSet<IBatch> _currentBatches = new();
         
-        internal readonly RocksDb? Db;
+        internal readonly RocksDb _db;
         internal WriteOptions? WriteOptions { get; private set; }
 
-        public abstract string Name { get; protected set; }
+        internal DbOptions? DbOptions { get; private set; }
+
+        public string Name { get; }
 
         private static long _maxRocksSize;
 
@@ -69,7 +72,7 @@ namespace Nethermind.Db.Rocks
             _logger = logManager.GetClassLogger();
             _settings = rocksDbSettings;
             Name = _settings.DbName;
-            Db = Init(basePath, rocksDbSettings.DbPath, dbConfig, logManager, columnFamilies, deleteOnStart);
+            _db = Init(basePath, rocksDbSettings.DbPath, dbConfig, logManager, columnFamilies, deleteOnStart);
         }
 
         private RocksDb Init(string basePath, string dbPath, IDbConfig dbConfig, ILogManager? logManager,
@@ -96,14 +99,21 @@ namespace Nethermind.Db.Rocks
             {
                 // ReSharper disable once VirtualMemberCallInConstructor
                 if (_logger.IsDebug) _logger.Debug($"Building options for {Name} DB");
-                DbOptions options = BuildOptions(dbConfig);
+                DbOptions = BuildOptions(dbConfig);
                 InitCache(dbConfig);
 
                 // ReSharper disable once VirtualMemberCallInConstructor
                 if (_logger.IsDebug)
                     _logger.Debug(
                         $"Loading DB {Name.PadRight(13)} from {_fullPath} with max memory footprint of {_maxThisDbSize / 1000 / 1000}MB");
-                return DbsByPath.GetOrAdd(_fullPath, Open, (options, columnFamilies));
+                var db = _dbsByPath.GetOrAdd(_fullPath, Open, (DbOptions, columnFamilies));
+
+                if (dbConfig.EnableMetricsUpdater)
+                {
+                    new DbMetricsUpdater(Name, DbOptions, db, dbConfig, _logger).StartUpdating();
+                }
+
+                return db;
             }
             catch (DllNotFoundException e) when (e.Message.Contains("libdl"))
             {
@@ -121,7 +131,7 @@ namespace Nethermind.Db.Rocks
             }
         }
 
-        protected internal virtual void UpdateReadMetrics()
+        protected internal void UpdateReadMetrics()
         {
             if (_settings.UpdateReadMetrics != null)
                 _settings.UpdateReadMetrics?.Invoke();
@@ -129,7 +139,7 @@ namespace Nethermind.Db.Rocks
                 Metrics.OtherDbReads++;
         }
 
-        protected internal virtual void UpdateWriteMetrics()
+        protected internal void UpdateWriteMetrics()
         {
             if (_settings.UpdateWriteMetrics != null)
                 _settings.UpdateWriteMetrics?.Invoke();
@@ -167,7 +177,7 @@ namespace Nethermind.Db.Rocks
             tableOptions.SetCacheIndexAndFilterBlocks(GetCacheIndexAndFilterBlocks(dbConfig));
 
             tableOptions.SetFilterPolicy(BloomFilterPolicy.Create(10, true));
-            tableOptions.SetFormatVersion(2);
+            tableOptions.SetFormatVersion(4);
 
             ulong blockCacheSize = GetBlockCacheSize(dbConfig);
 
@@ -176,7 +186,7 @@ namespace Nethermind.Db.Rocks
             // IntPtr cache = RocksDbSharp.Native.Instance.rocksdb_cache_create_lru(new UIntPtr(blockCacheSize));
             // tableOptions.SetBlockCache(cache);
 
-            DbOptions options = new DbOptions();
+            DbOptions options = new();
             options.SetCreateIfMissing(true);
             options.SetAdviseRandomOnOpen(true);
             options.OptimizeForPointLookup(
@@ -201,7 +211,7 @@ namespace Nethermind.Db.Rocks
             options.SetMaxWriteBufferNumber(writeBufferNumber);
             options.SetMinWriteBufferNumberToMerge(2);
 
-            lock (DbsByPath)
+            lock (_dbsByPath)
             {
                 _maxThisDbSize += (long)writeBufferSize * writeBufferNumber;
                 Interlocked.Add(ref _maxRocksSize, _maxThisDbSize);
@@ -223,6 +233,12 @@ namespace Nethermind.Db.Rocks
             WriteOptions = new WriteOptions();
             WriteOptions.SetSync(dbConfig
                 .WriteAheadLogSync); // potential fix for corruption on hard process termination, may cause performance degradation
+
+            if (dbConfig.EnableDbStatistics)
+            {
+                options.EnableStatistics();
+            }
+            options.SetStatsDumpPeriodSec(dbConfig.StatsDumpPeriodSec);
 
             return options;
         }
@@ -266,7 +282,7 @@ namespace Nethermind.Db.Rocks
                 }
 
                 UpdateReadMetrics();
-                return Db.Get(key);
+                return _db.Get(key);
             }
             set
             {
@@ -276,18 +292,19 @@ namespace Nethermind.Db.Rocks
                 }
 
                 UpdateWriteMetrics();
+
                 if (value == null)
                 {
-                    Db.Remove(key, null, WriteOptions);
+                    _db.Remove(key, null, WriteOptions);
                 }
                 else
                 {
-                    Db.Put(key, value, null, WriteOptions);
+                    _db.Put(key, value, null, WriteOptions);
                 }
             }
         }
 
-        public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] => Db.MultiGet(keys);
+        public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] => _db.MultiGet(keys);
 
         public Span<byte> GetSpan(byte[] key)
         {
@@ -297,12 +314,12 @@ namespace Nethermind.Db.Rocks
             }
 
             UpdateReadMetrics();
-            return Db.GetSpan(key);
+            return _db.GetSpan(key);
         }
 
         public void DangerousReleaseMemory(in Span<byte> span)
         {
-            Db.DangerousReleaseMemory(in span);
+            _db.DangerousReleaseMemory(in span);
         }
 
         public void Remove(byte[] key)
@@ -312,7 +329,7 @@ namespace Nethermind.Db.Rocks
                 throw new ObjectDisposedException($"Attempted to delete form a disposed database {Name}");
             }
 
-            Db.Remove(key, null, WriteOptions);
+            _db.Remove(key, null, WriteOptions);
         }
 
         public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false)
@@ -330,7 +347,7 @@ namespace Nethermind.Db.Rocks
         {
             ReadOptions readOptions = new();
             readOptions.SetTailing(!ordered);
-            return Db.NewIterator(ch, readOptions);
+            return _db.NewIterator(ch, readOptions);
         }
 
         public IEnumerable<byte[]> GetAllValues(bool ordered = false)
@@ -381,7 +398,7 @@ namespace Nethermind.Db.Rocks
             }
 
             // seems it has no performance impact
-            return Db.Get(key) != null;
+            return _db.Get(key) != null;
 //            return _db.Get(key, 32, _keyExistsBuffer, 0, 0, null, null) != -1;
         }
 
@@ -419,7 +436,7 @@ namespace Nethermind.Db.Rocks
                     throw new ObjectDisposedException($"Attempted to commit a batch on a disposed database {_dbOnTheRocks.Name}");
                 }
 
-                _dbOnTheRocks.Db.Write(_rocksBatch, _dbOnTheRocks.WriteOptions);
+                _dbOnTheRocks._db.Write(_rocksBatch, _dbOnTheRocks.WriteOptions);
                 _dbOnTheRocks._currentBatches.Remove(this);
                 _rocksBatch.Dispose();
                 GC.SuppressFinalize(this);
@@ -449,7 +466,7 @@ namespace Nethermind.Db.Rocks
                 throw new ObjectDisposedException($"Attempted to flush a disposed database {Name}");
             }
 
-            RocksDbSharp.Native.Instance.rocksdb_flush(Db.Handle, FlushOptions.DefaultFlushOptions.Handle);
+            RocksDbSharp.Native.Instance.rocksdb_flush(_db.Handle, FlushOptions.DefaultFlushOptions.Handle);
         }
 
         public void Clear()
@@ -468,7 +485,7 @@ namespace Nethermind.Db.Rocks
 
         private class FlushOptions
         {
-            internal static FlushOptions DefaultFlushOptions { get; } = new FlushOptions();
+            internal static FlushOptions DefaultFlushOptions { get; } = new();
 
             public FlushOptions()
             {
@@ -489,7 +506,9 @@ namespace Nethermind.Db.Rocks
 
         private void ReleaseUnmanagedResources()
         {
-            Db?.Dispose();
+            // ReSharper disable once ConstantConditionalAccessQualifier
+            // running in finalizer, potentially not fully constructed
+            _db?.Dispose();
             foreach (IBatch batch in _currentBatches)
             {
                 batch.Dispose();
@@ -498,19 +517,23 @@ namespace Nethermind.Db.Rocks
 
         private void Dispose(bool disposing)
         {
-            _logger.Info($"Disposing DB {Name}");
-
-            if (disposing)
+            if (!_isDisposed)
             {
-                Flush();
-            }
+                // ReSharper disable once ConstantConditionalAccessQualifier
+                _logger?.Info($"Disposing DB {Name}");
 
-            _isDisposed = true;
+                if (disposing)
+                {
+                    Flush();
+                }
 
-            ReleaseUnmanagedResources();
-            if (disposing)
-            {
-                DbsByPath.Remove(_fullPath!, out _);
+                _isDisposed = true;
+
+                ReleaseUnmanagedResources();
+                if (disposing)
+                {
+                    _dbsByPath.Remove(_fullPath!, out _);
+                }
             }
         }
 

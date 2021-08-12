@@ -42,11 +42,11 @@ namespace Nethermind.Blockchain.Find
         private readonly ILogger _logger;
         
         public LogFinder(
-            IBlockFinder blockFinder, 
-            IReceiptFinder receiptFinder, 
-            IBloomStorage bloomStorage, 
-            ILogManager logManager, 
-            IReceiptsRecovery receiptsRecovery, 
+            IBlockFinder? blockFinder, 
+            IReceiptFinder? receiptFinder, 
+            IBloomStorage? bloomStorage, 
+            ILogManager? logManager, 
+            IReceiptsRecovery? receiptsRecovery, 
             int maxBlockDepth = 1000)
         {
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));

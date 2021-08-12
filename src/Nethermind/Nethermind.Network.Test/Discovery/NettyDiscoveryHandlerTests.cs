@@ -24,6 +24,7 @@ using DotNetty.Handlers.Logging;
 using DotNetty.Transport.Bootstrapping;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
+using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -85,6 +86,8 @@ namespace Nethermind.Network.Test.Discovery
         [Retry(5)]
         public async Task PingSentReceivedTest()
         {
+            ResetMetrics();
+            
             var msg = new PingMessage
             {
                 FarAddress = _address2,
@@ -107,13 +110,17 @@ namespace Nethermind.Network.Test.Discovery
             };
             _discoveryHandlers[1].SendMessage(msg2);
             await SleepWhileWaiting();
-            _discoveryManagersMocks[0].Received(1).OnIncomingMessage(Arg.Is<DiscoveryMessage>(x => x.MessageType == MessageType.Ping));  
+            _discoveryManagersMocks[0].Received(1).OnIncomingMessage(Arg.Is<DiscoveryMessage>(x => x.MessageType == MessageType.Ping));
+            
+            AssertMetrics(258);
         }
 
         [Test]
         [Retry(5)]
         public async Task PongSentReceivedTest()
         {
+            ResetMetrics();
+            
             var msg = new PongMessage
             {
                 FarAddress = _address2,
@@ -135,12 +142,16 @@ namespace Nethermind.Network.Test.Discovery
             _discoveryHandlers[1].SendMessage(msg2);
             await SleepWhileWaiting();
             _discoveryManagersMocks[0].Received(1).OnIncomingMessage(Arg.Is<DiscoveryMessage>(x => x.MessageType == MessageType.Pong));
+            
+            AssertMetrics(240);
         }
         
         [Test]
         [Retry(5)]
         public async Task FindNodeSentReceivedTest()
         {
+            ResetMetrics();
+            
             var msg = new FindNodeMessage
             {
                 FarAddress = _address2,
@@ -162,12 +173,16 @@ namespace Nethermind.Network.Test.Discovery
             _discoveryHandlers[1].SendMessage(msg2);
             await SleepWhileWaiting();
             _discoveryManagersMocks[0].Received(1).OnIncomingMessage(Arg.Is<DiscoveryMessage>(x => x.MessageType == MessageType.FindNode));
+            
+            AssertMetrics(216);
         }
 
         [Test]
         [Retry(5)]
         public async Task NeighborsSentReceivedTest()
         {
+            ResetMetrics();
+            
             var msg = new NeighborsMessage
             {
                 FarAddress = _address2,
@@ -189,6 +204,19 @@ namespace Nethermind.Network.Test.Discovery
             _discoveryHandlers[1].SendMessage(msg2);
             await SleepWhileWaiting();
             _discoveryManagersMocks[0].Received(1).OnIncomingMessage(Arg.Is<DiscoveryMessage>(x => x.MessageType == MessageType.Neighbors));
+            
+            AssertMetrics(210);
+        }
+
+        private static void ResetMetrics()
+        {
+            Metrics.DiscoveryBytesSent = Metrics.DiscoveryBytesReceived = 0;
+        }
+        
+        private static void AssertMetrics(int value)
+        {
+            Metrics.DiscoveryBytesSent.Should().Be(value);
+            Metrics.DiscoveryBytesReceived.Should().Be(value);
         }
 
         private async Task StartUdpChannel(string address, int port, IDiscoveryManager discoveryManager, IMessageSerializationService service)

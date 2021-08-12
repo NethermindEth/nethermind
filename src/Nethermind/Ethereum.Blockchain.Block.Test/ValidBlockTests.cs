@@ -1,5 +1,5 @@
 ﻿/*
- * Copyright (c) 2018 Demerzel Solutions Limited
+ * Copyright (c) 2021 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
  * The Nethermind library is free software: you can redistribute it and/or modify
@@ -35,7 +35,7 @@ namespace Ethereum.Blockchain.Block.Test
         public static IEnumerable<BlockchainTest> LoadTests()
         {
             var loader = new TestsSourceLoader(new LoadBlockchainTestsStrategy(), "bcValidBlockTest");
-        return (IEnumerable<BlockchainTest>)loader.LoadTests();
+            return (IEnumerable<BlockchainTest>)loader.LoadTests();
         }
     }
 }

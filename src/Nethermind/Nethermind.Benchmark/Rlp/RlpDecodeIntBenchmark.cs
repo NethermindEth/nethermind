@@ -21,8 +21,6 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Benchmarks.Rlp
 {
-    [MemoryDiagnoser]
-    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
     public class RlpDecodeIntBenchmark
     {
         private int[] _scenarios;

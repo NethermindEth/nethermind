@@ -30,11 +30,11 @@ using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules.Trace
 {
-    public class TraceModuleFactory : ModuleFactoryBase<ITraceModule>
+    public class TraceModuleFactory : ModuleFactoryBase<ITraceRpcModule>
     {
         private readonly ReadOnlyDbProvider _dbProvider;
-        private readonly ReadOnlyBlockTree _blockTree;
-        private readonly ReadOnlyTrieStore _trieNodeResolver;
+        private readonly IReadOnlyBlockTree _blockTree;
+        private readonly IReadOnlyTrieStore _trieNodeResolver;
         private readonly IJsonRpcConfig _jsonRpcConfig;
         private readonly IReceiptStorage _receiptStorage;
         private readonly ISpecProvider _specProvider;
@@ -46,7 +46,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         public TraceModuleFactory(
             IDbProvider dbProvider,
             IBlockTree blockTree,
-            ITrieNodeResolver trieNodeResolver,
+            IReadOnlyTrieStore trieNodeResolver,
             IJsonRpcConfig jsonRpcConfig,
             IBlockPreprocessorStep recoveryStep,
             IRewardCalculatorSource rewardCalculatorSource,
@@ -56,7 +56,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         {
             _dbProvider = dbProvider.AsReadOnly(false);
             _blockTree = blockTree.AsReadOnly();
-            _trieNodeResolver = trieNodeResolver.AsReadOnly();
+            _trieNodeResolver = trieNodeResolver;
             _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
             _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
             _rewardCalculatorSource =
@@ -67,7 +67,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             _logger = logManager.GetClassLogger();
         }
 
-        public override ITraceModule Create()
+        public override ITraceRpcModule Create()
         {
             ReadOnlyTxProcessingEnv txProcessingEnv =
                 new(_dbProvider, _trieNodeResolver, _blockTree, _specProvider, _logManager);
@@ -86,7 +86,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             
             Tracer tracer = new(chainProcessingEnv.StateProvider, chainProcessingEnv.ChainProcessor);
 
-            return new TraceModule(_receiptStorage, tracer, _blockTree, _jsonRpcConfig);
+            return new TraceRpcModule(_receiptStorage, tracer, _blockTree, _jsonRpcConfig);
         }
 
         public static JsonConverter[] Converters =

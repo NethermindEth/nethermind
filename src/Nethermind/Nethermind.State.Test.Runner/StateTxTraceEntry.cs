@@ -1,5 +1,5 @@
 ﻿/*
- * Copyright (c) 2018 Demerzel Solutions Limited
+ * Copyright (c) 2021 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
  * The Nethermind library is free software: you can redistribute it and/or modify
@@ -56,10 +56,10 @@ namespace Nethermind.State.Test.Runner
         public int Refund { get; set; }
 
         [JsonProperty(PropertyName = "opname")]
-        public string OperationName { get; set; }
+        public string? OperationName { get; set; }
         
         [JsonProperty(PropertyName = "error")]
-        public string Error { get; set; } = string.Empty;
+        public string? Error { get; set; } = string.Empty;
 
 //        public Dictionary<string, string> Storage { get; set; }
 

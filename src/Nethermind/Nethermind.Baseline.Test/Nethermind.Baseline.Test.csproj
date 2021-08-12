@@ -12,16 +12,19 @@
         <PackageReference Include="coverlet.msbuild" Version="3.0.1" />
         <PackageReference Include="FluentAssertions" Version="5.10.3" />
         <PackageReference Include="NSubstitute" Version="4.2.2" />
-        <PackageReference Include="nunit" Version="3.13.0" />
-        <PackageReference Include="NUnit3TestAdapter" Version="3.17.0" />
-        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="16.8.3" />
+        <PackageReference Include="nunit" Version="3.13.2" />
+        <PackageReference Include="NUnit3TestAdapter" Version="4.0.0" />
+        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="16.10.0" />
     </ItemGroup>
 
     <ItemGroup>
+      <ProjectReference Include="..\Nethermind.Baseline.Plugin\Nethermind.Baseline.Plugin.csproj" />
       <ProjectReference Include="..\Nethermind.Baseline\Nethermind.Baseline.csproj" />
       <ProjectReference Include="..\Nethermind.Config.Test\Nethermind.Config.Test.csproj" />
       <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
       <ProjectReference Include="..\Nethermind.JsonRpc.Test\Nethermind.JsonRpc.Test.csproj" />
+      <ProjectReference Include="..\Nethermind.Runner.Test\Nethermind.Runner.Test.csproj" />
+      <ProjectReference Include="..\Nethermind.Runner\Nethermind.Runner.csproj" />
     </ItemGroup>
 
     <ItemGroup>
@@ -105,14 +108,6 @@
       </Content>
       <Content Include="..\Nethermind.Runner\configs\ndm_consumer_ropsten_proxy.cfg">
         <Link>configs\ndm_consumer_ropsten_proxy.cfg</Link>
-		<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      </Content>
-      <Content Include="..\Nethermind.Runner\configs\ndm_provider_local.cfg">
-        <Link>configs\ndm_provider_local.cfg</Link>
-		<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      </Content>
-      <Content Include="..\Nethermind.Runner\configs\ndm_provider_mainnet_proxy.cfg">
-        <Link>configs\ndm_provider_mainnet_proxy.cfg</Link>
 		<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       </Content>
       <Content Include="..\Nethermind.Runner\configs\poacore.cfg">

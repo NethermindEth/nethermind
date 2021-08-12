@@ -28,7 +28,7 @@ namespace Nethermind.State.Proofs
     public class ReceiptTrie : PatriciaTree
     {
         private readonly bool _allowProofs;
-        private static readonly ReceiptMessageDecoder Decoder = new ReceiptMessageDecoder();
+        private static readonly ReceiptMessageDecoder Decoder = new();
         
         public ReceiptTrie(IReleaseSpec releaseSpec, TxReceipt?[] txReceipts, bool allowProofs = false)
             : base(allowProofs ? (IDb) new MemDb() : NullDb.Instance, EmptyTreeHash, false, false, NullLogManager.Instance)
@@ -46,14 +46,10 @@ namespace Nethermind.State.Proofs
             {
                 TxReceipt? currentReceipt = txReceipts[i];
                 byte[] receiptRlp = Decoder.EncodeNew(currentReceipt,
-                    releaseSpec.IsEip658Enabled
+                    (releaseSpec.IsEip658Enabled
                         ? RlpBehaviors.Eip658Receipts
-                        : RlpBehaviors.None);
+                        : RlpBehaviors.None) | RlpBehaviors.SkipTypedWrapping);
                 
-                if (currentReceipt is not null && currentReceipt.TxType != TxType.Legacy)
-                {
-                    receiptRlp = Bytes.Concat((byte)currentReceipt.TxType, receiptRlp);
-                }
                 
                 Set(Rlp.Encode(i).Bytes, receiptRlp);
             }
@@ -69,8 +65,8 @@ namespace Nethermind.State.Proofs
                 throw new InvalidOperationException("Cannot build proofs without underlying DB (for now?)");
             }
             
-            ProofCollector proofCollector = new ProofCollector(Rlp.Encode(index).Bytes);
-            Accept(proofCollector, RootHash, false);
+            ProofCollector proofCollector = new(Rlp.Encode(index).Bytes);
+            Accept(proofCollector, RootHash, VisitingOptions.None);
             return proofCollector.BuildResult();
         }
     }

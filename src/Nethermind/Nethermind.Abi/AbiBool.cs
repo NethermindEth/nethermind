@@ -25,7 +25,7 @@ namespace Nethermind.Abi
         {
         }
 
-        public static AbiBool Instance = new AbiBool();
+        public static AbiBool Instance = new();
 
         public override string Name => "bool";
 

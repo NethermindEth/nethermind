@@ -17,6 +17,7 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Serialization.Json;
 using Newtonsoft.Json;
 
 namespace Nethermind.Specs.ChainSpecStyle.Json
@@ -38,10 +39,10 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
             }
             else
             {
-                var stepDurations = serializer.Deserialize<Dictionary<long, long>>(reader);
+                var stepDurations = serializer.Deserialize<Dictionary<string, long>>(reader);
                 foreach (var stepDuration in stepDurations ?? throw new ArgumentException("Cannot deserialize StepDuration."))
                 {
-                    existingValue.Add(stepDuration.Key, stepDuration.Value);
+                    existingValue.Add(LongConverter.FromString(stepDuration.Key), stepDuration.Value);
                 }
             }
 

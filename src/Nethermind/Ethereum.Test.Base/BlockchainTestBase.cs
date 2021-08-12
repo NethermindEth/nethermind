@@ -1,5 +1,5 @@
 ﻿/*
- * Copyright (c) 2018 Demerzel Solutions Limited
+ * Copyright (c) 2021 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
  * The Nethermind library is free software: you can redistribute it and/or modify
@@ -24,10 +24,12 @@ using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
+using Nethermind.Blockchain.Spec;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Ethash;
@@ -41,6 +43,7 @@ using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Int256;
 using Nethermind.Evm;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
@@ -49,7 +52,6 @@ using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
-using Nethermind.TxPool.Storages;
 using NUnit.Framework;
 
 namespace Ethereum.Test.Base
@@ -75,21 +77,22 @@ namespace Ethereum.Test.Base
 
         private class DifficultyCalculatorWrapper : IDifficultyCalculator
         {
-            public IDifficultyCalculator Wrapped { get; set; }
+            public IDifficultyCalculator? Wrapped { get; set; }
 
-            public UInt256 Calculate(UInt256 parentDifficulty, UInt256 parentTimestamp, UInt256 currentTimestamp, long blockNumber, bool parentHasUncles)
+            public UInt256 Calculate(BlockHeader header, BlockHeader parent)
             {
-                return Wrapped.Calculate(parentDifficulty, parentTimestamp, currentTimestamp, blockNumber, parentHasUncles);
+                if (Wrapped is null)
+                {
+                    throw new InvalidOperationException(
+                        $"Cannot calculate difficulty before the {nameof(Wrapped)} calculator is set.");
+                }
+                
+                return Wrapped.Calculate(header, parent);
             }
         }
 
-        protected async Task<EthereumTestResult> RunTest(BlockchainTest test, Stopwatch stopwatch = null)
+        protected async Task<EthereumTestResult> RunTest(BlockchainTest test, Stopwatch? stopwatch = null)
         {
-            if (test.Network == Berlin.Instance)
-            {
-                return new EthereumTestResult(test.Name, "Berlin", null) {Pass = true};
-            }
-            
             TestContext.Write($"Running {test.Name} at {DateTime.UtcNow:HH:mm:ss.ffffff}");
             Assert.IsNull(test.LoadFailure, "test data loading failure");
 
@@ -116,18 +119,21 @@ namespace Ethereum.Test.Base
                 Assert.Fail("Expected genesis spec to be Frontier for blockchain tests");
             }
 
-            DifficultyCalculator.Wrapped = new DifficultyCalculator(specProvider);
+            DifficultyCalculator.Wrapped = new EthashDifficultyCalculator(specProvider);
             IRewardCalculator rewardCalculator = new RewardCalculator(specProvider);
 
             IEthereumEcdsa ecdsa = new EthereumEcdsa(specProvider.ChainId, _logManager);
 
-            TrieStore trieStore = new TrieStore(stateDb, _logManager);
+            TrieStore trieStore = new(stateDb, _logManager);
             IStateProvider stateProvider = new StateProvider(trieStore, codeDb, _logManager);
-            ITxPool transactionPool = new TxPool(NullTxStorage.Instance, ecdsa, specProvider, new TxPoolConfig(), stateProvider, _logManager);
+            MemDb blockInfoDb = new MemDb();
+            IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), specProvider, NullBloomStorage.Instance,  _logManager);
+            ITransactionComparerProvider transactionComparerProvider = new TransactionComparerProvider(specProvider, blockTree);
+            IStateReader stateReader = new StateReader(trieStore, codeDb, _logManager);
+            IChainHeadInfoProvider chainHeadInfoProvider = new ChainHeadInfoProvider(specProvider, blockTree, stateReader);
+            ITxPool transactionPool = new TxPool(ecdsa, chainHeadInfoProvider, new TxPoolConfig(),  new TxValidator(specProvider.ChainId), _logManager, transactionComparerProvider.GetDefaultComparer());
 
             IReceiptStorage receiptStorage = NullReceiptStorage.Instance;
-            var blockInfoDb = new MemDb();
-            IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), specProvider, NullBloomStorage.Instance,  _logManager);
             IBlockhashProvider blockhashProvider = new BlockhashProvider(blockTree, _logManager);
             ITxValidator txValidator = new TxValidator(ChainId.Mainnet);
             IHeaderValidator headerValidator = new HeaderValidator(blockTree, Sealer, specProvider, _logManager);
@@ -145,15 +151,16 @@ namespace Ethereum.Test.Base
                 specProvider,
                 blockValidator,
                 rewardCalculator,
-                new TransactionProcessor(
-                    specProvider,
-                    stateProvider,
-                    storageProvider,
-                    virtualMachine,
-                    _logManager),
+                new BlockProcessor.BlockValidationTransactionsExecutor(
+                    new TransactionProcessor(
+                        specProvider,
+                        stateProvider,
+                        storageProvider,
+                        virtualMachine,
+                        _logManager),
+                    stateProvider),
                 stateProvider,
                 storageProvider,
-                transactionPool,
                 receiptStorage,
                 NullWitnessCollector.Instance,
                 _logManager);
@@ -167,7 +174,7 @@ namespace Ethereum.Test.Base
 
             InitializeTestState(test, stateProvider, storageProvider, specProvider);
 
-            List<(Block Block, string ExpectedException)> correctRlp = new List<(Block, string)>();
+            List<(Block Block, string ExpectedException)> correctRlp = new();
             for (int i = 0; i < test.Blocks.Length; i++)
             {
                 try
@@ -193,19 +200,20 @@ namespace Ethereum.Test.Base
 
             if (correctRlp.Count == 0)
             {
-                var result = new EthereumTestResult(test.Name, null);
-                
-                try
+                EthereumTestResult result; 
+                if (test.GenesisBlockHeader is null)
                 {
-                    Assert.AreEqual(new Keccak(test.GenesisBlockHeader.Hash), test.LastBlockHash);
+                    result = new EthereumTestResult(test.Name, "Genesis block header missing in the test spec.");
                 }
-                catch (AssertionException)
+                else if(!new Keccak(test.GenesisBlockHeader.Hash).Equals(test.LastBlockHash)) 
                 {
-                    result.Pass = false;
-                    return result;
+                    result = new EthereumTestResult(test.Name, "Genesis hash mismatch");
+                }
+                else
+                {
+                    result = new EthereumTestResult(test.Name, null, true);
                 }
 
-                result.Pass = true;
                 return result;
             }
 
@@ -217,8 +225,8 @@ namespace Ethereum.Test.Base
             Block genesisBlock = Rlp.Decode<Block>(test.GenesisRlp.Bytes);
             Assert.AreEqual(new Keccak(test.GenesisBlockHeader.Hash), genesisBlock.Header.Hash, "genesis header hash");
 
-            ManualResetEvent genesisProcessed = new ManualResetEvent(false);
-            blockTree.NewHeadBlock += (sender, args) =>
+            ManualResetEvent genesisProcessed = new(false);
+            blockTree.NewHeadBlock += (_, args) =>
             {
                 if (args.Block.Number == 0)
                 {
@@ -279,15 +287,17 @@ namespace Ethereum.Test.Base
             Assert.Zero(differences.Count, "differences");
             
             return new EthereumTestResult
-            {
-                Pass = differences.Count == 0,
-                Name = test.Name
-            };
+            (
+                test.Name,
+                null,
+                differences.Count == 0
+            );
         }
 
         private void InitializeTestState(BlockchainTest test, IStateProvider stateProvider, IStorageProvider storageProvider, ISpecProvider specProvider)
         {
-            foreach (KeyValuePair<Address, AccountState> accountState in test.Pre)
+            foreach (KeyValuePair<Address, AccountState> accountState in
+                ((IEnumerable<KeyValuePair<Address, AccountState>>)test.Pre ?? Array.Empty<KeyValuePair<Address, AccountState>>()))
             {
                 foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Value.Storage)
                 {
@@ -320,13 +330,15 @@ namespace Ethereum.Test.Base
                 return test.PostStateRoot != stateProvider.StateRoot ? new List<string> {"state root mismatch"} : Enumerable.Empty<string>().ToList();
             }
 
-            TestBlockHeaderJson testHeaderJson = test.Blocks
+            TestBlockHeaderJson testHeaderJson = (test.Blocks?
                                                      .Where(b => b.BlockHeader != null)
-                                                     .SingleOrDefault(b => new Keccak(b.BlockHeader.Hash) == headBlock.Hash)?.BlockHeader ?? test.GenesisBlockHeader;
+                                                     .SingleOrDefault(b => new Keccak(b.BlockHeader.Hash) == headBlock.Hash)?.BlockHeader) ?? test.GenesisBlockHeader;
             BlockHeader testHeader = JsonToEthereumTest.Convert(testHeaderJson);
-            List<string> differences = new List<string>();
+            List<string> differences = new();
 
-            var deletedAccounts = test.Pre.Where(pre => !test.PostState.ContainsKey(pre.Key));
+            IEnumerable<KeyValuePair<Address, AccountState>> deletedAccounts = test.Pre?
+                .Where(pre => !(test.PostState?.ContainsKey(pre.Key) ?? false)) ?? Array.Empty<KeyValuePair<Address, AccountState>>();
+            
             foreach (KeyValuePair<Address, AccountState> deletedAccount in deletedAccounts)
             {
                 if (stateProvider.AccountExists(deletedAccount.Key))
@@ -335,7 +347,7 @@ namespace Ethereum.Test.Base
                 }
             }
 
-            foreach (KeyValuePair<Address, AccountState> accountState in test.PostState)
+            foreach ((Address acountAddress, AccountState accountState) in test.PostState)
             {
                 int differencesBefore = differences.Count;
 
@@ -345,60 +357,60 @@ namespace Ethereum.Test.Base
                     break;
                 }
 
-                bool accountExists = stateProvider.AccountExists(accountState.Key);
-                UInt256? balance = accountExists ? stateProvider.GetBalance(accountState.Key) : (UInt256?) null;
-                UInt256? nonce = accountExists ? stateProvider.GetNonce(accountState.Key) : (UInt256?) null;
+                bool accountExists = stateProvider.AccountExists(acountAddress);
+                UInt256? balance = accountExists ? stateProvider.GetBalance(acountAddress) : (UInt256?) null;
+                UInt256? nonce = accountExists ? stateProvider.GetNonce(acountAddress) : (UInt256?) null;
 
-                if (accountState.Value.Balance != balance)
+                if (accountState.Balance != balance)
                 {
-                    differences.Add($"{accountState.Key} balance exp: {accountState.Value.Balance}, actual: {balance}, diff: {balance - accountState.Value.Balance}");
+                    differences.Add($"{acountAddress} balance exp: {accountState.Balance}, actual: {balance}, diff: {(balance > accountState.Balance ? balance - accountState.Balance : accountState.Balance - balance)}");
                 }
 
-                if (accountState.Value.Nonce != nonce)
+                if (accountState.Nonce != nonce)
                 {
-                    differences.Add($"{accountState.Key} nonce exp: {accountState.Value.Nonce}, actual: {nonce}");
+                    differences.Add($"{acountAddress} nonce exp: {accountState.Nonce}, actual: {nonce}");
                 }
 
-                byte[] code = accountExists ? stateProvider.GetCode(accountState.Key) : new byte[0];
-                if (!Bytes.AreEqual(accountState.Value.Code, code))
+                byte[] code = accountExists ? stateProvider.GetCode(acountAddress) : new byte[0];
+                if (!Bytes.AreEqual(accountState.Code, code))
                 {
-                    differences.Add($"{accountState.Key} code exp: {accountState.Value.Code?.Length}, actual: {code?.Length}");
+                    differences.Add($"{acountAddress} code exp: {accountState.Code?.Length}, actual: {code?.Length}");
                 }
 
                 if (differences.Count != differencesBefore)
                 {
-                    _logger.Info($"ACCOUNT STATE ({accountState.Key}) HAS DIFFERENCES");
+                    _logger.Info($"ACCOUNT STATE ({acountAddress}) HAS DIFFERENCES");
                 }
 
                 differencesBefore = differences.Count;
 
                 KeyValuePair<UInt256, byte[]>[] clearedStorages = new KeyValuePair<UInt256, byte[]>[0];
-                if (test.Pre.ContainsKey(accountState.Key))
+                if (test.Pre.ContainsKey(acountAddress))
                 {
-                    clearedStorages = test.Pre[accountState.Key].Storage.Where(s => !accountState.Value.Storage.ContainsKey(s.Key)).ToArray();
+                    clearedStorages = test.Pre[acountAddress].Storage.Where(s => !accountState.Storage.ContainsKey(s.Key)).ToArray();
                 }
 
                 foreach (KeyValuePair<UInt256, byte[]> clearedStorage in clearedStorages)
                 {
-                    byte[] value = !stateProvider.AccountExists(accountState.Key) ? Bytes.Empty : storageProvider.Get(new StorageCell(accountState.Key, clearedStorage.Key));
+                    byte[] value = !stateProvider.AccountExists(acountAddress) ? Bytes.Empty : storageProvider.Get(new StorageCell(acountAddress, clearedStorage.Key));
                     if (!value.IsZero())
                     {
-                        differences.Add($"{accountState.Key} storage[{clearedStorage.Key}] exp: 0x00, actual: {value.ToHexString(true)}");
+                        differences.Add($"{acountAddress} storage[{clearedStorage.Key}] exp: 0x00, actual: {value.ToHexString(true)}");
                     }
                 }
 
-                foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Value.Storage)
+                foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Storage)
                 {
-                    byte[] value = !stateProvider.AccountExists(accountState.Key) ? Bytes.Empty : storageProvider.Get(new StorageCell(accountState.Key, storageItem.Key)) ?? new byte[0];
+                    byte[] value = !stateProvider.AccountExists(acountAddress) ? Bytes.Empty : storageProvider.Get(new StorageCell(acountAddress, storageItem.Key)) ?? new byte[0];
                     if (!Bytes.AreEqual(storageItem.Value, value))
                     {
-                        differences.Add($"{accountState.Key} storage[{storageItem.Key}] exp: {storageItem.Value.ToHexString(true)}, actual: {value.ToHexString(true)}");
+                        differences.Add($"{acountAddress} storage[{storageItem.Key}] exp: {storageItem.Value.ToHexString(true)}, actual: {value.ToHexString(true)}");
                     }
                 }
 
                 if (differences.Count != differencesBefore)
                 {
-                    _logger.Info($"ACCOUNT STORAGE ({accountState.Key}) HAS DIFFERENCES");
+                    _logger.Info($"ACCOUNT STORAGE ({acountAddress}) HAS DIFFERENCES");
                 }
             }
 

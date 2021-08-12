@@ -17,6 +17,7 @@
 using System;
 using System.IO;
 using System.Runtime.CompilerServices;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie.Pruning;
@@ -29,6 +30,8 @@ namespace Nethermind.Trie
 {
     public partial class TrieNode
     {
+        private const int ParallelLevels = 5;
+        
         internal void Accept(ITreeVisitor visitor, ITrieNodeResolver nodeResolver, TrieVisitContext trieVisitContext)
         {
             try
@@ -47,24 +50,40 @@ namespace Nethermind.Trie
             {
                 case NodeType.Branch:
                 {
-                    visitor.VisitBranch(this, trieVisitContext);
-                    trieVisitContext.Level++;
-                    for (int i = 0; i < 16; i++)
+                    void VisitChild(int i, TrieNode? child, ITrieNodeResolver resolver, ITreeVisitor v, TrieVisitContext context)
                     {
-                        TrieNode child = GetChild(nodeResolver, i);
                         if (child != null)
                         {
-                            child.ResolveKey(nodeResolver, false);
-                            if (visitor.ShouldVisit(child.Keccak!))
+                            child.ResolveKey(resolver, false);
+                            if (v.ShouldVisit(child.Keccak!))
                             {
-                                trieVisitContext.BranchChildIndex = i;
-                                child.Accept(visitor, nodeResolver, trieVisitContext);
+                                context.BranchChildIndex = i;
+                                child.Accept(v, resolver, context);
                             }
 
                             if (child.IsPersisted)
                             {
                                 UnresolveChild(i);
                             }
+                        }
+                    }
+
+                    visitor.VisitBranch(this, trieVisitContext);
+                    trieVisitContext.Level++;
+                    if (trieVisitContext.Parallel && trieVisitContext.Level <= ParallelLevels)
+                    {
+                        TrieNode?[] children = new TrieNode?[16];
+                        for (int i = 0; i < 16; i++)
+                        {
+                            children[i] = GetChild(nodeResolver, i);
+                        }
+                        Parallel.For(0, 16, i => VisitChild(i, children[i], nodeResolver, visitor, trieVisitContext.Clone()));
+                    }
+                    else
+                    {
+                        for (int i = 0; i < 16; i++)
+                        {
+                            VisitChild(i, GetChild(nodeResolver, i), nodeResolver, visitor, trieVisitContext);
                         }
                     }
 
@@ -111,7 +130,7 @@ namespace Nethermind.Trie
                         if (account.HasStorage && visitor.ShouldVisit(account.StorageRoot))
                         {
                             trieVisitContext.IsStorage = true;
-                            TrieNode storageRoot = new TrieNode(NodeType.Unknown, account.StorageRoot);
+                            TrieNode storageRoot = new(NodeType.Unknown, account.StorageRoot);
                             trieVisitContext.Level++;
                             trieVisitContext.BranchChildIndex = null;
                             storageRoot.Accept(visitor, nodeResolver, trieVisitContext);
@@ -125,29 +144,6 @@ namespace Nethermind.Trie
 
                 default:
                     throw new TrieException($"An attempt was made to visit a node {Keccak} of type {NodeType}");
-            }
-        }
-
-        private void UnresolveChild(int i)
-        {
-            if (IsPersisted)
-            {
-                _data![i] = null;
-            }
-            else
-            {
-                TrieNode childNode = _data![i] as TrieNode;
-                if (childNode != null)
-                {
-                    if (!childNode.IsPersisted)
-                    {
-                        throw new InvalidOperationException("Cannot unresolve a child that is not persisted yet.");
-                    }
-                    else if (childNode.Keccak != null) // if not by value node
-                    {
-                        _data![i] = childNode.Keccak;
-                    }
-                }
             }
         }
     }

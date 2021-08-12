@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>net5.0</TargetFramework>
-    <LangVersion>8.0</LangVersion>
+    <LangVersion>9</LangVersion>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
@@ -17,9 +17,9 @@
     <Content Include="runtimes\osx-x64\native\libsecp256k1.dylib">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <!-- <Content Include="runtimes\osx-arm64\native\libsecp256k1.dylib">
+    <Content Include="runtimes\osx-arm64\native\libsecp256k1.dylib">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content> -->
+    </Content>
     <Content Include="runtimes\win-x64\native\secp256k1.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>

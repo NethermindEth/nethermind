@@ -16,30 +16,20 @@
 
 using System;
 using BenchmarkDotNet.Attributes;
-using BenchmarkDotNet.Jobs;
 using Nethermind.Core.Crypto;
-using Nethermind.Logging;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Benchmarks
 {
-    [MemoryDiagnoser]
-    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
     public class NodeStatsCtorBenchmarks
     {
-        private ILogManager _logManager;
         private Node _node;
-        private IStatsConfig _statsConfig;
         
         [GlobalSetup]
         public void Setup()
         {
             _node = new Node(new PublicKey("0x000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f"), "127.0.0.1", 1234);
-            _statsConfig = new StatsConfig();
-            _statsConfig.CaptureNodeStatsEventHistory = true;
-            _statsConfig.CaptureNodeLatencyStatsEventHistory = true;
-            _logManager = LimboLogs.Instance;
         }
         
         [Benchmark]
@@ -51,19 +41,13 @@ namespace Nethermind.Network.Benchmarks
         [Benchmark]
         public void Light()
         {
-            NodeStatsLight stats = new NodeStatsLight(_node, _statsConfig);
+            NodeStatsLight stats = new NodeStatsLight(_node);
         }
-        
-        [Benchmark]
-        public void ImprovedRep()
-        {
-            throw new NotImplementedException();
-        }
-        
+
         [Benchmark]
         public long LightRep()
         {
-            NodeStatsLight stats = new NodeStatsLight(_node, _statsConfig);
+            NodeStatsLight stats = new NodeStatsLight(_node);
             return stats.CurrentNodeReputation;
         }
     }

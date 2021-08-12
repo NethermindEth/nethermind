@@ -54,7 +54,7 @@ namespace Nethermind.Evm.Test
         [TestCase(0, Int32.MaxValue)]
         public void MemoryCost(int destination, int memoryAllocation)
         {
-            EvmPooledMemory memory = new EvmPooledMemory();
+            EvmPooledMemory memory = new();
             UInt256 dest = (UInt256) destination;
             var result = memory.CalculateMemoryCost(in dest, (UInt256)memoryAllocation);
             TestContext.WriteLine($"Gas cost of allocating {memoryAllocation} starting from {dest}: {result}");

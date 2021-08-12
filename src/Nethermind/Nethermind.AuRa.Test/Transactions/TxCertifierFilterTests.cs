@@ -28,6 +28,7 @@ using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Trie.Pruning;
@@ -42,12 +43,14 @@ namespace Nethermind.AuRa.Test.Transactions
         private ICertifierContract _certifierContract;
         private ITxFilter _notCertifiedFilter;
         private TxCertifierFilter _filter;
+        private ISpecProvider _specProvider;
 
         [SetUp]
         public void SetUp()
         {
             _certifierContract = Substitute.For<ICertifierContract>();
             _notCertifiedFilter = Substitute.For<ITxFilter>();
+            _specProvider = Substitute.For<ISpecProvider>();
             
             _notCertifiedFilter.IsAllowed(Arg.Any<Transaction>(), Arg.Any<BlockHeader>())
                 .Returns((false, string.Empty));
@@ -56,7 +59,7 @@ namespace Nethermind.AuRa.Test.Transactions
                 Arg.Is<Address>(a => TestItem.Addresses.Take(3).Contains(a)))
                 .Returns(true);
             
-            _filter = new TxCertifierFilter(_certifierContract, _notCertifiedFilter, LimboLogs.Instance);
+            _filter = new TxCertifierFilter(_certifierContract, _notCertifiedFilter, _specProvider, LimboLogs.Instance);
         }
         
         [Test]
@@ -126,7 +129,7 @@ namespace Nethermind.AuRa.Test.Transactions
         public async Task registry_contract_returns_not_found_when_contract_doesnt_exist()
         {
             using var chain = await TestContractBlockchain.ForTest<TestTxPermissionsBlockchain, TxCertifierFilterTests>();
-            var contract = new RegisterContract(new AbiEncoder(), Address.FromNumber(1000), chain.ReadOnlyTransactionProcessorSource);
+            var contract = new RegisterContract(AbiEncoder.Instance, Address.FromNumber(1000), chain.ReadOnlyTransactionProcessorSource);
             contract.TryGetAddress(chain.BlockTree.Head.Header, CertifierContract.ServiceTransactionContractRegistryName, out Address _).Should().BeFalse();
         }
         
@@ -138,11 +141,11 @@ namespace Nethermind.AuRa.Test.Transactions
             
             protected override BlockProcessor CreateBlockProcessor()
             {
-                AbiEncoder abiEncoder = new AbiEncoder();
+                AbiEncoder abiEncoder = AbiEncoder.Instance;
                 ReadOnlyTransactionProcessorSource = new(
                     DbProvider,
-                    new ReadOnlyTrieStore(new TrieStore(DbProvider.StateDb, LimboLogs.Instance)),
-                    BlockTree, SpecProvider,
+                    new TrieStore(DbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
+                BlockTree, SpecProvider,
                     LimboLogs.Instance);
                 RegisterContract = new RegisterContract(abiEncoder, ChainSpec.Parameters.Registrar, ReadOnlyTransactionProcessorSource);
                 CertifierContract = new CertifierContract(
@@ -154,10 +157,9 @@ namespace Nethermind.AuRa.Test.Transactions
                     SpecProvider,
                     Always.Valid,
                     new RewardCalculator(SpecProvider),
-                    TxProcessor,
+                    new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
                     State,
                     Storage,
-                    TxPool,
                     ReceiptStorage,
                     LimboLogs.Instance,
                     BlockTree);

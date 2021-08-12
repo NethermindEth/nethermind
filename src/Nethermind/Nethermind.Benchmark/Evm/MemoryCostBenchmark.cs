@@ -21,8 +21,6 @@ using Nethermind.Int256;
 
 namespace Nethermind.Benchmarks.Evm
 {
-    [MemoryDiagnoser]
-    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
     public class MemoryCostBenchmark
     {
         private IEvmMemory _current = new EvmPooledMemory();
@@ -46,13 +44,6 @@ namespace Nethermind.Benchmarks.Evm
         {
             _location = _scenarios[ScenarioIndex].Location;
             _length = _scenarios[ScenarioIndex].Length;
-        }
-
-        [Benchmark]
-        public long Improved()
-        {
-            UInt256 dest = _location;
-            return _improved.CalculateMemoryCost(in dest, _length);
         }
 
         [Benchmark]

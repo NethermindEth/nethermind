@@ -16,6 +16,7 @@
 
 using System;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 
 namespace Nethermind.Core.Test.Builders
 {
@@ -51,6 +52,13 @@ namespace Nethermind.Core.Test.Builders
         public ReceiptBuilder WithLogs(params LogEntry[] logs)
         {
             TestObjectInternal.Logs = logs;
+            TestObjectInternal.Bloom = new Bloom(logs);
+            return this;
+        }
+        
+        public ReceiptBuilder WithTxType(TxType txType)
+        {
+            TestObject.TxType = txType;
             return this;
         }
 
@@ -123,6 +131,12 @@ namespace Nethermind.Core.Test.Builders
         public ReceiptBuilder WithStatusCode(byte statusCode)
         {
             TestObjectInternal.StatusCode = statusCode;
+            return this;
+        }
+        
+        public ReceiptBuilder WithRemoved(bool removed)
+        {
+            TestObjectInternal.Removed = removed;
             return this;
         }
     }

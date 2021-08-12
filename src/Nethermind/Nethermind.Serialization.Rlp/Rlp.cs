@@ -81,13 +81,13 @@ namespace Nethermind.Serialization.Rlp
 
         public int Length => Bytes.Length;
 
-        public static readonly Dictionary<Type, IRlpDecoder> Decoders = new Dictionary<Type, IRlpDecoder>();
+        public static readonly Dictionary<Type, IRlpDecoder> Decoders = new();
 
         public static void RegisterDecoders(Assembly assembly)
         {
             foreach (var type in assembly.GetExportedTypes())
             {
-                if (!type.IsClass)
+                if (!type.IsClass || type.IsAbstract || type.IsGenericTypeDefinition)
                 {
                     continue;
                 }
@@ -237,7 +237,7 @@ namespace Nethermind.Serialization.Rlp
             ulong chainId = 0)
         {
             bool includeSigChainIdHack = isEip155Enabled && chainId != 0 && transaction.Type == TxType.Legacy;
-            int extraItems = transaction.IsEip1559 ? 2 : 0; // 2 extra gas fields for eip-1559
+            int extraItems = transaction.IsEip1559 ? 1 : 0; // one extra gas field for 1559. 1559: GasPremium, FeeCap. Legacy: GasPrice
             if (!forSigning || includeSigChainIdHack)
             {
                 extraItems += 3; // sig fields
@@ -245,7 +245,7 @@ namespace Nethermind.Serialization.Rlp
 
             if (transaction.Type != TxType.Legacy)
             {
-                extraItems += forSigning ? 3 : 2; // type + chainID + accessList : chainID + accessList
+                extraItems += 2; // chainID + accessList
             }
 
             Rlp[] sequence = new Rlp[6 + extraItems];
@@ -253,31 +253,30 @@ namespace Nethermind.Serialization.Rlp
 
             if (transaction.Type != TxType.Legacy)
             {
-                if (forSigning)
-                {
-                    sequence[position++] = Encode((byte)transaction.Type);
-                }
-                
-                sequence[position++] = Encode(transaction.ChainId!.Value);
+                sequence[position++] = Encode(transaction.ChainId ?? 0);
             }
 
             sequence[position++] = Encode(transaction.Nonce);
-            sequence[position++] = Encode(transaction.IsEip1559 ? 0 : transaction.GasPrice);
+
+            if (transaction.IsEip1559)
+            {
+                sequence[position++] = Encode(transaction.MaxPriorityFeePerGas);
+                sequence[position++] = Encode(transaction.DecodedMaxFeePerGas);
+            }
+            else
+            {
+                sequence[position++] = Encode(transaction.GasPrice);
+            }
+            
             sequence[position++] = Encode(transaction.GasLimit);
             sequence[position++] = Encode(transaction.To);
             sequence[position++] = Encode(transaction.Value);
             sequence[position++] = Encode(transaction.Data);
-            if (transaction.Type == TxType.AccessList)
+            if (transaction.Type != TxType.Legacy)
             {
                 sequence[position++] = Encode(transaction.AccessList);    
             }
             
-            if (transaction.IsEip1559)
-            {
-                sequence[position++] = Encode(transaction.GasPrice);
-                sequence[position++] = Encode(transaction.FeeCap);
-            }
-
             if (forSigning)
             {
                 if (includeSigChainIdHack)
@@ -298,7 +297,7 @@ namespace Nethermind.Serialization.Rlp
                 }
                 else
                 {
-                    sequence[position++] = Encode(signature.V);
+                    sequence[position++] = Encode(transaction.Type == TxType.Legacy ? signature.V : signature.RecoveryId);
                     sequence[position++] = Encode(signature.RAsSpan.WithoutLeadingZeros());
                     sequence[position++] = Encode(signature.SAsSpan.WithoutLeadingZeros());   
                 }
@@ -306,7 +305,13 @@ namespace Nethermind.Serialization.Rlp
             
             Debug.Assert(position == 6 + extraItems);
 
-            return Encode(sequence);
+            Rlp result = Encode(sequence);
+            if (transaction.Type != TxType.Legacy)
+            {
+                result = new Rlp(Core.Extensions.Bytes.Concat((byte)transaction.Type, Encode(sequence).Bytes));
+            }
+
+            return result;
         }
 
         public static Rlp Encode(UInt256? value)
@@ -853,10 +858,16 @@ namespace Nethermind.Serialization.Rlp
                 (int a, int b) = PeekPrefixAndContentLength();
                 return a + b;
             }
-
-            public (int PrefixLength, int ContentLength) PeekPrefixAndContentLength()
+            
+            public Span<byte> Peek(int length)
             {
-                int memorizedPosition = Position;
+                Span<byte> item = Read(length);
+                Position -= item.Length;
+                return item;
+            }
+            
+            public (int PrefixLength, int ContentLength) ReadPrefixAndContentLength()
+            {
                 (int prefixLength, int contentLengt) result;
                 int prefix = ReadByte();
                 if (prefix <= 128)
@@ -900,7 +911,16 @@ namespace Nethermind.Serialization.Rlp
 
                     result = (lengthOfContentLength + 1, contentLength);
                 }
+                
+                return result;
+            }
+            
 
+            public (int PrefixLength, int ContentLength) PeekPrefixAndContentLength()
+            {
+                int memorizedPosition = Position;
+                (int PrefixLength, int ContentLength) result = ReadPrefixAndContentLength();
+            
                 Position = memorizedPosition;
                 return result;
             }

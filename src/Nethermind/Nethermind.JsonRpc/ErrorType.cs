@@ -94,5 +94,10 @@ namespace Nethermind.JsonRpc
         /// Request exceeds defined timeout limit
         /// </summary>
         public const int Timeout = -32016;
+        
+        /// <summary>
+        /// Request exceeds defined timeout limit
+        /// </summary>
+        public const int ModuleTimeout = -32017;
     }
 }

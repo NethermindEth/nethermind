@@ -30,7 +30,7 @@ namespace Nethermind.DataMarketplace.Core.Domain
             Signature = signature;
         }
 
-        public bool Equals(DataDeliveryReceiptToMerge other)
+        public bool Equals(DataDeliveryReceiptToMerge? other)
         {
             if (ReferenceEquals(null, other)) return false;
             if (ReferenceEquals(this, other)) return true;

@@ -15,8 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Drawing;
 using Nethermind.EthStats.Clients;
 using Nethermind.Logging;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.EthStats.Test
@@ -30,7 +32,7 @@ namespace Nethermind.EthStats.Test
         [TestCase("https://localhost:8000/api", "wss://localhost:8000/api")]
         public void Build_url_should_return_expected_results(string configUrl, string expectedUrl)
         {
-            EthStatsClient ethClient = new EthStatsClient(configUrl, 5000, null, LimboLogs.Instance);
+            EthStatsClient ethClient = new(configUrl, 5000, Substitute.For<IMessageSender>(), LimboLogs.Instance);
             Assert.AreEqual(expectedUrl, ethClient.BuildUrl());
         }
         
@@ -40,7 +42,7 @@ namespace Nethermind.EthStats.Test
         [TestCase("localhost")]
         public void Incorrect_url_should_throw_exception(string url)
         {
-            EthStatsClient ethClient = new EthStatsClient(url, 5000, null, LimboLogs.Instance);
+            EthStatsClient ethClient = new(url, 5000, Substitute.For<IMessageSender>(), LimboLogs.Instance);
             Assert.Throws<ArgumentException>(() => ethClient.BuildUrl());
         }
     }

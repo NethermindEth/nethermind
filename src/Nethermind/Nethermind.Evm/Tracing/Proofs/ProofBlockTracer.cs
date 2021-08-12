@@ -22,30 +22,26 @@ namespace Nethermind.Evm.Tracing.Proofs
     public class ProofBlockTracer : BlockTracerBase<ProofTxTracer, ProofTxTracer>, IBlockTracer
     {
         private readonly bool _treatSystemAccountDifferently;
-        private ProofTxTracer _txTracer;
 
         public ProofBlockTracer(Keccak txHash, bool treatSystemAccountDifferently) : base(txHash)
         {
             _treatSystemAccountDifferently = treatSystemAccountDifferently;
         }
         
-        protected override ProofTxTracer OnStart(Keccak txHash)
-        {
-            _txTracer = new ProofTxTracer(_treatSystemAccountDifferently);
-            return _txTracer;
-        }
+        protected override ProofTxTracer OnStart(Transaction? tx) => new(_treatSystemAccountDifferently);
 
         /// <summary>
         /// Here I decided to return tracer after experimenting with ProofTxTrace class. It encapsulates less but avoid additional type introduction which does not bring much value.
         /// </summary>
         /// <param name="txTracer">Tracer of the transaction that just has been processed.</param>
         /// <returns>Just returns the <paramref name="txTracer"/></returns>
-        protected override ProofTxTracer OnEnd(ProofTxTracer txTracer)
-        {
-            return txTracer;
-        }
+        protected override ProofTxTracer OnEnd(ProofTxTracer txTracer) => txTracer;
 
         public override void StartNewBlockTrace(Block block)
+        {
+        }
+
+        public override void EndBlockTrace()
         {
         }
     }

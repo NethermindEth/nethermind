@@ -15,28 +15,18 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
-using System.Threading;
-using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Processing;
-using Nethermind.Blockchain.Receipts;
-using Nethermind.Config;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Transactions;
-using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
-using Nethermind.Core.Caching;
-using Nethermind.Core.Extensions;
-using Nethermind.Evm;
+using Nethermind.Core.Collections;
+using Nethermind.Core.Specs;
 using Nethermind.Logging;
-using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
-using Nethermind.Db.Blooms;
 using Nethermind.Int256;
 using Nethermind.TxPool;
 
@@ -51,7 +41,9 @@ namespace Nethermind.Consensus.AuRa.Validators
         private readonly ITxSender _posdaoTxSender;
         private readonly IReadOnlyStateProvider _stateProvider;
         private readonly Cache _cache;
+        private readonly ISpecProvider _specProvider;
         private readonly ITxSender _nonPosdaoTxSender;
+        private readonly ITxSender _nonPosdao1559TxSender;
         private readonly ILogger _logger;
 
         public ReportingContractBasedValidator(
@@ -63,6 +55,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             IMiningConfig miningConfig,
             IReadOnlyStateProvider stateProvider,
             Cache cache,
+            ISpecProvider specProvider,
             ILogManager logManager)
         {
             _contractValidator = contractValidator ?? throw new ArgumentNullException(nameof(contractValidator));
@@ -71,8 +64,10 @@ namespace Nethermind.Consensus.AuRa.Validators
             _posdaoTxSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _cache = cache ?? throw new ArgumentNullException(nameof(cache));
+            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _nonPosdaoTxSender = new TxGasPriceSender(txSender, txPool, miningConfig);
-            _persistentReports = cache.PersistentReports ?? throw new ArgumentNullException(nameof(cache));
+            _nonPosdao1559TxSender = new TxGasPrice1559Sender(txSender, txPool, miningConfig);
+            _persistentReports = cache.PersistentReports;
             _logger = logManager?.GetClassLogger<ReportingContractBasedValidator>() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
@@ -134,11 +129,10 @@ namespace Nethermind.Consensus.AuRa.Validators
                     {
                         if (_logger.IsTrace) _logger.Trace($"Reporting {reportType} misbehaviour (cause: {cause}) at block #{blockNumber} from {validator}");
 
-                        var transaction = createReportTransactionDelegate(validator, blockNumber, proof);
+                        Transaction transaction = createReportTransactionDelegate(validator, blockNumber, proof);
                         if (transaction != null)
                         {
-                            var posdao = IsPosdao(blockNumber);
-                            var txSender = posdao ? _posdaoTxSender : _nonPosdaoTxSender;
+                            ITxSender txSender = SetSender(blockNumber);
                             SendTransaction(reportType, txSender, transaction);
                             if (_logger.IsWarn) _logger.Warn($"Reported {reportType} validator {validator} misbehaviour (cause: {cause}) at block {blockNumber} with transaction {transaction.Hash}.");
                             if (reportType == ReportType.Malicious)
@@ -172,6 +166,13 @@ namespace Nethermind.Consensus.AuRa.Validators
             txSender.SendTransaction(transaction, handlingOptions);
         }
 
+        private ITxSender SetSender(long blockNumber)
+        {
+            bool posdao = IsPosdao(blockNumber);
+            bool isEip1559Enabled = _specProvider.GetSpec(blockNumber).IsEip1559Enabled;
+            return posdao ? _posdaoTxSender : (isEip1559Enabled ? _nonPosdao1559TxSender: _nonPosdaoTxSender);
+        }
+
         private bool IsPosdao(long blockNumber) => _posdaoTransition <= blockNumber;
 
         public void TryReportSkipped(BlockHeader header, BlockHeader parent)
@@ -194,21 +195,24 @@ namespace Nethermind.Consensus.AuRa.Validators
                 ISet<Address> reported = new HashSet<Address>();
                 for (long step = parent.AuRaStep.Value + 1; step < header.AuRaStep.Value; step++)
                 {
-                    var skippedValidator = validators.GetItemRoundRobin(step);
-                    if (skippedValidator != ValidatorContract.NodeAddress)
+                    Address? skippedValidator = validators.GetItemRoundRobin(step);
+                    if (skippedValidator is not null)
                     {
-                        if (reported.Contains(skippedValidator))
+                        if (skippedValidator != ValidatorContract.NodeAddress)
                         {
-                            break;
+                            if (reported.Contains(skippedValidator))
+                            {
+                                break;
+                            }
+
+                            ReportBenign(skippedValidator, header.Number, IReportingValidator.BenignCause.SkippedStep);
+                            reported.Add(skippedValidator);
+                            if (_logger.IsDebug) _logger.Debug($"Found skipped step {step} by author {skippedValidator}, actual author {header.Beneficiary} at block {header.Number}.");
                         }
-                        
-                        ReportBenign(skippedValidator, header.Number, IReportingValidator.BenignCause.SkippedStep);
-                        reported.Add(skippedValidator);
-                        if (_logger.IsDebug) _logger.Debug($"Found skipped step {step} by author {skippedValidator}, actual author {header.Beneficiary} at block {header.Number}.");
-                    }
-                    else
-                    {
-                        if (_logger.IsDebug) _logger.Debug($"Found skipped step {step} by self {skippedValidator}, actual author {header.Beneficiary} at block {header.Number}. Not self-reporting.");
+                        else
+                        {
+                            if (_logger.IsDebug) _logger.Debug($"Found skipped step {step} by self {skippedValidator}, actual author {header.Beneficiary} at block {header.Number}. Not self-reporting.");
+                        }
                     }
                 }
             }

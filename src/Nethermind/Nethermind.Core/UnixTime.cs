@@ -31,12 +31,16 @@ namespace Nethermind.Core
 
         public static UnixTime FromSeconds(double seconds)
         {
-            return new UnixTime(DateTime.UnixEpoch.Add(TimeSpan.FromSeconds(seconds)));
+            return new(DateTime.UnixEpoch.Add(TimeSpan.FromSeconds(seconds)));
         }
         
-        public UnixTime(DateTime dateTime)
+        public UnixTime(DateTime dateTime) : this(new DateTimeOffset(dateTime))
         {
-            _offset = new DateTimeOffset(dateTime);
+        }
+        
+        public UnixTime(DateTimeOffset dateTime)
+        {
+            _offset = dateTime;
         }
 
         public ulong Seconds => (ulong) SecondsLong;

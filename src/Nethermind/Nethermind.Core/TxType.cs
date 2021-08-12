@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -20,6 +20,7 @@ namespace Nethermind.Core
     public enum TxType : byte
     {
         Legacy = 0,
-        AccessList = 1
+        AccessList = 1,
+        EIP1559 = 2
     }
 }

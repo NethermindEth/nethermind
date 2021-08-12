@@ -15,12 +15,16 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Google.Protobuf.WellKnownTypes;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Core;
+using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Steps;
 
@@ -42,12 +46,22 @@ namespace Nethermind.Runner.Ethereum
         {
             if (_logger.IsDebug) _logger.Debug("Initializing Ethereum");
 
-            EthereumStepsLoader stepsLoader = new EthereumStepsLoader(GetType().Assembly);
+            EthereumStepsLoader stepsLoader = new EthereumStepsLoader(GetStepsAssemblies());
             EthereumStepsManager stepsManager = new EthereumStepsManager(stepsLoader, _api, _api.LogManager);
             await stepsManager.InitializeAll(cancellationToken);
 
             string infoScreen = ThisNodeInfo.BuildNodeInfoScreen();
             if (_logger.IsInfo) _logger.Info(infoScreen);
+        }
+
+        private IEnumerable<Assembly> GetStepsAssemblies()
+        {
+            yield return typeof(IStep).Assembly;
+            yield return GetType().Assembly;
+            foreach (IConsensusPlugin consensus in _api.Plugins.OfType<IConsensusPlugin>())
+            {
+                yield return consensus.GetType().Assembly;
+            }
         }
 
         public async Task StopAsync()
@@ -67,13 +81,13 @@ namespace Nethermind.Runner.Ethereum
 
             foreach (INethermindPlugin plugin in _api.Plugins)
             {
-                Stop(() => plugin.Dispose(), $"Disposing plugin {plugin.Name}");
+                await Stop(async () => await plugin.DisposeAsync(), $"Disposing plugin {plugin.Name}");
             }
 
             while (_api.DisposeStack.Count != 0)
             {
                 IAsyncDisposable disposable = _api.DisposeStack.Pop();
-                await Stop(() => disposable.DisposeAsync(), $"Disposing {disposable}");
+                await Stop(async () => await disposable.DisposeAsync(), $"Disposing {disposable}");
             }
 
             Stop(() => _api.DbProvider?.Dispose(), "Closing DBs");

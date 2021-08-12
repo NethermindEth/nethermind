@@ -1,5 +1,5 @@
 ﻿/*
- * Copyright (c) 2018 Demerzel Solutions Limited
+ * Copyright (c) 2021 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
  * The Nethermind library is free software: you can redistribute it and/or modify
@@ -18,6 +18,7 @@
 
 using System.Collections.Generic;
 using Ethereum.Test.Base;
+using Nethermind.Core.Attributes;
 using NUnit.Framework;
 
 namespace Ethereum.Blockchain.Test

@@ -57,13 +57,13 @@ namespace Nethermind.Synchronization
         private readonly ISyncConfig _syncConfig;
         private readonly IWitnessRepository _witnessRepository;
         private readonly CanonicalHashTrie? _cht;
-        private object _dummyValue = new object();
+        private readonly object _dummyValue = new();
 
-        private ICache<Keccak, object> _recentlySuggested =
+        private readonly ICache<Keccak, object> _recentlySuggested =
             new LruCache<Keccak, object>(128, 128, "recently suggested blocks");
 
-        private long _pivotNumber;
-        private Keccak _pivotHash;
+        private readonly long _pivotNumber;
+        private readonly Keccak _pivotHash;
         private BlockHeader? _pivotHeader;
 
         public SyncServer(
@@ -95,6 +95,7 @@ namespace Nethermind.Synchronization
             _pivotNumber = _syncConfig.PivotNumberParsed;
 
             _blockTree.NewHeadBlock += OnNewHeadBlock;
+            pool.NotifyPeerBlock += OnNotifyPeerBlock;
             _pivotHash = new Keccak(_syncConfig.PivotHash ?? Keccak.Zero.ToString());
         }
 
@@ -132,10 +133,12 @@ namespace Nethermind.Synchronization
             return _pool.PeerCount;
         }
 
-        private Guid _sealValidatorUserGuid = Guid.NewGuid();
+        private readonly Guid _sealValidatorUserGuid = Guid.NewGuid();
 
         public void AddNewBlock(Block block, ISyncPeer nodeWhoSentTheBlock)
         {
+            if (!_syncConfig.BlockGossipEnabled) return;
+            
             if (block.TotalDifficulty == null)
             {
                 throw new InvalidDataException("Cannot add a block with unknown total difficulty");
@@ -231,7 +234,7 @@ namespace Nethermind.Synchronization
             {
                 if (!_blockValidator.ValidateSuggestedBlock(block))
                 {
-                    string message = $"Peer {syncPeer?.Node:c} sent an invalid block";
+                    string message = $"Peer {syncPeer?.Node:c} sent an invalid block.";
                     if (_logger.IsDebug) _logger.Debug(message);
                     lock (_recentlySuggested)
                     {
@@ -242,7 +245,11 @@ namespace Nethermind.Synchronization
                 }
 
                 AddBlockResult result = _blockTree.SuggestBlock(block);
-                if (_logger.IsTrace) _logger.Trace($"{block.Hash} ({block.Number}) adding result is {result}");
+                if (_logger.IsTrace) _logger.Trace($"Block {block.ToString(Block.Format.FullHashAndNumber)} adding result is {result}.");
+            }
+            else
+            {
+                if (_logger.IsDebug) _logger.Debug($"Discovered block {block.ToString(Block.Format.FullHashAndNumber)} has unknown parent.");
             }
         }
 
@@ -252,7 +259,7 @@ namespace Nethermind.Synchronization
         /// </summary>
         private void LogBlockAuthorNicely(Block block, ISyncPeer syncPeer)
         {
-            StringBuilder sb = new StringBuilder();
+            StringBuilder sb = new();
             sb.Append($"Discovered new block {block.ToString(Block.Format.HashNumberAndTx)}");
 
             if (block.Author != null)
@@ -301,6 +308,8 @@ namespace Nethermind.Synchronization
 
         public void HintBlock(Keccak hash, long number, ISyncPeer syncPeer)
         {
+            if (!_syncConfig.BlockGossipEnabled) return;
+            
             if (number > syncPeer.HeadNumber)
             {
                 if (_logger.IsTrace)
@@ -362,7 +371,7 @@ namespace Nethermind.Synchronization
             return _blockTree.FindLowestCommonAncestor(firstDescendant, secondDescendant, Sync.MaxReorgLength);
         }
 
-        private object _chtLock = new object();
+        private object _chtLock = new();
 
         // TODO - Cancellation token?
         // TODO - not a fan of this function name - CatchUpCHT, AddMissingCHTBlocks, ...?
@@ -425,61 +434,79 @@ namespace Nethermind.Synchronization
             return null;
         }
 
-        private Random _broadcastRandomizer = new Random();
+        private Random _broadcastRandomizer = new();
 
         [Todo(Improve.Refactor, "This may not be desired if the other node is just syncing now too")]
         private void OnNewHeadBlock(object? sender, BlockEventArgs blockEventArgs)
         {
-            Task.Run(() =>
+            Block block = blockEventArgs.Block;
+            if ((_blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0) <= block.TotalDifficulty)
             {
-                Block block = blockEventArgs.Block;
-                if (_blockTree.BestKnownNumber > block.Number) return;
-
-                int peerCount = _pool.PeerCount;
-                double broadcastRatio = Math.Sqrt(peerCount) / peerCount;
-
-                int counter = 0;
-                foreach (PeerInfo peerInfo in _pool.AllPeers)
+                Task.Run(() =>
                 {
-                    if (peerInfo.TotalDifficulty < (block.TotalDifficulty ?? UInt256.Zero))
+                    int peerCount = _pool.PeerCount;
+                    double broadcastRatio = Math.Sqrt(peerCount) / peerCount;
+
+                    int counter = 0;
+                    foreach (PeerInfo peerInfo in _pool.AllPeers)
                     {
-                        if (_broadcastRandomizer.NextDouble() < broadcastRatio)
+                        if (peerInfo.TotalDifficulty < (block.TotalDifficulty ?? UInt256.Zero))
                         {
-                            peerInfo.SyncPeer.NotifyOfNewBlock(block, SendBlockPriority.High);
-                            counter++;
-                        }
-                        else
-                        {
-                            peerInfo.SyncPeer.NotifyOfNewBlock(block, SendBlockPriority.Low);
+                            if (_broadcastRandomizer.NextDouble() < broadcastRatio)
+                            {
+                                NotifyOfNewBlock(peerInfo, peerInfo.SyncPeer, block, SendBlockPriority.High);
+                                counter++;
+                            }
+                            else
+                            {
+                                NotifyOfNewBlock(peerInfo, peerInfo.SyncPeer, block, SendBlockPriority.Low);
+                            }
                         }
                     }
-                }
 
-                if (counter > 0)
-                {
-                    if (_logger.IsDebug)
-                        _logger.Debug(
-                            $"Broadcasting block {block.ToString(Block.Format.Short)} to {counter} peers.");
-                }
-
-                if ((block.Number - Sync.MaxReorgLength) % CanonicalHashTrie.SectionSize == 0)
-                {
-                    _ = BuildCHT();
-                }
-            }).ContinueWith(
-                t =>
-                    t.Exception?.Handle(ex =>
+                    if (counter > 0)
                     {
-                        _logger.Error(ex.Message, ex);
-                        return true;
-                    })
-                , TaskContinuationOptions.OnlyOnFaulted
-            );
+                        if (_logger.IsDebug)
+                            _logger.Debug(
+                                $"Broadcasting block {block.ToString(Block.Format.Short)} to {counter} peers.");
+                    }
+
+                    if ((block.Number - Sync.MaxReorgLength) % CanonicalHashTrie.SectionSize == 0)
+                    {
+                        _ = BuildCHT();
+                    }
+                }).ContinueWith(
+                    t =>
+                        t.Exception?.Handle(ex =>
+                        {
+                            if (_logger.IsError) _logger.Error($"Error while broadcasting block {block.ToString(Block.Format.Short)}.", ex);
+                            return true;
+                        })
+                    , TaskContinuationOptions.OnlyOnFaulted
+                );
+            }
         }
+
+        private void NotifyOfNewBlock(PeerInfo? peerInfo, ISyncPeer syncPeer, Block broadcastedBlock, SendBlockPriority priority)
+        {
+            if (!_syncConfig.BlockGossipEnabled) return;
+            
+            try
+            {
+                syncPeer.NotifyOfNewBlock(broadcastedBlock, priority);
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsError) _logger.Error($"Error while broadcasting block {broadcastedBlock.ToString(Block.Format.Short)} to peer {peerInfo ?? (object)syncPeer}.", e);
+            }
+        }
+        
+        private void OnNotifyPeerBlock(object? sender, PeerBlockNotificationEventArgs e) => NotifyOfNewBlock(null, e.SyncPeer, e.Block, SendBlockPriority.High);
 
         public void Dispose()
         {
             _blockTree.NewHeadBlock -= OnNewHeadBlock;
+            _pool.NotifyPeerBlock -= OnNotifyPeerBlock;
         }
     }
 }

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -37,39 +37,40 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
+using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 
 namespace Nethermind.JsonRpc.Benchmark
 {
-    [MemoryDiagnoser]
     public class EthModuleBenchmarks
     {
         private IVirtualMachine _virtualMachine;
         private IBlockhashProvider _blockhashProvider;
-        private EthModule _ethModule;
+        private EthRpcModule _ethModule;
 
         [GlobalSetup]
         public void GlobalSetup()
         {
-            var dbProvider = new MemDbProvider();
-            ISnapshotableDb codeDb = dbProvider.CodeDb;
-            ISnapshotableDb stateDb = dbProvider.StateDb;
+            var dbProvider = TestMemDbProvider.Init();
+            IDb codeDb = dbProvider.CodeDb;
+            IDb stateDb = dbProvider.StateDb;
             IDb blockInfoDb = new MemDb(10, 5);
 
             ISpecProvider specProvider = MainnetSpecProvider.Instance;
             IReleaseSpec spec = MainnetSpecProvider.Instance.GenesisSpec;
+            var trieStore = new TrieStore(stateDb, LimboLogs.Instance);
             
-            StateProvider stateProvider = new StateProvider(stateDb, codeDb, LimboLogs.Instance);
+            StateProvider stateProvider = new StateProvider(trieStore, codeDb, LimboLogs.Instance);
             stateProvider.CreateAccount(Address.Zero, 1000.Ether());
             stateProvider.Commit(spec);
 
-            StorageProvider storageProvider = new StorageProvider(stateDb, stateProvider, LimboLogs.Instance);
-            StateReader stateReader = new StateReader(stateDb, codeDb, LimboLogs.Instance);
+            StorageProvider storageProvider = new StorageProvider(trieStore, stateProvider, LimboLogs.Instance);
+            StateReader stateReader = new StateReader(trieStore, codeDb, LimboLogs.Instance);
             
             ChainLevelInfoRepository chainLevelInfoRepository = new ChainLevelInfoRepository(blockInfoDb);
-            BlockTree blockTree = new BlockTree(dbProvider, chainLevelInfoRepository, specProvider, NullTxPool.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+            BlockTree blockTree = new BlockTree(dbProvider, chainLevelInfoRepository, specProvider, NullBloomStorage.Instance, LimboLogs.Instance);
             _blockhashProvider = new BlockhashProvider(blockTree, LimboLogs.Instance);
             _virtualMachine = new VirtualMachine(stateProvider, storageProvider, _blockhashProvider, specProvider, LimboLogs.Instance);
 
@@ -83,13 +84,13 @@ namespace Nethermind.JsonRpc.Benchmark
                  = new TransactionProcessor(MainnetSpecProvider.Instance, stateProvider, storageProvider, _virtualMachine, LimboLogs.Instance);
             
             BlockProcessor blockProcessor = new BlockProcessor(specProvider, Always.Valid, new RewardCalculator(specProvider), transactionProcessor,
-                stateDb, codeDb, stateProvider, storageProvider, NullTxPool.Instance, NullReceiptStorage.Instance, LimboLogs.Instance);
+                stateProvider, storageProvider, NullReceiptStorage.Instance, NullWitnessCollector.Instance, LimboLogs.Instance);
 
             EthereumEcdsa ecdsa = new EthereumEcdsa(specProvider.ChainId, LimboLogs.Instance);
             BlockchainProcessor blockchainProcessor = new BlockchainProcessor(
                 blockTree,
                 blockProcessor,
-                new TxSignaturesRecoveryStep(
+                new RecoverSignatures(
                     ecdsa,
                     NullTxPool.Instance,
                     specProvider,
@@ -112,6 +113,7 @@ namespace Nethermind.JsonRpc.Benchmark
             BlockchainBridge bridge = new BlockchainBridge(
                 new ReadOnlyTxProcessingEnv(
                     new ReadOnlyDbProvider(dbProvider, false),
+                    trieStore.AsReadOnly(),
                     new ReadOnlyBlockTree(blockTree),
                     specProvider,
                     LimboLogs.Instance),
@@ -122,10 +124,11 @@ namespace Nethermind.JsonRpc.Benchmark
                 ecdsa,
                 Timestamper.Default,
                 logFinder,
+                specProvider,
                 false,
                 false);
             
-            _ethModule = new EthModule(
+            _ethModule = new EthRpcModule(
                 new JsonRpcConfig(),
                 bridge,
                 blockTree,
@@ -133,7 +136,8 @@ namespace Nethermind.JsonRpc.Benchmark
                 NullTxPool.Instance,
                 NullTxSender.Instance,
                 NullWallet.Instance,
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                specProvider);
         }
 
         [Benchmark]

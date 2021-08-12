@@ -94,23 +94,22 @@ namespace Nethermind.AuRa.Test.Contract
             protected override BlockProcessor CreateBlockProcessor()
             {
                 var blockGasLimitContractTransition = ChainSpec.AuRa.BlockGasLimitContractTransitions.First();
-                var gasLimitContract = new BlockGasLimitContract(new AbiEncoder(), blockGasLimitContractTransition.Value, blockGasLimitContractTransition.Key,
+                var gasLimitContract = new BlockGasLimitContract(AbiEncoder.Instance, blockGasLimitContractTransition.Value, blockGasLimitContractTransition.Key,
                     new ReadOnlyTxProcessingEnv(
                         DbProvider,
-                        new TrieStore(DbProvider.StateDb, LimboLogs.Instance),
+                        new TrieStore(DbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
                         BlockTree, SpecProvider, LimboLogs.Instance));
                 
                 GasLimitOverrideCache = new AuRaContractGasLimitOverride.Cache();
-                GasLimitCalculator = new AuRaContractGasLimitOverride(new[] {gasLimitContract}, GasLimitOverrideCache, false, FollowOtherMiners.Instance, LimboLogs.Instance);
+                GasLimitCalculator = new AuRaContractGasLimitOverride(new[] {gasLimitContract}, GasLimitOverrideCache, false, new FollowOtherMiners(SpecProvider), LimboLogs.Instance);
 
                 return new AuRaBlockProcessor(
                     SpecProvider,
                     Always.Valid,
                     new RewardCalculator(SpecProvider),
-                    TxProcessor,
+                    new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
                     State,
                     Storage,
-                    TxPool,
                     ReceiptStorage,
                     LimboLogs.Instance,
                     BlockTree,

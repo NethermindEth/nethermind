@@ -1,5 +1,5 @@
 ﻿/*
- * Copyright (c) 2018 Demerzel Solutions Limited
+ * Copyright (c) 2021 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
  * The Nethermind library is free software: you can redistribute it and/or modify
@@ -29,22 +29,22 @@ namespace Ethereum.Test.Base
     
     public class BlockchainTestJson
     {
-        public string Network { get; set; }
-        public IReleaseSpec EthereumNetwork { get; set; }
-        public IReleaseSpec EthereumNetworkAfterTransition { get; set; }
+        public string? Network { get; set; }
+        public IReleaseSpec? EthereumNetwork { get; set; }
+        public IReleaseSpec? EthereumNetworkAfterTransition { get; set; }
         public int TransitionBlockNumber { get; set; }
-        public string LastBlockHash { get; set; }
-        public string GenesisRlp { get; set; }
+        public string? LastBlockHash { get; set; }
+        public string? GenesisRlp { get; set; }
 
-        public TestBlockJson[] Blocks { get; set; }
-        public TestBlockHeaderJson GenesisBlockHeader { get; set; }
+        public TestBlockJson[]? Blocks { get; set; }
+        public TestBlockHeaderJson? GenesisBlockHeader { get; set; }
 
-        public Dictionary<string, AccountStateJson> Pre { get; set; }
-        public Dictionary<string, AccountStateJson> PostState { get; set; }
+        public Dictionary<string, AccountStateJson>? Pre { get; set; }
+        public Dictionary<string, AccountStateJson>? PostState { get; set; }
         
-        public Keccak PostStateHash { get; set; }
+        public Keccak? PostStateHash { get; set; }
         
-        public string SealEngine { get; set; }
-        public string LoadFailure { get; set; }
+        public string? SealEngine { get; set; }
+        public string? LoadFailure { get; set; }
     }
 }

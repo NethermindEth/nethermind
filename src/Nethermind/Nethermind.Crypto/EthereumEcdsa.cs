@@ -20,7 +20,6 @@ using System.IO;
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Secp256k1;
 using Nethermind.Serialization.Rlp;
@@ -57,6 +56,7 @@ namespace Nethermind.Crypto
                     $"Signing transaction {tx.SenderAddress} -> {tx.To} ({tx.Value}) with data of length {tx.Data?.Length}");
 
             //Keccak hash = Keccak.Compute(Bytes.Concat((byte)tx.Type, Rlp.Encode(tx, true, isEip155Enabled, _chainIdValue).Bytes));
+            
             Keccak hash = Keccak.Compute(Rlp.Encode(tx, true, isEip155Enabled, _chainIdValue).Bytes);
             tx.Signature = Sign(privateKey, hash);
 
@@ -81,8 +81,8 @@ namespace Nethermind.Crypto
         /// <returns></returns>
         public bool Verify(Address sender, Transaction tx)
         {
-            Address recovered = RecoverAddress(tx);
-            return recovered.Equals(sender);
+            Address? recovered = RecoverAddress(tx);
+            return recovered?.Equals(sender) ?? false;
         }
 
         /// <summary>
@@ -91,7 +91,7 @@ namespace Nethermind.Crypto
         /// <param name="tx"></param>
         /// <param name="useSignatureChainId"></param>
         /// <returns></returns>
-        public Address RecoverAddress(Transaction tx, bool useSignatureChainId = false)
+        public Address? RecoverAddress(Transaction tx, bool useSignatureChainId = false)
         {
             if (tx.Signature == null)
             {
@@ -123,22 +123,22 @@ namespace Nethermind.Crypto
             return RecoverAddress(tx.Signature, hash);
         }
 
-        public Address RecoverAddress(Signature signature, Keccak message)
+        public Address? RecoverAddress(Signature signature, Keccak message)
         {
             return RecoverAddress(signature.BytesWithRecovery, message);
         }
 
-        public Address RecoverAddress(Span<byte> signatureBytes, Keccak message)
+        public Address? RecoverAddress(Span<byte> signatureBytes, Keccak message)
         {
             Span<byte> publicKey = stackalloc byte[65];
-            bool success = Proxy.RecoverKeyFromCompact(publicKey, message.Bytes, signatureBytes.Slice(0, 64),
-                signatureBytes[64], false);
-            if (!success)
-            {
-                return null;
-            }
-
-            return PublicKey.ComputeAddress(publicKey.Slice(1, 64));
+            bool success = Proxy.RecoverKeyFromCompact(
+                publicKey,
+                message.Bytes,
+                signatureBytes.Slice(0, 64),
+                signatureBytes[64],
+                false);
+            
+            return !success ? null : PublicKey.ComputeAddress(publicKey.Slice(1, 64));
         }
     }
 }

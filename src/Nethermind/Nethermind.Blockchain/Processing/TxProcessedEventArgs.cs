@@ -14,27 +14,17 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
 using Nethermind.Core;
 
 namespace Nethermind.Blockchain.Processing
 {
-    public class TxProcessedEventArgs : EventArgs
+    public class TxProcessedEventArgs : TxEventArgs
     {
-        public int Index { get; }
-        public Transaction Transaction { get; }
         public TxReceipt TxReceipt { get; }
 
-        public TxProcessedEventArgs(int index, Transaction transaction, TxReceipt txReceipt)
+        public TxProcessedEventArgs(int index, Transaction transaction, TxReceipt txReceipt) : base(index, transaction)
         {
-            Index = index;
-            Transaction = transaction;
             TxReceipt = txReceipt;
-        }
-
-        public TxProcessedEventArgs(TxReceipt txTxReceipt)
-        {
-            TxReceipt = txTxReceipt;
         }
     }
 }

@@ -32,8 +32,8 @@ namespace Nethermind.JsonRpc
         private readonly IJsonRpcConfig _jsonRpcConfig;
         private readonly TimeSpan _reportingInterval;
 
-        private ConcurrentDictionary<string, MethodStats> _currentStats = new ConcurrentDictionary<string, MethodStats>();
-        private ConcurrentDictionary<string, MethodStats> _previousStats = new ConcurrentDictionary<string, MethodStats>();
+        private ConcurrentDictionary<string, MethodStats> _currentStats = new();
+        private ConcurrentDictionary<string, MethodStats> _previousStats = new();
         private DateTime _lastReport = DateTime.MinValue;
         private readonly ILogger _logger;
 
@@ -53,12 +53,15 @@ namespace Nethermind.JsonRpc
             public decimal AvgTimeOfSuccesses { get; set; }
             public long MaxTimeOfError { get; set; }
             public long MaxTimeOfSuccess { get; set; }
+            public decimal TotalSize { get; set; }
+            public decimal AvgSize => Calls == 0 ? 0 : TotalSize / Calls;
+            public int Calls => Successes + Errors;
         }
 
         public void ReportCall(string method, long handlingTimeMicroseconds, bool success) =>
             ReportCall(new RpcReport(method, handlingTimeMicroseconds, success));
         
-        public void ReportCall(in RpcReport report, long elapsedMicroseconds = 0)
+        public void ReportCall(in RpcReport report, long elapsedMicroseconds = 0, long? size = null)
         {
             if(string.IsNullOrWhiteSpace(report.Method))
             {
@@ -76,7 +79,9 @@ namespace Nethermind.JsonRpc
             methodStats ??= _currentStats.GetOrAdd(report.Method, m => new MethodStats());
 
             long reportHandlingTimeMicroseconds = elapsedMicroseconds == 0 ? report.HandlingTimeMicroseconds : elapsedMicroseconds;
-            
+
+            decimal sizeDec = size ?? 0;
+
             lock (methodStats)
             {
                 if (report.Success)
@@ -89,6 +94,8 @@ namespace Nethermind.JsonRpc
                     methodStats.AvgTimeOfErrors = (methodStats.Errors * methodStats.AvgTimeOfErrors + reportHandlingTimeMicroseconds) / ++methodStats.Errors;
                     methodStats.MaxTimeOfError = Math.Max(methodStats.MaxTimeOfError, reportHandlingTimeMicroseconds);
                 }
+
+                methodStats.TotalSize += sizeDec;
             }
         }
 
@@ -112,15 +119,17 @@ namespace Nethermind.JsonRpc
                                         " max time | " +
                                         "   errors | " +
                                         " avg time | " +
-                                        " max time |";
+                                        " max time |" +
+                                        " avg size |" +
+                                        " total size |";
 
-            StringBuilder stringBuilder = new StringBuilder();
+            StringBuilder stringBuilder = new();
             stringBuilder.AppendLine("***** JSON RPC report *****");
-            string divider = new string(Enumerable.Repeat('-', reportHeader.Length).ToArray());
+            string divider = new(Enumerable.Repeat('-', reportHeader.Length).ToArray());
             stringBuilder.AppendLine(divider);
             stringBuilder.AppendLine(reportHeader);
             stringBuilder.AppendLine(divider);
-            MethodStats total = new MethodStats();
+            MethodStats total = new();
             foreach (KeyValuePair<string, MethodStats> methodStats in _previousStats.OrderBy(kv => kv.Key))
             {
                 total.AvgTimeOfSuccesses = total.Successes + methodStats.Value.Successes == 0
@@ -135,6 +144,7 @@ namespace Nethermind.JsonRpc
                 total.Errors += methodStats.Value.Errors;
                 total.MaxTimeOfSuccess = Math.Max(total.MaxTimeOfSuccess, methodStats.Value.MaxTimeOfSuccess);
                 total.MaxTimeOfError = Math.Max(total.MaxTimeOfError, methodStats.Value.MaxTimeOfError);
+                total.TotalSize += methodStats.Value.TotalSize;
                 stringBuilder.AppendLine(PrepareReportLine(methodStats.Key, methodStats.Value));
             }
 
@@ -162,7 +172,9 @@ namespace Nethermind.JsonRpc
                                 $"{methodStats.MaxTimeOfSuccess.ToString(CultureInfo.InvariantCulture).PadLeft(9)} | " +
                                 $"{methodStats.Errors.ToString().PadLeft(9)} | " +
                                 $"{methodStats.AvgTimeOfErrors.ToString("0", CultureInfo.InvariantCulture).PadLeft(9)} | " +
-                                $"{methodStats.MaxTimeOfError.ToString(CultureInfo.InvariantCulture).PadLeft(9)} | ";
+                                $"{methodStats.MaxTimeOfError.ToString(CultureInfo.InvariantCulture).PadLeft(9)} | " +
+                                $"{methodStats.AvgSize.ToString("0", CultureInfo.InvariantCulture).PadLeft(8)} | " +
+                                $"{methodStats.TotalSize.ToString("0", CultureInfo.InvariantCulture).PadLeft(10)} | ";
 
             return reportLine;
         }

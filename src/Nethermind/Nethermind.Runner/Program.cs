@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -27,6 +27,7 @@ using Microsoft.Extensions.CommandLineUtils;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Config;
+using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Core;
@@ -38,7 +39,6 @@ using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Runner.Logging;
 using Nethermind.Seq.Config;
 using Nethermind.Serialization.Json;
-using Nethermind.WebSockets;
 using NLog;
 using NLog.Config;
 using ILogger = Nethermind.Logging.ILogger;
@@ -50,12 +50,12 @@ namespace Nethermind.Runner
         private const string FailureString = "Failure";
         private const string DefaultConfigsDirectory = "configs";
         private const string DefaultConfigFile = "configs/mainnet.cfg";
-        
+
         private static ILogger _logger = SimpleConsoleLogger.Instance;
 
-        private static readonly CancellationTokenSource _processCloseCancellationSource = new CancellationTokenSource();
-        private static readonly TaskCompletionSource<object?> _cancelKeySource = new TaskCompletionSource<object?>();
-        private static readonly TaskCompletionSource<object?> _processExit = new TaskCompletionSource<object?>();
+        private static readonly CancellationTokenSource _processCloseCancellationSource = new();
+        private static readonly TaskCompletionSource<object?> _cancelKeySource = new();
+        private static readonly TaskCompletionSource<object?> _processExit = new();
 
         public static void Main(string[] args)
         {
@@ -93,28 +93,34 @@ namespace Nethermind.Runner
             _logger.Info("Nethermind starting initialization.");
 
             AppDomain.CurrentDomain.ProcessExit += CurrentDomainOnProcessExit;
-            IFileSystem fileSystem = new FileSystem(); ;
             
-            PluginLoader pluginLoader = new PluginLoader(
-                "plugins", fileSystem, typeof(CliquePlugin), typeof(EthashPlugin), typeof(NethDevPlugin));
-            pluginLoader.Load(SimpleConsoleLogManager.Instance);
-
-            Type configurationType = typeof(IConfig);
-            IEnumerable<Type> configTypes = new TypeDiscovery().FindNethermindTypes(configurationType)
-                .Where(ct => ct.IsInterface);
-
-            CommandLineApplication app = new CommandLineApplication {Name = "Nethermind.Runner"};
-            app.HelpOption("-?|-h|--help");
-            app.VersionOption("-v|--version", () => ClientVersion.Version, () => ClientVersion.Description);
-
             GlobalDiagnosticsContext.Set("version", ClientVersion.Version);
-
+            CommandLineApplication app = new() { Name = "Nethermind.Runner" };
+            _ = app.HelpOption("-?|-h|--help");
+            _ = app.VersionOption("-v|--version", () => ClientVersion.Version, () => ClientVersion.Description);
+            
             CommandOption dataDir = app.Option("-dd|--datadir <dataDir>", "data directory", CommandOptionType.SingleValue);
             CommandOption configFile = app.Option("-c|--config <configFile>", "config file path", CommandOptionType.SingleValue);
             CommandOption dbBasePath = app.Option("-d|--baseDbPath <baseDbPath>", "base db path", CommandOptionType.SingleValue);
             CommandOption logLevelOverride = app.Option("-l|--log <logLevel>", "log level", CommandOptionType.SingleValue);
             CommandOption configsDirectory = app.Option("-cd|--configsDirectory <configsDirectory>", "configs directory", CommandOptionType.SingleValue);
             CommandOption loggerConfigSource = app.Option("-lcs|--loggerConfigSource <loggerConfigSource>", "path to the NLog config file", CommandOptionType.SingleValue);
+            _ = app.Option("-pd|--pluginsDirectory <pluginsDirectory>", "plugins directory", CommandOptionType.SingleValue);
+            
+            IFileSystem fileSystem = new FileSystem();
+            
+            string pluginsDirectoryPath = LoadPluginsDirectory(args);
+            PluginLoader pluginLoader = new(pluginsDirectoryPath, fileSystem, 
+                typeof(AuRaPlugin), typeof(CliquePlugin), typeof(EthashPlugin), typeof(NethDevPlugin));
+
+            // leaving here as an example of adding Debug plugin
+            // IPluginLoader mevLoader = SinglePluginLoader<MevPlugin>.Instance;
+            // CompositePluginLoader pluginLoader = new (pluginLoader, mevLoader);
+            pluginLoader.Load(SimpleConsoleLogManager.Instance);
+
+            Type configurationType = typeof(IConfig);
+            IEnumerable<Type> configTypes = new TypeDiscovery().FindNethermindTypes(configurationType)
+                .Where(ct => ct.IsInterface);
 
             foreach (Type configType in configTypes.OrderBy(c => c.Name))
             {
@@ -136,12 +142,12 @@ namespace Nethermind.Runner
                     ConfigItemAttribute? configItemAttribute = propertyInfo.GetCustomAttribute<ConfigItemAttribute>();
                     if (!(configItemAttribute?.HiddenFromDocs ?? false))
                     {
-                        app.Option($"--{configType.Name.Substring(1).Replace("Config", String.Empty)}.{propertyInfo.Name}", $"{(configItemAttribute == null ? "<missing documentation>" : configItemAttribute.Description + $" (DEFAULT: {configItemAttribute.DefaultValue})" ?? "<missing documentation>")}", CommandOptionType.SingleValue);
+                        _ = app.Option($"--{configType.Name[1..].Replace("Config", string.Empty)}.{propertyInfo.Name}", $"{(configItemAttribute == null ? "<missing documentation>" : configItemAttribute.Description + $" (DEFAULT: {configItemAttribute.DefaultValue})" ?? "<missing documentation>")}", CommandOptionType.SingleValue);
                     }
                 }
             }
 
-            ManualResetEventSlim appClosed = new ManualResetEventSlim(true);
+            ManualResetEventSlim appClosed = new(true);
             app.OnExecute(async () =>
             {
                 appClosed.Reset();
@@ -154,7 +160,7 @@ namespace Nethermind.Runner
 
                 SetFinalDataDirectory(dataDir.HasValue() ? dataDir.Value() : null, initConfig, keyStoreConfig);
                 NLogManager logManager = new(initConfig.LogFileName, initConfig.LogDirectory);
-                
+
                 _logger = logManager.GetClassLogger();
                 if (_logger.IsDebug) _logger.Debug($"Nethermind version: {ClientVersion.Description}");
 
@@ -166,23 +172,27 @@ namespace Nethermind.Runner
                 if (_logger.IsDebug) _logger.Debug($"Nethermind config:{Environment.NewLine}{serializer.Serialize(initConfig, true)}{Environment.NewLine}");
 
                 ApiBuilder apiBuilder = new(configProvider, logManager);
-                INethermindApi nethermindApi = apiBuilder.Create();
+                
+                IList<INethermindPlugin> plugins = new List<INethermindPlugin>();
                 foreach (Type pluginType in pluginLoader.PluginTypes)
                 {
                     if (Activator.CreateInstance(pluginType) is INethermindPlugin plugin)
                     {
-                        nethermindApi.Plugins.Add(plugin);
+                        plugins.Add(plugin);
                     }
                 }
                 
-                EthereumRunner ethereumRunner = new EthereumRunner(nethermindApi);
+                INethermindApi nethermindApi = apiBuilder.Create(plugins.OfType<IConsensusPlugin>());
+                ((List<INethermindPlugin>)nethermindApi.Plugins).AddRange(plugins);
+                
+                EthereumRunner ethereumRunner = new(nethermindApi);
                 await ethereumRunner.Start(_processCloseCancellationSource.Token).ContinueWith(x =>
                 {
                     if (x.IsFaulted && _logger.IsError)
                         _logger.Error("Error during ethereum runner start", x.Exception);
                 });
 
-                await Task.WhenAny(_cancelKeySource.Task, _processExit.Task);
+                _ = await Task.WhenAny(_cancelKeySource.Task, _processExit.Task);
 
                 _logger.Info("Closing, please wait until all functions are stopped properly...");
                 await ethereumRunner.StopAsync();
@@ -192,8 +202,43 @@ namespace Nethermind.Runner
                 return 0;
             });
 
-            app.Execute(args);
+            _ = app.Execute(args);
             appClosed.Wait();
+        }
+
+        private static string LoadPluginsDirectory(string[] args)
+        {
+            string shortCommand = "-pd";
+            string longCommand = "--pluginsDirectory";
+            
+            string[] GetPluginArgs()
+            {
+                for (int i = 0; i < args.Length; i++)
+                {
+                    string arg = args[i];
+                    if (arg == shortCommand || arg == longCommand)
+                    {
+                        return i == args.Length - 1 ? new[] {arg} : new[] {arg, args[i + 1]};
+                    }
+                }
+
+                return Array.Empty<string>();
+            }
+            
+            CommandLineApplication pluginsApp = new() {Name = "Nethermind.Runner.Plugins"};
+            CommandOption pluginsAppDirectory = pluginsApp.Option($"{shortCommand}|{longCommand} <pluginsDirectory>", "plugins directory", CommandOptionType.SingleValue);
+            string pluginDirectory = "plugins";
+            pluginsApp.OnExecute(() =>
+            {
+                if (pluginsAppDirectory.HasValue())
+                {
+                    pluginDirectory = pluginsAppDirectory.Value();
+                }
+
+                return 0;
+            });
+            pluginsApp.Execute(GetPluginArgs());
+            return pluginDirectory;
         }
 
         private static IConfigProvider BuildConfigProvider(
@@ -234,8 +279,8 @@ namespace Nethermind.Runner
                 NLogConfigurator.ConfigureLogLevels(logLevelOverride);
             }
 
-            ConfigProvider configProvider = new ConfigProvider();
-            Dictionary<string, string> configArgs = new Dictionary<string, string>();
+            ConfigProvider configProvider = new();
+            Dictionary<string, string> configArgs = new();
             foreach (CommandOption commandOption in app.Options)
             {
                 if (commandOption.HasValue())
@@ -258,14 +303,9 @@ namespace Nethermind.Runner
 
             if (!PathUtils.IsExplicitlyRelative(configFilePath))
             {
-                if (configDir == DefaultConfigsDirectory)
-                {
-                    configFilePath = configFilePath.GetApplicationResourcePath();
-                }
-                else
-                {
-                    configFilePath = Path.Combine(configDir, string.Concat(configFilePath));
-                }
+                configFilePath = configDir == DefaultConfigsDirectory
+                    ? configFilePath.GetApplicationResourcePath()
+                    : Path.Combine(configDir, string.Concat(configFilePath));
             }
 
             if (!Path.HasExtension(configFilePath) && !configFilePath.Contains(Path.DirectorySeparatorChar))
@@ -299,6 +339,12 @@ namespace Nethermind.Runner
             logger.Info($"Reading config file from {configFilePath}");
             configProvider.AddSource(new JsonConfigSource(configFilePath));
             configProvider.Initialize();
+            var incorrectSettings = configProvider.FindIncorrectSettings();
+            if(incorrectSettings.Errors.Count() > 0)
+            {
+                logger.Warn($"Incorrect config settings found:{Environment.NewLine}{incorrectSettings.ErrorMsg}");
+            }
+
             logger.Info("Configuration initialized.");
             return configProvider;
         }
@@ -324,8 +370,7 @@ namespace Nethermind.Runner
             if (!string.IsNullOrWhiteSpace(baseDbPath))
             {
                 string newDbPath = initConfig.BaseDbPath.GetApplicationResourcePath(baseDbPath);
-                if (_logger.IsDebug) _logger.Debug(
-                    $"Adding prefix to baseDbPath, new value: {newDbPath}, old value: {initConfig.BaseDbPath}");
+                if (_logger.IsDebug) _logger.Debug($"Adding prefix to baseDbPath, new value: {newDbPath}, old value: {initConfig.BaseDbPath}");
                 initConfig.BaseDbPath = newDbPath;
             }
             else
@@ -342,7 +387,7 @@ namespace Nethermind.Runner
                 string newKeyStorePath = keyStoreConfig.KeyStoreDirectory.GetApplicationResourcePath(dataDir);
                 string newLogDirectory = initConfig.LogDirectory.GetApplicationResourcePath(dataDir);
 
-                if (_logger.IsInfo) 
+                if (_logger.IsInfo)
                 {
                     _logger.Info($"Setting BaseDbPath to: {newDbPath}, from: {initConfig.BaseDbPath}");
                     _logger.Info($"Setting KeyStoreDirectory to: {newKeyStorePath}, from: {keyStoreConfig.KeyStoreDirectory}");
@@ -364,7 +409,7 @@ namespace Nethermind.Runner
         private static void ConsoleOnCancelKeyPress(object? sender, ConsoleCancelEventArgs e)
         {
             _processCloseCancellationSource.Cancel();
-            _cancelKeySource.TrySetResult(null);
+            _ = _cancelKeySource.TrySetResult(null);
             e.Cancel = true;
         }
 

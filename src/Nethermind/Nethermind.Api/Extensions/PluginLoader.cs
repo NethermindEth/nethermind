@@ -22,24 +22,24 @@ using System.IO.Abstractions;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.Loader;
-using Nethermind.Core;
 using Nethermind.Logging;
 
 namespace Nethermind.Api.Extensions
 {
     public class PluginLoader : IPluginLoader
     {
+        private readonly List<Type> _pluginTypes = new();
         private readonly IFileSystem _fileSystem;
         private readonly Type[] _embedded;
         private readonly string _pluginsDirectory;
 
-        public List<Type> PluginTypes = new List<Type>();
+        public IEnumerable<Type> PluginTypes => _pluginTypes;
 
         public PluginLoader(string pluginPath, IFileSystem fileSystem, params Type[] embedded)
         {
             _pluginsDirectory = pluginPath ?? throw new ArgumentNullException(nameof(pluginPath));
             _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
-            _embedded = embedded ?? Array.Empty<Type>();
+            _embedded = embedded;
         }
 
         public void Load(ILogManager logManager)
@@ -49,7 +49,7 @@ namespace Nethermind.Api.Extensions
             foreach (Type embeddedPlugin in _embedded)
             {
                 if (logger.IsInfo) logger.Info($"  Found plugin type {embeddedPlugin}");
-                PluginTypes.Add(embeddedPlugin);    
+                _pluginTypes.Add(embeddedPlugin);    
             }
 
             string baseDir = string.Empty.GetApplicationResourcePath();
@@ -75,7 +75,7 @@ namespace Nethermind.Api.Extensions
                     if (logger.IsInfo) logger.Warn($"Loading assembly {pluginAssembly}");
                     string assemblyPath = _fileSystem.Path.Combine(pluginAssembliesDir, assemblyName);
                     Assembly assembly = AssemblyLoadContext.Default.LoadFromAssemblyPath(assemblyPath);
-                    AssemblyLoadContext.Default.Resolving += (context, name) =>
+                    AssemblyLoadContext.Default.Resolving += (_, name) =>
                     {
                         string fileName = name.Name + ".dll";
                         try
@@ -95,7 +95,7 @@ namespace Nethermind.Api.Extensions
                             if (!PluginTypes.Contains(type))
                             {
                                 if (logger.IsInfo) logger.Warn($"  Found plugin type {pluginAssembly}");
-                                PluginTypes.Add(type);
+                                _pluginTypes.Add(type);
                             }
                         }
                     }
@@ -105,6 +105,10 @@ namespace Nethermind.Api.Extensions
                     logger.Error($"Failed to load plugin {pluginAssembly}", e);
                 }
             }
+            
+            // consensus plugins at front
+            _pluginTypes.Sort((p1, p2) => 
+                typeof(IConsensusPlugin).IsAssignableFrom(p2).CompareTo(typeof(IConsensusPlugin).IsAssignableFrom(p1)));
         }
     }
 }

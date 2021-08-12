@@ -25,6 +25,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
 using NSubstitute;
@@ -51,20 +52,6 @@ namespace Nethermind.AuRa.Test.Contract
             _stateProvider = Substitute.For<IStateProvider>();
             _stateProvider.StateRoot.Returns(TestItem.KeccakA);
         }
-
-        [Test]
-        public void constructor_throws_ArgumentNullException_on_null_encoder()
-        {
-            Action action =
-                () => new ValidatorContract(
-                    _transactionProcessor,
-                    null, 
-                    _contractAddress, 
-                    _stateProvider, 
-                    _readOnlyTxProcessorSource, 
-                    new Signer(0, TestItem.PrivateKeyD, LimboLogs.Instance));
-            action.Should().Throw<ArgumentNullException>();
-        }
         
         [Test]
         public void constructor_throws_ArgumentNullException_on_null_contractAddress()
@@ -72,7 +59,7 @@ namespace Nethermind.AuRa.Test.Contract
             Action action =
                 () => new ValidatorContract(
                     _transactionProcessor,
-                    new AbiEncoder(),
+                    AbiEncoder.Instance,
                     null,
                     _stateProvider,
                     _readOnlyTxProcessorSource,
@@ -98,7 +85,7 @@ namespace Nethermind.AuRa.Test.Contract
             
             var contract = new ValidatorContract(
                 _transactionProcessor,
-                new AbiEncoder(),
+                AbiEncoder.Instance,
                 _contractAddress,
                 _stateProvider,
                 _readOnlyTxProcessorSource,

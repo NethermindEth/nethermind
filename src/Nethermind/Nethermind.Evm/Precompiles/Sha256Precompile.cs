@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Security.Cryptography;
 using System.Threading;
 using Nethermind.Core;
@@ -23,7 +24,7 @@ namespace Nethermind.Evm.Precompiles
 {
     public class Sha256Precompile : IPrecompile
     {
-        private static ThreadLocal<SHA256> _sha256 = new ThreadLocal<SHA256>();
+        private static ThreadLocal<SHA256> _sha256 = new();
         
         public static readonly IPrecompile Instance = new Sha256Precompile();
 
@@ -49,16 +50,16 @@ namespace Nethermind.Evm.Precompiles
             return 60L;
         }
 
-        public long DataGasCost(byte[] inputData, IReleaseSpec releaseSpec)
+        public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
             return 12L * EvmPooledMemory.Div32Ceiling((ulong) inputData.Length);
         }
 
-        public (byte[], bool) Run(byte[] inputData, IReleaseSpec releaseSpec)
+        public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
             Metrics.Sha256Precompile++;
             InitIfNeeded();
-            return (_sha256.Value.ComputeHash(inputData), true);
+            return (_sha256.Value.ComputeHash(inputData.ToArray()), true);
         }
     }
 }

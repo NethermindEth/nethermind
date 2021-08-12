@@ -34,7 +34,7 @@ namespace Nethermind.Core.Crypto
         {
         }
         
-        public PublicKey(Span<byte> bytes)
+        public PublicKey(ReadOnlySpan<byte> bytes)
         {
             if (bytes.Length != LengthInBytes && bytes.Length != PrefixedLengthInBytes)
             {
@@ -96,7 +96,7 @@ namespace Nethermind.Core.Crypto
             return new Address(hash.Slice(12).ToArray());
         }
         
-        public static Address ComputeAddress(Span<byte> publicKeyBytes)
+        public static Address ComputeAddress(ReadOnlySpan<byte> publicKeyBytes)
         {
             Span<byte> hash = ValueKeccak.Compute(publicKeyBytes).BytesAsSpan;
             return new Address(hash.Slice(12).ToArray());

@@ -16,6 +16,7 @@
 // 
 
 using System;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -24,6 +25,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using NUnit.Framework;
+// ReSharper disable AssignNullToNotNullAttribute
 
 namespace Nethermind.Blockchain.Test.Consensus
 {
@@ -79,10 +81,10 @@ namespace Nethermind.Blockchain.Test.Consensus
         }
         
         [Test]
-        public void Test_signing()
+        public async Task Test_signing()
         {
             Signer signer = new Signer(1, TestItem.PrivateKeyA, LimboLogs.Instance);
-            signer.Sign(Build.A.Transaction.TestObject);
+            await signer.Sign(Build.A.Transaction.TestObject);
             signer.Sign(Keccak.Zero).Bytes.Should().HaveCount(64);
         }
     }

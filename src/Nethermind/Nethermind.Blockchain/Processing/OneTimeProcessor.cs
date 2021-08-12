@@ -24,10 +24,12 @@ namespace Nethermind.Blockchain.Processing
 {
     public class OneTimeChainProcessor : IBlockchainProcessor
     {
+        public ITracerBag Tracers => _processor.Tracers;
+
         private readonly IBlockchainProcessor _processor;
         private readonly IReadOnlyDbProvider _readOnlyDbProvider;
 
-        private object _lock = new object();
+        private object _lock = new();
 
         public OneTimeChainProcessor(IReadOnlyDbProvider readOnlyDbProvider, IBlockchainProcessor processor)
         {

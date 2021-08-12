@@ -33,14 +33,15 @@ namespace Nethermind.Network.P2P
             _logger = logManager.GetClassLogger<PacketSender>() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        public void Enqueue<T>(T message) where T : P2PMessage
+        public int Enqueue<T>(T message) where T : P2PMessage
         {
             if (!_context.Channel.Active)
             {
-                return;
+                return 0;
             }
             
             IByteBuffer buffer = _messageSerializationService.ZeroSerialize(message);
+            var length = buffer.ReadableBytes;
             _context.WriteAndFlushAsync(buffer).ContinueWith(t =>
             {
                 if (t.IsFaulted)
@@ -56,6 +57,8 @@ namespace Nethermind.Network.P2P
 //                    if (_logger.IsTrace) _logger.Trace($"Packet ({packet.Protocol}.{packet.PacketType}) pushed");
                 }
             });
+            
+            return length;
         }
 
         public override void HandlerAdded(IChannelHandlerContext context)

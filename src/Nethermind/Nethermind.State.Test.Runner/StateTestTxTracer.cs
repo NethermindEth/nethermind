@@ -1,5 +1,5 @@
 ﻿/*
- * Copyright (c) 2018 Demerzel Solutions Limited
+ * Copyright (c) 2021 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
  * The Nethermind library is free software: you can redistribute it and/or modify
@@ -31,7 +31,7 @@ namespace Nethermind.State.Test.Runner
     public class StateTestTxTracer : ITxTracer
     {
         private StateTestTxTraceEntry _traceEntry;
-        private StateTestTxTrace _trace = new StateTestTxTrace();
+        private StateTestTxTrace _trace = new();
         private bool _gasAlreadySetForCurrentOp;
 
         public bool IsTracingReceipt => true;
@@ -42,8 +42,10 @@ namespace Nethermind.State.Test.Runner
         public bool IsTracingRefunds { get; } = false;
         public bool IsTracingCode => false;
         public bool IsTracingStack { get; set; } = true;
-        bool ITxTracer.IsTracingState => false;
+        bool IStateTracer.IsTracingState => false;
+        bool IStorageTracer.IsTracingStorage => false;
         public bool IsTracingBlockHash { get; } = false;
+        public bool IsTracingAccess { get; } = false;
 
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak stateRoot = null)
         {
@@ -75,7 +77,7 @@ namespace Nethermind.State.Test.Runner
             _traceEntry.Error = GetErrorDescription(error);
         }
         
-        private static string GetErrorDescription(EvmExceptionType evmExceptionType)
+        private static string? GetErrorDescription(EvmExceptionType evmExceptionType)
         {
             return evmExceptionType switch
             {
@@ -153,12 +155,17 @@ namespace Nethermind.State.Test.Runner
             throw new NotSupportedException();
         }
 
-        public void ReportAction(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType, bool isPrecompileCall = false)
+        public void ReportStorageRead(StorageCell storageCell)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void ReportAction(long gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
         {
             throw new NotSupportedException();
         }
 
-        public void ReportActionEnd(long gas, byte[] output)
+        public void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
         {
             throw new NotSupportedException();
         }
@@ -168,7 +175,7 @@ namespace Nethermind.State.Test.Runner
             throw new NotSupportedException();
         }
 
-        public void ReportActionEnd(long gas, Address deploymentAddress, byte[] deployedCode)
+        public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
         {
             throw new NotSupportedException();
         }
@@ -197,6 +204,11 @@ namespace Nethermind.State.Test.Runner
         }
 
         public void ReportExtraGasPressure(long extraGasPressure)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells)
         {
             throw new NotImplementedException();
         }

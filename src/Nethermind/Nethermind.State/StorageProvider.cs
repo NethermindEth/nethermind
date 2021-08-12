@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
@@ -27,31 +28,34 @@ namespace Nethermind.State
 {
     public class StorageProvider : IStorageProvider
     {
-        private ResettableDictionary<StorageCell, Stack<int>> _intraBlockCache = new ResettableDictionary<StorageCell, Stack<int>>();
+        private readonly ResettableDictionary<StorageCell, StackList<int>> _intraBlockCache = new();
 
         /// <summary>
         /// EIP-1283
         /// </summary>
-        private ResettableDictionary<StorageCell, byte[]> _originalValues = new ResettableDictionary<StorageCell, byte[]>();
+        private readonly ResettableDictionary<StorageCell, byte[]> _originalValues = new();
 
-        private ResettableHashSet<StorageCell> _committedThisRound = new ResettableHashSet<StorageCell>();
+        private readonly ResettableHashSet<StorageCell> _committedThisRound = new();
 
         private readonly ILogger _logger;
         
-        private readonly IKeyValueStore _stateDb;
         private readonly ITrieStore _trieStore;
 
         private readonly IStateProvider _stateProvider;
         private readonly ILogManager _logManager;
 
-        private ResettableDictionary<Address, StorageTree> _storages = new ResettableDictionary<Address, StorageTree>();
+        private readonly ResettableDictionary<Address, StorageTree> _storages = new();
 
         private const int StartCapacity = Resettable.StartCapacity;
         private int _capacity = StartCapacity;
         private Change?[] _changes = new Change[StartCapacity];
-        private int _currentPosition = -1;
-        
-        public StorageProvider(ITrieStore trieStore, IStateProvider stateProvider, ILogManager logManager)
+        private int _currentPosition = Resettable.EmptyPosition;
+
+        // stack of snapshot indexes on changes for start of each transaction
+        // this is needed for OriginalValues for new transactions
+        private readonly Stack<int> _transactionChangesSnapshots = new();
+
+        public StorageProvider(ITrieStore? trieStore, IStateProvider? stateProvider, ILogManager? logManager)
         {
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _logger = logManager.GetClassLogger<StorageProvider>() ?? throw new ArgumentNullException(nameof(logManager));
@@ -64,6 +68,17 @@ namespace Nethermind.State
             if (!_originalValues.ContainsKey(storageCell))
             {
                 throw new InvalidOperationException("Get original should only be called after get within the same caching round");
+            }
+
+            if (_transactionChangesSnapshots.TryPeek(out int snapshot))
+            {
+                if (_intraBlockCache.TryGetValue(storageCell, out StackList<int> stack))
+                {
+                    if (stack.TryGetSearchedItem(snapshot, out int lastChangeIndexBeforeOriginalSnapshot))
+                    {
+                        return _changes[lastChangeIndexBeforeOriginalSnapshot]!.Value;
+                    }
+                }
             }
 
             return _originalValues[storageCell];
@@ -86,9 +101,13 @@ namespace Nethermind.State
             return storageTree.RootHash;
         }
 
-        public int TakeSnapshot()
+        public int TakeSnapshot(bool newTransactionStart)
         {
             if (_logger.IsTrace) _logger.Trace($"Storage snapshot {_currentPosition}");
+            if (newTransactionStart && _currentPosition != Resettable.EmptyPosition)
+            {
+                _transactionChangesSnapshots.Push(_currentPosition);
+            }
             return _currentPosition;
         }
 
@@ -100,13 +119,13 @@ namespace Nethermind.State
             {
                 throw new InvalidOperationException($"{nameof(StorageProvider)} tried to restore snapshot {snapshot} beyond current position {_currentPosition}");
             }
-
+            
             if (snapshot == _currentPosition)
             {
                 return;
             }
 
-            List<Change> keptInCache = new List<Change>();
+            List<Change> keptInCache = new();
 
             for (int i = 0; i < _currentPosition - snapshot; i++)
             {
@@ -148,16 +167,22 @@ namespace Nethermind.State
                 _changes[_currentPosition] = kept;
                 _intraBlockCache[kept.StorageCell].Push(_currentPosition);
             }
+            
+            while (_transactionChangesSnapshots.TryPeek(out int lastOriginalSnapshot) && lastOriginalSnapshot > snapshot)
+            {
+                _transactionChangesSnapshots.Pop();
+            }
+
         }
 
         public void Commit()
         {
-            Commit(null);
+            Commit(NullStorageTracer.Instance);
         }
 
-        private static byte[] _zeroValue = {0};
+        private static readonly byte[] _zeroValue = {0};
 
-        private struct ChangeTrace
+        private readonly struct ChangeTrace
         {
             public ChangeTrace(byte[]? before, byte[]? after)
             {
@@ -175,7 +200,7 @@ namespace Nethermind.State
             public byte[] After { get; }
         }
 
-        public void Commit(IStorageTracer? tracer)
+        public void Commit(IStorageTracer tracer)
         {
             if (_currentPosition == -1)
             {
@@ -195,9 +220,9 @@ namespace Nethermind.State
                 throw new InvalidOperationException($"Change after current position ({_currentPosition} + 1) was not null when commiting {nameof(StorageProvider)}");
             }
 
-            HashSet<Address> toUpdateRoots = new HashSet<Address>();
+            HashSet<Address> toUpdateRoots = new();
 
-            bool isTracing = tracer != null;
+            bool isTracing = tracer.IsTracingStorage;
             Dictionary<StorageCell, ChangeTrace>? trace = null;
             if (isTracing)
             {
@@ -284,6 +309,7 @@ namespace Nethermind.State
             _committedThisRound.Reset();
             _intraBlockCache.Reset();
             _originalValues.Reset();
+            _transactionChangesSnapshots.Clear();
 
             if (isTracing)
             {
@@ -291,7 +317,7 @@ namespace Nethermind.State
             }
         }
 
-        private void ReportChanges(IStorageTracer tracer, Dictionary<StorageCell, ChangeTrace> trace)
+        private static void ReportChanges(IStorageTracer tracer, Dictionary<StorageCell, ChangeTrace> trace)
         {
             foreach ((StorageCell address, ChangeTrace change) in trace)
             {
@@ -311,6 +337,7 @@ namespace Nethermind.State
 
             _intraBlockCache.Clear();
             _originalValues.Clear();
+            _transactionChangesSnapshots.Clear();
             _currentPosition = -1;
             _committedThisRound.Clear();
             Array.Clear(_changes, 0, _changes.Length);
@@ -335,7 +362,7 @@ namespace Nethermind.State
         {
             if (!_storages.ContainsKey(address))
             {
-                StorageTree storageTree = new StorageTree(_trieStore, _stateProvider.GetStorageRoot(address), _logManager);
+                StorageTree storageTree = new(_trieStore, _stateProvider.GetStorageRoot(address), _logManager);
                 return _storages[address] = storageTree;
             }
 
@@ -344,9 +371,9 @@ namespace Nethermind.State
 
         private byte[] GetCurrentValue(StorageCell storageCell)
         {
-            if (_intraBlockCache.ContainsKey(storageCell))
+            if (_intraBlockCache.TryGetValue(storageCell, out StackList<int> stack))
             {
-                int lastChangeIndex = _intraBlockCache[storageCell].Peek();
+                int lastChangeIndex = stack.Peek();
                 return _changes[lastChangeIndex]!.Value;
             }
 
@@ -389,7 +416,7 @@ namespace Nethermind.State
         {
             if (!_intraBlockCache.ContainsKey(cell))
             {
-                _intraBlockCache[cell] = new Stack<int>();
+                _intraBlockCache[cell] = new StackList<int>();
             }
         }
 

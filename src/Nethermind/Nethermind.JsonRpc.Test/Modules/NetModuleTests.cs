@@ -31,21 +31,13 @@ namespace Nethermind.JsonRpc.Test.Modules
     [TestFixture]
     public class NetModuleTests
     {
-        private INetModule _netModule;
-
-        [SetUp]
-        public void Initialize()
-        {
-            _netModule = new NetModule(LimboLogs.Instance, Substitute.For<INetBridge>());
-        }
-
         [Test]
         public void NetPeerCountSuccessTest()
         {
             Enode enode = new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303);
             NetBridge netBridge = new NetBridge(enode, Substitute.For<ISyncServer>());
-            NetModule module = new NetModule(LimboLogs.Instance, netBridge);
-            string response = RpcTest.TestSerializedRequest<INetModule>(module, "net_peerCount");
+            NetRpcModule rpcModule = new NetRpcModule(LimboLogs.Instance, netBridge);
+            string response = RpcTest.TestSerializedRequest<INetRpcModule>(rpcModule, "net_peerCount");
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x0\",\"id\":67}", response);
         }
 
@@ -54,8 +46,8 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             Enode enode = new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303);
             NetBridge netBridge = new NetBridge(enode, Substitute.For<ISyncServer>());
-            NetModule module = new NetModule(LimboLogs.Instance, netBridge);
-            string response = RpcTest.TestSerializedRequest<INetModule>(module, "net_version");
+            NetRpcModule rpcModule = new NetRpcModule(LimboLogs.Instance, netBridge);
+            string response = RpcTest.TestSerializedRequest<INetRpcModule>(rpcModule, "net_version");
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0\",\"id\":67}", response);
         }
 
@@ -64,8 +56,8 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             Enode enode = new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303);
             NetBridge netBridge = new NetBridge(enode, Substitute.For<ISyncServer>());
-            NetModule module = new NetModule(LimboLogs.Instance, netBridge);
-            string response = RpcTest.TestSerializedRequest<INetModule>(module, "net_listening");
+            NetRpcModule rpcModule = new NetRpcModule(LimboLogs.Instance, netBridge);
+            string response = RpcTest.TestSerializedRequest<INetRpcModule>(rpcModule, "net_listening");
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}", response);
         }
     }

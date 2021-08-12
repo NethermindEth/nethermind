@@ -22,8 +22,6 @@ using BenchmarkDotNet.Jobs;
 
 namespace Nethermind.Benchmarks.Evm
 {
-    [MemoryDiagnoser]
-    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
     public class BitwiseOrBenchmark
     {
         [GlobalSetup]

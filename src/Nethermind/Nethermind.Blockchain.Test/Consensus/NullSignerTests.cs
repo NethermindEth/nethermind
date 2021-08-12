@@ -15,11 +15,13 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using NUnit.Framework;
+// ReSharper disable AssignNullToNotNullAttribute
 
 namespace Nethermind.Blockchain.Test.Consensus
 {
@@ -35,10 +37,10 @@ namespace Nethermind.Blockchain.Test.Consensus
         }
         
         [Test]
-        public void Test_signing()
+        public async Task Test_signing()
         {
             NullSigner signer = NullSigner.Instance;
-            signer.Sign((Transaction)null);
+            await signer.Sign((Transaction)null);
             signer.Sign((Keccak) null).Bytes.Should().HaveCount(64);
         }
     }

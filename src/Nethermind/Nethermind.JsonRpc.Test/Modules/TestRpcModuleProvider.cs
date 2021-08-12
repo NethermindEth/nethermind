@@ -14,8 +14,10 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
 using System.IO.Abstractions;
+using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
 using Nethermind.JsonRpc.Modules;
@@ -31,31 +33,48 @@ using NSubstitute;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
-    internal class TestRpcModuleProvider<T> : IRpcModuleProvider where T : class, IModule
+    internal class TestRpcModuleProvider<T> : IRpcModuleProvider where T : class, IRpcModule
     {
-        private RpcModuleProvider _provider = new RpcModuleProvider(new FileSystem(), new JsonRpcConfig(), LimboLogs.Instance);
+        private readonly JsonRpcConfig _jsonRpcConfig;
+        private readonly RpcModuleProvider _provider;
+        
 
         public TestRpcModuleProvider(T module)
         {
-            _provider.Register(new SingletonModulePool<INetModule>(new SingletonFactory<INetModule>(typeof(INetModule).IsAssignableFrom(typeof(T)) ? (INetModule)module : Substitute.For<INetModule>()), true));
-            _provider.Register(new SingletonModulePool<IEthModule>(new SingletonFactory<IEthModule>(typeof(IEthModule).IsAssignableFrom(typeof(T)) ? (IEthModule)module : Substitute.For<IEthModule>()), true));
-            _provider.Register(new SingletonModulePool<IWeb3Module>(new SingletonFactory<IWeb3Module>(typeof(IWeb3Module).IsAssignableFrom(typeof(T)) ? (IWeb3Module)module : Substitute.For<IWeb3Module>()), true));
-            _provider.Register(new SingletonModulePool<IDebugModule>(new SingletonFactory<IDebugModule>(typeof(IDebugModule).IsAssignableFrom(typeof(T)) ? (IDebugModule)module : Substitute.For<IDebugModule>()), true));
-            _provider.Register(new SingletonModulePool<ITraceModule>(new SingletonFactory<ITraceModule>(typeof(ITraceModule).IsAssignableFrom(typeof(T)) ? (ITraceModule)module : Substitute.For<ITraceModule>()), true));
-            _provider.Register(new SingletonModulePool<IParityModule>(new SingletonFactory<IParityModule>(typeof(IParityModule).IsAssignableFrom(typeof(T)) ? (IParityModule)module : Substitute.For<IParityModule>()), true));
+            _jsonRpcConfig = new JsonRpcConfig();
+            _provider = new RpcModuleProvider(new FileSystem(), _jsonRpcConfig, LimboLogs.Instance);
+            
+            _provider.Register(new SingletonModulePool<INetRpcModule>(new SingletonFactory<INetRpcModule>(typeof(INetRpcModule).IsAssignableFrom(typeof(T)) ? (INetRpcModule)module : Substitute.For<INetRpcModule>()), true));
+            _provider.Register(new SingletonModulePool<IEthRpcModule>(new SingletonFactory<IEthRpcModule>(typeof(IEthRpcModule).IsAssignableFrom(typeof(T)) ? (IEthRpcModule)module : Substitute.For<IEthRpcModule>()), true));
+            _provider.Register(new SingletonModulePool<IWeb3RpcModule>(new SingletonFactory<IWeb3RpcModule>(typeof(IWeb3RpcModule).IsAssignableFrom(typeof(T)) ? (IWeb3RpcModule)module : Substitute.For<IWeb3RpcModule>()), true));
+            _provider.Register(new SingletonModulePool<IDebugRpcModule>(new SingletonFactory<IDebugRpcModule>(typeof(IDebugRpcModule).IsAssignableFrom(typeof(T)) ? (IDebugRpcModule)module : Substitute.For<IDebugRpcModule>()), true));
+            _provider.Register(new SingletonModulePool<ITraceRpcModule>(new SingletonFactory<ITraceRpcModule>(typeof(ITraceRpcModule).IsAssignableFrom(typeof(T)) ? (ITraceRpcModule)module : Substitute.For<ITraceRpcModule>()), true));
+            _provider.Register(new SingletonModulePool<IParityRpcModule>(new SingletonFactory<IParityRpcModule>(typeof(IParityRpcModule).IsAssignableFrom(typeof(T)) ? (IParityRpcModule)module : Substitute.For<IParityRpcModule>()), true));
         }
 
-        public void Register<TOther>(IRpcModulePool<TOther> pool) where TOther : IModule
+        public void Register<TOther>(IRpcModulePool<TOther> pool) where TOther : IRpcModule
         {
+            EnableModule<TOther>();
             _provider.Register(pool);
         }
 
-        public IReadOnlyCollection<JsonConverter> Converters => _provider.Converters;
-        public IReadOnlyCollection<ModuleType> Enabled => _provider.All;
-        public IReadOnlyCollection<ModuleType> All => _provider.All;
-        public ModuleResolution Check(string methodName)
+        private void EnableModule<TOther>() where TOther : IRpcModule
         {
-            return _provider.Check(methodName);
+            if (Attribute.GetCustomAttribute(typeof(TOther), typeof(RpcModuleAttribute), true) is RpcModuleAttribute rpcModuleAttribute)
+            {
+                if (!_jsonRpcConfig.EnabledModules.Contains(rpcModuleAttribute.ModuleType))
+                {
+                    _jsonRpcConfig.EnabledModules = _jsonRpcConfig.EnabledModules.Union(new[] {rpcModuleAttribute.ModuleType}).ToArray();
+                }
+            }
+        }
+
+        public IReadOnlyCollection<JsonConverter> Converters => _provider.Converters;
+        public IReadOnlyCollection<string> Enabled => _provider.All;
+        public IReadOnlyCollection<string> All => _provider.All;
+        public ModuleResolution Check(string methodName, RpcEndpoint rpcEndpoint)
+        {
+            return _provider.Check(methodName, rpcEndpoint);
         }
 
         public (MethodInfo, bool) Resolve(string methodName)
@@ -63,14 +82,14 @@ namespace Nethermind.JsonRpc.Test.Modules
             return _provider.Resolve(methodName);
         }
 
-        public Task<IModule> Rent(string methodName, bool readOnly)
+        public Task<IRpcModule> Rent(string methodName, bool readOnly)
         {
             return _provider.Rent(methodName, readOnly);
         }
 
-        public void Return(string methodName, IModule module)
+        public void Return(string methodName, IRpcModule rpcModule)
         {
-            _provider.Return(methodName, module);
+            _provider.Return(methodName, rpcModule);
         }
     }
 }

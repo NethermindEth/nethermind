@@ -23,11 +23,13 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Timers;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
+using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.Rlpx;
 using Nethermind.Specs;
 using Nethermind.Stats;
@@ -36,6 +38,7 @@ using Nethermind.Synchronization;
 using Nethermind.Synchronization.Peers;
 using Nethermind.TxPool;
 using NSubstitute;
+using NSubstitute.Exceptions;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test
@@ -67,6 +70,7 @@ namespace Nethermind.Network.Test
             private ISyncServer _syncServer;
             private ISyncPeerPool _syncPeerPool;
             private ITxPool _txPool;
+            private IPooledTxsRequestor _pooledTxsRequestor;
             private IChannelHandlerContext _channelHandlerContext;
             private IChannel _channel;
             private IChannelPipeline _pipeline;
@@ -87,12 +91,14 @@ namespace Nethermind.Network.Test
                 _syncServer.Genesis.Returns(Build.A.Block.Genesis.TestObject.Header);
                 _syncServer.Head.Returns(Build.A.BlockHeader.TestObject);
                 _txPool = Substitute.For<ITxPool>();
+                _pooledTxsRequestor = Substitute.For<IPooledTxsRequestor>();
                 _discoveryApp = Substitute.For<IDiscoveryApp>();
                 _serializer = new MessageSerializationService();
                 _localPeer = Substitute.For<IRlpxPeer>();
                 _localPeer.LocalPort.Returns(_localPort);
                 _localPeer.LocalNodeId.Returns(TestItem.PublicKeyA);
-                _nodeStatsManager = new NodeStatsManager(LimboLogs.Instance);
+                ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
+                _nodeStatsManager = new NodeStatsManager(timerFactory, LimboLogs.Instance);
                 _blockTree = Substitute.For<IBlockTree>();
                 _blockTree.ChainId.Returns(1ul);
                 _blockTree.Genesis.Returns(Build.A.Block.Genesis.TestObject.Header);
@@ -103,6 +109,7 @@ namespace Nethermind.Network.Test
                     _syncPeerPool,
                     _syncServer,
                     _txPool,
+                    _pooledTxsRequestor,
                     _discoveryApp,
                     _serializer,
                     _localPeer,

@@ -14,7 +14,9 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Linq;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Timers;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.Rlpx;
@@ -51,10 +53,11 @@ namespace Nethermind.Network.Test.P2P
             _session.LocalPort.Returns(ListenPort);
             Node node = new Node("127.0.0.1", 30303, false);
             _session.Node.Returns(node);
+            ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
             return new P2PProtocolHandler(
                 _session,
                 TestItem.PublicKeyA,
-                new NodeStatsManager(LimboLogs.Instance), 
+                new NodeStatsManager(timerFactory, LimboLogs.Instance), 
                 _serializer,
                 LimboLogs.Instance);
         }
@@ -66,6 +69,18 @@ namespace Nethermind.Network.Test.P2P
             p2PProtocolHandler.Init();
 
             _session.Received(1).DeliverMessage(Arg.Any<HelloMessage>());
+        }
+        
+        [Test]
+        public void On_init_sends_a_hello_message_with_capabilities()
+        {
+            P2PProtocolHandler p2PProtocolHandler = CreateSession();
+            p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.Wit, 0));
+            p2PProtocolHandler.Init();
+
+            string[] expectedCapabilities = {"eth62", "eth63", "eth64", "eth65", "wit0"};
+            _session.Received(1).DeliverMessage(
+                Arg.Is<HelloMessage>(m => m.Capabilities.Select(c => c.ToString()).SequenceEqual(expectedCapabilities)));
         }
 
         [Test]

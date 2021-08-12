@@ -54,19 +54,20 @@ namespace Nethermind.Evm.Tracing
         /// EVM stack tracing after each operation
         /// </summary>
         bool IsTracingStack { get; }
-        /// <summary>
-        /// State changes at commit stage
-        /// </summary>
-        bool IsTracingState { get; }
 
         /// <summary>
         /// Traces blockhash calls
         /// </summary>
         bool IsTracingBlockHash { get; }
+        
+        /// <summary>
+        /// Traces storage access
+        /// </summary>
+        bool IsTracingAccess { get; }
 
-        void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak stateRoot = null);
+        void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null);
 
-        void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak stateRoot = null);
+        void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak? stateRoot = null);
 
         void StartOperation(int depth, long gas, Instruction opcode, int pc);
 
@@ -87,6 +88,11 @@ namespace Nethermind.Evm.Tracing
         {
             ReportStackPush(stackItem.ToArray().AsSpan());
         }
+        
+        void ReportStackPush(in ZeroPaddedMemory stackItem)
+        {
+            ReportStackPush(stackItem.ToArray().AsSpan());
+        }
 
         void SetOperationMemory(List<string> memoryTrace);
 
@@ -103,6 +109,11 @@ namespace Nethermind.Evm.Tracing
         {
             ReportMemoryChange(offset, data.ToArray());
         }
+        
+        void ReportMemoryChange(long offset, in ZeroPaddedMemory data)
+        {
+            ReportMemoryChange(offset, data.ToArray());
+        }
 
         void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value);
 
@@ -110,13 +121,13 @@ namespace Nethermind.Evm.Tracing
 
         void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress);
 
-        void ReportAction(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType, bool isPrecompileCall = false);
+        void ReportAction(long gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false);
 
-        void ReportActionEnd(long gas, byte[] output);
+        void ReportActionEnd(long gas, ReadOnlyMemory<byte> output);
 
         void ReportActionError(EvmExceptionType evmExceptionType);
 
-        void ReportActionEnd(long gas, Address deploymentAddress, byte[] deployedCode);
+        void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode);
 
         void ReportBlockHash(Keccak blockHash);
 
@@ -131,5 +142,6 @@ namespace Nethermind.Evm.Tracing
 
         void ReportRefund(long refund);
         void ReportExtraGasPressure(long extraGasPressure);
+        void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells);
     }
 }

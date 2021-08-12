@@ -33,7 +33,7 @@ namespace Nethermind.Cli.Modules
         public JsValue GetBlockReceipts(string blockParameter) => NodeManager.PostJint("parity_getBlockReceipts", blockParameter).Result;
         
         [CliProperty("parity", "enode", Description = "Returns the node enode URI.")]
-        public string Enode() => NodeManager.Post<string>("parity_enode").Result;
+        public string? Enode() => NodeManager.Post<string>("parity_enode").Result;
         
         [CliFunction("parity", "clearEngineSigner", Description = "Clears an authority account for signing consensus messages. Blocks will not be sealed.")]
         public bool ClearSigner() => NodeManager.Post<bool>("parity_clearEngineSigner").Result;

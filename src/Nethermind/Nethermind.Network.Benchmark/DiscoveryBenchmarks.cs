@@ -14,19 +14,11 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Net;
 using BenchmarkDotNet.Attributes;
-using BenchmarkDotNet.Jobs;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Network.Discovery.Messages;
-using Nethermind.Network.Discovery.Serializers;
 
 namespace Nethermind.Network.Benchmarks
 {
-    [MemoryDiagnoser]
-    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
     public class DiscoveryBenchmarks
     {
         [GlobalSetup]

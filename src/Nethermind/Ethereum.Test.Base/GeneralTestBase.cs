@@ -1,5 +1,5 @@
 ﻿/*
- * Copyright (c) 2018 Demerzel Solutions Limited
+ * Copyright (c) 2021 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
  * The Nethermind library is free software: you can redistribute it and/or modify
@@ -19,14 +19,18 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -40,6 +44,7 @@ namespace Ethereum.Test.Base
     {
         private static ILogger _logger = new ConsoleAsyncLogger(LogLevel.Info);
         private static ILogManager _logManager = LimboLogs.Instance;
+        private static UInt256 _defaultBaseFeeForStateTest = 0xA;
 
         [SetUp]
         public void Setup()
@@ -59,13 +64,7 @@ namespace Ethereum.Test.Base
 
         protected EthereumTestResult RunTest(GeneralStateTest test, ITxTracer txTracer)
         {
-            if (test.Fork == Berlin.Instance)
-            {
-                return new EthereumTestResult(test.Name, test.ForkName, null) {Pass = true};
-            }
-
             TestContext.Write($"Running {test.Name} at {DateTime.UtcNow:HH:mm:ss.ffffff}");
-            Stopwatch stopwatch = Stopwatch.StartNew();
             Assert.IsNull(test.LoadFailure, "test data loading failure");
 
             IDb stateDb = new MemDb();
@@ -80,8 +79,8 @@ namespace Ethereum.Test.Base
                 Assert.Fail("Expected genesis spec to be Frontier for blockchain tests");
             }
 
-            TrieStore trieStore = new TrieStore(stateDb, _logManager);
-            IStateProvider stateProvider = new StateProvider(trieStore, codeDb, _logManager);
+            TrieStore trieStore = new(stateDb, _logManager);
+            StateProvider stateProvider = new (trieStore, codeDb, _logManager);
             IBlockhashProvider blockhashProvider = new TestBlockhashProvider();
             IStorageProvider storageProvider = new StorageProvider(trieStore, stateProvider, _logManager);
             IVirtualMachine virtualMachine = new VirtualMachine(
@@ -91,7 +90,7 @@ namespace Ethereum.Test.Base
                 specProvider,
                 _logManager);
 
-            TransactionProcessor transactionProcessor = new TransactionProcessor(
+            TransactionProcessor transactionProcessor = new(
                 specProvider,
                 stateProvider,
                 storageProvider,
@@ -100,12 +99,21 @@ namespace Ethereum.Test.Base
 
             InitializeTestState(test, stateProvider, storageProvider, specProvider);
 
-            BlockHeader header = new BlockHeader(test.PreviousHash, Keccak.OfAnEmptySequenceRlp, test.CurrentCoinbase,
+            BlockHeader header = new(test.PreviousHash, Keccak.OfAnEmptySequenceRlp, test.CurrentCoinbase,
                 test.CurrentDifficulty, test.CurrentNumber, test.CurrentGasLimit, test.CurrentTimestamp, new byte[0]);
+            header.BaseFeePerGas = test.Fork.IsEip1559Enabled ? test.CurrentBaseFee ?? _defaultBaseFeeForStateTest : UInt256.Zero;
             header.StateRoot = test.PostHash;
-            header.Hash = Keccak.Compute("1");
+            header.Hash = header.CalculateHash();
 
-            transactionProcessor.Execute(test.Transaction, header, txTracer);
+            Stopwatch stopwatch = Stopwatch.StartNew();
+            var txValidator = new TxValidator((MainnetSpecProvider.Instance.ChainId));
+            var spec = specProvider.GetSpec(test.CurrentNumber);
+            if (test.Transaction.ChainId == null)
+                test.Transaction.ChainId = MainnetSpecProvider.Instance.ChainId;
+            bool isValid = txValidator.IsWellFormed(test.Transaction, spec);
+            if (isValid)
+                transactionProcessor.Execute(test.Transaction, header, txTracer);
+            stopwatch.Stop();
 
             stateProvider.Commit(specProvider.GenesisSpec);
             stateProvider.CommitTree(1);
@@ -119,10 +127,7 @@ namespace Ethereum.Test.Base
             stateProvider.RecalculateStateRoot();
 
             List<string> differences = RunAssertions(test, stateProvider);
-            EthereumTestResult testResult = new EthereumTestResult();
-            testResult.Pass = differences.Count == 0;
-            testResult.Fork = test.ForkName;
-            testResult.Name = test.Name;
+            EthereumTestResult testResult = new(test.Name, test.ForkName, differences.Count == 0);
             testResult.TimeInMs = (int)stopwatch.Elapsed.TotalMilliseconds;
             testResult.StateRoot = stateProvider.StateRoot;
 
@@ -130,7 +135,7 @@ namespace Ethereum.Test.Base
             return testResult;
         }
 
-        private void InitializeTestState(GeneralStateTest test, IStateProvider stateProvider,
+        private static void InitializeTestState(GeneralStateTest test, StateProvider stateProvider,
             IStorageProvider storageProvider, ISpecProvider specProvider)
         {
             foreach (KeyValuePair<Address, AccountState> accountState in test.Pre)
@@ -144,10 +149,7 @@ namespace Ethereum.Test.Base
                 stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance);
                 Keccak codeHash = stateProvider.UpdateCode(accountState.Value.Code);
                 stateProvider.UpdateCodeHash(accountState.Key, codeHash, specProvider.GenesisSpec);
-                for (int i = 0; i < accountState.Value.Nonce; i++)
-                {
-                    stateProvider.IncrementNonce(accountState.Key);
-                }
+                stateProvider.SetNonce(accountState.Key, accountState.Value.Nonce);
             }
 
             storageProvider.Commit();
@@ -162,7 +164,7 @@ namespace Ethereum.Test.Base
 
         private List<string> RunAssertions(GeneralStateTest test, IStateProvider stateProvider)
         {
-            List<string> differences = new List<string>();
+            List<string> differences = new();
             if (test.PostHash != stateProvider.StateRoot)
             {
                 differences.Add($"STATE ROOT exp: {test.PostHash}, actual: {stateProvider.StateRoot}");

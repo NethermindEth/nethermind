@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Linq;
 using Nethermind.Core.Specs;
 using Nethermind.Specs.Forks;
 
@@ -21,38 +22,49 @@ namespace Nethermind.Specs
 {
     public class GoerliSpecProvider : ISpecProvider
     {
-        public static readonly GoerliSpecProvider Instance = new GoerliSpecProvider();
+        public static readonly GoerliSpecProvider Instance = new();
 
-        private GoerliSpecProvider()
-        {
-        }
+        private GoerliSpecProvider() { }
 
-        public IReleaseSpec GenesisSpec => ConstantinopleFix.Instance;
+        public IReleaseSpec GenesisSpec { get; } = ConstantinopleFix.Instance;
+        
+        private IReleaseSpec IstanbulNoBomb { get; } = Istanbul.Instance;
+        
+        private IReleaseSpec BerlinNoBomb { get; } = Berlin.Instance;
+        
+        private IReleaseSpec LondonNoBomb { get; } = London.Instance;
 
         public IReleaseSpec GetSpec(long blockNumber)
         {
             if (blockNumber < IstanbulBlockNumber)
             {
-                return ConstantinopleFix.Instance;
+                return GenesisSpec;
             }
             
             if (blockNumber < BerlinBlockNumber)
             {
-                return Istanbul.Instance;
+                return IstanbulNoBomb;
             }
 
-            return Berlin.Instance;
+            if (blockNumber < LondonBlockNumber)
+            {
+                return BerlinNoBomb;
+            }
+
+            return LondonNoBomb;
         }
 
-        public long? DaoBlockNumber { get; } = null;
-        public static long IstanbulBlockNumber => 0x17D433;
-        public static long BerlinBlockNumber => long.MaxValue - 1;
-        public ulong ChainId => 0x5;
+        public long? DaoBlockNumber => null;
+        public static long IstanbulBlockNumber => 1_561_651;
+        public static long BerlinBlockNumber => 4_460_644;
+        public static long LondonBlockNumber => 5_062_605;
+        public ulong ChainId => Core.ChainId.Goerli;
 
         public long[] TransitionBlocks { get; } =
         {
             IstanbulBlockNumber,
-            BerlinBlockNumber
+            BerlinBlockNumber,
+            LondonBlockNumber
         };
     }
 }

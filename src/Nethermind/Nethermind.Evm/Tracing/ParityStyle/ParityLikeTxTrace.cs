@@ -22,20 +22,20 @@ namespace Nethermind.Evm.Tracing.ParityStyle
 {
     public class ParityLikeTxTrace
     {
-        public byte[] Output { get; set; }
+        public byte[]? Output { get; set; }
 
-        public Keccak BlockHash { get; set; }
+        public Keccak? BlockHash { get; set; }
         
         public long BlockNumber { get; set; }
         
         public int? TransactionPosition { get; set; }
         
-        public Keccak TransactionHash { get; set; }
+        public Keccak? TransactionHash { get; set; }
         
-        public ParityVmTrace VmTrace { get; set; }
+        public ParityVmTrace? VmTrace { get; set; }
         
-        public ParityTraceAction Action { get; set; }
+        public ParityTraceAction? Action { get; set; }
 
-        public Dictionary<Address, ParityAccountStateChange> StateChanges { get; set; }
+        public Dictionary<Address, ParityAccountStateChange>? StateChanges { get; set; }
     }
 }

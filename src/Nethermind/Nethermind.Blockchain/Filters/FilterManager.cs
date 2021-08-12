@@ -30,13 +30,13 @@ namespace Nethermind.Blockchain.Filters
     public class FilterManager : IFilterManager
     {
         private readonly ConcurrentDictionary<int, List<FilterLog>> _logs =
-            new ConcurrentDictionary<int, List<FilterLog>>();
+            new();
 
         private readonly ConcurrentDictionary<int, List<Keccak>> _blockHashes =
-            new ConcurrentDictionary<int, List<Keccak>>();
+            new();
 
         private readonly ConcurrentDictionary<int, List<Keccak>> _pendingTransactions =
-            new ConcurrentDictionary<int, List<Keccak>>();
+            new();
 
         private Keccak _lastBlockHash;
         private readonly IFilterStore _filterStore;
@@ -82,7 +82,7 @@ namespace Nethermind.Blockchain.Filters
             AddReceipts(e.TxReceipt);
         }
 
-        private void OnNewPendingTransaction(object sender, TxEventArgs e)
+        private void OnNewPendingTransaction(object sender, TxPool.TxEventArgs e)
         {
             var filters = _filterStore.GetFilters<PendingTransactionFilter>();
             if (filters == null || filters.Length == 0)
@@ -99,7 +99,7 @@ namespace Nethermind.Blockchain.Filters
             }
         }
 
-        private void OnRemovedPendingTransaction(object sender, TxEventArgs e)
+        private void OnRemovedPendingTransaction(object sender, TxPool.TxEventArgs e)
         {
             var filters = _filterStore.GetFilters<PendingTransactionFilter>();
             if (filters == null || filters.Length == 0)

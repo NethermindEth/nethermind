@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.CompilerServices;
@@ -64,26 +65,26 @@ namespace Nethermind.Evm
             255, 255, 255, 255, 255, 255, 255, 255
         };
 
-        private byte[] _chainId;
+        private readonly byte[] _chainId;
 
         private readonly IBlockhashProvider _blockhashProvider;
         private readonly ISpecProvider _specProvider;
         private static readonly ICache<Keccak, CodeInfo> _codeCache = new LruCache<Keccak, CodeInfo>(MemoryAllowance.CodeCacheSize, MemoryAllowance.CodeCacheSize, "VM bytecodes");
         private readonly ILogger _logger;
         private readonly IStateProvider _state;
-        private readonly Stack<EvmState> _stateStack = new Stack<EvmState>();
+        private readonly Stack<EvmState> _stateStack = new();
         private readonly IStorageProvider _storage;
-        private Address _parityTouchBugAccount;
-        private Dictionary<Address, CodeInfo> _precompiles { get; set; }
-        private byte[] _returnDataBuffer = new byte[0];
-        private ITxTracer _txTracer;
+        private Address? _parityTouchBugAccount;
+        private Dictionary<Address, CodeInfo>? _precompiles;
+        private byte[] _returnDataBuffer = Array.Empty<byte>();
+        private ITxTracer _txTracer = NullTxTracer.Instance;
 
         public VirtualMachine(
-            IStateProvider stateProvider,
-            IStorageProvider storageProvider,
-            IBlockhashProvider blockhashProvider,
-            ISpecProvider specProvider,
-            ILogManager logManager)
+            IStateProvider? stateProvider,
+            IStorageProvider? storageProvider,
+            IBlockhashProvider? blockhashProvider,
+            ISpecProvider? specProvider,
+            ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _state = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
@@ -99,7 +100,7 @@ namespace Nethermind.Evm
         {
             _txTracer = txTracer;
 
-            IReleaseSpec spec = _specProvider.GetSpec(state.Env.CurrentBlock.Number);
+            IReleaseSpec spec = _specProvider.GetSpec(state.Env.TxExecutionContext.Header.Number);
             EvmState currentState = state;
             byte[] previousCallResult = null;
             ZeroPaddedSpan previousCallOutput = ZeroPaddedSpan.Empty;
@@ -203,6 +204,11 @@ namespace Nethermind.Evm
                                 {
                                     _txTracer.ReportActionError(EvmExceptionType.OutOfGas);
                                 }
+                                // Reject code starting with 0xEF if EIP-3541 is enabled.
+                                else if (currentState.ExecutionType.IsAnyCreate() && CodeDepositHandler.CodeIsInvalid(spec, callResult.Output))
+                                {
+                                    _txTracer.ReportActionError(EvmExceptionType.InvalidCode);
+                                }
                                 else
                                 {
                                     if (currentState.ExecutionType.IsAnyCreate())
@@ -238,7 +244,8 @@ namespace Nethermind.Evm
                             previousCallOutput = ZeroPaddedSpan.Empty;
 
                             long codeDepositGasCost = CodeDepositHandler.CalculateCost(callResult.Output.Length, spec);
-                            if (gasAvailableForCodeDeposit >= codeDepositGasCost)
+                            bool invalidCode = CodeDepositHandler.CodeIsInvalid(spec, callResult.Output);
+                            if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
                             {
                                 Keccak codeHash = _state.UpdateCode(callResult.Output);
                                 _state.UpdateCodeHash(callCodeOwner, codeHash, spec);
@@ -251,7 +258,7 @@ namespace Nethermind.Evm
                             }
                             else
                             {
-                                if (spec.FailOnOutOfGasCodeDeposit)
+                                if (spec.FailOnOutOfGasCodeDeposit || invalidCode)
                                 {
                                     currentState.GasAvailable -= gasAvailableForCodeDeposit;
                                     _state.Restore(previousState.StateSnapshot);
@@ -266,7 +273,10 @@ namespace Nethermind.Evm
 
                                     if (_txTracer.IsTracingActions)
                                     {
-                                        _txTracer.ReportActionError(EvmExceptionType.OutOfGas);
+                                        if (invalidCode)
+                                            _txTracer.ReportActionError(EvmExceptionType.InvalidCode);
+                                        else
+                                            _txTracer.ReportActionError(EvmExceptionType.OutOfGas);
                                     }
                                 }
                             }
@@ -275,7 +285,7 @@ namespace Nethermind.Evm
                         {
                             _returnDataBuffer = callResult.Output;
                             previousCallResult = callResult.PrecompileSuccess.HasValue ? (callResult.PrecompileSuccess.Value ? StatusCode.SuccessBytes : StatusCode.FailureBytes) : StatusCode.SuccessBytes;
-                            previousCallOutput = callResult.Output.SliceWithZeroPadding(0, Math.Min(callResult.Output.Length, (int) previousState.OutputLength));
+                            previousCallOutput = callResult.Output.AsSpan().SliceWithZeroPadding(0, Math.Min(callResult.Output.Length, (int) previousState.OutputLength));
                             previousCallOutputDestination = (ulong) previousState.OutputDestination;
                             if (previousState.IsPrecompile)
                             {
@@ -303,7 +313,7 @@ namespace Nethermind.Evm
                         _storage.Restore(previousState.StorageSnapshot);
                         _returnDataBuffer = callResult.Output;
                         previousCallResult = StatusCode.FailureBytes;
-                        previousCallOutput = callResult.Output.SliceWithZeroPadding(0, Math.Min(callResult.Output.Length, (int) previousState.OutputLength));
+                        previousCallOutput = callResult.Output.AsSpan().SliceWithZeroPadding(0, Math.Min(callResult.Output.Length, (int) previousState.OutputLength));
                         previousCallOutputDestination = (ulong) previousState.OutputDestination;
 
 
@@ -348,7 +358,7 @@ namespace Nethermind.Evm
                     previousCallResult = StatusCode.FailureBytes;
                     previousCallOutputDestination = UInt256.Zero;
                     _returnDataBuffer = Array.Empty<byte>();
-                    previousCallOutput = new ZeroPaddedSpan(Span<byte>.Empty, 0, PadDirection.Right);
+                    previousCallOutput = ZeroPaddedSpan.Empty;
 
                     currentState.Dispose();
                     currentState = _stateStack.Pop();
@@ -361,6 +371,11 @@ namespace Nethermind.Evm
         {
             if (codeSource.IsPrecompile(vmSpec))
             {
+                if (_precompiles is null)
+                {
+                    throw new InvalidOperationException("EVM precompile have not been initialized properly.");
+                }
+                
                 return _precompiles[codeSource];
             }
 
@@ -437,13 +452,18 @@ namespace Nethermind.Evm
             gasAvailable += refund;
         }
         
-        private static bool ChargeAccountAccessGas(ref long gasAvailable, EvmState vmState, Address address, IReleaseSpec spec, bool chargeForWarm = true)
+        private bool ChargeAccountAccessGas(ref long gasAvailable, EvmState vmState, Address address, IReleaseSpec spec, bool chargeForWarm = true)
         {
             // Console.WriteLine($"Accessing {address}");
             
             bool result = true;
             if (spec.UseHotAndColdStorage)
             {
+                if (_txTracer.IsTracingAccess) // when tracing access we want cost as if it was warmed up from access list
+                {
+                    vmState.WarmUp(address);
+                }
+                
                 if (vmState.IsCold(address) && !address.IsPrecompile(spec))
                 {
                     result = UpdateGas(GasCostOf.ColdAccountAccess, ref gasAvailable);
@@ -464,7 +484,7 @@ namespace Nethermind.Evm
             SSTORE
         }
         
-        private static bool ChargeStorageAccessGas(
+        private bool ChargeStorageAccessGas(
             ref long gasAvailable,
             EvmState vmState,
             StorageCell storageCell,
@@ -476,6 +496,11 @@ namespace Nethermind.Evm
             bool result = true;
             if (spec.UseHotAndColdStorage)
             {
+                if (_txTracer.IsTracingAccess) // when tracing access we want cost as if it was warmed up from access list
+                {
+                    vmState.WarmUp(storageCell);
+                }
+
                 if (vmState.IsCold(storageCell))
                 {
                     result = UpdateGas(GasCostOf.ColdSLoad, ref gasAvailable);
@@ -493,7 +518,7 @@ namespace Nethermind.Evm
 
         private CallResult ExecutePrecompile(EvmState state, IReleaseSpec spec)
         {
-            byte[] callData = state.Env.InputData;
+            ReadOnlyMemory<byte> callData = state.Env.InputData;
             UInt256 transferValue = state.Env.TransferValue;
             long gasAvailable = state.GasAvailable;
 
@@ -549,8 +574,8 @@ namespace Nethermind.Evm
 
             try
             {
-                (byte[] output, bool success) = precompile.Run(callData, spec);
-                CallResult callResult = new(output, success, !success);
+                (ReadOnlyMemory<byte> output, bool success) = precompile.Run(callData, spec);
+                CallResult callResult = new(output.ToArray(), success, !success);
                 return callResult;
             }
             catch (Exception)
@@ -565,6 +590,8 @@ namespace Nethermind.Evm
             bool isTrace = _logger.IsTrace;
             bool traceOpcodes = _txTracer.IsTracingInstructions;
             ExecutionEnvironment env = vmState.Env;
+            TxExecutionContext txCtx = env.TxExecutionContext;
+            
             if (!vmState.IsContinuation)
             {
                 if (!_state.AccountExists(env.ExecutingAccount))
@@ -588,11 +615,11 @@ namespace Nethermind.Evm
             }
 
             vmState.InitStacks();
-            EvmStack stack = new EvmStack(vmState.DataStack.AsSpan(), vmState.DataStackHead, _txTracer);
-            int stackHead = vmState.DataStackHead;
+            EvmStack stack = new(vmState.DataStack.AsSpan(), vmState.DataStackHead, _txTracer);
             long gasAvailable = vmState.GasAvailable;
             int programCounter = vmState.ProgramCounter;
             Span<byte> code = env.CodeInfo.MachineCode.AsSpan();
+            
 
             static void UpdateCurrentState(EvmState state, in int pc, in long gas, in int stackHead)
             {
@@ -606,7 +633,7 @@ namespace Nethermind.Evm
                 _txTracer.StartOperation(env.CallDepth + 1, gasAvailable, instruction, programCounter);
                 if (_txTracer.IsTracingMemory)
                 {
-                    _txTracer.SetOperationMemory(vmState.Memory.GetTrace());
+                    _txTracer.SetOperationMemory(vmState.Memory?.GetTrace() ?? new List<string>());
                 }
 
                 if (_txTracer.IsTracingStack)
@@ -621,7 +648,7 @@ namespace Nethermind.Evm
                 {
                     if (_txTracer.IsTracingMemory)
                     {
-                        _txTracer.SetOperationMemorySize(vmState.Memory.Size);
+                        _txTracer.SetOperationMemorySize(vmState.Memory?.Size ?? 0);
                     }
 
                     _txTracer.ReportOperationRemainingGas(gasAvailable);
@@ -663,6 +690,11 @@ namespace Nethermind.Evm
 
             void UpdateMemoryCost(in UInt256 position, in UInt256 length)
             {
+                if (vmState.Memory is null)
+                {
+                    throw new InvalidOperationException("EVM memory has not been initialized properly.");
+                }
+                
                 long memoryCost = vmState.Memory.CalculateMemoryCost(in position, length);
                 if (memoryCost != 0L)
                 {
@@ -685,10 +717,16 @@ namespace Nethermind.Evm
             {
                 UInt256 localPreviousDest = previousCallOutputDestination;
                 UpdateMemoryCost(in localPreviousDest, (ulong) previousCallOutput.Length);
+                
+                if (vmState.Memory is null)
+                {
+                    throw new InvalidOperationException("EVM memory has not been initialized properly.");
+                }
+                
                 vmState.Memory.Save(in localPreviousDest, previousCallOutput);
 //                if(_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long)localPreviousDest, previousCallOutput);
             }
-
+            
             while (programCounter < code.Length)
             {
                 Instruction instruction = (Instruction) code[programCounter];
@@ -794,7 +832,7 @@ namespace Nethermind.Evm
                         }
                         else
                         {
-                            Int256.Int256 signedA = new Int256.Int256(a);
+                            Int256.Int256 signedA = new(a);
                             Int256.Int256.Divide(in signedA, in b, out Int256.Int256 res);
                             stack.PushSignedInt256(in res);
                         }
@@ -1113,8 +1151,8 @@ namespace Nethermind.Evm
 
                         if (_simdOperationsEnabled)
                         {
-                            Vector<byte> aVec = new Vector<byte>(a);
-                            Vector<byte> bVec = new Vector<byte>(b);
+                            Vector<byte> aVec = new(a);
+                            Vector<byte> bVec = new(b);
 
                             Vector.BitwiseAnd(aVec, bVec).CopyTo(stack.Register);
                         }
@@ -1146,8 +1184,8 @@ namespace Nethermind.Evm
 
                         if (_simdOperationsEnabled)
                         {
-                            Vector<byte> aVec = new Vector<byte>(a);
-                            Vector<byte> bVec = new Vector<byte>(b);
+                            Vector<byte> aVec = new(a);
+                            Vector<byte> bVec = new(b);
 
                             Vector.BitwiseOr(aVec, bVec).CopyTo(stack.Register);
                         }
@@ -1179,8 +1217,8 @@ namespace Nethermind.Evm
 
                         if (_simdOperationsEnabled)
                         {
-                            Vector<byte> aVec = new Vector<byte>(a);
-                            Vector<byte> bVec = new Vector<byte>(b);
+                            Vector<byte> aVec = new(a);
+                            Vector<byte> bVec = new(b);
 
                             Vector.Xor(aVec, bVec).CopyTo(stack.Register);
                         }
@@ -1211,7 +1249,7 @@ namespace Nethermind.Evm
 
                         if (_simdOperationsEnabled)
                         {
-                            Vector<byte> aVec = new Vector<byte>(a);
+                            Vector<byte> aVec = new(a);
                             Vector<byte> negVec = Vector.Xor(aVec, new Vector<byte>(BytesMax32));
 
                             negVec.CopyTo(stack.Register);
@@ -1315,7 +1353,7 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        stack.PushBytes(env.Sender.Bytes);
+                        stack.PushBytes(env.Caller.Bytes);
                         break;
                     }
                     case Instruction.CALLVALUE:
@@ -1338,7 +1376,7 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        stack.PushBytes(env.Originator.Bytes);
+                        stack.PushBytes(txCtx.Origin.Bytes);
                         break;
                     }
                     case Instruction.CALLDATALOAD:
@@ -1377,13 +1415,18 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        UpdateMemoryCost(in dest, length);
-
-                        ZeroPaddedSpan callDataSlice = env.InputData.SliceWithZeroPadding(src, (int) length);
-                        vmState.Memory.Save(in dest, callDataSlice);
-                        if (_txTracer.IsTracingInstructions)
-                            if (length > UInt256.Zero)
-                                _txTracer.ReportMemoryChange((long) dest, callDataSlice);
+                        if(length > UInt256.Zero)
+                        {
+                            UpdateMemoryCost(in dest, length);
+                            
+                            ZeroPaddedMemory callDataSlice = env.InputData.SliceWithZeroPadding(src, (int) length);
+                            vmState.Memory.Save(in dest, callDataSlice);
+                            if (_txTracer.IsTracingInstructions)
+                            {
+                                _txTracer.ReportMemoryChange((long)dest, callDataSlice);
+                            }
+                        }
+                        
                         break;
                     }
                     case Instruction.CODESIZE:
@@ -1408,11 +1451,16 @@ namespace Nethermind.Evm
                             EndInstructionTraceError(EvmExceptionType.OutOfGas);
                             return CallResult.OutOfGasException;
                         }
-
-                        UpdateMemoryCost(in dest, length);
-                        ZeroPaddedSpan codeSlice = code.SliceWithZeroPadding(src, (int) length);
-                        vmState.Memory.Save(in dest, codeSlice);
-                        if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long) dest, codeSlice);
+                        
+                        if (length > UInt256.Zero)
+                        {
+                            UpdateMemoryCost(in dest, length);
+                            
+                            ZeroPaddedSpan codeSlice = code.SliceWithZeroPadding(src, (int) length);
+                            vmState.Memory.Save(in dest, codeSlice);
+                            if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long) dest, codeSlice);
+                        }
+                        
                         break;
                     }
                     case Instruction.GASPRICE:
@@ -1423,7 +1471,7 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        UInt256 gasPrice = env.GasPrice;
+                        UInt256 gasPrice = txCtx.GasPrice;
                         stack.PushUInt256(in gasPrice);
                         break;
                     }
@@ -1469,13 +1517,19 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        UpdateMemoryCost(in dest, length);
-                        byte[] externalCode = GetCachedCodeInfo(address, spec).MachineCode;
-                        ZeroPaddedSpan callDataSlice = externalCode.SliceWithZeroPadding(src, (int) length);
-                        vmState.Memory.Save(in dest, callDataSlice);
-                        if (_txTracer.IsTracingInstructions)
-                            if (length > 0)
-                                _txTracer.ReportMemoryChange((long) dest, callDataSlice);
+                        if (length > UInt256.Zero)
+                        {
+                            UpdateMemoryCost(in dest, length);
+                            
+                            byte[] externalCode = GetCachedCodeInfo(address, spec).MachineCode;
+                            ZeroPaddedSpan callDataSlice = externalCode.SliceWithZeroPadding(src, (int) length);
+                            vmState.Memory.Save(in dest, callDataSlice);
+                            if (_txTracer.IsTracingInstructions)
+                            {
+                                _txTracer.ReportMemoryChange((long)dest, callDataSlice);
+                            }
+                        }
+
                         break;
                     }
                     case Instruction.RETURNDATASIZE:
@@ -1513,16 +1567,23 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        UpdateMemoryCost(in dest, length);
-
                         if (UInt256.AddOverflow(length, src, out UInt256 newLength) || newLength > _returnDataBuffer.Length)
                         {
                             return CallResult.AccessViolationException;
                         }
+                        
+                        if (length > UInt256.Zero)
+                        {
+                            UpdateMemoryCost(in dest, length);
 
-                        ZeroPaddedSpan returnDataSlice = _returnDataBuffer.SliceWithZeroPadding(src, (int) length);
-                        vmState.Memory.Save(in dest, returnDataSlice);
-                        if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long) dest, returnDataSlice);
+                            ZeroPaddedSpan returnDataSlice = _returnDataBuffer.AsSpan().SliceWithZeroPadding(src, (int)length);
+                            vmState.Memory.Save(in dest, returnDataSlice);
+                            if (_txTracer.IsTracingInstructions)
+                            {
+                                _txTracer.ReportMemoryChange((long)dest, returnDataSlice);
+                            }
+                        }
+
                         break;
                     }
                     case Instruction.BLOCKHASH:
@@ -1537,7 +1598,7 @@ namespace Nethermind.Evm
 
                         stack.PopUInt256(out UInt256 a);
                         long number = a > long.MaxValue ? long.MaxValue : (long) a;
-                        Keccak blockHash = _blockhashProvider.GetBlockhash(env.CurrentBlock, number);
+                        Keccak blockHash = _blockhashProvider.GetBlockhash(txCtx.Header, number);
                         stack.PushBytes(blockHash?.Bytes ?? BytesZero32);
 
                         if (isTrace)
@@ -1558,7 +1619,7 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        stack.PushBytes(env.CurrentBlock.GasBeneficiary.Bytes);
+                        stack.PushBytes(txCtx.Header.GasBeneficiary.Bytes);
                         break;
                     }
                     case Instruction.DIFFICULTY:
@@ -1569,7 +1630,7 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        UInt256 diff = env.CurrentBlock.Difficulty;
+                        UInt256 diff = txCtx.Header.Difficulty;
                         stack.PushUInt256(in diff);
                         break;
                     }
@@ -1581,7 +1642,7 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        UInt256 timestamp = env.CurrentBlock.Timestamp;
+                        UInt256 timestamp = txCtx.Header.Timestamp;
                         stack.PushUInt256(in timestamp);
                         break;
                     }
@@ -1593,7 +1654,7 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        UInt256 blockNumber = (UInt256) env.CurrentBlock.Number;
+                        UInt256 blockNumber = (UInt256) txCtx.Header.Number;
                         stack.PushUInt256(in blockNumber);
                         break;
                     }
@@ -1605,7 +1666,7 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        UInt256 gasLimit = (UInt256) env.CurrentBlock.GasLimit;
+                        UInt256 gasLimit = (UInt256) txCtx.Header.GasLimit;
                         stack.PushUInt256(in gasLimit);
                         break;
                     }
@@ -1642,6 +1703,24 @@ namespace Nethermind.Evm
 
                         UInt256 balance = _state.GetBalance(env.ExecutingAccount);
                         stack.PushUInt256(in balance);
+                        break;
+                    }
+                    case Instruction.BASEFEE:
+                    {
+                        if (!spec.BaseFeeEnabled)
+                        {
+                            EndInstructionTraceError(EvmExceptionType.BadInstruction);
+                            return CallResult.InvalidInstructionException;
+                        }
+
+                        if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
+                        {
+                            EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                            return CallResult.OutOfGasException;
+                        }
+
+                        UInt256 baseFee = vmState.Env.TxExecutionContext.Header.BaseFeePerGas;
+                        stack.PushUInt256(in baseFee);
                         break;
                     }
                     case Instruction.POP:
@@ -1789,6 +1868,7 @@ namespace Nethermind.Evm
                         bool currentIsZero = currentValue.IsZero();
 
                         bool newSameAsCurrent = (newIsZero && currentIsZero) || Bytes.AreEqual(currentValue, newValue);
+                        long sClearRefunds = RefundOf.SClear(spec.IsEip3529Enabled);
 
                         if (!spec.UseNetGasMetering) // note that for this case we already deducted 5000
                         {
@@ -1796,8 +1876,8 @@ namespace Nethermind.Evm
                             {
                                 if (!newSameAsCurrent)
                                 {
-                                    vmState.Refund += RefundOf.SClear;
-                                    if (_txTracer.IsTracingRefunds) _txTracer.ReportRefund(RefundOf.SClear);
+                                    vmState.Refund += sClearRefunds;
+                                    if (_txTracer.IsTracingRefunds) _txTracer.ReportRefund(sClearRefunds);
                                 }
                             }
                             else if (currentIsZero)
@@ -1845,8 +1925,8 @@ namespace Nethermind.Evm
 
                                         if (newIsZero)
                                         {
-                                            vmState.Refund += RefundOf.SClear;
-                                            if (_txTracer.IsTracingRefunds) _txTracer.ReportRefund(RefundOf.SClear);
+                                            vmState.Refund += sClearRefunds;
+                                            if (_txTracer.IsTracingRefunds) _txTracer.ReportRefund(sClearRefunds);
                                         }
                                     }
                                 }
@@ -1863,14 +1943,14 @@ namespace Nethermind.Evm
                                     {
                                         if (currentIsZero)
                                         {
-                                            vmState.Refund -= RefundOf.SClear;
-                                            if (_txTracer.IsTracingRefunds) _txTracer.ReportRefund(-RefundOf.SClear);
+                                            vmState.Refund -= sClearRefunds;
+                                            if (_txTracer.IsTracingRefunds) _txTracer.ReportRefund(-sClearRefunds);
                                         }
 
                                         if (newIsZero)
                                         {
-                                            vmState.Refund += RefundOf.SClear;
-                                            if (_txTracer.IsTracingRefunds) _txTracer.ReportRefund(RefundOf.SClear);
+                                            vmState.Refund += sClearRefunds;
+                                            if (_txTracer.IsTracingRefunds) _txTracer.ReportRefund(sClearRefunds);
                                         }
                                     }
 
@@ -2133,16 +2213,16 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        byte[] data = vmState.Memory.Load(in memoryPos, length);
+                        ReadOnlyMemory<byte> data = vmState.Memory.Load(in memoryPos, length);
                         Keccak[] topics = new Keccak[topicsCount];
                         for (int i = 0; i < topicsCount; i++)
                         {
                             topics[i] = new Keccak(stack.PopBytes().ToArray());
                         }
 
-                        LogEntry logEntry = new LogEntry(
+                        LogEntry logEntry = new(
                             env.ExecutingAccount,
-                            data,
+                            data.ToArray(),
                             topics);
                         vmState.Logs.Add(logEntry);
                         break;
@@ -2196,6 +2276,7 @@ namespace Nethermind.Evm
                         }
 
                         Span<byte> initCode = vmState.Memory.LoadSpan(in memoryPositionOfInitCode, initCodeLength);
+                        
                         UInt256 balance = _state.GetBalance(env.ExecutingAccount);
                         if (value > balance)
                         {
@@ -2249,19 +2330,18 @@ namespace Nethermind.Evm
                         }
 
                         _state.SubtractFromBalance(env.ExecutingAccount, value, spec);
-                        ExecutionEnvironment callEnv = new ExecutionEnvironment();
+                        ExecutionEnvironment callEnv = new();
+                        callEnv.TxExecutionContext = env.TxExecutionContext;
+                        callEnv.CallDepth = env.CallDepth + 1;
+                        callEnv.Caller = env.ExecutingAccount;
+                        callEnv.ExecutingAccount = contractAddress;
+                        callEnv.CodeSource = null;
+                        callEnv.CodeInfo = new CodeInfo(initCode.ToArray());
+                        callEnv.InputData = ReadOnlyMemory<byte>.Empty;
                         callEnv.TransferValue = value;
                         callEnv.Value = value;
-                        callEnv.Sender = env.ExecutingAccount;
-                        callEnv.CodeSource = null;
-                        callEnv.Originator = env.Originator;
-                        callEnv.CallDepth = env.CallDepth + 1;
-                        callEnv.CurrentBlock = env.CurrentBlock;
-                        callEnv.GasPrice = env.GasPrice;
-                        callEnv.ExecutingAccount = contractAddress;
-                        callEnv.CodeInfo = new CodeInfo(initCode.ToArray());
-                        callEnv.InputData = Array.Empty<byte>();
-                        EvmState callState = new EvmState(
+                        
+                        EvmState callState = new(
                             callGas,
                             callEnv,
                             instruction == Instruction.CREATE2 ? ExecutionType.Create2 : ExecutionType.Create,
@@ -2284,11 +2364,11 @@ namespace Nethermind.Evm
                         stack.PopUInt256(out UInt256 length);
 
                         UpdateMemoryCost(in memoryPos, length);
-                        byte[] returnData = vmState.Memory.Load(in memoryPos, length);
+                        ReadOnlyMemory<byte> returnData = vmState.Memory.Load(in memoryPos, length);
 
                         UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
                         EndInstructionTrace();
-                        return new CallResult(returnData, null);
+                        return new CallResult(returnData.ToArray(), null);
                     }
                     case Instruction.CALL:
                     case Instruction.CALLCODE:
@@ -2340,16 +2420,16 @@ namespace Nethermind.Evm
                             return CallResult.StaticCallViolationException;
                         }
 
-                        Address sender = instruction == Instruction.DELEGATECALL ? env.Sender : env.ExecutingAccount;
+                        Address caller = instruction == Instruction.DELEGATECALL ? env.Caller : env.ExecutingAccount;
                         Address target = instruction == Instruction.CALL || instruction == Instruction.STATICCALL ? codeSource : env.ExecutingAccount;
 
                         if (isTrace)
                         {
-                            _logger.Trace($"Tx sender {sender}");
-                            _logger.Trace($"Tx code source {codeSource}");
-                            _logger.Trace($"Tx target {target}");
-                            _logger.Trace($"Tx value {callValue}");
-                            _logger.Trace($"Tx transfer value {transferValue}");
+                            _logger.Trace($"caller {caller}");
+                            _logger.Trace($"code source {codeSource}");
+                            _logger.Trace($"target {target}");
+                            _logger.Trace($"value {callValue}");
+                            _logger.Trace($"transfer value {transferValue}");
                         }
 
                         long gasExtra = 0L;
@@ -2408,8 +2488,8 @@ namespace Nethermind.Evm
                             if (_txTracer.IsTracingInstructions)
                             {
                                 // very specific for Parity trace, need to find generalization - very peculiar 32 length...
-                                byte[] memoryTrace = vmState.Memory.Load(in dataOffset, 32);
-                                _txTracer.ReportMemoryChange((long) dataOffset, memoryTrace);
+                                ReadOnlyMemory<byte> memoryTrace = vmState.Memory.Load(in dataOffset, 32);
+                                _txTracer.ReportMemoryChange((long) dataOffset, memoryTrace.Span);
                             }
 
                             if (isTrace) _logger.Trace("FAIL - call depth");
@@ -2421,18 +2501,16 @@ namespace Nethermind.Evm
                             break;
                         }
 
-                        byte[] callData = vmState.Memory.Load(in dataOffset, dataLength);
+                        ReadOnlyMemory<byte> callData = vmState.Memory.Load(in dataOffset, dataLength);
 
                         int stateSnapshot = _state.TakeSnapshot();
                         int storageSnapshot = _storage.TakeSnapshot();
-                        _state.SubtractFromBalance(sender, transferValue, spec);
+                        _state.SubtractFromBalance(caller, transferValue, spec);
 
-                        ExecutionEnvironment callEnv = new ExecutionEnvironment();
+                        ExecutionEnvironment callEnv = new();
+                        callEnv.TxExecutionContext = env.TxExecutionContext;
                         callEnv.CallDepth = env.CallDepth + 1;
-                        callEnv.CurrentBlock = env.CurrentBlock;
-                        callEnv.GasPrice = env.GasPrice;
-                        callEnv.Originator = env.Originator;
-                        callEnv.Sender = sender;
+                        callEnv.Caller = caller;
                         callEnv.CodeSource = codeSource;
                         callEnv.ExecutingAccount = target;
                         callEnv.TransferValue = transferValue;
@@ -2449,7 +2527,7 @@ namespace Nethermind.Evm
                         }
 
                         ExecutionType executionType = GetCallExecutionType(instruction);
-                        EvmState callState = new EvmState(
+                        EvmState callState = new(
                             gasLimitUl,
                             callEnv,
                             executionType,
@@ -2479,11 +2557,11 @@ namespace Nethermind.Evm
                         stack.PopUInt256(out UInt256 length);
 
                         UpdateMemoryCost(in memoryPos, length);
-                        byte[] errorDetails = vmState.Memory.Load(in memoryPos, length);
+                        ReadOnlyMemory<byte> errorDetails = vmState.Memory.Load(in memoryPos, length);
 
                         UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
                         EndInstructionTrace();
-                        return new CallResult(errorDetails, null, true);
+                        return new CallResult(errorDetails.ToArray(), null, true);
                     }
                     case Instruction.INVALID:
                     {
@@ -2513,7 +2591,11 @@ namespace Nethermind.Evm
                         Metrics.SelfDestructs++;
 
                         Address inheritor = stack.PopAddress();
-                        ChargeAccountAccessGas(ref gasAvailable, vmState, inheritor, spec, false);
+                        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, inheritor, spec, false))
+                        {
+                            EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                            return CallResult.OutOfGasException;
+                        }
                         
                         vmState.DestroyList.Add(env.ExecutingAccount);
 
@@ -2801,13 +2883,15 @@ namespace Nethermind.Evm
             {
                 get
                 {
-                    return new CallResult(EvmExceptionType.BadInstruction);
+                    return new(EvmExceptionType.BadInstruction);
                 }
             }
 
             public static CallResult StaticCallViolationException => new(EvmExceptionType.StaticCallViolation);
             public static CallResult StackOverflowException => new(EvmExceptionType.StackOverflow); // TODO: use these to avoid CALL POP attacks
             public static CallResult StackUnderflowException => new(EvmExceptionType.StackUnderflow); // TODO: use these to avoid CALL POP attacks
+            
+            public static CallResult InvalidCodeException => new(EvmExceptionType.InvalidCode); 
             public static CallResult Empty => new(Array.Empty<byte>(), null);
 
             public CallResult(EvmState stateToExecute)
@@ -2837,7 +2921,7 @@ namespace Nethermind.Evm
                 ExceptionType = exceptionType;
             }
 
-            public EvmState StateToExecute { get; }
+            public EvmState? StateToExecute { get; }
             public byte[] Output { get; }
             public EvmExceptionType ExceptionType { get; }
             public bool ShouldRevert { get; }

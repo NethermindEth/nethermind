@@ -70,38 +70,48 @@ namespace Nethermind.Specs
                 return MuirGlacier.Instance;
             }
 
-            return Berlin.Instance;
+            if (blockNumber < LondonBlockNumber)
+            {
+                return Berlin.Instance;
+            }
+
+            return London.Instance;
         }
 
-        public const long HomesteadBlockNumber = 1150000;
-        public long? DaoBlockNumber => 1920000;
-        public const long TangerineWhistleBlockNumber = 2463000;
-        public const long SpuriousDragonBlockNumber = 2675000;
-        public const long ByzantiumBlockNumber = 4370000;
-        public const long ConstantinopleFixBlockNumber = 7280000;
-        public const long IstanbulBlockNumber = 9069000;
-        public const long MuirGlacierBlockNumber = 9200000;
-        public const long BerlinBlockNumber = long.MaxValue - 1;
+        public const long HomesteadBlockNumber = 1_150_000;
+        public long? DaoBlockNumber => DaoBlockNumberConst;
+        public const long DaoBlockNumberConst = 1_920_000;
+        public const long TangerineWhistleBlockNumber = 2_463_000;
+        public const long SpuriousDragonBlockNumber = 2_675_000;
+        public const long ByzantiumBlockNumber = 4_370_000;
+        public const long ConstantinopleFixBlockNumber = 7_280_000;
+        public const long IstanbulBlockNumber = 9_069_000;
+        public const long MuirGlacierBlockNumber = 9_200_000;
+        public const long BerlinBlockNumber = 12_244_000;
+        public const long LondonBlockNumber = 12_965_000;
+        public const long ShanghaiBlockNumber = long.MaxValue -4;
+        public const long CancunBlockNumber = long.MaxValue -3;
+        public const long PragueBlockNumber = long.MaxValue -2;
+        public const long OsakaBlockNumber = long.MaxValue -1;
 
-        public ulong ChainId => 1ul;
+        public ulong ChainId => Core.ChainId.Mainnet;
 
         public long[] TransitionBlocks { get; } =
         {
             HomesteadBlockNumber,
-            1920000,
+            DaoBlockNumberConst,
             TangerineWhistleBlockNumber,
             SpuriousDragonBlockNumber,
             ByzantiumBlockNumber,
             ConstantinopleFixBlockNumber,
             IstanbulBlockNumber,
             MuirGlacierBlockNumber,
-            BerlinBlockNumber
+            BerlinBlockNumber,
+            LondonBlockNumber
         };
 
-        private MainnetSpecProvider()
-        {
-        }
+        private MainnetSpecProvider() { }
 
-        public static MainnetSpecProvider Instance = new MainnetSpecProvider();
+        public static readonly MainnetSpecProvider Instance = new();
     }
 }

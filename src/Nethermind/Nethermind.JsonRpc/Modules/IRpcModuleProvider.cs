@@ -21,22 +21,24 @@ using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules
 {
+    // ReSharper disable once InconsistentNaming
+
     public interface IRpcModuleProvider
     {
-        void Register<T>(IRpcModulePool<T> pool) where T : IModule;
+        void Register<T>(IRpcModulePool<T> pool) where T : IRpcModule;
 
         IReadOnlyCollection<JsonConverter> Converters { get; }
 
-        IReadOnlyCollection<ModuleType> Enabled { get; }
+        IReadOnlyCollection<string> Enabled { get; }
         
-        IReadOnlyCollection<ModuleType> All { get; }
+        IReadOnlyCollection<string> All { get; }
 
-        ModuleResolution Check(string methodName);
+        ModuleResolution Check(string methodName, RpcEndpoint rpcEndpoint);
         
         (MethodInfo MethodInfo, bool ReadOnly) Resolve(string methodName);
         
-        Task<IModule> Rent(string methodName, bool canBeShared);
+        Task<IRpcModule> Rent(string methodName, bool canBeShared);
         
-        void Return(string methodName, IModule module);
+        void Return(string methodName, IRpcModule rpcModule);
     }
 }

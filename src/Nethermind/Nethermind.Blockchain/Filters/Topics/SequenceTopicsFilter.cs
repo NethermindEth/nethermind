@@ -22,7 +22,7 @@ namespace Nethermind.Blockchain.Filters.Topics
 {
     public class SequenceTopicsFilter : TopicsFilter
     {
-        public static SequenceTopicsFilter AnyTopic { get; } = new SequenceTopicsFilter();
+        public static SequenceTopicsFilter AnyTopic { get; } = new();
 
         private readonly TopicExpression[] _expressions;
 

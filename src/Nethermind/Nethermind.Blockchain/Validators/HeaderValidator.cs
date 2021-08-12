@@ -36,7 +36,7 @@ namespace Nethermind.Blockchain.Validators
         private readonly ILogger _logger;
         private readonly IBlockTree _blockTree;
 
-        public HeaderValidator(IBlockTree blockTree, ISealValidator sealValidator, ISpecProvider specProvider, ILogManager logManager)
+        public HeaderValidator(IBlockTree? blockTree, ISealValidator? sealValidator, ISpecProvider? specProvider, ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -63,7 +63,7 @@ namespace Nethermind.Blockchain.Validators
         /// <param name="parent">BlockHeader which is the parent of <paramref name="header"/></param>
         /// <param name="isOmmer"><value>True</value> if uncle block, otherwise <value>False</value></param>
         /// <returns></returns>
-        public bool Validate(BlockHeader header, BlockHeader parent, bool isOmmer = false)
+        public bool Validate(BlockHeader header, BlockHeader? parent, bool isOmmer = false)
         {
             bool hashAsExpected = ValidateHash(header);
 
@@ -113,13 +113,13 @@ namespace Nethermind.Blockchain.Validators
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - seal parameters incorrect");
             }
 
-            bool gasUsedBelowLimit = header.GasUsed <= header.GetGasTarget1559(spec) * 2 + header.GetGasTargetLegacy(spec);
+            bool gasUsedBelowLimit = header.GasUsed <= header.GasLimit;
             if (!gasUsedBelowLimit)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - gas used above gas limit");
             }
 
-            var gasLimitInRange = ValidateGasLimitRange(header, parent, spec);
+            bool gasLimitInRange = ValidateGasLimitRange(header, parent, spec);
 
             // bool gasLimitAboveAbsoluteMinimum = header.GasLimit >= 125000; // described in the YellowPaper but not followed
             bool timestampMoreThanAtParent = header.Timestamp > parent.Timestamp;
@@ -136,12 +136,18 @@ namespace Nethermind.Blockchain.Validators
 
             if (_logger.IsTrace) _logger.Trace($"Validating block {header.ToString(BlockHeader.Format.Short)}, extraData {header.ExtraData.ToHexString(true)}");
 
-            bool baseFeeIsCorrect = true;
-
-            if (spec.IsEip1559Enabled)
+            bool isEip1559Correct = true;
+            bool isEip1559Enabled = spec.IsEip1559Enabled;
+            if (isEip1559Enabled)
             {
-                UInt256? expectedBaseFee = BlockHeader.CalculateBaseFee(parent, spec);
-                baseFeeIsCorrect = expectedBaseFee == header.BaseFee;
+                UInt256? expectedBaseFee = BaseFeeCalculator.Calculate(parent, spec);
+                isEip1559Correct = expectedBaseFee == header.BaseFeePerGas;
+                
+                if (expectedBaseFee != header.BaseFeePerGas)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.ToString(BlockHeader.Format.Short)}) incorrect base fee. Expected base fee: {expectedBaseFee}, Current base fee: {header.BaseFeePerGas} ");
+                    isEip1559Correct = false;
+                }
             }
 
             return
@@ -154,20 +160,21 @@ namespace Nethermind.Blockchain.Validators
                 numberIsParentPlusOne &&
                 hashAsExpected &&
                 extraDataValid &&
-                baseFeeIsCorrect;
+                isEip1559Correct;
         }
 
         protected virtual bool ValidateGasLimitRange(BlockHeader header, BlockHeader parent, IReleaseSpec spec)
         {
-            long maxGasLimitDifference = parent.GasLimit / spec.GasLimitBoundDivisor;
+            long adjustedParentGasLimit = Eip1559GasLimitAdjuster.AdjustGasLimit(spec, parent.GasLimit, header.Number);
+            long maxGasLimitDifference = adjustedParentGasLimit / spec.GasLimitBoundDivisor;
 
-            bool gasLimitNotTooHigh = header.GasLimit <= parent.GasLimit + maxGasLimitDifference;
+            bool gasLimitNotTooHigh = header.GasLimit < adjustedParentGasLimit + maxGasLimitDifference;
             if (!gasLimitNotTooHigh)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - gas limit too high");
             }
 
-            var gasLimitNotTooLow = header.GasLimit >= parent.GasLimit - maxGasLimitDifference && header.GasLimit >= spec.MinGasLimit;
+            bool gasLimitNotTooLow = header.GasLimit > adjustedParentGasLimit - maxGasLimitDifference && header.GasLimit >= spec.MinGasLimit;
             if (!gasLimitNotTooLow)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - gas limit too low");
@@ -195,6 +202,7 @@ namespace Nethermind.Blockchain.Validators
                 header.GasLimit > _specProvider.GenesisSpec.MinGasLimit &&
                 header.Timestamp > 0 &&
                 header.Number == 0 &&
+                header.Bloom is not null &&
                 header.ExtraData.Length <= _specProvider.GenesisSpec.MaximumExtraDataSize;
         }
     }

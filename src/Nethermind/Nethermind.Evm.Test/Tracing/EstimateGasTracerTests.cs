@@ -17,8 +17,10 @@
 using System;
 using FluentAssertions;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing
@@ -29,6 +31,7 @@ namespace Nethermind.Evm.Test.Tracing
     public class EstimateGasTracerTests
     {
         private readonly ExecutionType _executionType;
+        private readonly IReleaseSpec _releaseSpec = Berlin.Instance;
 
         public EstimateGasTracerTests(bool useCreates)
         {
@@ -38,21 +41,22 @@ namespace Nethermind.Evm.Test.Tracing
         [Test]
         public void Does_not_take_into_account_precompiles()
         {
-            EstimateGasTracer tracer = new EstimateGasTracer();
+            EstimateGasTracer tracer = new();
             tracer.ReportAction(1000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.Transaction, false);
             tracer.ReportAction(1000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.Call, true);
             tracer.ReportActionEnd(400, Array.Empty<byte>()); // this would not happen but we want to ensure that precompiles are ignored
             tracer.ReportActionEnd(600, Array.Empty<byte>());
-            tracer.CalculateEstimate(Build.A.Transaction.WithGasLimit(1000).TestObject).Should().Be(0);
+            tracer.CalculateEstimate(Build.A.Transaction.WithGasLimit(1000).TestObject, _releaseSpec).Should().Be(0);
         }
 
         [Test]
         public void Only_traces_actions_and_receipts()
         {
-            EstimateGasTracer tracer = new EstimateGasTracer();
+            EstimateGasTracer tracer = new();
             (tracer.IsTracingActions && tracer.IsTracingReceipt).Should().BeTrue();
             (tracer.IsTracingBlockHash
              || tracer.IsTracingState
+             || tracer.IsTracingStorage
              || tracer.IsTracingCode
              || tracer.IsTracingInstructions
              || tracer.IsTracingMemory
@@ -63,16 +67,16 @@ namespace Nethermind.Evm.Test.Tracing
         [Test]
         public void Handles_well_top_level()
         {
-            EstimateGasTracer tracer = new EstimateGasTracer();
+            EstimateGasTracer tracer = new();
             tracer.ReportAction(1000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.Transaction, false);
             tracer.ReportActionEnd(600, Array.Empty<byte>());
-            tracer.CalculateEstimate(Build.A.Transaction.WithGasLimit(1000).TestObject).Should().Be(0);
+            tracer.CalculateEstimate(Build.A.Transaction.WithGasLimit(1000).TestObject, _releaseSpec).Should().Be(0);
         }
 
         [Test]
         public void Handles_well_serial_calls()
         {
-            EstimateGasTracer tracer = new EstimateGasTracer();
+            EstimateGasTracer tracer = new();
             tracer.ReportAction(1000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.Transaction, false);
             tracer.ReportAction(1000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), _executionType, false);
             tracer.ReportActionEnd(400, Array.Empty<byte>());
@@ -88,13 +92,13 @@ namespace Nethermind.Evm.Test.Tracing
                 tracer.ReportActionEnd(300, Array.Empty<byte>()); // should not happen
             }
 
-            tracer.CalculateEstimate(Build.A.Transaction.WithGasLimit(1000).TestObject).Should().Be(14L);
+            tracer.CalculateEstimate(Build.A.Transaction.WithGasLimit(1000).TestObject, _releaseSpec).Should().Be(14L);
         }
 
         [Test]
         public void Handles_well_errors()
         {
-            EstimateGasTracer tracer = new EstimateGasTracer();
+            EstimateGasTracer tracer = new();
             tracer.ReportAction(1000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.Transaction, false);
             tracer.ReportAction(1000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), _executionType, false);
             tracer.ReportAction(400, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), _executionType, false);
@@ -112,26 +116,26 @@ namespace Nethermind.Evm.Test.Tracing
                 tracer.ReportActionEnd(500, Array.Empty<byte>()); // should not happen
             }
 
-            tracer.CalculateEstimate(Build.A.Transaction.WithGasLimit(1000).TestObject).Should().Be(24L);
+            tracer.CalculateEstimate(Build.A.Transaction.WithGasLimit(1000).TestObject, _releaseSpec).Should().Be(24L);
         }
 
         [Test]
         public void Easy_one_level_case()
         {
-            EstimateGasTracer tracer = new EstimateGasTracer();
+            EstimateGasTracer tracer = new();
             tracer.ReportAction(128, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.Transaction, false);
             tracer.ReportAction(100, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), _executionType, false);
 
             tracer.ReportActionEnd(63, Array.Empty<byte>()); // second level
             tracer.ReportActionEnd(65, Array.Empty<byte>());
 
-            tracer.CalculateEstimate(Build.A.Transaction.WithGasLimit(128).TestObject).Should().Be(1);
+            tracer.CalculateEstimate(Build.A.Transaction.WithGasLimit(128).TestObject, _releaseSpec).Should().Be(1);
         }
 
         [Test]
         public void Handles_well_nested_calls_where_most_nested_defines_excess()
         {
-            EstimateGasTracer tracer = new EstimateGasTracer();
+            EstimateGasTracer tracer = new();
             tracer.ReportAction(1000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.Transaction, false);
             tracer.ReportAction(1000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), _executionType, false);
             tracer.ReportAction(400, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), _executionType, false);
@@ -149,13 +153,13 @@ namespace Nethermind.Evm.Test.Tracing
                 tracer.ReportActionEnd(500, Array.Empty<byte>()); // should not happen
             }
 
-            tracer.CalculateEstimate(Build.A.Transaction.WithGasLimit(1000).TestObject).Should().Be(18);
+            tracer.CalculateEstimate(Build.A.Transaction.WithGasLimit(1000).TestObject, _releaseSpec).Should().Be(18);
         }
 
         [Test]
         public void Handles_well_nested_calls_where_least_nested_defines_excess()
         {
-            EstimateGasTracer tracer = new EstimateGasTracer();
+            EstimateGasTracer tracer = new();
             tracer.ReportAction(1000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.Transaction, false);
             tracer.ReportAction(1000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), _executionType, false);
             tracer.ReportAction(400, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), _executionType, false);
@@ -173,7 +177,7 @@ namespace Nethermind.Evm.Test.Tracing
                 tracer.ReportActionEnd(500, Array.Empty<byte>()); // should not happen
             }
 
-            tracer.CalculateEstimate(Build.A.Transaction.WithGasLimit(1000).TestObject).Should().Be(17);
+            tracer.CalculateEstimate(Build.A.Transaction.WithGasLimit(1000).TestObject, _releaseSpec).Should().Be(17);
         }
     }
 }

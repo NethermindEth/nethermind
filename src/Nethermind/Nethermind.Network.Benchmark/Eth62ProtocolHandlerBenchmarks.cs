@@ -16,31 +16,32 @@
 
 using System;
 using BenchmarkDotNet.Attributes;
-using BenchmarkDotNet.Jobs;
 using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
-using Nethermind.Blockchain.Synchronization;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Comparers;
+using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Timers;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
-using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.Rlpx;
 using Nethermind.Specs;
 using Nethermind.State;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
+using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
-using Nethermind.TxPool.Storages;
 using NSubstitute;
 
 namespace Nethermind.Network.Benchmarks
 {
-    [MemoryDiagnoser]
-    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
     public class Eth62ProtocolHandlerBenchmarks
     {
         private Eth62ProtocolHandler _handler;
@@ -52,23 +53,25 @@ namespace Nethermind.Network.Benchmarks
         public void SetUp()
         {
             Console.WriteLine("AAA");
-            Session session = new Session(8545, LimboLogs.Instance, Substitute.For<IChannel>());
+            Session session = new Session(8545, Substitute.For<IChannel>(), Substitute.For<IDisconnectsAnalyzer>(), LimboLogs.Instance);
             session.RemoteNodeId = TestItem.PublicKeyA;
             session.RemoteHost = "127.0.0.1";
             session.RemotePort = 30303;
             _ser = new MessageSerializationService();
             _ser.Register(new TransactionsMessageSerializer());
             _ser.Register(new StatusMessageSerializer());
-            NodeStatsManager stats = new NodeStatsManager(new StatsConfig(), LimboLogs.Instance);
-
+            NodeStatsManager stats = new NodeStatsManager(TimerFactory.Default, LimboLogs.Instance);
             var ecdsa = new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance);
+            var tree = Build.A.BlockTree().TestObject;
+            var stateProvider = new StateProvider(new TrieStore(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance);
+            var specProvider = MainnetSpecProvider.Instance;
             TxPool.TxPool txPool = new TxPool.TxPool(
-                NullTxStorage.Instance,
                 ecdsa,
-                MainnetSpecProvider.Instance,
+                new ChainHeadInfoProvider(new FixedBlockChainHeadSpecProvider(MainnetSpecProvider.Instance), tree, stateProvider),
                 new TxPoolConfig(),
-                Substitute.For<IStateProvider>(),
-                LimboLogs.Instance);
+                new TxValidator(ChainId.Mainnet),
+                LimboLogs.Instance,
+                new TransactionComparerProvider(specProvider, tree).GetDefaultComparer());
             ISyncServer syncSrv = Substitute.For<ISyncServer>();
             BlockHeader head = Build.A.BlockHeader.WithNumber(1).TestObject;
             syncSrv.Head.Returns(head);

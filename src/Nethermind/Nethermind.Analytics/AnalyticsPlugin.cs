@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2020 Demerzel Solutions Limited
+//  Copyright (c) 2020 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -19,8 +19,8 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Core.PubSub;
 using Nethermind.JsonRpc.Modules;
-using Nethermind.PubSub;
 using Nethermind.TxPool;
 
 namespace Nethermind.Analytics
@@ -33,7 +33,7 @@ namespace Nethermind.Analytics
 
         private bool _isOn;
 
-        public void Dispose() { }
+        public ValueTask DisposeAsync() { return ValueTask.CompletedTask; }
 
         public string Name => "Analytics";
 
@@ -90,7 +90,7 @@ namespace Nethermind.Analytics
             
             if (_isOn)
             {
-                AnalyticsWebSocketsModule webSocketsModule = new AnalyticsWebSocketsModule(getFromAPi.EthereumJsonSerializer);
+                AnalyticsWebSocketsModule webSocketsModule = new AnalyticsWebSocketsModule(getFromAPi.EthereumJsonSerializer, getFromAPi.LogManager);
                 getFromAPi.WebSocketsManager!.AddModule(webSocketsModule, true);
                 getFromAPi.Publishers.Add(webSocketsModule);
             }
@@ -103,9 +103,9 @@ namespace Nethermind.Analytics
         public Task InitRpcModules()
         {
             var (getFromAPi, _) = _api.ForRpc;
-            AnalyticsModule analyticsModule = new AnalyticsModule(
+            AnalyticsRpcModule analyticsRpcModule = new AnalyticsRpcModule(
                 getFromAPi.BlockTree, getFromAPi.StateReader, getFromAPi.LogManager);
-            getFromAPi.RpcModuleProvider.Register(new SingletonModulePool<IAnalyticsModule>(analyticsModule));
+            getFromAPi.RpcModuleProvider.Register(new SingletonModulePool<IAnalyticsRpcModule>(analyticsRpcModule));
             return Task.CompletedTask;
         }
     }

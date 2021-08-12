@@ -42,7 +42,7 @@ namespace Nethermind.DataMarketplace.Core.Domain
         public DataDeliveryReceiptRequest WithRange(UnitsRange range, uint number)
             => new DataDeliveryReceiptRequest(number, DepositId, range, IsSettlement, ReceiptsToMerge);
 
-        public bool Equals(DataDeliveryReceiptRequest other)
+        public bool Equals(DataDeliveryReceiptRequest? other)
         {
             if (ReferenceEquals(null, other)) return false;
             if (ReferenceEquals(this, other)) return true;

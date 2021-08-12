@@ -17,9 +17,10 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
-using Nethermind.Db;
+using Nethermind.Core.Specs;
 using Nethermind.Facade;
 using Nethermind.JsonRpc.Data;
+using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.TxPool;
@@ -28,9 +29,9 @@ using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
-    public class EthModuleFactory : ModuleFactoryBase<IEthModule>
+    public class EthModuleFactory : ModuleFactoryBase<IEthRpcModule>
     {
-        private readonly ReadOnlyBlockTree _blockTree;
+        private readonly IReadOnlyBlockTree _blockTree;
         private readonly ILogManager _logManager;
         private readonly IStateReader _stateReader;
         private readonly IBlockchainBridgeFactory _blockchainBridgeFactory;
@@ -38,6 +39,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly ITxSender _txSender;
         private readonly IWallet _wallet;
         private readonly IJsonRpcConfig _rpcConfig;
+        private readonly ISpecProvider _specProvider;
 
         public EthModuleFactory(
             ITxPool txPool,
@@ -47,7 +49,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
             IJsonRpcConfig config,
             ILogManager logManager,
             IStateReader stateReader,
-            IBlockchainBridgeFactory blockchainBridgeFactory)
+            IBlockchainBridgeFactory blockchainBridgeFactory,
+            ISpecProvider specProvider)
         {
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
@@ -56,12 +59,13 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
             _blockchainBridgeFactory = blockchainBridgeFactory ?? throw new ArgumentNullException(nameof(blockchainBridgeFactory));
+            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _blockTree = blockTree.AsReadOnly();
         }
         
-        public override IEthModule Create()
+        public override IEthRpcModule Create()
         {
-            return new EthModule(
+            return new EthRpcModule(
                 _rpcConfig,
                 _blockchainBridgeFactory.CreateBlockchainBridge(),
                 _blockTree,
@@ -69,7 +73,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 _txPool,
                 _txSender,
                 _wallet,
-                _logManager);
+                _logManager,
+                _specProvider,
+                new GasPriceOracle(_blockTree, _specProvider));
         }
 
         public static List<JsonConverter> Converters = new()

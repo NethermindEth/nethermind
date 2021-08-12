@@ -21,7 +21,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
-using Nethermind.State;
 
 namespace Nethermind.Evm.Test
 {
@@ -36,7 +35,9 @@ namespace Nethermind.Evm.Test
         public bool IsTracingCode => true;
         public bool IsTracingStack => true;
         public bool IsTracingState => true;
+        public bool IsTracingStorage => true;
         public bool IsTracingBlockHash => true;
+        public bool IsTracingAccess { get; set; } = true;
 
         public byte[] ReturnValue { get; set; }
 
@@ -45,6 +46,10 @@ namespace Nethermind.Evm.Test
         public string Error { get; set; }
 
         public byte StatusCode { get; set; }
+        
+        public long Refund { get; set; }
+
+        public List<EvmExceptionType> ReportedActionErrors { get; set; } = new List<EvmExceptionType>();
 
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak stateRoot = null)
         {
@@ -125,19 +130,24 @@ namespace Nethermind.Evm.Test
         {
         }
 
-        public void ReportAction(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType, bool isPrecompileCall = false)
+        public void ReportStorageRead(StorageCell storageCell)
         {
         }
 
-        public void ReportActionEnd(long gas, byte[] output)
+        public void ReportAction(long gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
+        {
+        }
+
+        public void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
         {
         }
 
         public void ReportActionError(EvmExceptionType exceptionType)
         {
+            ReportedActionErrors.Add(exceptionType);
         }
 
-        public void ReportActionEnd(long gas, Address deploymentAddress, byte[] deployedCode)
+        public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
         {
         }
 
@@ -155,9 +165,14 @@ namespace Nethermind.Evm.Test
 
         public void ReportRefund(long refund)
         {
+            Refund += refund;
         }
 
         public void ReportExtraGasPressure(long extraGasPressure)
+        {
+        }
+
+        public void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells)
         {
         }
     }

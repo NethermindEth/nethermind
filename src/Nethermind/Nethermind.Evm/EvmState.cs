@@ -18,7 +18,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
@@ -39,8 +38,8 @@ namespace Nethermind.Evm
                 _maxCallStackDepth = maxCallStackDepth;
             }
 
-            private readonly ConcurrentStack<byte[]> _dataStackPool = new ConcurrentStack<byte[]>();
-            private readonly ConcurrentStack<int[]> _returnStackPool = new ConcurrentStack<int[]>();
+            private readonly ConcurrentStack<byte[]> _dataStackPool = new();
+            private readonly ConcurrentStack<int[]> _returnStackPool = new();
 
             private int _dataStackPoolDepth;
             private int _returnStackPoolDepth;
@@ -107,8 +106,26 @@ namespace Nethermind.Evm
         
         public int ReturnStackHead = 0;
 
-        public EvmState(long gasAvailable, ExecutionEnvironment env, ExecutionType executionType, bool isTopLevel, bool isContinuation)
-            : this(gasAvailable, env, executionType, isTopLevel, -1, -1, 0L, 0L, false, null, isContinuation, false)
+        public EvmState(
+            long gasAvailable, 
+            ExecutionEnvironment env, 
+            ExecutionType executionType, 
+            bool isTopLevel, 
+            int stateSnapshot,
+            int storageSnapshot,
+            bool isContinuation)
+            : this(gasAvailable, 
+                env, 
+                executionType, 
+                isTopLevel, 
+                stateSnapshot, 
+                storageSnapshot, 
+                0L, 
+                0L, 
+                false, 
+                null, 
+                isContinuation, 
+                false)
         {
             GasAvailable = gasAvailable;
             Env = env;
@@ -158,11 +175,10 @@ namespace Nethermind.Evm
                     case ExecutionType.CallCode:
                     case ExecutionType.Create:
                     case ExecutionType.Create2:
-                        return Env.Sender;
+                    case ExecutionType.Transaction:
+                        return Env.Caller;
                     case ExecutionType.DelegateCall:
                         return Env.ExecutingAccount;
-                    case ExecutionType.Transaction:
-                        return Env.Originator;
                     default:
                         throw new ArgumentOutOfRangeException();
                 }
@@ -308,7 +324,7 @@ namespace Nethermind.Evm
             get { return LazyInitializer.EnsureInitialized(ref _accessedStorageKeys, () => new HashSet<StorageCell>()); }
         }
 
-        private static readonly ThreadLocal<StackPool> _stackPool = new ThreadLocal<StackPool>(() => new StackPool());
+        private static readonly ThreadLocal<StackPool> _stackPool = new(() => new StackPool());
         
         private HashSet<Address>? _destroyList;
         

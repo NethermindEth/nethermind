@@ -67,7 +67,7 @@ namespace Nethermind.Network.Rlpx.Handshake
 
             if (preEip8Format)
             {
-                AuthMessage authMessage = new AuthMessage();
+                AuthMessage authMessage = new();
                 authMessage.Nonce = handshake.InitiatorNonce;
                 authMessage.PublicKey = _privateKey.PublicKey;
                 authMessage.Signature = _ecdsa.Sign(handshake.EphemeralPrivateKey, new Keccak(forSigning));
@@ -82,7 +82,7 @@ namespace Nethermind.Network.Rlpx.Handshake
             }
             else
             {
-                AuthEip8Message authMessage = new AuthEip8Message();
+                AuthEip8Message authMessage = new();
                 authMessage.Nonce = handshake.InitiatorNonce;
                 authMessage.PublicKey = _privateKey.PublicKey;
                 authMessage.Signature = _ecdsa.Sign(handshake.EphemeralPrivateKey, new Keccak(forSigning));
@@ -242,11 +242,11 @@ namespace Nethermind.Network.Rlpx.Handshake
             handshake.Secrets.AesSecret = aesSecret;
             handshake.Secrets.MacSecret = macSecret;
 
-            KeccakDigest mac1 = new KeccakDigest(MacBitsSize);
+            KeccakDigest mac1 = new(MacBitsSize);
             mac1.BlockUpdate(macSecret.Xor(handshake.RecipientNonce), 0, macSecret.Length);
             mac1.BlockUpdate(handshake.AuthPacket.Data, 0, handshake.AuthPacket.Data.Length);
 
-            KeccakDigest mac2 = new KeccakDigest(MacBitsSize);
+            KeccakDigest mac2 = new(MacBitsSize);
             mac2.BlockUpdate(macSecret.Xor(handshake.InitiatorNonce), 0, macSecret.Length);
             mac2.BlockUpdate(handshake.AckPacket.Data, 0, handshake.AckPacket.Data.Length);
 

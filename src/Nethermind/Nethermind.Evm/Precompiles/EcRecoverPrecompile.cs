@@ -34,7 +34,7 @@ namespace Nethermind.Evm.Precompiles
 
         public Address Address { get; } = Address.FromNumber(1);
 
-        public long DataGasCost(byte[] inputData, IReleaseSpec releaseSpec)
+        public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
             return 0L;
         }
@@ -44,20 +44,19 @@ namespace Nethermind.Evm.Precompiles
             return 3000L;
         }
 
-        private readonly EthereumEcdsa _ecdsa = new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance);
+        private readonly EthereumEcdsa _ecdsa = new(ChainId.Mainnet, LimboLogs.Instance);
         
         private readonly byte[] _zero31 = new byte[31];
         
-        public (byte[], bool) Run(byte[] inputData, IReleaseSpec releaseSpec)
+        public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
             Metrics.EcRecoverPrecompile++;
-
-            inputData ??= Array.Empty<byte>();
+            
             Span<byte> inputDataSpan = stackalloc byte[128];
-            inputData.AsSpan(0, Math.Min(128, inputData.Length))
+            inputData.Span.Slice(0, Math.Min(128, inputData.Length))
                 .CopyTo(inputDataSpan.Slice(0, Math.Min(128, inputData.Length)));
 
-            Keccak hash = new Keccak(inputDataSpan.Slice(0, 32).ToArray());
+            Keccak hash = new(inputDataSpan.Slice(0, 32).ToArray());
             Span<byte> vBytes = inputDataSpan.Slice(32, 32);
             Span<byte> r = inputDataSpan.Slice(64, 32);
             Span<byte> s = inputDataSpan.Slice(96, 32);
@@ -75,7 +74,7 @@ namespace Nethermind.Evm.Precompiles
                 return (Array.Empty<byte>(), true);
             }
 
-            Signature signature = new Signature(r, s, v);
+            Signature signature = new(r, s, v);
             Address recovered = _ecdsa.RecoverAddress(signature, hash);
             if (recovered == null)
             {

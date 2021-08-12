@@ -26,7 +26,7 @@ namespace Nethermind.Evm.Precompiles
     {
         private const int RequiredInputLength = 213;
         
-        private Blake2Compression _blake = new Blake2Compression();
+        private Blake2Compression _blake = new();
         
         public static readonly IPrecompile Instance = new Blake2FPrecompile();
 
@@ -34,39 +34,39 @@ namespace Nethermind.Evm.Precompiles
 
         public long BaseGasCost(IReleaseSpec releaseSpec) => 0;
 
-        public long DataGasCost(byte[] inputData, IReleaseSpec releaseSpec)
+        public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
             if (inputData.Length != RequiredInputLength)
             {
                 return 0;
             }
             
-            byte finalByte = inputData[212];
+            byte finalByte = inputData.Span[212];
             if (finalByte != 0 && finalByte != 1)
             {
                 return 0;
             }
             
-            uint rounds = inputData.AsSpan().Slice(0, 4).ReadEthUInt32();
+            uint rounds = inputData.Slice(0, 4).Span.ReadEthUInt32();
 
             return rounds;
         }
 
-        public (byte[], bool) Run(byte[] inputData, IReleaseSpec releaseSpec)
+        public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
             if (inputData.Length != RequiredInputLength)
             {
                 return (Array.Empty<byte>(), false);
             }
 
-            byte finalByte = inputData[212];
+            byte finalByte = inputData.Span[212];
             if (finalByte != 0 && finalByte != 1)
             {
                 return (Array.Empty<byte>(), false);
             }
 
             byte[] result = new byte[64];
-            _blake.Compress(inputData, result);
+            _blake.Compress(inputData.Span, result);
 
             return (result, true);
         }

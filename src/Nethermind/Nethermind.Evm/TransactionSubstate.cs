@@ -17,7 +17,6 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
-using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 
@@ -25,8 +24,8 @@ namespace Nethermind.Evm
 {
     public class TransactionSubstate
     {
-        private static List<Address> _emptyDestroyList = new List<Address>(0);
-        private static List<LogEntry> _emptyLogs = new List<LogEntry>(0);
+        private static List<Address> _emptyDestroyList = new(0);
+        private static List<LogEntry> _emptyLogs = new(0);
 
         private const string SomeError = "error";
         private const string Revert = "revert";
@@ -41,7 +40,7 @@ namespace Nethermind.Evm
         }
 
         public TransactionSubstate(
-            byte[] output,
+            ReadOnlyMemory<byte> output,
             long refund,
             IReadOnlyCollection<Address> destroyList,
             IReadOnlyCollection<LogEntry> logs,
@@ -59,19 +58,20 @@ namespace Nethermind.Evm
                 Error = Revert;
                 if (isTracerConnected)
                 {
-                    if (Output?.Length > 0)
+                    if (Output.Length > 0)
                     {
                         try
                         {
-                            BigInteger start = Output.AsSpan().Slice(4, 32).ToUnsignedBigInteger();
-                            BigInteger length = Output.Slice((int) start + 4, 32).ToUnsignedBigInteger();
-                            Error = "revert: " + Encoding.ASCII.GetString(Output.Slice((int) start + 32 + 4, (int) length));
+                            BigInteger start = Output.Span.Slice(4, 32).ToUnsignedBigInteger();
+                            BigInteger length = Output.Slice((int) start + 4, 32).Span.ToUnsignedBigInteger();
+                            Error = string.Concat("Reverted ",
+                                Output.Slice((int)start + 32 + 4, (int)length).ToArray().ToHexString(true));
                         }
                         catch (Exception)
                         {
                             try
                             {
-                                Error = "revert: " + Output.ToHexString(true);
+                                Error = string.Concat("Reverted ", Output.ToArray().ToHexString(true));
                             }
                             catch
                             {
@@ -91,7 +91,7 @@ namespace Nethermind.Evm
 
         public string Error { get; }
 
-        public byte[] Output { get; }
+        public ReadOnlyMemory<byte> Output { get; }
 
         public bool ShouldRevert { get; }
 

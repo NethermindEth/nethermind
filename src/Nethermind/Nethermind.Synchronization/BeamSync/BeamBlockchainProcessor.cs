@@ -48,7 +48,7 @@ namespace Nethermind.Synchronization.BeamSync
 
         private readonly IBlockProcessingQueue _standardProcessorQueue;
         private readonly ISyncModeSelector _syncModeSelector;
-        private readonly ReadOnlyBlockTree _readOnlyBlockTree;
+        private readonly IReadOnlyBlockTree _readOnlyBlockTree;
         private readonly ISpecProvider _specProvider;
         private readonly ILogManager _logManager;
 
@@ -83,7 +83,7 @@ namespace Nethermind.Synchronization.BeamSync
 
         private Action<Block> _blockAction;
 
-        private Queue<Block> _shelvedBlocks = new Queue<Block>();
+        private Queue<Block> _shelvedBlocks = new();
 
         private void EnqueueForStandardProcessing(Block block)
         {
@@ -103,7 +103,7 @@ namespace Nethermind.Synchronization.BeamSync
             _shelvedBlocks.Enqueue(block);
         }
 
-        private object _transitionLock = new object();
+        private object _transitionLock = new();
 
         private bool _isAfterBeam;
 
@@ -198,18 +198,18 @@ namespace Nethermind.Synchronization.BeamSync
         private (IBlockchainProcessor, IStateReader) CreateProcessor(Block block, IReadOnlyDbProvider readOnlyDbProvider, ISpecProvider specProvider, ILogManager logManager)
         {
             // TODO: need to pass the state with cache
-            ReadOnlyTxProcessingEnv txEnv = new(readOnlyDbProvider, new TrieStore(readOnlyDbProvider.StateDb, logManager).AsReadOnly(), _readOnlyBlockTree, specProvider, logManager);
+            ReadOnlyTxProcessingEnv txEnv = new(readOnlyDbProvider, new TrieStore(readOnlyDbProvider.StateDb, logManager).AsReadOnly(readOnlyDbProvider.StateDb), _readOnlyBlockTree, specProvider, logManager);
             ReadOnlyChainProcessingEnv env = new(txEnv, _blockValidator, _recoveryStep, _rewardCalculatorSource.Get(txEnv.TransactionProcessor), NullReceiptStorage.Instance, _readOnlyDbProvider, specProvider, logManager);
             env.BlockProcessor.TransactionProcessed += (_, args) =>
             {
                 Interlocked.Increment(ref Metrics.BeamedTransactions);
-                if (_logger.IsInfo) _logger.Info($"Processed tx {args.Index + 1}/{block.Transactions?.Length} of {block.Number}");
+                if (_logger.IsInfo) _logger.Info($"Processed tx {args.Index + 1}/{block.Transactions.Length} of {block.Number}");
             };
 
             return (env.ChainProcessor, txEnv.StateReader);
         }
 
-        private ConcurrentBag<Task> _beamProcessTasks = new ConcurrentBag<Task>();
+        private ConcurrentBag<Task> _beamProcessTasks = new();
 
         private void OnNewBlock(object? sender, BlockEventArgs e)
         {
@@ -229,7 +229,7 @@ namespace Nethermind.Synchronization.BeamSync
         /// <summary>
         /// Tokens really should be by hash or hash sets by number
         /// </summary>
-        private ConcurrentDictionary<long, CancellationTokenSource> _tokens = new ConcurrentDictionary<long, CancellationTokenSource>();
+        private ConcurrentDictionary<long, CancellationTokenSource> _tokens = new();
 
         private void BeamProcess(Block block)
         {
@@ -393,7 +393,10 @@ namespace Nethermind.Synchronization.BeamSync
                     {
                         BeamSyncContext.Description.Value = $"[storage prefetch {i}]";
                         BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
-                        stateReader.GetStorageRoot(stateRoot, tx.To);
+                        
+                        // TODO: not that this does not retrieve storage
+                        // we should call GetStorage afterwards
+                        _ = stateReader.GetAccount(stateRoot, tx.To)?.StorageRoot;
                     }
                 }
 
@@ -415,7 +418,11 @@ namespace Nethermind.Synchronization.BeamSync
                     {
                         BeamSyncContext.Description.Value = $"[code prefetch {i}]";
                         BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
-                        stateReader.GetCode(stateRoot, tx.To);
+                        Account? account = stateReader.GetAccount(stateRoot, tx.To);
+                        if (account != null)
+                        {
+                            stateReader.GetCode(account.CodeHash);
+                        }
                     }
                 }
 

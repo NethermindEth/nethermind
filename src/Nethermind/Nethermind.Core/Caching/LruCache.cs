@@ -24,40 +24,34 @@ namespace Nethermind.Core.Caching
     /// <remarks>
     /// The array based solution is preferred to lower the overall memory management overhead. The <see cref="LinkedListNode{T}"/> based approach is very costly.
     /// </remarks>
+    /// <summary>
+    /// https://stackoverflow.com/questions/754233/is-it-there-any-lru-implementation-of-idictionary
+    /// </summary>
     public class LruCache<TKey, TValue> : ICache<TKey, TValue> where TKey : notnull
     {
         private readonly int _maxCapacity;
-        private readonly Dictionary<TKey, int> _cacheMap;
-        private Node[] _list;
-
-        private const int MinimumListCapacity = 16;
-
-        struct Node
-        {
-            public const int Null = -1;
-
-            public int Prev;
-            public int Next;
-            public TValue Value;
-            public TKey Key;
-        }
+        private readonly Dictionary<TKey, LinkedListNode<LruCacheItem>> _cacheMap;
+        private readonly LinkedList<LruCacheItem> _lruList;
 
         [MethodImpl(MethodImplOptions.Synchronized)]
         public void Clear()
         {
             _cacheMap?.Clear();
-            _list = new Node[MinimumListCapacity];
-            _head = Node.Null;
+            _lruList?.Clear();
         }
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
         public LruCache(int maxCapacity, int startCapacity, string name)
         {
+            if (maxCapacity < 1) 
+            {
+                throw new ArgumentOutOfRangeException();
+            }
+
             _maxCapacity = maxCapacity;
             _cacheMap = typeof(TKey) == typeof(byte[])
-                ? new Dictionary<TKey, int>((IEqualityComparer<TKey>)Bytes.EqualityComparer)
-                : new Dictionary<TKey, int>(startCapacity); // do not initialize it at the full capacity
-            _list = new Node[Math.Max(startCapacity, MinimumListCapacity)];
+                ? new Dictionary<TKey, LinkedListNode<LruCacheItem>>((IEqualityComparer<TKey>)Bytes.EqualityComparer)
+                : new Dictionary<TKey, LinkedListNode<LruCacheItem>>(startCapacity); // do not initialize it at the full capacity
+            _lruList = new LinkedList<LruCacheItem>();
         }
 
         public LruCache(int maxCapacity, string name)
@@ -68,13 +62,11 @@ namespace Nethermind.Core.Caching
         [MethodImpl(MethodImplOptions.Synchronized)]
         public TValue Get(TKey key)
         {
-            if (_cacheMap.TryGetValue(key, out int node))
+            if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
             {
-                TValue value = _list[node].Value;
-
-                NodeRemove(node);
-                NodeAddLast(node);
-
+                TValue value = node.Value.Value;
+                _lruList.Remove(node);
+                _lruList.AddLast(node);
                 return value;
             }
 
@@ -87,13 +79,11 @@ namespace Nethermind.Core.Caching
         [MethodImpl(MethodImplOptions.Synchronized)]
         public bool TryGet(TKey key, out TValue value)
         {
-            if (_cacheMap.TryGetValue(key, out int node))
+            if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
             {
-                value = _list[node].Value;
-
-                NodeRemove(node);
-                NodeAddLast(node);
-
+                value = node.Value.Value;
+                _lruList.Remove(node);
+                _lruList.AddLast(node);
                 return true;
             }
 
@@ -113,12 +103,11 @@ namespace Nethermind.Core.Caching
                 return;
             }
 
-            if (_cacheMap.TryGetValue(key, out int node))
+            if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
             {
-                _list[node].Value = val;
-
-                NodeRemove(node);
-                NodeAddLast(node);
+                node.Value.Value = val;
+                _lruList.Remove(node);
+                _lruList.AddLast(node);
             }
             else
             {
@@ -128,17 +117,9 @@ namespace Nethermind.Core.Caching
                 }
                 else
                 {
-                    int newNode = _cacheMap.Count;
-
-                    if (newNode >= _list.Length)
-                    {
-                        Array.Resize(ref _list, _list.Length * 2);
-                    }
-
-                    _list[newNode].Value = val;
-                    _list[newNode].Key = key;
-
-                    NodeAddLast(newNode);
+                    LruCacheItem cacheItem = new LruCacheItem(key, val);
+                    LinkedListNode<LruCacheItem> newNode = new LinkedListNode<LruCacheItem>(cacheItem);
+                    _lruList.AddLast(newNode);
                     _cacheMap.Add(key, newNode);
                 }
             }
@@ -147,38 +128,11 @@ namespace Nethermind.Core.Caching
         [MethodImpl(MethodImplOptions.Synchronized)]
         public void Delete(TKey key)
         {
-            if (_cacheMap.Remove(key, out int node))
-
+            if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
             {
-                int elementToFree = _cacheMap.Count;
-
-                NodeRemove(node, true);
-
-                if (elementToFree == 0)
-                {
-                    // head is null, nothing to remove
-                }
-                else if (elementToFree == node)
-                {
-                    // nothing to do, the last node was removed
-                }
-                else
-                {
-                    MoveToGap(node, elementToFree);
-                }
+                _lruList.Remove(node);
+                _cacheMap.Remove(key);
             }
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void MoveToGap(int gap, int nodeToMove)
-        {
-            ref Node movedNode = ref _list[nodeToMove];
-            _list[gap] = movedNode;
-            
-            // after moving the node, we need to fix references to it from next/prev and map
-            _list[movedNode.Prev].Next = gap;
-            _list[movedNode.Next].Prev = gap;
-            _cacheMap[movedNode.Key] = gap;
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
@@ -186,73 +140,26 @@ namespace Nethermind.Core.Caching
 
         private void Replace(TKey key, TValue value)
         {
-            int i = _head;
-            ref Node node = ref NodeRemove(i);
-            _cacheMap.Remove(node.Key);
+            LinkedListNode<LruCacheItem>? node = _lruList.First;
+            _lruList.RemoveFirst();
+            _cacheMap.Remove(node.Value.Key);
 
-            node.Value = value;
-            node.Key = key;
-            NodeAddLast(i);
-
-            _cacheMap.Add(key, i);
+            node.Value.Value = value;
+            node.Value.Key = key;
+            _lruList.AddLast(node);
+            _cacheMap.Add(key, node);
         }
 
-        private int _head = Node.Null;
-
-        private ref Node NodeRemove(int i, bool cleanValues = false)
+        private class LruCacheItem
         {
-            ref Node node = ref _list[i];
-
-            if (node.Next == i)
+            public LruCacheItem(TKey k, TValue v)
             {
-                _head = Node.Null;
-            }
-            else
-            {
-                _list[node.Next].Prev = node.Prev;
-                _list[node.Prev].Next = node.Next;
-
-                if (_head == i)
-                {
-                    _head = node.Next;
-                }
+                Key = k;
+                Value = v;
             }
 
-            if (cleanValues)
-            {
-                node.Value = default!;
-                node.Key = default!;
-            }
-
-            return ref node;
-        }
-
-        private void NodeAddLast(int i)
-        {
-            if (_head == Node.Null)
-                NodeInsertToEmptyList(i);
-            else
-                NodeInsertBefore(_head, i);
-        }
-
-        private void NodeInsertToEmptyList(int i)
-        {
-            ref Node node = ref _list[i];
-
-            node.Next = i;
-            node.Prev = i;
-            _head = i;
-        }
-
-        private void NodeInsertBefore(int n, int @new)
-        {
-            ref Node node = ref _list[n];
-            ref Node newNode = ref _list[@new];
-
-            newNode.Next = n;
-            newNode.Prev = node.Prev;
-            _list[node.Prev].Next = @new;
-            node.Prev = @new;
+            public TKey Key;
+            public TValue Value;
         }
 
         public long MemorySize => CalculateMemorySize(0, _cacheMap.Count);
@@ -264,24 +171,6 @@ namespace Nethermind.Core.Caching
             const int preInit = 48 /* LinkedList */ + 80 /* Dictionary */ + 24;
             int postInit = 52 /* lazy init of two internal dictionary arrays + dictionary size times (entry size + int) */ + MemorySizes.FindNextPrime(currentItemsCount) * 28 + currentItemsCount * 80 /* LinkedListNode and CacheItem times items count */;
             return MemorySizes.Align(preInit + postInit + keyPlusValueSize * currentItemsCount);
-        }
-
-        [MethodImpl(MethodImplOptions.Synchronized)]
-        public void ForEach(Action<TValue> action)
-        {
-            int next = _head;
-            int start = next;
-            while (next != Node.Null)
-            {
-                Node node = _list[next];
-                action(node.Value);
-                next = node.Next;
-
-                if (next == start)
-                {
-                    break;
-                }
-            }
         }
     }
 }

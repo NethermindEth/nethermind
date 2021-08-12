@@ -30,10 +30,10 @@ namespace Nethermind.State.Witnesses
     /// <summary>
     /// <threadsafety static="true" instance="false" />
     /// </summary>
-    public class WitnessCollector : IWitnessCollector
+    public class WitnessCollector : IWitnessCollector, IWitnessRepository
     {
         private readonly LruCache<Keccak, Keccak[]> _witnessCache
-            = new LruCache<Keccak, Keccak[]>(256, "Witnesses");
+            = new(256, "Witnesses");
         
         public IReadOnlyCollection<Keccak> Collected => _collected;
 
@@ -56,21 +56,24 @@ namespace Nethermind.State.Witnesses
         public void Persist(Keccak blockHash)
         {
             if(_logger.IsDebug) _logger.Debug($"Persisting {blockHash} witness ({_collected.Count})");
+            
 
             if (_collected.Count > 0)
             {
-                byte[] witness = new byte[_collected.Count * Keccak.Size];
+                Keccak[] collected = _collected.ToArray();
+                byte[] witness = new byte[collected.Length * Keccak.Size];
                 Span<byte> witnessSpan = witness;
 
                 int i = 0;
-                foreach (Keccak keccak in _collected)
+                for (var index = 0; index < collected.Length; index++)
                 {
+                    Keccak keccak = collected[index];
                     keccak.Bytes.AsSpan().CopyTo(witnessSpan.Slice(i * Keccak.Size, Keccak.Size));
                     i++;
                 }
 
                 _keyValueStore[blockHash.Bytes] = witness;
-                _witnessCache.Set(blockHash, _collected.ToArray());
+                _witnessCache.Set(blockHash, collected);
             }
             else
             {
@@ -119,7 +122,7 @@ namespace Nethermind.State.Witnesses
             _keyValueStore[blockHash.Bytes] = null;
         }
 
-        private readonly ResettableHashSet<Keccak> _collected = new ResettableHashSet<Keccak>();
+        private readonly ResettableHashSet<Keccak> _collected = new();
 
         private readonly IKeyValueStore _keyValueStore;
         

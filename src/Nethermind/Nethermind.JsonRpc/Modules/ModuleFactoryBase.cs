@@ -21,7 +21,7 @@ using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules
 {
-    public abstract class ModuleFactoryBase<T> : IRpcModuleFactory<T> where T : IModule
+    public abstract class ModuleFactoryBase<T> : IRpcModuleFactory<T> where T : IRpcModule
     {
         public ModuleFactoryBase()
         {
@@ -44,7 +44,7 @@ namespace Nethermind.JsonRpc.Modules
 
         public abstract T Create();
 
-        public ModuleType ModuleType { get; }
+        public string ModuleType { get; }
 
         public virtual IReadOnlyCollection<JsonConverter> GetConverters()
         {
@@ -52,7 +52,7 @@ namespace Nethermind.JsonRpc.Modules
         }
     }
 
-    public class SingletonFactory<T> : ModuleFactoryBase<T> where T : IModule
+    public class SingletonFactory<T> : ModuleFactoryBase<T> where T : IRpcModule
     {
         private readonly T _module;
 

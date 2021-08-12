@@ -39,12 +39,12 @@ namespace Nethermind.Evm.Precompiles.Bls.Shamatar
             return 4500L;
         }
 
-        public long DataGasCost(byte[] inputData, IReleaseSpec releaseSpec)
+        public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
             return 0L;
         }
 
-        public (byte[], bool) Run(byte[] inputData, IReleaseSpec releaseSpec)
+        public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {  
             const int expectedInputLength = 8 * BlsParams.LenFp;
             if (inputData.Length != expectedInputLength)
@@ -58,7 +58,7 @@ namespace Nethermind.Evm.Precompiles.Bls.Shamatar
             (byte[], bool) result;
             
             Span<byte> output = stackalloc byte[4 * BlsParams.LenFp];
-            bool success = ShamatarLib.BlsG2Add(inputData, output);
+            bool success = ShamatarLib.BlsG2Add(inputData.Span, output);
             if (success)
             {
                 result = (output.ToArray(), true);

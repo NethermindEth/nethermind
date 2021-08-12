@@ -37,9 +37,7 @@ namespace Nethermind.Serialization.Rlp
         }
 
         public long MemorySize => MemorySizes.SmallObjectOverhead
-                                  + MemorySizes.Align(
-                                      MemorySizes.ArrayOverhead
-                                      + Data.Length)
+                                  + MemorySizes.Align(MemorySizes.ArrayOverhead + Length)
                                   + MemorySizes.Align(sizeof(int));
 
         public RlpStream(int length)
@@ -122,31 +120,27 @@ namespace Nethermind.Serialization.Rlp
 
         private void WriteEncodedLength(int value)
         {
-            if (value < 1 << 8)
+            switch (value)
             {
-                WriteByte((byte)value);
-                return;
+                case < 1 << 8:
+                    WriteByte((byte)value);
+                    return;
+                case < 1 << 16:
+                    WriteByte((byte)(value >> 8));
+                    WriteByte((byte)value);
+                    return;
+                case < 1 << 24:
+                    WriteByte((byte)(value >> 16));
+                    WriteByte((byte)(value >> 8));
+                    WriteByte((byte)value);
+                    return;
+                default:
+                    WriteByte((byte)(value >> 24));
+                    WriteByte((byte)(value >> 16));
+                    WriteByte((byte)(value >> 8));
+                    WriteByte((byte)value);
+                    return;
             }
-
-            if (value < 1 << 16)
-            {
-                WriteByte((byte)(value >> 8));
-                WriteByte((byte)value);
-                return;
-            }
-
-            if (value < 1 << 24)
-            {
-                WriteByte((byte)(value >> 16));
-                WriteByte((byte)(value >> 8));
-                WriteByte((byte)value);
-                return;
-            }
-
-            WriteByte((byte)(value >> 24));
-            WriteByte((byte)(value >> 16));
-            WriteByte((byte)(value >> 8));
-            WriteByte((byte)value);
         }
 
         public virtual void WriteByte(byte byteToWrite)
@@ -161,13 +155,13 @@ namespace Nethermind.Serialization.Rlp
         }
 
         protected virtual string Description =>
-            Data.Slice(0, Math.Min(Rlp.DebugMessageContentLength, Length)).ToHexString();
+            Data?.Slice(0, Math.Min(Rlp.DebugMessageContentLength, Length)).ToHexString() ?? "0x";
 
-        public byte[] Data { get; }
+        public byte[]? Data { get; }
 
         public virtual int Position { get; set; }
 
-        public virtual int Length => Data.Length;
+        public virtual int Length => Data!.Length;
 
         public bool IsSequenceNext()
         {
@@ -515,11 +509,10 @@ namespace Nethermind.Serialization.Rlp
             (int a, int b) = PeekPrefixAndContentLength();
             return a + b;
         }
-
-        public (int PrefixLength, int ContentLength) PeekPrefixAndContentLength()
+        
+        public (int PrefixLength, int ContentLength) ReadPrefixAndContentLength()
         {
-            int memorizedPosition = Position;
-            (int prefixLength, int contentLengt) result;
+            (int prefixLength, int contentLength) result;
             int prefix = ReadByte();
             if (prefix <= 128)
             {
@@ -562,11 +555,19 @@ namespace Nethermind.Serialization.Rlp
 
                 result = (lengthOfContentLength + 1, contentLength);
             }
-
-            Position = memorizedPosition;
+            
             return result;
         }
 
+        public (int PrefixLength, int ContentLength) PeekPrefixAndContentLength()
+        {
+            int memorizedPosition = Position;
+            (int PrefixLength, int ContentLength) result = ReadPrefixAndContentLength();
+            
+            Position = memorizedPosition;
+            return result;
+        }
+        
         public int ReadSequenceLength()
         {
             int prefix = ReadByte();
@@ -628,17 +629,17 @@ namespace Nethermind.Serialization.Rlp
 
         public virtual byte ReadByte()
         {
-            return Data[Position++];
+            return Data![Position++];
         }
 
         public virtual byte PeekByte()
         {
-            return Data[Position];
+            return Data![Position];
         }
 
         protected virtual byte PeekByte(int offset)
         {
-            return Data[Position + offset];
+            return Data![Position + offset];
         }
 
         protected virtual void SkipBytes(int length)
@@ -773,6 +774,11 @@ namespace Nethermind.Serialization.Rlp
         public Span<byte> PeekNextItem()
         {
             int length = PeekNextRlpLength();
+            return Peek(length);
+        }
+        
+        public Span<byte> Peek(int length)
+        {
             Span<byte> item = Read(length);
             Position -= item.Length;
             return item;
@@ -1070,7 +1076,7 @@ namespace Nethermind.Serialization.Rlp
 
         public override string ToString()
         {
-            return $"[{nameof(RlpStream)}|{Position}/{Data.Length}]";
+            return $"[{nameof(RlpStream)}|{Position}/{Length}]";
         }
     }
 }

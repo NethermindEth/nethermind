@@ -17,7 +17,7 @@
 using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Channels;
-using Nethermind.WebSockets;
+using Nethermind.Sockets;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -29,16 +29,16 @@ namespace Nethermind.DataMarketplace.WebSockets.Test
         [Test]
         public void Can_publish()
         {
-            IWebSocketsClient webSocketsClient = Substitute.For<IWebSocketsClient>();
+            ISocketsClient webSocketsClient = Substitute.For<ISocketsClient>();
             NdmWebSocketsConsumerChannel channel = new NdmWebSocketsConsumerChannel(webSocketsClient);
             channel.PublishAsync(Keccak.Zero, "client", "data");
-            webSocketsClient.Received().SendAsync(Arg.Is<WebSocketsMessage>(ws => ws.Client == "client" && ws.Type == "data_received"));
+            webSocketsClient.Received().SendAsync(Arg.Is<SocketsMessage>(ws => ws.Client == "client" && ws.Type == "data_received"));
         }
         
         [Test]
         public void Channel_type_is_web_sockets()
         {
-            IWebSocketsClient webSocketsClient = Substitute.For<IWebSocketsClient>();
+            ISocketsClient webSocketsClient = Substitute.For<ISocketsClient>();
             NdmWebSocketsConsumerChannel channel = new NdmWebSocketsConsumerChannel(webSocketsClient);
             channel.Type.Should().Be(NdmConsumerChannelType.WebSockets);
         }

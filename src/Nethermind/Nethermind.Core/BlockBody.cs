@@ -20,31 +20,35 @@ namespace Nethermind.Core
 {
     public class BlockBody
     {
-        public BlockBody()
+        public BlockBody(Transaction[]? transactions, BlockHeader[]? ommers)
         {
-            Transactions = Array.Empty<Transaction>();
-            Ommers = Array.Empty<BlockHeader>();
+            Transactions = transactions ?? Array.Empty<Transaction>();
+            Ommers = ommers ?? Array.Empty<BlockHeader>();
         }
-        
-        public BlockBody(Transaction[] transactions, BlockHeader[] ommers)
+
+        public BlockBody()
+            : this(null, null)
         {
-            Transactions = transactions;
-            Ommers = ommers;
         }
 
         public BlockBody WithChangedTransactions(Transaction[] transactions)
         {
-            return new BlockBody(transactions, Ommers);
-        }
-        
-        public BlockBody WithChangedOmmers(BlockHeader[] ommers)
-        {
-            return new BlockBody(Transactions, ommers);
+            return new(transactions, Ommers);
         }
 
-        public Transaction[] Transactions { get; }
+        public BlockBody WithChangedOmmers(BlockHeader[] ommers)
+        {
+            return new(Transactions, ommers);
+        }
+
+        public static BlockBody WithOneTransactionOnly(Transaction tx)
+        {
+            return new(new[] {tx}, Array.Empty<BlockHeader>());
+        }
+
+        public Transaction[] Transactions { get; internal set; }
         public BlockHeader[] Ommers { get; }
-        
-        public static BlockBody Empty = new BlockBody();
+
+        public static readonly BlockBody Empty = new();
     }
 }

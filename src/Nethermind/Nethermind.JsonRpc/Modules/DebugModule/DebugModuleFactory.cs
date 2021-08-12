@@ -31,20 +31,20 @@ using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule
 {
-    public class DebugModuleFactory : ModuleFactoryBase<IDebugModule>
+    public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
     {
         private readonly IJsonRpcConfig _jsonRpcConfig;
         private readonly IBlockValidator _blockValidator;
         private readonly IRewardCalculatorSource _rewardCalculatorSource;
         private readonly IReceiptStorage _receiptStorage;
         private readonly IReceiptsMigration _receiptsMigration;
-        private readonly ReadOnlyTrieStore _trieStore;
+        private readonly IReadOnlyTrieStore _trieStore;
         private readonly IConfigProvider _configProvider;
         private readonly ISpecProvider _specProvider;
         private readonly ILogManager _logManager;
         private readonly IBlockPreprocessorStep _recoveryStep;
         private readonly IReadOnlyDbProvider _dbProvider;
-        private readonly ReadOnlyBlockTree _blockTree;
+        private readonly IReadOnlyBlockTree _blockTree;
         private ILogger _logger;
 
         public DebugModuleFactory(
@@ -56,7 +56,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             IRewardCalculatorSource rewardCalculator,
             IReceiptStorage receiptStorage,
             IReceiptsMigration receiptsMigration,
-            ITrieNodeResolver trieStore,
+            IReadOnlyTrieStore trieStore,
             IConfigProvider configProvider,
             ISpecProvider specProvider,
             ILogManager logManager)
@@ -69,14 +69,14 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             _rewardCalculatorSource = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _receiptsMigration = receiptsMigration ?? throw new ArgumentNullException(nameof(receiptsMigration));
-            _trieStore = (trieStore ?? throw new ArgumentNullException(nameof(trieStore))).AsReadOnly();
+            _trieStore = (trieStore ?? throw new ArgumentNullException(nameof(trieStore)));
             _configProvider = configProvider ?? throw new ArgumentNullException(nameof(configProvider));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _logger = logManager.GetClassLogger();
         }
 
-        public override IDebugModule Create()
+        public override IDebugRpcModule Create()
         {
             ReadOnlyTxProcessingEnv txEnv = new(
                 _dbProvider,
@@ -109,7 +109,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
                 _receiptsMigration,
                 _specProvider);
 
-            return new DebugModule(_logManager, debugBridge, _jsonRpcConfig);
+            return new DebugRpcModule(_logManager, debugBridge, _jsonRpcConfig);
         }
 
         public static JsonConverter[] Converters = {new GethLikeTxTraceConverter()};

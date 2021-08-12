@@ -23,8 +23,6 @@ using Nethermind.Int256;
 
 namespace Nethermind.Benchmarks.Rlp
 {
-    [MemoryDiagnoser]
-    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
     public class RlpDecodeAccountBenchmark
     {
         private static byte[] _account;

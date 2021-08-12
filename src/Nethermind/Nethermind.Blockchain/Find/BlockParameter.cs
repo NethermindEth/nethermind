@@ -17,29 +17,25 @@
 using System;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
+using Nethermind.HashLib;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.Blockchain.Find
 {
-    [Todo(Improve.Refactor, "Can make it struct?")]
     public class BlockParameter : IEquatable<BlockParameter>
     {
-        public static BlockParameter Earliest = new BlockParameter(BlockParameterType.Earliest);
+        public static BlockParameter Earliest = new(BlockParameterType.Earliest);
 
-        public static BlockParameter Pending = new BlockParameter(BlockParameterType.Pending);
+        public static BlockParameter Pending = new(BlockParameterType.Pending);
 
-        public static BlockParameter Latest = new BlockParameter(BlockParameterType.Latest);
+        public static BlockParameter Latest = new(BlockParameterType.Latest);
 
-        public BlockParameterType Type { get; set; }
+        public BlockParameterType Type { get; }
         public long? BlockNumber { get; }
         
-        public Keccak BlockHash { get; }
+        public Keccak? BlockHash { get; }
 
         public bool RequireCanonical { get; }
-
-        public BlockParameter()
-        {
-        }
 
         public BlockParameter(BlockParameterType type)
         {
@@ -65,50 +61,23 @@ namespace Nethermind.Blockchain.Find
             RequireCanonical = requireCanonical;
         }
 
-        [Todo(Improve.Refactor,"Move it to converters")]
-        public static BlockParameter FromJson(string jsonValue)
-        {
-            switch (jsonValue)
-            {
-                case { } earliest when string.Equals(earliest, "earliest", StringComparison.InvariantCultureIgnoreCase):
-                    return Earliest;
-                case { } pending when string.Equals(pending, "pending", StringComparison.InvariantCultureIgnoreCase):
-                    return Pending;
-                case { } latest when string.Equals(latest, "latest", StringComparison.InvariantCultureIgnoreCase):
-                    return Latest;
-                case { } empty when string.IsNullOrWhiteSpace(empty):
-                    return Latest;
-                case null:
-                    return Latest;
-                case { } hash when hash.Length == 66 && hash.StartsWith("0x"):
-                    return Latest;
-                default:
-                    return new BlockParameter(LongConverter.FromString(jsonValue.Trim('"')));
-            }
-        }
+        public override string ToString() => $"{Type}, {BlockNumber?.ToString() ?? BlockHash?.ToString()}";
 
-        public override string ToString()
-        {
-            return $"{Type}, {BlockNumber?.ToString() ?? BlockHash?.ToString()}";
-        }
-        public bool Equals(BlockParameter other)
+        public bool Equals(BlockParameter? other)
         {
             if (ReferenceEquals(null, other)) return false;
             if (ReferenceEquals(this, other)) return true;
             return Type == other.Type && BlockNumber == other.BlockNumber && BlockHash == other.BlockHash && other.RequireCanonical == RequireCanonical;
         }
 
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;
-            if (obj.GetType() != this.GetType()) return false;
+            if (obj.GetType() != GetType()) return false;
             return Equals((BlockParameter) obj);
         }
 
-        public override int GetHashCode()
-        {
-            throw new NotSupportedException();
-        }
+        public override int GetHashCode() => HashCode.Combine(Type, BlockNumber, BlockHash, RequireCanonical);
     }
 }

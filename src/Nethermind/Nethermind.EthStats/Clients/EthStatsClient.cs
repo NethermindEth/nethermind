@@ -16,9 +16,9 @@
 
 using System;
 using System.Linq;
-using System.Net.Http;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
+using Nethermind.Core;
 using Nethermind.EthStats.Messages;
 using Nethermind.Logging;
 using Websocket.Client;
@@ -34,15 +34,18 @@ namespace Nethermind.EthStats.Clients
         private readonly int _reconnectionInterval;
         private readonly IMessageSender _messageSender;
         private readonly ILogger _logger;
-        private IWebsocketClient _client;
+        private IWebsocketClient? _client;
 
-        public EthStatsClient(string urlFromConfig, int reconnectionInterval, IMessageSender messageSender,
-            ILogManager logManager)
+        public EthStatsClient(
+            string urlFromConfig,
+            int reconnectionInterval,
+            IMessageSender? messageSender,
+            ILogManager? logManager)
         {
-            _urlFromConfig = urlFromConfig;
+            _urlFromConfig = urlFromConfig ?? throw new ArgumentNullException(nameof(urlFromConfig));
             _reconnectionInterval = reconnectionInterval;
-            _messageSender = messageSender;
-            _logger = logManager.GetClassLogger();
+            _messageSender = messageSender ?? throw new ArgumentNullException(nameof(messageSender));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentException(nameof(logManager));
         }
 
         internal string BuildUrl()
@@ -70,7 +73,7 @@ namespace Nethermind.EthStats.Clients
                         break;
                     default:
                         ThrowIncorrectUrl();
-                        break;;
+                        break;
                 }
                 
                 if (_logger.IsInfo) _logger.Info($"Moved ETH stats to: {websocketUrl}");
@@ -108,11 +111,16 @@ namespace Nethermind.EthStats.Clients
             {
                 await _client.StartOrFail();
             }
-            catch (Exception e)
+            catch (Exception)
             {
                 if (!_client.Url.AbsoluteUri.EndsWith("/api"))
                 {
+                    if(_logger.IsInfo) _logger.Info($"Failed to connect to ethstats at {websocketUrl}. Adding '/api' at the end and trying again.");
                     _client.Url = new Uri(websocketUrl + "/api");
+                }
+                else
+                {
+                    if(_logger.IsWarn) _logger.Warn($"Failed to connect to ethstats at {websocketUrl}. Trying once again."); 
                 }
 
                 await _client.StartOrFail();
@@ -131,13 +139,18 @@ namespace Nethermind.EthStats.Clients
 
         private async Task HandlePingAsync(string message)
         {
-            long serverTime = long.Parse(message.Split("::").LastOrDefault()?.Replace("\"", string.Empty));
-            long clientTime = new DateTimeOffset(DateTime.UtcNow).ToUnixTimeMilliseconds();
+            long clientTime = Timestamper.Default.UnixTime.MillisecondsLong;
+            string? serverTimeString = message.Split("::").LastOrDefault()?.Replace("\"", string.Empty);
+            long serverTime = serverTimeString is null ? clientTime : long.Parse(serverTimeString);
             long latency = clientTime >= serverTime ? clientTime - serverTime : serverTime - clientTime;
             string pong = $"\"primus::pong::{serverTime}\"";
             if (_logger.IsDebug) _logger.Debug($"Sending 'pong' message to ETH stats...");
-            _client.Send(pong);
-            await _messageSender.SendAsync(_client, new LatencyMessage(latency));
+            
+            if(_client is not null)
+            {
+                _client.Send(pong);
+                await _messageSender.SendAsync(_client, new LatencyMessage(latency));
+            }
         }
 
         public void Dispose()

@@ -18,6 +18,7 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.State;
 
@@ -39,7 +40,9 @@ namespace Nethermind.Evm.Tracing
         public bool IsTracingCode => false;
         public bool IsTracingStack => false;
         public bool IsTracingState => false;
+        public bool IsTracingStorage => false;
         public bool IsTracingBlockHash => false;
+        public bool IsTracingAccess => false;
 
         public byte[] ReturnValue { get; set; }
 
@@ -55,14 +58,14 @@ namespace Nethermind.Evm.Tracing
 
         public byte StatusCode { get; set; }
 
-        public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak stateRoot = null)
+        public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
         {
             GasSpent = gasSpent;
             ReturnValue = output;
             StatusCode = Evm.StatusCode.Success;
         }
 
-        public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak stateRoot = null)
+        public void MarkAsFailed(Address recipient, long gasSpent, byte[]? output, string error, Keccak? stateRoot = null)
         {
             GasSpent = gasSpent;
             Error = error;
@@ -149,6 +152,11 @@ namespace Nethermind.Evm.Tracing
             throw new NotSupportedException();
         }
 
+        public void ReportStorageRead(StorageCell storageCell)
+        {
+            throw new NotSupportedException();
+        }
+
         private class GasAndNesting
         {
             public GasAndNesting(long gasOnStart, int nestingLevel)
@@ -180,25 +188,25 @@ namespace Nethermind.Evm.Tracing
             public long ExtraGasPressure { get; set; }
         }
 
-        internal long CalculateAdditionalGasRequired(Transaction tx)
+        internal long CalculateAdditionalGasRequired(Transaction tx, IReleaseSpec releaseSpec)
         {
             long intrinsicGas = tx.GasLimit - IntrinsicGasAt;
-            return _currentGasAndNesting.Peek().AdditionalGasRequired + RefundHelper.CalculateClaimableRefund(intrinsicGas + NonIntrinsicGasSpentBeforeRefund, TotalRefund);
+            return _currentGasAndNesting.Peek().AdditionalGasRequired + RefundHelper.CalculateClaimableRefund(intrinsicGas + NonIntrinsicGasSpentBeforeRefund, TotalRefund, releaseSpec);
         }
 
-        public long CalculateEstimate(Transaction tx)
+        public long CalculateEstimate(Transaction tx, IReleaseSpec releaseSpec)
         {
             long intrinsicGas = tx.GasLimit - IntrinsicGasAt;
-            return Math.Max(intrinsicGas, GasSpent + CalculateAdditionalGasRequired(tx));
+            return Math.Max(intrinsicGas, GasSpent + CalculateAdditionalGasRequired(tx, releaseSpec));
         }
 
         private int _currentNestingLevel = -1;
 
-        private bool _isInPrecompile = false;
+        private bool _isInPrecompile;
 
-        private Stack<GasAndNesting> _currentGasAndNesting = new Stack<GasAndNesting>();
+        private Stack<GasAndNesting> _currentGasAndNesting = new();
 
-        public void ReportAction(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType, bool isPrecompileCall = false)
+        public void ReportAction(long gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
         {
             if (_currentNestingLevel == -1)
             {
@@ -216,7 +224,7 @@ namespace Nethermind.Evm.Tracing
             }
         }
 
-        public void ReportActionEnd(long gas, byte[] output)
+        public void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
         {
             if (!_isInPrecompile)
             {
@@ -228,7 +236,7 @@ namespace Nethermind.Evm.Tracing
             }
         }
 
-        public void ReportActionEnd(long gas, Address deploymentAddress, byte[] deployedCode)
+        public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
         {
             if (!_isInPrecompile)
             {
@@ -281,6 +289,11 @@ namespace Nethermind.Evm.Tracing
         public void ReportExtraGasPressure(long extraGasPressure)
         {
             _currentGasAndNesting.Peek().ExtraGasPressure = Math.Max(_currentGasAndNesting.Peek().ExtraGasPressure, extraGasPressure);
+        }
+
+        public void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells)
+        {
+            throw new NotImplementedException();
         }
     }
 }

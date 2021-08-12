@@ -35,7 +35,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         {
             IncrementalChanges = false;
             _getAll = getAll ?? throw new ArgumentNullException(nameof(getAll));
-            _tryGetChangesFromBlock = tryGetChangesFromBlock ?? throw new ArgumentNullException(nameof(tryGetChangesFromBlock));;
+            _tryGetChangesFromBlock = tryGetChangesFromBlock ?? throw new ArgumentNullException(nameof(tryGetChangesFromBlock));
         }
 
         public DataContract(
@@ -50,8 +50,8 @@ namespace Nethermind.Consensus.AuRa.Contracts
         {
             return (BlockHeader blockHeader, TxReceipt[] receipts, out IEnumerable<T> items) =>
             {
-                items = getChangesFromBlock(blockHeader, receipts);
-                return getChangesFromBlock(blockHeader, receipts).Any();
+                items = getChangesFromBlock(blockHeader, receipts).ToArray();
+                return items.Any();
             };
         }
 

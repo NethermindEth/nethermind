@@ -25,7 +25,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
 {
-    [Ignore("Failing on MacOS GitHub Actions with stack overflow")]
+    [Explicit("Failing on MacOS GitHub Actions with stack overflow")]
     [TestFixture]
     public class GasPriceExtractorTests : VirtualMachineTestsBase
     {
@@ -104,7 +104,7 @@ namespace Nethermind.Evm.Test
             (Block block, Transaction transaction) = PrepareTx(
                 BlockNumber, 1000000, bytecode, rlp.Bytes, 0);
 
-            CallOutputTracer callOutputTracer = new CallOutputTracer();
+            CallOutputTracer callOutputTracer = new();
             _processor.Execute(transaction, block.Header, callOutputTracer);
             callOutputTracer.GasSpent.Should().BeLessThan(21000 + 9600 + 20000);
         }
@@ -129,14 +129,14 @@ namespace Nethermind.Evm.Test
             (Block block, Transaction transaction) = PrepareTx(
                 BlockNumber, 1000000, bytecode, rlp.Bytes, 0);
 
-            CallOutputTracer callOutputTracer = new CallOutputTracer();
+            CallOutputTracer callOutputTracer = new();
             _processor.Execute(transaction, block.Header, callOutputTracer);
             callOutputTracer.GasSpent.Should().BeLessThan(21000 + 9600 + 20000);
         }
 
         private static Rlp BuildHeader()
         {
-            HeaderDecoder decoder = new HeaderDecoder();
+            HeaderDecoder decoder = new();
             BlockHeader blockHeader = Build.A.BlockHeader
                 .WithBloom(new Bloom(Enumerable.Repeat((byte) 1, 256).ToArray())).TestObject;
             Rlp rlp = decoder.Encode(blockHeader);

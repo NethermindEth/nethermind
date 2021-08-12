@@ -26,7 +26,7 @@ namespace Nethermind.Core
 {
     public class TypeDiscovery
     {
-        private HashSet<Assembly> _nethermindAssemblies = new HashSet<Assembly>();
+        private HashSet<Assembly> _nethermindAssemblies = new();
 
         private int _allLoaded;
 

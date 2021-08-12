@@ -42,7 +42,8 @@ namespace Nethermind.Blockchain.Filters
                 txReceipt.TxHash,
                 logEntry.LoggersAddress,
                 logEntry.Data,
-                logEntry.Topics) { }
+                logEntry.Topics,
+                txReceipt.Removed) { }
 
         public FilterLog(long logIndex, long transactionLogIndex, long blockNumber, Keccak blockHash, int transactionIndex, Keccak transactionHash, Address address, byte[] data, Keccak[] topics, bool removed = false)
         {

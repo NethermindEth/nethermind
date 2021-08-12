@@ -21,8 +21,6 @@ using Nethermind.Core.Caching;
 namespace Nethermind.Benchmarks.Core
 {
     [EvaluateOverhead(false)]
-    [MemoryDiagnoser]
-    [SimpleJob(1, 1, 1, 1)]
     public class LruCacheBenchmarks
     {
         [Params(0, 4, 16, 32)]

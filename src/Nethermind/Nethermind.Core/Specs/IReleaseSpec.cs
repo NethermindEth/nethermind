@@ -206,12 +206,7 @@ namespace Nethermind.Core.Specs
         /// Berlin MODEXP precompiles
         /// </summary>
         bool IsEip2565Enabled { get; }
-        
-        /// <summary>
-        /// Berlin transaction type
-        /// </summary>
-        bool IsEip2718Enabled { get; }
-        
+
         /// <summary>
         /// Berlin gas cost increases for state reading opcodes
         /// </summary>
@@ -236,6 +231,21 @@ namespace Nethermind.Core.Specs
         bool IsEip1559Enabled { get; }
         
         /// <summary>
+        /// BaseFee opcode
+        /// </summary>
+        bool IsEip3198Enabled { get; }
+
+        /// <summary>
+        /// Reduction in refunds
+        /// </summary>
+        bool IsEip3529Enabled { get; }
+        
+        /// <summary>
+        /// Reject new contracts starting with the 0xEF byte 
+        /// </summary>
+        bool IsEip3541Enabled { get; }
+        
+        /// <summary>
         /// Should transactions be validated against chainId.
         /// </summary>
         /// <remarks>Backward compatibility for early Kovan blocks.</remarks>
@@ -248,8 +258,6 @@ namespace Nethermind.Core.Specs
         bool ValidateReceipts => true;
         
         public long Eip1559TransitionBlock { get; }
-        
-        public long Eip1559MigrationDuration { get; }
 
         // STATE related 
         public bool ClearEmptyAccountWhenTouched => IsEip158Enabled;
@@ -309,6 +317,6 @@ namespace Nethermind.Core.Specs
         
         public bool Use63Over64Rule => UseShanghaiDDosProtection;
         
-        public bool UseTransactionTypes => IsEip2718Enabled;
+        public bool BaseFeeEnabled => IsEip3198Enabled;
     }
 }

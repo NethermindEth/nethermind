@@ -19,6 +19,7 @@ namespace Nethermind.Synchronization.Test
     public enum SynchronizerType
     {
         Full,
-        Fast
+        Fast,
+        Eth2Merge
     }
 }

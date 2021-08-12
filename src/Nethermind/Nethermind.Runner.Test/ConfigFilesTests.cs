@@ -33,7 +33,6 @@ using Nethermind.Grpc;
 using Nethermind.JsonRpc;
 using Nethermind.Monitoring.Config;
 using Nethermind.Network.Config;
-using Nethermind.PubSub.Kafka;
 using Nethermind.Db.Blooms;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.TxPool;
@@ -53,109 +52,6 @@ namespace Nethermind.Runner.Test
                 var configPath = Path.Combine(TestContext.CurrentContext.TestDirectory, "configs", configFile);
                 Assert.True(File.Exists(configPath));
             }
-        }
-
-        [Test]
-        public void All_default_values_are_correct()
-        {
-            ForEachProperty(CheckDefault);
-        }
-
-        [Test]
-        public void All_config_items_have_descriptions_or_are_hidden()
-        {
-            ForEachProperty(CheckDescribedOrHidden);
-        }
-
-        private static void ForEachProperty(Action<PropertyInfo, object> verifier)
-        {
-            var dlls = Directory.GetFiles(AppDomain.CurrentDomain.BaseDirectory, "Nethermind.*.dll");
-            foreach (string dll in dlls)
-            {
-                TestContext.WriteLine($"Verify descriptions on {dll}");
-                Assembly assembly = Assembly.LoadFile(dll);
-                var configs =
-                    assembly.GetExportedTypes().Where(t => typeof(IConfig).IsAssignableFrom(t) && t.IsInterface).ToArray();
-
-                foreach (Type configType in configs)
-                {
-                    TestContext.WriteLine($"  {configType.Name}");
-                    PropertyInfo[] properties = configType.GetProperties();
-
-                    Type implementationType = configType.Assembly.GetExportedTypes().SingleOrDefault(t => t.IsClass && configType.IsAssignableFrom(t));
-                    object instance = Activator.CreateInstance(implementationType);
-
-                    foreach (PropertyInfo property in properties)
-                    {
-                        try
-                        {
-                            verifier(property, instance);
-                        }
-                        catch (Exception e)
-                        {
-                            throw new Exception(property.Name, e);
-                        }
-                    }
-                }
-            }
-        }
-
-        private static void CheckDescribedOrHidden(PropertyInfo property, object instance)
-        {
-            ConfigItemAttribute attribute = property.GetCustomAttribute<ConfigItemAttribute>();
-            if (string.IsNullOrWhiteSpace(attribute?.Description) && !(attribute?.HiddenFromDocs ?? false))
-            {
-                ConfigCategoryAttribute categoryLevel = property.DeclaringType?.GetCustomAttribute<ConfigCategoryAttribute>();
-                if (!(categoryLevel?.HiddenFromDocs ?? false))
-                {
-                    throw new AssertionException(
-                        $"Config {instance?.GetType().Name}.{property.Name} has no description and is in the docs.");
-                }
-            }
-        }
-
-        private static void CheckDefault(PropertyInfo property, object instance)
-        {
-            ConfigItemAttribute attribute = property.GetCustomAttribute<ConfigItemAttribute>();
-            if (attribute == null)
-            {
-                //there are properties without attribute - we don't pay attention to them 
-                return;
-            }
-
-            string expectedValue = attribute.DefaultValue?.Trim('"') ?? "null";
-            string actualValue;
-
-            object value = property.GetValue(instance);
-            if (value == null)
-            {
-                actualValue = "null";
-            }
-            else if (value is bool)
-            {
-                actualValue = value.ToString().ToLowerInvariant();
-            }
-            else if (value is int[])
-            {
-                //there is a case when we have default value as [4, 8, 8] and we need to compare this string to int[] so removing brackets and whitespaces
-                int[] items = (int[]) value;
-                expectedValue = expectedValue.Trim('[').Trim(']');
-                expectedValue = expectedValue.Replace(" ", "");
-                string[] numbers = expectedValue.Split(',');
-
-                for (int i = 0; i < numbers.Length; i++)
-                {
-                    Assert.AreEqual(items[i].ToString(), numbers[i]);
-                }
-
-                return;
-            }
-            else
-            {
-                actualValue = value.ToString();
-            }
-
-            Assert.AreEqual(expectedValue, actualValue, $"Property: {property.Name}, expected value: <{expectedValue}> but was <{actualValue}>");
         }
 
         [TestCase("validators", true, true)]
@@ -186,6 +82,21 @@ namespace Nethermind.Runner.Test
         public void Sync_is_disabled_when_needed(string configWildcard, bool isSyncEnabled)
         {
             Test<ISyncConfig, bool>(configWildcard, c => c.SynchronizationEnabled, isSyncEnabled);
+        }
+        
+        [TestCase("archive", true)]
+        [TestCase("fast", true)]
+        [TestCase("beam", true)]
+        [TestCase("spaceneth", false)]
+        [TestCase("baseline", true)]
+        [TestCase("ndm_consumer_goerli.cfg", true)]
+        [TestCase("ndm_consumer_local.cfg", true)]
+        [TestCase("ndm_consumer_mainnet_proxy.cfg", false)]
+        [TestCase("ndm_consumer_ropsten.cfg", true)]
+        [TestCase("ndm_consumer_ropsten_proxy.cfg", false)]
+        public void Networking_is_disabled_when_needed(string configWildcard, bool isEnabled)
+        {
+            Test<ISyncConfig, bool>(configWildcard, c => c.NetworkingEnabled, isEnabled);
         }
 
         [TestCase("ropsten", "ws://ropsten-stats.parity.io/api")]
@@ -292,7 +203,7 @@ namespace Nethermind.Runner.Test
         [TestCase("volta archive", 256000000)]
         [TestCase("volta ^archive", 256000000)]
         [TestCase("goerli archive", 768000000)]
-        [TestCase("goerli ^archive", 384000000)]
+        [TestCase("goerli ^archive", 768000000)]
         [TestCase("rinkeby archive", 1536000000)]
         [TestCase("rinkeby ^archive", 1024000000)]
         [TestCase("ropsten archive", 1536000000)]
@@ -366,12 +277,6 @@ namespace Nethermind.Runner.Test
         public void Tracer_timeout_default_is_correct(string configWildcard)
         {
             Test<IJsonRpcConfig, int>(configWildcard, c => c.Timeout, 20000);
-        }
-
-        [TestCase("*")]
-        public void Kafka_disabled_by_default(string configWildcard)
-        {
-            Test<IKafkaConfig, bool>(configWildcard, c => c.Enabled, false);
         }
 
         [TestCase("^mainnet ^validators ^beam ^archive", true, true)]
@@ -465,8 +370,6 @@ namespace Nethermind.Runner.Test
             }
 
             Test<IInitConfig, string>(configWildcard, c => c.LogFileName, (cf, p) => p.Should().Be(cf.Replace("cfg", "logs.txt"), cf));
-
-            Test<IInitConfig, string>(configWildcard, c => c.PluginsDirectory, "plugins");
         }
 
 
@@ -502,6 +405,19 @@ namespace Nethermind.Runner.Test
         public void Arena_order_is_default(string configWildcard)
         {
             Test<INetworkConfig, int>(configWildcard, c => c.NettyArenaOrder, 11);
+        }
+        
+        [TestCase("^mainnet ^goerli", false)]
+        [TestCase("^beam ^pruned ^goerli.cfg ^mainnet.cfg", false)]
+        [TestCase("mainnet.cfg", true)]
+        [TestCase("mainnet_beam.cfg", true)]
+        [TestCase("mainnet_pruned.cfg", true)]
+        [TestCase("goerli.cfg", true)]
+        [TestCase("goerli_beam.cfg", true)]
+        [TestCase("goerli_pruned.cfg", true)]
+        public void Witness_defaults_are_correct(string configWildcard, bool witnessProtocolEnabled)
+        {
+            Test<ISyncConfig, bool>(configWildcard, c => c.WitnessProtocolEnabled, witnessProtocolEnabled);
         }
 
         [Test]

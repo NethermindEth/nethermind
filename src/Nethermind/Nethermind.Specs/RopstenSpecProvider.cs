@@ -60,19 +60,25 @@ namespace Nethermind.Specs
                 return MuirGlacier.Instance;
             }
 
-            return Berlin.Instance;
+            if (blockNumber < LondonBlockNumber)
+            {
+                return Berlin.Instance;
+            }
+            
+            return London.Instance;
         }
 
-        public long? DaoBlockNumber { get; } = null;
+        public long? DaoBlockNumber => null;
         public const long SpuriousDragonBlockNumber  = 10;
-        public const long ByzantiumBlockNumber  = 1700000;
-        public const long ConstantinopleBlockNumber  = 4230000;
-        public const long ConstantinopleFixBlockNumber  = 4939394;
-        public const long IstanbulBlockNumber  = 6485846;
-        public const long MuirGlacierBlockNumber  = 7117117;
-        public const long BerlinBlockNumber  = long.MaxValue - 1;
+        public const long ByzantiumBlockNumber  = 1_700_000;
+        public const long ConstantinopleBlockNumber  = 4_230_000;
+        public const long ConstantinopleFixBlockNumber  = 4_939_394;
+        public const long IstanbulBlockNumber  = 6_485_846;
+        public const long MuirGlacierBlockNumber  = 7_117_117;
+        public const long BerlinBlockNumber  = 9_812_189;
+        public const long LondonBlockNumber = 10_499_401;
 
-        public ulong ChainId => 3;
+        public ulong ChainId => Core.ChainId.Ropsten;
         public long[] TransitionBlocks => new[]
         {
             SpuriousDragonBlockNumber,
@@ -81,13 +87,12 @@ namespace Nethermind.Specs
             ConstantinopleFixBlockNumber,
             IstanbulBlockNumber,
             MuirGlacierBlockNumber,
-            BerlinBlockNumber
+            BerlinBlockNumber,
+            LondonBlockNumber
         };
 
-        private RopstenSpecProvider()
-        {
-        }
+        private RopstenSpecProvider() { }
 
-        public static readonly RopstenSpecProvider Instance = new RopstenSpecProvider();
+        public static readonly RopstenSpecProvider Instance = new();
     }
 }

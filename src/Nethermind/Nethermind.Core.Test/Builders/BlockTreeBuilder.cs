@@ -143,7 +143,7 @@ namespace Nethermind.Core.Test.Builders
                     .WithNumber(blockIndex + 1)
                     .WithParent(parent)
                     .WithDifficulty(BlockHeaderBuilder.DefaultDifficulty - (splitFrom > parent.Number ? 0 : (ulong) splitVariant))
-                    .WithTransactions(MuirGlacier.Instance, transactions)
+                    .WithTransactions(transactions)
                     .WithBloom(new Bloom())
                     .WithBeneficiary(beneficiary)
                     .TestObject;
@@ -211,6 +211,33 @@ namespace Nethermind.Core.Test.Builders
         {
             blockTree.SuggestBlock(block);
             blockTree.UpdateMainChain(new[] {block}, true);
+        }
+
+        public BlockTreeBuilder WithBlocks(params Block[] blocks)
+        {
+            int counter = 0;
+            if (blocks.Length == 0)
+            {
+                return this;
+            }
+
+            if (blocks[0].Number != 0)
+            {
+                throw new ArgumentException("First block does not have block number 0.");
+            }
+
+            foreach (Block block in blocks)
+            {
+                if (block.Number != counter++)
+                {
+                    throw new ArgumentException("Block numbers are not consecutively increasing.");
+                }
+
+                TestObjectInternal.SuggestBlock(block);
+                TestObjectInternal.UpdateMainChain(new[] {block}, true);
+            }
+
+            return this;
         }
 
         public static void ExtendTree(IBlockTree blockTree, long newChainLength)

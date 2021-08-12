@@ -77,21 +77,21 @@ namespace Nethermind.Evm.Test
 
             long gasLimit = 1000000;
 
-            EthereumEcdsa ecdsa = new EthereumEcdsa(1, LimboLogs.Instance);
+            EthereumEcdsa ecdsa = new(1, LimboLogs.Instance);
             Transaction initTx = Build.A.Transaction.WithCode(initByteCode).WithGasLimit(gasLimit).SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
             Transaction tx1 = Build.A.Transaction.WithCode(byteCode1).WithGasLimit(gasLimit).WithNonce(1).SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
             Transaction tx2 = Build.A.Transaction.WithCode(byteCode2).WithGasLimit(gasLimit).WithNonce(2).SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
-            Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(MuirGlacier.Instance, initTx, tx1, tx2).WithGasLimit(2 * gasLimit).TestObject;
+            Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(initTx, tx1, tx2).WithGasLimit(2 * gasLimit).TestObject;
 
-            ParityLikeTxTracer initTracer = new ParityLikeTxTracer(block, initTx, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
+            ParityLikeTxTracer initTracer = new(block, initTx, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
             _processor.Execute(initTx, block.Header, initTracer);
             AssertStorage(new StorageCell(contractAddress, 1), 0);
 
-            ParityLikeTxTracer tracer1 = new ParityLikeTxTracer(block, tx1, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
+            ParityLikeTxTracer tracer1 = new(block, tx1, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
             _processor.Execute(tx1, block.Header, tracer1);
             AssertStorage(new StorageCell(contractAddress, 1), 1);
 
-            ParityLikeTxTracer tracer2 = new ParityLikeTxTracer(block, tx2, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
+            ParityLikeTxTracer tracer2 = new(block, tx2, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
             _processor.Execute(tx2, block.Header, tracer2);
             AssertStorage(new StorageCell(contractAddress, 1), 0);
         }
@@ -156,7 +156,7 @@ namespace Nethermind.Evm.Test
 
             long gasLimit = 1000000;
 
-            EthereumEcdsa ecdsa = new EthereumEcdsa(1, LimboLogs.Instance);
+            EthereumEcdsa ecdsa = new(1, LimboLogs.Instance);
             // deploy create 2
             Transaction tx0 = Build.A.Transaction.WithCode(initOfCreate2Code).WithGasLimit(gasLimit).SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
             // invoke create 2 to deploy contract
@@ -169,13 +169,13 @@ namespace Nethermind.Evm.Test
             Transaction tx4 = Build.A.Transaction.WithCode(deploy).WithGasLimit(gasLimit).WithNonce(4).SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
             // call newly deployed once
             Transaction tx5 = Build.A.Transaction.WithCode(byteCode1).WithGasLimit(gasLimit).WithNonce(5).SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
-            Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(MuirGlacier.Instance, tx0, tx1, tx2, tx3, tx4, tx5).WithGasLimit(2 * gasLimit).TestObject;
+            Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(tx0, tx1, tx2, tx3, tx4, tx5).WithGasLimit(2 * gasLimit).TestObject;
 
-            ParityLikeTxTracer tracer0 = new ParityLikeTxTracer(block, tx0, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
+            ParityLikeTxTracer tracer0 = new(block, tx0, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
             _processor.Execute(tx0, block.Header, tracer0);
             // AssertStorage(new StorageCell(deploymentAddress, 1), 0);
 
-            ParityLikeTxTracer tracer = new ParityLikeTxTracer(block, tx1, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
+            ParityLikeTxTracer tracer = new(block, tx1, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
             _processor.Execute(tx1, block.Header, tracer);
             // AssertStorage(new StorageCell(deploymentAddress, 1), 0);
             // AssertStorage(new StorageCell(deploymentAddress, 2), 2);
@@ -261,7 +261,7 @@ namespace Nethermind.Evm.Test
 
             long gasLimit = 1000000;
 
-            EthereumEcdsa ecdsa = new EthereumEcdsa(1, LimboLogs.Instance);
+            EthereumEcdsa ecdsa = new(1, LimboLogs.Instance);
             // deploy create 2
             Transaction tx0 = Build.A.Transaction.WithCode(initOfCreate2Code).WithGasLimit(gasLimit).SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
             // invoke create 2 to deploy contract
@@ -274,13 +274,13 @@ namespace Nethermind.Evm.Test
             Transaction tx4 = Build.A.Transaction.WithValue(3).WithCode(deploy).WithGasLimit(gasLimit).WithNonce(4).SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
             // call newly deployed once
             Transaction tx5 = Build.A.Transaction.WithCode(byteCode1).WithGasLimit(gasLimit).WithNonce(5).SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
-            Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(MuirGlacier.Instance, tx0, tx1, tx2, tx3, tx4, tx5).WithGasLimit(2 * gasLimit).TestObject;
+            Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(tx0, tx1, tx2, tx3, tx4, tx5).WithGasLimit(2 * gasLimit).TestObject;
 
-            ParityLikeTxTracer tracer0 = new ParityLikeTxTracer(block, tx0, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
+            ParityLikeTxTracer tracer0 = new(block, tx0, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
             _processor.Execute(tx0, block.Header, tracer0);
             AssertStorage(new StorageCell(deploymentAddress, 1), 0);
 
-            ParityLikeTxTracer tracer = new ParityLikeTxTracer(block, tx1, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
+            ParityLikeTxTracer tracer = new(block, tx1, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
             _processor.Execute(tx1, block.Header, tracer);
             // AssertStorage(new StorageCell(deploymentAddress, 1), 0);
             // AssertStorage(new StorageCell(deploymentAddress, 2), 2);
@@ -381,7 +381,7 @@ namespace Nethermind.Evm.Test
             
             long gasLimit = 1000000;
 
-            EthereumEcdsa ecdsa = new EthereumEcdsa(1, LimboLogs.Instance);
+            EthereumEcdsa ecdsa = new(1, LimboLogs.Instance);
             // deploy create 2
             Transaction tx0 = Build.A.Transaction.WithCode(initOfCreate2Code).WithGasLimit(gasLimit).SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
             // call contract once
@@ -392,9 +392,9 @@ namespace Nethermind.Evm.Test
             Transaction tx3 = Build.A.Transaction.WithValue(3).WithCode(deploy).WithGasLimit(gasLimit).WithNonce(3).SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
             // call newly deployed once
             Transaction tx4 = Build.A.Transaction.WithCode(byteCode1).WithGasLimit(gasLimit).WithNonce(4).SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
-            Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(MuirGlacier.Instance, tx0, tx1, tx2, tx3, tx4).WithGasLimit(2 * gasLimit).TestObject;
+            Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(tx0, tx1, tx2, tx3, tx4).WithGasLimit(2 * gasLimit).TestObject;
 
-            ParityLikeTxTracer tracer = new ParityLikeTxTracer(block, tx0, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
+            ParityLikeTxTracer tracer = new(block, tx0, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
             _processor.Execute(tx0, block.Header, tracer);
 
             tracer = new ParityLikeTxTracer(block, tx1, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);

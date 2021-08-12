@@ -17,30 +17,18 @@
 
 using System;
 using Nethermind.Blockchain;
+using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.State;
 
 namespace Nethermind.Synchronization.Witness
 {
-    public static class WitnessCollectorExtensions
-    {
-        public static IWitnessCollector WithPruning(
-            this IWitnessCollector collector,
-            IBlockTree blockTree,
-            ILogManager logManager,
-            int followDistance = 16)
-        {
-            new WitnessPruner(blockTree, collector, logManager, followDistance).Start();
-            return collector;
-        }
-    }
-    
     public class WitnessPruner
     {
         private readonly IBlockTree _blockTree;
         private readonly IWitnessRepository _witnessRepository;
         private readonly int _followDistance;
-        private ILogger _logger;
+        private readonly ILogger _logger;
 
         public WitnessPruner(IBlockTree blockTree, IWitnessRepository witnessRepository, ILogManager logManager, int followDistance = 16)
         {

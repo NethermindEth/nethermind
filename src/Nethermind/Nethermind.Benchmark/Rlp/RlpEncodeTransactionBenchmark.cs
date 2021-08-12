@@ -24,8 +24,6 @@ using Nethermind.Core.Test.Builders;
 
 namespace Nethermind.Benchmarks.Rlp
 {
-    [MemoryDiagnoser]
-    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
     public class RlpEncodeTransactionBenchmark
     {
         private Transaction[] _scenarios;

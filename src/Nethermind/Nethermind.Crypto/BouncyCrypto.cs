@@ -34,21 +34,21 @@ namespace Nethermind.Crypto
     internal static class BouncyCrypto
     {
         internal static readonly ECDomainParameters DomainParameters;
-        private static readonly SecureRandom SecureRandom = new SecureRandom();
+        private static readonly SecureRandom SecureRandom = new();
 
         static BouncyCrypto()
         {
             X9ECParameters curveParameters = SecNamedCurves.GetByName("secp256k1");
             DomainParameters = new ECDomainParameters(curveParameters.Curve, curveParameters.G, curveParameters.N, curveParameters.H);
 
-            ECKeyPairGenerator generator = new ECKeyPairGenerator();
-            ECKeyGenerationParameters keyGeneratorParameters = new ECKeyGenerationParameters(DomainParameters, SecureRandom);
+            ECKeyPairGenerator generator = new();
+            ECKeyGenerationParameters keyGeneratorParameters = new(DomainParameters, SecureRandom);
             generator.Init(keyGeneratorParameters);
         }
 
         public static ECPrivateKeyParameters WrapPrivateKey(PrivateKey privateKey)
         {
-            BigInteger d = new BigInteger(1, privateKey.KeyBytes);
+            BigInteger d = new(1, privateKey.KeyBytes);
             return new ECPrivateKeyParameters(d, DomainParameters);
         }
 
@@ -63,7 +63,7 @@ namespace Nethermind.Crypto
             ECPrivateKeyParameters privateKeyParameters = WrapPrivateKey(privateKey);
             ECPublicKeyParameters publicKeyParameters = WrapPublicKey(publicKey);
 
-            ECDHBasicAgreement agreement = new ECDHBasicAgreement();
+            ECDHBasicAgreement agreement = new();
             agreement.Init(privateKeyParameters);
 
             byte[] agreementBytes = agreement.CalculateAgreement(publicKeyParameters).ToByteArray();

@@ -34,7 +34,7 @@ namespace Nethermind.Synchronization.Witness
         private readonly IBlockTree _blockTree;
         private readonly IWitnessStateSyncFeed _witnessStateSyncFeed;
         private readonly ISyncModeSelector _syncModeSelector;
-        private readonly SortedSet<WitnessBlockSyncBatch> _blockHashes = new SortedSet<WitnessBlockSyncBatch>(new WitnessBlockSyncBatchComparer());
+        private readonly SortedSet<WitnessBlockSyncBatch> _blockHashes = new(new WitnessBlockSyncBatchComparer());
         private readonly ILogger _logger;
         private const int FollowDelta = 256;
         private static readonly TimeSpan _minRetryDelay = TimeSpan.FromMilliseconds(100);
@@ -55,7 +55,7 @@ namespace Nethermind.Synchronization.Witness
             Block block = e.Block;
             bool isBeamSync = (_syncModeSelector.Current & SyncMode.Beam) != 0;
             bool blockNotToOld = (_blockTree.Head?.Number ?? 0) - block.Number < FollowDelta;
-            bool blockHasWitness = block.Transactions?.Length > 0;
+            bool blockHasWitness = block.Transactions.Length > 0;
             if (block.Hash != null && isBeamSync && blockNotToOld && blockHasWitness)
             {
                 lock (_blockHashes)

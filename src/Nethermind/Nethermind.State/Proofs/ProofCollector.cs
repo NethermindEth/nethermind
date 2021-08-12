@@ -32,27 +32,19 @@ namespace Nethermind.State.Proofs
 
         private Nibble[] Prefix => Nibbles.FromBytes(_key);
 
-        private HashSet<Keccak> _visitingFilter = new HashSet<Keccak>();
+        private HashSet<Keccak> _visitingFilter = new();
         
-        private List<byte[]> _proofBits = new List<byte[]>();
+        private List<byte[]> _proofBits = new();
 
         public ProofCollector(byte[] key)
         {
             _key = key;
         }
 
-        private byte[][] _proof;
+        
+        public byte[][] BuildResult() => _proofBits.ToArray();
 
-        public byte[][] BuildResult()
-        {
-            _proof = _proofBits.ToArray();
-            return _proof;
-        }
-
-        public bool ShouldVisit(Keccak nextNode)
-        {
-            return _visitingFilter.Contains(nextNode);
-        }
+        public bool ShouldVisit(Keccak nextNode) => _visitingFilter.Contains(nextNode);
 
         public void VisitTree(Keccak rootHash, TrieVisitContext trieVisitContext)
         {

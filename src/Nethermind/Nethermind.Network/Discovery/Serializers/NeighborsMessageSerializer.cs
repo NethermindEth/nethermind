@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Linq;
 using System.Net;
 using Nethermind.Core.Crypto;
@@ -80,14 +81,14 @@ namespace Nethermind.Network.Discovery.Serializers
                 int lastPosition = ctx.ReadSequenceLength() + ctx.Position;
                 int count = ctx.ReadNumberOfItemsRemaining(lastPosition);
 
-                byte[] ip = ctx.DecodeByteArray();
+                ReadOnlySpan<byte> ip = ctx.DecodeByteArraySpan();
                 IPEndPoint address = GetAddress(ip, ctx.DecodeInt());
                 if (count > 3)
                 {
                     ctx.DecodeInt();
                 }
 
-                byte[] id = ctx.DecodeByteArray();
+                ReadOnlySpan<byte> id = ctx.DecodeByteArraySpan();
                 return new Node(new PublicKey(id), address);
             });
         }

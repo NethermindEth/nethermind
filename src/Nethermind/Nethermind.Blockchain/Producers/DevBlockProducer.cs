@@ -15,10 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Timers;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
@@ -27,144 +25,78 @@ using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.TxPool;
-using Timer = System.Timers.Timer;
 
 namespace Nethermind.Blockchain.Producers
 {
-    public class DevBlockProducer : BlockProducerBase
+    public class DevBlockProducer : BlockProducerBase, IDisposable
     {
-        private readonly ITxPool _txPool;
         private readonly IMiningConfig _miningConfig;
-        private readonly SemaphoreSlim _newBlockLock = new SemaphoreSlim(1, 1);
-        private readonly Timer _timer;
-        private readonly TimeSpan _timeout = TimeSpan.FromMilliseconds(200);
-        private bool _isRunning = false;
-
+        
         public DevBlockProducer(
-            ITxSource txSource,
-            IBlockchainProcessor processor,
-            IStateProvider stateProvider,
-            IBlockTree blockTree,
-            IBlockProcessingQueue blockProcessingQueue,
-            ITxPool txPool,
-            ITimestamper timestamper,
-            ISpecProvider specProvider,
-            IMiningConfig miningConfig,
+            ITxSource? txSource,
+            IBlockchainProcessor? processor,
+            IStateProvider? stateProvider,
+            IBlockTree? blockTree,
+            IBlockProductionTrigger? trigger,
+            ITimestamper? timestamper,
+            ISpecProvider? specProvider,
+            IMiningConfig? miningConfig,
             ILogManager logManager)
             : base(
                 txSource,
                 processor,
                 new NethDevSealEngine(),
                 blockTree,
-                blockProcessingQueue,
+                trigger,
                 stateProvider,
-                FollowOtherMiners.Instance,
+                new FollowOtherMiners(specProvider!),
                 timestamper,
                 specProvider,
-                logManager)
+                logManager,
+                new RandomizedDifficultyCalculator(miningConfig!, ConstantDifficultyCalculator.One))
         {
-            _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _miningConfig = miningConfig ?? throw new ArgumentNullException(nameof(miningConfig));
-            _timer = new Timer(_timeout.TotalMilliseconds);
-            _timer.Elapsed += TimerOnElapsed;
-            _timer.AutoReset = false;
-        }
-
-        private void TimerOnElapsed(object sender, ElapsedEventArgs e)
-        {
-            Transaction[] txs = _txPool.GetPendingTransactions();
-            Transaction tx = txs.FirstOrDefault();
-            if (tx != null)
-            {
-                OnNewPendingTxAsync(new TxEventArgs(tx));
-            }
-
-            _timer.Enabled = true;
-        }
-
-        public override void Start()
-        {
-            _isRunning = true;
-            _txPool.NewPending += OnNewPendingTx;
             BlockTree.NewHeadBlock += OnNewHeadBlock;
-            _timer.Start();
-            _lastProducedBlock = DateTime.UtcNow;
-        }
-
-        public override async Task StopAsync()
-        {
-            _isRunning = false;
-            _txPool.NewPending -= OnNewPendingTx;
-            _timer.Stop();
-            BlockTree.NewHeadBlock -= OnNewHeadBlock;
-            await Task.CompletedTask;
-        }
-
-        private readonly Random _random = new Random();
-
-        protected override UInt256 CalculateDifficulty(BlockHeader parent, UInt256 timestamp)
-        {
-            UInt256 difficulty;
-            if (_miningConfig.RandomizedBlocks)
-            {
-                UInt256 change = new UInt256((ulong)(_random.Next(100) + 50));
-                difficulty = UInt256.Max(1000, UInt256.Max(parent.Difficulty, 1000) / 100 * change);
-            }
-            else
-            {
-                difficulty = UInt256.One;
-            }
-
-            return difficulty;
-        }
-
-        protected override bool IsRunning()
-        {
-            return _timer != null && _isRunning;
-        }
-
-        private void OnNewPendingTx(object sender, TxEventArgs e)
-        {
-            OnNewPendingTxAsync(e);
-        }
-
-        protected override bool PreparedBlockCanBeMined(Block block) =>
-            base.PreparedBlockCanBeMined(block) && block?.Transactions?.Length > 0;
-
-        private async void OnNewPendingTxAsync(TxEventArgs e)
-        {
-            if (await _newBlockLock.WaitAsync(_timeout))
-            {
-                try
-                {
-                    if (!await TryProduceNewBlock(CancellationToken.None))
-                    {
-                        _newBlockLock.Release();
-                    }
-                }
-                catch (Exception exception)
-                {
-                    if (Logger.IsError)
-                        Logger.Error(
-                            $"Failed to produce block after receiving transaction {e.Transaction}", exception);
-                    _newBlockLock.Release();
-                }
-            }
         }
 
         private void OnNewHeadBlock(object sender, BlockEventArgs e)
         {
-            if (_newBlockLock.CurrentCount == 0)
+            if (_miningConfig.RandomizedBlocks)
+            {
+                if (Logger.IsInfo)
+                    Logger.Info(
+                        $"Randomized difficulty for {e.Block.ToString(Block.Format.Short)} is {e.Block.Difficulty}");
+            }
+        }
+        
+        public void Dispose()
+        {
+            BlockTree.NewHeadBlock -= OnNewHeadBlock;
+        }
+        
+        private class RandomizedDifficultyCalculator : IDifficultyCalculator
+        {
+            private readonly IMiningConfig _miningConfig;
+            private readonly IDifficultyCalculator _fallbackDifficultyCalculator;
+            private readonly Random _random = new();
+
+            public RandomizedDifficultyCalculator(IMiningConfig miningConfig, IDifficultyCalculator fallbackDifficultyCalculator)
+            {
+                _miningConfig = miningConfig;
+                _fallbackDifficultyCalculator = fallbackDifficultyCalculator;
+            }
+            
+            public UInt256 Calculate(BlockHeader header, BlockHeader parent)
             {
                 if (_miningConfig.RandomizedBlocks)
                 {
-                    if (Logger.IsInfo)
-                        Logger.Info(
-                            $"Randomized difficulty for {e.Block.ToString(Block.Format.Short)} is {e.Block.Difficulty}");
+                    UInt256 change = new((ulong)(_random.Next(100) + 50));
+                    return UInt256.Max(1000, UInt256.Max(parent.Difficulty, 1000) / 100 * change);
                 }
-
-                _newBlockLock.Release();
+                else
+                {
+                    return _fallbackDifficultyCalculator.Calculate(header, parent);
+                }
             }
         }
     }

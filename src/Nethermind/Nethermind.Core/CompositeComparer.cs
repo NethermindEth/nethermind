@@ -58,10 +58,8 @@ namespace Nethermind.Core
             }
         }
         
-#pragma warning disable 8767
-        // fixed C# 9
-        public int Compare(T x, T y)
-#pragma warning restore 8767
+
+        public int Compare(T? x, T? y)
         {
             int result = 0;
             for (int i = 0; i < _comparers.Count; i++)

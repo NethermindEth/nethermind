@@ -65,10 +65,9 @@ namespace Nethermind.Baseline.Test.JsonRpc
         public async Task deploy_deploys_the_contract()
         {
             var spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
-            TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
+            using TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest<BaseLineRpcBlockchain>(SealEngineType.NethDev).Build(spec);
             testRpc.TestWallet.UnlockAccount(TestItem.Addresses[0], new SecureString());
-            await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
-
+            
             BaselineModule baselineModule = CreateBaselineModule(testRpc);
 
             var result = await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA");
@@ -79,7 +78,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
 
             await testRpc.AddBlock();
 
-            testRpc.BlockTree.Head.Number.Should().Be(5);
+            testRpc.BlockTree.Head.Number.Should().Be(2);
             testRpc.BlockTree.Head.Transactions.Should().Contain(tx => tx.IsContractCreation);
 
             var code = testRpc.StateReader
@@ -92,9 +91,8 @@ namespace Nethermind.Baseline.Test.JsonRpc
         public async Task deploy_bytecode_deploys_the_contract()
         {
             var spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
-            TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
+            using TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest<BaseLineRpcBlockchain>(SealEngineType.NethDev).Build(spec);
             testRpc.TestWallet.UnlockAccount(TestItem.Addresses[0], new SecureString());
-            await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
             BaselineModule baselineModule = CreateBaselineModule(testRpc);
 
             var result = await baselineModule.baseline_deployBytecode(
@@ -107,7 +105,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
 
             await testRpc.AddBlock();
 
-            testRpc.BlockTree.Head.Number.Should().Be(5);
+            testRpc.BlockTree.Head.Number.Should().Be(2);
             testRpc.BlockTree.Head.Transactions.Should().Contain(tx => tx.IsContractCreation);
 
             var code = testRpc.StateReader
@@ -126,10 +124,9 @@ namespace Nethermind.Baseline.Test.JsonRpc
         public async Task deploy_bytecode_validates_input(string bytecode)
         {
             var spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
-            TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
+            using TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest<BaseLineRpcBlockchain>(SealEngineType.NethDev).Build(spec);
             testRpc.TestWallet.UnlockAccount(TestItem.Addresses[0], new SecureString());
-            await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
-
+            
             BaselineModule baselineModule = CreateBaselineModule(testRpc);
 
             var result = await baselineModule.baseline_deployBytecode(
@@ -142,7 +139,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
             result.Result.ResultType.Should().Be(ResultType.Failure);
             await testRpc.AddBlock();
 
-            testRpc.BlockTree.Head.Number.Should().Be(5);
+            testRpc.BlockTree.Head.Number.Should().Be(2);
             testRpc.BlockTree.Head.Transactions.Should().NotContain(tx => tx.IsContractCreation);
 
             var code = testRpc.StateReader
@@ -155,10 +152,9 @@ namespace Nethermind.Baseline.Test.JsonRpc
         public async Task deploy_returns_an_error_when_file_is_missing()
         {
             var spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
-            TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
+            using TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest<BaseLineRpcBlockchain>(SealEngineType.NethDev).Build(spec);
             testRpc.TestWallet.UnlockAccount(TestItem.Addresses[0], new SecureString());
-            await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
-
+            
             BaselineModule baselineModule = CreateBaselineModule(testRpc);
 
             var result = await baselineModule.baseline_deploy(TestItem.Addresses[0], "MissingContract");
@@ -171,17 +167,15 @@ namespace Nethermind.Baseline.Test.JsonRpc
         [Test]
         public async Task insert_commit_given_hash_is_emitting_an_event()
         {
-            SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
-            TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
+            SingleReleaseSpecProvider spec = new(ConstantinopleFix.Instance, 1);
+            using TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest<BaseLineRpcBlockchain>(SealEngineType.NethDev).Build(spec);
             BaselineModule baselineModule = CreateBaselineModule(testRpc);
             BaselineTree baselineTree = new ShaBaselineTree(new MemDb(), new MemDb(), new byte[] { }, 0, LimboNoErrorLogger.Instance);
-            await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
-            await testRpc.AddFunds(TestItem.Addresses[1], 1.Ether());
             Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
             await testRpc.AddBlock();
 
 
-            ReceiptForRpc receipt = (await testRpc.EthModule.eth_getTransactionReceipt(txHash)).Data;
+            ReceiptForRpc receipt = (await testRpc.EthRpcModule.eth_getTransactionReceipt(txHash)).Data;
 
             Keccak insertLeafTxHash = (
                 await baselineModule.baseline_insertCommit(
@@ -190,7 +184,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
                     TestItem.KeccakH)).Data;
             await testRpc.AddBlock();
 
-            ReceiptForRpc insertLeafReceipt = (await testRpc.EthModule.eth_getTransactionReceipt(insertLeafTxHash)).Data;
+            ReceiptForRpc insertLeafReceipt = (await testRpc.EthRpcModule.eth_getTransactionReceipt(insertLeafTxHash)).Data;
             insertLeafReceipt.Logs.Should().HaveCount(1);
         }
 
@@ -200,16 +194,14 @@ namespace Nethermind.Baseline.Test.JsonRpc
         [TestCase(128)]
         public async Task insert_commits_given_hash_is_emitting_an_event(int leafCount)
         {
-            SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
-            TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
+            SingleReleaseSpecProvider spec = new(ConstantinopleFix.Instance, 1);
+            using TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest<BaseLineRpcBlockchain>(SealEngineType.NethDev).Build(spec);
             BaselineModule baselineModule = CreateBaselineModule(testRpc);
 
-            await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
-            await testRpc.AddFunds(TestItem.Addresses[1], 1.Ether());
             Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
             await testRpc.AddBlock();
 
-            ReceiptForRpc receipt = (await testRpc.EthModule.eth_getTransactionReceipt(txHash)).Data;
+            ReceiptForRpc receipt = (await testRpc.EthRpcModule.eth_getTransactionReceipt(txHash)).Data;
 
             Keccak[] leaves = Enumerable.Repeat(TestItem.KeccakH, leafCount).ToArray();
             Keccak insertLeavesTxHash = (await baselineModule.baseline_insertCommits(
@@ -218,7 +210,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
                 leaves)).Data;
             await testRpc.AddBlock();
 
-            ReceiptForRpc insertLeafReceipt = (await testRpc.EthModule.eth_getTransactionReceipt(
+            ReceiptForRpc insertLeafReceipt = (await testRpc.EthRpcModule.eth_getTransactionReceipt(
                 insertLeavesTxHash)).Data;
             insertLeafReceipt.Logs.Should().HaveCount(1);
             insertLeafReceipt.Logs[0].Data.Length.Should().Be(128 + leafCount * 32);
@@ -227,16 +219,14 @@ namespace Nethermind.Baseline.Test.JsonRpc
         [Test]
         public async Task can_get_siblings_after_commit_is_added()
         {
-            SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
-            TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
+            SingleReleaseSpecProvider spec = new(ConstantinopleFix.Instance, 1);
+            using TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest<BaseLineRpcBlockchain>(SealEngineType.NethDev).Build(spec);
             BaselineModule baselineModule = CreateBaselineModule(testRpc);
 
-            await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
-            await testRpc.AddFunds(TestItem.Addresses[1], 1.Ether());
             Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
             await testRpc.AddBlock();
 
-            ReceiptForRpc receipt = (await testRpc.EthModule.eth_getTransactionReceipt(txHash)).Data;
+            ReceiptForRpc receipt = (await testRpc.EthRpcModule.eth_getTransactionReceipt(txHash)).Data;
 
             await baselineModule.baseline_insertCommit(
                 TestItem.Addresses[1], receipt.ContractAddress, TestItem.KeccakH);
@@ -266,15 +256,14 @@ namespace Nethermind.Baseline.Test.JsonRpc
         [Test]
         public async Task can_get_commit_fails_on_not_tracked()
         {
-            SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
-            TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
+            SingleReleaseSpecProvider spec = new(ConstantinopleFix.Instance, 1);
+            using TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest<BaseLineRpcBlockchain>(SealEngineType.NethDev).Build(spec);
             BaselineModule baselineModule = CreateBaselineModule(testRpc);
 
-            await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
             Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
             await testRpc.AddBlock();
 
-            ReceiptForRpc receipt = (await testRpc.EthModule.eth_getTransactionReceipt(txHash)).Data;
+            ReceiptForRpc receipt = (await testRpc.EthRpcModule.eth_getTransactionReceipt(txHash)).Data;
 
             await baselineModule.baseline_insertCommit(TestItem.Addresses[1], receipt.ContractAddress, TestItem.KeccakH);
             await testRpc.AddBlock();
@@ -288,15 +277,14 @@ namespace Nethermind.Baseline.Test.JsonRpc
         [Test]
         public async Task can_get_commit_fails_on_wrong_index()
         {
-            SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
-            TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
+            SingleReleaseSpecProvider spec = new(ConstantinopleFix.Instance, 1);
+            using TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest<BaseLineRpcBlockchain>(SealEngineType.NethDev).Build(spec);
             BaselineModule baselineModule = CreateBaselineModule(testRpc);
 
-            await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
             Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
             await testRpc.AddBlock();
 
-            ReceiptForRpc receipt = (await testRpc.EthModule.eth_getTransactionReceipt(txHash)).Data;
+            ReceiptForRpc receipt = (await testRpc.EthRpcModule.eth_getTransactionReceipt(txHash)).Data;
 
             await baselineModule.baseline_insertCommit(TestItem.Addresses[1], receipt.ContractAddress, TestItem.KeccakH);
             await testRpc.AddBlock();
@@ -312,16 +300,14 @@ namespace Nethermind.Baseline.Test.JsonRpc
         [Test]
         public async Task can_get_commit_after_commit_is_added()
         {
-            SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
-            TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
+            SingleReleaseSpecProvider spec = new(ConstantinopleFix.Instance, 1);
+            using TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest<BaseLineRpcBlockchain>(SealEngineType.NethDev).Build(spec);
             BaselineModule baselineModule = CreateBaselineModule(testRpc);
 
-            await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
-            await testRpc.AddFunds(TestItem.Addresses[1], 1.Ether());
             Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
             await testRpc.AddBlock();
 
-            ReceiptForRpc receipt = (await testRpc.EthModule.eth_getTransactionReceipt(txHash)).Data;
+            ReceiptForRpc receipt = (await testRpc.EthRpcModule.eth_getTransactionReceipt(txHash)).Data;
 
             await baselineModule.baseline_insertCommit(TestItem.Addresses[1], receipt.ContractAddress, TestItem.KeccakH);
             await testRpc.AddBlock();
@@ -339,16 +325,14 @@ namespace Nethermind.Baseline.Test.JsonRpc
         [Test]
         public async Task can_get_commits_after_commit_is_added()
         {
-            SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
-            TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
+            SingleReleaseSpecProvider spec = new(ConstantinopleFix.Instance, 1);
+            using TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest<BaseLineRpcBlockchain>(SealEngineType.NethDev).Build(spec);
             BaselineModule baselineModule = CreateBaselineModule(testRpc);
 
-            await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
-            await testRpc.AddFunds(TestItem.Addresses[1], 1.Ether());
             Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
             await testRpc.AddBlock();
 
-            ReceiptForRpc receipt = (await testRpc.EthModule.eth_getTransactionReceipt(txHash)).Data;
+            ReceiptForRpc receipt = (await testRpc.EthRpcModule.eth_getTransactionReceipt(txHash)).Data;
 
             await baselineModule.baseline_insertCommit(TestItem.Addresses[1], receipt.ContractAddress, TestItem.KeccakH);
             await testRpc.AddBlock();
@@ -367,15 +351,14 @@ namespace Nethermind.Baseline.Test.JsonRpc
         [Test]
         public async Task can_get_commits_fails_if_not_tracking()
         {
-            SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
-            TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
+            SingleReleaseSpecProvider spec = new(ConstantinopleFix.Instance, 1);
+            using TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest<BaseLineRpcBlockchain>(SealEngineType.NethDev).Build(spec);
             BaselineModule baselineModule = CreateBaselineModule(testRpc);
 
-            await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
             Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
             await testRpc.AddBlock();
 
-            ReceiptForRpc receipt = (await testRpc.EthModule.eth_getTransactionReceipt(txHash)).Data;
+            ReceiptForRpc receipt = (await testRpc.EthRpcModule.eth_getTransactionReceipt(txHash)).Data;
 
             await baselineModule.baseline_insertCommit(TestItem.Addresses[1], receipt.ContractAddress, TestItem.KeccakH);
             await testRpc.AddBlock();
@@ -390,15 +373,14 @@ namespace Nethermind.Baseline.Test.JsonRpc
         [Test]
         public async Task can_get_commits_fails_if_any_index_invalid()
         {
-            SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
-            TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
+            SingleReleaseSpecProvider spec = new(ConstantinopleFix.Instance, 1);
+            using TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest<BaseLineRpcBlockchain>(SealEngineType.NethDev).Build(spec);
             BaselineModule baselineModule = CreateBaselineModule(testRpc);
 
-            await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
             Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
             await testRpc.AddBlock();
 
-            ReceiptForRpc receipt = (await testRpc.EthModule.eth_getTransactionReceipt(txHash)).Data;
+            ReceiptForRpc receipt = (await testRpc.EthRpcModule.eth_getTransactionReceipt(txHash)).Data;
 
             await baselineModule.baseline_track(receipt.ContractAddress);
             await baselineModule.baseline_insertCommit(TestItem.Addresses[1], receipt.ContractAddress, TestItem.KeccakH);
@@ -415,12 +397,10 @@ namespace Nethermind.Baseline.Test.JsonRpc
         [Test]
         public async Task can_work_with_many_trees()
         {
-            SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
-            TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
+            SingleReleaseSpecProvider spec = new(ConstantinopleFix.Instance, 1);
+            using TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest<BaseLineRpcBlockchain>(SealEngineType.NethDev).Build(spec);
             BaselineModule baselineModule = CreateBaselineModule(testRpc);
 
-            await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
-            await testRpc.AddFunds(TestItem.Addresses[1], 1.Ether());
             Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
             Keccak txHash2 = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
             Keccak txHash3 = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
@@ -428,9 +408,9 @@ namespace Nethermind.Baseline.Test.JsonRpc
             await testRpc.AddBlock();
             await testRpc.AddBlock();
 
-            ReceiptForRpc receipt = (await testRpc.EthModule.eth_getTransactionReceipt(txHash)).Data;
-            ReceiptForRpc receipt2 = (await testRpc.EthModule.eth_getTransactionReceipt(txHash2)).Data;
-            ReceiptForRpc receipt3 = (await testRpc.EthModule.eth_getTransactionReceipt(txHash3)).Data;
+            ReceiptForRpc receipt = (await testRpc.EthRpcModule.eth_getTransactionReceipt(txHash)).Data;
+            ReceiptForRpc receipt2 = (await testRpc.EthRpcModule.eth_getTransactionReceipt(txHash2)).Data;
+            ReceiptForRpc receipt3 = (await testRpc.EthRpcModule.eth_getTransactionReceipt(txHash3)).Data;
 
             receipt.Status.Should().Be(1);
             receipt2.Status.Should().Be(1);
@@ -484,14 +464,13 @@ namespace Nethermind.Baseline.Test.JsonRpc
         [Test]
         public async Task track_request_will_succeed()
         {
-            SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
-            TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
+            SingleReleaseSpecProvider spec = new(ConstantinopleFix.Instance, 1);
+            using TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest<BaseLineRpcBlockchain>(SealEngineType.NethDev).Build(spec);
 
             IStateReader stateReader = Substitute.For<IStateReader>();
             BaselineModule baselineModule = CreateBaselineModule(testRpc, stateReader);
 
-            await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
-
+            
             stateReader.GetCode(Arg.Any<Keccak>(), TestItem.AddressC).Returns(new byte[] {255});
             var result = await baselineModule.baseline_track(TestItem.AddressC);
 
@@ -501,10 +480,10 @@ namespace Nethermind.Baseline.Test.JsonRpc
         [Test]
         public async Task concurrent_track_requests_will_succeed()
         {
-            Random random = new Random(42);
+            Random random = new(42);
 
-            SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
-            TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
+            SingleReleaseSpecProvider spec = new(ConstantinopleFix.Instance, 1);
+            using TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest<BaseLineRpcBlockchain>(SealEngineType.NethDev).Build(spec);
 
             IStateReader stateReader = Substitute.For<IStateReader>();
             BaselineModule baselineModule = CreateBaselineModule(testRpc, stateReader);
@@ -516,7 +495,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
                 {
                     byte[] bytes = new byte[20];
                     random.NextBytes(bytes);
-                    Address address = new Address(bytes);
+                    Address address = new(bytes);
 
                     stateReader.GetCode(Arg.Any<Keccak>(), address).Returns(new byte[] {255});
                     var result = baselineModule.baseline_track(address).Result; // safe to invoke Result here
@@ -524,9 +503,9 @@ namespace Nethermind.Baseline.Test.JsonRpc
                 }
             };
 
-            Task task1 = new Task(trackAction);
-            Task task2 = new Task(trackAction);
-            Task task3 = new Task(trackAction);
+            Task task1 = new(trackAction);
+            Task task2 = new(trackAction);
+            Task task3 = new(trackAction);
 
             task1.Start();
             task2.Start();
@@ -538,11 +517,10 @@ namespace Nethermind.Baseline.Test.JsonRpc
         [Test]
         public async Task second_track_request_will_fail()
         {
-            SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
-            TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
+            SingleReleaseSpecProvider spec = new(ConstantinopleFix.Instance, 1);
+            using TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest<BaseLineRpcBlockchain>(SealEngineType.NethDev).Build(spec);
             BaselineModule baselineModule = CreateBaselineModule(testRpc);
 
-            await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
             Address treeAddress = await Deploy(testRpc, baselineModule);
             
             var result =  await baselineModule.baseline_track(treeAddress);
@@ -558,11 +536,10 @@ namespace Nethermind.Baseline.Test.JsonRpc
         [Test]
         public async Task track_untrack_track_works()
         {
-            SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
-            TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
+            SingleReleaseSpecProvider spec = new(ConstantinopleFix.Instance, 1);
+            using TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest<BaseLineRpcBlockchain>(SealEngineType.NethDev).Build(spec);
             BaselineModule baselineModule = CreateBaselineModule(testRpc);
 
-            await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
             Address treeAddress = await Deploy(testRpc, baselineModule);
             
             var result = await baselineModule.baseline_track(treeAddress);
@@ -579,11 +556,10 @@ namespace Nethermind.Baseline.Test.JsonRpc
         [Test]
         public async Task track_untrack_will_cause_tracking_checks_to_start_failing()
         {
-            SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
-            TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
+            SingleReleaseSpecProvider spec = new(ConstantinopleFix.Instance, 1);
+            using TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest<BaseLineRpcBlockchain>(SealEngineType.NethDev).Build(spec);
             BaselineModule baselineModule = CreateBaselineModule(testRpc);
 
-            await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
             Address treeAddress = await Deploy(testRpc, baselineModule);
             
             var result = await baselineModule.baseline_track(treeAddress);
@@ -599,12 +575,10 @@ namespace Nethermind.Baseline.Test.JsonRpc
         [Test]
         public async Task untrack_fails_when_not_tracked()
         {
-            SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
-            TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
+            SingleReleaseSpecProvider spec = new(ConstantinopleFix.Instance, 1);
+            using TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest<BaseLineRpcBlockchain>(SealEngineType.NethDev).Build(spec);
             BaselineModule baselineModule = CreateBaselineModule(testRpc);
 
-            await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
-            
             var result = await baselineModule.baseline_untrack(TestItem.AddressC);
             result.Result.ResultType.Should().Be(ResultType.Failure);
         }
@@ -612,11 +586,9 @@ namespace Nethermind.Baseline.Test.JsonRpc
         [Test]
         public async Task track_on_an_empty_code_account_will_fail()
         {
-            SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
-            TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
+            SingleReleaseSpecProvider spec = new(ConstantinopleFix.Instance, 1);
+            using TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest<BaseLineRpcBlockchain>(SealEngineType.NethDev).Build(spec);
             BaselineModule baselineModule = CreateBaselineModule(testRpc);
-
-            await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
 
             var result = await baselineModule.baseline_track(TestItem.AddressC);
 
@@ -630,8 +602,8 @@ namespace Nethermind.Baseline.Test.JsonRpc
         [TestCase(123u)]
         public async Task can_return_tracked_list(uint trackedCount)
         {
-            SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
-            TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
+            SingleReleaseSpecProvider spec = new(ConstantinopleFix.Instance, 1);
+            using TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest<BaseLineRpcBlockchain>(SealEngineType.NethDev).Build(spec);
 
             IStateReader stateReader = Substitute.For<IStateReader>();
             BaselineModule baselineModule = CreateBaselineModule(testRpc, stateReader);
@@ -651,13 +623,13 @@ namespace Nethermind.Baseline.Test.JsonRpc
         [TestCase(123u)]
         public async Task can_restore_tracking_list_on_startup(uint trackedCount)
         {
-            SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
-            TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
-            MemDb memDb = new MemDb();
-            MemDb baselineMetaDataDb = new MemDb();
+            SingleReleaseSpecProvider spec = new(ConstantinopleFix.Instance, 1);
+            using TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest<BaseLineRpcBlockchain>(SealEngineType.NethDev).Build(spec);
+            MemDb memDb = new();
+            MemDb baselineMetaDataDb = new();
 
             IStateReader stateReader = Substitute.For<IStateReader>();
-            BaselineModule baselineModule = new BaselineModule(
+            BaselineModule baselineModule = new(
                 testRpc.TxSender,
                 stateReader,
                 testRpc.LogFinder,
@@ -676,7 +648,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
                 await baselineModule.baseline_track(TestItem.Addresses[i]); // any address (no need for tree there)    
             }
 
-            BaselineModule restored = new BaselineModule(
+            BaselineModule restored = new(
                 testRpc.TxSender,
                 stateReader,
                 testRpc.LogFinder,
@@ -696,11 +668,10 @@ namespace Nethermind.Baseline.Test.JsonRpc
         [Test]
         public async Task cannot_get_siblings_after_commit_is_added_if_not_traced()
         {
-            SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
-            TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
+            SingleReleaseSpecProvider spec = new(ConstantinopleFix.Instance, 1);
+            using TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest<BaseLineRpcBlockchain>(SealEngineType.NethDev).Build(spec);
             BaselineModule baselineModule = CreateBaselineModule(testRpc);
 
-            await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
             Address treeAddress = await Deploy(testRpc, baselineModule);
 
             await baselineModule.baseline_insertCommit(TestItem.Addresses[1], treeAddress, TestItem.KeccakH);
@@ -720,7 +691,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
             Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
             await testRpc.AddBlock();
 
-            ReceiptForRpc receipt = (await testRpc.EthModule.eth_getTransactionReceipt(txHash)).Data;
+            ReceiptForRpc receipt = (await testRpc.EthRpcModule.eth_getTransactionReceipt(txHash)).Data;
             return receipt.ContractAddress;
         }
 
@@ -728,15 +699,14 @@ namespace Nethermind.Baseline.Test.JsonRpc
         [TestCase(uint.MaxValue + 1L)]
         public async Task can_get_siblings_is_protected_against_overflow(long leafIndex)
         {
-            SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
-            TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
+            SingleReleaseSpecProvider spec = new(ConstantinopleFix.Instance, 1);
+            using TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest<BaseLineRpcBlockchain>(SealEngineType.NethDev).Build(spec);
             BaselineModule baselineModule = CreateBaselineModule(testRpc);
 
-            await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
             Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
             await testRpc.AddBlock();
 
-            ReceiptForRpc receipt = (await testRpc.EthModule.eth_getTransactionReceipt(txHash)).Data;
+            ReceiptForRpc receipt = (await testRpc.EthRpcModule.eth_getTransactionReceipt(txHash)).Data;
 
             await baselineModule.baseline_insertCommit(TestItem.Addresses[1], receipt.ContractAddress, TestItem.KeccakH);
             await testRpc.AddBlock();
@@ -759,7 +729,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
             int tries = 100;
             do
             {
-                receipt = (await testRpc.EthModule.eth_getTransactionReceipt(txHash)).Data;
+                receipt = (await testRpc.EthRpcModule.eth_getTransactionReceipt(txHash)).Data;
                 await Task.Delay(10);
                 tries--;
             } while (receipt != null && tries > 0);
@@ -803,8 +773,8 @@ namespace Nethermind.Baseline.Test.JsonRpc
         [Test, Ignore("Not running well on CI")]
         public async Task Parallel_calls()
         {
-            SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
-            TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(
+            SingleReleaseSpecProvider spec = new(ConstantinopleFix.Instance, 1);
+            using TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest<BaseLineRpcBlockchain>(
                 SealEngineType.NethDev).Build(spec, 100000.Ether());
             BaselineModule baselineModule = CreateBaselineModule(testRpc);
 ;            
@@ -816,9 +786,9 @@ namespace Nethermind.Baseline.Test.JsonRpc
 
             // Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
             // await testRpc.AddBlock();
-            // ReceiptForRpc receipt = (await testRpc.EthModule.eth_getTransactionReceipt(txHash)).Data;
+            // ReceiptForRpc receipt = (await testRpc.EthRpcModule.eth_getTransactionReceipt(txHash)).Data;
 
-            List<Task> tasks = new List<Task>();
+            List<Task> tasks = new();
             for (int i = 0; i < 16; i++)
             {
                 Task task = RunAll(testRpc, baselineModule, i);
@@ -850,7 +820,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
 
         private BaselineModule CreateBaselineModule(TestRpcBlockchain testRpc, IStateReader stateReader = null)
         {
-            return new BaselineModule(
+            return new(
                 testRpc.TxSender,
                 stateReader ?? testRpc.StateReader,
                 testRpc.LogFinder,
@@ -862,6 +832,14 @@ namespace Nethermind.Baseline.Test.JsonRpc
                 LimboLogs.Instance,
                 testRpc.BlockProcessor,
                 new DisposableStack());
+        }
+        
+        private class BaseLineRpcBlockchain : TestRpcBlockchain
+        {
+            protected override async Task AddBlocksOnStart()
+            {
+                await AddFunds((TestItem.Addresses[0], 1.Ether()), (TestItem.Addresses[1], 1.Ether()));
+            }
         }
     }
 }

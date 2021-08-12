@@ -29,6 +29,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Timers;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -41,6 +42,7 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.StateSync;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
+using NSubstitute;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 
@@ -123,12 +125,12 @@ namespace Nethermind.Synchronization.Test.FastSync
 
                 if (!skipLogs) _logger.Info("-------------------- REMOTE --------------------");
                 TreeDumper dumper = new TreeDumper();
-                RemoteStateTree.Accept(dumper, RemoteStateTree.RootHash, true);
+                RemoteStateTree.Accept(dumper, RemoteStateTree.RootHash);
                 string remote = dumper.ToString();
                 if (!skipLogs) _logger.Info(remote);
                 if (!skipLogs) _logger.Info("-------------------- LOCAL --------------------");
                 dumper.Reset();
-                LocalStateTree.Accept(dumper, LocalStateTree.RootHash, true);
+                LocalStateTree.Accept(dumper, LocalStateTree.RootHash);
                 string local = dumper.ToString();
                 if (!skipLogs) _logger.Info(local);
 
@@ -136,7 +138,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 {
                     Assert.AreEqual(remote, local, $"{remote}{Environment.NewLine}{local}");
                     TrieStatsCollector collector = new TrieStatsCollector(LocalCodeDb, new OneLoggerLogManager(_logger));
-                    LocalStateTree.Accept(collector, LocalStateTree.RootHash, true);
+                    LocalStateTree.Accept(collector, LocalStateTree.RootHash);
                     Assert.AreEqual(0, collector.Stats.MissingNodes);
                     Assert.AreEqual(0, collector.Stats.MissingCode);
                 }
@@ -238,7 +240,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             public PublicKey Id => Node.Id;
 
-            public void SendNewTransaction(Transaction transaction, bool isPriority)
+            public bool SendNewTransaction(Transaction transaction, bool isPriority)
             {
                 throw new NotImplementedException();
             }
@@ -288,7 +290,8 @@ namespace Nethermind.Synchronization.Test.FastSync
             SafeContext ctx = new SafeContext();
             ctx = new SafeContext();
             BlockTree blockTree = Build.A.BlockTree().OfChainLength((int) BlockTree.BestSuggestedHeader.Number).TestObject;
-            ctx.Pool = new SyncPeerPool(blockTree, new NodeStatsManager(LimboLogs.Instance), 25, LimboLogs.Instance);
+            ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
+            ctx.Pool = new SyncPeerPool(blockTree, new NodeStatsManager(timerFactory, LimboLogs.Instance), 25, LimboLogs.Instance);
             ctx.Pool.Start();
             ctx.Pool.AddPeer(syncPeer);
 

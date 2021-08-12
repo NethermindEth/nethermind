@@ -21,7 +21,10 @@ namespace Nethermind.Cli.Modules
     [CliModule("diag")]
     public class DiagCliModule : CliModuleBase
     {
-        [CliProperty("diag", "cliVersion")]
+        [CliProperty("diag", "cliVersion",
+            Description = "Displays client version",
+            ResponseDescription = "Client version",
+            ExampleResponse = "\"Nethermind.Cli, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null\"")]
         public JsValue CliVersion()
         {
             return GetType().Assembly.FullName;

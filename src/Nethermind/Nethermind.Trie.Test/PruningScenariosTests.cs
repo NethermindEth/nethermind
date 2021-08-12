@@ -68,22 +68,22 @@ namespace Nethermind.Trie.Test
 
             public static PruningContext ArchiveWithManualPruning
             {
-                [DebuggerStepThrough] get => new PruningContext(new TestPruningStrategy(true), Persist.EveryBlock);
+                [DebuggerStepThrough] get => new(new TestPruningStrategy(true), Persist.EveryBlock);
             }
 
             public static PruningContext SnapshotEveryOtherBlockWithManualPruning
             {
-                [DebuggerStepThrough] get => new PruningContext(new TestPruningStrategy(true), new ConstantInterval(2));
+                [DebuggerStepThrough] get => new(new TestPruningStrategy(true), new ConstantInterval(2));
             }
 
             public static PruningContext InMemory
             {
-                [DebuggerStepThrough] get => new PruningContext(new TestPruningStrategy(true), No.Persistence);
+                [DebuggerStepThrough] get => new(new TestPruningStrategy(true), No.Persistence);
             }
 
             public static PruningContext SetupWithPersistenceEveryEightBlocks
             {
-                [DebuggerStepThrough] get => new PruningContext(new TestPruningStrategy(true), new ConstantInterval(8));
+                [DebuggerStepThrough] get => new(new TestPruningStrategy(true), new ConstantInterval(8));
             }
 
             public PruningContext CreateAccount(int accountIndex)
@@ -116,7 +116,7 @@ namespace Nethermind.Trie.Test
             {
                 _logger.Info($"READ   STORAGE {accountIndex}.{storageKey}");
                 StorageCell storageCell =
-                    new StorageCell(Address.FromNumber((UInt256) accountIndex), (UInt256) storageKey);
+                    new(Address.FromNumber((UInt256) accountIndex), (UInt256) storageKey);
                 _storageProvider.Get(storageCell);
                 return this;
             }

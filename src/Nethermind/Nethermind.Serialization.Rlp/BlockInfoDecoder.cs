@@ -16,6 +16,8 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp
 {
@@ -31,7 +33,7 @@ namespace Nethermind.Serialization.Rlp
         // ReSharper disable once UnusedMember.Global this is needed for auto-registration
         public BlockInfoDecoder() : this(false) { }
         
-        public BlockInfo Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public BlockInfo? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (rlpStream.IsNextItemNull())
             {
@@ -41,22 +43,32 @@ namespace Nethermind.Serialization.Rlp
             
             int lastCheck = rlpStream.ReadSequenceLength() + rlpStream.Position;
 
-            BlockInfo blockInfo = new BlockInfo
-            {
-                BlockHash = rlpStream.DecodeKeccak(),
-                WasProcessed = rlpStream.DecodeBool(),
-                TotalDifficulty = rlpStream.DecodeUInt256()
-            };
+            Keccak? blockHash = rlpStream.DecodeKeccak();
 
+            bool wasProcessed = rlpStream.DecodeBool();
+            UInt256 totalDifficulty = rlpStream.DecodeUInt256();
+
+            bool isFinalized = false;
             if (_chainWithFinalization)
             {
-                blockInfo.IsFinalized = rlpStream.DecodeBool();
+                isFinalized = rlpStream.DecodeBool();
             }
 
             if ((rlpBehaviors & RlpBehaviors.AllowExtraData) != RlpBehaviors.AllowExtraData)
             {
                 rlpStream.Check(lastCheck);
             }
+
+            if (blockHash is null)
+            {
+                return null;
+            }
+            
+            BlockInfo blockInfo = new(blockHash, totalDifficulty)
+            {
+                WasProcessed = wasProcessed,
+                IsFinalized = isFinalized
+            };
 
             return blockInfo;
         }
@@ -66,7 +78,7 @@ namespace Nethermind.Serialization.Rlp
             throw new NotImplementedException();
         }
 
-        public Rlp Encode(BlockInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Rlp Encode(BlockInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item == null)
             {
@@ -91,7 +103,7 @@ namespace Nethermind.Serialization.Rlp
             throw new NotImplementedException();
         }
 
-        public BlockInfo Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public BlockInfo? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (decoderContext.IsNextItemNull())
             {
@@ -101,16 +113,14 @@ namespace Nethermind.Serialization.Rlp
             
             int lastCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
 
-            BlockInfo blockInfo = new BlockInfo
-            {
-                BlockHash = decoderContext.DecodeKeccak(),
-                WasProcessed = decoderContext.DecodeBool(),
-                TotalDifficulty = decoderContext.DecodeUInt256()
-            };
+            Keccak? blockHash = decoderContext.DecodeKeccak();
+            bool wasProcessed = decoderContext.DecodeBool();
+            UInt256 totalDifficulty = decoderContext.DecodeUInt256();
+            bool isFinalized = false;
 
             if (_chainWithFinalization)
             {
-                blockInfo.IsFinalized = decoderContext.DecodeBool();
+                isFinalized = decoderContext.DecodeBool();
             }
 
             if ((rlpBehaviors & RlpBehaviors.AllowExtraData) != RlpBehaviors.AllowExtraData)
@@ -118,17 +128,18 @@ namespace Nethermind.Serialization.Rlp
                 decoderContext.Check(lastCheck);
             }
 
+            if (blockHash is null)
+            {
+                return null;
+            }
+            
+            BlockInfo blockInfo = new(blockHash, totalDifficulty)
+            {
+                WasProcessed = wasProcessed,
+                IsFinalized = isFinalized
+            };
+            
             return blockInfo;
-        }
-
-        public Rlp Encode(ChainLevelInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            throw new NotImplementedException();
-        }
-
-        public int GetLength(ChainLevelInfo item, RlpBehaviors rlpBehaviors)
-        {
-            throw new NotImplementedException();
         }
     }
 }

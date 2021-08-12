@@ -17,11 +17,11 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
-using Nethermind.State;
 
 namespace Nethermind.Evm.Tracing
 {
@@ -29,17 +29,19 @@ namespace Nethermind.Evm.Tracing
     {
         private readonly ITxTracer _innerTracer;
         private readonly CancellationToken _token;
-        private bool _isTracingReceipt;
-        private bool _isTracingActions;
-        private bool _isTracingOpLevelStorage;
-        private bool _isTracingMemory;
-        private bool _isTracingInstructions;
-        private bool _isTracingRefunds;
-        private bool _isTracingCode;
-        private bool _isTracingStack;
-        private bool _isTracingState;
-        private bool _isTracingBlockHash;
-        
+        private readonly bool _isTracingReceipt;
+        private readonly bool _isTracingActions;
+        private readonly bool _isTracingOpLevelStorage;
+        private readonly bool _isTracingMemory;
+        private readonly bool _isTracingInstructions;
+        private readonly bool _isTracingRefunds;
+        private readonly bool _isTracingCode;
+        private readonly bool _isTracingStack;
+        private readonly bool _isTracingState;
+        private readonly bool _isTracingStorage;
+        private readonly bool _isTracingBlockHash;
+        private readonly bool _isTracingBlockAccess;
+
         public ITxTracer InnerTracer => _innerTracer;
 
         public CancellationTxTracer(ITxTracer innerTracer, CancellationToken token = default)
@@ -51,61 +53,73 @@ namespace Nethermind.Evm.Tracing
         public bool IsTracingReceipt
         {
             get => _isTracingReceipt || _innerTracer.IsTracingReceipt;
-            set => _isTracingReceipt = value;
+            init => _isTracingReceipt = value;
         }
 
         public bool IsTracingActions
         {
             get => _isTracingActions || _innerTracer.IsTracingActions;
-            set => _isTracingActions = value;
+            init => _isTracingActions = value;
         }
 
         public bool IsTracingOpLevelStorage
         {
             get => _isTracingOpLevelStorage || _innerTracer.IsTracingOpLevelStorage;
-            set => _isTracingOpLevelStorage = value;
+            init => _isTracingOpLevelStorage = value;
         }
 
         public bool IsTracingMemory
         {
             get => _isTracingMemory || _innerTracer.IsTracingMemory;
-            set => _isTracingMemory = value;
+            init => _isTracingMemory = value;
         }
 
         public bool IsTracingInstructions
         {
             get => _isTracingInstructions || _innerTracer.IsTracingInstructions;
-            set => _isTracingInstructions = value;
+            init => _isTracingInstructions = value;
         }
 
         public bool IsTracingRefunds
         {
             get => _isTracingRefunds || _innerTracer.IsTracingRefunds;
-            set => _isTracingRefunds = value;
+            init => _isTracingRefunds = value;
         }
 
         public bool IsTracingCode
         {
             get => _isTracingCode || _innerTracer.IsTracingCode;
-            set => _isTracingCode = value;
+            init => _isTracingCode = value;
         }
 
         public bool IsTracingStack
         {
             get => _isTracingStack || _innerTracer.IsTracingStack;
-            set => _isTracingStack = value;
+            init => _isTracingStack = value;
         }
 
         public bool IsTracingState
         {
             get => _isTracingState || _innerTracer.IsTracingState;
-            set => _isTracingState = value;
+            init => _isTracingState = value;
+        }
+        
+        public bool IsTracingStorage
+        {
+            get => _isTracingStorage || _innerTracer.IsTracingStorage;
+            init => _isTracingStorage = value;
         }
 
         public bool IsTracingBlockHash
         {
             get => _isTracingBlockHash || _innerTracer.IsTracingBlockHash;
-            set => _isTracingBlockHash = value;
+            init => _isTracingBlockHash = value;
+        }
+
+        public bool IsTracingAccess
+        {
+            get => _isTracingBlockAccess || _innerTracer.IsTracingAccess;
+            init => _isTracingBlockAccess = value;
         }
 
         public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
@@ -147,7 +161,7 @@ namespace Nethermind.Evm.Tracing
         public void ReportStorageChange(StorageCell storageCell, byte[] before, byte[] after)
         {
             _token.ThrowIfCancellationRequested();
-            if (_innerTracer.IsTracingState)
+            if (_innerTracer.IsTracingStorage)
             {
                 _innerTracer.ReportStorageChange(storageCell, before, after);
             }
@@ -156,13 +170,13 @@ namespace Nethermind.Evm.Tracing
         public void ReportStorageRead(StorageCell storageCell)
         {
             _token.ThrowIfCancellationRequested();
-            if (_innerTracer.IsTracingState)
+            if (_innerTracer.IsTracingStorage)
             {
                 _innerTracer.ReportStorageRead(storageCell);
             }
         }
 
-        public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak stateRoot = null)
+        public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
         {
             _token.ThrowIfCancellationRequested();
             if (_innerTracer.IsTracingReceipt)
@@ -171,7 +185,7 @@ namespace Nethermind.Evm.Tracing
             }
         }
 
-        public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak stateRoot = null)
+        public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak? stateRoot = null)
         {
             _token.ThrowIfCancellationRequested();
             if (_innerTracer.IsTracingReceipt)
@@ -315,7 +329,7 @@ namespace Nethermind.Evm.Tracing
             }
         }
 
-        public void ReportAction(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType, bool isPrecompileCall = false)
+        public void ReportAction(long gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
         {
             _token.ThrowIfCancellationRequested();
             if (_innerTracer.IsTracingActions)
@@ -324,7 +338,7 @@ namespace Nethermind.Evm.Tracing
             }
         }
 
-        public void ReportActionEnd(long gas, byte[] output)
+        public void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
         {
             _token.ThrowIfCancellationRequested();
             if (_innerTracer.IsTracingActions)
@@ -342,7 +356,7 @@ namespace Nethermind.Evm.Tracing
             }
         }
 
-        public void ReportActionEnd(long gas, Address deploymentAddress, byte[] deployedCode)
+        public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
         {
             _token.ThrowIfCancellationRequested();
             if (_innerTracer.IsTracingActions)
@@ -393,6 +407,15 @@ namespace Nethermind.Evm.Tracing
             if (_innerTracer.IsTracingRefunds)
             {
                 _innerTracer.ReportExtraGasPressure(extraGasPressure);
+            }
+        }
+
+        public void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells)
+        {
+            _token.ThrowIfCancellationRequested();
+            if (_innerTracer.IsTracingAccess)
+            {
+                _innerTracer.ReportAccess(accessedAddresses, accessedStorageCells);
             }
         }
     }

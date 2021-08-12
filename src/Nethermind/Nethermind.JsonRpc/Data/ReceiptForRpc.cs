@@ -18,6 +18,7 @@ using System;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Data
@@ -28,7 +29,7 @@ namespace Nethermind.JsonRpc.Data
         {
         }
        
-        public ReceiptForRpc(Keccak txHash, TxReceipt receipt)
+        public ReceiptForRpc(Keccak txHash, TxReceipt receipt, UInt256? effectiveGasPrice)
         {
             TransactionHash = txHash;
             TransactionIndex = receipt.Index;
@@ -36,6 +37,7 @@ namespace Nethermind.JsonRpc.Data
             BlockNumber = receipt.BlockNumber;
             CumulativeGasUsed = receipt.GasUsedTotal;
             GasUsed = receipt.GasUsed;
+            EffectiveGasPrice = effectiveGasPrice;
             From = receipt.Sender;
             To = receipt.Recipient;
             ContractAddress = receipt.ContractAddress;
@@ -44,6 +46,7 @@ namespace Nethermind.JsonRpc.Data
             Root = receipt.PostTransactionState;
             Status = receipt.StatusCode;
             Error = receipt.Error;
+            Type = receipt.TxType;
         }
         
         public Keccak TransactionHash { get; set; }
@@ -52,6 +55,8 @@ namespace Nethermind.JsonRpc.Data
         public long BlockNumber { get; set; }
         public long CumulativeGasUsed { get; set; }
         public long GasUsed { get; set; }
+        
+        public UInt256? EffectiveGasPrice { get; set; }
         public Address From { get; set; }
         
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
@@ -60,14 +65,15 @@ namespace Nethermind.JsonRpc.Data
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public Address ContractAddress { get; set; }
         public LogEntryForRpc[] Logs { get; set; }
-        public Bloom LogsBloom { get; set; }
+        public Bloom? LogsBloom { get; set; }
         public Keccak Root { get; set; }
         public long Status { get; set; }
         public string Error { get; set; }
+        public TxType Type { get; set; }
 
         public TxReceipt ToReceipt()
         {
-            TxReceipt receipt = new TxReceipt();
+            TxReceipt receipt = new();
             receipt.Bloom = LogsBloom;
             receipt.Error = Error;
             receipt.Index = (int)TransactionIndex;
@@ -82,6 +88,7 @@ namespace Nethermind.JsonRpc.Data
             receipt.TxHash = TransactionHash;
             receipt.GasUsedTotal = CumulativeGasUsed;
             receipt.PostTransactionState = Root;
+            receipt.TxType = Type;
             return receipt;
         }
     }

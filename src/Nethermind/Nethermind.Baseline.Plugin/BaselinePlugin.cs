@@ -34,8 +34,6 @@ namespace Nethermind.Plugin.Baseline
         
         private IBaselineConfig _baselineConfig;
 
-        public void Dispose() { }
-
         public string Name => "Baseline";
         
         public string Description => "Ethereum Baseline for Enterprise";
@@ -88,6 +86,11 @@ namespace Nethermind.Plugin.Baseline
             {
                 if (_logger.IsWarn) _logger.Info("Skipping Baseline RPC due to baseline being disabled in config.");
             }
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            return ValueTask.CompletedTask;
         }
     }
 }

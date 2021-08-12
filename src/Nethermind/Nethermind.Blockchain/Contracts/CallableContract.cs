@@ -21,6 +21,7 @@ using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 
@@ -75,7 +76,7 @@ namespace Nethermind.Blockchain.Contracts
 
         private bool TryCall(BlockHeader header, Transaction transaction, out byte[] result)
         {
-            CallOutputTracer tracer = new CallOutputTracer();
+            CallOutputTracer tracer = new();
             
             try
             {

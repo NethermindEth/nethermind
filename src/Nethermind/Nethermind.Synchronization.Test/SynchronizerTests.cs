@@ -27,6 +27,7 @@ using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Timers;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -42,12 +43,14 @@ using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test
 {
     [TestFixture(SynchronizerType.Fast)]
     [TestFixture(SynchronizerType.Full)]
+    [TestFixture(SynchronizerType.Eth2Merge)]
     [Parallelizable(ParallelScope.All)]
     public class SynchronizerTests
     {
@@ -190,9 +193,7 @@ namespace Nethermind.Synchronization.Test
 
             public PublicKey Id => Node.Id;
 
-            public void SendNewTransaction(Transaction transaction, bool isPriority)
-            {
-            }
+            public bool SendNewTransaction(Transaction transaction, bool isPriority) => true;
 
             public Task<TxReceipt[][]> GetReceipts(IList<Keccak> blockHash, CancellationToken token)
             {
@@ -273,14 +274,24 @@ namespace Nethermind.Synchronization.Test
 
             public SyncingContext(SynchronizerType synchronizerType)
             {
+                ISyncConfig GetSyncConfig() =>
+                    synchronizerType switch
+                    {
+                        SynchronizerType.Fast => SyncConfig.WithFastSync,
+                        SynchronizerType.Eth2Merge => SyncConfig.WithEth2Merge,
+                        SynchronizerType.Full => SyncConfig.WithFullSyncOnly,
+                        _ => throw new ArgumentOutOfRangeException(nameof(synchronizerType), synchronizerType, null)
+                    };
+
                 _logger = _logManager.GetClassLogger();
-                ISyncConfig syncConfig = synchronizerType == SynchronizerType.Fast ? SyncConfig.WithFastSync : SyncConfig.WithFullSyncOnly;
+                ISyncConfig syncConfig = GetSyncConfig();
                 IDbProvider dbProvider = TestMemDbProvider.Init();
                 IDb stateDb = new MemDb();
                 IDb codeDb = dbProvider.CodeDb;
                 MemDb blockInfoDb = new MemDb();
                 BlockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), new SingleReleaseSpecProvider(Constantinople.Instance, 1), NullBloomStorage.Instance, _logManager);
-                NodeStatsManager stats = new NodeStatsManager(_logManager);
+                ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
+                NodeStatsManager stats = new NodeStatsManager(timerFactory, _logManager);
                 SyncPeerPool = new SyncPeerPool(BlockTree, stats, 25, _logManager);
 
                 SyncProgressResolver syncProgressResolver = new SyncProgressResolver(
@@ -684,14 +695,22 @@ namespace Nethermind.Synchronization.Test
 
             Assert.AreNotEqual(peerB.HeadBlock.Hash, peerA.HeadBlock.Hash);
 
-            Block block = null;
+            Block peerBNewBlock = null;
             SpinWait.SpinUntil(() =>
             {
-                bool receivedBlock = peerB.ReceivedBlocks.TryPeek(out block);
-                return receivedBlock && block.Hash == peerA.HeadBlock.Hash;
+                bool receivedBlock = peerB.ReceivedBlocks.TryPeek(out peerBNewBlock);
+                return receivedBlock && peerBNewBlock.Hash == peerA.HeadBlock.Hash;
             }, WaitTime);
-            
-            Assert.AreEqual(block?.Header.Hash, peerA.HeadBlock.Hash);
+
+            if (_synchronizerType == SynchronizerType.Eth2Merge)
+            {
+                Assert.IsNull(peerBNewBlock);
+                Assert.AreNotEqual(peerB.HeadBlock.Hash, peerA.HeadBlock.Hash);
+            }
+            else
+            {
+                Assert.AreEqual(peerBNewBlock?.Header.Hash!, peerA.HeadBlock.Hash);
+            }
         }
 
         [Test, Retry(3)]

@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
 using System.Collections.Generic;
 using System.IO;
 using Nethermind.Core.Crypto;
@@ -24,18 +23,21 @@ using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
+using Newtonsoft.Json;
 
 namespace Nethermind.Blockchain
 {
     public static class BlockTraceDumper
     {
+        public static List<JsonConverter> Converters { get; } = new List<JsonConverter>();
+        
         public static void LogDiagnosticTrace(
             IBlockTracer blockTracer,
             Keccak blockHash,
             ILogger logger)
         {
             static FileStream GetFileStream(string name) =>
-                new FileStream(
+                new(
                     Path.Combine(Path.GetTempPath(), name),
                     FileMode.Create,
                     FileAccess.Write);
@@ -44,11 +46,12 @@ namespace Nethermind.Blockchain
 
             try
             {
+                IJsonSerializer serializer = new EthereumJsonSerializer();
+                serializer.RegisterConverters(Converters);
                 if (blockTracer is GethLikeBlockTracer gethTracer)
                 {
                     fileName = $"gethStyle_{blockHash}.txt";
-                    using FileStream diagnosticFile = GetFileStream(fileName);
-                    EthereumJsonSerializer serializer = new EthereumJsonSerializer();
+                    using FileStream diagnosticFile = GetFileStream(fileName);                    
                     IReadOnlyCollection<GethLikeTxTrace> trace = gethTracer.BuildResult();
                     serializer.Serialize(diagnosticFile, trace, true);
                     if (logger.IsInfo)
@@ -59,7 +62,6 @@ namespace Nethermind.Blockchain
                 {
                     fileName = $"parityStyle_{blockHash}.txt";
                     using FileStream diagnosticFile = GetFileStream(fileName);
-                    EthereumJsonSerializer serializer = new EthereumJsonSerializer();
                     IReadOnlyCollection<ParityLikeTxTrace> trace = parityTracer.BuildResult();
                     serializer.Serialize(diagnosticFile, trace, true);
                     if (logger.IsInfo)

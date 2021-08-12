@@ -17,7 +17,9 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Timers;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
@@ -31,8 +33,6 @@ namespace Nethermind.Network.Discovery.RoutingTable
         private INetworkConfig _networkConfig;
         private IDiscoveryConfig _discoveryConfig;
         private INodeDistanceCalculator _nodeDistanceCalculator;
-        
-        private ConcurrentDictionary<Keccak, Node> _nodes = new ConcurrentDictionary<Keccak, Node>(); 
 
         public NodeTable(INodeDistanceCalculator nodeDistanceCalculator, IDiscoveryConfig discoveryConfig, INetworkConfig networkConfig, ILogManager logManager)
         {
@@ -59,7 +59,6 @@ namespace Nethermind.Network.Discovery.RoutingTable
             if (_logger.IsTrace) _logger.Trace($"Adding node to NodeTable: {node}");
             int distanceFromMaster = _nodeDistanceCalculator.CalculateDistance(MasterNode.IdHash.Bytes, node.IdHash.Bytes);
             NodeBucket bucket = Buckets[distanceFromMaster > 0 ? distanceFromMaster - 1 : 0];
-            _nodes.AddOrUpdate(node.IdHash, node, (x, y) => node);
             return bucket.AddNode(node);
         }
 
@@ -69,8 +68,6 @@ namespace Nethermind.Network.Discovery.RoutingTable
             
             int distanceFromMaster = _nodeDistanceCalculator.CalculateDistance(MasterNode.IdHash.Bytes, nodeToAdd.IdHash.Bytes);
             NodeBucket bucket = Buckets[distanceFromMaster > 0 ? distanceFromMaster - 1 : 0];
-            _nodes.AddOrUpdate(nodeToAdd.IdHash, nodeToAdd, (x, y) => nodeToAdd);
-            _nodes.TryRemove(nodeToRemove.IdHash, out _);
             bucket.ReplaceNode(nodeToRemove, nodeToAdd);
         }
 

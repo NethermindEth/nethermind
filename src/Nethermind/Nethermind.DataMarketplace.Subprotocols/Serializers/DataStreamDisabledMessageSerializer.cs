@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Subprotocols.Messages;
 using Nethermind.Network;
 using Nethermind.Serialization.Rlp;
@@ -28,10 +29,10 @@ namespace Nethermind.DataMarketplace.Subprotocols.Serializers
 
         public DataStreamDisabledMessage Deserialize(byte[] bytes)
         {
-            var context = bytes.AsRlpStream();
+            RlpStream context = bytes.AsRlpStream();
             context.ReadSequenceLength();
-            var depositId = context.DecodeKeccak();
-            var client = context.DecodeString();
+            Keccak? depositId = context.DecodeKeccak();
+            string client = context.DecodeString();
 
             return new DataStreamDisabledMessage(depositId, client);
         }

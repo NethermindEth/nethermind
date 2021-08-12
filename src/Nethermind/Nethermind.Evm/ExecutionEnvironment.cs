@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Core;
 using Nethermind.Int256;
 
@@ -22,34 +23,29 @@ namespace Nethermind.Evm
     public struct ExecutionEnvironment
     {
         /// <summary>
+        /// Transaction originator
+        /// </summary>
+        public TxExecutionContext TxExecutionContext { get; set; }
+        
+        /// <summary>
         /// Currently executing account (in DELEGATECALL this will be equal to caller).
         /// </summary>
         public Address ExecutingAccount { get; set; }
 
         /// <summary>
-        /// Transaction originator
-        /// </summary>
-        public Address Originator { get; set; } // TODO: move to TxEnv
-
-        /// <summary>
         /// Caller
         /// </summary>
-        public Address Sender { get; set; }
+        public Address Caller { get; set; }
         
         /// <summary>
         /// Bytecode source (account address).
         /// </summary>
-        public Address CodeSource { get; set; }
-
-        /// <summary>
-        /// Gas price information from the transaction environment.
-        /// </summary>
-        public UInt256 GasPrice { get; set; } // TODO: move to TxEnv
+        public Address? CodeSource { get; set; }
 
         /// <summary>
         /// Parameters / arguments of the current call.
         /// </summary>
-        public byte[] InputData { get; set; }
+        public ReadOnlyMemory<byte> InputData { get; set; }
 
         /// <summary>
         /// ETH value transferred in this call.
@@ -68,11 +64,6 @@ namespace Nethermind.Evm
         /// </summary>
         public CodeInfo CodeInfo { get; set; }
 
-        /// <summary>
-        /// Block within which the current transaction is executed.
-        /// </summary>
-        public BlockHeader CurrentBlock { get; set; } // TODO: move to TxEnv
-        
         /// <example>If we call TX -> DELEGATECALL -> CALL -> STATICCALL then the call depth would be 3.</example>
         public int CallDepth { get; set; }
     }

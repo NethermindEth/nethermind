@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Subprotocols.Messages;
 using Nethermind.Network;
@@ -29,10 +30,10 @@ namespace Nethermind.DataMarketplace.Subprotocols.Serializers
 
         public DataAvailabilityMessage Deserialize(byte[] bytes)
         {
-            var context = bytes.AsRlpStream();
+            RlpStream context = bytes.AsRlpStream();
             context.ReadSequenceLength();
-            var depositId = context.DecodeKeccak();
-            var reason = (DataAvailability) context.DecodeInt();
+            Keccak? depositId = context.DecodeKeccak();
+            DataAvailability reason = (DataAvailability) context.DecodeInt();
 
             return new DataAvailabilityMessage(depositId, reason);
         }

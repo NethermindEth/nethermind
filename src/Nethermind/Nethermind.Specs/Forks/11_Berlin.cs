@@ -69,15 +69,16 @@ namespace Nethermind.Specs.Forks
         public bool IsEip1108Enabled => true;
         public bool IsEip1884Enabled => true;
         public bool IsEip2200Enabled => true;
-        public bool IsEip2315Enabled => true;
-        public bool IsEip2537Enabled => true;
+        public bool IsEip2315Enabled => false;
+        public bool IsEip2537Enabled => false;
         public bool IsEip2565Enabled => true;
         public bool IsEip2929Enabled => true;
         public bool IsEip2930Enabled => true;
-        public bool IsEip2718Enabled => true;
         public bool IsEip158IgnoredAccount(Address address) => false;
         public bool IsEip1559Enabled => false;
+        public bool IsEip3198Enabled => false;
+        public bool IsEip3529Enabled  => false;
+        public bool IsEip3541Enabled => false;
         public long Eip1559TransitionBlock => long.MaxValue;
-        public long Eip1559MigrationDuration => 0;
     }
 }
