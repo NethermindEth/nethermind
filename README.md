@@ -63,7 +63,7 @@ It syncs fully on:
 
 ### Linux
 
-#### - Ubuntu
+#### Ubuntu
 * [Install .NET](https://docs.microsoft.com/en-gb/dotnet/core/install/linux-ubuntu)
 * Install dependencies
 ```sh
@@ -71,7 +71,7 @@ sudo apt-get install libsnappy-dev libc6-dev libc6
 ```
 *Tested on Ubuntu 21.04, 20.04 and 18.04 LTS*
 
-#### - Debian
+#### Debian
 * [Install .NET](https://docs.microsoft.com/en-gb/dotnet/core/install/linux-debian)
 * Install dependencies
 ```sh
@@ -79,7 +79,7 @@ sudo apt-get install libsnappy-dev libc6-dev libc6
 ```
 *Tested on Debian 10 (9 not working)*
 
-#### - CentOS
+#### CentOS
 * [Install .NET](https://docs.microsoft.com/en-gb/dotnet/core/install/linux-centos)
 * Install dependencies
 ```sh
@@ -91,7 +91,7 @@ sudo ln -s `find /usr/lib64/ -type f -name "libsnappy.so.1*"` /usr/lib64/libsnap
 ```
 *Tested on CentOS 8*
 
-#### - Fedora
+#### Fedora
 * [Install .NET](https://docs.microsoft.com/en-gb/dotnet/core/install/linux-fedora)
 * Install dependencies
 ```sh
