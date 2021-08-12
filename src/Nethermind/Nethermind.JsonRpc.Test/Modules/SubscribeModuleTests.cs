@@ -259,15 +259,20 @@ namespace Nethermind.JsonRpc.Test.Modules
             blockTree.SuggestBlock(block1B);
             blockTree.SuggestBlock(block2B);
 
+            ManualResetEvent manualResetEvent = new(false);
             newHeadSubscription.JsonRpcDuplexClient.SendJsonRpcResult(Arg.Do<JsonRpcResult>(j =>
             {
                 jsonRpcResult.Enqueue(j);
+                
+                if (jsonRpcResult.Count is 3 or 5)
+                    manualResetEvent.Set();
             }));
 
             blockTree.UpdateMainChain(new Block[] {block1, block2, block3}, true);
-            Thread.Sleep(50);
+            manualResetEvent.WaitOne();
+            manualResetEvent.Reset();
             blockTree.UpdateMainChain(new Block[] {block1B, block2B}, true);
-            Thread.Sleep(50);
+            manualResetEvent.WaitOne();
 
             jsonRpcResult.Count.Should().Be(5);
             blockTree.Head.Should().Be(block2B);
