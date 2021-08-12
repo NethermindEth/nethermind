@@ -15,18 +15,25 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Eip2930;
 using Nethermind.Int256;
 
 namespace Nethermind.AccountAbstraction.Data
 {
     public class UserOperationRpc
     {
-        public byte[] Target { get; set; }
-        public UInt256 CallGas { get; set; }
-        public UInt256 PostCallGas { get; set; }
-        public UInt256 GasPrice { get; set; }
+        public Address Target { get; set; }
+        public UInt256 Nonce { get; set; }
         public byte[] CallData { get; set; }
+        public UInt64 CallGas { get; set; }
+        public UInt256 MaxFeePerGas { get; set; }
+        public UInt256 MaxPriorityFeePerGas { get; set; }
+        public Address Paymaster { get; set; }
+        public Address Signer { get; set; }
         public Signature Signature { get; set; }
+        public AccessList AccessList { get; set; }
     }
 }

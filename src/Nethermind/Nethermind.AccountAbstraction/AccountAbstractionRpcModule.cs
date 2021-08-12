@@ -18,7 +18,6 @@
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Source;
 using Nethermind.JsonRpc;
-using Nethermind.Mev;
 
 namespace Nethermind.AccountAbstraction
 {

@@ -128,7 +128,7 @@ namespace Nethermind.AccountAbstraction.Source
                         _userOperationSortedPool.TryRemove(op);
                         _simulatedUserOperations.Remove(op, out _);
 
-                        if (op.PaymasterAddress == Address.Zero)
+                        if (op.Paymaster == Address.Zero)
                         {
                             _paymasterOffenseCounter[op.Target]++;
                             if (_paymasterOffenseCounter[op.Target] > _accountAbstractionConfig.MaxResimulations)
@@ -138,10 +138,10 @@ namespace Nethermind.AccountAbstraction.Source
                         }
                         else
                         {
-                            _paymasterOffenseCounter[op.PaymasterAddress]++;
-                            if (_paymasterOffenseCounter[op.PaymasterAddress] > _accountAbstractionConfig.MaxResimulations)
+                            _paymasterOffenseCounter[op.Paymaster]++;
+                            if (_paymasterOffenseCounter[op.Paymaster] > _accountAbstractionConfig.MaxResimulations)
                             {
-                                _bannedPaymasters.Add(op.PaymasterAddress);
+                                _bannedPaymasters.Add(op.Paymaster);
                             }
                         }
                     }
@@ -169,7 +169,7 @@ namespace Nethermind.AccountAbstraction.Source
 
         private bool ValidateUserOperation(UserOperation userOperation, out SimulatedUserOperation simulatedUserOperation)
         {
-            if (userOperation.GasPrice < _accountAbstractionConfig.MinimumGasPrice 
+            if (userOperation.MaxFeePerGas < _accountAbstractionConfig.MinimumGasPrice 
                 || userOperation.CallGas < Transaction.BaseTxGasCost)
             {
                 simulatedUserOperation = SimulatedUserOperation.FailedSimulatedUserOperation(userOperation);
@@ -186,11 +186,11 @@ namespace Nethermind.AccountAbstraction.Source
             }
 
             // make sure paymaster is a contract (if paymaster is used) and is not on banned list
-            if (userOperation.PaymasterAddress != Address.Zero)
+            if (userOperation.Paymaster != Address.Zero)
             {
-                if (!_stateProvider.AccountExists(userOperation.PaymasterAddress) 
-                    || !_stateProvider.IsContract(userOperation.PaymasterAddress)
-                    || _bannedPaymasters.Contains(userOperation.PaymasterAddress))
+                if (!_stateProvider.AccountExists(userOperation.Paymaster) 
+                    || !_stateProvider.IsContract(userOperation.Paymaster)
+                    || _bannedPaymasters.Contains(userOperation.Paymaster))
                 {
                     simulatedUserOperation = SimulatedUserOperation.FailedSimulatedUserOperation(userOperation);
                     return false;

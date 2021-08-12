@@ -138,7 +138,7 @@ namespace Nethermind.AccountAbstraction.Executor
             Transaction transaction = new()
             {
                 GasPrice = 0, // the bundler should in real scenarios be the miner
-                GasLimit = userOperations.Select(op => op.CallGas).Sum() + userOperations.Select(op => op.PostCallGas).Sum() + 10000*userOperations.Count,
+                GasLimit = userOperations.Aggregate((long)0, (sum, op) => sum + op.CallGas),
                 To = singletonContractAddress,
                 ChainId = _specProvider.ChainId,
                 Nonce = _stateProvider.GetNonce(_signer.Address),

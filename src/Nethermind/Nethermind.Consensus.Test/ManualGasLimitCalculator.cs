@@ -18,7 +18,7 @@
 using Nethermind.Consensus;
 using Nethermind.Core;
 
-namespace Nethermind.Mev.Test
+namespace Nethermind.Consensus.Test
 {
     public class ManualGasLimitCalculator : IGasLimitCalculator
     {
