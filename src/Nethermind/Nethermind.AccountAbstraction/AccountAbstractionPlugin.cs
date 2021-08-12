@@ -59,8 +59,6 @@ namespace Nethermind.AccountAbstraction
                         _paymasterOffenseCounter,
                         _bannedPaymasters,
                         _nethermindApi.PeerManager,
-                        // TODO : Extend the nethermindAPI to expose this functionality
-                        _nethermindApi.P2PProtocolHandler,
                         userOperationSortedPool,
                         UserOperationSimulator,
                         _simulatedUserOperations

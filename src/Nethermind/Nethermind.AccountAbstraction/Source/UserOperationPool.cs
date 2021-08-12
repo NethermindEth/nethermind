@@ -48,7 +48,6 @@ namespace Nethermind.AccountAbstraction.Source
         private readonly IUserOperationSimulator _userOperationSimulator;
         private readonly ConcurrentDictionary<UserOperation, SimulatedUserOperation> _simulatedUserOperations;
         private readonly IPeerManager _peerManager;
-        private readonly IP2PProtocolHandler _p2pProtocolHandler;
 
         public UserOperationPool(IBlockTree blockTree,
             IStateProvider stateProvider,
@@ -57,8 +56,7 @@ namespace Nethermind.AccountAbstraction.Source
             IAccountAbstractionConfig accountAbstractionConfig,
             IDictionary<Address, int> paymasterOffenseCounter,
             ISet<Address> bannedPaymasters,
-            IPeerManager? peerManager, 
-            IP2PProtocolHandler? protocolHandler,
+            IPeerManager? peerManager,
             UserOperationSortedPool userOperationSortedPool,
             IUserOperationSimulator userOperationSimulator,
             ConcurrentDictionary<UserOperation, SimulatedUserOperation> simulatedUserOperations)
@@ -74,7 +72,6 @@ namespace Nethermind.AccountAbstraction.Source
             _userOperationSimulator = userOperationSimulator;
             _simulatedUserOperations = simulatedUserOperations;
             _peerManager = peerManager;
-            _p2pProtocolHandler = protocolHandler;
 
             blockTree.NewHeadBlock += OnNewBlock;
             _userOperationSortedPool.Inserted += UserOperationInserted;
@@ -86,16 +83,15 @@ namespace Nethermind.AccountAbstraction.Source
         {
             UserOperation userOperation = e.Key;
             SimulateAndAddToPool(userOperation, _blockTree.Head!.Header);
-            BroadcastToCompatiblePeers(userOperation, _peerManager.ConnectedPeers, _p2pProtocolHandler);
+            BroadcastToCompatiblePeers(userOperation, _peerManager.ConnectedPeers);
         }
 
-        private void BroadcastToCompatiblePeers(UserOperation userOperation, IReadOnlyCollection<Peer> peers,
-            IP2PProtocolHandler protocolHandler)
+        private void BroadcastToCompatiblePeers(UserOperation userOperation, IReadOnlyCollection<Peer> peers)
         {
             Capability? aaCapabiltiy = new Capability(Protocol.AA, 0);
             foreach (var peer in peers)
             {
-                if (protocolHandler.HasAgreedCapability(aaCapabiltiy))
+                if (peer.OutSession.HasAgreedCapability(aaCapabiltiy))
                 {
                     // TODO : Broadcast
                 }
