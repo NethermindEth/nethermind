@@ -26,9 +26,10 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Init.Steps.Migrations;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Api;
-using Nethermind.Runner.Ethereum.Steps.Migrations;
+using Nethermind.Serialization.Json;
 using Nethermind.State.Repositories;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
@@ -50,8 +51,11 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             var blockTreeBuilder = Core.Test.Builders.Build.A.BlockTree().OfChainLength(chainLength);
             var inMemoryReceiptStorage = new InMemoryReceiptStorage() {MigratedBlockNumber = migratedBlockNumber != null ? 0 : long.MaxValue};
             var outMemoryReceiptStorage = new InMemoryReceiptStorage() {MigratedBlockNumber = migratedBlockNumber != null ? 0 : long.MaxValue};
-            var context = new Runner.Ethereum.Api.NethermindApi(configProvider, LimboLogs.Instance)
+            var context = new NethermindApi() 
             {
+                ConfigProvider = configProvider, 
+                EthereumJsonSerializer = new EthereumJsonSerializer(), 
+                LogManager = LimboLogs.Instance,
                 ReceiptStorage = new TestReceiptStorage(inMemoryReceiptStorage, outMemoryReceiptStorage),
                 DbProvider = Substitute.For<IDbProvider>(),
                 BlockTree = blockTreeBuilder.TestObject,

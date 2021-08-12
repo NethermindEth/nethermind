@@ -19,6 +19,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Blockchain.Producers
 {
@@ -26,9 +27,9 @@ namespace Nethermind.Blockchain.Producers
     {
         public event EventHandler<BlockProductionEventArgs>? TriggerBlockProduction;
         
-        public Task<Block?> BuildBlock(BlockHeader? parentHeader = null, CancellationToken? cancellationToken = null)
+        public Task<Block?> BuildBlock(BlockHeader? parentHeader = null, CancellationToken? cancellationToken = null, IBlockTracer? blockTracer = null)
         {
-            BlockProductionEventArgs args = new(parentHeader, cancellationToken);
+            BlockProductionEventArgs args = new(parentHeader, cancellationToken, blockTracer);
             TriggerBlockProduction?.Invoke(this, args);
             return args.BlockProductionTask;
         }

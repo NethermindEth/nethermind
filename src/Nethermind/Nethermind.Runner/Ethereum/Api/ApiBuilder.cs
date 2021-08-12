@@ -15,9 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using Nethermind.Api;
+using Nethermind.Api.Extensions;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -45,7 +48,10 @@ namespace Nethermind.Runner.Ethereum.Api
             _jsonSerializer = new EthereumJsonSerializer();
         }
 
-        public INethermindApi Create()
+        public INethermindApi Create(params IConsensusPlugin[] consensusPlugins) => 
+            Create((IEnumerable<IConsensusPlugin>) consensusPlugins);
+
+        public INethermindApi Create(IEnumerable<IConsensusPlugin> consensusPlugins)
         {
             ChainSpec chainSpec = LoadChainSpec(_jsonSerializer);
             bool wasCreated = Interlocked.CompareExchange(ref _apiCreated, 1, 0) == 1;
@@ -55,10 +61,12 @@ namespace Nethermind.Runner.Ethereum.Api
             }
             
             string engine = chainSpec.SealEngineType;
-            NethermindApi nethermindApi = engine == SealEngineType.AuRa 
-                ? new AuRaNethermindApi(_configProvider, _jsonSerializer, _logManager) 
-                : new NethermindApi(_configProvider, _jsonSerializer, _logManager);
-
+            IConsensusPlugin? enginePlugin = consensusPlugins.FirstOrDefault(p => p.SealEngineType == engine);
+            
+            INethermindApi nethermindApi = enginePlugin?.CreateApi() ?? new NethermindApi();
+            nethermindApi.ConfigProvider = _configProvider;
+            nethermindApi.EthereumJsonSerializer = _jsonSerializer;
+            nethermindApi.LogManager = _logManager;
             nethermindApi.SealEngineType = engine;
             nethermindApi.SpecProvider = new ChainSpecBasedSpecProvider(chainSpec);
             nethermindApi.GasLimitCalculator = new FollowOtherMiners(nethermindApi.SpecProvider);

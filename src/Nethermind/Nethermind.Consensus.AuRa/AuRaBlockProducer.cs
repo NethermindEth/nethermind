@@ -26,6 +26,7 @@ using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -76,9 +77,9 @@ namespace Nethermind.Consensus.AuRa
             return block;
         }
 
-        protected override Block? ProcessPreparedBlock(Block block)
+        protected override Block? ProcessPreparedBlock(Block block, IBlockTracer? blockTracer)
         {
-            Block? processedBlock = base.ProcessPreparedBlock(block);
+            Block? processedBlock = base.ProcessPreparedBlock(block, blockTracer);
 
             if (processedBlock is not null)
             {

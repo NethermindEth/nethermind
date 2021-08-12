@@ -1,0 +1,14 @@
+FROM arm64v8/node AS build
+
+WORKDIR /source
+
+RUN npm i pkg @vercel/ncc -g && \
+    git clone https://github.com/NethermindEth/nethermind.launcher.git && \
+    cd nethermind.launcher && \
+    npm install && \
+    pkg index.js -t latest-linux-arm64 -o Nethermind.Launcher
+
+
+FROM arm64v8/node AS launcher
+WORKDIR /nethermind
+COPY --from=build /source/nethermind.launcher/Nethermind.Launcher .
