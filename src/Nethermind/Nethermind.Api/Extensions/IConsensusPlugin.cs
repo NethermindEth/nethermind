@@ -44,5 +44,7 @@ namespace Nethermind.Api.Extensions
         /// Needed when this plugin is used in combination with other plugin that affects block production like MEV plugin.
         /// </remarks>
         IBlockProductionTrigger DefaultBlockProductionTrigger { get; }
+		
+		INethermindApi CreateApi() => new NethermindApi();
     }
 }

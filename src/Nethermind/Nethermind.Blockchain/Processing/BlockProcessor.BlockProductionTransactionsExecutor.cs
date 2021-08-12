@@ -82,7 +82,7 @@ namespace Nethermind.Blockchain.Processing
                 remove => _blockProductionTransactionPicker.AddingTransaction -= value;
             }
 
-            public virtual TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, IBlockTracer blockTracer, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec)
+            public virtual TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec)
             {
                 IEnumerable<Transaction> transactions = GetTransactions(block);
 
@@ -94,8 +94,8 @@ namespace Nethermind.Blockchain.Processing
                     if (action == TxAction.Stop) break;
                 }
 
-                _stateProvider.Commit(spec);
-                _storageProvider.Commit();
+                _stateProvider.Commit(spec, receiptsTracer);
+                _storageProvider.Commit(receiptsTracer);
 
                 SetTransactions(block, transactionsInBlock);
                 return receiptsTracer.TxReceipts.ToArray();

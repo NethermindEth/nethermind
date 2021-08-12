@@ -18,6 +18,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
+using Nethermind.Init.Steps;
 using Nethermind.Runner.Hive;
 
 namespace Nethermind.Runner.Ethereum.Steps

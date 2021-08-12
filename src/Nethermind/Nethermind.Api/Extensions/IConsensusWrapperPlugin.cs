@@ -17,13 +17,12 @@
 
 using System.Threading.Tasks;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Transactions;
 
 namespace Nethermind.Api.Extensions
 {
     public interface IConsensusWrapperPlugin : INethermindPlugin
     {
-        Task<IBlockProducer> InitBlockProducer(IConsensusPlugin consensusPlugin, ITxSource? txSource = null);
+        Task<IBlockProducer> InitBlockProducer(IConsensusPlugin consensusPlugin);
         bool Enabled { get; }
     }
 }

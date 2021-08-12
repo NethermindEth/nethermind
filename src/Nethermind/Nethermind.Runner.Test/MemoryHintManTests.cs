@@ -21,6 +21,7 @@ using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Extensions;
 using Nethermind.Db.Rocks.Config;
+using Nethermind.Init;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.TxPool;
