@@ -17,52 +17,55 @@
 
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Logging;
 
 namespace Nethermind.Evm.Tracing
 {
     public class TxTraceFilter
     {
+        private readonly Address[]? _fromAddresses;
+        private readonly Address[]? _toAddresses;
+        private int _after;
+        private int? _count;
+        private readonly ILogger _logger;
+        
         public TxTraceFilter(
             Address[]? fromAddresses,
             Address[]? toAddresses,
             int after,
-            int? count)
+            int? count,
+            ILogManager logManager)
         {
-            FromAddresses = fromAddresses;
-            ToAddresses = toAddresses;
-            After = after;
-            Count = count;
+            _fromAddresses = fromAddresses;
+            _toAddresses = toAddresses;
+            _after = after;
+            _count = count;
+            _logger = logManager.GetClassLogger();
         }
-        public Address[]? FromAddresses { get; }
-        
-        public Address[]? ToAddresses { get; }
-        
-        public int After { get; private set; } 
-        
-        public int? Count { get; private set; }
 
         public bool ShouldTraceTx(Transaction? tx)
         {
+            if (_logger.IsTrace) _logger.Trace($"Tracing transaction {tx}, from: {tx?.SenderAddress}, to: {tx?.To}, fromAddresses: {_fromAddresses}, toAddresses {_toAddresses}, after {_after}, count {_count}");
             if (tx == null ||
                 !TxMatchesAddresses(tx) ||
-                (Count <= 0))
+                (_count <= 0))
             {
                 return false;
             }
 
-            if (After > 0)
+            if (_after > 0)
             {
-                --After;
+                --_after;
                 return false;
             }
             
-            --Count;
+            --_count;
             return true;
         }
 
         public bool ShouldContinue()
         {
-            return Count == null ||  Count > 0;
+            return _count == null ||  _count > 0;
         }
 
         public bool ShouldTraceBlock(Block? block)
@@ -71,10 +74,10 @@ namespace Nethermind.Evm.Tracing
                 return false;
             
             int txCount = CountMatchingTransactions(block);
-            if (After >= txCount)
+            if (_after >= txCount)
             {
                 // we can skip the block if it don't achieve after
-                After -= txCount;
+                _after -= txCount;
                 return false;
             }
 
@@ -83,7 +86,7 @@ namespace Nethermind.Evm.Tracing
 
         private int CountMatchingTransactions(Block block)
         {
-            if (FromAddresses == null && ToAddresses == null)
+            if (_fromAddresses == null && _toAddresses == null)
                 return block.Transactions.Length;
 
             int counter = 0;
@@ -99,8 +102,8 @@ namespace Nethermind.Evm.Tracing
 
         private bool TxMatchesAddresses(Transaction tx)
         {
-            return (FromAddresses == null || FromAddresses.Contains(tx.SenderAddress)) &&
-                (ToAddresses == null || ToAddresses.Contains(tx.To));
+            return (_fromAddresses == null || _fromAddresses.Contains(tx.SenderAddress)) &&
+                (_toAddresses == null || _toAddresses.Contains(tx.To));
         }
     }
 }

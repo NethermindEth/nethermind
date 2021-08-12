@@ -18,6 +18,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
+using Nethermind.Logging;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing
@@ -29,7 +30,7 @@ namespace Nethermind.Evm.Test.Tracing
         [Test]
         public void Trace_filter_should_skip_expected_number_of_transactions()
         {
-            TxTraceFilter traceFilter = new(null, null, 2, null);
+            TxTraceFilter traceFilter = new(null, null, 2, null, LimboLogs.Instance);
             Transaction tx1 = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).WithNonce(0).TestObject;
             Transaction tx2 = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).WithNonce(1).TestObject;
             Transaction tx3 = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).WithNonce(2).TestObject;
@@ -41,16 +42,14 @@ namespace Nethermind.Evm.Test.Tracing
         [Test]
         public void Trace_filter_should_skip_expected_number_of_blocks()
         {
-            TxTraceFilter traceFilter = new(null, null, 2, null);
+            TxTraceFilter traceFilter = new(null, null, 2, null, LimboLogs.Instance);
 
-            Transaction[] firstBlockTxs = new[]
-            {
+            Transaction[] firstBlockTxs = {
                 Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).WithNonce(0).TestObject,
                 Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).WithNonce(1).TestObject
             };
             
-            Transaction[] secondBlockTxs = new[]
-            {
+            Transaction[] secondBlockTxs = {
                 Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).WithNonce(2).TestObject
             };
             

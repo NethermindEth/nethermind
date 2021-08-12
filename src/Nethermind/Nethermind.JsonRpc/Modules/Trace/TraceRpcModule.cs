@@ -27,6 +27,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.JsonRpc.Modules.Trace
@@ -38,14 +39,16 @@ namespace Nethermind.JsonRpc.Modules.Trace
         private readonly IBlockFinder _blockFinder;
         private readonly TxDecoder _txDecoder = new();
         private readonly IJsonRpcConfig _jsonRpcConfig;
+        private readonly ILogManager _logManager;
         private readonly TimeSpan _cancellationTokenTimeout;
 
-        public TraceRpcModule(IReceiptFinder receiptFinder, ITracer tracer, IBlockFinder blockFinder, IJsonRpcConfig jsonRpcConfig)
+        public TraceRpcModule(IReceiptFinder receiptFinder, ITracer tracer, IBlockFinder blockFinder, IJsonRpcConfig jsonRpcConfig, ILogManager logManager)
         {
             _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
             _tracer = tracer ?? throw new ArgumentNullException(nameof(tracer));
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
             _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
+            _logManager = logManager;
             _cancellationTokenTimeout = TimeSpan.FromMilliseconds(_jsonRpcConfig.Timeout);
         }
 
@@ -142,7 +145,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         public ResultWrapper<ParityTxTraceFromStore[]> trace_filter(TraceFilterForRpc traceFilterForRpc)
         {
-            TxTraceFilter txTracerFilter = traceFilterForRpc.ToTxTracerFilter();
+            TxTraceFilter txTracerFilter = new(traceFilterForRpc.FromAddress, traceFilterForRpc.ToAddress, traceFilterForRpc.After, traceFilterForRpc.Count, _logManager);
             List<ParityLikeTxTrace> txTraces = new();
             IEnumerable<SearchResult<Block>> blocksSearch =
                 _blockFinder.SearchForBlocksOnMainChain(traceFilterForRpc.FromBlock ?? BlockParameter.Latest, traceFilterForRpc.ToBlock ?? BlockParameter.Latest);

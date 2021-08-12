@@ -36,10 +36,5 @@ namespace Nethermind.JsonRpc.Modules.Trace
         
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public int? Count { get; set; }
-
-        public TxTraceFilter ToTxTracerFilter()
-        {
-            return new(FromAddress, ToAddress, After, Count);
-        }
     }
 }

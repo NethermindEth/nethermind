@@ -168,7 +168,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 resetEvent.WaitOne();
 
                 TraceRpcModule = new TraceRpcModule(receiptFinder, new Tracer(stateProvider, blockchainProcessor),
-                    _blockTree, JsonRpcConfig);
+                    _blockTree, JsonRpcConfig, LimboLogs.Instance);
             }
 
             public void BuildNewBlock(Transaction[] transactions)
