@@ -71,10 +71,14 @@ namespace Nethermind.Evm.Tracing
 
         public bool ShouldTraceBlock(Block? block)
         {
+            _logger.Warn(
+                $"Trace block {block}");
             if (block == null)
                 return false;
             
             int txCount = CountMatchingTransactions(block);
+            _logger.Warn(
+                $"Checking if we should trace block {block}, matching tx count: {txCount}, after: {_after}");
             if (_logger.IsTrace)
                 _logger.Trace(
                     $"Checking if we should trace block {block}, matching tx count: {txCount}, after: {_after}");

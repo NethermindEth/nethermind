@@ -156,6 +156,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 _blockFinder.SearchForBlocksOnMainChain(traceFilterForRpc.FromBlock ?? BlockParameter.Latest, traceFilterForRpc.ToBlock ?? BlockParameter.Latest);
             foreach (SearchResult<Block> blockSearch in blocksSearch)
             {
+                _logger.Warn($"ShouldContinue");
                 if (!txTracerFilter.ShouldContinue())
                     break;
                 if (blockSearch.IsError)
@@ -163,6 +164,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                     return ResultWrapper<ParityTxTraceFromStore[]>.Fail(blockSearch);
                 }
                 Block block = blockSearch.Object;
+                _logger.Warn($"ShouldTraceBlock {block}");
                 if (!txTracerFilter.ShouldTraceBlock(block))
                     continue;
 
