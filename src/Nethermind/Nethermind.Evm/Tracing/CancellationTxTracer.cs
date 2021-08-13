@@ -346,13 +346,22 @@ namespace Nethermind.Evm.Tracing
                 _innerTracer.ReportActionEnd(gas, output);
             }
         }
-
+        
         public void ReportActionError(EvmExceptionType evmExceptionType)
         {
             _token.ThrowIfCancellationRequested();
             if (_innerTracer.IsTracingActions)
             {
                 _innerTracer.ReportActionError(evmExceptionType);
+            }
+        }
+
+        public void ReportActionError(EvmExceptionType evmExceptionType, long gasLeft)
+        {
+            _token.ThrowIfCancellationRequested();
+            if (_innerTracer.IsTracingActions)
+            {
+                _innerTracer.ReportActionError(evmExceptionType, gasLeft);
             }
         }
 
