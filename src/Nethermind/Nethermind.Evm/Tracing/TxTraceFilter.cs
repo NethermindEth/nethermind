@@ -94,6 +94,8 @@ namespace Nethermind.Evm.Tracing
 
         private int CountMatchingTransactions(Block block)
         {
+            _logger.Warn(
+                $"Counting the block transactions count: {block.Transactions.Length}, {_fromAddresses}, {_toAddresses}");
             if (_fromAddresses == null && _toAddresses == null)
                 return block.Transactions.Length;
 
@@ -101,8 +103,14 @@ namespace Nethermind.Evm.Tracing
             for (int index = 0; index < block.Transactions.Length; index++)
             {
                 Transaction tx = block.Transactions[index];
+                _logger.Warn(
+                    $"Checking {tx}, {tx.SenderAddress} {tx.To}");
                 if (TxMatchesAddresses(tx))
+                {
+                    _logger.Warn(
+                        $"Increase the counter for tx {tx}");
                     ++counter;
+                }
             }
 
             return counter;

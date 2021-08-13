@@ -58,5 +58,18 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.AreEqual(false, traceFilter.ShouldTraceBlock(firstBlock));
             Assert.AreEqual(true, traceFilter.ShouldTraceBlock(secondBlock));
         }
+        
+        [Test]
+        public void Trace_filter_should_trace_block_with_given_from_address()
+        {
+            TxTraceFilter traceFilter = new(new []{ TestItem.AddressA }, null, 0, null, LimboLogs.Instance);
+
+            Transaction[] firstBlockTxs = {
+                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).WithNonce(0).TestObject,
+            };
+            
+            Block firstBlock = Build.A.Block.WithNumber(1).WithTransactions(firstBlockTxs).TestObject;
+            Assert.AreEqual(true, traceFilter.ShouldTraceBlock(firstBlock));
+        }
     }
 }
