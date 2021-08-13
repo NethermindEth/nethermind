@@ -24,6 +24,7 @@ namespace Nethermind.Core.Resettables
     {
         public const int ResetRatio = 2;
         public const int StartCapacity = 64;
+        public const int EmptyPosition = -1;
     }
 
     public static class Resettable<T>
@@ -61,7 +62,7 @@ namespace Nethermind.Core.Resettables
                 array = _arrayPool.Rent(currentCapacity);    
             }
 
-            currentPosition = -1;
+            currentPosition = Resettable.EmptyPosition;
         }
     }
 }

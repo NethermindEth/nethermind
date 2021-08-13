@@ -16,46 +16,61 @@
 // 
 
 using System.Collections.Generic;
-using System.Linq;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.State;
 
 namespace Nethermind.Mev
 {
-    public class MevBlockProducer : MultipleManualBlockProducer
+    public class MevBlockProducer : MultipleBlockProducer<MevBlockProducer.MevBlockProducerInfo>
     {
-        private readonly IDictionary<IManualBlockProducer, IBeneficiaryBalanceSource> _blockProducers;
-
-        public MevBlockProducer(IDictionary<IManualBlockProducer, IBeneficiaryBalanceSource> blockProducers) : base(blockProducers.Keys.ToArray())
+        public MevBlockProducer(IBlockProductionTrigger blockProductionTrigger, ILogManager logManager, params MevBlockProducerInfo[] blockProducers) 
+            : base(blockProductionTrigger, new MevBestBlockPicker(), logManager, blockProducers)
         {
-            _blockProducers = blockProducers;
         }
 
-        protected override Block? GetBestBlock(IEnumerable<(Block? Block, IManualBlockProducer BlockProducer)> blocks)
+        private class MevBestBlockPicker : IBestBlockPicker
         {
-            Block? best = null;
-            UInt256 maxBalance = UInt256.Zero;
-            foreach ((Block? Block, IManualBlockProducer BlockProducer) context in blocks)
+            public Block? GetBestBlock(IEnumerable<(Block? Block, MevBlockProducerInfo BlockProducerInfo)> blocks)
             {
-                if (context.Block is not null)
+                Block? best = null;
+                UInt256 maxBalance = UInt256.Zero;
+                foreach ((Block? Block, MevBlockProducerInfo BlockProducerInfo) context in blocks)
                 {
-                    UInt256 balance = _blockProducers[context.BlockProducer].BeneficiaryBalance;
-                    if (balance > maxBalance)
+                    if (context.Block is not null)
                     {
-                        best = context.Block;
-                        maxBalance = balance;
+                        BeneficiaryTracer beneficiaryTracer = context.BlockProducerInfo.BeneficiaryTracer;
+                        UInt256 balance = beneficiaryTracer.BeneficiaryBalance;
+                        if (balance > maxBalance || best is null)
+                        {
+                            best = context.Block;
+                            maxBalance = balance;
+                        }
                     }
                 }
-            }
 
-            return best;
+                return best;
+            }
+        }
+
+        public class MevBlockProducerInfo : IBlockProducerInfo
+        {
+            public IBlockProducer BlockProducer { get; }
+            public IManualBlockProductionTrigger BlockProductionTrigger { get; }
+            public IBlockTracer BlockTracer => BeneficiaryTracer;
+            public BeneficiaryTracer BeneficiaryTracer { get; }
+            public MevBlockProducerInfo(
+                IBlockProducer blockProducer, 
+                IManualBlockProductionTrigger blockProductionTrigger, 
+                BeneficiaryTracer beneficiaryTracer)
+            {
+                BlockProducer = blockProducer;
+                BlockProductionTrigger = blockProductionTrigger;
+                BeneficiaryTracer = beneficiaryTracer;
+            }
         }
     }
 }

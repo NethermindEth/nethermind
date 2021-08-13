@@ -51,6 +51,7 @@ using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Spec;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core.Test;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.DataMarketplace.Test
@@ -237,12 +238,12 @@ namespace Nethermind.DataMarketplace.Test
                 throw new NotImplementedException();
             }
 
-            public (TxReceipt Receipt, Transaction Transaction) GetTransaction(Keccak txHash)
+            public (TxReceipt Receipt, Transaction Transaction, UInt256? baseFee) GetTransaction(Keccak txHash)
             {
                 return (new TxReceipt(), new Transaction
                 {
                     Hash = txHash
-                });
+                }, null);
             }
             
             private BlockReceiptsTracer _receiptsTracer;

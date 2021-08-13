@@ -39,7 +39,7 @@ namespace Nethermind.Core
 
         public UInt256 Nonce { get; set; }
         public UInt256 GasPrice { get; set; }
-        public UInt256 GasBottleneck { get; set; }
+        public UInt256? GasBottleneck { get; set; }
         public UInt256 MaxPriorityFeePerGas => GasPrice; 
         public UInt256 DecodedMaxFeePerGas { get; set; }
         public UInt256 MaxFeePerGas => IsEip1559 ? DecodedMaxFeePerGas : GasPrice;
@@ -58,7 +58,7 @@ namespace Nethermind.Core
         public UInt256 Timestamp { get; set; }
 
         public AccessList? AccessList { get; set; } // eip2930
-        
+
         /// <summary>
         /// Service transactions are free. The field added to handle baseFee validation after 1559
         /// </summary>

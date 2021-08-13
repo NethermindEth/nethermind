@@ -47,7 +47,7 @@ namespace Nethermind.AuRa.Test.Transactions
                 
                 yield return new TestCaseData(UInt256.Zero, new (UInt256, UInt256)[0], scale)
                     .Returns((scaledDefault, UInt256.Zero))
-                    .SetName("Default scaled");;
+                    .SetName("Default scaled");
                 
                 yield return new TestCaseData(u100, new (UInt256, UInt256)[0], scale)
                     .Returns((scaledDefault, UInt256.Zero))

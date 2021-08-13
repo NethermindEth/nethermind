@@ -43,6 +43,7 @@ using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Int256;
 using Nethermind.Evm;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
@@ -78,7 +79,7 @@ namespace Ethereum.Test.Base
         {
             public IDifficultyCalculator? Wrapped { get; set; }
 
-            public UInt256 Calculate(UInt256 parentDifficulty, UInt256 parentTimestamp, UInt256 currentTimestamp, long blockNumber, bool parentHasUncles)
+            public UInt256 Calculate(BlockHeader header, BlockHeader parent)
             {
                 if (Wrapped is null)
                 {
@@ -86,7 +87,7 @@ namespace Ethereum.Test.Base
                         $"Cannot calculate difficulty before the {nameof(Wrapped)} calculator is set.");
                 }
                 
-                return Wrapped.Calculate(parentDifficulty, parentTimestamp, currentTimestamp, blockNumber, parentHasUncles);
+                return Wrapped.Calculate(header, parent);
             }
         }
 
@@ -118,7 +119,7 @@ namespace Ethereum.Test.Base
                 Assert.Fail("Expected genesis spec to be Frontier for blockchain tests");
             }
 
-            DifficultyCalculator.Wrapped = new DifficultyCalculator(specProvider);
+            DifficultyCalculator.Wrapped = new EthashDifficultyCalculator(specProvider);
             IRewardCalculator rewardCalculator = new RewardCalculator(specProvider);
 
             IEthereumEcdsa ecdsa = new EthereumEcdsa(specProvider.ChainId, _logManager);
@@ -150,12 +151,14 @@ namespace Ethereum.Test.Base
                 specProvider,
                 blockValidator,
                 rewardCalculator,
-                new TransactionProcessor(
-                    specProvider,
-                    stateProvider,
-                    storageProvider,
-                    virtualMachine,
-                    _logManager),
+                new BlockProcessor.BlockValidationTransactionsExecutor(
+                    new TransactionProcessor(
+                        specProvider,
+                        stateProvider,
+                        storageProvider,
+                        virtualMachine,
+                        _logManager),
+                    stateProvider),
                 stateProvider,
                 storageProvider,
                 receiptStorage,

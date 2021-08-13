@@ -22,7 +22,7 @@ using System.Linq;
 
 namespace Nethermind.Core.Collections
 {
-    public class LinkedHashSet<T> : ISet<T> where T : notnull
+    public class LinkedHashSet<T> : ISet<T>, IReadOnlySet<T> where T : notnull
     {
         private readonly IDictionary<T, LinkedListNode<T>> _dict;
         private readonly LinkedList<T> _list;

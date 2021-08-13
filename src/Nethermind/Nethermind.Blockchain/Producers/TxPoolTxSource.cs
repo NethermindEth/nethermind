@@ -28,7 +28,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.State;
 using Nethermind.Trie;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Comparison;
@@ -40,7 +39,6 @@ namespace Nethermind.Blockchain.Producers
     public class TxPoolTxSource : ITxSource
     {
         private readonly ITxPool _transactionPool;
-        private readonly IStateReader _stateReader;
         private readonly ITransactionComparerProvider _transactionComparerProvider;
         private readonly ITxFilterPipeline _txFilterPipeline;
         private readonly ISpecProvider _specProvider;
@@ -48,14 +46,12 @@ namespace Nethermind.Blockchain.Producers
 
         public TxPoolTxSource(
             ITxPool? transactionPool, 
-            IStateReader? stateReader, 
             ISpecProvider? specProvider,
             ITransactionComparerProvider transactionComparerProvider, 
             ILogManager? logManager,
             ITxFilterPipeline? txFilterPipeline)
         {
             _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
-            _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
             _transactionComparerProvider = transactionComparerProvider ?? throw new ArgumentNullException(nameof(transactionComparerProvider));
             _txFilterPipeline = txFilterPipeline ?? throw new ArgumentNullException(nameof(txFilterPipeline));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
@@ -64,79 +60,14 @@ namespace Nethermind.Blockchain.Producers
         
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
         {
-            T GetFromState<T>(Func<Keccak, Address, T> stateGetter, Address address, T defaultValue)
-            {
-                T value = defaultValue;
-                try
-                {
-                    value = stateGetter(parent.StateRoot, address);
-                }
-                catch (TrieException e)
-                {
-                    if (_logger.IsDebug) _logger.Debug($"Couldn't get state for address {address}.{Environment.NewLine}{e}");
-                }
-                catch (RlpException e)
-                {
-                    if (_logger.IsError) _logger.Error($"Couldn't deserialize state for address {address}.", e);
-                }
-
-                return value;
-            }
-
-            UInt256 GetCurrentNonce(IDictionary<Address, UInt256> noncesDictionary, Address address)
-            {
-                if (!noncesDictionary.TryGetValue(address, out UInt256 nonce))
-                {
-                    noncesDictionary[address] = nonce = GetFromState(_stateReader.GetNonce, address, UInt256.Zero);
-                }
-                
-                return nonce;
-            }
-
-            UInt256 GetRemainingBalance(IDictionary<Address, UInt256> balances, Address address)
-            {
-                if (!balances.TryGetValue(address, out UInt256 balance))
-                {
-                    balances[address] = balance = GetFromState(_stateReader.GetBalance, address, UInt256.Zero);
-                }
-
-                return balance;
-            }
-
-            bool HasEnoughFounds(IDictionary<Address, UInt256> balances, Transaction transaction, bool eip1559Enabled, UInt256 baseFeePerGas)
-            {
-                UInt256 balance = GetRemainingBalance(balances, transaction.SenderAddress!);
-                UInt256 transactionPotentialCost = transaction.CalculateTransactionPotentialCost(eip1559Enabled, baseFeePerGas);
-
-                if (balance < transactionPotentialCost)
-                {
-                    if (_logger.IsDebug) _logger.Debug($"Rejecting transaction - transaction cost ({transactionPotentialCost}) is higher than sender balance ({balance}).");
-                    return false;
-                }
-
-                if (transaction.IsEip1559 && !transaction.IsServiceTransaction && balance < (UInt256)transaction.GasLimit * transaction.MaxFeePerGas)
-                {
-                    if (_logger.IsDebug)
-                        _logger.Debug(
-                                $"Rejecting transaction - MaxFeePerGas({transaction.MaxFeePerGas}) times GasLimit {transaction.GasLimit} is higher than sender balance ({balance}).");
-                    return false;
-                }
-
-                balances[transaction.SenderAddress] = balance - transactionPotentialCost;
-                return true;
-            }
-
             long blockNumber = parent.Number + 1;
             IReleaseSpec releaseSpec = _specProvider.GetSpec(blockNumber);
-            bool isEip1559Enabled = releaseSpec.IsEip1559Enabled;
             UInt256 baseFee = BaseFeeCalculator.Calculate(parent, releaseSpec);
             IDictionary<Address, Transaction[]> pendingTransactions = _transactionPool.GetPendingTransactionsBySender();
             IComparer<Transaction> comparer = GetComparer(parent, new BlockPreparationContext(baseFee, blockNumber))
                 .ThenBy(ByHashTxComparer.Instance); // in order to sort properly and not loose transactions we need to differentiate on their identity which provided comparer might not be doing
             
             IEnumerable<Transaction> transactions = GetOrderedTransactions(pendingTransactions, comparer);
-            IDictionary<Address, UInt256> remainingBalance = new Dictionary<Address, UInt256>();
-            Dictionary<Address, UInt256> nonces = new();
             if (_logger.IsDebug) _logger.Debug($"Collecting pending transactions at block gas limit {gasLimit}.");
 
             int selectedTransactions = 0;
@@ -148,7 +79,7 @@ namespace Nethermind.Blockchain.Producers
             {
                 i++;
                 
-                if (tx.SenderAddress == null)
+                if (tx.SenderAddress is null)
                 {
                     _transactionPool.RemoveTransaction(tx.Hash!);
                     if (_logger.IsDebug) _logger.Debug($"Rejecting (null sender) {tx.ToShortString()}");
@@ -161,34 +92,14 @@ namespace Nethermind.Blockchain.Producers
                     _transactionPool.RemoveTransaction(tx.Hash!);
                     continue;
                 }
-
-                UInt256 expectedNonce = GetCurrentNonce(nonces, tx.SenderAddress);
-                if (expectedNonce != tx.Nonce)
-                {
-                    if (tx.Nonce < expectedNonce)
-                    {
-                        _transactionPool.RemoveTransaction(tx.Hash!);    
-                    }
-
-                    if (_logger.IsDebug) _logger.Debug($"Rejecting (invalid nonce - expected {expectedNonce}) {tx.ToShortString()}");
-                    continue;
-                }
                 
-                if (!HasEnoughFounds(remainingBalance, tx, isEip1559Enabled, baseFee))
-                {
-                    _transactionPool.RemoveTransaction(tx.Hash!);
-                    if (_logger.IsDebug) _logger.Debug($"Rejecting (sender balance too low) {tx.ToShortString()}");
-                    continue;
-                }
+                if (_logger.IsTrace) _logger.Trace($"Selected {tx.ToShortString()} to be potentially included in block.");
                 
-                if (_logger.IsTrace) _logger.Trace($"Selected {tx.ToShortString()} to be included in block.");
-                nonces[tx.SenderAddress!] = tx.Nonce + 1;
-
                 selectedTransactions++;
                 yield return tx;
             }
 
-            if (_logger.IsDebug) _logger.Debug($"Collected {selectedTransactions} out of {i} pending transactions checked.");
+            if (_logger.IsDebug) _logger.Debug($"Potentially selected {selectedTransactions} out of {i} pending transactions checked.");
             
         }
         

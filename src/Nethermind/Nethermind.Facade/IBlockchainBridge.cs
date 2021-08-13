@@ -34,7 +34,7 @@ namespace Nethermind.Facade
         void RecoverTxSender(Transaction tx);
         TxReceipt GetReceipt(Keccak txHash);
         (TxReceipt Receipt, UInt256? EffectiveGasPrice) GetReceiptAndEffectiveGasPrice(Keccak txHash);
-        (TxReceipt Receipt, Transaction Transaction) GetTransaction(Keccak txHash);
+        (TxReceipt Receipt, Transaction Transaction, UInt256? baseFee) GetTransaction(Keccak txHash);
         BlockchainBridge.CallOutput Call(BlockHeader header, Transaction tx, CancellationToken cancellationToken);
         BlockchainBridge.CallOutput EstimateGas(BlockHeader header, Transaction tx, CancellationToken cancellationToken);
         BlockchainBridge.CallOutput CreateAccessList(BlockHeader header, Transaction tx, CancellationToken cancellationToken, bool optimize);
@@ -42,7 +42,7 @@ namespace Nethermind.Facade
 
         int NewBlockFilter();
         int NewPendingTransactionFilter();
-        int NewFilter(BlockParameter fromBlock, BlockParameter toBlock, object address = null, IEnumerable<object> topics = null);
+        int NewFilter(BlockParameter fromBlock, BlockParameter toBlock, object? address = null, IEnumerable<object>? topics = null);
         void UninstallFilter(int filterId);
         bool FilterExists(int filterId);
         Keccak[] GetBlockFilterChanges(int filterId);
@@ -52,7 +52,7 @@ namespace Nethermind.Facade
         FilterType GetFilterType(int filterId);
         FilterLog[] GetFilterLogs(int filterId);
         
-        IEnumerable<FilterLog> GetLogs(BlockParameter fromBlock, BlockParameter toBlock, object address = null, IEnumerable<object> topics = null, CancellationToken cancellationToken = default);
+        IEnumerable<FilterLog> GetLogs(BlockParameter fromBlock, BlockParameter toBlock, object? address = null, IEnumerable<object>? topics = null, CancellationToken cancellationToken = default);
         void RunTreeVisitor(ITreeVisitor treeVisitor, Keccak stateRoot);
         
     }

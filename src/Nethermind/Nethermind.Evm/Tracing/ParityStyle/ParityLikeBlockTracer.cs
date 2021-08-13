@@ -39,8 +39,8 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             IsTracingRewards = (types & ParityTraceTypes.Rewards) == ParityTraceTypes.Rewards;
         }
 
-        protected override ParityLikeTxTracer OnStart(Keccak? txHash) => 
-            new(_block, txHash is null ? null : _block.Transactions.Single(t => t.Hash == txHash), _types);
+        protected override ParityLikeTxTracer OnStart(Transaction? tx) => 
+            new(_block, tx, _types);
 
         protected override ParityLikeTxTrace OnEnd(ParityLikeTxTracer txTracer) => txTracer.BuildResult();
 
@@ -63,7 +63,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         {
             _block = block;
         }
-
+        
         public override void EndBlockTrace()
         {
         }

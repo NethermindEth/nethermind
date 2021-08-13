@@ -77,7 +77,7 @@ namespace Nethermind.Mining.Test
         }
 
         [Test]
-        [Ignore("use just for finding nonces for other tests")]
+        [Explicit("use just for finding nonces for other tests")]
         public async Task Find_nonce()
         {
             BlockHeader parentHeader = new BlockHeader(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, 131072, 0, 21000, 0, new byte[] { });

@@ -18,10 +18,12 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection.Metadata;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Rewards;
@@ -59,10 +61,10 @@ namespace Nethermind.Mev.Test
 {
     public partial class MevRpcModuleTests
     {
-        public static Task<TestMevRpcBlockchain> CreateChain(int maxMergedBundles)
+        public static Task<TestMevRpcBlockchain> CreateChain(int maxMergedBundles, IReleaseSpec? releaseSpec = null, UInt256? initialBaseFeePerGas = null)
         {
-            TestMevRpcBlockchain testMevRpcBlockchain = new(maxMergedBundles);
-            TestSpecProvider testSpecProvider = new TestSpecProvider(Berlin.Instance);
+            TestMevRpcBlockchain testMevRpcBlockchain = new(maxMergedBundles, initialBaseFeePerGas);
+            TestSpecProvider testSpecProvider = releaseSpec is not null ? new TestSpecProvider(releaseSpec) : new TestSpecProvider(Berlin.Instance);
             testSpecProvider.ChainId = 1;
             return TestRpcBlockchain.ForTest(testMevRpcBlockchain).Build(testSpecProvider);
         }
@@ -74,13 +76,14 @@ namespace Nethermind.Mev.Test
             private ITracerFactory _tracerFactory = null!;
             public TestBundlePool BundlePool { get; private set; } = null!;
 
-            public TestMevRpcBlockchain(int maxMergedBundles)
+            public TestMevRpcBlockchain(int maxMergedBundles, UInt256? initialBaseFeePerGas)
             {
                 _maxMergedBundles = maxMergedBundles;
                 Signer = new Eth2Signer(MinerAddress);
                 GenesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.Genesis
                     .WithTimestamp(UInt256.One)
-                    .WithGasLimit(GasLimitCalculator.GasLimit);
+                    .WithGasLimit(GasLimitCalculator.GasLimit)
+                    .WithBaseFeePerGas(initialBaseFeePerGas ?? 0);
             }
             
             public IMevRpcModule MevRpcModule { get; set; } = Substitute.For<IMevRpcModule>();
@@ -92,11 +95,11 @@ namespace Nethermind.Mev.Test
 
             public override ILogManager LogManager => NUnitLogManager.Instance;
 
-            protected override ITestBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, BlockchainProcessor chainProcessor, IStateProvider producerStateProvider, ISealer sealer)
+            protected override IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
             {
                 MiningConfig miningConfig = new() {MinGasPrice = UInt256.One};
                 
-                MevBlockProducerEnvFactory blockProducerEnvFactory = new MevBlockProducerEnvFactory(
+                BlockProducerEnvFactory blockProducerEnvFactory = new(
                     DbProvider, 
                     BlockTree, 
                     ReadOnlyTrieStore, 
@@ -106,39 +109,48 @@ namespace Nethermind.Mev.Test
                     ReceiptStorage,
                     BlockPreprocessorStep,
                     TxPool,
+                    transactionComparerProvider,
                     miningConfig,
-                    LogManager);
+                    LogManager)
+                {
+                    TransactionsExecutorFactory = new MevBlockProducerTransactionsExecutorFactory(SpecProvider, LogManager)
+                };
 
-                Eth2BlockProducer CreateEth2BlockProducer(ITxSource? txSource = null) =>
+                Eth2BlockProducer CreateEth2BlockProducer(IBlockProductionTrigger blockProductionTrigger, ITxSource? txSource = null) =>
                     new Eth2TestBlockProducerFactory(GasLimitCalculator, txSource).Create(
                         blockProducerEnvFactory,
                         BlockTree,
-                        BlockProcessingQueue,
+                        blockProductionTrigger,
                         SpecProvider,
                         Signer,
                         Timestamper,
                         miningConfig,
                         LogManager);
+                
+                MevBlockProducer.MevBlockProducerInfo CreateProducer(ITxSource? additionalTxSource = null)
+                {
+                    IManualBlockProductionTrigger trigger = new BuildBlocksWhenRequested();
+                    IBlockProducer producer = CreateEth2BlockProducer(trigger, additionalTxSource);
+                    return new MevBlockProducer.MevBlockProducerInfo(producer, trigger, new BeneficiaryTracer());
+                }
 
-                Dictionary<IManualBlockProducer, IBeneficiaryBalanceSource> blockProducerDictionary =
-                    new Dictionary<IManualBlockProducer, IBeneficiaryBalanceSource>();
+                List<MevBlockProducer.MevBlockProducerInfo> blockProducers =
+                    new(_maxMergedBundles + 1);
                     
                 // Add non-mev block
-                IManualBlockProducer standardProducer = CreateEth2BlockProducer();
-                IBeneficiaryBalanceSource standardProducerBeneficiaryBalanceSource = blockProducerEnvFactory.LastMevBlockProcessor;
-                blockProducerDictionary.Add(standardProducer, standardProducerBeneficiaryBalanceSource);
+                MevBlockProducer.MevBlockProducerInfo standardProducer = CreateProducer();
+                blockProducers.Add(standardProducer);
 
                 // Try blocks with all bundle numbers <= maxMergedBundles
                 for (int bundleLimit = 1; bundleLimit <= _maxMergedBundles; bundleLimit++)
                 {
                     BundleSelector bundleSelector = new(BundlePool, bundleLimit);
                     BundleTxSource bundleTxSource = new(bundleSelector, Timestamper);
-                    IManualBlockProducer bundleProducer = CreateEth2BlockProducer(bundleTxSource);
-                    IBeneficiaryBalanceSource bundleProducerBeneficiaryBalanceSource = blockProducerEnvFactory.LastMevBlockProcessor;
-                    blockProducerDictionary.Add(bundleProducer, bundleProducerBeneficiaryBalanceSource);
+                    MevBlockProducer.MevBlockProducerInfo bundleProducer = CreateProducer(bundleTxSource);
+                    blockProducers.Add(bundleProducer);
                 }
 
-                return new MevTestBlockProducer(BlockTree, blockProducerDictionary);
+                return new MevBlockProducer(BlockProductionTrigger, LogManager, blockProducers.ToArray());
             }
 
             protected override BlockProcessor CreateBlockProcessor()
@@ -148,7 +160,7 @@ namespace Nethermind.Mev.Test
                     SpecProvider,
                     BlockValidator,
                     NoBlockRewards.Instance,
-                    TxProcessor,
+                    new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
                     State,
                     Storage,
                     ReceiptStorage,
@@ -164,8 +176,8 @@ namespace Nethermind.Mev.Test
                     LogManager,
                     ProcessingOptions.ProducingBlock);
                 
-                TxBundleSimulator txBundleSimulator = new(_tracerFactory, new FollowOtherMiners(SpecProvider), Timestamper, TxPool);
-                BundlePool = new TestBundlePool(BlockTree, txBundleSimulator, Timestamper, _mevConfig, LogManager);
+                TxBundleSimulator txBundleSimulator = new(_tracerFactory, GasLimitCalculator, Timestamper, TxPool, SpecProvider, Signer);
+                BundlePool = new TestBundlePool(BlockTree, txBundleSimulator, Timestamper, new TxValidator(BlockTree.ChainId), SpecProvider, _mevConfig, LogManager);
 
                 return blockProcessor;
             }
@@ -178,7 +190,8 @@ namespace Nethermind.Mev.Test
                     BlockFinder,
                     StateReader,
                     _tracerFactory,
-                    SpecProvider.ChainId);
+                    SpecProvider,
+                    Signer);
                 
                 return chain;
             }
@@ -196,58 +209,16 @@ namespace Nethermind.Mev.Test
             }
 
             protected override Task AddBlocksOnStart() => Task.CompletedTask;
-
-            internal class MevTestBlockProducer : MevBlockProducer, ITestBlockProducer
-            {
-                private readonly IBlockTree _blockTree;
-                private Block? _lastProducedBlock;
-                
-                public MevTestBlockProducer(IBlockTree blockTree, IDictionary<IManualBlockProducer, IBeneficiaryBalanceSource> blockProducers) : base(blockProducers)
-                {
-                    _blockTree = blockTree;
-                }
-        
-                public Block? LastProducedBlock
-                {
-                    get
-                    {
-                        return _lastProducedBlock!;
-                    }
-                    private set
-                    {
-                        _lastProducedBlock = value;
-                        if (value != null)
-                        {
-                            LastProducedBlockChanged?.Invoke(this, new BlockEventArgs(value));
-                        }
-                    }
-                }
-
-                public event EventHandler<BlockEventArgs> LastProducedBlockChanged = null!;
-        
-                public async Task<bool> BuildNewBlock()
-                {
-                    Block? block = await TryProduceBlock(_blockTree.Head!.Header, CancellationToken.None);
-                    if (block is not null)
-                    {
-                        _blockTree.SuggestBlock(block);
-                        return true;
-                    }
-
-                    return false;
-                }
-            }
             
-            public MevBundle SendBundle(int blockNumber, params Transaction[] txs) => 
-                SendBundle(blockNumber, null, txs);
-
-            public MevBundle SendBundle(int blockNumber, Keccak[]? revertingTxHashes = null, params Transaction[] txs)
+            public MevBundle SendBundle(int blockNumber, params BundleTransaction[] txs)
             {
                 byte[][] bundleBytes = txs.Select(t => Rlp.Encode(t).Bytes).ToArray();
-                ResultWrapper<bool> resultOfBundle = MevRpcModule.eth_sendBundle(bundleBytes, blockNumber, default, default, revertingTxHashes);
+                Keccak[] revertingTxHashes = txs.Where(t => t.CanRevert).Select(t => t.Hash!).ToArray();
+                MevBundleRpc mevBundleRpc = new() {BlockNumber = blockNumber, Txs = bundleBytes, RevertingTxHashes = revertingTxHashes};
+                ResultWrapper<bool> resultOfBundle = MevRpcModule.eth_sendBundle(mevBundleRpc);
                 resultOfBundle.GetResult().ResultType.Should().NotBe(ResultType.Failure);
                 resultOfBundle.GetData().Should().Be(true);
-                return new MevBundle(blockNumber, txs, default, default, revertingTxHashes);
+                return new MevBundle(blockNumber, txs);
             }
         }
     }

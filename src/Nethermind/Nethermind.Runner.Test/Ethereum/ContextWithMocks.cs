@@ -15,10 +15,13 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.IO.Abstractions;
+using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Processing;
+using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Validators;
@@ -32,6 +35,7 @@ using Nethermind.Network;
 using Nethermind.Db.Blooms;
 using Nethermind.Db.Rocks;
 using Nethermind.Evm;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.KeyStore;
@@ -50,16 +54,17 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
-using Nethermind.WebSockets;
+using Nethermind.Sockets;
 using NSubstitute;
 
 namespace Nethermind.Runner.Test.Ethereum
 {
     public static class Build
     {
-        public static Runner.Ethereum.Api.NethermindApi ContextWithMocks() =>
-            new Runner.Ethereum.Api.NethermindApi(Substitute.For<IConfigProvider>(), new EthereumJsonSerializer(), LimboLogs.Instance)
+        public static NethermindApi ContextWithMocks() =>
+            new NethermindApi()
             {
+                LogManager = LimboLogs.Instance,
                 Enode = Substitute.For<IEnode>(),
                 TxPool = Substitute.For<ITxPool>(),
                 Wallet = Substitute.For<IWallet>(),
@@ -115,7 +120,8 @@ namespace Nethermind.Runner.Test.Ethereum
                 TrieStore = Substitute.For<ITrieStore>(),
                 ReadOnlyTrieStore = Substitute.For<IReadOnlyTrieStore>(),
                 ChainSpec = new ChainSpec(),
-                BlockProducerEnvFactory = Substitute.For<IBlockProducerEnvFactory>()
+                BlockProducerEnvFactory = Substitute.For<IBlockProducerEnvFactory>(),
+                TransactionComparerProvider = Substitute.For<ITransactionComparerProvider>()
             };
     }
 }

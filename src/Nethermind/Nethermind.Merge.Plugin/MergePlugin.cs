@@ -25,6 +25,7 @@ using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
@@ -90,8 +91,10 @@ namespace Nethermind.Merge.Plugin
                 
                 await _api.BlockchainProcessor.StopAsync(true);
 
+                _api.Config<IJsonRpcConfig>().EnableModules(ModuleType.Consensus);
+
                 IConsensusRpcModule consensusRpcModule = new ConsensusRpcModule(
-                    new AssembleBlockHandler(_api.BlockTree, _blockProducer, _manualTimestamper, _api.LogManager),
+                    new AssembleBlockHandler(_api.BlockTree, _defaultBlockProductionTrigger, _manualTimestamper, _api.LogManager),
                     new NewBlockHandler(_api.BlockTree, _api.BlockPreprocessor, _api.BlockchainProcessor, _api.StateProvider, _api.Config<IInitConfig>(), _api.LogManager),
                     new SetHeadBlockHandler(_api.BlockTree, _api.StateProvider, _api.LogManager),
                     new FinaliseBlockHandler(_api.BlockTree, _blockFinalizationManager, _api.LogManager),

@@ -37,6 +37,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Evm;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
@@ -233,20 +234,20 @@ namespace Nethermind.AuRa.Test.Transactions
                     .SetCategory(testsName + "Tests")
                     .Returns((result, test.Cache ?? true));
             }
-
-            var chainTask = TestContractBlockchain.ForTest<TestTxPermissionsBlockchain, TxPermissionFilterTest>(testsName);
-            Func<Task<TestTxPermissionsBlockchain>> testFactory = async () =>
-            {
-                var chain = await chainTask;
-                chain.TxPermissionFilterCache.Permissions.Clear();
-                chain.TransactionPermissionContractVersions.Clear();
-                return chain;
-            };
-
+            
             foreach (var test in tests)
             {
                 foreach (var txType in TxPermissionsTypes)
                 {
+                    var chainTask = TestContractBlockchain.ForTest<TestTxPermissionsBlockchain, TxPermissionFilterTest>(testsName);
+                    Func<Task<TestTxPermissionsBlockchain>> testFactory = async () =>
+                    {
+                        var chain = await chainTask;
+                        chain.TxPermissionFilterCache.Permissions.Clear();
+                        chain.TransactionPermissionContractVersions.Clear();
+                        return chain;
+                    };
+                    
                     yield return GetTestCase(testFactory, test, txType);
                 }
             }
@@ -305,7 +306,7 @@ namespace Nethermind.AuRa.Test.Transactions
                     SpecProvider,
                     Always.Valid,
                     new RewardCalculator(SpecProvider),
-                    TxProcessor,
+                    new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
                     State,
                     Storage,
                     ReceiptStorage,

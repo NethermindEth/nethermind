@@ -15,10 +15,15 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Threading;
+using System.Threading.Tasks;
+using Nethermind.Core;
+using Nethermind.Evm.Tracing;
+
 namespace Nethermind.Blockchain.Producers
 {
     public interface IManualBlockProductionTrigger : IBlockProductionTrigger
     {
-        public void BuildBlock();
+        public Task<Block?> BuildBlock(BlockHeader? parentHeader = null, CancellationToken? cancellationToken = null, IBlockTracer? blockTracer = null);
     }
 }

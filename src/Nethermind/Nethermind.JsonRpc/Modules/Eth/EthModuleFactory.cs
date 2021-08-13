@@ -18,9 +18,9 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Core.Specs;
-using Nethermind.Db;
 using Nethermind.Facade;
 using Nethermind.JsonRpc.Data;
+using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.TxPool;
@@ -74,7 +74,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 _txSender,
                 _wallet,
                 _logManager,
-                _specProvider);
+                _specProvider,
+                new GasPriceOracle(_blockTree, _specProvider));
         }
 
         public static List<JsonConverter> Converters = new()

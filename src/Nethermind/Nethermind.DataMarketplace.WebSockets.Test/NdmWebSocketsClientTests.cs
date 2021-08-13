@@ -16,12 +16,15 @@
 
 using System;
 using System.Text;
+using System.Threading.Tasks;
 using FluentAssertions;
+using Jint.Native.Json;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.DataMarketplace.Core;
 using Nethermind.DataMarketplace.Core.Domain;
-using Nethermind.WebSockets;
+using Nethermind.Serialization.Json;
+using Nethermind.Sockets;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -30,113 +33,75 @@ namespace Nethermind.DataMarketplace.WebSockets.Test
     [TestFixture]
     public class NdmWebSocketsClientTests
     {
-        [Test]
-        public void Client_name_is_copied_from_ws_client()
-        {
-            IWebSocketsClient webSocketsClient = Substitute.For<IWebSocketsClient>();
-            webSocketsClient.Client.Returns(nameof(NdmWebSocketsClientTests));
-
-            INdmDataPublisher dataPublisher = Substitute.For<INdmDataPublisher>();
-            NdmWebSocketsClient client = new NdmWebSocketsClient(webSocketsClient, dataPublisher);
-            client.Client.Should().Be(nameof(NdmWebSocketsClientTests));
-        }
+        
+        private IJsonSerializer _serializer = Substitute.For<IJsonSerializer>();
 
         [Test]
-        public void Id_is_copied_from_ws_client()
+        public void Forwards_messages_to_ws_handler()
         {
-            IWebSocketsClient webSocketsClient = Substitute.For<IWebSocketsClient>();
-            webSocketsClient.Id.Returns(nameof(NdmWebSocketsClientTests) + "_id");
-
+            ISocketHandler _handler = Substitute.For<ISocketHandler>();
             INdmDataPublisher dataPublisher = Substitute.For<INdmDataPublisher>();
-            NdmWebSocketsClient client = new NdmWebSocketsClient(webSocketsClient, dataPublisher);
-            client.Id.Should().Be(nameof(NdmWebSocketsClientTests) + "_id");
-        }
 
-        [Test]
-        public void Forwards_messages_to_ws_client()
-        {
-            IWebSocketsClient webSocketsClient = Substitute.For<IWebSocketsClient>();
-            webSocketsClient.Id.Returns(nameof(NdmWebSocketsClientTests) + "_id");
-
-            INdmDataPublisher dataPublisher = Substitute.For<INdmDataPublisher>();
-            NdmWebSocketsClient client = new NdmWebSocketsClient(webSocketsClient, dataPublisher);
-            WebSocketsMessage message = new WebSocketsMessage("type", "client", "data");
+            NdmWebSocketsClient client = new(nameof(NdmWebSocketsClientTests), _handler, dataPublisher, _serializer);
+            SocketsMessage message = new("type", nameof(NdmWebSocketsClientTests), "data");
             client.SendAsync(message);
 
-            webSocketsClient.Received().SendAsync(message);
+            _handler.Received().SendRawAsync(Arg.Any<string>());
         }
 
         [Test]
-        public void Forwards_raw_messages_to_ws_client()
+        public async Task Can_receive_invalid_data_asset_id()
         {
-            IWebSocketsClient webSocketsClient = Substitute.For<IWebSocketsClient>();
-            webSocketsClient.Id.Returns(nameof(NdmWebSocketsClientTests) + "_id");
-
+            ISocketHandler handler = Substitute.For<ISocketHandler>();
             INdmDataPublisher dataPublisher = Substitute.For<INdmDataPublisher>();
-            NdmWebSocketsClient client = new NdmWebSocketsClient(webSocketsClient, dataPublisher);
-            client.SendRawAsync("raw");
 
-            webSocketsClient.Received().SendRawAsync("raw");
+            NdmWebSocketsClient client = new(nameof(NdmWebSocketsClientTests), handler, dataPublisher, _serializer);
+            await client.ProcessAsync(Encoding.ASCII.GetBytes("a|b|c"));
         }
 
         [Test]
-        public void Can_receive_invalid_data_asset_id()
+        public async Task Can_receive_invalid_data_parts()
         {
-            IWebSocketsClient webSocketsClient = Substitute.For<IWebSocketsClient>();
-            webSocketsClient.Id.Returns(nameof(NdmWebSocketsClientTests) + "_id");
-
+            ISocketHandler handler = Substitute.For<ISocketHandler>();
             INdmDataPublisher dataPublisher = Substitute.For<INdmDataPublisher>();
-            NdmWebSocketsClient client = new NdmWebSocketsClient(webSocketsClient, dataPublisher);
-            client.ReceiveAsync(Encoding.ASCII.GetBytes("a|b|c"));
-        }
 
-        [Test]
-        public void Can_receive_invalid_data_parts()
-        {
-            IWebSocketsClient webSocketsClient = Substitute.For<IWebSocketsClient>();
-            webSocketsClient.Id.Returns(nameof(NdmWebSocketsClientTests) + "_id");
-
-            INdmDataPublisher dataPublisher = Substitute.For<INdmDataPublisher>();
-            NdmWebSocketsClient client = new NdmWebSocketsClient(webSocketsClient, dataPublisher);
-            client.ReceiveAsync(Encoding.ASCII.GetBytes("a|b"));
-            client.ReceiveAsync(Encoding.ASCII.GetBytes("a|b|c|d"));
+            NdmWebSocketsClient client = new(nameof(NdmWebSocketsClientTests), handler, dataPublisher, _serializer);
+            await client.ProcessAsync(Encoding.ASCII.GetBytes("a|b"));
+            await client.ProcessAsync(Encoding.ASCII.GetBytes("a|b|c|d"));
             dataPublisher.DidNotReceiveWithAnyArgs().Publish(null);
         }
 
         [Test]
-        public void Can_receive_data()
+        public async Task Can_receive_data()
         {
-            IWebSocketsClient webSocketsClient = Substitute.For<IWebSocketsClient>();
-            webSocketsClient.Id.Returns(nameof(NdmWebSocketsClientTests) + "_id");
-
+            ISocketHandler handler = Substitute.For<ISocketHandler>();
             INdmDataPublisher dataPublisher = Substitute.For<INdmDataPublisher>();
-            NdmWebSocketsClient client = new NdmWebSocketsClient(webSocketsClient, dataPublisher);
-            client.ReceiveAsync(Encoding.ASCII.GetBytes($"{Keccak.Zero.Bytes.ToHexString(false)}|b|c"));
+
+            NdmWebSocketsClient client = new(nameof(NdmWebSocketsClientTests), handler, dataPublisher, _serializer);
+            await client.ProcessAsync(Encoding.ASCII.GetBytes($"{Keccak.Zero.Bytes.ToHexString(false)}|b|c"));
             dataPublisher.Received().Publish(Arg.Is<DataAssetData>(dad => dad.Data == "c" && dad.AssetId == Keccak.Zero));
         }
 
         [Test]
-        public void Can_receive_data_without_asset_id()
+        public async Task Can_receive_data_without_asset_id()
         {
-            IWebSocketsClient webSocketsClient = Substitute.For<IWebSocketsClient>();
-            webSocketsClient.Id.Returns(nameof(NdmWebSocketsClientTests) + "_id");
-
+            ISocketHandler handler = Substitute.For<ISocketHandler>();
             INdmDataPublisher dataPublisher = Substitute.For<INdmDataPublisher>();
-            NdmWebSocketsClient client = new NdmWebSocketsClient(webSocketsClient, dataPublisher);
-            client.ReceiveAsync(Encoding.ASCII.GetBytes("|b|c"));
+
+            NdmWebSocketsClient client = new(nameof(NdmWebSocketsClientTests), handler, dataPublisher, _serializer);
+            await client.ProcessAsync(Encoding.ASCII.GetBytes("|b|c"));
             dataPublisher.DidNotReceiveWithAnyArgs().Publish(null);
         }
 
         [Test]
-        public void Can_receive_null_or_empty_data()
+        public async Task Can_receive_null_or_empty_data()
         {
-            IWebSocketsClient webSocketsClient = Substitute.For<IWebSocketsClient>();
-            webSocketsClient.Id.Returns(nameof(NdmWebSocketsClientTests) + "_id");
-
+            ISocketHandler handler = Substitute.For<ISocketHandler>();
             INdmDataPublisher dataPublisher = Substitute.For<INdmDataPublisher>();
-            NdmWebSocketsClient client = new NdmWebSocketsClient(webSocketsClient, dataPublisher);
-            client.ReceiveAsync(null);
-            client.ReceiveAsync(Array.Empty<byte>());
+
+            NdmWebSocketsClient client = new(nameof(NdmWebSocketsClientTests), handler, dataPublisher, _serializer);
+            await client.ProcessAsync(null);
+            await client.ProcessAsync(Array.Empty<byte>());
         }
     }
 }

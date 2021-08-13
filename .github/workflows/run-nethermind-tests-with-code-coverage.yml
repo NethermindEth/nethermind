@@ -105,6 +105,9 @@ jobs:
     - name: Nethermind.Merge.Plugin.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Merge.Plugin.Test
+    - name: Nethermind.Mev.Test
+      run: |
+        dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Mev.Test
     - name: Nethermind.Network.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Network.Test
@@ -135,9 +138,9 @@ jobs:
     - name: Nethermind.Wallet.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Wallet.Test
-    - name: Nethermind.WebSockets.Test
+    - name: Nethermind.Sockets.Test
       run: |
-        dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.WebSockets.Test
+        dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Sockets.Test
     - name: Nethermind.DataMarketplace.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.DataMarketplace.Test

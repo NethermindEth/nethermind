@@ -19,6 +19,7 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Rewards;
@@ -49,7 +50,7 @@ namespace Nethermind.Merge.Plugin.Test
         private IConsensusRpcModule CreateConsensusModule(MergeTestBlockchain chain)
         {
             return new ConsensusRpcModule(
-                new AssembleBlockHandler(chain.BlockTree, (IManualBlockProducer) chain.BlockProducer, _manualTimestamper, chain.LogManager),
+                new AssembleBlockHandler(chain.BlockTree, chain.BlockProductionTrigger, _manualTimestamper, chain.LogManager),
                 new NewBlockHandler(chain.BlockTree, chain.BlockPreprocessorStep, chain.BlockchainProcessor, chain.State, new InitConfig(), chain.LogManager),
                 new SetHeadBlockHandler(chain.BlockTree, chain.State, chain.LogManager),
                 new FinaliseBlockHandler(chain.BlockFinder, chain.BlockFinalizationManager, chain.LogManager),
@@ -76,7 +77,7 @@ namespace Nethermind.Merge.Plugin.Test
 
             private ISigner Signer { get; }
 
-            protected override ITestBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, BlockchainProcessor chainProcessor, IStateProvider producerStateProvider, ISealer sealer)
+            protected override IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
             {
                 MiningConfig miningConfig = new();
                 TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator = new(SpecProvider, miningConfig);
@@ -91,13 +92,14 @@ namespace Nethermind.Merge.Plugin.Test
                     ReceiptStorage,
                     BlockPreprocessorStep,
                     TxPool,
+                    transactionComparerProvider,
                     miningConfig,
                     LogManager);
                 
-                return (ITestBlockProducer) new Eth2TestBlockProducerFactory(targetAdjustedGasLimitCalculator).Create(
+                return new Eth2TestBlockProducerFactory(targetAdjustedGasLimitCalculator).Create(
                     blockProducerEnvFactory,
                     BlockTree,
-                    BlockProcessingQueue,
+                    BlockProductionTrigger,
                     SpecProvider,
                     Signer,
                     _timestamper,
@@ -112,7 +114,7 @@ namespace Nethermind.Merge.Plugin.Test
                     SpecProvider,
                     BlockValidator,
                     NoBlockRewards.Instance,
-                    TxProcessor,
+                    new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
                     State,
                     Storage,
                     ReceiptStorage,
@@ -139,6 +141,7 @@ namespace Nethermind.Merge.Plugin.Test
             {
                 TestBlockchain chain = await base.Build(specProvider, initialValues);
                 await chain.BlockchainProcessor.StopAsync(true);
+                Suggester.Dispose();
                 return chain;
             }
 
