@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 export WORKDIR=$HOME
-BRANCH=${2:-master}
+BRANCH=$2
 RPC_PORT=8545
 BUILD_DIR="build"
 BUILD_NEW_DIR="build_new"
