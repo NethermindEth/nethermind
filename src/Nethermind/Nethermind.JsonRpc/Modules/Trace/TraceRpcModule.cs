@@ -151,15 +151,12 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         public ResultWrapper<ParityTxTraceFromStore[]> trace_filter(TraceFilterForRpc traceFilterForRpc)
         {
-            _logger.Warn("Trace filtering");
-            if (_logger.IsTrace) _logger.Trace("Executing trace_filter");
             TxTraceFilter txTracerFilter = new(traceFilterForRpc.FromAddress, traceFilterForRpc.ToAddress, traceFilterForRpc.After, traceFilterForRpc.Count, _specProvider, _logManager);
             List<ParityLikeTxTrace> txTraces = new();
             IEnumerable<SearchResult<Block>> blocksSearch =
                 _blockFinder.SearchForBlocksOnMainChain(traceFilterForRpc.FromBlock ?? BlockParameter.Latest, traceFilterForRpc.ToBlock ?? BlockParameter.Latest);
             foreach (SearchResult<Block> blockSearch in blocksSearch)
             {
-                _logger.Warn($"ShouldContinue");
                 if (!txTracerFilter.ShouldContinue())
                     break;
                 if (blockSearch.IsError)
@@ -167,7 +164,6 @@ namespace Nethermind.JsonRpc.Modules.Trace
                     return ResultWrapper<ParityTxTraceFromStore[]>.Fail(blockSearch);
                 }
                 Block block = blockSearch.Object;
-                _logger.Warn($"ShouldTraceBlock {block}");
                 if (!txTracerFilter.ShouldTraceBlock(block))
                     continue;
 

@@ -52,7 +52,6 @@ namespace Nethermind.Evm.Tracing
 
         public bool ShouldTraceTx(Transaction? tx, bool validateChainId)
         {
-            _logger.Warn($"Tracing transaction {tx}, from: {tx?.SenderAddress}, to: {tx?.To}, fromAddresses: {_fromAddresses}, toAddresses {_toAddresses}, after {_after}, count {_count}");
             if (_logger.IsTrace) _logger.Trace($"Tracing transaction {tx}, from: {tx?.SenderAddress}, to: {tx?.To}, fromAddresses: {_fromAddresses}, toAddresses {_toAddresses}, after {_after}, count {_count}");
             if (tx == null ||
                 !TxMatchesAddresses(tx, validateChainId) ||
@@ -78,20 +77,16 @@ namespace Nethermind.Evm.Tracing
 
         public bool ShouldTraceBlock(Block? block)
         {
-            _logger.Warn(
-                $"Trace block {block}");
             if (block == null)
                 return false;
             
             int txCount = CountMatchingTransactions(block);
-            _logger.Warn(
-                $"Checking if we should trace block {block}, matching tx count: {txCount}, after: {_after}");
             if (_logger.IsTrace)
                 _logger.Trace(
                     $"Checking if we should trace block {block}, matching tx count: {txCount}, after: {_after}");
             if (_after >= txCount)
             {
-                // we can skip the block if it don't achieve after
+                // we can skip the block if it don't have enough transactions
                 _after -= txCount;
                 return false;
             }
@@ -101,8 +96,6 @@ namespace Nethermind.Evm.Tracing
 
         private int CountMatchingTransactions(Block block)
         {
-            _logger.Warn(
-                $"Counting the block transactions count: {block.Transactions.Length}, {_fromAddresses}, {_toAddresses}");
             if (_fromAddresses == null && _toAddresses == null)
                 return block.Transactions.Length;
 
@@ -111,12 +104,8 @@ namespace Nethermind.Evm.Tracing
             for (int index = 0; index < block.Transactions.Length; index++)
             {
                 Transaction tx = block.Transactions[index];
-                _logger.Warn(
-                    $"Checking {tx}, {tx.SenderAddress} {tx.To}");
                 if (TxMatchesAddresses(tx, validateChainId))
                 {
-                    _logger.Warn(
-                        $"Increase the counter for tx {tx}");
                     ++counter;
                 }
             }
