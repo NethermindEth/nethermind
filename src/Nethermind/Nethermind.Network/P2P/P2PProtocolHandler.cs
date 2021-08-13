@@ -296,6 +296,7 @@ namespace Nethermind.Network.P2P
             new Capability(Protocol.Eth, 63),
             new Capability(Protocol.Eth, 64),
             new Capability(Protocol.Eth, 65),
+            new Capability(Protocol.Eth, 66),
             // new Capability(Protocol.Les, 3)
         };
 
