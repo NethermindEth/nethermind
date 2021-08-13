@@ -17,6 +17,8 @@
 
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Logging;
 
 namespace Nethermind.Evm.Tracing
@@ -27,28 +29,33 @@ namespace Nethermind.Evm.Tracing
         private readonly Address[]? _toAddresses;
         private int _after;
         private int? _count;
+        private readonly ISpecProvider _specProvider;
         private readonly ILogger _logger;
+        private readonly EthereumEcdsa _ecdsa;
         
         public TxTraceFilter(
             Address[]? fromAddresses,
             Address[]? toAddresses,
             int after,
             int? count,
+            ISpecProvider specProvider,
             ILogManager logManager)
         {
             _fromAddresses = fromAddresses;
             _toAddresses = toAddresses;
             _after = after;
             _count = count;
+            _specProvider = specProvider;
             _logger = logManager.GetClassLogger();
+            _ecdsa = new EthereumEcdsa(specProvider.ChainId, logManager);
         }
 
-        public bool ShouldTraceTx(Transaction? tx)
+        public bool ShouldTraceTx(Transaction? tx, bool validateChainId)
         {
             _logger.Warn($"Tracing transaction {tx}, from: {tx?.SenderAddress}, to: {tx?.To}, fromAddresses: {_fromAddresses}, toAddresses {_toAddresses}, after {_after}, count {_count}");
             if (_logger.IsTrace) _logger.Trace($"Tracing transaction {tx}, from: {tx?.SenderAddress}, to: {tx?.To}, fromAddresses: {_fromAddresses}, toAddresses {_toAddresses}, after {_after}, count {_count}");
             if (tx == null ||
-                !TxMatchesAddresses(tx) ||
+                !TxMatchesAddresses(tx, validateChainId) ||
                 (_count <= 0))
             {
                 return false;
@@ -100,12 +107,13 @@ namespace Nethermind.Evm.Tracing
                 return block.Transactions.Length;
 
             int counter = 0;
+            bool validateChainId = _specProvider.GetSpec(block.Number).ValidateChainId;
             for (int index = 0; index < block.Transactions.Length; index++)
             {
                 Transaction tx = block.Transactions[index];
                 _logger.Warn(
                     $"Checking {tx}, {tx.SenderAddress} {tx.To}");
-                if (TxMatchesAddresses(tx))
+                if (TxMatchesAddresses(tx, validateChainId))
                 {
                     _logger.Warn(
                         $"Increase the counter for tx {tx}");
@@ -116,9 +124,12 @@ namespace Nethermind.Evm.Tracing
             return counter;
         }
 
-        private bool TxMatchesAddresses(Transaction tx)
+        private bool TxMatchesAddresses(Transaction tx, bool validateChainId)
         {
-            return (_fromAddresses == null || _fromAddresses.Contains(tx.SenderAddress)) &&
+            Address? senderAddress = tx.SenderAddress;
+            if (senderAddress == null && tx.Signature != null)
+                senderAddress = _ecdsa.RecoverAddress(tx, !validateChainId);
+            return (_fromAddresses == null || _fromAddresses.Contains(senderAddress)) &&
                 (_toAddresses == null || _toAddresses.Contains(tx.To));
         }
     }

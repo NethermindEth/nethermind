@@ -17,6 +17,7 @@
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing.ParityStyle
@@ -24,13 +25,16 @@ namespace Nethermind.Evm.Tracing.ParityStyle
     public class ParityLikeBlockTracer : BlockTracerBase<ParityLikeTxTrace, ParityLikeTxTracer>
     {
         private Block _block = null!;
+        private bool _validateChainId;
         private readonly ParityTraceTypes _types;
+        private readonly ISpecProvider _specProvider;
         private readonly TxTraceFilter? _traceFilter = null;
 
-        public ParityLikeBlockTracer(Keccak txHash, ParityTraceTypes types)
+        public ParityLikeBlockTracer(Keccak txHash, ParityTraceTypes types, ISpecProvider specProvider)
             : base(txHash)
         {
             _types = types;
+            _specProvider = specProvider;
             IsTracingRewards = (types & ParityTraceTypes.Rewards) == ParityTraceTypes.Rewards;
         }
 
@@ -72,6 +76,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
 
         public override void StartNewBlockTrace(Block block)
         {
+            _validateChainId = _specProvider.GetSpec(block.Number).ValidateChainId;
             _block = block;
         }
         
@@ -83,7 +88,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         {
             if (base.ShouldTraceTx(tx))
             {
-                return _traceFilter == null || _traceFilter.ShouldTraceTx(tx);
+                return _traceFilter == null || _traceFilter.ShouldTraceTx(tx, _validateChainId);
             }
 
             return false;

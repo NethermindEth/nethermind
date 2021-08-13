@@ -86,7 +86,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             
             Tracer tracer = new(chainProcessingEnv.StateProvider, chainProcessingEnv.ChainProcessor);
 
-            return new TraceRpcModule(_receiptStorage, tracer, _blockTree, _jsonRpcConfig, _logManager);
+            return new TraceRpcModule(_receiptStorage, tracer, _blockTree, _jsonRpcConfig, _specProvider, _logManager);
         }
 
         public static JsonConverter[] Converters =

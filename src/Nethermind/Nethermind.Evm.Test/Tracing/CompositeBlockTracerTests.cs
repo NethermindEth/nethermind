@@ -22,6 +22,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Evm.Tracing.ParityStyle;
+using Nethermind.Specs;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing
@@ -34,7 +35,7 @@ namespace Nethermind.Evm.Test.Tracing
         {
             Keccak txHash = TestItem.KeccakA;
             GethLikeBlockTracer gethLikeBlockTracer = new(txHash, GethTraceOptions.Default);
-            ParityLikeBlockTracer parityLikeBlockTracer = new(txHash, ParityTraceTypes.All);
+            ParityLikeBlockTracer parityLikeBlockTracer = new(txHash, ParityTraceTypes.All, MainnetSpecProvider.Instance);
 
             CompositeBlockTracer compositeBlockTracer = new CompositeBlockTracer();
             compositeBlockTracer.AddRange(gethLikeBlockTracer, parityLikeBlockTracer);

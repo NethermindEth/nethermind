@@ -24,6 +24,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Int256;
@@ -42,14 +43,16 @@ namespace Nethermind.JsonRpc.Modules.Trace
         private readonly IJsonRpcConfig _jsonRpcConfig;
         private readonly ILogManager _logManager;
         private readonly ILogger _logger;
+        private readonly ISpecProvider _specProvider;
         private readonly TimeSpan _cancellationTokenTimeout;
 
-        public TraceRpcModule(IReceiptFinder receiptFinder, ITracer tracer, IBlockFinder blockFinder, IJsonRpcConfig jsonRpcConfig, ILogManager logManager)
+        public TraceRpcModule(IReceiptFinder receiptFinder, ITracer tracer, IBlockFinder blockFinder, IJsonRpcConfig jsonRpcConfig, ISpecProvider specProvider ,ILogManager logManager)
         {
             _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
             _tracer = tracer ?? throw new ArgumentNullException(nameof(tracer));
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
             _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
+            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _logger = logManager.GetClassLogger();
             _cancellationTokenTimeout = TimeSpan.FromMilliseconds(_jsonRpcConfig.Timeout);
@@ -150,7 +153,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         {
             _logger.Warn("Trace filtering");
             if (_logger.IsTrace) _logger.Trace("Executing trace_filter");
-            TxTraceFilter txTracerFilter = new(traceFilterForRpc.FromAddress, traceFilterForRpc.ToAddress, traceFilterForRpc.After, traceFilterForRpc.Count, _logManager);
+            TxTraceFilter txTracerFilter = new(traceFilterForRpc.FromAddress, traceFilterForRpc.ToAddress, traceFilterForRpc.After, traceFilterForRpc.Count, _specProvider, _logManager);
             List<ParityLikeTxTrace> txTraces = new();
             IEnumerable<SearchResult<Block>> blocksSearch =
                 _blockFinder.SearchForBlocksOnMainChain(traceFilterForRpc.FromBlock ?? BlockParameter.Latest, traceFilterForRpc.ToBlock ?? BlockParameter.Latest);
@@ -231,7 +234,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             using CancellationTokenSource cancellationTokenSource = new(_cancellationTokenTimeout);
             CancellationToken cancellationToken = cancellationTokenSource.Token;
 
-            ParityLikeBlockTracer listener = new(txHash, traceTypes);
+            ParityLikeBlockTracer listener = new(txHash, traceTypes, _specProvider);
             _tracer.Trace(block, listener.WithCancellation(cancellationToken));
 
             return listener.BuildResult().SingleOrDefault();

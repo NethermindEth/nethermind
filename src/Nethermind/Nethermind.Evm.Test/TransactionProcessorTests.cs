@@ -647,7 +647,7 @@ namespace Nethermind.Evm.Test
                 types = types | ParityTraceTypes.Trace;
             }
 
-            IBlockTracer otherTracer = types != ParityTraceTypes.None ? new ParityLikeBlockTracer(tx.Hash, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff) : (IBlockTracer) NullBlockTracer.Instance;
+            IBlockTracer otherTracer = types != ParityTraceTypes.None ? new ParityLikeBlockTracer(tx.Hash, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff, _specProvider) : (IBlockTracer) NullBlockTracer.Instance;
             BlockReceiptsTracer tracer = new();
             tracer.SetOtherTracer(otherTracer);
             return tracer;

@@ -19,6 +19,7 @@ using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
+using Nethermind.Specs;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing
@@ -30,19 +31,19 @@ namespace Nethermind.Evm.Test.Tracing
         [Test]
         public void Trace_filter_should_skip_expected_number_of_transactions()
         {
-            TxTraceFilter traceFilter = new(null, null, 2, null, LimboLogs.Instance);
+            TxTraceFilter traceFilter = new(null, null, 2, null,  MainnetSpecProvider.Instance, LimboLogs.Instance);
             Transaction tx1 = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).WithNonce(0).TestObject;
             Transaction tx2 = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).WithNonce(1).TestObject;
             Transaction tx3 = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).WithNonce(2).TestObject;
-            Assert.AreEqual(false, traceFilter.ShouldTraceTx(tx1));
-            Assert.AreEqual(false, traceFilter.ShouldTraceTx(tx2));
-            Assert.AreEqual(true, traceFilter.ShouldTraceTx(tx3));
+            Assert.AreEqual(false, traceFilter.ShouldTraceTx(tx1, true));
+            Assert.AreEqual(false, traceFilter.ShouldTraceTx(tx2, true));
+            Assert.AreEqual(true, traceFilter.ShouldTraceTx(tx3, true));
         }
         
         [Test]
         public void Trace_filter_should_skip_expected_number_of_blocks()
         {
-            TxTraceFilter traceFilter = new(null, null, 2, null, LimboLogs.Instance);
+            TxTraceFilter traceFilter = new(null, null, 2, null, MainnetSpecProvider.Instance, LimboLogs.Instance);
 
             Transaction[] firstBlockTxs = {
                 Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).WithNonce(0).TestObject,
@@ -62,7 +63,7 @@ namespace Nethermind.Evm.Test.Tracing
         [Test]
         public void Trace_filter_should_trace_block_with_given_from_address()
         {
-            TxTraceFilter traceFilter = new(new []{ TestItem.AddressA }, null, 0, null, LimboLogs.Instance);
+            TxTraceFilter traceFilter = new(new []{ TestItem.AddressA }, null, 0, null, MainnetSpecProvider.Instance, LimboLogs.Instance);
 
             Transaction[] firstBlockTxs = {
                 Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).WithNonce(0).TestObject,
