@@ -150,7 +150,6 @@ namespace Nethermind.JsonRpc.Modules.Trace
         {
             _logger.Warn("Trace filtering");
             if (_logger.IsTrace) _logger.Trace("Executing trace_filter");
-            return ResultWrapper<ParityTxTraceFromStore[]>.Fail("test");
             TxTraceFilter txTracerFilter = new(traceFilterForRpc.FromAddress, traceFilterForRpc.ToAddress, traceFilterForRpc.After, traceFilterForRpc.Count, _logManager);
             List<ParityLikeTxTrace> txTraces = new();
             IEnumerable<SearchResult<Block>> blocksSearch =
