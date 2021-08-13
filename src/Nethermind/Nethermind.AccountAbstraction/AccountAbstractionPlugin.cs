@@ -11,6 +11,7 @@ using Nethermind.Blockchain.Producers;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Core.Timers;
 using Nethermind.Evm.Tracing.Access;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -31,6 +32,8 @@ namespace Nethermind.AccountAbstraction
 
         private INethermindApi _nethermindApi = null!;
         private ILogger _logger;
+
+        private TimerFactory _timerFactory = new TimerFactory();
 
         public string Name => "Account Abstraction";
 
@@ -164,6 +167,7 @@ namespace Nethermind.AccountAbstraction
 
             IManualBlockProductionTrigger trigger = new BuildBlocksWhenRequested();
             UserOperationTxSource userOperationTxSource = new(UserOperationPool, _simulatedUserOperations, UserOperationSimulator);
+            ContinuousBundleSender continuousBundleSender = new ContinuousBundleSender(_nethermindApi.BlockTree, userOperationTxSource, _accountAbstractionConfig, _timerFactory);
             return consensusPlugin.InitBlockProducer(trigger, userOperationTxSource);
         }
 
