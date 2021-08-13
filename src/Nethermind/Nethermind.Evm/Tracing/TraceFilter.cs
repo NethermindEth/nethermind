@@ -45,6 +45,7 @@ namespace Nethermind.Evm.Tracing
 
         public bool ShouldTraceTx(Transaction? tx)
         {
+            _logger.Warn($"Tracing transaction {tx}, from: {tx?.SenderAddress}, to: {tx?.To}, fromAddresses: {_fromAddresses}, toAddresses {_toAddresses}, after {_after}, count {_count}");
             if (_logger.IsTrace) _logger.Trace($"Tracing transaction {tx}, from: {tx?.SenderAddress}, to: {tx?.To}, fromAddresses: {_fromAddresses}, toAddresses {_toAddresses}, after {_after}, count {_count}");
             if (tx == null ||
                 !TxMatchesAddresses(tx) ||
