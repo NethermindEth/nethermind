@@ -35,7 +35,7 @@ namespace Nethermind.Evm.Test.Tracing
         {
             Keccak txHash = TestItem.KeccakA;
             GethLikeBlockTracer gethLikeBlockTracer = new(txHash, GethTraceOptions.Default);
-            ParityLikeBlockTracer parityLikeBlockTracer = new(txHash, ParityTraceTypes.All, MainnetSpecProvider.Instance);
+            ParityLikeBlockTracer parityLikeBlockTracer = new(txHash, ParityTraceTypes.All);
 
             CompositeBlockTracer compositeBlockTracer = new CompositeBlockTracer();
             compositeBlockTracer.AddRange(gethLikeBlockTracer, parityLikeBlockTracer);

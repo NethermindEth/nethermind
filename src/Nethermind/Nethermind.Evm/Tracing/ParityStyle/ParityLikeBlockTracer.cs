@@ -30,11 +30,10 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         private readonly ISpecProvider _specProvider;
         private readonly TxTraceFilter? _traceFilter = null;
 
-        public ParityLikeBlockTracer(Keccak txHash, ParityTraceTypes types, ISpecProvider specProvider)
+        public ParityLikeBlockTracer(Keccak txHash, ParityTraceTypes types)
             : base(txHash)
         {
             _types = types;
-            _specProvider = specProvider;
             IsTracingRewards = (types & ParityTraceTypes.Rewards) == ParityTraceTypes.Rewards;
         }
 
@@ -44,10 +43,11 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             IsTracingRewards = (types & ParityTraceTypes.Rewards) == ParityTraceTypes.Rewards;
         }
         
-        public ParityLikeBlockTracer(ParityTraceTypes types, TxTraceFilter? traceFilter)
+        public ParityLikeBlockTracer(ParityTraceTypes types, TxTraceFilter? traceFilter, ISpecProvider specProvider)
         {
             _types = types;
             _traceFilter = traceFilter;
+            _specProvider = specProvider;
             IsTracingRewards = (types & ParityTraceTypes.Rewards) == ParityTraceTypes.Rewards;
         }
 
@@ -76,7 +76,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
 
         public override void StartNewBlockTrace(Block block)
         {
-            _validateChainId = _specProvider.GetSpec(block.Number).ValidateChainId;
+            _validateChainId = _specProvider != null ? _specProvider.GetSpec(block.Number).ValidateChainId : true;
             _block = block;
         }
         
