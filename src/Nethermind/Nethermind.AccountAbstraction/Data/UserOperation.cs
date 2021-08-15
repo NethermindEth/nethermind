@@ -16,6 +16,7 @@
 // 
 
 using System;
+using Nethermind.AccountAbstraction.Broadcaster;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
@@ -37,6 +38,7 @@ namespace Nethermind.AccountAbstraction.Data
             Signer = signer;
             Signature = signature;
             AccessList = accessList;
+            Hash = this.CalculateHash();
         }
 
         public Address Target { get; }
@@ -50,5 +52,6 @@ namespace Nethermind.AccountAbstraction.Data
         public Signature Signature { get; }
         public AccessList AccessList { get; }
         public int ResimulationCounter { get; set; }
+        public Keccak? Hash { get; set; }
     }
 }
