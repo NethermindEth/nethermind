@@ -36,8 +36,6 @@ namespace Nethermind.AccountAbstraction.Broadcaster
     /// </summary>
     internal class UserOperationBroadcaster : IDisposable
     {
-
-
         /// <summary>
         /// Connected peers that can be notified about user operations.
         /// </summary>

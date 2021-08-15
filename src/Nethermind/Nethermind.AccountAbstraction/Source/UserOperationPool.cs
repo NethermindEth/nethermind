@@ -22,6 +22,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
+using Nethermind.AccountAbstraction.Broadcaster;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Executor;
 using Nethermind.Blockchain;
@@ -93,7 +94,13 @@ namespace Nethermind.AccountAbstraction.Source
             {
                 if (peer.OutSession.HasAgreedCapability(aaCapability))
                 {
-                    // TODO : Broadcast
+                    Task.Run(() =>
+                    {
+                        // This method is not implemented yet
+                        // but added just for the purpose of
+                        // understanding
+                        Notify(peer, userOperation, true);
+                    });
                 }
             }
         }
