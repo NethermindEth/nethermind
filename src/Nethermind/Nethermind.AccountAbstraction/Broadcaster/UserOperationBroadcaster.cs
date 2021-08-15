@@ -32,19 +32,19 @@ using Nethermind.TxPool.Collections;
 namespace Nethermind.AccountAbstraction.Broadcaster
 {
     /// <summary>
-    /// This class responsibility is to notify other peers about interesting transactions.
+    /// This class responsibility is to notify other peers about interesting user-operations.
     /// </summary>
     internal class UserOperationBroadcaster : IDisposable
     {
 
 
         /// <summary>
-        /// Connected peers that can be notified about transactions.
+        /// Connected peers that can be notified about user operations.
         /// </summary>
-        private readonly ConcurrentDictionary<PublicKey, ITxPoolPeer> _peers = new();
+        private readonly ConcurrentDictionary<PublicKey, IUserOperationPoolPeer> _peers = new();
         
         /// <summary>
-        /// Transactions published locally (initiated by this node users) or reorganised.
+        /// UserOperations published locally (initiated by this node users) or reorganised.
         /// </summary>
         private readonly SortedPool<UserOperation, UserOperation, Address> _userOperation;
 

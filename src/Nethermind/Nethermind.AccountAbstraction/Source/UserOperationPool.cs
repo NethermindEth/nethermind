@@ -88,10 +88,10 @@ namespace Nethermind.AccountAbstraction.Source
 
         private void BroadcastToCompatiblePeers(UserOperation userOperation, IReadOnlyCollection<Peer> peers)
         {
-            Capability? aaCapabiltiy = new Capability(Protocol.AA, 0);
+            Capability? aaCapability = new Capability(Protocol.AA, 0);
             foreach (var peer in peers)
             {
-                if (peer.OutSession.HasAgreedCapability(aaCapabiltiy))
+                if (peer.OutSession.HasAgreedCapability(aaCapability))
                 {
                     // TODO : Broadcast
                 }
