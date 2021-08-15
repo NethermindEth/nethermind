@@ -106,6 +106,7 @@ namespace Nethermind.Runner
             CommandOption configsDirectory = app.Option("-cd|--configsDirectory <configsDirectory>", "configs directory", CommandOptionType.SingleValue);
             CommandOption loggerConfigSource = app.Option("-lcs|--loggerConfigSource <loggerConfigSource>", "path to the NLog config file", CommandOptionType.SingleValue);
             _ = app.Option("-pd|--pluginsDirectory <pluginsDirectory>", "plugins directory", CommandOptionType.SingleValue);
+            _ = app.Option("-b|--Discovery.Bootnodes <addresses>","comma seperated bootnodes values",CommandOptionType.MultipleValue);
             
             IFileSystem fileSystem = new FileSystem();
             
@@ -143,6 +144,7 @@ namespace Nethermind.Runner
                     if (!(configItemAttribute?.HiddenFromDocs ?? false))
                     {
                         _ = app.Option($"--{configType.Name[1..].Replace("Config", string.Empty)}.{propertyInfo.Name}", $"{(configItemAttribute == null ? "<missing documentation>" : configItemAttribute.Description + $" (DEFAULT: {configItemAttribute.DefaultValue})" ?? "<missing documentation>")}", CommandOptionType.SingleValue);
+                        
                     }
                 }
             }
