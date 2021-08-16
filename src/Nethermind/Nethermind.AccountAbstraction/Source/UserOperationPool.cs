@@ -22,18 +22,18 @@ using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Threading.Tasks.Dataflow;
+using Nethermind.AccountAbstraction.Broadcaster;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Executor;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Evm.Tracing.Access;
+using Nethermind.Network;
+using Nethermind.Network.P2P;
 using Nethermind.State;
+using Nethermind.Stats.Model;
 using Nethermind.TxPool.Collections;
-using Nethermind.AccountAbstraction.Flashbots;
-using Nethermind.Core.Timers;
-using Nethermind.AccountAbstraction.Executor;
-using Nethermind.Api;
-using Nethermind.Logging;
 
 namespace Nethermind.AccountAbstraction.Source
 {
@@ -49,16 +49,16 @@ namespace Nethermind.AccountAbstraction.Source
         private readonly UserOperationSortedPool _userOperationSortedPool;
         private readonly IUserOperationSimulator _userOperationSimulator;
         private readonly ConcurrentDictionary<UserOperation, SimulatedUserOperation> _simulatedUserOperations;
-        private readonly ITimer _timer;
+        private readonly IPeerManager _peerManager;
 
-        public UserOperationPool(
-            IBlockTree blockTree,
+        public UserOperationPool(IBlockTree blockTree,
             IStateProvider stateProvider,
             ITimestamper timestamper,
             IAccessListSource accessListSource,
             IAccountAbstractionConfig accountAbstractionConfig,
             IDictionary<Address, int> paymasterOffenseCounter,
             ISet<Address> bannedPaymasters,
+            IPeerManager? peerManager,
             UserOperationSortedPool userOperationSortedPool,
             IUserOperationSimulator userOperationSimulator,
             ConcurrentDictionary<UserOperation, SimulatedUserOperation> simulatedUserOperations)
@@ -73,16 +73,35 @@ namespace Nethermind.AccountAbstraction.Source
             _userOperationSortedPool = userOperationSortedPool;
             _userOperationSimulator = userOperationSimulator;
             _simulatedUserOperations = simulatedUserOperations;
+            _peerManager = peerManager;
 
             blockTree.NewHeadBlock += OnNewBlock;
             _userOperationSortedPool.Inserted += UserOperationInserted;
             _userOperationSortedPool.Removed += UserOperationRemoved;
+
         }
         
         private void UserOperationInserted(object? sender, SortedPool<UserOperation, UserOperation, Address>.SortedPoolEventArgs e)
         {
             UserOperation userOperation = e.Key;
             SimulateAndAddToPool(userOperation, _blockTree.Head!.Header);
+            BroadcastToCompatiblePeers(userOperation, _peerManager.ConnectedPeers);
+        }
+
+        private void BroadcastToCompatiblePeers(UserOperation userOperation, IReadOnlyCollection<Peer> peers)
+        {
+            Capability? aaCapability = new Capability(Protocol.AA, 0);
+            IEnumerable<Peer> compatiblePeers = peers.Where(peer => peer.OutSession.HasAgreedCapability(aaCapability));
+            foreach (var peer in compatiblePeers)
+            {
+                Task.Run(() =>
+                    {
+                        // This method is not implemented yet
+                        // but added just for the purpose of
+                        // understanding
+                        //Notify(peer, userOperation, true);
+                    });
+            }
         }
 
         private void UserOperationRemoved(object? sender, SortedPool<UserOperation, UserOperation, Address>.SortedPoolRemovedEventArgs e)

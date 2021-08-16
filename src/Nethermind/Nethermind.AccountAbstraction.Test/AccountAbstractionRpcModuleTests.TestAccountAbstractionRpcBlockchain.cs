@@ -48,6 +48,7 @@ using Nethermind.Mev;
 using Nethermind.Mev.Data;
 using Nethermind.Mev.Execution;
 using Nethermind.Mev.Source;
+using Nethermind.Network;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -150,11 +151,14 @@ namespace Nethermind.AccountAbstraction.Test
                     LogManager, 
                     BlockPreprocessorStep);
                 
+                IPeerManager peerManager = Substitute.For<IPeerManager>();
+                
                 UserOperationPool = new UserOperationPool(BlockTree, State, Timestamper, new AccessBlockTracer(
                     Array.Empty<Address>()), 
                     _accountAbstractionConfig, 
                     new Dictionary<Address, int>(),
-                    new HashSet<Address>(), 
+                    new HashSet<Address>(),
+                    peerManager,
                     new UserOperationSortedPool(_accountAbstractionConfig.UserOperationPoolSize, new CompareUserOperationsByDecreasingGasPrice(), LogManager),
                     UserOperationSimulator,
                     SimulatedUserOperations);

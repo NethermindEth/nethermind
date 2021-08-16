@@ -48,7 +48,6 @@ namespace Nethermind.AccountAbstraction
                 if (_userOperationPool is null)
                 {
                     var (getFromApi, _) = _nethermindApi!.ForProducer;
-
                     UserOperationSortedPool userOperationSortedPool = new(
                         _accountAbstractionConfig.UserOperationPoolSize,
                         CompareUserOperationsByDecreasingGasPrice.Default,
@@ -62,6 +61,7 @@ namespace Nethermind.AccountAbstraction
                         _accountAbstractionConfig,
                         _paymasterOffenseCounter,
                         _bannedPaymasters,
+                        _nethermindApi.PeerManager,
                         userOperationSortedPool,
                         UserOperationSimulator,
                         _simulatedUserOperations
@@ -122,7 +122,7 @@ namespace Nethermind.AccountAbstraction
             {
                 _nethermindApi.BlockchainProcessor!.Tracers.Add(AccessBlockTracer);
             }
-            
+
             return Task.CompletedTask;
         }
 

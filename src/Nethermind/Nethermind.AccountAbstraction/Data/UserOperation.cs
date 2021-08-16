@@ -16,6 +16,7 @@
 // 
 
 using System;
+using Nethermind.AccountAbstraction.Broadcaster;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
@@ -23,10 +24,12 @@ using Nethermind.Int256;
 
 namespace Nethermind.AccountAbstraction.Data
 {
-    public class UserOperation
+    public partial class UserOperation
     {
         public UserOperation(Address target, UInt256 nonce, byte[] callData, long callGas, UInt256 maxFeePerGas, UInt256 maxPriorityFeePerGas, Address paymaster, Address signer, Signature signature, AccessList accessList)
         {
+            Hash = CalculateHash(this);
+
             Target = target;
             Nonce = nonce;
             CallData = callData;
@@ -50,5 +53,6 @@ namespace Nethermind.AccountAbstraction.Data
         public Signature Signature { get; }
         public AccessList AccessList { get; }
         public int ResimulationCounter { get; set; }
+        public Keccak? Hash { get; set; }
     }
 }
