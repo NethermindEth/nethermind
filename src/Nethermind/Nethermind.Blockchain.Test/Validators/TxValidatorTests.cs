@@ -20,6 +20,7 @@ using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -167,6 +168,8 @@ namespace Nethermind.Blockchain.Test.Validators
             Transaction tx = Build.A.Transaction
                 .WithType(txType)
                 .WithChainId(ChainId.Mainnet)
+                .WithMaxPriorityFeePerGas(txType == TxType.EIP1559 ? 10.GWei() : 5.GWei())
+                .WithMaxFeePerGas(txType == TxType.EIP1559 ? 10.GWei() : 5.GWei())
                 .WithAccessList(txType == TxType.AccessList || txType == TxType.EIP1559 ? new AccessList(new Dictionary<Address, IReadOnlySet<UInt256>>()) : null)
                 .WithSignature(signature).TestObject;
 
@@ -175,6 +178,55 @@ namespace Nethermind.Blockchain.Test.Validators
             TxValidator txValidator = new TxValidator(1);
             IReleaseSpec releaseSpec = new ReleaseSpec() {IsEip2930Enabled = eip2930, IsEip1559Enabled = eip1559};
             return txValidator.IsWellFormed(tx, releaseSpec);
+        }
+        
+        
+        [TestCase(TxType.Legacy, ExpectedResult = true)]
+        [TestCase(TxType.AccessList, ExpectedResult = false)]
+        [TestCase(TxType.EIP1559, ExpectedResult = false)]
+        public bool Chain_Id_required_for_non_legacy_transactions_after_Berlin(TxType txType)
+        {
+            byte[] sigData = new byte[65];
+            sigData[31] = 1; // correct r
+            sigData[63] = 1; // correct s
+            sigData[64] = 38;
+            Signature signature = new Signature(sigData);
+            Transaction tx = Build.A.Transaction
+                .WithType(txType > TxType.AccessList ? TxType.Legacy : txType)
+                .WithAccessList(txType == TxType.AccessList ? new AccessList(new Dictionary<Address, IReadOnlySet<UInt256>>()) : null)
+                .WithSignature(signature).TestObject;
+
+            tx.Type = txType;
+            
+            TxValidator txValidator = new TxValidator(ChainId.Mainnet);
+            return txValidator.IsWellFormed(tx, Berlin.Instance);
+        }
+
+        [TestCase(TxType.Legacy, 10, 5, ExpectedResult = true)]
+        [TestCase(TxType.AccessList, 10, 5, ExpectedResult = true)]
+        [TestCase(TxType.EIP1559, 10, 5, ExpectedResult = true)]
+        [TestCase(TxType.Legacy, 5, 10, ExpectedResult = true)]
+        [TestCase(TxType.AccessList, 5, 10, ExpectedResult = true)]
+        [TestCase(TxType.EIP1559, 5, 10, ExpectedResult = false)]
+        public bool MaxFeePerGas_is_required_to_be_greater_than_MaxPriorityFeePerGas(TxType txType, int maxFeePerGas, int maxPriorityFeePerGas)
+        {
+            byte[] sigData = new byte[65];
+            sigData[31] = 1; // correct r
+            sigData[63] = 1; // correct s
+            sigData[64] = 38;
+            Signature signature = new Signature(sigData);
+            Transaction tx = Build.A.Transaction
+                .WithType(txType > TxType.AccessList ? TxType.Legacy : txType)
+                .WithMaxPriorityFeePerGas((UInt256)maxPriorityFeePerGas)
+                .WithMaxFeePerGas((UInt256)maxFeePerGas)
+                .WithAccessList(txType == TxType.AccessList ? new AccessList(new Dictionary<Address, IReadOnlySet<UInt256>>()) : null)
+                .WithChainId(ChainId.Mainnet)
+                .WithSignature(signature).TestObject;
+
+            tx.Type = txType;
+            
+            TxValidator txValidator = new TxValidator(ChainId.Mainnet);
+            return txValidator.IsWellFormed(tx, London.Instance);
         }
     }
 }

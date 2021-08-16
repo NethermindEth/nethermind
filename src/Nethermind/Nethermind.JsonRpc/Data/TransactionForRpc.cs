@@ -16,6 +16,7 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using MathGmp.Native;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
@@ -29,7 +30,7 @@ namespace Nethermind.JsonRpc.Data
     {
         public TransactionForRpc(Transaction transaction) : this(null, null, null, transaction) { }
 
-        public TransactionForRpc(Keccak? blockHash, long? blockNumber, int? txIndex, Transaction transaction)
+        public TransactionForRpc(Keccak? blockHash, long? blockNumber, int? txIndex, Transaction transaction, UInt256? baseFee = null)
         {
             Hash = transaction.Hash;
             Nonce = transaction.Nonce;
@@ -44,9 +45,13 @@ namespace Nethermind.JsonRpc.Data
             Input = Data = transaction.Data;
             if (transaction.IsEip1559)
             {
-                MaxFeePerGas = transaction.FeeCap;
-                MaxPriorityFeePerGas = transaction.GasPremium;
+                GasPrice = baseFee != null
+                    ? transaction.CalculateEffectiveGasPrice(true, baseFee.Value)
+                    : transaction.MaxFeePerGas;
+                MaxFeePerGas = transaction.MaxFeePerGas;
+                MaxPriorityFeePerGas = transaction.MaxPriorityFeePerGas;
             }
+            ChainId = transaction.ChainId;
             Type = transaction.Type;
             AccessList = transaction.AccessList is null ? null : AccessListItemForRpc.FromAccessList(transaction.AccessList);
 
@@ -55,7 +60,7 @@ namespace Nethermind.JsonRpc.Data
             {
                 R = new UInt256(signature.R, true);
                 S = new UInt256(signature.S, true);
-                V = (UInt256?)signature.V;
+                V = transaction.Type == TxType.Legacy ? (UInt256?)signature.V : (UInt256?)signature.RecoveryId;
             }
         }
 
@@ -92,7 +97,9 @@ namespace Nethermind.JsonRpc.Data
 
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public byte[]? Input { get; set; }
-
+        
+        public UInt256? ChainId { get; set; }
+        
         public TxType Type { get; set; }
         
         public AccessListItemForRpc[]? AccessList { get; set; }
@@ -103,44 +110,55 @@ namespace Nethermind.JsonRpc.Data
 
         public UInt256? R { get; set; }
 
-        public Transaction ToTransactionWithDefaults(ulong? chainId = null)
+        public Transaction ToTransactionWithDefaults(ulong? chainId = null) => ToTransactionWithDefaults<Transaction>(chainId);
+
+        public T ToTransactionWithDefaults<T>(ulong? chainId = null) where T : Transaction, new()
         {
-            Transaction tx = new();
-            tx.GasLimit = Gas ?? 90000;
-            tx.GasPrice = GasPrice ?? 20.GWei();
-            tx.Nonce = (ulong)(Nonce ?? 0); // here pick the last nonce?
-            tx.To = To;
-            tx.SenderAddress = From;
-            tx.Value = Value ?? 0;
-            tx.Data = Data ?? Input;
-            tx.Type = Type;
-            tx.AccessList = TryGetAccessList();
-            tx.ChainId = chainId;
-            tx.DecodedFeeCap = MaxFeePerGas ?? 0;
+            T tx = new()
+            {
+                GasLimit = Gas ?? 90000,
+                GasPrice = GasPrice ?? 20.GWei(),
+                Nonce = (ulong)(Nonce ?? 0), // here pick the last nonce?
+                To = To,
+                SenderAddress = From,
+                Value = Value ?? 0,
+                Data = Data ?? Input,
+                Type = Type,
+                AccessList = TryGetAccessList(),
+                ChainId = chainId,
+                DecodedMaxFeePerGas = MaxFeePerGas ?? 0
+            };
+
             if (tx.IsEip1559)
+            {
                 tx.GasPrice = MaxPriorityFeePerGas ?? 0;
+            }
 
             return tx;
         }
 
-        public Transaction ToTransaction(ulong? chainId = null)
+        public Transaction ToTransaction(ulong? chainId = null) => ToTransaction<Transaction>();
+
+        public T ToTransaction<T>(ulong? chainId = null) where T : Transaction, new()
         {
-            Transaction tx = new();
-            tx.GasLimit = Gas ?? 0;
-            tx.GasPrice = GasPrice ?? 0;
-            tx.Nonce = (ulong)(Nonce ?? 0); // here pick the last nonce?
-            tx.To = To;
-            tx.SenderAddress = From;
-            tx.Value = Value ?? 0;
-            tx.Data = Data ?? Input;
-            tx.Type = Type;
-            tx.AccessList = TryGetAccessList();
-            tx.ChainId = chainId;
-            tx.Type = Type;
+            T tx = new()
+            {
+                GasLimit = Gas ?? 0,
+                GasPrice = GasPrice ?? 0,
+                Nonce = (ulong)(Nonce ?? 0), // here pick the last nonce?
+                To = To,
+                SenderAddress = From,
+                Value = Value ?? 0,
+                Data = Data ?? Input,
+                Type = Type,
+                AccessList = TryGetAccessList(),
+                ChainId = chainId
+            };
+            
             if (tx.IsEip1559)
             {
                 tx.GasPrice = MaxPriorityFeePerGas ?? 0;
-                tx.DecodedFeeCap = MaxFeePerGas ?? 0;
+                tx.DecodedMaxFeePerGas = MaxFeePerGas ?? 0;
             }
 
             return tx;

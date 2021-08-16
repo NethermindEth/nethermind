@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using FluentAssertions;
+using Nethermind.Db.Rocks;
 using Nethermind.Db.Rpc;
 using Nethermind.JsonRpc.Client;
 using Nethermind.Logging;
@@ -51,8 +52,7 @@ namespace Nethermind.Db.Test.Rpc
                 memDbProvider.BloomDb,
                 memDbProvider.HeadersDb,
                 memDbProvider.ReceiptsDb,
-                memDbProvider.BlockInfosDb,
-                memDbProvider.PendingTxsDb);
+                memDbProvider.BlockInfosDb);
 
             ValidateDb<ReadOnlyDb>(
                 memDbProvider.StateDb,

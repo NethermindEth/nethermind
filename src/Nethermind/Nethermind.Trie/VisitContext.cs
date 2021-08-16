@@ -18,12 +18,14 @@ namespace Nethermind.Trie
 {
     public class TrieVisitContext
     {
-        public int Level { get; set; }
+        public int Level { get; internal set; }
 
-        public bool IsStorage { get; set; }
+        public bool IsStorage { get; internal set; }
 
-        public int? BranchChildIndex { get; set; }
-        
-        public bool ExpectAccounts { get; set; }
+        public int? BranchChildIndex { get; internal set; }
+        public bool ExpectAccounts { get; init; }
+        public bool Parallel { get; init; }
+
+        public TrieVisitContext Clone() => (TrieVisitContext) MemberwiseClone();
     }
 }

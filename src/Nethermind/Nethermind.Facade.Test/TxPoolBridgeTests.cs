@@ -46,7 +46,7 @@ namespace Nethermind.Facade.Test
         {
             Transaction tx = Build.A.Transaction.Signed(new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance), TestItem.PrivateKeyA).TestObject;
             _txSender.SendTransaction(tx, TxHandlingOptions.PersistentBroadcast);
-            _txPool.Received().AddTransaction(Arg.Is<Transaction>(tx => tx.Timestamp != UInt256.Zero), TxHandlingOptions.PersistentBroadcast);
+            _txPool.Received().SubmitTx(Arg.Is<Transaction>(tx => tx.Timestamp != UInt256.Zero), TxHandlingOptions.PersistentBroadcast);
         }
 
         [Test]

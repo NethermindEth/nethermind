@@ -42,7 +42,7 @@ namespace Nethermind.Consensus.AuRa.Validators
        
         private PendingValidators _currentPendingValidators;
         private long _lastProcessedBlockNumber = 0;
-        private IBlockFinalizationManager _blockFinalizationManager;
+        private IAuRaBlockFinalizationManager _blockFinalizationManager;
         internal IBlockTree BlockTree { get; }
         private readonly IReceiptFinder _receiptFinder;
         
@@ -55,7 +55,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             IReceiptFinder receiptFinder,
             IValidatorStore validatorStore,
             IValidSealerStrategy validSealerStrategy,
-            IBlockFinalizationManager finalizationManager, 
+            IAuRaBlockFinalizationManager finalizationManager, 
             BlockHeader parentHeader,
             ILogManager logManager,
             long startBlockNumber,
@@ -71,7 +71,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             SetFinalizationManager(finalizationManager, parentHeader ?? BlockTree.Head?.Header);
         }
 
-        private void SetFinalizationManager(IBlockFinalizationManager finalizationManager, BlockHeader parentHeader)
+        private void SetFinalizationManager(IAuRaBlockFinalizationManager finalizationManager, BlockHeader parentHeader)
         {
             _blockFinalizationManager = finalizationManager ?? throw new ArgumentNullException(nameof(finalizationManager));
 

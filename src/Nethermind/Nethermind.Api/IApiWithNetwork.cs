@@ -16,6 +16,7 @@
 // 
 
 using System.Collections.Generic;
+using Nethermind.Core.PubSub;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Monitoring;
@@ -23,12 +24,11 @@ using Nethermind.Network;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.P2P;
 using Nethermind.Network.Rlpx;
-using Nethermind.PubSub;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
-using Nethermind.WebSockets;
+using Nethermind.Sockets;
 
 namespace Nethermind.Api
 {

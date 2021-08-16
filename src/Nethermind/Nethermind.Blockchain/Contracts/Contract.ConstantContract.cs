@@ -20,6 +20,7 @@ using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
+using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Blockchain.Contracts
 {
@@ -107,7 +108,7 @@ namespace Nethermind.Blockchain.Contracts
             protected virtual object[] CallRaw(CallInfo callInfo, IReadOnlyTransactionProcessor readOnlyTransactionProcessor)
             {
                 var transaction = GenerateTransaction(callInfo);
-                if (readOnlyTransactionProcessor.IsContractDeployed(_contract.ContractAddress))
+                if (_contract.ContractAddress is not null && readOnlyTransactionProcessor.IsContractDeployed(_contract.ContractAddress))
                 {                    
                     var result = CallCore(callInfo, readOnlyTransactionProcessor, transaction);
                     return callInfo.Result = _contract.DecodeReturnData(callInfo.FunctionName, result);

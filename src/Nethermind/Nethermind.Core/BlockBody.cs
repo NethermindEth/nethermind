@@ -46,7 +46,7 @@ namespace Nethermind.Core
             return new(new[] {tx}, Array.Empty<BlockHeader>());
         }
 
-        public Transaction[] Transactions { get; }
+        public Transaction[] Transactions { get; internal set; }
         public BlockHeader[] Ommers { get; }
 
         public static readonly BlockBody Empty = new();

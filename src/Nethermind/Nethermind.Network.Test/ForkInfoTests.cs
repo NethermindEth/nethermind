@@ -47,7 +47,10 @@ namespace Nethermind.Network.Test
         [TestCase(9_069_000, "0x879d6e30", 9_200_000, "First Istanbul block")]
         [TestCase(9_199_999, "0x879d6e30", 9_200_000, "Last Istanbul block")]
         [TestCase(9_200_000, "0xe029e991", 12_244_000, "Last Muir Glacier")]
-        [TestCase(12_244_000, "0x0eb440f6", 0, "First Berlin")]
+        [TestCase(12_244_000, "0x0eb440f6", 12_965_000, "First Berlin")]
+        [TestCase(12_964_999, "0x0eb440f6", 12_965_000, "Last Berlin")]
+        [TestCase(12_965_000, "0xb715077d", 0L, "First London")]
+        [TestCase(12_985_100, "0xb715077d", 0L, "Future London")]
         public void Fork_id_and_hash_as_expected(long head, string forkHashHex, long next, string description)
         {
             Test(head, KnownHashes.MainnetGenesis, forkHashHex, next, description, MainnetSpecProvider.Instance, "foundation.json");
@@ -56,8 +59,10 @@ namespace Nethermind.Network.Test
         [TestCase(0, "0xa3f5ab08", 1_561_651L, "Unsynced")]
         [TestCase(1_561_650L, "0xa3f5ab08", 1_561_651L, "Last Constantinople block")]
         [TestCase(1_561_651L, "0xc25efa5c", 4_460_644L, "First Istanbul block")]
-        [TestCase(4_460_644L, "0x757a1c47", 0L, "First Berlin block")]
-        [TestCase(6_000_000L, "0x757a1c47", 0L, "Future Berlin block")]
+        [TestCase(4_460_644L, "0x757a1c47", 5_062_605, "First Berlin block")]
+        [TestCase(4_600_000L, "0x757a1c47", 5_062_605, "Future Berlin block")]
+        [TestCase(5_062_605L, "0xB8C6299D", 0L, "First London block")]
+        [TestCase(6_000_000, "0xB8C6299D", 0L, "Future London block")]
         public void Fork_id_and_hash_as_expected_on_goerli(long head, string forkHashHex, long next, string description)
         {
             Test(head, KnownHashes.GoerliGenesis, forkHashHex, next, description, GoerliSpecProvider.Instance, "goerli.json");
@@ -75,8 +80,10 @@ namespace Nethermind.Network.Test
         [TestCase(4_321_234L, "0xafec6b27", 5_435_345L, "First Petersburg block")]
         [TestCase(5_435_344L, "0xafec6b27", 5_435_345L, "Last Petersburg block")]
         [TestCase(5_435_345L, "0xcbdb8838", 8_290_928L, "First Istanbul block")]
-        [TestCase(8_290_928L, "0x6910c8bd", 0L, "First Berlin block")]
-        [TestCase(9_000_000L, "0x6910c8bd", 0L, "Future Berlin block")]
+        [TestCase(8_290_928L, "0x6910c8bd", 8_897_988L, "First Berlin block")]
+        [TestCase(8_700_000L, "0x6910c8bd", 8_897_988L, "Future Berlin block")]
+        [TestCase(8_897_988L, "0x8E29F2F3", 0L, "First London block")]
+        [TestCase(9_000_000L, "0x8E29F2F3", 0L, "Future London block")]
         public void Fork_id_and_hash_as_expected_on_rinkeby(long head, string forkHashHex, long next, string description)
         {
             Test(head, KnownHashes.RinkebyGenesis, forkHashHex, next, description, RinkebySpecProvider.Instance, "rinkeby.json");
@@ -94,8 +101,10 @@ namespace Nethermind.Network.Test
         [TestCase(6_485_845L, "0xd6e2149b", 6_485_846L, "Last Petersburg block")]
         [TestCase(6_485_846L, "0x4bc66396", 7_117_117L, "First Istanbul block")]
         [TestCase(7_117_117L, "0x6727ef90", 9_812_189L, "First Muir Glacier block")]
-        [TestCase(9_812_189L, "0xa157d377", 0L, "First Berlin block")]
-        [TestCase(9_900_000L, "0xa157d377", 0L, "Future Berlin block")]
+        [TestCase(9_812_189L, "0xa157d377", 10_499_401L, "First Berlin block")]
+        [TestCase(9_900_000L, "0xa157d377", 10_499_401L, "Future Berlin block")]
+        [TestCase(10_499_401L, "0x7119B6B3", 0L, "First London block")]
+        [TestCase(12_000_000, "0x7119B6B3", 0L, "Future London block")]
         public void Fork_id_and_hash_as_expected_on_ropsten(long head, string forkHashHex, long next, string description)
         {
             Test(head, KnownHashes.RopstenGenesis, forkHashHex, next, description, RopstenSpecProvider.Instance, "ropsten.json");

@@ -117,7 +117,7 @@ namespace Nethermind.HealthChecks.Test
                     PeerCount = 7,
                     ExpectedHealthy = false,
                     ExpectedMessage = "Still syncing. Peers: 7.",
-                    ExpectedLongMessage = $"The node is still syncing, CurrentBlock: 4, HighestBlock: 15. Peers: 7."
+                    ExpectedLongMessage = $"The node is still syncing, CurrentBlock: 4, HighestBlock: 15. The status will change to healthy once synced. Peers: 7."
                 };
                 yield return new CheckHealthTest()
                 {
@@ -139,7 +139,7 @@ namespace Nethermind.HealthChecks.Test
                     PeerCount = 4,
                     ExpectedHealthy = true,
                     ExpectedMessage = "Still syncing. Peers: 4.",
-                    ExpectedLongMessage = $"The node is still syncing, CurrentBlock: 4, HighestBlock: 15. Peers: 4."
+                    ExpectedLongMessage = $"The node is still syncing, CurrentBlock: 4, HighestBlock: 15. The status will change to healthy once synced. Peers: 4."
                 };
                 yield return new CheckHealthTest()
                 {
@@ -151,7 +151,7 @@ namespace Nethermind.HealthChecks.Test
                     PeerCount = 0,
                     ExpectedHealthy = false,
                     ExpectedMessage = "Still syncing. Node is not connected to any peers.",
-                    ExpectedLongMessage = "The node is still syncing, CurrentBlock: 4, HighestBlock: 15. Node is not connected to any peers."
+                    ExpectedLongMessage = "The node is still syncing, CurrentBlock: 4, HighestBlock: 15. The status will change to healthy once synced. Node is not connected to any peers."
                 };
                 yield return new CheckHealthTest()
                 {

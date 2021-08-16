@@ -44,7 +44,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         private readonly ILogManager _logManager;
         private readonly IBlockPreprocessorStep _recoveryStep;
         private readonly IReadOnlyDbProvider _dbProvider;
-        private readonly ReadOnlyBlockTree _blockTree;
+        private readonly IReadOnlyBlockTree _blockTree;
         private ILogger _logger;
 
         public DebugModuleFactory(

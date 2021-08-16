@@ -38,15 +38,17 @@ namespace Nethermind.Consensus
             long gasLimit = parentGasLimit;
             
             long? targetGasLimit = _miningConfig.TargetBlockGasLimit;
+            long newBlockNumber = parentHeader.Number + 1;
+            IReleaseSpec spec = _specProvider.GetSpec(newBlockNumber);
             if (targetGasLimit != null)
             {
-                IReleaseSpec spec = _specProvider.GetSpec(parentHeader.Number + 1);
                 long maxGasLimitDifference = Math.Max(0, parentGasLimit / spec.GasLimitBoundDivisor - 1);
                 gasLimit = targetGasLimit.Value > parentGasLimit
                     ? parentGasLimit + Math.Min(targetGasLimit.Value - parentGasLimit, maxGasLimitDifference)
                     : parentGasLimit - Math.Min(parentGasLimit - targetGasLimit.Value, maxGasLimitDifference);
             }
-            
+
+            gasLimit = Eip1559GasLimitAdjuster.AdjustGasLimit(spec, gasLimit, newBlockNumber);
             return gasLimit;
         }
     }

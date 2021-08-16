@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Threading.Tasks;
-using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
@@ -33,12 +32,15 @@ using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using Nethermind.Db.Blooms;
 using Nethermind.Int256;
+using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.KeyStore;
 using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Newtonsoft.Json;
+using NSubstitute;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
@@ -48,23 +50,26 @@ namespace Nethermind.JsonRpc.Test.Modules
         public IBlockchainBridge Bridge { get; private set; }
         public ITxSender TxSender { get; private set; }
         public ILogFinder LogFinder { get; private set; }
+        
+        public IGasPriceOracle GasPriceOracle { get; private set; }
+        
         public IKeyStore KeyStore { get; } = new MemKeyStore(TestItem.PrivateKeys);
         public IWallet TestWallet { get; } = new DevKeyStoreWallet(new MemKeyStore(TestItem.PrivateKeys), LimboLogs.Instance);
-
         public static Builder<TestRpcBlockchain> ForTest(string sealEngineType) => ForTest<TestRpcBlockchain>(sealEngineType);
 
-        public static Builder<T> ForTest<T>(string sealEngineType) where T : TestRpcBlockchain, new()
-        {
-            return new Builder<T>(sealEngineType);
-        }
+        public static Builder<T> ForTest<T>(string sealEngineType) where T : TestRpcBlockchain, new() => 
+            new(new T {SealEngineType = sealEngineType});
+        
+        public static Builder<T> ForTest<T>(T blockchain) where T : TestRpcBlockchain=> 
+            new(blockchain);
 
-        public class Builder<T>  where T : TestRpcBlockchain, new()
+        public class Builder<T>  where T : TestRpcBlockchain
         {
             private readonly TestRpcBlockchain _blockchain;
             
-            public Builder(string sealEngineType)
+            public Builder(T blockchain)
             {
-                _blockchain = new T {SealEngineType = sealEngineType};
+                _blockchain = blockchain;
             }
             
             public Builder<T> WithBlockchainBridge(IBlockchainBridge blockchainBridge)
@@ -91,16 +96,22 @@ namespace Nethermind.JsonRpc.Test.Modules
                 return this;
             }
             
-            public async Task<TestRpcBlockchain> Build(ISpecProvider specProvider = null, UInt256? initialValues = null)
+            public Builder<T> WithGasPriceOracle(IGasPriceOracle gasPriceOracle)
             {
-                return (TestRpcBlockchain)(await _blockchain.Build(specProvider, initialValues));
+                _blockchain.GasPriceOracle = gasPriceOracle;
+                return this;
+            }
+            
+            public async Task<T> Build(ISpecProvider specProvider = null, UInt256? initialValues = null)
+            {
+                return (T)(await _blockchain.Build(specProvider, initialValues));
             }
         }
 
         protected override async Task<TestBlockchain> Build(ISpecProvider specProvider = null, UInt256? initialValues = null)
         {
-            BloomStorage bloomStorage = new BloomStorage(new BloomConfig(), new MemDb(), new InMemoryDictionaryFileStoreFactory());
-            specProvider ??= MainnetSpecProvider.Instance;
+            BloomStorage bloomStorage = new(new BloomConfig(), new MemDb(), new InMemoryDictionaryFileStoreFactory());
+            specProvider ??= new TestSpecProvider(Berlin.Instance) {ChainId = ChainId.Mainnet};
             await base.Build(specProvider, initialValues);
             IFilterStore filterStore = new FilterStore();
             IFilterManager filterManager = new FilterManager(filterStore, BlockProcessor, TxPool, LimboLogs.Instance);
@@ -122,7 +133,6 @@ namespace Nethermind.JsonRpc.Test.Modules
             ITxSealer txSealer0 = new TxSealer(txSigner, Timestamper);
             ITxSealer txSealer1 = new NonceReservingTxSealer(txSigner, Timestamper, TxPool);
             TxSender ??= new TxPoolSender(TxPool, txSealer0, txSealer1);
-            
             EthRpcModule = new EthRpcModule(
                 new JsonRpcConfig(),
                 Bridge,
@@ -132,7 +142,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                 TxSender,
                 TestWallet,
                 LimboLogs.Instance,
-                SpecProvider);
+                SpecProvider,
+                GasPriceOracle ?? new GasPriceOracle(BlockFinder, SpecProvider));
             
             return this;
         }

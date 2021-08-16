@@ -105,6 +105,10 @@ namespace Nethermind.Api.Extensions
                     logger.Error($"Failed to load plugin {pluginAssembly}", e);
                 }
             }
+            
+            // consensus plugins at front
+            _pluginTypes.Sort((p1, p2) => 
+                typeof(IConsensusPlugin).IsAssignableFrom(p2).CompareTo(typeof(IConsensusPlugin).IsAssignableFrom(p1)));
         }
     }
 }

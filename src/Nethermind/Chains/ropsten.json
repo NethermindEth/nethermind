@@ -17,7 +17,8 @@
 				"difficultyBombDelays": {
 					"0x19f0a0": "0x2dc6c0",
 					"0x408b70": "0x1e8480",
-					"0x6C993D": "0x3D0900"
+					"0x6C993D": "0x3D0900",
+					"0xA03549": "0xAAE60"
 				}
 			}
 		}
@@ -55,7 +56,11 @@
 		"eip2200Transition": "0x62F756",
         "eip2565Transition": "0x95B8DD",
         "eip2929Transition": "0x95B8DD",
-        "eip2930Transition": "0x95B8DD"
+        "eip2930Transition": "0x95B8DD",
+        "eip1559Transition": "0xA03549",
+        "eip3198Transition": "0xA03549",
+        "eip3529Transition": "0xA03549",
+        "eip3541Transition": "0xA03549"
     },
 	"genesis": {
 		"seal": {

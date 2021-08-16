@@ -20,10 +20,12 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
@@ -36,7 +38,8 @@ namespace Nethermind.Merge.Plugin
         private INethermindApi _api = null!;
         private ILogger _logger = null!;
         private IMergeConfig _mergeConfig = null!;
-        
+        private ManualBlockFinalizationManager _blockFinalizationManager = null!;
+
         public string Name => "Merge";
         public string Description => "Merge plugin for ETH1-ETH2";
         public string Author => "Nethermind";
@@ -69,6 +72,8 @@ namespace Nethermind.Merge.Plugin
                 ISyncConfig syncConfig = _api.Config<ISyncConfig>();
                 syncConfig.SynchronizationEnabled = false;
                 syncConfig.BlockGossipEnabled = false;
+                _blockFinalizationManager = new ManualBlockFinalizationManager();
+                _api.FinalizationManager = _blockFinalizationManager;
             }
             
             return Task.CompletedTask;
@@ -78,19 +83,21 @@ namespace Nethermind.Merge.Plugin
         {
             if (_mergeConfig.Enabled)
             {
-                if (_api.RpcModuleProvider is null) throw new ArgumentException(nameof(_api.RpcModuleProvider));
-                if (_api.BlockTree is null) throw new ArgumentException(nameof(_api.BlockTree));
-                if (_api.BlockchainProcessor is null) throw new ArgumentException(nameof(_api.BlockchainProcessor));
-                if (_api.StateProvider is null) throw new ArgumentException(nameof(_api.StateProvider));
-                if (_api.StateProvider is null) throw new ArgumentException(nameof(_api.StateProvider));
+                if (_api.RpcModuleProvider is null) throw new ArgumentNullException(nameof(_api.RpcModuleProvider));
+                if (_api.BlockTree is null) throw new ArgumentNullException(nameof(_api.BlockTree));
+                if (_api.BlockchainProcessor is null) throw new ArgumentNullException(nameof(_api.BlockchainProcessor));
+                if (_api.StateProvider is null) throw new ArgumentNullException(nameof(_api.StateProvider));
+                if (_api.StateProvider is null) throw new ArgumentNullException(nameof(_api.StateProvider));
                 
                 await _api.BlockchainProcessor.StopAsync(true);
-                
+
+                _api.Config<IJsonRpcConfig>().EnableModules(ModuleType.Consensus);
+
                 IConsensusRpcModule consensusRpcModule = new ConsensusRpcModule(
-                    new AssembleBlockHandler(_api.BlockTree, _blockProducer, _api.LogManager),
+                    new AssembleBlockHandler(_api.BlockTree, _defaultBlockProductionTrigger, _manualTimestamper, _api.LogManager),
                     new NewBlockHandler(_api.BlockTree, _api.BlockPreprocessor, _api.BlockchainProcessor, _api.StateProvider, _api.Config<IInitConfig>(), _api.LogManager),
                     new SetHeadBlockHandler(_api.BlockTree, _api.StateProvider, _api.LogManager),
-                    new FinaliseBlockHandler(),
+                    new FinaliseBlockHandler(_api.BlockTree, _blockFinalizationManager, _api.LogManager),
                     _api.LogManager);
                 
                 _api.RpcModuleProvider.RegisterSingle(consensusRpcModule);

@@ -19,6 +19,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net.Sockets;
 using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
@@ -57,14 +58,29 @@ namespace Nethermind.Network.StaticNodes
 
             string data = await File.ReadAllTextAsync(_staticNodesPath);
             string[] nodes = GetNodes(data);
-            if (_logger.IsInfo) _logger.Info($"Loaded {nodes.Length} static nodes from file: {Path.GetFullPath(_staticNodesPath)}");
+            if (_logger.IsInfo)
+                _logger.Info($"Loaded {nodes.Length} static nodes from file: {Path.GetFullPath(_staticNodesPath)}");
             if (nodes.Length != 0)
             {
                 if (_logger.IsDebug) _logger.Debug($"Static nodes: {Environment.NewLine}{data}");
             }
-            
-            _nodes = new ConcurrentDictionary<PublicKey, NetworkNode>(nodes.Select(n => new NetworkNode(n))
-                .ToDictionary(n => n.NodeId, n => n));
+
+            IEnumerable<NetworkNode> networkNodes = new List<NetworkNode>();
+
+            foreach (var n in nodes)
+            {
+                try
+                {
+                    NetworkNode networkNode = new(n);
+                    networkNodes = networkNodes.Append(networkNode);
+                }
+                catch (Exception exception) when (exception is ArgumentException or SocketException)
+                {
+                    if (_logger.IsError) _logger.Error("Unable to process node. ", exception);
+                }
+            }
+
+            _nodes = new ConcurrentDictionary<PublicKey, NetworkNode>(networkNodes.ToDictionary(n => n.NodeId, n => n));
         }
 
         private static string[] GetNodes(string data)
@@ -78,7 +94,7 @@ namespace Nethermind.Network.StaticNodes
             {
                 nodes = data.Split(new[] {'\r', '\n'}, StringSplitOptions.RemoveEmptyEntries);
             }
-            
+
             return nodes.Distinct().ToArray();
         }
 
@@ -123,7 +139,8 @@ namespace Nethermind.Network.StaticNodes
         public bool IsStatic(string enode)
         {
             NetworkNode node = new NetworkNode(enode);
-            return _nodes.TryGetValue(node.NodeId, out NetworkNode staticNode) && string.Equals(staticNode.Host, node.Host, StringComparison.InvariantCultureIgnoreCase);
+            return _nodes.TryGetValue(node.NodeId, out NetworkNode staticNode) && string.Equals(staticNode.Host,
+                node.Host, StringComparison.InvariantCultureIgnoreCase);
         }
 
         private Task SaveFileAsync()

@@ -33,21 +33,21 @@ namespace Nethermind.JsonRpc
 {
     public class JsonRpcProcessor : IJsonRpcProcessor
     {
-        private IJsonRpcService _jsonRpcService;
-        private IJsonSerializer _jsonSerializer;
         private JsonSerializer _traceSerializer;
-        private IJsonRpcConfig _jsonRpcConfig;
-        private ILogger _logger;
-
-        private Recorder _recorder;
+        private readonly IJsonRpcConfig _jsonRpcConfig;
+        private readonly ILogger _logger;
+        private readonly JsonSerializer _obsoleteBasicJsonSerializer = new();
+        private readonly IJsonRpcService _jsonRpcService;
+        private readonly IJsonSerializer _jsonSerializer;
+        private readonly Recorder _recorder;
 
         public JsonRpcProcessor(IJsonRpcService jsonRpcService, IJsonSerializer jsonSerializer, IJsonRpcConfig jsonRpcConfig, IFileSystem fileSystem, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             if (fileSystem == null) throw new ArgumentNullException(nameof(fileSystem));
 
-            _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
             _jsonRpcService = jsonRpcService ?? throw new ArgumentNullException(nameof(jsonRpcService));
+            _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
             _jsonSerializer = jsonSerializer ?? throw new ArgumentNullException(nameof(jsonSerializer));
 
             if (_jsonRpcConfig.RpcRecorderState != RpcRecorderState.None)
@@ -76,10 +76,8 @@ namespace Nethermind.JsonRpc
                 jsonSettings.Converters.Add(converter);
             }
 
-            _traceSerializer = JsonSerializer.Create(jsonSettings);
+            _traceSerializer = Newtonsoft.Json.JsonSerializer.Create(jsonSettings);
         }
-
-        private JsonSerializer _obsoleteBasicJsonSerializer = new();
 
         private (JsonRpcRequest Model, List<JsonRpcRequest> Collection) DeserializeObjectOrArray(string json)
         {

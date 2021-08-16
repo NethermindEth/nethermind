@@ -111,6 +111,24 @@ namespace Nethermind.Blockchain.Test
             Assert1559Transactions(comparer, feeCapX, gasPremiumX, feeCapY, gasPremiumY, expectedResult);
         }
         
+        [TestCase(4,3,1,3,1)]
+        [TestCase(4,3,3,1,-1)]
+        [TestCase(4,3,0,0,0)]
+        public void GasPriceComparer_use_gas_bottleneck_when_it_is_not_null(int gasPriceX, int gasPriceY, int gasBottleneckX, int gasBottleneckY, int expectedResult)
+        {
+            long eip1559Transition = long.MaxValue;
+            TestingContext context = new TestingContext(false, eip1559Transition)
+                .WithHeadBaseFeeNumber((UInt256)0)
+                .WithHeadBlockNumber(1);
+            IComparer<Transaction> comparer = context.DefaultComparer;
+            Transaction x = Build.A.Transaction.WithSenderAddress(TestItem.AddressA)
+                .WithGasPrice((UInt256)gasPriceX).WithGasBottleneck((UInt256)gasBottleneckX).TestObject;
+            Transaction y = Build.A.Transaction.WithSenderAddress(TestItem.AddressA)
+                .WithGasPrice((UInt256)gasPriceY).WithGasBottleneck((UInt256)gasBottleneckY).TestObject;
+            int result = comparer.Compare(x, y);
+            Assert.AreEqual(expectedResult, result);
+        }
+
         [TestCase(10,5,12, 4, 4, 6, -1)]
         [TestCase(10,5,12, 4, 10, 6, 1)]
         [TestCase(10,4,12, 4, 4, 6, 1)]
@@ -128,10 +146,10 @@ namespace Nethermind.Blockchain.Test
         private void Assert1559Transactions(IComparer<Transaction> comparer, int feeCapX, int gasPremiumX, int feeCapY, int gasPremiumY, int expectedResult)
         {
             Transaction x = Build.A.Transaction.WithSenderAddress(TestItem.AddressA)
-                .WithFeeCap((UInt256)feeCapX).WithGasPremium((UInt256)gasPremiumX)
+                .WithMaxFeePerGas((UInt256)feeCapX).WithMaxPriorityFeePerGas((UInt256)gasPremiumX)
                 .WithType(TxType.EIP1559).TestObject;
             Transaction y = Build.A.Transaction.WithSenderAddress(TestItem.AddressA)
-                .WithFeeCap((UInt256)feeCapY).WithGasPremium((UInt256)gasPremiumY)
+                .WithMaxFeePerGas((UInt256)feeCapY).WithMaxPriorityFeePerGas((UInt256)gasPremiumY)
                 .WithType(TxType.EIP1559).TestObject;
             int result = comparer.Compare(x, y);
             Assert.AreEqual(expectedResult, result);
@@ -182,7 +200,7 @@ namespace Nethermind.Blockchain.Test
             {
                 Block block = Build.A.Block
                     .WithNumber(blockNumber)
-                    .WithBaseFee(baseFee).TestObject;
+                    .WithBaseFeePerGas(baseFee).TestObject;
                 _blockTree.Head.Returns(block);
             }
         }

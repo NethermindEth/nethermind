@@ -34,7 +34,7 @@ namespace Nethermind.Store.Test
     public class StatsCollectorTests
     {
         [Test]
-        public void Can_collect_stats()
+        public void Can_collect_stats([Values(false, true)] bool parallel)
         {
             MemDb memDb = new MemDb();
             IDb stateDb = memDb;
@@ -69,7 +69,10 @@ namespace Nethermind.Store.Test
             memDb.Delete(storageKey); // deletes some storage
             trieStore.ClearCache();
 
-            TrieStatsCollector statsCollector = new TrieStatsCollector(stateDb, LimboLogs.Instance);
+            TrieStatsCollector statsCollector = new TrieStatsCollector(stateDb, LimboLogs.Instance)
+            {
+                SupportsParallelVisits = parallel
+            };
             stateProvider.Accept(statsCollector, stateProvider.StateRoot);
             var stats = statsCollector.Stats;
             

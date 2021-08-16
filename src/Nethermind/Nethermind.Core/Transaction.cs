@@ -39,9 +39,10 @@ namespace Nethermind.Core
 
         public UInt256 Nonce { get; set; }
         public UInt256 GasPrice { get; set; }
-        public UInt256 GasPremium => GasPrice; 
-        public UInt256 DecodedFeeCap { get; set; }
-        public UInt256 FeeCap => IsEip1559 ? DecodedFeeCap : GasPrice;
+        public UInt256? GasBottleneck { get; set; }
+        public UInt256 MaxPriorityFeePerGas => GasPrice; 
+        public UInt256 DecodedMaxFeePerGas { get; set; }
+        public UInt256 MaxFeePerGas => IsEip1559 ? DecodedMaxFeePerGas : GasPrice;
         public bool IsEip1559 => Type == TxType.EIP1559;
         public long GasLimit { get; set; }
         public Address? To { get; set; }
@@ -57,7 +58,7 @@ namespace Nethermind.Core
         public UInt256 Timestamp { get; set; }
 
         public AccessList? AccessList { get; set; } // eip2930
-        
+
         /// <summary>
         /// Service transactions are free. The field added to handle baseFee validation after 1559
         /// </summary>
@@ -73,7 +74,7 @@ namespace Nethermind.Core
         public string ToShortString()
         {
             string gasPriceString =
-                IsEip1559 ? $"gas premium: {GasPremium}, fee cap: {FeeCap}" : $"gas price {GasPrice}";
+                IsEip1559 ? $"maxPriorityFeePerGas: {MaxPriorityFeePerGas}, MaxFeePerGas: {MaxFeePerGas}" : $"gas price {GasPrice}";
             return $"[TX: hash {Hash} from {SenderAddress} to {To} with data {Data?.ToHexString()}, {gasPriceString} and limit {GasLimit}, nonce {Nonce}]";
         }
 
@@ -85,8 +86,8 @@ namespace Nethermind.Core
             builder.AppendLine($"{indent}To:        {To}");
             if (IsEip1559)
             {
-                builder.AppendLine($"{indent}Gas premium: {GasPremium}");
-                builder.AppendLine($"{indent}Fee cap: {FeeCap}");
+                builder.AppendLine($"{indent}MaxPriorityFeePerGas: {MaxPriorityFeePerGas}");
+                builder.AppendLine($"{indent}MaxFeePerGas: {MaxFeePerGas}");
             }
             else
             {
@@ -107,26 +108,6 @@ namespace Nethermind.Core
         }
 
         public override string ToString() => ToString(string.Empty);
-
-        public UInt256 CalculateTransactionPotentialCost(bool eip1559Enabled, UInt256 baseFee)
-        {
-            if (eip1559Enabled)
-            {
-                UInt256 gasPrice = baseFee + GasPremium;
-                gasPrice = UInt256.Min(gasPrice, FeeCap);
-                if (IsServiceTransaction)
-                    gasPrice = UInt256.Zero;;
-                
-                return gasPrice * (ulong)GasLimit + Value;
-            }
-
-            return GasPrice * (ulong)GasLimit + Value;
-        }
-        
-        public UInt256 CalculateEffectiveGasPrice(bool eip1559Enabled, UInt256 baseFee)
-        {
-            return eip1559Enabled ? UInt256.Min(IsEip1559 ? FeeCap : GasPrice, GasPremium + baseFee) : GasPrice;
-        }
     }
 
     /// <summary>
@@ -138,12 +119,4 @@ namespace Nethermind.Core
     /// System transaction that is to be executed by the node without including in the block. 
     /// </summary>
     public class SystemTransaction : Transaction { }
-
-    public static class TransactionExtensions
-    {
-        public static bool IsSystem(this Transaction tx)
-        {
-            return tx is SystemTransaction || tx.SenderAddress == Address.SystemUser;
-        }
-    }
 }

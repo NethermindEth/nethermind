@@ -17,6 +17,7 @@
 
 using System.Collections.Generic;
 using System.IO.Abstractions;
+using System.Linq;
 using Nethermind.Abi;
 using Nethermind.Api.Extensions;
 using Nethermind.Config;
@@ -39,22 +40,30 @@ namespace Nethermind.Api
 
         IAbiEncoder AbiEncoder { get; }
         ChainSpec? ChainSpec { get; set; }
-        IConfigProvider ConfigProvider { get; }
+        IConfigProvider ConfigProvider { get; set; }
         ICryptoRandom CryptoRandom { get; }
         IDbProvider? DbProvider { get; set; }
         IRocksDbFactory? RocksDbFactory { get; set; }
         IMemDbFactory? MemDbFactory { get; set; }
         IEthereumEcdsa? EthereumEcdsa { get; set; }
-        IJsonSerializer EthereumJsonSerializer { get; }
+        IJsonSerializer EthereumJsonSerializer { get; set; }
         IFileSystem FileSystem { get; set; }
         IKeyStore? KeyStore { get; set; }
-        ILogManager LogManager { get; }
+        ILogManager LogManager { get; set; }
         ProtectedPrivateKey? OriginalSignerKey { get; set; }
-        IList<INethermindPlugin> Plugins { get; }
-        string SealEngineType { get; }
+        IReadOnlyList<INethermindPlugin> Plugins { get; }
+        string SealEngineType { get; set; }
         ISpecProvider? SpecProvider { get; set; }
         ISyncModeSelector? SyncModeSelector { get; set; } // here for beam sync DB setup
         ITimestamper Timestamper { get; }
         ITimerFactory TimerFactory { get; }
+
+        public IConsensusPlugin? GetConsensusPlugin() =>
+            Plugins
+                .OfType<IConsensusPlugin>()
+                .SingleOrDefault(cp => cp.SealEngineType == SealEngineType);
+
+        public IEnumerable<IConsensusWrapperPlugin> GetConsensusWrapperPlugins() =>
+            Plugins.OfType<IConsensusWrapperPlugin>().Where(p => p.Enabled);
     }
 }

@@ -37,7 +37,11 @@
         "eip2537Transition": "0x0",
         "eip2565Transition": "0x0",
         "eip2929Transition": "0x0",
-        "eip2930Transition": "0x0"
+        "eip2930Transition": "0x0",
+        "eip1559Transition": "0x0",
+        "eip3198Transition": "0x0",
+        "eip3529Transition": "0x0",
+        "eip3541Transition": "0x0"
 	},
 	"genesis": {
 		"seal": {

@@ -49,6 +49,8 @@ namespace Nethermind.Evm.Test
         
         public long Refund { get; set; }
 
+        public List<EvmExceptionType> ReportedActionErrors { get; set; } = new List<EvmExceptionType>();
+
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak stateRoot = null)
         {
             GasSpent = gasSpent;
@@ -142,6 +144,7 @@ namespace Nethermind.Evm.Test
 
         public void ReportActionError(EvmExceptionType exceptionType)
         {
+            ReportedActionErrors.Add(exceptionType);
         }
 
         public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)

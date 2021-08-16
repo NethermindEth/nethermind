@@ -15,6 +15,16 @@ jobs:
       ISSUE_URL: ${{ github.event.issue.html_url }}
       ISSUE_TITLE: ${{ github.event.issue.title }}
     steps:
+    - name: Import Secrets
+      uses: hashicorp/vault-action@v2.1.2
+      with:
+        url: ${{ secrets.VAULT_URL }}
+        method: approle
+        roleId: ${{ secrets.ROLE_ID }}
+        secretId: ${{ secrets.SECRET_ID }}
+        namespace: admin/NethermindEth
+        secrets: |
+            github/nethermind/data/secrets OPSGENIE_API_KEY
     - name: Alert Nethermind Team
       if: ${{ env.AUTHOR_ASSOCIATION == 'NONE' }}
       run: |
@@ -29,4 +39,4 @@ jobs:
         }
         EOF
         }
-        curl -X POST https://api.eu.opsgenie.com/v2/alerts -H "Content-Type: application/json" -H "Authorization: GenieKey ${{ secrets.OPSGENIE_KEY }}" -d "$(composeMessage)"
+        curl -X POST https://api.eu.opsgenie.com/v2/alerts -H "Content-Type: application/json" -H "Authorization: GenieKey ${{ env.OPSGENIE_API_KEY }}" -d "$(composeMessage)"

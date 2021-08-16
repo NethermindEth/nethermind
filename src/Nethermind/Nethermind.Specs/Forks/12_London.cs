@@ -38,7 +38,7 @@ namespace Nethermind.Specs.Forks
         public long MinGasLimit => 5000;
         public long GasLimitBoundDivisor => 0x0400;
         public UInt256 BlockReward { get; } = UInt256.Parse("2000000000000000000");
-        public long DifficultyBombDelay => 9000000L;
+        public long DifficultyBombDelay => 9700000L;
         public long DifficultyBoundDivisor => 0x0800;
         public long? FixedDifficulty => null;
         public int MaximumUncleCount => 2;
@@ -80,6 +80,6 @@ namespace Nethermind.Specs.Forks
         public bool IsEip3198Enabled => true;
         public bool IsEip3529Enabled => true;
         public bool IsEip3541Enabled => true;
-        public long Eip1559TransitionBlock => long.MaxValue;
+        public long Eip1559TransitionBlock => 12965000;
     }
 }

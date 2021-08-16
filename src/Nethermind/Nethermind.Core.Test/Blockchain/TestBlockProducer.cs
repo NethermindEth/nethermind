@@ -31,43 +31,40 @@ using Nethermind.State;
 
 namespace Nethermind.Core.Test.Blockchain
 {
-    public class TestBlockProducer : LoopBlockProducerBase, ITestBlockProducer
+    public class TestBlockProducer : BlockProducerBase
     {
         public TestBlockProducer(
-            ITxSource transactionSource,
+            ITxSource txSource,
             IBlockchainProcessor processor,
             IStateProvider stateProvider,
             ISealer sealer,
             IBlockTree blockTree,
-            IBlockProcessingQueue blockProcessingQueue,
+            IBlockProductionTrigger blockProductionTrigger,
             ITimestamper timestamper,
             ISpecProvider specProvider,
             ILogManager logManager)
             : base(
-                transactionSource,
+                txSource,
                 processor,
                 sealer,
                 blockTree,
-                blockProcessingQueue,
+                blockProductionTrigger,
                 stateProvider,
+                new FollowOtherMiners(specProvider),
                 timestamper,
-                FollowOtherMiners.Instance,
                 specProvider,
                 logManager,
-                "test producer")
+                ConstantDifficultyCalculator.One)
         {
         }
-
-        public Block LastProducedBlock { get; private set; }
-        public event EventHandler<BlockEventArgs> LastProducedBlockChanged;
-
-        private SemaphoreSlim _newBlockArrived = new SemaphoreSlim(0);
-        private BlockHeader _blockParent = null;
-        public BlockHeader BlockParent
+        
+        private BlockHeader? _blockParent = null;
+        
+        public BlockHeader? BlockParent
         {
             get
             {
-                return _blockParent ?? base.GetCurrentBlockParent();
+                return _blockParent ?? BlockTree.Head?.Header;
             }
             set
             {
@@ -75,40 +72,6 @@ namespace Nethermind.Core.Test.Blockchain
             }
         }
 
-        protected override BlockHeader GetCurrentBlockParent()
-        {
-            return BlockParent;
-        }
-
-        public void BuildNewBlock()
-        {
-            _newBlockArrived.Release(1);
-        }
-
-        protected override async ValueTask ProducerLoop()
-        {
-            _lastProducedBlock = DateTime.UtcNow;
-            while (true)
-            {
-                await _newBlockArrived.WaitAsync(LoopCancellationTokenSource.Token);
-                bool result = await TryProduceNewBlock(LoopCancellationTokenSource.Token);
-                // Console.WriteLine($"Produce new block result -> {result}");
-            }
-
-            // ReSharper disable once FunctionNeverReturns
-        }
-
-        protected override UInt256 CalculateDifficulty(BlockHeader parent, UInt256 timestamp)
-        {
-            return 1;
-        }
-
-        protected override async Task<Block> SealBlock(Block block, BlockHeader parent, CancellationToken token)
-        {
-            var result = await base.SealBlock(block, parent, token);
-            LastProducedBlock = result;
-            LastProducedBlockChanged?.Invoke(this, new BlockEventArgs(block));
-            return result;
-        }
+        protected override BlockHeader? GetProducedBlockParent(BlockHeader? parentHeader) => parentHeader ?? BlockParent;
     }
 }

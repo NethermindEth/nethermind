@@ -60,7 +60,7 @@ namespace Nethermind.Core
 
         public bool IsGenesis => Header.IsGenesis;
 
-        public Transaction[] Transactions => Body.Transactions; // do not add setter here
+        public Transaction[] Transactions { get => Body.Transactions; protected set => Body.Transactions = value; } // setter needed to produce blocks with unknown transaction count on start
 
         public BlockHeader[] Ommers => Body.Ommers; // do not add setter here
 
@@ -101,6 +101,8 @@ namespace Nethermind.Core
         public UInt256 Difficulty => Header.Difficulty; // do not add setter here
 
         public UInt256? TotalDifficulty => Header.TotalDifficulty; // do not add setter here
+        
+        public UInt256 BaseFeePerGas => Header.BaseFeePerGas; // do not add setter here
 
         public override string ToString()
         {

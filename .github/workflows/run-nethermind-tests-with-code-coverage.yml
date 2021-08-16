@@ -10,19 +10,26 @@ jobs:
   neth-tests-cc:
     if: github.repository_owner == 'NethermindEth'
     name: Running Nethermind Tests with Code Coverage
-    env:
-      EXCLUDE_TEST_PROJECTS: '/p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[*Test*]*"'
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macOS-latest]
     steps:
     - uses: actions/checkout@v2
-    - name: Unshallow fetching
-      run: git fetch --unshallow --progress --prune origin +refs/heads/*:refs/remotes/origin/*
-    - name: Updating submodules
-      run: git submodule update --init src/int256 src/rocksdb-sharp src/Dirichlet src/Math.Gmp.Native
+      with: 
+        submodules: true
+        fetch-depth: 0
     - name: Installing Linux packages
+      if: matrix.os == 'ubuntu-latest'
       run: |
         sudo apt-get update
         sudo apt-get install libsnappy-dev libc6-dev libc6
+    - name: Installing macOS packages
+      if: matrix.os == 'macOS-latest'
+      run: brew install gmp && brew install snappy && brew install lz4 && brew install zstd
+    - name: Set environment variable to exclude specific test projects
+      if: matrix.os == 'ubuntu-latest'
+      run: echo 'EXCLUDE_TEST_PROJECTS=/p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[*Test*]*"' >> "$GITHUB_ENV"
     - name: Nethermind.Abi.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Abi.Test
@@ -98,6 +105,9 @@ jobs:
     - name: Nethermind.Merge.Plugin.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Merge.Plugin.Test
+    - name: Nethermind.Mev.Test
+      run: |
+        dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Mev.Test
     - name: Nethermind.Network.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Network.Test
@@ -119,15 +129,18 @@ jobs:
     - name: Nethermind.Trie.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Trie.Test
+    - name: Nethermind.TxPool.Test
+      run: |
+        dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.TxPool.Test
     - name: Nethermind.Ssz.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Ssz.Test
     - name: Nethermind.Wallet.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Wallet.Test
-    - name: Nethermind.WebSockets.Test
+    - name: Nethermind.Sockets.Test
       run: |
-        dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.WebSockets.Test
+        dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Sockets.Test
     - name: Nethermind.DataMarketplace.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.DataMarketplace.Test
@@ -150,21 +163,27 @@ jobs:
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Math.Gmp.Native/MathGmp.Native.UnitTests                
     - name: Upload Codecov Report
+      if: matrix.os == 'ubuntu-latest'
       uses: actions/upload-artifact@v2
       with:
         name: codecov-report
         path: src/Nethermind/Nethermind.*/coverage.opencover.xml
+
   eth-tests-cc:
     name: Running Ethereum Tests with Code Coverage
-    env:
-      EXCLUDE_TEST_PROJECTS: '/p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*%2c[Nethermind.Blockchain.Test]*%2c[Nethermind.DataMarketplace.Test]*%2c[Ethereum.Test.Base]*"'
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macOS-latest]
     steps:
     - uses: actions/checkout@v2
     - name: Unshallow fetching
       run: git fetch --unshallow
     - name: Updating submodules
       run: git -c submodule."src/eth2.0-spec-tests".update=none submodule update --init
+    - name: Set environment variable to exclude specific test projects
+      if: matrix.os == 'ubuntu-latest'
+      run: echo 'EXCLUDE_TEST_PROJECTS=/p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*%2c[Nethermind.Blockchain.Test]*%2c[Nethermind.DataMarketplace.Test]*%2c[Ethereum.Test.Base]*"' >> "$GITHUB_ENV"
     - name: Ethereum.Abi.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Ethereum.Abi.Test
@@ -202,15 +221,28 @@ jobs:
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Ethereum.Trie.Test
     - name: Upload Codecov Report
+      if: matrix.os == 'ubuntu-latest'
       uses: actions/upload-artifact@v2
       with:
         name: codecov-report
         path: src/Nethermind/Ethereum.*/coverage.opencover.xml
+
+  # uploads codecov reports to the codecov.io cloud
   codecov-upload:
     name: Uploading Codecov Reports
     needs: [neth-tests-cc, eth-tests-cc]
     runs-on: ubuntu-latest
     steps:
+      - name: Import Secrets
+        uses: hashicorp/vault-action@v2.1.2
+        with:
+          url: ${{ secrets.VAULT_URL }}
+          method: approle
+          roleId: ${{ secrets.ROLE_ID }}
+          secretId: ${{ secrets.SECRET_ID }}
+          namespace: admin/NethermindEth
+          secrets: |
+              github/nethermind/data/secrets CODECOV_TOKEN
       - uses: actions/checkout@v2
       - name: Download reports from Nethermind/Ethereum projects
         uses: actions/download-artifact@v2
@@ -219,5 +251,5 @@ jobs:
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v1
         with:
-          token: ${{secrets.CODECOV_TOKEN}}
+          token: ${{ env.CODECOV_TOKEN }}
           name: codecov-nethermind

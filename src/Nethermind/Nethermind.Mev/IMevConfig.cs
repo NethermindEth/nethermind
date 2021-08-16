@@ -15,6 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Config;
+using Nethermind.Int256;
+using Nethermind.Mev.Data;
 
 namespace Nethermind.Mev
 {
@@ -24,5 +26,18 @@ namespace Nethermind.Mev
             Description = "Defines whether the MEV bundles are allowed.",
             DefaultValue = "false")]
         bool Enabled { get; set; }
+
+        [ConfigItem(
+            Description = "Defines how long MEV bundles will be kept in memory by clients", 
+            DefaultValue = "3600")]
+        UInt256 BundleHorizon { get; set; }
+        
+        [ConfigItem(
+            Description = "Defines the maximum number of MEV bundles that can be kept in memory by clients", 
+            DefaultValue = "200")]
+        int BundlePoolSize { get; set; }
+
+        [ConfigItem(Description = "Defines the maximum number of MEV bundles to be included within a single block", DefaultValue = "0")]
+        int MaxMergedBundles { get; set; }
     }
 }

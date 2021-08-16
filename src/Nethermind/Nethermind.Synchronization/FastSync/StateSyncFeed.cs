@@ -749,6 +749,8 @@ namespace Nethermind.Synchronization.FastSync
                 // }
                 
                 LogRequestInfo(requestHashes);
+                
+                long secondsInCurrentSync = (long)(DateTime.UtcNow - _currentSyncStart).TotalSeconds;
 
                 if (requestHashes.Count > 0)
                 {
@@ -756,7 +758,7 @@ namespace Nethermind.Synchronization.FastSync
                     StateSyncBatch result = new(requestedNodes);
                     
                     Interlocked.Add(ref _data.RequestedNodesCount, result.RequestedNodes.Length);
-                    Interlocked.Exchange(ref _data.SecondsInSync, _currentSyncStartSecondsInSync + (long) (DateTime.UtcNow - _currentSyncStart).TotalSeconds);
+                    Interlocked.Exchange(ref _data.SecondsInSync, _currentSyncStartSecondsInSync + secondsInCurrentSync);
 
                     if (_logger.IsTrace) _logger.Trace($"After preparing a request of {requestHashes.Count} from ({_pendingItems.Description}) nodes | {_dependencies.Count}");
                     if (_logger.IsTrace) _logger.Trace($"Adding pending request {result}");
@@ -766,7 +768,7 @@ namespace Nethermind.Synchronization.FastSync
                     return await Task.FromResult(result);
                 }
 
-                if (requestHashes.Count == 0)
+                if (requestHashes.Count == 0 && secondsInCurrentSync >= Timeouts.Eth.Seconds)
                 {
                     // trying to reproduce past behaviour where we can recognize the transition time this way
                     Interlocked.Increment(ref _hintsToResetRoot);

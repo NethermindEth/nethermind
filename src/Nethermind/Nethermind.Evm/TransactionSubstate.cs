@@ -17,7 +17,6 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
-using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 
@@ -65,13 +64,14 @@ namespace Nethermind.Evm
                         {
                             BigInteger start = Output.Span.Slice(4, 32).ToUnsignedBigInteger();
                             BigInteger length = Output.Slice((int) start + 4, 32).Span.ToUnsignedBigInteger();
-                            Error = "revert: " + Encoding.ASCII.GetString(Output.Slice((int) start + 32 + 4, (int) length).Span);
+                            Error = string.Concat("Reverted ",
+                                Output.Slice((int)start + 32 + 4, (int)length).ToArray().ToHexString(true));
                         }
                         catch (Exception)
                         {
                             try
                             {
-                                Error = "revert: " + Output.ToArray().ToHexString(true);
+                                Error = string.Concat("Reverted ", Output.ToArray().ToHexString(true));
                             }
                             catch
                             {

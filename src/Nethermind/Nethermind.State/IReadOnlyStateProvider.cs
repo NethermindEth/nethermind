@@ -22,12 +22,8 @@ using Nethermind.Trie;
 
 namespace Nethermind.State
 {
-    public interface IReadOnlyStateProvider
+    public interface IReadOnlyStateProvider : IAccountStateProvider
     {
-        Keccak StateRoot { get; }
-        
-        Account GetAccount(Address address);
-        
         UInt256 GetNonce(Address address);
         
         UInt256 GetBalance(Address address);

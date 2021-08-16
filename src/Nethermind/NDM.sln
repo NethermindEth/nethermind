@@ -83,7 +83,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Network", "Nethe
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.PubSub", "Nethermind.PubSub\Nethermind.PubSub.csproj", "{BBE15161-8377-44B3-94A1-5BE7172D2733}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.WebSockets", "Nethermind.WebSockets\Nethermind.WebSockets.csproj", "{82495545-A321-4EEE-AC59-BCE47148F592}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Sockets", "Nethermind.Sockets\Nethermind.Sockets.csproj", "{82495545-A321-4EEE-AC59-BCE47148F592}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Abi", "Nethermind.Abi\Nethermind.Abi.csproj", "{A8000EBB-6A72-42D8-9A39-F67CD244DE11}"
 EndProject

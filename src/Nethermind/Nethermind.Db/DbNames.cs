@@ -25,7 +25,6 @@ namespace Nethermind.Db
         public const string Headers = "headers";
         public const string Receipts = "receipts";
         public const string BlockInfos = "blockInfos";
-        public const string PendingTxs = "pendingtxs";
         public const string Bloom = "bloom";
         public const string Witness = "witness";
         public const string CHT = "canonicalHashTrie";

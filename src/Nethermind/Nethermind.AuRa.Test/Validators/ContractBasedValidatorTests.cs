@@ -23,6 +23,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
+using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
@@ -35,6 +36,7 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.State;
@@ -54,7 +56,7 @@ namespace Nethermind.AuRa.Test.Validators
         private Block _block;
         private BlockHeader _parentHeader;
         private IReadOnlyTransactionProcessor _transactionProcessor;
-        private IBlockFinalizationManager _blockFinalizationManager;
+        private IAuRaBlockFinalizationManager _blockFinalizationManager;
         private static Address _contractAddress = Address.FromNumber(1000);
         private (Address Sender, byte[] TransactionData) _getValidatorsData = (Address.Zero, new byte[] {0, 1, 2});
         private (Address Sender, byte[] TransactionData) _finalizeChangeData = (Address.SystemUser, new byte[] {3, 4, 5});
@@ -75,7 +77,7 @@ namespace Nethermind.AuRa.Test.Validators
             _abiEncoder = Substitute.For<IAbiEncoder>();
             _logManager = LimboLogs.Instance;
             _blockTree = Substitute.For<IBlockTree>();
-            _blockFinalizationManager = Substitute.For<IBlockFinalizationManager>();
+            _blockFinalizationManager = Substitute.For<IAuRaBlockFinalizationManager>();
             _receiptsStorage = Substitute.For<IReceiptStorage>();
             _validator = new AuRaParameters.Validator()
             {

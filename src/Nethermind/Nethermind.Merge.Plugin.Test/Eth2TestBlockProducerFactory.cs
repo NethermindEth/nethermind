@@ -17,10 +17,13 @@
 
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
+using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Transactions;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -31,46 +34,10 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Merge.Plugin.Test
 {
-    internal class Eth2TestBlockProducerFactory : Eth2BlockProducerFactory
+    public class Eth2TestBlockProducerFactory : Eth2BlockProducerFactory
     {
-        public override Eth2BlockProducer Create(
-            IBlockTree blockTree,
-            IDbProvider dbProvider,
-            IReadOnlyTrieStore readOnlyTrieStore,
-            IBlockPreprocessorStep blockPreprocessor,
-            ITxPool txPool,
-            IBlockValidator blockValidator,
-            IRewardCalculatorSource rewardCalculatorSource,
-            IReceiptStorage receiptStorage,
-            IBlockProcessingQueue blockProcessingQueue,
-            ISpecProvider specProvider, 
-            ISigner engineSigner,
-            IMiningConfig miningConfig,
-            ILogManager logManager)
+        public Eth2TestBlockProducerFactory(IGasLimitCalculator gasLimitCalculator, ITxSource? txSource = null) : base(txSource, gasLimitCalculator)
         {
-            BlockProducerContext producerContext = GetProducerChain(
-                blockTree,
-                dbProvider,
-                readOnlyTrieStore,
-                blockPreprocessor,
-                txPool,
-                blockValidator, 
-                rewardCalculatorSource, 
-                receiptStorage,
-                specProvider,
-                miningConfig,
-                logManager);
-                
-            return new Eth2TestBlockProducer(
-                producerContext.TxSource,
-                producerContext.ChainProcessor,
-                blockTree,
-                blockProcessingQueue,
-                producerContext.ReadOnlyStateProvider,
-                new TargetAdjustedGasLimitCalculator(specProvider, miningConfig),
-                engineSigner,
-                specProvider,
-                logManager);
         }
     }
 }

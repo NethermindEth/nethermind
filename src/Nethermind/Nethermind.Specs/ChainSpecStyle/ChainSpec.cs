@@ -18,6 +18,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Int256;
 
 namespace Nethermind.Specs.ChainSpecStyle
 {

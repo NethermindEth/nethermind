@@ -47,20 +47,22 @@ namespace Nethermind.TxPool.Collections
             ILogManager logManager) 
             : base(capacity, comparer)
         {
-            _comparer = comparer ?? throw new ArgumentNullException(nameof(comparer));
+            // ReSharper disable once VirtualMemberCallInConstructor
+            _comparer = GetReplacementComparer(comparer ?? throw new ArgumentNullException(nameof(comparer)));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _distinctDictionary = new Dictionary<TValue, KeyValuePair<TKey, TValue>>(distinctComparer);
         }
-        
-        protected override void InsertCore(TKey key, TValue value, ICollection<TValue> bucketCollection)
-        {
-            base.InsertCore(key, value, bucketCollection);
 
+        protected virtual IComparer<TValue> GetReplacementComparer(IComparer<TValue> comparer) => comparer;
+
+        protected override void InsertCore(TKey key, TValue value, TGroupKey groupKey, ICollection<TValue> bucketCollection)
+        {
             if (_distinctDictionary.TryGetValue(value, out KeyValuePair<TKey, TValue> oldKvp))
             {
                 TryRemove(oldKvp.Key);
             }
-
+            
+            base.InsertCore(key, value, groupKey, bucketCollection);
 
             _distinctDictionary[value] = new KeyValuePair<TKey, TValue>(key, value);
         }
@@ -70,12 +72,14 @@ namespace Nethermind.TxPool.Collections
             _distinctDictionary.Remove(value);
             return base.Remove(key, value);
         }
+        
+        protected virtual bool AllowSameKeyReplacement => false; 
 
         protected override bool CanInsert(TKey key, TValue value)
         {
             // either there is no distinct value or it would go before (or at same place) as old value
             // if it would go after old value in order, we ignore it and wont add it
-            if (base.CanInsert(key, value))
+            if (AllowSameKeyReplacement || base.CanInsert(key, value))
             {
                 bool isDuplicate = _distinctDictionary.TryGetValue(value, out var oldKvp);
                 if (isDuplicate)
@@ -86,7 +90,7 @@ namespace Nethermind.TxPool.Collections
                     {
                         _logger.Trace($"Cannot insert {nameof(TValue)} {value}, its not distinct and not higher than old {nameof(TValue)} {oldKvp.Value}.");
                     }
-
+                    
                     return isHigher;
                 }
 

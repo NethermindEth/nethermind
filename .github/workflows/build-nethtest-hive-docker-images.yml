@@ -10,6 +10,17 @@ jobs:
     if: github.repository_owner == 'NethermindEth'
     runs-on: ubuntu-latest
     steps:
+      - name: Import Secrets
+        uses: hashicorp/vault-action@v2.1.2
+        with:
+          url: ${{ secrets.VAULT_URL }}
+          method: approle
+          roleId: ${{ secrets.ROLE_ID }}
+          secretId: ${{ secrets.SECRET_ID }}
+          namespace: admin/NethermindEth
+          secrets: |
+              github/nethermind/data/environments/release DOCKER_USERNAME ;
+              github/nethermind/data/environments/release DOCKER_PASSWORD 
       - name: Checking out repository
         uses: actions/checkout@v2
       - name: Unshallow fetching
@@ -17,7 +28,7 @@ jobs:
       - name: Settings
         id: settings
         run: |
-          echo ::set-output name=docker_username::${{ secrets.DOCKER_USERNAME }}
+          echo ::set-output name=docker_username::${{ env.DOCKER_USERNAME }}
           echo ::set-output name=docker_image_nethtest::nethermindeth/nethtest
           echo ::set-output name=docker_image_hive::nethermindeth/hive
       - name: Setting up QEMU
@@ -28,7 +39,7 @@ jobs:
       - name: Logging to Docker Hub
         if: success()
         env:
-          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+          DOCKER_PASSWORD: ${{ env.DOCKER_PASSWORD }}
         run: |
           echo "${DOCKER_PASSWORD}" | docker login --username "${{ steps.settings.outputs.docker_username }}" --password-stdin
       - name: Building & Pushing image to docker registry

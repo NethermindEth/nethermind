@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Net;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Api;
@@ -23,6 +24,8 @@ using Nethermind.Blockchain;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.JsonRpc;
+using Nethermind.Monitoring.Metrics;
+using Nethermind.Monitoring.Config;
 
 namespace Nethermind.HealthChecks
 {
@@ -68,7 +71,23 @@ namespace Nethermind.HealthChecks
                     setup.SetHeaderText("Nethermind Node Health");
                     if (_healthChecksConfig.WebhooksEnabled) 
                     {
-                        setup.AddWebhookNotification("webhook", uri: _healthChecksConfig.WebhooksUri, payload: _healthChecksConfig.WebhooksPayload, restorePayload: _healthChecksConfig.WebhooksRestorePayload);
+                        setup.AddWebhookNotification("webhook",
+                        uri: _healthChecksConfig.WebhooksUri,
+                        payload: _healthChecksConfig.WebhooksPayload,
+                        restorePayload: _healthChecksConfig.WebhooksRestorePayload,
+                        customDescriptionFunc: report =>
+                        {
+                            string description = report.Entries["node-health"].Description;
+
+                            IMetricsConfig metricsConfig;
+                            metricsConfig = _api.Config<IMetricsConfig>();
+
+                            string hostname = Dns.GetHostName();
+
+                            HealthChecksWebhookInfo info = new HealthChecksWebhookInfo(description, _api.IpResolver, metricsConfig, hostname);
+                            return info.GetFullInfo();
+                        }
+                        );
                     }
                 })
                 .AddInMemoryStorage();

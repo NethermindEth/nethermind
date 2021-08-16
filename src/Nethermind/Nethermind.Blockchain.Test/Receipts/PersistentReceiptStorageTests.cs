@@ -123,7 +123,7 @@ namespace Nethermind.Blockchain.Test.Receipts
             receiptStructRef.Logs.Should().BeEquivalentTo(receipts.First().Logs);
             iterator.TryGetNext(out receiptStructRef).Should().BeFalse();
         }
-        
+
         [Test]
         public void Adds_and_retrieves_receipts_for_block_with_iterator()
         {
@@ -149,6 +149,43 @@ namespace Nethermind.Blockchain.Test.Receipts
             receiptStructRef.LogsRlp.ToArray().Should().BeEmpty();
             receiptStructRef.Logs.Should().BeEquivalentTo(receipts.First().Logs);
             iterator.TryGetNext(out receiptStructRef).Should().BeFalse();
+        }
+        
+        [Test]
+        public void Should_not_overwrite_reference_from_tx_to_block_when_adding_rollbacked_receipts()
+        {
+            Transaction transaction = Build.A.Transaction.SignedAndResolved().TestObject;
+            
+            Block oldBlock = Build.A.Block
+                .WithTransactions(transaction)
+                .WithReceiptsRoot(TestItem.KeccakA).TestObject;
+
+            Block newBlock = Build.A.Block
+                .WithTransactions(transaction)
+                .WithReceiptsRoot(TestItem.KeccakB).TestObject;
+            
+            TxReceipt[] receipts = {Build.A.Receipt.TestObject};
+            
+            _storage.Insert(oldBlock, receipts);
+            
+            foreach (TxReceipt receipt in receipts)
+            {
+                receipt.Removed = true;
+            }
+            
+            _storage.Insert(newBlock, receipts);
+
+            _storage.FindBlockHash(transaction.Hash).Should().Be(oldBlock.Hash);
+        }
+
+        [Test]
+        public void Should_handle_inserting_null_receipts()
+        {
+            Block block = Build.A.Block.WithReceiptsRoot(TestItem.KeccakA).TestObject;
+
+            TxReceipt[] receipts = null;
+            
+            _storage.Insert(block, receipts);
         }
         
 

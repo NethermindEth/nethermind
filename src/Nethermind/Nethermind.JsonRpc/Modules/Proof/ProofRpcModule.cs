@@ -78,11 +78,13 @@ namespace Nethermind.JsonRpc.Modules.Proof
                 sourceHeader.Number + 1,
                 sourceHeader.GasLimit,
                 sourceHeader.Timestamp,
-                Array.Empty<byte>());
+                Array.Empty<byte>())
+            {
+                TxRoot = Keccak.EmptyTreeHash, 
+                ReceiptsRoot = Keccak.EmptyTreeHash, 
+                Author = Address.SystemUser
+            };
 
-            callHeader.TxRoot = Keccak.EmptyTreeHash;
-            callHeader.ReceiptsRoot = Keccak.EmptyTreeHash;
-            callHeader.Author = Address.SystemUser;
             callHeader.TotalDifficulty = sourceHeader.TotalDifficulty + callHeader.Difficulty;
             callHeader.Hash = callHeader.CalculateHash();
 
@@ -132,7 +134,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
             Transaction transaction = txs[receipt.Index];
 
             TransactionWithProof txWithProof = new();
-            txWithProof.Transaction = new TransactionForRpc(block.Hash, block.Number, receipt.Index, transaction);
+            txWithProof.Transaction = new TransactionForRpc(block.Hash, block.Number, receipt.Index, transaction, block.BaseFeePerGas);
             txWithProof.TxProof = BuildTxProofs(txs, _specProvider.GetSpec(block.Number), receipt.Index);
             if (includeHeader)
             {
@@ -163,11 +165,13 @@ namespace Nethermind.JsonRpc.Modules.Proof
             receiptsTracer.SetOtherTracer(NullBlockTracer.Instance);
             _tracer.Trace(block, receiptsTracer);
 
-            TxReceipt[] receipts = receiptsTracer.TxReceipts;
+            TxReceipt[] receipts = receiptsTracer.TxReceipts.ToArray();
             Transaction[] txs = block.Transactions;
 
             ReceiptWithProof receiptWithProof = new();
-            receiptWithProof.Receipt = new ReceiptForRpc(txHash, receipt);
+            bool isEip1559Enabled = _specProvider.GetSpec(block.Number).IsEip1559Enabled;
+            Transaction? tx = txs.FirstOrDefault(x => x.Hash == txHash);
+            receiptWithProof.Receipt = new ReceiptForRpc(txHash, receipt, tx?.CalculateEffectiveGasPrice(isEip1559Enabled, block.BaseFeePerGas));
             receiptWithProof.ReceiptProof = BuildReceiptProofs(block.Number, receipts, receipt.Index);
             receiptWithProof.TxProof = BuildTxProofs(txs, _specProvider.GetSpec(block.Number), receipt.Index);
             if (includeHeader)

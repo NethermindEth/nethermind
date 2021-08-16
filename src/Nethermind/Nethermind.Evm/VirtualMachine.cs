@@ -189,20 +189,33 @@ namespace Nethermind.Evm
                     {
                         if (_txTracer.IsTracingActions)
                         {
+                            long codeDepositGasCost = CodeDepositHandler.CalculateCost(callResult.Output.Length, spec);
+                            
                             if (callResult.IsException)
                             {
                                 _txTracer.ReportActionError(callResult.ExceptionType);
                             }
                             else if (callResult.ShouldRevert)
                             {
-                                _txTracer.ReportActionError(EvmExceptionType.Revert);
+                                if (currentState.ExecutionType.IsAnyCreate())
+                                {
+                                    _txTracer.ReportActionError(EvmExceptionType.Revert, currentState.GasAvailable - codeDepositGasCost);
+                                }
+                                else
+                                {
+                                    _txTracer.ReportActionError(EvmExceptionType.Revert, currentState.GasAvailable);
+                                }
                             }
                             else
                             {
-                                long codeDepositGasCost = CodeDepositHandler.CalculateCost(callResult.Output.Length, spec);
                                 if (currentState.ExecutionType.IsAnyCreate() && currentState.GasAvailable < codeDepositGasCost)
                                 {
                                     _txTracer.ReportActionError(EvmExceptionType.OutOfGas);
+                                }
+                                // Reject code starting with 0xEF if EIP-3541 is enabled.
+                                else if (currentState.ExecutionType.IsAnyCreate() && CodeDepositHandler.CodeIsInvalid(spec, callResult.Output))
+                                {
+                                    _txTracer.ReportActionError(EvmExceptionType.InvalidCode);
                                 }
                                 else
                                 {
@@ -239,7 +252,8 @@ namespace Nethermind.Evm
                             previousCallOutput = ZeroPaddedSpan.Empty;
 
                             long codeDepositGasCost = CodeDepositHandler.CalculateCost(callResult.Output.Length, spec);
-                            if (gasAvailableForCodeDeposit >= codeDepositGasCost)
+                            bool invalidCode = CodeDepositHandler.CodeIsInvalid(spec, callResult.Output);
+                            if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
                             {
                                 Keccak codeHash = _state.UpdateCode(callResult.Output);
                                 _state.UpdateCodeHash(callCodeOwner, codeHash, spec);
@@ -252,7 +266,7 @@ namespace Nethermind.Evm
                             }
                             else
                             {
-                                if (spec.FailOnOutOfGasCodeDeposit)
+                                if (spec.FailOnOutOfGasCodeDeposit || invalidCode)
                                 {
                                     currentState.GasAvailable -= gasAvailableForCodeDeposit;
                                     _state.Restore(previousState.StateSnapshot);
@@ -267,7 +281,10 @@ namespace Nethermind.Evm
 
                                     if (_txTracer.IsTracingActions)
                                     {
-                                        _txTracer.ReportActionError(EvmExceptionType.OutOfGas);
+                                        if (invalidCode)
+                                            _txTracer.ReportActionError(EvmExceptionType.InvalidCode);
+                                        else
+                                            _txTracer.ReportActionError(EvmExceptionType.OutOfGas);
                                     }
                                 }
                             }
@@ -310,7 +327,7 @@ namespace Nethermind.Evm
 
                         if (_txTracer.IsTracingActions)
                         {
-                            _txTracer.ReportActionError(EvmExceptionType.Revert);
+                            _txTracer.ReportActionError(EvmExceptionType.Revert, previousState.GasAvailable);
                         }
                     }
 
@@ -610,6 +627,7 @@ namespace Nethermind.Evm
             long gasAvailable = vmState.GasAvailable;
             int programCounter = vmState.ProgramCounter;
             Span<byte> code = env.CodeInfo.MachineCode.AsSpan();
+            
 
             static void UpdateCurrentState(EvmState state, in int pc, in long gas, in int stackHead)
             {
@@ -716,7 +734,7 @@ namespace Nethermind.Evm
                 vmState.Memory.Save(in localPreviousDest, previousCallOutput);
 //                if(_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long)localPreviousDest, previousCallOutput);
             }
-
+            
             while (programCounter < code.Length)
             {
                 Instruction instruction = (Instruction) code[programCounter];
@@ -1709,7 +1727,7 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        UInt256 baseFee = vmState.Env.TxExecutionContext.Header.BaseFee;
+                        UInt256 baseFee = vmState.Env.TxExecutionContext.Header.BaseFeePerGas;
                         stack.PushUInt256(in baseFee);
                         break;
                     }
@@ -2266,6 +2284,7 @@ namespace Nethermind.Evm
                         }
 
                         Span<byte> initCode = vmState.Memory.LoadSpan(in memoryPositionOfInitCode, initCodeLength);
+                        
                         UInt256 balance = _state.GetBalance(env.ExecutingAccount);
                         if (value > balance)
                         {
@@ -2879,6 +2898,8 @@ namespace Nethermind.Evm
             public static CallResult StaticCallViolationException => new(EvmExceptionType.StaticCallViolation);
             public static CallResult StackOverflowException => new(EvmExceptionType.StackOverflow); // TODO: use these to avoid CALL POP attacks
             public static CallResult StackUnderflowException => new(EvmExceptionType.StackUnderflow); // TODO: use these to avoid CALL POP attacks
+            
+            public static CallResult InvalidCodeException => new(EvmExceptionType.InvalidCode); 
             public static CallResult Empty => new(Array.Empty<byte>(), null);
 
             public CallResult(EvmState stateToExecute)

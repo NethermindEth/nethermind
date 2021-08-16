@@ -125,6 +125,8 @@ namespace Nethermind.Evm.Tracing
 
         void ReportActionEnd(long gas, ReadOnlyMemory<byte> output);
 
+        void ReportActionError(EvmExceptionType evmExceptionType, long gasLeft) => ReportActionError(evmExceptionType);
+        
         void ReportActionError(EvmExceptionType evmExceptionType);
 
         void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode);

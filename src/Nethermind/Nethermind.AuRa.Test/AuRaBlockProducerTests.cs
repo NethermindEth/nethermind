@@ -16,11 +16,13 @@
 
 using System;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Castle.DynamicProxy.Generators.Emitters.SimpleAST;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
+using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
@@ -80,7 +82,12 @@ namespace Nethermind.AuRa.Test
                 AuRaStepCalculator.TimeToNextStep.Returns(StepDelay);
                 BlockTree.BestKnownNumber.Returns(1);
                 BlockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithAura(10, Array.Empty<byte>()).TestObject).TestObject);
-                BlockchainProcessor.Process(Arg.Any<Block>(), ProcessingOptions.ProducingBlock, Arg.Any<IBlockTracer>()).Returns(c => c.Arg<Block>());
+                BlockchainProcessor.Process(Arg.Any<Block>(), ProcessingOptions.ProducingBlock, Arg.Any<IBlockTracer>()).Returns(returnThis: c =>
+                {
+                    Block block = c.Arg<Block>();
+                    block.TrySetTransactions(TransactionSource.GetTransactions(BlockTree.Head!.Header, block.GasLimit).ToArray());
+                    return block;
+                });
                 InitProducer();
             }
             
@@ -93,20 +100,32 @@ namespace Nethermind.AuRa.Test
                     
                     public void InitProducer(IAuraConfig auraConfig)
                     {
+                        IBlockProductionTrigger onAuRaSteps = new BuildBlocksOnAuRaSteps(LimboLogs.Instance, AuRaStepCalculator);
+                        IBlockProductionTrigger onlyWhenNotProcessing = new BuildBlocksOnlyWhenNotProcessing(
+                            onAuRaSteps, 
+                            BlockProcessingQueue, 
+                            BlockTree, 
+                            LimboLogs.Instance, 
+                            !auraConfig.AllowAuRaPrivateChains);
+
+                        FollowOtherMiners gasLimitCalculator = new(MainnetSpecProvider.Instance);
+                        
                         AuRaBlockProducer = new AuRaBlockProducer(
                             TransactionSource,
                             BlockchainProcessor,
+                            onlyWhenNotProcessing,
                             StateProvider,
                             Sealer,
                             BlockTree,
-                            BlockProcessingQueue,
                             Timestamper,
                             AuRaStepCalculator,
                             NullReportingValidator.Instance,
                             auraConfig,
-                            FollowOtherMiners.Instance,
+                            gasLimitCalculator,
                             MainnetSpecProvider.Instance,
                             LimboLogs.Instance);
+
+                        var suggester = new ProducedBlockSuggester(BlockTree, AuRaBlockProducer);
                     }
         }
 

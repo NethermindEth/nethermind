@@ -985,17 +985,19 @@ namespace Nethermind.Trie
             }
         }
 
-        public void Accept(ITreeVisitor visitor, Keccak rootHash, bool expectAccounts)
+        public void Accept(ITreeVisitor visitor, Keccak rootHash, VisitingOptions visitingOptions = VisitingOptions.ExpectAccounts)
         {
             if (visitor is null) throw new ArgumentNullException(nameof(visitor));
             if (rootHash is null) throw new ArgumentNullException(nameof(rootHash));
 
-            TrieVisitContext trieVisitContext = new();
-
-            // hacky but other solutions are not much better, something nicer would require a bit of thinking
-            // we introduced a notion of an account on the visit context level which should have no knowledge of account really
-            // but we know that we have multiple optimizations and assumptions on trees
-            trieVisitContext.ExpectAccounts = expectAccounts;
+            TrieVisitContext trieVisitContext = new()
+            {
+                // hacky but other solutions are not much better, something nicer would require a bit of thinking
+                // we introduced a notion of an account on the visit context level which should have no knowledge of account really
+                // but we know that we have multiple optimizations and assumptions on trees
+                ExpectAccounts = (visitingOptions & VisitingOptions.ExpectAccounts) != VisitingOptions.None,
+                Parallel = (visitingOptions & VisitingOptions.Parallel) != VisitingOptions.None
+            };
 
             TrieNode rootRef = null;
             if (!rootHash.Equals(Keccak.EmptyTreeHash))

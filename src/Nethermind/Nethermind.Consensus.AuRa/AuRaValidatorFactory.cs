@@ -27,6 +27,7 @@ using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.Db.Blooms;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa
@@ -40,7 +41,7 @@ namespace Nethermind.Consensus.AuRa
         private readonly IBlockTree _blockTree;
         private readonly IReceiptFinder _receiptFinder;
         private readonly IValidatorStore _validatorStore;
-        private readonly IBlockFinalizationManager _finalizationManager;
+        private readonly IAuRaBlockFinalizationManager _finalizationManager;
         private readonly ITxSender _txSender;
         private readonly ITxPool _txPool;
         private readonly IMiningConfig _miningConfig;
@@ -51,14 +52,14 @@ namespace Nethermind.Consensus.AuRa
         private readonly long _posdaoTransition;
         private readonly bool _forSealing;
 
-        public AuRaValidatorFactory(IStateProvider stateProvider,
-            IAbiEncoder abiEncoder,
+        public AuRaValidatorFactory(IAbiEncoder abiEncoder,
+            IStateProvider stateProvider,
             ITransactionProcessor transactionProcessor,
-            IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
             IBlockTree blockTree,
+            IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
             IReceiptFinder receiptFinder,
             IValidatorStore validatorStore,
-            IBlockFinalizationManager finalizationManager,
+            IAuRaBlockFinalizationManager finalizationManager,
             ITxSender txSender,
             ITxPool txPool,
             IMiningConfig miningConfig,

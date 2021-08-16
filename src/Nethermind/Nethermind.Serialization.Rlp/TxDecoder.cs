@@ -22,15 +22,18 @@ using Nethermind.Serialization.Rlp.Eip2930;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public class TxDecoder :
-        IRlpStreamDecoder<Transaction>,
-        IRlpValueDecoder<Transaction>,
-        IRlpObjectDecoder<SystemTransaction>,
-        IRlpObjectDecoder<GeneratedTransaction>
+    public class TxDecoder : TxDecoder<Transaction> { }
+    public class SystemTxDecoder : TxDecoder<SystemTransaction> { }
+    public class GeneratedTxDecoder : TxDecoder<GeneratedTransaction> { }
+    
+    public class TxDecoder<T> :
+        IRlpStreamDecoder<T>,
+        IRlpValueDecoder<T>
+        where T : Transaction, new()
     {
         private readonly AccessListDecoder _accessListDecoder = new();
 
-        public Transaction? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public T? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (rlpStream.IsNextItemNull())
             {
@@ -40,7 +43,7 @@ namespace Nethermind.Serialization.Rlp
 
             Span<byte> transactionSequence = rlpStream.PeekNextItem();
 
-            Transaction transaction = new();
+            T transaction = new();
             if ((rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.SkipTypedWrapping)
             {
                 byte firstByte = rlpStream.PeekByte();
@@ -92,7 +95,7 @@ namespace Nethermind.Serialization.Rlp
             return transaction;
         }
 
-        private void DecodeLegacyPayloadWithoutSig(Transaction transaction, RlpStream rlpStream)
+        private void DecodeLegacyPayloadWithoutSig(T transaction, RlpStream rlpStream)
         {
             transaction.Nonce = rlpStream.DecodeUInt256();
             transaction.GasPrice = rlpStream.DecodeUInt256();
@@ -102,7 +105,7 @@ namespace Nethermind.Serialization.Rlp
             transaction.Data = rlpStream.DecodeByteArray();
         }
 
-        private void DecodeAccessListPayloadWithoutSig(Transaction transaction, RlpStream rlpStream, RlpBehaviors rlpBehaviors)
+        private void DecodeAccessListPayloadWithoutSig(T transaction, RlpStream rlpStream, RlpBehaviors rlpBehaviors)
         {
             transaction.ChainId = rlpStream.DecodeULong();
             transaction.Nonce = rlpStream.DecodeUInt256();
@@ -114,12 +117,12 @@ namespace Nethermind.Serialization.Rlp
             transaction.AccessList = _accessListDecoder.Decode(rlpStream, rlpBehaviors);
         }
         
-        private void DecodeEip1559PayloadWithoutSig(Transaction transaction, RlpStream rlpStream, RlpBehaviors rlpBehaviors)
+        private void DecodeEip1559PayloadWithoutSig(T transaction, RlpStream rlpStream, RlpBehaviors rlpBehaviors)
         {
             transaction.ChainId = rlpStream.DecodeULong();
             transaction.Nonce = rlpStream.DecodeUInt256();
             transaction.GasPrice = rlpStream.DecodeUInt256(); // gas premium
-            transaction.DecodedFeeCap = rlpStream.DecodeUInt256();
+            transaction.DecodedMaxFeePerGas = rlpStream.DecodeUInt256();
             transaction.GasLimit = rlpStream.DecodeLong();
             transaction.To = rlpStream.DecodeAddress();
             transaction.Value = rlpStream.DecodeUInt256();
@@ -127,7 +130,7 @@ namespace Nethermind.Serialization.Rlp
             transaction.AccessList = _accessListDecoder.Decode(rlpStream, rlpBehaviors);
         }
         
-        private void DecodeLegacyPayloadWithoutSig(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext)
+        private void DecodeLegacyPayloadWithoutSig(T transaction, ref Rlp.ValueDecoderContext decoderContext)
         {
             transaction.Nonce = decoderContext.DecodeUInt256();
             transaction.GasPrice = decoderContext.DecodeUInt256();
@@ -137,7 +140,7 @@ namespace Nethermind.Serialization.Rlp
             transaction.Data = decoderContext.DecodeByteArray();
         }
 
-        private void DecodeAccessListPayloadWithoutSig(Transaction transaction, ref Rlp.ValueDecoderContext  decoderContext, RlpBehaviors rlpBehaviors)
+        private void DecodeAccessListPayloadWithoutSig(T transaction, ref Rlp.ValueDecoderContext  decoderContext, RlpBehaviors rlpBehaviors)
         {
             transaction.ChainId = decoderContext.DecodeULong();
             transaction.Nonce = decoderContext.DecodeUInt256();
@@ -149,12 +152,12 @@ namespace Nethermind.Serialization.Rlp
             transaction.AccessList = _accessListDecoder.Decode(ref decoderContext, rlpBehaviors);
         }
         
-        private void DecodeEip1559PayloadWithoutSig(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors)
+        private void DecodeEip1559PayloadWithoutSig(T transaction, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors)
         {
             transaction.ChainId = decoderContext.DecodeULong();
             transaction.Nonce = decoderContext.DecodeUInt256();
             transaction.GasPrice = decoderContext.DecodeUInt256(); // gas premium
-            transaction.DecodedFeeCap = decoderContext.DecodeUInt256();
+            transaction.DecodedMaxFeePerGas = decoderContext.DecodeUInt256();
             transaction.GasLimit = decoderContext.DecodeLong();
             transaction.To = decoderContext.DecodeAddress();
             transaction.Value = decoderContext.DecodeUInt256();
@@ -162,7 +165,7 @@ namespace Nethermind.Serialization.Rlp
             transaction.AccessList = _accessListDecoder.Decode(ref decoderContext, rlpBehaviors);
         }
         
-        private void EncodeLegacyWithoutPayload(Transaction item, RlpStream stream)
+        private void EncodeLegacyWithoutPayload(T item, RlpStream stream)
         {
             stream.Encode(item.Nonce);
             stream.Encode(item.GasPrice);
@@ -172,7 +175,7 @@ namespace Nethermind.Serialization.Rlp
             stream.Encode(item.Data);
         }
         
-        private void EncodeAccessListPayloadWithoutPayload(Transaction item, RlpStream stream, RlpBehaviors rlpBehaviors)
+        private void EncodeAccessListPayloadWithoutPayload(T item, RlpStream stream, RlpBehaviors rlpBehaviors)
         {
             stream.Encode(item.ChainId ?? 0);
             stream.Encode(item.Nonce);
@@ -184,12 +187,12 @@ namespace Nethermind.Serialization.Rlp
             _accessListDecoder.Encode(stream, item.AccessList, rlpBehaviors);
         }
         
-        private void EncodeEip1559PayloadWithoutPayload(Transaction item, RlpStream stream, RlpBehaviors rlpBehaviors)
+        private void EncodeEip1559PayloadWithoutPayload(T item, RlpStream stream, RlpBehaviors rlpBehaviors)
         {
             stream.Encode(item.ChainId ?? 0);
             stream.Encode(item.Nonce);
             stream.Encode(item.GasPrice); // gas premium
-            stream.Encode(item.DecodedFeeCap);
+            stream.Encode(item.DecodedMaxFeePerGas);
             stream.Encode(item.GasLimit);
             stream.Encode(item.To);
             stream.Encode(item.Value);
@@ -200,7 +203,7 @@ namespace Nethermind.Serialization.Rlp
         // b9018201f9017e86796f6c6f763304843b9aca00829ab0948a8eafb1cf62bfbeb1741769dae1a9dd479961928080f90111f859940000000000000000000000000000000000001337f842a00000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000133700000000000000000000000f859940000000000000000000000000000000000001337f842a00000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000133700000000000000000000000f859940000000000000000000000000000000000001337f842a00000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000013370000000000000000000000080a09e41e382c76d2913521d7191ecced4a1a16fe0f3e5e22d83d50dd58adbe409e1a07c0e036eff80f9ca192ac26d533fc49c280d90c8b62e90c1a1457b50e51e6144
         // b8__ca01f8__c786796f6c6f763304843b9aca00829ab0948a8eafb1cf62bfbeb1741769dae1a9dd479961928080f8__5bf859940000000000000000000000000000000000001337f842a00000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000133700000000000000000000000f859940000000000000000000000000000000000001337f842a00000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000133700000000000000000000000f859940000000000000000000000000000000000001337f842a00000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000013370000000000000000000000080a09e41e382c76d2913521d7191ecced4a1a16fe0f3e5e22d83d50dd58adbe409e1a07c0e036eff80f9ca192ac26d533fc49c280d90c8b62e90c1a1457b50e51e6144000000
 
-        public Transaction? Decode(ref Rlp.ValueDecoderContext decoderContext,
+        public T? Decode(ref Rlp.ValueDecoderContext decoderContext,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (decoderContext.IsNextItemNull())
@@ -211,7 +214,7 @@ namespace Nethermind.Serialization.Rlp
 
             Span<byte> transactionSequence = decoderContext.PeekNextItem();
 
-            Transaction transaction = new();
+            T transaction = new();
             if ((rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.SkipTypedWrapping)
             {
                 byte firstByte = decoderContext.PeekByte();
@@ -266,7 +269,7 @@ namespace Nethermind.Serialization.Rlp
         private static void DecodeSignature(
             RlpStream rlpStream,
             RlpBehaviors rlpBehaviors,
-            Transaction transaction)
+            T transaction)
         {
             ReadOnlySpan<byte> vBytes = rlpStream.DecodeByteArraySpan();
             ReadOnlySpan<byte> rBytes = rlpStream.DecodeByteArraySpan();
@@ -277,7 +280,7 @@ namespace Nethermind.Serialization.Rlp
         private static void DecodeSignature(
             ref Rlp.ValueDecoderContext decoderContext,
             RlpBehaviors rlpBehaviors,
-            Transaction transaction)
+            T transaction)
         {
             ReadOnlySpan<byte> vBytes = decoderContext.DecodeByteArraySpan();
             ReadOnlySpan<byte> rBytes = decoderContext.DecodeByteArraySpan();
@@ -286,7 +289,7 @@ namespace Nethermind.Serialization.Rlp
         }
 
         private static void ApplySignature(
-            Transaction transaction,
+            T transaction,
             ReadOnlySpan<byte> vBytes,
             ReadOnlySpan<byte> rBytes,
             ReadOnlySpan<byte> sBytes,
@@ -338,14 +341,14 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        public Rlp Encode(Transaction item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Rlp Encode(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
             Encode(rlpStream, item, rlpBehaviors);
             return new Rlp(rlpStream.Data);
         }
 
-        public void Encode(RlpStream stream, Transaction? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public void Encode(RlpStream stream, T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
@@ -396,7 +399,7 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        private int GetLegacyContentLength(Transaction item)
+        private int GetLegacyContentLength(T item)
         {
             return Rlp.LengthOf(item.Nonce)
                 + Rlp.LengthOf(item.GasPrice)
@@ -406,7 +409,7 @@ namespace Nethermind.Serialization.Rlp
                 + Rlp.LengthOf(item.Data);
         }
         
-        private int GetAccessListContentLength(Transaction item)
+        private int GetAccessListContentLength(T item)
         {
             return Rlp.LengthOf(item.Nonce)
                    + Rlp.LengthOf(item.GasPrice)
@@ -418,11 +421,11 @@ namespace Nethermind.Serialization.Rlp
                    + _accessListDecoder.GetLength(item.AccessList, RlpBehaviors.None);
         }
         
-        private int GetEip1559ContentLength(Transaction item)
+        private int GetEip1559ContentLength(T item)
         {
             return Rlp.LengthOf(item.Nonce)
                    + Rlp.LengthOf(item.GasPrice) // gas premium
-                   + Rlp.LengthOf(item.DecodedFeeCap)
+                   + Rlp.LengthOf(item.DecodedMaxFeePerGas)
                    + Rlp.LengthOf(item.GasLimit)
                    + Rlp.LengthOf(item.To)
                    + Rlp.LengthOf(item.Value)
@@ -431,7 +434,7 @@ namespace Nethermind.Serialization.Rlp
                    + _accessListDecoder.GetLength(item.AccessList, RlpBehaviors.None);
         }
 
-        private int GetContentLength(Transaction item, bool forSigning, bool isEip155Enabled = false, int chainId = 0)
+        private int GetContentLength(T item, bool forSigning, bool isEip155Enabled = false, int chainId = 0)
         {
             int contentLength = 0;
             switch (item.Type)
@@ -470,7 +473,7 @@ namespace Nethermind.Serialization.Rlp
         /// <summary>
         /// https://eips.ethereum.org/EIPS/eip-2718
         /// </summary>
-        public int GetLength(Transaction tx, RlpBehaviors rlpBehaviors)
+        public int GetLength(T tx, RlpBehaviors rlpBehaviors)
         {
             int txContentLength = GetContentLength(tx, false);
             int txPayloadLength = Rlp.GetSequenceRlpLength(txContentLength);
@@ -483,21 +486,5 @@ namespace Nethermind.Serialization.Rlp
                 : txPayloadLength;
             return result;
         }
-
-        Rlp IRlpObjectDecoder<GeneratedTransaction>.
-            Encode(GeneratedTransaction item, RlpBehaviors rlpBehaviors) =>
-            Encode(item, rlpBehaviors);
-
-        int IRlpDecoder<GeneratedTransaction>.
-            GetLength(GeneratedTransaction item, RlpBehaviors rlpBehaviors) =>
-            GetLength(item, rlpBehaviors);
-
-        Rlp IRlpObjectDecoder<SystemTransaction>.
-            Encode(SystemTransaction item, RlpBehaviors rlpBehaviors) =>
-            Encode(item, rlpBehaviors);
-
-        int IRlpDecoder<SystemTransaction>.
-            GetLength(SystemTransaction item, RlpBehaviors rlpBehaviors) =>
-            GetLength(item, rlpBehaviors);
     }
 }

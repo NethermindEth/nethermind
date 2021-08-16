@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 
 namespace Nethermind.Config
 {
@@ -23,5 +24,7 @@ namespace Nethermind.Config
         (bool IsSet, object Value) GetValue(Type type, string category, string name);
         
         (bool IsSet, string Value) GetRawValue(string category, string name);
+
+        IEnumerable<(string Category, string Name)> GetConfigKeys();
     }
 }

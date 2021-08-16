@@ -20,7 +20,6 @@ namespace Nethermind.DataMarketplace.Channels
     {
         JsonRpc,
         WebSockets,
-        Grpc,
-        Kafka
+        Grpc
     }
 }

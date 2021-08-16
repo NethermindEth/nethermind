@@ -37,6 +37,8 @@ namespace Nethermind.Blockchain.Processing
         public int SoftMaxRecoveryQueueSizeInTx = 10000; // adjust based on tx or gas
         public const int MaxProcessingQueueSize = 2000; // adjust based on tx or gas
 
+        public ITracerBag Tracers => _compositeBlockTracer;
+
         private readonly IBlockProcessor _blockProcessor;
         private readonly IBlockPreprocessorStep _recoveryStep;
         private readonly Options _options;
@@ -53,6 +55,8 @@ namespace Nethermind.Blockchain.Processing
         private DateTime _lastProcessedBlock;
 
         private int _currentRecoveryQueueSize;
+        private readonly CompositeBlockTracer _compositeBlockTracer = new();
+
         /// <summary>
         /// 
         /// </summary>
@@ -85,7 +89,7 @@ namespace Nethermind.Blockchain.Processing
 
         private void OnNewHeadBlock(object? sender, BlockEventArgs e)
         {
-            _lastProcessedBlock = DateTime.UtcNow;;
+            _lastProcessedBlock = DateTime.UtcNow;
         }
 
         private void OnNewBestBlock(object sender, BlockEventArgs blockEventArgs)
@@ -236,7 +240,7 @@ namespace Nethermind.Blockchain.Processing
 
                 if (_logger.IsTrace) _logger.Trace($"Processing block {block.ToString(Block.Format.Short)}).");
 
-                Block processedBlock = Process(block, blockRef.ProcessingOptions, NullBlockTracer.Instance);
+                Block processedBlock = Process(block, blockRef.ProcessingOptions, _compositeBlockTracer.GetTracer());
                 if (processedBlock == null)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Failed / skipped processing {block.ToString(Block.Format.Full)}");

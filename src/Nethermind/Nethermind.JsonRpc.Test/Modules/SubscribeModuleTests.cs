@@ -16,6 +16,7 @@
 // 
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -26,11 +27,15 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
+using Nethermind.Db.Blooms;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
+using Nethermind.Specs;
+using Nethermind.State.Repositories;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -74,7 +79,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 _logManager);
             
             _subscribeRpcModule = new SubscribeRpcModule(_subscriptionManager);
-            _subscribeRpcModule.Context = new JsonRpcContext(RpcEndpoint.WebSocket, _jsonRpcDuplexClient);
+            _subscribeRpcModule.Context = new (RpcEndpoint.WebSocket, _jsonRpcDuplexClient);
             
             // block numbers matching filters in LogsSubscriptions with null arguments will be 33333-77777
             BlockHeader fromBlock = Build.A.BlockHeader.WithNumber(33333).TestObject;
@@ -83,7 +88,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             _blockTree.FindHeader(Arg.Any<BlockParameter>(), true).Returns(toBlock);
         }
 
-        private JsonRpcResult GetNewHeadBlockResult(BlockEventArgs blockEventArgs, out string subscriptionId)
+        private JsonRpcResult GetBlockAddedToMainResult(BlockReplacementEventArgs blockReplacementEventArgs, out string subscriptionId)
         {
             NewHeadSubscription newHeadSubscription = new NewHeadSubscription(_jsonRpcDuplexClient, _blockTree, _logManager);
             
@@ -96,14 +101,14 @@ namespace Nethermind.JsonRpc.Test.Modules
                 manualResetEvent.Set();
             }));
             
-            _blockTree.NewHeadBlock += Raise.EventWith(new object(), blockEventArgs);
+            _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockReplacementEventArgs);
             manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(100));
 
             subscriptionId = newHeadSubscription.Id;
             return jsonRpcResult;
         }
         
-        private List<JsonRpcResult> GetLogsSubscriptionResult(Filter filter, ReceiptsEventArgs receiptsEventArgs, out string subscriptionId)
+        private List<JsonRpcResult> GetLogsSubscriptionResult(Filter filter, BlockEventArgs blockEventArgs, out string subscriptionId)
         {
             LogsSubscription logsSubscription = new LogsSubscription(_jsonRpcDuplexClient, _receiptStorage, _filterStore, _blockTree, _logManager, filter);
             
@@ -115,7 +120,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 jsonRpcResults.Add(j);
             }));
             
-            _receiptStorage.ReceiptsInserted += Raise.EventWith(new object(), receiptsEventArgs);
+            _blockTree.NewHeadBlock += Raise.EventWith(new object(), blockEventArgs);
             semaphoreSlim.Wait(TimeSpan.FromMilliseconds(100));
 
             subscriptionId = logsSubscription.Id;
@@ -198,12 +203,12 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
         
         [Test]
-        public void NewHeadSubscription_on_NewHeadBlock_event()
+        public void NewHeadSubscription_on_BlockAddedToMain_event()
         {
             Block block = Build.A.Block.WithDifficulty(1991).WithExtraData(new byte[] {3, 5, 8}).TestObject;
-            BlockEventArgs blockEventArgs = new BlockEventArgs(block);
+            BlockReplacementEventArgs blockReplacementEventArgs = new(block);
 
-            JsonRpcResult jsonRpcResult = GetNewHeadBlockResult(blockEventArgs, out var subscriptionId);
+            JsonRpcResult jsonRpcResult = GetBlockAddedToMainResult(blockReplacementEventArgs, out var subscriptionId);
 
             jsonRpcResult.Response.Should().NotBeNull();
             string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response);
@@ -212,13 +217,69 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
         
         [Test]
-        public void NewHeadSubscription_on_NewHeadBlock_event_with_null_block()
+        public void NewHeadSubscription_on_BlockAddedToMain_event_with_null_block()
         {
-            BlockEventArgs blockEventArgs = new BlockEventArgs(null);
+            BlockReplacementEventArgs blockReplacementEventArgs = new(null);
             
-            JsonRpcResult jsonRpcResult = GetNewHeadBlockResult(blockEventArgs, out _);
+            JsonRpcResult jsonRpcResult = GetBlockAddedToMainResult(blockReplacementEventArgs, out _);
 
             jsonRpcResult.Response.Should().BeNull();
+        }
+        
+        [Test]
+        public void NewHeadSubscription_should_send_notifications_when_adding_multiple_blocks_at_once_and_after_reorgs()
+        {
+            MemDb blocksDb = new();
+            MemDb headersDb = new();
+            MemDb blocksInfosDb = new();
+            ChainLevelInfoRepository chainLevelInfoRepository = new(blocksInfosDb);
+            BlockTree blockTree = new(
+                blocksDb,
+                headersDb,
+                blocksInfosDb,
+                chainLevelInfoRepository,
+                MainnetSpecProvider.Instance,
+                NullBloomStorage.Instance,
+                LimboLogs.Instance);
+
+            NewHeadSubscription newHeadSubscription = new(_jsonRpcDuplexClient, blockTree, _logManager);
+            ConcurrentQueue<JsonRpcResult> jsonRpcResult = new();
+            
+            Block block0 = Build.A.Block.Genesis.WithTotalDifficulty(0L).TestObject;
+            Block block1 = Build.A.Block.WithParent(block0).WithDifficulty(0).WithTotalDifficulty(0L).TestObject;
+            Block block2 = Build.A.Block.WithParent(block1).WithDifficulty(0).WithTotalDifficulty(0L).TestObject;
+            Block block3 = Build.A.Block.WithParent(block2).WithDifficulty(0).WithTotalDifficulty(0L).TestObject;
+            Block block1B = Build.A.Block.WithParent(block0).WithDifficulty(0).WithTotalDifficulty(0L).TestObject;
+            Block block2B = Build.A.Block.WithParent(block1B).WithDifficulty(1).WithTotalDifficulty(1L).TestObject;
+
+            blockTree.SuggestBlock(block0);
+            blockTree.SuggestBlock(block1);
+            blockTree.SuggestBlock(block2);
+            blockTree.SuggestBlock(block3);
+            blockTree.SuggestBlock(block1B);
+            blockTree.SuggestBlock(block2B);
+
+            ManualResetEvent manualResetEvent = new(false);
+            newHeadSubscription.JsonRpcDuplexClient.SendJsonRpcResult(Arg.Do<JsonRpcResult>(j =>
+            {
+                jsonRpcResult.Enqueue(j);
+                
+                if (jsonRpcResult.Count is 3 or 5)
+                    manualResetEvent.Set();
+            }));
+
+            blockTree.UpdateMainChain(new Block[] {block1, block2, block3}, true);
+            manualResetEvent.WaitOne();
+            manualResetEvent.Reset();
+            blockTree.UpdateMainChain(new Block[] {block1B, block2B}, true);
+            manualResetEvent.WaitOne();
+
+            jsonRpcResult.Count.Should().Be(5);
+            blockTree.Head.Should().Be(block2B);
+
+            string serialized = _jsonSerializer.Serialize(jsonRpcResult.Last().Response);
+            var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", newHeadSubscription.Id, "\",\"result\":{\"author\":\"0x0000000000000000000000000000000000000000\",\"difficulty\":\"0x1\",\"extraData\":\"0x010203\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0x0\",\"hash\":\"0x2a50f16b6461467b6e5e58c3ac5205763641165455fa9bafc1e9e77a06dc1fe3\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"miner\":\"0x0000000000000000000000000000000000000000\",\"mixHash\":\"0x2ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e2\",\"nonce\":\"0x00000000000003e8\",\"number\":\"0x2\",\"parentHash\":\"0x3a7518031f6de870575b043216dedcbb57188476103e40ac5c5d4862da2fbcc8\",\"receiptsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"size\":\"0x1fe\",\"stateRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"totalDifficulty\":\"0x1\",\"timestamp\":\"0xf4242\",\"transactions\":[],\"transactionsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"uncles\":[]}}}");
+            expectedResult.Should().Be(serialized);
         }
         
         [Test]
@@ -246,18 +307,19 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
-        public void LogsSubscription_with_null_arguments_on_ReceiptsInserted_event()
+        public void LogsSubscription_with_null_arguments_on_NewHeadBlock_event()
         {
             int blockNumber = 55555;
             Filter filter = null;
             
             LogEntry logEntry = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA).WithData(TestItem.RandomDataA).TestObject;
-            TxReceipt[] txReceipts = new TxReceipt[] {Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntry).TestObject};
+            TxReceipt[] txReceipts = {Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntry).TestObject};
+            _receiptStorage.Get(Arg.Any<Block>()).Returns(txReceipts);
             
-            BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(blockNumber).TestObject;
-            ReceiptsEventArgs receiptsEventArgs = new ReceiptsEventArgs(blockHeader, txReceipts);
-            
-            List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, receiptsEventArgs, out var subscriptionId);
+            Block block = Build.A.Block.WithNumber(blockNumber).TestObject;
+            BlockEventArgs blockEventArgs = new BlockEventArgs(block);
+        
+            List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, blockEventArgs, out var subscriptionId);
 
             jsonRpcResults.Count.Should().Be(1);
             string serialized = _jsonSerializer.Serialize(jsonRpcResults[0].Response);
@@ -266,24 +328,25 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
-        public void LogsSubscription_with_not_matching_block_on_ReceiptsInserted_event()
+        public void LogsSubscription_with_not_matching_block_on_NewHeadBlock_event()
         {
             int blockNumber = 22222;
             Filter filter = null;
 
             LogEntry logEntry = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA).WithData(TestItem.RandomDataA).TestObject;
-            TxReceipt[] txReceipts = new TxReceipt[] {Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntry).TestObject};
+            TxReceipt[] txReceipts = {Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntry).TestObject};
+            _receiptStorage.Get(Arg.Any<Block>()).Returns(txReceipts);
+            
+            Block block = Build.A.Block.WithNumber(blockNumber).TestObject;
+            BlockEventArgs blockEventArgs = new BlockEventArgs(block);
         
-            BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(blockNumber).TestObject;
-            ReceiptsEventArgs receiptsEventArgs = new ReceiptsEventArgs(blockHeader, txReceipts);
-        
-            List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, receiptsEventArgs, out _);
+            List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, blockEventArgs, out var subscriptionId);
 
             jsonRpcResults.Count.Should().Be(0);
         }
         
         [Test]
-        public void LogsSubscription_with_null_arguments_on_ReceiptsInserted_event_with_one_TxReceipt_with_few_logs()
+        public void LogsSubscription_with_null_arguments_on_NewHeadBlock_event_with_one_TxReceipt_with_few_logs()
         {
             int blockNumber = 77777;
             Filter filter = null;
@@ -292,12 +355,13 @@ namespace Nethermind.JsonRpc.Test.Modules
             LogEntry logEntryB = Build.A.LogEntry.WithAddress(TestItem.AddressB).WithTopics(TestItem.KeccakB).TestObject;
             LogEntry logEntryC = Build.A.LogEntry.WithData(TestItem.RandomDataC).TestObject;
 
-            TxReceipt[] txReceipts = new TxReceipt[] {Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntryA, logEntryB, logEntryC).TestObject};
+            TxReceipt[] txReceipts = {Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntryA, logEntryB, logEntryC).TestObject};
+            _receiptStorage.Get(Arg.Any<Block>()).Returns(txReceipts);
             
-            BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(blockNumber).TestObject;
-            ReceiptsEventArgs receiptsEventArgs = new ReceiptsEventArgs(blockHeader, txReceipts);
+            Block block = Build.A.Block.WithNumber(blockNumber).TestObject;
+            BlockEventArgs blockEventArgs = new BlockEventArgs(block);
         
-            List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, receiptsEventArgs, out var subscriptionId);
+            List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, blockEventArgs, out var subscriptionId);
 
             jsonRpcResults.Count.Should().Be(3);
             string serialized = _jsonSerializer.Serialize(jsonRpcResults[0].Response);
@@ -314,7 +378,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
         
         [Test]
-        public void LogsSubscription_with_null_arguments_on_ReceiptsInserted_event_with_few_TxReceipts_with_few_logs()
+        public void LogsSubscription_with_null_arguments_on_NewHeadBlock_event_with_few_TxReceipts_with_few_logs()
         {
             int blockNumber = 55555;
             Filter filter = null;
@@ -323,17 +387,19 @@ namespace Nethermind.JsonRpc.Test.Modules
             LogEntry logEntryB = Build.A.LogEntry.WithAddress(TestItem.AddressB).WithTopics(TestItem.KeccakB).TestObject;
             LogEntry logEntryC = Build.A.LogEntry.WithData(TestItem.RandomDataC).TestObject;
 
-            TxReceipt[] txReceipts = new TxReceipt[]
+            TxReceipt[] txReceipts =
             {
                 Build.A.Receipt.WithBlockNumber(blockNumber).WithIndex(11).WithLogs(logEntryA).TestObject,
                 Build.A.Receipt.WithBlockNumber(blockNumber).WithIndex(22).WithLogs(logEntryA, logEntryB).TestObject,
                 Build.A.Receipt.WithBlockNumber(blockNumber).WithIndex(33).WithLogs(logEntryB, logEntryC).TestObject
             };
             
-            BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(blockNumber).TestObject;
-            ReceiptsEventArgs receiptsEventArgs = new ReceiptsEventArgs(blockHeader, txReceipts);
+            _receiptStorage.Get(Arg.Any<Block>()).Returns(txReceipts);
+            
+            Block block = Build.A.Block.WithNumber(blockNumber).TestObject;
+            BlockEventArgs blockEventArgs = new BlockEventArgs(block);
         
-            List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, receiptsEventArgs, out var subscriptionId);
+            List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, blockEventArgs, out var subscriptionId);
 
             jsonRpcResults.Count.Should().Be(5);
             string serialized = _jsonSerializer.Serialize(jsonRpcResults[0].Response);
@@ -358,10 +424,10 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
         
         [Test]
-        public void LogsSubscription_on_ReceiptsInserted_event_with_few_TxReceipts_with_few_logs_with_some_address_mismatches()
+        public void LogsSubscription_on_NewHeadBlock_event_with_few_TxReceipts_with_few_logs_with_some_address_mismatches()
         {
             int blockNumber = 55555;
-            Filter filter = new Filter()
+            Filter filter = new Filter
             {
                 FromBlock = BlockParameter.Latest,
                 ToBlock = BlockParameter.Latest,
@@ -373,8 +439,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             LogEntry logEntryB = Build.A.LogEntry.WithAddress(TestItem.AddressB).WithTopics(TestItem.KeccakB).WithData(TestItem.RandomDataB).TestObject;
             LogEntry logEntryC = Build.A.LogEntry.WithData(TestItem.RandomDataC).TestObject;
             
-
-            TxReceipt[] txReceipts = new TxReceipt[]
+            TxReceipt[] txReceipts =
             {
                 Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntryA, logEntryB, logEntryC).TestObject,
                 Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs().TestObject,
@@ -382,12 +447,13 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntryC, logEntryC, logEntryB, logEntryC, logEntryC, logEntryB).TestObject,
                 Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntryA, logEntryC, logEntryB, logEntryA, logEntryC).TestObject,
             };
-
-            Bloom bloom = new Bloom(txReceipts.Select(r => r.Bloom).ToArray());
-            BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(blockNumber).WithBloom(bloom).TestObject;
-            ReceiptsEventArgs receiptsEventArgs = new ReceiptsEventArgs(blockHeader, txReceipts);
+            
+            _receiptStorage.Get(Arg.Any<Block>()).Returns(txReceipts);
+            
+            Block block = Build.A.Block.WithNumber(blockNumber).WithBloom(new Bloom(txReceipts.Select(r => r.Bloom).ToArray())).TestObject;
+            BlockEventArgs blockEventArgs = new BlockEventArgs(block);
         
-            List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, receiptsEventArgs, out var subscriptionId);
+            List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, blockEventArgs, out var subscriptionId);
 
             jsonRpcResults.Count.Should().Be(3);
             string serialized = _jsonSerializer.Serialize(jsonRpcResults[0].Response);
@@ -404,11 +470,11 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
         
         [Test]
-        public void LogsSubscription_on_ReceiptsInserted_event_with_few_TxReceipts_with_few_logs_with_some_topic_mismatches()
+        public void LogsSubscription_on_NewHeadBlock_event_with_few_TxReceipts_with_few_logs_with_some_topic_mismatches()
         {
             int blockNumber = 55555;
 
-            Filter filter = new Filter()
+            Filter filter = new Filter
             {
                 FromBlock = BlockParameter.Latest,
                 ToBlock = BlockParameter.Latest,
@@ -420,8 +486,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             LogEntry logEntryB = Build.A.LogEntry.WithAddress(TestItem.AddressB).WithTopics(TestItem.KeccakB).WithData(TestItem.RandomDataB).TestObject;
             LogEntry logEntryC = Build.A.LogEntry.WithAddress(TestItem.AddressC).WithData(TestItem.RandomDataC).TestObject;
             
-
-            TxReceipt[] txReceipts = new TxReceipt[]
+            TxReceipt[] txReceipts =
             {
                 Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntryA, logEntryB, logEntryC).TestObject,
                 Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs().TestObject,
@@ -430,11 +495,12 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntryA, logEntryC, logEntryB, logEntryA, logEntryC).TestObject,
             };
 
-            Bloom bloom = new Bloom(txReceipts.Select(r => r.Bloom).ToArray());
-            BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(blockNumber).WithBloom(bloom).TestObject;
-            ReceiptsEventArgs receiptsEventArgs = new ReceiptsEventArgs(blockHeader, txReceipts);
+            _receiptStorage.Get(Arg.Any<Block>()).Returns(txReceipts);
+            
+            Block block = Build.A.Block.WithNumber(blockNumber).WithBloom(new Bloom(txReceipts.Select(r => r.Bloom).ToArray())).TestObject;
+            BlockEventArgs blockEventArgs = new BlockEventArgs(block);
         
-            List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, receiptsEventArgs, out var subscriptionId);
+            List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, blockEventArgs, out var subscriptionId);
 
             jsonRpcResults.Count.Should().Be(3);
             string serialized = _jsonSerializer.Serialize(jsonRpcResults[0].Response);
@@ -451,12 +517,12 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
         
         [Test]
-        public void LogsSubscription_on_ReceiptsInserted_event_with_few_TxReceipts_with_few_logs_with_few_topics_and_some_address_and_topic_mismatches()
+        public void LogsSubscription_on_NewHeadBlock_event_with_few_TxReceipts_with_few_logs_with_few_topics_and_some_address_and_topic_mismatches()
         {
             int blockNumber = 55555;
-            IEnumerable<object> topics = new List<object>(){TestItem.KeccakA};
+            IEnumerable<object> topics = new List<object> {TestItem.KeccakA};
 
-            Filter filter = new Filter()
+            Filter filter = new Filter
             {
                 FromBlock = BlockParameter.Latest,
                 ToBlock = BlockParameter.Latest,
@@ -470,9 +536,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             LogEntry logEntryD = Build.A.LogEntry.WithAddress(TestItem.AddressB).WithTopics(TestItem.KeccakA, TestItem.KeccakD, TestItem.KeccakE).WithData(TestItem.RandomDataB).TestObject;
             LogEntry logEntryE = Build.A.LogEntry.WithTopics(TestItem.KeccakA, TestItem.KeccakD).WithData(TestItem.RandomDataB).TestObject;
 
-            
-
-            TxReceipt[] txReceipts = new TxReceipt[]
+            TxReceipt[] txReceipts =
             {
                 Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntryA, logEntryB, logEntryC).TestObject,
                 Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs().TestObject,
@@ -481,11 +545,12 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntryC, logEntryB, logEntryE, logEntryA, logEntryB).TestObject,
             };
             
-            Bloom bloom = new Bloom(txReceipts.Select(r => r.Bloom).ToArray());
-            BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(blockNumber).WithBloom(bloom).TestObject;
-            ReceiptsEventArgs receiptsEventArgs = new ReceiptsEventArgs(blockHeader, txReceipts);
+            _receiptStorage.Get(Arg.Any<Block>()).Returns(txReceipts);
+            
+            Block block = Build.A.Block.WithNumber(blockNumber).WithBloom(new Bloom(txReceipts.Select(r => r.Bloom).ToArray())).TestObject;
+            BlockEventArgs blockEventArgs = new BlockEventArgs(block);
         
-            List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, receiptsEventArgs, out var subscriptionId);
+            List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, blockEventArgs, out var subscriptionId);
 
             jsonRpcResults.Count.Should().Be(3);
             string serialized = _jsonSerializer.Serialize(jsonRpcResults[0].Response);
@@ -498,6 +563,44 @@ namespace Nethermind.JsonRpc.Test.Modules
             
             serialized = _jsonSerializer.Serialize(jsonRpcResults[2].Response);
             expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"blockNumber\":\"0xd903\",\"data\":\"0x010203\",\"logIndex\":\"0x2\",\"removed\":false,\"topics\":[\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"0x6c3fd336b49dcb1c57dd4fbeaf5f898320b0da06a5ef64e798c6497600bb79f2\"],\"transactionIndex\":\"0x0\",\"transactionLogIndex\":\"0x0\"}}}");
+            expectedResult.Should().Be(serialized);
+        }
+
+        [Test]
+        public void LogsSubscription_should_not_send_logs_of_new_txs_on_ReceiptsInserted_event_but_on_NewHeadBlock_event()
+        {
+            int blockNumber = 55555;
+            Filter filter = null;
+            
+            LogsSubscription logsSubscription = new LogsSubscription(_jsonRpcDuplexClient, _receiptStorage, _filterStore, _blockTree, _logManager, filter);
+
+            LogEntry logEntry = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA).WithData(TestItem.RandomDataA).TestObject;
+            TxReceipt[] txReceipts = {Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntry).TestObject};
+            BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(blockNumber).TestObject;
+            Block block = Build.A.Block.WithHeader(blockHeader).TestObject;
+            _receiptStorage.Get(Arg.Any<Block>()).Returns(txReceipts);
+
+            List<JsonRpcResult> jsonRpcResults = new List<JsonRpcResult>();
+            
+            ManualResetEvent manualResetEvent = new ManualResetEvent(false);
+            ReceiptsEventArgs receiptsEventArgs = new ReceiptsEventArgs(blockHeader, txReceipts);
+            logsSubscription.JsonRpcDuplexClient.SendJsonRpcResult(Arg.Do<JsonRpcResult>(j =>
+            {
+                jsonRpcResults.Add(j);
+                manualResetEvent.Set();
+            }));
+            _receiptStorage.ReceiptsInserted += Raise.EventWith(new object(), receiptsEventArgs);
+            manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(200));
+            
+            jsonRpcResults.Count.Should().Be(0);
+            
+            BlockEventArgs blockEventArgs = new BlockEventArgs(block);
+            _blockTree.NewHeadBlock += Raise.EventWith(new object(), blockEventArgs);
+            manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(200));
+            
+            jsonRpcResults.Count.Should().Be(1);
+            string serialized = _jsonSerializer.Serialize(jsonRpcResults[0].Response);
+            var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", logsSubscription.Id, "\",\"result\":{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"blockNumber\":\"0xd903\",\"data\":\"0x010203\",\"logIndex\":\"0x0\",\"removed\":false,\"topics\":[\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\"],\"transactionIndex\":\"0x0\",\"transactionLogIndex\":\"0x0\"}}}");
             expectedResult.Should().Be(serialized);
         }
 
@@ -706,6 +809,89 @@ namespace Nethermind.JsonRpc.Test.Modules
                 string.Concat("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Failed to unsubscribe: ",
                     newPendingTxId, ".\",\"data\":false},\"id\":67}");
             expectedNewPendingTxUnsub.Should().Be(serializedNewPendingTxUnsub);
+        }
+
+        [Test]
+        public void ReceiptCanonicalityMonitor_can_change_removed_flag_of_receipt()
+        {
+            TxReceipt[] GetTxReceipts(LogEntry logEntry, LogEntry logEntryB1, LogEntry logEntryC1, bool removed = false) =>
+                new[]
+                {
+                    Build.A.Receipt.WithIndex(11).WithLogs(logEntry).WithRemoved(removed).TestObject,
+                    Build.A.Receipt.WithIndex(22).WithLogs(logEntry, logEntryB1).WithRemoved(removed).TestObject,
+                    Build.A.Receipt.WithIndex(33).WithLogs(logEntryB1, logEntryC1).WithRemoved(removed).TestObject
+                };
+
+            ReceiptCanonicalityMonitor receiptCanonicalityMonitor =
+                new ReceiptCanonicalityMonitor(_blockTree, _receiptStorage, _logManager);
+            
+            LogEntry logEntryA = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA).WithData(TestItem.RandomDataA).TestObject;
+            LogEntry logEntryB = Build.A.LogEntry.WithAddress(TestItem.AddressB).WithTopics(TestItem.KeccakB).TestObject;
+            LogEntry logEntryC = Build.A.LogEntry.WithData(TestItem.RandomDataC).TestObject;
+
+            TxReceipt[] txReceipts = GetTxReceipts(logEntryA, logEntryB, logEntryC);
+            
+            _receiptStorage.Get(Arg.Any<Block>()).Returns(txReceipts);
+
+            Block block = Build.A.Block.TestObject;
+            Block previousBlock = Build.A.Block.WithBloom(new Bloom(txReceipts.Select(r => r.Bloom).ToArray())).TestObject;
+            BlockReplacementEventArgs blockEventArgs = new BlockReplacementEventArgs(block, previousBlock);
+
+            TxReceipt[] receiptsRemoved = GetTxReceipts(logEntryA, logEntryB, logEntryC, true);
+            TxReceipt[] changedReceipts = Array.Empty<TxReceipt>();
+            ManualResetEvent manualResetEvent = new ManualResetEvent(false);
+            _receiptStorage.Insert(Arg.Any<Block>(), Arg.Do<TxReceipt[]>(r =>
+            {
+                changedReceipts = r;
+                manualResetEvent.Set();
+            }));
+            _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockEventArgs);
+            manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(200));
+
+            txReceipts.Should().BeEquivalentTo(txReceipts);
+            changedReceipts.Should().BeEquivalentTo(receiptsRemoved);
+        }
+
+        [Test]
+        public void LogsSubscription_can_send_logs_with_removed_txs_when_inserted()
+        {
+            ReceiptCanonicalityMonitor receiptCanonicalityMonitor =
+                new ReceiptCanonicalityMonitor(_blockTree, _receiptStorage, _logManager);
+            
+            int blockNumber = 55555;
+            Filter filter = null;
+            
+            LogsSubscription logsSubscription = new LogsSubscription(_jsonRpcDuplexClient, _receiptStorage, _filterStore, _blockTree, _logManager, filter);
+
+            LogEntry logEntry = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA).WithData(TestItem.RandomDataA).TestObject;
+            TxReceipt[] txReceipts = {Build.A.Receipt.WithLogs(logEntry).WithBlockNumber(blockNumber).TestObject};
+            BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(blockNumber).TestObject;
+            Block block = Build.A.Block.TestObject;
+            Block previousBlock = Build.A.Block.WithHeader(blockHeader).WithBloom(new Bloom(txReceipts.Select(r => r.Bloom).ToArray())).TestObject;
+            _receiptStorage.Get(Arg.Any<Block>()).Returns(txReceipts);
+            List<JsonRpcResult> jsonRpcResults = new List<JsonRpcResult>();
+            
+            ManualResetEvent manualResetEvent = new ManualResetEvent(false);
+            BlockReplacementEventArgs blockEventArgs = new BlockReplacementEventArgs(block, previousBlock);
+            logsSubscription.JsonRpcDuplexClient.SendJsonRpcResult(Arg.Do<JsonRpcResult>(j =>
+            {
+                jsonRpcResults.Add(j);
+                manualResetEvent.Set();
+            }));
+            
+            _receiptStorage.Insert(Arg.Any<Block>(), Arg.Do<TxReceipt[]>(r =>
+            {
+                ReceiptsEventArgs receiptsEventArgs = new ReceiptsEventArgs(blockHeader, r);
+                _receiptStorage.ReceiptsInserted += Raise.EventWith(new object(), receiptsEventArgs);
+            }));
+            
+            _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockEventArgs);
+            manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(200));
+
+            jsonRpcResults.Count.Should().Be(1);
+            string serialized = _jsonSerializer.Serialize(jsonRpcResults[0].Response);
+            var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", logsSubscription.Id, "\",\"result\":{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"blockNumber\":\"0xd903\",\"data\":\"0x010203\",\"logIndex\":\"0x0\",\"removed\":true,\"topics\":[\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\"],\"transactionIndex\":\"0x0\",\"transactionLogIndex\":\"0x0\"}}}");
+            expectedResult.Should().Be(serialized);
         }
     }
 }

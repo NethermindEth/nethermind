@@ -40,6 +40,7 @@ namespace Nethermind.Evm
         TransactionCollision,
         NotEnoughBalance,
         Other,
-        Revert
+        Revert,
+        InvalidCode
     }
 }

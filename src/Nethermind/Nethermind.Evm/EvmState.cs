@@ -106,8 +106,26 @@ namespace Nethermind.Evm
         
         public int ReturnStackHead = 0;
 
-        public EvmState(long gasAvailable, ExecutionEnvironment env, ExecutionType executionType, bool isTopLevel, bool isContinuation)
-            : this(gasAvailable, env, executionType, isTopLevel, -1, -1, 0L, 0L, false, null, isContinuation, false)
+        public EvmState(
+            long gasAvailable, 
+            ExecutionEnvironment env, 
+            ExecutionType executionType, 
+            bool isTopLevel, 
+            int stateSnapshot,
+            int storageSnapshot,
+            bool isContinuation)
+            : this(gasAvailable, 
+                env, 
+                executionType, 
+                isTopLevel, 
+                stateSnapshot, 
+                storageSnapshot, 
+                0L, 
+                0L, 
+                false, 
+                null, 
+                isContinuation, 
+                false)
         {
             GasAvailable = gasAvailable;
             Env = env;

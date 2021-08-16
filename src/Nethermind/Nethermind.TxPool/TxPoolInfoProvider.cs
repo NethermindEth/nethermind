@@ -18,35 +18,29 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
-using Nethermind.State;
 
 namespace Nethermind.TxPool
 {
     public class TxPoolInfoProvider : ITxPoolInfoProvider
     {
-        private readonly IStateReader _stateReader;
+        private readonly IAccountStateProvider _stateReader;
         private readonly ITxPool _txPool;
 
-        public TxPoolInfoProvider(IStateReader stateReader, ITxPool txPool)
+        public TxPoolInfoProvider(IAccountStateProvider accountStateProvider, ITxPool txPool)
         {
-            _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
+            _stateReader = accountStateProvider ?? throw new ArgumentNullException(nameof(accountStateProvider));
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
         }
 
-        public TxPoolInfo GetInfo(BlockHeader head)
+        public TxPoolInfo GetInfo()
         {
             var groupedTransactions = _txPool.GetPendingTransactionsBySender();
             var pendingTransactions = new Dictionary<Address, IDictionary<ulong, Transaction>>();
             var queuedTransactions = new Dictionary<Address, IDictionary<ulong, Transaction>>();
             foreach (KeyValuePair<Address, Transaction[]> group in groupedTransactions)
             {
-                Address? address = group.Key;
-                if (address is null)
-                {
-                    continue;
-                }
-
-                var accountNonce = _stateReader.GetNonce(head.StateRoot, address);
+                Address address = group.Key;
+                var accountNonce = _stateReader.GetAccount(address).Nonce;
                 var expectedNonce = accountNonce;
                 var pending = new Dictionary<ulong, Transaction>();
                 var queued = new Dictionary<ulong, Transaction>();

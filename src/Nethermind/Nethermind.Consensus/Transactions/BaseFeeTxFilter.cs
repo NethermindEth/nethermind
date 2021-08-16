@@ -37,15 +37,15 @@ namespace Nethermind.Consensus.Transactions
         {
             long blockNumber = parentHeader.Number + 1;
             IReleaseSpec releaseSpec = _specProvider.GetSpec(blockNumber);
-            UInt256 baseFee = BlockHeader.CalculateBaseFee(parentHeader, releaseSpec);
+            UInt256 baseFee = BaseFeeCalculator.Calculate(parentHeader, releaseSpec);
             bool isEip1559Enabled = releaseSpec.IsEip1559Enabled;
 
             bool skipCheck = tx.IsServiceTransaction || !isEip1559Enabled;
-            bool allowed = skipCheck || tx.FeeCap >= baseFee;
+            bool allowed = skipCheck || tx.MaxFeePerGas >= baseFee;
             return (allowed,
                 allowed
                     ? string.Empty
-                    : $"FeeCap too low. FeeCap: {tx.FeeCap}, BaseFee: {baseFee}, GasPremium:{tx.GasPremium}, Block number: {blockNumber}");
+                    : $"FeeCap too low. FeeCap: {tx.MaxFeePerGas}, BaseFee: {baseFee}, GasPremium:{tx.MaxPriorityFeePerGas}, Block number: {blockNumber}");
         }
     }
 }

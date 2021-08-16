@@ -96,7 +96,7 @@ namespace Nethermind.Baseline
             tx.GasLimit = 1000000;
             tx.GasPrice = 20.GWei();
 
-            Keccak txHash = await _txSender.SendTransaction(tx, TxHandlingOptions);
+            Keccak txHash = (await _txSender.SendTransaction(tx, TxHandlingOptions)).Hash;
             return ResultWrapper<Keccak>.Success(txHash);
         }
 
@@ -127,7 +127,7 @@ namespace Nethermind.Baseline
             tx.GasLimit = 1000000;
             tx.GasPrice = 20.GWei();
 
-            Keccak txHash = await _txSender.SendTransaction(tx, TxHandlingOptions);
+            Keccak txHash = (await _txSender.SendTransaction(tx, TxHandlingOptions)).Hash;
 
             return ResultWrapper<Keccak>.Success(txHash);
         }
@@ -536,7 +536,7 @@ namespace Nethermind.Baseline
             tx.GasLimit = 1000000;
             tx.GasPrice = 20.GWei();
 
-            Keccak txHash = await _txSender.SendTransaction(tx, TxHandlingOptions);
+            Keccak txHash = (await _txSender.SendTransaction(tx, TxHandlingOptions)).Hash;
             return ResultWrapper<VerifyAndPushResponse>.Success(new VerifyAndPushResponse(txHash));
         }
 
@@ -587,7 +587,7 @@ namespace Nethermind.Baseline
             tx.GasPrice = 20.GWei();
             tx.SenderAddress = address;
 
-            Keccak txHash = await _txSender.SendTransaction(tx, TxHandlingOptions);
+            Keccak txHash = (await _txSender.SendTransaction(tx, TxHandlingOptions)).Hash;
 
             _logger.Info($"Sent transaction at price {tx.GasPrice} to {tx.SenderAddress}");
             _logger.Info($"Contract {contractType} has been deployed");

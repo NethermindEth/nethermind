@@ -34,7 +34,7 @@ namespace Nethermind.Evm.Tracing
                 };
         }
 
-        public static CancellationBlockTracer WithCancellation(this IBlockTracer txTracer, CancellationToken cancellationToken) =>
-            new(txTracer, cancellationToken);
+        public static CancellationBlockTracer WithCancellation(this IBlockTracer blockTracer, CancellationToken cancellationToken) =>
+            new(blockTracer, cancellationToken);
     }
 }

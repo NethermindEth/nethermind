@@ -17,6 +17,8 @@
 
 using System.Threading.Tasks;
 using Nethermind.Api;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Core.Test.Builders;
@@ -44,6 +46,19 @@ namespace Nethermind.Merge.Plugin.Test
             _context.ConfigProvider.GetConfig<IMergeConfig>().Returns(_mergeConfig);
             _context.ConfigProvider.GetConfig<ISyncConfig>().Returns(new SyncConfig());
             _context.MemDbFactory = new MemDbFactory();
+            _context.BlockProducerEnvFactory = new BlockProducerEnvFactory(
+                _context.DbProvider!,
+                _context.BlockTree!,
+                _context.ReadOnlyTrieStore!,
+                _context.SpecProvider!,
+                _context.BlockValidator!,
+                _context.RewardCalculatorSource!,
+                _context.ReceiptStorage!,
+                _context.BlockPreprocessor!,
+                _context.TxPool!,
+                _context.TransactionComparerProvider,
+                new MiningConfig(),
+                _context.LogManager!);
             _plugin = new MergePlugin();
         }
         

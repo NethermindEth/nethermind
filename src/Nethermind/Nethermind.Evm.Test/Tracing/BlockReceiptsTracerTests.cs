@@ -36,7 +36,7 @@ namespace Nethermind.Evm.Test.Tracing
             BlockReceiptsTracer tracer = new();
             tracer.SetOtherTracer(NullBlockTracer.Instance);
             tracer.StartNewBlockTrace(block);
-            tracer.StartNewTxTrace(block.Transactions[0].Hash);
+            tracer.StartNewTxTrace(block.Transactions[0]);
             tracer.MarkAsSuccess(TestItem.AddressA, 100, new byte[0], new LogEntry[0], TestItem.KeccakF);
             
             Assert.AreEqual(TestItem.KeccakF, tracer.TxReceipts[0].PostTransactionState);
@@ -50,7 +50,7 @@ namespace Nethermind.Evm.Test.Tracing
             BlockReceiptsTracer tracer = new();
             tracer.SetOtherTracer(NullBlockTracer.Instance);
             tracer.StartNewBlockTrace(block);
-            tracer.StartNewTxTrace(block.Transactions[0].Hash);
+            tracer.StartNewTxTrace(block.Transactions[0]);
             tracer.MarkAsSuccess(TestItem.AddressA, 100, new byte[0], new LogEntry[0]);
 
             tracer.TxReceipts[0].TxType.Should().Be(TxType.AccessList);
@@ -64,7 +64,7 @@ namespace Nethermind.Evm.Test.Tracing
             BlockReceiptsTracer tracer = new();
             tracer.SetOtherTracer(NullBlockTracer.Instance);
             tracer.StartNewBlockTrace(block);
-            tracer.StartNewTxTrace(block.Transactions[0].Hash);
+            tracer.StartNewTxTrace(block.Transactions[0]);
             tracer.MarkAsFailed(TestItem.AddressA, 100, new byte[0], "error", TestItem.KeccakF);
             
             Assert.AreEqual(TestItem.KeccakF, tracer.TxReceipts[0].PostTransactionState);
@@ -79,7 +79,7 @@ namespace Nethermind.Evm.Test.Tracing
             BlockReceiptsTracer tracer = new();
             tracer.SetOtherTracer(otherTracer);
             tracer.StartNewBlockTrace(block);
-            tracer.StartNewTxTrace(block.Transactions[0].Hash);
+            tracer.StartNewTxTrace(block.Transactions[0]);
             tracer.MarkAsFailed(TestItem.AddressA, 100, Array.Empty<byte>(), "error", TestItem.KeccakF);
             
             (otherTracer as ITxTracer).Received().MarkAsFailed(TestItem.AddressA, 100, Array.Empty<byte>(), "error", TestItem.KeccakF);
@@ -94,7 +94,7 @@ namespace Nethermind.Evm.Test.Tracing
             BlockReceiptsTracer tracer = new();
             tracer.SetOtherTracer(otherTracer);
             tracer.StartNewBlockTrace(block);
-            tracer.StartNewTxTrace(block.Transactions[0].Hash);
+            tracer.StartNewTxTrace(block.Transactions[0]);
             var logEntries = new LogEntry[0];
             tracer.MarkAsSuccess(TestItem.AddressA, 100,Array.Empty<byte>(), logEntries, TestItem.KeccakF);
             

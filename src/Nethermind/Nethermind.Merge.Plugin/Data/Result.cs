@@ -21,12 +21,11 @@ namespace Nethermind.Merge.Plugin.Data
 {
     public class Result
     {
-        public static readonly Result OK = new() {success = true};
-        public static readonly Result Fail = new() {success = false};
+        public static readonly Result Ok = new Result() {Success = true};
+        public static readonly Result Fail = new Result() {Success = false};
 
-        public static implicit operator Result(bool value) => value ? OK : Fail;
-
-        [JsonPropertyName("success")]
-        public bool success { get; init; }
+        public static implicit operator Result(bool value) => value ? Ok : Fail;
+        
+        public bool Success { get; init; }
     }
 }

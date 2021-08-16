@@ -21,28 +21,32 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Nethermind.DataMarketplace.Channels;
 using Nethermind.DataMarketplace.Core;
+using Nethermind.DataMarketplace.Infrastructure;
+using Nethermind.Logging;
 using Nethermind.Serialization.Json;
-using Nethermind.WebSockets;
+using Nethermind.Sockets;
 
 namespace Nethermind.DataMarketplace.WebSockets
 {
     public class NdmWebSocketsModule : IWebSocketsModule
     {
-        private readonly ConcurrentDictionary<string, IWebSocketsClient> _clients =
-            new ConcurrentDictionary<string, IWebSocketsClient>();
+        private readonly ConcurrentDictionary<string, ISocketsClient> _clients =
+            new ConcurrentDictionary<string, ISocketsClient>();
 
         private readonly INdmConsumerChannelManager _consumerChannelManager;
         private readonly INdmDataPublisher _dataPublisher;
         private readonly IJsonSerializer _jsonSerializer;
         private NdmWebSocketsConsumerChannel? _channel;
+        private readonly ILogManager _logManager;
 
         public string Name { get; } = "ndm";
 
-        public NdmWebSocketsModule(INdmConsumerChannelManager consumerChannelManager, INdmDataPublisher dataPublisher, IJsonSerializer jsonSerializer)
+        public NdmWebSocketsModule(INdmApi api)
         {
-            _consumerChannelManager = consumerChannelManager;
-            _dataPublisher = dataPublisher;
-            _jsonSerializer = jsonSerializer;
+            _consumerChannelManager = api.NdmConsumerChannelManager;
+            _dataPublisher = api.NdmDataPublisher;
+            _jsonSerializer = api.EthereumJsonSerializer;
+            _logManager = api.LogManager;
         }
 
         public bool TryInit(HttpRequest request)
@@ -50,10 +54,9 @@ namespace Nethermind.DataMarketplace.WebSockets
             return true;
         }
 
-        public IWebSocketsClient CreateClient(WebSocket webSocket, string client)
+        public ISocketsClient CreateClient(WebSocket webSocket, string clientName)
         {
-            NdmWebSocketsClient socketsClient = new NdmWebSocketsClient(new WebSocketsClient(webSocket, client, _jsonSerializer),
-                _dataPublisher);
+            NdmWebSocketsClient socketsClient = new NdmWebSocketsClient(clientName, new WebSocketHandler(webSocket, _logManager), _dataPublisher, _jsonSerializer);
             _channel = new NdmWebSocketsConsumerChannel(socketsClient);
             _consumerChannelManager.Add(_channel);
             _clients.TryAdd(socketsClient.Id, socketsClient);
@@ -61,12 +64,9 @@ namespace Nethermind.DataMarketplace.WebSockets
             return socketsClient;
         }
 
-        public Task SendRawAsync(string data)
-            => Task.WhenAll(_clients.Values.Select(c => c.SendRawAsync(data)));
-
-        public Task SendAsync(WebSocketsMessage message)
-            => Task.WhenAll(_clients.Values.Select(c => c.SendAsync(message)));
-
         public void RemoveClient(string id) => _clients.TryRemove(id, out _);
+
+        public Task SendAsync(SocketsMessage message)
+            => Task.WhenAll(_clients.Values.Select(c => c.SendAsync(message)));
     }
 }

@@ -78,7 +78,7 @@ namespace Nethermind.Core.Test
 
         private bool CheckLevel(LogLevel logLevel) => _level >= logLevel;
 
-        private static void Log(string text, Exception ex = null)
+        private static void Log(string text, Exception? ex = null)
         {
             Console.WriteLine(text);
             // TestContext.Out.WriteLine(text);

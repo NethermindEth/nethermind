@@ -18,7 +18,6 @@
 using System;
 using System.IO;
 using System.IO.Abstractions;
-using System.Threading.Tasks;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 

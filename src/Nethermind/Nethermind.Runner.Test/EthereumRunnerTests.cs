@@ -37,7 +37,6 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
-using Nethermind.PubSub.Kafka;
 using Nethermind.Runner.Ethereum;
 using Nethermind.Serialization.Json;
 using Nethermind.Stats;
@@ -114,7 +113,6 @@ namespace Nethermind.Runner.Test
             Type type2 = typeof(INetworkConfig);
             Type type3 = typeof(IKeyStoreConfig);
             Type type4 = typeof(IDbConfig);
-            Type type6 = typeof(IKafkaConfig);
             Type type7 = typeof(IEthStatsConfig);
             Type type8 = typeof(ISyncConfig);
             Type type9 = typeof(IBloomConfig);
@@ -123,7 +121,6 @@ namespace Nethermind.Runner.Test
             Console.WriteLine(type2.Name);
             Console.WriteLine(type3.Name);
             Console.WriteLine(type4.Name);
-            Console.WriteLine(type6.Name);
             Console.WriteLine(type7.Name);
             Console.WriteLine(type8.Name);
             Console.WriteLine(type9.Name);

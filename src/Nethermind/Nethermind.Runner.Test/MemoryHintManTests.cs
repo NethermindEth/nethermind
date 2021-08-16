@@ -21,6 +21,7 @@ using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Extensions;
 using Nethermind.Db.Rocks.Config;
+using Nethermind.Init;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.TxPool;
@@ -163,6 +164,14 @@ namespace Nethermind.Runner.Test
             _initConfig.MemoryHint = memoryHint;
             Assert.Throws<ArgumentOutOfRangeException>(
                 () => SetMemoryAllowances(cpuCount));
+        }
+
+        [TestCase(500 * GB)]
+        public void Big_value_at_memory_hint(long memoryHint)
+        {
+            _initConfig.MemoryHint = memoryHint;
+            SetMemoryAllowances(1);
+            Trie.MemoryAllowance.TrieNodeCacheCount.Should().BeGreaterThan(0);
         }
     }
 }

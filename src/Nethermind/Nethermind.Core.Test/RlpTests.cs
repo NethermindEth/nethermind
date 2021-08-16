@@ -50,7 +50,7 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
-        [Ignore("That was a regression test but now it is failing again and cannot find the reason we needed this behaviour in the first place. Sync works all fine. Leaving it here as it may resurface - make sure to add more explanation to it in such case.")]
+        [Explicit("That was a regression test but now it is failing again and cannot find the reason we needed this behaviour in the first place. Sync works all fine. Leaving it here as it may resurface - make sure to add more explanation to it in such case.")]
         public void Serializing_object_int_regression()
         {
             Rlp output = Rlp.Encode(new Rlp[] {Rlp.Encode(1)});

@@ -90,7 +90,7 @@ namespace Nethermind.Merge.Plugin.Data
                 block = new Block(header, transactions, Array.Empty<BlockHeader>());
                 return true;
             }
-            catch (Exception e)
+            catch (Exception)
             {
                 block = null;
                 return false;

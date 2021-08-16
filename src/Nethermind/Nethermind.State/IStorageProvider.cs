@@ -36,7 +36,16 @@ namespace Nethermind.State
         
         void Commit(IStorageTracer stateTracer);
         
-        int TakeSnapshot();
+        /// <summary>
+        /// Creates a restartable snapshot.
+        /// </summary>
+        /// <param name="newTransactionStart"> Indicates new transaction will start here.</param>
+        /// <returns>Snapshot index</returns>
+        /// <remarks>
+        /// If <see cref="newTransactionStart"/> is true and there are already changes in <see cref="IStorageProvider"/> then next call to
+        /// <see cref="GetOriginal"/> will use changes before this snapshot as original values for this new transaction.
+        /// </remarks>
+        int TakeSnapshot(bool newTransactionStart = false);
 
         void ClearStorage(Address address);
     }

@@ -25,6 +25,7 @@ using System.Timers;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Processing;
+using Nethermind.Blockchain.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -169,7 +170,7 @@ namespace Nethermind.Consensus.Clique
                             if (_logger.IsInfo)
                                 _logger.Info(
                                     $"Suggesting own {turnDescription} {_scheduledBlock.TimestampDate:HH:mm:ss} {scheduledBlock.ToString(Block.Format.HashNumberDiffAndTx)} based on {parentDetails} after the delay of {wiggle}");
-                            _blockTree.SuggestBlock(scheduledBlock);
+                            BlockProduced?.Invoke(this, new BlockEventArgs(scheduledBlock));
                         }
                     }
                     else
@@ -327,6 +328,9 @@ namespace Nethermind.Consensus.Clique
                 return true;
         }
 
+        public ITimestamper Timestamper => _timestamper;
+        public event EventHandler<BlockEventArgs>? BlockProduced;
+
         private Keccak? _recentNotAllowedParent;
 
         private Block? PrepareBlock(Block parentBlock)
@@ -355,6 +359,7 @@ namespace Nethermind.Consensus.Clique
                 _logger.Info($"Preparing new block on top of {parentBlock.ToString(Block.Format.Short)}");
 
             UInt256 timestamp = _timestamper.UnixTime.Seconds;
+            IReleaseSpec spec = _specProvider.GetSpec(parentHeader.Number + 1);
 
             BlockHeader header = new (
                 parentHeader.Hash,
@@ -397,7 +402,7 @@ namespace Nethermind.Consensus.Clique
             }
 
             // Set the correct difficulty
-            header.BaseFee = BlockHeader.CalculateBaseFee(parentHeader, _specProvider.GetSpec(header.Number));
+            header.BaseFeePerGas = BaseFeeCalculator.Calculate(parentHeader, _specProvider.GetSpec(header.Number));
             header.Difficulty = CalculateDifficulty(snapshot, _sealer.Address);
             header.TotalDifficulty = parentBlock.TotalDifficulty + header.Difficulty;
             if (_logger.IsDebug)
@@ -433,11 +438,9 @@ namespace Nethermind.Consensus.Clique
             }
 
             _stateProvider.StateRoot = parentHeader.StateRoot;
-
-            bool isEip1559Enabled = _specProvider.GetSpec(number + 1).IsEip1559Enabled;
-            long adjustedGasLimit = Eip1559GasLimitAdjuster.AdjustGasLimit(isEip1559Enabled, header.GasLimit);
-            IEnumerable<Transaction> selectedTxs = _txSource.GetTransactions(parentBlock.Header, adjustedGasLimit);
-            Block block = new(header, selectedTxs, Array.Empty<BlockHeader>());
+            
+            IEnumerable<Transaction> selectedTxs = _txSource.GetTransactions(parentBlock.Header, header.GasLimit);
+            Block block = new BlockToProduce(header, selectedTxs, Array.Empty<BlockHeader>());
             header.TxRoot = new TxTrie(block.Transactions).RootHash;
             block.Header.Author = _sealer.Address;
             return block;

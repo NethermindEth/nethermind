@@ -19,6 +19,8 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Producers;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
@@ -30,14 +32,16 @@ namespace Nethermind.Merge.Plugin.Handlers
     public class AssembleBlockHandler : IHandlerAsync<AssembleBlockRequest, BlockRequestResult?>
     {
         private readonly IBlockTree _blockTree;
-        private readonly IEth2BlockProducer _blockProducer;
+        private readonly IManualBlockProductionTrigger _blockProductionTrigger;
+        private readonly ManualTimestamper _timestamper;
         private readonly ILogger _logger;
         private static readonly TimeSpan _timeout = TimeSpan.FromSeconds(10);
 
-        public AssembleBlockHandler(IBlockTree blockTree, IEth2BlockProducer blockProducer, ILogManager logManager)
+        public AssembleBlockHandler(IBlockTree blockTree, IManualBlockProductionTrigger blockProductionTrigger, ManualTimestamper timestamper, ILogManager logManager)
         {
             _blockTree = blockTree;
-            _blockProducer = blockProducer;
+            _blockProductionTrigger = blockProductionTrigger;
+            _timestamper = timestamper;
             _logger = logManager.GetClassLogger();
         }
 
@@ -50,8 +54,9 @@ namespace Nethermind.Merge.Plugin.Handlers
                 return ResultWrapper<BlockRequestResult?>.Success(null);
             }
 
+            _timestamper.Set(DateTimeOffset.FromUnixTimeSeconds((long) request.Timestamp).UtcDateTime);
             using CancellationTokenSource cts = new(_timeout);
-            Block? block = await _blockProducer.TryProduceBlock(parentHeader, request.Timestamp, cts.Token);
+            Block? block = await _blockProductionTrigger.BuildBlock(parentHeader, cts.Token);
             if (block == null)
             {
                 if (_logger.IsWarn) _logger.Warn($"Block production on parent {request.ParentHash} with timestamp {request.Timestamp} failed.");

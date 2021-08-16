@@ -20,12 +20,18 @@ using Nethermind.Int256;
 
 namespace Nethermind.Core
 {
-    public static class Eip1559Constants
+    public class Eip1559Constants
     {
-        public static readonly UInt256 BaseFeeMaxChangeDenominator = 8;
+                
+        public static readonly UInt256 DefaultForkBaseFee = 1.GWei();
         
-        public static readonly UInt256 ForkBaseFee = 1.GWei();
-
-        public const int ElasticityMultiplier = 2;
+        public static readonly UInt256 DefaultBaseFeeMaxChangeDenominator = 8;
+        
+        public static readonly int DefaultElasticityMultiplier = 2;
+        
+        // The above values are the default ones. However, we're allowing to override it from genesis
+        public static UInt256 ForkBaseFee { get; set; } = DefaultForkBaseFee;
+        public static UInt256 BaseFeeMaxChangeDenominator { get; set; } = DefaultBaseFeeMaxChangeDenominator;
+        public static long ElasticityMultiplier { get; set;  } = DefaultElasticityMultiplier;
     }
 }

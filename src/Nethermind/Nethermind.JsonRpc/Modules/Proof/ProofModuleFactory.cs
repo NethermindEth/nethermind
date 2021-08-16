@@ -37,7 +37,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
         private readonly IReceiptFinder _receiptFinder;
         private readonly ISpecProvider _specProvider;
         private readonly ILogManager _logManager;
-        private readonly ReadOnlyBlockTree _blockTree;
+        private readonly IReadOnlyBlockTree _blockTree;
         private readonly ReadOnlyDbProvider _dbProvider;
         private readonly IReadOnlyTrieStore _trieStore;
 

@@ -36,16 +36,28 @@ namespace Nethermind.Config
 
         public Enode(string enodeString)
         {
-            ArgumentException GetDnsException(string hostName, Exception innerException = null) => new($"{hostName} is not a proper IP address nor it can be resolved by DNS.", innerException);
+            ArgumentException GetDnsException(string hostName, Exception innerException = null) =>
+                new($"{hostName} is not a proper IP address nor it can be resolved by DNS.", innerException);
+
+            ArgumentException GetPortException(string hostName) =>
+                new($"Can't get Port for host {hostName}.");
 
             string[] enodeParts = enodeString.Split(':');
             string[] enodeParts2 = enodeParts[1].Split('@');
             _nodeKey = new PublicKey(enodeParts2[0].TrimStart('/'));
-            Port = int.Parse(enodeParts[2]);
-            var host = enodeParts2[1];
+            string host = enodeParts2[1];
+            if (enodeParts.Length <= 2 || !int.TryParse(enodeParts[2], out int port))
+            {
+                throw GetPortException(host);
+                
+            }
+            Port = port;
+
             try
             {
-                HostIp = IPAddress.TryParse(host, out IPAddress ip) ? ip : GetHostIpFromDnsAddresses(Dns.GetHostAddresses(host)) ?? throw GetDnsException(host);
+                HostIp = IPAddress.TryParse(host, out IPAddress ip)
+                    ? ip
+                    : GetHostIpFromDnsAddresses(Dns.GetHostAddresses(host)) ?? throw GetDnsException(host);
             }
             catch (SocketException e)
             {

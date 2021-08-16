@@ -30,7 +30,7 @@ using Nito.Collections;
 
 namespace Nethermind.Consensus.AuRa
 {
-    public class AuRaBlockFinalizationManager : IBlockFinalizationManager
+    public class AuRaBlockFinalizationManager : IAuRaBlockFinalizationManager
     {
         private static readonly List<BlockHeader> Empty = new List<BlockHeader>();
         private readonly IBlockTree _blockTree;

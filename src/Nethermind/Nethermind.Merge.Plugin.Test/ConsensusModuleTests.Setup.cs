@@ -17,6 +17,9 @@
 
 using System.Threading.Tasks;
 using Nethermind.Api;
+using Nethermind.Api;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Rewards;
@@ -31,6 +34,7 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Runner.Ethereum;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
@@ -39,24 +43,30 @@ namespace Nethermind.Merge.Plugin.Test
 {
     public partial class ConsensusModuleTests
     {
-        private async Task<MergeTestBlockchain> CreateBlockChain() => await new MergeTestBlockchain().Build(new SingleReleaseSpecProvider(Berlin.Instance, 1));
+        private readonly ManualTimestamper _manualTimestamper = new();
+        
+        private async Task<MergeTestBlockchain> CreateBlockChain() => await new MergeTestBlockchain(_manualTimestamper).Build(new SingleReleaseSpecProvider(Berlin.Instance, 1));
 
         private IConsensusRpcModule CreateConsensusModule(MergeTestBlockchain chain)
         {
             return new ConsensusRpcModule(
-                new AssembleBlockHandler(chain.BlockTree, (IEth2BlockProducer) chain.BlockProducer, chain.LogManager),
+                new AssembleBlockHandler(chain.BlockTree, chain.BlockProductionTrigger, _manualTimestamper, chain.LogManager),
                 new NewBlockHandler(chain.BlockTree, chain.BlockPreprocessorStep, chain.BlockchainProcessor, chain.State, new InitConfig(), chain.LogManager),
                 new SetHeadBlockHandler(chain.BlockTree, chain.State, chain.LogManager),
-                new FinaliseBlockHandler(),
+                new FinaliseBlockHandler(chain.BlockFinder, chain.BlockFinalizationManager, chain.LogManager),
                 chain.LogManager);
         }
 
         private class MergeTestBlockchain : TestBlockchain
         {
-            public MergeTestBlockchain()
+            private readonly ManualTimestamper _timestamper;
+
+            public MergeTestBlockchain(ManualTimestamper timestamper)
             {
+                _timestamper = timestamper;
                 GenesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.Genesis
                     .WithTimestamp(UInt256.One);
+                Signer = new Eth2Signer(MinerAddress);
             }
             
             protected override Task AddBlocksOnStart() => Task.CompletedTask;
@@ -65,64 +75,73 @@ namespace Nethermind.Merge.Plugin.Test
             
             private IBlockValidator BlockValidator { get; set; } = null!;
 
-            private ISigner Signer { get; set; } = null!;
+            private ISigner Signer { get; }
 
-            protected override ITestBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, BlockchainProcessor chainProcessor, IStateProvider producerStateProvider, ISealer sealer)
+            protected override IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
             {
-                return (ITestBlockProducer) new Eth2TestBlockProducerFactory().Create(
-                    BlockTree,
-                    DbProvider,
-                    ReadOnlyTrieStore,
-                    new RecoverSignatures(new EthereumEcdsa(SpecProvider.ChainId, LogManager), TxPool, SpecProvider, LogManager),
-                    TxPool,
-                    new BlockValidator(
-                        new TxValidator(SpecProvider.ChainId),
-                        new HeaderValidator(BlockTree, new Eth2SealEngine(Signer), SpecProvider, LogManager),
-                        Always.Valid,
-                        SpecProvider,
-                        LogManager),
+                MiningConfig miningConfig = new();
+                TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator = new(SpecProvider, miningConfig);
+                
+                BlockProducerEnvFactory blockProducerEnvFactory = new(
+                    DbProvider, 
+                    BlockTree, 
+                    ReadOnlyTrieStore, 
+                    SpecProvider, 
+                    BlockValidator,
                     NoBlockRewards.Instance,
                     ReceiptStorage,
-                    BlockProcessingQueue,
+                    BlockPreprocessorStep,
+                    TxPool,
+                    transactionComparerProvider,
+                    miningConfig,
+                    LogManager);
+                
+                return new Eth2TestBlockProducerFactory(targetAdjustedGasLimitCalculator).Create(
+                    blockProducerEnvFactory,
+                    BlockTree,
+                    BlockProductionTrigger,
                     SpecProvider,
                     Signer,
-                    new MiningConfig(),
+                    _timestamper,
+                    miningConfig,
                     LogManager);
             }
             
             protected override BlockProcessor CreateBlockProcessor()
             {
-                Signer = new Eth2Signer(MinerAddress);
-                HeaderValidator headerValidator = new(BlockTree, new Eth2SealEngine(Signer), SpecProvider, LogManager);
-                BlockValidator = CreateBlockValidator(headerValidator);
-                    
+                BlockValidator = CreateBlockValidator();
                 return new BlockProcessor(
                     SpecProvider,
                     BlockValidator,
                     NoBlockRewards.Instance,
-                    TxProcessor,
+                    new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
                     State,
                     Storage,
-                    TxPool,
                     ReceiptStorage,
                     NullWitnessCollector.Instance,
                     LogManager);
             }
 
-            private IBlockValidator CreateBlockValidator(HeaderValidator headerValidator) =>
-                new BlockValidator(
+            private IBlockValidator CreateBlockValidator()
+            {
+                HeaderValidator headerValidator = new(BlockTree, new Eth2SealEngine(Signer), SpecProvider, LogManager);
+                
+                return new BlockValidator(
                     new TxValidator(SpecProvider.ChainId),
                     headerValidator,
-                    new OmmersValidator(BlockTree, headerValidator, LogManager),
+                    Always.Valid,
                     SpecProvider,
                     LogManager);
+            }
 
             public Address MinerAddress => TestItem.PrivateKeyA.Address;
+            public IManualBlockFinalizationManager BlockFinalizationManager { get; } = new ManualBlockFinalizationManager();
 
             protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null)
             {
                 TestBlockchain chain = await base.Build(specProvider, initialValues);
                 await chain.BlockchainProcessor.StopAsync(true);
+                Suggester.Dispose();
                 return chain;
             }
 

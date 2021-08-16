@@ -149,7 +149,6 @@
     "eip160Transition": "0x7fffffffffffffff",
     "eip161abcTransition": "0x7fffffffffffffff",
     "eip161dTransition": "0x7fffffffffffffff"
-
   },
   "nodes": [],
   "accounts": {

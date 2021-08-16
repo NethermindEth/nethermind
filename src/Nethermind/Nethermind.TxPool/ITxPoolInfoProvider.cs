@@ -20,6 +20,6 @@ namespace Nethermind.TxPool
 {
     public interface ITxPoolInfoProvider
     {
-        TxPoolInfo GetInfo(BlockHeader head);
+        TxPoolInfo GetInfo();
     }
 }

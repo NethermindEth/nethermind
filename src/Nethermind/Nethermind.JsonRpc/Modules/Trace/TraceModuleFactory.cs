@@ -33,7 +33,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
     public class TraceModuleFactory : ModuleFactoryBase<ITraceRpcModule>
     {
         private readonly ReadOnlyDbProvider _dbProvider;
-        private readonly ReadOnlyBlockTree _blockTree;
+        private readonly IReadOnlyBlockTree _blockTree;
         private readonly IReadOnlyTrieStore _trieNodeResolver;
         private readonly IJsonRpcConfig _jsonRpcConfig;
         private readonly IReceiptStorage _receiptStorage;

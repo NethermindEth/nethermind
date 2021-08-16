@@ -58,7 +58,8 @@ namespace Nethermind.Evm.Test.Tracing
         public void Creates_inner_tx_cancellation_tracers()
         {
             var blockTracer = new CancellationBlockTracer(Substitute.For<IBlockTracer>());
-            blockTracer.StartNewTxTrace(TestItem.KeccakA).Should().BeOfType<CancellationTxTracer>();
+            var transaction = Build.A.Transaction.TestObject;
+            blockTracer.StartNewTxTrace(transaction).Should().BeOfType<CancellationTxTracer>();
         }
     }
 }

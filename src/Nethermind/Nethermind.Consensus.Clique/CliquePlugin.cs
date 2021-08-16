@@ -28,12 +28,12 @@ using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Services;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Core.Attributes;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
-using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Clique
 {
@@ -81,11 +81,11 @@ namespace Nethermind.Consensus.Clique
             return Task.CompletedTask;
         }
 
-        public Task InitBlockProducer()
+        public Task<IBlockProducer> InitBlockProducer(IBlockProductionTrigger? blockProductionTrigger = null, ITxSource? additionalTxSource = null)
         {
             if (_nethermindApi!.SealEngineType != Nethermind.Core.SealEngineType.Clique)
             {
-                return Task.CompletedTask;
+                return Task.FromResult((IBlockProducer)null);
             }
 
             var (getFromApi, setInApi) = _nethermindApi!.ForProducer;
@@ -104,24 +104,22 @@ namespace Nethermind.Consensus.Clique
             
             ReadOnlyDbProvider readOnlyDbProvider = getFromApi.DbProvider.AsReadOnly(false);
             ReadOnlyBlockTree readOnlyBlockTree = getFromApi.BlockTree.AsReadOnly();
-            ITransactionComparerProvider transactionComparerProvider =
-                new TransactionComparerProvider(getFromApi.SpecProvider, readOnlyBlockTree);
-            
-                ReadOnlyTxProcessingEnv producerEnv = new ReadOnlyTxProcessingEnv(
+            ITransactionComparerProvider transactionComparerProvider = getFromApi.TransactionComparerProvider;
+
+            ReadOnlyTxProcessingEnv producerEnv = new ReadOnlyTxProcessingEnv(
                 readOnlyDbProvider,
                 getFromApi.ReadOnlyTrieStore,
                 readOnlyBlockTree,
                 getFromApi.SpecProvider,
                 getFromApi.LogManager);
-
+                
             BlockProcessor producerProcessor = new BlockProcessor(
                 getFromApi!.SpecProvider,
                 getFromApi!.BlockValidator,
                 NoBlockRewards.Instance,
-                producerEnv.TransactionProcessor,
+                getFromApi.BlockProducerEnvFactory.TransactionsExecutorFactory.Create(producerEnv),
                 producerEnv.StateProvider,
-                producerEnv.StorageProvider,
-                NullTxPool.Instance, // do not remove transactions from the pool when preprocessing
+                producerEnv.StorageProvider, // do not remove transactions from the pool when preprocessing
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,
                 getFromApi.LogManager);
@@ -138,20 +136,22 @@ namespace Nethermind.Consensus.Clique
                 producerChainProcessor);
 
             ITxFilterPipeline txFilterPipeline =
-                TxFilterPipelineBuilder.CreateStandardFilteringPipeline(_nethermindApi.LogManager,
-                    getFromApi.SpecProvider);
-            
-            ITxSource txSource = new TxPoolTxSource(
+                TxFilterPipelineBuilder.CreateStandardFilteringPipeline(
+                    _nethermindApi.LogManager,
+                    getFromApi.SpecProvider,
+                    _miningConfig);
+
+            TxPoolTxSource txPoolTxSource = new(
                 getFromApi.TxPool,
-                getFromApi.StateReader,
                 getFromApi.SpecProvider,
                 transactionComparerProvider,
                 getFromApi.LogManager,
                 txFilterPipeline);
 
-            var gasLimitCalculator = new TargetAdjustedGasLimitCalculator(getFromApi.SpecProvider, _miningConfig);
-            setInApi.BlockProducer = new CliqueBlockProducer(
-                txSource,
+            IGasLimitCalculator gasLimitCalculator = setInApi.GasLimitCalculator = new TargetAdjustedGasLimitCalculator(getFromApi.SpecProvider, _miningConfig);
+            
+            IBlockProducer blockProducer = new CliqueBlockProducer(
+                additionalTxSource.Then(txPoolTxSource),
                 chainProcessor,
                 producerEnv.StateProvider,
                 getFromApi.BlockTree!,
@@ -164,7 +164,7 @@ namespace Nethermind.Consensus.Clique
                 _cliqueConfig!,
                 getFromApi.LogManager);
 
-            return Task.CompletedTask;
+            return Task.FromResult(blockProducer);
         }
 
         public Task InitNetworkProtocol()
@@ -192,6 +192,9 @@ namespace Nethermind.Consensus.Clique
         }
 
         public string SealEngineType => Nethermind.Core.SealEngineType.Clique;
+        
+        [Todo("Redo clique producer to support triggers and MEV")]
+        public IBlockProductionTrigger DefaultBlockProductionTrigger => _nethermindApi.ManualBlockProductionTrigger;
 
         public ValueTask DisposeAsync() { return ValueTask.CompletedTask; }
 

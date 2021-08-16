@@ -24,6 +24,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
@@ -51,7 +52,7 @@ namespace Nethermind.Runner.Hive
 
         public Task Start(CancellationToken cancellationToken)
         {
-            if(_logger.IsInfo) _logger.Info("HIVE initialization starting");
+            if(_logger.IsInfo) _logger.Info("HIVE initialization started");
             _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
             var hiveConfig = _configurationProvider.GetConfig<IHiveConfig>();
 
@@ -90,7 +91,7 @@ namespace Nethermind.Runner.Hive
 // #  - HIVE_MINER_EXTRA    extra-data field to set for newly minted blocks
 // #  - HIVE_SKIP_POW       If set, skip PoW verification during block import
 
-            string[] variableNames = {"HIVE_CHAIN_ID", "HIVE_BOOTNODE", "HIVE_TESTNET", "HIVE_NODETYPE", "HIVE_FORK_HOMESTEAD", "HIVE_FORK_DAO_BLOCK", "HIVE_FORK_DAO_VOTE", "HIVE_FORK_TANGERINE", "HIVE_FORK_SPURIOUS", "HIVE_FORK_METROPOLIS", "HIVE_FORK_BYZANTIUM", "HIVE_FORK_CONSTANTINOPLE", "HIVE_FORK_PETERSBURG", "HIVE_MINER", "HIVE_MINER_EXTRA"};
+            string[] variableNames = {"HIVE_CHAIN_ID", "HIVE_BOOTNODE", "HIVE_TESTNET", "HIVE_NODETYPE", "HIVE_FORK_HOMESTEAD", "HIVE_FORK_DAO_BLOCK", "HIVE_FORK_DAO_VOTE", "HIVE_FORK_TANGERINE", "HIVE_FORK_SPURIOUS", "HIVE_FORK_METROPOLIS", "HIVE_FORK_BYZANTIUM", "HIVE_FORK_CONSTANTINOPLE", "HIVE_FORK_PETERSBURG", "HIVE_MINER", "HIVE_MINER_EXTRA", "HIVE_FORK_BERLIN", "HIVE_FORK_LONDON"};
             foreach (string variableName in variableNames)
             {
                 if(_logger.IsInfo) _logger.Info($"{variableName}: {Environment.GetEnvironmentVariable(variableName)}");
@@ -159,6 +160,7 @@ namespace Nethermind.Runner.Hive
         private Block DecodeBlock(string file)
         {
             var fileContent = File.ReadAllBytes(file);
+            if (_logger.IsInfo) _logger.Info(fileContent.ToHexString());
             var blockRlp = new Rlp(fileContent);
 
             return Rlp.Decode<Block>(blockRlp);

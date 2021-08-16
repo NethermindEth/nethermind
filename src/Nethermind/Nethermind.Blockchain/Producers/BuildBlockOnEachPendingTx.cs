@@ -16,6 +16,8 @@
 // 
 
 using System;
+using System.Threading;
+using Nethermind.Core;
 using Nethermind.TxPool;
 
 namespace Nethermind.Blockchain.Producers
@@ -32,10 +34,10 @@ namespace Nethermind.Blockchain.Producers
 
         private void TxPoolOnNewPending(object? sender, TxEventArgs e)
         {
-            TriggerBlockProduction?.Invoke(this, EventArgs.Empty);
+            TriggerBlockProduction?.Invoke(this, new BlockProductionEventArgs());
         }
 
-        public event EventHandler? TriggerBlockProduction;
+        public event EventHandler<BlockProductionEventArgs>? TriggerBlockProduction;
 
         public void Dispose()
         {

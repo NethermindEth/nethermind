@@ -15,38 +15,54 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Blockchain.Find;
+using System;
+using System.Runtime.CompilerServices;
 using Nethermind.Blockchain.Spec;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.State;
 using Nethermind.TxPool;
 
+[assembly:InternalsVisibleTo("Nethermind.TxPool.Test")]
+
 namespace Nethermind.Blockchain
 {
     public class ChainHeadInfoProvider : IChainHeadInfoProvider
     {
-        private readonly IBlockFinder _blockFinder;
-        
-        public ChainHeadInfoProvider(ISpecProvider specProvider, IBlockFinder blockFinder, IStateReader stateReader)
-            : this(new ChainHeadSpecProvider(specProvider, blockFinder), blockFinder, new ChainHeadReadOnlyStateProvider(blockFinder, stateReader))
-        {
-        }
-        public ChainHeadInfoProvider(ISpecProvider specProvider, IBlockFinder blockFinder, IReadOnlyStateProvider stateProvider)
-            : this(new ChainHeadSpecProvider(specProvider, blockFinder), blockFinder, stateProvider)
+        public ChainHeadInfoProvider(ISpecProvider specProvider, IBlockTree blockTree, IStateReader stateReader)
+            : this(new ChainHeadSpecProvider(specProvider, blockTree), blockTree, new ChainHeadReadOnlyStateProvider(blockTree, stateReader))
         {
         }
         
-        public ChainHeadInfoProvider(IChainHeadSpecProvider specProvider, IBlockFinder blockFinder, IReadOnlyStateProvider stateProvider)
+        public ChainHeadInfoProvider(ISpecProvider specProvider, IBlockTree blockTree, IAccountStateProvider stateProvider)
+            : this(new ChainHeadSpecProvider(specProvider, blockTree), blockTree, stateProvider)
+        {
+        }
+
+        public ChainHeadInfoProvider(IChainHeadSpecProvider specProvider, IBlockTree blockTree, IAccountStateProvider stateProvider)
         {
             SpecProvider = specProvider;
-            ReadOnlyStateProvider = stateProvider;
-            _blockFinder = blockFinder;
+            AccountStateProvider = stateProvider;
+            
+            blockTree.BlockAddedToMain += OnHeadChanged;
         }
 
         public IChainHeadSpecProvider SpecProvider { get; }
-        public IReadOnlyStateProvider ReadOnlyStateProvider { get; }
-
-        public UInt256 BaseFee => _blockFinder.Head?.Header.BaseFee ?? UInt256.Zero;
+        
+        public IAccountStateProvider AccountStateProvider { get; }
+        
+        public long? BlockGasLimit { get; internal set; }
+        
+        public UInt256 CurrentBaseFee { get; private set; }
+        
+        public event EventHandler<BlockReplacementEventArgs>? HeadChanged;
+        
+        private void OnHeadChanged(object? sender, BlockReplacementEventArgs e)
+        {
+            BlockGasLimit = e.Block!.GasLimit;
+            CurrentBaseFee = e.Block.Header.BaseFeePerGas;
+            HeadChanged?.Invoke(sender, e);
+        }
     }
 }

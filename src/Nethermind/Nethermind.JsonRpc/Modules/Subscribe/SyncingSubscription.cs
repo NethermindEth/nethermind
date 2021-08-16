@@ -18,6 +18,7 @@
 using System;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Core;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 

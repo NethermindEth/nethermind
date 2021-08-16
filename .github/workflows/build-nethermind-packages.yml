@@ -39,8 +39,6 @@ jobs:
       run: ./nethermind/scripts/deployment/setup-packages.sh
     - name: Building Runner
       run: ./nethermind/scripts/deployment/build-runner.sh
-    - name: Building BeamWallet
-      run: ./nethermind/scripts/deployment/build-wallet.sh
     - name: Building Cli
       run: ./nethermind/scripts/deployment/build-cli.sh
     - name: Building Launcher

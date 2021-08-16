@@ -23,6 +23,7 @@ using Nethermind.Blockchain.Processing;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -194,21 +195,24 @@ namespace Nethermind.Consensus.AuRa.Validators
                 ISet<Address> reported = new HashSet<Address>();
                 for (long step = parent.AuRaStep.Value + 1; step < header.AuRaStep.Value; step++)
                 {
-                    var skippedValidator = validators.GetItemRoundRobin(step);
-                    if (skippedValidator != ValidatorContract.NodeAddress)
+                    Address? skippedValidator = validators.GetItemRoundRobin(step);
+                    if (skippedValidator is not null)
                     {
-                        if (reported.Contains(skippedValidator))
+                        if (skippedValidator != ValidatorContract.NodeAddress)
                         {
-                            break;
+                            if (reported.Contains(skippedValidator))
+                            {
+                                break;
+                            }
+
+                            ReportBenign(skippedValidator, header.Number, IReportingValidator.BenignCause.SkippedStep);
+                            reported.Add(skippedValidator);
+                            if (_logger.IsDebug) _logger.Debug($"Found skipped step {step} by author {skippedValidator}, actual author {header.Beneficiary} at block {header.Number}.");
                         }
-                        
-                        ReportBenign(skippedValidator, header.Number, IReportingValidator.BenignCause.SkippedStep);
-                        reported.Add(skippedValidator);
-                        if (_logger.IsDebug) _logger.Debug($"Found skipped step {step} by author {skippedValidator}, actual author {header.Beneficiary} at block {header.Number}.");
-                    }
-                    else
-                    {
-                        if (_logger.IsDebug) _logger.Debug($"Found skipped step {step} by self {skippedValidator}, actual author {header.Beneficiary} at block {header.Number}. Not self-reporting.");
+                        else
+                        {
+                            if (_logger.IsDebug) _logger.Debug($"Found skipped step {step} by self {skippedValidator}, actual author {header.Beneficiary} at block {header.Number}. Not self-reporting.");
+                        }
                     }
                 }
             }

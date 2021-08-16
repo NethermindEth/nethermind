@@ -29,14 +29,14 @@ namespace Nethermind.Blockchain.Producers
             trigger.TriggerBlockProduction += TriggerOnTriggerBlockProduction;
         }
 
-        private void TriggerOnTriggerBlockProduction(object? sender, EventArgs e)
+        private void TriggerOnTriggerBlockProduction(object? sender, BlockProductionEventArgs e)
         {
             if (_checkCondition.Invoke())
             {
-                TriggerBlockProduction?.Invoke(this, EventArgs.Empty);
+                TriggerBlockProduction?.Invoke(this, e);
             }
         }
 
-        public event EventHandler? TriggerBlockProduction;
+        public event EventHandler<BlockProductionEventArgs>? TriggerBlockProduction;
     }
 }

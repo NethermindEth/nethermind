@@ -5,7 +5,7 @@ namespace Nethermind.Pipeline
     /// <summary> 
     /// Class used to store <see cref="IPipelineElement"/> collection.
     /// For creation use <see cref="IPipelineBuilder{TSource, TOutput}"/>.
-    /// <summary>
+    /// </summary>
     public class Pipeline : IPipeline
     {
         public Pipeline(IEnumerable<IPipelineElement> elements)

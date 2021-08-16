@@ -31,7 +31,6 @@ using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
-using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 using System.Security;
@@ -39,6 +38,9 @@ using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc.Test.Modules;
 using System.Threading.Tasks;
 using System.Threading;
+using FluentAssertions;
+using Nethermind.Core.Test.Blockchain;
+using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Blockchain.Test
 {
@@ -57,10 +59,9 @@ namespace Nethermind.Blockchain.Test
                 RinkebySpecProvider.Instance,
                 TestBlockValidator.AlwaysValid,
                 NoBlockRewards.Instance,
-                transactionProcessor,
+                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
                 stateProvider,
                 new StorageProvider(trieStore, stateProvider, LimboLogs.Instance),
-                NullTxPool.Instance,
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,
                 LimboLogs.Instance);
@@ -90,10 +91,9 @@ namespace Nethermind.Blockchain.Test
                 RinkebySpecProvider.Instance,
                 TestBlockValidator.AlwaysValid,
                 NoBlockRewards.Instance,
-                transactionProcessor,
+                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
                 stateProvider,
                 new StorageProvider(trieStore, stateProvider, LimboLogs.Instance),
-                NullTxPool.Instance,
                 NullReceiptStorage.Instance,
                 witnessCollector,
                 LimboLogs.Instance);
@@ -121,10 +121,9 @@ namespace Nethermind.Blockchain.Test
                 RinkebySpecProvider.Instance,
                 TestBlockValidator.AlwaysValid,
                 new RewardCalculator(MainnetSpecProvider.Instance),
-                transactionProcessor,
+                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
                 stateProvider,
                 new StorageProvider(trieStore, stateProvider, LimboLogs.Instance),
-                NullTxPool.Instance,
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,
                 LimboLogs.Instance);
@@ -162,9 +161,6 @@ namespace Nethermind.Blockchain.Test
                 .Build(spec);
             testRpc.TestWallet.UnlockAccount(address, new SecureString());
             await testRpc.AddFunds(address, 1.Ether());
-
-            BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
-            Block block = Build.A.Block.WithHeader(header).TestObject;
             await testRpc.AddBlock();
             var suggestedBlockResetEvent = new SemaphoreSlim(0);
             testRpc.BlockTree.NewHeadBlock += (s, e) =>
@@ -174,7 +170,7 @@ namespace Nethermind.Blockchain.Test
 
             var branchLength = blocksAmount + (int)testRpc.BlockTree.BestKnownNumber + 1;
             ((BlockTree)testRpc.BlockTree).AddBranch(branchLength, (int)testRpc.BlockTree.BestKnownNumber);
-            await suggestedBlockResetEvent.WaitAsync();
+            (await suggestedBlockResetEvent.WaitAsync(TestBlockchain.DefaultTimeout * 10)).Should().BeTrue();
             Assert.AreEqual(branchLength - 1, (int)testRpc.BlockTree.BestKnownNumber);
         }
     }

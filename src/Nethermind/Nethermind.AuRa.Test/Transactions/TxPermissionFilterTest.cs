@@ -37,6 +37,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Evm;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
@@ -188,8 +189,8 @@ namespace Nethermind.AuRa.Test.Transactions
             TransactionBuilder<Transaction> transactionBuilder = CreateV3Transaction(test, txPermissions);
             if (test.TxType == TxType.EIP1559)
             {
-                transactionBuilder.WithGasPremium(test.GasPremium);
-                transactionBuilder.WithFeeCap(test.FeeCap);
+                transactionBuilder.WithMaxPriorityFeePerGas(test.GasPremium);
+                transactionBuilder.WithMaxFeePerGas(test.FeeCap);
             }
 
             transactionBuilder.WithType(test.TxType);
@@ -233,20 +234,20 @@ namespace Nethermind.AuRa.Test.Transactions
                     .SetCategory(testsName + "Tests")
                     .Returns((result, test.Cache ?? true));
             }
-
-            var chainTask = TestContractBlockchain.ForTest<TestTxPermissionsBlockchain, TxPermissionFilterTest>(testsName);
-            Func<Task<TestTxPermissionsBlockchain>> testFactory = async () =>
-            {
-                var chain = await chainTask;
-                chain.TxPermissionFilterCache.Permissions.Clear();
-                chain.TransactionPermissionContractVersions.Clear();
-                return chain;
-            };
-
+            
             foreach (var test in tests)
             {
                 foreach (var txType in TxPermissionsTypes)
                 {
+                    var chainTask = TestContractBlockchain.ForTest<TestTxPermissionsBlockchain, TxPermissionFilterTest>(testsName);
+                    Func<Task<TestTxPermissionsBlockchain>> testFactory = async () =>
+                    {
+                        var chain = await chainTask;
+                        chain.TxPermissionFilterCache.Permissions.Clear();
+                        chain.TransactionPermissionContractVersions.Clear();
+                        return chain;
+                    };
+                    
                     yield return GetTestCase(testFactory, test, txType);
                 }
             }
@@ -305,17 +306,23 @@ namespace Nethermind.AuRa.Test.Transactions
                     SpecProvider,
                     Always.Valid,
                     new RewardCalculator(SpecProvider),
-                    TxProcessor,
+                    new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
                     State,
                     Storage,
-                    TxPool,
                     ReceiptStorage,
                     LimboLogs.Instance,
                     BlockTree,
                     PermissionBasedTxFilter);
             }
 
-            protected override Task AddBlocksOnStart() => Task.CompletedTask;
+            protected override async Task AddBlocksOnStart() 
+            {
+                await AddBlock();
+                var tx = Nethermind.Core.Test.Builders.Build.A.GeneratedTransaction.WithData(new byte[]{0, 1})
+                    .SignedAndResolved(GetPrivateKey(1)).WithChainId(105).WithGasPrice(0).WithValue(0).TestObject;
+                await AddBlock(tx);
+                await AddBlock(BuildSimpleTransaction.WithNonce(1).TestObject, BuildSimpleTransaction.WithNonce(2).TestObject);
+            }
         }
 
         public class Test

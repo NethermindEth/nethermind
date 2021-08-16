@@ -44,7 +44,7 @@ namespace Nethermind.Store.Test.Proofs
         {
             StateTree tree = new StateTree();
             AccountProofCollector accountProofCollector = new AccountProofCollector(TestItem.AddressA, new UInt256[] {1, 2, 3});
-            tree.Accept(accountProofCollector, tree.RootHash, true);
+            tree.Accept(accountProofCollector, tree.RootHash);
             AccountProof proof = accountProofCollector.BuildResult();
             Assert.AreEqual(TestItem.AddressA, proof.Address);
             Assert.AreEqual(Keccak.OfAnEmptyString, proof.CodeHash);
@@ -67,7 +67,7 @@ namespace Nethermind.Store.Test.Proofs
             tree.Commit(0);
 
             AccountProofCollector accountProofCollector = new AccountProofCollector(TestItem.AddressC, new UInt256[] {1, 2, 3});
-            tree.Accept(accountProofCollector, tree.RootHash, true);
+            tree.Accept(accountProofCollector, tree.RootHash);
             AccountProof proof = accountProofCollector.BuildResult();
             proof.Proof.Should().HaveCount(1);
             Assert.AreEqual(TestItem.AddressC, proof.Address);
@@ -89,7 +89,7 @@ namespace Nethermind.Store.Test.Proofs
             tree.Commit(0);
 
             AccountProofCollector accountProofCollector = new AccountProofCollector(TestItem.AddressC, new UInt256[] {1, 2, 3});
-            tree.Accept(accountProofCollector, tree.RootHash, true);
+            tree.Accept(accountProofCollector, tree.RootHash);
             AccountProof proof = accountProofCollector.BuildResult();
             proof.Proof.Should().HaveCount(1);
             Assert.AreEqual(TestItem.AddressC, proof.Address);
@@ -122,7 +122,7 @@ namespace Nethermind.Store.Test.Proofs
             // now wer are looking for a trying to trick the code to think that the extension of c and d is a good match
             // if everything is ok the proof length of 1 is enough since the extension from the root is not matched
             AccountProofCollector accountProofCollector = new AccountProofCollector(a);
-            tree.Accept(accountProofCollector, tree.RootHash, true);
+            tree.Accept(accountProofCollector, tree.RootHash);
             AccountProof proof = accountProofCollector.BuildResult();
             proof.Proof.Should().HaveCount(1);
 
@@ -142,12 +142,12 @@ namespace Nethermind.Store.Test.Proofs
             tree.Commit(0);
 
             AccountProofCollector accountProofCollector = new AccountProofCollector(TestItem.AddressA);
-            tree.Accept(accountProofCollector, tree.RootHash, true);
+            tree.Accept(accountProofCollector, tree.RootHash);
             AccountProof proof = accountProofCollector.BuildResult();
             Assert.AreEqual(TestItem.AddressA, proof.Address);
 
             AccountProofCollector accountProofCollector2 = new AccountProofCollector(TestItem.AddressB);
-            tree.Accept(accountProofCollector2, tree.RootHash, true);
+            tree.Accept(accountProofCollector2, tree.RootHash);
             AccountProof proof2 = accountProofCollector2.BuildResult();
             Assert.AreEqual(TestItem.AddressB, proof2.Address);
         }
@@ -164,12 +164,12 @@ namespace Nethermind.Store.Test.Proofs
             tree.Commit(0);
 
             AccountProofCollector accountProofCollector = new AccountProofCollector(TestItem.AddressA);
-            tree.Accept(accountProofCollector, tree.RootHash, true);
+            tree.Accept(accountProofCollector, tree.RootHash);
             AccountProof proof = accountProofCollector.BuildResult();
             Assert.AreEqual(UInt256.One, proof.Balance);
 
             AccountProofCollector accountProofCollector2 = new AccountProofCollector(TestItem.AddressB);
-            tree.Accept(accountProofCollector2, tree.RootHash, true);
+            tree.Accept(accountProofCollector2, tree.RootHash);
             AccountProof proof2 = accountProofCollector2.BuildResult();
             Assert.AreEqual(UInt256.One + 1, proof2.Balance);
         }
@@ -187,12 +187,12 @@ namespace Nethermind.Store.Test.Proofs
             tree.Commit(0);
 
             AccountProofCollector accountProofCollector = new AccountProofCollector(TestItem.AddressA);
-            tree.Accept(accountProofCollector, tree.RootHash, true);
+            tree.Accept(accountProofCollector, tree.RootHash);
             AccountProof proof = accountProofCollector.BuildResult();
             Assert.AreEqual(account1.CodeHash, proof.CodeHash);
 
             AccountProofCollector accountProofCollector2 = new AccountProofCollector(TestItem.AddressB);
-            tree.Accept(accountProofCollector2, tree.RootHash, true);
+            tree.Accept(accountProofCollector2, tree.RootHash);
             AccountProof proof2 = accountProofCollector2.BuildResult();
             Assert.AreEqual(Keccak.OfAnEmptyString, proof2.CodeHash);
         }
@@ -210,12 +210,12 @@ namespace Nethermind.Store.Test.Proofs
             tree.Commit(0);
 
             AccountProofCollector accountProofCollector = new AccountProofCollector(TestItem.AddressA);
-            tree.Accept(accountProofCollector, tree.RootHash, true);
+            tree.Accept(accountProofCollector, tree.RootHash);
             AccountProof proof = accountProofCollector.BuildResult();
             Assert.AreEqual(account1.Nonce, proof.Nonce);
 
             AccountProofCollector accountProofCollector2 = new AccountProofCollector(TestItem.AddressB);
-            tree.Accept(accountProofCollector2, tree.RootHash, true);
+            tree.Accept(accountProofCollector2, tree.RootHash);
             AccountProof proof2 = accountProofCollector2.BuildResult();
             Assert.AreEqual(UInt256.Zero, proof2.Nonce);
         }
@@ -233,12 +233,12 @@ namespace Nethermind.Store.Test.Proofs
             tree.Commit(0);
 
             AccountProofCollector accountProofCollector = new AccountProofCollector(TestItem.AddressA);
-            tree.Accept(accountProofCollector, tree.RootHash, true);
+            tree.Accept(accountProofCollector, tree.RootHash);
             AccountProof proof = accountProofCollector.BuildResult();
             Assert.AreEqual(TestItem.KeccakA, proof.StorageRoot);
 
             AccountProofCollector accountProofCollector2 = new AccountProofCollector(TestItem.AddressB);
-            tree.Accept(accountProofCollector2, tree.RootHash, true);
+            tree.Accept(accountProofCollector2, tree.RootHash);
             AccountProof proof2 = accountProofCollector2.BuildResult();
             Assert.AreEqual(Keccak.EmptyTreeHash, proof2.StorageRoot);
         }
@@ -256,7 +256,7 @@ namespace Nethermind.Store.Test.Proofs
             tree.Commit(0);
 
             AccountProofCollector accountProofCollector = new AccountProofCollector(TestItem.AddressA);
-            tree.Accept(accountProofCollector, tree.RootHash, true);
+            tree.Accept(accountProofCollector, tree.RootHash);
             AccountProof proof = accountProofCollector.BuildResult();
             Assert.AreEqual(3, proof.Proof.Length);
         }
@@ -274,7 +274,7 @@ namespace Nethermind.Store.Test.Proofs
             tree.Commit(0);
 
             AccountProofCollector accountProofCollector = new AccountProofCollector(TestItem.AddressA, new[] {Bytes.FromHexString("0x0000000000000000000000000000000000000000000000000000000000000000"), Bytes.FromHexString("0x0000000000000000000000000000000000000000000000000000000000000001")});
-            tree.Accept(accountProofCollector, tree.RootHash, true);
+            tree.Accept(accountProofCollector, tree.RootHash);
             AccountProof proof = accountProofCollector.BuildResult();
             Assert.AreEqual(2, proof.StorageProofs.Length);
         }
@@ -298,7 +298,7 @@ namespace Nethermind.Store.Test.Proofs
             tree.Commit(0);
 
             AccountProofCollector accountProofCollector = new AccountProofCollector(TestItem.AddressA, new[] {Bytes.FromHexString("0x0000000000000000000000000000000000000000000000000000000000000000"), Bytes.FromHexString("0x0000000000000000000000000000000000000000000000000000000000000001")});
-            tree.Accept(accountProofCollector, tree.RootHash, true);
+            tree.Accept(accountProofCollector, tree.RootHash);
             AccountProof proof = accountProofCollector.BuildResult();
             Assert.AreEqual("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000", proof.StorageProofs[0].Value.ToHexString(true));
             Assert.AreEqual("0xab34000000000000000000000000000000000000000000000000000000000000000000000000000000", proof.StorageProofs[1].Value.ToHexString(true));
@@ -323,7 +323,7 @@ namespace Nethermind.Store.Test.Proofs
             tree.Commit(0);
 
             AccountProofCollector accountProofCollector = new AccountProofCollector(TestItem.AddressA, new[] {Bytes.FromHexString("0x0000000000000000000000000000000000000000000000000000000000000000"), Bytes.FromHexString("0x0000000000000000000000000000000000000000000000000000000000000001")});
-            tree.Accept(accountProofCollector, tree.RootHash, true);
+            tree.Accept(accountProofCollector, tree.RootHash);
             AccountProof proof = accountProofCollector.BuildResult();
             Assert.AreEqual("0x0000000000000000000000000000000000000000000000000000000000000000", proof.StorageProofs[0].Key.ToHexString(true));
             Assert.AreEqual("0x0000000000000000000000000000000000000000000000000000000000000001", proof.StorageProofs[1].Key.ToHexString(true));
@@ -353,11 +353,11 @@ namespace Nethermind.Store.Test.Proofs
             tree.Commit(0);
 
             TreeDumper dumper = new TreeDumper();
-            tree.Accept(dumper, tree.RootHash, true);
+            tree.Accept(dumper, tree.RootHash);
             Console.WriteLine(dumper.ToString());
 
             AccountProofCollector accountProofCollector = new AccountProofCollector(TestItem.AddressA, new byte[][] {a, b, c});
-            tree.Accept(accountProofCollector, tree.RootHash, true);
+            tree.Accept(accountProofCollector, tree.RootHash);
             AccountProof proof = accountProofCollector.BuildResult();
             Assert.AreEqual("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000", proof.StorageProofs[0].Value.ToHexString(true));
             Assert.AreEqual("0xab34000000000000000000000000000000000000000000000000000000000000000000000000000000", proof.StorageProofs[1].Value.ToHexString(true));
@@ -392,11 +392,11 @@ namespace Nethermind.Store.Test.Proofs
             tree.Commit(0);
 
             TreeDumper dumper = new TreeDumper();
-            tree.Accept(dumper, tree.RootHash, true);
+            tree.Accept(dumper, tree.RootHash);
             Console.WriteLine(dumper.ToString());
 
             AccountProofCollector accountProofCollector = new AccountProofCollector(TestItem.AddressA, new byte[][] {a, b, c, d, e});
-            tree.Accept(accountProofCollector, tree.RootHash, true);
+            tree.Accept(accountProofCollector, tree.RootHash);
             AccountProof proof = accountProofCollector.BuildResult();
             Assert.AreEqual("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000", proof.StorageProofs[0].Value.ToHexString(true));
             Assert.AreEqual("0xab34000000000000000000000000000000000000000000000000000000000000000000000000000000", proof.StorageProofs[1].Value.ToHexString(true));
@@ -433,11 +433,11 @@ namespace Nethermind.Store.Test.Proofs
             tree.Commit(0);
 
             TreeDumper dumper = new TreeDumper();
-            tree.Accept(dumper, tree.RootHash, true);
+            tree.Accept(dumper, tree.RootHash);
             Console.WriteLine(dumper.ToString());
 
             AccountProofCollector accountProofCollector = new AccountProofCollector(TestItem.AddressA, new byte[][] {a, b, c, d, e});
-            tree.Accept(accountProofCollector, tree.RootHash, true);
+            tree.Accept(accountProofCollector, tree.RootHash);
             AccountProof proof = accountProofCollector.BuildResult();
             Assert.AreEqual("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000", proof.StorageProofs[0].Value.ToHexString(true));
             Assert.AreEqual("0xab34000000000000000000000000000000000000000000000000000000000000000000000000000000", proof.StorageProofs[1].Value.ToHexString(true));
@@ -472,11 +472,11 @@ namespace Nethermind.Store.Test.Proofs
             tree.Commit(0);
 
             TreeDumper dumper = new TreeDumper();
-            tree.Accept(dumper, tree.RootHash, true);
+            tree.Accept(dumper, tree.RootHash);
             Console.WriteLine(dumper.ToString());
 
             AccountProofCollector accountProofCollector = new AccountProofCollector(TestItem.AddressA, new byte[][] {a, b, c, d, e});
-            tree.Accept(accountProofCollector, tree.RootHash, true);
+            tree.Accept(accountProofCollector, tree.RootHash);
             AccountProof proof = accountProofCollector.BuildResult();
             Assert.AreEqual("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000", proof.StorageProofs[0].Value?.ToHexString(true) ?? "0x");
             Assert.AreEqual("0x00", proof.StorageProofs[1].Value?.ToHexString(true) ?? "0x");
@@ -500,11 +500,11 @@ namespace Nethermind.Store.Test.Proofs
             tree.Commit(0);
 
             TreeDumper dumper = new TreeDumper();
-            tree.Accept(dumper, tree.RootHash, true);
+            tree.Accept(dumper, tree.RootHash);
             Console.WriteLine(dumper.ToString());
 
             AccountProofCollector accountProofCollector = new AccountProofCollector(TestItem.AddressA);
-            tree.Accept(accountProofCollector, tree.RootHash, true);
+            tree.Accept(accountProofCollector, tree.RootHash);
             AccountProof proof = accountProofCollector.BuildResult();
             Assert.AreEqual((UInt256) 0, proof.Balance);
             Assert.AreEqual(UInt256.Zero, proof.Nonce);
@@ -540,11 +540,11 @@ namespace Nethermind.Store.Test.Proofs
             tree.Commit(0);
 
             TreeDumper dumper = new TreeDumper();
-            tree.Accept(dumper, tree.RootHash, true);
+            tree.Accept(dumper, tree.RootHash);
             Console.WriteLine(dumper.ToString());
 
             AccountProofCollector accountProofCollector = new AccountProofCollector(TestItem.AddressA, new byte[][] {a, c, e});
-            tree.Accept(accountProofCollector, tree.RootHash, true);
+            tree.Accept(accountProofCollector, tree.RootHash);
             AccountProof proof = accountProofCollector.BuildResult();
             Assert.AreEqual("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000", proof.StorageProofs[0].Value.ToHexString(true));
             Assert.AreEqual("0xab56000000000000000000000000000000000000000000000000000000000000000000000000000000", proof.StorageProofs[1].Value.ToHexString(true));
@@ -649,11 +649,11 @@ storage: 10075208144087594565017167249218046892267736431914869828855077415926031
             tree.Commit(0);
             
             TreeDumper treeDumper = new TreeDumper();
-            tree.Accept(treeDumper, tree.RootHash, true);
+            tree.Accept(treeDumper, tree.RootHash);
             TestContext.WriteLine(treeDumper.ToString());
 
             AccountProofCollector collector = new AccountProofCollector(address, indexes);
-            tree.Accept(collector, tree.RootHash, true);
+            tree.Accept(collector, tree.RootHash);
 
             AccountProof accountProof = collector.BuildResult();
             accountProof.Address.Should().Be(address);
@@ -727,7 +727,7 @@ storage: 10075208144087594565017167249218046892267736431914869828855077415926031
             for (int i = 0; i < accountsCount; i++)
             {
                 AccountProofCollector collector = new AccountProofCollector(addressesWithStorage[i].Address, addressesWithStorage[i].StorageCells.Select(sc => sc.Index).ToArray());
-                tree.Accept(collector, tree.RootHash, true);
+                tree.Accept(collector, tree.RootHash);
 
                 AccountProof accountProof = collector.BuildResult();
                 accountProof.Address.Should().Be(addressesWithStorage[i].Address);

@@ -199,7 +199,7 @@ namespace Nethermind.Dsl
                 {
                     if (_blockProcessorPipelineBuilder != null)
                     {
-                        _blockProcessorPipelineBuilder.AddElement(new WebSocketsPublisher<Block, Block>("dsl", _api.EthereumJsonSerializer));
+                        _blockProcessorPipelineBuilder.AddElement(new WebSocketsPublisher<Block, Block>("dsl", _api.EthereumJsonSerializer, _api.LogManager));
                     }
                 }
 

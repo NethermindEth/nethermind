@@ -49,18 +49,55 @@ namespace Nethermind.Blockchain.Validators
                    transaction.GasLimit >= IntrinsicGasCalculator.Calculate(transaction, releaseSpec) &&
                    /* if it is a call or a transfer then we require the 'To' field to have a value
                       while for an init it will be empty */
-                   ValidateSignature(transaction.Signature, releaseSpec);
+                   ValidateSignature(transaction.Signature, releaseSpec) &&
+                   ValidateChainId(transaction) &&
+                   Validate1559GasFields(transaction, releaseSpec);
         }
 
         private bool ValidateTxType(Transaction transaction, IReleaseSpec releaseSpec)
         {
-            return transaction.Type == TxType.Legacy || 
-                   (transaction.Type == TxType.AccessList && releaseSpec.UseTxAccessLists) ||
-                   (transaction.Type == TxType.EIP1559 && releaseSpec.IsEip1559Enabled);
+            switch (transaction.Type)
+            {
+                case TxType.Legacy:
+                    return true;
+                case TxType.AccessList:
+                    return releaseSpec.UseTxAccessLists;
+                case TxType.EIP1559:
+                    return releaseSpec.IsEip1559Enabled;
+                default:
+                    return false;
+            }
         }
-
-        private bool ValidateSignature(Signature signature, IReleaseSpec spec)
+        
+        private bool Validate1559GasFields(Transaction transaction, IReleaseSpec releaseSpec)
         {
+            if (!releaseSpec.IsEip1559Enabled || !transaction.IsEip1559)
+                return true;
+
+            return transaction.MaxFeePerGas >= transaction.MaxPriorityFeePerGas;
+        }
+        
+        private bool ValidateChainId(Transaction transaction)
+        {
+            switch (transaction.Type)
+            {
+                case TxType.Legacy:
+                    return true;
+                case TxType.AccessList:
+                case TxType.EIP1559:
+                    return transaction.ChainId == _chainIdValue;
+                default:
+                    return false;
+            }
+        }
+        
+        private bool ValidateSignature(Signature? signature, IReleaseSpec spec)
+        {
+            if (signature is null)
+            {
+                return false;
+            }
+            
             BigInteger sValue = signature.SAsSpan.ToUnsignedBigInteger();
             BigInteger rValue = signature.RAsSpan.ToUnsignedBigInteger();
             

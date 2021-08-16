@@ -172,5 +172,17 @@ namespace Nethermind.Core.Test.Caching
 
             count.Should().Be(itemsToKeep);
         }
+
+        [Test]
+        public void Wrong_capacity_number_at_constructor()
+        {
+            int maxCapacity = 0;
+
+            Assert.Throws<ArgumentOutOfRangeException>(() => 
+                {
+                    LruCache<int, int> cache = new LruCache<int, int>(maxCapacity, "test");
+                });
+
+        }
     }
 }

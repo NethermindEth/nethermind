@@ -65,7 +65,12 @@ namespace Nethermind.Specs
                 return Istanbul.Instance;
             }
 
-            return Berlin.Instance;
+            if (blockNumber < LondonBlockNumber)
+            {
+                return Berlin.Instance;
+            }
+            
+            return London.Instance;
         }
 
         public long? DaoBlockNumber => null;
@@ -78,7 +83,7 @@ namespace Nethermind.Specs
         public const long ConstantinopleFixBlockNumber  = 4_321_234;
         public const long IstanbulBlockNumber  = 5_435_345;
         public const long BerlinBlockNumber  = 8_290_928;
-        public const long LondonBlockNumber = long.MaxValue;
+        public const long LondonBlockNumber = 8_897_988;
 
         public ulong ChainId => Core.ChainId.Rinkeby;
 
@@ -91,7 +96,8 @@ namespace Nethermind.Specs
             ConstantinopleBlockNumber,
             ConstantinopleFixBlockNumber,
             IstanbulBlockNumber,
-            BerlinBlockNumber
+            BerlinBlockNumber,
+            LondonBlockNumber
         };
 
         private RinkebySpecProvider() { }

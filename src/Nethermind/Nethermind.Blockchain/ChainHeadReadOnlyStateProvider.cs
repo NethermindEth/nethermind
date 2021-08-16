@@ -17,59 +17,20 @@
 
 using System;
 using Nethermind.Blockchain.Find;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Int256;
 using Nethermind.State;
-using Nethermind.Trie;
 
 namespace Nethermind.Blockchain
 {
-    public class ChainHeadReadOnlyStateProvider : IReadOnlyStateProvider
+    public class ChainHeadReadOnlyStateProvider : SpecificBlockReadOnlyStateProvider
     {
         private readonly IBlockFinder _blockFinder;
-        private readonly IStateReader _stateReader;
-
-        public ChainHeadReadOnlyStateProvider(IBlockFinder blockFinder, IStateReader stateReader)
+        
+        public ChainHeadReadOnlyStateProvider(IBlockFinder blockFinder, IStateReader stateReader) : base(stateReader)
         {
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
-            _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
         }
 
-        public Keccak StateRoot => _blockFinder.Head?.StateRoot ?? Keccak.EmptyTreeHash;
-
-        public Account GetAccount(Address address) => _stateReader.GetAccount(StateRoot, address);
-
-        public UInt256 GetNonce(Address address) => _stateReader.GetNonce(StateRoot, address);
-
-        public UInt256 GetBalance(Address address) => _stateReader.GetBalance(StateRoot, address);
-
-        public Keccak GetStorageRoot(Address address) => _stateReader.GetStorageRoot(StateRoot, address);
-
-        public byte[] GetCode(Address address) => _stateReader.GetCode(StateRoot, address);
-
-        public byte[] GetCode(Keccak codeHash) => _stateReader.GetCode(codeHash);
-
-        public Keccak GetCodeHash(Address address)
-        {
-            Account account = GetAccount(address);
-            return account?.CodeHash ?? Keccak.OfAnEmptyString;
-        }
-
-        public void Accept(ITreeVisitor visitor, Keccak stateRoot)
-        {
-            _stateReader.RunTreeVisitor(visitor,  stateRoot);
-        }
-
-        public bool AccountExists(Address address) => GetAccount(address) != null;
-        
-
-        public bool IsEmptyAccount(Address address) => GetAccount(address).IsEmpty;
-
-        public bool IsDeadAccount(Address address)
-        {
-            Account account = GetAccount(address);
-            return account?.IsEmpty ?? true;
-        }
+        public override Keccak StateRoot => _blockFinder.Head?.StateRoot ?? Keccak.EmptyTreeHash;
     }
 }

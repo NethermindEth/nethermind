@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using Nethermind.Api;
 using Nethermind.Db;
 using Nethermind.Plugin.Baseline;
 using Nethermind.Vault.Config;
@@ -31,7 +32,7 @@ namespace Nethermind.Vault.Test
         public void Init_vault_plugin_does_not_throw_exception(bool enabled)
         {
             VaultConfig vaultConfig = new() {Enabled = enabled};
-            Runner.Ethereum.Api.NethermindApi context = Build.ContextWithMocks();
+            NethermindApi context = Build.ContextWithMocks();
             context.ConfigProvider.GetConfig<VaultConfig>().Returns(vaultConfig);
             context.MemDbFactory = new MemDbFactory();
             VaultPlugin plugin = new();

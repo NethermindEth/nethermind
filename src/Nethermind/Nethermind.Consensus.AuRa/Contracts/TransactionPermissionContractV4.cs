@@ -21,6 +21,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Evm;
+using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
@@ -53,7 +54,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             
             return new object[]
             {
-                tx.SenderAddress, tx.To ?? Address.Zero, tx.Value, tx.FeeCap, tx.GasPremium, tx.GasLimit, tx.Data ?? Array.Empty<byte>()
+                tx.SenderAddress, tx.To ?? Address.Zero, tx.Value, tx.MaxFeePerGas, tx.MaxPriorityFeePerGas, tx.GasLimit, tx.Data ?? Array.Empty<byte>()
             };
         }
 

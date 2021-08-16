@@ -87,7 +87,7 @@ namespace Nethermind.Serialization.Rlp
         {
             foreach (var type in assembly.GetExportedTypes())
             {
-                if (!type.IsClass)
+                if (!type.IsClass || type.IsAbstract || type.IsGenericTypeDefinition)
                 {
                     continue;
                 }
@@ -260,8 +260,8 @@ namespace Nethermind.Serialization.Rlp
 
             if (transaction.IsEip1559)
             {
-                sequence[position++] = Encode(transaction.GasPremium);
-                sequence[position++] = Encode(transaction.DecodedFeeCap);
+                sequence[position++] = Encode(transaction.MaxPriorityFeePerGas);
+                sequence[position++] = Encode(transaction.DecodedMaxFeePerGas);
             }
             else
             {

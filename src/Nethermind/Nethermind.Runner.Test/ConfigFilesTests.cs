@@ -33,7 +33,6 @@ using Nethermind.Grpc;
 using Nethermind.JsonRpc;
 using Nethermind.Monitoring.Config;
 using Nethermind.Network.Config;
-using Nethermind.PubSub.Kafka;
 using Nethermind.Db.Blooms;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.TxPool;
@@ -204,7 +203,7 @@ namespace Nethermind.Runner.Test
         [TestCase("volta archive", 256000000)]
         [TestCase("volta ^archive", 256000000)]
         [TestCase("goerli archive", 768000000)]
-        [TestCase("goerli ^archive", 384000000)]
+        [TestCase("goerli ^archive", 768000000)]
         [TestCase("rinkeby archive", 1536000000)]
         [TestCase("rinkeby ^archive", 1024000000)]
         [TestCase("ropsten archive", 1536000000)]
@@ -251,8 +250,8 @@ namespace Nethermind.Runner.Test
             Test<INetworkConfig, bool>(configWildcard, c => c.DiagTracerEnabled, false);
         }
 
-        [TestCase("mainnet", 2048)]
-        [TestCase("^baseline ^mainnet ^spaceneth ^volta ^energy ^sokol ^poacore", 1024)]
+        [TestCase("mainnet xdai", 2048)]
+        [TestCase("^baseline ^mainnet ^spaceneth ^volta ^energy ^sokol ^poacore ^xdai", 1024)]
         [TestCase("baseline", 512)]
         [TestCase("energy", 512)]
         [TestCase("volta", 512)]
@@ -278,12 +277,6 @@ namespace Nethermind.Runner.Test
         public void Tracer_timeout_default_is_correct(string configWildcard)
         {
             Test<IJsonRpcConfig, int>(configWildcard, c => c.Timeout, 20000);
-        }
-
-        [TestCase("*")]
-        public void Kafka_disabled_by_default(string configWildcard)
-        {
-            Test<IKafkaConfig, bool>(configWildcard, c => c.Enabled, false);
         }
 
         [TestCase("^mainnet ^validators ^beam ^archive", true, true)]

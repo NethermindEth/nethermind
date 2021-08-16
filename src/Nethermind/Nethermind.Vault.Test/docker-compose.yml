@@ -104,8 +104,11 @@ services:
       - DATABASE_NAME=vault_dev
       - DATABASE_USER=vault
       - DATABASE_PASSWORD=vault
+      - IDENT_API_HOST=prvd-ident:8080
+      - IDENT_API_SCHEME=http
       - LOG_LEVEL=DEBUG
       - PORT=8080
+      - REDIS_HOSTS=prvd-redis:6379
       - SEAL_UNSEAL_VALIDATION_HASH=0x1c1381fd075f1ee3d42799bb8da0602a2afb9ef4b492bf1eae72399ecc81b0f0
     healthcheck:
       test: ["CMD", "curl", "-f", "http://prvd-vault:8080/status"]
@@ -132,6 +135,8 @@ services:
       - DATABASE_NAME=ident_dev
       - DATABASE_USER=ident
       - DATABASE_PASSWORD=ident
+      - IDENT_API_HOST=prvd-ident:8080
+      - IDENT_API_SCHEME=http
       - JWT_AUTHORIZATION_AUDIENCE=http://localhost:8081/api/v1
       - NATS_CLIENT_PREFIX=prvd-ident
       - NATS_URL=nats://prvd-nats:4222

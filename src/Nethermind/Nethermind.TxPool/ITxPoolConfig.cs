@@ -26,7 +26,7 @@ namespace Nethermind.TxPool
         [ConfigItem(DefaultValue = "2048", Description = "Max number of transactions held in mempool (more transactions in mempool mean more memory used")]
         int Size { get; set; }
         
-        [ConfigItem(DefaultValue = "16", Description = "Defines how much into the future transactions are kept.")]
+        [ConfigItem(DefaultValue = "256", Description = "Defines how much into the future transactions are kept.")]
         uint FutureNonceRetention { get; set; }
         
         [ConfigItem(DefaultValue = "524288",

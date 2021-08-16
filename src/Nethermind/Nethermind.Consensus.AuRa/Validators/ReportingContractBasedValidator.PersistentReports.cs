@@ -51,11 +51,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         {
             foreach (var transaction in _contractValidator.GetTransactions(parent, gasLimit))
             {
-                if (gasLimit >= transaction.GasLimit)
-                {
-                    gasLimit -= transaction.GasLimit;
-                    yield return transaction;
-                }
+                yield return transaction;
             }
 
             long currentBlockNumber = parent.Number + 1;
@@ -64,26 +60,21 @@ namespace Nethermind.Consensus.AuRa.Validators
             {
                 FilterReports(parent);
 
-                foreach (Transaction tx in GetPersistentReportsTransactions(gasLimit, currentBlockNumber).Take(MaxReportsPerBlock))
+                foreach (Transaction tx in GetPersistentReportsTransactions(currentBlockNumber).Take(MaxReportsPerBlock))
                 {
                     yield return tx;
                 }
             }
         }
 
-        private IEnumerable<Transaction> GetPersistentReportsTransactions(long gasLimit, long currentBlockNumber)
+        private IEnumerable<Transaction> GetPersistentReportsTransactions(long currentBlockNumber)
         {
-            foreach (var persistentReport in _persistentReports)
+            foreach (PersistentReport persistentReport in _persistentReports)
             {
                 // we want to wait at least 1 block with persistent reports to avoid duplicates
                 if (persistentReport.BlockNumber + ReportsSkipBlocks < currentBlockNumber)
                 {
-                    var tx = ValidatorContract.ReportMalicious(persistentReport.MaliciousValidator, persistentReport.BlockNumber, persistentReport.Proof);
-                    if (tx != null && gasLimit >= tx.GasLimit)
-                    {
-                        gasLimit -= tx.GasLimit;
-                        yield return tx;
-                    }
+                    yield return ValidatorContract.ReportMalicious(persistentReport.MaliciousValidator, persistentReport.BlockNumber, persistentReport.Proof);
                 }
             }
         }

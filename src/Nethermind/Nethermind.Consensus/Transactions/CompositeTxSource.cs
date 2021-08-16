@@ -24,31 +24,36 @@ namespace Nethermind.Consensus.Transactions
 {
     public class CompositeTxSource : ITxSource
     {
-        private readonly ITxSource[] _transactionSources;
+        private readonly IList<ITxSource> _transactionSources;
 
         public CompositeTxSource(params ITxSource[] transactionSources)
         {
-            _transactionSources = transactionSources ?? throw new ArgumentNullException(nameof(transactionSources));
+            _transactionSources = transactionSources?.ToList() ?? throw new ArgumentNullException(nameof(transactionSources));
+        }
+
+        public void Then(ITxSource txSource)
+        {
+            _transactionSources.Add(txSource);
+        }
+        
+        public void First(ITxSource txSource)
+        {
+            _transactionSources.Insert(0, txSource);
         }
 
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
         {
-            for (int i = 0; i < _transactionSources.Length; i++)
+            for (int i = 0; i < _transactionSources.Count; i++)
             {
-                var transactions = _transactionSources[i].GetTransactions(parent, gasLimit);
-                if (transactions != null)
+                IEnumerable<Transaction> transactions = _transactionSources[i].GetTransactions(parent, gasLimit);
+                foreach (Transaction tx in transactions)
                 {
-                    foreach (var tx in transactions)
-                    {
-                        gasLimit -= tx.GasLimit;
-                        yield return tx;
-                    }
+                    yield return tx;
                 }
             }
         }
         
         public override string ToString()
             => $"{nameof(CompositeTxSource)} [ {(string.Join(", ", _transactionSources.Cast<object>()))} ]";
-
     }
 }

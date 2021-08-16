@@ -63,7 +63,7 @@ namespace Nethermind.Blockchain.Processing
         /// <summary>
         /// Combination of switches for block producers when they preprocess block for state root calculation.
         /// </summary>
-        ProducingBlock = NoValidation | ReadOnlyChain | ForceProcessing,
+        ProducingBlock = NoValidation | ReadOnlyChain | ForceProcessing | DoNotUpdateHead,
         
         /// <summary>
         /// EVM tracing needs to process blocks without storing the data on chain.

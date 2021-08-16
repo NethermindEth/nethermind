@@ -22,19 +22,18 @@ namespace Nethermind.Core.Test
     public class NUnitLogManager : ILogManager
     {
         public static readonly NUnitLogManager Instance = new NUnitLogManager();
-
-        private readonly LogLevel _level;
+        private readonly NUnitLogger _logger;
 
         public NUnitLogManager(LogLevel level = LogLevel.Info)
         {
-            _level = level;
+            _logger = new NUnitLogger(level);
         }
 
         public ILogger GetClassLogger(Type type) => GetClassLogger();
 
         public ILogger GetClassLogger<T>() => GetClassLogger();
 
-        public ILogger GetClassLogger() => new NUnitLogger(_level);
+        public ILogger GetClassLogger() => _logger;
 
         public ILogger GetLogger(string loggerName) => GetClassLogger();
     }

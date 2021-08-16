@@ -16,27 +16,41 @@
 // 
 
 using System;
-using System.Threading;
+using System.Collections.Concurrent;
 using System.Threading.Tasks;
+using System.Collections.Generic;
+using System.ComponentModel.Design;
+using System.Linq;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
-using Nethermind.Evm.Tracing;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Processing;
+using Nethermind.Blockchain.Producers;
+using Nethermind.Consensus;
+using Nethermind.Consensus.Transactions;
+using Nethermind.Core;
+using Nethermind.Db;
 using Nethermind.Facade;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
+using Nethermind.Mev.Data;
+using Nethermind.Mev.Execution;
+using Nethermind.Mev.Source;
 using Nethermind.TxPool;
 
 namespace Nethermind.Mev
 {
-    public class MevPlugin : INethermindPlugin
+    public class MevPlugin : IConsensusWrapperPlugin
     {
-        private INethermindApi? _nethermindApi;
-
-        private IMevConfig? _mevConfig;
-
+        private static readonly ProcessingOptions SimulateBundleProcessingOptions = ProcessingOptions.ProducingBlock | ProcessingOptions.IgnoreParentNotOnMainChain;
+        
+        private IMevConfig _mevConfig = null!;
         private ILogger? _logger;
-
+        private INethermindApi _nethermindApi = null!;
+        private BundlePool? _bundlePool;
+        private ITracerFactory? _tracerFactory;
+        
         public string Name => "MEV";
 
         public string Description => "Flashbots MEV spec implementation";
@@ -46,47 +60,136 @@ namespace Nethermind.Mev
         public Task Init(INethermindApi? nethermindApi)
         {
             _nethermindApi = nethermindApi ?? throw new ArgumentNullException(nameof(nethermindApi));
-            _mevConfig = nethermindApi.Config<IMevConfig>();
+            _mevConfig = _nethermindApi.Config<IMevConfig>();
             _logger = _nethermindApi.LogManager.GetClassLogger();
+
             return Task.CompletedTask;
         }
 
-        public Task InitNetworkProtocol()
+        public Task InitNetworkProtocol() => Task.CompletedTask;
+
+        private BundlePool BundlePool
         {
-            return Task.CompletedTask;
+            get
+            {
+                if (_bundlePool is null)
+                {
+                    var (getFromApi, _) = _nethermindApi!.ForProducer;
+                    
+                    TxBundleSimulator txBundleSimulator = new(
+                        TracerFactory, 
+                        getFromApi.GasLimitCalculator,
+                        getFromApi.Timestamper,
+                        getFromApi.TxPool!, 
+                        getFromApi.SpecProvider!, 
+                        getFromApi.EngineSigner);
+                    
+                    _bundlePool = new BundlePool(
+                        getFromApi.BlockTree!, 
+                        txBundleSimulator, 
+                        getFromApi.Timestamper,
+                        getFromApi.TxValidator!,
+                        getFromApi.SpecProvider!,
+                        _mevConfig,
+                        getFromApi.LogManager);
+                }
+
+                return _bundlePool;
+            }
+        }
+
+        private ITracerFactory TracerFactory
+        {
+            get
+            {
+                if (_tracerFactory is null)
+                {
+                    var (getFromApi, _) = _nethermindApi!.ForProducer;
+                    
+                    _tracerFactory = new TracerFactory(
+                        getFromApi.DbProvider!,
+                        getFromApi.BlockTree!,
+                        getFromApi.ReadOnlyTrieStore!,
+                        getFromApi.BlockPreprocessor!,
+                        getFromApi.SpecProvider!,
+                        getFromApi.LogManager!,
+                        SimulateBundleProcessingOptions);
+                }
+
+                return _tracerFactory;
+            }
         }
 
         public Task InitRpcModules()
         {
-            ThrowIfNotInitialized();
-            (IApiWithNetwork getFromApi, _) = _nethermindApi!.ForRpc;
-            IJsonRpcConfig rpcConfig = getFromApi.Config<IJsonRpcConfig>();
-            MevModuleFactory mevModuleFactory = new(_mevConfig!, rpcConfig);
-            getFromApi.RpcModuleProvider!.RegisterBoundedByCpuCount(mevModuleFactory, rpcConfig.Timeout);
-            
-            getFromApi.TxPool!.NewPending += TxPoolOnNewPending;
+            if (_mevConfig.Enabled) 
+            {   
+                (IApiWithNetwork getFromApi, _) = _nethermindApi!.ForRpc;
+
+                IJsonRpcConfig rpcConfig = getFromApi.Config<IJsonRpcConfig>();
+                rpcConfig.EnableModules(ModuleType.Mev);
+
+                MevModuleFactory mevModuleFactory = new(
+                    _mevConfig!, 
+                    rpcConfig, 
+                    BundlePool, 
+                    getFromApi.BlockTree!,
+                    getFromApi.StateReader!,
+                    TracerFactory,
+                    getFromApi.SpecProvider!,
+                    getFromApi.EngineSigner,
+                    getFromApi.ChainSpec!.ChainId);
+                
+                getFromApi.RpcModuleProvider!.RegisterBoundedByCpuCount(mevModuleFactory, rpcConfig.Timeout);
+
+                if (_logger!.IsInfo) _logger.Info("Flashbots RPC plugin enabled");
+            } 
+            else 
+            {
+                if (_logger!.IsWarn) _logger.Info("Skipping Flashbots RPC plugin");
+            }
 
             return Task.CompletedTask;
         }
 
-        private void TxPoolOnNewPending(object? sender, TxEventArgs e)
+        public async Task<IBlockProducer> InitBlockProducer(IConsensusPlugin consensusPlugin)
         {
-            IBlockchainBridge bridge = _nethermindApi!.CreateBlockchainBridge();
-            // create a bundle
-            // submit the bundle to Flashbots MEV-Relay
-        }
-
-        public ValueTask DisposeAsync()
-        {
-            return ValueTask.CompletedTask;
-        }
-
-        private void ThrowIfNotInitialized()
-        {
-            if (_nethermindApi is null || _mevConfig is null || _logger is null)
+            if (!Enabled)
             {
-                throw new InvalidOperationException($"{nameof(MevPlugin)} not yet initialized");
+                throw new InvalidOperationException("Plugin is disabled");
             }
+
+            _nethermindApi.BlockProducerEnvFactory.TransactionsExecutorFactory = new MevBlockProducerTransactionsExecutorFactory(_nethermindApi.SpecProvider!, _nethermindApi.LogManager);
+            
+            List<MevBlockProducer.MevBlockProducerInfo> blockProducers =
+                new(_mevConfig.MaxMergedBundles + 1);
+                
+            // Add non-mev block
+            MevBlockProducer.MevBlockProducerInfo standardProducer = await CreateProducer(consensusPlugin);
+            blockProducers.Add(standardProducer);
+            
+            // Try blocks with all bundle numbers <= MaxMergedBundles
+            for (int bundleLimit = 1; bundleLimit <= _mevConfig.MaxMergedBundles; bundleLimit++)
+            {
+                BundleSelector bundleSelector = new(BundlePool, bundleLimit);
+                MevBlockProducer.MevBlockProducerInfo bundleProducer = await CreateProducer(consensusPlugin, new BundleTxSource(bundleSelector, _nethermindApi.Timestamper));
+                blockProducers.Add(bundleProducer);
+            }
+
+            return new MevBlockProducer(consensusPlugin.DefaultBlockProductionTrigger, _nethermindApi.LogManager, blockProducers.ToArray());
         }
+
+        private static async Task<MevBlockProducer.MevBlockProducerInfo> CreateProducer(
+            IConsensusPlugin consensusPlugin,
+            ITxSource? additionalTxSource = null)
+        {
+            IManualBlockProductionTrigger trigger = new BuildBlocksWhenRequested();
+            IBlockProducer producer = await consensusPlugin.InitBlockProducer(trigger, additionalTxSource);
+            return new MevBlockProducer.MevBlockProducerInfo(producer, trigger, new BeneficiaryTracer());
+        }
+
+        public bool Enabled => _mevConfig.Enabled;
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 }

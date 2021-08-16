@@ -21,6 +21,7 @@ using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
+using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
@@ -202,7 +203,7 @@ namespace Nethermind.AuRa.Test.Validators
                     Substitute.For<IReceiptFinder>(), 
                     Substitute.For<IValidatorStore>(), 
                     Substitute.For<IValidSealerStrategy>(), 
-                    Substitute.For<IBlockFinalizationManager>(), 
+                    Substitute.For<IAuRaBlockFinalizationManager>(), 
                     parentHeader,
                     LimboLogs.Instance, 
                     0,

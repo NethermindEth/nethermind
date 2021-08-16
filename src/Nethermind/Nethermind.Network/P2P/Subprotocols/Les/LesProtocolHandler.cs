@@ -33,6 +33,7 @@ using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.TxPool;
+using CancellationToken = System.Threading.CancellationToken;
 
 namespace Nethermind.Network.P2P.Subprotocols.Les
 {

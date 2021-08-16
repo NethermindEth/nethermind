@@ -25,10 +25,10 @@ namespace Nethermind.Analytics
         [ConfigItem(Description = "If 'false' then no analytics plugins will be loaded", DefaultValue = "false")]
         public bool PluginsEnabled { get; set; }
         
-        [ConfigItem(Description = "If 'false' then transactions are not streamed by default to gRPC and Kafka endpoints.", DefaultValue = "false")]
+        [ConfigItem(Description = "If 'false' then transactions are not streamed by default to gRPC endpoints.", DefaultValue = "false")]
         public bool StreamTransactions { get; set; }
 
-        [ConfigItem(Description = "If 'false' then blocks are not streamed by default to gRPC and Kafka endpoints.", DefaultValue = "false")]
+        [ConfigItem(Description = "If 'false' then blocks are not streamed by default to gRPC endpoints.", DefaultValue = "false")]
         public bool StreamBlocks { get; set; }
         
         [ConfigItem(Description = "If 'true' then all analytics will be also output to logger", DefaultValue = "false")]

@@ -1106,8 +1106,7 @@ namespace Nethermind.Trie.Test
                     stateProvider.StateRoot = currentRoot;
                     for (int i = 0; i < addresses.Length; i++)
                     {
-                        Account account = stateProvider.GetAccount(addresses[i]);
-                        if (account != null)
+                        if (stateProvider.AccountExists(addresses[i]))
                         {
                             for (int j = 0; j < 256; j++)
                             {

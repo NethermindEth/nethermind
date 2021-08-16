@@ -23,12 +23,15 @@ namespace Nethermind.Consensus.Transactions
 {
     public class TxFilterPipelineBuilder
     {
-        private ITxFilterPipeline _filterPipeline;
-        public static ITxFilterPipeline CreateStandardFilteringPipeline(ILogManager logManager,
-            ISpecProvider specProvider)
+        private readonly ITxFilterPipeline _filterPipeline;
+        
+        public static ITxFilterPipeline CreateStandardFilteringPipeline(
+            ILogManager logManager,
+            ISpecProvider specProvider,
+            IMiningConfig? miningConfig = null)
         {
             return new TxFilterPipelineBuilder(logManager)
-                .WithMinGasPriceFilter(UInt256.Zero, specProvider)
+                .WithMinGasPriceFilter(miningConfig?.MinGasPrice ?? UInt256.Zero, specProvider)
                 .WithBaseFeeFilter(specProvider)
                 .Build;
         }

@@ -86,7 +86,6 @@ namespace Nethermind.Db.Test
             Assert.IsTrue(dbProvider.BloomDb.GetType() == dbType);
             Assert.IsTrue(dbProvider.ChtDb.GetType() == dbType);
             Assert.IsTrue(dbProvider.HeadersDb.GetType() == dbType);
-            Assert.IsTrue(dbProvider.PendingTxsDb.GetType() == dbType);
             Assert.IsTrue(dbProvider.ReceiptsDb.GetType() == receiptsDb);
             Assert.IsTrue(dbProvider.CodeDb.GetType() == dbType);
             Assert.IsTrue(dbProvider.StateDb.GetType() == dbType);
