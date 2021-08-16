@@ -80,7 +80,7 @@ namespace Nethermind.Config.Test
             {
                 ConfigCategoryAttribute categoryLevel =
                     property.DeclaringType?.GetCustomAttribute<ConfigCategoryAttribute>();
-                if (!(categoryLevel?.HiddenFromDocs ?? false))
+                if (!(categoryLevel?.DisabledForCli ?? false))
                 {
                     throw new AssertionException(
                         $"Config {instance?.GetType().Name}.{property.Name} has no description and is in the docs.");
