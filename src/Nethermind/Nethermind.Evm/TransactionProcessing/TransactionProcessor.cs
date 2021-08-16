@@ -263,21 +263,21 @@ namespace Nethermind.Evm.TransactionProcessing
                 if ((!restore || isCommitAndRestoreWithoutZeroGasPrice) && ((ulong) intrinsicGas * gasPrice + value > senderBalance || senderReservedGasPayment + value > senderBalance))
                 {
                     TraceLogInvalidTx(transaction, $"INSUFFICIENT_SENDER_BALANCE: ({caller})_BALANCE = {senderBalance}");
-                    QuickFail(transaction, block, txTracer, eip658NotEnabled, "insufficient sender balance", deleteCallerAccount);
+                    QuickFail(transaction, block, txTracer, eip658NotEnabled, "insufficient sender balance", isCommitAndRestoreWithoutZeroGasPrice && deleteCallerAccount);
                     return;
                 }
                 
                 if ((!restore || isCommitAndRestoreWithoutZeroGasPrice) && spec.IsEip1559Enabled && !transaction.IsServiceTransaction && senderBalance < (UInt256)transaction.GasLimit * transaction.MaxFeePerGas + value)
                 {
                     TraceLogInvalidTx(transaction, $"INSUFFICIENT_MAX_FEE_PER_GAS_FOR_SENDER_BALANCE: ({caller})_BALANCE = {senderBalance}, MAX_FEE_PER_GAS: {transaction.MaxFeePerGas}");
-                    QuickFail(transaction, block, txTracer, eip658NotEnabled, "insufficient MaxFeePerGas for sender balance", deleteCallerAccount);
+                    QuickFail(transaction, block, txTracer, eip658NotEnabled, "insufficient MaxFeePerGas for sender balance", isCommitAndRestoreWithoutZeroGasPrice && deleteCallerAccount);
                     return;
                 }
 
                 if (transaction.Nonce != _stateProvider.GetNonce(caller))
                 {
                     TraceLogInvalidTx(transaction, $"WRONG_TRANSACTION_NONCE: {transaction.Nonce} (expected {_stateProvider.GetNonce(caller)})");
-                    QuickFail(transaction, block, txTracer, eip658NotEnabled, "wrong transaction nonce", deleteCallerAccount);
+                    QuickFail(transaction, block, txTracer, eip658NotEnabled, "wrong transaction nonce", isCommitAndRestoreWithoutZeroGasPrice && deleteCallerAccount);
                     return;
                 }
 
