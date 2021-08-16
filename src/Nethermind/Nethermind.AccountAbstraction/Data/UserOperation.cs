@@ -24,10 +24,12 @@ using Nethermind.Int256;
 
 namespace Nethermind.AccountAbstraction.Data
 {
-    public class UserOperation
+    public partial class UserOperation
     {
         public UserOperation(Address target, UInt256 nonce, byte[] callData, long callGas, UInt256 maxFeePerGas, UInt256 maxPriorityFeePerGas, Address paymaster, Address signer, Signature signature, AccessList accessList)
         {
+            Hash = CalculateHash(this);
+
             Target = target;
             Nonce = nonce;
             CallData = callData;
@@ -38,7 +40,6 @@ namespace Nethermind.AccountAbstraction.Data
             Signer = signer;
             Signature = signature;
             AccessList = accessList;
-            Hash = this.CalculateHash();
         }
 
         public Address Target { get; }

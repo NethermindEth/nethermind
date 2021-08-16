@@ -13,16 +13,21 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using Nethermind.AccountAbstraction.Data;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 
-namespace Nethermind.AccountAbstraction.Broadcaster
+namespace Nethermind.AccountAbstraction.Data
 {
-    public static class UserOperationExtensions
+    public partial class UserOperation
     {
-        public static Keccak CalculateHash(this UserOperation userOperation) => Keccak.Compute(Rlp.Encode(userOperation).Bytes);
+        public static Keccak CalculateHash(UserOperation userOperation) => Keccak.Compute(Rlp.Encode(userOperation).Bytes);
+        
+        private static RlpStream EncodeRlp(UserOperation userOperation)
+        {
+            // TODO create an rlp standard
+            return null;
+        }
     }
 }
