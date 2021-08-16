@@ -90,7 +90,8 @@ namespace Nethermind.AccountAbstraction.Source
         private void BroadcastToCompatiblePeers(UserOperation userOperation, IReadOnlyCollection<Peer> peers)
         {
             Capability? aaCapability = new Capability(Protocol.AA, 0);
-            peers.Where(peer => peer.OutSession.HasAgreedCapability(aaCapability))
+            IEnumerable<Peer> compatiblePeers = peers.Where(peer => peer.OutSession.HasAgreedCapability(aaCapability));
+            foreach (var peer in compatiblePeers)
             {
                 Task.Run(() =>
                     {
