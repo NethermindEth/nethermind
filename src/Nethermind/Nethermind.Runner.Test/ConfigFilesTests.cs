@@ -250,8 +250,8 @@ namespace Nethermind.Runner.Test
             Test<INetworkConfig, bool>(configWildcard, c => c.DiagTracerEnabled, false);
         }
 
-        [TestCase("mainnet", 2048)]
-        [TestCase("^baseline ^mainnet ^spaceneth ^volta ^energy ^sokol ^poacore", 1024)]
+        [TestCase("mainnet xdai", 2048)]
+        [TestCase("^baseline ^mainnet ^spaceneth ^volta ^energy ^sokol ^poacore ^xdai", 1024)]
         [TestCase("baseline", 512)]
         [TestCase("energy", 512)]
         [TestCase("volta", 512)]
