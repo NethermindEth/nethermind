@@ -23,9 +23,11 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using NUnit.Framework;
 
 namespace Nethermind.AccountAbstraction.Test
 {
+    [TestFixture]
     public partial class AccountAbstractionRpcModuleTests
     {
         public static class Contracts
@@ -61,9 +63,27 @@ namespace Nethermind.AccountAbstraction.Test
                 TxReceipt? createWalletTxReceipt = createWallet ? chain.Bridge.GetReceipt(walletTx.Hash!) : null;
                 TxReceipt? createPaymasterTxReceipt = createPaymaster ? chain.Bridge.GetReceipt(paymasterTx.Hash!) : null;
                 createSingletonTxReceipt.ContractAddress.Should().NotBeNull($"Contract transaction {singletonTx.Hash!} was not deployed.");
+                createWalletTxReceipt?.ContractAddress.Should().NotBeNull($"Contract transaction {walletTx?.Hash!} was not deployed.");
+                createPaymasterTxReceipt?.ContractAddress.Should().NotBeNull($"Contract transaction {paymasterTx?.Hash!} was not deployed.");
                 
                 return (createSingletonTxReceipt.ContractAddress!, createWalletTxReceipt?.ContractAddress!, createPaymasterTxReceipt?.ContractAddress!);
             }
+        }
+
+        [Test]
+        public async Task Should_deploy_contracts_successfully()
+        {
+            var chain = await CreateChain();
+            (Address singletonAddress, Address? walletAddress, Address? paymasterAddress) = await Contracts.Deploy(chain, Contracts.SimpleWalletCode, Contracts.SimplePaymasterCode);
+        }
+        
+        [Test]
+        public async Task Should_execute_well_formed_op_successfully()
+        {
+            var chain = await CreateChain();
+            (Address singletonAddress, Address? walletAddress, Address? paymasterAddress) = await Contracts.Deploy(chain, Contracts.SimpleWalletCode, Contracts.SimplePaymasterCode);
+            
+            
         }
     }
 }
