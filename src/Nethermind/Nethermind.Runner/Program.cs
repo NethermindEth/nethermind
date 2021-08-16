@@ -131,7 +131,7 @@ namespace Nethermind.Runner
                 }
 
                 ConfigCategoryAttribute? typeLevel = configType.GetCustomAttribute<ConfigCategoryAttribute>();
-                if (typeLevel?.HiddenFromDocs ?? false)
+                if (typeLevel?.DisabledForCli ?? true)
                 {
                     continue;
                 }
@@ -141,7 +141,7 @@ namespace Nethermind.Runner
                     .OrderBy(p => p.Name))
                 {
                     ConfigItemAttribute? configItemAttribute = propertyInfo.GetCustomAttribute<ConfigItemAttribute>();
-                    if (!(configItemAttribute?.HiddenFromDocs ?? false))
+                    if (!(configItemAttribute?.DisabledForCli ?? true))
                     {
                         _ = app.Option($"--{configType.Name[1..].Replace("Config", string.Empty)}.{propertyInfo.Name}", $"{(configItemAttribute == null ? "<missing documentation>" : configItemAttribute.Description + $" (DEFAULT: {configItemAttribute.DefaultValue})" ?? "<missing documentation>")}", CommandOptionType.SingleValue);
                         
