@@ -24,7 +24,7 @@ namespace Nethermind.Network.Config
         /// <summary>
         /// Kademlia - k
         /// </summary>
-        [ConfigItem(DisabledForCli = true, HiddenFromDocs = true)]
+        [ConfigItem(DisabledForCli = true)]
         int BucketSize { get; set; }
 
         /// <summary>
