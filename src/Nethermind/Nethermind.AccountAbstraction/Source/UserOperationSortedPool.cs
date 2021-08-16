@@ -30,10 +30,11 @@ namespace Nethermind.AccountAbstraction.Source
         {
         }
 
-        protected override IComparer<UserOperation> GetUniqueComparer(IComparer<UserOperation> comparer) => comparer;
+        protected override IComparer<UserOperation> GetUniqueComparer(IComparer<UserOperation> comparer) => 
+            comparer.ThenBy(CompareUserOperationsByHash.Default);
 
         protected override IComparer<UserOperation> GetGroupComparer(IComparer<UserOperation> comparer) =>
-            comparer.ThenBy(CompareUserOperationsByDecreasingGasPrice.Default);
+            comparer.ThenBy(CompareUserOperationsByHash.Default);
 
         protected override IComparer<UserOperation> GetReplacementComparer(IComparer<UserOperation> comparer) =>
             comparer.ThenBy(CompareUserOperationsByDecreasingGasPrice.Default);

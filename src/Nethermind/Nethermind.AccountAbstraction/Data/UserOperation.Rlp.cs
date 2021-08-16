@@ -16,18 +16,57 @@
 // 
 
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Rlp.Eip2930;
 
 namespace Nethermind.AccountAbstraction.Data
 {
     public partial class UserOperation
     {
-        public static Keccak CalculateHash(UserOperation userOperation) => Keccak.Compute(Rlp.Encode(userOperation).Bytes);
+        public static Keccak CalculateHash(UserOperation userOperation) => Keccak.Compute(EncodeRlp(userOperation).Data);
         
-        private static RlpStream EncodeRlp(UserOperation userOperation)
+        private static RlpStream EncodeRlp(UserOperation op)
         {
-            // TODO create an rlp standard
-            return null;
+            AccessListDecoder accessListDecoder = new AccessListDecoder();
+
+            int contentLength = GetContentLength(op, accessListDecoder);
+            int sequenceLength = Rlp.GetSequenceRlpLength(contentLength);
+
+            RlpStream stream = new(sequenceLength);
+            stream.StartSequence(contentLength);
+            
+            stream.Encode(op.Target);
+            stream.Encode(op.Nonce);
+            stream.Encode(op.CallData);
+            stream.Encode(op.CallGas);
+            stream.Encode(op.MaxFeePerGas);
+            stream.Encode(op.MaxPriorityFeePerGas);
+            stream.Encode(op.Paymaster);
+            stream.Encode(op.Signer);
+            
+            // signature encoding
+            stream.Encode(op.Signature.V);
+            stream.Encode(op.Signature.RAsSpan.WithoutLeadingZeros());
+            stream.Encode(op.Signature.SAsSpan.WithoutLeadingZeros());            
+            
+            stream.Encode(accessListDecoder.Encode(op.AccessList));
+
+            return stream;
+        }
+        
+        private static int GetContentLength(UserOperation op, AccessListDecoder accessListDecoder)
+        {
+            return Rlp.LengthOf(op.Target)
+                   + Rlp.LengthOf(op.Nonce)
+                   + Rlp.LengthOf(op.CallData)
+                   + Rlp.LengthOf(op.CallGas)
+                   + Rlp.LengthOf(op.MaxFeePerGas)
+                   + Rlp.LengthOf(op.MaxPriorityFeePerGas)
+                   + Rlp.LengthOf(op.Paymaster)
+                   + Rlp.LengthOf(op.Signer)
+                   + Rlp.LengthOf(op.Signature.Bytes)
+                   + accessListDecoder.GetLength(op.AccessList, RlpBehaviors.None);
         }
     }
 }

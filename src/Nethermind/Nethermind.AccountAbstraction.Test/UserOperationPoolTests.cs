@@ -47,7 +47,7 @@ namespace Nethermind.AccountAbstraction.Test
                 Address.SystemUser, 
                 Address.SystemUser, 
                 new Signature(0, 1, 1000),
-                new AccessList(null));
+                new AccessList(new Dictionary<Address, IReadOnlySet<UInt256>>()));
 
             userOperationPool.AddUserOperation(op);
 
@@ -70,7 +70,7 @@ namespace Nethermind.AccountAbstraction.Test
                 Address.SystemUser, 
                 Address.SystemUser, 
                 new Signature(0, 1, 1000),
-                new AccessList(null));
+                new AccessList(new Dictionary<Address, IReadOnlySet<UInt256>>()));
             UserOperation op2 = new(Address.SystemUser,
                 0,
                 Address.Zero.Bytes,
@@ -80,7 +80,7 @@ namespace Nethermind.AccountAbstraction.Test
                 Address.SystemUser, 
                 Address.SystemUser, 
                 new Signature(0, 1, 1000),
-                new AccessList(null));
+                new AccessList(new Dictionary<Address, IReadOnlySet<UInt256>>()));
 
             userOperationPool.AddUserOperation(op);
             userOperationPool.AddUserOperation(op2);
@@ -104,7 +104,7 @@ namespace Nethermind.AccountAbstraction.Test
                 Address.SystemUser, 
                 Address.SystemUser, 
                 new Signature(0, 1, 1000),
-                new AccessList(null));
+                new AccessList(new Dictionary<Address, IReadOnlySet<UInt256>>()));
 
             userOperationPool.AddUserOperation(op);
 
@@ -124,7 +124,7 @@ namespace Nethermind.AccountAbstraction.Test
                 Address.SystemUser, 
                 Address.SystemUser, 
                 new Signature(0, 1, 1000),
-                new AccessList(null));
+                new AccessList(new Dictionary<Address, IReadOnlySet<UInt256>>()));
             UserOperation op2 = new(Address.SystemUser,
                 0,
                 Address.Zero.Bytes,
@@ -134,7 +134,7 @@ namespace Nethermind.AccountAbstraction.Test
                 Address.SystemUser, 
                 Address.SystemUser, 
                 new Signature(0, 1, 1000),
-                new AccessList(null));
+                new AccessList(new Dictionary<Address, IReadOnlySet<UInt256>>()));
 
             userOperationPool.AddUserOperation(op);
             simulator.Received().Simulate(op, Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>(), Arg.Any<UInt256>());
@@ -162,7 +162,7 @@ namespace Nethermind.AccountAbstraction.Test
                     Address.SystemUser, 
                     Address.SystemUser, 
                     new Signature(0, 1, 1000),
-                    new AccessList(null));
+                    new AccessList(new Dictionary<Address, IReadOnlySet<UInt256>>()));
                 // if target is zero address
                 yield return new(Address.Zero,
                     0,
@@ -173,7 +173,7 @@ namespace Nethermind.AccountAbstraction.Test
                     Address.SystemUser, 
                     Address.SystemUser, 
                     new Signature(0, 1, 1000),
-                    new AccessList(null));
+                    new AccessList(new Dictionary<Address, IReadOnlySet<UInt256>>()));
                 // if target is not a contract
                 yield return new(_notAnAddress,
                     0,
@@ -184,7 +184,7 @@ namespace Nethermind.AccountAbstraction.Test
                     Address.SystemUser, 
                     Address.SystemUser, 
                     new Signature(0, 1, 1000),
-                    new AccessList(null));
+                    new AccessList(new Dictionary<Address, IReadOnlySet<UInt256>>()));
                 // if paymaster is not a contract
                 yield return new(Address.SystemUser,
                     0,
@@ -195,7 +195,7 @@ namespace Nethermind.AccountAbstraction.Test
                     _notAnAddress, 
                     Address.SystemUser, 
                     new Signature(0, 1, 1000),
-                    new AccessList(null));
+                    new AccessList(new Dictionary<Address, IReadOnlySet<UInt256>>()));
             }
         }
         
@@ -242,7 +242,7 @@ namespace Nethermind.AccountAbstraction.Test
                 Address.SystemUser, 
                 Address.SystemUser, 
                 new Signature(0, 1, 1000),
-                new AccessList(null));
+                new AccessList(new Dictionary<Address, IReadOnlySet<UInt256>>()));
 
             userOperationPool.AddUserOperation(op);
             
@@ -289,7 +289,7 @@ namespace Nethermind.AccountAbstraction.Test
                 Address.SystemUser, 
                 Address.SystemUser, 
                 new Signature(0, 1, 1000),
-                new AccessList(null));
+                new AccessList(new Dictionary<Address, IReadOnlySet<UInt256>>()));
             
             userOperationPool.AddUserOperation(op2);
             UserOperation[] userOperations = userOperationPool.GetUserOperations().ToArray();
