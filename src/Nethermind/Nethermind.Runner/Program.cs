@@ -140,7 +140,7 @@ namespace Nethermind.Runner
                     .OrderBy(p => p.Name))
                 {
                     ConfigItemAttribute? configItemAttribute = propertyInfo.GetCustomAttribute<ConfigItemAttribute>();
-                    if (!(configItemAttribute?.DisabledForCli ?? true))
+                    if (configItemAttribute?.DisabledForCli ?? false)
                     {
                         _ = app.Option($"--{configType.Name[1..].Replace("Config", string.Empty)}.{propertyInfo.Name}", $"{(configItemAttribute == null ? "<missing documentation>" : configItemAttribute.Description + $" (DEFAULT: {configItemAttribute.DefaultValue})" ?? "<missing documentation>")}", CommandOptionType.SingleValue);
                         
