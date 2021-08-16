@@ -47,5 +47,10 @@ namespace Nethermind.AccountAbstraction
             Description = "Defines the maximum amount of times a user operation can be resimulated before it is dropped",
             DefaultValue = "5")]
         int MaxResimulations { get; set; }
+        
+        [ConfigItem(
+            Description = "Defines the string URL for the flashbots bundle reception endpoint",
+            DefaultValue = "https://relay.flashbots.net/")]
+        string FlashbotsEndpoint { get; set; }
     }
 }

@@ -27,5 +27,6 @@ namespace Nethermind.AccountAbstraction
         public string SingletonContractAddress { get; set; }
         public UInt256 MinimumGasPrice { get; set; }
         public int MaxResimulations { get; set; }
+        public string FlashbotsEndpoint { get; set; }
     }
 }

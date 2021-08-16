@@ -19,6 +19,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
@@ -98,7 +99,7 @@ namespace Nethermind.AccountAbstraction.Source
                         // This method is not implemented yet
                         // but added just for the purpose of
                         // understanding
-                        Notify(peer, userOperation, true);
+                        //Notify(peer, userOperation, true);
                     });
             }
         }
@@ -232,7 +233,6 @@ namespace Nethermind.AccountAbstraction.Source
             {
                 _userOperationSortedPool.TryRemove(userOperation);
             }
-
         }
     }
 }
