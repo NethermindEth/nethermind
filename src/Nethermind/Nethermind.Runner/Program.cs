@@ -143,7 +143,6 @@ namespace Nethermind.Runner
                     if (configItemAttribute?.DisabledForCli ?? false)
                     {
                         _ = app.Option($"--{configType.Name[1..].Replace("Config", string.Empty)}.{propertyInfo.Name}", $"{(configItemAttribute == null ? "<missing documentation>" : configItemAttribute.Description + $" (DEFAULT: {configItemAttribute.DefaultValue})" ?? "<missing documentation>")}", CommandOptionType.SingleValue);
-                        
                     }
                 }
             }
