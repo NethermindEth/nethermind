@@ -80,7 +80,7 @@ namespace Nethermind.Config.Test
             {
                 ConfigCategoryAttribute categoryLevel =
                     property.DeclaringType?.GetCustomAttribute<ConfigCategoryAttribute>();
-                if (!(categoryLevel?.DisabledForCli ?? false))
+                if (!(categoryLevel?.HiddenFromDocs ?? false))
                 {
                     throw new AssertionException(
                         $"Config {instance?.GetType().Name}.{property.Name} has no description and is in the docs.");
@@ -91,7 +91,7 @@ namespace Nethermind.Config.Test
         private static void CheckDefault(PropertyInfo property, object instance)
         {
             ConfigItemAttribute attribute = property.GetCustomAttribute<ConfigItemAttribute>();
-            if (attribute == null)
+            if (attribute == null || attribute.DisabledForCli)
             {
                 //there are properties without attribute - we don't pay attention to them 
                 return;
