@@ -61,7 +61,7 @@ namespace Nethermind.Core.Test.Blockchain
         
         private BlockHeader? _blockParent = null;
 
-        private BlockHeader? BlockParent
+        public BlockHeader? BlockParent
         {
             get
             {

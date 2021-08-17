@@ -285,6 +285,8 @@ namespace Nethermind.Mev.Test
             (await chain.BundlePool.WaitForSimulationToFinish(failingBundle, cts.Token)).Should().BeFalse();
             (await chain.BundlePool.WaitForSimulationToFinish(normalBundle, cts.Token)).Should().BeTrue();
 
+            await Task.Delay(10, cts.Token); //give time for background task to remove failed simulation
+            
             MevBundle[] bundlePoolBundles = chain.BundlePool.GetBundles(2, UInt256.Zero).ToArray();
             bundlePoolBundles.Should().BeEquivalentTo(normalBundle);
         }
