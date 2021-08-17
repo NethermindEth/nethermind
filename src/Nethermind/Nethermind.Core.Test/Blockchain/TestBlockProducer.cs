@@ -24,6 +24,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
@@ -59,8 +60,8 @@ namespace Nethermind.Core.Test.Blockchain
         }
         
         private BlockHeader? _blockParent = null;
-        
-        public BlockHeader? BlockParent
+
+        private BlockHeader? BlockParent
         {
             get
             {
@@ -72,6 +73,10 @@ namespace Nethermind.Core.Test.Blockchain
             }
         }
 
-        protected override BlockHeader? GetProducedBlockParent(BlockHeader? parentHeader) => parentHeader ?? BlockParent;
+        protected override Task<Block?> TryProduceNewBlock(CancellationToken token, BlockHeader? parentHeader, IBlockTracer? blockTracer = null)
+        {
+            parentHeader ??= BlockParent;
+            return base.TryProduceNewBlock(token, parentHeader, blockTracer);
+        }
     }
 }

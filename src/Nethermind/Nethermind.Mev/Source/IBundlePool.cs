@@ -28,4 +28,10 @@ namespace Nethermind.Mev.Source
         bool AddBundle(MevBundle bundle);
         IEnumerable<MevBundle> GetBundles(long block, UInt256 timestamp, CancellationToken token = default);
     }
+    
+    public static class BundlePoolExtensions
+    {
+        public static IEnumerable<MevBundle> GetBundles(this IBundlePool bundleSource, BlockHeader parent, ITimestamper timestamper, CancellationToken token = default) => 
+            bundleSource.GetBundles(parent.Number + 1, timestamper.UnixTime.Seconds, token);
+    }
 }
