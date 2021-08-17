@@ -9,16 +9,6 @@ jobs:
     name: Triggering the DAppNode Package update
     runs-on: ubuntu-latest
     steps:
-    - name: Import Secrets
-      uses: hashicorp/vault-action@v2.1.2
-      with:
-        url: ${{ secrets.VAULT_URL }}
-        method: approle
-        roleId: ${{ secrets.ROLE_ID }}
-        secretId: ${{ secrets.SECRET_ID }}
-        namespace: admin/NethermindEth
-        secrets: |
-            github/nethermind/data/secrets REPOSITORY_DISPATCH_TOKEN
     - name: Getting Tag
       id: get_tag
       run: echo ::set-output name=TAG::${{ github.event.client_payload.tag }}
@@ -26,7 +16,7 @@ jobs:
       env: 
         DISPATCH_REPO: dappnode/DAppNodePackage-nethermind
       run: |
-        curl -v -X POST -u "${{ env.REPOSITORY_DISPATCH_TOKEN }}" \
+        curl -v -X POST -u "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}" \
         -H "Accept: application/vnd.github.everest-preview+json" \
         -H "Content-Type: application/json" \
         --data '{"event_type":"new_release", "client_payload": { "tag":"${{ steps.get_tag.outputs.TAG }}"}}' \
