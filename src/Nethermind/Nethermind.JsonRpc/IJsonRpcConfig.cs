@@ -72,7 +72,7 @@ namespace Nethermind.JsonRpc
         
         [ConfigItem(
             Description = "Gas limit for eth_call and eth_estimateGas",
-            DefaultValue = "100000000")]
+            DefaultValue = "25000000")]
         long? GasCap { get; set; }
         
         [ConfigItem(
