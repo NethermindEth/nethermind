@@ -233,16 +233,6 @@ jobs:
     needs: [neth-tests-cc, eth-tests-cc]
     runs-on: ubuntu-latest
     steps:
-      - name: Import Secrets
-        uses: hashicorp/vault-action@v2.1.2
-        with:
-          url: ${{ secrets.VAULT_URL }}
-          method: approle
-          roleId: ${{ secrets.ROLE_ID }}
-          secretId: ${{ secrets.SECRET_ID }}
-          namespace: admin/NethermindEth
-          secrets: |
-              github/nethermind/data/secrets CODECOV_TOKEN
       - uses: actions/checkout@v2
       - name: Download reports from Nethermind/Ethereum projects
         uses: actions/download-artifact@v2
@@ -251,5 +241,5 @@ jobs:
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v1
         with:
-          token: ${{ env.CODECOV_TOKEN }}
+          token: ${{ secrets.CODECOV_TOKEN }}
           name: codecov-nethermind

@@ -11,21 +11,11 @@ jobs:
     name: Triggering GitBook Docs update
     runs-on: ubuntu-latest
     steps:
-    - name: Import Secrets
-      uses: hashicorp/vault-action@v2.1.2
-      with:
-        url: ${{ secrets.VAULT_URL }}
-        method: approle
-        roleId: ${{ secrets.ROLE_ID }}
-        secretId: ${{ secrets.SECRET_ID }}
-        namespace: admin/NethermindEth
-        secrets: |
-            github/nethermind/data/secrets REPOSITORY_DISPATCH_TOKEN
     - name: Sending dispatch event to Nethermind docs repository
       env: 
         DISPATCH_REPO: NethermindEth/docs
       run: |
-        curl -v -X POST -u "${{ env.REPOSITORY_DISPATCH_TOKEN }}" \
+        curl -v -X POST -u "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}" \
         -H "Accept: application/vnd.github.everest-preview+json" \
         -H "Content-Type: application/json" \
         --data '{"event_type":"docs_update"}' \
