@@ -42,13 +42,9 @@ Please do not:
 * **DON'T** fill the issues and PR descriptions vaguely. The elements in the templates are there for a good reason. Help the team. 
 * **DON'T** surprise us with big pull requests. Instead, file an issue and start a discussion so we can agree on a direction before you invest a large amount of time.
 
-## Commit Messages
-
-[This is a good opportunity to create a convention for commit messages]
-
 ## Branch Naming
 
-[This is a good opportunity to create a convention for branch naming]
+Branch names must follow `snake_case` pattern. Follow the pattern `feature/<name>` or `fix/<name>` `(folder/<name>)` when it is possible and add issue reference if applicable.
 
 ## File Headers
 
