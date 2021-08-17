@@ -495,26 +495,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     $"eth_getTransactionByBlockNumberAndIndex request {blockParameter}, index: {positionIndex}, result: {transactionModel.Hash}");
             return ResultWrapper<TransactionForRpc>.Success(transactionModel);
         }
-        private int SumOfPreviousLogIndexes(Keccak blockHash, TxReceipt txReceipt)
-        {
-            int txIndex = txReceipt.Index;
-            int sum = 0;
-            BlockParameter blockParameter = new(blockHash);
-            Block? block = _blockFinder.FindBlock(blockParameter);
-
-            if (block == null) return -1;
-
-            TxReceipt[] receipts = _receiptFinder.Get(blockHash);
-            for (int i = 0; i < receipts.Length; ++i)
-            {
-                if (receipts[i].Index < txIndex)
-                {
-                    sum += receipts[i].Logs.Length;
-                }
-            }
-
-            return sum;
-        }
 
         public Task<ResultWrapper<ReceiptForRpc>> eth_getTransactionReceipt(Keccak txHash)
         {
@@ -525,14 +505,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return Task.FromResult(ResultWrapper<ReceiptForRpc>.Success(null));
             }
             
-            Keccak blockHash = result.Receipt.BlockHash;
-            int sumOfLogIdx = SumOfPreviousLogIndexes(blockHash, result.Receipt);
+            int sumOfLogIdx = result.SumOfPreviousLogIndexes;
 
-            if (sumOfLogIdx == -1)
-            {
-                return Task.FromResult(ResultWrapper<ReceiptForRpc>.Success(null));
-            }
-            
             ReceiptForRpc receiptModel = new(txHash, result.Receipt, result.EffectiveGasPrice, sumOfLogIdx);
             if (_logger.IsTrace) _logger.Trace($"eth_getTransactionReceipt request {txHash}, result: {txHash}");
             return Task.FromResult(ResultWrapper<ReceiptForRpc>.Success(receiptModel));

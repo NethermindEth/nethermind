@@ -118,21 +118,38 @@ namespace Nethermind.Facade
         }
 
         public bool IsMining { get; }
+        
+        private int SumOfPreviousLogIndexes(Block block, TxReceipt txReceipt, TxReceipt[] receipts)
+        {
+            int txIndex = txReceipt.Index;
+            int sum = 0;
+            for(int i = 0; i < receipts.Length; ++i)
+            {
+                if (receipts[i].Index < txIndex && receipts[i].Logs != null)
+                {
+                    sum += receipts[i].Logs.Length;
+                }
+            }
 
-        public (TxReceipt Receipt, UInt256? EffectiveGasPrice) GetReceiptAndEffectiveGasPrice(Keccak txHash)
+            return sum;
+        }
+
+        public (TxReceipt Receipt, UInt256? EffectiveGasPrice, int SumOfPreviousLogIndexes) GetReceiptAndEffectiveGasPrice(Keccak txHash)
         {
             Keccak blockHash = _receiptFinder.FindBlockHash(txHash);
             if (blockHash != null)
             {
                 Block block = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                 TxReceipt txReceipt = _receiptFinder.Get(block).ForTransaction(txHash);
+                TxReceipt[] receipts = _receiptFinder.Get(blockHash);
+                int sumOfPreviousLogIndexes = SumOfPreviousLogIndexes(block, txReceipt, receipts);
                 Transaction tx = block?.Transactions[txReceipt.Index];
                 bool is1559Enabled = _specProvider.GetSpec(block.Number).IsEip1559Enabled;
                 UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(is1559Enabled, block.Header.BaseFeePerGas);
-                return (txReceipt, effectiveGasPrice);
+                return (txReceipt, effectiveGasPrice, sumOfPreviousLogIndexes);
             }
 
-            return (null, null);
+            return (null, null, 0);
         }
 
         public (TxReceipt Receipt, Transaction Transaction, UInt256? baseFee) GetTransaction(Keccak txHash)
