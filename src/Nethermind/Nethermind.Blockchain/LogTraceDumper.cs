@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Collections.Generic;
 using System.IO;
 using Nethermind.Core;
@@ -86,6 +87,12 @@ namespace Nethermind.Blockchain
                 if (logger.IsError)
                     logger.Error($"Cannot save trace of block {blockHash} in file {fileName}", e);
             }
+        }
+
+        public static void LogTraceFailure(IBlockTracer blockTracer, Keccak blockHash, Exception exception, ILogger logger)
+        {
+            if (logger.IsError)
+                logger.Error($"Cannot create trace of blocks starting from {blockHash} of type {blockTracer.GetType().Name}", exception);
         }
     }
 }

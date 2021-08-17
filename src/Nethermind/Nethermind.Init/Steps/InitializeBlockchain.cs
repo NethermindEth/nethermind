@@ -38,6 +38,7 @@ using Nethermind.JsonRpc.Converters;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 using Nethermind.State;
 using Nethermind.State.Witnesses;
 using Nethermind.Synchronization.BeamSync;
@@ -69,10 +70,8 @@ namespace Nethermind.Init.Steps
         [Todo(Improve.Refactor, "Use chain spec for all chain configuration")]
         private Task InitBlockchain()
         {
-            BlockTraceDumper.Converters.AddRange(DebugModuleFactory.Converters);
-            BlockTraceDumper.Converters.AddRange(TraceModuleFactory.Converters);
-            BlockTraceDumper.Converters.Add(new TxReceiptConverter());
-            
+            InitBlockTraceDumper();
+
             var (getApi, setApi) = _api.ForBlockchain;
             
             if (getApi.ChainSpec == null) throw new StepDependencyException(nameof(getApi.ChainSpec));
@@ -261,7 +260,15 @@ namespace Nethermind.Init.Steps
             setApi.HealthHintService = CreateHealthHintService();
             return Task.CompletedTask;
         }
-        
+
+        private static void InitBlockTraceDumper()
+        {
+            BlockTraceDumper.Converters.AddRange(EthereumJsonSerializer.CommonConverters);
+            BlockTraceDumper.Converters.AddRange(DebugModuleFactory.Converters);
+            BlockTraceDumper.Converters.AddRange(TraceModuleFactory.Converters);
+            BlockTraceDumper.Converters.Add(new TxReceiptConverter());
+        }
+
         private void ReorgBoundaryReached(object? sender, ReorgBoundaryReached e)
         {
             if (_logger.IsDebug) _logger.Debug($"Saving reorg boundary {e.BlockNumber}");

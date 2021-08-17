@@ -353,12 +353,29 @@ namespace Nethermind.Blockchain.Processing
             {
                 BlockTraceDumper.LogDiagnosticTrace(blockTracer, ex.InvalidBlockHash, _logger);
             }
+            catch (Exception ex)
+            {
+                BlockTraceDumper.LogTraceFailure(blockTracer, processingBranch.Root, ex, _logger);
+            }
         }
 
         private Block[]? ProcessBranch(ProcessingBranch processingBranch,
             ProcessingOptions options,
             IBlockTracer tracer)
         {
+            void DeleteInvalidBlocks(Keccak invalidBlockHash)
+            {
+                for (int i = 0; i < processingBranch.BlocksToProcess.Count; i++)
+                {
+                    if (processingBranch.BlocksToProcess[i].Hash == invalidBlockHash)
+                    {
+                        _blockTree.DeleteInvalidBlock(processingBranch.BlocksToProcess[i]);
+                        if (_logger.IsDebug)
+                            _logger.Debug($"Skipped processing of {processingBranch.BlocksToProcess[^1].ToString(Block.Format.FullHashAndNumber)} because of {processingBranch.BlocksToProcess[i].ToString(Block.Format.FullHashAndNumber)} is invalid");
+                    }
+                }
+            }
+            
             Block[]? processedBlocks;
             try
             {
@@ -370,6 +387,8 @@ namespace Nethermind.Blockchain.Processing
             }
             catch (InvalidBlockException ex)
             {
+                DeleteInvalidBlocks(ex.InvalidBlockHash);
+                
                 TraceFailingBranch(
                     processingBranch,
                     options,
@@ -384,17 +403,6 @@ namespace Nethermind.Blockchain.Processing
                     processingBranch,
                     options,
                     new GethLikeBlockTracer(GethTraceOptions.Default));
-
-                Keccak invalidBlockHash = ex.InvalidBlockHash;
-                for (int i = 0; i < processingBranch.BlocksToProcess.Count; i++)
-                {
-                    if (processingBranch.BlocksToProcess[i].Hash == invalidBlockHash)
-                    {
-                        _blockTree.DeleteInvalidBlock(processingBranch.BlocksToProcess[i]);
-                        if (_logger.IsDebug)
-                            _logger.Debug($"Skipped processing of {processingBranch.BlocksToProcess[^1].ToString(Block.Format.FullHashAndNumber)} because of {processingBranch.BlocksToProcess[i].ToString(Block.Format.FullHashAndNumber)} is invalid");
-                    }
-                }
 
                 processedBlocks = null;
             }
