@@ -58,6 +58,9 @@ namespace Nethermind.Mev.Source
         
         private long HeadNumber => _blockTree.Head?.Number ?? 0;
         
+        public event EventHandler<BundleEventArgs>? NewReceived;
+        public event EventHandler<BundleEventArgs>? NewPending;
+        
         public BundlePool(
             IBlockTree blockTree, 
             IBundleSimulator simulator,
@@ -115,6 +118,8 @@ namespace Nethermind.Mev.Source
         public bool AddBundle(MevBundle bundle)
         {
             Metrics.BundlesReceived++;
+            NewReceived?.Invoke(this, new BundleEventArgs(bundle));
+            
             if (ValidateBundle(bundle))
             {
                 bool result = _bundles.TryInsert(bundle, bundle);
@@ -122,6 +127,7 @@ namespace Nethermind.Mev.Source
                 if (result)
                 {
                     Metrics.ValidBundlesReceived++;
+                    NewPending?.Invoke(this, new BundleEventArgs(bundle));
                     if (bundle.BlockNumber == HeadNumber + 1)
                     { 
                         TrySimulateBundle(bundle);
