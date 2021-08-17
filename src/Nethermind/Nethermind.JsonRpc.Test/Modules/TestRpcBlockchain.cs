@@ -51,6 +51,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public ITxSender TxSender { get; private set; }
         public ILogFinder LogFinder { get; private set; }
         
+        public IReceiptFinder ReceiptFinder { get; private set; }
         public IGasPriceOracle GasPriceOracle { get; private set; }
         
         public IKeyStore KeyStore { get; } = new MemKeyStore(TestItem.PrivateKeys);
@@ -84,6 +85,11 @@ namespace Nethermind.JsonRpc.Test.Modules
                 return this;
             }
             
+            public Builder<T> WithReceiptFinder(IReceiptFinder receiptFinder)
+            {
+                _blockchain.ReceiptFinder = receiptFinder;
+                return this;
+            }
             public Builder<T> WithTxSender(ITxSender txSender)
             {
                 _blockchain.TxSender = txSender;
@@ -143,7 +149,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                 TestWallet,
                 LimboLogs.Instance,
                 SpecProvider,
-                GasPriceOracle ?? new GasPriceOracle(BlockFinder, SpecProvider));
+                GasPriceOracle ?? new GasPriceOracle(BlockFinder, SpecProvider),
+                ReceiptFinder);
             
             return this;
         }

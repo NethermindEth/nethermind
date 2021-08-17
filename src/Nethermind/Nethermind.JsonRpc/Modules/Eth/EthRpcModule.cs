@@ -23,6 +23,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -51,6 +52,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly IJsonRpcConfig _rpcConfig;
         private readonly IBlockchainBridge _blockchainBridge;
         private readonly IBlockFinder _blockFinder;
+        private readonly IReceiptFinder _receiptFinder;
         private readonly IStateReader _stateReader;
         private readonly ITxPool _txPoolBridge;
         private readonly ITxSender _txSender;
@@ -77,7 +79,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
             IWallet wallet,
             ILogManager logManager,
             ISpecProvider specProvider,
-            IGasPriceOracle gasPriceOracle)
+            IGasPriceOracle gasPriceOracle,
+            IReceiptFinder receiptFinder = null)
         {
             _logger = logManager.GetClassLogger();
             _rpcConfig = rpcConfig ?? throw new ArgumentNullException(nameof(rpcConfig));
@@ -89,6 +92,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _gasPriceOracle = gasPriceOracle ?? throw new ArgumentNullException(nameof(gasPriceOracle));
+            _receiptFinder = receiptFinder;
         }
 
         public ResultWrapper<string> eth_protocolVersion()
@@ -491,16 +495,45 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     $"eth_getTransactionByBlockNumberAndIndex request {blockParameter}, index: {positionIndex}, result: {transactionModel.Hash}");
             return ResultWrapper<TransactionForRpc>.Success(transactionModel);
         }
+        private int SumOfPreviousLogIndexes(Keccak blockHash, TxReceipt txReceipt)
+        {
+            int txIndex = txReceipt.Index;
+            int sum = 0;
+            BlockParameter blockParameter = new(blockHash);
+            Block? block = _blockFinder.FindBlock(blockParameter);
+
+            if (block == null) return -1;
+
+            TxReceipt[] receipts = _receiptFinder.Get(blockHash);
+            for (int i = 0; i < receipts.Length; ++i)
+            {
+                if (receipts[i].Index < txIndex)
+                {
+                    sum += receipts[i].Logs.Length;
+                }
+            }
+
+            return sum;
+        }
 
         public Task<ResultWrapper<ReceiptForRpc>> eth_getTransactionReceipt(Keccak txHash)
         {
             var result = _blockchainBridge.GetReceiptAndEffectiveGasPrice(txHash);
+            
             if (result.Receipt == null)
             {
                 return Task.FromResult(ResultWrapper<ReceiptForRpc>.Success(null));
             }
+            
+            Keccak blockHash = result.Receipt.BlockHash;
+            int sumOfLogIdx = SumOfPreviousLogIndexes(blockHash, result.Receipt);
 
-            ReceiptForRpc receiptModel = new(txHash, result.Receipt, result.EffectiveGasPrice);
+            if (sumOfLogIdx == -1)
+            {
+                return Task.FromResult(ResultWrapper<ReceiptForRpc>.Success(null));
+            }
+            
+            ReceiptForRpc receiptModel = new(txHash, result.Receipt, result.EffectiveGasPrice, sumOfLogIdx);
             if (_logger.IsTrace) _logger.Trace($"eth_getTransactionReceipt request {txHash}, result: {txHash}");
             return Task.FromResult(ResultWrapper<ReceiptForRpc>.Success(receiptModel));
         }

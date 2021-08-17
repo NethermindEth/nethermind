@@ -29,7 +29,7 @@ namespace Nethermind.JsonRpc.Data
         {
         }
        
-        public ReceiptForRpc(Keccak txHash, TxReceipt receipt, UInt256? effectiveGasPrice)
+        public ReceiptForRpc(Keccak txHash, TxReceipt receipt, UInt256? effectiveGasPrice, int logIndexStart = 0)
         {
             TransactionHash = txHash;
             TransactionIndex = receipt.Index;
@@ -41,14 +41,14 @@ namespace Nethermind.JsonRpc.Data
             From = receipt.Sender;
             To = receipt.Recipient;
             ContractAddress = receipt.ContractAddress;
-            Logs = receipt.Logs.Select((l, idx) => new LogEntryForRpc(receipt, l, idx)).ToArray();
+            Logs = receipt.Logs.Select((l, idx) => new LogEntryForRpc(receipt, l, idx + logIndexStart)).ToArray();
             LogsBloom = receipt.Bloom;
             Root = receipt.PostTransactionState;
             Status = receipt.StatusCode;
             Error = receipt.Error;
             Type = receipt.TxType;
         }
-        
+
         public Keccak TransactionHash { get; set; }
         public long TransactionIndex { get; set; }
         public Keccak BlockHash { get; set; }
