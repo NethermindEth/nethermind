@@ -282,13 +282,11 @@ namespace Nethermind.Mev.Test
             chain.BundlePool.AddBundle(normalBundle);
 
             CancellationTokenSource cts = new(TestBlockchain.DefaultTimeout);
-            await chain.BundlePool.WaitForSimulationToFinish(failingBundle, cts.Token);
-            await chain.BundlePool.WaitForSimulationToFinish(normalBundle, cts.Token);
+            (await chain.BundlePool.WaitForSimulationToFinish(failingBundle, cts.Token)).Should().BeFalse();
+            (await chain.BundlePool.WaitForSimulationToFinish(normalBundle, cts.Token)).Should().BeTrue();
 
             MevBundle[] bundlePoolBundles = chain.BundlePool.GetBundles(2, UInt256.Zero).ToArray();
-            bundlePoolBundles.Should().NotContain(failingBundle);
-            bundlePoolBundles.Should().Contain(normalBundle);
-            bundlePoolBundles.Length.Should().Be(1);
+            bundlePoolBundles.Should().BeEquivalentTo(normalBundle);
         }
         
         [TestCase(1u, 1)]
