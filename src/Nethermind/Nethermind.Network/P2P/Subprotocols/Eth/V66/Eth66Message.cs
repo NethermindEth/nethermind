@@ -33,5 +33,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             RequestId = requestId;
             EthMessage = ethMessage;
         }
+        
+        public override string ToString()
+            => $"{nameof(EthMessage)}({RequestId},{EthMessage})";
     }
 }
