@@ -22,6 +22,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
+using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -265,12 +266,27 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         [Test]
         public async Task Eth_call_with_max_fee_after_1559_new_type_of_transaction()
         {
-            using Context ctx = await Context.CreateWithLondonEnabled();
-            //using Context ctx = await Context.Create();
+            using Context ctx = await Context.CreateWithLondonEnabled(); 
             TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>(
-                "{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"to\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"type\": \"0x2\", \"maxFeePerGas\": \"0x2DA2830C\"}");
+                "{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"to\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"type\": \"0x2\", \"maxFeePerGas\": \"0x2DA2830C\", \"value\": \"0x2DA2830C\"}");
             string serialized = ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction));
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32015,\"message\":\"VM execution error.\",\"data\":\"insufficient sender balance\"},\"id\":67}", serialized);
+
+        }
+        
+        [Test]
+        public async Task Eth_call_with_max_fee_after_1559_new_type_of_transaction_success()
+        {
+            using Context ctx = await Context.CreateWithLondonEnabled();
+            await ctx._test.AddFundsAfterLondon((new Address("0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24"), 2.Ether()));
+            TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>(
+                "{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"to\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"type\": \"0x2\", \"maxPriorityFeePerGas\": \"0x2DA2830C\", \"maxFeePerGas\": \"0x2DA2830C\", \"value\": \"0x2DA2830C\"}");
+            string serialized = ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction));
+            Assert.AreEqual(2.Ether(), ctx._test.ReadOnlyState.GetBalance(new Address("0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24")));
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}", serialized);
+            
+
+
         }
         
         /// <summary>
