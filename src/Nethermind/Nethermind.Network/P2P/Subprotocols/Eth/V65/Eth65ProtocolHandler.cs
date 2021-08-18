@@ -80,7 +80,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             }
         }
 
-        private void Handle(NewPooledTransactionHashesMessage msg)
+        protected virtual void Handle(NewPooledTransactionHashesMessage msg)
         {
             Metrics.Eth65NewPooledTransactionHashesReceived++;
             Stopwatch stopwatch = Stopwatch.StartNew();

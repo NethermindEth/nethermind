@@ -16,6 +16,8 @@
 // 
 
 using System;
+using System.Diagnostics;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -38,7 +40,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
         private readonly MessageQueue<GetBlockBodiesMessage, BlockBody[]> _bodiesRequests66;
         private readonly MessageQueue<GetNodeDataMessage, byte[][]> _nodeDataRequests66;
         private readonly MessageQueue<GetReceiptsMessage, TxReceipt[][]> _receiptsRequests66;
-        
+        private readonly IPooledTxsRequestor _pooledTxsRequestor;
+
         public Eth66ProtocolHandler(ISession session,
             IMessageSerializationService serializer,
             INodeStatsManager nodeStatsManager,
@@ -53,6 +56,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             _bodiesRequests66 = new MessageQueue<GetBlockBodiesMessage, BlockBody[]>(Send);
             _nodeDataRequests66 = new MessageQueue<GetNodeDataMessage, byte[][]>(Send);
             _receiptsRequests66 = new MessageQueue<GetReceiptsMessage, TxReceipt[][]>(Send);
+            _pooledTxsRequestor = pooledTxsRequestor;
         }
         
         public override string Name => "eth66";
@@ -344,6 +348,18 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             StatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.Receipts, 0L);
 
             throw new TimeoutException($"{Session} Request timeout in {nameof(GetReceiptsMessage)}");
+        }
+        
+        protected override void Handle(NewPooledTransactionHashesMessage msg)
+        {
+            Stopwatch stopwatch = Stopwatch.StartNew();
+
+            _pooledTxsRequestor.RequestTransactionsEth66(Send, msg.Hashes.ToArray());
+            
+            stopwatch.Stop();
+            if (Logger.IsTrace)
+                Logger.Trace($"OUT {Counter:D5} {nameof(NewPooledTransactionHashesMessage)} to {Node:c} " +
+                             $"in {stopwatch.Elapsed.TotalMilliseconds}ms");
         }
     }
 }
