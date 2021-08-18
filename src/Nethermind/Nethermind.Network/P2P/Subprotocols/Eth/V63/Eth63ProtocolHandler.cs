@@ -144,7 +144,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             return txReceipts;
         }
         
-        private async Task<byte[][]> SendRequest(GetNodeDataMessage message, CancellationToken token)
+        protected virtual async Task<byte[][]> SendRequest(GetNodeDataMessage message, CancellationToken token)
         {
             if (Logger.IsTrace)
             {
@@ -182,7 +182,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             throw new TimeoutException($"{Session} Request timeout in {nameof(GetNodeDataMessage)}");
         }
         
-        private async Task<TxReceipt[][]> SendRequest(GetReceiptsMessage message, CancellationToken token)
+        protected virtual async Task<TxReceipt[][]> SendRequest(GetReceiptsMessage message, CancellationToken token)
         {
             if (Logger.IsTrace)
             {

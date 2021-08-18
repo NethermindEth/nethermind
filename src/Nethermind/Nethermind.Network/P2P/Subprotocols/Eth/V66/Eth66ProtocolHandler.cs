@@ -36,6 +36,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
     {
         private readonly MessageQueue<GetBlockHeadersMessage, BlockHeader[]> _headersRequests66;
         private readonly MessageQueue<GetBlockBodiesMessage, BlockBody[]> _bodiesRequests66;
+        private readonly MessageQueue<GetNodeDataMessage, byte[][]> _nodeDataRequests66;
+        private readonly MessageQueue<GetReceiptsMessage, TxReceipt[][]> _receiptsRequests66;
+        
         public Eth66ProtocolHandler(ISession session,
             IMessageSerializationService serializer,
             INodeStatsManager nodeStatsManager,
@@ -48,6 +51,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
         {
             _headersRequests66 = new MessageQueue<GetBlockHeadersMessage, BlockHeader[]>(Send);
             _bodiesRequests66 = new MessageQueue<GetBlockBodiesMessage, BlockBody[]>(Send);
+            _nodeDataRequests66 = new MessageQueue<GetNodeDataMessage, byte[][]>(Send);
+            _receiptsRequests66 = new MessageQueue<GetReceiptsMessage, TxReceipt[][]>(Send);
         }
         
         public override string Name => "eth66";
@@ -173,6 +178,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
         {
             _bodiesRequests66.Handle(blockBodiesMessage.Bodies, size);
         }
+        
+        protected override void Handle(Eth.V63.NodeDataMessage msg, int size)
+        {
+            _nodeDataRequests66.Handle(msg.Data, size);
+        }
+        
+        protected override void Handle(Eth.V63.ReceiptsMessage msg, long size)
+        {
+            _receiptsRequests66.Handle(msg.TxReceipts, size);
+        }
 
         protected override async Task<BlockHeader[]> SendRequest(Eth.V62.GetBlockHeadersMessage message, CancellationToken token)
         {
@@ -252,6 +267,83 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
         
             StatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.Bodies, 0L);
             throw new TimeoutException($"{Session} Request timeout in {nameof(GetBlockBodiesMessage)} with {message.BlockHashes.Count} block hashes");
+        }
+        
+        protected override async Task<byte[][]> SendRequest(Eth.V63.GetNodeDataMessage message, CancellationToken token)
+        {
+            if (Logger.IsTrace)
+            {
+                Logger.Trace("Sending node fata request:");
+                Logger.Trace($"Keys count: {message.Hashes.Count}");
+            }
+
+            GetNodeDataMessage msg66 = new GetNodeDataMessage() {EthMessage = message};
+            Request<GetNodeDataMessage, byte[][]> request = new(msg66);
+            _nodeDataRequests66.Send(request);
+            
+            Task<byte[][]> task = request.CompletionSource.Task;
+
+            using CancellationTokenSource delayCancellation = new CancellationTokenSource();
+            using CancellationTokenSource compositeCancellation
+                = CancellationTokenSource.CreateLinkedTokenSource(token, delayCancellation.Token);
+            Task firstTask = await Task.WhenAny(task, Task.Delay(Timeouts.Eth, compositeCancellation.Token));
+            if (firstTask.IsCanceled)
+            {
+                token.ThrowIfCancellationRequested();
+            }
+
+            if (firstTask == task)
+            {
+                delayCancellation.Cancel();
+                long elapsed = request.FinishMeasuringTime();
+                long bytesPerMillisecond = (long) ((decimal) request.ResponseSize / Math.Max(1, elapsed));
+                if (Logger.IsTrace)
+                    Logger.Trace($"{this} speed is {request.ResponseSize}/{elapsed} = {bytesPerMillisecond}");
+                StatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.NodeData, bytesPerMillisecond);
+
+                return task.Result;
+            }
+            
+            StatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.NodeData, 0L);
+            throw new TimeoutException($"{Session} Request timeout in {nameof(GetNodeDataMessage)}");
+        }
+        
+        protected override async Task<TxReceipt[][]> SendRequest(Eth.V63.GetReceiptsMessage message, CancellationToken token)
+        {
+            if (Logger.IsTrace)
+            {
+                Logger.Trace("Sending node fata request:");
+                Logger.Trace($"Hashes count: {message.Hashes.Count}");
+            }
+
+            GetReceiptsMessage msg66 = new GetReceiptsMessage() {EthMessage = message};
+            Request<GetReceiptsMessage, TxReceipt[][]> request = new(msg66);
+            _receiptsRequests66.Send(request);
+
+            Task<TxReceipt[][]> task = request.CompletionSource.Task;
+            using CancellationTokenSource delayCancellation = new CancellationTokenSource();
+            using CancellationTokenSource compositeCancellation 
+                = CancellationTokenSource.CreateLinkedTokenSource(token, delayCancellation.Token);
+            Task firstTask = await Task.WhenAny(task, Task.Delay(Timeouts.Eth, compositeCancellation.Token));
+            if (firstTask.IsCanceled)
+            {
+                token.ThrowIfCancellationRequested();
+            }
+
+            if (firstTask == task)
+            {
+                delayCancellation.Cancel();
+                long elapsed = request.FinishMeasuringTime();
+                long bytesPerMillisecond = (long) ((decimal) request.ResponseSize / Math.Max(1, elapsed));
+                if (Logger.IsTrace)
+                    Logger.Trace($"{this} speed is {request.ResponseSize}/{elapsed} = {bytesPerMillisecond}");
+                StatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.Receipts, bytesPerMillisecond);
+                return task.Result;
+            }
+
+            StatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.Receipts, 0L);
+
+            throw new TimeoutException($"{Session} Request timeout in {nameof(GetReceiptsMessage)}");
         }
     }
 }
