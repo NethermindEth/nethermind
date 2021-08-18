@@ -36,8 +36,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
     {
         private readonly MessageQueue<GetBlockHeadersMessage, BlockHeader[]> _headersRequests66;
         private readonly MessageQueue<GetBlockBodiesMessage, BlockBody[]> _bodiesRequests66;
-        private readonly MessageQueue<GetNodeDataMessage, byte[][]> _nodeDataRequests66;
-        private readonly MessageQueue<GetReceiptsMessage, TxReceipt[][]> _receiptsRequests66;
         public Eth66ProtocolHandler(ISession session,
             IMessageSerializationService serializer,
             INodeStatsManager nodeStatsManager,
@@ -50,8 +48,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
         {
             _headersRequests66 = new MessageQueue<GetBlockHeadersMessage, BlockHeader[]>(Send);
             _bodiesRequests66 = new MessageQueue<GetBlockBodiesMessage, BlockBody[]>(Send);
-            _nodeDataRequests66 = new MessageQueue<GetNodeDataMessage, byte[][]>(Send);
-            _receiptsRequests66 = new MessageQueue<GetReceiptsMessage, TxReceipt[][]>(Send);
         }
         
         public override string Name => "eth66";
@@ -176,16 +172,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
         protected override void HandleBodies(Eth.V62.BlockBodiesMessage blockBodiesMessage, long size)
         {
             _bodiesRequests66.Handle(blockBodiesMessage.Bodies, size);
-        }
-        
-        protected override void Handle(Eth.V63.NodeDataMessage msg, int size)
-        {
-            _nodeDataRequests66.Handle(msg.Data, size);
-        }
-        
-        protected override void Handle(Eth.V63.ReceiptsMessage msg, long size)
-        {
-            _receiptsRequests66.Handle(msg.TxReceipts, size);
         }
 
         protected override async Task<BlockHeader[]> SendRequest(Eth.V62.GetBlockHeadersMessage message, CancellationToken token)
