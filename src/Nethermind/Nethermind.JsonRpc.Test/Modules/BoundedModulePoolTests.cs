@@ -27,6 +27,7 @@ using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
 using Nethermind.Trie.Pruning;
 using Nethermind.Facade;
+using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
@@ -68,7 +69,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                 LimboLogs.Instance,
                 Substitute.For<IStateReader>(),
                 Substitute.For<IBlockchainBridgeFactory>(),
-                Substitute.For<ISpecProvider>()),
+                Substitute.For<ISpecProvider>(),
+                Substitute.For<IGasPriceOracle>()),
                  1, 1000);
         }
 
