@@ -67,27 +67,32 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                 case Eth66MessageCode.GetBlockHeaders:
                     GetBlockHeadersMessage getBlockHeadersMessage
                         = Deserialize<GetBlockHeadersMessage>(message.Content);
+                    Metrics.Eth66GetBlockHeadersReceived++;
                     ReportIn(getBlockHeadersMessage);
                     Handle(getBlockHeadersMessage);
                     break;
                 case Eth66MessageCode.BlockHeaders:
                     BlockHeadersMessage headersMsg = Deserialize<BlockHeadersMessage>(message.Content);
+                    Metrics.Eth66BlockHeadersReceived++;
                     ReportIn(headersMsg);
                     Handle(headersMsg.EthMessage, size);
                     break;
                 case Eth66MessageCode.GetBlockBodies:
                     GetBlockBodiesMessage getBodiesMsg = Deserialize<GetBlockBodiesMessage>(message.Content);
+                    Metrics.Eth66GetBlockBodiesReceived++;
                     ReportIn(getBodiesMsg);
                     Handle(getBodiesMsg);
                     break;
                 case Eth66MessageCode.BlockBodies:
                     BlockBodiesMessage bodiesMsg = Deserialize<BlockBodiesMessage>(message.Content);
+                    Metrics.Eth66BlockBodiesReceived++;
                     ReportIn(bodiesMsg);
                     HandleBodies(bodiesMsg.EthMessage, size);
                     break;
                 case Eth66MessageCode.GetPooledTransactions:
                     GetPooledTransactionsMessage getPooledTxMsg
                         = Deserialize<GetPooledTransactionsMessage>(message.Content);
+                    Metrics.Eth66GetPooledTransactionsRequested++;
                     ReportIn(getPooledTxMsg);
                     Handle(getPooledTxMsg);
                     break;
@@ -100,21 +105,25 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                     break;
                 case Eth66MessageCode.GetReceipts:
                     GetReceiptsMessage getReceiptsMessage = Deserialize<GetReceiptsMessage>(message.Content);
+                    Metrics.Eth66GetReceiptsReceived++;
                     ReportIn(getReceiptsMessage);
                     Handle(getReceiptsMessage);
                     break;
                 case Eth66MessageCode.Receipts:
                     ReceiptsMessage receiptsMessage = Deserialize<ReceiptsMessage>(message.Content);
+                    Metrics.Eth66ReceiptsReceived++;
                     ReportIn(receiptsMessage);
                     Handle(receiptsMessage.EthMessage, size);
                     break;
                 case Eth66MessageCode.GetNodeData:
                     GetNodeDataMessage getNodeDataMessage = Deserialize<GetNodeDataMessage>(message.Content);
+                    Metrics.Eth66GetNodeDataReceived++;
                     ReportIn(getNodeDataMessage);
                     Handle(getNodeDataMessage);
                     break;
                 case Eth66MessageCode.NodeData:
                     NodeDataMessage nodeDataMessage = Deserialize<NodeDataMessage>(message.Content);
+                    Metrics.Eth66NodeDataReceived++;
                     ReportIn(nodeDataMessage);
                     Handle(nodeDataMessage.EthMessage, size);
                     break;
