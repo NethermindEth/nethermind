@@ -15,13 +15,14 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using Nethermind.Core;
+
 namespace Nethermind.Blockchain
 {
     public static class BlockTreeExtensions
     {
-        public static ReadOnlyBlockTree AsReadOnly(this IBlockTree blockTree)
-        {
-            return new(blockTree);
-        }
+        public static ReadOnlyBlockTree AsReadOnly(this IBlockTree blockTree) => new(blockTree);
+        
+        public static BlockHeader? GetProducedBlockParent(this IBlockTree blockTree, BlockHeader? parentHeader) => parentHeader ?? blockTree.Head?.Header;
     }
 }

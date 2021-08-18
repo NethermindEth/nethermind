@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,19 +15,24 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Int256;
-using Nethermind.Mev.Data;
+using Nethermind.JsonRpc.Data;
+using Newtonsoft.Json;
 
-namespace Nethermind.Mev
+namespace Nethermind.JsonRpc.Converters
 {
-    public class MevConfig : IMevConfig
+    public class TxReceiptConverter : JsonConverter<TxReceipt>
     {
-        public static readonly MevConfig Default = new();
-        public bool Enabled { get; set; }
-        public UInt256 BundleHorizon { get; set; } = 60 * 60;
-        public int BundlePoolSize { get; set; } = 200;
-        public int MaxMergedBundles { get; set; } = 1;
+        public override void WriteJson(JsonWriter writer, TxReceipt value, JsonSerializer serializer)
+        {
+            serializer.Serialize(writer, new ReceiptForRpc(value.TxHash!, value, UInt256.Zero));
+        }
+
+        public override TxReceipt ReadJson(JsonReader reader, Type objectType, TxReceipt existingValue, bool hasExistingValue, JsonSerializer serializer)
+        {
+            return serializer.Deserialize<ReceiptForRpc>(reader)?.ToReceipt() ?? existingValue;
+        }
     }
 }

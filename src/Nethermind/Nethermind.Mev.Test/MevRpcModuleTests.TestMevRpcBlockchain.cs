@@ -126,12 +126,30 @@ namespace Nethermind.Mev.Test
                         Timestamper,
                         miningConfig,
                         LogManager);
-                
-                MevBlockProducer.MevBlockProducerInfo CreateProducer(ITxSource? additionalTxSource = null)
+
+                MevBlockProducer.MevBlockProducerInfo CreateProducer(int bundleLimit = 0, ITxSource? additionalTxSource = null)
                 {
-                    IManualBlockProductionTrigger trigger = new BuildBlocksWhenRequested();
+                    bool BundleLimitTriggerCondition(BlockProductionEventArgs e)
+                    {
+                        BlockHeader? parent = BlockTree.GetProducedBlockParent(e.ParentHeader);
+                        if (parent is not null)
+                        {
+                            IEnumerable<MevBundle> bundles = BundlePool.GetBundles(parent, Timestamper);
+                            return bundles.Count() >= bundleLimit;
+                        }
+
+                        return false;
+                    }
+
+                    IManualBlockProductionTrigger manualTrigger = new BuildBlocksWhenRequested();
+                    IBlockProductionTrigger trigger = manualTrigger;
+                    if (bundleLimit != 0)
+                    {
+                        trigger = new TriggerWithCondition(manualTrigger, BundleLimitTriggerCondition);
+                    }
+
                     IBlockProducer producer = CreateEth2BlockProducer(trigger, additionalTxSource);
-                    return new MevBlockProducer.MevBlockProducerInfo(producer, trigger, new BeneficiaryTracer());
+                    return new MevBlockProducer.MevBlockProducerInfo(producer, manualTrigger, new BeneficiaryTracer());
                 }
 
                 List<MevBlockProducer.MevBlockProducerInfo> blockProducers =
@@ -146,7 +164,7 @@ namespace Nethermind.Mev.Test
                 {
                     BundleSelector bundleSelector = new(BundlePool, bundleLimit);
                     BundleTxSource bundleTxSource = new(bundleSelector, Timestamper);
-                    MevBlockProducer.MevBlockProducerInfo bundleProducer = CreateProducer(bundleTxSource);
+                    MevBlockProducer.MevBlockProducerInfo bundleProducer = CreateProducer(bundleLimit, bundleTxSource);
                     blockProducers.Add(bundleProducer);
                 }
 

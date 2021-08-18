@@ -95,7 +95,8 @@ namespace Nethermind.Blockchain.Producers
 
         private void OnTriggerBlockProduction(object? sender, BlockProductionEventArgs e)
         {
-            e.BlockProductionTask = TryProduceAndAnnounceNewBlock(e.CancellationToken, e.ParentHeader, e.BlockTracer);
+            BlockHeader? parent = BlockTree.GetProducedBlockParent(e.ParentHeader);
+            e.BlockProductionTask = TryProduceAndAnnounceNewBlock(e.CancellationToken, parent, e.BlockTracer);
         }
 
         public virtual void Start()
@@ -123,7 +124,7 @@ namespace Nethermind.Blockchain.Producers
             return IsRunning() && (maxProducingInterval == null || _lastProducedBlockDateTime.AddSeconds(maxProducingInterval.Value) > DateTime.UtcNow);
         }
 
-        private async Task<Block?> TryProduceAndAnnounceNewBlock(CancellationToken token, BlockHeader? parentHeader = null, IBlockTracer? blockTracer = null)
+        private async Task<Block?> TryProduceAndAnnounceNewBlock(CancellationToken token, BlockHeader? parentHeader, IBlockTracer? blockTracer = null)
         {
             using CancellationTokenSource tokenSource = CancellationTokenSource.CreateLinkedTokenSource(token, _producerCancellationToken!.Token);
             token = tokenSource.Token;
@@ -158,9 +159,8 @@ namespace Nethermind.Blockchain.Producers
             return block;
         }
 
-        private Task<Block?> TryProduceNewBlock(CancellationToken token, BlockHeader? parentHeader = null, IBlockTracer? blockTracer = null)
+        protected virtual Task<Block?> TryProduceNewBlock(CancellationToken token, BlockHeader? parentHeader, IBlockTracer? blockTracer = null)
         {
-            parentHeader = GetProducedBlockParent(parentHeader);
             if (parentHeader == null)
             {
                 if (Logger.IsWarn) Logger.Warn("Preparing new block - parent header is null");
@@ -181,8 +181,6 @@ namespace Nethermind.Blockchain.Producers
             Metrics.FailedBlockSeals++;
             return Task.FromResult((Block?)null);
         }
-
-        protected virtual BlockHeader? GetProducedBlockParent(BlockHeader? parentHeader) => parentHeader ?? BlockTree.Head?.Header;
 
         private Task<Block?> ProduceNewBlock(BlockHeader parent, CancellationToken token, IBlockTracer? blockTracer)
         {

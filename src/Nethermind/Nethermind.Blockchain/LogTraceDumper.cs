@@ -15,8 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Collections.Generic;
 using System.IO;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
@@ -48,10 +50,22 @@ namespace Nethermind.Blockchain
             {
                 IJsonSerializer serializer = new EthereumJsonSerializer();
                 serializer.RegisterConverters(Converters);
+
+                if (blockTracer is BlockReceiptsTracer receiptsTracer)
+                {
+                    fileName = $"receipts_{blockHash}.txt";
+                    using FileStream diagnosticFile = GetFileStream(fileName);               
+                    IReadOnlyList<TxReceipt> receipts = receiptsTracer.TxReceipts;
+                    serializer.Serialize(diagnosticFile, receipts, true);
+                    if (logger.IsInfo)
+                        logger.Info($"Created a Receipts trace of block {blockHash} in file {diagnosticFile.Name}");
+
+                }
+                
                 if (blockTracer is GethLikeBlockTracer gethTracer)
                 {
                     fileName = $"gethStyle_{blockHash}.txt";
-                    using FileStream diagnosticFile = GetFileStream(fileName);                    
+                    using FileStream diagnosticFile = GetFileStream(fileName);
                     IReadOnlyCollection<GethLikeTxTrace> trace = gethTracer.BuildResult();
                     serializer.Serialize(diagnosticFile, trace, true);
                     if (logger.IsInfo)
@@ -73,6 +87,12 @@ namespace Nethermind.Blockchain
                 if (logger.IsError)
                     logger.Error($"Cannot save trace of block {blockHash} in file {fileName}", e);
             }
+        }
+
+        public static void LogTraceFailure(IBlockTracer blockTracer, Keccak blockHash, Exception exception, ILogger logger)
+        {
+            if (logger.IsError)
+                logger.Error($"Cannot create trace of blocks starting from {blockHash} of type {blockTracer.GetType().Name}", exception);
         }
     }
 }
