@@ -38,6 +38,7 @@ using NSubstitute;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 using System.Threading.Tasks;
+using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
@@ -64,7 +65,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                 LimboLogs.Instance,
                 Substitute.For<IStateReader>(),
                 Substitute.For<IBlockchainBridgeFactory>(),
-                Substitute.For<ISpecProvider>());
+                Substitute.For<ISpecProvider>(),
+                Substitute.For<IGasPriceOracle>());
         }
 
         [Test]
