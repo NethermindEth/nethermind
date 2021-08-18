@@ -26,7 +26,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
     {
         private readonly IEth66ReadyZeroMessageSerializer<TEthMessage> _ethMessageSerializer;
 
-        public Eth66MessageSerializer(IEth66ReadyZeroMessageSerializer<TEthMessage> ethMessageSerializer)
+        protected Eth66MessageSerializer(IEth66ReadyZeroMessageSerializer<TEthMessage> ethMessageSerializer)
         {
             _ethMessageSerializer = ethMessageSerializer;
         }
