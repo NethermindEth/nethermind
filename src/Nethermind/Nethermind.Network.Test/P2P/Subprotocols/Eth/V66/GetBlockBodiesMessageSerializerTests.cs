@@ -34,7 +34,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             var ethMessage = new Network.P2P.Subprotocols.Eth.V62.GetBlockBodiesMessage(new Keccak[] {a, b});
             var message = new GetBlockBodiesMessage(1111, ethMessage);
 
-            GetBlockBodiesMessageSerializer serializer = new GetBlockBodiesMessageSerializer(new Network.P2P.Subprotocols.Eth.V62.GetBlockBodiesMessageSerializer());
+            GetBlockBodiesMessageSerializer serializer = new GetBlockBodiesMessageSerializer();
 
             SerializerTester.TestZero(serializer, message, "f847820457f842a000000000000000000000000000000000000000000000000000000000deadc0dea000000000000000000000000000000000000000000000000000000000feedbeef");
         }

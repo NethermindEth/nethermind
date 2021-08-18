@@ -22,7 +22,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 {
     public class GetNodeDataMessageSerializer : Eth66MessageSerializer<GetNodeDataMessage, Eth.V63.GetNodeDataMessage>
     {
-        public GetNodeDataMessageSerializer(IEth66ReadyZeroMessageSerializer<V63.GetNodeDataMessage> ethMessageSerializer) : base(ethMessageSerializer)
+        public GetNodeDataMessageSerializer() : base(new V63.GetNodeDataMessageSerializer())
         {
         }
     }

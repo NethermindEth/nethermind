@@ -37,7 +37,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
 
             GetReceiptsMessage message = new GetReceiptsMessage(1111, ethMessage);
 
-            GetReceiptsMessageSerializer serializer = new GetReceiptsMessageSerializer(new Network.P2P.Subprotocols.Eth.V63.GetReceiptsMessageSerializer());
+            GetReceiptsMessageSerializer serializer = new GetReceiptsMessageSerializer();
 
             SerializerTester.TestZero(serializer, message, "f847820457f842a000000000000000000000000000000000000000000000000000000000deadc0dea000000000000000000000000000000000000000000000000000000000feedbeef");
         }

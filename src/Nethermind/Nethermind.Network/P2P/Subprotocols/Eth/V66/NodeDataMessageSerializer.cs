@@ -19,7 +19,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 {
     public class NodeDataMessageSerializer : Eth66MessageSerializer<NodeDataMessage, Eth.V63.NodeDataMessage>
     {
-        public NodeDataMessageSerializer(IEth66ReadyZeroMessageSerializer<V63.NodeDataMessage> ethMessageSerializer) : base(ethMessageSerializer)
+        public NodeDataMessageSerializer() : base(new V63.NodeDataMessageSerializer())
         {
         }
     }

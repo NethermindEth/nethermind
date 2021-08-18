@@ -19,7 +19,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 {
     public class BlockHeadersMessageSerializer : Eth66MessageSerializer<BlockHeadersMessage, Eth.V62.BlockHeadersMessage>
     {
-        public BlockHeadersMessageSerializer(IEth66ReadyZeroMessageSerializer<V62.BlockHeadersMessage> ethMessageSerializer) : base(ethMessageSerializer)
+        public BlockHeadersMessageSerializer() : base(new Eth.V62.BlockHeadersMessageSerializer())
         {
         }
     }

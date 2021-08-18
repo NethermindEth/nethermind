@@ -36,7 +36,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
 
             GetPooledTransactionsMessage message = new GetPooledTransactionsMessage(1111, ethMessage);
             
-            GetPooledTransactionsMessageSerializer serializer = new GetPooledTransactionsMessageSerializer(new Network.P2P.Subprotocols.Eth.V65.GetPooledTransactionsMessageSerializer());
+            GetPooledTransactionsMessageSerializer serializer = new GetPooledTransactionsMessageSerializer();
             
             SerializerTester.TestZero(serializer, message, "f847820457f842a000000000000000000000000000000000000000000000000000000000deadc0dea000000000000000000000000000000000000000000000000000000000feedbeef");
         }

@@ -22,7 +22,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 {
     public class GetPooledTransactionsMessageSerializer : Eth66MessageSerializer<GetPooledTransactionsMessage, Eth.V65.GetPooledTransactionsMessage>
     {
-        public GetPooledTransactionsMessageSerializer(IEth66ReadyZeroMessageSerializer<V65.GetPooledTransactionsMessage> ethMessageSerializer) : base(ethMessageSerializer)
+        public GetPooledTransactionsMessageSerializer() : base(new V65.GetPooledTransactionsMessageSerializer())
         {
         }
     }

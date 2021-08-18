@@ -22,7 +22,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 {
     public class GetReceiptsMessageSerializer : Eth66MessageSerializer<GetReceiptsMessage, Eth.V63.GetReceiptsMessage>
     {
-        public GetReceiptsMessageSerializer(IEth66ReadyZeroMessageSerializer<V63.GetReceiptsMessage> ethMessageSerializer) : base(ethMessageSerializer)
+        public GetReceiptsMessageSerializer() : base(new V63.GetReceiptsMessageSerializer())
         {
         }
     }
