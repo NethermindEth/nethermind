@@ -118,7 +118,8 @@ namespace Nethermind.Mev.Source
         public bool AddBundle(MevBundle bundle)
         {
             Metrics.BundlesReceived++;
-            NewReceived?.Invoke(this, new BundleEventArgs(bundle));
+            BundleEventArgs bundleEventArgs = new(bundle);
+            NewReceived?.Invoke(this, bundleEventArgs);
             
             if (ValidateBundle(bundle))
             {
@@ -127,7 +128,7 @@ namespace Nethermind.Mev.Source
                 if (result)
                 {
                     Metrics.ValidBundlesReceived++;
-                    NewPending?.Invoke(this, new BundleEventArgs(bundle));
+                    NewPending?.Invoke(this, bundleEventArgs);
                     if (bundle.BlockNumber == HeadNumber + 1)
                     { 
                         TrySimulateBundle(bundle);
