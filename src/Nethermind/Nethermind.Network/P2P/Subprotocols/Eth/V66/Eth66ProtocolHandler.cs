@@ -15,6 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
@@ -30,6 +34,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
     /// </summary>
     public class Eth66ProtocolHandler : Eth65ProtocolHandler
     {
+        protected readonly MessageQueue<GetBlockHeadersMessage, BlockHeader[]> _headersRequests66;
+        protected readonly MessageQueue<GetBlockBodiesMessage, BlockBody[]> _bodiesRequests66;
         public Eth66ProtocolHandler(ISession session,
             IMessageSerializationService serializer,
             INodeStatsManager nodeStatsManager,
@@ -40,6 +46,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             ILogManager logManager)
             : base(session, serializer, nodeStatsManager, syncServer, txPool, pooledTxsRequestor, specProvider, logManager)
         {
+            _headersRequests66 = new MessageQueue<GetBlockHeadersMessage, BlockHeader[]>(Send);
+            _bodiesRequests66 = new MessageQueue<GetBlockBodiesMessage, BlockBody[]>(Send);
         }
         
         public override string Name => "eth66";
@@ -145,6 +153,96 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             Eth.V63.NodeDataMessage nodeDataMessage =
                 FulfillNodeDataRequest(getNodeDataMessage.EthMessage);
             Send(new NodeDataMessage(getNodeDataMessage.RequestId, nodeDataMessage));
+        }
+
+        protected override async Task<BlockHeader[]> SendRequest(Eth.V62.GetBlockHeadersMessage message, CancellationToken token)
+        {
+            if (Logger.IsTrace)
+            {
+                Logger.Trace($"Sending headers request to {Session.Node:c}:");
+                Logger.Trace($"  Starting blockhash: {message.StartBlockHash}");
+                Logger.Trace($"  Starting number: {message.StartBlockNumber}");
+                Logger.Trace($"  Skip: {message.Skip}");
+                Logger.Trace($"  Reverse: {message.Reverse}");
+                Logger.Trace($"  Max headers: {message.MaxHeaders}");
+            }
+        
+            GetBlockHeadersMessage msg66 = new() {EthMessage = message};
+            Request<GetBlockHeadersMessage, BlockHeader[]> request = new(msg66);
+            _headersRequests66.Send(request);
+        
+            Task<BlockHeader[]> task = request.CompletionSource.Task;
+            using CancellationTokenSource delayCancellation = new();
+            using CancellationTokenSource compositeCancellation = CancellationTokenSource.CreateLinkedTokenSource(token, delayCancellation.Token);
+            Task firstTask = await Task.WhenAny(task, Task.Delay(Timeouts.Eth, compositeCancellation.Token));
+            if (firstTask.IsCanceled)
+            {
+                token.ThrowIfCancellationRequested();
+            }
+        
+            if (firstTask == task)
+            {
+                delayCancellation.Cancel();
+                long elapsed = request.FinishMeasuringTime();
+                long bytesPerMillisecond = (long) ((decimal) request.ResponseSize / Math.Max(1, elapsed));
+                if (Logger.IsTrace) Logger.Trace($"{this} speed is {request.ResponseSize}/{elapsed} = {bytesPerMillisecond}");
+        
+                StatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.Headers, bytesPerMillisecond);
+                return task.Result;
+            }
+        
+            StatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.Headers, 0);
+            throw new TimeoutException($"{Session} Request timeout in {nameof(GetBlockHeadersMessage)} with {message.MaxHeaders} max headers");
+        }
+        
+        protected override async Task<BlockBody[]> SendRequest(Eth.V62.GetBlockBodiesMessage message, CancellationToken token)
+        {
+            if (Logger.IsTrace)
+            {
+                Logger.Trace("Sending bodies request:");
+                Logger.Trace($"Blockhashes count: {message.BlockHashes.Count}");
+            }
+        
+            GetBlockBodiesMessage msg66 = new() {EthMessage = message};
+            Request<GetBlockBodiesMessage, BlockBody[]> request = new(msg66);
+            _bodiesRequests66.Send(request);
+        
+            // Logger.Warn($"Sending bodies request of length {request.Message.BlockHashes.Count} to {this}");
+        
+            Task<BlockBody[]> task = request.CompletionSource.Task;
+            using CancellationTokenSource delayCancellation = new();
+            using CancellationTokenSource compositeCancellation = CancellationTokenSource.CreateLinkedTokenSource(token, delayCancellation.Token);
+            Task firstTask = await Task.WhenAny(task, Task.Delay(Timeouts.Eth, compositeCancellation.Token));
+            if (firstTask.IsCanceled)
+            {
+                // Logger.Warn($"Bodies request of length {request.Message.BlockHashes.Count} expired with {this}");
+                token.ThrowIfCancellationRequested();
+            }
+        
+            if (firstTask == task)
+            {
+                // Logger.Warn($"Bodies request of length {request.Message.BlockHashes.Count} received with size {request.ResponseSize} from {this}");
+                delayCancellation.Cancel();
+                long elapsed = request.FinishMeasuringTime();
+                long bytesPerMillisecond = (long) ((decimal) request.ResponseSize / Math.Max(1, elapsed));
+                if (Logger.IsTrace) Logger.Trace($"{this} speed is {request.ResponseSize}/{elapsed} = {bytesPerMillisecond}");
+                StatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.Bodies, bytesPerMillisecond);
+        
+                return task.Result;
+            }
+        
+            StatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.Bodies, 0L);
+            throw new TimeoutException($"{Session} Request timeout in {nameof(GetBlockBodiesMessage)} with {message.BlockHashes.Count} block hashes");
+        }
+        
+        protected override void Handle(Eth.V62.BlockHeadersMessage message, long size)
+        {
+            _headersRequests66.Handle(message.BlockHeaders, size);
+        }
+
+        protected override void HandleBodies(Eth.V62.BlockBodiesMessage blockBodiesMessage, long size)
+        {
+            _bodiesRequests66.Handle(blockBodiesMessage.Bodies, size);
         }
     }
 }
