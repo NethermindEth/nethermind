@@ -83,7 +83,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
         public override string Name => "eth63";
 
-        protected void Handle(ReceiptsMessage msg, long size)
+        protected virtual void Handle(ReceiptsMessage msg, long size)
         {
             Metrics.Eth63ReceiptsReceived++;
             _receiptsRequests.Handle(msg.TxReceipts, size);
@@ -112,7 +112,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             return new NodeDataMessage(nodeData);
         }
 
-        protected void Handle(NodeDataMessage msg, int size)
+        protected virtual void Handle(NodeDataMessage msg, int size)
         {
             Metrics.Eth63NodeDataReceived++;
             _nodeDataRequests.Handle(msg.Data, size);
