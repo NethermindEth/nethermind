@@ -396,7 +396,37 @@ namespace Nethermind.Init.Steps
             _api.MessageSerializationService.Register(new AckEip8MessageSerializer(eip8Pad));
             _api.MessageSerializationService.Register(Assembly.GetAssembly(typeof(HelloMessageSerializer)));
             _api.MessageSerializationService.Register(new ReceiptsMessageSerializer(_api.SpecProvider));
-
+            _api.MessageSerializationService.Register(
+                new Nethermind.Network.P2P.Subprotocols.Eth.V66.GetBlockHeadersMessageSerializer(
+                    new Nethermind.Network.P2P.Subprotocols.Eth.V62.GetBlockHeadersMessageSerializer()));
+            _api.MessageSerializationService.Register(
+                new Nethermind.Network.P2P.Subprotocols.Eth.V66.BlockHeadersMessageSerializer(
+                    new Nethermind.Network.P2P.Subprotocols.Eth.V62.BlockHeadersMessageSerializer()));
+            _api.MessageSerializationService.Register(
+                new Nethermind.Network.P2P.Subprotocols.Eth.V66.GetBlockBodiesMessageSerializer(
+                    new Nethermind.Network.P2P.Subprotocols.Eth.V62.GetBlockBodiesMessageSerializer()));
+            _api.MessageSerializationService.Register(
+                new Nethermind.Network.P2P.Subprotocols.Eth.V66.BlockBodiesMessageSerializer(
+                    new Nethermind.Network.P2P.Subprotocols.Eth.V62.BlockBodiesMessageSerializer()));
+            _api.MessageSerializationService.Register(
+                new Nethermind.Network.P2P.Subprotocols.Eth.V66.GetPooledTransactionsMessageSerializer(
+                    new Nethermind.Network.P2P.Subprotocols.Eth.V65.GetPooledTransactionsMessageSerializer()));
+            _api.MessageSerializationService.Register(
+                new Nethermind.Network.P2P.Subprotocols.Eth.V66.PooledTransactionsMessageSerializer(
+                    new Nethermind.Network.P2P.Subprotocols.Eth.V65.PooledTransactionsMessageSerializer()));
+            _api.MessageSerializationService.Register(
+                new Nethermind.Network.P2P.Subprotocols.Eth.V66.GetNodeDataMessageSerializer(
+                    new Nethermind.Network.P2P.Subprotocols.Eth.V63.GetNodeDataMessageSerializer()));
+            _api.MessageSerializationService.Register(
+                new Nethermind.Network.P2P.Subprotocols.Eth.V66.NodeDataMessageSerializer(
+                    new Nethermind.Network.P2P.Subprotocols.Eth.V63.NodeDataMessageSerializer()));
+            _api.MessageSerializationService.Register(
+                new Nethermind.Network.P2P.Subprotocols.Eth.V66.GetReceiptsMessageSerializer(
+                    new Nethermind.Network.P2P.Subprotocols.Eth.V63.GetReceiptsMessageSerializer()));
+            _api.MessageSerializationService.Register(
+                new Nethermind.Network.P2P.Subprotocols.Eth.V66.ReceiptsMessageSerializer(
+                    new Nethermind.Network.P2P.Subprotocols.Eth.V63.ReceiptsMessageSerializer(_api.SpecProvider)));
+            
             HandshakeService encryptionHandshakeServiceA = new(
                 _api.MessageSerializationService,
                 eciesCipher,
