@@ -20,6 +20,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Init.Steps.Migrations;
 using Nethermind.JsonRpc;
@@ -27,6 +28,7 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Eth;
+using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.JsonRpc.Modules.Evm;
 using Nethermind.JsonRpc.Modules.Net;
 using Nethermind.JsonRpc.Modules.Parity;
@@ -89,21 +91,25 @@ namespace Nethermind.Init.Steps
             IInitConfig initConfig = _api.Config<IInitConfig>();
             IJsonRpcConfig rpcConfig = _api.Config<IJsonRpcConfig>();
             INetworkConfig networkConfig = _api.Config<INetworkConfig>();
+            IMiningConfig miningConfig = _api.Config<IMiningConfig>();
             
             // lets add threads to support parallel eth_getLogs
             ThreadPool.GetMinThreads(out int workerThreads, out int completionPortThreads);
             ThreadPool.SetMinThreads(workerThreads + Environment.ProcessorCount, completionPortThreads + Environment.ProcessorCount);
-            
+
+            GasPriceOracle gasPriceOracle = new GasPriceOracle(_api.BlockTree, _api.SpecProvider, miningConfig.MinGasPrice);
             EthModuleFactory ethModuleFactory = new(
                 _api.TxPool,
                 _api.TxSender,
                 _api.Wallet,
                 _api.BlockTree,
-                _api.Config<IJsonRpcConfig>(),
+                rpcConfig,
                 _api.LogManager,
                 _api.StateReader,
                 _api,
-                _api.SpecProvider);
+                _api.SpecProvider,
+                gasPriceOracle);
+            
             _api.RpcModuleProvider.RegisterBounded(ethModuleFactory, rpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, rpcConfig.Timeout);
             
             if (_api.DbProvider == null) throw new StepDependencyException(nameof(_api.DbProvider));

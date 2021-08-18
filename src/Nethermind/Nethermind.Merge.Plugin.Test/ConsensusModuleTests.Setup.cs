@@ -43,14 +43,12 @@ namespace Nethermind.Merge.Plugin.Test
 {
     public partial class ConsensusModuleTests
     {
-        private readonly ManualTimestamper _manualTimestamper = new();
-        
-        private async Task<MergeTestBlockchain> CreateBlockChain() => await new MergeTestBlockchain(_manualTimestamper).Build(new SingleReleaseSpecProvider(Berlin.Instance, 1));
+        private async Task<MergeTestBlockchain> CreateBlockChain() => await new MergeTestBlockchain(new ManualTimestamper()).Build(new SingleReleaseSpecProvider(Berlin.Instance, 1));
 
         private IConsensusRpcModule CreateConsensusModule(MergeTestBlockchain chain)
         {
             return new ConsensusRpcModule(
-                new AssembleBlockHandler(chain.BlockTree, chain.BlockProductionTrigger, _manualTimestamper, chain.LogManager),
+                new AssembleBlockHandler(chain.BlockTree, chain.BlockProductionTrigger, chain.Timestamper, chain.LogManager),
                 new NewBlockHandler(chain.BlockTree, chain.BlockPreprocessorStep, chain.BlockchainProcessor, chain.State, new InitConfig(), chain.LogManager),
                 new SetHeadBlockHandler(chain.BlockTree, chain.State, chain.LogManager),
                 new FinaliseBlockHandler(chain.BlockFinder, chain.BlockFinalizationManager, chain.LogManager),
@@ -59,11 +57,9 @@ namespace Nethermind.Merge.Plugin.Test
 
         private class MergeTestBlockchain : TestBlockchain
         {
-            private readonly ManualTimestamper _timestamper;
-
             public MergeTestBlockchain(ManualTimestamper timestamper)
             {
-                _timestamper = timestamper;
+                Timestamper = timestamper;
                 GenesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.Genesis
                     .WithTimestamp(UInt256.One);
                 Signer = new Eth2Signer(MinerAddress);
@@ -102,7 +98,7 @@ namespace Nethermind.Merge.Plugin.Test
                     BlockProductionTrigger,
                     SpecProvider,
                     Signer,
-                    _timestamper,
+                    Timestamper,
                     miningConfig,
                     LogManager);
             }

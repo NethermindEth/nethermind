@@ -25,5 +25,7 @@ namespace Nethermind.Config
         public string DefaultValue { get; set; }
         
         public bool HiddenFromDocs { get; set; }
+        
+        public bool DisabledForCli { get; set; }
     }
 }

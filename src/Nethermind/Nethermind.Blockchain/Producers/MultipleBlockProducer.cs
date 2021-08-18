@@ -122,7 +122,11 @@ namespace Nethermind.Blockchain.Producers
             Block? bestBlock = _bestBlockPicker.GetBestBlock(blocksWithProducers);
             if (bestBlock is not null)
             {
-                if (_logger.IsInfo) _logger.Info($"Picked block {bestBlock} to be included to the chain.");
+                if (produceTasks.Count(t => t.IsCompletedSuccessfully && t.Result is not null) > 1)
+                {
+                    if (_logger.IsInfo) _logger.Info($"Picked block {bestBlock} to be included to the chain.");
+                }
+
                 BlockProduced?.Invoke(this, new BlockEventArgs(bestBlock));
             }
 

@@ -106,7 +106,7 @@ namespace Nethermind.Core.Test.Blockchain
 
         public IReadOnlyTrieStore ReadOnlyTrieStore { get; private set; }
 
-        public ManualTimestamper Timestamper { get; private set; }
+        public ManualTimestamper Timestamper { get; protected set; }
         
         public ProducedBlockSuggester Suggester { get; private set; }
 
@@ -336,7 +336,7 @@ namespace Nethermind.Core.Test.Blockchain
 
         public virtual void Dispose()
         {
-            TestContext.Out.WriteLine($"dispozing {this.GetHashCode()}");
+            TestContext.Out.WriteLine($"disposing {this.GetHashCode()}");
             BlockProducer?.StopAsync();
             CodeDb?.Dispose();
             StateDb?.Dispose();

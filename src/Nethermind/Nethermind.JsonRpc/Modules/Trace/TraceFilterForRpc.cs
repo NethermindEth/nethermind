@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,19 +15,26 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Int256;
-using Nethermind.Mev.Data;
+using Nethermind.Evm.Tracing;
+using Newtonsoft.Json;
 
-namespace Nethermind.Mev
+namespace Nethermind.JsonRpc.Modules.Trace
 {
-    public class MevConfig : IMevConfig
+    public class TraceFilterForRpc
     {
-        public static readonly MevConfig Default = new();
-        public bool Enabled { get; set; }
-        public UInt256 BundleHorizon { get; set; } = 60 * 60;
-        public int BundlePoolSize { get; set; } = 200;
-        public int MaxMergedBundles { get; set; } = 1;
+        public BlockParameter? FromBlock{ get; set; }
+        
+        public BlockParameter? ToBlock { get; set; }
+        
+        public Address[]? FromAddress { get; set; }
+        
+        public Address[]? ToAddress { get; set; }
+        
+        public int After { get; set; } 
+        
+        [JsonProperty(NullValueHandling = NullValueHandling.Include)]
+        public int? Count { get; set; }
     }
 }

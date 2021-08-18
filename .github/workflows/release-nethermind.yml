@@ -159,18 +159,6 @@ jobs:
       WIN_RELEASE: nethermind-win-x64
       LIN_ARM64_RELEASE: nethermind-lin-arm64
     steps:
-    - name: Import Secrets
-      uses: hashicorp/vault-action@v2.1.2
-      with:
-        url: ${{ secrets.VAULT_URL }}
-        method: approle
-        roleId: ${{ secrets.ROLE_ID }}
-        secretId: ${{ secrets.SECRET_ID }}
-        namespace: admin/NethermindEth
-        secrets: |
-            github/nethermind/data/environments/release DOWNLOADS_API_KEY ;
-            github/nethermind/data/environments/release GPG_PASSWORD ;
-            github/nethermind/data/environments/release GPG_SIGNING_KEY
     - name: Checking out Nethermind repository
       uses: actions/checkout@master
       with:
@@ -199,32 +187,20 @@ jobs:
     - name: Configuring GPG Key
       run: |
         mkdir -p ~/.gnupg/
-        printf "${{ env.GPG_SIGNING_KEY }}" | base64 --decode > ~/.gnupg/private.key
+        printf "${{ secrets.GPG_SIGNING_KEY }}" | base64 --decode > ~/.gnupg/private.key
         gpg --import --no-tty --batch --yes ~/.gnupg/private.key
     - name: Publishing packages to Downloads Page
       run: |
         ./nethermind/scripts/deployment/publish-downloads.sh
       env:
-        DOWNLOADS_PAGE: ${{ env.DOWNLOADS_API_KEY }}
-        PASS: ${{ env.GPG_PASSWORD }}
+        DOWNLOADS_PAGE: ${{ secrets.DOWNLOADS_API_KEY }}
+        PASS: ${{ secrets.GPG_PASSWORD }}
 
   publish-dockers:
     name: Publishing Docker images to Docker Hub
     runs-on: ubuntu-latest
     needs: trigger-publish
     steps:
-    - name: Import Secrets
-      uses: hashicorp/vault-action@v2.1.2
-      with:
-        url: ${{ secrets.VAULT_URL }}
-        method: approle
-        roleId: ${{ secrets.ROLE_ID }}
-        secretId: ${{ secrets.SECRET_ID }}
-        namespace: admin/NethermindEth
-        secrets: |
-            github/nethermind/data/environments/release DOCKER_USERNAME ;
-            github/nethermind/data/environments/release DOCKER_PASSWORD ;
-            github/nethermind/data/secrets REPOSITORY_DISPATCH_TOKEN
     - name: Checking out Nethermind repository
       uses: actions/checkout@master
       with:
@@ -234,7 +210,7 @@ jobs:
       id: settings
       run: |
         echo ::set-output name=TAG::$(git describe --tags --abbrev=0)
-        echo ::set-output name=docker_username::${{ env.DOCKER_USERNAME }}
+        echo ::set-output name=docker_username::${{ secrets.DOCKER_USERNAME }}
         echo ::set-output name=docker_image::nethermind/nethermind
     - name: Setting up QEMU
       uses: docker/setup-qemu-action@v1
@@ -244,14 +220,14 @@ jobs:
     - name: Logging to Docker Hub
       if: success()
       env:
-        DOCKER_PASSWORD: ${{ env.DOCKER_PASSWORD }}
+        DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
       run: |
         echo "${DOCKER_PASSWORD}" | docker login --username "${{ steps.settings.outputs.docker_username }}" --password-stdin
     - name: Building & Pushing image to docker registry (major) / trigger DAppNode Build
       if: ${{ !contains(steps.settings.outputs.TAG, 'beta') && !contains(steps.settings.outputs.TAG, 'unstable') }}
       run: |
         docker buildx build --platform=linux/amd64,linux/arm64 -t "${{ steps.settings.outputs.docker_image }}:latest" -t "${{ steps.settings.outputs.docker_image }}:${{ steps.settings.outputs.TAG }}" -f Dockerfile --build-arg GIT_COMMIT=$(git log -1 --format=%h) . --push
-        curl -v -X POST -u "${{ env.REPOSITORY_DISPATCH_TOKEN }}" -H "Accept: application/vnd.github.everest-preview+json" -H "Content-Type: application/json" --data '{"event_type":"dappnode", "client_payload": { "tag":"${{ steps.settings.outputs.TAG }}"}}' https://api.github.com/repos/nethermindeth/nethermind/dispatches
+        curl -s -X POST -u "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}" -H "Accept: application/vnd.github.everest-preview+json" -H "Content-Type: application/json" --data '{"event_type":"dappnode", "client_payload": { "tag":"${{ steps.settings.outputs.TAG }}"}}' https://api.github.com/repos/nethermindeth/nethermind/dispatches
     - name: Building & Pushing image to docker registry  (patch)
       if: ${{ contains(steps.settings.outputs.TAG, 'beta') || contains(steps.settings.outputs.TAG, 'unstable') }}
       run: |

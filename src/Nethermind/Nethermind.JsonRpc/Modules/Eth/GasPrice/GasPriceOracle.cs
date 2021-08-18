@@ -19,7 +19,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain.Find;
+using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
@@ -28,7 +30,8 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
     public class GasPriceOracle : IGasPriceOracle
     {
         private readonly IBlockFinder _blockFinder;
-        public UInt256 FallbackGasPrice => LastGasPrice ?? EthGasPriceConstants.DefaultGasPrice;
+        private readonly UInt256 _minGasPrice;
+        public UInt256 FallbackGasPrice => LastGasPrice ?? _minGasPrice;
         private ISpecProvider SpecProvider { get; }
         public UInt256? LastGasPrice { get; set; }
         public Block? LastHeadBlock { get; set; }
@@ -38,9 +41,11 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
 
         public GasPriceOracle(
             IBlockFinder blockFinder,
-            ISpecProvider specProvider)
+            ISpecProvider specProvider,
+            UInt256? minGasPrice = null)
         {
             _blockFinder = blockFinder;
+            _minGasPrice = minGasPrice ?? new MiningConfig().MinGasPrice;
             SpecProvider = specProvider;
         }
 
@@ -126,12 +131,12 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
             }
         }
         
-        private static UInt256 GetGasPriceAtPercentile(List<UInt256> txGasPriceList)
+        private UInt256 GetGasPriceAtPercentile(List<UInt256> txGasPriceList)
         {
             int roundedIndex = GetRoundedIndexAtPercentile(txGasPriceList.Count);
             
             return roundedIndex < 0 
-                ? EthGasPriceConstants.DefaultGasPrice 
+                ? _minGasPrice 
                 : txGasPriceList[roundedIndex];
         }
 

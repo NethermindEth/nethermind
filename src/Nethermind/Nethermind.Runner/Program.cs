@@ -106,7 +106,7 @@ namespace Nethermind.Runner
             CommandOption configsDirectory = app.Option("-cd|--configsDirectory <configsDirectory>", "configs directory", CommandOptionType.SingleValue);
             CommandOption loggerConfigSource = app.Option("-lcs|--loggerConfigSource <loggerConfigSource>", "path to the NLog config file", CommandOptionType.SingleValue);
             _ = app.Option("-pd|--pluginsDirectory <pluginsDirectory>", "plugins directory", CommandOptionType.SingleValue);
-            
+
             IFileSystem fileSystem = new FileSystem();
             
             string pluginsDirectoryPath = LoadPluginsDirectory(args);
@@ -130,7 +130,8 @@ namespace Nethermind.Runner
                 }
 
                 ConfigCategoryAttribute? typeLevel = configType.GetCustomAttribute<ConfigCategoryAttribute>();
-                if (typeLevel?.HiddenFromDocs ?? false)
+                
+                if (typeLevel!=null && (typeLevel?.DisabledForCli ?? true))
                 {
                     continue;
                 }
@@ -140,9 +141,10 @@ namespace Nethermind.Runner
                     .OrderBy(p => p.Name))
                 {
                     ConfigItemAttribute? configItemAttribute = propertyInfo.GetCustomAttribute<ConfigItemAttribute>();
-                    if (!(configItemAttribute?.HiddenFromDocs ?? false))
+                    if (!(configItemAttribute?.DisabledForCli ?? false))
                     {
                         _ = app.Option($"--{configType.Name[1..].Replace("Config", string.Empty)}.{propertyInfo.Name}", $"{(configItemAttribute == null ? "<missing documentation>" : configItemAttribute.Description + $" (DEFAULT: {configItemAttribute.DefaultValue})" ?? "<missing documentation>")}", CommandOptionType.SingleValue);
+                        
                     }
                 }
             }
