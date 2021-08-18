@@ -1727,7 +1727,7 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        UInt256 baseFee = vmState.Env.TxExecutionContext.Header.BaseFeePerGas;
+                        UInt256 baseFee = txCtx.Header.BaseFeePerGas;
                         stack.PushUInt256(in baseFee);
                         break;
                     }

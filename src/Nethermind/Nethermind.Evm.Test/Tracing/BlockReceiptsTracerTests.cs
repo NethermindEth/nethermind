@@ -19,7 +19,6 @@ using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
-using Nethermind.Specs.Forks;
 using NSubstitute;
 using NUnit.Framework;
 
