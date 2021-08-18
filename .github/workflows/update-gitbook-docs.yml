@@ -15,7 +15,7 @@ jobs:
       env: 
         DISPATCH_REPO: NethermindEth/docs
       run: |
-        curl -v -X POST -u "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}" \
+        curl -s -X POST -u "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}" \
         -H "Accept: application/vnd.github.everest-preview+json" \
         -H "Content-Type: application/json" \
         --data '{"event_type":"docs_update"}' \

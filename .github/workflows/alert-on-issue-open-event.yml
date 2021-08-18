@@ -29,4 +29,4 @@ jobs:
         }
         EOF
         }
-        curl -X POST https://api.eu.opsgenie.com/v2/alerts -H "Content-Type: application/json" -H "Authorization: GenieKey ${{ secrets.OPSGENIE_API_KEY }}" -d "$(composeMessage)"
+        curl -s -X POST https://api.eu.opsgenie.com/v2/alerts -H "Content-Type: application/json" -H "Authorization: GenieKey ${{ secrets.OPSGENIE_API_KEY }}" -d "$(composeMessage)"
