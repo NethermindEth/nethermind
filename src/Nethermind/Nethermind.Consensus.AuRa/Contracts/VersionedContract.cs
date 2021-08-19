@@ -59,7 +59,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
                 }
                 catch (AbiException ex)
                 {
-                    if (_logger.IsWarn) _logger.Warn($"The contract version set to 1: {ex}");
+                    if (_logger.IsDebug) _logger.Debug($"The contract version set to 1: {ex}");
                     versionNumber = UInt256.One;
                     _versionsCache.Set(blockHeader.Hash, versionNumber);
                 }
