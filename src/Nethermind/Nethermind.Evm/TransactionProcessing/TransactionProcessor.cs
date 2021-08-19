@@ -116,7 +116,7 @@ namespace Nethermind.Evm.TransactionProcessing
             Execute(transaction, block, txTracer, ExecutionOptions.Commit);
         }
 
-        private void QuickFail(Transaction tx, BlockHeader block, ITxTracer txTracer, bool eip658NotEnabled, string? reason, bool deleteCallerAccount = false)
+        private void QuickFail(Transaction tx, BlockHeader block, ITxTracer txTracer, bool eip658NotEnabled, string? reason)
         {
             block.GasUsed += tx.GasLimit;
             
@@ -134,11 +134,6 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
                 
                 txTracer.MarkAsFailed(recipient, tx.GasLimit, Array.Empty<byte>(), reason ?? "invalid", stateRoot);
-            }
-            
-            if (deleteCallerAccount)
-            {
-                _stateProvider.DeleteAccount(tx.SenderAddress ?? throw new InvalidOperationException());
             }
         }
 
@@ -263,21 +258,21 @@ namespace Nethermind.Evm.TransactionProcessing
                 if ((!restore || isCommitAndRestoreWithoutZeroGasPrice) && ((ulong) intrinsicGas * gasPrice + value > senderBalance || senderReservedGasPayment + value > senderBalance))
                 {
                     TraceLogInvalidTx(transaction, $"INSUFFICIENT_SENDER_BALANCE: ({caller})_BALANCE = {senderBalance}");
-                    QuickFail(transaction, block, txTracer, eip658NotEnabled, "insufficient sender balance", isCommitAndRestoreWithoutZeroGasPrice && deleteCallerAccount);
+                    QuickFail(transaction, block, txTracer, eip658NotEnabled, "insufficient sender balance");
                     return;
                 }
                 
                 if ((!restore || isCommitAndRestoreWithoutZeroGasPrice) && spec.IsEip1559Enabled && !transaction.IsServiceTransaction && senderBalance < (UInt256)transaction.GasLimit * transaction.MaxFeePerGas + value)
                 {
                     TraceLogInvalidTx(transaction, $"INSUFFICIENT_MAX_FEE_PER_GAS_FOR_SENDER_BALANCE: ({caller})_BALANCE = {senderBalance}, MAX_FEE_PER_GAS: {transaction.MaxFeePerGas}");
-                    QuickFail(transaction, block, txTracer, eip658NotEnabled, "insufficient MaxFeePerGas for sender balance", isCommitAndRestoreWithoutZeroGasPrice && deleteCallerAccount);
+                    QuickFail(transaction, block, txTracer, eip658NotEnabled, "insufficient MaxFeePerGas for sender balance");
                     return;
                 }
 
                 if (transaction.Nonce != _stateProvider.GetNonce(caller))
                 {
                     TraceLogInvalidTx(transaction, $"WRONG_TRANSACTION_NONCE: {transaction.Nonce} (expected {_stateProvider.GetNonce(caller)})");
-                    QuickFail(transaction, block, txTracer, eip658NotEnabled, "wrong transaction nonce", isCommitAndRestoreWithoutZeroGasPrice && deleteCallerAccount);
+                    QuickFail(transaction, block, txTracer, eip658NotEnabled, "wrong transaction nonce");
                     return;
                 }
 
