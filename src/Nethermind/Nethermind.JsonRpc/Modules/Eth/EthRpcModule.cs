@@ -508,6 +508,12 @@ namespace Nethermind.JsonRpc.Modules.Eth
             int sumOfLogIdx = result.SumOfPreviousLogIndexes;
 
             ReceiptForRpc receiptModel = new(txHash, result.Receipt, result.EffectiveGasPrice, sumOfLogIdx);
+            
+            if (receiptModel.Error == "")
+            {
+                receiptModel.Error = null;
+            }
+            
             if (_logger.IsTrace) _logger.Trace($"eth_getTransactionReceipt request {txHash}, result: {txHash}");
             return Task.FromResult(ResultWrapper<ReceiptForRpc>.Success(receiptModel));
         }
