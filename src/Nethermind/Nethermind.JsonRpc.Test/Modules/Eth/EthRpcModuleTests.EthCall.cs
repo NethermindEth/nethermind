@@ -305,6 +305,19 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         }
 
         [Test]
+        public async Task Eth_call_with_different_nonce()
+        {
+            using Context ctx = await Context.CreateWithLondonEnabled();
+            Address someAccount = new Address("0x0d8775f648430679a709e98d2b0cb6250d2887ef");
+            ctx._test.ReadOnlyState.AccountExists(someAccount).Should().BeFalse();
+            TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>(
+                "{\"nonce\": \"105\", \"from\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
+            string serialized = ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction));
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32015,\"message\":\"VM execution error.\",\"data\":\"wrong transaction nonce\"},\"id\":67}", serialized);
+            ctx._test.ReadOnlyState.AccountExists(someAccount).Should().BeFalse();
+        }
+
+        [Test]
         public async Task Eth_call_with_base_fee_opcode()
         {
             using Context ctx = await Context.CreateWithLondonEnabled();
