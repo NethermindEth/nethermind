@@ -565,7 +565,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         
         
          [Test]
-        public async Task Eth_get_transaction_receipt_where_block_has_few_receipts()
+        public async Task Eth_get_transaction_receipt_when_block_has_few_receipts()
         {
             using Context ctx = await Context.Create();
             IBlockchainBridge blockchainBridge = Substitute.For<IBlockchainBridge>();

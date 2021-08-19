@@ -182,7 +182,6 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
         public void Get_receipt_when_block_has_few_receipts(bool withHeader, string expectedResult)
         {
             IReceiptFinder _receiptFinder = Substitute.For<IReceiptFinder>();
-            
             LogEntry[] logEntries = new[] {Build.A.LogEntry.TestObject, Build.A.LogEntry.TestObject};
 
             TxReceipt receipt1 = new TxReceipt()
@@ -219,11 +218,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             
             Block block = _blockTree.FindBlock(1);
             Keccak txHash = _blockTree.FindBlock(1).Transactions[1].Hash;
-
-        
             TxReceipt[] receipts = {receipt1, receipt2};
-            BlockReceiptsTracer receiptsTracer = Substitute.For<BlockReceiptsTracer>();
-
             _receiptFinder.Get(Arg.Any<Block>()).Returns(receipts);
             _receiptFinder.Get(Arg.Any<Keccak>()).Returns(receipts);
             _receiptFinder.FindBlockHash(Arg.Any<Keccak>()).Returns(_blockTree.FindBlock(1).Hash);
