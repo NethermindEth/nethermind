@@ -433,6 +433,7 @@ namespace Nethermind.Network.P2P
 
         public void MarkDisconnected(DisconnectReason disconnectReason, DisconnectType disconnectType, string details)
         {
+            if (PeerManager.NodesToDebug.Contains(this.RemoteNodeId.ToString()) && PeerManager.NodesToDebug.Contains(this.Node.Id.ToString())) _logger.Warn($"Disconnected session between remote {this.RemoteNodeId.ToString()} and local {this.Node.Id.ToString()}, resaon {disconnectReason}, disconnectType {disconnectType}, details {details}");
             lock (_sessionStateLock)
             {
                 if (State >= SessionState.Disconnecting)

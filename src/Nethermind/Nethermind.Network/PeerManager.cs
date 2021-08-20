@@ -58,6 +58,13 @@ namespace Nethermind.Network
         private int _failedInitialConnect;
         private int _connectionRounds;
 
+        public static List<string> NodesToDebug = new List<string>()
+        {
+            "0xdcaadbb010b9f4b32a3ceaaeef42989c21c9a3a7e290d1e632df8ef22d9b4b38c6229790c85039b040166e40df6945292e5cdf60f7fda0e18caee502280060a0",
+            "0x58b59795aebf9473c902f0c48168a151df4e17254dce64010444c4a041ff117d594969fb5c2799b7d8e06a222b7a4139468ddcc93a3386c4ee6e41b6948ace57",
+            "0x0cff97c1ce0f99f5b9094567eb86d2c8bcee300b4148711d58441188530efdd26b77f4db43c772791e7a143c661192ca4f32fd1c4e377b5aad7d5eb938091e5d"
+        };
+
         private Timer _peerPersistenceTimer;
         private Timer _peerUpdateTimer;
         
@@ -128,6 +135,7 @@ namespace Nethermind.Network
         
         public bool RemovePeer(NetworkNode node)
         {
+            if (NodesToDebug.Contains(node.NodeId.ToString())) _logger.Warn($"Remove peer {node.NodeId.ToString()}");
             bool removed =_peerPool.TryRemove(node.NodeId, out Peer peer);
             if (removed)
             {
@@ -385,10 +393,12 @@ namespace Nethermind.Network
 
             if (!result)
             {
+                if (NodesToDebug.Contains(peer.Node.Id.ToString())) _logger.Warn($"Failed to initialize connection {peer.Node.Id.ToString()}");
                 _stats.ReportEvent(peer.Node, NodeStatsEventType.ConnectionFailed);
                 Interlocked.Increment(ref _failedInitialConnect);
                 if (peer.OutSession != null)
                 {
+                    if (NodesToDebug.Contains(peer.Node.Id.ToString())) _logger.Warn($"Setup peer connection receive message timeout {peer.Node.Id.ToString()}");
                     if (_logger.IsTrace) _logger.Trace($"Timeout, doing additional disconnect: {peer.Node.Id}");
                     peer.OutSession?.MarkDisconnected(DisconnectReason.ReceiveMessageTimeout, DisconnectType.Local, "timeout");
                 }
@@ -403,6 +413,7 @@ namespace Nethermind.Network
 
         private bool AddActivePeer(PublicKey nodeId, Peer peer, string reason)
         {
+            if (NodesToDebug.Contains(nodeId.ToString())) _logger.Warn($"Add active peer {nodeId.ToString()}, resaon {reason}");
             peer.IsAwaitingConnection = false;
             bool added = _activePeers.TryAdd(nodeId, peer);
             if (added)
@@ -419,12 +430,19 @@ namespace Nethermind.Network
 
         private void RemoveActivePeer(PublicKey nodeId, string reason)
         {
+            if (NodesToDebug.Contains(nodeId.ToString()))
+            {
+                _logger.Warn($"Remove active peer {nodeId.ToString()}, resaon {reason}");
+                return;
+            }
+
             bool removed = _activePeers.TryRemove(nodeId, out Peer removedPeer);
             // if (removed && _logger.IsDebug) _logger.Debug($"{removedPeer.Node:s} removed from active peers - {reason}");
         }
 
         private void DeactivatePeerIfDisconnected(Peer peer, string reason)
         {
+            if (NodesToDebug.Contains(peer.Node.Id.ToString())) _logger.Warn($"DeactivatePeerIfDisconnected {peer.Node.Id.ToString()}, resaon {reason}");
             if(_logger.IsTrace) _logger.Trace($"DEACTIVATING IF DISCONNECTED {peer}");
             if (!IsConnected(peer) && !peer.IsAwaitingConnection)
             {
@@ -572,11 +590,13 @@ namespace Nethermind.Network
             }
             catch (NetworkingException ex)
             {
+                if (NodesToDebug.Contains(candidate.Node.Id.ToString())) _logger.Error($"InitializePeerConnection {candidate.Node.Id.ToString()} network exception", ex);
                 if (_logger.IsTrace) _logger.Trace($"Cannot connect to peer [{ex.NetworkExceptionType.ToString()}]: {candidate.Node:s}");
                 return false;
             }
             catch (Exception ex)
             {
+                if (NodesToDebug.Contains(candidate.Node.Id.ToString())) _logger.Error($"InitializePeerConnection {candidate.Node.Id.ToString()} exception", ex);
                 if (_logger.IsDebug) _logger.Error($"Error trying to initiate connection with peer: {candidate.Node:s}", ex);
                 return false;
             }
@@ -584,6 +604,7 @@ namespace Nethermind.Network
 
         private void ProcessOutgoingConnection(ISession session)
         {
+            if (NodesToDebug.Contains(session.Node.Id.ToString()) &&  NodesToDebug.Contains(session.RemoteNodeId.ToString())) _logger.Warn($"Processing outgoing between remote {session.RemoteNodeId} and local {session.Node.Id}");
             PublicKey id = session.RemoteNodeId;
             if(_logger.IsTrace) _logger.Trace($"PROCESS OUTGOING {id}");
 
@@ -629,6 +650,7 @@ namespace Nethermind.Network
                 }
             }
             
+            if (NodesToDebug.Contains(session.Node.Id.ToString()) &&  NodesToDebug.Contains(session.RemoteNodeId.ToString())) _logger.Warn($"Processing incoming between remote {session.RemoteNodeId} and local {session.Node.Id}");
             CheckIfNodeIsStatic(session.Node);
             
             if(_logger.IsTrace) _logger.Trace($"INCOMING {session}");
@@ -668,6 +690,7 @@ namespace Nethermind.Network
 
         private void AddSession(ISession session, Peer peer)
         {
+            if (NodesToDebug.Contains(session.Node.Id.ToString()) &&  NodesToDebug.Contains(session.RemoteNodeId.ToString())) _logger.Warn($"Adding session between remote {session.RemoteNodeId} and local {session.Node.Id}");
             if(_logger.IsTrace) _logger.Trace($"ADDING {session} {peer}");
             bool newSessionIsIn = session.Direction == ConnectionDirection.In;
             bool newSessionIsOut = !newSessionIsIn;
@@ -753,6 +776,7 @@ namespace Nethermind.Network
             {
                 peer.IsAwaitingConnection = false;
             }
+            if (NodesToDebug.Contains(peer.Node.Id.ToString())) _logger.Warn($"OnDisconnected {peer.Node.Id.ToString()}");
 
             if (_activePeers.TryGetValue(session.RemoteNodeId, out Peer activePeer))
             {
@@ -793,6 +817,7 @@ namespace Nethermind.Network
 
             if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {session} completed handshake - peer manager handling");
 
+            
             //This is the first moment we get confirmed publicKey of remote node in case of incoming connections
             if (session.Direction == ConnectionDirection.In)
             {
