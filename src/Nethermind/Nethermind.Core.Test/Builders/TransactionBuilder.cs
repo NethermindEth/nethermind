@@ -106,6 +106,12 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.GasPrice = maxPriorityFeePerGas;
             return this;
         }
+        
+        public TransactionBuilder<T> WithGasBottleneck(UInt256 gasBottleneck)
+        {
+            TestObjectInternal.GasBottleneck = gasBottleneck;
+            return this;
+        }
 
         public TransactionBuilder<T> WithTimestamp(UInt256 timestamp)
         {

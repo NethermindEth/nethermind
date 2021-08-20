@@ -51,11 +51,11 @@ namespace Nethermind.Mev.Test
             return simulatedMevBundleContext;
         }
 
-        public Task WaitForSimulationToFinish(MevBundle bundle, CancellationToken token) => WaitForSimulation(true, bundle, token);
+        public Task<bool?> WaitForSimulationToFinish(MevBundle bundle, CancellationToken token) => WaitForSimulation(true, bundle, token);
 
         public Task WaitForSimulationToStart(MevBundle bundle, CancellationToken token) => WaitForSimulation(false, bundle, token);
 
-        private async Task WaitForSimulation(bool toFinish, MevBundle bundle, CancellationToken token)
+        private async Task<bool?> WaitForSimulation(bool toFinish, MevBundle bundle, CancellationToken token)
         {
             foreach ((MevBundle Bundle, SimulatedMevBundleContext? Context) simulatedBundle in _queue.GetConsumingEnumerable(token))
             {
@@ -68,7 +68,8 @@ namespace Nethermind.Mev.Test
                 {
                     if (toFinish && simulatedBundle.Context is not null)
                     {
-                        await simulatedBundle.Item2.Task;
+                        SimulatedMevBundle simulatedMevBundle = await simulatedBundle.Item2.Task;
+                        return simulatedMevBundle.Success;
                     }
 
                     break;
@@ -78,6 +79,8 @@ namespace Nethermind.Mev.Test
                     _queue.Add(simulatedBundle, token);
                 }
             }
+
+            return null;
         }
     }
 }

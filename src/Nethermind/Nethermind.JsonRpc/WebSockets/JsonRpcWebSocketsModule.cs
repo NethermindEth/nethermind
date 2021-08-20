@@ -19,56 +19,54 @@ using System.Collections.Concurrent;
 using System.Net.WebSockets;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
+using Nethermind.JsonRpc.Modules;
+using Nethermind.Logging;
 using Nethermind.Serialization.Json;
-using Nethermind.WebSockets;
+using Nethermind.Sockets;
 
 namespace Nethermind.JsonRpc.WebSockets
 {
     public class JsonRpcWebSocketsModule : IWebSocketsModule
     {
-        private readonly ConcurrentDictionary<string, IWebSocketsClient> _clients =
-            new();
+        private readonly ConcurrentDictionary<string, ISocketsClient> _clients = new();
 
         private readonly JsonRpcProcessor _jsonRpcProcessor;
-        private readonly JsonRpcService _jsonRpcService;
-        private readonly IJsonSerializer _jsonSerializer;
+        private readonly IJsonRpcService _jsonRpcService;
         private readonly IJsonRpcLocalStats _jsonRpcLocalStats;
+        private readonly ILogManager _logManager;
+        private readonly IJsonSerializer _jsonSerializer;
 
         public string Name { get; } = "json-rpc";
 
         public JsonRpcWebSocketsModule(
             JsonRpcProcessor jsonRpcProcessor,
-            JsonRpcService jsonRpcService,
-            IJsonSerializer jsonSerializer,
-            IJsonRpcLocalStats jsonRpcLocalStats)
+            IJsonRpcService jsonRpcService,
+            IJsonRpcLocalStats jsonRpcLocalStats,
+            ILogManager logManager,
+            IJsonSerializer jsonSerializer)
         {
             _jsonRpcProcessor = jsonRpcProcessor;
             _jsonRpcService = jsonRpcService;
-            _jsonSerializer = jsonSerializer;
             _jsonRpcLocalStats = jsonRpcLocalStats;
+            _logManager = logManager;
+            _jsonSerializer = jsonSerializer;
         }
 
-        public IWebSocketsClient CreateClient(WebSocket webSocket, string client)
+        public ISocketsClient CreateClient(WebSocket webSocket, string clientName)
         {
-            var socketsClient = new JsonRpcWebSocketsClient(
-                new WebSocketsClient(webSocket, client, _jsonSerializer),
-                _jsonRpcProcessor,
-                _jsonRpcService,
-                _jsonSerializer,
-                _jsonRpcLocalStats);
+            var socketsClient = new JsonRpcSocketsClient(
+                clientName, 
+                new WebSocketHandler(webSocket, _logManager), 
+                RpcEndpoint.WebSocket, 
+                _jsonRpcProcessor, 
+                _jsonRpcService,  
+                _jsonRpcLocalStats, 
+                _jsonSerializer);
+
             _clients.TryAdd(socketsClient.Id, socketsClient);
 
             return socketsClient;
         }
-
-        public bool TryInit(HttpRequest request)
-        {
-            return true;
-        }
-
-        public Task SendRawAsync(string data) => Task.CompletedTask;
-
-        public Task SendAsync(WebSocketsMessage message) => Task.CompletedTask;
 
         public void RemoveClient(string id)
         {
@@ -78,5 +76,7 @@ namespace Nethermind.JsonRpc.WebSockets
                 disposableClient.Dispose();
             }
         }
+
+        public Task SendAsync(SocketsMessage message) => Task.CompletedTask;
     }
 }

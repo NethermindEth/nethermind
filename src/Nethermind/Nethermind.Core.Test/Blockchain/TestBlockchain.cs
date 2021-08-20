@@ -106,7 +106,7 @@ namespace Nethermind.Core.Test.Blockchain
 
         public IReadOnlyTrieStore ReadOnlyTrieStore { get; private set; }
 
-        public ManualTimestamper Timestamper { get; private set; }
+        public ManualTimestamper Timestamper { get; protected set; }
         
         public ProducedBlockSuggester Suggester { get; private set; }
 
@@ -169,7 +169,8 @@ namespace Nethermind.Core.Test.Blockchain
             
             TxPoolTxSource txPoolTxSource = CreateTxPoolTxSource();
             ISealer sealer = new NethDevSealEngine(TestItem.AddressD);
-            BlockProducer = CreateTestBlockProducer(txPoolTxSource, sealer);
+            ITransactionComparerProvider transactionComparerProvider = new TransactionComparerProvider(SpecProvider, BlockFinder);
+            BlockProducer = CreateTestBlockProducer(txPoolTxSource, sealer, transactionComparerProvider);
             Suggester = new ProducedBlockSuggester(BlockTree, BlockProducer);
             BlockProducer.Start();
 
@@ -207,7 +208,7 @@ namespace Nethermind.Core.Test.Blockchain
             }
         }
 
-        protected virtual IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer)
+        protected virtual IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
         {
             MiningConfig miningConfig = new();
 
@@ -221,6 +222,7 @@ namespace Nethermind.Core.Test.Blockchain
                 ReceiptStorage,
                 BlockPreprocessorStep,
                 TxPool,
+                transactionComparerProvider,
                 miningConfig,
                 LogManager);
 
@@ -334,7 +336,7 @@ namespace Nethermind.Core.Test.Blockchain
 
         public virtual void Dispose()
         {
-            TestContext.Out.WriteLine($"dispozing {this.GetHashCode()}");
+            TestContext.Out.WriteLine($"disposing {this.GetHashCode()}");
             BlockProducer?.StopAsync();
             CodeDb?.Dispose();
             StateDb?.Dispose();

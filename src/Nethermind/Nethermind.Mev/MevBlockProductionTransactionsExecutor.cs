@@ -67,7 +67,7 @@ namespace Nethermind.Mev
             _storageProvider = storageProvider;
         }
         
-        public override TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, IBlockTracer blockTracer, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec)
+        public override TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec)
         {
             IEnumerable<Transaction> transactions = GetTransactions(block);
             LinkedHashSet<Transaction> transactionsInBlock = new(ByHashTxComparer.Instance);
@@ -137,8 +137,8 @@ namespace Nethermind.Mev
                 ProcessBundle(block, bundleTransactions, transactionsInBlock, receiptsTracer, processingOptions);
             }
 
-            _stateProvider.Commit(spec);
-            _storageProvider.Commit();
+            _stateProvider.Commit(spec, receiptsTracer);
+            _storageProvider.Commit(receiptsTracer);
             
             SetTransactions(block, transactionsInBlock);
             return receiptsTracer.TxReceipts.ToArray();
@@ -174,8 +174,11 @@ namespace Nethermind.Mev
                 // if we need to stop on not first tx in the bundle, we actually want to skip the bundle
                 txAction = txAction == TxAction.Stop && index != 0 ? TxAction.Skip : txAction;
             }
-            
-            bundleSucceeded &= CheckFeeNotManipulated();
+
+            if (bundleSucceeded)
+            {
+                bundleSucceeded &= CheckFeeNotManipulated();
+            }
 
             if (bundleSucceeded)
             {
