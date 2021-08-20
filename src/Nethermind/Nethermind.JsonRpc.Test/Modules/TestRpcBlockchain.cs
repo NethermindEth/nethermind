@@ -102,13 +102,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 _blockchain.GasPriceOracle = gasPriceOracle;
                 return this;
             }
-        
-            public Builder<T> WithFeeHistoryOracle(IFeeHistoryOracle feeHistoryOracle)
-            {
-                _blockchain.FeeHistoryOracle = feeHistoryOracle;
-                return this;
-            }
-            
+
             public async Task<T> Build(ISpecProvider specProvider = null, UInt256? initialValues = null)
             {
                 return (T)(await _blockchain.Build(specProvider, initialValues));
