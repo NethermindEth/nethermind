@@ -504,9 +504,12 @@ namespace Nethermind.JsonRpc.Modules.Eth
             {
                 return Task.FromResult(ResultWrapper<ReceiptForRpc>.Success(null));
             }
-            
-            int sumOfLogIdx = result.SumOfPreviousLogIndexes;
-            ReceiptForRpc receiptModel = new(txHash, result.Receipt, result.EffectiveGasPrice, sumOfLogIdx);
+
+            Keccak blockHash = result.Receipt.BlockHash;
+            TxReceipt[] receipts = _receiptFinder.Get(blockHash);
+            RpcHelper rpcHelper = new();
+            int logIndexStart = rpcHelper.SumOfPreviousLogIndexesInBlock(result.Receipt.Index, receipts);
+            ReceiptForRpc receiptModel = new(txHash, result.Receipt, result.EffectiveGasPrice, logIndexStart);
             if (receiptModel.Error == "") receiptModel.Error = null;
 
             if (_logger.IsTrace) _logger.Trace($"eth_getTransactionReceipt request {txHash}, result: {txHash}");
