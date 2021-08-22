@@ -25,7 +25,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing.Access
 {
-    public class AccessTxTracer : ITxTracer, IAccessListSource
+    public class AccessTxTracer : ITxTracer
     {
         private const long ColdVsWarmSloadDelta = GasCostOf.ColdSLoad - GasCostOf.AccessStorageListEntry;
         public const long MaxStorageAccessToOptimize = GasCostOf.AccessAccountListEntry / ColdVsWarmSloadDelta;

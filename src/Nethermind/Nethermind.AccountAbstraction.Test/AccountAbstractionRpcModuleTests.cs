@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -82,8 +83,6 @@ namespace Nethermind.AccountAbstraction.Test
         {
             var chain = await CreateChain();
             (Address singletonAddress, Address? walletAddress, Address? paymasterAddress) = await Contracts.Deploy(chain, Contracts.SimpleWalletCode, Contracts.SimplePaymasterCode);
-            
-            
         }
     }
 }

@@ -29,6 +29,7 @@ using Nethermind.AccountAbstraction.Executor;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Evm.Tracing.Access;
+using Nethermind.Int256;
 using Nethermind.Network;
 using Nethermind.Network.P2P;
 using Nethermind.State;
@@ -48,7 +49,6 @@ namespace Nethermind.AccountAbstraction.Source
         private readonly ISet<Address> _bannedPaymasters;
         private readonly UserOperationSortedPool _userOperationSortedPool;
         private readonly IUserOperationSimulator _userOperationSimulator;
-        private readonly ConcurrentDictionary<UserOperation, SimulatedUserOperation> _simulatedUserOperations;
         private readonly IPeerManager _peerManager;
 
         public UserOperationPool(IBlockTree blockTree,
@@ -58,10 +58,9 @@ namespace Nethermind.AccountAbstraction.Source
             IAccountAbstractionConfig accountAbstractionConfig,
             IDictionary<Address, int> paymasterOffenseCounter,
             ISet<Address> bannedPaymasters,
-            IPeerManager? peerManager,
+            IPeerManager peerManager,
             UserOperationSortedPool userOperationSortedPool,
-            IUserOperationSimulator userOperationSimulator,
-            ConcurrentDictionary<UserOperation, SimulatedUserOperation> simulatedUserOperations)
+            IUserOperationSimulator userOperationSimulator)
         {
             _blockTree = blockTree;
             _stateProvider = stateProvider;
@@ -70,21 +69,17 @@ namespace Nethermind.AccountAbstraction.Source
             _accountAbstractionConfig = accountAbstractionConfig;
             _paymasterOffenseCounter = paymasterOffenseCounter;
             _bannedPaymasters = bannedPaymasters;
+            _peerManager = peerManager;
             _userOperationSortedPool = userOperationSortedPool;
             _userOperationSimulator = userOperationSimulator;
-            _simulatedUserOperations = simulatedUserOperations;
-            _peerManager = peerManager;
 
             blockTree.NewHeadBlock += OnNewBlock;
             _userOperationSortedPool.Inserted += UserOperationInserted;
-            _userOperationSortedPool.Removed += UserOperationRemoved;
-
         }
         
         private void UserOperationInserted(object? sender, SortedPool<UserOperation, UserOperation, Address>.SortedPoolEventArgs e)
         {
             UserOperation userOperation = e.Key;
-            SimulateAndAddToPool(userOperation, _blockTree.Head!.Header);
             BroadcastToCompatiblePeers(userOperation, _peerManager.ConnectedPeers);
         }
 
@@ -104,64 +99,29 @@ namespace Nethermind.AccountAbstraction.Source
             }
         }
 
-        private void UserOperationRemoved(object? sender, SortedPool<UserOperation, UserOperation, Address>.SortedPoolRemovedEventArgs e)
-        {
-            UserOperation userOperation = e.Key;
-            _simulatedUserOperations.TryRemove(userOperation, out _);
-        }
-
         private void OnNewBlock(object? sender, BlockEventArgs e)
         {
             Block block = e.Block;
-            
-            HashSet<Address> blockAccessedAddresses = _accessListSource.AccessList.Data.Keys.ToHashSet();
 
-            blockAccessedAddresses.Remove(block.Beneficiary);
-            blockAccessedAddresses.Remove(new Address(_accountAbstractionConfig.SingletonContractAddress));
+            IDictionary<Address, HashSet<UInt256>> blockAccessedList = (IDictionary<Address, HashSet<UInt256>>) _accessListSource.CombinedAccessList;
 
-            _userOperationSortedPool.GetSnapshot().Select(op => op.AccessList);
+            blockAccessedList.Remove(block.Beneficiary);
+            blockAccessedList.Remove(new Address(_accountAbstractionConfig.SingletonContractAddress));
 
-            foreach (UserOperation op in _userOperationSortedPool.GetSnapshot())
+            foreach (UserOperation op in GetUserOperations().Where(op => !op.AccessListTouched))
             {
-                if (blockAccessedAddresses.Overlaps(op.AccessList.Data.Keys))
+                if (AccessListOverlaps(blockAccessedList, op.AccessList.Data!))
                 {
-                    if (op.ResimulationCounter > _accountAbstractionConfig.MaxResimulations)
-                    {
-                        _userOperationSortedPool.TryRemove(op);
-                        _simulatedUserOperations.Remove(op, out _);
-
-                        if (op.Paymaster == Address.Zero)
-                        {
-                            _paymasterOffenseCounter[op.Target]++;
-                            if (_paymasterOffenseCounter[op.Target] > _accountAbstractionConfig.MaxResimulations)
-                            {
-                                _bannedPaymasters.Add(op.Target);
-                            }
-                        }
-                        else
-                        {
-                            _paymasterOffenseCounter[op.Paymaster]++;
-                            if (_paymasterOffenseCounter[op.Paymaster] > _accountAbstractionConfig.MaxResimulations)
-                            {
-                                _bannedPaymasters.Add(op.Paymaster);
-                            }
-                        }
-                    }
-                    op.ResimulationCounter++;
-                    _simulatedUserOperations.TryRemove(op, out _);
-                    SimulateAndAddToPool(op, block.Header);
+                    op.AccessListTouched = true;
                 }
-            } 
-            
-            
-            // verify each one still has enough balance, nonce is correct etc.
+            }
         }
 
         public IEnumerable<UserOperation> GetUserOperations() => _userOperationSortedPool.GetSnapshot();
 
         public bool AddUserOperation(UserOperation userOperation)
         {
-            if (ValidateUserOperation(userOperation, out SimulatedUserOperation simulatedUserOperation))
+            if (ValidateUserOperation(userOperation))
             {
                 return _userOperationSortedPool.TryInsert(userOperation, userOperation);
             }
@@ -169,12 +129,11 @@ namespace Nethermind.AccountAbstraction.Source
             return false;
         }
 
-        private bool ValidateUserOperation(UserOperation userOperation, out SimulatedUserOperation simulatedUserOperation)
+        private bool ValidateUserOperation(UserOperation userOperation)
         {
             if (userOperation.MaxFeePerGas < _accountAbstractionConfig.MinimumGasPrice 
                 || userOperation.CallGas < Transaction.BaseTxGasCost)
             {
-                simulatedUserOperation = SimulatedUserOperation.FailedSimulatedUserOperation(userOperation);
                 return false;
             }
 
@@ -183,7 +142,6 @@ namespace Nethermind.AccountAbstraction.Source
                 userOperation.Target == Address.Zero
                 || !_stateProvider.AccountExists(userOperation.Target))
             {
-                simulatedUserOperation = SimulatedUserOperation.FailedSimulatedUserOperation(userOperation);
                 return false;
             }
 
@@ -194,7 +152,6 @@ namespace Nethermind.AccountAbstraction.Source
                     || !_stateProvider.IsContract(userOperation.Paymaster)
                     || _bannedPaymasters.Contains(userOperation.Paymaster))
                 {
-                    simulatedUserOperation = SimulatedUserOperation.FailedSimulatedUserOperation(userOperation);
                     return false;
                 }
             }
@@ -202,37 +159,41 @@ namespace Nethermind.AccountAbstraction.Source
             // make sure op not already in pool
             if (_userOperationSortedPool.GetSnapshot().Contains(userOperation))
             {
-                simulatedUserOperation = SimulatedUserOperation.FailedSimulatedUserOperation(userOperation);
                 return false;
             }
 
             // simulate
-            simulatedUserOperation = Task.Run(() => _userOperationSimulator.Simulate(userOperation, _blockTree.Head.Header, CancellationToken.None, _timestamper.UnixTime.Seconds)).Result;
-            if (simulatedUserOperation.Success == false)
-            {
-                simulatedUserOperation = SimulatedUserOperation.FailedSimulatedUserOperation(userOperation);
-                return false;
-            }
+            Task<bool> successfulSimulationTask = Simulate(userOperation, _blockTree.Head!.Header);
+            bool successfulSimulation = successfulSimulationTask.Result;
 
-            return true;
+            return successfulSimulation;
         }
 
-        private async void SimulateAndAddToPool(UserOperation userOperation, BlockHeader parent)
+        private async Task<bool> Simulate(UserOperation userOperation, BlockHeader parent)
         {
-            SimulatedUserOperation simulatedUserOperation = await _userOperationSimulator.Simulate(
+            bool success = await _userOperationSimulator.Simulate(
                 userOperation, 
                 parent, 
                 CancellationToken.None, 
                 _timestamper.UnixTime.Seconds);
 
-            if (simulatedUserOperation.Success)
+            return success;
+        }
+
+        public static bool AccessListOverlaps(IDictionary<Address, HashSet<UInt256>> accessList1, IReadOnlyDictionary<Address, IReadOnlySet<UInt256>> accessList2)
+        {
+            foreach (var kv in accessList1)
             {
-                _simulatedUserOperations[userOperation] = simulatedUserOperation;
+                if (accessList2.ContainsKey(kv.Key))
+                {
+                    if (accessList2[kv.Key].Overlaps(kv.Value))
+                    {
+                        return true;
+                    }
+                }
             }
-            else
-            {
-                _userOperationSortedPool.TryRemove(userOperation);
-            }
+
+            return false;
         }
     }
 }

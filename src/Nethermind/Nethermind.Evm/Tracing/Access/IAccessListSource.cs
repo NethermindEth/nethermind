@@ -15,12 +15,14 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Core.Eip2930;
+using System.Collections.Generic;
+using Nethermind.Core;
+using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing.Access
 {
     public interface IAccessListSource
     {
-        public AccessList? AccessList { get; }
+        public IReadOnlyDictionary<Address, HashSet<UInt256>> CombinedAccessList { get; }
     }
 }

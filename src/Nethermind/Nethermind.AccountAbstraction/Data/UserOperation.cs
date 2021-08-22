@@ -53,5 +53,6 @@ namespace Nethermind.AccountAbstraction.Data
         public Signature Signature { get; }
         public AccessList AccessList { get; }
         public int ResimulationCounter { get; set; }
+        public bool AccessListTouched { get; set; }
     }
 }

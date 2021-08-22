@@ -47,7 +47,6 @@ namespace Nethermind.AccountAbstraction.Executor
 {
     public class UserOperationSimulator : IUserOperationSimulator
     {
-        private readonly ConcurrentDictionary<UserOperation, SimulatedUserOperation> _simulatedUserOperations;
         private readonly IStateProvider _stateProvider;
         private readonly ISigner _signer;
         private readonly IAccountAbstractionConfig _config;
@@ -59,7 +58,6 @@ namespace Nethermind.AccountAbstraction.Executor
         private readonly IBlockPreprocessorStep _recoveryStep;
 
         public UserOperationSimulator(
-            ConcurrentDictionary<UserOperation, SimulatedUserOperation> simulatedUserOperations,
             IStateProvider stateProvider,
             ISigner signer,
             IAccountAbstractionConfig config,
@@ -70,7 +68,6 @@ namespace Nethermind.AccountAbstraction.Executor
             ILogManager logManager,
             IBlockPreprocessorStep recoveryStep)
         {
-            _simulatedUserOperations = simulatedUserOperations;
             _stateProvider = stateProvider;
             _signer = signer;
             _config = config;
@@ -82,7 +79,7 @@ namespace Nethermind.AccountAbstraction.Executor
             _recoveryStep = recoveryStep;
         }
 
-        public Task<SimulatedUserOperation> Simulate(
+        public Task<bool> Simulate(
             UserOperation userOperation, 
             BlockHeader parent,
             CancellationToken cancellationToken = default, 
@@ -93,21 +90,11 @@ namespace Nethermind.AccountAbstraction.Executor
             UserOperationBlockTracer blockTracer = CreateBlockTracer(userOperationTransaction, parent);
             ITracer tracer = CreateTracer();
             tracer.Trace(block, blockTracer.WithCancellation(cancellationToken));
-            return Task.FromResult(BuildResult(userOperation, blockTracer));
-        }
 
-        public SimulatedUserOperation BuildResult(
-            UserOperation userOperation,
-            UserOperationBlockTracer userOperationBlockTracer)
-        {
-            UInt256 impliedGasPrice = userOperationBlockTracer.Reward / (UInt256)userOperationBlockTracer.GasUsed;
-
-            SimulatedUserOperation simulatedUserOperation = new(
-                userOperation,
-                userOperationBlockTracer.Success,
-                impliedGasPrice);
-
-            return simulatedUserOperation;
+            // reset
+            userOperation.AccessListTouched = false;
+            
+            return Task.FromResult(blockTracer.Success);
         }
 
         public Transaction BuildTransactionFromUserOperations(

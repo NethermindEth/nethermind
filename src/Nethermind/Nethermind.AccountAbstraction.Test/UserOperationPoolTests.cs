@@ -36,7 +36,7 @@ namespace Nethermind.AccountAbstraction.Test
         [Test]
         public void Can_add_user_operation_correctly()
         {
-            var (userOperationPool, _, _, _) = GenerateUserOperationPool();
+            var (userOperationPool, _, _) = GenerateUserOperationPool();
 
             UserOperation op = new(Address.SystemUser,
                 0,
@@ -59,7 +59,7 @@ namespace Nethermind.AccountAbstraction.Test
         [Test]
         public void Can_evict_lower_gas_price_user_operation_if_full()
         {
-            var (userOperationPool, _, _, _) = GenerateUserOperationPool(1);
+            var (userOperationPool, _, _) = GenerateUserOperationPool(1);
 
             UserOperation op = new(Address.SystemUser,
                 0,
@@ -93,7 +93,7 @@ namespace Nethermind.AccountAbstraction.Test
         [Test]
         public void Added_user_operation_gets_simulated()
         {
-            var (userOperationPool, simulator, _, _) = GenerateUserOperationPool();
+            var (userOperationPool, simulator, _) = GenerateUserOperationPool();
 
             UserOperation op = new(Address.SystemUser,
                 0,
@@ -114,7 +114,7 @@ namespace Nethermind.AccountAbstraction.Test
         [Test]
         public void Evicted_user_operation_has_its_simulated_removed_automatically()
         {
-            var (userOperationPool, simulator, simulatedUserOperations, _) = GenerateUserOperationPool(1);
+            var (userOperationPool, simulator, _) = GenerateUserOperationPool(1);
             UserOperation op = new(Address.SystemUser,
                 0,
                 Address.Zero.Bytes,
@@ -138,14 +138,14 @@ namespace Nethermind.AccountAbstraction.Test
 
             userOperationPool.AddUserOperation(op);
             simulator.Received().Simulate(op, Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>(), Arg.Any<UInt256>());
-            simulatedUserOperations.Count.Should().Be(1);
-            simulatedUserOperations.Keys.Should().BeEquivalentTo(op);
+            userOperationPool.GetUserOperations().Count().Should().Be(1);
+            userOperationPool.GetUserOperations().Should().BeEquivalentTo(op);
 
             userOperationPool.AddUserOperation(op2);
             simulator.Received()
                 .Simulate(op2, Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>(), Arg.Any<UInt256>());
-            simulatedUserOperations.Count.Should().Be(1);
-            simulatedUserOperations.Keys.Should().BeEquivalentTo(op2);
+            userOperationPool.GetUserOperations().Count().Should().Be(1);
+            userOperationPool.GetUserOperations().Should().BeEquivalentTo(op2);
         }
 
         private static IEnumerable<UserOperation> BadOperations
@@ -203,7 +203,7 @@ namespace Nethermind.AccountAbstraction.Test
         [TestCaseSource(nameof(BadOperations))]
         public void Does_not_accept_obviously_bad_user_operations_into_pool(UserOperation userOperation)
         {
-            var (userOperationPool, _, _, _) = GenerateUserOperationPool(1);
+            var (userOperationPool, _, _) = GenerateUserOperationPool(1);
 
             userOperationPool.AddUserOperation(userOperation);
             UserOperation[] userOperations = userOperationPool.GetUserOperations().ToArray();
@@ -232,7 +232,7 @@ namespace Nethermind.AccountAbstraction.Test
         [Test]
         public void Deletes_op_if_resimulated_too_many_times()
         {
-            var (userOperationPool, simulator, simulatedUserOperations, _) = GenerateUserOperationPool(10);
+            var (userOperationPool, simulator, _) = GenerateUserOperationPool(10);
             UserOperation op = new(Address.SystemUser,
                 0,
                 Address.Zero.Bytes,
@@ -261,7 +261,7 @@ namespace Nethermind.AccountAbstraction.Test
         [Test]
         public void Bans_paymaster_if_it_uses_too_much_gas_for_simulation_too_many_times()
         {
-            var (userOperationPool, simulator, simulatedUserOperations, blockTree) = GenerateUserOperationPool(10);
+            var (userOperationPool, simulator, blockTree) = GenerateUserOperationPool(10);
             UserOperation op = new(Address.SystemUser,
                 0,
                 Address.Zero.Bytes,
@@ -296,11 +296,10 @@ namespace Nethermind.AccountAbstraction.Test
             userOperations.Length.Should().Be(0);
         }
 
-        private (UserOperationPool, IUserOperationSimulator, ConcurrentDictionary<UserOperation, SimulatedUserOperation>, IBlockTree) GenerateUserOperationPool(int capacity = 10)
+        private (UserOperationPool, IUserOperationSimulator, IBlockTree) GenerateUserOperationPool(int capacity = 10)
         {
             UserOperationSortedPool userOperationSortedPool =
                 new UserOperationSortedPool(capacity, CompareUserOperationsByDecreasingGasPrice.Default, LimboLogs.Instance);
-            ConcurrentDictionary<UserOperation, SimulatedUserOperation> simulatedUserOperations = new();
 
             IStateProvider stateProvider = Substitute.For<IStateProvider>();
             stateProvider.GetBalance(Arg.Any<Address>()).Returns(1.Ether());
@@ -313,7 +312,7 @@ namespace Nethermind.AccountAbstraction.Test
 
             IUserOperationSimulator simulator = Substitute.For<IUserOperationSimulator>();
             simulator.Simulate(Arg.Any<UserOperation>(), Arg.Any<BlockHeader>())
-                .ReturnsForAnyArgs(x => Task.FromResult(new SimulatedUserOperation(x.Arg<UserOperation>(), true, 10)));
+                .ReturnsForAnyArgs(x => Task.FromResult(true));
 
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             blockTree.Head.Returns(Build.A.Block.TestObject);
@@ -324,8 +323,8 @@ namespace Nethermind.AccountAbstraction.Test
 
             IAccessListSource accessListSource = Substitute.For<IAccessListSource>();
 
-            accessListSource.AccessList.Returns(new AccessList(
-                new Dictionary<Address, IReadOnlySet<UInt256>> {{new("0x0000000000000000000000000000000000000001"), new HashSet<UInt256> {0}}}));
+            accessListSource.CombinedAccessList.Returns(
+                new Dictionary<Address, HashSet<UInt256>> {{new("0x0000000000000000000000000000000000000001"), new HashSet<UInt256> {0}}});
             
             IPeerManager peerManager = Substitute.For<IPeerManager>();
 
@@ -339,10 +338,9 @@ namespace Nethermind.AccountAbstraction.Test
                 new HashSet<Address>(), 
                 peerManager,
                 userOperationSortedPool,
-                simulator,
-                simulatedUserOperations
+                simulator
             );
-            return (userOperationPool, simulator, simulatedUserOperations, blockTree);
+            return (userOperationPool, simulator, blockTree);
         }
     }
 }

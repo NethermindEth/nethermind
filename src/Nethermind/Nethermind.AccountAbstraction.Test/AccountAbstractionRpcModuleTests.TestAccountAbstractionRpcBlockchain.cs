@@ -70,7 +70,6 @@ namespace Nethermind.AccountAbstraction.Test
         public class TestAccountAbstractionRpcBlockchain : TestRpcBlockchain
         {
             public UserOperationPool UserOperationPool { get; private set; } = null!;
-            public ConcurrentDictionary<UserOperation, SimulatedUserOperation> SimulatedUserOperations { get; private set; } = null!;
             public UserOperationSimulator UserOperationSimulator { get; private set; } = null!;
 
             public TestAccountAbstractionRpcBlockchain(UInt256? initialBaseFeePerGas)
@@ -85,7 +84,11 @@ namespace Nethermind.AccountAbstraction.Test
             
             public IAccountAbstractionRpcModule AccountAbstractionRpcModule { get; set; } = Substitute.For<IAccountAbstractionRpcModule>();
             public ManualGasLimitCalculator GasLimitCalculator = new() {GasLimit = 10_000_000};
-            private AccountAbstractionConfig _accountAbstractionConfig = new AccountAbstractionConfig() {Enabled = true};
+            private AccountAbstractionConfig _accountAbstractionConfig = new AccountAbstractionConfig() 
+                {
+                    Enabled = true, 
+                    SingletonContractAddress = "0xd75a3a95360e44a3874e691fb48d77855f127069"
+                };
             public Address MinerAddress => TestItem.PrivateKeyD.Address;
             private IBlockValidator BlockValidator { get; set; } = null!;
             private ISigner Signer { get; }
@@ -96,7 +99,7 @@ namespace Nethermind.AccountAbstraction.Test
             {
                 MiningConfig miningConfig = new() {MinGasPrice = UInt256.One};
 
-                UserOperationTxSource userOperationTxSource = new(UserOperationPool, SimulatedUserOperations, UserOperationSimulator);
+                UserOperationTxSource userOperationTxSource = new(UserOperationPool, UserOperationSimulator);
 
                 BlockProducerEnvFactory blockProducerEnvFactory = new BlockProducerEnvFactory(
                     DbProvider,
@@ -140,7 +143,6 @@ namespace Nethermind.AccountAbstraction.Test
                     LogManager);
 
                 UserOperationSimulator = new(
-                    SimulatedUserOperations, 
                     State, 
                     new Eth2Signer(MinerAddress), 
                     _accountAbstractionConfig, 
@@ -160,9 +162,7 @@ namespace Nethermind.AccountAbstraction.Test
                     new HashSet<Address>(),
                     peerManager,
                     new UserOperationSortedPool(_accountAbstractionConfig.UserOperationPoolSize, new CompareUserOperationsByDecreasingGasPrice(), LogManager),
-                    UserOperationSimulator,
-                    SimulatedUserOperations);
-                SimulatedUserOperations = new ConcurrentDictionary<UserOperation, SimulatedUserOperation>();
+                    UserOperationSimulator);
                 
                 return blockProcessor;
             }

@@ -18,55 +18,87 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Executor;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Int256;
 
 namespace Nethermind.AccountAbstraction.Source
 {
     public class UserOperationTxSource : ITxSource
     {
         private readonly IUserOperationPool _userOperationPool;
-        private readonly ConcurrentDictionary<UserOperation, SimulatedUserOperation> _simulatedUserOperations;
         private readonly IUserOperationSimulator _userOperationSimulator;
 
-        public UserOperationTxSource(IUserOperationPool userOperationPool, 
-            ConcurrentDictionary<UserOperation, SimulatedUserOperation> simulatedUserOperations,
+        public UserOperationTxSource(
+            IUserOperationPool userOperationPool, 
             IUserOperationSimulator userOperationSimulator)
         {
             _userOperationPool = userOperationPool;
-            _simulatedUserOperations = simulatedUserOperations;
             _userOperationSimulator = userOperationSimulator;
         }
 
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
         {
-            IList<Address> usedAddresses = new List<Address>();
-            IList<UserOperation> userOperations = new List<UserOperation>();
+            IDictionary<Address, HashSet<UInt256>> usedAccessList = new Dictionary<Address, HashSet<UInt256>>();
+            IList<UserOperation> userOperationsToInclude = new List<UserOperation>();
             long gasUsed = 0;
             
-            IEnumerable<SimulatedUserOperation> simulatedUserOperations = _simulatedUserOperations.Values.OrderByDescending(op => op.ImpliedGasPrice);
-            foreach (SimulatedUserOperation simulatedUserOperation in simulatedUserOperations)
+            IEnumerable<UserOperation> userOperations = _userOperationPool.GetUserOperations().Where(op => op.MaxFeePerGas >= parent.BaseFeePerGas).OrderByDescending(op => CalculateUserOperationPremiumGasPrice(op, parent.BaseFeePerGas));
+            foreach (UserOperation userOperation in userOperations)
             {
                 if (gasUsed >= gasLimit)
                 {
-                    break;
+                    continue;
                 }
                 
                 // no intersect of accessed addresses
-                if (usedAddresses.Intersect(simulatedUserOperation.UserOperation.AccessList.Data.Keys).Any())
+                if (UserOperationPool.AccessListOverlaps(usedAccessList, userOperation.AccessList.Data))
                 {
-                    break;
+                    continue;
+                }
+
+                if (userOperation.AccessListTouched)
+                {
+                    Task<bool> successTask = _userOperationSimulator.Simulate(userOperation, parent);
+                    bool success = successTask.Result;
+                    if (!success)
+                    {
+                        // implement flow here
+                    }
                 }
                 
-                userOperations.Add(simulatedUserOperation.UserOperation);
-                gasUsed += simulatedUserOperation.UserOperation.CallGas; // TODO FIX THIS AFTER WE FIGURE OUT HOW CONTRACT WORKS
+                userOperationsToInclude.Add(userOperation);
+                gasUsed += userOperation.CallGas; // TODO FIX THIS AFTER WE FIGURE OUT HOW CONTRACT WORKS
+                
+                foreach (var kv in userOperation.AccessList.Data)
+                {
+                    if (usedAccessList.ContainsKey(kv.Key))
+                    {
+                        usedAccessList[kv.Key].UnionWith(kv.Value);
+                    }
+                    else
+                    {
+                        usedAccessList[kv.Key] = (HashSet<UInt256>) kv.Value;
+                    }
+                }
             }
 
-            Transaction userOperationTransaction = _userOperationSimulator.BuildTransactionFromUserOperations(userOperations, parent);
+            if (userOperationsToInclude.Count == 0)
+            {
+                return new List<Transaction>();
+            }
+            
+            Transaction userOperationTransaction = _userOperationSimulator.BuildTransactionFromUserOperations(userOperationsToInclude, parent);
             return new List<Transaction>{userOperationTransaction};
+        }
+
+        private UInt256 CalculateUserOperationPremiumGasPrice(UserOperation op, UInt256 baseFeePerGas)
+        {
+            return UInt256.Min(op.MaxPriorityFeePerGas, op.MaxFeePerGas - baseFeePerGas);
         }
     }
 }

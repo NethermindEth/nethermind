@@ -27,9 +27,7 @@ namespace Nethermind.AccountAbstraction
         private AccessBlockTracer _accessBlockTracer = null!;
         private IDictionary<Address, int> _paymasterOffenseCounter = new Dictionary<Address, int>();
         private ISet<Address> _bannedPaymasters = new HashSet<Address>();
-
-        private ConcurrentDictionary<UserOperation, SimulatedUserOperation> _simulatedUserOperations = new();
-
+        
         private INethermindApi _nethermindApi = null!;
         private ILogger _logger;
 
@@ -63,8 +61,7 @@ namespace Nethermind.AccountAbstraction
                         _bannedPaymasters,
                         _nethermindApi.PeerManager,
                         userOperationSortedPool,
-                        UserOperationSimulator,
-                        _simulatedUserOperations
+                        UserOperationSimulator
                     );
                 }
 
@@ -81,7 +78,6 @@ namespace Nethermind.AccountAbstraction
                     var (getFromApi, _) = _nethermindApi!.ForProducer;
 
                     _userOperationSimulator = new(
-                        _simulatedUserOperations,
                         getFromApi.StateProvider,
                         getFromApi.EngineSigner,
                         _accountAbstractionConfig,
@@ -166,7 +162,7 @@ namespace Nethermind.AccountAbstraction
             }
 
             IManualBlockProductionTrigger trigger = new BuildBlocksWhenRequested();
-            UserOperationTxSource userOperationTxSource = new(UserOperationPool, _simulatedUserOperations, UserOperationSimulator);
+            UserOperationTxSource userOperationTxSource = new(UserOperationPool, UserOperationSimulator);
             ContinuousBundleSender continuousBundleSender = new ContinuousBundleSender(_nethermindApi.BlockTree, userOperationTxSource, _accountAbstractionConfig, _timerFactory);
             return consensusPlugin.InitBlockProducer(trigger, userOperationTxSource);
         }
