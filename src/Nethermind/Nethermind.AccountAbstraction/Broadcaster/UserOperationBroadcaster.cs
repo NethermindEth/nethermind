@@ -55,6 +55,26 @@ namespace Nethermind.AccountAbstraction.Broadcaster
             _userOperation = new UserOperationSortedPool(MemoryAllowance.MemPoolSize, comparer, logManager);
         }
         
+        private void Notify(IUserOperationPoolPeer peer, UserOperation uop)
+        {
+            try
+            {
+                if (peer.SendNewUserOperation(uop))
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Notified {peer} about a useroperation: {uop.Hash}");
+                }
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsError) _logger.Error($"Failed to notify {peer} about a useroperation: {uop.Hash}", e);
+            }
+        }
+        
+        public void BroadcastOnce(IUserOperationPoolPeer peer, UserOperation uop)
+        {
+            Notify(peer, uop);
+        }
+
         public void Dispose()
         {
         }

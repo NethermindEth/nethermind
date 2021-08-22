@@ -90,12 +90,9 @@ namespace Nethermind.AccountAbstraction.Source
             foreach (var peer in compatiblePeers)
             {
                 Task.Run(() =>
-                    {
-                        // This method is not implemented yet
-                        // but added just for the purpose of
-                        // understanding
-                        //Notify(peer, userOperation, true);
-                    });
+                {
+                    //_broadcaster.BroadcastOnce(peerInfo, userOperation);
+                });
             }
         }
 
