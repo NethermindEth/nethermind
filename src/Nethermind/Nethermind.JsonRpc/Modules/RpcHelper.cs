@@ -21,16 +21,11 @@ namespace Nethermind.JsonRpc.Modules
 {
     public class RpcHelper
     {
-        public RpcHelper()
-        {
-            
-        }
+        public RpcHelper() { }
         
         public int SumOfPreviousLogIndexesInBlock(int index, TxReceipt[] receipts)
         {
-            
             int sum = 0;
-            
             for (int i = 0; i < receipts.Length; ++i)
             {
                 if (receipts[i].Index < index)
@@ -38,7 +33,6 @@ namespace Nethermind.JsonRpc.Modules
                     sum += receipts[i].Logs.Length;
                 }
             }
-        
             return sum;
         }
     }

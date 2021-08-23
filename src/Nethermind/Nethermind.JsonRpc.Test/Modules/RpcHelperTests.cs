@@ -16,15 +16,9 @@
 // 
 
 using System.Threading.Tasks;
-using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Facade;
-using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules
@@ -91,8 +85,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             RpcHelper rpcHelper = new();
             int sum = rpcHelper.SumOfPreviousLogIndexesInBlock(index, receipts);
-
-
+            
             Assert.AreEqual(sum, 4);
         }
     }
