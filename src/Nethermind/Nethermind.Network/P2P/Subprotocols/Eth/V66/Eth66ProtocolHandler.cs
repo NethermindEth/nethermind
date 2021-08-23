@@ -192,6 +192,18 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
         {
             _receiptsRequests66.Handle(msg.TxReceipts, size);
         }
+        
+        protected override void Handle(NewPooledTransactionHashesMessage msg)
+        {
+            Stopwatch stopwatch = Stopwatch.StartNew();
+
+            _pooledTxsRequestor.RequestTransactionsEth66(Send, msg.Hashes.ToArray());
+            
+            stopwatch.Stop();
+            if (Logger.IsTrace)
+                Logger.Trace($"OUT {Counter:D5} {nameof(NewPooledTransactionHashesMessage)} to {Node:c} " +
+                             $"in {stopwatch.Elapsed.TotalMilliseconds}ms");
+        }
 
         protected override async Task<BlockHeader[]> SendRequest(Eth.V62.GetBlockHeadersMessage message, CancellationToken token)
         {
@@ -348,18 +360,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             StatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.Receipts, 0L);
 
             throw new TimeoutException($"{Session} Request timeout in {nameof(GetReceiptsMessage)}");
-        }
-        
-        protected override void Handle(NewPooledTransactionHashesMessage msg)
-        {
-            Stopwatch stopwatch = Stopwatch.StartNew();
-
-            _pooledTxsRequestor.RequestTransactionsEth66(Send, msg.Hashes.ToArray());
-            
-            stopwatch.Stop();
-            if (Logger.IsTrace)
-                Logger.Trace($"OUT {Counter:D5} {nameof(NewPooledTransactionHashesMessage)} to {Node:c} " +
-                             $"in {stopwatch.Elapsed.TotalMilliseconds}ms");
         }
     }
 }
