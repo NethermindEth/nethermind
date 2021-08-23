@@ -29,7 +29,7 @@ namespace Nethermind.Consensus
     public class Signer : ISigner, ISignerStore
     {
         private readonly ulong _chainId;
-        private ProtectedPrivateKey? _key;
+        private PrivateKey? _key;
         private readonly ILogger _logger;
 
         public Address Address => _key?.Address ?? Address.Zero;
@@ -53,9 +53,7 @@ namespace Nethermind.Consensus
         public Signature Sign(Keccak message)
         {
             if (!CanSign) throw new InvalidOperationException("Cannot sign without provided key.");
-            
-            using PrivateKey key = _key!.Unprotect();
-            byte[] rs = Proxy.SignCompact(message.Bytes, key.KeyBytes, out int v);
+            byte[] rs = Proxy.SignCompact(message.Bytes, _key!.KeyBytes, out int v);
             return new Signature(rs, v);
         }
 
@@ -67,18 +65,24 @@ namespace Nethermind.Consensus
             return default;
         }
 
-        public ProtectedPrivateKey Key => _key; 
+        public PrivateKey? Key => _key is null ? null : new PrivateKey(_key.KeyBytes); 
 
         public void SetSigner(PrivateKey? key)
-        {
-            SetSigner(key is null ? null : new ProtectedPrivateKey(key));
-        }
-
-        public void SetSigner(ProtectedPrivateKey? key)
         {
             _key = key;
             if (_logger.IsInfo) _logger.Info(
                 _key != null ? $"Address {Address} is configured for signing blocks." : "No address is configured for signing blocks.");
+        }
+
+        public void SetSigner(ProtectedPrivateKey? key)
+        {
+            PrivateKey? pk = null; 
+            if (key is not null)
+            {
+                pk = key.Unprotect();
+            }
+            
+            SetSigner(pk);
         }
     }
 }

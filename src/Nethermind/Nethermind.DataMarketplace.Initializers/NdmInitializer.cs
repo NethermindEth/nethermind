@@ -36,7 +36,7 @@ using Nethermind.DataMarketplace.Infrastructure.Modules;
 using Nethermind.DataMarketplace.Infrastructure.Notifiers;
 using Nethermind.DataMarketplace.Subprotocols.Factories;
 using Nethermind.Db;
-using Nethermind.WebSockets;
+using Nethermind.Sockets;
 using Nethermind.DataMarketplace.Infrastructure.Updaters;
 using Nethermind.DataMarketplace.Infrastructure.Database;
 

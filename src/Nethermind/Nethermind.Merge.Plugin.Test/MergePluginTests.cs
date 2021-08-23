@@ -18,6 +18,7 @@
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Core.Test.Builders;
@@ -55,6 +56,7 @@ namespace Nethermind.Merge.Plugin.Test
                 _context.ReceiptStorage!,
                 _context.BlockPreprocessor!,
                 _context.TxPool!,
+                _context.TransactionComparerProvider,
                 new MiningConfig(),
                 _context.LogManager!);
             _plugin = new MergePlugin();

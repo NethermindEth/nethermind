@@ -19,14 +19,16 @@ using System.Collections.Generic;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
+using Nethermind.Logging;
 
 namespace Nethermind.Mev
 {
     public class MevBlockProducer : MultipleBlockProducer<MevBlockProducer.MevBlockProducerInfo>
     {
-        public MevBlockProducer(IBlockProductionTrigger blockProductionTrigger, params MevBlockProducerInfo[] blockProducers) 
-            : base(blockProductionTrigger, new MevBestBlockPicker(), blockProducers)
+        public MevBlockProducer(IBlockProductionTrigger blockProductionTrigger, ILogManager logManager, params MevBlockProducerInfo[] blockProducers) 
+            : base(blockProductionTrigger, new MevBestBlockPicker(), logManager, blockProducers)
         {
         }
 
@@ -40,8 +42,8 @@ namespace Nethermind.Mev
                 {
                     if (context.Block is not null)
                     {
-                        var beneficiaryBalanceSource = context.BlockProducerInfo.BeneficiaryBalanceSource;
-                        UInt256 balance = beneficiaryBalanceSource.BeneficiaryBalance;
+                        BeneficiaryTracer beneficiaryTracer = context.BlockProducerInfo.BeneficiaryTracer;
+                        UInt256 balance = beneficiaryTracer.BeneficiaryBalance;
                         if (balance > maxBalance || best is null)
                         {
                             best = context.Block;
@@ -58,15 +60,16 @@ namespace Nethermind.Mev
         {
             public IBlockProducer BlockProducer { get; }
             public IManualBlockProductionTrigger BlockProductionTrigger { get; }
-            public IBeneficiaryBalanceSource BeneficiaryBalanceSource { get; }
+            public IBlockTracer BlockTracer => BeneficiaryTracer;
+            public BeneficiaryTracer BeneficiaryTracer { get; }
             public MevBlockProducerInfo(
                 IBlockProducer blockProducer, 
                 IManualBlockProductionTrigger blockProductionTrigger, 
-                IBeneficiaryBalanceSource beneficiaryBalanceSource)
+                BeneficiaryTracer beneficiaryTracer)
             {
                 BlockProducer = blockProducer;
                 BlockProductionTrigger = blockProductionTrigger;
-                BeneficiaryBalanceSource = beneficiaryBalanceSource;
+                BeneficiaryTracer = beneficiaryTracer;
             }
         }
     }

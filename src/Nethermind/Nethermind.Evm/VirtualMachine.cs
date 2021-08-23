@@ -189,17 +189,25 @@ namespace Nethermind.Evm
                     {
                         if (_txTracer.IsTracingActions)
                         {
+                            long codeDepositGasCost = CodeDepositHandler.CalculateCost(callResult.Output.Length, spec);
+                            
                             if (callResult.IsException)
                             {
                                 _txTracer.ReportActionError(callResult.ExceptionType);
                             }
                             else if (callResult.ShouldRevert)
                             {
-                                _txTracer.ReportActionError(EvmExceptionType.Revert);
+                                if (currentState.ExecutionType.IsAnyCreate())
+                                {
+                                    _txTracer.ReportActionError(EvmExceptionType.Revert, currentState.GasAvailable - codeDepositGasCost);
+                                }
+                                else
+                                {
+                                    _txTracer.ReportActionError(EvmExceptionType.Revert, currentState.GasAvailable);
+                                }
                             }
                             else
                             {
-                                long codeDepositGasCost = CodeDepositHandler.CalculateCost(callResult.Output.Length, spec);
                                 if (currentState.ExecutionType.IsAnyCreate() && currentState.GasAvailable < codeDepositGasCost)
                                 {
                                     _txTracer.ReportActionError(EvmExceptionType.OutOfGas);
@@ -319,7 +327,7 @@ namespace Nethermind.Evm
 
                         if (_txTracer.IsTracingActions)
                         {
-                            _txTracer.ReportActionError(EvmExceptionType.Revert);
+                            _txTracer.ReportActionError(EvmExceptionType.Revert, previousState.GasAvailable);
                         }
                     }
 
@@ -1719,7 +1727,7 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        UInt256 baseFee = vmState.Env.TxExecutionContext.Header.BaseFeePerGas;
+                        UInt256 baseFee = txCtx.Header.BaseFeePerGas;
                         stack.PushUInt256(in baseFee);
                         break;
                     }

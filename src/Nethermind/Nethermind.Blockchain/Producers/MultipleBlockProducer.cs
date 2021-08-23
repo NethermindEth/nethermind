@@ -23,6 +23,7 @@ using System.Threading.Tasks;
 using Microsoft.FSharp.Core;
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Logging;
 
 namespace Nethermind.Blockchain.Producers
 {
@@ -31,16 +32,19 @@ namespace Nethermind.Blockchain.Producers
         private readonly IBlockProductionTrigger _blockProductionTrigger;
         private readonly IBestBlockPicker _bestBlockPicker;
         private readonly T[] _blockProducers;
+        private readonly ILogger _logger;
 
         protected MultipleBlockProducer(
             IBlockProductionTrigger blockProductionTrigger,
             IBestBlockPicker bestBlockPicker,
+            ILogManager logManager,
             params T[] blockProducers)
         {
             if (blockProducers.Length == 0) throw new ArgumentException("Collection cannot be empty.", nameof(blockProducers));
             _blockProductionTrigger = blockProductionTrigger;
             _bestBlockPicker = bestBlockPicker;
             _blockProducers = blockProducers;
+            _logger = logManager.GetClassLogger();
         }
 
         public void Start()
@@ -97,7 +101,7 @@ namespace Nethermind.Blockchain.Producers
             for (int i = 0; i < _blockProducers.Length; i++)
             {
                 T blockProducerInfo = _blockProducers[i];
-                produceTasks[i] = blockProducerInfo.BlockProductionTrigger.BuildBlock(parentHeader, cancellationToken);
+                produceTasks[i] = blockProducerInfo.BlockProductionTrigger.BuildBlock(parentHeader, cancellationToken, blockProducerInfo.BlockTracer);
             }
            
             IEnumerable<(Block? Block, T BlockProducer)> blocksWithProducers;
@@ -118,6 +122,11 @@ namespace Nethermind.Blockchain.Producers
             Block? bestBlock = _bestBlockPicker.GetBestBlock(blocksWithProducers);
             if (bestBlock is not null)
             {
+                if (produceTasks.Count(t => t.IsCompletedSuccessfully && t.Result is not null) > 1)
+                {
+                    if (_logger.IsInfo) _logger.Info($"Picked block {bestBlock} to be included to the chain.");
+                }
+
                 BlockProduced?.Invoke(this, new BlockEventArgs(bestBlock));
             }
 

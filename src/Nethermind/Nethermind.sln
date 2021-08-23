@@ -103,7 +103,7 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Monitoring", "Ne
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Logging", "Nethermind.Logging\Nethermind.Logging.csproj", "{8167D02A-F653-45D6-BDAA-110FEAB6116D}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.WebSockets", "Nethermind.WebSockets\Nethermind.WebSockets.csproj", "{F4158BA1-5809-4920-ADB5-5D10488EB2A8}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Sockets", "Nethermind.Sockets\Nethermind.Sockets.csproj", "{F4158BA1-5809-4920-ADB5-5D10488EB2A8}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.EthStats", "Nethermind.EthStats\Nethermind.EthStats.csproj", "{0BA6F4AA-F445-40FF-B2A3-376A8260E729}"
 EndProject
@@ -139,7 +139,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Db.Rocks", "Neth
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Consensus", "Nethermind.Consensus\Nethermind.Consensus.csproj", "{74F3A9CF-C38C-497C-8FC1-131AC97C0DAE}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.WebSockets.Test", "Nethermind.WebSockets.Test\Nethermind.WebSockets.Test.csproj", "{7655686B-E40E-4D0D-8BEA-B9CE57F5D163}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Sockets.Test", "Nethermind.Sockets.Test\Nethermind.Sockets.Test.csproj", "{7655686B-E40E-4D0D-8BEA-B9CE57F5D163}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Synchronization", "Nethermind.Synchronization\Nethermind.Synchronization.csproj", "{1FC0913D-D3D1-44A2-AA35-B2CF4A4F1815}"
 EndProject
@@ -220,6 +220,7 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.AccountAbstraction", "Nethermind.AccountAbstraction\Nethermind.AccountAbstraction.csproj", "{4AD050F4-2C44-4E00-B6E6-2BE0ACD3A414}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.AccountAbstraction.Test", "Nethermind.AccountAbstraction.Test\Nethermind.AccountAbstraction.Test.csproj", "{B2B7E43C-B459-488D-9ED0-A9A83B24AF1B}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Init", "Nethermind.Init\Nethermind.Init.csproj", "{F6356747-7925-46D9-AA4C-72671B199A31}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -583,6 +584,10 @@ Global
 		{B2B7E43C-B459-488D-9ED0-A9A83B24AF1B}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{B2B7E43C-B459-488D-9ED0-A9A83B24AF1B}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{B2B7E43C-B459-488D-9ED0-A9A83B24AF1B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F6356747-7925-46D9-AA4C-72671B199A31}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F6356747-7925-46D9-AA4C-72671B199A31}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F6356747-7925-46D9-AA4C-72671B199A31}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F6356747-7925-46D9-AA4C-72671B199A31}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

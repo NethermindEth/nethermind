@@ -154,7 +154,7 @@ namespace Nethermind.AccountAbstraction
             return ValueTask.CompletedTask;
         }
 
-        public Task<IBlockProducer> InitBlockProducer(IConsensusPlugin consensusPlugin, ITxSource? txSource = null)
+        public Task<IBlockProducer> InitBlockProducer(IConsensusPlugin consensusPlugin)
         {
             if (!Enabled)
             {

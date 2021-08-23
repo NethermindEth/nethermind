@@ -158,9 +158,10 @@ namespace Nethermind.TxPool.Collections
                     if (_buckets.TryGetValue(groupMapping, out bucket))
                     {
                         bucket!.Remove(value);
-                        Removed?.Invoke(this, new SortedPoolRemovedEventArgs(key, value, groupMapping, evicted));
                         return true;
                     }
+                    
+                    Removed?.Invoke(this, new SortedPoolRemovedEventArgs(key, value, groupMapping, evicted));
                 }
             }
 
@@ -168,7 +169,7 @@ namespace Nethermind.TxPool.Collections
             bucket = null;
             return false;
         }
-
+        
         [MethodImpl(MethodImplOptions.Synchronized)]
         public bool TryRemove(TKey key, [MaybeNullWhen(false)] out TValue value) => TryRemove(key, out value, out _);
         
@@ -228,12 +229,12 @@ namespace Nethermind.TxPool.Collections
 
         [MethodImpl(MethodImplOptions.Synchronized)]
         public bool TryInsert(TKey key, TValue value) => TryInsert(key, value, out _);
-
+        
         private void RemoveLast(out TValue? removed)
         {
             TryRemove(_sortedValues.Max.Value, true, out removed, out _);
         }
-        
+
         /// <summary>
         /// Checks if element can be inserted.
         /// </summary>
