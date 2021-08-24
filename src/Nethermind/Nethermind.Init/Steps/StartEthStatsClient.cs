@@ -89,6 +89,7 @@ namespace Nethermind.Init.Steps
                 _get.TxPool,
                 _get.BlockTree,
                 _get.PeerManager,
+                _get.GasPriceOracle,
                 _get.LogManager);
             
             await ethStatsIntegration.InitAsync();

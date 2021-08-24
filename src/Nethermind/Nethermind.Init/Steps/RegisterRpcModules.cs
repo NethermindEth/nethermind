@@ -96,8 +96,8 @@ namespace Nethermind.Init.Steps
             // lets add threads to support parallel eth_getLogs
             ThreadPool.GetMinThreads(out int workerThreads, out int completionPortThreads);
             ThreadPool.SetMinThreads(workerThreads + Environment.ProcessorCount, completionPortThreads + Environment.ProcessorCount);
-
-            GasPriceOracle gasPriceOracle = new GasPriceOracle(_api.BlockTree, _api.SpecProvider, miningConfig.MinGasPrice);
+            
+            
             EthModuleFactory ethModuleFactory = new(
                 _api.TxPool,
                 _api.TxSender,
@@ -108,7 +108,7 @@ namespace Nethermind.Init.Steps
                 _api.StateReader,
                 _api,
                 _api.SpecProvider,
-                gasPriceOracle);
+                _api.GasPriceOracle);
             
             _api.RpcModuleProvider.RegisterBounded(ethModuleFactory, rpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, rpcConfig.Timeout);
             

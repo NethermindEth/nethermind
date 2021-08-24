@@ -25,6 +25,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.EthStats.Messages;
 using Nethermind.EthStats.Messages.Models;
+using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.TxPool;
@@ -52,6 +53,7 @@ namespace Nethermind.EthStats.Integrations
         private readonly IBlockTree _blockTree;
         private readonly IPeerManager _peerManager;
         private readonly ILogger _logger;
+        private readonly IGasPriceOracle _gasPriceOracle;
         private IWebsocketClient? _websocketClient;
         private bool _connected;
         private long _lastBlockProcessedTimestamp;
@@ -75,6 +77,7 @@ namespace Nethermind.EthStats.Integrations
             ITxPool? txPool,
             IBlockTree? blockTree,
             IPeerManager? peerManager,
+            IGasPriceOracle? gasPriceOracle,
             ILogManager? logManager)
         {
             _name = name;
@@ -92,6 +95,7 @@ namespace Nethermind.EthStats.Integrations
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _peerManager = peerManager ?? throw new ArgumentNullException(nameof(peerManager));
+            _gasPriceOracle = gasPriceOracle ?? throw new ArgumentNullException(nameof(gasPriceOracle));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
@@ -215,7 +219,9 @@ namespace Nethermind.EthStats.Integrations
 
         // ReSharper disable once UnusedMethodReturnValue.Local
         private Task SendStatsAsync()
-            => _sender.SendAsync(_websocketClient!, new StatsMessage(new Messages.Models.Stats(true, true, false, 0,
-                _peerManager.ActivePeers.Count, (long)20.GWei(), 100)));
+        {
+            return _sender.SendAsync(_websocketClient!, new StatsMessage(new Messages.Models.Stats(true, true, false, 0,
+                _peerManager.ConnectedPeers.Count, _gasPriceOracle.GetGasPriceEstimate(), 100)));
+        }
     }
 }

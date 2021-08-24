@@ -168,7 +168,7 @@ namespace Nethermind.Network.Rlpx
 
             Task<IChannel> connectTask = clientBootstrap.ConnectAsync(node.Address);
             CancellationTokenSource delayCancellation = new();
-            Task firstTask = await Task.WhenAny(connectTask, Task.Delay(Timeouts.InitialConnection.Add(TimeSpan.FromSeconds(10)), delayCancellation.Token));
+            Task firstTask = await Task.WhenAny(connectTask, Task.Delay(Timeouts.InitialConnection.Add(Timeouts.InitialConnectionDelay), delayCancellation.Token));
             if (firstTask != connectTask)
             {
                 if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {node:s} OUT connection timed out");
@@ -221,7 +221,7 @@ namespace Nethermind.Network.Rlpx
 
             channel.CloseCompletion.ContinueWith(x =>
             {
-                if (PeerManager.NodesToDebug.Contains(session.Node.Id.ToString())) _logger.Warn($"InitializePeerConnection {session.Node.Id.ToString()} network exception");
+                if (PeerManager.NodesToDebug.Contains(session.Node.Id.ToString())) _logger.Warn($"Close completion {session.Node.Id.ToString()}");
                 if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {session} channel disconnected");
                 session.MarkDisconnected(DisconnectReason.ClientQuitting, DisconnectType.Remote, "channel disconnected");
             });

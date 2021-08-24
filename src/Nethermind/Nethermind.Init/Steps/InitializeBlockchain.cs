@@ -26,6 +26,7 @@ using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Services;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Validators;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
@@ -36,6 +37,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Converters;
 using Nethermind.JsonRpc.Modules.DebugModule;
+using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -82,6 +84,7 @@ namespace Nethermind.Init.Steps
             IInitConfig initConfig = getApi.Config<IInitConfig>();
             ISyncConfig syncConfig = getApi.Config<ISyncConfig>();
             IPruningConfig pruningConfig = getApi.Config<IPruningConfig>();
+            IMiningConfig miningConfig = getApi.Config<IMiningConfig>();
 
             if (syncConfig.DownloadReceiptsInFastSync && !syncConfig.DownloadBodiesInFastSync)
             {
@@ -230,6 +233,7 @@ namespace Nethermind.Init.Steps
 
             setApi.BlockProcessingQueue = blockchainProcessor;
             setApi.BlockchainProcessor = blockchainProcessor;
+            setApi.GasPriceOracle = new GasPriceOracle(_api.BlockTree, _api.SpecProvider, miningConfig.MinGasPrice);
 
             if (syncConfig.BeamSync)
             {

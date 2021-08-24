@@ -14,6 +14,8 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.Int256;
+
 namespace Nethermind.EthStats.Messages.Models
 {
     public class Stats
@@ -23,10 +25,10 @@ namespace Nethermind.EthStats.Messages.Models
         public bool Mining { get; }
         public int Hashrate { get; }
         public int Peers { get; }
-        public long GasPrice { get; }
+        public UInt256 GasPrice { get; }
         public int Uptime { get; }
 
-        public Stats(bool active, bool syncing, bool mining, int hashrate, int peers, long gasPrice, int uptime)
+        public Stats(bool active, bool syncing, bool mining, int hashrate, int peers, UInt256 gasPrice, int uptime)
         {
             Active = active;
             Syncing = syncing;
