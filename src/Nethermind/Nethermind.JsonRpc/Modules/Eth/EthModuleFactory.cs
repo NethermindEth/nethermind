@@ -83,8 +83,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 _txSender,
                 _wallet,
                 _logManager,
-                _specProvider,
-				_gasPriceOracle,
+                _specProvider, 
+                _gasPriceOracle, 
                 new FeeHistoryOracle(_blockTree, _receiptStorage, _specProvider));
         }
 

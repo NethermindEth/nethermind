@@ -48,7 +48,7 @@ using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth
 {
-    [Parallelizable(ParallelScope.All)]
+    [Parallelizable(ParallelScope.None)]
     [TestFixture]
     public partial class EthRpcModuleTests
     {
