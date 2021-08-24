@@ -23,24 +23,23 @@ namespace Nethermind.Abi
 {
     public abstract class AbiType
     {
-        public static AbiDynamicBytes DynamicBytes { get; } = AbiDynamicBytes.Instance;
-        public static AbiAddress Address { get; } = AbiAddress.Instance;
-        public static AbiFunction Function { get; } = AbiFunction.Instance;
-        public static AbiBool Bool { get; } = AbiBool.Instance;
-        public static AbiInt Int8 { get; } = new(8);
-        public static AbiInt Int16 { get; } = new(16);
-        public static AbiInt Int32 { get; } = new(32);
-        public static AbiInt Int64 { get; } = new(64);
-        public static AbiInt Int96 { get; } = new(96);
-        public static AbiInt Int256 { get; } = new(256);
-        
-        public static AbiUInt UInt8 { get; } = new(8);
-        public static AbiUInt UInt16 { get; } = new(16);
-        public static AbiUInt UInt32 { get; } = new(32);
-        public static AbiUInt UInt64 { get; } = new(64);
-        public static AbiUInt UInt96 { get; } = new(96);
-        public static AbiUInt UInt256 { get; } = new(256);
-        public static AbiString String { get; } = AbiString.Instance;
+        public static AbiDynamicBytes DynamicBytes => AbiDynamicBytes.Instance;
+        public static AbiAddress Address => AbiAddress.Instance;
+        public static AbiFunction Function => AbiFunction.Instance;
+        public static AbiBool Bool => AbiBool.Instance;
+        public static AbiInt Int8  => AbiInt.Int8;
+        public static AbiInt Int16 => AbiInt.Int16;
+        public static AbiInt Int32 => AbiInt.Int32;
+        public static AbiInt Int64 => AbiInt.Int64;
+        public static AbiInt Int96 => AbiInt.Int96;
+        public static AbiInt Int256 => AbiInt.Int256;
+        public static AbiUInt UInt8 => AbiUInt.UInt8;
+        public static AbiUInt UInt16 => AbiUInt.UInt16;
+        public static AbiUInt UInt32 => AbiUInt.UInt32;
+        public static AbiUInt UInt64 => AbiUInt.UInt64;
+        public static AbiUInt UInt96 => AbiUInt.UInt96;
+        public static AbiUInt UInt256 => AbiUInt.UInt256;
+        public static AbiString String => AbiString.Instance;
         public static AbiFixed Fixed { get; } = new(128, 18);
         public static AbiUFixed UFixed { get; } = new(128, 18);
 

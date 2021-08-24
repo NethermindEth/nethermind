@@ -28,6 +28,13 @@ namespace Nethermind.Abi
 
         private const int MinSize = 0;
         
+        public static new AbiUInt UInt8 { get; } = new(8);
+        public static new AbiUInt UInt16 { get; } = new(16);
+        public static new AbiUInt UInt32 { get; } = new(32);
+        public static new AbiUInt UInt64 { get; } = new(64);
+        public static new AbiUInt UInt96 { get; } = new(96);
+        public static new AbiUInt UInt256 { get; } = new(256);
+        
         static AbiUInt()
         {
             RegisterMapping<byte>(UInt8);

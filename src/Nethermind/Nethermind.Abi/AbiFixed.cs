@@ -29,12 +29,7 @@ namespace Nethermind.Abi
 
         private const int MaxPrecision = 80;
         private const int MinPrecision = 0;
-
-        static AbiFixed()
-        {
-            RegisterMapping<BigRational>(Standard);
-        }
-
+        
         public AbiFixed(int length, int precision)
         {
             if (length % 8 != 0)

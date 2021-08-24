@@ -21,6 +21,8 @@ namespace Nethermind.Abi
 {
     public class AbiBool : AbiUInt
     {
+        public static AbiBool Instance { get; } = new();
+        
         static AbiBool()
         {
             RegisterMapping<bool>(Instance);
@@ -29,8 +31,6 @@ namespace Nethermind.Abi
         private AbiBool() : base(8)
         {
         }
-
-        public static AbiBool Instance = new();
 
         public override string Name => "bool";
 
