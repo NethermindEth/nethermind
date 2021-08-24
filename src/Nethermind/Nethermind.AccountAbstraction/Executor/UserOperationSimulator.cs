@@ -83,7 +83,7 @@ namespace Nethermind.AccountAbstraction.Executor
             _logManager = logManager;
             _recoveryStep = recoveryStep;
             
-            using (StreamReader r = new StreamReader("/Users/parasztszilvia/Documents/Prog/Ethereum/nethermind/src/Nethermind/Nethermind.AccountAbstraction/Contracts/Singleton.json"))
+            using (StreamReader r = new StreamReader("Contracts/Singleton.json"))
             {
                 string json = r.ReadToEnd();
                 dynamic obj = JsonConvert.DeserializeObject(json)!;

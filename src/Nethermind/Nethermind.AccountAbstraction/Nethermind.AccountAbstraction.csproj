@@ -15,6 +15,13 @@
     <Folder Include="Contracts" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Remove="Contracts\Singleton.json" />
+    <Content Include="Contracts\Singleton.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
   <Target Name="CopyMergePluginOnBuildOrPublish" AfterTargets="AfterBuild;AfterPublish">
     <Copy SourceFiles="$(OutDir)Nethermind.AccountAbstraction.dll" DestinationFolder="$(SolutionDir)Nethermind.Runner\bin\$(Configuration)\$(TargetFramework)\plugins" Condition="Exists('$(OutDir)Nethermind.AccountAbstraction.dll')" SkipUnchangedFiles="true" />
     <Copy SourceFiles="$(OutDir)Nethermind.AccountAbstraction.pdb" DestinationFolder="$(SolutionDir)Nethermind.Runner\bin\$(Configuration)\$(TargetFramework)\plugins" Condition="Exists('$(OutDir)Nethermind.AccountAbstraction.pdb')" SkipUnchangedFiles="true" />

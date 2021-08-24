@@ -89,12 +89,16 @@ namespace Nethermind.Blockchain.Contracts.Json
         }
         
         private AbiType GetAbiType(JToken token) => 
-            GetParameterType(token[nameof(AbiParameter.Type).ToLowerInvariant()]!.Value<string>(), token["components"]);
+            GetParameterType(token[TypePropertyName]!.Value<string>(), token["components"]);
+
+        private static string TypePropertyName => nameof(AbiParameter.Type).ToLowerInvariant();
 
         private static string GetName(JToken token) => 
-            token[nameof(AbiParameter.Name).ToLowerInvariant()]!.Value<string>();
+            token[NamePropertyName]!.Value<string>();
 
-        private AbiType GetParameterType(string type, JToken components)
+        private static string NamePropertyName => nameof(AbiParameter.Name).ToLowerInvariant();
+
+        private AbiType GetParameterType(string type, JToken? components)
         {
             var match = AbiParameterConverterStatics.TypeExpression.Match(type);
             if (match.Success)
@@ -113,13 +117,25 @@ namespace Nethermind.Blockchain.Contracts.Json
             }
         }
 
-        private AbiType GetBaseType(string baseType, Match match, JToken components)
+        private AbiType GetBaseType(string baseType, Match match, JToken? components)
         {
-            string abiTypeDefinition = match.Value;
-            
+            string GetAbiTypeName()
+            {
+                string name = baseType;
+                if (components is not null)
+                {
+                    IEnumerable<string> innerTypes = components.SelectTokens($"$..{TypePropertyName}").Select(t => t.Value<string>());
+                    name = $"{name}({string.Join(", ", innerTypes)})";
+                }
+
+                return name;
+            }
+
+            string abiTypeName = GetAbiTypeName();
+
             foreach (IAbiTypeFactory factory in _abiTypeFactories)
             {
-                AbiType? abiType = factory.Create(abiTypeDefinition);
+                AbiType? abiType = factory.Create(abiTypeName);
                 if (abiType is not null)
                 {
                     return abiType;

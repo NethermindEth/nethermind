@@ -65,7 +65,11 @@ namespace Nethermind.Abi
         
         public static AbiType GetForCSharpType(Type type)
         {
-            if (type.IsArray)
+            if (_typeMappings.TryGetValue(type, out AbiType? abiTYpe))
+            {
+                return abiTYpe;
+            }
+            else if (type.IsArray)
             {
                 Type elementType = type.GetElementType()!;
                 return new AbiArray(GetForCSharpType(elementType));
@@ -81,8 +85,10 @@ namespace Nethermind.Abi
 
                 return new AbiTuple(elements);
             }
-            
-            return _typeMappings[type];
+            else
+            {
+                throw new NotSupportedException($"Type {type} doesn't have mapped {nameof(AbiType)}");
+            }
         }
 
         protected static void RegisterMapping<T>(AbiType abiType)

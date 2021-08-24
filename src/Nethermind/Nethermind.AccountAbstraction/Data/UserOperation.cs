@@ -73,7 +73,7 @@ namespace Nethermind.AccountAbstraction.Data
         public byte[] InitCode { get; set; }
         public byte[] CallData { get; set; }
         public ulong CallGas { get; set; }
-        public ulong VerificationGas { get; set; }
+        public UInt256 VerificationGas { get; set; }
         public ulong MaxFeePerGas { get; set; }
         public ulong MaxPriorityFeePerGas { get; set; }
         public Address Paymaster { get; set; }
