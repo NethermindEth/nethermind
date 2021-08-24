@@ -65,6 +65,12 @@ namespace Nethermind.Specs.ChainSpecStyle
         public long? Eip3541Transition { get; set; }
         public long? Eip3607Transition { get; set; }
         
+        public UInt256 Eip1559BaseFeeInitialValue { get; set; }
+
+        public UInt256 Eip1559BaseFeeMaxChangeDenominator { get; set; }    
+            
+        public long Eip1559ElasticityMultiplier { get; set; }
+        
         /// <summary>
         ///  Transaction permission managing contract address.
         /// </summary>

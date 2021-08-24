@@ -46,6 +46,7 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
+using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 
 namespace Nethermind.Core.Test.Blockchain
@@ -79,7 +80,7 @@ namespace Nethermind.Core.Test.Blockchain
         public IReadOnlyStateProvider ReadOnlyState { get; private set; }
         public IDb StateDb => DbProvider.StateDb;
         public TrieStore TrieStore { get; set; }
-        public ITestBlockProducer BlockProducer { get; private set; }
+        public IBlockProducer BlockProducer { get; private set; }
         public IDbProvider DbProvider { get; set; }
         public ISpecProvider SpecProvider { get; set; }
         
@@ -101,10 +102,13 @@ namespace Nethermind.Core.Test.Blockchain
 
         public static readonly UInt256 InitialValue = 1000.Ether();
         private BlockValidator _blockValidator;
+        public BuildBlocksWhenRequested BlockProductionTrigger { get; } = new BuildBlocksWhenRequested();
 
         public IReadOnlyTrieStore ReadOnlyTrieStore { get; private set; }
 
-        public ManualTimestamper Timestamper { get; private set; }
+        public ManualTimestamper Timestamper { get; protected set; }
+        
+        public ProducedBlockSuggester Suggester { get; private set; }
 
         public static TransactionBuilder<Transaction> BuildSimpleTransaction => Builders.Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).To(AccountB);
 
@@ -165,7 +169,9 @@ namespace Nethermind.Core.Test.Blockchain
             
             TxPoolTxSource txPoolTxSource = CreateTxPoolTxSource();
             ISealer sealer = new NethDevSealEngine(TestItem.AddressD);
-            BlockProducer = CreateTestBlockProducer(txPoolTxSource, chainProcessor, sealer);
+            ITransactionComparerProvider transactionComparerProvider = new TransactionComparerProvider(SpecProvider, BlockFinder);
+            BlockProducer = CreateTestBlockProducer(txPoolTxSource, sealer, transactionComparerProvider);
+            Suggester = new ProducedBlockSuggester(BlockTree, BlockProducer);
             BlockProducer.Start();
 
             _resetEvent = new SemaphoreSlim(0);
@@ -174,7 +180,7 @@ namespace Nethermind.Core.Test.Blockchain
             {
                 _resetEvent.Release(1);
             };
-            BlockProducer.LastProducedBlockChanged += (s, e) =>
+            BlockProducer.BlockProduced += (s, e) =>
             {
                 _suggestedBlockResetEvent.Set();
             };
@@ -202,7 +208,7 @@ namespace Nethermind.Core.Test.Blockchain
             }
         }
 
-        protected virtual ITestBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, IBlockProcessingQueue blockProcessingQueue, ISealer sealer)
+        protected virtual IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
         {
             MiningConfig miningConfig = new();
 
@@ -216,11 +222,12 @@ namespace Nethermind.Core.Test.Blockchain
                 ReceiptStorage,
                 BlockPreprocessorStep,
                 TxPool,
+                transactionComparerProvider,
                 miningConfig,
                 LogManager);
 
             BlockProducerEnv env = blockProducerEnvFactory.Create(txPoolTxSource);
-            return new TestBlockProducer(env.TxSource, env.ChainProcessor, env.ReadOnlyStateProvider, sealer, BlockTree, blockProcessingQueue, Timestamper, SpecProvider, LogManager);
+            return new TestBlockProducer(env.TxSource, env.ChainProcessor, env.ReadOnlyStateProvider, sealer, BlockTree, BlockProductionTrigger, Timestamper, SpecProvider, LogManager);
         }
 
         public virtual ILogManager LogManager { get; } = LimboLogs.Instance;
@@ -315,7 +322,7 @@ namespace Nethermind.Core.Test.Blockchain
             await WaitAsync(_oneAtATime, "Multiple block produced at once.");
             AddTxResult[] txResults = transactions.Select(t => TxPool.SubmitTx(t, TxHandlingOptions.None)).ToArray();
             Timestamper.Add(TimeSpan.FromSeconds(1));
-            await BlockProducer.BuildNewBlock();
+            await BlockProductionTrigger.BuildBlock();
             return txResults;
         }
 
@@ -329,6 +336,7 @@ namespace Nethermind.Core.Test.Blockchain
 
         public virtual void Dispose()
         {
+            TestContext.Out.WriteLine($"disposing {this.GetHashCode()}");
             BlockProducer?.StopAsync();
             CodeDb?.Dispose();
             StateDb?.Dispose();

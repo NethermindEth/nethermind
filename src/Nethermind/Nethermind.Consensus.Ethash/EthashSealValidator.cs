@@ -88,7 +88,7 @@ namespace Nethermind.Consensus.Ethash
                 return false;
             }
 
-            UInt256 difficulty = _difficultyCalculator.Calculate(parent.Difficulty, parent.Timestamp, header.Timestamp, header.Number, parent.OmmersHash != Keccak.OfAnEmptySequenceRlp);
+            UInt256 difficulty = _difficultyCalculator.Calculate(header, parent);
             bool isDifficultyCorrect = difficulty == header.Difficulty;
             if (!isDifficultyCorrect)
             {

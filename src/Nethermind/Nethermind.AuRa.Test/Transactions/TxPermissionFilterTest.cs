@@ -234,20 +234,20 @@ namespace Nethermind.AuRa.Test.Transactions
                     .SetCategory(testsName + "Tests")
                     .Returns((result, test.Cache ?? true));
             }
-
-            var chainTask = TestContractBlockchain.ForTest<TestTxPermissionsBlockchain, TxPermissionFilterTest>(testsName);
-            Func<Task<TestTxPermissionsBlockchain>> testFactory = async () =>
-            {
-                var chain = await chainTask;
-                chain.TxPermissionFilterCache.Permissions.Clear();
-                chain.TransactionPermissionContractVersions.Clear();
-                return chain;
-            };
-
+            
             foreach (var test in tests)
             {
                 foreach (var txType in TxPermissionsTypes)
                 {
+                    var chainTask = TestContractBlockchain.ForTest<TestTxPermissionsBlockchain, TxPermissionFilterTest>(testsName);
+                    Func<Task<TestTxPermissionsBlockchain>> testFactory = async () =>
+                    {
+                        var chain = await chainTask;
+                        chain.TxPermissionFilterCache.Permissions.Clear();
+                        chain.TransactionPermissionContractVersions.Clear();
+                        return chain;
+                    };
+                    
                     yield return GetTestCase(testFactory, test, txType);
                 }
             }

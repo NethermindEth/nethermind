@@ -20,8 +20,9 @@ using System.Net.WebSockets;
 using FluentAssertions;
 using Nethermind.DataMarketplace.Channels;
 using Nethermind.DataMarketplace.Core;
+using Nethermind.DataMarketplace.Infrastructure;
 using Nethermind.Serialization.Json;
-using Nethermind.WebSockets;
+using Nethermind.Sockets;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -30,14 +31,12 @@ namespace Nethermind.DataMarketplace.WebSockets.Test
     [TestFixture]
     public class NdmWebSocketsModuleTests
     {
-        private INdmConsumerChannelManager _channelManager = Substitute.For<INdmConsumerChannelManager>();
-        private INdmDataPublisher _dataPublisher = Substitute.For<INdmDataPublisher>();
         private NdmWebSocketsModule _module;
 
         [SetUp]
         public void Setup()
         {
-            _module = new NdmWebSocketsModule(_channelManager, _dataPublisher, new EthereumJsonSerializer());
+            _module = new NdmWebSocketsModule(Substitute.For<INdmApi>());
         }
 
         [Test]
@@ -55,32 +54,24 @@ namespace Nethermind.DataMarketplace.WebSockets.Test
         [Test]
         public void Can_create_client()
         {
-            IWebSocketsClient client = _module.CreateClient(WebSocket.CreateFromStream(Stream.Null, false, "subprotocol", TimeSpan.FromMinutes(1)), "test");
+            ISocketsClient client = _module.CreateClient(WebSocket.CreateFromStream(Stream.Null, false, "subprotocol", TimeSpan.FromMinutes(1)), "test");
             client.Should().NotBeNull();
         }
 
         [Test]
         public void Can_remove_client()
         {
-            IWebSocketsClient client = _module.CreateClient(WebSocket.CreateFromStream(Stream.Null, false, "subprotocol", TimeSpan.FromMinutes(1)), "test");
+            ISocketsClient client = _module.CreateClient(WebSocket.CreateFromStream(Stream.Null, false, "subprotocol", TimeSpan.FromMinutes(1)), "test");
             client.Should().NotBeNull();
             _module.RemoveClient(client.Id);
         }
 
         [Test]
-        public void Can_send_raw_message()
-        {
-            IWebSocketsClient client = _module.CreateClient(WebSocket.CreateFromStream(Stream.Null, false, "subprotocol", TimeSpan.FromMinutes(1)), "test");
-            client.Should().NotBeNull();
-            _module.SendRawAsync("raw");
-        }
-
-        [Test]
         public void Can_send_message()
         {
-            IWebSocketsClient client = _module.CreateClient(WebSocket.CreateFromStream(Stream.Null, false, "subprotocol", TimeSpan.FromMinutes(1)), "test");
+            ISocketsClient client = _module.CreateClient(WebSocket.CreateFromStream(Stream.Null, false, "subprotocol", TimeSpan.FromMinutes(1)), "test");
             client.Should().NotBeNull();
-            _module.SendAsync(new WebSocketsMessage("test", "client", "data"));
+            _module.SendAsync(new SocketsMessage("test", "client", "data"));
         }
     }
 }

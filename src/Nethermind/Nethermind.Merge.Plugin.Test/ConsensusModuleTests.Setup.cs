@@ -19,6 +19,7 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Rewards;
@@ -42,14 +43,12 @@ namespace Nethermind.Merge.Plugin.Test
 {
     public partial class ConsensusModuleTests
     {
-        private readonly ManualTimestamper _manualTimestamper = new();
-        
-        private async Task<MergeTestBlockchain> CreateBlockChain() => await new MergeTestBlockchain(_manualTimestamper).Build(new SingleReleaseSpecProvider(Berlin.Instance, 1));
+        private async Task<MergeTestBlockchain> CreateBlockChain() => await new MergeTestBlockchain(new ManualTimestamper()).Build(new SingleReleaseSpecProvider(Berlin.Instance, 1));
 
         private IConsensusRpcModule CreateConsensusModule(MergeTestBlockchain chain)
         {
             return new ConsensusRpcModule(
-                new AssembleBlockHandler(chain.BlockTree, (IManualBlockProducer) chain.BlockProducer, _manualTimestamper, chain.LogManager),
+                new AssembleBlockHandler(chain.BlockTree, chain.BlockProductionTrigger, chain.Timestamper, chain.LogManager),
                 new NewBlockHandler(chain.BlockTree, chain.BlockPreprocessorStep, chain.BlockchainProcessor, chain.State, new InitConfig(), chain.LogManager),
                 new SetHeadBlockHandler(chain.BlockTree, chain.State, chain.LogManager),
                 new FinaliseBlockHandler(chain.BlockFinder, chain.BlockFinalizationManager, chain.LogManager),
@@ -58,11 +57,9 @@ namespace Nethermind.Merge.Plugin.Test
 
         private class MergeTestBlockchain : TestBlockchain
         {
-            private readonly ManualTimestamper _timestamper;
-
             public MergeTestBlockchain(ManualTimestamper timestamper)
             {
-                _timestamper = timestamper;
+                Timestamper = timestamper;
                 GenesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.Genesis
                     .WithTimestamp(UInt256.One);
                 Signer = new Eth2Signer(MinerAddress);
@@ -76,7 +73,7 @@ namespace Nethermind.Merge.Plugin.Test
 
             private ISigner Signer { get; }
 
-            protected override ITestBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, IBlockProcessingQueue blockProcessingQueue, ISealer sealer)
+            protected override IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
             {
                 MiningConfig miningConfig = new();
                 TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator = new(SpecProvider, miningConfig);
@@ -91,16 +88,17 @@ namespace Nethermind.Merge.Plugin.Test
                     ReceiptStorage,
                     BlockPreprocessorStep,
                     TxPool,
+                    transactionComparerProvider,
                     miningConfig,
                     LogManager);
                 
-                return (ITestBlockProducer) new Eth2TestBlockProducerFactory(targetAdjustedGasLimitCalculator).Create(
+                return new Eth2TestBlockProducerFactory(targetAdjustedGasLimitCalculator).Create(
                     blockProducerEnvFactory,
                     BlockTree,
-                    BlockProcessingQueue,
+                    BlockProductionTrigger,
                     SpecProvider,
                     Signer,
-                    _timestamper,
+                    Timestamper,
                     miningConfig,
                     LogManager);
             }
@@ -139,6 +137,7 @@ namespace Nethermind.Merge.Plugin.Test
             {
                 TestBlockchain chain = await base.Build(specProvider, initialValues);
                 await chain.BlockchainProcessor.StopAsync(true);
+                Suggester.Dispose();
                 return chain;
             }
 

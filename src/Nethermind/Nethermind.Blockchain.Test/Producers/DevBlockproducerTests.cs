@@ -106,7 +106,6 @@ namespace Nethermind.Blockchain.Test.Producers
                 blockchainProcessor,
                 stateProvider,
                 blockTree,
-                blockchainProcessor,
                 trigger,
                 timestamper,
                 specProvider,
@@ -114,6 +113,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 LimboLogs.Instance);
 
             blockchainProcessor.Start();
+            var suggester = new ProducedBlockSuggester(blockTree, devBlockProducer);
             devBlockProducer.Start();
 
             AutoResetEvent autoResetEvent = new AutoResetEvent(false);

@@ -68,7 +68,7 @@ namespace Nethermind.Pipeline.Tests
         {
             var sourceElement = new TxPoolPipelineSource<Transaction>(_txPool);
             var element = new TxPoolPipelineElement<Transaction, Transaction>();
-            var publisher = new WebSocketsPublisher<Transaction, Transaction>("testPublisher", Substitute.For<IJsonSerializer>());
+            var publisher = new WebSocketsPublisher<Transaction, Transaction>("testPublisher", Substitute.For<IJsonSerializer>(), Substitute.For<ILogManager>());
 
             var mockWebSocket = Substitute.For<WebSocket>();
             mockWebSocket.State.Returns(WebSocketState.Open);

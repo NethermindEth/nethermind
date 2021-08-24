@@ -15,11 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -27,7 +22,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Evm.Tracing.ParityStyle;
-using NSubstitute;
+using Nethermind.Specs;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing
@@ -42,8 +37,8 @@ namespace Nethermind.Evm.Test.Tracing
             GethLikeBlockTracer gethLikeBlockTracer = new(txHash, GethTraceOptions.Default);
             ParityLikeBlockTracer parityLikeBlockTracer = new(txHash, ParityTraceTypes.All);
 
-            CompositeBlockTracer compositeBlockTracer = new CompositeBlockTracer(
-                new IBlockTracer[]{gethLikeBlockTracer, parityLikeBlockTracer});
+            CompositeBlockTracer compositeBlockTracer = new CompositeBlockTracer();
+            compositeBlockTracer.AddRange(gethLikeBlockTracer, parityLikeBlockTracer);
 
             compositeBlockTracer.IsTracingRewards.Should().Be(true);
         }
@@ -63,9 +58,9 @@ namespace Nethermind.Evm.Test.Tracing
             NullBlockTracer nullBlockTracer = NullBlockTracer.Instance;
             AlwaysCancelBlockTracer alwaysCancelBlockTracer = AlwaysCancelBlockTracer.Instance;
 
-            CompositeBlockTracer blockTracer = new CompositeBlockTracer(
-                new IBlockTracer[]{gethLikeBlockTracer, parityLikeBlockTracer, nullBlockTracer, alwaysCancelBlockTracer});
-            
+            CompositeBlockTracer blockTracer = new CompositeBlockTracer();
+            blockTracer.AddRange(gethLikeBlockTracer, parityLikeBlockTracer, nullBlockTracer, alwaysCancelBlockTracer);
+
             blockTracer.StartNewBlockTrace(block);
 
             blockTracer.StartNewTxTrace(tx1);

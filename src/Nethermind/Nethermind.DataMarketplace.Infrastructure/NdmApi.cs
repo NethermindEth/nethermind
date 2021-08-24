@@ -70,7 +70,7 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
-using Nethermind.WebSockets;
+using Nethermind.Sockets;
 
 namespace Nethermind.DataMarketplace.Infrastructure
 {
@@ -170,7 +170,11 @@ namespace Nethermind.DataMarketplace.Infrastructure
             set => _nethermindApi.ChainLevelInfoRepository = value;
         }
 
-        public IConfigProvider ConfigProvider => _nethermindApi.ConfigProvider;
+        public IConfigProvider ConfigProvider
+        {
+            get => _nethermindApi.ConfigProvider;
+            set => _nethermindApi.ConfigProvider = value;
+        }
 
         public ICryptoRandom CryptoRandom => _nethermindApi.CryptoRandom;
 
@@ -258,7 +262,11 @@ namespace Nethermind.DataMarketplace.Infrastructure
             set => _nethermindApi.IpResolver = value;
         }
         
-        public IJsonSerializer EthereumJsonSerializer => _nethermindApi.EthereumJsonSerializer;
+        public IJsonSerializer EthereumJsonSerializer         
+        {
+            get => _nethermindApi.EthereumJsonSerializer;
+            set => _nethermindApi.EthereumJsonSerializer = value;
+        }
 
         public IKeyStore? KeyStore
         {
@@ -273,7 +281,11 @@ namespace Nethermind.DataMarketplace.Infrastructure
         }
 
 
-        public ILogManager LogManager => _nethermindApi.LogManager;
+        public ILogManager LogManager         
+        {
+            get => _nethermindApi.LogManager;
+            set => _nethermindApi.LogManager = value;
+        }
         
         public IKeyValueStoreWithBatching? MainStateDbWithCache
         {
@@ -367,9 +379,12 @@ namespace Nethermind.DataMarketplace.Infrastructure
             set => _nethermindApi.EngineSignerStore = value;
         }
 
-        public string SealEngineType      {
+        public string SealEngineType              
+        {
             get => _nethermindApi.SealEngineType;
+            set => _nethermindApi.SealEngineType = value;
         }
+
         public ISpecProvider? SpecProvider
         {
             get => _nethermindApi.SpecProvider;
@@ -479,6 +494,12 @@ namespace Nethermind.DataMarketplace.Infrastructure
         {
             get => _nethermindApi.TxPoolInfoProvider;
             set => _nethermindApi.TxPoolInfoProvider = value;
+        }
+
+        public IWitnessRepository? WitnessRepository
+        {
+            get => _nethermindApi.WitnessRepository;
+            set => _nethermindApi.WitnessRepository = value;
         }
 
         public IHealthHintService? HealthHintService        

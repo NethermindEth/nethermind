@@ -16,34 +16,48 @@
 // 
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace Nethermind.Blockchain.Producers
 {
     public class CompositeBlockProductionTrigger : IBlockProductionTrigger, IDisposable
     {
-        private readonly IBlockProductionTrigger[] _triggers;
+        private readonly IList<IBlockProductionTrigger> _triggers;
 
         public CompositeBlockProductionTrigger(params IBlockProductionTrigger[] triggers)
         {
-            _triggers = triggers;
-            foreach (IBlockProductionTrigger trigger in _triggers)
+            _triggers = triggers.ToList();
+            for (int index = 0; index < _triggers.Count; index++)
             {
-                trigger.TriggerBlockProduction += BlockProductionTriggerOnTriggerBlockProduction;
+                HookTrigger(_triggers[index]);
             }
         }
 
-        private void BlockProductionTriggerOnTriggerBlockProduction(object? sender, EventArgs e)
+        internal void Add(IBlockProductionTrigger trigger)
         {
-            TriggerBlockProduction?.Invoke(sender, e);
+            _triggers.Add(trigger);
+            HookTrigger(trigger);
         }
+        
+        private void HookTrigger(IBlockProductionTrigger trigger) =>
+            trigger.TriggerBlockProduction += OnInnerTriggerBlockProduction;
 
-        public event EventHandler? TriggerBlockProduction;
+        private void OnInnerTriggerBlockProduction(object? sender, BlockProductionEventArgs e) =>
+            TriggerBlockProduction?.Invoke(sender, e);
+
+        public event EventHandler<BlockProductionEventArgs>? TriggerBlockProduction;
 
         public void Dispose()
         {
-            foreach (IBlockProductionTrigger trigger in _triggers)
+            for (int index = 0; index < _triggers.Count; index++)
             {
-                trigger.TriggerBlockProduction -= BlockProductionTriggerOnTriggerBlockProduction;
+                var trigger = _triggers[index];
+                trigger.TriggerBlockProduction -= OnInnerTriggerBlockProduction;
+                if (trigger is IDisposable disposable)
+                {
+                    disposable.Dispose();
+                }
             }
         }
     }

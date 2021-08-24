@@ -29,6 +29,11 @@ namespace Nethermind.Config
         private readonly ConcurrentDictionary<Type, object> _instances = new();
         
         private readonly List<IConfigSource> _configSource = new();
+        private Dictionary<string, object> Categories { get; set; } = new(StringComparer.InvariantCultureIgnoreCase);
+
+        private readonly Dictionary<Type, Type> _implementations = new();
+
+        private readonly TypeDiscovery _typeDiscovery = new();
 
         public T GetConfig<T>() where T : IConfig
         {
@@ -72,12 +77,6 @@ namespace Nethermind.Config
             _configSource.Add(configSource);
         }
         
-        private Dictionary<string, object> Categories { get; set; } = new(StringComparer.InvariantCultureIgnoreCase);
-        
-        private readonly Dictionary<Type, Type> _implementations = new();
-        
-        private readonly TypeDiscovery _typeDiscovery = new();
-        
         public void Initialize()
         {
             Type type = typeof(IConfig);
@@ -99,7 +98,7 @@ namespace Nethermind.Config
                     {
                         for (int i = 0; i < _configSource.Count; i++)
                         {
-                            string category = config.GetType().Name;
+                            string category = @interface.IsAssignableFrom(typeof(INoCategoryConfig)) ? null : config.GetType().Name;
                             string name = propertyInfo.Name;
                             (bool isSet, object value) = _configSource[i].GetValue(propertyInfo.PropertyType, category, name);
                             if (isSet)
@@ -128,7 +127,7 @@ namespace Nethermind.Config
                 Initialize();
             }
 
-            var propertySet = _instances.Values.SelectMany(i => i.GetType().GetProperties().Select(p => GetKey(i.GetType().Name , p.Name))).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            HashSet<string> propertySet = _instances.Values.SelectMany(i => i.GetType().GetProperties().Select(p => GetKey(i.GetType().Name , p.Name))).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
             List<(IConfigSource Source, string Category, string Name)> incorrectSettings = new();
 
@@ -145,12 +144,31 @@ namespace Nethermind.Config
                 }
             }
 
-            var msg = string.Join(Environment.NewLine, incorrectSettings.Select(s => s.Source.ToString() + ":" + s.Category + ":" + s.Name));
-
+            var msg = string.Join(Environment.NewLine, incorrectSettings.Select(s => $"ConfigType:{GetConfigSourceName(s.Source)}|Category:{s.Category}|Name:{s.Name}"));
 
             return (msg, incorrectSettings);
 
-            static string GetKey(string category, string name) => category + '.' + name;
+            static string GetConfigSourceName(IConfigSource source) => source switch
+            {
+                ArgsConfigSource => "RuntimeOption",
+                EnvConfigSource => "EnvironmentVariable(NETHERMIND_*)",
+                JsonConfigSource => "JsonConfigFile",
+                _ => source.ToString()
+            };
+
+            static string GetKey(string category, string name)
+            {
+                if(string.IsNullOrEmpty(category))
+                {
+                    category = nameof(NoCategoryConfig);
+                }
+                else if(!category.EndsWith("config", StringComparison.OrdinalIgnoreCase))
+                {
+                    category += "Config";
+                }
+
+                return category + '.' + name;
+            }
         }
     }
 }

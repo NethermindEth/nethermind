@@ -59,6 +59,7 @@ namespace Nethermind.TxPool
         private readonly IAccountStateProvider _accounts;
 
         private readonly IChainHeadInfoProvider _headInfo;
+        private readonly ITxPoolConfig _txPoolConfig;
 
         private readonly ILogger _logger;
 
@@ -91,8 +92,10 @@ namespace Nethermind.TxPool
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _headInfo = chainHeadInfoProvider ?? throw new ArgumentNullException(nameof(chainHeadInfoProvider));
+            _txPoolConfig = txPoolConfig;
             _accounts = _headInfo.AccountStateProvider;
             _specProvider = _headInfo.SpecProvider;
+
 
             MemoryAllowance.MemPoolSize = txPoolConfig.Size;
             AddNodeInfoEntryForTxPool();
@@ -130,20 +133,18 @@ namespace Nethermind.TxPool
 
         private void OnHeadChange(object? sender, BlockReplacementEventArgs e)
         {
-            _hashCache.ClearCurrentBlockCache();
-            // we don't want this to be on main processing thread
             // TODO: I think this is dangerous if many blocks are processed one after another
-            Task.Run(() => OnHeadChange(e.Block!, e.PreviousBlock))
-                .ContinueWith(t =>
-                {
-                    if (t.IsFaulted)
-                    {
-                        if (_logger.IsError)
-                            _logger.Error(
-                                $"Couldn't correctly add or remove transactions from txpool after processing block {e.Block!.ToString(Block.Format.FullHashAndNumber)}.",
-                                t.Exception);
-                    }
-                });
+            try
+            {
+                _hashCache.ClearCurrentBlockCache();
+                OnHeadChange(e.Block!, e.PreviousBlock);
+            }
+            catch (Exception exception)
+            {
+                if (_logger.IsError)
+                    _logger.Error(
+                        $"Couldn't correctly add or remove transactions from txpool after processing block {e.Block!.ToString(Block.Format.FullHashAndNumber)}.", exception);
+            }
         }
 
         private void OnHeadChange(Block block, Block? previousBlock)
@@ -237,10 +238,12 @@ namespace Nethermind.TxPool
             NewDiscovered?.Invoke(this, new TxEventArgs(tx));
 
             bool managedNonce = (handlingOptions & TxHandlingOptions.ManagedNonce) == TxHandlingOptions.ManagedNonce;
-            bool startBroadcast = (handlingOptions & TxHandlingOptions.PersistentBroadcast) == TxHandlingOptions.PersistentBroadcast;
+            bool startBroadcast = (handlingOptions & TxHandlingOptions.PersistentBroadcast) ==
+                                  TxHandlingOptions.PersistentBroadcast;
 
-            if (_logger.IsTrace) _logger.Trace(
-                $"Adding transaction {tx.ToString("  ")} - managed nonce: {managedNonce} | persistent broadcast {startBroadcast}");
+            if (_logger.IsTrace)
+                _logger.Trace(
+                    $"Adding transaction {tx.ToString("  ")} - managed nonce: {managedNonce} | persistent broadcast {startBroadcast}");
 
             for (int i = 0; i < _filterPipeline.Count; i++)
             {
@@ -261,15 +264,15 @@ namespace Nethermind.TxPool
             lock (_locker)
             {
                 bool eip1559Enabled = _specProvider.GetSpec().IsEip1559Enabled;
-                
+
                 tx.GasBottleneck = tx.CalculateEffectiveGasPrice(eip1559Enabled, _headInfo.CurrentBaseFee);
                 bool inserted = _transactions.TryInsert(tx.Hash, tx, out Transaction? removed);
                 if (inserted)
-                {
+                { 
                     _transactions.UpdateGroup(tx.SenderAddress!, UpdateBucketWithAddedTransaction);
                     Metrics.PendingTransactionsAdded++;
                     if (tx.IsEip1559) { Metrics.Pending1559TransactionsAdded++; }
-                    
+
                     if (removed != null)
                     {
                         // transaction which was on last position in sorted TxPool and was deleted to give
@@ -312,7 +315,7 @@ namespace Nethermind.TxPool
         private IEnumerable<(Transaction Tx, Action<Transaction> Change)> UpdateGasBottleneck(
             ICollection<Transaction> transactions, long currentNonce, UInt256 balance)
         {
-            UInt256 previousTxBottleneck = UInt256.MaxValue;
+            UInt256? previousTxBottleneck = null;
             int i = 0;
 
             foreach (Transaction tx in transactions)
@@ -328,7 +331,7 @@ namespace Nethermind.TxPool
                 }
                 else
                 {
-                    if (previousTxBottleneck == UInt256.MaxValue)
+                    if (previousTxBottleneck == null)
                     {
                         previousTxBottleneck = tx.CalculateAffordableGasPrice(_specProvider.GetSpec().IsEip1559Enabled,
                             _headInfo.CurrentBaseFee, balance);
@@ -339,7 +342,7 @@ namespace Nethermind.TxPool
                         UInt256 effectiveGasPrice =
                             tx.CalculateEffectiveGasPrice(_specProvider.GetSpec().IsEip1559Enabled,
                                 _headInfo.CurrentBaseFee);
-                        gasBottleneck = UInt256.Min(effectiveGasPrice, previousTxBottleneck);
+                        gasBottleneck = UInt256.Min(effectiveGasPrice, previousTxBottleneck ?? 0);
                     }
 
                     if (tx.GasBottleneck != gasBottleneck)
@@ -362,6 +365,9 @@ namespace Nethermind.TxPool
         {
             lock (_locker)
             {
+                // ensure the capacity of the pool
+                if (_transactions.Count > _txPoolConfig.Size)
+                    if (_logger.IsWarn) _logger.Warn($"TxPool exceeds the config size {_transactions.Count}/{_txPoolConfig.Size}");
                 _transactions.UpdatePool(UpdateBucket);
             }
         }
@@ -489,7 +495,7 @@ namespace Nethermind.TxPool
             _broadcaster.Dispose();
             _headInfo.HeadChanged -= OnHeadChange;
         }
-        
+
         /// <summary>
         /// This method is used just for nice logging features in the console.
         /// </summary>

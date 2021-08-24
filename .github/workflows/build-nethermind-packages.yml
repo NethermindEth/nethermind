@@ -31,20 +31,29 @@ jobs:
     - name: Setting up Node.js
       uses: actions/setup-node@master
       with:
-        node-version: "13"
+        node-version: "14"
     - name: Setting up Build Environment
       run: |
-        npm i -g @vercel/ncc pkg
+        npm i pkg @vercel/ncc -g
+    - name: Setting up QEMU
+      uses: docker/setup-qemu-action@v1
+    - name: Setting up Docker Buildx
+      id: buildx
+      uses: docker/setup-buildx-action@v1
     - name: Setting up Packages
       run: ./nethermind/scripts/deployment/setup-packages.sh
     - name: Building Runner
       run: ./nethermind/scripts/deployment/build-runner.sh
-    - name: Building BeamWallet
-      run: ./nethermind/scripts/deployment/build-wallet.sh
     - name: Building Cli
       run: ./nethermind/scripts/deployment/build-cli.sh
     - name: Building Launcher
       run: ./nethermind/scripts/deployment/build-launcher.sh
+    - name: Building Launcher for arm64
+      run: |
+        cd nethermind/
+        docker buildx build --platform=linux/arm64 -t tmp-launcher -f Dockerfile.launcher . --load
+        docker run --platform=linux/arm64 -v $PWD:/opt/mount --rm tmp-launcher bash -c "cp /nethermind/Nethermind.Launcher /opt/mount/"
+        mv Nethermind.Launcher ${{ env.RELEASE_DIRECTORY }}/${{ env.LIN_ARM64_RELEASE }}/Nethermind.Launcher
     - name: Archiving packages
       run: ./nethermind/scripts/deployment/archive-packages.sh
     - uses: actions/upload-artifact@master

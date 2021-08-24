@@ -19,7 +19,7 @@
       <Content Include="chainspec\clique.json">
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       </Content>
-      <Content Include="chainspec\goerli.json">
+      <Content Include="chainspec\goerli_test.json">
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       </Content>
       <Content Include="chainspec\nethdev.json">

@@ -120,6 +120,34 @@ namespace Nethermind.Evm.Test.Tracing
         }
 
         [Test]
+        public void Handles_well_revert()
+        {
+            long gasLimit = 100000000;
+            EstimateGasTracer tracer = new();
+            var gasLeft = gasLimit - 22000;
+            tracer.ReportAction(gasLeft, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.Transaction, false);
+            gasLeft = 63 * gasLeft / 64;
+            tracer.ReportAction(gasLeft, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), _executionType, false);
+            gasLeft = 63 * gasLeft / 64;
+            tracer.ReportAction(gasLeft, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), _executionType, false);
+
+            if (_executionType.IsAnyCreate())
+            {
+                tracer.ReportActionError(EvmExceptionType.Revert, 96000000);
+                tracer.ReportActionError(EvmExceptionType.Revert, 98000000);
+                tracer.ReportActionError(EvmExceptionType.Revert, 99000000);
+            }
+            else
+            {
+                tracer.ReportActionError(EvmExceptionType.Revert, 96000000);
+                tracer.ReportActionError(EvmExceptionType.Revert, 98000000);
+                tracer.ReportActionError(EvmExceptionType.Revert, 99000000);
+            }
+
+            tracer.CalculateEstimate(Build.A.Transaction.WithGasLimit(100000000).TestObject, _releaseSpec).Should().Be(35146L);
+        }
+        
+        [Test]
         public void Easy_one_level_case()
         {
             EstimateGasTracer tracer = new();

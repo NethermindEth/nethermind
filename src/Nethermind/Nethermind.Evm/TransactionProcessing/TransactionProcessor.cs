@@ -145,7 +145,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 return;
             }
             
-            UInt256 gasPrice = transaction.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, block.BaseFeePerGas);
+            UInt256 effectiveGasPrice = transaction.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, block.BaseFeePerGas);
 
             long gasLimit = transaction.GasLimit;
             byte[] machineCode = transaction.IsContractCreation ? transaction.Data : null;
@@ -205,7 +205,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 else
                 {
                     TraceLogInvalidTx(transaction, $"SENDER_ACCOUNT_DOES_NOT_EXIST {caller}");
-                    if (!commit || restore || gasPrice == UInt256.Zero)
+                    if (!commit || restore || effectiveGasPrice == UInt256.Zero)
                     {
                         deleteCallerAccount = !commit || restore;
                         _stateProvider.CreateAccount(caller, UInt256.Zero);
@@ -219,12 +219,12 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
             }
 
-            UInt256 senderReservedGasPayment = restore ? UInt256.Zero : (ulong) gasLimit * gasPrice;
+            UInt256 senderReservedGasPayment = restore ? UInt256.Zero : (ulong) gasLimit * effectiveGasPrice;
             
             if (notSystemTransaction)
             {
                 UInt256 senderBalance = _stateProvider.GetBalance(caller);
-                if (!restore && ((ulong) intrinsicGas * gasPrice + value > senderBalance || senderReservedGasPayment + value > senderBalance))
+                if (!restore && ((ulong) intrinsicGas * effectiveGasPrice + value > senderBalance || senderReservedGasPayment + value > senderBalance))
                 {
                     TraceLogInvalidTx(transaction, $"INSUFFICIENT_SENDER_BALANCE: ({caller})_BALANCE = {senderBalance}");
                     QuickFail(transaction, block, txTracer, eip658NotEnabled, "insufficient sender balance");
@@ -294,7 +294,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 recipientOrNull = recipient;
                 
                 ExecutionEnvironment env = new();
-                env.TxExecutionContext = new TxExecutionContext(block, caller, gasPrice);
+                env.TxExecutionContext = new TxExecutionContext(block, caller, effectiveGasPrice);
                 env.Value = value;
                 env.TransferValue = value;
                 env.Caller = caller;
@@ -368,7 +368,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     statusCode = StatusCode.Success;
                 }
 
-                spentGas = Refund(gasLimit, unspentGas, substate, caller, gasPrice, spec);
+                spentGas = Refund(gasLimit, unspentGas, substate, caller, effectiveGasPrice, spec);
             }
             catch (Exception ex) when (ex is EvmException || ex is OverflowException) // TODO: OverflowException? still needed? hope not
             {

@@ -35,7 +35,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         {
             IncrementalChanges = false;
             _getAll = getAll ?? throw new ArgumentNullException(nameof(getAll));
-            _tryGetChangesFromBlock = tryGetChangesFromBlock ?? throw new ArgumentNullException(nameof(tryGetChangesFromBlock));;
+            _tryGetChangesFromBlock = tryGetChangesFromBlock ?? throw new ArgumentNullException(nameof(tryGetChangesFromBlock));
         }
 
         public DataContract(

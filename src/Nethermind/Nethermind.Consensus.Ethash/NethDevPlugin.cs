@@ -52,7 +52,7 @@ namespace Nethermind.Consensus.Ethash
             return Task.CompletedTask;
         }
 
-        public Task<IBlockProducer> InitBlockProducer(ITxSource? txSource = null)
+        public Task<IBlockProducer> InitBlockProducer(IBlockProductionTrigger? blockProductionTrigger = null, ITxSource? additionalTxSource = null)
         {
             if (_nethermindApi!.SealEngineType != Nethermind.Core.SealEngineType.NethDev)
             {
@@ -68,14 +68,14 @@ namespace Nethermind.Consensus.Ethash
                 .WithNullTxFilter()
                 .WithMinGasPriceFilter(_nethermindApi.Config<IMiningConfig>().MinGasPrice, getFromApi.SpecProvider)
                 .Build;
-            
-            txSource ??= new TxPoolTxSource(
+
+            TxPoolTxSource txPoolTxSource = new(
                 getFromApi.TxPool,
                 getFromApi.SpecProvider,
                 getFromApi.TransactionComparerProvider!,
                 getFromApi.LogManager,
                 txFilterPipeline);
-            
+
             ILogger logger = getFromApi.LogManager.GetClassLogger();
             if (logger.IsWarn) logger.Warn("Starting Neth Dev block producer & sealer");
 
@@ -104,16 +104,17 @@ namespace Nethermind.Consensus.Ethash
                 getFromApi.BlockPreprocessor,
                 getFromApi.LogManager,
                 BlockchainProcessor.Options.NoReceipts);
+
+            DefaultBlockProductionTrigger = new BuildBlocksRegularly(TimeSpan.FromMilliseconds(200))
+                .IfPoolIsNotEmpty(getFromApi.TxPool)
+                .Or(getFromApi.ManualBlockProductionTrigger);
             
-            IBlockProducer blockProducer = setInApi.BlockProducer = new DevBlockProducer(
-                txSource.ServeTxsOneByOne(),
+            IBlockProducer blockProducer = new DevBlockProducer(
+                additionalTxSource.Then(txPoolTxSource).ServeTxsOneByOne(),
                 producerChainProcessor,
                 producerEnv.StateProvider,
                 getFromApi.BlockTree,
-                getFromApi.BlockProcessingQueue,
-                new BuildBlocksRegularly(TimeSpan.FromMilliseconds(200))
-                    .IfPoolIsNotEmpty(getFromApi.TxPool)
-                    .Or(getFromApi.ManualBlockProductionTrigger),
+                blockProductionTrigger ?? DefaultBlockProductionTrigger,
                 getFromApi.Timestamper,
                 getFromApi.SpecProvider,
                 getFromApi.Config<IMiningConfig>(),
@@ -123,6 +124,7 @@ namespace Nethermind.Consensus.Ethash
         }
 
         public string SealEngineType => Nethermind.Core.SealEngineType.NethDev;
+        public IBlockProductionTrigger DefaultBlockProductionTrigger { get; private set; }
 
         public Task InitNetworkProtocol()
         {

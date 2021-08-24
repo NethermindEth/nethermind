@@ -346,8 +346,8 @@ namespace Nethermind.Synchronization.Test
             DevBlockProducer producer = new(
                 transactionSelector,
                 devChainProcessor,
-                stateProvider, tree,
-                processor,
+                stateProvider, 
+                tree,
                 new BuildBlocksRegularly(TimeSpan.FromMilliseconds(50)).IfPoolIsNotEmpty(txPool),
                 Timestamper.Default,
                 specProvider,

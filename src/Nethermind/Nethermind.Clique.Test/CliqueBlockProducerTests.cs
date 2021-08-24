@@ -133,8 +133,6 @@ namespace Nethermind.Clique.Test
                 _snapshotManager[privateKey] = snapshotManager;
                 CliqueSealer cliqueSealer = new CliqueSealer(new Signer(ChainId.Goerli, privateKey, LimboLogs.Instance), _cliqueConfig, snapshotManager, nodeLogManager);
 
-
-
                 _genesis.Header.StateRoot = _genesis3Validators.Header.StateRoot = stateProvider.StateRoot;
                 _genesis.Header.Hash = _genesis.Header.CalculateHash();
                 _genesis3Validators.Header.Hash = _genesis3Validators.Header.CalculateHash();
@@ -195,6 +193,8 @@ namespace Nethermind.Clique.Test
                     MainnetSpecProvider.Instance, 
                     _cliqueConfig,
                     nodeLogManager);
+
+                var suggester = new ProducedBlockSuggester(blockTree, blockProducer);
                 blockProducer.Start();
 
                 _producers.Add(privateKey, blockProducer);
