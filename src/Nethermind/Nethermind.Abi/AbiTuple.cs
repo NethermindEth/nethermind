@@ -85,7 +85,7 @@ namespace Nethermind.Abi
         }
     }
 
-    public class AbiTuple<T> : AbiType
+    public class AbiTuple<T> : AbiType where T : new()
     {
         private readonly PropertyInfo[] _properties;
         public override string Name { get; }
@@ -98,25 +98,30 @@ namespace Nethermind.Abi
         
         public override (object, int) Decode(byte[] data, int position, bool packed)
         {
-            object[] values = new object[_properties.Length];
+            T item = new T();
             for (int i = 0; i < _properties.Length; i++)
             {
                 PropertyInfo property = _properties[i];
-                (values[i], position) = GetAbiType(property).Decode(data, position, packed);
+                AbiType abiType = GetAbiType(property);
+                object value;
+                (value, position) = abiType.Decode(data, position, packed);
+                property.SetValue(item, value);
             }
 
-            return (Activator.CreateInstance(CSharpType, values), position)!;
+            return (item, position);
         }
 
         public override byte[] Encode(object? arg, bool packed)
         {
-            if (arg is ITuple input && input.Length == _properties.Length)
+            if (arg is T item)
             {
                 byte[][] encodedItems = new byte[_properties.Length][];
                 for (int i = 0; i < _properties.Length; i++)
                 {
                     PropertyInfo property = _properties[i];
-                    encodedItems[i] = GetAbiType(property).Encode(input[i], packed);
+                    object? value = property.GetValue(item);
+                    AbiType abiType = GetAbiType(property);
+                    encodedItems[i] = abiType.Encode(value, packed);
                 }
                 
                 return Bytes.Concat(encodedItems);
