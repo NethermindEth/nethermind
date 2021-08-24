@@ -17,6 +17,7 @@
 using System;
 using System.Numerics;
 using Nethermind.Core.Extensions;
+using Nethermind.Int256;
 
 namespace Nethermind.Abi
 {
@@ -25,6 +26,15 @@ namespace Nethermind.Abi
         private const int MaxSize = 256;
 
         private const int MinSize = 0;
+        
+        static AbiInt()
+        {
+            RegisterMapping<sbyte>(Int8);
+            RegisterMapping<short>(Int16);
+            RegisterMapping<int>(Int32);
+            RegisterMapping<long>(Int64);
+            RegisterMapping<Int256.Int256>(Int256);
+        }
 
         public AbiInt(int length)
         {

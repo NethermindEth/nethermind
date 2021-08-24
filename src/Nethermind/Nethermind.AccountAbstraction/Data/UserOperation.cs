@@ -16,6 +16,7 @@
 // 
 
 using System;
+using Nethermind.Abi;
 using Nethermind.AccountAbstraction.Broadcaster;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -46,6 +47,8 @@ namespace Nethermind.AccountAbstraction.Data
 
         public UserOperation() {}
 
+        public UserOperationAbi Abi { get; set; }
+
         public Keccak? Hash { get; set; }
         public Address? Target { get; set; }
         public UInt256 Nonce { get; set; }
@@ -61,5 +64,23 @@ namespace Nethermind.AccountAbstraction.Data
         public AccessList? AccessList { get; set; }
         public int ResimulationCounter { get; set; }
         public bool AccessListTouched { get; set; }
+    }
+
+    public struct UserOperationAbi
+    {
+        public Address Target { get; set; }
+        public UInt256 Nonce { get; set; }
+        public byte[] InitCode { get; set; }
+        public byte[] CallData { get; set; }
+        public ulong CallGas { get; set; }
+        public ulong VerificationGas { get; set; }
+        public ulong MaxFeePerGas { get; set; }
+        public ulong MaxPriorityFeePerGas { get; set; }
+        public Address Paymaster { get; set; }
+        
+        [AbiTypeMapping(typeof(AbiBytes), 32)]
+        public byte[] VerificationAccessListHash { get; set; }
+        public Address Signer { get; set; }
+        public byte[] Signature { get; set; }
     }
 }

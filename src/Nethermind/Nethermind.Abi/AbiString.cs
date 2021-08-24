@@ -23,6 +23,11 @@ namespace Nethermind.Abi
     {
         public static AbiString Instance = new();
 
+        static AbiString()
+        {
+            RegisterMapping<string>(Instance);
+        }
+        
         private AbiString()
         {
         }

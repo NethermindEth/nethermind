@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,15 +13,20 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-namespace Nethermind.Config
+using System;
+
+namespace Nethermind.Abi
 {
-    public static class StringExtensions
+    [AttributeUsage(AttributeTargets.Property)]
+    public class AbiTypeMappingAttribute : Attribute
     {
-        public static string RemoveStart(this string thisString, char removeChar) =>
-            thisString.StartsWith(removeChar) ? thisString.Substring(1, thisString.Length - 1) : thisString;
+        public AbiTypeMappingAttribute(Type abiType, params object[] args)
+        {
+            AbiType = (AbiType)Activator.CreateInstance(abiType, args)! ?? throw new ArgumentException($"Cannot create type {abiType}", nameof(abiType));
+        }
 
-        public static string  RemoveEnd(this string thisString, char removeChar) => 
-            thisString.EndsWith(removeChar) ? thisString.Substring(0, thisString.Length - 1) : thisString;
+        public AbiType AbiType { get; }
     }
 }

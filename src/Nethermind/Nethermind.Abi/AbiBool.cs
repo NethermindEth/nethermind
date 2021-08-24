@@ -21,6 +21,11 @@ namespace Nethermind.Abi
 {
     public class AbiBool : AbiUInt
     {
+        static AbiBool()
+        {
+            RegisterMapping<bool>(Instance);
+        }
+        
         private AbiBool() : base(8)
         {
         }

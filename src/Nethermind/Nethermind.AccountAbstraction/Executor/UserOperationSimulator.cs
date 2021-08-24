@@ -60,7 +60,7 @@ namespace Nethermind.AccountAbstraction.Executor
         private readonly ILogManager _logManager;
         private readonly IBlockPreprocessorStep _recoveryStep;
 
-        private readonly AbiDefinition _contract;
+        private AbiDefinition _contract;
 
         public UserOperationSimulator(
             IStateProvider stateProvider,
@@ -88,10 +88,17 @@ namespace Nethermind.AccountAbstraction.Executor
                 string json = r.ReadToEnd();
                 dynamic obj = JsonConvert.DeserializeObject(json)!;
 
-                AbiDefinitionParser parser = new();
-                AbiDefinition contract = parser.Parse(obj["abi"].ToString());
-                _contract = contract;
+                _contract = LoadContract(obj);
             }
+        }
+
+        private AbiDefinition LoadContract(dynamic obj)
+        {
+            AbiDefinitionParser parser = new();
+            AbiDefinition contract = parser.Parse(obj["abi"].ToString());
+            AbiTuple<UserOperationAbi> userOperationAbi = new();
+            contract.ReplaceAbiTypes(userOperationAbi);
+            return contract;
         }
 
         public Task<bool> Simulate(

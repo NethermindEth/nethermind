@@ -22,6 +22,11 @@ namespace Nethermind.Abi
 {
     public class AbiAddress : AbiUInt
     {
+        static AbiAddress()
+        {
+            RegisterMapping<Address>(Instance);
+        }
+        
         private AbiAddress() : base(160)
         {
         }

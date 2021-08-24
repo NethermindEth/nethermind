@@ -27,6 +27,15 @@ namespace Nethermind.Abi
         private const int MaxSize = 256;
 
         private const int MinSize = 0;
+        
+        static AbiUInt()
+        {
+            RegisterMapping<byte>(UInt8);
+            RegisterMapping<ushort>(UInt16);
+            RegisterMapping<uint>(UInt32);
+            RegisterMapping<ulong>(UInt64);
+            RegisterMapping<UInt256>(UInt256);
+        }
 
         public AbiUInt(int length)
         {

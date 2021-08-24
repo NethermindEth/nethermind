@@ -27,6 +27,11 @@ namespace Nethermind.Abi
         private const int PaddingMultiple = 32;
 
         public static AbiDynamicBytes Instance = new();
+        
+        static AbiDynamicBytes()
+        {
+            RegisterMapping<byte[]>(Instance);
+        }
 
         private AbiDynamicBytes()
         {
