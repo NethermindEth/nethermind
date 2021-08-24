@@ -30,6 +30,9 @@ namespace Nethermind.Mev
 
         [Description("Total number of bundles simulated")]
         public static int BundlesSimulated { get; set; } = 0;
+        
+        [Description("Total number of bundles included in blocks")]
+        public static int BundlesIncluded { get; set; } = 0;
 
         [Description("Total coinbase payments in wei")]
         public static decimal TotalCoinbasePayments { get; set; } = 0;
