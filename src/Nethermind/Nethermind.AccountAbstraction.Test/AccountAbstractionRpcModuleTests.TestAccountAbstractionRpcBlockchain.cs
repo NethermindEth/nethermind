@@ -75,7 +75,7 @@ namespace Nethermind.AccountAbstraction.Test
 
             public TestAccountAbstractionRpcBlockchain(UInt256? initialBaseFeePerGas)
             {
-                Signer = new Eth2Signer(MinerAddress);
+                Signer = new Signer(1, TestItem.PrivateKeyD, LogManager);
                 GenesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.Genesis
                     .WithTimestamp(UInt256.One)
                     .WithGasLimit(GasLimitCalculator.GasLimit)
@@ -146,7 +146,7 @@ namespace Nethermind.AccountAbstraction.Test
 
                 UserOperationSimulator = new(
                     State, 
-                    new Eth2Signer(MinerAddress), 
+                    Signer, 
                     _accountAbstractionConfig, 
                     SpecProvider, 
                     BlockTree, 

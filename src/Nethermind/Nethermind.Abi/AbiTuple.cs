@@ -59,7 +59,8 @@ namespace Nethermind.Abi
                 int i = 0;
                 foreach (AbiType type in Elements.Values)
                 {
-                    encodedItems[i++] = type.Encode(input[i], packed);
+                    encodedItems[i] = type.Encode(input[i], packed);
+                    i++;
                 }
                 
                 return Bytes.Concat(encodedItems);
@@ -72,7 +73,7 @@ namespace Nethermind.Abi
 
         private static Type GetCSharpType(IReadOnlyDictionary<string, AbiType> elements)
         {
-            Type genericType = Type.GetType("System.ValueTuple`" + elements.Count)!;
+            Type genericType = Type.GetType("System.ValueTuple`" + (elements.Count <= 8 ? elements.Count : 8))!;
             Type[] typeArguments = elements.Values.Select(v => v.CSharpType).ToArray();
             return genericType.MakeGenericType(typeArguments);
         }

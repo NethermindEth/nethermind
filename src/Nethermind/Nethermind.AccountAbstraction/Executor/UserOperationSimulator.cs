@@ -18,6 +18,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -25,6 +26,7 @@ using Nethermind.Abi;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Source;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Contracts.Json;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
@@ -42,6 +44,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
+using Newtonsoft.Json;
 
 namespace Nethermind.AccountAbstraction.Executor
 {
@@ -56,6 +59,8 @@ namespace Nethermind.AccountAbstraction.Executor
         private readonly IReadOnlyTrieStore _trieStore;
         private readonly ILogManager _logManager;
         private readonly IBlockPreprocessorStep _recoveryStep;
+
+        private readonly AbiDefinition _contract;
 
         public UserOperationSimulator(
             IStateProvider stateProvider,
@@ -77,6 +82,16 @@ namespace Nethermind.AccountAbstraction.Executor
             _trieStore = trieStore;
             _logManager = logManager;
             _recoveryStep = recoveryStep;
+            
+            using (StreamReader r = new StreamReader("/Users/parasztszilvia/Documents/Prog/Ethereum/nethermind/src/Nethermind/Nethermind.AccountAbstraction/Contracts/Singleton.json"))
+            {
+                string json = r.ReadToEnd();
+                dynamic obj = JsonConvert.DeserializeObject(json)!;
+
+                AbiDefinitionParser parser = new();
+                AbiDefinition contract = parser.Parse(obj["abi"].ToString());
+                _contract = contract;
+            }
         }
 
         public Task<bool> Simulate(
@@ -106,21 +121,27 @@ namespace Nethermind.AccountAbstraction.Executor
 
             IReadOnlyDictionary<string, AbiType> userOperationRlp = new Dictionary<string, AbiType>
             {
-                {"target", new AbiBytes(20)},
+                {"target", AbiType.Address},
                 {"callGas", new AbiUInt(64)},
-                {"postCallGas", new AbiUInt(64)},
                 {"gasPrice", AbiType.UInt256},
                 {"callData", AbiType.DynamicBytes},
                 {"signature", AbiType.DynamicBytes}
             };
+            
             AbiSignature abiSignature = new AbiSignature("handleOps",
                 new AbiArray(new AbiTuple(userOperationRlp)));
-
+            
             IAbiEncoder abiEncoder = new AbiEncoder();
+
+            (Address Target, ulong CallGas, UInt256 MaxFeePerGas, byte[] CallData, byte[] Bytes)[] arg = userOperations
+                .Select(op => (op.Target, (ulong) op.CallGas, op.MaxFeePerGas, op.CallData, op.Signature.Bytes)).ToArray();
+            
             byte[] computedCallData = abiEncoder.Encode(
                 AbiEncodingStyle.None,
                 abiSignature,
-                userOperations);
+                arg);
+            
+            
 
             Transaction transaction = new()
             {

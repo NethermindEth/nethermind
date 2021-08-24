@@ -26,12 +26,14 @@ namespace Nethermind.AccountAbstraction.Data
 {
     public partial class UserOperation
     {
-        public UserOperation(Address target, UInt256 nonce, byte[] callData, long callGas, UInt256 maxFeePerGas, UInt256 maxPriorityFeePerGas, Address paymaster, Address signer, Signature signature, AccessList accessList)
+        public UserOperation(Address target, UInt256 nonce, byte[] callData, byte[] initCode, long callGas, long verificationGas, UInt256 maxFeePerGas, UInt256 maxPriorityFeePerGas, Address paymaster, Address signer, Signature signature, AccessList accessList)
         {
             Target = target;
             Nonce = nonce;
             CallData = callData;
+            InitCode = initCode;
             CallGas = callGas;
+            VerificationGas = verificationGas;
             MaxFeePerGas = maxFeePerGas;
             MaxPriorityFeePerGas = maxPriorityFeePerGas;
             Paymaster = paymaster;
@@ -41,17 +43,22 @@ namespace Nethermind.AccountAbstraction.Data
             
             Hash = CalculateHash(this);
         }
-        public Keccak Hash { get; }
-        public Address Target { get; }
-        public UInt256 Nonce { get; }
-        public byte[] CallData { get; }
-        public long CallGas { get; }
-        public UInt256 MaxFeePerGas { get; }
-        public UInt256 MaxPriorityFeePerGas { get; }
-        public Address Paymaster { get; }
-        public Address Signer { get; }
-        public Signature Signature { get; }
-        public AccessList AccessList { get; }
+
+        public UserOperation() {}
+
+        public Keccak? Hash { get; set; }
+        public Address? Target { get; set; }
+        public UInt256 Nonce { get; set; }
+        public byte[]? CallData { get; set; }
+        public byte[]? InitCode { get; set; }
+        public long CallGas { get; set; }
+        public long VerificationGas { get; set; }
+        public UInt256 MaxFeePerGas { get; set; }
+        public UInt256 MaxPriorityFeePerGas { get; set; }
+        public Address? Paymaster { get; set; }
+        public Address? Signer { get; set; }
+        public Signature? Signature { get; set; }
+        public AccessList? AccessList { get; set; }
         public int ResimulationCounter { get; set; }
         public bool AccessListTouched { get; set; }
     }

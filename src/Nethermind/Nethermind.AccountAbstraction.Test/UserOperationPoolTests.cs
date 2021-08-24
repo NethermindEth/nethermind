@@ -38,16 +38,7 @@ namespace Nethermind.AccountAbstraction.Test
         {
             var (userOperationPool, _, _) = GenerateUserOperationPool();
 
-            UserOperation op = new(Address.SystemUser,
-                0,
-                Address.Zero.Bytes,
-                25_000,
-                50,
-                50, 
-                Address.SystemUser, 
-                Address.SystemUser, 
-                new Signature(0, 1, 1000),
-                new AccessList(new Dictionary<Address, IReadOnlySet<UInt256>>()));
+            UserOperation op = Build.A.UserOperation.WithTarget(Address.SystemUser).SignedAndResolved().TestObject;
 
             userOperationPool.AddUserOperation(op);
 
@@ -61,26 +52,9 @@ namespace Nethermind.AccountAbstraction.Test
         {
             var (userOperationPool, _, _) = GenerateUserOperationPool(1);
 
-            UserOperation op = new(Address.SystemUser,
-                0,
-                Address.Zero.Bytes,
-                25_000,
-                20,
-                20, 
-                Address.SystemUser, 
-                Address.SystemUser, 
-                new Signature(0, 1, 1000),
-                new AccessList(new Dictionary<Address, IReadOnlySet<UInt256>>()));
-            UserOperation op2 = new(Address.SystemUser,
-                0,
-                Address.Zero.Bytes,
-                25_000,
-                50,
-                50, 
-                Address.SystemUser, 
-                Address.SystemUser, 
-                new Signature(0, 1, 1000),
-                new AccessList(new Dictionary<Address, IReadOnlySet<UInt256>>()));
+            UserOperation op = Build.A.UserOperation.WithTarget(Address.SystemUser).SignedAndResolved().TestObject;
+            UserOperation op2 = Build.A.UserOperation.WithTarget(Address.SystemUser).WithMaxFeePerGas(2).WithMaxPriorityFeePerGas(2).SignedAndResolved().TestObject;
+
 
             userOperationPool.AddUserOperation(op);
             userOperationPool.AddUserOperation(op2);
@@ -95,16 +69,7 @@ namespace Nethermind.AccountAbstraction.Test
         {
             var (userOperationPool, simulator, _) = GenerateUserOperationPool();
 
-            UserOperation op = new(Address.SystemUser,
-                0,
-                Address.Zero.Bytes,
-                25_000,
-                50,
-                50, 
-                Address.SystemUser, 
-                Address.SystemUser, 
-                new Signature(0, 1, 1000),
-                new AccessList(new Dictionary<Address, IReadOnlySet<UInt256>>()));
+            UserOperation op = Build.A.UserOperation.WithTarget(Address.SystemUser).SignedAndResolved().TestObject;
 
             userOperationPool.AddUserOperation(op);
 
@@ -115,26 +80,10 @@ namespace Nethermind.AccountAbstraction.Test
         public void Evicted_user_operation_has_its_simulated_removed_automatically()
         {
             var (userOperationPool, simulator, _) = GenerateUserOperationPool(1);
-            UserOperation op = new(Address.SystemUser,
-                0,
-                Address.Zero.Bytes,
-                25_000,
-                20,
-                20, 
-                Address.SystemUser, 
-                Address.SystemUser, 
-                new Signature(0, 1, 1000),
-                new AccessList(new Dictionary<Address, IReadOnlySet<UInt256>>()));
-            UserOperation op2 = new(Address.SystemUser,
-                0,
-                Address.Zero.Bytes,
-                25_000,
-                50,
-                50, 
-                Address.SystemUser, 
-                Address.SystemUser, 
-                new Signature(0, 1, 1000),
-                new AccessList(new Dictionary<Address, IReadOnlySet<UInt256>>()));
+            
+            UserOperation op = Build.A.UserOperation.WithTarget(Address.SystemUser).SignedAndResolved().TestObject;
+            UserOperation op2 = Build.A.UserOperation.WithTarget(Address.SystemUser).WithMaxFeePerGas(2).WithMaxPriorityFeePerGas(2).SignedAndResolved().TestObject;
+
 
             userOperationPool.AddUserOperation(op);
             simulator.Received().Simulate(op, Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>(), Arg.Any<UInt256>());
@@ -153,49 +102,13 @@ namespace Nethermind.AccountAbstraction.Test
             get
             {
                 // if callGas < Gas Cost of Transaction
-                yield return new(Address.SystemUser,
-                    0,
-                    Address.Zero.Bytes,
-                    20_000,
-                    50,
-                    50, 
-                    Address.SystemUser, 
-                    Address.SystemUser, 
-                    new Signature(0, 1, 1000),
-                    new AccessList(new Dictionary<Address, IReadOnlySet<UInt256>>()));
+                yield return Build.A.UserOperation.WithTarget(Address.SystemUser).WithCallGas(1).SignedAndResolved().TestObject;
                 // if target is zero address
-                yield return new(Address.Zero,
-                    0,
-                    Address.Zero.Bytes,
-                    25_000,
-                    50,
-                    50, 
-                    Address.SystemUser, 
-                    Address.SystemUser, 
-                    new Signature(0, 1, 1000),
-                    new AccessList(new Dictionary<Address, IReadOnlySet<UInt256>>()));
+                yield return Build.A.UserOperation.SignedAndResolved().TestObject;
                 // if target is not a contract
-                yield return new(_notAnAddress,
-                    0,
-                    Address.Zero.Bytes,
-                    25_000,
-                    50,
-                    50, 
-                    Address.SystemUser, 
-                    Address.SystemUser, 
-                    new Signature(0, 1, 1000),
-                    new AccessList(new Dictionary<Address, IReadOnlySet<UInt256>>()));
+                yield return Build.A.UserOperation.WithTarget(_notAnAddress).SignedAndResolved().TestObject;
                 // if paymaster is not a contract
-                yield return new(Address.SystemUser,
-                    0,
-                    Address.Zero.Bytes,
-                    25_000,
-                    50,
-                    50, 
-                    _notAnAddress, 
-                    Address.SystemUser, 
-                    new Signature(0, 1, 1000),
-                    new AccessList(new Dictionary<Address, IReadOnlySet<UInt256>>()));
+                yield return Build.A.UserOperation.WithPaymaster(_notAnAddress).SignedAndResolved().TestObject;
             }
         }
         
@@ -233,16 +146,7 @@ namespace Nethermind.AccountAbstraction.Test
         public void Deletes_op_if_resimulated_too_many_times()
         {
             var (userOperationPool, simulator, _) = GenerateUserOperationPool(10);
-            UserOperation op = new(Address.SystemUser,
-                0,
-                Address.Zero.Bytes,
-                25_000,
-                50,
-                50, 
-                Address.SystemUser, 
-                Address.SystemUser, 
-                new Signature(0, 1, 1000),
-                new AccessList(new Dictionary<Address, IReadOnlySet<UInt256>>()));
+            UserOperation op = Build.A.UserOperation.WithTarget(Address.SystemUser).SignedAndResolved().TestObject;
 
             userOperationPool.AddUserOperation(op);
             
@@ -262,34 +166,21 @@ namespace Nethermind.AccountAbstraction.Test
         public void Bans_paymaster_if_it_uses_too_much_gas_for_simulation_too_many_times()
         {
             var (userOperationPool, simulator, blockTree) = GenerateUserOperationPool(10);
-            UserOperation op = new(Address.SystemUser,
-                0,
-                Address.Zero.Bytes,
-                25_000,
-                50,
-                50, 
-                Address.SystemUser, 
-                Address.SystemUser, 
-                new Signature(0, 1, 1000),
-                new AccessList(new Dictionary<Address, IReadOnlySet<UInt256>>{{new("0x0000000000000000000000000000000000000001"), new HashSet<UInt256>{0}}}));
+            UserOperation op = Build.A.UserOperation
+                .WithTarget(Address.SystemUser)
+                .WithAccessList(new AccessList(new Dictionary<Address, IReadOnlySet<UInt256>>{{new("0x0000000000000000000000000000000000000001"), new HashSet<UInt256>{0}}}))
+                .SignedAndResolved()
+                .TestObject;
+                
             
             userOperationPool.AddUserOperation(op);
             
             for (int i = 0; i < 7; i++) 
             {
-                blockTree.NewHeadBlock += Raise.EventWith(new object(), new BlockEventArgs(Build.A.Block.TestObject));
+                blockTree.NewHeadBlock += Raise.EventWith(new object(), new BlockEventArgs(Core.Test.Builders.Build.A.Block.TestObject));
             }
             
-            UserOperation op2 = new(Address.SystemUser,
-                0,
-                Address.Zero.Bytes,
-                25_000,
-                50,
-                50, 
-                Address.SystemUser, 
-                Address.SystemUser, 
-                new Signature(0, 1, 1000),
-                new AccessList(new Dictionary<Address, IReadOnlySet<UInt256>>()));
+            UserOperation op2 = Build.A.UserOperation.WithTarget(Address.SystemUser).SignedAndResolved().TestObject;
             
             userOperationPool.AddUserOperation(op2);
             UserOperation[] userOperations = userOperationPool.GetUserOperations().ToArray();
@@ -315,7 +206,7 @@ namespace Nethermind.AccountAbstraction.Test
                 .ReturnsForAnyArgs(x => Task.FromResult(true));
 
             IBlockTree blockTree = Substitute.For<IBlockTree>();
-            blockTree.Head.Returns(Build.A.Block.TestObject);
+            blockTree.Head.Returns(Core.Test.Builders.Build.A.Block.TestObject);
 
             IAccountAbstractionConfig config = Substitute.For<IAccountAbstractionConfig>();
             config.SingletonContractAddress.Returns("0x8595dd9e0438640b5e1254f9df579ac12a86865f");
