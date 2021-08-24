@@ -45,12 +45,12 @@ namespace Nethermind.AccountAbstraction.Source
         {
             IDictionary<Address, HashSet<UInt256>> usedAccessList = new Dictionary<Address, HashSet<UInt256>>();
             IList<UserOperation> userOperationsToInclude = new List<UserOperation>();
-            long gasUsed = 0;
+            ulong gasUsed = 0;
             
             IEnumerable<UserOperation> userOperations = _userOperationPool.GetUserOperations().Where(op => op.MaxFeePerGas >= parent.BaseFeePerGas).OrderByDescending(op => CalculateUserOperationPremiumGasPrice(op, parent.BaseFeePerGas));
             foreach (UserOperation userOperation in userOperations)
             {
-                if (gasUsed >= gasLimit)
+                if (gasUsed >= (ulong)gasLimit)
                 {
                     continue;
                 }

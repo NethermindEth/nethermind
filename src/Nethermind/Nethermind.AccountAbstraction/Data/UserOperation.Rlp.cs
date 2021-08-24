@@ -65,7 +65,7 @@ namespace Nethermind.AccountAbstraction.Data
                    + Rlp.LengthOf(op.MaxPriorityFeePerGas)
                    + Rlp.LengthOf(op.Paymaster)
                    + Rlp.LengthOf(op.Signer)
-                   + Rlp.LengthOf(op.Signature.Bytes)
+                   + Rlp.LengthOf(op.Signature.BytesWithRecovery)
                    + accessListDecoder.GetLength(op.AccessList, RlpBehaviors.None);
         }
     }

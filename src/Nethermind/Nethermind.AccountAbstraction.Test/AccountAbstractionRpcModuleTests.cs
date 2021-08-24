@@ -96,6 +96,7 @@ namespace Nethermind.AccountAbstraction.Test
             PrivateKey privateKey = new PrivateKey("0x1111111111111111111111111111111111111111111111111111111111111111");
             
             
+            /*
             UserOperation op = new UserOperation(
                 new Address("0x59b670e9fA9D0A427751Af201D676719a970857b"), 
                 0, 
@@ -109,29 +110,32 @@ namespace Nethermind.AccountAbstraction.Test
                 privateKey.Address, 
                 new Signature(0, 1, 1000), 
                 new AccessList(new Dictionary<Address, IReadOnlySet<UInt256>>()));
+            */
 
-            UserOperation op1 = SignUserOperation(op, privateKey);
+            UserOperation op = Build.A.UserOperation.WithTarget(walletAddress!).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+
+            SignUserOperation(op, privateKey);
             
-            chain.SendUserOperation(op1);
+            chain.SendUserOperation(op);
             
             await chain.AddBlock(true);
         }
 
-        public static UserOperation SignUserOperation(UserOperation op, PrivateKey privateKey)
+        public static void SignUserOperation(UserOperation op, PrivateKey privateKey)
         {
             List<byte[]> bytesList = new List<byte[]>();
-            bool packed = true;
+            bool packed = false;
             
             bytesList.Add(AbiAddress.Instance.Encode(op.Target, packed));
             bytesList.Add(AbiType.UInt256.Encode(op.Nonce, packed));
             bytesList.Add(AbiType.DynamicBytes.Encode(op.InitCode, packed));
             bytesList.Add(AbiType.DynamicBytes.Encode(op.CallData, packed));
-            bytesList.Add(new AbiUInt(64).Encode((ulong)op.CallGas, packed));
-            bytesList.Add(new AbiUInt(64).Encode((ulong)op.VerificationGas, packed));
+            bytesList.Add(AbiType.UInt64.Encode((ulong)op.CallGas, packed));
+            bytesList.Add(AbiType.UInt256.Encode((ulong)op.VerificationGas, packed));
             bytesList.Add(AbiType.UInt256.Encode(op.MaxFeePerGas, packed));
             bytesList.Add(AbiType.UInt256.Encode(op.MaxPriorityFeePerGas, packed));
             bytesList.Add(AbiAddress.Instance.Encode(op.Paymaster, packed));
-            bytesList.Add(Bytes.Zero32);
+            bytesList.Add(AbiType.DynamicBytes.Encode(Bytes.Zero32, packed));
 
             Keccak abiMessage = Keccak.Compute(Bytes.Concat(bytesList.ToArray()));
 
@@ -144,21 +148,8 @@ namespace Nethermind.AccountAbstraction.Test
                     )
                 );
 
-            UserOperation newOp = new(
-                op.Target, 
-                op.Nonce, 
-                op.CallData, 
-                op.InitCode, 
-                op.CallGas,
-                op.VerificationGas, 
-                op.MaxFeePerGas, 
-                op.MaxPriorityFeePerGas, 
-                op.Paymaster, 
-                op.Signer, 
-                signature,
-                op.AccessList);
-
-            return newOp;
+            op.Signature = signature;
+            op.Hash = UserOperation.CalculateHash(op);
         }
     }
 }

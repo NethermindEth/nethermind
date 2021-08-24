@@ -21,13 +21,14 @@ using Nethermind.AccountAbstraction.Broadcaster;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
 namespace Nethermind.AccountAbstraction.Data
 {
     public partial class UserOperation
     {
-        public UserOperation(Address target, UInt256 nonce, byte[] callData, byte[] initCode, long callGas, long verificationGas, UInt256 maxFeePerGas, UInt256 maxPriorityFeePerGas, Address paymaster, Address signer, Signature signature, AccessList accessList)
+        public UserOperation(Address target, UInt256 nonce, byte[] callData, byte[] initCode, ulong callGas, ulong verificationGas, ulong maxFeePerGas, ulong maxPriorityFeePerGas, Address paymaster, Address signer, Signature signature, AccessList accessList)
         {
             Target = target;
             Nonce = nonce;
@@ -47,17 +48,31 @@ namespace Nethermind.AccountAbstraction.Data
 
         public UserOperation() {}
 
-        public UserOperationAbi Abi { get; set; }
+        public UserOperationAbi Abi => new UserOperationAbi
+        {
+            Target = Target!,
+            Nonce = Nonce,
+            InitCode = InitCode ?? Bytes.Empty,
+            CallData = CallData ?? Bytes.Empty,
+            CallGas = CallGas,
+            VerificationGas = VerificationGas,
+            MaxFeePerGas = MaxFeePerGas,
+            MaxPriorityFeePerGas = MaxPriorityFeePerGas,
+            Paymaster = Paymaster!,
+            VerificationAccessListHash = Bytes.Zero32,
+            Signer = Signer!,
+            Signature = Signature!.BytesWithRecovery
+        };
 
         public Keccak? Hash { get; set; }
         public Address? Target { get; set; }
         public UInt256 Nonce { get; set; }
         public byte[]? CallData { get; set; }
         public byte[]? InitCode { get; set; }
-        public long CallGas { get; set; }
-        public long VerificationGas { get; set; }
-        public UInt256 MaxFeePerGas { get; set; }
-        public UInt256 MaxPriorityFeePerGas { get; set; }
+        public ulong CallGas { get; set; }
+        public UInt256 VerificationGas { get; set; }
+        public ulong MaxFeePerGas { get; set; }
+        public ulong MaxPriorityFeePerGas { get; set; }
         public Address? Paymaster { get; set; }
         public Address? Signer { get; set; }
         public Signature? Signature { get; set; }

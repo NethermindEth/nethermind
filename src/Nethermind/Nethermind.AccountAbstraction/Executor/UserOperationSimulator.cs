@@ -126,34 +126,20 @@ namespace Nethermind.AccountAbstraction.Executor
             Address.TryParse(_config.SingletonContractAddress, out Address singletonContractAddress);
             IReleaseSpec currentSpec = _specProvider.GetSpec(parent.Number + 1);
 
-            IReadOnlyDictionary<string, AbiType> userOperationRlp = new Dictionary<string, AbiType>
-            {
-                {"target", AbiType.Address},
-                {"callGas", new AbiUInt(64)},
-                {"gasPrice", AbiType.UInt256},
-                {"callData", AbiType.DynamicBytes},
-                {"signature", AbiType.DynamicBytes}
-            };
-            
-            AbiSignature abiSignature = new AbiSignature("handleOps",
-                new AbiArray(new AbiTuple(userOperationRlp)));
-            
             IAbiEncoder abiEncoder = new AbiEncoder();
 
-            (Address Target, ulong CallGas, UInt256 MaxFeePerGas, byte[] CallData, byte[] Bytes)[] arg = userOperations
-                .Select(op => (op.Target, (ulong) op.CallGas, op.MaxFeePerGas, op.CallData, op.Signature.Bytes)).ToArray();
+            AbiSignature abiSignature = _contract.Functions["handleOps"].GetCallInfo().Signature;
+            UserOperationAbi[] userOperationAbiArray = userOperations.Select(op => op.Abi).ToArray();
             
             byte[] computedCallData = abiEncoder.Encode(
                 AbiEncodingStyle.None,
                 abiSignature,
-                arg);
-            
-            
+                userOperationAbiArray, _signer.Address);
 
             Transaction transaction = new()
             {
                 GasPrice = 0, // the bundler should in real scenarios be the miner
-                GasLimit = userOperations.Aggregate((long)0, (sum, op) => sum + op.CallGas),
+                GasLimit = (long) userOperations.Aggregate((ulong)0, (sum, op) => sum + op.CallGas),
                 To = singletonContractAddress,
                 ChainId = _specProvider.ChainId,
                 Nonce = _stateProvider.GetNonce(_signer.Address),

@@ -74,25 +74,25 @@ namespace Nethermind.AccountAbstraction.Test
             return this;
         }
         
-        public UserOperationBuilder WithMaxFeePerGas(UInt256 maxFeePerGas)
+        public UserOperationBuilder WithMaxFeePerGas(ulong maxFeePerGas)
         {
             TestObjectInternal.MaxFeePerGas = maxFeePerGas;
             return this;
         }
         
-        public UserOperationBuilder WithMaxPriorityFeePerGas(UInt256 maxPriorityFeePerGas)
+        public UserOperationBuilder WithMaxPriorityFeePerGas(ulong maxPriorityFeePerGas)
         {
             TestObjectInternal.MaxPriorityFeePerGas = maxPriorityFeePerGas;
             return this;
         }
         
-        public UserOperationBuilder WithCallGas(long callGas)
+        public UserOperationBuilder WithCallGas(ulong callGas)
         {
             TestObjectInternal.CallGas = callGas;
             return this;
         }
         
-        public UserOperationBuilder WithVerificationGas(long verificationGas)
+        public UserOperationBuilder WithVerificationGas(UInt256 verificationGas)
         {
             TestObjectInternal.VerificationGas = verificationGas;
             return this;
