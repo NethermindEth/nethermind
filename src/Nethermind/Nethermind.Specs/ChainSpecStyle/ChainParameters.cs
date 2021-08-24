@@ -86,7 +86,5 @@ namespace Nethermind.Specs.ChainSpecStyle
         /// </summary>
         /// <returns></returns>
         public long? ValidateReceiptsTransition { get; set; }
-
-        
     }
 }

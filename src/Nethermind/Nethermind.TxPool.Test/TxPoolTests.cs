@@ -236,7 +236,7 @@ namespace Nethermind.TxPool.Test
             Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(tx);
             AddTxResult result = txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
-            result.Should().Be(eip3607Enabled ? AddTxResult.SenderHasCode : AddTxResult.Added);
+            result.Should().Be(eip3607Enabled ? AddTxResult.SenderIsContract : AddTxResult.Added);
         }
         
         [Test]

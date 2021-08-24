@@ -40,13 +40,9 @@ namespace Nethermind.TxPool.Filters
             Address caller = tx.SenderAddress;
             IReleaseSpec spec = _specProvider.GetSpec();
 
-            if (spec.IsEip3607Enabled)
+            if (spec.IsEip3607Enabled && _stateProvider.HasCode(caller))
             {
-                Keccak? hash = _stateProvider.GetCodeHash(caller);
-                if (hash != Keccak.OfAnEmptyString)
-                {
-                    return (false, AddTxResult.SenderHasCode);
-                }
+                return (false, AddTxResult.SenderIsContract);
             }
             
             return (true, null);

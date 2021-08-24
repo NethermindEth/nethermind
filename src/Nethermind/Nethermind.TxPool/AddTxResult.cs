@@ -90,6 +90,6 @@ namespace Nethermind.TxPool
         /// <summary>
         /// Transaction sender has code hash that is not null.
         /// </summary>
-        SenderHasCode
+        SenderIsContract
     }
 }

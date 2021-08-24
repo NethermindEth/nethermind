@@ -19,8 +19,9 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core
 {
-    public interface IAccountStateProvider
+    public static class AccountStateProviderExtensions
     {
-        Account GetAccount(Address address);
+        public static bool HasCode(this IAccountStateProvider stateProvider, Address address) =>
+            stateProvider.GetAccount(address).HasCode;
     }
 }
