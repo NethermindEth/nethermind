@@ -39,6 +39,7 @@ using NSubstitute;
 namespace Nethermind.Mev.Test
 {
     [TestFixture]
+    [Parallelizable(ParallelScope.None)]
     public class MetricsTests
     {
         [Test]

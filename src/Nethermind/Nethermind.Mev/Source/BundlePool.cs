@@ -272,7 +272,6 @@ namespace Nethermind.Mev.Source
             }
             
             IDictionary<long, MevBundle[]> bundlesToRemove = _bundles.GetBucketSnapshot(b => b <= block.Number);
-            Block? currentBlock = block;
 
             foreach (KeyValuePair<long, MevBundle[]> bundleBucket in bundlesToRemove)
             {
@@ -281,8 +280,7 @@ namespace Nethermind.Mev.Source
                     StopSimulations(simulations.Values);
                 }
 
-                currentBlock ??= _blockTree.FindBlock(bundleBucket.Key);
-
+                Block? currentBlock = bundleBucket.Key == block.Number ? block : _blockTree.FindBlock(bundleBucket.Key);
                 foreach (MevBundle mevBundle in bundleBucket.Value)
                 {
                     _bundles.TryRemove(mevBundle);
@@ -291,8 +289,6 @@ namespace Nethermind.Mev.Source
                         Metrics.BundlesIncluded++;
                     }
                 }
-
-                currentBlock = null;
             }
         }
 
