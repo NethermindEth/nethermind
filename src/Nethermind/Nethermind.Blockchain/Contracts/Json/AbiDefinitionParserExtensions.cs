@@ -15,11 +15,13 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-namespace Nethermind.Abi
+using Nethermind.Abi;
+
+namespace Nethermind.Blockchain.Contracts.Json
 {
-    internal static class StringExtensions
+    public static class AbiDefinitionParserExtensions
     {
-        public static string ToLowerFirstChar(this string input) => 
-            string.IsNullOrEmpty(input) ? input : char.ToLower(input[0]) + input.Substring(1);
+        public static void RegisterAbiTypeFactory(this IAbiDefinitionParser parser, AbiType abiType) => 
+            parser.RegisterAbiTypeFactory(new AbiTypeFactory(abiType));
     }
 }

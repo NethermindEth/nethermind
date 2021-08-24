@@ -95,9 +95,9 @@ namespace Nethermind.AccountAbstraction.Executor
         private AbiDefinition LoadContract(dynamic obj)
         {
             AbiDefinitionParser parser = new();
+            parser.RegisterAbiTypeFactory(new AbiTuple<UserOperationAbi>());
             AbiDefinition contract = parser.Parse(obj["abi"].ToString());
             AbiTuple<UserOperationAbi> userOperationAbi = new();
-            contract.ReplaceAbiTypes(userOperationAbi);
             return contract;
         }
 

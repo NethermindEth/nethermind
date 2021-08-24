@@ -93,7 +93,7 @@ namespace Nethermind.Abi
         public AbiTuple()
         {
             _properties = typeof(T).GetProperties();
-            Name = $"tuple({string.Join(", ", _properties.Select(p => p.Name.ToLowerFirstChar()))}";
+            Name = $"tuple({string.Join(", ", _properties.Select(GetAbiType))})";
         }
         
         public override (object, int) Decode(byte[] data, int position, bool packed)
