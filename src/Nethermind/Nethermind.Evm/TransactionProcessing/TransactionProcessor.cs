@@ -65,12 +65,12 @@ namespace Nethermind.Evm.TransactionProcessing
             /// <summary>
             /// Zero Gas price
             /// </summary>
-            ZeroGasPrice = 4,
+            SkipGasPricingValidation = 4,
 
             /// <summary>
             /// Commit and restore with zero gas price
             /// </summary>
-            CommitAndRestoreWithZeroGasPrice = CommitAndRestore | ZeroGasPrice
+            CommitAndRestoreWithSkippingGasPricingValidation = CommitAndRestore | SkipGasPricingValidation
         }
 
         public TransactionProcessor(
@@ -100,7 +100,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 : transaction.GasPrice.IsZero;
 
             Execute(transaction, block, txTracer,
-                isZeroGasPrice ? ExecutionOptions.CommitAndRestoreWithZeroGasPrice : ExecutionOptions.CommitAndRestore);
+                isZeroGasPrice ? ExecutionOptions.CommitAndRestoreWithSkippingGasPricingValidation : ExecutionOptions.CommitAndRestore);
         }
 
         public void BuildUp(Transaction transaction, BlockHeader block, ITxTracer txTracer)
@@ -147,11 +147,10 @@ namespace Nethermind.Evm.TransactionProcessing
             // commit - is for standard execute, we will commit thee state after execution 
             bool commit = (executionOptions & ExecutionOptions.Commit) != ExecutionOptions.None || eip658NotEnabled;
             //!commit - is for build up during block production, we won't commit state after each transaction to support rollbacks
-            //we commit only after all block is constructed 
+            //we commit only after all block is constructed
             
-            // commitAndRestoreWithoutZeroGasPrice is CallAndRestore without a zero gas price
-            bool isCommitAndRestoreWithoutZeroGasPrice = commit && restore && ((executionOptions & ExecutionOptions.ZeroGasPrice) == ExecutionOptions.None);
-            
+            bool skipGasPricing = (executionOptions & ExecutionOptions.SkipGasPricingValidation) != ExecutionOptions.None;
+
             bool notSystemTransaction = !transaction.IsSystem();
             bool deleteCallerAccount = false;
             
@@ -163,14 +162,14 @@ namespace Nethermind.Evm.TransactionProcessing
             
             UInt256 value = transaction.Value;
             
-            if (isCommitAndRestoreWithoutZeroGasPrice && transaction.MaxPriorityFeePerGas > transaction.MaxFeePerGas) 
+            if (!skipGasPricing && transaction.MaxPriorityFeePerGas > transaction.MaxFeePerGas) 
             { 
                 TraceLogInvalidTx(transaction, "MAX PRIORITY FEE PER GAS HIGHER THAN MAX FEE PER GAS");
                 QuickFail(transaction, block, txTracer, eip658NotEnabled, "max priority fee per gas higher than max fee per gas");
                 return; 
             }
 
-            if (!transaction.TryCalculatePremiumPerGas(block.BaseFeePerGas, out UInt256 premiumPerGas) && (!restore || isCommitAndRestoreWithoutZeroGasPrice))
+            if (!transaction.TryCalculatePremiumPerGas(block.BaseFeePerGas, out UInt256 premiumPerGas) && !skipGasPricing)
             {
                 // max fee per gas (feeCap) less than block base fee
                 TraceLogInvalidTx(transaction, "MINER_PREMIUM_IS_NEGATIVE");
@@ -245,24 +244,19 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
             }
 
-            UInt256 senderReservedGasPayment = restore ? UInt256.Zero : (ulong) gasLimit * gasPrice;
-            
-            if (isCommitAndRestoreWithoutZeroGasPrice)
-            {
-                senderReservedGasPayment = (ulong)gasLimit * gasPrice;
-            }
-            
+            UInt256 senderReservedGasPayment = skipGasPricing ? UInt256.Zero : (ulong) gasLimit * gasPrice;
+
             if (notSystemTransaction)
             {
                 UInt256 senderBalance = _stateProvider.GetBalance(caller);
-                if ((!restore || isCommitAndRestoreWithoutZeroGasPrice) && ((ulong) intrinsicGas * gasPrice + value > senderBalance || senderReservedGasPayment + value > senderBalance))
+                if (!skipGasPricing && ((ulong) intrinsicGas * gasPrice + value > senderBalance || senderReservedGasPayment + value > senderBalance))
                 {
                     TraceLogInvalidTx(transaction, $"INSUFFICIENT_SENDER_BALANCE: ({caller})_BALANCE = {senderBalance}");
                     QuickFail(transaction, block, txTracer, eip658NotEnabled, "insufficient sender balance");
                     return;
                 }
                 
-                if ((!restore || isCommitAndRestoreWithoutZeroGasPrice) && spec.IsEip1559Enabled && !transaction.IsServiceTransaction && senderBalance < (UInt256)transaction.GasLimit * transaction.MaxFeePerGas + value)
+                if (!skipGasPricing && spec.IsEip1559Enabled && !transaction.IsServiceTransaction && senderBalance < (UInt256)transaction.GasLimit * transaction.MaxFeePerGas + value)
                 {
                     TraceLogInvalidTx(transaction, $"INSUFFICIENT_MAX_FEE_PER_GAS_FOR_SENDER_BALANCE: ({caller})_BALANCE = {senderBalance}, MAX_FEE_PER_GAS: {transaction.MaxFeePerGas}");
                     QuickFail(transaction, block, txTracer, eip658NotEnabled, "insufficient MaxFeePerGas for sender balance");

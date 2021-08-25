@@ -305,7 +305,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         }
 
         [Test]
-        public async Task Eth_call_with_different_nonce()
+        public async Task Eth_call_with_dissimilar_account_nonce()
         {
             using Context ctx = await Context.CreateWithLondonEnabled();
             Address someAccount = new Address("0x0d8775f648430679a709e98d2b0cb6250d2887ef");
