@@ -20,7 +20,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 {
-    public class PooledTransactionsMessageSerializer : IEth66ReadyZeroMessageSerializer<PooledTransactionsMessage>
+    public class PooledTransactionsMessageSerializer : IZeroInnerMessageSerializer<PooledTransactionsMessage>
     {
         private readonly TransactionsMessageSerializer _txsMessageDeserializer = new();
         

@@ -17,7 +17,7 @@
 
 namespace Nethermind.Network
 {
-    public interface IEth66ReadyZeroMessageSerializer<T> : IZeroMessageSerializer<T> where T : MessageBase
+    public interface IZeroInnerMessageSerializer<T> : IZeroMessageSerializer<T> where T : MessageBase
     {
         int GetLength(T message, out int contentLength);
     }

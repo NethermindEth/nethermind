@@ -20,7 +20,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 {
-    public class GetBlockBodiesMessageSerializer : IEth66ReadyZeroMessageSerializer<GetBlockBodiesMessage>
+    public class GetBlockBodiesMessageSerializer : IZeroInnerMessageSerializer<GetBlockBodiesMessage>
     {
         public void Serialize(IByteBuffer byteBuffer, GetBlockBodiesMessage message)
         {

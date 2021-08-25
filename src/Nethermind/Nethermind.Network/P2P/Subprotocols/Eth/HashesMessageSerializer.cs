@@ -20,7 +20,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
-    public abstract class HashesMessageSerializer<T> : IEth66ReadyZeroMessageSerializer<T> where T : HashesMessage
+    public abstract class HashesMessageSerializer<T> : IZeroInnerMessageSerializer<T> where T : HashesMessage
     {
         protected Keccak[] DeserializeHashes(IByteBuffer byteBuffer)
         {

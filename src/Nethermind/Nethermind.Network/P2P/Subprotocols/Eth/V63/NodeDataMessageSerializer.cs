@@ -19,7 +19,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 {
-    public class NodeDataMessageSerializer : IEth66ReadyZeroMessageSerializer<NodeDataMessage>
+    public class NodeDataMessageSerializer : IZeroInnerMessageSerializer<NodeDataMessage>
     {
         public void Serialize(IByteBuffer byteBuffer, NodeDataMessage message)
         {

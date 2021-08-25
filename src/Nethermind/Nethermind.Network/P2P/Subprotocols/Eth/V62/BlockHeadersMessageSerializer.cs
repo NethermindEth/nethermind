@@ -20,7 +20,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 {
-    public class BlockHeadersMessageSerializer : IEth66ReadyZeroMessageSerializer<BlockHeadersMessage>
+    public class BlockHeadersMessageSerializer : IZeroInnerMessageSerializer<BlockHeadersMessage>
     {
         private HeaderDecoder _headerDecoder = new HeaderDecoder();
 

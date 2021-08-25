@@ -21,7 +21,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 {
-    public class GetBlockHeadersMessageSerializer : IEth66ReadyZeroMessageSerializer<GetBlockHeadersMessage>
+    public class GetBlockHeadersMessageSerializer : IZeroInnerMessageSerializer<GetBlockHeadersMessage>
     {
        public static GetBlockHeadersMessage Deserialize(RlpStream rlpStream)
         {
