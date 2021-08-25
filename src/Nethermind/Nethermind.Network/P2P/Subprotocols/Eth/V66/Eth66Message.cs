@@ -35,6 +35,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
         }
         
         public override string ToString()
-            => $"{nameof(EthMessage)}({RequestId},{EthMessage})";
+            => $"{GetType().Name}Eth66({RequestId},{EthMessage})";
     }
 }
