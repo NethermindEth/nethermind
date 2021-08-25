@@ -162,7 +162,7 @@ namespace Nethermind.Evm.TransactionProcessing
             
             UInt256 value = transaction.Value;
             
-            if (!skipGasPricing && transaction.MaxPriorityFeePerGas > transaction.MaxFeePerGas) 
+            if (!skipGasPricing && restore && transaction.MaxPriorityFeePerGas > transaction.MaxFeePerGas) 
             { 
                 TraceLogInvalidTx(transaction, "MAX PRIORITY FEE PER GAS HIGHER THAN MAX FEE PER GAS");
                 QuickFail(transaction, block, txTracer, eip658NotEnabled, "max priority fee per gas higher than max fee per gas");
