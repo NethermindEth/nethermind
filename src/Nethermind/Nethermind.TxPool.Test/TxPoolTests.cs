@@ -215,24 +215,23 @@ namespace Nethermind.TxPool.Test
         [Test]
         public void should_reject_transactions_with_deployed_code_when_eip3607_enabled([Values(false, true)] bool eip3607Enabled)
         {
-            ChainHeadInfoProvider chainHeadInfoProvider = null;
-            ISpecProvider specProvider = null;
-            IReleaseSpec spec = null;
-            
+            TxPool txPool = null;
+
             if (eip3607Enabled)
             {
-                spec = Substitute.For<IReleaseSpec>();
-                spec.IsEip3607Enabled.Returns(true);
-                specProvider = Substitute.For<ISpecProvider>();
-                specProvider.GetSpec(Arg.Any<long>()).Returns(spec);
-                IAccountStateProvider stateProvider = null;
-                stateProvider = Substitute.For<IStateProvider>();
+                ISpecProvider specProvider = new TestSpecProvider(London.Instance);
+                _stateProvider = Substitute.For<IStateProvider>();
                 var hash = new Keccak("0xd6d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a551");
-                stateProvider.GetCodeHash(Arg.Any<Address>()).Returns(hash);
-                chainHeadInfoProvider = new ChainHeadInfoProvider(specProvider, _blockTree, stateProvider);
+                Account account = new Account(UInt256.One, UInt256.MinValue, Keccak.Zero, hash);
+                _stateProvider.GetAccount(Arg.Any<Address>()).Returns(account);
+                txPool = CreatePool(null, specProvider);
+            } 
+            
+            else
+            {
+                txPool = CreatePool(null, _specProvider);
             }
             
-            var txPool = CreatePool(null, specProvider, chainHeadInfoProvider);
             Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(tx);
             AddTxResult result = txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
@@ -242,30 +241,24 @@ namespace Nethermind.TxPool.Test
         [Test]
         public void should_send_transactions_with_empty_code_hash([Values(false, true)] bool eip3607Enabled)
         {
-            ChainHeadInfoProvider chainHeadInfoProvider = null;
-            ISpecProvider specProvider = null;
-            IReleaseSpec spec = null;
-            var txPool = CreatePool();
-            
+            TxPool txPool = null;
+
             if (eip3607Enabled)
             {
-                spec = Substitute.For<IReleaseSpec>();
-                spec.IsEip3607Enabled.Returns(true);
-                specProvider = Substitute.For<ISpecProvider>();
-                specProvider.GetSpec(Arg.Any<long>()).Returns(spec);
-                IAccountStateProvider stateProvider = null;
-                stateProvider = Substitute.For<IStateProvider>();
+                ISpecProvider specProvider = new TestSpecProvider(London.Instance);
+                _stateProvider = Substitute.For<IStateProvider>();
                 var hash = Keccak.OfAnEmptyString;
-                stateProvider.GetCodeHash(Arg.Any<Address>()).Returns(hash);
+                _stateProvider.GetCodeHash(Arg.Any<Address>()).Returns(hash);
                 Account account = new Account(0x726537);
-                stateProvider.GetAccount(Arg.Any<Address>()).Returns(account);
-                chainHeadInfoProvider = new ChainHeadInfoProvider(specProvider, _blockTree, stateProvider);
-                txPool = CreatePool(null, specProvider, chainHeadInfoProvider);
-            } 
+                _stateProvider.GetAccount(Arg.Any<Address>()).Returns(account);
+                txPool = CreatePool(null, specProvider);
+            }
+
             else
             {
                 txPool = CreatePool(null, _specProvider);
             }
+            
             Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(tx);
             AddTxResult result = txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
