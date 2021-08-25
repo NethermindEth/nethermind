@@ -293,9 +293,7 @@ namespace Nethermind.Evm.Test
             _stateProvider.GetBalance(TestItem.PrivateKeyA.Address).Should().Be(1.Ether());
         }
         
-        //Inappropriate test
-        
-        /*[Test]
+        [Test]
         public void Account_is_not_created_on_call_and_restore()
         {
             long gasLimit = 100000;
@@ -310,7 +308,7 @@ namespace Nethermind.Evm.Test
             _stateProvider.AccountExists(TestItem.PrivateKeyD.Address).Should().BeFalse();
             _transactionProcessor.CallAndRestore(tx, block.Header, NullTxTracer.Instance);
             _stateProvider.AccountExists(TestItem.PrivateKeyD.Address).Should().BeFalse();
-        }*/
+        }
         
         [Test]
         public void Nonce_is_not_changed_on_call_and_restore()
