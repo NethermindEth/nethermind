@@ -108,7 +108,8 @@ namespace Nethermind.Init.Steps
                 _api.StateReader,
                 _api,
                 _api.SpecProvider,
-                _api.GasPriceOracle);
+                _api.GasPriceOracle,
+                _api.EthSyncingInfo);
             
             _api.RpcModuleProvider.RegisterBounded(ethModuleFactory, rpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, rpcConfig.Timeout);
             
@@ -202,7 +203,8 @@ namespace Nethermind.Init.Steps
                 _api.BlockTree,
                 _api.TxPool,
                 _api.ReceiptStorage,
-                _api.FilterStore);
+                _api.FilterStore,
+                _api.EthSyncingInfo!);
             
             SubscriptionManager subscriptionManager = new(subscriptionFactory, _api.LogManager);
             

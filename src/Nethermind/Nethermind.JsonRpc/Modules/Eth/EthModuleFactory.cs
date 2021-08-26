@@ -20,6 +20,7 @@ using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Core.Specs;
 using Nethermind.Facade;
+using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
@@ -43,6 +44,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly IMiningConfig _miningConfig;
         private readonly ISpecProvider _specProvider;
         private readonly IGasPriceOracle _gasPriceOracle;
+        private readonly IEthSyncingInfo _ethSyncingInfo;
 
         public EthModuleFactory(
             ITxPool txPool,
@@ -54,7 +56,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
             IStateReader stateReader,
             IBlockchainBridgeFactory blockchainBridgeFactory,
             ISpecProvider specProvider,
-            IGasPriceOracle gasPriceOracle)
+            IGasPriceOracle gasPriceOracle,
+            IEthSyncingInfo ethSyncingInfo)
         {
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
@@ -65,6 +68,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _blockchainBridgeFactory = blockchainBridgeFactory ?? throw new ArgumentNullException(nameof(blockchainBridgeFactory));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _gasPriceOracle = gasPriceOracle ?? throw new ArgumentNullException(nameof(gasPriceOracle));
+            _ethSyncingInfo = ethSyncingInfo ?? throw new ArgumentNullException(nameof(ethSyncingInfo));
             _blockTree = blockTree.AsReadOnly();
         }
         
@@ -80,7 +84,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 _wallet,
                 _logManager,
                 _specProvider,
-                _gasPriceOracle);
+                _gasPriceOracle,
+                _ethSyncingInfo);
         }
 
         public static List<JsonConverter> Converters = new()

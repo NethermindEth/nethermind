@@ -23,6 +23,7 @@ using Nethermind.Blockchain.Processing;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Facade.Eth;
 using Nethermind.Synchronization;
 using NSubstitute;
 using NUnit.Framework;
@@ -39,6 +40,7 @@ namespace Nethermind.HealthChecks.Test
             IBlockchainProcessor blockchainProcessor = Substitute.For<IBlockchainProcessor>();
             IBlockProducer blockProducer = Substitute.For<IBlockProducer>();
             IHealthHintService healthHintService = Substitute.For<IHealthHintService>();
+            IEthSyncingInfo ethSyncingInfo = Substitute.For<IEthSyncingInfo>();
             blockchainProcessor.IsProcessingBlocks(Arg.Any<ulong?>()).Returns(test.IsProcessingBlocks);
             blockProducer.IsProducingBlocks(Arg.Any<ulong?>()).Returns(test.IsProducingBlocks);
             syncServer.GetPeerCount().Returns(test.PeerCount);
@@ -47,16 +49,24 @@ namespace Nethermind.HealthChecks.Test
             blockFinder.Head.Returns(new Block(GetBlockHeader(4).TestObject));
             if (test.IsSyncing)
             {
-                blockFinder.FindBestSuggestedHeader().Returns(GetBlockHeader(15).TestObject);
+                ethSyncingInfo.GetFullInfo().Returns(new SyncingResult()
+                {
+                    HighestBlock = 15,
+                    IsSyncing = true
+                });
             }
             else
             {
-                blockFinder.FindBestSuggestedHeader().Returns(GetBlockHeader(2).TestObject);
+                ethSyncingInfo.GetFullInfo().Returns(new SyncingResult()
+                {
+                    HighestBlock = 2,
+                    IsSyncing = false
+                });
             }
             
 
             NodeHealthService nodeHealthService =
-                new(syncServer, blockFinder, blockchainProcessor, blockProducer, new HealthChecksConfig(),  healthHintService, test.IsMining);
+                new(syncServer, blockFinder, blockchainProcessor, blockProducer, new HealthChecksConfig(),  healthHintService, ethSyncingInfo, test.IsMining);
             CheckHealthResult result = nodeHealthService.CheckHealth();
             Assert.AreEqual(test.ExpectedHealthy, result.Healthy);
             Assert.AreEqual(test.ExpectedMessage, FormatMessages(result.Messages.Select(x => x.Message)));
