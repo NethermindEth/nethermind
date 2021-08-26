@@ -32,24 +32,15 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
 {
     public partial class EthRpcModuleTests
     {
-        [TestCase("2", "earliest", "[0,10.5,20,30,40]", "0x3635c9adc5dea00000")]
-        [TestCase("3", "latest", "[0,10.5,20,30,40]", "0x3635c9adc5de9f09e5")]
-        [TestCase("1", "pending", "[0,10.5,20,30,40]", "0x3635c9adc5de9f09e5")]
-        [TestCase("2", "0x01", "[0,10.5,20,30,40]", "0x3635c9adc5dea00000")]
-        public async Task Eth_feeHistory(string blockCount, string blockParameter, string rewardPercentiles, string expectedResult)
+        [TestCase(1, "latest", "{\"jsonrpc\":\"2.0\",\"result\":{\"baseFeePerGas\":[\"0x2da282a8\",\"0x27ee3253\"],\"gasUsedRatio\":[0.0],\"oldestBlock\":\"0x3\",\"reward\":[[\"0x0\",\"0x0\",\"0x0\",\"0x0\",\"0x0\"]]},\"id\":67}")]
+        [TestCase(1, "pending", "{\"jsonrpc\":\"2.0\",\"result\":{\"baseFeePerGas\":[\"0x2da282a8\",\"0x27ee3253\"],\"gasUsedRatio\":[0.0],\"oldestBlock\":\"0x3\",\"reward\":[[\"0x0\",\"0x0\",\"0x0\",\"0x0\",\"0x0\"]]},\"id\":67}")]
+        [TestCase(2, "0x01", "{\"jsonrpc\":\"2.0\",\"result\":{\"baseFeePerGas\":[\"0x0\",\"0x3b9aca00\",\"0x342770c0\"],\"gasUsedRatio\":[0.0,0.0],\"oldestBlock\":\"0x0\",\"reward\":[[\"0x0\",\"0x0\",\"0x0\",\"0x0\",\"0x0\"],[\"0x0\",\"0x0\",\"0x0\",\"0x0\",\"0x0\"]]},\"id\":67}")]
+        [TestCase(2, "earliest", "{\"jsonrpc\":\"2.0\",\"result\":{\"baseFeePerGas\":[\"0x0\",\"0x3b9aca00\"],\"gasUsedRatio\":[0.0],\"oldestBlock\":\"0x0\",\"reward\":[[\"0x0\",\"0x0\",\"0x0\",\"0x0\",\"0x0\"]]},\"id\":67}")]
+        public async Task Eth_feeHistory(int blockCount, string blockParameter, string expected)
         {
             using Context ctx = await Context.CreateWithLondonEnabled();
-
-            // Transaction tx1FirstBlock = Build.A.Transaction.WithGasPrice(3).SignedAndResolved(TestItem.PrivateKeyA).TestObject; //Reward: Min (3, 3-2) => 1 
-            // Transaction tx2FirstBlock = Build.A.Transaction.WithGasPrice(4).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-            // Transaction tx1SecondBlock = Build.A.Transaction.WithGasPrice(2).SignedAndResolved(TestItem.PrivateKeyA).TestObject; //Reward: BaseFee > FeeCap => 0
-            // Transaction tx2SecondBlock = Build.A.Transaction.WithGasPrice(5).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-
-            // await ctx._test.AddBlock(tx1FirstBlock, tx2FirstBlock);
-            // await ctx._test.AddBlock(tx1SecondBlock, tx2SecondBlock);
-            
-            string serialized = ctx._test.TestEthRpc("eth_feeHistory", blockCount, blockParameter, rewardPercentiles);
-            serialized.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":\"{expectedResult}\",\"id\":67}}");
+            string serialized = ctx._test.TestEthRpc("eth_feeHistory", blockCount.ToString(), blockParameter, "[0,10.5,20,60,90]");
+            serialized.Should().Be(expected);
         }
     }
 }
