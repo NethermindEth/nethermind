@@ -26,6 +26,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.EthStats.Messages;
 using Nethermind.EthStats.Messages.Models;
 using Nethermind.Facade.Eth;
+using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
 using Nethermind.Network;
@@ -227,8 +228,15 @@ namespace Nethermind.EthStats.Integrations
         // ReSharper disable once UnusedMethodReturnValue.Local
         private Task SendStatsAsync()
         {
+            UInt256 gasPrice = _gasPriceOracle.GetGasPriceEstimate();
+            if (gasPrice > long.MaxValue)
+            {
+                if (_logger.IsTrace) _logger.Trace($"Gas price beyond the eth stats expected scope {gasPrice}");
+                gasPrice = long.MaxValue;
+            }
+            
             return _sender.SendAsync(_websocketClient!, new StatsMessage(new Messages.Models.Stats(true, _ethSyncingInfo.IsSyncing(), _isMining, 0,
-                _peerManager.ConnectedPeers.Count, (long)_gasPriceOracle.GetGasPriceEstimate(), 100)));
+                _peerManager.ConnectedPeers.Count, (long)gasPrice, 100)));
         }
     }
 }
