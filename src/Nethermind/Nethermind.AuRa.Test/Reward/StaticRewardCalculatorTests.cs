@@ -37,10 +37,10 @@ namespace Nethermind.AuRa.Test.Reward
         [TestCase(999999999, 50ul)]
         public void calculates_rewards_correctly_for_thresholds(long blockNumber, ulong expectedReward)
         {
-            var blockReward = new Dictionary<long, UInt256>() {{0, 200}, {5, 150}, {10, 100}, {11, 50}};
+            Dictionary<long, UInt256> blockReward = new() {{0, 200}, {5, 150}, {10, 100}, {11, 50}};
             _block.Header.Number = blockNumber;
-            var calculator = new StaticRewardCalculator(blockReward);
-            var result =  calculator.CalculateRewards(_block);
+            StaticRewardCalculator calculator = new(blockReward);
+            BlockReward[] result =  calculator.CalculateRewards(_block);
             result.Should().BeEquivalentTo(new BlockReward(_block.Beneficiary, expectedReward));
         }
         
@@ -48,10 +48,10 @@ namespace Nethermind.AuRa.Test.Reward
         [TestCase(999999999, 200ul)]
         public void calculates_rewards_correctly_for_single_value(long blockNumber, ulong expectedReward)
         {
-            var blockReward = new Dictionary<long, UInt256>() {{0, 200}};
+            Dictionary<long, UInt256> blockReward = new() {{0, 200}};
             _block.Header.Number = blockNumber;
-            var calculator = new StaticRewardCalculator(blockReward);
-            var result =  calculator.CalculateRewards(_block);
+            StaticRewardCalculator calculator = new(blockReward);
+            BlockReward[] result =  calculator.CalculateRewards(_block);
             result.Should().BeEquivalentTo(new BlockReward(_block.Beneficiary, expectedReward));
         }
         
@@ -60,8 +60,8 @@ namespace Nethermind.AuRa.Test.Reward
         public void calculates_rewards_correctly_for_null_argument(long blockNumber, ulong expectedReward)
         {
             _block.Header.Number = blockNumber;
-            var calculator = new StaticRewardCalculator(null);
-            var result =  calculator.CalculateRewards(_block);
+            StaticRewardCalculator calculator = new(null);
+            BlockReward[] result =  calculator.CalculateRewards(_block);
             result.Should().BeEquivalentTo(new BlockReward(_block.Beneficiary, expectedReward));
         }
         
@@ -69,20 +69,20 @@ namespace Nethermind.AuRa.Test.Reward
         [TestCase(10, 200ul)]
         public void calculates_rewards_correctly_for_not_supported_value(long blockNumber, ulong expectedReward)
         {
-            var blockReward = new Dictionary<long, UInt256>() {{10, 200}};
+            Dictionary<long, UInt256> blockReward = new() {{10, 200}};
             _block.Header.Number = blockNumber;
-            var calculator = new StaticRewardCalculator(blockReward);
-            var result =  calculator.CalculateRewards(_block);
+            StaticRewardCalculator calculator = new(blockReward);
+            BlockReward[] result =  calculator.CalculateRewards(_block);
             result.Should().BeEquivalentTo(new BlockReward(_block.Beneficiary, expectedReward));
         }
         
         [TestCase(1, 0ul)]
         public void calculates_rewards_correctly_for_empty_dictionary(long blockNumber, ulong expectedReward)
         {
-            var blockReward = new Dictionary<long, UInt256>() {};
+            Dictionary<long, UInt256> blockReward = new() {};
             _block.Header.Number = blockNumber;
-            var calculator = new StaticRewardCalculator(blockReward);
-            var result =  calculator.CalculateRewards(_block);
+            StaticRewardCalculator calculator = new(blockReward);
+            BlockReward[] result =  calculator.CalculateRewards(_block);
             result.Should().BeEquivalentTo(new BlockReward(_block.Beneficiary, expectedReward));
         }
     }

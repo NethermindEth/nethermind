@@ -55,7 +55,7 @@ namespace Nethermind.Evm.Test
             Storage.Commit();
             TestState.Commit(RopstenSpecProvider.Instance.GenesisSpec);
             
-            var receipt = Execute(Bytes.FromHexString(codeHex));
+            TestAllTracerWithOutput receipt = Execute(Bytes.FromHexString(codeHex));
             AssertGas(receipt, gasUsed + GasCostOf.Transaction - Math.Min((gasUsed + GasCostOf.Transaction) / 2, refund));
         }
         
@@ -84,7 +84,7 @@ namespace Nethermind.Evm.Test
             Storage.Commit();
             TestState.Commit(RopstenSpecProvider.Instance.GenesisSpec);
             
-            var receipt = Execute(BlockNumber, 21000 + gasUsed + (2300 - 800), Bytes.FromHexString(codeHex));
+            TestAllTracerWithOutput receipt = Execute(BlockNumber, 21000 + gasUsed + (2300 - 800), Bytes.FromHexString(codeHex));
             Assert.AreEqual(outOfGasExpected ? 0 : 1, receipt.StatusCode);
         }
         
@@ -97,7 +97,7 @@ namespace Nethermind.Evm.Test
             Storage.Commit();
             TestState.Commit(RopstenSpecProvider.Instance.GenesisSpec);
             
-            var receipt = Execute(BlockNumber, 21000 + gasUsed + (2301 - 800), Bytes.FromHexString(codeHex));
+            TestAllTracerWithOutput receipt = Execute(BlockNumber, 21000 + gasUsed + (2301 - 800), Bytes.FromHexString(codeHex));
             Assert.AreEqual(1, receipt.StatusCode);
         }
         
@@ -110,7 +110,7 @@ namespace Nethermind.Evm.Test
             Storage.Commit();
             TestState.Commit(RopstenSpecProvider.Instance.GenesisSpec);
             
-            var receipt = Execute(BlockNumber, 21000 + gasUsed + (2299 - 800), Bytes.FromHexString(codeHex));
+            TestAllTracerWithOutput receipt = Execute(BlockNumber, 21000 + gasUsed + (2299 - 800), Bytes.FromHexString(codeHex));
             Assert.AreEqual(0, receipt.StatusCode);
         }
     }

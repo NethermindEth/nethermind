@@ -67,7 +67,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 JsonRpcConfig = new JsonRpcConfig();
                 IEthereumEcdsa ethereumEcdsa = new EthereumEcdsa(specProvider.ChainId, LimboLogs.Instance);
 
-                MemDb stateDb = new MemDb();
+                MemDb stateDb = new();
                 ITrieStore trieStore = new TrieStore(stateDb, LimboLogs.Instance);
                 MemDb codeDb = new();
                 IStateProvider stateProvider = new StateProvider(trieStore, codeDb, LimboLogs.Instance);

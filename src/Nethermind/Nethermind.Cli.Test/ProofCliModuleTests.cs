@@ -43,10 +43,10 @@ namespace Nethermind.Cli.Test
             _serializer = new EthereumJsonSerializer();
             _jsonRpcClient = Substitute.For<IJsonRpcClient>();
             _engine = new CliEngine(_cliConsole);
-            NodeManager nodeManager = new NodeManager(_engine, _serializer, _cliConsole, LimboLogs.Instance);
+            NodeManager nodeManager = new(_engine, _serializer, _cliConsole, LimboLogs.Instance);
             nodeManager.SwitchClient(_jsonRpcClient);
             ICliConsole cliConsole = Substitute.For<ICliConsole>();
-            CliModuleLoader moduleLoader = new CliModuleLoader(_engine, nodeManager, cliConsole);
+            CliModuleLoader moduleLoader = new(_engine, nodeManager, cliConsole);
             moduleLoader.LoadModule(typeof(ProofCliModule));
         }
 
@@ -55,7 +55,7 @@ namespace Nethermind.Cli.Test
         public void Get_transaction_by_hash(bool includeHeader)
         {
             Keccak txHash = TestItem.KeccakA;
-            JsonRpcSuccessResponse response = new JsonRpcSuccessResponse
+            JsonRpcSuccessResponse response = new()
             {
                 Id = "id1",
                 Result = "result"
@@ -74,7 +74,7 @@ namespace Nethermind.Cli.Test
         public void Get_transaction_receipt(bool includeHeader)
         {
             Keccak txHash = TestItem.KeccakA;
-            JsonRpcSuccessResponse response = new JsonRpcSuccessResponse
+            JsonRpcSuccessResponse response = new()
             {
                 Id = "id1",
                 Result = "result",
@@ -92,13 +92,13 @@ namespace Nethermind.Cli.Test
         public void Call()
         {
             Keccak blockHash = TestItem.KeccakA;
-            TransactionForRpc tx = new TransactionForRpc
+            TransactionForRpc tx = new()
             {
                 From = TestItem.AddressA,
                 To = TestItem.AddressB
             };
 
-            JsonRpcSuccessResponse response = new JsonRpcSuccessResponse
+            JsonRpcSuccessResponse response = new()
             {
                 Id = "id1",
                 Result = "result",

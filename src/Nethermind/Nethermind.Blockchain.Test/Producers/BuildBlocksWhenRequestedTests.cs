@@ -29,7 +29,7 @@ namespace Nethermind.Blockchain.Test.Producers
         public void Manual_trigger_works()
         {
             bool triggered = false;
-            BuildBlocksWhenRequested trigger = new BuildBlocksWhenRequested();
+            BuildBlocksWhenRequested trigger = new();
             trigger.TriggerBlockProduction += (s, e) => triggered = true;
             trigger.BuildBlock();
             triggered.Should().BeTrue();
