@@ -228,7 +228,7 @@ namespace Nethermind.EthStats.Integrations
         private Task SendStatsAsync()
         {
             return _sender.SendAsync(_websocketClient!, new StatsMessage(new Messages.Models.Stats(true, _ethSyncingInfo.IsSyncing(), _isMining, 0,
-                _peerManager.ConnectedPeers.Count, _gasPriceOracle.GetGasPriceEstimate(), 100)));
+                _peerManager.ConnectedPeers.Count, (long)_gasPriceOracle.GetGasPriceEstimate(), 100)));
         }
     }
 }

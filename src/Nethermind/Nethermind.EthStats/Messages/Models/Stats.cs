@@ -25,10 +25,10 @@ namespace Nethermind.EthStats.Messages.Models
         public bool Mining { get; }
         public int Hashrate { get; }
         public int Peers { get; }
-        public UInt256 GasPrice { get; }
+        public long GasPrice { get; }
         public int Uptime { get; }
 
-        public Stats(bool active, bool syncing, bool mining, int hashrate, int peers, UInt256 gasPrice, int uptime)
+        public Stats(bool active, bool syncing, bool mining, int hashrate, int peers, long gasPrice, int uptime)
         {
             Active = active;
             Syncing = syncing;
