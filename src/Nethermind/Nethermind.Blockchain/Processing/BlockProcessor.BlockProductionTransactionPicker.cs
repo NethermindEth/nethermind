@@ -22,6 +22,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Specs;
 using Nethermind.State;
 
 namespace Nethermind.Blockchain.Processing
@@ -69,7 +70,11 @@ namespace Nethermind.Blockchain.Processing
 
                 if (stateProvider.HasCode(currentTx.SenderAddress))
                 {
-                    return args.Set(TxAction.Skip, $"Sender is contract");
+                    IReleaseSpec spec = _specProvider.GetSpec(block.Number);
+                    if (spec.IsEip3607Enabled)
+                    {
+                        return args.Set(TxAction.Skip, $"Sender is contract"); 
+                    }
                 }
 
                 UInt256 expectedNonce = stateProvider.GetNonce(currentTx.SenderAddress);
