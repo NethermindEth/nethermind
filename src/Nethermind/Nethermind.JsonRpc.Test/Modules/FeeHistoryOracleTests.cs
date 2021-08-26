@@ -150,7 +150,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [TestCase(100, 95,0.95)]  
         [TestCase(12, 3, 0.25)] 
         [TestCase(100, 40,  0.4)]  
-        [TestCase(3, 1, 0.33)] 
+        [TestCase(3, 1, 0.3333333333333333)] 
         public void GetFeeHistory_GasUsedRatioCalculatedCorrectly(long gasLimit, long gasUsed, double expectedGasUsedRatio)
         {
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
