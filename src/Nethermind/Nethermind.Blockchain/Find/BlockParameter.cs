@@ -35,7 +35,7 @@ namespace Nethermind.Blockchain.Find
         
         public Keccak? BlockHash { get; }
 
-        public bool RequireCanonical { get; set; }
+        public bool RequireCanonical { get; }
 
         public BlockParameter(BlockParameterType type)
         {
@@ -47,14 +47,8 @@ namespace Nethermind.Blockchain.Find
             Type = BlockParameterType.BlockNumber;
             BlockNumber = number;
         }
-        
-        public BlockParameter(Keccak blockHash)
-        {
-            Type = BlockParameterType.BlockHash;
-            BlockHash = blockHash;
-        }
-        
-        public BlockParameter(Keccak blockHash, bool requireCanonical)
+
+        public BlockParameter(Keccak blockHash, bool requireCanonical = false)
         {
             Type = BlockParameterType.BlockHash;
             BlockHash = blockHash;

@@ -40,14 +40,18 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                 _specProvider = specProvider;
             }
 
-            public ResultWrapper<FeeHistoryResults> GetFeeHistory(int blockCount, BlockParameter newestBlock, double[]? rewardPercentiles)
+            public ResultWrapper<FeeHistoryResults> GetFeeHistory(int blockCount, BlockParameter newestBlock, double[]? rewardPercentiles = null)
             {
-                newestBlock.RequireCanonical = true;
-                Block? block = _blockFinder.FindBlock(newestBlock);
-                ResultWrapper<FeeHistoryResults> initialCheckResult = Validate(ref blockCount, block, rewardPercentiles);
+                ResultWrapper<FeeHistoryResults> initialCheckResult = Validate(ref blockCount, newestBlock, rewardPercentiles);
                 if (initialCheckResult.Result.ResultType == ResultType.Failure)
                 {
                     return initialCheckResult;
+                }
+
+                Block? block = _blockFinder.FindBlock(newestBlock);
+                if (block is null)
+                {
+                    return ResultWrapper<FeeHistoryResults>.Fail("newestBlock: Block is not available", ErrorCodes.ResourceUnavailable);
                 }
 
                 long newestBlockNumber = block!.Number;
@@ -128,17 +132,16 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                 return percentileValues;
             }
 
-            private ResultWrapper<FeeHistoryResults> Validate(ref int blockCount, Block? newestBlock, double[]? rewardPercentiles)
+            private ResultWrapper<FeeHistoryResults> Validate(ref int blockCount, BlockParameter newestBlock, double[]? rewardPercentiles)
             {
-                if (newestBlock is null)
+                if (newestBlock.Type == BlockParameterType.BlockHash)
                 {
-                    return ResultWrapper<FeeHistoryResults>.Fail("newestBlock: Block is not available", ErrorCodes.ResourceUnavailable);
+                    return ResultWrapper<FeeHistoryResults>.Fail("newestBlock: Is not correct block number", ErrorCodes.InvalidParams);
                 }
-
+                
                 if (blockCount < 1)
                 {
-                    return ResultWrapper<FeeHistoryResults>.Fail($"blockCount: Value {blockCount} is less than 1", 
-                        ErrorCodes.InvalidParams);
+                    return ResultWrapper<FeeHistoryResults>.Fail($"blockCount: Value {blockCount} is less than 1", ErrorCodes.InvalidParams);
                 }
 
                 if (blockCount > 1024)

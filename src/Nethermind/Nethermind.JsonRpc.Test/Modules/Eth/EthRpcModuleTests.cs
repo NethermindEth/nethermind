@@ -48,7 +48,7 @@ using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth
 {
-    [Parallelizable(ParallelScope.None)]
+    [Parallelizable(ParallelScope.All)]
     [TestFixture]
     public partial class EthRpcModuleTests
     {
@@ -769,7 +769,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         }
 
 
-        private class Context : IDisposable
+        protected class Context : IDisposable
         {
             public TestRpcBlockchain _test;
             public TestRpcBlockchain _auraTest;
