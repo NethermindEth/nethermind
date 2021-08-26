@@ -29,6 +29,7 @@ using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
+using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Subscribe;
@@ -72,7 +73,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                 _blockTree,
                 _txPool,
                 _receiptStorage,
-                _filterStore);
+                _filterStore,
+                new EthSyncingInfo(_blockTree));
             
             _subscriptionManager = new SubscriptionManager(
                 subscriptionFactory,
@@ -153,8 +155,10 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             Block block = Build.A.Block.WithNumber(head).TestObject;
             _blockTree.Head.Returns(block);
+
+            EthSyncingInfo ethSyncingInfo = new EthSyncingInfo(_blockTree);
             
-            SyncingSubscription syncingSubscription = new SyncingSubscription(_jsonRpcDuplexClient, _blockTree, _logManager);
+            SyncingSubscription syncingSubscription = new SyncingSubscription(_jsonRpcDuplexClient, _blockTree, ethSyncingInfo, _logManager);
             
             return syncingSubscription;
         }
