@@ -32,8 +32,8 @@ namespace Nethermind.AccountAbstraction.Executor
             CancellationToken cancellationToken = default, 
             UInt256? timestamp = null);
 
-        public Transaction BuildTransactionFromUserOperations(
-            IList<UserOperation> userOperations,
+        public Transaction BuildSimulateTransactionFromUserOperations(
+            UserOperation userOperation,
             BlockHeader parent);
     }
 }

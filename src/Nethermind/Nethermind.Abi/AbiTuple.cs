@@ -36,7 +36,7 @@ namespace Nethermind.Abi
             }
             
             Elements = elements;
-            Name = $"tuple({string.Join(", ", elements.Values.Select(v => v.Name))})";
+            Name = $"({string.Join(",", elements.Values.Select(v => v.Name))})";
             _type = new Lazy<Type>(() => GetCSharpType(Elements));
         }
 
@@ -93,7 +93,7 @@ namespace Nethermind.Abi
         public AbiTuple()
         {
             _properties = typeof(T).GetProperties();
-            Name = $"tuple({string.Join(", ", _properties.Select(GetAbiType))})";
+            Name = $"({string.Join(",", _properties.Select(GetAbiType))})";
         }
         
         public override (object, int) Decode(byte[] data, int position, bool packed)

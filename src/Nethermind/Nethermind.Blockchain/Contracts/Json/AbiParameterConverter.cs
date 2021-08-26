@@ -125,7 +125,7 @@ namespace Nethermind.Blockchain.Contracts.Json
                 if (components is not null)
                 {
                     IEnumerable<string> innerTypes = components.SelectTokens($"$..{TypePropertyName}").Select(t => t.Value<string>());
-                    name = $"{name}({string.Join(", ", innerTypes)})";
+                    name = $"({string.Join(",", innerTypes)})";
                 }
 
                 return name;

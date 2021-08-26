@@ -92,7 +92,7 @@ namespace Nethermind.AccountAbstraction.Source
                 return new List<Transaction>();
             }
             
-            Transaction userOperationTransaction = _userOperationSimulator.BuildTransactionFromUserOperations(userOperationsToInclude, parent);
+            Transaction userOperationTransaction = _userOperationSimulator.BuildSimulateTransactionFromUserOperations(userOperationsToInclude[0], parent);
             return new List<Transaction>{userOperationTransaction};
         }
 

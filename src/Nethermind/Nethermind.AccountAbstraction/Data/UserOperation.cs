@@ -61,7 +61,7 @@ namespace Nethermind.AccountAbstraction.Data
             Paymaster = Paymaster!,
             VerificationAccessListHash = Bytes.Zero32,
             Signer = Signer!,
-            Signature = Signature!.BytesWithRecovery
+            Signature = Bytes.FromHexString(Signature!.ToString())
         };
 
         public Keccak? Hash { get; set; }

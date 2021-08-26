@@ -107,20 +107,20 @@ namespace Nethermind.AccountAbstraction.Executor
             CancellationToken cancellationToken = default, 
             UInt256? timestamp = null)
         {
-            Transaction userOperationTransaction = BuildTransactionFromUserOperations(new List<UserOperation>{userOperation}, parent);
+            Transaction userOperationTransaction = BuildSimulateTransactionFromUserOperations(userOperation, parent);
             Block block = BuildBlock(userOperationTransaction, parent, timestamp);
             UserOperationBlockTracer blockTracer = CreateBlockTracer(userOperationTransaction, parent);
             ITracer tracer = CreateTracer();
             tracer.Trace(block, blockTracer.WithCancellation(cancellationToken));
-
+            
             // reset
             userOperation.AccessListTouched = false;
             
             return Task.FromResult(blockTracer.Success);
         }
 
-        public Transaction BuildTransactionFromUserOperations(
-            IList<UserOperation> userOperations, 
+        public Transaction BuildSimulateTransactionFromUserOperations(
+            UserOperation userOperation, 
             BlockHeader parent)
         {
             Address.TryParse(_config.SingletonContractAddress, out Address singletonContractAddress);
@@ -128,18 +128,18 @@ namespace Nethermind.AccountAbstraction.Executor
 
             IAbiEncoder abiEncoder = new AbiEncoder();
 
-            AbiSignature abiSignature = _contract.Functions["handleOps"].GetCallInfo().Signature;
-            UserOperationAbi[] userOperationAbiArray = userOperations.Select(op => op.Abi).ToArray();
+            AbiSignature abiSignature = _contract.Functions["simulateOp"].GetCallInfo().Signature;
+            UserOperationAbi userOperationAbi = userOperation.Abi;
             
             byte[] computedCallData = abiEncoder.Encode(
-                AbiEncodingStyle.None,
+                AbiEncodingStyle.IncludeSignature,
                 abiSignature,
-                userOperationAbiArray, _signer.Address);
+                userOperationAbi);
 
-            Transaction transaction = new()
+            SystemTransaction transaction = new()
             {
                 GasPrice = 0, // the bundler should in real scenarios be the miner
-                GasLimit = (long) userOperations.Aggregate((ulong)0, (sum, op) => sum + op.CallGas),
+                GasLimit = (long) userOperation.VerificationGas + (long) userOperation.CallGas,
                 To = singletonContractAddress,
                 ChainId = _specProvider.ChainId,
                 Nonce = _stateProvider.GetNonce(_signer.Address),
@@ -156,8 +156,11 @@ namespace Nethermind.AccountAbstraction.Executor
                 transaction.Type = TxType.Legacy;
             }
 
-            _signer.Sign(transaction);
+            transaction.SenderAddress = Address.Zero;
             transaction.Hash = transaction.CalculateHash();
+
+            //_stateProvider.CreateAccount(Address.Zero, 0);
+            //_stateProvider.AddToBalance(Address.Zero, 1_000_000_000, currentSpec);
 
             return transaction;
         }

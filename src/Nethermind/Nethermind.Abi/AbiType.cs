@@ -24,6 +24,7 @@ namespace Nethermind.Abi
     public abstract class AbiType
     {
         public static AbiDynamicBytes DynamicBytes => AbiDynamicBytes.Instance;
+        public static AbiBytes Bytes32 => AbiBytes.Bytes32;
         public static AbiAddress Address => AbiAddress.Instance;
         public static AbiFunction Function => AbiFunction.Instance;
         public static AbiBool Bool => AbiBool.Instance;
