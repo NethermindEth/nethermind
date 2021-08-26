@@ -23,7 +23,7 @@ namespace Nethermind.Core.Test.Builders
 {
     public static class TestItem
     {
-        private static Random _random = new Random();
+        private static Random _random = new();
         
         static TestItem()
         {
@@ -67,12 +67,12 @@ namespace Nethermind.Core.Test.Builders
         public static Keccak KeccakG = Keccak.Compute("G");
         public static Keccak KeccakH = Keccak.Compute("H");
 
-        public static PrivateKey PrivateKeyA = new PrivateKey("010102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
-        public static PrivateKey PrivateKeyB = new PrivateKey("020102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
-        public static PrivateKey PrivateKeyC = new PrivateKey("030102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
-        public static PrivateKey PrivateKeyD = new PrivateKey("040102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
-        public static PrivateKey PrivateKeyE = new PrivateKey("050102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
-        public static PrivateKey PrivateKeyF = new PrivateKey("060102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
+        public static PrivateKey PrivateKeyA = new("010102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
+        public static PrivateKey PrivateKeyB = new("020102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
+        public static PrivateKey PrivateKeyC = new("030102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
+        public static PrivateKey PrivateKeyD = new("040102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
+        public static PrivateKey PrivateKeyE = new("050102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
+        public static PrivateKey PrivateKeyF = new("060102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
 
         public static PublicKey PublicKeyA = PrivateKeyA.PublicKey;
         public static PublicKey PublicKeyB = PrivateKeyB.PublicKey;
@@ -81,7 +81,7 @@ namespace Nethermind.Core.Test.Builders
         public static PublicKey PublicKeyE = PrivateKeyE.PublicKey;
         public static PublicKey PublicKeyF = PrivateKeyF.PublicKey;
 
-        public static PrivateKey IgnoredPrivateKey = new PrivateKey("040102030405060708090a0b0c0d0e0f0001abe120919026fffff12155555555");
+        public static PrivateKey IgnoredPrivateKey = new("040102030405060708090a0b0c0d0e0f0001abe120919026fffff12155555555");
         public static PublicKey IgnoredPublicKey = IgnoredPrivateKey.PublicKey;
 
         public static PrivateKey[] PrivateKeys;

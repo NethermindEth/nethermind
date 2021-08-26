@@ -47,7 +47,7 @@ namespace Nethermind.JsonRpc.Test
             
             protected async Task<string> SendRequest(JsonRpcRequest request)
             {
-                using HttpRequestMessage message = new HttpRequestMessage(HttpMethod.Post, _uri)
+                using HttpRequestMessage message = new(HttpMethod.Post, _uri)
                 {
                     Content = new StringContent(_serializer.Serialize(request), Encoding.UTF8, "application/json")
                     
@@ -58,7 +58,7 @@ namespace Nethermind.JsonRpc.Test
             }
 
             protected JsonRpcRequestWithParams CreateRequest(string methodName, params object[] parameters) =>
-                new JsonRpcRequestWithParams()
+                new()
                 {
                     Id = 1,
                     JsonRpc = "2.0",

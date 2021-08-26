@@ -28,7 +28,7 @@ namespace Nethermind.Core.Test.Encoding
         public void Can_read_hashes_only()
         {
             Account account = new Account(100).WithChangedCodeHash(TestItem.KeccakA).WithChangedStorageRoot(TestItem.KeccakB);
-            AccountDecoder decoder = new AccountDecoder();
+            AccountDecoder decoder = new();
             Rlp rlp = decoder.Encode(account);
             (Keccak codeHash, Keccak storageRoot) = decoder.DecodeHashesOnly(new RlpStream(rlp.Bytes));
             Assert.AreEqual(codeHash, TestItem.KeccakA);
@@ -39,7 +39,7 @@ namespace Nethermind.Core.Test.Encoding
         public void Roundtrip_test()
         {
             Account account = new Account(100).WithChangedCodeHash(TestItem.KeccakA).WithChangedStorageRoot(TestItem.KeccakB);
-            AccountDecoder decoder = new AccountDecoder();
+            AccountDecoder decoder = new();
             Rlp rlp = decoder.Encode(account);
             Account decoded = decoder.Decode(new RlpStream(rlp.Bytes));
             Assert.AreEqual((int)decoded.Balance, 100);

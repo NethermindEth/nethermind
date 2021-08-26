@@ -50,7 +50,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             ITxPool txPool = NullTxPool.Instance;
             IDbProvider dbProvider = await TestMemDbProvider.InitAsync();
 
-            BlockTree blockTree = new BlockTree(
+            BlockTree blockTree = new(
                 dbProvider.BlocksDb,
                 dbProvider.HeadersDb,
                 dbProvider.BlockInfosDb,

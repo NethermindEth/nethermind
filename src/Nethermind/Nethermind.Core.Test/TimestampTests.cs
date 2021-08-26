@@ -23,7 +23,7 @@ namespace Nethermind.Core.Test
     [TestFixture]
     public class TimestampTests
     {
-        private static readonly DateTime Jan1St1970 = new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        private static readonly DateTime Jan1St1970 = new(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
         [Test]
         public void epoch_timestamp_in_seconds_and_milliseconds_should_be_valid()

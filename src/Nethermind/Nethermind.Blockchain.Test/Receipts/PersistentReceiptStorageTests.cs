@@ -51,7 +51,7 @@ namespace Nethermind.Blockchain.Test.Receipts
         {
             var specProvider = RopstenSpecProvider.Instance;
             var ethereumEcdsa = new EthereumEcdsa(specProvider.ChainId, LimboLogs.Instance);
-            ReceiptsRecovery receiptsRecovery = new ReceiptsRecovery(ethereumEcdsa, specProvider);
+            ReceiptsRecovery receiptsRecovery = new(ethereumEcdsa, specProvider);
             _receiptsDb = new MemColumnsDb<ReceiptsColumns>();
             _storage = new PersistentReceiptStorage(_receiptsDb, MainnetSpecProvider.Instance, receiptsRecovery) {MigratedBlockNumber = 0};
             _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks).Set(Keccak.Zero, Array.Empty<byte>());

@@ -317,7 +317,7 @@ namespace Nethermind.Blockchain.Test.Filters
 
             // adding always a simple block filter and test
             Block block = Build.A.Block.TestObject;
-            BlockFilter blockFilter = new BlockFilter(_currentFilterId++, 0);
+            BlockFilter blockFilter = new(_currentFilterId++, 0);
             filters.Add(blockFilter);
 
             _filterStore.GetFilters<LogFilter>().Returns(filters.OfType<LogFilter>().ToArray());

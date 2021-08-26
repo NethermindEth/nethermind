@@ -267,7 +267,7 @@ namespace Nethermind.JsonRpc.Test
             {
                 if (token.Type == JTokenType.Object)
                 {
-                    JObject copy = new JObject();
+                    JObject copy = new();
                     foreach (JProperty prop in token.Children<JProperty>())
                     {
                         JToken child = prop.Value;
@@ -284,7 +284,7 @@ namespace Nethermind.JsonRpc.Test
                 }
                 else if (token.Type == JTokenType.Array)
                 {
-                    JArray copy = new JArray();
+                    JArray copy = new();
                     foreach (JToken item in token.Children())
                     {
                         JToken child = item;

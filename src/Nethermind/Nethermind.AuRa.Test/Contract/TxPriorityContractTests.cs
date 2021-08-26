@@ -62,33 +62,33 @@ namespace Nethermind.AuRa.Test.Contract
         [Test]
         public async Task whitelist_empty_after_init()
         {
-            using var chain = await TestContractBlockchain.ForTest<TxPermissionContractBlockchain, TxPriorityContractTests>();
-            var whiteList = chain.TxPriorityContract.SendersWhitelist.GetAllItemsFromBlock(chain.BlockTree.Head.Header);
+            using TxPermissionContractBlockchain chain = await TestContractBlockchain.ForTest<TxPermissionContractBlockchain, TxPriorityContractTests>();
+            IEnumerable<Address> whiteList = chain.TxPriorityContract.SendersWhitelist.GetAllItemsFromBlock(chain.BlockTree.Head.Header);
             whiteList.Should().BeEmpty();
         }
         
         [Test]
         public async Task priorities_empty_after_init()
         {
-            using var chain = await TestContractBlockchain.ForTest<TxPermissionContractBlockchain, TxPriorityContractTests>();
-            var priorities = chain.TxPriorityContract.Priorities.GetAllItemsFromBlock(chain.BlockTree.Head.Header);
+            using TxPermissionContractBlockchain chain = await TestContractBlockchain.ForTest<TxPermissionContractBlockchain, TxPriorityContractTests>();
+            IEnumerable<TxPriorityContract.Destination> priorities = chain.TxPriorityContract.Priorities.GetAllItemsFromBlock(chain.BlockTree.Head.Header);
             priorities.Should().BeEmpty();
         }
         
         [Test]
         public async Task mingas_empty_after_init()
         {
-            using var chain = await TestContractBlockchain.ForTest<TxPermissionContractBlockchain, TxPriorityContractTests>();
-            var minGas = chain.TxPriorityContract.MinGasPrices.GetAllItemsFromBlock(chain.BlockTree.Head.Header);
+            using TxPermissionContractBlockchain chain = await TestContractBlockchain.ForTest<TxPermissionContractBlockchain, TxPriorityContractTests>();
+            IEnumerable<TxPriorityContract.Destination> minGas = chain.TxPriorityContract.MinGasPrices.GetAllItemsFromBlock(chain.BlockTree.Head.Header);
             minGas.Should().BeEmpty();
         }
         
         [Test]
         public async Task whitelist_should_return_correctly()
         {
-            using var chain = await TestContractBlockchain.ForTest<TxPermissionContractBlockchainWithBlocks, TxPriorityContractTests>();
-            var whiteList = chain.TxPriorityContract.SendersWhitelist.GetAllItemsFromBlock(chain.BlockTree.Head.Header);
-            var whiteListInContract = chain.SendersWhitelist.GetItemsFromContractAtBlock(chain.BlockTree.Head.Header);
+            using TxPermissionContractBlockchainWithBlocks chain = await TestContractBlockchain.ForTest<TxPermissionContractBlockchainWithBlocks, TxPriorityContractTests>();
+            IEnumerable<Address> whiteList = chain.TxPriorityContract.SendersWhitelist.GetAllItemsFromBlock(chain.BlockTree.Head.Header);
+            IEnumerable<Address> whiteListInContract = chain.SendersWhitelist.GetItemsFromContractAtBlock(chain.BlockTree.Head.Header);
             object[] expected = {TestItem.AddressA, TestItem.AddressC};
             whiteList.Should().BeEquivalentTo(expected);
             whiteListInContract.Should().BeEquivalentTo(expected);
@@ -98,9 +98,9 @@ namespace Nethermind.AuRa.Test.Contract
         public async Task 
             priority_should_return_correctly()
         {
-            using var chain = await TestContractBlockchain.ForTest<TxPermissionContractBlockchainWithBlocks, TxPriorityContractTests>();
-            var priorities = chain.TxPriorityContract.Priorities.GetAllItemsFromBlock(chain.BlockTree.Head.Header);
-            var prioritiesInContract = chain.Priorities.GetItemsFromContractAtBlock(chain.BlockTree.Head.Header);
+            using TxPermissionContractBlockchainWithBlocks chain = await TestContractBlockchain.ForTest<TxPermissionContractBlockchainWithBlocks, TxPriorityContractTests>();
+            IEnumerable<TxPriorityContract.Destination> priorities = chain.TxPriorityContract.Priorities.GetAllItemsFromBlock(chain.BlockTree.Head.Header);
+            IEnumerable<TxPriorityContract.Destination> prioritiesInContract = chain.Priorities.GetItemsFromContractAtBlock(chain.BlockTree.Head.Header);
             object[] expected =
             {
                 new TxPriorityContract.Destination(TestItem.AddressB, FnSignature, 3, TxPriorityContract.DestinationSource.Contract, 2),
@@ -117,9 +117,9 @@ namespace Nethermind.AuRa.Test.Contract
         [Retry(3)]
         public async Task mingas_should_return_correctly()
         {
-            using var chain = await TestContractBlockchain.ForTest<TxPermissionContractBlockchainWithBlocks, TxPriorityContractTests>();
-            var minGasPrices = chain.TxPriorityContract.MinGasPrices.GetAllItemsFromBlock(chain.BlockTree.Head.Header);
-            var minGasPricesInContract = chain.MinGasPrices.GetItemsFromContractAtBlock(chain.BlockTree.Head.Header);
+            using TxPermissionContractBlockchainWithBlocks chain = await TestContractBlockchain.ForTest<TxPermissionContractBlockchainWithBlocks, TxPriorityContractTests>();
+            IEnumerable<TxPriorityContract.Destination> minGasPrices = chain.TxPriorityContract.MinGasPrices.GetAllItemsFromBlock(chain.BlockTree.Head.Header);
+            IEnumerable<TxPriorityContract.Destination> minGasPricesInContract = chain.MinGasPrices.GetItemsFromContractAtBlock(chain.BlockTree.Head.Header);
             object[] expected =
             {
                 new TxPriorityContract.Destination(TestItem.AddressB, FnSignature2, 4, TxPriorityContract.DestinationSource.Contract, 1),
@@ -137,14 +137,14 @@ namespace Nethermind.AuRa.Test.Contract
         [Explicit]
         public async Task whitelist_should_return_correctly_with_local_storage([Values(true, false)] bool fileFirst)
         {
-            using var chain = fileFirst 
+            using TxPermissionContractBlockchainWithBlocksAndLocalData chain = fileFirst 
                 ? await TestContractBlockchain.ForTest<TxPermissionContractBlockchainWithBlocksAndLocalDataBeforeStart, TxPriorityContractTests>()
                 : await TestContractBlockchain.ForTest<TxPermissionContractBlockchainWithBlocksAndLocalData, TxPriorityContractTests>();
 
-            var semaphoreSlim = new SemaphoreSlim(chain.LocalDataSource.Data != null ? 1 : 0);
+            SemaphoreSlim semaphoreSlim = new(chain.LocalDataSource.Data != null ? 1 : 0);
             chain.LocalDataSource.Changed += (sender, args) =>
             {
-                var localData = chain.LocalDataSource.Data;
+                TxPriorityContract.LocalData localData = chain.LocalDataSource.Data;
                 if (localData != null)
                 {
                     localData.Whitelist.Should().BeEquivalentTo(new object[] {TestItem.AddressD, TestItem.AddressB});
@@ -167,7 +167,7 @@ namespace Nethermind.AuRa.Test.Contract
 
             object[] expected = {TestItem.AddressD, TestItem.AddressB, TestItem.AddressA, TestItem.AddressC};
             
-            var whiteList = chain.SendersWhitelist.GetItemsFromContractAtBlock(chain.BlockTree.Head.Header);
+            IEnumerable<Address> whiteList = chain.SendersWhitelist.GetItemsFromContractAtBlock(chain.BlockTree.Head.Header);
             whiteList.Should().BeEquivalentTo(expected);
         }
         
@@ -176,22 +176,22 @@ namespace Nethermind.AuRa.Test.Contract
         [Explicit]
         public async Task priority_should_return_correctly_with_local_storage([Values(true, false)] bool fileFirst)
         {
-            using var chain = fileFirst 
+            using TxPermissionContractBlockchainWithBlocksAndLocalData chain = fileFirst 
                 ? await TestContractBlockchain.ForTest<TxPermissionContractBlockchainWithBlocksAndLocalDataBeforeStart, TxPriorityContractTests>()
                 : await TestContractBlockchain.ForTest<TxPermissionContractBlockchainWithBlocksAndLocalData, TxPriorityContractTests>();
             
             TxPriorityContract.Destination[] expected =
             {
-                new TxPriorityContract.Destination(TestItem.AddressB, FnSignature, 5, TxPriorityContract.DestinationSource.Local),
-                new TxPriorityContract.Destination(TestItem.AddressC, FnSignature, 1, TxPriorityContract.DestinationSource.Local),
-                new TxPriorityContract.Destination(TestItem.AddressB, FnSignature2, 1, TxPriorityContract.DestinationSource.Local),
-                new TxPriorityContract.Destination(TestItem.AddressA, TxPriorityContract.Destination.FnSignatureEmpty, UInt256.One, TxPriorityContract.DestinationSource.Contract, 1),
+                new(TestItem.AddressB, FnSignature, 5, TxPriorityContract.DestinationSource.Local),
+                new(TestItem.AddressC, FnSignature, 1, TxPriorityContract.DestinationSource.Local),
+                new(TestItem.AddressB, FnSignature2, 1, TxPriorityContract.DestinationSource.Local),
+                new(TestItem.AddressA, TxPriorityContract.Destination.FnSignatureEmpty, UInt256.One, TxPriorityContract.DestinationSource.Contract, 1),
             };
             
-            var semaphoreSlim = new SemaphoreSlim(chain.LocalDataSource.Data != null ? 1 : 0);
+            SemaphoreSlim semaphoreSlim = new(chain.LocalDataSource.Data != null ? 1 : 0);
             chain.LocalDataSource.Changed += (sender, args) =>
             {
-                var localData = chain.LocalDataSource.Data;
+                TxPriorityContract.LocalData localData = chain.LocalDataSource.Data;
                 if (localData != null)
                 {
                     chain.LocalDataSource.Data.Priorities.Should().BeEquivalentTo(
@@ -214,7 +214,7 @@ namespace Nethermind.AuRa.Test.Contract
                 }
             }
             
-            var priorities = chain.Priorities.GetItemsFromContractAtBlock(chain.BlockTree.Head.Header);
+            IEnumerable<TxPriorityContract.Destination> priorities = chain.Priorities.GetItemsFromContractAtBlock(chain.BlockTree.Head.Header);
             priorities.Should().BeEquivalentTo(expected, o => o.ComparingByMembers<TxPriorityContract.Destination>());
         }
 
@@ -223,21 +223,21 @@ namespace Nethermind.AuRa.Test.Contract
         [Explicit]
         public async Task mingas_should_return_correctly_with_local_storage([Values(true, false)] bool fileFirst)
         {
-            using var chain = fileFirst 
+            using TxPermissionContractBlockchainWithBlocksAndLocalData chain = fileFirst 
                 ? await TestContractBlockchain.ForTest<TxPermissionContractBlockchainWithBlocksAndLocalDataBeforeStart, TxPriorityContractTests>()
                 : await TestContractBlockchain.ForTest<TxPermissionContractBlockchainWithBlocksAndLocalData, TxPriorityContractTests>();
             
             TxPriorityContract.Destination[] expected =
             {
-                new TxPriorityContract.Destination(TestItem.AddressB, FnSignature, 5, TxPriorityContract.DestinationSource.Local),
-                new TxPriorityContract.Destination(TestItem.AddressB, FnSignature2, 1, TxPriorityContract.DestinationSource.Local),
-                new TxPriorityContract.Destination(TestItem.AddressC, FnSignature, 1, TxPriorityContract.DestinationSource.Local),
+                new(TestItem.AddressB, FnSignature, 5, TxPriorityContract.DestinationSource.Local),
+                new(TestItem.AddressB, FnSignature2, 1, TxPriorityContract.DestinationSource.Local),
+                new(TestItem.AddressC, FnSignature, 1, TxPriorityContract.DestinationSource.Local),
             };
             
-            var semaphoreSlim = new SemaphoreSlim(chain.LocalDataSource.Data != null ? 1 : 0);
+            SemaphoreSlim semaphoreSlim = new(chain.LocalDataSource.Data != null ? 1 : 0);
             chain.LocalDataSource.Changed += (sender, args) =>
             {
-                var localData = chain.LocalDataSource.Data;
+                TxPriorityContract.LocalData localData = chain.LocalDataSource.Data;
                 if (localData != null)
                 {
                     chain.LocalDataSource.Data.MinGasPrices.Should().BeEquivalentTo(
@@ -260,7 +260,7 @@ namespace Nethermind.AuRa.Test.Contract
                 }
             }
             
-            var minGasPrices = chain.MinGasPrices.GetItemsFromContractAtBlock(chain.BlockTree.Head.Header);
+            IEnumerable<TxPriorityContract.Destination> minGasPrices = chain.MinGasPrices.GetItemsFromContractAtBlock(chain.BlockTree.Head.Header);
             minGasPrices.Should().BeEquivalentTo(expected, o => o.ComparingByMembers<TxPriorityContract.Destination>());
         }
 
@@ -319,7 +319,7 @@ namespace Nethermind.AuRa.Test.Contract
         {
             protected override async Task AddBlocksOnStart()
             {
-                EthereumEcdsa ecdsa = new EthereumEcdsa(ChainSpec.ChainId, LimboLogs.Instance);
+                EthereumEcdsa ecdsa = new(ChainSpec.ChainId, LimboLogs.Instance);
 
                 await AddBlock(
                     SignTransactions(ecdsa, TestItem.PrivateKeyA, 1,
@@ -345,7 +345,7 @@ namespace Nethermind.AuRa.Test.Contract
 
             private Transaction[] SignTransactions(IEthereumEcdsa ecdsa, PrivateKey key, UInt256 baseNonce, params Transaction[] transactions)
             {
-                for (var index = 0; index < transactions.Length; index++)
+                for (int index = 0; index < transactions.Length; index++)
                 {
                     Transaction transaction = transactions[index];
                     ecdsa.Sign(key, transaction, true);
@@ -444,7 +444,7 @@ namespace Nethermind.AuRa.Test.Contract
 
             private async Task AddFile()
             {
-                var fileSemaphore = new SemaphoreSlim(0);
+                SemaphoreSlim fileSemaphore = new(0);
                 EventHandler releaseHandler = (sender, args) => fileSemaphore.Release();
                 SendersWhitelist.Loaded += releaseHandler;
                 ((ContractDataStoreWithLocalData<TxPriorityContract.Destination>) MinGasPrices.ContractDataStore).Loaded += releaseHandler;

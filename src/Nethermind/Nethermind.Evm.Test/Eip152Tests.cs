@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.Core;
 using Nethermind.Specs;
 using Nethermind.Evm.Precompiles;
 using NUnit.Framework;
@@ -37,17 +38,17 @@ namespace Nethermind.Evm.Test
         public void before_istanbul()
         {
             _blockNumberAdjustment = -1;
-            var precompileAddress = Blake2FPrecompile.Instance.Address;
+            Address precompileAddress = Blake2FPrecompile.Instance.Address;
             Assert.False(precompileAddress.IsPrecompile(Spec));
         }
 
         [Test]
         public void after_istanbul()
         {
-            var code = Prepare.EvmCode
+            byte[] code = Prepare.EvmCode
                 .CallWithInput(Blake2FPrecompile.Instance.Address, 1000L, new byte[InputLength])
                 .Done;
-            var result = Execute(code);
+            TestAllTracerWithOutput result = Execute(code);
             Assert.AreEqual(StatusCode.Success, result.StatusCode);
         }
     }

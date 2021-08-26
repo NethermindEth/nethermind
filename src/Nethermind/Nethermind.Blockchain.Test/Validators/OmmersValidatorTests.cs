@@ -62,7 +62,7 @@ namespace Nethermind.Blockchain.Test.Validators
         {
             BlockHeader[] ommers = GetValidOmmers(3);
 
-            OmmersValidator ommersValidator = new OmmersValidator(_blockTree, _headerValidator, LimboLogs.Instance);
+            OmmersValidator ommersValidator = new(_blockTree, _headerValidator, LimboLogs.Instance);
             Assert.False(ommersValidator.Validate(Build.A.BlockHeader.TestObject, ommers));
         }
 
@@ -72,7 +72,7 @@ namespace Nethermind.Blockchain.Test.Validators
             BlockHeader[] ommers = new BlockHeader[1];
             ommers[0] = _block.Header;
 
-            OmmersValidator ommersValidator = new OmmersValidator(_blockTree, _headerValidator, LimboLogs.Instance);
+            OmmersValidator ommersValidator = new(_blockTree, _headerValidator, LimboLogs.Instance);
             Assert.False(ommersValidator.Validate(_block.Header, ommers));
         }
 
@@ -84,7 +84,7 @@ namespace Nethermind.Blockchain.Test.Validators
             ommers[0].ParentHash = _parent.Hash;
             ommers[0].Number = _block.Number;
 
-            OmmersValidator ommersValidator = new OmmersValidator(_blockTree, _headerValidator, LimboLogs.Instance);
+            OmmersValidator ommersValidator = new(_blockTree, _headerValidator, LimboLogs.Instance);
             Assert.False(ommersValidator.Validate(_block.Header, ommers));
         }
 
@@ -94,14 +94,14 @@ namespace Nethermind.Blockchain.Test.Validators
             BlockHeader[] ommers = new BlockHeader[1];
             ommers[0] = _parent.Header;
 
-            OmmersValidator ommersValidator = new OmmersValidator(_blockTree, _headerValidator, LimboLogs.Instance);
+            OmmersValidator ommersValidator = new(_blockTree, _headerValidator, LimboLogs.Instance);
             Assert.False(ommersValidator.Validate(_block.Header, ommers));
         }
 
         [Test]
         public void When_ommer_was_already_included_return_false()
         {
-            OmmersValidator ommersValidator = new OmmersValidator(_blockTree, _headerValidator, LimboLogs.Instance);
+            OmmersValidator ommersValidator = new(_blockTree, _headerValidator, LimboLogs.Instance);
             Assert.False(ommersValidator.Validate(_block.Header, new[] {_duplicateOmmer.Header}));
         }
 
@@ -121,7 +121,7 @@ namespace Nethermind.Blockchain.Test.Validators
         {
             BlockHeader[] ommers = GetValidOmmers(1);
 
-            OmmersValidator ommersValidator = new OmmersValidator(_blockTree, _headerValidator, LimboLogs.Instance);
+            OmmersValidator ommersValidator = new(_blockTree, _headerValidator, LimboLogs.Instance);
             Assert.True(ommersValidator.Validate(_block.Header, ommers));
         }
 
@@ -132,7 +132,7 @@ namespace Nethermind.Blockchain.Test.Validators
             ommers[0].Number = _grandparent.Number;
             ommers[0].ParentHash = _grandgrandparent.Hash;
 
-            OmmersValidator ommersValidator = new OmmersValidator(_blockTree, _headerValidator, LimboLogs.Instance);
+            OmmersValidator ommersValidator = new(_blockTree, _headerValidator, LimboLogs.Instance);
             Assert.True(ommersValidator.Validate(_block.Header, ommers));
         }
 
@@ -141,7 +141,7 @@ namespace Nethermind.Blockchain.Test.Validators
         {
             BlockHeader[] ommers = GetValidOmmers(1).Union(GetValidOmmers(1)).ToArray();
 
-            OmmersValidator ommersValidator = new OmmersValidator(_blockTree, _headerValidator, LimboLogs.Instance);
+            OmmersValidator ommersValidator = new(_blockTree, _headerValidator, LimboLogs.Instance);
             Assert.False(ommersValidator.Validate(_block.Header, ommers));
         }
 
@@ -150,7 +150,7 @@ namespace Nethermind.Blockchain.Test.Validators
         {
             Block falseOmmer = Build.A.Block.WithParent(Build.A.Block.WithDifficulty(123).TestObject).TestObject;
             Block toValidate = Build.A.Block.WithParent(_parent).WithOmmers(falseOmmer).TestObject;
-            OmmersValidator ommersValidator = new OmmersValidator(_blockTree, _headerValidator, LimboLogs.Instance);
+            OmmersValidator ommersValidator = new(_blockTree, _headerValidator, LimboLogs.Instance);
             Assert.False(ommersValidator.Validate(toValidate.Header, toValidate.Ommers));
         }
     }

@@ -36,7 +36,7 @@ namespace Nethermind.Blockchain.Test
         [TestCase(2,3,1)]
         public void GasPriceComparer_for_legacy_transactions(int gasPriceX, int gasPriceY, int expectedResult)
         {
-            TestingContext context = new TestingContext();
+            TestingContext context = new();
             IComparer<Transaction> comparer = context.DefaultComparer;
             AssertLegacyTransactions(comparer, gasPriceX, gasPriceY, expectedResult);
         }
@@ -46,7 +46,7 @@ namespace Nethermind.Blockchain.Test
         [TestCase(2,3,1)]
         public void ProducerGasPriceComparer_for_legacy_transactions(int gasPriceX, int gasPriceY, int expectedResult)
         {
-            TestingContext context = new TestingContext();
+            TestingContext context = new();
             IComparer<Transaction> comparer = context.GetProducerComparer(new BlockPreparationContext(0,0));
             AssertLegacyTransactions(comparer, gasPriceX, gasPriceY, expectedResult);
         }
@@ -80,7 +80,7 @@ namespace Nethermind.Blockchain.Test
         public void ProducerGasPriceComparer_for_legacy_transactions_1559(int gasPriceX, int gasPriceY, int headBaseFee, long headBlockNumber, int expectedResult)
         {
             long eip1559Transition = 5;
-            TestingContext context = new TestingContext(true, eip1559Transition);
+            TestingContext context = new(true, eip1559Transition);
             IComparer<Transaction> comparer = context.GetProducerComparer(new BlockPreparationContext(0,0));
             AssertLegacyTransactions(comparer, gasPriceX, gasPriceY, expectedResult);
         }
@@ -138,7 +138,7 @@ namespace Nethermind.Blockchain.Test
         public void ProducerGasPriceComparer_for_eip1559_transactions_1559(int feeCapX, int gasPremiumX, int feeCapY, int gasPremiumY, int headBaseFee, long headBlockNumber, int expectedResult)
         {
             long eip1559Transition = 5;
-            TestingContext context = new TestingContext(true, eip1559Transition);
+            TestingContext context = new(true, eip1559Transition);
             IComparer<Transaction> comparer = context.GetProducerComparer(new BlockPreparationContext((UInt256)headBaseFee, headBlockNumber));
             Assert1559Transactions(comparer, feeCapX, gasPremiumX, feeCapY, gasPremiumY, expectedResult);
         }
@@ -164,8 +164,8 @@ namespace Nethermind.Blockchain.Test
             
             public TestingContext(bool isEip1559Enabled = false, long eip1559TransitionBlock = 0)
             {
-                ReleaseSpec releaseSpec = new ReleaseSpec();
-                ReleaseSpec eip1559ReleaseSpec = new ReleaseSpec() {IsEip1559Enabled = isEip1559Enabled, Eip1559TransitionBlock = eip1559TransitionBlock};
+                ReleaseSpec releaseSpec = new();
+                ReleaseSpec eip1559ReleaseSpec = new() {IsEip1559Enabled = isEip1559Enabled, Eip1559TransitionBlock = eip1559TransitionBlock};
                 ISpecProvider specProvider = Substitute.For<ISpecProvider>();
                 specProvider.GetSpec(Arg.Is<long>(x => x >= eip1559TransitionBlock)).Returns(eip1559ReleaseSpec);
                 specProvider.GetSpec(Arg.Is<long>(x => x < eip1559TransitionBlock)).Returns(releaseSpec);
