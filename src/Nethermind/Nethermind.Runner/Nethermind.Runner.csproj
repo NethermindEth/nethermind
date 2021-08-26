@@ -78,6 +78,9 @@
     <Content Include="DSL\**">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <Content Include="git-hash">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <Content Include="nethermind.css">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
@@ -119,27 +122,27 @@
     <GitHash Include="git-hash" />
   </ItemGroup>
 
-  <Target Name="StoreGitHashBeforeBuild" BeforeTargets="Build">
+  <Target Name="StoreGitHashBeforeBuild" BeforeTargets="BeforeBuild">
     <Message Text="---&gt; Generating Git Hash file Before Build" Importance="High" />
     <Exec Command="git describe --tags --long --always &gt; git-hash" />
-    <Copy SourceFiles="@(GitHash)" DestinationFiles="$(OutDir)git-hash" />
+    <Copy SourceFiles="@(GitHash)" DestinationFiles="$(OutDir)\git-hash" />
   </Target>
 
-  <Target Name="StoreGitHashBeforePublish" BeforeTargets="Publish">
+  <Target Name="StoreGitHashBeforePublish" BeforeTargets="BeforePublish">
     <Message Text="---&gt; Generating Git Hash file Before Publish" Importance="High" />
     <Exec Command="git describe --tags --long --always &gt; git-hash" />
-    <Copy SourceFiles="@(GitHash)" DestinationFiles="$(PublishDir)git-hash" />
+    <Copy SourceFiles="@(GitHash)" DestinationFiles="$(PublishDir)\git-hash" />
   </Target>
 
-  <Target Name="CopyPluginsAfterBuild" AfterTargets="Build">
+  <Target Name="CopyPluginsAfterBuild" AfterTargets="AfterBuild">
     <Message Text="---&gt; Copying Plugins After Build" Importance="High" />
-    <Copy SourceFiles="@(PluginsForBuild)" DestinationFolder="$(OutDir)plugins" />
+    <Copy SourceFiles="@(PluginsForBuild)" DestinationFolder="$(OutDir)\plugins" />
     <Copy SourceFiles="$(SolutionDir)Nethermind.Dsl\bin\$(Configuration)\$(TargetFramework)\Nethermind.Dsl.dll" DestinationFolder="$(OutDir)plugins" Condition="Exists('$(SolutionDir)Nethermind.Dsl\bin\$(Configuration)\$(TargetFramework)\Nethermind.Dsl.dll')" SkipUnchangedFiles="true" />
     <Copy SourceFiles="$(SolutionDir)Nethermind.Dsl\bin\$(Configuration)\$(TargetFramework)\Nethermind.Dsl.pdb" DestinationFolder="$(OutDir)plugins" Condition="Exists('$(SolutionDir)Nethermind.Dsl\bin\$(Configuration)\$(TargetFramework)\Nethermind.Dsl.pdb')" SkipUnchangedFiles="true" />
   </Target>
 
-    <Target Name="CopyPluginsAfterPublish" AfterTargets="Publish">
+    <Target Name="CopyPluginsAfterPublish" AfterTargets="AfterPublish">
     <Message Text="---&gt; Copying Plugins After Publish" Importance="High" />
-    <Copy SourceFiles="@(PluginsForPublish)" DestinationFolder="$(PublishDir)plugins" /> 
+    <Copy SourceFiles="@(PluginsForPublish)" DestinationFolder="$(PublishDir)\plugins" /> 
   </Target>
  </Project>
