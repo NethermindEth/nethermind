@@ -25,6 +25,7 @@ namespace Nethermind.Blockchain.Processing
         None = 0,
         Receipts = 1,
         Parity = 2,
-        Geth = 4
+        Geth = 4,
+        All = Receipts | Parity | Geth
     }
 }
