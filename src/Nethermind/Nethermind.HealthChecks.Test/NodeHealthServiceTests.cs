@@ -40,7 +40,6 @@ namespace Nethermind.HealthChecks.Test
             IBlockchainProcessor blockchainProcessor = Substitute.For<IBlockchainProcessor>();
             IBlockProducer blockProducer = Substitute.For<IBlockProducer>();
             IHealthHintService healthHintService = Substitute.For<IHealthHintService>();
-            IEthSyncingInfo ethSyncingInfo = Substitute.For<IEthSyncingInfo>();
             blockchainProcessor.IsProcessingBlocks(Arg.Any<ulong?>()).Returns(test.IsProcessingBlocks);
             blockProducer.IsProducingBlocks(Arg.Any<ulong?>()).Returns(test.IsProducingBlocks);
             syncServer.GetPeerCount().Returns(test.PeerCount);
@@ -49,22 +48,14 @@ namespace Nethermind.HealthChecks.Test
             blockFinder.Head.Returns(new Block(GetBlockHeader(4).TestObject));
             if (test.IsSyncing)
             {
-                ethSyncingInfo.GetFullInfo().Returns(new SyncingResult()
-                {
-                    HighestBlock = 15,
-                    IsSyncing = true
-                });
+                blockFinder.FindBestSuggestedHeader().Returns(GetBlockHeader(15).TestObject);
             }
             else
             {
-                ethSyncingInfo.GetFullInfo().Returns(new SyncingResult()
-                {
-                    HighestBlock = 2,
-                    IsSyncing = false
-                });
+                blockFinder.FindBestSuggestedHeader().Returns(GetBlockHeader(2).TestObject);
             }
-            
 
+            IEthSyncingInfo ethSyncingInfo = new EthSyncingInfo(blockFinder);
             NodeHealthService nodeHealthService =
                 new(syncServer, blockFinder, blockchainProcessor, blockProducer, new HealthChecksConfig(),  healthHintService, ethSyncingInfo, test.IsMining);
             CheckHealthResult result = nodeHealthService.CheckHealth();

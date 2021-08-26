@@ -17,6 +17,7 @@
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.EthStats;
@@ -51,6 +52,7 @@ namespace Nethermind.Init.Steps
             }
             
             INetworkConfig networkConfig = _get.Config<INetworkConfig>();
+            IInitConfig initConfig = _get.Config<IInitConfig>();
 
             if (_get.Enode == null) throw new StepDependencyException(nameof(_get.Enode));
             if (_get.SpecProvider == null) throw new StepDependencyException(nameof(_get.SpecProvider));
@@ -90,6 +92,8 @@ namespace Nethermind.Init.Steps
                 _get.BlockTree,
                 _get.PeerManager,
                 _get.GasPriceOracle,
+                _get.EthSyncingInfo!,
+                initConfig.IsMining,
                 _get.LogManager);
             
             await ethStatsIntegration.InitAsync();

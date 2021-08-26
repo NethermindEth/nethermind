@@ -25,6 +25,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.EthStats.Messages;
 using Nethermind.EthStats.Messages.Models;
+using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
 using Nethermind.Network;
@@ -54,6 +55,8 @@ namespace Nethermind.EthStats.Integrations
         private readonly IPeerManager _peerManager;
         private readonly ILogger _logger;
         private readonly IGasPriceOracle _gasPriceOracle;
+        private readonly IEthSyncingInfo _ethSyncingInfo;
+        private readonly bool _isMining;
         private IWebsocketClient? _websocketClient;
         private bool _connected;
         private long _lastBlockProcessedTimestamp;
@@ -78,6 +81,8 @@ namespace Nethermind.EthStats.Integrations
             IBlockTree? blockTree,
             IPeerManager? peerManager,
             IGasPriceOracle? gasPriceOracle,
+            IEthSyncingInfo ethSyncingInfo,
+            bool isMining,
             ILogManager? logManager)
         {
             _name = name;
@@ -96,6 +101,8 @@ namespace Nethermind.EthStats.Integrations
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _peerManager = peerManager ?? throw new ArgumentNullException(nameof(peerManager));
             _gasPriceOracle = gasPriceOracle ?? throw new ArgumentNullException(nameof(gasPriceOracle));
+            _ethSyncingInfo = ethSyncingInfo ?? throw new ArgumentNullException(nameof(ethSyncingInfo));
+            _isMining = isMining;
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
@@ -220,7 +227,7 @@ namespace Nethermind.EthStats.Integrations
         // ReSharper disable once UnusedMethodReturnValue.Local
         private Task SendStatsAsync()
         {
-            return _sender.SendAsync(_websocketClient!, new StatsMessage(new Messages.Models.Stats(true, true, false, 0,
+            return _sender.SendAsync(_websocketClient!, new StatsMessage(new Messages.Models.Stats(true, _ethSyncingInfo.IsSyncing(), _isMining, 0,
                 _peerManager.ConnectedPeers.Count, _gasPriceOracle.GetGasPriceEstimate(), 100)));
         }
     }
