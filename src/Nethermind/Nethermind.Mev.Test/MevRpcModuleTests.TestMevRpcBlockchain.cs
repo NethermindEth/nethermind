@@ -15,11 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection.Metadata;
-using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
@@ -36,10 +33,8 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Facade;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
-using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
@@ -47,15 +42,11 @@ using Nethermind.Merge.Plugin.Test;
 using Nethermind.Mev.Data;
 using Nethermind.Mev.Execution;
 using Nethermind.Mev.Source;
-using Nethermind.Runner.Ethereum;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
-using Newtonsoft.Json;
-using NLog.Fluent;
 using NSubstitute;
-using Org.BouncyCastle.Asn1.Cms;
 
 namespace Nethermind.Mev.Test
 {
