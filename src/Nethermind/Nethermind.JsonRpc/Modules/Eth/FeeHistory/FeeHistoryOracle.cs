@@ -61,7 +61,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                 {
                     newestBlockNumber = block.Number;
                     baseFeePerGas.Push(block.BaseFeePerGas);
-                    gasUsedRatio.Push(Math.Round(block.GasUsed / (double) block.GasLimit, 2));
+                    gasUsedRatio.Push(block.GasUsed / (double) block.GasLimit);
                     if (rewards is not null)
                     {
                         List<UInt256> rewardsInBlock = CalculateRewardsPercentiles(block, rewardPercentiles);
