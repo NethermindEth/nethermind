@@ -226,6 +226,7 @@ namespace Nethermind.Init.Steps
                 {
                     AutoProcess = !syncConfig.BeamSync,
                     StoreReceiptsByDefault = initConfig.StoreReceipts,
+                    DumpOptions = initConfig.AutoDump
                 });
 
             setApi.BlockProcessingQueue = blockchainProcessor;
