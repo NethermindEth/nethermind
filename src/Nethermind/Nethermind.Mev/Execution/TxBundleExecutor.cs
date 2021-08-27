@@ -64,7 +64,7 @@ namespace Nethermind.Mev.Execution
                 Keccak.OfAnEmptySequenceRlp, 
                 Beneficiary, 
                 parent.Difficulty,  
-                parent.Number + 1, 
+                bundle.BlockNumber, 
                 GetGasLimit(parent), 
                 timestamp ?? parent.Timestamp, 
                 Bytes.Empty)
