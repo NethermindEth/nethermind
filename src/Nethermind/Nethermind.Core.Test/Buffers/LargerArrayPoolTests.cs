@@ -27,7 +27,7 @@ namespace Nethermind.Core.Test.Buffers
 {
     public class LargerArrayPoolTests
     {
-        private static readonly SingleArrayPool s_shared = new SingleArrayPool();
+        private static readonly SingleArrayPool s_shared = new();
         private readonly ArrayPool<byte> _thrower;
         private const int ArrayPoolLimit = 16;
         private const int LargeBufferSize = 32;
@@ -41,7 +41,7 @@ namespace Nethermind.Core.Test.Buffers
         [Test]
         public void Renting_small_goes_to_Small_Buffer_Pool()
         {
-            LargerArrayPool pool = new LargerArrayPool(ArrayPoolLimit, LargeBufferSize, 1, s_shared);
+            LargerArrayPool pool = new(ArrayPoolLimit, LargeBufferSize, 1, s_shared);
             byte[] array = pool.Rent(ArrayPoolLimit);
 
             try
@@ -59,7 +59,7 @@ namespace Nethermind.Core.Test.Buffers
         {
             const int middleSize = (ArrayPoolLimit + LargeBufferSize) / 2;
 
-            LargerArrayPool pool = new LargerArrayPool(ArrayPoolLimit, LargeBufferSize, 1, _thrower);
+            LargerArrayPool pool = new(ArrayPoolLimit, LargeBufferSize, 1, _thrower);
 
             byte[] array1 = pool.Rent(middleSize);
             pool.Return(array1);
@@ -74,7 +74,7 @@ namespace Nethermind.Core.Test.Buffers
         {
             const int tooBig = LargeBufferSize + 1;
 
-            LargerArrayPool pool = new LargerArrayPool(ArrayPoolLimit, LargeBufferSize, 1, _thrower);
+            LargerArrayPool pool = new(ArrayPoolLimit, LargeBufferSize, 1, _thrower);
             byte[] array1 = pool.Rent(tooBig);
             pool.Return(array1);
 
@@ -91,9 +91,9 @@ namespace Nethermind.Core.Test.Buffers
             const int size = 1;
             const int additional = 2;
 
-            LargerArrayPool pool = new LargerArrayPool(ArrayPoolLimit, LargeBufferSize, size, _thrower);
+            LargerArrayPool pool = new(ArrayPoolLimit, LargeBufferSize, size, _thrower);
 
-            HashSet<byte[]> arrays = new HashSet<byte[]>();
+            HashSet<byte[]> arrays = new();
 
             // rent first size + additional
             for (int i = 0; i < size + additional; i++)

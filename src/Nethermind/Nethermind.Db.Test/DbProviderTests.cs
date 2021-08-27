@@ -25,12 +25,12 @@ namespace Nethermind.Db.Test
         [Test]
         public void DbProvider_CanRegisterMemDb()
         {
-            var memDbFactory = new MemDbFactory();
-            using (var dbProvider = new DbProvider(DbModeHint.Mem))
+            MemDbFactory memDbFactory = new MemDbFactory();
+            using (DbProvider dbProvider = new DbProvider(DbModeHint.Mem))
             {
-                var memDb = memDbFactory.CreateDb("MemDb");
+                IDb memDb = memDbFactory.CreateDb("MemDb");
                 dbProvider.RegisterDb("MemDb", memDb);
-                var db = dbProvider.GetDb<IDb>("MemDb");
+                IDb db = dbProvider.GetDb<IDb>("MemDb");
                 Assert.AreEqual(memDb, db);
             }
         }
@@ -38,12 +38,12 @@ namespace Nethermind.Db.Test
         [Test]
         public void DbProvider_CanRegisterColumnsDb()
         {
-            using (var dbProvider = new DbProvider(DbModeHint.Mem))
+            using (DbProvider dbProvider = new DbProvider(DbModeHint.Mem))
             {
-                var memDbFactory = new MemDbFactory();
-                var memSnapshotableDb = memDbFactory.CreateColumnsDb<ReceiptsColumns>("ColumnsDb");
+                MemDbFactory memDbFactory = new MemDbFactory();
+                IColumnsDb<ReceiptsColumns> memSnapshotableDb = memDbFactory.CreateColumnsDb<ReceiptsColumns>("ColumnsDb");
                 dbProvider.RegisterDb("ColumnsDb", memSnapshotableDb);
-                var columnsDb = dbProvider.GetDb<IColumnsDb<ReceiptsColumns>>("ColumnsDb");
+                IColumnsDb<ReceiptsColumns> columnsDb = dbProvider.GetDb<IColumnsDb<ReceiptsColumns>>("ColumnsDb");
                 Assert.AreEqual(memSnapshotableDb, columnsDb);
                 Assert.IsTrue(memSnapshotableDb is IColumnsDb<ReceiptsColumns>);
             }
@@ -52,10 +52,10 @@ namespace Nethermind.Db.Test
         [Test]
         public void DbProvider_ThrowExceptionOnRegisteringTheSameDb()
         {
-            using (var dbProvider = new DbProvider(DbModeHint.Mem))
+            using (DbProvider dbProvider = new DbProvider(DbModeHint.Mem))
             {
-                var memDbFactory = new MemDbFactory();
-                var memSnapshotableDb = memDbFactory.CreateColumnsDb<ReceiptsColumns>("ColumnsDb");
+                MemDbFactory memDbFactory = new MemDbFactory();
+                IColumnsDb<ReceiptsColumns> memSnapshotableDb = memDbFactory.CreateColumnsDb<ReceiptsColumns>("ColumnsDb");
                 dbProvider.RegisterDb("ColumnsDb", memSnapshotableDb);
                 Assert.Throws<ArgumentException>(() => dbProvider.RegisterDb("columnsdb", new MemDb()));
             }
@@ -64,10 +64,10 @@ namespace Nethermind.Db.Test
         [Test]
         public void DbProvider_ThrowExceptionOnGettingNotRegisteredDb()
         {
-            using (var dbProvider = new DbProvider(DbModeHint.Mem))
+            using (DbProvider dbProvider = new DbProvider(DbModeHint.Mem))
             {
-                var memDbFactory = new MemDbFactory();
-                var memSnapshotableDb = memDbFactory.CreateColumnsDb<ReceiptsColumns>("ColumnsDb");
+                MemDbFactory memDbFactory = new MemDbFactory();
+                IColumnsDb<ReceiptsColumns> memSnapshotableDb = memDbFactory.CreateColumnsDb<ReceiptsColumns>("ColumnsDb");
                 dbProvider.RegisterDb("ColumnsDb", memSnapshotableDb);
                 Assert.Throws<ArgumentException>(() => dbProvider.GetDb<IColumnsDb<ReceiptsColumns>>("differentdb"));
             }

@@ -16,6 +16,7 @@
 
 using System;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Rlp;
@@ -30,7 +31,7 @@ namespace Nethermind.Core.Test.Encoding
         [TestCase(false)]
         public void Can_do_roundtrip(bool valueDecode)
         {
-            LogEntry logEntry = new LogEntry(TestItem.AddressA, new byte[] {1, 2, 3}, new[] {TestItem.KeccakA, TestItem.KeccakB});
+            LogEntry logEntry = new(TestItem.AddressA, new byte[] {1, 2, 3}, new[] {TestItem.KeccakA, TestItem.KeccakB});
             Rlp rlp = Rlp.Encode(logEntry);
             LogEntry decoded = valueDecode ? Rlp.Decode<LogEntry>(rlp.Bytes.AsSpan()) : Rlp.Decode<LogEntry>(rlp);
 
@@ -42,18 +43,18 @@ namespace Nethermind.Core.Test.Encoding
         [Test]
         public void Can_do_roundtrip_ref_struct()
         {
-            LogEntry logEntry = new LogEntry(TestItem.AddressA, new byte[] {1, 2, 3}, new[] {TestItem.KeccakA, TestItem.KeccakB});
+            LogEntry logEntry = new(TestItem.AddressA, new byte[] {1, 2, 3}, new[] {TestItem.KeccakA, TestItem.KeccakB});
             Rlp rlp = Rlp.Encode(logEntry);
-            Rlp.ValueDecoderContext valueDecoderContext = new Rlp.ValueDecoderContext(rlp.Bytes);
-            LogEntryDecoder.DecodeStructRef(ref valueDecoderContext, RlpBehaviors.None, out var decoded);
+            Rlp.ValueDecoderContext valueDecoderContext = new(rlp.Bytes);
+            LogEntryDecoder.DecodeStructRef(ref valueDecoderContext, RlpBehaviors.None, out LogEntryStructRef decoded);
 
             Assert.That(Bytes.AreEqual(logEntry.Data, decoded.Data), "data");
             Assert.That(logEntry.LoggersAddress == decoded.LoggersAddress, "address");
             
-            KeccaksIterator iterator = new KeccaksIterator(decoded.TopicsRlp);
+            KeccaksIterator iterator = new(decoded.TopicsRlp);
             for (int i = 0; i < logEntry.Topics.Length; i++)
             {
-                iterator.TryGetNext(out var keccak);
+                iterator.TryGetNext(out KeccakStructRef keccak);
                 Assert.That(logEntry.Topics[i] == keccak, $"topics[{i}]"); 
             }
         }
@@ -69,7 +70,7 @@ namespace Nethermind.Core.Test.Encoding
         [Test]
         public void Can_do_roundtrip_rlp_stream()
         {
-            LogEntry logEntry = new LogEntry(TestItem.AddressA, new byte[] {1, 2, 3}, new[] {TestItem.KeccakA, TestItem.KeccakB});
+            LogEntry logEntry = new(TestItem.AddressA, new byte[] {1, 2, 3}, new[] {TestItem.KeccakA, TestItem.KeccakB});
             LogEntryDecoder decoder = LogEntryDecoder.Instance;
 
             Rlp encoded = decoder.Encode(logEntry);
@@ -83,7 +84,7 @@ namespace Nethermind.Core.Test.Encoding
         [Test]
         public void Rlp_stream_and_standard_have_same_results()
         {
-            LogEntry logEntry = new LogEntry(TestItem.AddressA, new byte[] {1, 2, 3}, new[] {TestItem.KeccakA, TestItem.KeccakB});
+            LogEntry logEntry = new(TestItem.AddressA, new byte[] {1, 2, 3}, new[] {TestItem.KeccakA, TestItem.KeccakB});
             LogEntryDecoder decoder = LogEntryDecoder.Instance;
 
             Rlp rlpStreamResult = decoder.Encode(logEntry);

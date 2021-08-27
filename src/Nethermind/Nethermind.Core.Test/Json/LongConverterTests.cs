@@ -29,7 +29,7 @@ namespace Nethermind.Core.Test.Json
         [TestCase(NumberConversion.Decimal)]
         public void Test_roundtrip(NumberConversion numberConversion)
         {
-            LongConverter converter = new LongConverter(numberConversion);
+            LongConverter converter = new(numberConversion);
             TestConverter(int.MaxValue, (a, b) => a.Equals(b), converter);
             TestConverter(1L, (a, b) => a.Equals(b), converter);
             TestConverter(0L, (a, b) => a.Equals(b), converter);
@@ -38,7 +38,7 @@ namespace Nethermind.Core.Test.Json
         [TestCase((NumberConversion)99)]
         public void Unknown_not_supported(NumberConversion notSupportedConversion)
         {
-            LongConverter converter = new LongConverter(notSupportedConversion);
+            LongConverter converter = new(notSupportedConversion);
             Assert.Throws<NotSupportedException>(
                 () => TestConverter(int.MaxValue, (a, b) => a.Equals(b), converter));
             Assert.Throws<NotSupportedException>(
@@ -48,7 +48,7 @@ namespace Nethermind.Core.Test.Json
         [Test]
         public void Regression_0xa00000()
         {
-            LongConverter converter = new LongConverter();
+            LongConverter converter = new();
             JsonReader reader = new JsonTextReader(new StringReader("0xa00000"));
             reader.ReadAsString();
             long result = converter.ReadJson(reader, typeof(long), 0, false, JsonSerializer.CreateDefault());
@@ -58,7 +58,7 @@ namespace Nethermind.Core.Test.Json
         [Test]
         public void Can_read_0x0()
         {
-            LongConverter converter = new LongConverter();
+            LongConverter converter = new();
             JsonReader reader = new JsonTextReader(new StringReader("0x0"));
             reader.ReadAsString();
             long result = converter.ReadJson(reader, typeof(long), 0L, false, JsonSerializer.CreateDefault());
@@ -68,7 +68,7 @@ namespace Nethermind.Core.Test.Json
         [Test]
         public void Can_read_0x000()
         {
-            LongConverter converter = new LongConverter();
+            LongConverter converter = new();
             JsonReader reader = new JsonTextReader(new StringReader("0x0000"));
             reader.ReadAsString();
             long result = converter.ReadJson(reader, typeof(long), 0L, false, JsonSerializer.CreateDefault());
@@ -78,7 +78,7 @@ namespace Nethermind.Core.Test.Json
         [Test]
         public void Can_read_0()
         {
-            LongConverter converter = new LongConverter();
+            LongConverter converter = new();
             JsonReader reader = new JsonTextReader(new StringReader("0"));
             reader.ReadAsString();
             long result = converter.ReadJson(reader, typeof(long), 0L, false, JsonSerializer.CreateDefault());
@@ -88,7 +88,7 @@ namespace Nethermind.Core.Test.Json
         [Test]
         public void Can_read_1()
         {
-            LongConverter converter = new LongConverter();
+            LongConverter converter = new();
             JsonReader reader = new JsonTextReader(new StringReader("1"));
             reader.ReadAsString();
             long result = converter.ReadJson(reader, typeof(long), 0L, false, JsonSerializer.CreateDefault());
@@ -98,7 +98,7 @@ namespace Nethermind.Core.Test.Json
         [Test]
         public void Throws_on_null()
         {
-            LongConverter converter = new LongConverter();
+            LongConverter converter = new();
             JsonReader reader = new JsonTextReader(new StringReader("null"));
             reader.ReadAsString();
             Assert.Throws<JsonException>(

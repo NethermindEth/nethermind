@@ -573,7 +573,7 @@ namespace Nethermind.Evm.Test
             Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithValue(0).WithGasPrice(1).WithGasLimit(gasLimit).TestObject;
             Block block = Build.A.Block.WithNumber(MainnetSpecProvider.ByzantiumBlockNumber).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
 
-            var state = _stateProvider.TakeSnapshot();
+            int state = _stateProvider.TakeSnapshot();
             _transactionProcessor.BuildUp(tx, block.Header, NullTxTracer.Instance);
             _stateProvider.GetBalance(TestItem.PrivateKeyA.Address).Should().Be(1.Ether() - 21000);
             
@@ -594,7 +594,7 @@ namespace Nethermind.Evm.Test
             Block block = Build.A.Block.WithNumber(MainnetSpecProvider.ByzantiumBlockNumber).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
 
             _stateProvider.AccountExists(TestItem.PrivateKeyD.Address).Should().BeFalse();
-            var state = _stateProvider.TakeSnapshot();
+            int state = _stateProvider.TakeSnapshot();
             _transactionProcessor.BuildUp(tx, block.Header, NullTxTracer.Instance);
             _stateProvider.AccountExists(TestItem.PrivateKeyD.Address).Should().BeTrue();
             _stateProvider.Restore(state);
@@ -608,7 +608,7 @@ namespace Nethermind.Evm.Test
             Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithValue(1.Ether() - (UInt256)gasLimit).WithGasPrice(1).WithGasLimit(gasLimit).TestObject;
             Block block = Build.A.Block.WithNumber(MainnetSpecProvider.ByzantiumBlockNumber).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
 
-            var state = _stateProvider.TakeSnapshot();
+            int state = _stateProvider.TakeSnapshot();
             _transactionProcessor.BuildUp(tx, block.Header, NullTxTracer.Instance);
             _stateProvider.GetNonce(TestItem.PrivateKeyA.Address).Should().Be(1);
             _stateProvider.Restore(state);
@@ -623,7 +623,7 @@ namespace Nethermind.Evm.Test
             Transaction tx2 = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithValue(0).WithNonce(1).WithGasPrice(1).WithGasLimit(21000).TestObject;
             Block block = Build.A.Block.WithNumber(MainnetSpecProvider.ByzantiumBlockNumber).WithTransactions(tx1, tx2).WithGasLimit(gasLimit).TestObject;
 
-            var state = _stateProvider.TakeSnapshot();
+            int state = _stateProvider.TakeSnapshot();
             _transactionProcessor.BuildUp(tx1, block.Header, NullTxTracer.Instance);
             _stateProvider.GetBalance(TestItem.PrivateKeyA.Address).Should().Be(1.Ether() - 21000);
             

@@ -124,7 +124,7 @@ namespace Nethermind.Evm.Test.Tracing
         {
             long gasLimit = 100000000;
             EstimateGasTracer tracer = new();
-            var gasLeft = gasLimit - 22000;
+            long gasLeft = gasLimit - 22000;
             tracer.ReportAction(gasLeft, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.Transaction, false);
             gasLeft = 63 * gasLeft / 64;
             tracer.ReportAction(gasLeft, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), _executionType, false);

@@ -27,7 +27,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
         [Test]
         public void Can_serialize()
         {
-            ParityTraceResult result = new ParityTraceResult();
+            ParityTraceResult result = new();
             result.GasUsed = 12345;
             result.Output = new byte[] {6, 7, 8, 9, 0};
 
@@ -37,7 +37,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
         [Test]
         public void Can_serialize_nulls()
         {
-            ParityTraceResult result = new ParityTraceResult();
+            ParityTraceResult result = new();
 
             TestToJson(result, "{\"gasUsed\":\"0x0\",\"output\":null}");
         }

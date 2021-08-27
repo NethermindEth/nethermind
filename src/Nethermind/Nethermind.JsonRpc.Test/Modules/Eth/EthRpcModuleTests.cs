@@ -16,9 +16,7 @@
 
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Linq;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -37,6 +35,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Facade;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
+using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
@@ -44,7 +43,6 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.TxPool;
-using Newtonsoft.Json.Linq;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -771,7 +769,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         }
 
 
-        private class Context : IDisposable
+        protected class Context : IDisposable
         {
             public TestRpcBlockchain _test;
             public TestRpcBlockchain _auraTest;
@@ -786,7 +784,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                 return await Create(specProvider);
             }
             
-            public static async Task<Context> Create(ISpecProvider specProvider = null) =>
+            public static async Task<Context> Create(ISpecProvider? specProvider = null) =>
                 new()
                 {
                     _test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(specProvider), 
