@@ -52,7 +52,7 @@ namespace Nethermind.Mev
         private readonly ITracerFactory _tracerFactory;
         private readonly ISpecProvider _specProvider;
         private readonly ISigner? _signer;
-        
+
         static MevRpcModule()
         {
             Rlp.RegisterDecoders(typeof(BundleTxDecoder).Assembly);
