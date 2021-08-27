@@ -102,7 +102,6 @@ namespace Nethermind.Mev
             }
 
             BlockHeader header = searchResult.Object!;
-            
             if (!HasStateForBlock(header))
             {
                 return ResultWrapper<TxsResults>.Fail($"No state available for block {header.Hash}", ErrorCodes.ResourceUnavailable);
