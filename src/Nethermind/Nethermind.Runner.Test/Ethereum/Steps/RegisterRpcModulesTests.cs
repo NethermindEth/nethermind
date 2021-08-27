@@ -15,38 +15,17 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Collections.Generic;
-using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Api;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.Filters;
-using Nethermind.Config;
-using Nethermind.Consensus;
-using Nethermind.Core;
-using Nethermind.Core.Specs;
-using Nethermind.Core.Test.Builders;
-using Nethermind.Crypto;
-using Nethermind.Evm.Tracing;
 using Nethermind.Init.Steps;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Proof;
-using Nethermind.KeyStore;
-using Nethermind.Logging;
-using Nethermind.Runner.Ethereum;
 using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Runner.Ethereum.Steps;
-using Nethermind.State;
-using Nethermind.State.Repositories;
-using Nethermind.Synchronization.ParallelSync;
-using Nethermind.TxPool;
-using Nethermind.Wallet;
-using Newtonsoft.Json;
 using NSubstitute;
-using NSubstitute.ReceivedExtensions;
 using NUnit.Framework;
 
 namespace Nethermind.Runner.Test.Ethereum.Steps

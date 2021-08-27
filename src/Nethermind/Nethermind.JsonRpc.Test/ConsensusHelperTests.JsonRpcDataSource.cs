@@ -74,7 +74,7 @@ namespace Nethermind.JsonRpc.Test
             protected class JsonRpcSuccessResponse<T> : JsonRpcSuccessResponse
             {
                 [JsonProperty(PropertyName = "result", NullValueHandling = NullValueHandling.Include, Order = 1)]
-                public new T Result { get { return (T)base.Result;} set { base.Result = value; } }
+                public new T Result { get { return (T)base.Result; } set { base.Result = value; } }
             }
 
             public virtual async Task<(T, string)> GetData()
