@@ -37,21 +37,21 @@ namespace Nethermind.Logging.NLog
 
         internal readonly global::NLog.Logger Logger;
 
-        public NLogLogger(Type type, string fileName, string logDirectory = null, string loggerName = null)
+        public NLogLogger(Type type, string fileName, string logDirectory = null, string loggerName = null, string loggerConfig = null)
         {
             loggerName = string.IsNullOrEmpty(loggerName) ? type.FullName.Replace("Nethermind.", string.Empty) : loggerName;
             Logger = global::NLog.LogManager.GetLogger(loggerName);
-            Init(fileName, logDirectory);
+            Init(fileName, logDirectory, loggerConfig);
         }
 
-        private void Init(string fileName, string logDirectory)
+        private void Init(string fileName, string logDirectory, string loggerConfig)
         {
             var logsDir = (string.IsNullOrEmpty(logDirectory) ? "logs" : logDirectory).GetApplicationResourcePath();
             if (!Directory.Exists(logsDir))
             {
                 Directory.CreateDirectory(logsDir);
             }
-
+            
             if (LogManager.Configuration?.AllTargets != null)
             {
                 foreach (FileTarget target in LogManager.Configuration?.AllTargets.OfType<FileTarget>())
@@ -60,6 +60,41 @@ namespace Nethermind.Logging.NLog
                     target.FileName = !Path.IsPathFullyQualified(fileNameToUse) ? Path.GetFullPath(Path.Combine(logsDir, fileNameToUse)) : fileNameToUse;
                 }
             }
+            
+            //Add rules here JsonRpc.*: Warn; Block.*: Error',
+            if (loggerConfig != null)
+            {
+                string[] rules = loggerConfig.Split(" ");
+                foreach (string rule in rules)
+                {
+                    string[] ruleBreakdown = rule.Split(": ");
+                    string targetName = ruleBreakdown[0];
+                    string level = ruleBreakdown[1];
+                    global::NLog.LogLevel logLevel = getLogLevel(level);
+                    LogManager.Configuration!.AddRule(logLevel, global::NLog.LogLevel.Fatal, targetName);
+                }
+            }
+
+            global::NLog.LogLevel getLogLevel(string level)
+            {
+                switch (level)
+                {
+                    case "Warn":
+                        return global::NLog.LogLevel.Warn;
+                    case "Debug":
+                        return global::NLog.LogLevel.Debug;
+                    case "Error":
+                        return global::NLog.LogLevel.Error;
+                    case "Fatal":
+                        return global::NLog.LogLevel.Fatal;
+                    case "Info":
+                        return global::NLog.LogLevel.Info;
+                    default:
+                        throw new ArgumentException(
+                            "Configuration string was not formatted properly or LogLevel was not spelled correctly.");
+                }
+            }
+            
 
             /* NOTE: minor perf gain - not planning to switch logging levels while app is running */
             // TODO: review the behaviour on log levels switching
@@ -70,11 +105,11 @@ namespace Nethermind.Logging.NLog
             IsError = Logger.IsErrorEnabled || Logger.IsFatalEnabled;
         }
 
-        public NLogLogger(string fileName, string logDirectory = null, string loggerName = null)
+        public NLogLogger(string fileName, string logDirectory = null, string loggerName = null, string loggerConfig = null)
         {
             loggerName = string.IsNullOrEmpty(loggerName) ? StackTraceUsageUtils.GetClassFullName().Replace("Nethermind.", string.Empty) : loggerName;
             Logger = LogManager.GetLogger(loggerName);
-            Init(fileName, logDirectory);
+            Init(fileName, logDirectory, loggerConfig);
         }
 
         public void Info(string text)

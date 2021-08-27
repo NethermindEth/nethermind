@@ -37,7 +37,7 @@ namespace Nethermind.Logging.NLog
 
         private NLogLogger BuildLogger(Type type)
         {
-            return new(type, _logFileName, _logDirectory);
+            return new(type, _logFileName, _logDirectory, loggerConfig: _logConfig);
         }
 
         public ILogger GetClassLogger(Type type)

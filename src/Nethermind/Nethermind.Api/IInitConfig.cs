@@ -81,7 +81,7 @@ namespace Nethermind.Api
         [ConfigItem(Description = "A hint for the max memory that will allow us to configure the DB and Netty memory allocations.", DefaultValue = "null")]
         long? MemoryHint { get; set; }
         
-        [ConfigItem(Description = "Settings for configuration of different loggers.", DefaultValue = "")]
+        [ConfigItem(Description = "Settings for configuration of different loggers.", DefaultValue = "JsonRpc.*: Warn; Block.*: Error;")]
         string LogLevel { get; set; }
     }
     
