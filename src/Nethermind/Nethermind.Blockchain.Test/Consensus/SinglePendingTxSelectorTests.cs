@@ -35,7 +35,7 @@ namespace Nethermind.Blockchain.Test.Consensus
         public void To_string_does_not_throw()
         {
             ITxSource txSource = Substitute.For<ITxSource>();
-            SinglePendingTxSelector selector = new SinglePendingTxSelector(txSource);
+            SinglePendingTxSelector selector = new(txSource);
             _ = selector.ToString();
         }
         
@@ -49,7 +49,7 @@ namespace Nethermind.Blockchain.Test.Consensus
         public void When_no_transactions_returns_empty_list()
         {
             ITxSource txSource = Substitute.For<ITxSource>();
-            SinglePendingTxSelector selector = new SinglePendingTxSelector(txSource);
+            SinglePendingTxSelector selector = new(txSource);
             selector.GetTransactions(_anyParent, 1000000).Should().HaveCount(0);
         }
 
@@ -65,7 +65,7 @@ namespace Nethermind.Blockchain.Test.Consensus
                 Build.A.Transaction.WithNonce(1).WithTimestamp(8).TestObject,
             });
 
-            SinglePendingTxSelector selector = new SinglePendingTxSelector(txSource);
+            SinglePendingTxSelector selector = new(txSource);
             var result = selector.GetTransactions(_anyParent, 1000000).ToArray();
             result.Should().HaveCount(1);
             result[0].Timestamp.Should().Be(8);

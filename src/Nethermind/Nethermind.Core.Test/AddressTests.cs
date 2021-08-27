@@ -33,7 +33,7 @@ namespace Nethermind.Core.Test
         [TestCase("0x5a4eab120fb44eb6684e5e32785702ff45ea344d", "0x5a4eab120fb44eb6684e5e32785702ff45ea344d")]
         public void String_representation_is_correct(string init, string expected)
         {
-            Address address = new Address(init);
+            Address address = new(init);
             string addressString = address.ToString();
             Assert.AreEqual(expected, addressString);
         }
@@ -52,7 +52,7 @@ namespace Nethermind.Core.Test
         [TestCase("0x027a49d11d118c0060746F1990273FcB8c2fC196", "0x027a49d11d118c0060746F1990273FcB8c2fC196")]
         public void String_representation_with_checksum_is_correct(string init, string expected)
         {
-            Address address = new Address(init);
+            Address address = new(init);
             string addressString = address.ToString(true);
             Assert.AreEqual(expected, addressString);
         }
@@ -71,16 +71,16 @@ namespace Nethermind.Core.Test
         {
             byte[] bytes = new byte[20];
             new System.Random(1).NextBytes(bytes);
-            Address address = new Address(bytes);
+            Address address = new(bytes);
             Assert.True(Bytes.AreEqual(address.Bytes, bytes));
         }
 
         [Test]
         public void Equals_works()
         {
-            Address addressA = new Address(Keccak.Compute("a"));
-            Address addressA2 = new Address(Keccak.Compute("a"));
-            Address addressB = new Address(Keccak.Compute("b"));
+            Address addressA = new(Keccak.Compute("a"));
+            Address addressA2 = new(Keccak.Compute("a"));
+            Address addressB = new(Keccak.Compute("b"));
             Assert.True(addressA.Equals(addressA2));
             // ReSharper disable once EqualExpressionComparison
             Assert.True(addressA.Equals(addressA));
@@ -91,9 +91,9 @@ namespace Nethermind.Core.Test
         [Test]
         public void Equals_operator_works()
         {
-            Address addressA = new Address(Keccak.Compute("a"));
-            Address addressA2 = new Address(Keccak.Compute("a"));
-            Address addressB = new Address(Keccak.Compute("b"));
+            Address addressA = new(Keccak.Compute("a"));
+            Address addressA2 = new(Keccak.Compute("a"));
+            Address addressB = new(Keccak.Compute("b"));
             Assert.True(addressA == addressA2);
             // ReSharper disable once EqualExpressionComparison
 #pragma warning disable CS1718
@@ -108,9 +108,9 @@ namespace Nethermind.Core.Test
         [Test]
         public void Not_equals_operator_works()
         {
-            Address addressA = new Address(Keccak.Compute("a"));
-            Address addressA2 = new Address(Keccak.Compute("a"));
-            Address addressB = new Address(Keccak.Compute("b"));
+            Address addressA = new(Keccak.Compute("a"));
+            Address addressA2 = new(Keccak.Compute("a"));
+            Address addressB = new(Keccak.Compute("b"));
             Assert.False(addressA != addressA2);
             // ReSharper disable once EqualExpressionComparison
 #pragma warning disable CS1718
@@ -127,7 +127,7 @@ namespace Nethermind.Core.Test
         {
             byte[] addressBytes = new byte[20];
             addressBytes[19] = 1;
-            Address address = new Address(addressBytes);
+            Address address = new(addressBytes);
             Assert.True(address.IsPrecompile(Frontier.Instance));
         }
         
@@ -136,7 +136,7 @@ namespace Nethermind.Core.Test
         {
             byte[] addressBytes = new byte[20];
             addressBytes[19] = 4;
-            Address address = new Address(addressBytes);
+            Address address = new(addressBytes);
             Assert.True(address.IsPrecompile(Frontier.Instance));
         }
         
@@ -145,7 +145,7 @@ namespace Nethermind.Core.Test
         {
             byte[] addressBytes = new byte[20];
             addressBytes[19] = 5;
-            Address address = new Address(addressBytes);
+            Address address = new(addressBytes);
             Assert.False(address.IsPrecompile(Frontier.Instance));
         }
         
@@ -154,7 +154,7 @@ namespace Nethermind.Core.Test
         {
             byte[] addressBytes = new byte[20];
             addressBytes[19] = 5;
-            Address address = new Address(addressBytes);
+            Address address = new(addressBytes);
             Assert.True(address.IsPrecompile(Byzantium.Instance));
         }
         
@@ -163,7 +163,7 @@ namespace Nethermind.Core.Test
         {
             byte[] addressBytes = new byte[20];
             addressBytes[19] = 9;
-            Address address = new Address(addressBytes);
+            Address address = new(addressBytes);
             Assert.False(address.IsPrecompile(Byzantium.Instance));
         }
         

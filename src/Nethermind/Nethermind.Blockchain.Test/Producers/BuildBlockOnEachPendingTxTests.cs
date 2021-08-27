@@ -32,7 +32,7 @@ namespace Nethermind.Blockchain.Test.Producers
         {
             int triggered = 0;
             ITxPool txPool = Substitute.For<ITxPool>();
-            BuildBlockOnEachPendingTx trigger = new BuildBlockOnEachPendingTx(txPool);
+            BuildBlockOnEachPendingTx trigger = new(txPool);
             trigger.TriggerBlockProduction += (s, e) => triggered++;
             for (int i = 0; i < 2; i++)
             {

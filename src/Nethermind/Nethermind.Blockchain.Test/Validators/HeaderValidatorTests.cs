@@ -49,10 +49,10 @@ namespace Nethermind.Blockchain.Test.Validators
         [SetUp]
         public void Setup()
         {
-            EthashDifficultyCalculator calculator = new EthashDifficultyCalculator(new SingleReleaseSpecProvider(Frontier.Instance, ChainId.Mainnet));
+            EthashDifficultyCalculator calculator = new(new SingleReleaseSpecProvider(Frontier.Instance, ChainId.Mainnet));
             _ethash = new EthashSealValidator(LimboLogs.Instance, calculator, new CryptoRandom(), new Ethash(LimboLogs.Instance));
             _testLogger = new TestLogger();
-            MemDb blockInfoDb = new MemDb();
+            MemDb blockInfoDb = new();
             _blockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), FrontierSpecProvider.Instance, Substitute.For<IBloomStorage>(), LimboLogs.Instance);
             
             _validator = new HeaderValidator(_blockTree, _ethash, new SingleReleaseSpecProvider(Byzantium.Instance, 3), new OneLoggerLogManager(_testLogger));
@@ -209,11 +209,11 @@ namespace Nethermind.Blockchain.Test.Validators
         [TestCase(40000000, 5, 39960938, false)]
         public void When_gaslimit_is_on_london_fork(long parentGasLimit, long blockNumber, long gasLimit, bool expectedResult)
         {
-            OverridableReleaseSpec spec = new OverridableReleaseSpec(London.Instance)
+            OverridableReleaseSpec spec = new(London.Instance)
             {
                 Eip1559TransitionBlock = 5
             };
-            TestSpecProvider specProvider = new TestSpecProvider(spec);
+            TestSpecProvider specProvider = new(spec);
             _validator = new HeaderValidator(_blockTree, _ethash, specProvider, new OneLoggerLogManager(_testLogger));
             _parentBlock = Build.A.Block.WithDifficulty(1)
                             .WithGasLimit(parentGasLimit)

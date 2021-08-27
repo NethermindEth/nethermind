@@ -38,9 +38,9 @@ namespace Nethermind.Core.Test.Json
         [Test]
         public void Direct_null()
         {
-            ByteArrayConverter converter = new ByteArrayConverter();
-            StringBuilder sb = new StringBuilder();
-            JsonSerializer serializer = new JsonSerializer();
+            ByteArrayConverter converter = new();
+            StringBuilder sb = new();
+            JsonSerializer serializer = new();
             serializer.Converters.Add(converter);
             converter.WriteJson(
                 new JsonTextWriter(new StringWriter(sb)), null, serializer);

@@ -117,10 +117,10 @@ namespace Nethermind.JsonRpc.Test.Modules
             IFilterStore filterStore = new FilterStore();
             IFilterManager filterManager = new FilterManager(filterStore, BlockProcessor, TxPool, LimboLogs.Instance);
 
-            ReceiptsRecovery receiptsRecovery = new ReceiptsRecovery(new EthereumEcdsa(specProvider.ChainId, LimboLogs.Instance), specProvider);
+            ReceiptsRecovery receiptsRecovery = new(new EthereumEcdsa(specProvider.ChainId, LimboLogs.Instance), specProvider);
             LogFinder = new LogFinder(BlockTree, ReceiptStorage, bloomStorage, LimboLogs.Instance, receiptsRecovery);
             
-            ReadOnlyTxProcessingEnv processingEnv = new ReadOnlyTxProcessingEnv(
+            ReadOnlyTxProcessingEnv processingEnv = new(
                 new ReadOnlyDbProvider(DbProvider, false),
                 new TrieStore(DbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
                 new ReadOnlyBlockTree(BlockTree),

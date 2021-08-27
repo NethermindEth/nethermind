@@ -22,7 +22,7 @@ namespace Nethermind.Core.Test
 {
     public class TestLogger : ILogger
     {
-        public List<string> LogList { get; set; } = new List<string>();
+        public List<string> LogList { get; set; } = new();
 
         public void Info(string text)
         {

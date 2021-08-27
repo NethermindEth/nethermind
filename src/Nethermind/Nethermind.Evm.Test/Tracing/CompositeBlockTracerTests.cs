@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -74,10 +75,10 @@ namespace Nethermind.Evm.Test.Tracing
             
             blockTracer.EndBlockTrace();
 
-            var gethResult = gethLikeBlockTracer.BuildResult();
+            IReadOnlyCollection<GethLikeTxTrace> gethResult = gethLikeBlockTracer.BuildResult();
             gethResult.Count.Should().Be(3);
             
-            var parityResult = parityLikeBlockTracer.BuildResult();
+            IReadOnlyCollection<ParityLikeTxTrace> parityResult = parityLikeBlockTracer.BuildResult();
             parityResult.Count.Should().Be(3);
         }
     }

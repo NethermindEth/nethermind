@@ -40,12 +40,12 @@ namespace Nethermind.AuRa.Test.Transactions
         public void transactions_are_addable_to_block_after_sealing()
         {
             int chainId = 5;
-            var blockHeader = Build.A.BlockHeader.TestObject;
-            var tx1 = Build.A.GeneratedTransaction.WithSenderAddress(TestItem.AddressA).TestObject;
-            var tx2 = Build.A.GeneratedTransaction.WithSenderAddress(TestItem.AddressA).TestObject;
-            var timestamper = Substitute.For<ITimestamper>();
-            var stateReader = Substitute.For<IStateReader>();
-            var nodeAddress = TestItem.AddressA;
+            BlockHeader blockHeader = Build.A.BlockHeader.TestObject;
+            GeneratedTransaction tx1 = Build.A.GeneratedTransaction.WithSenderAddress(TestItem.AddressA).TestObject;
+            GeneratedTransaction tx2 = Build.A.GeneratedTransaction.WithSenderAddress(TestItem.AddressA).TestObject;
+            ITimestamper timestamper = Substitute.For<ITimestamper>();
+            IStateReader stateReader = Substitute.For<IStateReader>();
+            Address nodeAddress = TestItem.AddressA;
             
             UInt256 expectedNonce = 10;
             stateReader.GetAccount(blockHeader.StateRoot, nodeAddress).Returns(Account.TotallyEmpty.WithChangedNonce(expectedNonce));
@@ -53,16 +53,16 @@ namespace Nethermind.AuRa.Test.Transactions
             ulong expectedTimeStamp = 100;
             timestamper.UnixTime.Returns(UnixTime.FromSeconds(expectedTimeStamp));
 
-            var gasLimit = 200;
-            var innerTxSource = Substitute.For<ITxSource>();
+            int gasLimit = 200;
+            ITxSource innerTxSource = Substitute.For<ITxSource>();
             innerTxSource.GetTransactions(blockHeader, gasLimit).Returns(new[] {tx1, tx2});
             
-            TxSealer txSealer = new TxSealer(new Signer((ulong) chainId, Build.A.PrivateKey.TestObject, LimboLogs.Instance), timestamper);
-            var transactionFiller = new GeneratedTxSource(innerTxSource, txSealer, stateReader, LimboLogs.Instance);
+            TxSealer txSealer = new(new Signer((ulong) chainId, Build.A.PrivateKey.TestObject, LimboLogs.Instance), timestamper);
+            GeneratedTxSource transactionFiller = new(innerTxSource, txSealer, stateReader, LimboLogs.Instance);
 
-            var sealedTxs = transactionFiller.GetTransactions(blockHeader, gasLimit).ToArray();
-            var sealedTx1 = sealedTxs.First();
-            var sealedTx2 = sealedTxs.Skip(1).First();
+            Transaction[] sealedTxs = transactionFiller.GetTransactions(blockHeader, gasLimit).ToArray();
+            Transaction sealedTx1 = sealedTxs.First();
+            Transaction sealedTx2 = sealedTxs.Skip(1).First();
             
             sealedTx1.IsSigned.Should().BeTrue();
             sealedTx1.Nonce.Should().Be(expectedNonce);

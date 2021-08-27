@@ -31,7 +31,7 @@ namespace Nethermind.Core.Test
             get
             {
                 TestCaseData BuildTest(IComparer<int>[] comparers, IComparer<int>[] expectedResult, string name) => 
-                    new TestCaseData(new object[] {comparers}) {ExpectedResult = expectedResult, TestName = name};
+                    new(new object[] {comparers}) {ExpectedResult = expectedResult, TestName = name};
 
                 IComparer<int> a = Substitute.For<IComparer<int>>();
                 IComparer<int> b = Substitute.For<IComparer<int>>();

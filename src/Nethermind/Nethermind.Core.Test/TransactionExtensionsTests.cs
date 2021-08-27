@@ -28,7 +28,7 @@ namespace Nethermind.Core.Test
         public void GetTransactionPotentialCost_returns_expected_results([ValueSource(nameof(TransactionPotentialCostsTestCases))]
             TransactionPotentialCostsAndEffectiveGasPrice test)
         {
-            Transaction transaction = new Transaction();
+            Transaction transaction = new();
             transaction.GasPrice = test.GasPrice;
             transaction.GasLimit = test.GasLimit;
             transaction.Value = test.Value;
@@ -56,7 +56,7 @@ namespace Nethermind.Core.Test
         [Test]
         public void TryCalculatePremiumPerGas_should_fails_when_base_fee_is_greater_than_fee()
         {
-            Transaction transaction = new Transaction();
+            Transaction transaction = new();
             transaction.DecodedMaxFeePerGas = 10;
             transaction.GasPrice = 30;
             transaction.Type = TxType.EIP1559;

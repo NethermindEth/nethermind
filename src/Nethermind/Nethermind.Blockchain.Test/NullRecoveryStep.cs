@@ -25,7 +25,7 @@ namespace Nethermind.Blockchain.Test
         {
         }
         
-        public static NullRecoveryStep Instance = new NullRecoveryStep();
+        public static NullRecoveryStep Instance = new();
         
         public void RecoverData(Block block)
         {

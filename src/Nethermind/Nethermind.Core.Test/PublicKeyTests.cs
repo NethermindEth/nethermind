@@ -28,7 +28,7 @@ namespace Nethermind.Core.Test
         public void Bytes_in_are_bytes_stored()
         {
             byte[] bytes = new byte[64];
-            PublicKey publicKey = new PublicKey(bytes);
+            PublicKey publicKey = new(bytes);
             Assert.AreEqual(bytes, publicKey.Bytes);
         }
         
@@ -36,7 +36,7 @@ namespace Nethermind.Core.Test
         public void Address_is_correct()
         {
             byte[] bytes = new byte[64];
-            PublicKey publicKey = new PublicKey(bytes);
+            PublicKey publicKey = new(bytes);
             Address address = publicKey.Address;
             string addressString = address.ToString();
             Assert.AreEqual("0x3f17f1962b36e491b30a40b2405849e597ba5fb5", addressString);
@@ -46,7 +46,7 @@ namespace Nethermind.Core.Test
         public void Same_address_is_returned_when_called_twice()
         {
             byte[] bytes = new byte[64];
-            PublicKey publicKey =  new PublicKey(bytes);
+            PublicKey publicKey =  new(bytes);
             Address address1 = publicKey.Address;
             Address address2 = publicKey.Address;
             Assert.AreSame(address1, address2);

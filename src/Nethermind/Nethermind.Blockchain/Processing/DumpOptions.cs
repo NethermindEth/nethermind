@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,26 +13,19 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System.IO;
-using Nethermind.Core.Crypto;
-using Nethermind.Serialization.Json;
-using Newtonsoft.Json;
-using NUnit.Framework;
+using System;
 
-namespace Nethermind.Core.Test.Json
+namespace Nethermind.Blockchain.Processing
 {
-    [TestFixture]
-    public class KeccakConverterTests
+    [Flags]
+    public enum DumpOptions
     {
-        [Test]
-        public void Can_read_null()
-        {
-            KeccakConverter converter = new();
-            JsonReader reader = new JsonTextReader(new StringReader(""));
-            reader.ReadAsString();
-            Keccak result = converter.ReadJson(reader, typeof(Keccak), null, false, JsonSerializer.CreateDefault());
-            Assert.AreEqual(null, result);
-        }
+        None = 0,
+        Receipts = 1,
+        Parity = 2,
+        Geth = 4,
+        All = Receipts | Parity | Geth
     }
 }

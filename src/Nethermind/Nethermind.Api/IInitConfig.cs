@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.Blockchain.Processing;
 using Nethermind.Config;
 
 namespace Nethermind.Api
@@ -70,6 +71,9 @@ namespace Nethermind.Api
         
         [ConfigItem(Description = "Diagnostics modes", DefaultValue = "None")]
         DiagnosticMode DiagnosticMode { get; set; }
+
+        [ConfigItem(Description = "Auto dump on bad blocks for diagnostics", DefaultValue = "Receipts")]
+        DumpOptions AutoDump { get; set; } 
         
         [ConfigItem(Description = "Url for remote node that will be used as DB source when 'DiagnosticMode' is set to'RpcDb'", DefaultValue = "")]
         string RpcDbUrl { get; set; }
