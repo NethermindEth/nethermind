@@ -161,7 +161,7 @@ namespace Nethermind.Runner
                 Console.CancelKeyPress += ConsoleOnCancelKeyPress;
 
                 SetFinalDataDirectory(dataDir.HasValue() ? dataDir.Value() : null, initConfig, keyStoreConfig);
-                NLogManager logManager = new(initConfig.LogFileName, initConfig.LogDirectory);
+                NLogManager logManager = new(initConfig.LogFileName, initConfig.LogDirectory, initConfig.LogLevel);
 
                 _logger = logManager.GetClassLogger();
                 if (_logger.IsDebug) _logger.Debug($"Nethermind version: {ClientVersion.Description}");

@@ -24,11 +24,13 @@ namespace Nethermind.Logging.NLog
     {
         private readonly string _logFileName;
         private readonly string _logDirectory;
+        private readonly string _logConfig;
 
-        public NLogManager(string logFileName, string logDirectory)
+        public NLogManager(string logFileName, string logDirectory, string logConfig)
         {
             _logFileName = logFileName;
             _logDirectory = logDirectory;
+            _logConfig = logConfig;
         }
 
         private ConcurrentDictionary<Type, NLogLogger> _loggers = new();

@@ -38,11 +38,12 @@ namespace Nethermind.Api
         public bool StoreReceipts { get; set; } = true;
         public bool ReceiptsMigration { get; set; } = false;
         public DiagnosticMode DiagnosticMode { get; set; } = DiagnosticMode.None;
-
         public DumpOptions AutoDump { get; set; } = DumpOptions.Receipts;
 
         public string RpcDbUrl { get; set; } = String.Empty;
         public long? MemoryHint { get; set; }
+        
+        public string LogLevel { get; set; }
 
         [Obsolete("Use DiagnosticMode with MemDb instead")]
         public bool UseMemDb
