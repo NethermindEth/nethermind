@@ -77,7 +77,7 @@ namespace Nethermind.Abi
 
         private static Type GetCSharpType(AbiType[] elements)
         {
-            Type genericType = Type.GetType("System.ValueTuple`" + (elements.Length <= 8 ? elements.Length : 8))!;
+            Type genericType = Type.GetType("System.ValueTuple`" + elements.Length)!;
             Type[] typeArguments = elements.Select(v => v.CSharpType).ToArray();
             return genericType.MakeGenericType(typeArguments);
         }
