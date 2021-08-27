@@ -38,19 +38,23 @@ namespace Nethermind.Mev
             {
                 Block? best = null;
                 UInt256 maxBalance = UInt256.Zero;
+                int bundlesAdded = 0;
                 foreach ((Block? Block, MevBlockProducerInfo BlockProducerInfo) context in blocks)
                 {
                     if (context.Block is not null)
                     {
-                        BeneficiaryTracer beneficiaryTracer = context.BlockProducerInfo.BeneficiaryTracer;
-                        UInt256 balance = beneficiaryTracer.BeneficiaryBalance;
+                        MevBlockProducerInfo mevBlockProducerInfo = context.BlockProducerInfo;
+                        UInt256 balance = mevBlockProducerInfo.BeneficiaryTracer.BeneficiaryBalance;
                         if (balance > maxBalance || best is null)
                         {
                             best = context.Block;
                             maxBalance = balance;
+                            bundlesAdded = mevBlockProducerInfo.BundlesAddedTracer.BundlesAdded;
                         }
                     }
                 }
+
+                Metrics.BundlesIncluded += bundlesAdded;
 
                 return best;
             }
@@ -62,14 +66,18 @@ namespace Nethermind.Mev
             public IManualBlockProductionTrigger BlockProductionTrigger { get; }
             public IBlockTracer BlockTracer => BeneficiaryTracer;
             public BeneficiaryTracer BeneficiaryTracer { get; }
+            public IBundlesAddedTracer BundlesAddedTracer { get; }
+
             public MevBlockProducerInfo(
                 IBlockProducer blockProducer, 
                 IManualBlockProductionTrigger blockProductionTrigger, 
-                BeneficiaryTracer beneficiaryTracer)
+                BeneficiaryTracer beneficiaryTracer,
+                IBundlesAddedTracer bundlesAddedTracer)
             {
                 BlockProducer = blockProducer;
                 BlockProductionTrigger = blockProductionTrigger;
                 BeneficiaryTracer = beneficiaryTracer;
+                BundlesAddedTracer = bundlesAddedTracer;
             }
         }
     }

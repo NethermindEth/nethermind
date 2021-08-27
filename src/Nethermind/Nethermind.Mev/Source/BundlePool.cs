@@ -280,14 +280,9 @@ namespace Nethermind.Mev.Source
                     StopSimulations(simulations.Values);
                 }
 
-                Block? currentBlock = bundleBucket.Key == block.Number ? block : _blockTree.FindBlock(bundleBucket.Key);
                 foreach (MevBundle mevBundle in bundleBucket.Value)
                 {
                     _bundles.TryRemove(mevBundle);
-                    if (currentBlock is not null && currentBlock.IsBundleIncluded(mevBundle))
-                    {
-                        Metrics.BundlesIncluded++;
-                    }
                 }
             }
         }

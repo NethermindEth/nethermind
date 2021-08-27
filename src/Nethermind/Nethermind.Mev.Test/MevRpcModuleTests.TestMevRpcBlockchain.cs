@@ -98,7 +98,9 @@ namespace Nethermind.Mev.Test
             protected override IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
             {
                 MiningConfig miningConfig = new() {MinGasPrice = UInt256.One};
-                
+
+                MevBlockProducerTransactionsExecutorFactory mevExecutorFactory = new(SpecProvider, LogManager);
+
                 BlockProducerEnvFactory blockProducerEnvFactory = new(
                     DbProvider, 
                     BlockTree, 
@@ -113,7 +115,7 @@ namespace Nethermind.Mev.Test
                     miningConfig,
                     LogManager)
                 {
-                    TransactionsExecutorFactory = new MevBlockProducerTransactionsExecutorFactory(SpecProvider, LogManager)
+                    TransactionsExecutorFactory = mevExecutorFactory
                 };
 
                 Eth2BlockProducer CreateEth2BlockProducer(IBlockProductionTrigger blockProductionTrigger, ITxSource? txSource = null) =>
@@ -127,7 +129,10 @@ namespace Nethermind.Mev.Test
                         miningConfig,
                         LogManager);
 
-                MevBlockProducer.MevBlockProducerInfo CreateProducer(int bundleLimit = 0, ITxSource? additionalTxSource = null)
+                MevBlockProducer.MevBlockProducerInfo CreateProducer(
+                    MevBlockProducerTransactionsExecutorFactory executorFactory, 
+                    int bundleLimit = 0, 
+                    ITxSource? additionalTxSource = null)
                 {
                     bool BundleLimitTriggerCondition(BlockProductionEventArgs e)
                     {
@@ -149,14 +154,14 @@ namespace Nethermind.Mev.Test
                     }
 
                     IBlockProducer producer = CreateEth2BlockProducer(trigger, additionalTxSource);
-                    return new MevBlockProducer.MevBlockProducerInfo(producer, manualTrigger, new BeneficiaryTracer());
+                    return new MevBlockProducer.MevBlockProducerInfo(producer, manualTrigger, new BeneficiaryTracer(), executorFactory.LastExecutor);
                 }
 
                 List<MevBlockProducer.MevBlockProducerInfo> blockProducers =
                     new(_maxMergedBundles + 1);
                     
                 // Add non-mev block
-                MevBlockProducer.MevBlockProducerInfo standardProducer = CreateProducer();
+                MevBlockProducer.MevBlockProducerInfo standardProducer = CreateProducer(mevExecutorFactory);
                 blockProducers.Add(standardProducer);
 
                 // Try blocks with all bundle numbers <= maxMergedBundles
@@ -164,7 +169,7 @@ namespace Nethermind.Mev.Test
                 {
                     BundleSelector bundleSelector = new(BundlePool, bundleLimit);
                     BundleTxSource bundleTxSource = new(bundleSelector, Timestamper);
-                    MevBlockProducer.MevBlockProducerInfo bundleProducer = CreateProducer(bundleLimit, bundleTxSource);
+                    MevBlockProducer.MevBlockProducerInfo bundleProducer = CreateProducer(mevExecutorFactory, bundleLimit, bundleTxSource);
                     blockProducers.Add(bundleProducer);
                 }
 

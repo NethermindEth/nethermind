@@ -98,27 +98,6 @@ namespace Nethermind.Mev.Test
             List<MevBundle> bundlesForPastBlock = testContext.BundlePool.GetBundles(test.Block, test.TestTimestamp).ToList();
             bundlesForPastBlock.Count.Should().Be(0);
         }
-        
-        [TestCaseSource(nameof(BundleRetrievalTest))]
-        public void should_count_includedBundles(BundleTest test)
-        {
-            int beforeBundlesIncluded = Metrics.BundlesIncluded;
-            
-            TestContext testContext = new TestContext();
-            test.Action?.Invoke(testContext.BundlePool);
-            
-            testContext.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.WithNumber(test.Block - 1).TestObject));
-            
-            List<MevBundle> bundlesForFutureBlock = testContext.BundlePool.GetBundles(test.Block, test.TestTimestamp).ToList();
-
-            Block block = Build.A.Block.WithNumber(test.Block)
-                .WithTransactions(bundlesForFutureBlock.SelectMany(b => b.Transactions).ToArray<Transaction>())
-                .TestObject;
-            testContext.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(block));
-            
-            int deltaBundlesIncluded = Metrics.BundlesIncluded - beforeBundlesIncluded;
-            deltaBundlesIncluded.Should().Be(test.ExpectedCount);
-        }
 
         [Test]
         public void should_add_bundle_with_correct_timestamps()

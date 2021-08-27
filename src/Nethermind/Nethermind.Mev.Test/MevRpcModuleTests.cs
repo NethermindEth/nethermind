@@ -613,6 +613,8 @@ namespace Nethermind.Mev.Test
             var chain = await CreateChain(2);
             chain.GasLimitCalculator.GasLimit = 10_000_000;
 
+            int beforeBundlesIncluded = Metrics.BundlesIncluded;
+            
             BundleTransaction poolAndBundleTx = Build.A.TypedTransaction<BundleTransaction>()
                 .WithGasLimit(GasCostOf.Transaction)
                 .WithGasPrice(150ul)
@@ -642,6 +644,8 @@ namespace Nethermind.Mev.Test
             await chain.AddBlock(true);
             
             GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { expensiveBundleTx, middleBundleTx, poolAndBundleTx }));
+            int deltaBundlesIncluded = Metrics.BundlesIncluded - beforeBundlesIncluded;
+            deltaBundlesIncluded.Should().Be(2);
         }
         
         [Test]

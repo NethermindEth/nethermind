@@ -34,6 +34,8 @@ namespace Nethermind.Mev
         }
 
         public IBlockProcessor.IBlockTransactionsExecutor Create(ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv) => 
-            new MevBlockProductionTransactionsExecutor(readOnlyTxProcessingEnv, _specProvider, _logManager);
+            LastExecutor = new MevBlockProductionTransactionsExecutor(readOnlyTxProcessingEnv, _specProvider, _logManager);
+
+        public MevBlockProductionTransactionsExecutor LastExecutor { get; private set; } = null!;
     }
 }

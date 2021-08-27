@@ -37,11 +37,13 @@ using TxAction = Nethermind.Blockchain.Processing.BlockProcessor.TxAction;
 
 namespace Nethermind.Mev
 {
-    public class MevBlockProductionTransactionsExecutor : BlockProcessor.BlockProductionTransactionsExecutor
+    public class MevBlockProductionTransactionsExecutor : BlockProcessor.BlockProductionTransactionsExecutor, IBundlesAddedTracer
     {
         private readonly IStateProvider _stateProvider;
         private readonly IStorageProvider _storageProvider;
-        
+
+        public int BundlesAdded { get; private set; }
+
         public MevBlockProductionTransactionsExecutor(
             ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv,
             ISpecProvider specProvider,
@@ -69,6 +71,7 @@ namespace Nethermind.Mev
         
         public override TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec)
         {
+            BundlesAdded = 0;
             IEnumerable<Transaction> transactions = GetTransactions(block);
             LinkedHashSet<Transaction> transactionsInBlock = new(ByHashTxComparer.Instance);
             List<BundleTransaction> bundleTransactions = new();
@@ -188,6 +191,7 @@ namespace Nethermind.Mev
                     transactionsInBlock.Add(bundleTransaction);
                     int txIndex = receiptSnapshot + index;
                     _transactionProcessed?.Invoke(this, new TxProcessedEventArgs(txIndex, bundleTransaction, receiptsTracer.TxReceipts[txIndex]));
+                    BundlesAdded++;
                 }
             }
             else
