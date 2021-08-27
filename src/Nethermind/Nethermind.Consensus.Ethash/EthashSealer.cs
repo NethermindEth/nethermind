@@ -73,7 +73,7 @@ namespace Nethermind.Consensus.Ethash
             if (processed.Header.TxRoot == null ||
                 processed.Header.StateRoot == null ||
                 processed.Header.ReceiptsRoot == null ||
-                processed.Header.OmmersHash == null ||
+                processed.Header.UnclesHash == null ||
                 processed.Header.Bloom == null ||
                 processed.Header.ExtraData == null)
             {

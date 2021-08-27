@@ -20,20 +20,20 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain
 {
-    public static class OmmersHash
+    public static class UnclesHash
     {
         public static Keccak Calculate(Block block)
         {
-            return block.Ommers.Length == 0
+            return block.Uncles.Length == 0
                 ? Keccak.OfAnEmptySequenceRlp
-                : Keccak.Compute(Rlp.Encode(block.Ommers).Bytes);
+                : Keccak.Compute(Rlp.Encode(block.Uncles).Bytes);
         }
         
-        public static Keccak Calculate(BlockHeader[] ommers)
+        public static Keccak Calculate(BlockHeader[] uncles)
         {
-            return ommers.Length == 0
+            return uncles.Length == 0
                 ? Keccak.OfAnEmptySequenceRlp
-                : Keccak.Compute(Rlp.Encode(ommers).Bytes);
+                : Keccak.Compute(Rlp.Encode(uncles).Bytes);
         }
     }
 }

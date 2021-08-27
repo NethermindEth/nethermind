@@ -137,8 +137,8 @@ namespace Ethereum.Test.Base
             IBlockhashProvider blockhashProvider = new BlockhashProvider(blockTree, _logManager);
             ITxValidator txValidator = new TxValidator(ChainId.Mainnet);
             IHeaderValidator headerValidator = new HeaderValidator(blockTree, Sealer, specProvider, _logManager);
-            IOmmersValidator ommersValidator = new OmmersValidator(blockTree, headerValidator, _logManager);
-            IBlockValidator blockValidator = new BlockValidator(txValidator, headerValidator, ommersValidator, specProvider, _logManager);
+            IUnclesValidator unclesValidator = new UnclesValidator(blockTree, headerValidator, _logManager);
+            IBlockValidator blockValidator = new BlockValidator(txValidator, headerValidator, unclesValidator, specProvider, _logManager);
             IStorageProvider storageProvider = new StorageProvider(trieStore, stateProvider, _logManager);
             IVirtualMachine virtualMachine = new VirtualMachine(
                 stateProvider,
@@ -185,9 +185,9 @@ namespace Ethereum.Test.Base
                     suggestedBlock.Header.SealEngineType = test.SealEngineUsed ? SealEngineType.Ethash : SealEngineType.None;
 
                     Assert.AreEqual(new Keccak(testBlockJson.BlockHeader.Hash), suggestedBlock.Header.Hash, "hash of the block");
-                    for (int ommerIndex = 0; ommerIndex < suggestedBlock.Ommers.Length; ommerIndex++)
+                    for (int uncleIndex = 0; uncleIndex < suggestedBlock.Uncles.Length; uncleIndex++)
                     {
-                        Assert.AreEqual(new Keccak(testBlockJson.UncleHeaders[ommerIndex].Hash), suggestedBlock.Ommers[ommerIndex].Hash, "hash of the ommer");
+                        Assert.AreEqual(new Keccak(testBlockJson.UncleHeaders[uncleIndex].Hash), suggestedBlock.Uncles[uncleIndex].Hash, "hash of the uncle");
                     }
 
                     correctRlp.Add((suggestedBlock, testBlockJson.ExpectedException));

@@ -292,9 +292,9 @@ namespace Nethermind.Synchronization.Test
             Always sealValidator = Always.Valid;
             HeaderValidator headerValidator = new(tree, sealValidator, specProvider, logManager);
             Always txValidator = Always.Valid;
-            OmmersValidator ommersValidator = new(tree, headerValidator, logManager);
+            UnclesValidator unclesValidator = new(tree, headerValidator, logManager);
             BlockValidator blockValidator =
-                new(txValidator, headerValidator, ommersValidator, specProvider, logManager);
+                new(txValidator, headerValidator, unclesValidator, specProvider, logManager);
 
             ISyncConfig syncConfig = _synchronizerType == SynchronizerType.Fast
                 ? SyncConfig.WithFastSync

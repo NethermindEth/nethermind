@@ -25,12 +25,12 @@ namespace Nethermind.Blockchain.Validators
             return false;
         }
 
-        public bool Validate(BlockHeader header, BlockHeader parent, bool isOmmer)
+        public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle)
         {
             return false;
         }
 
-        public bool Validate(BlockHeader header, bool isOmmer)
+        public bool Validate(BlockHeader header, bool isUncle)
         {
             return false;
         }

@@ -18,8 +18,8 @@ using Nethermind.Core;
 
 namespace Nethermind.Blockchain.Validators
 {
-    public interface IOmmersValidator
+    public interface IUnclesValidator
     {
-        bool Validate(BlockHeader header, BlockHeader[] ommers);
+        bool Validate(BlockHeader header, BlockHeader[] uncles);
     }
 }

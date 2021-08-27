@@ -27,9 +27,9 @@ namespace Nethermind.Blockchain.Test.Rewards
         [Test]
         public void Two_uncles_from_the_same_coinbase()
         {
-            Block ommer = Build.A.Block.WithNumber(1).TestObject;
-            Block ommer2 = Build.A.Block.WithNumber(1).TestObject;
-            Block block = Build.A.Block.WithNumber(3).WithOmmers(ommer, ommer2).TestObject;
+            Block uncle = Build.A.Block.WithNumber(1).TestObject;
+            Block uncle2 = Build.A.Block.WithNumber(1).TestObject;
+            Block block = Build.A.Block.WithNumber(3).WithUncles(uncle, uncle2).TestObject;
             
             RewardCalculator calculator = new(RopstenSpecProvider.Instance);
             BlockReward[] rewards = calculator.CalculateRewards(block);
@@ -43,8 +43,8 @@ namespace Nethermind.Blockchain.Test.Rewards
         [Test]
         public void One_uncle()
         {
-            Block ommer = Build.A.Block.WithNumber(1).TestObject;
-            Block block = Build.A.Block.WithNumber(3).WithOmmers(ommer).TestObject;
+            Block uncle = Build.A.Block.WithNumber(1).TestObject;
+            Block block = Build.A.Block.WithNumber(3).WithUncles(uncle).TestObject;
             
             RewardCalculator calculator = new(RopstenSpecProvider.Instance);
             BlockReward[] rewards = calculator.CalculateRewards(block);
@@ -70,9 +70,9 @@ namespace Nethermind.Blockchain.Test.Rewards
         public void Byzantium_reward_two_uncles()
         {
             long blockNumber = RopstenSpecProvider.ByzantiumBlockNumber;
-            Block ommer = Build.A.Block.WithNumber(blockNumber - 2).TestObject;
-            Block ommer2 = Build.A.Block.WithNumber(blockNumber - 2).TestObject;
-            Block block = Build.A.Block.WithNumber(blockNumber).WithOmmers(ommer, ommer2).TestObject;
+            Block uncle = Build.A.Block.WithNumber(blockNumber - 2).TestObject;
+            Block uncle2 = Build.A.Block.WithNumber(blockNumber - 2).TestObject;
+            Block block = Build.A.Block.WithNumber(blockNumber).WithUncles(uncle, uncle2).TestObject;
             
             RewardCalculator calculator = new(RopstenSpecProvider.Instance);
             BlockReward[] rewards = calculator.CalculateRewards(block);
@@ -87,9 +87,9 @@ namespace Nethermind.Blockchain.Test.Rewards
         public void Constantinople_reward_two_uncles()
         {
             long blockNumber = RopstenSpecProvider.ConstantinopleBlockNumber;
-            Block ommer = Build.A.Block.WithNumber(blockNumber - 2).TestObject;
-            Block ommer2 = Build.A.Block.WithNumber(blockNumber - 2).TestObject;
-            Block block = Build.A.Block.WithNumber(blockNumber).WithOmmers(ommer, ommer2).TestObject;
+            Block uncle = Build.A.Block.WithNumber(blockNumber - 2).TestObject;
+            Block uncle2 = Build.A.Block.WithNumber(blockNumber - 2).TestObject;
+            Block block = Build.A.Block.WithNumber(blockNumber).WithUncles(uncle, uncle2).TestObject;
             
             RewardCalculator calculator = new(RopstenSpecProvider.Instance);
             BlockReward[] rewards = calculator.CalculateRewards(block);

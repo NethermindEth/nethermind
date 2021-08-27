@@ -331,9 +331,9 @@ namespace Nethermind.PerfTest
 
             /* store & validation */
             var headerValidator = new HeaderValidator(blockTree, sealValidator, specProvider, _logManager);
-            var ommersValidator = new OmmersValidator(blockTree, headerValidator, _logManager);
+            var unclesValidator = new UnclesValidator(blockTree, headerValidator, _logManager);
             var transactionValidator = new TxValidator(chainSpec.ChainId);
-            var blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, specProvider, _logManager);
+            var blockValidator = new BlockValidator(transactionValidator, headerValidator, unclesValidator, specProvider, _logManager);
 
             /* blockchain processing */
             var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, processor, stateProvider, storageProvider, transactionPool, receiptStorage, _logManager);

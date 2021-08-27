@@ -75,9 +75,9 @@ namespace Nethermind.Core.Test.Builders
 
         private bool _doNotCalculateHash;
 
-        public BlockHeaderBuilder WithOmmersHash(Keccak ommersHash)
+        public BlockHeaderBuilder WithUnclesHash(Keccak unclesHash)
         {
-            TestObjectInternal.OmmersHash = ommersHash;
+            TestObjectInternal.UnclesHash = unclesHash;
             return this;
         }
 

@@ -123,9 +123,9 @@ namespace Nethermind.Consensus.Clique
             }
 
             // Ensure that the block doesn't contain any uncles which are meaningless in PoA
-            if (header.OmmersHash != Keccak.OfAnEmptySequenceRlp)
+            if (header.UnclesHash != Keccak.OfAnEmptySequenceRlp)
             {
-                if (_logger.IsWarn) _logger.Warn($"Invalid block ommers hash ({header.OmmersHash}) - ommers are meaningless in Clique");
+                if (_logger.IsWarn) _logger.Warn($"Invalid block uncles hash ({header.UnclesHash}) - uncles are meaningless in Clique");
                 return false;
             }
 

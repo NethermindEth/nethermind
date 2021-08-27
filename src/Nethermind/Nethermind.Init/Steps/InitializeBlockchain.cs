@@ -200,7 +200,7 @@ namespace Nethermind.Init.Steps
             /* validation */
             IHeaderValidator? headerValidator = setApi.HeaderValidator = CreateHeaderValidator();
 
-            OmmersValidator ommersValidator = new(
+            UnclesValidator unclesValidator = new(
                 getApi.BlockTree,
                 headerValidator,
                 getApi.LogManager);
@@ -208,7 +208,7 @@ namespace Nethermind.Init.Steps
             IBlockValidator? blockValidator = setApi.BlockValidator = new BlockValidator(
                 txValidator,
                 headerValidator,
-                ommersValidator,
+                unclesValidator,
                 getApi.SpecProvider,
                 getApi.LogManager);
 
