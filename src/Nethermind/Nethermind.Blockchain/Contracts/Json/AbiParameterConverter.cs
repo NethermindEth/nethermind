@@ -60,6 +60,13 @@ namespace Nethermind.Blockchain.Contracts.Json
     
     public abstract class AbiParameterConverterBase<T> : JsonConverter<T> where T : AbiParameter, new()
     {
+        private readonly IList<IAbiTypeFactory> _abiTypeFactories;
+
+        protected AbiParameterConverterBase(IList<IAbiTypeFactory> abiTypeFactories)
+        {
+            _abiTypeFactories = abiTypeFactories;
+        }
+
         public override void WriteJson(JsonWriter writer, T value, JsonSerializer serializer)
         {
             throw new NotSupportedException();
@@ -108,6 +115,17 @@ namespace Nethermind.Blockchain.Contracts.Json
 
         private AbiType GetBaseType(string baseType, Match match, JToken components)
         {
+            string abiTypeDefinition = match.Value;
+            
+            foreach (IAbiTypeFactory factory in _abiTypeFactories)
+            {
+                AbiType? abiType = factory.Create(abiTypeDefinition);
+                if (abiType is not null)
+                {
+                    return abiType;
+                }
+            }
+
             if (AbiParameterConverterStatics.SimpleTypeFactories.TryGetValue(baseType, out var simpleTypeFactory))
             {
                 int? m = match.Groups[AbiParameterConverterStatics.TypeLengthGroup].Success ? int.Parse(match.Groups[AbiParameterConverterStatics.TypeLengthGroup].Value) : (int?) null;
@@ -128,11 +146,17 @@ namespace Nethermind.Blockchain.Contracts.Json
 
     public class AbiParameterConverter : AbiParameterConverterBase<AbiParameter>
     {
-        
+        public AbiParameterConverter(IList<IAbiTypeFactory> abiTypeFactories) : base(abiTypeFactories)
+        {
+        }
     }
 
     public class AbiEventParameterConverter : AbiParameterConverterBase<AbiEventParameter>
     {
+        public AbiEventParameterConverter(IList<IAbiTypeFactory> abiTypeFactories) : base(abiTypeFactories)
+        {
+        }
+
         protected override void Populate(AbiEventParameter item, JToken token)
         {
             base.Populate(item, token);

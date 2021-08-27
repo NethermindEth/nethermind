@@ -64,6 +64,9 @@ namespace Nethermind.Abi.Test.Json
                     new AbiTuple(new AbiType[] {AbiType.Int256}),
                     new {name = "property", type = "int"}));
                 
+                yield return new TestCaseData(GetTestData("tuple", new AbiTuple<CustomAbiType>(), 
+                    new {name = "c", type = "int32"}));
+
                 yield return new TestCaseData(GetTestDataWithException("int1", new ArgumentException()));
                 yield return new TestCaseData(GetTestDataWithException("int9", new ArgumentException()));
                 yield return new TestCaseData(GetTestDataWithException("int300", new ArgumentException()));
@@ -77,7 +80,8 @@ namespace Nethermind.Abi.Test.Json
         [TestCaseSource(nameof(TypeTestCases))]
         public void Can_read_json(string type, AbiType expectedType, Exception expectedException, object[] components)
         {
-            var converter = new AbiParameterConverter();
+            List<IAbiTypeFactory> abiTypeFactories = new List<IAbiTypeFactory>() {new AbiTypeFactory(new AbiTuple<CustomAbiType>())};
+            var converter = new AbiParameterConverter(abiTypeFactories);
             var model = new {name = "theName", type, components};
             string json = JsonConvert.SerializeObject(model);
             using (var jsonReader = new JsonTextReader(new StringReader(json)))
@@ -97,6 +101,11 @@ namespace Nethermind.Abi.Test.Json
                     }
                 }
             }
+        }
+
+        public struct CustomAbiType
+        {
+            public int C { get; set; }
         }
     }
 }

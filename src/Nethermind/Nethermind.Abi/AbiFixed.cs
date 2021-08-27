@@ -22,7 +22,7 @@ namespace Nethermind.Abi
 {
     public class AbiFixed : AbiType
     {
-        public static AbiFixed Standard { get; }= new(128, 19);
+        public static readonly AbiFixed Standard = new(128, 19);
 
         private const int MaxLength = 256;
         private const int MinLength = 0;
