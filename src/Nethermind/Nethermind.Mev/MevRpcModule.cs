@@ -109,10 +109,10 @@ namespace Nethermind.Mev
 
             const int callBundleTimeout = 5000;
             using CancellationTokenSource cancellationTokenSource = new(callBundleTimeout);
-            long block = blockNumber ?? header.Number + 1;
+            long bundleBlockNumber = blockNumber ?? header.Number + 1;
 
             TxsResults results = new CallTxBundleExecutor(_tracerFactory, _specProvider, _signer).ExecuteBundle(
-                new MevBundle(block, txs, timestamp, timestamp),
+                new MevBundle(bundleBlockNumber, txs, timestamp, timestamp),
                 header,
                 cancellationTokenSource.Token,
                 timestamp);
