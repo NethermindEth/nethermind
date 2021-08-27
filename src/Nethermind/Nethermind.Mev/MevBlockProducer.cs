@@ -49,7 +49,7 @@ namespace Nethermind.Mev
                         {
                             best = context.Block;
                             maxBalance = balance;
-                            bundlesAdded = mevBlockProducerInfo.BundlesAddedTracer.BundlesAdded;
+                            bundlesAdded = mevBlockProducerInfo.BundlesIncludedTracer.BundlesIncluded;
                         }
                     }
                 }
@@ -66,18 +66,18 @@ namespace Nethermind.Mev
             public IManualBlockProductionTrigger BlockProductionTrigger { get; }
             public IBlockTracer BlockTracer => BeneficiaryTracer;
             public BeneficiaryTracer BeneficiaryTracer { get; }
-            public IBundlesAddedTracer BundlesAddedTracer { get; }
+            public IBundlesIncludedTracer BundlesIncludedTracer { get; }
 
             public MevBlockProducerInfo(
                 IBlockProducer blockProducer, 
                 IManualBlockProductionTrigger blockProductionTrigger, 
                 BeneficiaryTracer beneficiaryTracer,
-                IBundlesAddedTracer bundlesAddedTracer)
+                IBundlesIncludedTracer bundlesIncludedTracer)
             {
                 BlockProducer = blockProducer;
                 BlockProductionTrigger = blockProductionTrigger;
                 BeneficiaryTracer = beneficiaryTracer;
-                BundlesAddedTracer = bundlesAddedTracer;
+                BundlesIncludedTracer = bundlesIncludedTracer;
             }
         }
     }

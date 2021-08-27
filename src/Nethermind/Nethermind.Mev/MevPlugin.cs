@@ -180,7 +180,8 @@ namespace Nethermind.Mev
             return new MevBlockProducer(consensusPlugin.DefaultBlockProductionTrigger, _nethermindApi.LogManager, blockProducers.ToArray());
         }
 
-        private async Task<MevBlockProducer.MevBlockProducerInfo> CreateProducer(IConsensusPlugin consensusPlugin,
+        private async Task<MevBlockProducer.MevBlockProducerInfo> CreateProducer(
+            IConsensusPlugin consensusPlugin,
             MevBlockProducerTransactionsExecutorFactory executorFactory,
             int bundleLimit = 0,
             ITxSource? additionalTxSource = null)

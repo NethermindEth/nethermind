@@ -17,8 +17,8 @@
 
 namespace Nethermind.Mev
 {
-    public interface IBundlesAddedTracer
+    public interface IBundlesIncludedTracer
     {
-        int BundlesAdded { get; }
+        int BundlesIncluded { get; }
     }
 }

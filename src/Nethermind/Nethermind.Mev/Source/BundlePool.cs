@@ -248,7 +248,8 @@ namespace Nethermind.Mev.Source
 
         private void OnNewBlock(object? sender, BlockEventArgs e)
         {
-            RemoveBundlesUpToBlock(e.Block);
+            long blockNumber = e.Block!.Number;
+            RemoveBundlesUpToBlock(blockNumber);
 
             Task.Run(() =>
             {
@@ -261,7 +262,7 @@ namespace Nethermind.Mev.Source
             });
         }
 
-        private void RemoveBundlesUpToBlock(Block block)
+        private void RemoveBundlesUpToBlock(long blockNumber)
         {
             void StopSimulations(IEnumerable<SimulatedMevBundleContext> simulations)
             {
@@ -271,7 +272,7 @@ namespace Nethermind.Mev.Source
                 }
             }
             
-            IDictionary<long, MevBundle[]> bundlesToRemove = _bundles.GetBucketSnapshot(b => b <= block.Number);
+            IDictionary<long, MevBundle[]> bundlesToRemove = _bundles.GetBucketSnapshot(b => b <= blockNumber);
 
             foreach (KeyValuePair<long, MevBundle[]> bundleBucket in bundlesToRemove)
             {
