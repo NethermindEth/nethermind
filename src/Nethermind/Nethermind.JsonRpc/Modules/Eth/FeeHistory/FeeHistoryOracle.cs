@@ -29,6 +29,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
 {
         public class FeeHistoryOracle : IFeeHistoryOracle
         {
+            private const int MaxBlockCount = 1024;
             private readonly IBlockFinder _blockFinder;
             private readonly IReceiptStorage _receiptStorage;
             private readonly ISpecProvider _specProvider;
@@ -54,7 +55,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                     return ResultWrapper<FeeHistoryResults>.Fail("newestBlock: Block is not available", ErrorCodes.ResourceUnavailable);
                 }
 
-                long newestBlockNumber = block!.Number;
+                long oldestBlockNumber = block!.Number;
                 Stack<UInt256> baseFeePerGas = new(blockCount + 1);
                 baseFeePerGas.Push(BaseFeeCalculator.Calculate(block!.Header, _specProvider.GetSpec(block!.Number + 1)));
                 Stack<double> gasUsedRatio = new Stack<double>(blockCount);
@@ -63,7 +64,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
 
                 while (block is not null && blockCount > 0)
                 {
-                    newestBlockNumber = block.Number;
+                    oldestBlockNumber = block.Number;
                     baseFeePerGas.Push(block.BaseFeePerGas);
                     gasUsedRatio.Push(block.GasUsed / (double) block.GasLimit);
                     if (rewards is not null)
@@ -79,7 +80,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                     block = _blockFinder.FindParent(block, BlockTreeLookupOptions.RequireCanonical);
                 }
 
-                FeeHistoryResults feeHistoryResults = new(newestBlockNumber, baseFeePerGas.ToArray(), gasUsedRatio.ToArray(), rewards?.ToArray());
+                FeeHistoryResults feeHistoryResults = new(oldestBlockNumber, baseFeePerGas.ToArray(), gasUsedRatio.ToArray(), rewards?.ToArray());
                 return ResultWrapper<FeeHistoryResults>.Success(feeHistoryResults);                
             }
 
@@ -144,9 +145,9 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                     return ResultWrapper<FeeHistoryResults>.Fail($"blockCount: Value {blockCount} is less than 1", ErrorCodes.InvalidParams);
                 }
 
-                if (blockCount > 1024)
+                if (blockCount > MaxBlockCount)
                 {
-                    blockCount = 1024;
+                    blockCount = MaxBlockCount;
                 }
 
                 if (rewardPercentiles is not null)
