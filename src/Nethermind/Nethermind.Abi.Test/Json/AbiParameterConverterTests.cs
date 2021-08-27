@@ -59,9 +59,9 @@ namespace Nethermind.Abi.Test.Json
                 yield return new TestCaseData(GetTestData("int[]", new AbiArray(AbiType.Int256)));
                 yield return new TestCaseData(GetTestData("string[5]", new AbiFixedLengthArray(AbiType.String, 5)));
                 
-                yield return new TestCaseData(GetTestData("tuple", new AbiTuple(new Dictionary<string, AbiType>())));
+                yield return new TestCaseData(GetTestData("tuple", new AbiTuple(Array.Empty<AbiType>())));
                 yield return new TestCaseData(GetTestData("tuple", 
-                    new AbiTuple(new Dictionary<string, AbiType> {{"property", AbiType.Int256}}),
+                    new AbiTuple(new AbiType[] {AbiType.Int256}),
                     new {name = "property", type = "int"}));
                 
                 yield return new TestCaseData(GetTestDataWithException("int1", new ArgumentException()));

@@ -18,7 +18,7 @@ using System;
 
 namespace Nethermind.Abi
 {
-    public abstract class AbiType
+    public abstract partial class AbiType
     {
         public static AbiDynamicBytes DynamicBytes { get; } = AbiDynamicBytes.Instance;
 

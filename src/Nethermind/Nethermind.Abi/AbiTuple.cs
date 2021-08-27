@@ -18,6 +18,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Extensions;
 
@@ -25,43 +26,47 @@ namespace Nethermind.Abi
 {
     public class AbiTuple : AbiType
     {
+        private readonly AbiType[] _elements;
+        private readonly string[]? _names;
         private readonly Lazy<Type> _type; 
         
-        public AbiTuple(IReadOnlyDictionary<string, AbiType> elements)
+        public AbiTuple(AbiType[] elements, string[]? names = null)
         {
-            Elements = elements;
-            Name = $"tuple({string.Join(", ", elements.Values.Select(v => v.Name))})";
-            _type = new Lazy<Type>(() => GetCSharpType(Elements));
+            if (elements.Length > 8)
+            {
+                throw new ArgumentException($"Too many tuple items {elements.Length}, max is 8. Please use custom type instead.", nameof(elements));
+            }
+
+            _elements = elements;
+            _names = names;
+            Name = $"({string.Join(",", _elements.Select(v => v.Name))})";
+            _type = new Lazy<Type>(() => GetCSharpType(_elements));
+            IsDynamic = _elements.Any(p => p.IsDynamic);
         }
 
         public override string Name { get; }
-        
-        public IReadOnlyDictionary<string, AbiType> Elements { get; }
-        
+
+        public override bool IsDynamic { get; }
+
         public override (object, int) Decode(byte[] data, int position, bool packed)
         {
-            object[] values = new object[Elements.Count];
-            int i = 0;
-            foreach (AbiType type in Elements.Values)
-            {
-                (values[i], position) = type.Decode(data, position, packed);
-                i++;
-            }
-
-            return (Activator.CreateInstance(CSharpType, values), position)!;
+            (object[] arguments, int movedPosition) = DecodeSequence(_elements, data, packed, position);
+            return (Activator.CreateInstance(CSharpType, arguments), movedPosition)!;
         }
 
         public override byte[] Encode(object? arg, bool packed)
         {
-            if (arg is ITuple input && input.Length == Elements.Count)
+            IEnumerable<object?> GetEnumerable(ITuple tuple)
             {
-                byte[][] encodedItems = new byte[Elements.Count][];
-                int i = 0;
-                foreach (AbiType type in Elements.Values)
+                for (int i = 0; i < tuple.Length; i++)
                 {
-                    encodedItems[i++] = type.Encode(input[i], packed);
+                    yield return tuple[i];
                 }
-                
+            }
+            
+            if (arg is ITuple input && input.Length == _elements.Length)
+            {
+                byte[][] encodedItems = EncodeSequence(_elements, GetEnumerable(input), packed);
                 return Bytes.Concat(encodedItems);
             }
 
@@ -70,11 +75,61 @@ namespace Nethermind.Abi
 
         public override Type CSharpType => _type.Value;
 
-        private static Type GetCSharpType(IReadOnlyDictionary<string, AbiType> elements)
+        private static Type GetCSharpType(AbiType[] elements)
         {
-            Type genericType = Type.GetType("System.ValueTuple`" + elements.Count)!;
-            Type[] typeArguments = elements.Values.Select(v => v.CSharpType).ToArray();
+            Type genericType = Type.GetType("System.ValueTuple`" + (elements.Length <= 8 ? elements.Length : 8))!;
+            Type[] typeArguments = elements.Select(v => v.CSharpType).ToArray();
             return genericType.MakeGenericType(typeArguments);
+        }
+    }
+
+    public class AbiTuple<T> : AbiType where T : new()
+    {
+        private readonly PropertyInfo[] _properties;
+        private readonly AbiType[] _elements;
+        public override string Name { get; }
+        public override bool IsDynamic { get; }
+
+        public AbiTuple()
+        {
+            _properties = typeof(T).GetProperties();
+            _elements = _properties.Select(GetAbiType).ToArray();
+            Name = $"({string.Join(",", _elements.AsEnumerable())})";
+            IsDynamic = _elements.Any(p => p.IsDynamic);
+        }
+        
+        public override (object, int) Decode(byte[] data, int position, bool packed)
+        {
+            (object[] arguments, int movedPosition) = DecodeSequence(_elements, data, packed, position);
+
+            object item = new T();
+            for (int i = 0; i < _properties.Length; i++)
+            {
+                PropertyInfo property = _properties[i];
+                property.SetValue(item, arguments[i]);
+            }
+
+            return (item, movedPosition);
+        }
+
+        public override byte[] Encode(object? arg, bool packed)
+        {
+            if (arg is T item)
+            {
+                IEnumerable<object?> values = _properties.Select(p => p.GetValue(item));
+                byte[][] encodedItems = EncodeSequence(_elements, values, packed);
+                return Bytes.Concat(encodedItems);
+            }
+
+            throw new AbiException(AbiEncodingExceptionMessage);
+        }
+
+        public override Type CSharpType => typeof(T);
+
+        private static AbiType GetAbiType(PropertyInfo property)
+        {
+            AbiTypeMappingAttribute? abiTypeMappingAttribute = property.GetCustomAttribute<AbiTypeMappingAttribute>();
+            return abiTypeMappingAttribute is not null ? abiTypeMappingAttribute.AbiType : GetForCSharpType(property.PropertyType);
         }
     }
 }

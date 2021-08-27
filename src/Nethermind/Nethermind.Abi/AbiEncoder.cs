@@ -38,52 +38,21 @@ namespace Nethermind.Abi
         public byte[] Encode(AbiEncodingStyle encodingStyle, AbiSignature signature, params object[] arguments)
         {
             bool packed = (encodingStyle & AbiEncodingStyle.Packed) == AbiEncodingStyle.Packed;
+            bool includeSig = encodingStyle == AbiEncodingStyle.IncludeSignature;
 
             if (arguments.Length != signature.Types.Length)
             {
-                throw new AbiException(
-                    $"Insufficient parameters for {signature.Name}. Expected {signature.Types.Length} arguments but got {arguments.Length}");
+                throw new AbiException($"Insufficient parameters for {signature.Name}. Expected {signature.Types.Length} arguments but got {arguments.Length}");
             }
-
-            List<byte[]> dynamicParts = new();
-            List<byte[]> headerParts = new();
-            BigInteger currentOffset = arguments.Length * AbiType.UInt256.LengthInBytes;
-            for (int i = 0; i < arguments.Length; i++)
-            {
-                AbiType type = signature.Types[i];
-                if (type.IsDynamic)
-                {
-                    headerParts.Add(AbiType.UInt256.Encode(currentOffset, packed));
-                    byte[] encoded = type.Encode(arguments[i], packed);
-                    currentOffset += encoded.Length;
-                    dynamicParts.Add(encoded);
-                }
-                else
-                {
-                    headerParts.Add(type.Encode(arguments[i], packed));
-                }
-            }
-
-            bool includeSig = encodingStyle == AbiEncodingStyle.IncludeSignature;
-            int sigOffset = includeSig ? 1 : 0;
-            byte[][] encodedParts = new byte[sigOffset + headerParts.Count + dynamicParts.Count][];
-
+            
+            byte[][] encodedArguments = AbiType.EncodeSequence(signature.Types, arguments, packed, includeSig ? 1 : 0);
+            
             if (includeSig)
             {
-                encodedParts[0] = signature.Address;
+                encodedArguments[0] = signature.Address;
             }
-
-            for (int i = 0; i < headerParts.Count; i++)
-            {
-                encodedParts[sigOffset + i] = headerParts[i];
-            }
-
-            for (int i = 0; i < dynamicParts.Count; i++)
-            {
-                encodedParts[sigOffset + headerParts.Count + i] = dynamicParts[i];
-            }
-
-            return Bytes.Concat(encodedParts);
+            
+            return Bytes.Concat(encodedArguments);
         }
 
         public object[] Decode(AbiEncodingStyle encodingStyle, AbiSignature signature, byte[] data)
@@ -91,44 +60,17 @@ namespace Nethermind.Abi
             bool packed = (encodingStyle & AbiEncodingStyle.Packed) == AbiEncodingStyle.Packed; 
             bool includeSig = encodingStyle == AbiEncodingStyle.IncludeSignature;
             int sigOffset = includeSig ? 4 : 0;
-            
-            string[] argTypeNames = new string[signature.Types.Length];
-            for (int i = 0; i < signature.Types.Length; i++)
-            {
-                argTypeNames[i] = signature.Types[i].ToString();
-            }
-
-            int position = 0;
-            if (encodingStyle == AbiEncodingStyle.IncludeSignature)
+            if (includeSig)
             {
                 if (!Bytes.AreEqual(AbiSignature.GetAddress(data), signature.Address))
                 {
-                    throw new AbiException(
-                        $"Signature in encoded ABI data is not consistent with {signature}");
-                }
-
-                position = 4;
-            }
-
-            object[] arguments = new object[signature.Types.Length];
-            int dynamicPosition = 0;
-            for (int i = 0; i < signature.Types.Length; i++)
-            {
-                AbiType type = signature.Types[i];
-                if (type.IsDynamic)
-                {
-                    // TODO: do not have to decode this - can just jump 32 and check if first call and use dynamic position
-                    (UInt256 offset, int nextPosition) = AbiType.UInt256.DecodeUInt(data, position, packed);
-                    (arguments[i], dynamicPosition) = type.Decode(data, sigOffset + (int)offset, packed);
-                    position = nextPosition;
-                }
-                else
-                {
-                    (arguments[i], position) = type.Decode(data, position, packed);
+                    throw new AbiException($"Signature in encoded ABI data is not consistent with {signature}");
                 }
             }
+            
+            (object[] arguments, int position) = AbiType.DecodeSequence(signature.Types, data, packed, sigOffset);
 
-            if (Math.Max(position, dynamicPosition) != data.Length)
+            if (position != data.Length)
             {
                 throw new AbiException($"Unexpected data at position {position}");
             }
