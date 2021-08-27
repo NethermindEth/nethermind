@@ -231,6 +231,7 @@ namespace Nethermind.EthStats.Integrations
             UInt256 gasPrice = _gasPriceOracle.GetGasPriceEstimate();
             if (gasPrice > long.MaxValue)
             {
+                // EthStats doesn't work with UInt256, long should be enough
                 if (_logger.IsTrace) _logger.Trace($"Gas price beyond the eth stats expected scope {gasPrice}");
                 gasPrice = long.MaxValue;
             }
