@@ -91,7 +91,6 @@ namespace Nethermind.Init.Steps
             IInitConfig initConfig = _api.Config<IInitConfig>();
             IJsonRpcConfig rpcConfig = _api.Config<IJsonRpcConfig>();
             INetworkConfig networkConfig = _api.Config<INetworkConfig>();
-            IMiningConfig miningConfig = _api.Config<IMiningConfig>();
             
             // lets add threads to support parallel eth_getLogs
             ThreadPool.GetMinThreads(out int workerThreads, out int completionPortThreads);
