@@ -72,7 +72,7 @@ namespace Nethermind.AccountAbstraction.Source
                 }
                 
                 userOperationsToInclude.Add(userOperation);
-                gasUsed += userOperation.CallGas; // TODO FIX THIS AFTER WE FIGURE OUT HOW CONTRACT WORKS
+                gasUsed += (ulong) userOperation.CallGas; // TODO FIX THIS AFTER WE FIGURE OUT HOW CONTRACT WORKS
                 
                 foreach (var kv in userOperation.AccessList.Data)
                 {

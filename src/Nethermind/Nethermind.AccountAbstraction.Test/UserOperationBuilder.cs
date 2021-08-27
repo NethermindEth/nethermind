@@ -40,7 +40,8 @@ namespace Nethermind.AccountAbstraction.Test
                 MaxFeePerGas = 1,
                 MaxPriorityFeePerGas = 1,
                 CallGas = 500_000,
-                VerificationGas = 500_000
+                VerificationGas = 500_000,
+                PaymasterData = Bytes.Empty
             };
         }
 
@@ -71,6 +72,12 @@ namespace Nethermind.AccountAbstraction.Test
         public UserOperationBuilder WithInitCode(byte[] bytes)
         {
             TestObjectInternal.InitCode = bytes;
+            return this;
+        }
+        
+        public UserOperationBuilder WithPaymasterData(byte[] bytes)
+        {
+            TestObjectInternal.PaymasterData = bytes;
             return this;
         }
         

@@ -28,7 +28,7 @@ namespace Nethermind.AccountAbstraction.Data
 {
     public partial class UserOperation
     {
-        public UserOperation(Address target, UInt256 nonce, byte[] callData, byte[] initCode, ulong callGas, ulong verificationGas, ulong maxFeePerGas, ulong maxPriorityFeePerGas, Address paymaster, Address signer, Signature signature, AccessList accessList)
+        public UserOperation(Address target, UInt256 nonce, byte[] callData, byte[] initCode, UInt256 callGas, UInt256 verificationGas, UInt256 maxFeePerGas, UInt256 maxPriorityFeePerGas, Address paymaster, Address signer, Signature signature, byte[] paymasterData, AccessList accessList)
         {
             Target = target;
             Nonce = nonce;
@@ -41,6 +41,7 @@ namespace Nethermind.AccountAbstraction.Data
             Paymaster = paymaster;
             Signer = signer;
             Signature = signature;
+            PaymasterData = paymasterData;
             AccessList = accessList;
             
             Hash = CalculateHash(this);
@@ -59,7 +60,7 @@ namespace Nethermind.AccountAbstraction.Data
             MaxFeePerGas = MaxFeePerGas,
             MaxPriorityFeePerGas = MaxPriorityFeePerGas,
             Paymaster = Paymaster!,
-            VerificationAccessListHash = Bytes.Zero32,
+            PaymasterData = PaymasterData ?? Bytes.Empty,
             Signer = Signer!,
             Signature = Bytes.FromHexString(Signature!.ToString())
         };
@@ -69,13 +70,14 @@ namespace Nethermind.AccountAbstraction.Data
         public UInt256 Nonce { get; set; }
         public byte[]? CallData { get; set; }
         public byte[]? InitCode { get; set; }
-        public ulong CallGas { get; set; }
+        public UInt256 CallGas { get; set; }
         public UInt256 VerificationGas { get; set; }
-        public ulong MaxFeePerGas { get; set; }
-        public ulong MaxPriorityFeePerGas { get; set; }
+        public UInt256 MaxFeePerGas { get; set; }
+        public UInt256 MaxPriorityFeePerGas { get; set; }
         public Address? Paymaster { get; set; }
         public Address? Signer { get; set; }
         public Signature? Signature { get; set; }
+        public byte[]? PaymasterData { get; set; }
         public AccessList? AccessList { get; set; }
         public int ResimulationCounter { get; set; }
         public bool AccessListTouched { get; set; }
@@ -87,14 +89,12 @@ namespace Nethermind.AccountAbstraction.Data
         public UInt256 Nonce { get; set; }
         public byte[] InitCode { get; set; }
         public byte[] CallData { get; set; }
-        public ulong CallGas { get; set; }
+        public UInt256 CallGas { get; set; }
         public UInt256 VerificationGas { get; set; }
-        public ulong MaxFeePerGas { get; set; }
-        public ulong MaxPriorityFeePerGas { get; set; }
+        public UInt256 MaxFeePerGas { get; set; }
+        public UInt256 MaxPriorityFeePerGas { get; set; }
         public Address Paymaster { get; set; }
-        
-        [AbiTypeMapping(typeof(AbiBytes), 32)]
-        public byte[] VerificationAccessListHash { get; set; }
+        public byte[] PaymasterData { get; set; }
         public Address Signer { get; set; }
         public byte[] Signature { get; set; }
     }

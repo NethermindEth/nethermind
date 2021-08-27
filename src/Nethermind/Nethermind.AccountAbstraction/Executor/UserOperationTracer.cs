@@ -116,6 +116,7 @@ namespace Nethermind.AccountAbstraction.Executor
         public bool Success { get; private set; } = true;
         public string? Error { get; private set; }
         public long GasSpent { get; set; }
+        public byte[] Output { get; private set; }
         public UInt256? BeneficiaryBalanceBefore { get; private set; }
         public UInt256? BeneficiaryBalanceAfter { get; private set; }
 
@@ -154,6 +155,7 @@ namespace Nethermind.AccountAbstraction.Executor
             Keccak? stateRoot = null)
         {
             GasSpent = gasSpent;
+            Output = output;
         }
 
         public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error,
@@ -162,6 +164,7 @@ namespace Nethermind.AccountAbstraction.Executor
             GasSpent = gasSpent;
             Success = false;
             Error = error;
+            Output = output;
         }
 
         public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)

@@ -40,6 +40,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -108,10 +109,14 @@ namespace Nethermind.AccountAbstraction.Executor
             UInt256? timestamp = null)
         {
             Transaction userOperationTransaction = BuildSimulateTransactionFromUserOperations(userOperation, parent);
-            Block block = BuildBlock(userOperationTransaction, parent, timestamp);
+            
+            ReadOnlyTxProcessingEnv txProcessingEnv = new(_dbProvider, _trieStore, _blockTree, _specProvider, _logManager);
+            ITransactionProcessor transactionProcessor = txProcessingEnv.Build(_stateProvider.StateRoot);
+            
             UserOperationBlockTracer blockTracer = CreateBlockTracer(userOperationTransaction, parent);
-            ITracer tracer = CreateTracer();
-            tracer.Trace(block, blockTracer.WithCancellation(cancellationToken));
+            ITxTracer txTracer = blockTracer.StartNewTxTrace(userOperationTransaction);
+            transactionProcessor.CallAndRestore(userOperationTransaction, parent, txTracer);
+            blockTracer.EndTxTrace();
             
             // reset
             userOperation.AccessListTouched = false;
@@ -128,7 +133,7 @@ namespace Nethermind.AccountAbstraction.Executor
 
             IAbiEncoder abiEncoder = new AbiEncoder();
 
-            AbiSignature abiSignature = _contract.Functions["simulateOp"].GetCallInfo().Signature;
+            AbiSignature abiSignature = _contract.Functions["simulateWalletValidation"].GetCallInfo().Signature;
             UserOperationAbi userOperationAbi = userOperation.Abi;
             
             byte[] computedCallData = abiEncoder.Encode(
@@ -146,6 +151,12 @@ namespace Nethermind.AccountAbstraction.Executor
                 Value = 0,
                 Data = computedCallData
             };
+
+            object test = abiEncoder.Decode(AbiEncodingStyle.IncludeSignature, abiSignature,
+                Bytes.FromHexString(
+                    "0xec7d10a800000000000000000000000000000000000000000000000000000000000000200000000000000000000000004ed7c70f96b99c776995fb64377f0d4ab3b0e1c10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000018000000000000000000000000000000000000000000000000000000000000001a00000000000000000000000000000000000000000000000000000000000012917000000000000000000000000000000000000000000000000000000000007a120000000000000000000000000000000000000000000000000000000003d87cb2d000000000000000000000000000000000000000000000000000000003b9aca00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001c0000000000000000000000000fcffc8f5e5842888a2e58862123b89c0be6aa15d00000000000000000000000000000000000000000000000000000000000001e000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000413faf07e812b7adf2e76d2cb7118e0521e3b9c195ac238f0535e9a651cde89d05044b475b00be12ed435215077db246c28d2c8e2d4d0182296c6958b68b65298a1c00000000000000000000000000000000000000000000000000000000000000"));
+
+            
             if (currentSpec.IsEip1559Enabled)
             {
                 transaction.Type = TxType.EIP1559;
@@ -167,35 +178,5 @@ namespace Nethermind.AccountAbstraction.Executor
 
         private UserOperationBlockTracer CreateBlockTracer(Transaction userOperationTransaction, BlockHeader parent) =>
             new(parent.GasLimit, _signer.Address);
-
-        private ITracer CreateTracer()
-        {
-            ReadOnlyTxProcessingEnv txProcessingEnv = new(
-                _dbProvider, _trieStore, _blockTree, _specProvider, _logManager);
-
-            ReadOnlyChainProcessingEnv chainProcessingEnv = new(
-                txProcessingEnv, Always.Valid, _recoveryStep, NoBlockRewards.Instance, new InMemoryReceiptStorage(),
-                _dbProvider, _specProvider, _logManager);
-
-            return new Tracer(txProcessingEnv.StateProvider, chainProcessingEnv.ChainProcessor,
-                ProcessingOptions.ProducingBlock | ProcessingOptions.IgnoreParentNotOnMainChain);
-        }
-
-        private Block BuildBlock(Transaction transaction, BlockHeader parent, UInt256? timestamp)
-        {
-            BlockHeader header = new(
-                parent.Hash ?? Keccak.OfAnEmptySequenceRlp,
-                Keccak.OfAnEmptySequenceRlp,
-                _signer.Address,
-                parent.Difficulty,
-                parent.Number + 1,
-                parent.GasLimit,
-                timestamp ?? parent.Timestamp,
-                Bytes.Empty) {TotalDifficulty = parent.TotalDifficulty + parent.Difficulty};
-
-            header.BaseFeePerGas = BaseFeeCalculator.Calculate(parent, _specProvider.GetSpec(header.Number));
-
-            return new Block(header, new[] {transaction}, Array.Empty<BlockHeader>());
-        }
     }
 }
