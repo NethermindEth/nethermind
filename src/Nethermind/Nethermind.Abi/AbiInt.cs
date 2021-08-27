@@ -77,8 +77,9 @@ namespace Nethermind.Abi
 
         public (BigInteger, int) DecodeInt(byte[] data, int position, bool packed)
         {
-            byte[] input = data.Slice(position, LengthInBytes);
-            return (input.ToSignedBigInteger(LengthInBytes), position + LengthInBytes);
+            int length = (packed ? LengthInBytes : Int256.LengthInBytes);
+            byte[] input = data.Slice(position, length);
+            return (input.ToSignedBigInteger(length), position + length);
         }
 
         public override byte[] Encode(object? arg, bool packed)
