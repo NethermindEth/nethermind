@@ -415,8 +415,6 @@ namespace Nethermind.Abi.Test
         }
         
         [TestCase(AbiEncodingStyle.IncludeSignature)]
-        [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
-        [TestCase(AbiEncodingStyle.Packed)]
         [TestCase(AbiEncodingStyle.None)]
         public void Dynamic_tuple(AbiEncodingStyle encodingStyle)
         {
@@ -431,10 +429,8 @@ namespace Nethermind.Abi.Test
         }
         
         [TestCase(AbiEncodingStyle.IncludeSignature)]
-        [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
-        [TestCase(AbiEncodingStyle.Packed)]
         [TestCase(AbiEncodingStyle.None)]
-        public void Multiple_params_with_one_of_them_a_tuple(AbiEncodingStyle encodingStyle)
+        public void Multiple_dynamic_params_with_one_of_them_a_tuple(AbiEncodingStyle encodingStyle)
         {
             AbiType type = new AbiTuple(new AbiType[]{AbiType.UInt256, AbiType.Address, AbiType.Bool});
 
@@ -465,8 +461,6 @@ namespace Nethermind.Abi.Test
         }
         
         [TestCase(AbiEncodingStyle.IncludeSignature)]
-        [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
-        [TestCase(AbiEncodingStyle.Packed)]
         [TestCase(AbiEncodingStyle.None)]
         public void Tuple_with_inner_dynamic_tuple(AbiEncodingStyle encodingStyle)
         {
