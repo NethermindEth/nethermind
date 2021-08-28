@@ -17,7 +17,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Numerics;
 using Nethermind.Int256;
 
@@ -25,53 +24,38 @@ namespace Nethermind.Abi
 {
     public partial class AbiType
     {
-        protected const int PaddingSize = 32;
-        
-        internal static byte[][] EncodeSequence(AbiType[] types, object?[] sequence, bool packed, int offset = 0)
-        {
-            IEnumerable<object?> Reverse(object?[] items)
-            {
-                for (int i = items.Length - 1; i >= 0; i--)
-                {
-                    yield return items[i];
-                }
-            }
-
-            return EncodeReverseSequence(types, Reverse(sequence), packed, offset);
-        }
-
-        internal static byte[][] EncodeReverseSequence(AbiType[] types, IEnumerable<object?> reverseSequence, bool packed, int offset = 0)
+        internal static byte[][] EncodeSequence(AbiType[] types, IEnumerable<object?> sequence, bool packed, int offset = 0)
         {
             List<byte[]> dynamicParts = new();
             List<byte[]> headerParts = new();
-            BigInteger currentOffset = PaddingSize;
-            int index = types.Length - 1;
-            foreach (object? argument in reverseSequence)
+            BigInteger currentOffset = types.Length * AbiType.UInt256.LengthInBytes;
+            int index = 0;
+            foreach (object? argument in sequence)
             {
-                AbiType type = types[index--];
-                byte[] encoded = type.Encode(argument, packed);
+                AbiType type = types[index++];
                 if (type.IsDynamic)
                 {
-                    headerParts.Add(UInt256.Encode(currentOffset, packed));
+                    headerParts.Add(AbiType.UInt256.Encode(currentOffset, packed));
+                    byte[] encoded = type.Encode(argument, packed);
+                    currentOffset += encoded.Length;
                     dynamicParts.Add(encoded);
                 }
                 else
                 {
-                    headerParts.Add(encoded);
+                    headerParts.Add(type.Encode(argument, packed));
                 }
-                currentOffset += encoded.Length;
             }
             
             byte[][] encodedParts = new byte[offset + headerParts.Count + dynamicParts.Count][];
 
             for (int i = 0; i < headerParts.Count; i++)
             {
-                encodedParts[offset + i] = headerParts[headerParts.Count - 1 - i];
+                encodedParts[offset + i] = headerParts[i];
             }
             
             for (int i = 0; i < dynamicParts.Count; i++)
             {
-                encodedParts[offset + headerParts.Count + i] = dynamicParts[dynamicParts.Count - 1 - i];
+                encodedParts[offset + headerParts.Count + i] = dynamicParts[i];
             }
 
             return encodedParts;
@@ -88,7 +72,7 @@ namespace Nethermind.Abi
                 if (type.IsDynamic)
                 {
                     (UInt256 offset, int nextPosition) = UInt256.DecodeUInt(data, position, packed);
-                    (sequence[i], dynamicPosition) = type.Decode(data, position + (int)offset, packed);
+                    (sequence[i], dynamicPosition) = type.Decode(data, startPosition + (int)offset, packed);
                     position = nextPosition;
                 }
                 else

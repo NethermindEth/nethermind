@@ -56,9 +56,9 @@ namespace Nethermind.Abi
 
         public override byte[] Encode(object? arg, bool packed)
         {
-            IEnumerable<object?> GetReverseSequence(ITuple tuple)
+            IEnumerable<object?> GetEnumerable(ITuple tuple)
             {
-                for (int i = tuple.Length - 1; i >= 0; i--)
+                for (int i = 0; i < tuple.Length; i++)
                 {
                     yield return tuple[i];
                 }
@@ -66,7 +66,7 @@ namespace Nethermind.Abi
             
             if (arg is ITuple input && input.Length == _elements.Length)
             {
-                byte[][] encodedItems = EncodeReverseSequence(_elements, GetReverseSequence(input), packed);
+                byte[][] encodedItems = EncodeSequence(_elements, GetEnumerable(input), packed);
                 return Bytes.Concat(encodedItems);
             }
 
@@ -114,17 +114,10 @@ namespace Nethermind.Abi
 
         public override byte[] Encode(object? arg, bool packed)
         {
-            IEnumerable<object?> GetReverseSequence(T obj)
-            {
-                for (int i = _properties.Length - 1; i >= 0; i--)
-                {
-                    yield return _properties[i].GetValue(obj);
-                }
-            }
-            
             if (arg is T item)
             {
-                byte[][] encodedItems = EncodeReverseSequence(_elements, GetReverseSequence(item), packed);
+                IEnumerable<object?> values = _properties.Select(p => p.GetValue(item));
+                byte[][] encodedItems = EncodeSequence(_elements, values, packed);
                 return Bytes.Concat(encodedItems);
             }
 
