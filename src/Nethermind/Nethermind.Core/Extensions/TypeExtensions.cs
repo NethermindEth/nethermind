@@ -31,7 +31,7 @@ namespace Nethermind.Core.Extensions
 
             throw new InvalidOperationException($"Couldn't find direct implementation of {interfaceType} interface");
         }
-        
+
         private static readonly ISet<Type> _valueTupleTypes = new HashSet<Type>(
             new Type[] { 
                 typeof(ValueTuple<>), 
@@ -44,7 +44,7 @@ namespace Nethermind.Core.Extensions
                 typeof(ValueTuple<,,,,,,,>)
             }
         );
-        
+
         public static bool IsValueTuple(this Type type) =>
             type.IsGenericType && _valueTupleTypes.Contains(type.GetGenericTypeDefinition());
     }

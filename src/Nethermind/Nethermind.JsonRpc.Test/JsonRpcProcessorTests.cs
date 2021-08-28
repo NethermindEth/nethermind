@@ -53,7 +53,7 @@ namespace Nethermind.JsonRpc.Test
             /* we enable recorder always to have an easy smoke test for recording
              * and this is fine because recorder is non-critical component
              */
-            JsonRpcConfig configWithRecorder = new JsonRpcConfig {RpcRecorderState = RpcRecorderState.All};
+            JsonRpcConfig configWithRecorder = new() {RpcRecorderState = RpcRecorderState.All};
 
             _jsonRpcProcessor = new JsonRpcProcessor(service, new EthereumJsonSerializer(), configWithRecorder, _fileSystem, LimboLogs.Instance);
         }
@@ -187,7 +187,7 @@ namespace Nethermind.JsonRpc.Test
             result.Response.Should().BeNull();
         }
 
-        private JsonRpcErrorResponse _errorResponse = new JsonRpcErrorResponse();
+        private JsonRpcErrorResponse _errorResponse = new();
 
         [Test]
         public async Task Can_handle_invalid_request()

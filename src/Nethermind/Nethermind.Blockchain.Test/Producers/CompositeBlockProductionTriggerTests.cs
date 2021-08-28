@@ -30,8 +30,8 @@ namespace Nethermind.Blockchain.Test.Producers
         public void On_pending_trigger_works()
         {
             int triggered = 0;
-            BuildBlocksWhenRequested trigger1 = new BuildBlocksWhenRequested();
-            BuildBlocksWhenRequested trigger2 = new BuildBlocksWhenRequested();
+            BuildBlocksWhenRequested trigger1 = new();
+            BuildBlocksWhenRequested trigger2 = new();
             IBlockProductionTrigger composite = trigger1.Or(trigger2);
             composite.TriggerBlockProduction += (s, e) => triggered++;
             trigger1.BuildBlock();

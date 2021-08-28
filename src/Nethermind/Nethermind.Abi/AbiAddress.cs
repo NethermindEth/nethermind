@@ -22,13 +22,13 @@ namespace Nethermind.Abi
 {
     public class AbiAddress : AbiUInt
     {
-        public static AbiAddress Instance { get; } = new();
-        
+        public static readonly AbiAddress Instance = new();
+
         static AbiAddress()
         {
             RegisterMapping<Address>(Instance);
         }
-        
+
         private AbiAddress() : base(160)
         {
         }

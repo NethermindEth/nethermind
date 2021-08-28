@@ -24,10 +24,10 @@ namespace Nethermind.Blockchain.Test.Validators
 {
     public class TestTxValidator : ITxValidator
     {
-        public static TestTxValidator AlwaysValid = new TestTxValidator(true);
-        public static TestTxValidator NeverValid = new TestTxValidator(false);
+        public static TestTxValidator AlwaysValid = new(true);
+        public static TestTxValidator NeverValid = new(false);
 
-        private readonly Queue<bool> _validationResults = new Queue<bool>();
+        private readonly Queue<bool> _validationResults = new();
         private bool? _alwaysSameResult;
 
         public TestTxValidator(Queue<bool> validationResults)

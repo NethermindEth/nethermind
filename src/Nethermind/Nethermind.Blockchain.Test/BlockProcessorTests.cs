@@ -52,10 +52,10 @@ namespace Nethermind.Blockchain.Test
         {
             IDb stateDb = new MemDb();
             IDb codeDb = new MemDb();
-            TrieStore trieStore = new TrieStore(stateDb, LimboLogs.Instance);
+            TrieStore trieStore = new(stateDb, LimboLogs.Instance);
             IStateProvider stateProvider = new StateProvider(trieStore, codeDb, LimboLogs.Instance);
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
-            BlockProcessor processor = new BlockProcessor(
+            BlockProcessor processor = new(
                 RinkebySpecProvider.Instance,
                 TestBlockValidator.AlwaysValid,
                 NoBlockRewards.Instance,
@@ -87,7 +87,7 @@ namespace Nethermind.Blockchain.Test
             IStateProvider stateProvider = new StateProvider(trieStore, codeDb, LimboLogs.Instance);
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
             IWitnessCollector witnessCollector = Substitute.For<IWitnessCollector>();
-            BlockProcessor processor = new BlockProcessor(
+            BlockProcessor processor = new(
                 RinkebySpecProvider.Instance,
                 TestBlockValidator.AlwaysValid,
                 NoBlockRewards.Instance,
@@ -114,10 +114,10 @@ namespace Nethermind.Blockchain.Test
         {
             IDb stateDb = new MemDb();
             IDb codeDb = new MemDb();
-            TrieStore trieStore = new TrieStore(stateDb, LimboLogs.Instance);
+            TrieStore trieStore = new(stateDb, LimboLogs.Instance);
             IStateProvider stateProvider = new StateProvider(trieStore, codeDb, LimboLogs.Instance);
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
-            BlockProcessor processor = new BlockProcessor(
+            BlockProcessor processor = new(
                 RinkebySpecProvider.Instance,
                 TestBlockValidator.AlwaysValid,
                 new RewardCalculator(MainnetSpecProvider.Instance),

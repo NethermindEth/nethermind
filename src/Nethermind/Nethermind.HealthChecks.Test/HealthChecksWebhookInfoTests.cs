@@ -19,7 +19,7 @@ namespace Nethermind.HealthChecks.Test
             string description = "description";
 
             IIPResolver ipResolver = Substitute.For<IIPResolver>();
-            byte[] ip = new byte[] {1, 2, 3, 4};
+            byte[] ip = {1, 2, 3, 4};
             ipResolver.ExternalIp.Returns(new IPAddress(ip));
 
             IMetricsConfig metricsConfig = new MetricsConfig(){NodeName = "nodeName"};

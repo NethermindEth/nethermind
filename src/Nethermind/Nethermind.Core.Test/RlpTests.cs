@@ -88,7 +88,7 @@ namespace Nethermind.Core.Test
             byte[] bytes = new byte[0];
             Rlp rlp = Rlp.Encode(bytes);
             Rlp rlpSpan = Rlp.Encode(bytes.AsSpan());
-            Rlp expectedResult = new Rlp(new byte[] {128});
+            Rlp expectedResult = new(new byte[] {128});
             Assert.AreEqual(expectedResult, rlp, "byte array");
             Assert.AreEqual(expectedResult, rlpSpan, "span");
         }
@@ -101,7 +101,7 @@ namespace Nethermind.Core.Test
             byte[] bytes = {value};
             Rlp rlp = Rlp.Encode(bytes);
             Rlp rlpSpan = Rlp.Encode(bytes.AsSpan());
-            Rlp expectedResult = new Rlp(new[] {value});
+            Rlp expectedResult = new(new[] {value});
             Assert.AreEqual(expectedResult, rlp, "byte array");
             Assert.AreEqual(expectedResult, rlpSpan, "span");
         }
@@ -113,7 +113,7 @@ namespace Nethermind.Core.Test
             byte[] bytes = {value};
             Rlp rlp = Rlp.Encode(bytes);
             Rlp rlpSpan = Rlp.Encode(bytes.AsSpan());
-            Rlp expectedResult = new Rlp(new[] {(byte) 129, value});
+            Rlp expectedResult = new(new[] {(byte) 129, value});
             Assert.AreEqual(expectedResult, rlp, "byte array");
             Assert.AreEqual(expectedResult, rlpSpan, "span");
         }
@@ -132,7 +132,7 @@ namespace Nethermind.Core.Test
             expectedResultBytes[2] = input[1];
             expectedResultBytes[3] = input[2];
 
-            Rlp expectedResult = new Rlp(expectedResultBytes);
+            Rlp expectedResult = new(expectedResultBytes);
 
             Assert.AreEqual(expectedResult, Rlp.Encode(input), "byte array");
             Assert.AreEqual(expectedResult, Rlp.Encode(input.AsSpan()), "span");
@@ -153,7 +153,7 @@ namespace Nethermind.Core.Test
             expectedResultBytes[3] = input[1];
             expectedResultBytes[4] = input[2];
 
-            Rlp expectedResult = new Rlp(expectedResultBytes);
+            Rlp expectedResult = new(expectedResultBytes);
 
             Assert.AreEqual(expectedResult, Rlp.Encode(input), "byte array");
             Assert.AreEqual(expectedResult, Rlp.Encode(input.AsSpan()), "span");
@@ -175,7 +175,7 @@ namespace Nethermind.Core.Test
             expectedResultBytes[4] = input[1];
             expectedResultBytes[5] = input[2];
 
-            Rlp expectedResult = new Rlp(expectedResultBytes);
+            Rlp expectedResult = new(expectedResultBytes);
 
             Assert.AreEqual(expectedResult, Rlp.Encode(input), "byte array");
             Assert.AreEqual(expectedResult, Rlp.Encode(input.AsSpan()), "span");

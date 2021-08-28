@@ -21,13 +21,13 @@ namespace Nethermind.Abi
 {
     public class AbiBool : AbiUInt
     {
-        public static AbiBool Instance { get; } = new();
-        
+        public static readonly AbiBool Instance = new();
+
         static AbiBool()
         {
             RegisterMapping<bool>(Instance);
         }
-        
+
         private AbiBool() : base(8)
         {
         }
@@ -50,5 +50,7 @@ namespace Nethermind.Abi
             int length = packed ? LengthInBytes : UInt256.LengthInBytes;
             return (data[position + length - 1] == 1, position + length);
         }
+
+        public override Type CSharpType { get; } = typeof(bool);
     }
 }

@@ -25,7 +25,7 @@ namespace Nethermind.Core.Test.Builders
     {
         public static void AddBranch(this BlockTree blockTree, int branchLength, int splitBlockNumber)
         {
-            var splitVariant = 0;
+            int splitVariant = 0;
             BlockTree alternative = Build.A.BlockTree(blockTree.FindBlock(0, BlockTreeLookupOptions.RequireCanonical)!).OfChainLength(branchLength, splitVariant).TestObject;
             Block? parent = null;
             for (int i = splitBlockNumber + 1; i < branchLength; i++)
@@ -49,7 +49,7 @@ namespace Nethermind.Core.Test.Builders
         public static void AddBranch(this BlockTree blockTree, int branchLength, int splitBlockNumber, int splitVariant)
         {
             BlockTree alternative = Build.A.BlockTree(blockTree.FindBlock(0, BlockTreeLookupOptions.RequireCanonical)).OfChainLength(branchLength, splitVariant).TestObject;
-            List<Block> blocks = new List<Block>();
+            List<Block> blocks = new();
             for (int i = splitBlockNumber + 1; i < branchLength; i++)
             {
                 Block block = alternative.FindBlock(i, BlockTreeLookupOptions.RequireCanonical);

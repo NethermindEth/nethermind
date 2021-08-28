@@ -48,7 +48,7 @@ namespace Nethermind.Evm.Test
             TestState.CreateAccount(TestItem.AddressD, 1.Ether());
             TestState.UpdateCodeHash(TestItem.AddressD, codeHash, Spec);
             
-            var code = Prepare.EvmCode
+            byte[] code = Prepare.EvmCode
                 .Call(TestItem.AddressC, 50000)
                 .DelegateCall(TestItem.AddressD, 50000)
                 .Op(Instruction.SELFBALANCE)
@@ -56,7 +56,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.SSTORE)
                 .Done;
             
-            var result = Execute(code);
+            TestAllTracerWithOutput result = Execute(code);
             Assert.AreEqual(StatusCode.Success, result.StatusCode);
             AssertGas(result, 21000 + 2 * GasCostOf.CallEip150 + 24 + 21 + GasCostOf.VeryLow + 3 * GasCostOf.SelfBalance + 3 * GasCostOf.SSet);
             UInt256 balanceB = TestState.GetBalance(TestItem.AddressB);
@@ -76,7 +76,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.EXTCODEHASH)
                 .Done;
 
-            var result = Execute(code);
+            TestAllTracerWithOutput result = Execute(code);
             AssertGas(result, 21000 + GasCostOf.VeryLow + GasCostOf.ExtCodeHashEip1884);
         }
         
@@ -90,7 +90,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.BALANCE)
                 .Done;
 
-            var result = Execute(code);
+            TestAllTracerWithOutput result = Execute(code);
             AssertGas(result, 21000 + GasCostOf.VeryLow + GasCostOf.BalanceEip1884);
         }
         
@@ -105,7 +105,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.SLOAD)
                 .Done;
 
-            var result = Execute(code);
+            TestAllTracerWithOutput result = Execute(code);
             AssertGas(result, 21000 + 2 * GasCostOf.VeryLow + GasCostOf.SLoadEip1884);
         }
         
@@ -119,7 +119,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.EXTCODEHASH)
                 .Done;
 
-            var result = Execute(BlockNumber - 1, 100000, code);
+            TestAllTracerWithOutput result = Execute(BlockNumber - 1, 100000, code);
             AssertGas(result, 21000 + GasCostOf.VeryLow + GasCostOf.ExtCodeHash);
         }
         
@@ -133,7 +133,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.BALANCE)
                 .Done;
 
-            var result = Execute(BlockNumber - 1, 100000, code);
+            TestAllTracerWithOutput result = Execute(BlockNumber - 1, 100000, code);
             AssertGas(result, 21000 + GasCostOf.VeryLow + GasCostOf.BalanceEip150);
         }
         
@@ -148,7 +148,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.SLOAD)
                 .Done;
 
-            var result = Execute(BlockNumber - 1, 100000, code);
+            TestAllTracerWithOutput result = Execute(BlockNumber - 1, 100000, code);
             AssertGas(result, 21000 + 2 * GasCostOf.VeryLow + GasCostOf.SLoadEip150);
         }
     }

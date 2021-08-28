@@ -15,13 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using Nethermind.Core.Extensions;
 
 namespace Nethermind.Abi
 {
-    public abstract class AbiType
+    public abstract partial class AbiType
     {
         public static AbiDynamicBytes DynamicBytes => AbiDynamicBytes.Instance;
         public static AbiBytes Bytes32 => AbiBytes.Bytes32;
@@ -61,40 +58,5 @@ namespace Nethermind.Abi
         protected string AbiEncodingExceptionMessage => $"Argument cannot be encoded by {GetType().Name}";
 
         public abstract Type CSharpType { get; }
-
-        private static readonly IDictionary<Type, AbiType> _typeMappings = new Dictionary<Type, AbiType>();
-        
-        public static AbiType GetForCSharpType(Type type)
-        {
-            if (_typeMappings.TryGetValue(type, out AbiType? abiTYpe))
-            {
-                return abiTYpe;
-            }
-            else if (type.IsArray)
-            {
-                Type elementType = type.GetElementType()!;
-                return new AbiArray(GetForCSharpType(elementType));
-            }
-            else if (type.IsValueTuple())
-            {
-                Type[] subTypes = type.GetGenericArguments();
-                Dictionary<string, AbiType> elements = new();
-                for (int i = 0; i < subTypes.Length; i++)
-                {
-                    elements[$"item{i}"] = GetForCSharpType(subTypes[i]);
-                }
-
-                return new AbiTuple(elements);
-            }
-            else
-            {
-                throw new NotSupportedException($"Type {type} doesn't have mapped {nameof(AbiType)}");
-            }
-        }
-
-        protected static void RegisterMapping<T>(AbiType abiType)
-        {
-            _typeMappings[typeof(T)] = abiType;
-        }
     }
 }

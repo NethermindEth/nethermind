@@ -141,7 +141,7 @@ namespace Nethermind.Blockchain.Contracts.Json
                     return abiType;
                 }
             }
-            
+
             if (AbiParameterConverterStatics.SimpleTypeFactories.TryGetValue(baseType, out var simpleTypeFactory))
             {
                 int? m = match.Groups[AbiParameterConverterStatics.TypeLengthGroup].Success ? int.Parse(match.Groups[AbiParameterConverterStatics.TypeLengthGroup].Value) : (int?) null;
@@ -150,7 +150,8 @@ namespace Nethermind.Blockchain.Contracts.Json
             }
             else if (baseType == "tuple")
             {
-                return new AbiTuple(components.Children().ToDictionary(GetName, GetAbiType));
+                JEnumerable<JToken> children = components!.Children();
+                return new AbiTuple(children.Select(GetAbiType).ToArray(), children.Select(GetName).ToArray());
             }
             else
             {

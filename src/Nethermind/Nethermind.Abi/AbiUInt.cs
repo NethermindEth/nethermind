@@ -25,7 +25,6 @@ namespace Nethermind.Abi
     public class AbiUInt : AbiType
     {
         private const int MaxSize = 256;
-
         private const int MinSize = 0;
         
         public static new AbiUInt UInt8 { get; } = new(8);
@@ -35,6 +34,22 @@ namespace Nethermind.Abi
         public static new AbiUInt UInt96 { get; } = new(96);
         public static new AbiUInt UInt256 { get; } = new(256);
         
+        static AbiUInt()
+        {
+            RegisterMapping<byte>(UInt8);
+            RegisterMapping<ushort>(UInt16);
+            RegisterMapping<uint>(UInt32);
+            RegisterMapping<ulong>(UInt64);
+            RegisterMapping<UInt256>(UInt256);
+        }
+
+        public static new readonly AbiUInt UInt8 = new(8);
+        public static new readonly AbiUInt UInt16 = new(16);
+        public static new readonly AbiUInt UInt32 = new(32);
+        public static new readonly AbiUInt UInt64 = new(64);
+        public static new readonly AbiUInt UInt96 = new(96);
+        public static new readonly AbiUInt UInt256 = new(256);
+
         static AbiUInt()
         {
             RegisterMapping<byte>(UInt8);
@@ -95,8 +110,9 @@ namespace Nethermind.Abi
 
         public (UInt256, int) DecodeUInt(byte[] data, int position, bool packed)
         {
-            UInt256 lengthData = new(data.Slice(position, (packed ? LengthInBytes : UInt256.LengthInBytes)), true);
-            return (lengthData, position + (packed ? LengthInBytes : UInt256.LengthInBytes));
+            int length = (packed ? LengthInBytes : UInt256.LengthInBytes);
+            UInt256 lengthData = new(data.Slice(position, length), true);
+            return (lengthData, position + length);
         }
 
         public override byte[] Encode(object? arg, bool packed)

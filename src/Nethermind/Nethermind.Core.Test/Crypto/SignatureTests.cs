@@ -32,7 +32,7 @@ namespace Nethermind.Core.Test.Crypto
         [TestCase(36ul + 2 * 314158, 314158)]
         public void Test(ulong v, int? chainId)
         {
-            Signature signature = new Signature(0, 0, v);
+            Signature signature = new(0, 0, v);
             Assert.AreEqual(chainId, signature.ChainId);
         }
     }

@@ -17,6 +17,7 @@
 using System;
 using System.Numerics;
 using System.Text;
+using FluentAssertions;
 using MathNet.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -397,6 +398,134 @@ namespace Nethermind.Abi.Test
             byte[] encoded = _abiEncoder.Encode(AbiEncodingStyle.Packed, abiDef, assetId.Bytes, units, value, expiryTime, salt, Address.Zero, Address.Zero);
             Assert.AreEqual(108, encoded.Length);
         }
+        
+        [TestCase(AbiEncodingStyle.IncludeSignature)]
+        [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
+        [TestCase(AbiEncodingStyle.Packed)]
+        [TestCase(AbiEncodingStyle.None)]
+        public void Static_tuple(AbiEncodingStyle encodingStyle)
+        {
+            AbiType type = new AbiTuple(AbiType.UInt256, AbiType.Address, AbiType.Bool);
+
+            AbiSignature signature = new AbiSignature("abc", type);
+
+            ValueTuple<UInt256, Address, bool> staticTuple = new ValueTuple<UInt256, Address, bool>((UInt256) 1000, Address.SystemUser, true);
+            byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, staticTuple);
+            object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
+            Assert.AreEqual(staticTuple, arguments[0]);
+        }
+        
+        [TestCase(AbiEncodingStyle.IncludeSignature)]
+        [TestCase(AbiEncodingStyle.None)]
+        public void Dynamic_tuple(AbiEncodingStyle encodingStyle)
+        {
+            AbiType type = new AbiTuple(AbiType.DynamicBytes, AbiType.Address, AbiType.DynamicBytes);
+
+            AbiSignature signature = new AbiSignature("abc", type);
+
+            ValueTuple<byte[], Address, byte[]> dynamicTuple = new ValueTuple<byte[], Address, byte[]>(Bytes.FromHexString("0x004749fa3d"), Address.SystemUser, Bytes.Zero32);
+            byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, dynamicTuple);
+            object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
+            Assert.AreEqual(dynamicTuple, arguments[0]);
+        }
+
+
+        [TestCase(AbiEncodingStyle.IncludeSignature)]
+        [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
+        [TestCase(AbiEncodingStyle.Packed)]
+        [TestCase(AbiEncodingStyle.None)]
+        public void Multiple_params_with_one_of_them_a_tuple(AbiEncodingStyle encodingStyle)
+        {
+            AbiType type = new AbiTuple(new AbiType[]{AbiType.UInt256, AbiType.Address, AbiType.Bool});
+
+            AbiSignature signature = new AbiSignature("abc", type, AbiType.String);
+
+            ValueTuple<UInt256, Address, bool> staticTuple = new ValueTuple<UInt256, Address, bool>((UInt256) 1000, Address.SystemUser, true);
+            const string stringParam = "hello there!";
+            byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, staticTuple, stringParam);
+            object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
+            Assert.AreEqual(staticTuple, arguments[0]);
+            Assert.AreEqual(stringParam, arguments[1]);
+        }
+        
+        [TestCase(AbiEncodingStyle.IncludeSignature)]
+        [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
+        [TestCase(AbiEncodingStyle.Packed)]
+        [TestCase(AbiEncodingStyle.None)]
+        public void Multiple_params_with_one_of_them_a_tuple_dynamic_first(AbiEncodingStyle encodingStyle)
+        {
+            AbiType type = new AbiTuple(AbiType.UInt256, AbiType.Address, AbiType.Bool);
+
+            AbiSignature signature = new AbiSignature("abc", AbiType.String, type);
+
+            ValueTuple<UInt256, Address, bool> staticTuple = new ValueTuple<UInt256, Address, bool>((UInt256) 1000, Address.SystemUser, true);
+            const string stringParam = "hello there!";
+            byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, stringParam, staticTuple);
+            object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
+            Assert.AreEqual(stringParam, arguments[0]);
+            Assert.AreEqual(staticTuple, arguments[1]);
+        }
+        
+        [TestCase(AbiEncodingStyle.IncludeSignature)]
+        [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
+        [TestCase(AbiEncodingStyle.Packed)]
+        [TestCase(AbiEncodingStyle.None)]
+        public void Tuple_with_inner_static_tuple(AbiEncodingStyle encodingStyle)
+        {
+            AbiType type = new AbiTuple(AbiType.UInt256, new AbiTuple(AbiType.UInt256, AbiType.Address), AbiType.Bool);
+
+            AbiSignature signature = new AbiSignature("abc", type);
+
+            ValueTuple<UInt256, ValueTuple<UInt256, Address>, bool> staticTuple = new ValueTuple<UInt256, ValueTuple<UInt256, Address>, bool>((UInt256) 1000, new ValueTuple<UInt256, Address>((UInt256) 400, Address.SystemUser), true);
+            byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, staticTuple);
+            object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
+            Assert.AreEqual(staticTuple, arguments[0]);
+        }
+        
+        [TestCase(AbiEncodingStyle.IncludeSignature)]
+        [TestCase(AbiEncodingStyle.None)]
+        public void Tuple_with_inner_dynamic_tuple(AbiEncodingStyle encodingStyle)
+        {
+            AbiType type = new AbiTuple(AbiType.UInt256, new AbiTuple(AbiType.DynamicBytes, AbiType.Address), AbiType.Bool);
+
+            AbiSignature signature = new AbiSignature("abc", type);
+
+            ValueTuple<UInt256, ValueTuple<byte[], Address>, bool> dynamicTuple = new ValueTuple<UInt256, ValueTuple<byte[], Address>, bool>((UInt256) 1000, new ValueTuple<byte[], Address>(Bytes.FromHexString("0x019283fa3d"), Address.SystemUser), true);
+            byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, dynamicTuple);
+            object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
+            Assert.AreEqual(dynamicTuple, arguments[0]);
+        }
+        
+                
+        [TestCase(AbiEncodingStyle.IncludeSignature)]
+        [TestCase(AbiEncodingStyle.None)]
+        public void Dynamic_tuple_with_inner_dynamic_tuple(AbiEncodingStyle encodingStyle)
+        {
+            AbiType type = new AbiTuple(AbiType.DynamicBytes, new AbiTuple(AbiType.DynamicBytes, AbiType.Address), AbiType.Bool);
+
+            AbiSignature signature = new AbiSignature("abc", type);
+
+            ValueTuple<byte[], ValueTuple<byte[], Address>, bool> dynamicTuple = new ValueTuple<byte[], ValueTuple<byte[], Address>, bool>(Bytes.FromHexString("0x019283fa3d"), new ValueTuple<byte[], Address>(Bytes.FromHexString("0x019283fa3d"), Address.SystemUser), true);
+            byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, dynamicTuple);
+            object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
+            Assert.AreEqual(dynamicTuple, arguments[0]);
+        }
+        
+        [TestCase(AbiEncodingStyle.IncludeSignature)]
+        [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
+        [TestCase(AbiEncodingStyle.Packed)]
+        [TestCase(AbiEncodingStyle.None)]
+        public void Tuple_with_inner_tuple_with_inner_tuple(AbiEncodingStyle encodingStyle)
+        {
+            AbiType type = new AbiTuple(new AbiTuple(new AbiTuple(AbiType.UInt256)));
+
+            AbiSignature signature = new AbiSignature("abc", type);
+
+            ValueTuple<ValueTuple<ValueTuple<UInt256>>> tupleception = new ValueTuple<ValueTuple<ValueTuple<UInt256>>>(new ValueTuple<ValueTuple<UInt256>>(new ValueTuple<UInt256>(88888)));
+            byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, tupleception);
+            object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
+            Assert.AreEqual(tupleception, arguments[0]);
+        }
 
         /// <summary>
         ///     http://solidity.readthedocs.io/en/develop/abi-spec.html
@@ -429,7 +558,7 @@ namespace Nethermind.Abi.Test
                 new BigInteger[] {0x456, 0x789},
                 Encoding.ASCII.GetBytes("1234567890"),
                 Encoding.ASCII.GetBytes("Hello, world!"));
-            Assert.True(Bytes.AreEqual(expectedValue, encoded));
+            encoded.ToHexString().Should().BeEquivalentTo(expectedValue.ToHexString());
         }
     }
 }

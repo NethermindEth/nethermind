@@ -90,32 +90,29 @@ namespace Nethermind.Mev
             return CallBundle(txs, mevBundleRpc.BlockNumber, mevBundleRpc.StateBlockNumber, mevBundleRpc.Timestamp);
         }
 
-        private ResultWrapper<TxsResults> CallBundle(BundleTransaction[] txs, long? blockNumber, BlockParameter blockParameter, UInt256? timestamp)
+        private ResultWrapper<TxsResults> CallBundle(BundleTransaction[] txs, long? blockNumber, BlockParameter stateBlockNumber, UInt256? timestamp)
         {
             if (txs.Length == 0)
                 return ResultWrapper<TxsResults>.Fail("no tx specified in bundle");
 
-            SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
+            SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(stateBlockNumber);
             if (searchResult.IsError)
             {
                 return ResultWrapper<TxsResults>.Fail(searchResult);
             }
 
             BlockHeader header = searchResult.Object!;
-            if (blockNumber is not null)
-            {
-                header.Number = blockNumber.Value - 1;
-            }
-
-            if (!HasStateForBlock(header!))
+            if (!HasStateForBlock(header))
             {
                 return ResultWrapper<TxsResults>.Fail($"No state available for block {header.Hash}", ErrorCodes.ResourceUnavailable);
             }
 
-            using CancellationTokenSource cancellationTokenSource = new(_jsonRpcConfig.Timeout);
+            const int callBundleTimeout = 5000;
+            using CancellationTokenSource cancellationTokenSource = new(callBundleTimeout);
+            long bundleBlockNumber = blockNumber ?? header.Number + 1;
 
             TxsResults results = new CallTxBundleExecutor(_tracerFactory, _specProvider, _signer).ExecuteBundle(
-                new MevBundle(header.Number + 1, txs, timestamp, timestamp),
+                new MevBundle(bundleBlockNumber, txs, timestamp, timestamp),
                 header,
                 cancellationTokenSource.Token,
                 timestamp);

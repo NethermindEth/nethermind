@@ -55,7 +55,7 @@ namespace Nethermind.Evm.Test
             Storage.Commit();
             TestState.Commit(RopstenSpecProvider.Instance.GenesisSpec);
             
-            var receipt = Execute(Bytes.FromHexString(codeHex));
+            TestAllTracerWithOutput receipt = Execute(Bytes.FromHexString(codeHex));
             AssertGas(receipt, gasUsed + GasCostOf.Transaction - Math.Min((gasUsed + GasCostOf.Transaction) / 2, refund));
         }
     }

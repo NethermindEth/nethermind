@@ -178,9 +178,16 @@ namespace Nethermind.Runner
                 IList<INethermindPlugin> plugins = new List<INethermindPlugin>();
                 foreach (Type pluginType in pluginLoader.PluginTypes)
                 {
-                    if (Activator.CreateInstance(pluginType) is INethermindPlugin plugin)
+                    try
                     {
-                        plugins.Add(plugin);
+                        if (Activator.CreateInstance(pluginType) is INethermindPlugin plugin)
+                        {
+                            plugins.Add(plugin);
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        if(_logger.IsError) _logger.Error($"Failed to create plugin {pluginType.FullName}", e);
                     }
                 }
                 

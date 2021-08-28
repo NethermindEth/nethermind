@@ -339,23 +339,26 @@ namespace Nethermind.Blockchain.Processing
                 return true;
         }
 
-        private void TraceFailingBranch(ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer blockTracer)
+        private void TraceFailingBranch(ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer blockTracer, DumpOptions dumpType)
         {
-            try
+            if ((_options.DumpOptions & dumpType) != 0)
             {
-                _blockProcessor.Process(
-                    processingBranch.Root,
-                    processingBranch.BlocksToProcess,
-                    options,
-                    blockTracer);
-            }
-            catch (InvalidBlockException ex)
-            {
-                BlockTraceDumper.LogDiagnosticTrace(blockTracer, ex.InvalidBlockHash, _logger);
-            }
-            catch (Exception ex)
-            {
-                BlockTraceDumper.LogTraceFailure(blockTracer, processingBranch.Root, ex, _logger);
+                try
+                {
+                    _blockProcessor.Process(
+                        processingBranch.Root,
+                        processingBranch.BlocksToProcess,
+                        options,
+                        blockTracer);
+                }
+                catch (InvalidBlockException ex)
+                {
+                    BlockTraceDumper.LogDiagnosticTrace(blockTracer, ex.InvalidBlockHash, _logger);
+                }
+                catch (Exception ex)
+                {
+                    BlockTraceDumper.LogTraceFailure(blockTracer, processingBranch.Root, ex, _logger);
+                }
             }
         }
 
@@ -392,17 +395,20 @@ namespace Nethermind.Blockchain.Processing
                 TraceFailingBranch(
                     processingBranch,
                     options,
-                    new BlockReceiptsTracer());
+                    new BlockReceiptsTracer(),
+                    DumpOptions.Receipts);
                 
                 TraceFailingBranch(
                     processingBranch,
                     options,
-                    new ParityLikeBlockTracer(ParityTraceTypes.StateDiff | ParityTraceTypes.Trace));
+                    new ParityLikeBlockTracer(ParityTraceTypes.StateDiff | ParityTraceTypes.Trace),
+                    DumpOptions.Parity);
                 
                 TraceFailingBranch(
                     processingBranch,
                     options,
-                    new GethLikeBlockTracer(GethTraceOptions.Default));
+                    new GethLikeBlockTracer(GethTraceOptions.Default),
+                    DumpOptions.Geth);
 
                 processedBlocks = null;
             }
@@ -583,6 +589,8 @@ namespace Nethermind.Blockchain.Processing
             /// Registers for OnNewHeadBlock events at block tree. 
             /// </summary>
             public bool AutoProcess { get; set; } = true;
+
+            public DumpOptions DumpOptions { get; set; } = DumpOptions.None;
         }
     }
 }
