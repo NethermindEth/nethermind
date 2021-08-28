@@ -50,5 +50,7 @@ namespace Nethermind.Abi
             int length = packed ? LengthInBytes : UInt256.LengthInBytes;
             return (data[position + length - 1] == 1, position + length);
         }
+
+        public override Type CSharpType { get; } = typeof(bool);
     }
 }
