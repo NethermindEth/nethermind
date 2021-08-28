@@ -24,8 +24,6 @@ namespace Nethermind.Abi
 {
     public class AbiDynamicBytes : AbiType
     {
-        private const int PaddingMultiple = 32;
-
         public static readonly AbiDynamicBytes Instance = new();
 
         static AbiDynamicBytes()
@@ -68,8 +66,8 @@ namespace Nethermind.Abi
 
         private static int GetPaddingSize(int length)
         {
-            int remainder = length % PaddingMultiple;
-            int paddingSize = length + (remainder == 0 ? 0 : (PaddingMultiple - remainder));
+            int remainder = length % PaddingSize;
+            int paddingSize = length + (remainder == 0 ? 0 : (PaddingSize - remainder));
             return paddingSize;
         }
     }

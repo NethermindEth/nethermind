@@ -17,6 +17,7 @@
 using System;
 using System.Numerics;
 using System.Text;
+using FluentAssertions;
 using MathNet.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -429,8 +430,10 @@ namespace Nethermind.Abi.Test
         }
         
         [TestCase(AbiEncodingStyle.IncludeSignature)]
+        [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
+        [TestCase(AbiEncodingStyle.Packed)]
         [TestCase(AbiEncodingStyle.None)]
-        public void Multiple_dynamic_params_with_one_of_them_a_tuple(AbiEncodingStyle encodingStyle)
+        public void Multiple_params_with_one_of_them_a_tuple(AbiEncodingStyle encodingStyle)
         {
             AbiType type = new AbiTuple(new AbiType[]{AbiType.UInt256, AbiType.Address, AbiType.Bool});
 
@@ -442,6 +445,24 @@ namespace Nethermind.Abi.Test
             object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
             Assert.AreEqual(staticTuple, arguments[0]);
             Assert.AreEqual(stringParam, arguments[1]);
+        }
+        
+        [TestCase(AbiEncodingStyle.IncludeSignature)]
+        [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
+        [TestCase(AbiEncodingStyle.Packed)]
+        [TestCase(AbiEncodingStyle.None)]
+        public void Multiple_params_with_one_of_them_a_tuple_dynamic_first(AbiEncodingStyle encodingStyle)
+        {
+            AbiType type = new AbiTuple(new AbiType[]{AbiType.UInt256, AbiType.Address, AbiType.Bool});
+
+            AbiSignature signature = new AbiSignature("abc", AbiType.String, type);
+
+            ValueTuple<UInt256, Address, bool> staticTuple = new ValueTuple<UInt256, Address, bool>((UInt256) 1000, Address.SystemUser, true);
+            const string stringParam = "hello there!";
+            byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, stringParam, staticTuple);
+            object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
+            Assert.AreEqual(stringParam, arguments[0]);
+            Assert.AreEqual(staticTuple, arguments[1]);
         }
         
         [TestCase(AbiEncodingStyle.IncludeSignature)]
@@ -521,7 +542,7 @@ namespace Nethermind.Abi.Test
                 new BigInteger[] {0x456, 0x789},
                 Encoding.ASCII.GetBytes("1234567890"),
                 Encoding.ASCII.GetBytes("Hello, world!"));
-            Assert.True(Bytes.AreEqual(expectedValue, encoded));
+            encoded.ToHexString().Should().BeEquivalentTo(expectedValue.ToHexString());
         }
     }
 }
