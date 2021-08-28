@@ -16,26 +16,29 @@
 // 
 
 using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Tasks;
-using Nethermind.AccountAbstraction.Data;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
-namespace Nethermind.AccountAbstraction.Executor
+namespace Nethermind.AccountAbstraction.Data
 {
-    public interface IUserOperationSimulator
+    public class UserOperationAccessList
     {
-        Task<bool> Simulate(
-            UserOperation userOperation, 
-            BlockHeader parent,
-            CancellationToken cancellationToken = default, 
-            UInt256? timestamp = null);
+        public IDictionary<Address, HashSet<UInt256>> Data { get; set; }
+        
+        public static bool AccessListOverlaps(IDictionary<Address, HashSet<UInt256>> accessList1, IDictionary<Address, HashSet<UInt256>> accessList2)
+        {
+            foreach (var kv in accessList1)
+            {
+                if (accessList2.ContainsKey(kv.Key))
+                {
+                    if (accessList2[kv.Key].Overlaps(kv.Value))
+                    {
+                        return true;
+                    }
+                }
+            }
 
-        public Transaction BuildTransactionFromUserOperations(
-            IEnumerable<UserOperation> userOperations,
-            BlockHeader parent,
-            IReleaseSpec spec);
+            return false;
+        }
     }
 }

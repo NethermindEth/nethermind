@@ -132,6 +132,8 @@ namespace Nethermind.AccountAbstraction.Test
 
             protected override BlockProcessor CreateBlockProcessor()
             {
+                Address.TryParse(_accountAbstractionConfig.SingletonContractAddress, out Address _singletonContractAddress);
+                
                 BlockValidator = CreateBlockValidator();
                 BlockProcessor blockProcessor = new(
                     SpecProvider,
@@ -148,6 +150,7 @@ namespace Nethermind.AccountAbstraction.Test
                     State, 
                     Signer, 
                     _accountAbstractionConfig, 
+                    _singletonContractAddress!,
                     SpecProvider, 
                     BlockTree, 
                     DbProvider, 

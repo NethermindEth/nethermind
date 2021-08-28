@@ -107,7 +107,7 @@ namespace Nethermind.AccountAbstraction.Source
 
             foreach (UserOperation op in GetUserOperations().Where(op => !op.AccessListTouched))
             {
-                if (AccessListOverlaps(blockAccessedList, op.AccessList.Data!))
+                if (UserOperationAccessList.AccessListOverlaps(blockAccessedList, op.AccessList.Data))
                 {
                     op.AccessListTouched = true;
                 }
@@ -175,22 +175,6 @@ namespace Nethermind.AccountAbstraction.Source
                 _timestamper.UnixTime.Seconds);
 
             return success;
-        }
-
-        public static bool AccessListOverlaps(IDictionary<Address, HashSet<UInt256>> accessList1, IReadOnlyDictionary<Address, IReadOnlySet<UInt256>> accessList2)
-        {
-            foreach (var kv in accessList1)
-            {
-                if (accessList2.ContainsKey(kv.Key))
-                {
-                    if (accessList2[kv.Key].Overlaps(kv.Value))
-                    {
-                        return true;
-                    }
-                }
-            }
-
-            return false;
         }
     }
 }

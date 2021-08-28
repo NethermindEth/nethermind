@@ -27,6 +27,7 @@ namespace Nethermind.AccountAbstraction
         private AccessBlockTracer _accessBlockTracer = null!;
         private IDictionary<Address, int> _paymasterOffenseCounter = new Dictionary<Address, int>();
         private ISet<Address> _bannedPaymasters = new HashSet<Address>();
+        private Address _singletonContractAddress = null!;
         
         private INethermindApi _nethermindApi = null!;
         private ILogger _logger;
@@ -81,6 +82,7 @@ namespace Nethermind.AccountAbstraction
                         getFromApi.StateProvider,
                         getFromApi.EngineSigner,
                         _accountAbstractionConfig,
+                        _singletonContractAddress,
                         getFromApi.SpecProvider,
                         getFromApi.BlockTree,
                         getFromApi.DbProvider,
@@ -117,6 +119,8 @@ namespace Nethermind.AccountAbstraction
             if (_accountAbstractionConfig.Enabled)
             {
                 _nethermindApi.BlockchainProcessor!.Tracers.Add(AccessBlockTracer);
+                bool parsed = Address.TryParse(_accountAbstractionConfig.SingletonContractAddress, out Address _singletonContractAddress);
+                if (!parsed) _logger.Error("Account Abstraction Plugin: Singleton contract address could not be parsed");
             }
 
             return Task.CompletedTask;

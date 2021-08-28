@@ -79,8 +79,8 @@ namespace Nethermind.AccountAbstraction.Test
                 miscContractTxReceipt?.ContractAddress.Should().NotBeNull($"Contract transaction {miscContractTx?.Hash!} was not deployed.");
 
                 chain.State.GetCode(createSingletonTxReceipt.ContractAddress!).Should().NotBeNullOrEmpty();
-                chain.State.GetCode(createWalletTxReceipt?.ContractAddress!).Should().NotBeNullOrEmpty();
-                chain.State.GetCode(miscContractTxReceipt?.ContractAddress!).Should().NotBeNullOrEmpty();
+                if (createWallet) chain.State.GetCode(createWalletTxReceipt?.ContractAddress!).Should().NotBeNullOrEmpty();
+                if (createMiscContract) chain.State.GetCode(miscContractTxReceipt?.ContractAddress!).Should().NotBeNullOrEmpty();
                 
                 return (createSingletonTxReceipt.ContractAddress!, createWalletTxReceipt?.ContractAddress!, miscContractTxReceipt?.ContractAddress!);
             }
@@ -145,19 +145,19 @@ namespace Nethermind.AccountAbstraction.Test
             PrivateKey privateKey = new PrivateKey("0x1111111111111111111111111111111111111111111111111111111111111111");
 
             UserOperation op = new UserOperation(
-                new Address("0x4ed7c70F96B99c776995fB64377f0d4aB3B0e1C1"), 
-                0, 
-                Bytes.FromHexString("0xbe6002c200000000000000000000000009635f643e140090a9a8dcd712ed6285858cebef0000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000000406661abd00000000000000000000000000000000000000000000000000000000"), 
+                new Address("0x4ed7c70F96B99c776995fB64377f0d4aB3B0e1C1"),
+                0,
+                Bytes.FromHexString(
+                    "0xbe6002c200000000000000000000000009635f643e140090a9a8dcd712ed6285858cebef0000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000000406661abd00000000000000000000000000000000000000000000000000000000"),
                 Bytes.Empty,
-                107960, 
+                107960,
                 500000,
-                0, 
-                0, 
-                Address.Zero, 
-                privateKey.Address, 
+                0,
+                0,
+                Address.Zero,
+                privateKey.Address,
                 new Signature(0, 1, 1000),
-                Bytes.Empty,
-                new AccessList(new Dictionary<Address, IReadOnlySet<UInt256>>()));
+                Bytes.Empty); 
             
             SignUserOperation(op, privateKey);
 

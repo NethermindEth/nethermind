@@ -43,22 +43,9 @@ namespace Nethermind.AccountAbstraction.Executor
             AccessedStorage = new Dictionary<Address, HashSet<UInt256>>();
         }
 
-        public bool Success { get; private set; }
-
-        public UInt256 Reward
-        {
-            get
-            {
-                if (!Success)
-                {
-                    return 0;
-                }
-
-                return _beneficiaryBalanceAfter ?? 0 - _beneficiaryBalanceBefore ?? 0;
-            }
-        }
-
+        public bool Success { get; private set; } = true;
         public long GasUsed { get; private set; }
+        public byte[] Output { get; private set; }
         public IDictionary<Address, HashSet<UInt256>> AccessedStorage { get; private set; }
         public bool IsTracingRewards => true;
 
@@ -79,6 +66,12 @@ namespace Nethermind.AccountAbstraction.Executor
 
         public void EndTxTrace()
         {
+            if (!_tracer!.Success)
+            {
+                Success = false;
+                return;
+            }
+            
             GasUsed += _tracer!.GasSpent;
 
             if (GasUsed > _gasLimit)
@@ -87,11 +80,8 @@ namespace Nethermind.AccountAbstraction.Executor
                 return;
             }
 
+            Output = _tracer.Output;
             AccessedStorage = _tracer.AccessedStorage;
-
-            _beneficiaryBalanceBefore ??= (_tracer.BeneficiaryBalanceBefore ?? 0);
-            _beneficiaryBalanceAfter = _tracer.BeneficiaryBalanceAfter;
-            if (_beneficiaryBalanceAfter >= _beneficiaryBalanceBefore) Success = true; // TODO CHANGE CONDITION FOR SIMULATION
         }
 
         public void EndBlockTrace()
@@ -106,14 +96,12 @@ namespace Nethermind.AccountAbstraction.Executor
             _beneficiary = beneficiary;
             Transaction = transaction;
             AccessedStorage = new Dictionary<Address, HashSet<UInt256>>();
-            AccessedBalance = new HashSet<Address>();
             _currentExecutor = transaction?.To ?? Address.Zero;
         }
 
         public Transaction? Transaction { get; }
         public IDictionary<Address, HashSet<UInt256>> AccessedStorage { get; private set; }
-        public HashSet<Address> AccessedBalance { get; private set; }
-        public bool Success { get; private set; } = true;
+        public bool Success { get; private set; }
         public string? Error { get; private set; }
         public long GasSpent { get; set; }
         public byte[] Output { get; private set; }
@@ -155,6 +143,7 @@ namespace Nethermind.AccountAbstraction.Executor
             Keccak? stateRoot = null)
         {
             GasSpent = gasSpent;
+            Success = true;
             Output = output;
         }
 
@@ -211,11 +200,6 @@ namespace Nethermind.AccountAbstraction.Executor
             if (_bannedOpcodes.Contains(opcode))
             {
                 Success = false;
-            }
-
-            if (opcode == Instruction.SELFBALANCE)
-            {
-                AccessedBalance.Add(_currentExecutor);
             }
         }
 

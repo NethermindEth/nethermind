@@ -54,6 +54,7 @@ namespace Nethermind.AccountAbstraction.Executor
         private readonly IStateProvider _stateProvider;
         private readonly ISigner _signer;
         private readonly IAccountAbstractionConfig _config;
+        private readonly Address _singletonAddress;
         private readonly ISpecProvider _specProvider;
         private readonly IBlockTree _blockTree;
         private readonly IReadOnlyDbProvider _dbProvider;
@@ -62,11 +63,13 @@ namespace Nethermind.AccountAbstraction.Executor
         private readonly IBlockPreprocessorStep _recoveryStep;
 
         private AbiDefinition _contract;
+        private IAbiEncoder _abiEncoder;
 
         public UserOperationSimulator(
             IStateProvider stateProvider,
             ISigner signer,
             IAccountAbstractionConfig config,
+            Address singletonAddress,
             ISpecProvider specProvider,
             IBlockTree blockTree,
             IDbProvider dbProvider,
@@ -77,6 +80,7 @@ namespace Nethermind.AccountAbstraction.Executor
             _stateProvider = stateProvider;
             _signer = signer;
             _config = config;
+            _singletonAddress = singletonAddress;
             _specProvider = specProvider;
             _blockTree = blockTree;
             _dbProvider = dbProvider.AsReadOnly(false);
@@ -84,6 +88,8 @@ namespace Nethermind.AccountAbstraction.Executor
             _logManager = logManager;
             _recoveryStep = recoveryStep;
             
+            _abiEncoder = new AbiEncoder();
+
             using (StreamReader r = new StreamReader("Contracts/Singleton.json"))
             {
                 string json = r.ReadToEnd();
@@ -93,13 +99,9 @@ namespace Nethermind.AccountAbstraction.Executor
             }
         }
 
-        private AbiDefinition LoadContract(dynamic obj)
+        public Transaction BuildTransactionFromUserOperations(IEnumerable<UserOperation> userOperations, BlockHeader parent, IReleaseSpec spec)
         {
-            AbiDefinitionParser parser = new();
-            parser.RegisterAbiTypeFactory(new AbiTuple<UserOperationAbi>());
-            AbiDefinition contract = parser.Parse(obj["abi"].ToString());
-            AbiTuple<UserOperationAbi> userOperationAbi = new();
-            return contract;
+            throw new NotImplementedException();
         }
 
         public Task<bool> Simulate(
@@ -108,75 +110,110 @@ namespace Nethermind.AccountAbstraction.Executor
             CancellationToken cancellationToken = default, 
             UInt256? timestamp = null)
         {
-            Transaction userOperationTransaction = BuildSimulateTransactionFromUserOperations(userOperation, parent);
-            
+            IReleaseSpec currentSpec = _specProvider.GetSpec(parent.Number + 1);
             ReadOnlyTxProcessingEnv txProcessingEnv = new(_dbProvider, _trieStore, _blockTree, _specProvider, _logManager);
             ITransactionProcessor transactionProcessor = txProcessingEnv.Build(_stateProvider.StateRoot);
-            
-            UserOperationBlockTracer blockTracer = CreateBlockTracer(userOperationTransaction, parent);
-            ITxTracer txTracer = blockTracer.StartNewTxTrace(userOperationTransaction);
-            transactionProcessor.CallAndRestore(userOperationTransaction, parent, txTracer);
+
+            UserOperationBlockTracer blockTracer = CreateBlockTracer(parent);
+
+            Transaction simulateWalletValidationTransaction = BuildSimulateWalletValidationTransaction(userOperation, parent, currentSpec);
+            ITxTracer txTracer = blockTracer.StartNewTxTrace(simulateWalletValidationTransaction);
+            transactionProcessor.CallAndRestore(simulateWalletValidationTransaction, parent, txTracer);
             blockTracer.EndTxTrace();
+
+            if (!blockTracer.Success)
+            {
+                return Task.FromResult(false);
+            }
+
+            if (userOperation.Paymaster == Address.Zero)
+            {
+                return Task.FromResult(true);
+            }
             
+            UserOperationBlockTracer paymasterBlockTracer = CreateBlockTracer(parent);
+
+            UInt256 gasUsedByPayForSelfOp = new(blockTracer.Output); // LITTLE ENDIAN OR BIG ENDIAN?
+            Transaction simulatePaymasterValidationTransaction = BuildSimulatePaymasterValidationTransaction(userOperation, gasUsedByPayForSelfOp, parent, currentSpec);
+            ITxTracer paymasterTxTracer = blockTracer.StartNewTxTrace(simulateWalletValidationTransaction);
+            transactionProcessor.CallAndRestore(simulatePaymasterValidationTransaction, parent, paymasterTxTracer);
+            blockTracer.EndTxTrace();
+
             // reset
             userOperation.AccessListTouched = false;
             
             return Task.FromResult(blockTracer.Success);
         }
 
-        public Transaction BuildSimulateTransactionFromUserOperations(
+        private Transaction BuildSimulateWalletValidationTransaction(
             UserOperation userOperation, 
-            BlockHeader parent)
+            BlockHeader parent,
+            IReleaseSpec spec)
         {
-            Address.TryParse(_config.SingletonContractAddress, out Address singletonContractAddress);
-            IReleaseSpec currentSpec = _specProvider.GetSpec(parent.Number + 1);
-
-            IAbiEncoder abiEncoder = new AbiEncoder();
-
             AbiSignature abiSignature = _contract.Functions["simulateWalletValidation"].GetCallInfo().Signature;
             UserOperationAbi userOperationAbi = userOperation.Abi;
             
-            byte[] computedCallData = abiEncoder.Encode(
+            byte[] computedCallData = _abiEncoder.Encode(
                 AbiEncodingStyle.IncludeSignature,
                 abiSignature,
                 userOperationAbi);
 
+            Transaction transaction = BuildTransaction((long)userOperation.VerificationGas, computedCallData, parent, spec);
+            
+            return transaction;
+        }
+        
+        private Transaction BuildSimulatePaymasterValidationTransaction(
+            UserOperation userOperation,
+            UInt256 gasUsedByPayForSelfOp,
+            BlockHeader parent,
+            IReleaseSpec spec)
+        {
+            AbiSignature abiSignature = _contract.Functions["simulatePaymasterValidation"].GetCallInfo().Signature;
+            UserOperationAbi userOperationAbi = userOperation.Abi;
+            
+            byte[] computedCallData = _abiEncoder.Encode(
+                AbiEncodingStyle.IncludeSignature,
+                abiSignature,
+                userOperationAbi, gasUsedByPayForSelfOp);
+
+            Transaction transaction = BuildTransaction((long)userOperation.VerificationGas, computedCallData, parent, spec);
+            
+            return transaction;
+        }
+
+        private Transaction BuildTransaction(long gaslimit, byte[] callData, BlockHeader parent, IReleaseSpec spec)
+        {
             SystemTransaction transaction = new()
             {
                 GasPrice = 0, // the bundler should in real scenarios be the miner
-                GasLimit = (long) userOperation.VerificationGas + (long) userOperation.CallGas,
-                To = singletonContractAddress,
+                GasLimit = gaslimit,
+                To = _singletonAddress,
                 ChainId = _specProvider.ChainId,
                 Nonce = _stateProvider.GetNonce(_signer.Address),
                 Value = 0,
-                Data = computedCallData
+                Data = callData
             };
-
-            object test = abiEncoder.Decode(AbiEncodingStyle.IncludeSignature, abiSignature,
-                Bytes.FromHexString(
-                    "0xec7d10a800000000000000000000000000000000000000000000000000000000000000200000000000000000000000004ed7c70f96b99c776995fb64377f0d4ab3b0e1c10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000018000000000000000000000000000000000000000000000000000000000000001a00000000000000000000000000000000000000000000000000000000000012917000000000000000000000000000000000000000000000000000000000007a120000000000000000000000000000000000000000000000000000000003d87cb2d000000000000000000000000000000000000000000000000000000003b9aca00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001c0000000000000000000000000fcffc8f5e5842888a2e58862123b89c0be6aa15d00000000000000000000000000000000000000000000000000000000000001e000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000413faf07e812b7adf2e76d2cb7118e0521e3b9c195ac238f0535e9a651cde89d05044b475b00be12ed435215077db246c28d2c8e2d4d0182296c6958b68b65298a1c00000000000000000000000000000000000000000000000000000000000000"));
-
             
-            if (currentSpec.IsEip1559Enabled)
-            {
-                transaction.Type = TxType.EIP1559;
-                transaction.DecodedMaxFeePerGas = BaseFeeCalculator.Calculate(parent, currentSpec);
-            }
-            else
-            {
-                transaction.Type = TxType.Legacy;
-            }
+            transaction.Type = TxType.EIP1559;
+            transaction.DecodedMaxFeePerGas = BaseFeeCalculator.Calculate(parent, spec);
 
             transaction.SenderAddress = Address.Zero;
             transaction.Hash = transaction.CalculateHash();
 
-            //_stateProvider.CreateAccount(Address.Zero, 0);
-            //_stateProvider.AddToBalance(Address.Zero, 1_000_000_000, currentSpec);
-
             return transaction;
         }
 
-        private UserOperationBlockTracer CreateBlockTracer(Transaction userOperationTransaction, BlockHeader parent) =>
+        private UserOperationBlockTracer CreateBlockTracer(BlockHeader parent) =>
             new(parent.GasLimit, _signer.Address);
+        
+        private AbiDefinition LoadContract(dynamic obj)
+        {
+            AbiDefinitionParser parser = new();
+            parser.RegisterAbiTypeFactory(new AbiTuple<UserOperationAbi>());
+            AbiDefinition contract = parser.Parse(obj["abi"].ToString());
+            AbiTuple<UserOperationAbi> userOperationAbi = new();
+            return contract;
+        }
     }
 }

@@ -56,7 +56,7 @@ namespace Nethermind.AccountAbstraction.Source
                 }
                 
                 // no intersect of accessed addresses
-                if (UserOperationPool.AccessListOverlaps(usedAccessList, userOperation.AccessList.Data))
+                if (UserOperationAccessList.AccessListOverlaps(usedAccessList, userOperation.AccessList.Data))
                 {
                     continue;
                 }
@@ -92,8 +92,8 @@ namespace Nethermind.AccountAbstraction.Source
                 return new List<Transaction>();
             }
             
-            Transaction userOperationTransaction = _userOperationSimulator.BuildSimulateTransactionFromUserOperations(userOperationsToInclude[0], parent);
-            return new List<Transaction>{userOperationTransaction};
+            //Transaction userOperationTransaction = _userOperationSimulator.BuildSimulateTransactionFromUserOperations(userOperationsToInclude[0], parent);
+            return new List<Transaction>();
         }
 
         private UInt256 CalculateUserOperationPremiumGasPrice(UserOperation op, UInt256 baseFeePerGas)

@@ -168,7 +168,6 @@ namespace Nethermind.AccountAbstraction.Test
             var (userOperationPool, simulator, blockTree) = GenerateUserOperationPool(10);
             UserOperation op = Build.A.UserOperation
                 .WithTarget(Address.SystemUser)
-                .WithAccessList(new AccessList(new Dictionary<Address, IReadOnlySet<UInt256>>{{new("0x0000000000000000000000000000000000000001"), new HashSet<UInt256>{0}}}))
                 .SignedAndResolved()
                 .TestObject;
                 

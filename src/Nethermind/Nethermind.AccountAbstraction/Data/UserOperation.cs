@@ -28,7 +28,7 @@ namespace Nethermind.AccountAbstraction.Data
 {
     public partial class UserOperation
     {
-        public UserOperation(Address target, UInt256 nonce, byte[] callData, byte[] initCode, UInt256 callGas, UInt256 verificationGas, UInt256 maxFeePerGas, UInt256 maxPriorityFeePerGas, Address paymaster, Address signer, Signature signature, byte[] paymasterData, AccessList accessList)
+        public UserOperation(Address target, UInt256 nonce, byte[] callData, byte[] initCode, UInt256 callGas, UInt256 verificationGas, UInt256 maxFeePerGas, UInt256 maxPriorityFeePerGas, Address paymaster, Address signer, Signature signature, byte[] paymasterData)
         {
             Target = target;
             Nonce = nonce;
@@ -42,7 +42,6 @@ namespace Nethermind.AccountAbstraction.Data
             Signer = signer;
             Signature = signature;
             PaymasterData = paymasterData;
-            AccessList = accessList;
             
             Hash = CalculateHash(this);
         }
@@ -78,7 +77,7 @@ namespace Nethermind.AccountAbstraction.Data
         public Address? Signer { get; set; }
         public Signature? Signature { get; set; }
         public byte[]? PaymasterData { get; set; }
-        public AccessList? AccessList { get; set; }
+        public UserOperationAccessList AccessList { get; set; }
         public int ResimulationCounter { get; set; }
         public bool AccessListTouched { get; set; }
     }

@@ -34,7 +34,6 @@ namespace Nethermind.AccountAbstraction.Test
             {
                 Target = Address.Zero,
                 Paymaster = Address.Zero,
-                AccessList = new AccessList(new Dictionary<Address, IReadOnlySet<UInt256>>()),
                 CallData = Bytes.Empty,
                 InitCode = Bytes.Empty,
                 MaxFeePerGas = 1,
@@ -54,12 +53,6 @@ namespace Nethermind.AccountAbstraction.Test
         public UserOperationBuilder WithPaymaster(Address paymaster)
         {
             TestObjectInternal.Paymaster = paymaster;
-            return this;
-        }
-        
-        public UserOperationBuilder WithAccessList(AccessList accessList)
-        {
-            TestObjectInternal.AccessList = accessList;
             return this;
         }
         
