@@ -46,7 +46,7 @@ namespace Nethermind.Abi
         public override (object, int) Decode(byte[] data, int position, bool packed)
         {
             (UInt256 length, int currentPosition) = UInt256.DecodeUInt(data, position, packed);
-            int paddingSize = packed ? (int)length : (1 + (int) length / PaddingMultiple) * PaddingMultiple;
+            int paddingSize = packed ? (int)length : GetPaddingSize((int)length);
             return (data.Slice(currentPosition, (int) length), currentPosition + paddingSize);
         }
 
@@ -54,11 +54,8 @@ namespace Nethermind.Abi
         {
             if (arg is byte[] input)
             {
-                int remainder = input.Length % PaddingMultiple;
-                int paddingSize = input.Length + (remainder == 0 ? 0 : (PaddingMultiple - remainder));
-
                 byte[] lengthEncoded = UInt256.Encode(new BigInteger(input.Length), packed);
-                return Bytes.Concat(lengthEncoded, packed ? input : input.PadRight(paddingSize));
+                return Bytes.Concat(lengthEncoded, packed ? input : input.PadRight(GetPaddingSize(input.Length)));
             }
 
             if (arg is string stringInput)
@@ -67,6 +64,13 @@ namespace Nethermind.Abi
             }
 
             throw new AbiException(AbiEncodingExceptionMessage);
+        }
+
+        private static int GetPaddingSize(int length)
+        {
+            int remainder = length % PaddingMultiple;
+            int paddingSize = length + (remainder == 0 ? 0 : (PaddingMultiple - remainder));
+            return paddingSize;
         }
     }
 }
