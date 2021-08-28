@@ -28,8 +28,8 @@ namespace Nethermind.Abi
         
         internal static byte[][] EncodeSequence(AbiType[] types, IEnumerable<object?> sequence, bool packed, int offset = 0)
         {
-            List<byte[]> dynamicParts = new();
-            List<byte[]?> headerParts = new();
+            List<byte[]> dynamicParts = new(types.Length);
+            List<byte[]?> headerParts = new(types.Length);
             int index = 0;
             foreach (object? argument in sequence)
             {
@@ -58,6 +58,7 @@ namespace Nethermind.Abi
                 currentOffset += headerParts[i]?.Length ?? PaddingSize;
             }
 
+            // offset dynamic parts, calculating the actual offset of each part
             int dynamicPartsIndex = 0;
             for (int i = 0; i < headerParts.Count; i++)
             {
