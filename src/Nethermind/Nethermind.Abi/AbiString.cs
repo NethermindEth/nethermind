@@ -27,11 +27,6 @@ namespace Nethermind.Abi
         {
             RegisterMapping<string>(Instance);
         }
-
-        static AbiString()
-        {
-            RegisterMapping<string>(Instance);
-        }
         
         private AbiString()
         {

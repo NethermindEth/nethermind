@@ -26,22 +26,6 @@ namespace Nethermind.Abi
         private const int MaxSize = 256;
         private const int MinSize = 0;
         
-        public static new AbiInt Int8 { get; } = new(8);
-        public static new AbiInt Int16 { get; } = new(16);
-        public static new AbiInt Int32 { get; } = new(32);
-        public static new AbiInt Int64 { get; } = new(64);
-        public static new AbiInt Int96 { get; } = new(96);
-        public static new AbiInt Int256 { get; } = new(256);
-        
-        static AbiInt()
-        {
-            RegisterMapping<sbyte>(Int8);
-            RegisterMapping<short>(Int16);
-            RegisterMapping<int>(Int32);
-            RegisterMapping<long>(Int64);
-            RegisterMapping<Int256.Int256>(Int256);
-        }
-
         public static new readonly AbiInt Int8 = new(8);
         public static new readonly AbiInt Int16 = new(16);
         public static new readonly AbiInt Int32 = new(32);
