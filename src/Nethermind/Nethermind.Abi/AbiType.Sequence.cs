@@ -24,25 +24,47 @@ namespace Nethermind.Abi
 {
     public partial class AbiType
     {
+        protected const int PaddingSize = 32;
+        
         internal static byte[][] EncodeSequence(AbiType[] types, IEnumerable<object?> sequence, bool packed, int offset = 0)
         {
             List<byte[]> dynamicParts = new();
-            List<byte[]> headerParts = new();
-            BigInteger currentOffset = types.Length * AbiType.UInt256.LengthInBytes;
+            List<byte[]?> headerParts = new();
             int index = 0;
             foreach (object? argument in sequence)
             {
                 AbiType type = types[index++];
+                byte[] encoded = type.Encode(argument, packed);
+                
+                // encode each type
                 if (type.IsDynamic)
                 {
-                    headerParts.Add(AbiType.UInt256.Encode(currentOffset, packed));
-                    byte[] encoded = type.Encode(argument, packed);
-                    currentOffset += encoded.Length;
+                    // offset placeholder, we cannot calculate offset before calculating all header parts
+                    headerParts.Add(null);
                     dynamicParts.Add(encoded);
                 }
                 else
                 {
-                    headerParts.Add(type.Encode(argument, packed));
+                    headerParts.Add(encoded);
+                }
+            }
+            
+            // now lets calculate proper offset
+            BigInteger currentOffset = 0;
+            
+            // offset of header
+            for (int i = 0; i < headerParts.Count; i++)
+            {
+                currentOffset += headerParts[i]?.Length ?? PaddingSize;
+            }
+
+            int dynamicPartsIndex = 0;
+            for (int i = 0; i < headerParts.Count; i++)
+            {
+                if (headerParts[i] is null)
+                {
+                    headerParts[i] = UInt256.Encode(currentOffset, packed);
+                    currentOffset += dynamicParts[dynamicPartsIndex++].Length;
                 }
             }
             
@@ -50,7 +72,7 @@ namespace Nethermind.Abi
 
             for (int i = 0; i < headerParts.Count; i++)
             {
-                encodedParts[offset + i] = headerParts[i];
+                encodedParts[offset + i] = headerParts[i]!;
             }
             
             for (int i = 0; i < dynamicParts.Count; i++)

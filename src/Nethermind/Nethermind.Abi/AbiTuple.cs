@@ -28,7 +28,12 @@ namespace Nethermind.Abi
     {
         private readonly AbiType[] _elements;
         private readonly string[]? _names;
-        private readonly Lazy<Type> _type; 
+        private readonly Lazy<Type> _type;
+
+        public AbiTuple(params AbiType[] elements) : this(elements, null)
+        {
+            
+        }
         
         public AbiTuple(AbiType[] elements, string[]? names = null)
         {

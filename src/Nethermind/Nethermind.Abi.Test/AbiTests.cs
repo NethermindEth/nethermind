@@ -405,7 +405,7 @@ namespace Nethermind.Abi.Test
         [TestCase(AbiEncodingStyle.None)]
         public void Static_tuple(AbiEncodingStyle encodingStyle)
         {
-            AbiType type = new AbiTuple(new AbiType[]{AbiType.UInt256, AbiType.Address, AbiType.Bool});
+            AbiType type = new AbiTuple(AbiType.UInt256, AbiType.Address, AbiType.Bool);
 
             AbiSignature signature = new AbiSignature("abc", type);
 
@@ -419,7 +419,7 @@ namespace Nethermind.Abi.Test
         [TestCase(AbiEncodingStyle.None)]
         public void Dynamic_tuple(AbiEncodingStyle encodingStyle)
         {
-            AbiType type = new AbiTuple(new AbiType[]{AbiType.DynamicBytes, AbiType.Address, AbiType.DynamicBytes});
+            AbiType type = new AbiTuple(AbiType.DynamicBytes, AbiType.Address, AbiType.DynamicBytes);
 
             AbiSignature signature = new AbiSignature("abc", type);
 
@@ -428,7 +428,8 @@ namespace Nethermind.Abi.Test
             object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
             Assert.AreEqual(dynamicTuple, arguments[0]);
         }
-        
+
+
         [TestCase(AbiEncodingStyle.IncludeSignature)]
         [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
         [TestCase(AbiEncodingStyle.Packed)]
@@ -453,7 +454,7 @@ namespace Nethermind.Abi.Test
         [TestCase(AbiEncodingStyle.None)]
         public void Multiple_params_with_one_of_them_a_tuple_dynamic_first(AbiEncodingStyle encodingStyle)
         {
-            AbiType type = new AbiTuple(new AbiType[]{AbiType.UInt256, AbiType.Address, AbiType.Bool});
+            AbiType type = new AbiTuple(AbiType.UInt256, AbiType.Address, AbiType.Bool);
 
             AbiSignature signature = new AbiSignature("abc", AbiType.String, type);
 
@@ -471,7 +472,7 @@ namespace Nethermind.Abi.Test
         [TestCase(AbiEncodingStyle.None)]
         public void Tuple_with_inner_static_tuple(AbiEncodingStyle encodingStyle)
         {
-            AbiType type = new AbiTuple(new AbiType[]{AbiType.UInt256, new AbiTuple(new AbiType[]{AbiType.UInt256, AbiType.Address}), AbiType.Bool});
+            AbiType type = new AbiTuple(AbiType.UInt256, new AbiTuple(AbiType.UInt256, AbiType.Address), AbiType.Bool);
 
             AbiSignature signature = new AbiSignature("abc", type);
 
@@ -485,11 +486,26 @@ namespace Nethermind.Abi.Test
         [TestCase(AbiEncodingStyle.None)]
         public void Tuple_with_inner_dynamic_tuple(AbiEncodingStyle encodingStyle)
         {
-            AbiType type = new AbiTuple(new AbiType[]{AbiType.UInt256, new AbiTuple(new AbiType[]{AbiType.DynamicBytes, AbiType.Address}), AbiType.Bool});
+            AbiType type = new AbiTuple(AbiType.UInt256, new AbiTuple(AbiType.DynamicBytes, AbiType.Address), AbiType.Bool);
 
             AbiSignature signature = new AbiSignature("abc", type);
 
             ValueTuple<UInt256, ValueTuple<byte[], Address>, bool> dynamicTuple = new ValueTuple<UInt256, ValueTuple<byte[], Address>, bool>((UInt256) 1000, new ValueTuple<byte[], Address>(Bytes.FromHexString("0x019283fa3d"), Address.SystemUser), true);
+            byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, dynamicTuple);
+            object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
+            Assert.AreEqual(dynamicTuple, arguments[0]);
+        }
+        
+                
+        [TestCase(AbiEncodingStyle.IncludeSignature)]
+        [TestCase(AbiEncodingStyle.None)]
+        public void Dynamic_tuple_with_inner_dynamic_tuple(AbiEncodingStyle encodingStyle)
+        {
+            AbiType type = new AbiTuple(AbiType.DynamicBytes, new AbiTuple(AbiType.DynamicBytes, AbiType.Address), AbiType.Bool);
+
+            AbiSignature signature = new AbiSignature("abc", type);
+
+            ValueTuple<byte[], ValueTuple<byte[], Address>, bool> dynamicTuple = new ValueTuple<byte[], ValueTuple<byte[], Address>, bool>(Bytes.FromHexString("0x019283fa3d"), new ValueTuple<byte[], Address>(Bytes.FromHexString("0x019283fa3d"), Address.SystemUser), true);
             byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, dynamicTuple);
             object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
             Assert.AreEqual(dynamicTuple, arguments[0]);
@@ -501,7 +517,7 @@ namespace Nethermind.Abi.Test
         [TestCase(AbiEncodingStyle.None)]
         public void Tuple_with_inner_tuple_with_inner_tuple(AbiEncodingStyle encodingStyle)
         {
-            AbiType type = new AbiTuple(new AbiType[]{new AbiTuple(new AbiType[]{new AbiTuple(new AbiType[]{AbiType.UInt256})})});
+            AbiType type = new AbiTuple(new AbiTuple(new AbiTuple(AbiType.UInt256)));
 
             AbiSignature signature = new AbiSignature("abc", type);
 
