@@ -70,9 +70,20 @@ namespace Nethermind.AccountAbstraction.Broadcaster
             }
         }
         
-        public void BroadcastOnce(IUserOperationPoolPeer peer, UserOperation uop)
+        private void NotifySelectedPeers(UserOperation userOperation)
         {
-            Notify(peer, uop);
+            Task.Run(() =>
+            {
+                foreach ((_, IUserOperationPoolPeer peer) in _peers)
+                {
+                    Notify(peer, userOperation);
+                }
+            });
+        }
+        
+        public void BroadcastOnce(UserOperation uop)
+        {
+            NotifySelectedPeers(uop);
         }
 
         public void Dispose()
