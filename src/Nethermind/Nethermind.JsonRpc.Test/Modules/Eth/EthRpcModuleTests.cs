@@ -448,7 +448,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         {
             using Context ctx = await Context.Create();
             string serialized = ctx._test.TestEthRpc("eth_protocolVersion");
-            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x41\",\"id\":67}", serialized);
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x42\",\"id\":67}", serialized);
         }
 
         [Test]
