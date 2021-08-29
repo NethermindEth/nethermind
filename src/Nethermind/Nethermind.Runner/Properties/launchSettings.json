@@ -82,10 +82,6 @@
     "Hive": {
       "commandName": "Project",
       "commandLineArgs": "--config configs\\hive.cfg --Init.DiagnosticMode MemDb"
-    },
-    "xdai_testnet": {
-      "commandName": "Project",
-      "commandLineArgs": "--config configs\\xdai_testnet.cfg"
-    },
+    }
   }
 }

@@ -44,13 +44,12 @@ namespace Nethermind.Network
 
         public List<Peer> LoadPeers(IEnumerable<NetworkNode> staticNodes = null)
         {
-            List<Peer> allPeers = new();
+            List<Peer> allPeers = new List<Peer>();
             LoadPeersFromDb(allPeers);
             
             LoadConfigPeers(allPeers, _discoveryConfig.Bootnodes, n =>
             {
                 n.IsBootnode = true;
-       //         n.CurrentReputation = 10000000;
                 if (_logger.IsDebug) _logger.Debug($"Bootnode     : {n}");
             });
             
@@ -119,7 +118,7 @@ namespace Nethermind.Network
         {
             foreach (NetworkNode networkNode in networkNodes)
             {
-                Node node = new(networkNode.NodeId, networkNode.Host, networkNode.Port);
+                Node node = new Node(networkNode.NodeId, networkNode.Host, networkNode.Port);
                 nodeUpdate.Invoke(node);
                 peers.Add(new Peer(node));
             }
