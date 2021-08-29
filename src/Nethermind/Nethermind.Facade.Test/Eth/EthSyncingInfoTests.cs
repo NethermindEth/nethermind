@@ -33,7 +33,7 @@ namespace Nethermind.Facade.Test.Eth
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             blockFinder.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(6178001L).TestObject);
             blockFinder.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(6178000L).TestObject).TestObject);
-            EthSyncingInfo ethSyncingInfo = new EthSyncingInfo(blockFinder);
+            EthSyncingInfo ethSyncingInfo = new(blockFinder);
             SyncingResult syncingResult = ethSyncingInfo.GetFullInfo();
             Assert.AreEqual(false, syncingResult.IsSyncing);
             Assert.AreEqual(0, syncingResult.CurrentBlock);
@@ -47,7 +47,7 @@ namespace Nethermind.Facade.Test.Eth
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             blockFinder.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(6178010L).TestObject);
             blockFinder.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(6178000L).TestObject).TestObject);
-            EthSyncingInfo ethSyncingInfo = new EthSyncingInfo(blockFinder);
+            EthSyncingInfo ethSyncingInfo = new(blockFinder);
             SyncingResult syncingResult = ethSyncingInfo.GetFullInfo();
             Assert.AreEqual(true, syncingResult.IsSyncing);
             Assert.AreEqual(6178000L, syncingResult.CurrentBlock);
@@ -62,7 +62,7 @@ namespace Nethermind.Facade.Test.Eth
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             blockFinder.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(bestHeader).TestObject);
             blockFinder.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(currentHead).TestObject).TestObject);
-            EthSyncingInfo ethSyncingInfo = new EthSyncingInfo(blockFinder);
+            EthSyncingInfo ethSyncingInfo = new(blockFinder);
             SyncingResult syncingResult = ethSyncingInfo.GetFullInfo();
             Assert.AreEqual(expectedResult, syncingResult.IsSyncing);
         }
