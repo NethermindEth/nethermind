@@ -113,36 +113,77 @@ namespace Nethermind.AccountAbstraction.Executor
             IReleaseSpec currentSpec = _specProvider.GetSpec(parent.Number + 1);
             ReadOnlyTxProcessingEnv txProcessingEnv = new(_dbProvider, _trieStore, _blockTree, _specProvider, _logManager);
             ITransactionProcessor transactionProcessor = txProcessingEnv.Build(_stateProvider.StateRoot);
-
-            UserOperationBlockTracer blockTracer = CreateBlockTracer(parent);
-
+            
             Transaction simulateWalletValidationTransaction = BuildSimulateWalletValidationTransaction(userOperation, parent, currentSpec);
-            ITxTracer txTracer = blockTracer.StartNewTxTrace(simulateWalletValidationTransaction);
-            transactionProcessor.CallAndRestore(simulateWalletValidationTransaction, parent, txTracer);
-            blockTracer.EndTxTrace();
+            (bool walletValidationSuccess, UInt256 gasUsedByPayForSelfOp, UserOperationAccessList walletValidationAccessList) =
+                SimulateValidation(simulateWalletValidationTransaction, parent, transactionProcessor);
 
-            if (!blockTracer.Success)
+            if (!walletValidationSuccess
+                || userOperation.VerificationGas < gasUsedByPayForSelfOp)
             {
                 return Task.FromResult(false);
             }
-
+            
             if (userOperation.Paymaster == Address.Zero)
             {
+                if (userOperation.AccessListTouched)
+                {
+                    if (!UserOperationAccessList.AccessListContains(userOperation.AccessList.Data,
+                        walletValidationAccessList.Data))
+                    {
+                        return Task.FromResult(false);
+                    }
+                }
+                else
+                {
+                    userOperation.AccessList = walletValidationAccessList;
+                }
                 return Task.FromResult(true);
             }
             
-            UserOperationBlockTracer paymasterBlockTracer = CreateBlockTracer(parent);
-
-            UInt256 gasUsedByPayForSelfOp = new(blockTracer.Output); // LITTLE ENDIAN OR BIG ENDIAN?
             Transaction simulatePaymasterValidationTransaction = BuildSimulatePaymasterValidationTransaction(userOperation, gasUsedByPayForSelfOp, parent, currentSpec);
-            ITxTracer paymasterTxTracer = blockTracer.StartNewTxTrace(simulateWalletValidationTransaction);
-            transactionProcessor.CallAndRestore(simulatePaymasterValidationTransaction, parent, paymasterTxTracer);
-            blockTracer.EndTxTrace();
+            (bool paymasterValidationSuccess, UInt256 gasUsedByPayForOp, UserOperationAccessList paymasterValidationAccessList) = 
+                SimulateValidation(simulatePaymasterValidationTransaction, parent, transactionProcessor);
 
-            // reset
-            userOperation.AccessListTouched = false;
+            if (!paymasterValidationSuccess
+                || userOperation.VerificationGas < gasUsedByPayForSelfOp + gasUsedByPayForOp)
+            {
+                return Task.FromResult(false);
+            }
             
-            return Task.FromResult(blockTracer.Success);
+
+            if (userOperation.AccessListTouched)
+            {
+                if (!UserOperationAccessList.AccessListContains(userOperation.AccessList.Data,
+                    paymasterValidationAccessList.Data))
+                {
+                    return Task.FromResult(false);
+                }
+            }
+            else
+            {
+                UserOperationAccessList.CombineAccessLists(userOperation.AccessList.Data, walletValidationAccessList.Data);
+            }
+
+            return Task.FromResult(true);
+        }
+
+        private (bool success, UInt256 gasUsed, UserOperationAccessList accessList) SimulateValidation(Transaction transaction, BlockHeader parent, ITransactionProcessor transactionProcessor)
+        {
+            bool success = true;
+            
+            UserOperationBlockTracer blockTracer = CreateBlockTracer(parent);
+            ITxTracer txTracer = blockTracer.StartNewTxTrace(transaction);
+            transactionProcessor.CallAndRestore(transaction, parent, txTracer);
+            blockTracer.EndTxTrace();
+            UInt256 gasUsed = new(blockTracer.Output, true);
+            
+            if (!blockTracer.Success)
+            {
+                success = false;
+            }
+
+            return (success, gasUsed, new UserOperationAccessList(blockTracer.AccessedStorage));
         }
 
         private Transaction BuildSimulateWalletValidationTransaction(

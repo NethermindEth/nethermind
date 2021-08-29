@@ -23,7 +23,49 @@ namespace Nethermind.AccountAbstraction.Data
 {
     public class UserOperationAccessList
     {
+        public UserOperationAccessList(IDictionary<Address, HashSet<UInt256>> data)
+        {
+            Data = data;
+        }
+
         public IDictionary<Address, HashSet<UInt256>> Data { get; set; }
+        
+        public static IDictionary<Address, HashSet<UInt256>> CombineAccessLists(IDictionary<Address, HashSet<UInt256>> accessList1, IDictionary<Address, HashSet<UInt256>> accessList2)
+        {
+            foreach (var kv in accessList2)
+            {
+                if (accessList1.ContainsKey(kv.Key))
+                {
+                    accessList1[kv.Key].UnionWith(kv.Value);
+                }
+                else
+                {
+                    accessList1[kv.Key] = (HashSet<UInt256>) kv.Value;
+                }
+            }
+
+            return accessList1;
+        }
+        
+        public static bool AccessListContains(IDictionary<Address, HashSet<UInt256>> accessList1, IDictionary<Address, HashSet<UInt256>> accessList2)
+        {
+            foreach (var kv in accessList2)
+            {
+                if (accessList1.ContainsKey(kv.Key))
+                {
+                    if (!accessList1[kv.Key].IsSupersetOf(kv.Value))
+                    {
+                        return false;
+                    }
+                }
+                else
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
         
         public static bool AccessListOverlaps(IDictionary<Address, HashSet<UInt256>> accessList1, IDictionary<Address, HashSet<UInt256>> accessList2)
         {
