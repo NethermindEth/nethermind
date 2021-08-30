@@ -45,9 +45,9 @@ namespace Nethermind.Merge.Plugin.Test
     {
         private async Task<MergeTestBlockchain> CreateBlockChain() => await new MergeTestBlockchain(new ManualTimestamper()).Build(new SingleReleaseSpecProvider(Berlin.Instance, 1));
 
-        private IConsensusRpcModule CreateConsensusModule(MergeTestBlockchain chain)
+        private IEngineRpcModule CreateConsensusModule(MergeTestBlockchain chain)
         {
-            return new ConsensusRpcModule(
+            return new EngineRpcModule(
                 new AssembleBlockHandler(chain.BlockTree, chain.BlockProductionTrigger, chain.Timestamper, chain.LogManager),
                 new NewBlockHandler(chain.BlockTree, chain.BlockPreprocessorStep, chain.BlockchainProcessor, chain.State, new InitConfig(), chain.LogManager),
                 new SetHeadBlockHandler(chain.BlockTree, chain.State, chain.LogManager),

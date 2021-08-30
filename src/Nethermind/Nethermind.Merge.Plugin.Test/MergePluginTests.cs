@@ -86,7 +86,7 @@ namespace Nethermind.Merge.Plugin.Test
             await _plugin.InitBlockProducer();
             Assert.IsInstanceOf<Eth2BlockProducer>(_context.BlockProducer);
             await _plugin.InitRpcModules();
-            _context.RpcModuleProvider.Received().Register(Arg.Is<IRpcModulePool<IConsensusRpcModule>>(m => m is SingletonModulePool<IConsensusRpcModule>));
+            _context.RpcModuleProvider.Received().Register(Arg.Is<IRpcModulePool<IEngineRpcModule>>(m => m is SingletonModulePool<IEngineRpcModule>));
             await _context.BlockchainProcessor!.Received().StopAsync(true);
             await _plugin.DisposeAsync();
         }
