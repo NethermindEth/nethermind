@@ -101,7 +101,21 @@ namespace Nethermind.AccountAbstraction.Executor
 
         public Transaction BuildTransactionFromUserOperations(IEnumerable<UserOperation> userOperations, BlockHeader parent, IReleaseSpec spec)
         {
-            throw new NotImplementedException();
+            AbiSignature abiSignature = _contract.Functions["handleOps"].GetCallInfo().Signature;
+            
+            byte[] computedCallData = _abiEncoder.Encode(
+                AbiEncodingStyle.IncludeSignature,
+                abiSignature,
+                userOperations.Select(op => op.Abi).ToArray(), _signer.Address);
+
+            object[] objects = _abiEncoder.Decode(AbiEncodingStyle.IncludeSignature, abiSignature, Bytes.FromHexString("0x998452180000000000000000000000000000000000000000000000000000000000000040000000000000000000000000c4ac933528f73f442760c05c3437d9fe5d4eb4aa000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000200000000000000000000000004ed7c70f96b99c776995fb64377f0d4ab3b0e1c10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000018000000000000000000000000000000000000000000000000000000000000001a0000000000000000000000000000000000000000000000000000000000001a5b8000000000000000000000000000000000000000000000000000000000007a12000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002600000000000000000000000000778650d7c76e691b90ddac53fc921cd3e26f591000000000000000000000000000000000000000000000000000000000000028000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000084be6002c200000000000000000000000009635f643e140090a9a8dcd712ed6285858cebef0000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000000406661abd0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000418bc9064234447fcc1c63d2aa3f7ea8b817361e084845b772a0770aec2fddf6cd198d83557530f8b56ff33ea2e62f88bfe4b9415797537bdde06fe3567e3be0a61c00000000000000000000000000000000000000000000000000000000000000"));
+
+            long gaslimit = userOperations.Aggregate((long)0,
+                (sum, operation) => sum + (long)operation.VerificationGas + (long)operation.CallGas + 100000); // TODO WHAT CONSTANT
+
+            Transaction transaction = BuildTransaction(gaslimit, computedCallData, _signer.Address, parent, spec, false);
+            
+            return transaction;
         }
 
         public Task<bool> Simulate(
@@ -151,7 +165,6 @@ namespace Nethermind.AccountAbstraction.Executor
                 return Task.FromResult(false);
             }
             
-
             if (userOperation.AccessListTouched)
             {
                 if (!UserOperationAccessList.AccessListContains(userOperation.AccessList.Data,
@@ -199,7 +212,7 @@ namespace Nethermind.AccountAbstraction.Executor
                 abiSignature,
                 userOperationAbi);
 
-            Transaction transaction = BuildTransaction((long)userOperation.VerificationGas, computedCallData, parent, spec);
+            Transaction transaction = BuildTransaction((long)userOperation.VerificationGas, computedCallData, Address.Zero, parent, spec, true);
             
             return transaction;
         }
@@ -218,28 +231,25 @@ namespace Nethermind.AccountAbstraction.Executor
                 abiSignature,
                 userOperationAbi, gasUsedByPayForSelfOp);
 
-            Transaction transaction = BuildTransaction((long)userOperation.VerificationGas, computedCallData, parent, spec);
+            Transaction transaction = BuildTransaction((long)userOperation.VerificationGas, computedCallData, Address.Zero, parent, spec, true);
             
             return transaction;
         }
 
-        private Transaction BuildTransaction(long gaslimit, byte[] callData, BlockHeader parent, IReleaseSpec spec)
+        private Transaction BuildTransaction(long gaslimit, byte[] callData, Address sender, BlockHeader parent, IReleaseSpec spec, bool systemTransaction)
         {
-            SystemTransaction transaction = new()
-            {
-                GasPrice = 0, // the bundler should in real scenarios be the miner
-                GasLimit = gaslimit,
-                To = _singletonAddress,
-                ChainId = _specProvider.ChainId,
-                Nonce = _stateProvider.GetNonce(_signer.Address),
-                Value = 0,
-                Data = callData
-            };
-            
+            Transaction transaction = systemTransaction ? new SystemTransaction() : new Transaction();
+
+            transaction.GasPrice = 0;
+            transaction.GasLimit = gaslimit;
+            transaction.To = _singletonAddress;
+            transaction.ChainId = _specProvider.ChainId;
+            transaction.Nonce = _stateProvider.GetNonce(_signer.Address);
+            transaction.Value = 0;
+            transaction.Data = callData;
             transaction.Type = TxType.EIP1559;
             transaction.DecodedMaxFeePerGas = BaseFeeCalculator.Calculate(parent, spec);
-
-            transaction.SenderAddress = Address.Zero;
+            transaction.SenderAddress = sender;
             transaction.Hash = transaction.CalculateHash();
 
             return transaction;

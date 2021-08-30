@@ -88,7 +88,8 @@ namespace Nethermind.AccountAbstraction.Test
             private AccountAbstractionConfig _accountAbstractionConfig = new AccountAbstractionConfig() 
                 {
                     Enabled = true, 
-                    SingletonContractAddress = "0xd75a3a95360e44a3874e691fb48d77855f127069"
+                    SingletonContractAddress = "0xd75a3a95360e44a3874e691fb48d77855f127069",
+                    UserOperationPoolSize = 200
                 };
             public Address MinerAddress => TestItem.PrivateKeyD.Address;
             private IBlockValidator BlockValidator { get; set; } = null!;

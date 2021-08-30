@@ -25,6 +25,8 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Int256;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 
 namespace Nethermind.AccountAbstraction.Source
 {
@@ -92,8 +94,8 @@ namespace Nethermind.AccountAbstraction.Source
                 return new List<Transaction>();
             }
             
-            //Transaction userOperationTransaction = _userOperationSimulator.BuildSimulateTransactionFromUserOperations(userOperationsToInclude[0], parent);
-            return new List<Transaction>();
+            Transaction userOperationTransaction = _userOperationSimulator.BuildTransactionFromUserOperations(userOperationsToInclude, parent, London.Instance);
+            return new List<Transaction>(){userOperationTransaction};
         }
 
         private UInt256 CalculateUserOperationPremiumGasPrice(UserOperation op, UInt256 baseFeePerGas)
