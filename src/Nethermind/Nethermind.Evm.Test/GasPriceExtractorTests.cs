@@ -58,7 +58,7 @@ namespace Nethermind.Evm.Test
             long gasCost = IntrinsicGasCalculator.Calculate(tx, Spec);
             gasCost.Should().BeLessThan(21000 + 9600);
 
-            var bytecode =
+            byte[] bytecode =
                 Prepare.EvmCode
                     .PushData("0x0200")
                     .PushData(0)
@@ -83,7 +83,7 @@ namespace Nethermind.Evm.Test
         public void Blockhash_times_256_gas_cost_assumption_is_correct()
         {
             Rlp rlp = BuildHeader();
-            var bytecode =
+            byte[] bytecode =
                 Prepare.EvmCode
                     .PushData(256)
                     .Op(Instruction.JUMPDEST)

@@ -31,7 +31,7 @@ namespace Nethermind.Blockchain.Test.Rewards
             Block ommer2 = Build.A.Block.WithNumber(1).TestObject;
             Block block = Build.A.Block.WithNumber(3).WithOmmers(ommer, ommer2).TestObject;
             
-            RewardCalculator calculator = new RewardCalculator(RopstenSpecProvider.Instance);
+            RewardCalculator calculator = new(RopstenSpecProvider.Instance);
             BlockReward[] rewards = calculator.CalculateRewards(block);
             
             Assert.AreEqual(3, rewards.Length);
@@ -46,7 +46,7 @@ namespace Nethermind.Blockchain.Test.Rewards
             Block ommer = Build.A.Block.WithNumber(1).TestObject;
             Block block = Build.A.Block.WithNumber(3).WithOmmers(ommer).TestObject;
             
-            RewardCalculator calculator = new RewardCalculator(RopstenSpecProvider.Instance);
+            RewardCalculator calculator = new(RopstenSpecProvider.Instance);
             BlockReward[] rewards = calculator.CalculateRewards(block);
             
             Assert.AreEqual(2, rewards.Length);
@@ -59,7 +59,7 @@ namespace Nethermind.Blockchain.Test.Rewards
         {
             Block block = Build.A.Block.WithNumber(3).TestObject;
             
-            RewardCalculator calculator = new RewardCalculator(RopstenSpecProvider.Instance);
+            RewardCalculator calculator = new(RopstenSpecProvider.Instance);
             BlockReward[] rewards = calculator.CalculateRewards(block);
             
             Assert.AreEqual(1, rewards.Length);
@@ -74,7 +74,7 @@ namespace Nethermind.Blockchain.Test.Rewards
             Block ommer2 = Build.A.Block.WithNumber(blockNumber - 2).TestObject;
             Block block = Build.A.Block.WithNumber(blockNumber).WithOmmers(ommer, ommer2).TestObject;
             
-            RewardCalculator calculator = new RewardCalculator(RopstenSpecProvider.Instance);
+            RewardCalculator calculator = new(RopstenSpecProvider.Instance);
             BlockReward[] rewards = calculator.CalculateRewards(block);
             
             Assert.AreEqual(3, rewards.Length);
@@ -91,7 +91,7 @@ namespace Nethermind.Blockchain.Test.Rewards
             Block ommer2 = Build.A.Block.WithNumber(blockNumber - 2).TestObject;
             Block block = Build.A.Block.WithNumber(blockNumber).WithOmmers(ommer, ommer2).TestObject;
             
-            RewardCalculator calculator = new RewardCalculator(RopstenSpecProvider.Instance);
+            RewardCalculator calculator = new(RopstenSpecProvider.Instance);
             BlockReward[] rewards = calculator.CalculateRewards(block);
             
             Assert.AreEqual(3, rewards.Length);

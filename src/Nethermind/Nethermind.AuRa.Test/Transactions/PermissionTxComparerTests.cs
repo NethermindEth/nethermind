@@ -65,9 +65,9 @@ namespace Nethermind.AuRa.Test.Transactions
         [SuppressMessage("ReSharper", "InconsistentNaming")]
         public void order_is_correct(Func<IEnumerable<Transaction>, IEnumerable<Transaction>> transactionSelect)
         {
-            var sendersWhitelist = Substitute.For<IContractDataStore<Address>>();
-            var priorities = Substitute.For<IDictionaryContractDataStore<TxPriorityContract.Destination>>();
-            var blockHeader = Build.A.BlockHeader.TestObject;
+            IContractDataStore<Address> sendersWhitelist = Substitute.For<IContractDataStore<Address>>();
+            IDictionaryContractDataStore<TxPriorityContract.Destination> priorities = Substitute.For<IDictionaryContractDataStore<TxPriorityContract.Destination>>();
+            BlockHeader blockHeader = Build.A.BlockHeader.TestObject;
             byte[] p5Signature = {0, 1, 2, 3};
             byte[] p6Signature = {0, 0, 0, 2};
             byte[] p0signature = {0, 0, 0, 1};
@@ -277,13 +277,13 @@ namespace Nethermind.AuRa.Test.Transactions
             blockTree.Head.Returns(block);
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
             specProvider.GetSpec(Arg.Any<long>()).Returns(new ReleaseSpec() {IsEip1559Enabled = false});
-            var transactionComparerProvider = new TransactionComparerProvider(specProvider, blockTree);
+            TransactionComparerProvider transactionComparerProvider = new(specProvider, blockTree);
             IComparer<Transaction> defaultComparer = transactionComparerProvider.GetDefaultComparer();
             IComparer<Transaction> comparer = new CompareTxByPriorityOnSpecifiedBlock(sendersWhitelist, priorities, blockHeader)
                 .ThenBy(defaultComparer); 
             
 
-            var txBySender = transactions.GroupBy(t => t.SenderAddress)
+            Dictionary<Address?, Transaction[]> txBySender = transactions.GroupBy(t => t.SenderAddress)
                 .ToDictionary(
                     g => g.Key,
                     g => g.OrderBy(t => t,
@@ -291,7 +291,7 @@ namespace Nethermind.AuRa.Test.Transactions
                         comparer.GetPoolUniqueTxComparerByNonce()).ToArray());
             
             
-            var orderedTransactions = TxPoolTxSource.Order(txBySender, comparer).ToArray();
+            Transaction[] orderedTransactions = TxPoolTxSource.Order(txBySender, comparer).ToArray();
             orderedTransactions.Should().BeEquivalentTo(expectation, o => o.WithStrictOrdering());
         }
 

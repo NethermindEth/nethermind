@@ -30,7 +30,7 @@ namespace Nethermind.Core.Test.Json
         [TestCase(NumberConversion.Decimal)]
         public void Test_roundtrip(NumberConversion numberConversion)
         {
-            NullableBigIntegerConverter converter = new NullableBigIntegerConverter(numberConversion);
+            NullableBigIntegerConverter converter = new(numberConversion);
             TestConverter(null, (integer, bigInteger) => integer.Equals(bigInteger), converter);
             TestConverter(int.MaxValue, (integer, bigInteger) => integer.Equals(bigInteger), converter);
             TestConverter(BigInteger.One, (integer, bigInteger) => integer.Equals(bigInteger), converter);
@@ -40,7 +40,7 @@ namespace Nethermind.Core.Test.Json
         [Test]
         public void Regression_0xa00000()
         {
-            BigIntegerConverter converter = new BigIntegerConverter();
+            BigIntegerConverter converter = new();
             JsonReader reader = new JsonTextReader(new StringReader("0xa00000"));
             reader.ReadAsString();
             BigInteger result = converter.ReadJson(reader, typeof(BigInteger), BigInteger.Zero, false, JsonSerializer.CreateDefault());
@@ -50,7 +50,7 @@ namespace Nethermind.Core.Test.Json
         [Test]
         public void Can_read_0x0()
         {
-            NullableBigIntegerConverter converter = new NullableBigIntegerConverter();
+            NullableBigIntegerConverter converter = new();
             JsonReader reader = new JsonTextReader(new StringReader("0x0"));
             reader.ReadAsString();
             BigInteger? result = converter.ReadJson(reader, typeof(BigInteger?), BigInteger.Zero, false, JsonSerializer.CreateDefault());
@@ -60,7 +60,7 @@ namespace Nethermind.Core.Test.Json
         [Test]
         public void Can_read_0()
         {
-            NullableBigIntegerConverter converter = new NullableBigIntegerConverter();
+            NullableBigIntegerConverter converter = new();
             JsonReader reader = new JsonTextReader(new StringReader("0"));
             reader.ReadAsString();
             BigInteger? result = converter.ReadJson(reader, typeof(BigInteger?), BigInteger.Zero, false, JsonSerializer.CreateDefault());
@@ -70,7 +70,7 @@ namespace Nethermind.Core.Test.Json
         [Test]
         public void Can_read_1()
         {
-            NullableBigIntegerConverter converter = new NullableBigIntegerConverter();
+            NullableBigIntegerConverter converter = new();
             JsonReader reader = new JsonTextReader(new StringReader("1"));
             reader.ReadAsString();
             BigInteger? result = converter.ReadJson(reader, typeof(BigInteger?), BigInteger.Zero, false, JsonSerializer.CreateDefault());
@@ -80,7 +80,7 @@ namespace Nethermind.Core.Test.Json
         [Test]
         public void Can_read_null()
         {
-            NullableBigIntegerConverter converter = new NullableBigIntegerConverter();
+            NullableBigIntegerConverter converter = new();
             JsonReader reader = new JsonTextReader(new StringReader("null"));
             reader.ReadAsString();
             BigInteger? result = converter.ReadJson(reader, typeof(BigInteger?), BigInteger.Zero, false, JsonSerializer.CreateDefault());

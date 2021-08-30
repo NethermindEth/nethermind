@@ -377,6 +377,18 @@ namespace Nethermind.Evm.Tracing
             }
         }
 
+        public void ReportActionError(EvmExceptionType evmExceptionType, long gasLeft)
+        {
+            for (int index = 0; index < _txTracers.Count; index++)
+            {
+                ITxTracer innerTracer = _txTracers[index];
+                if (innerTracer.IsTracingActions)
+                {
+                    innerTracer.ReportActionError(evmExceptionType, gasLeft);
+                }
+            }
+        }
+
         public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
         {
             for (int index = 0; index < _txTracers.Count; index++)

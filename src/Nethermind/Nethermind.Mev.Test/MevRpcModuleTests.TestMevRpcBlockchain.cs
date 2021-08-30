@@ -23,6 +23,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Rewards;
@@ -94,11 +95,11 @@ namespace Nethermind.Mev.Test
 
             public override ILogManager LogManager => NUnitLogManager.Instance;
 
-            protected override IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer)
+            protected override IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
             {
                 MiningConfig miningConfig = new() {MinGasPrice = UInt256.One};
                 
-                MevBlockProducerEnvFactory blockProducerEnvFactory = new MevBlockProducerEnvFactory(
+                BlockProducerEnvFactory blockProducerEnvFactory = new(
                     DbProvider, 
                     BlockTree, 
                     ReadOnlyTrieStore, 
@@ -108,8 +109,12 @@ namespace Nethermind.Mev.Test
                     ReceiptStorage,
                     BlockPreprocessorStep,
                     TxPool,
+                    transactionComparerProvider,
                     miningConfig,
-                    LogManager);
+                    LogManager)
+                {
+                    TransactionsExecutorFactory = new MevBlockProducerTransactionsExecutorFactory(SpecProvider, LogManager)
+                };
 
                 Eth2BlockProducer CreateEth2BlockProducer(IBlockProductionTrigger blockProductionTrigger, ITxSource? txSource = null) =>
                     new Eth2TestBlockProducerFactory(GasLimitCalculator, txSource).Create(
@@ -121,13 +126,30 @@ namespace Nethermind.Mev.Test
                         Timestamper,
                         miningConfig,
                         LogManager);
-                
-                MevBlockProducer.MevBlockProducerInfo CreateProducer(ITxSource? additionalTxSource = null)
+
+                MevBlockProducer.MevBlockProducerInfo CreateProducer(int bundleLimit = 0, ITxSource? additionalTxSource = null)
                 {
-                    IManualBlockProductionTrigger trigger = new BuildBlocksWhenRequested();
+                    bool BundleLimitTriggerCondition(BlockProductionEventArgs e)
+                    {
+                        BlockHeader? parent = BlockTree.GetProducedBlockParent(e.ParentHeader);
+                        if (parent is not null)
+                        {
+                            IEnumerable<MevBundle> bundles = BundlePool.GetBundles(parent, Timestamper);
+                            return bundles.Count() >= bundleLimit;
+                        }
+
+                        return false;
+                    }
+
+                    IManualBlockProductionTrigger manualTrigger = new BuildBlocksWhenRequested();
+                    IBlockProductionTrigger trigger = manualTrigger;
+                    if (bundleLimit != 0)
+                    {
+                        trigger = new TriggerWithCondition(manualTrigger, BundleLimitTriggerCondition);
+                    }
+
                     IBlockProducer producer = CreateEth2BlockProducer(trigger, additionalTxSource);
-                    IBeneficiaryBalanceSource beneficiaryBalanceSource = blockProducerEnvFactory.LastMevBlockProcessor;
-                    return new MevBlockProducer.MevBlockProducerInfo(producer, trigger, beneficiaryBalanceSource);
+                    return new MevBlockProducer.MevBlockProducerInfo(producer, manualTrigger, new BeneficiaryTracer());
                 }
 
                 List<MevBlockProducer.MevBlockProducerInfo> blockProducers =
@@ -142,11 +164,11 @@ namespace Nethermind.Mev.Test
                 {
                     BundleSelector bundleSelector = new(BundlePool, bundleLimit);
                     BundleTxSource bundleTxSource = new(bundleSelector, Timestamper);
-                    MevBlockProducer.MevBlockProducerInfo bundleProducer = CreateProducer(bundleTxSource);
+                    MevBlockProducer.MevBlockProducerInfo bundleProducer = CreateProducer(bundleLimit, bundleTxSource);
                     blockProducers.Add(bundleProducer);
                 }
 
-                return new MevBlockProducer(BlockProductionTrigger, blockProducers.ToArray());
+                return new MevBlockProducer(BlockProductionTrigger, LogManager, blockProducers.ToArray());
             }
 
             protected override BlockProcessor CreateBlockProcessor()

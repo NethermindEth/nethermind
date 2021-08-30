@@ -28,14 +28,14 @@ namespace Nethermind.Core.Test.Encoding
     [TestFixture]
     public class AccessListDecoderTests
     {
-        private readonly AccessListDecoder _decoder = new AccessListDecoder();
+        private readonly AccessListDecoder _decoder = new();
 
         public static IEnumerable<(string, AccessList)> TestCaseSource()
         {
             yield return ("null", null);
 
-            HashSet<UInt256> indexes = new HashSet<UInt256>();
-            Dictionary<Address, IReadOnlySet<UInt256>> data = new Dictionary<Address, IReadOnlySet<UInt256>>();
+            HashSet<UInt256> indexes = new();
+            Dictionary<Address, IReadOnlySet<UInt256>> data = new();
             // yield return ("empty", new AccessList(data)); <-- null and empty are equivalent here
             //
             indexes = new HashSet<UInt256>();
@@ -77,7 +77,7 @@ namespace Nethermind.Core.Test.Encoding
             indexes2.Add(2);
             data.Add(TestItem.AddressA, indexes);
             data.Add(TestItem.AddressB, indexes2);
-            AccessList accessList = new AccessList(data,
+            AccessList accessList = new(data,
                 new Queue<object>(new List<object> {TestItem.AddressA, (UInt256)1, TestItem.AddressB, (UInt256)2}));
             yield return ("with order queue", accessList);
             
@@ -96,7 +96,7 @@ namespace Nethermind.Core.Test.Encoding
         [TestCaseSource(nameof(TestCaseSource))]
         public void Roundtrip((string TestName, AccessList AccessList) testCase)
         {
-            RlpStream rlpStream = new RlpStream(10000);
+            RlpStream rlpStream = new(10000);
             _decoder.Encode(rlpStream, testCase.AccessList);
             rlpStream.Position = 0;
             AccessList decoded = _decoder.Decode(rlpStream);
@@ -113,7 +113,7 @@ namespace Nethermind.Core.Test.Encoding
         [TestCaseSource(nameof(TestCaseSource))]
         public void Roundtrip_value((string TestName, AccessList AccessList) testCase)
         {
-            RlpStream rlpStream = new RlpStream(10000);
+            RlpStream rlpStream = new(10000);
             _decoder.Encode(rlpStream, testCase.AccessList);
             rlpStream.Position = 0;
             Rlp.ValueDecoderContext ctx = rlpStream.Data.AsRlpValueContext();

@@ -64,7 +64,7 @@ namespace Nethermind.Blockchain.Test.Producers
         public void Time_passing_does_not_break_the_block()
         {
             ITimestamper timestamper = new IncrementalTimestamper();
-            ProducerUnderTest producerUnderTest = new ProducerUnderTest(
+            ProducerUnderTest producerUnderTest = new(
                 EmptyTxSource.Instance, 
                 Substitute.For<IBlockchainProcessor>(),
                 NullSealEngine.Instance,
@@ -83,7 +83,7 @@ namespace Nethermind.Blockchain.Test.Producers
         public void Parent_timestamp_is_used_consistently()
         {
             ITimestamper timestamper = new IncrementalTimestamper(DateTime.UnixEpoch, TimeSpan.FromSeconds(1));
-            ProducerUnderTest producerUnderTest = new ProducerUnderTest(
+            ProducerUnderTest producerUnderTest = new(
                 EmptyTxSource.Instance, 
                 Substitute.For<IBlockchainProcessor>(),
                 NullSealEngine.Instance,

@@ -31,7 +31,7 @@ namespace Nethermind.Blockchain.Test.Producers
         public async Task Regular_trigger_works()
         {
             int triggered = 0;
-            BuildBlocksRegularly trigger = new BuildBlocksRegularly(TimeSpan.FromMilliseconds(5));
+            BuildBlocksRegularly trigger = new(TimeSpan.FromMilliseconds(5));
             trigger.TriggerBlockProduction += (s, e) => triggered++;
             await Task.Delay(50);
 

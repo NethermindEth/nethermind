@@ -500,7 +500,7 @@ namespace Nethermind.TxPool.Test
             await RaiseBlockAddedToMainAndWaitForTransactions(5);
             
             _txPool.GetPendingTransactions().Count(t => t.GasBottleneck == 0).Should().Be(3);
-            _txPool.GetPendingTransactions().Max(t => t.GasBottleneck).Should().Be(5);
+            _txPool.GetPendingTransactions().Max(t => t.GasBottleneck).Should().Be((UInt256)5);
         }
 
         [Test]
@@ -570,8 +570,8 @@ namespace Nethermind.TxPool.Test
                 _txPool.SubmitTx(transactions[i], TxHandlingOptions.PersistentBroadcast);
             }
 
-            _txPool.GetPendingTransactions().Min(t => t.GasBottleneck).Should().Be(2);
-            _txPool.GetPendingTransactions().Max(t => t.GasBottleneck).Should().Be(2);
+            _txPool.GetPendingTransactions().Min(t => t.GasBottleneck).Should().Be((UInt256)2);
+            _txPool.GetPendingTransactions().Max(t => t.GasBottleneck).Should().Be((UInt256)2);
         }
         
         [Test]
@@ -599,7 +599,7 @@ namespace Nethermind.TxPool.Test
 
             await RaiseBlockAddedToMainAndWaitForTransactions(5);
             _txPool.GetPendingTransactions().Count(t => t.GasBottleneck == 0).Should().Be(3);
-            _txPool.GetPendingTransactions().Max(t => t.GasBottleneck).Should().Be(5);
+            _txPool.GetPendingTransactions().Max(t => t.GasBottleneck).Should().Be((UInt256)5);
         }
 
         [Test]

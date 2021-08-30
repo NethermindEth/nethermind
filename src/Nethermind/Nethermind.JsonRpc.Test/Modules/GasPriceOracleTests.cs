@@ -53,16 +53,17 @@ namespace Nethermind.JsonRpc.Test.Modules
             result.Should().Be((UInt256) 7);
         }
 
-        [Test]
-        public void GasPriceEstimate_IfPreviousGasPriceDoesNotExist_FallbackGasPriceSetToDefaultGasPrice()
+        [TestCase(null)]
+        [TestCase(100ul)]
+        public void GasPriceEstimate_IfPreviousGasPriceDoesNotExist_FallbackGasPriceSetToDefaultGasPrice(ulong? gasPrice)
         {
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-            GasPriceOracle testGasPriceOracle = new(blockFinder, specProvider);
+            GasPriceOracle testGasPriceOracle = new(blockFinder, specProvider, gasPrice);
 
             testGasPriceOracle.GetGasPriceEstimate();
             
-            testGasPriceOracle.FallbackGasPrice.Should().BeEquivalentTo((UInt256?) EthGasPriceConstants.DefaultGasPrice);
+            testGasPriceOracle.FallbackGasPrice.Should().BeEquivalentTo(gasPrice ?? 1.GWei());
         }
 
         [TestCase(3)]

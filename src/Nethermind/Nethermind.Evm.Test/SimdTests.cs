@@ -61,7 +61,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.SSTORE)
                 .Done;
 
-            var receipt = Execute(code);
+            TestAllTracerWithOutput receipt = Execute(code);
             AssertSimd(receipt, result);
         }
         
@@ -85,7 +85,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.SSTORE)
                 .Done;
 
-            var receipt = Execute(code);
+            TestAllTracerWithOutput receipt = Execute(code);
             AssertSimd(receipt, result);
         }
         
@@ -109,7 +109,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.SSTORE)
                 .Done;
 
-            var receipt = Execute(code);
+            TestAllTracerWithOutput receipt = Execute(code);
             AssertSimd(receipt, result);
         }
         

@@ -151,7 +151,7 @@ namespace Nethermind.Core.Test.Caching
             int itemsToKeep = 10;
             int iterations = 40;
                 
-            LruCache<int, int> cache = new LruCache<int, int>(maxCapacity, "test");
+            LruCache<int, int> cache = new(maxCapacity, "test");
 
             for (int i = 0; i < iterations; i++)
             {
@@ -180,7 +180,7 @@ namespace Nethermind.Core.Test.Caching
 
             Assert.Throws<ArgumentOutOfRangeException>(() => 
                 {
-                    LruCache<int, int> cache = new LruCache<int, int>(maxCapacity, "test");
+                    LruCache<int, int> cache = new(maxCapacity, "test");
                 });
 
         }

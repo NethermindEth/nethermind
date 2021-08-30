@@ -37,12 +37,12 @@ namespace Nethermind.JsonRpc.Test.Modules
             r[1] = 1;
             s[2] = 2;
             
-            Transaction tx = new Transaction();
+            Transaction tx = new();
             tx.Signature = new Signature(r, s, 27);
             
-            TransactionForRpc txForRpc = new TransactionForRpc(tx);
+            TransactionForRpc txForRpc = new(tx);
 
-            EthereumJsonSerializer serializer = new EthereumJsonSerializer();
+            EthereumJsonSerializer serializer = new();
             string serialized = serializer.Serialize(txForRpc);
 
             serialized.Should().Contain("0x20000000000000000000000000000000000000000000000000000000000");
