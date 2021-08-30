@@ -22,8 +22,8 @@ namespace Nethermind.Blockchain.Rewards
     {
         Block = 0,
         Uncle = 1,
-        External = 2,
-        EmptyStep = 3
+        EmptyStep = 2,
+        External = 3
     }
 
     public static class BlockRewardTypeExtension
