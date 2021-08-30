@@ -55,7 +55,7 @@ namespace Nethermind.Abi
 
         public override (object, int) Decode(byte[] data, int position, bool packed)
         {
-            (object[] arguments, int movedPosition) = DecodeSequence(_elements, data, packed, position);
+            (object[] arguments, int movedPosition) = DecodeSequence(_elements.Length, _elements, data, packed, position);
             return (Activator.CreateInstance(CSharpType, arguments), movedPosition)!;
         }
 
@@ -71,7 +71,7 @@ namespace Nethermind.Abi
             
             if (arg is ITuple input && input.Length == _elements.Length)
             {
-                byte[][] encodedItems = EncodeSequence(_elements, GetEnumerable(input), packed);
+                byte[][] encodedItems = EncodeSequence(_elements.Length, _elements, GetEnumerable(input), packed);
                 return Bytes.Concat(encodedItems);
             }
 
@@ -105,7 +105,7 @@ namespace Nethermind.Abi
         
         public override (object, int) Decode(byte[] data, int position, bool packed)
         {
-            (object[] arguments, int movedPosition) = DecodeSequence(_elements, data, packed, position);
+            (object[] arguments, int movedPosition) = DecodeSequence(_elements.Length, _elements, data, packed, position);
 
             object item = new T();
             for (int i = 0; i < _properties.Length; i++)
@@ -122,7 +122,7 @@ namespace Nethermind.Abi
             if (arg is T item)
             {
                 IEnumerable<object?> values = _properties.Select(p => p.GetValue(item));
-                byte[][] encodedItems = EncodeSequence(_elements, values, packed);
+                byte[][] encodedItems = EncodeSequence(_elements.Length, _elements, values, packed);
                 return Bytes.Concat(encodedItems);
             }
 

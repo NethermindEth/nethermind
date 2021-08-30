@@ -45,7 +45,7 @@ namespace Nethermind.Abi
                 throw new AbiException($"Insufficient parameters for {signature.Name}. Expected {signature.Types.Length} arguments but got {arguments.Length}");
             }
             
-            byte[][] encodedArguments = AbiType.EncodeSequence(signature.Types, arguments, packed, includeSig ? 1 : 0);
+            byte[][] encodedArguments = AbiType.EncodeSequence(signature.Types.Length, signature.Types, arguments, packed, includeSig ? 1 : 0);
             
             if (includeSig)
             {
@@ -68,7 +68,7 @@ namespace Nethermind.Abi
                 }
             }
             
-            (object[] arguments, int position) = AbiType.DecodeSequence(signature.Types, data, packed, sigOffset);
+            (object[] arguments, int position) = AbiType.DecodeSequence(signature.Types.Length, signature.Types, data, packed, sigOffset);
 
             if (position != data.Length)
             {

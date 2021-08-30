@@ -26,15 +26,21 @@ namespace Nethermind.Abi
     {
         protected const int PaddingSize = 32;
         
-        internal static byte[][] EncodeSequence(AbiType[] types, IEnumerable<object?> sequence, bool packed, int offset = 0)
+        internal static byte[][] EncodeSequence(int length, IEnumerable<AbiType> types, IEnumerable<object?> sequence, bool packed, int offset = 0)
         {
-            List<byte[]> dynamicParts = new(types.Length);
-            List<byte[]?> headerParts = new(types.Length);
+            List<byte[]> dynamicParts = new(length);
+            List<byte[]?> headerParts = new(length);
             int index = 0;
-            foreach (object? argument in sequence)
+            using IEnumerator<object?> sequenceEnumerator = sequence.GetEnumerator();
+            using IEnumerator<AbiType> typesEnumerator = types.GetEnumerator();
+            for (int i = 0; i < length; i++)
             {
-                AbiType type = types[index++];
-                byte[] encoded = type.Encode(argument, packed);
+                sequenceEnumerator.MoveNext();
+                typesEnumerator.MoveNext();
+                object? element = sequenceEnumerator.Current;
+                AbiType type = typesEnumerator.Current;
+
+                byte[] encoded = type.Encode(element, packed);
                 
                 // encode each type
                 if (type.IsDynamic)
@@ -48,7 +54,7 @@ namespace Nethermind.Abi
                     headerParts.Add(encoded);
                 }
             }
-            
+
             // now lets calculate proper offset
             BigInteger currentOffset = 0;
             
@@ -84,23 +90,42 @@ namespace Nethermind.Abi
             return encodedParts;
         }
         
-        internal static (object[], int) DecodeSequence(AbiType[] types, byte[] data, bool packed, int startPosition)
+        internal static (object[], int) DecodeSequence(int length, IEnumerable<AbiType> types, byte[] data, bool packed, int startPosition)
         {
-            object[] sequence = new object[types.Length];
+            (Array array, int position) = DecodeSequence(typeof(object), length, types, data, packed, startPosition);
+            return ((object[])array, position);
+        }
+
+        internal static (Array, int) DecodeSequence(Type elementType, int length, IEnumerable<AbiType> types, byte[] data, bool packed, int startPosition)
+        {
+            Array sequence = Array.CreateInstance(elementType, length);
             int position = startPosition;
             int dynamicPosition = 0;
-            for (int i = 0; i < types.Length; i++)
+            using IEnumerator<AbiType> typesEnumerator = types.GetEnumerator();
+            object? item;
+            for (int i = 0; i < length; i++)
             {
-                AbiType type = types[i];
+                typesEnumerator.MoveNext();
+                AbiType type = typesEnumerator.Current;
+
                 if (type.IsDynamic)
                 {
                     (UInt256 offset, int nextPosition) = UInt256.DecodeUInt(data, position, packed);
-                    (sequence[i], dynamicPosition) = type.Decode(data, startPosition + (int)offset, packed);
+                    (item, dynamicPosition) = type.Decode(data, startPosition + (int)offset, packed);
                     position = nextPosition;
                 }
                 else
                 {
-                    (sequence[i], position) = type.Decode(data, position, packed);
+                    (item, position) = type.Decode(data, position, packed);
+                }
+
+                try
+                {
+                    sequence.SetValue(item, i);
+                }
+                catch (InvalidCastException e)
+                {
+                    throw;
                 }
             }
 
