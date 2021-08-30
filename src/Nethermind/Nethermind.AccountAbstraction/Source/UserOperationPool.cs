@@ -124,6 +124,11 @@ namespace Nethermind.AccountAbstraction.Source
             return false;
         }
 
+        public AddUserOperationResult SubmitUserOperation(UserOperation userOperation, UserOperationHandlingOptions handlingOptions)
+        {
+            throw new NotImplementedException();
+        }
+
         private bool ValidateUserOperation(UserOperation userOperation)
         {
             if (userOperation.MaxFeePerGas < _accountAbstractionConfig.MinimumGasPrice 
@@ -174,5 +179,6 @@ namespace Nethermind.AccountAbstraction.Source
 
             return success;
         }
+        
     }
 }

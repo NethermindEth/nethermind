@@ -15,17 +15,31 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Collections.Generic;
-using Nethermind.AccountAbstraction.Broadcaster;
-using Nethermind.AccountAbstraction.Data;
-using Nethermind.Core;
+using System;
 
-namespace Nethermind.AccountAbstraction.Source
+namespace Nethermind.AccountAbstraction.Broadcaster
 {
-    public interface IUserOperationPool : IUserOperationSource
+    [Flags]
+    public enum UserOperationHandlingOptions
     {
-        bool AddUserOperation(UserOperation userOperation);
+        None = 0,
         
-        AddUserOperationResult SubmitUserOperation(UserOperation userOperation, UserOperationHandlingOptions handlingOptions);
+        /// <summary>
+        /// Tries to find the valid nonce for the given account
+        /// </summary>
+        ManagedNonce = 1,
+        
+        /// <summary>
+        /// Keeps trying to push the transaction until it is included in a block
+        /// </summary>
+        PersistentBroadcast = 2,
+        
+        
+        /// <summary>
+        /// Allows user operations to be signed by node even if its already signed
+        /// </summary>
+        AllowReplacingSignature = 8,
+
+        All = ManagedNonce | PersistentBroadcast | AllowReplacingSignature
     }
 }

@@ -15,17 +15,16 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Collections.Generic;
-using Nethermind.AccountAbstraction.Broadcaster;
+using System.Threading.Tasks;
 using Nethermind.AccountAbstraction.Data;
-using Nethermind.Core;
 
-namespace Nethermind.AccountAbstraction.Source
+namespace Nethermind.AccountAbstraction.Broadcaster
 {
-    public interface IUserOperationPool : IUserOperationSource
+    /// <summary>
+    /// Interface for classes that try to make final changes to the transaction object before it is broadcast.
+    /// </summary>
+    public interface IUserOperationSealer
     {
-        bool AddUserOperation(UserOperation userOperation);
-        
-        AddUserOperationResult SubmitUserOperation(UserOperation userOperation, UserOperationHandlingOptions handlingOptions);
+        ValueTask Seal(UserOperation userOperation, UserOperationHandlingOptions userOperationHandlingOptions);
     }
 }

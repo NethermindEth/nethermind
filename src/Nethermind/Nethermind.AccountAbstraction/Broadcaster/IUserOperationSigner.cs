@@ -15,17 +15,14 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Collections.Generic;
-using Nethermind.AccountAbstraction.Broadcaster;
+using System.Threading.Tasks;
 using Nethermind.AccountAbstraction.Data;
-using Nethermind.Core;
 
-namespace Nethermind.AccountAbstraction.Source
+namespace Nethermind.AccountAbstraction.Broadcaster
 {
-    public interface IUserOperationPool : IUserOperationSource
+    public interface IUserOperationSigner : IUserOperationSealer
     {
-        bool AddUserOperation(UserOperation userOperation);
-        
-        AddUserOperationResult SubmitUserOperation(UserOperation userOperation, UserOperationHandlingOptions handlingOptions);
+        ValueTask Sign(UserOperation uop);
+        ValueTask IUserOperationSealer.Seal(UserOperation uop, UserOperationHandlingOptions userOperation) => Sign(uop);
     }
 }
