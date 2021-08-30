@@ -122,10 +122,14 @@ namespace Nethermind.Evm.Test
             return tracer;
         }
 
-        protected TestAllTracerWithOutput Execute(long blockNumber, long gasLimit, byte[] code)
+        protected TestAllTracerWithOutput Execute(long blockNumber, long gasLimit, byte[] code, long? blockGasLimit = null)
         {
             (Block block, Transaction transaction) = PrepareTx(blockNumber, gasLimit, code);
             TestAllTracerWithOutput tracer = CreateTracer();
+            if (blockGasLimit.HasValue)
+            {
+                block.Header.GasLimit = blockGasLimit.Value;
+            }
             _processor.Execute(transaction, block.Header, tracer);
             return tracer;
         }

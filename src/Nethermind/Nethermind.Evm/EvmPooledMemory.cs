@@ -18,6 +18,7 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
@@ -35,6 +36,19 @@ namespace Nethermind.Evm
         public ulong Length { get; private set; }
         public ulong Size { get; private set; }
 
+        public LruCache<(UInt256 MemoryPosition, UInt256 Length), CodeInfo> MemCodeCache { get; } 
+            = new (MemoryAllowance.CodeCacheSize, MemoryAllowance.CodeCacheSize, "VM memory cached code");
+
+        private void InvalidateMemCodeCache()
+        {
+            // Currently we clear the cache whenever memory was modified
+            // We could try to use the location and the length to clear only touched items 
+            if (MemCodeCache.MapSize > 0)
+            {
+                MemCodeCache.Clear();
+            }
+        }
+        
         public void SaveWord(in UInt256 location, Span<byte> word)
         {
             CheckMemoryAccessViolation(in location, WordSize);
@@ -46,6 +60,8 @@ namespace Nethermind.Evm
             }
 
             word.CopyTo(_memory.AsSpan((int)location + WordSize - word.Length, word.Length));
+
+            InvalidateMemCodeCache();
         }
 
         public void SaveByte(in UInt256 location, byte value)
@@ -54,6 +70,8 @@ namespace Nethermind.Evm
             UpdateSize(in location, 1);
 
             _memory[(long)location] = value;
+            
+            InvalidateMemCodeCache();
         }
 
         public void Save(in UInt256 location, Span<byte> value)
@@ -67,6 +85,8 @@ namespace Nethermind.Evm
             UpdateSize(in location, (UInt256)value.Length);
 
             value.CopyTo(_memory.AsSpan((int)location, value.Length));
+            
+            InvalidateMemCodeCache();
         }
 
         private static void CheckMemoryAccessViolation(in UInt256 location, in UInt256 length)
@@ -90,6 +110,8 @@ namespace Nethermind.Evm
             UpdateSize(in location, (UInt256)value.Length);
 
             Array.Copy(value, 0, _memory, (long)location, value.Length);
+            
+            InvalidateMemCodeCache();
         }
         
         public void Save(in UInt256 location, ZeroPaddedSpan value)
@@ -105,6 +127,8 @@ namespace Nethermind.Evm
             int intLocation = (int) location;
             value.Span.CopyTo(_memory.AsSpan().Slice(intLocation, value.Span.Length));
             _memory.AsSpan().Slice(intLocation + value.Span.Length, value.PaddingLength).Clear();
+            
+            InvalidateMemCodeCache();
         }
         
         public void Save(in UInt256 location, ZeroPaddedMemory value)
@@ -120,6 +144,8 @@ namespace Nethermind.Evm
             int intLocation = (int) location;
             value.Memory.CopyTo(_memory.AsMemory().Slice(intLocation, value.Memory.Length));
             _memory.AsSpan().Slice(intLocation + value.Memory.Length, value.PaddingLength).Clear();
+            
+            InvalidateMemCodeCache();
         }
 
         public Span<byte> LoadSpan(in UInt256 location)

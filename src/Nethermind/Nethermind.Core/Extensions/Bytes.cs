@@ -254,6 +254,16 @@ namespace Nethermind.Core.Extensions
             return result;
         }
 
+        public static byte[] PadRightWithoutTrailingZeros(this byte[] bytes, int length)
+        {
+            if (bytes.Length <= length)
+            {
+                return (byte[])bytes.Clone();
+            }
+
+            return bytes.Slice(0, length);
+        }
+
         public static byte[] Concat(params byte[][] parts)
         {
             int totalLength = 0;

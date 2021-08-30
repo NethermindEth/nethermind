@@ -2283,7 +2283,12 @@ namespace Nethermind.Evm
                             break;
                         }
 
-                        Span<byte> initCode = vmState.Memory.LoadSpan(in memoryPositionOfInitCode, initCodeLength);
+                        if (!vmState.Memory.MemCodeCache.TryGet((memoryPositionOfInitCode, initCodeLength), out CodeInfo? codeInfo))
+                        {
+                            Span<byte> initCode = vmState.Memory.LoadSpan(in memoryPositionOfInitCode, initCodeLength);
+                            codeInfo = new CodeInfo(initCode.ToArray());
+                            vmState.Memory.MemCodeCache.Set((memoryPositionOfInitCode, initCodeLength), codeInfo);
+                        }
                         
                         UInt256 balance = _state.GetBalance(env.ExecutingAccount);
                         if (value > balance)
@@ -2305,7 +2310,7 @@ namespace Nethermind.Evm
 
                         Address contractAddress = instruction == Instruction.CREATE
                             ? ContractAddress.From(env.ExecutingAccount, _state.GetNonce(env.ExecutingAccount))
-                            : ContractAddress.From(env.ExecutingAccount, salt, initCode);
+                            : ContractAddress.From(env.ExecutingAccount, salt, codeInfo.MachineCode);
 
                         if (spec.UseHotAndColdStorage)
                         {
@@ -2344,7 +2349,8 @@ namespace Nethermind.Evm
                         callEnv.Caller = env.ExecutingAccount;
                         callEnv.ExecutingAccount = contractAddress;
                         callEnv.CodeSource = null;
-                        callEnv.CodeInfo = new CodeInfo(initCode.ToArray());
+
+                        callEnv.CodeInfo = codeInfo;
                         callEnv.InputData = ReadOnlyMemory<byte>.Empty;
                         callEnv.TransferValue = value;
                         callEnv.Value = value;

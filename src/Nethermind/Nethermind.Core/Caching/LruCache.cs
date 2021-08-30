@@ -33,6 +33,8 @@ namespace Nethermind.Core.Caching
         private readonly Dictionary<TKey, LinkedListNode<LruCacheItem>> _cacheMap;
         private readonly LinkedList<LruCacheItem> _lruList;
 
+        public int MapSize => _cacheMap.Count;
+
         [MethodImpl(MethodImplOptions.Synchronized)]
         public void Clear()
         {

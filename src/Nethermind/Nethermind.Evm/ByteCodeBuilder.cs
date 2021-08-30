@@ -34,12 +34,23 @@ namespace Nethermind.Evm
             return this;
         }
         
-        public Prepare Op(Instruction instruction)
+        public Prepare Op(Instruction instruction, int multiplier = 1)
         {
-            _byteCode.Add((byte) instruction);
+            for (int i = 0; i < multiplier; i++)
+            {
+                _byteCode.Add((byte)instruction);
+            }
             return this;
         }
 
+        public Prepare AddJumpDest(out int location)
+        {
+            _byteCode.Add((byte)Instruction.JUMPDEST);
+            location = _byteCode.Count - 1;
+            
+            return this;
+        }
+        
         public Prepare Create(byte[] code, UInt256 value)
         {
             StoreDataInMemory(0, code);
@@ -50,6 +61,15 @@ namespace Nethermind.Evm
             return this;
         }
 
+        public Prepare Create(UInt256 codeLength, UInt256 memoryOffset, UInt256 value)
+        {
+            PushData(codeLength);
+            PushData(memoryOffset);
+            PushData(value);
+            Op(Instruction.CREATE);
+            return this;
+        }
+        
         public Prepare Create2(byte[] code, byte[] salt, UInt256 value)
         {
             StoreDataInMemory(0, code);
@@ -61,6 +81,17 @@ namespace Nethermind.Evm
             return this;
         }
 
+        public Prepare ExtCodeCopy(UInt256 codeLength, UInt256 codeOffset, UInt256 memoryOffset, Address address)
+        {
+            PushData(codeLength);
+            PushData(codeOffset);
+            PushData(memoryOffset);
+            PushData(address);
+            Op(Instruction.EXTCODECOPY);
+            
+            return this;
+        }
+        
         public Prepare ForInitOf(byte[] codeToBeDeployed)
         {
             StoreDataInMemory(0, codeToBeDeployed);
@@ -269,6 +300,29 @@ namespace Nethermind.Evm
                 Op(Instruction.MSTORE);
             }
 
+            return this;
+        }
+        
+        public Prepare StoreDataInMemoryWithoutTrailingZeros(int position, byte[] data)
+        {
+            int i = 0;
+                
+            for (; i + 32 < data.Length; i += 32)
+            {
+                var dataSlice = data.Slice(i, data.Length - i).PadRightWithoutTrailingZeros(32);
+                PushData(dataSlice);
+                PushData(position + i);
+                Op(Instruction.MSTORE);
+            }
+
+            for (; i < data.Length; i++)
+            {
+                var dataSlice = data[i];
+                PushData(dataSlice);
+                PushData(position + i);
+                Op(Instruction.MSTORE8);
+            }
+            
             return this;
         }
     }
