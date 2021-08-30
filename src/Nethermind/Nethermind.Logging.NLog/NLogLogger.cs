@@ -44,7 +44,7 @@ namespace Nethermind.Logging.NLog
             Init(fileName, logDirectory, loggerConfig);
         }
 
-        private void Init(string fileName, string logDirectory, string loggerConfig)
+        private void Init(string fileName, string logDirectory, string loggerConfig = null)
         {
             var logsDir = (string.IsNullOrEmpty(logDirectory) ? "logs" : logDirectory).GetApplicationResourcePath();
             if (!Directory.Exists(logsDir))
@@ -61,15 +61,15 @@ namespace Nethermind.Logging.NLog
                 }
             }
             
-            //Add rules here JsonRpc.*: Warn; Block.*: Error',
+            //Add rules here for e.g. 'JsonRpc.*: Warn; Block.*: Error',
             if (loggerConfig != null)
             {
-                string[] rules = loggerConfig.Split(" ");
+                string[] rules = loggerConfig.Split(";", StringSplitOptions.RemoveEmptyEntries);
                 foreach (string rule in rules)
                 {
                     string[] ruleBreakdown = rule.Split(": ");
-                    string targetName = ruleBreakdown[0];
-                    string level = ruleBreakdown[1];
+                    string targetName = ruleBreakdown[0].Trim();
+                    string level = ruleBreakdown[1].Trim();
                     global::NLog.LogLevel logLevel = getLogLevel(level);
                     LogManager.Configuration!.AddRule(logLevel, global::NLog.LogLevel.Fatal, targetName);
                 }
@@ -79,16 +79,18 @@ namespace Nethermind.Logging.NLog
             {
                 switch (level)
                 {
-                    case "Warn":
-                        return global::NLog.LogLevel.Warn;
+                    case "Trace":
+                        return global::NLog.LogLevel.Trace;
                     case "Debug":
                         return global::NLog.LogLevel.Debug;
+                    case "Info":
+                        return global::NLog.LogLevel.Info;
+                    case "Warn":
+                        return global::NLog.LogLevel.Warn;
                     case "Error":
                         return global::NLog.LogLevel.Error;
                     case "Fatal":
                         return global::NLog.LogLevel.Fatal;
-                    case "Info":
-                        return global::NLog.LogLevel.Info;
                     default:
                         throw new ArgumentException(
                             "Configuration string was not formatted properly or LogLevel was not spelled correctly.");
