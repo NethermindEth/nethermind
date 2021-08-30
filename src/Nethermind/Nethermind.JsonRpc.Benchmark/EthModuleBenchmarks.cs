@@ -38,6 +38,7 @@ using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
@@ -132,6 +133,7 @@ namespace Nethermind.JsonRpc.Benchmark
                 false);
 
             GasPriceOracle gasPriceOracle = new(blockTree, specProvider);
+            FeeHistoryOracle feeHistoryOracle = new(blockTree, NullReceiptStorage.Instance, specProvider);
             
             _ethModule = new EthRpcModule(
                 new JsonRpcConfig(),
@@ -143,7 +145,8 @@ namespace Nethermind.JsonRpc.Benchmark
                 NullWallet.Instance,
                 LimboLogs.Instance,
                 specProvider, 
-                gasPriceOracle);
+                gasPriceOracle,
+                feeHistoryOracle);
         }
 
         [Benchmark]
