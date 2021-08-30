@@ -98,7 +98,9 @@ namespace Nethermind.Runner
             CommandLineApplication app = new() { Name = "Nethermind.Runner" };
             _ = app.HelpOption("-?|-h|--help");
             _ = app.VersionOption("-v|--version", () => ClientVersion.Version, () => ClientVersion.Description);
-            
+
+            CommandOption configOptions = app.Option("-co|-configOption <configOptions>", "configuration options",
+                CommandOptionType.SingleValue);
             CommandOption dataDir = app.Option("-dd|--datadir <dataDir>", "data directory", CommandOptionType.SingleValue);
             CommandOption configFile = app.Option("-c|--config <configFile>", "config file path", CommandOptionType.SingleValue);
             CommandOption dbBasePath = app.Option("-d|--baseDbPath <baseDbPath>", "base db path", CommandOptionType.SingleValue);
@@ -161,7 +163,7 @@ namespace Nethermind.Runner
                 Console.CancelKeyPress += ConsoleOnCancelKeyPress;
 
                 SetFinalDataDirectory(dataDir.HasValue() ? dataDir.Value() : null, initConfig, keyStoreConfig);
-                NLogManager logManager = new(initConfig.LogFileName, initConfig.LogDirectory, initConfig.LogLevel);
+                NLogManager logManager = new(initConfig.LogFileName, initConfig.LogDirectory, configOptions.HasValue() ? configOptions.Value() : null);
 
                 _logger = logManager.GetClassLogger();
                 if (_logger.IsDebug) _logger.Debug($"Nethermind version: {ClientVersion.Description}");

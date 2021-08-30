@@ -19,6 +19,8 @@ using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using NLog;
+using NLog.Config;
+using NLog.Fluent;
 using NLog.Targets;
 
 [assembly: InternalsVisibleTo("Nethermind.Logging.NLog.Test")]
@@ -35,12 +37,12 @@ namespace Nethermind.Logging.NLog
         public bool IsDebug { get; private set; }
         public bool IsTrace { get; private set; }
 
-        internal readonly global::NLog.Logger Logger;
+        internal readonly Logger Logger;
 
         public NLogLogger(Type type, string fileName, string logDirectory = null, string loggerName = null, string loggerConfig = null)
         {
             loggerName = string.IsNullOrEmpty(loggerName) ? type.FullName.Replace("Nethermind.", string.Empty) : loggerName;
-            Logger = global::NLog.LogManager.GetLogger(loggerName);
+            Logger = LogManager.GetLogger(loggerName);
             Init(fileName, logDirectory, loggerConfig);
         }
 
@@ -68,10 +70,11 @@ namespace Nethermind.Logging.NLog
                 foreach (string rule in rules)
                 {
                     string[] ruleBreakdown = rule.Split(": ");
-                    string targetName = ruleBreakdown[0].Trim();
+                    string loggerNamePattern = ruleBreakdown[0].Trim();
                     string level = ruleBreakdown[1].Trim();
                     global::NLog.LogLevel logLevel = getLogLevel(level);
-                    LogManager.Configuration!.AddRule(logLevel, global::NLog.LogLevel.Fatal, targetName);
+                    Target target = LogManager.Configuration!.FindTargetByName("auto-colored-console-async");
+                    LogManager.Configuration.AddRuleForOneLevel(logLevel, target, loggerNamePattern);
                 }
             }
 

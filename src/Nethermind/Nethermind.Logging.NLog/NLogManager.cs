@@ -26,7 +26,7 @@ namespace Nethermind.Logging.NLog
         private readonly string _logDirectory;
         private readonly string _logConfig;
 
-        public NLogManager(string logFileName, string logDirectory, string logConfig)
+        public NLogManager(string logFileName, string logDirectory, string logConfig = null)
         {
             _logFileName = logFileName;
             _logDirectory = logDirectory;
