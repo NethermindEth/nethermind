@@ -43,7 +43,6 @@ namespace Nethermind.AccountAbstraction.Data
             stream.Encode(op.MaxFeePerGas);
             stream.Encode(op.MaxPriorityFeePerGas);
             stream.Encode(op.Paymaster);
-            stream.Encode(op.Signer);
             
             // signature encoding
             stream.Encode(op.Signature.V);
@@ -62,7 +61,6 @@ namespace Nethermind.AccountAbstraction.Data
                    + Rlp.LengthOf(op.MaxFeePerGas)
                    + Rlp.LengthOf(op.MaxPriorityFeePerGas)
                    + Rlp.LengthOf(op.Paymaster)
-                   + Rlp.LengthOf(op.Signer)
                    + Rlp.LengthOf(op.Signature.BytesWithRecovery);
         }
     }

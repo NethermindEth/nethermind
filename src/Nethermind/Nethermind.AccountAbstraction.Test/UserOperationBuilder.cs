@@ -102,7 +102,6 @@ namespace Nethermind.AccountAbstraction.Test
         {
             privateKey ??= TestItem.IgnoredPrivateKey;
             AccountAbstractionRpcModuleTests.SignUserOperation(TestObjectInternal, privateKey);
-            TestObjectInternal.Signer = privateKey.Address;
             return this;
         }
 

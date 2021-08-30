@@ -28,7 +28,7 @@ namespace Nethermind.AccountAbstraction.Data
 {
     public partial class UserOperation
     {
-        public UserOperation(Address target, UInt256 nonce, byte[] callData, byte[] initCode, UInt256 callGas, UInt256 verificationGas, UInt256 maxFeePerGas, UInt256 maxPriorityFeePerGas, Address paymaster, Address signer, Signature signature, byte[] paymasterData)
+        public UserOperation(Address target, UInt256 nonce, byte[] callData, byte[] initCode, UInt256 callGas, UInt256 verificationGas, UInt256 maxFeePerGas, UInt256 maxPriorityFeePerGas, Address paymaster, Signature signature, byte[] paymasterData)
         {
             Target = target;
             Nonce = nonce;
@@ -39,7 +39,6 @@ namespace Nethermind.AccountAbstraction.Data
             MaxFeePerGas = maxFeePerGas;
             MaxPriorityFeePerGas = maxPriorityFeePerGas;
             Paymaster = paymaster;
-            Signer = signer;
             Signature = signature;
             PaymasterData = paymasterData;
             
@@ -60,7 +59,6 @@ namespace Nethermind.AccountAbstraction.Data
             MaxPriorityFeePerGas = MaxPriorityFeePerGas,
             Paymaster = Paymaster!,
             PaymasterData = PaymasterData ?? Bytes.Empty,
-            Signer = Signer!,
             Signature = Bytes.FromHexString(Signature!.ToString())
         };
 
@@ -74,7 +72,6 @@ namespace Nethermind.AccountAbstraction.Data
         public UInt256 MaxFeePerGas { get; set; }
         public UInt256 MaxPriorityFeePerGas { get; set; }
         public Address? Paymaster { get; set; }
-        public Address? Signer { get; set; }
         public Signature? Signature { get; set; }
         public byte[]? PaymasterData { get; set; }
         public UserOperationAccessList AccessList { get; set; }
@@ -94,7 +91,6 @@ namespace Nethermind.AccountAbstraction.Data
         public UInt256 MaxPriorityFeePerGas { get; set; }
         public Address Paymaster { get; set; }
         public byte[] PaymasterData { get; set; }
-        public Address Signer { get; set; }
         public byte[] Signature { get; set; }
     }
 }
