@@ -290,7 +290,7 @@ namespace Nethermind.Network.P2P
 
         protected override TimeSpan InitTimeout => Timeouts.P2PHello;
 
-        private static readonly IEnumerable<Capability> DefaultCapabilities = new Capability[]
+        public static readonly IEnumerable<Capability> DefaultCapabilities = new Capability[]
         {
             new Capability(Protocol.Eth, 62),
             new Capability(Protocol.Eth, 63),
