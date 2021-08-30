@@ -43,11 +43,12 @@ namespace Nethermind.Abi
             }
 
             Length = length;
+            Name = $"bytes{Length}";
         }
 
         public int Length { get; }
 
-        public override string Name => $"bytes{Length}";
+        public override string Name { get; } 
 
         public override (object, int) Decode(byte[] data, int position, bool packed)
         {

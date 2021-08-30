@@ -64,11 +64,11 @@ namespace Nethermind.Abi
 
             Length = length;
             Precision = precision;
-
+            Name = $"ufixed{Length}x{Precision}";
             _denominator = BigInteger.Pow(10, Precision);
         }
 
-        public override string Name => $"ufixed{Length}x{Precision}";
+        public override string Name { get; }
 
         public int Length { get; }
         public int Precision { get; }

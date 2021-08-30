@@ -64,6 +64,7 @@ namespace Nethermind.Abi
             }
 
             Length = length;
+            Name = $"uint{Length}";
             CSharpType = GetCSharpType();
         }
 
@@ -71,7 +72,7 @@ namespace Nethermind.Abi
 
         public int LengthInBytes => Length / 8;
 
-        public override string Name => $"uint{Length}";
+        public override string Name { get; }
 
         public override (object, int) Decode(byte[] data, int position, bool packed)
         {
