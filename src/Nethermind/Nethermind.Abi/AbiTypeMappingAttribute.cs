@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,17 +13,20 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
 using System;
-using Nethermind.Abi;
 
-namespace Nethermind.Blockchain.Contracts.Json
+namespace Nethermind.Abi
 {
-    public interface IAbiDefinitionParser
+    [AttributeUsage(AttributeTargets.Property)]
+    public class AbiTypeMappingAttribute : Attribute
     {
-        AbiDefinition Parse(string json, string name = null);
-        AbiDefinition Parse(Type type);
-        public AbiDefinition Parse<T>() => Parse(typeof(T));
-        void RegisterAbiTypeFactory(IAbiTypeFactory abiTypeFactory);
+        public AbiTypeMappingAttribute(Type abiType, params object[] args)
+        {
+            AbiType = (AbiType)Activator.CreateInstance(abiType, args)! ?? throw new ArgumentException($"Cannot create type {abiType}", nameof(abiType));
+        }
+
+        public AbiType AbiType { get; }
     }
 }
