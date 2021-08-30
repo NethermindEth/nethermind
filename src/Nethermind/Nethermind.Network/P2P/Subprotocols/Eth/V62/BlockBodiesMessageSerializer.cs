@@ -21,7 +21,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 {
-    public class BlockBodiesMessageSerializer : IZeroMessageSerializer<BlockBodiesMessage>
+    public class BlockBodiesMessageSerializer : IZeroInnerMessageSerializer<BlockBodiesMessage>
     {
         public byte[] Serialize(BlockBodiesMessage message)
         {
@@ -44,7 +44,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             NettyRlpStream rlpStream = new NettyRlpStream(byteBuffer);
             return Deserialize(rlpStream);
         }
-        
+
+        public int GetLength(BlockBodiesMessage message, out int contentLength)
+        {
+            byte[] oldWay = Serialize(message);
+            contentLength = oldWay.Length;
+            return contentLength;
+        }
+
         public static BlockBodiesMessage Deserialize(RlpStream rlpStream)
         {
             BlockBodiesMessage message = new();

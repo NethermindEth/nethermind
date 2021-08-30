@@ -97,7 +97,7 @@ namespace Nethermind.Network.P2P
         }
 
         [Todo(Improve.Refactor, "Generic approach to requests")]
-        private async Task<BlockBody[]> SendRequest(GetBlockBodiesMessage message, CancellationToken token)
+        protected virtual async Task<BlockBody[]> SendRequest(GetBlockBodiesMessage message, CancellationToken token)
         {
             if (Logger.IsTrace)
             {
@@ -154,7 +154,7 @@ namespace Nethermind.Network.P2P
             return headers;
         }
 
-        private async Task<BlockHeader[]> SendRequest(GetBlockHeadersMessage message, CancellationToken token)
+        protected virtual async Task<BlockHeader[]> SendRequest(GetBlockHeadersMessage message, CancellationToken token)
         {
             if (Logger.IsTrace)
             {
@@ -330,13 +330,13 @@ namespace Nethermind.Network.P2P
             return new BlockBodiesMessage(blocks);
         }
         
-        protected void Handle(BlockHeadersMessage message, long size)
+        protected virtual void Handle(BlockHeadersMessage message, long size)
         {
             Metrics.Eth62BlockHeadersReceived++;
             _headersRequests.Handle(message.BlockHeaders, size);
         }
 
-        protected void HandleBodies(BlockBodiesMessage blockBodiesMessage, long size)
+        protected virtual void HandleBodies(BlockBodiesMessage blockBodiesMessage, long size)
         {
             Metrics.Eth62BlockBodiesReceived++;
             _bodiesRequests.Handle(blockBodiesMessage.Bodies, size);
