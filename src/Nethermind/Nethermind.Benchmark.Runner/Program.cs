@@ -14,24 +14,35 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Collections;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Reflection;
+using BenchmarkDotNet.Columns;
 using BenchmarkDotNet.Configs;
 using BenchmarkDotNet.Environments;
 using BenchmarkDotNet.Jobs;
+using BenchmarkDotNet.Reports;
 using BenchmarkDotNet.Running;
+using System.Linq;
 
 namespace Nethermind.Benchmark.Runner
 {
     public class DashboardConfig : ManualConfig
     {
-        public DashboardConfig()
+        public DashboardConfig(params Job[] jobs) 
         {
-            AddJob(Job.MediumRun.WithRuntime(CoreRuntime.Core50));
+            foreach (Job job in jobs)
+            {
+                AddJob(job);
+            }
+            
             AddColumnProvider(BenchmarkDotNet.Columns.DefaultColumnProviders.Statistics);
+            AddColumnProvider(BenchmarkDotNet.Columns.DefaultColumnProviders.Params);
             AddLogger(BenchmarkDotNet.Loggers.ConsoleLogger.Default);
             AddExporter(BenchmarkDotNet.Exporters.Json.JsonExporter.FullCompressed);
             AddDiagnoser(BenchmarkDotNet.Diagnosers.MemoryDiagnoser.Default);
+            WithSummaryStyle(SummaryStyle.Default.WithMaxParameterColumnWidth(100));
         }
     }
     
@@ -39,10 +50,7 @@ namespace Nethermind.Benchmark.Runner
     {
         public static void Main(string[] args)
         {
-            IConfig config = Debugger.IsAttached ? new DebugInProcessConfig() : new DashboardConfig();
-            
-            Assembly[] assemblies =
-            {
+            List<Assembly> additionalJobAssemblies = new(){
                 typeof(Nethermind.JsonRpc.Benchmark.EthModuleBenchmarks).Assembly,
                 typeof(Nethermind.Benchmarks.Core.Keccak256Benchmarks).Assembly,
                 typeof(Nethermind.Evm.Benchmark.EvmStackBenchmarks).Assembly,
@@ -50,16 +58,25 @@ namespace Nethermind.Benchmark.Runner
                 typeof(Nethermind.Precompiles.Benchmark.KeccakBenchmark).Assembly
             };
 
+            List<Assembly> simpleJobAssemblies = new() {
+                typeof(Nethermind.EthereumTests.Benchmark.EthereumTests).Assembly,
+            };
+            
             if (Debugger.IsAttached)
             {
-                BenchmarkSwitcher.FromAssemblies(assemblies).RunAll(config);
+                BenchmarkSwitcher.FromAssemblies(additionalJobAssemblies.Union(simpleJobAssemblies).ToArray()).RunAll(new DebugInProcessConfig());
             }
             else
             {
-                foreach (Assembly assembly in assemblies)
+                foreach (Assembly assembly in additionalJobAssemblies)
                 {
-                    BenchmarkRunner.Run(assembly, config);    
+                    BenchmarkRunner.Run(assembly, new DashboardConfig(Job.MediumRun.WithRuntime(CoreRuntime.Core50)));    
                 }    
+                
+                foreach (Assembly assembly in simpleJobAssemblies)
+                {
+                    BenchmarkRunner.Run(assembly, new DashboardConfig());    
+                }  
             }
         }
     }
