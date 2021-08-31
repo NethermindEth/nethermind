@@ -31,13 +31,13 @@ jobs:
       run: |
         docker buildx build --platform=linux/amd64 -t nethermindeth/truffle . --push
     - name: Setting up Node.js
-      uses: actions/setup-node@v1.4.4
+      uses: actions/setup-node@v2
       with:
-        node-version: '13'
+        node-version: '16'
     - run: npm install -g truffle
     - name: Running Truffle smoke tests
       run: |
-        docker run --name nethermind --network host -itd nethermindeth/truffle --config spaceneth_persistent
+        docker run --name nethermind --network host -itd nethermindeth/truffle --config spaceneth
         cd truffleTest/
         npm i sha3 --save
         npm i
