@@ -22,7 +22,36 @@
       <ProjectReference Include="..\Nethermind.Merge.Plugin.Test\Nethermind.Merge.Plugin.Test.csproj" />
       <ProjectReference Include="..\Nethermind.Merge.Plugin\Nethermind.Merge.Plugin.csproj" />
     </ItemGroup>
+  
+    <ItemGroup>
+      <None Remove="TestContracts\SimpleWallet.json" />
+      <Content Include="TestContracts\SimpleWallet.json">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </Content>
+    </ItemGroup>
 
+    <ItemGroup>
+      <None Remove="TestContracts\TestCounter.json" />
+      <Content Include="TestContracts\TestCounter.json">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </Content>
+    </ItemGroup>
+
+    <ItemGroup>
+      <None Remove="TestContracts\TokenPaymaster.json" />
+      <Content Include="TestContracts\TokenPaymaster.json">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </Content>
+    </ItemGroup>
+
+    <ItemGroup>
+      <None Remove="TestContracts\Singleton.json" />
+      <Content Include="TestContracts\Singleton.json">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </Content>
+    </ItemGroup>
+  
+  
     <ItemGroup>
       <Content Include="Tests\*.json">
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

@@ -33,6 +33,11 @@ namespace Nethermind.Abi
             }
             else if (type.IsArray)
             {
+                if (type == typeof(byte[]))
+                {
+                    return DynamicBytes;
+                }
+                
                 Type elementType = type.GetElementType()!;
                 return new AbiArray(GetForCSharpType(elementType));
             }
