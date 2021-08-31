@@ -308,6 +308,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
+        [Retry(3)]
         public void LogsSubscription_with_null_arguments_on_NewHeadBlock_event()
         {
             int blockNumber = 55555;
