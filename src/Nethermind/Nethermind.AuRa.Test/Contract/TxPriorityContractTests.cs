@@ -95,6 +95,7 @@ namespace Nethermind.AuRa.Test.Contract
         }
         
         [Test]
+        [Retry(3)]
         public async Task 
             priority_should_return_correctly()
         {
