@@ -227,6 +227,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
         
         [Test]
+        [Retry(3)]
         public void NewHeadSubscription_should_send_notifications_when_adding_multiple_blocks_at_once_and_after_reorgs()
         {
             MemDb blocksDb = new();
