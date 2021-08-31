@@ -22,30 +22,18 @@ using BenchmarkDotNet.Engines;
 namespace Nethermind.EthereumTests.Benchmark
 {
     [SimpleJob(RunStrategy.ColdStart, warmupCount:1, targetCount: 5)]
-    public class CallsWithLargeData : GeneralStateTestBase
+    public class SingleTests : GeneralStateTestBase
     {
-        [Benchmark]
-        public void Gas10M_0xDead()
-        {
-            FileTestsSource source = new(@"AdditionalTests\CallsWithLargeData\10MGas_0xdead.json");
-            var tests = source.LoadGeneralStateTests();
-        
-            foreach (GeneralStateTest test in tests)
-            {
-                RunTest(test);
-            }
-        }
-        
-        [Benchmark]
-        public void Gas10M_BnAdd()
-        {
-            FileTestsSource source = new(@"AdditionalTests\CallsWithLargeData\10MGas_bnAdd.json");
-            var tests = source.LoadGeneralStateTests();
-        
-            foreach (GeneralStateTest test in tests)
-            {
-                RunTest(test);
-            }
-        }
+        // [Benchmark]
+        // public void TestName()
+        // {
+        //     FileTestsSource source = new(@"AdditionalTests\testFile.json");
+        //     var tests = source.LoadGeneralStateTests();
+        //
+        //     foreach (GeneralStateTest test in tests)
+        //     {
+        //         RunTest(test);
+        //     }
+        // }
     }
 }
