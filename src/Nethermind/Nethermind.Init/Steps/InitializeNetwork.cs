@@ -409,8 +409,7 @@ namespace Nethermind.Init.Steps
 
             IDiscoveryConfig discoveryConfig = _api.Config<IDiscoveryConfig>();
             IInitConfig initConfig = _api.Config<IInitConfig>();
-
-            // _api.DisconnectsAnalyzer = new DisconnectsAnalyzer(_api.LogManager);
+            
             _api.DisconnectsAnalyzer = new MetricsDisconnectsAnalyzer();
             _api.SessionMonitor = new SessionMonitor(_networkConfig, _api.LogManager);
             _api.RlpxPeer = new RlpxPeer(

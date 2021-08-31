@@ -29,6 +29,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Facade;
+using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
@@ -61,6 +62,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly ISpecProvider _specProvider;
         private readonly ILogger _logger;
         private readonly IGasPriceOracle _gasPriceOracle;
+        private readonly IEthSyncingInfo _ethSyncingInfo;
+
         private readonly IFeeHistoryOracle _feeHistoryOracle;
         private static bool HasStateForBlock(IBlockchainBridge blockchainBridge, BlockHeader header)
         {
@@ -80,6 +83,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             ILogManager logManager,
             ISpecProvider specProvider,
             IGasPriceOracle gasPriceOracle,
+            IEthSyncingInfo ethSyncingInfo,
             IFeeHistoryOracle feeHistoryOracle)
         {
             _logger = logManager.GetClassLogger();
@@ -92,6 +96,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _gasPriceOracle = gasPriceOracle ?? throw new ArgumentNullException(nameof(gasPriceOracle));
+            _ethSyncingInfo = ethSyncingInfo ?? throw new ArgumentNullException(nameof(ethSyncingInfo));
             _feeHistoryOracle = feeHistoryOracle ?? throw new ArgumentNullException(nameof(feeHistoryOracle));
         }
 
@@ -103,28 +108,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public ResultWrapper<SyncingResult> eth_syncing()
         {
-            SyncingResult result;
-            long bestSuggestedNumber = _blockFinder.FindBestSuggestedHeader().Number;
-
-            long headNumberOrZero = _blockFinder.Head?.Number ?? 0;
-            bool isSyncing = bestSuggestedNumber > headNumberOrZero + 8;
-
-            if (isSyncing)
-            {
-                result = new SyncingResult
-                {
-                    CurrentBlock = headNumberOrZero,
-                    HighestBlock = bestSuggestedNumber,
-                    StartingBlock = 0L,
-                    IsSyncing = true
-                };
-            }
-            else
-            {
-                result = SyncingResult.NotSyncing;
-            }
-
-            return ResultWrapper<SyncingResult>.Success(result);
+           return ResultWrapper<SyncingResult>.Success(_ethSyncingInfo.GetFullInfo());
         }
 
         public ResultWrapper<byte[]> eth_snapshot()

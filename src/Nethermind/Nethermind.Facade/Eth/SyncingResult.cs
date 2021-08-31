@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,29 +14,15 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Int256;
-
-namespace Nethermind.EthStats.Messages.Models
+namespace Nethermind.Facade.Eth
 {
-    public class Stats
+    public class SyncingResult
     {
-        public bool Active { get; }
-        public bool Syncing { get; }
-        public bool Mining { get; }
-        public int Hashrate { get; }
-        public int Peers { get; }
-        public long GasPrice { get; }
-        public int Uptime { get; }
-
-        public Stats(bool active, bool syncing, bool mining, int hashrate, int peers, long gasPrice, int uptime)
-        {
-            Active = active;
-            Syncing = syncing;
-            Mining = mining;
-            Hashrate = hashrate;
-            Peers = peers;
-            GasPrice = gasPrice;
-            Uptime = uptime;
-        }
+        public static SyncingResult NotSyncing = new();
+        
+        public bool IsSyncing { get; set; }
+        public long StartingBlock { get; set; }
+        public long CurrentBlock { get; set; }
+        public long HighestBlock { get; set; }
     }
 }

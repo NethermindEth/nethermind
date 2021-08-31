@@ -13,16 +13,14 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-namespace Nethermind.JsonRpc.Modules.Eth
+namespace Nethermind.Facade.Eth
 {
-    public class SyncingResult
+    public interface IEthSyncingInfo
     {
-        public static SyncingResult NotSyncing = new();
-        
-        public bool IsSyncing { get; set; }
-        public long StartingBlock { get; set; }
-        public long CurrentBlock { get; set; }
-        public long HighestBlock { get; set; }
+        SyncingResult GetFullInfo();
+
+        bool IsSyncing();
     }
 }

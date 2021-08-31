@@ -31,6 +31,7 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using Nethermind.Db.Blooms;
+using Nethermind.Facade.Eth;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
@@ -147,6 +148,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 LimboLogs.Instance,
                 SpecProvider,
                 GasPriceOracle,
+                new EthSyncingInfo(BlockFinder),
                 FeeHistoryOracle);
             
             return this;
