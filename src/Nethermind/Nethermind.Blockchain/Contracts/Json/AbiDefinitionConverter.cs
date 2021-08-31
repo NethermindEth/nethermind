@@ -55,7 +55,9 @@ namespace Nethermind.Blockchain.Contracts.Json
             {
                 abiToken = topLevelToken["abi"];
                 byte[] bytecode = Bytes.FromHexString(topLevelToken["bytecode"]?.Value<string>() ?? string.Empty);
+                byte[] deployedBytecode = Bytes.FromHexString(topLevelToken["deployedBytecode"]?.Value<string>() ?? string.Empty);
                 existingValue.SetBytecode(bytecode);   
+                existingValue.SetDeployedBytecode(deployedBytecode);
             }
             else
             {

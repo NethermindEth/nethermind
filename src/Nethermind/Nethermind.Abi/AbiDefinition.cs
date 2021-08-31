@@ -26,6 +26,7 @@ namespace Nethermind.Abi
         private readonly List<AbiBaseDescription> _items = new();
 
         public byte[]? Bytecode { get; private set; }
+        public byte[]? DeployedBytecode { get; private set; }
         public IReadOnlyList<AbiFunctionDescription> Constructors => _constructors;
         public IReadOnlyDictionary<string, AbiFunctionDescription> Functions => _functions;
         public IReadOnlyDictionary<string, AbiEventDescription> Events => _events;
@@ -35,6 +36,11 @@ namespace Nethermind.Abi
         public void SetBytecode(byte[] bytecode)
         {
             Bytecode = bytecode;
+        }
+
+        public void SetDeployedBytecode(byte[] deployedBytecode)
+        {
+            DeployedBytecode = deployedBytecode;
         }
         
         public void Add(AbiFunctionDescription function)
