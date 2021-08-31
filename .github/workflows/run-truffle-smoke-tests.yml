@@ -34,7 +34,7 @@ jobs:
       uses: actions/setup-node@v2
       with:
         node-version: '16'
-    - run: npm install -g truffle
+    - run: npm install -g truffle@5.1.62
     - name: Running Truffle smoke tests
       run: |
         docker run --name nethermind --network host -itd nethermindeth/truffle --config spaceneth
