@@ -82,5 +82,45 @@ namespace Nethermind.Evm.Test
             codeInfo.ValidateJump(1, true).Should().BeFalse();
             codeInfo.ValidateJump(1, false).Should().BeFalse();
         }
+        
+        [Test]
+        public void Validate_CodeBitmap_With_Push10()
+        {
+            byte[] code =
+            {
+                (byte)Instruction.PUSH10,
+                1,2,3,4,5,6,7,8,9,10,
+                (byte)Instruction.JUMPDEST
+            };
+
+            CodeInfo codeInfo = new(code);
+            
+            codeInfo.ValidateJump(11, false).Should().BeTrue();
+
+            var bitmap = CodeInfoHelper.CreateCodeBitmap(code);
+            bitmap[0].Should().Be(127);
+            bitmap[1].Should().Be(224);
+        }
+        
+        [Test]
+        public void Validate_CodeBitmap_With_Push30()
+        {
+            byte[] code =
+            {
+                (byte)Instruction.PUSH30,
+                1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,
+                (byte)Instruction.JUMPDEST
+            };
+
+            CodeInfo codeInfo = new(code);
+            
+            codeInfo.ValidateJump(31, false).Should().BeTrue();
+
+            var bitmap = CodeInfoHelper.CreateCodeBitmap(code);
+            bitmap[0].Should().Be(127);
+            bitmap[1].Should().Be(255);
+            bitmap[2].Should().Be(255);
+            bitmap[3].Should().Be(254);
+        }
     }
 }

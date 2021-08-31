@@ -84,11 +84,11 @@ namespace Nethermind.Evm
             // bitvector outside the bounds of the actual code.
             byte[] bitvec = new byte[(code.Length / 8) + 1 + 4];
             
+            byte push1 = 0x60;
+            byte push32 = 0x7f;
+            
             for (int pc = 0; pc < code.Length;)
             {
-                byte push1 = 0x60;
-                byte push32 = 0x7f;
-                
                 byte op = code[pc];
                 pc++;
                 
@@ -163,9 +163,9 @@ namespace Nethermind.Evm
 
         private static void SetN(this byte[] bitvec, int pos, UInt16 flag)
         {
-            byte a = (byte)(flag >> (pos % 8));
+            ushort a = (ushort)(flag >> (pos % 8));
             bitvec[pos / 8] |= (byte)(a >> 8);
-            byte b = (byte)(a);
+            byte b = (byte)a;
             if (b != 0 ){
                 //	If the bit-setting affects the neighbouring byte, we can assign - no need to OR it,
                 //	since it's the first write to that byte
