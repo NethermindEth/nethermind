@@ -63,7 +63,7 @@ namespace Nethermind.Logging.NLog
                 }
             }
             
-            //Add rules here for e.g. 'JsonRpc.*: Warn; Block.*: Error',
+            //Add rules here for e.g. 'JsonRpc.*: Warn; Block.*: Error;',
             if (loggerConfig != null)
             {
                 string[] rules = loggerConfig.Split(";", StringSplitOptions.RemoveEmptyEntries);

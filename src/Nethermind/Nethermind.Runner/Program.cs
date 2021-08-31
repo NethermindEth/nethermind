@@ -99,7 +99,7 @@ namespace Nethermind.Runner
             _ = app.HelpOption("-?|-h|--help");
             _ = app.VersionOption("-v|--version", () => ClientVersion.Version, () => ClientVersion.Description);
 
-            CommandOption configOptions = app.Option("-co|-configOption <configOptions>", "configuration options",
+            CommandOption configOptions = app.Option("-co|--configOption <configOptions>", "configuration options",
                 CommandOptionType.SingleValue);
             CommandOption dataDir = app.Option("-dd|--datadir <dataDir>", "data directory", CommandOptionType.SingleValue);
             CommandOption configFile = app.Option("-c|--config <configFile>", "config file path", CommandOptionType.SingleValue);

@@ -24,6 +24,7 @@ using System.Linq;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
+using FluentAssertions;
 using FluentAssertions.Execution;
 using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
@@ -43,7 +44,12 @@ using Nethermind.Stats;
 using Nethermind.Db.Blooms;
 using Nethermind.Runner.Ethereum.Api;
 using Nethermind.TxPool;
+using NLog;
+using NLog.Config;
+using NLog.Targets;
 using NUnit.Framework;
+using Websocket.Client.Logging;
+using LogLevel = NLog.LogLevel;
 
 namespace Nethermind.Runner.Test
 {
@@ -106,7 +112,7 @@ namespace Nethermind.Runner.Test
             
             await SmokeTest(testCase.configProvider, testIndex, 30430, true);
         }
-
+        
         private static async Task SmokeTest(ConfigProvider configProvider, int testIndex, int basePort, bool cancel = false)
         {
             Type type1 = typeof(ITxPoolConfig);
@@ -198,6 +204,19 @@ namespace Nethermind.Runner.Test
                     }
                 }
             }
+        }
+
+        [Test]
+        public void Run_GivenConfigOption_AddsRule()
+        {
+            Target target = LogManager.Configuration!.FindTargetByName("auto-colored-console-async");
+            LoggingRule loggingRule = new LoggingRule("JsonRpc.*", LogLevel.Warn, target);
+            
+            LogManager.Configuration.LoggingRules.Contains(loggingRule).Should().BeFalse();
+            Program.Main(new[] {"--configOption: JsonRpc.*: Warn;"});
+
+            LogManager.Configuration = LogManager.Configuration.Reload();
+            LogManager.Configuration.LoggingRules.Contains(loggingRule).Should().BeTrue();
         }
     }
 }

@@ -52,12 +52,12 @@ namespace Nethermind.Logging.NLog
 
         public ILogger GetClassLogger()
         {
-            return new NLogLogger(_logFileName, _logDirectory);
+            return new NLogLogger(_logFileName, _logDirectory, loggerConfig: _logConfig);
         }
 
         public ILogger GetLogger(string loggerName)
         {
-            return new NLogLogger(_logFileName, _logDirectory, loggerName);
+            return new NLogLogger(_logFileName, _logDirectory, loggerName, _logConfig);
         }
 
         public void SetGlobalVariable(string name, object value)
