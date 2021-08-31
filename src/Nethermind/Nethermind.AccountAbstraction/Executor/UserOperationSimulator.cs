@@ -46,6 +46,7 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace Nethermind.AccountAbstraction.Executor
 {
@@ -93,8 +94,8 @@ namespace Nethermind.AccountAbstraction.Executor
             using (StreamReader r = new StreamReader("Contracts/Singleton.json"))
             {
                 string json = r.ReadToEnd();
-                dynamic obj = JsonConvert.DeserializeObject(json)!;
-
+                JObject obj = JObject.Parse(json);
+                
                 _contract = LoadContract(obj);
             }
         }
@@ -256,11 +257,11 @@ namespace Nethermind.AccountAbstraction.Executor
         private UserOperationBlockTracer CreateBlockTracer(BlockHeader parent) =>
             new(parent.GasLimit, _signer.Address);
         
-        private AbiDefinition LoadContract(dynamic obj)
+        private AbiDefinition LoadContract(JObject obj)
         {
             AbiDefinitionParser parser = new();
             parser.RegisterAbiTypeFactory(new AbiTuple<UserOperationAbi>());
-            AbiDefinition contract = parser.Parse(obj["abi"].ToString());
+            AbiDefinition contract = parser.Parse(obj["abi"]!.ToString());
             AbiTuple<UserOperationAbi> userOperationAbi = new();
             return contract;
         }

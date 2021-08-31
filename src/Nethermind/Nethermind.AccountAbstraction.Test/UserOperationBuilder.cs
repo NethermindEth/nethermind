@@ -33,6 +33,7 @@ namespace Nethermind.AccountAbstraction.Test
             TestObjectInternal = new UserOperation
             {
                 Target = Address.Zero,
+                Nonce = 0,
                 Paymaster = Address.Zero,
                 CallData = Bytes.Empty,
                 InitCode = Bytes.Empty,
@@ -47,6 +48,12 @@ namespace Nethermind.AccountAbstraction.Test
         public UserOperationBuilder WithTarget(Address target)
         {
             TestObjectInternal.Target = target;
+            return this;
+        }
+        
+        public UserOperationBuilder WithNonce(UInt256 nonce)
+        {
+            TestObjectInternal.Nonce = nonce;
             return this;
         }
         

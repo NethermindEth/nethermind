@@ -226,6 +226,68 @@ namespace Nethermind.AccountAbstraction.Test
 
             chain.State.GetCode(accountAddress).Should().BeEquivalentTo(_contracts.SimpleWalletAbi.DeployedBytecode!);
         }
+        
+        [Test]
+        public async Task Should_batch_multiple_ops()
+        {
+            var chain = await CreateChain();
+            chain.GasLimitCalculator.GasLimit = 30_000_000;
+            (Address singletonAddress, Address? walletAddress, Address? counterAddress) = await _contracts.Deploy(chain, _contracts.TestCounterAbi.Bytecode!);
+            
+            byte[] countCalldata = _encoder.Encode(AbiEncodingStyle.IncludeSignature, _contracts.TestCounterAbi.Functions["count"].GetCallInfo().Signature);
+            byte[] execCounterCount = _encoder.Encode(AbiEncodingStyle.IncludeSignature, _contracts.SimpleWalletAbi.Functions["exec"].GetCallInfo().Signature, counterAddress, countCalldata);
+            byte[] execCounterCountFromSingleton = _encoder.Encode(AbiEncodingStyle.IncludeSignature, _contracts.SimpleWalletAbi.Functions["execFromSingleton"].GetCallInfo().Signature, execCounterCount);
+            
+            UserOperation op = Build.A.UserOperation
+                .WithTarget(walletAddress!)
+                .WithCallData(execCounterCountFromSingleton)
+                .SignedAndResolved(TestItem.PrivateKeyA)
+                .TestObject;
+            
+            byte[] walletConstructor = _contracts.GetWalletConstructor(singletonAddress);
+            Address accountAddress = _contracts.GetAccountAddress(chain, singletonAddress, walletConstructor, 0);
+            
+            UserOperation createOp = Build.A.UserOperation
+                .WithTarget(accountAddress!)
+                .WithInitCode(walletConstructor)
+                .WithCallData(execCounterCountFromSingleton)
+                .WithCallGas(10_000_000)
+                .WithVerificationGas(2_000_000)
+                .SignedAndResolved(TestItem.PrivateKeyA)
+                .TestObject;
+            
+            Transaction fundTransaction = Core.Test.Builders.Build.A.Transaction
+                .WithTo(accountAddress!)
+                .WithGasLimit(100_000)
+                .WithGasPrice(2)
+                .WithValue(1.Ether())
+                .WithNonce(0)
+                .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+            Transaction fundTransaction2 = Core.Test.Builders.Build.A.Transaction
+                .WithTo(walletAddress!)
+                .WithGasLimit(100_000)
+                .WithGasPrice(2)
+                .WithValue(1.Ether())
+                .WithNonce(1)
+                .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+            await chain.AddBlock(true, fundTransaction, fundTransaction2);
+
+            UInt256 countBefore = _contracts.GetCount(chain, counterAddress, walletAddress!);
+            UInt256 countBefore1 = _contracts.GetCount(chain, counterAddress, accountAddress!);
+            countBefore.Should().Be(0);
+            countBefore1.Should().Be(0);
+
+            chain.SendUserOperation(op);
+            chain.SendUserOperation(createOp);
+            await chain.AddBlock(true);
+            
+            chain.State.GetCode(accountAddress).Should().BeEquivalentTo(_contracts.SimpleWalletAbi.DeployedBytecode!);
+
+            UInt256 countAfter = _contracts.GetCount(chain, counterAddress, walletAddress!);
+            UInt256 countAfter1 = _contracts.GetCount(chain, counterAddress, accountAddress!);
+            countAfter.Should().Be(1);
+            countAfter1.Should().Be(1);
+        }
 
         public static void SignUserOperation(UserOperation op, PrivateKey privateKey)
         {
