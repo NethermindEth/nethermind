@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net5.0</TargetFramework>
+        <LangVersion>9</LangVersion>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <PackageReference Include="BenchmarkDotNet" Version="0.13.1" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\Ethereum.Test.Base\Ethereum.Test.Base.csproj" />
+    </ItemGroup>
+  
+      <ItemGroup>
+        <Content Include="..\..\tests\GeneralStateTests\st*\**\*.*">
+          <Link>EthereumTestFiles\%(RecursiveDir)%(FileName)%(Extension)</Link>
+          <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="..\..\tests\GeneralStateTests\VMTests\**\*.*">
+          <Link>EthereumTestFiles\%(RecursiveDir)%(FileName)%(Extension)</Link>
+          <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <None Remove="AdditionalTests\10MGas_0xdead.json" />
+        <Content Include="AdditionalTests\10MGas_0xdead.json">
+          <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <None Remove="AdditionalTests\10MGas_bnAdd.json" />
+        <Content Include="AdditionalTests\10MGas_bnAdd.json">
+          <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+      </ItemGroup>
+
+
+  
+
+</Project>

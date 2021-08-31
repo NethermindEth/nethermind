@@ -29,7 +29,6 @@ using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth
 {
-    [TestFixture]
     public partial class EthRpcModuleTests
     {
         [Test]

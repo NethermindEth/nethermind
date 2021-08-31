@@ -46,6 +46,12 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
         
+        public TransactionBuilder<T> WithHash(Keccak? hash)
+        {
+            TestObjectInternal.Hash = hash;
+            return this;
+        }
+        
         public TransactionBuilder<T> WithTo(Address address)
         {
             TestObjectInternal.To = address;

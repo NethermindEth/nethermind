@@ -41,6 +41,7 @@ using Nethermind.JsonRpc.Modules.Web3;
 using Nethermind.JsonRpc.Modules.Witness;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
+using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 
 namespace Nethermind.Init.Steps
 {
@@ -106,6 +107,7 @@ namespace Nethermind.Init.Steps
                 _api.StateReader,
                 _api,
                 _api.SpecProvider,
+                _api.ReceiptStorage,
                 _api.GasPriceOracle,
                 _api.EthSyncingInfo);
             

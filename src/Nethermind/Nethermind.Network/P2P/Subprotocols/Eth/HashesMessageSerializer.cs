@@ -20,7 +20,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
-    public abstract class HashesMessageSerializer<T> : IZeroMessageSerializer<T> where T : HashesMessage
+    public abstract class HashesMessageSerializer<T> : IZeroInnerMessageSerializer<T> where T : HashesMessage
     {
         protected Keccak[] DeserializeHashes(IByteBuffer byteBuffer)
         {
@@ -36,16 +36,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         public void Serialize(IByteBuffer byteBuffer, T message)
         {
-            int contentLength = 0;
-            for (int i = 0; i < message.Hashes.Count; i++)
-            {
-                contentLength += Rlp.LengthOf(message.Hashes[i]);
-            }
-
-            int totalLength = Rlp.LengthOfSequence(contentLength);
-
+            int length = GetLength(message, out int contentLength);
+            byteBuffer.EnsureWritable(length, true);
             RlpStream rlpStream = new NettyRlpStream(byteBuffer);
-            byteBuffer.EnsureWritable(totalLength, true);
+            
             rlpStream.StartSequence(contentLength);
             for (int i = 0; i < message.Hashes.Count; i++)
             {
@@ -54,5 +48,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         }
 
         public abstract T Deserialize(IByteBuffer byteBuffer);
+        public int GetLength(T message, out int contentLength)
+        {
+            contentLength = 0;
+            for (int i = 0; i < message.Hashes.Count; i++)
+            {
+                contentLength += Rlp.LengthOf(message.Hashes[i]);
+            }
+
+            return Rlp.LengthOfSequence(contentLength);
+        }
     }
 }

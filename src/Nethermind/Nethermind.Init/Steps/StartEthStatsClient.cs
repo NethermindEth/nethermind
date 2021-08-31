@@ -26,6 +26,7 @@ using Nethermind.EthStats.Integrations;
 using Nethermind.EthStats.Senders;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
+using Nethermind.Network.P2P;
 
 namespace Nethermind.Init.Steps
 {
@@ -59,7 +60,7 @@ namespace Nethermind.Init.Steps
 
             string instanceId = $"{ethStatsConfig.Name}-{Keccak.Compute(_get.Enode.Info)}";
             if (_logger.IsInfo) _logger.Info($"Initializing ETH Stats for the instance: {instanceId}, server: {ethStatsConfig.Server}");
-            MessageSender sender = new MessageSender(instanceId, _get.LogManager);
+            MessageSender sender = new(instanceId, _get.LogManager);
             const int reconnectionInterval = 5000;
             const string api = "no";
             const string client = "0.1.1";
@@ -67,7 +68,7 @@ namespace Nethermind.Init.Steps
             string node = ClientVersion.Description;
             int port = networkConfig.P2PPort;
             string network = _get.SpecProvider.ChainId.ToString();
-            string protocol = "eth/65";
+            string protocol = $"{P2PProtocolInfoProvider.DefaultCapabilitiesToString()}";
             
             EthStatsClient ethStatsClient = new(
                 ethStatsConfig.Server,

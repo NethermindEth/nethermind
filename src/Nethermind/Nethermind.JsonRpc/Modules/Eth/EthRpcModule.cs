@@ -31,11 +31,14 @@ using Nethermind.Int256;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Data;
+using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
+using Nethermind.Network.P2P;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Proofs;
+using Nethermind.Stats.Model;
 using Nethermind.Trie;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
@@ -61,14 +64,14 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly IGasPriceOracle _gasPriceOracle;
         private readonly IEthSyncingInfo _ethSyncingInfo;
 
+        private readonly IFeeHistoryOracle _feeHistoryOracle;
         private static bool HasStateForBlock(IBlockchainBridge blockchainBridge, BlockHeader header)
         {
             RootCheckVisitor rootCheckVisitor = new();
             blockchainBridge.RunTreeVisitor(rootCheckVisitor, header.StateRoot);
             return rootCheckVisitor.HasRoot;
         }
-        
-        
+
         public EthRpcModule(
             IJsonRpcConfig rpcConfig,
             IBlockchainBridge blockchainBridge,
@@ -80,7 +83,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
             ILogManager logManager,
             ISpecProvider specProvider,
             IGasPriceOracle gasPriceOracle,
-            IEthSyncingInfo ethSyncingInfo)
+            IEthSyncingInfo ethSyncingInfo,
+            IFeeHistoryOracle feeHistoryOracle)
         {
             _logger = logManager.GetClassLogger();
             _rpcConfig = rpcConfig ?? throw new ArgumentNullException(nameof(rpcConfig));
@@ -93,11 +97,13 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _gasPriceOracle = gasPriceOracle ?? throw new ArgumentNullException(nameof(gasPriceOracle));
             _ethSyncingInfo = ethSyncingInfo ?? throw new ArgumentNullException(nameof(ethSyncingInfo));
+            _feeHistoryOracle = feeHistoryOracle ?? throw new ArgumentNullException(nameof(feeHistoryOracle));
         }
 
         public ResultWrapper<string> eth_protocolVersion()
         {
-            return ResultWrapper<string>.Success("0x41");
+            int highestVersion =  P2PProtocolInfoProvider.GetHighestVersionOfEthProtocol();
+            return ResultWrapper<string>.Success(highestVersion.ToHexString());
         }
 
         public ResultWrapper<SyncingResult> eth_syncing()
@@ -128,6 +134,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
         public ResultWrapper<UInt256?> eth_gasPrice()
         {
             return ResultWrapper<UInt256?>.Success(_gasPriceOracle.GetGasPriceEstimate());
+        }
+
+        public ResultWrapper<FeeHistoryResults> eth_feeHistory(int blockCount, BlockParameter newestBlock, double[]? rewardPercentiles = null)
+        {
+            return _feeHistoryOracle.GetFeeHistory(blockCount, newestBlock, rewardPercentiles);
         }
 
         public ResultWrapper<IEnumerable<Address>> eth_accounts()

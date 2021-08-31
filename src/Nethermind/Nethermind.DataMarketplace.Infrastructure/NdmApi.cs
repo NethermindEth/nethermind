@@ -45,7 +45,6 @@ using Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo;
 using Nethermind.DataMarketplace.Infrastructure.Updaters;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
-using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
@@ -562,7 +561,7 @@ namespace Nethermind.DataMarketplace.Infrastructure
             get => _nethermindApi.WebSocketsManager;
             set => _nethermindApi.WebSocketsManager = value;
         }
-        
+
         public IWitnessCollector? WitnessCollector
         {
             get => _nethermindApi.WitnessCollector;
