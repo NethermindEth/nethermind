@@ -228,11 +228,13 @@ namespace Nethermind.Runner.Test
             public bool Equals(LoggingRule? a, LoggingRule? b)
             {
                 if (a == null && b == null)
+                {
                     return true;
-                else if (a == null)
+                }
+                else if (a == null || b == null)
+                {
                     return false;
-                else if (b == null)
-                    return false;
+                }
                 else
                 {
                     return a.LoggerNamePattern == b.LoggerNamePattern && a.Targets.SequenceEqual(b.Targets) && a.Levels.SequenceEqual(b.Levels);
@@ -241,7 +243,7 @@ namespace Nethermind.Runner.Test
 
             public int GetHashCode(LoggingRule obj)
             {
-                string hashString = obj.RuleName ?? "" + obj.ChildRules + obj.Targets;
+                string hashString = obj.LoggerNamePattern ?? "" + obj.Targets + obj.Levels;
                 return hashString.GetHashCode();
             }
         }
