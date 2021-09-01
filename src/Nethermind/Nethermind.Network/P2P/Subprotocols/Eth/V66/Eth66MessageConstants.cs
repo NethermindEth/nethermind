@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,16 +13,14 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-namespace Nethermind.JsonRpc.Modules.Eth
+using System;
+
+namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 {
-    public class SyncingResult
+    internal class Eth66MessageConstants
     {
-        public static SyncingResult NotSyncing = new();
-        
-        public bool IsSyncing { get; set; }
-        public long StartingBlock { get; set; }
-        public long CurrentBlock { get; set; }
-        public long HighestBlock { get; set; }
+        public static readonly Random Random = new Random();
     }
 }

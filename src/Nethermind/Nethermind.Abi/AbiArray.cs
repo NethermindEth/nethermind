@@ -15,6 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
@@ -28,12 +30,13 @@ namespace Nethermind.Abi
         public AbiArray(AbiType elementType)
         {
             ElementType = elementType;
+            Name = $"{ElementType}[]";
             CSharpType = ElementType.CSharpType.MakeArrayType();
         }
 
         public override bool IsDynamic => true;
 
-        public override string Name => $"{ElementType}[]";
+        public override string Name { get; }
 
         public override Type CSharpType { get; }
 
@@ -41,35 +44,27 @@ namespace Nethermind.Abi
         {
             UInt256 length;
             (length, position) = UInt256.DecodeUInt(data, position, packed);
-
-            Array result = Array.CreateInstance(ElementType.CSharpType, (int)length);
-            for (int i = 0; i < length; i++)
-            {
-                object element;
-                (element, position) = ElementType.Decode(data, position, packed);
-
-                result.SetValue(element, i);
-            }
-
-            return (result, position);
+            return DecodeSequence(ElementType.CSharpType, (int)length, ElementTypes, data, packed, position);
         }
 
         public override byte[] Encode(object? arg, bool packed)
         {
             if (arg is Array input)
             {
-                byte[][] encodedItems = new byte[input.Length + 1][];
-                int i = 0;
-                encodedItems[i++] = UInt256.Encode((BigInteger)input.Length, packed);
-                foreach (object? o in input)
-                {
-                    encodedItems[i++] = ElementType.Encode(o, packed);
-                }
-
+                byte[][] encodedItems = EncodeSequence(input.Length, ElementTypes, input.Cast<object?>(), packed, 1);
+                encodedItems[0] = UInt256.Encode((BigInteger)input.Length, packed);
                 return Bytes.Concat(encodedItems);
             }
 
             throw new AbiException(AbiEncodingExceptionMessage);
+        }
+
+        private IEnumerable<AbiType> ElementTypes
+        {
+            get
+            {
+                yield return ElementType;
+            }
         }
     }
 }

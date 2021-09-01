@@ -38,6 +38,7 @@ using NSubstitute;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 using System.Threading.Tasks;
+using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 
@@ -67,8 +68,9 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Substitute.For<IStateReader>(),
                 Substitute.For<IBlockchainBridgeFactory>(),
                 Substitute.For<ISpecProvider>(),
-                Substitute.For<IReceiptStorage>(),
-                Substitute.For<IGasPriceOracle>());				
+                Substitute.For<IReceiptStorage>(),			
+                Substitute.For<IGasPriceOracle>(),
+                Substitute.For<IEthSyncingInfo>());
         }
 
         [Test]

@@ -14,9 +14,6 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Collections.Generic;
-using Nethermind.Blockchain.Find;
-using Nethermind.Core;
 using Nethermind.Int256;
 
 namespace Nethermind.JsonRpc.Modules.Eth.GasPrice

@@ -129,7 +129,7 @@ namespace Nethermind.AuRa.Test
                     }
         }
 
-        [Test, Retry(3)]
+        [Test, Retry(6)]
         public async Task Produces_block()
         {
             (await StartStop(new Context())).ShouldProduceBlocks(Quantity.AtLeastOne());

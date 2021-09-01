@@ -92,13 +92,11 @@ namespace Nethermind.Init.Steps
             IInitConfig initConfig = _api.Config<IInitConfig>();
             IJsonRpcConfig rpcConfig = _api.Config<IJsonRpcConfig>();
             INetworkConfig networkConfig = _api.Config<INetworkConfig>();
-            IMiningConfig miningConfig = _api.Config<IMiningConfig>();
             
             // lets add threads to support parallel eth_getLogs
             ThreadPool.GetMinThreads(out int workerThreads, out int completionPortThreads);
             ThreadPool.SetMinThreads(workerThreads + Environment.ProcessorCount, completionPortThreads + Environment.ProcessorCount);
 
-            GasPriceOracle gasPriceOracle = new GasPriceOracle(_api.BlockTree, _api.SpecProvider, miningConfig.MinGasPrice);
             EthModuleFactory ethModuleFactory = new(
                 _api.TxPool,
                 _api.TxSender,
@@ -110,7 +108,8 @@ namespace Nethermind.Init.Steps
                 _api,
                 _api.SpecProvider,
                 _api.ReceiptStorage,
-                gasPriceOracle);
+                _api.GasPriceOracle,
+                _api.EthSyncingInfo);
             
             _api.RpcModuleProvider.RegisterBounded(ethModuleFactory, rpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, rpcConfig.Timeout);
             
@@ -204,7 +203,8 @@ namespace Nethermind.Init.Steps
                 _api.BlockTree,
                 _api.TxPool,
                 _api.ReceiptStorage,
-                _api.FilterStore);
+                _api.FilterStore,
+                _api.EthSyncingInfo!);
             
             SubscriptionManager subscriptionManager = new(subscriptionFactory, _api.LogManager);
             

@@ -34,8 +34,10 @@ using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Db.Blooms;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Facade.Eth;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.KeyStore;
 using Nethermind.Monitoring;
 using Nethermind.Network.Discovery;
@@ -119,7 +121,9 @@ namespace Nethermind.Runner.Test.Ethereum
                 ReadOnlyTrieStore = Substitute.For<IReadOnlyTrieStore>(),
                 ChainSpec = new ChainSpec(),
                 BlockProducerEnvFactory = Substitute.For<IBlockProducerEnvFactory>(),
-                TransactionComparerProvider = Substitute.For<ITransactionComparerProvider>()
+                TransactionComparerProvider = Substitute.For<ITransactionComparerProvider>(),
+                GasPriceOracle = Substitute.For<IGasPriceOracle>(),
+                EthSyncingInfo = Substitute.For<IEthSyncingInfo>()
             };
     }
 }

@@ -16,15 +16,11 @@
 // 
 
 using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Consensus;
-using Nethermind.JsonRpc.Modules;
-using Nethermind.JsonRpc.Modules.Eth;
-using Nethermind.JsonRpc.Modules.Net;
+using Nethermind.Facade.Eth;
 using Nethermind.Synchronization;
 
 namespace Nethermind.HealthChecks
@@ -39,11 +35,11 @@ namespace Nethermind.HealthChecks
     public class NodeHealthService : INodeHealthService
     {
         private readonly ISyncServer _syncServer;
-        private readonly IBlockFinder _blockFinder;
         private readonly IBlockchainProcessor _blockchainProcessor;
         private readonly IBlockProducer _blockProducer;
         private readonly IHealthChecksConfig _healthChecksConfig;
         private readonly IHealthHintService _healthHintService;
+        private readonly IEthSyncingInfo _ethSyncingInfo;
         private readonly bool _isMining;
 
         public NodeHealthService(
@@ -53,27 +49,27 @@ namespace Nethermind.HealthChecks
             IBlockProducer blockProducer,
             IHealthChecksConfig healthChecksConfig,
             IHealthHintService healthHintService,
+            IEthSyncingInfo ethSyncingInfo,
             bool isMining)
         {
             _syncServer = syncServer;
-            _blockFinder = blockFinder;
             _isMining = isMining;
             _healthChecksConfig = healthChecksConfig;
             _healthHintService = healthHintService;
             _blockchainProcessor = blockchainProcessor;
             _blockProducer = blockProducer;
+            _ethSyncingInfo = ethSyncingInfo;
         }
 
         public CheckHealthResult CheckHealth()
         {
-            List<(string Message, string LongMessage)> messages = new List<(string Message, string LongMessage)>();
+            List<(string Message, string LongMessage)> messages = new();
             bool healthy = false;
             long netPeerCount = _syncServer.GetPeerCount();
-            SyncingResult syncingResult = IsSyncing();
+            SyncingResult syncingResult = _ethSyncingInfo.GetFullInfo();
 
             if (_isMining == false && syncingResult.IsSyncing)
             {
-                healthy = false;
                 AddStillSyncingMessage(messages, syncingResult);
                 CheckPeers(messages, netPeerCount);
             }
@@ -111,30 +107,6 @@ namespace Nethermind.HealthChecks
         {
             return _healthChecksConfig.MaxIntervalWithoutProducedBlock ??
                    _healthHintService.MaxSecondsIntervalForProducingBlocksHint();
-        }
-
-        private SyncingResult IsSyncing()
-        {
-            SyncingResult result;
-            long bestSuggestedNumber = _blockFinder.FindBestSuggestedHeader().Number;
-            bool isSyncing = bestSuggestedNumber > _blockFinder.Head.Number + 8;
-
-            if (isSyncing)
-            {
-                result = new SyncingResult
-                {
-                    CurrentBlock = _blockFinder.Head.Number,
-                    HighestBlock = bestSuggestedNumber,
-                    StartingBlock = 0L,
-                    IsSyncing = true
-                };
-            }
-            else
-            {
-                result = SyncingResult.NotSyncing;
-            }
-
-            return result;
         }
 
         private static bool CheckPeers(ICollection<(string Description, string LongDescription)> messages,

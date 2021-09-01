@@ -23,17 +23,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
     {
         public void Serialize(IByteBuffer byteBuffer, AnnounceMessage message)
         {
+            int length = GetLength(message, out int contentLength);
+            byteBuffer.EnsureWritable(length);
             NettyRlpStream rlpStream = new NettyRlpStream(byteBuffer);
-
-            int contentLength =
-                Rlp.LengthOf(message.HeadHash) +
-                Rlp.LengthOf(message.HeadBlockNo) +
-                Rlp.LengthOf(message.TotalDifficulty) +
-                Rlp.LengthOf(message.ReorgDepth) + 
-                Rlp.OfEmptySequence.Length;
-
-            int totalLength = Rlp.LengthOfSequence(contentLength);
-            byteBuffer.EnsureWritable(totalLength);
+            
             rlpStream.StartSequence(contentLength);
             rlpStream.Encode(message.HeadHash);
             rlpStream.Encode(message.HeadBlockNo);
@@ -46,6 +39,18 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
         {
             RlpStream rlpStream = new NettyRlpStream(byteBuffer);
             return Deserialize(rlpStream);
+        }
+
+        private int GetLength(AnnounceMessage message, out int contentLength)
+        {
+            contentLength =
+                Rlp.LengthOf(message.HeadHash) +
+                Rlp.LengthOf(message.HeadBlockNo) +
+                Rlp.LengthOf(message.TotalDifficulty) +
+                Rlp.LengthOf(message.ReorgDepth) + 
+                Rlp.OfEmptySequence.Length;
+
+            return Rlp.LengthOfSequence(contentLength);
         }
 
         private static AnnounceMessage Deserialize(RlpStream rlpStream)

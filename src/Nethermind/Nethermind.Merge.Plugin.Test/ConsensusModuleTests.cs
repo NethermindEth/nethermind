@@ -151,7 +151,7 @@ namespace Nethermind.Merge.Plugin.Test
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
             IEngineRpcModule rpc = CreateConsensusModule(chain);
-            Block block = Build.A.Block.WithNumber(1).WithParent(chain.BlockTree.Head).TestObject;
+            Block block = Build.A.Block.WithNumber(1).WithParent(chain.BlockTree.Head!).TestObject;
             block.Header.Hash = new Keccak("0xdc3419cbd81455372f3e576f930560b35ec828cd6cdfbd4958499e43c68effdf");
             chain.BlockTree.SuggestBlock(block);
             
@@ -208,7 +208,7 @@ namespace Nethermind.Merge.Plugin.Test
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
             IEngineRpcModule rpc = CreateConsensusModule(chain);
-            Block block = Build.A.Block.WithParent(chain.BlockTree.Head).TestObject;
+            Block block = Build.A.Block.WithParent(chain.BlockTree.Head!).TestObject;
             chain.BlockTree.SuggestBlock(block);
             ResultWrapper<Result> resultWrapper = await rpc.engine_finaliseBlock(block.Hash!);
             resultWrapper.Data.Should().Be(Result.Ok);
