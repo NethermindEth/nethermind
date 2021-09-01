@@ -214,7 +214,7 @@ namespace Nethermind.Runner.Test
         {
             Target target = LogManager.Configuration!.FindTargetByName("auto-colored-console-async");
             LoggingRule loggingRule = new("JsonRpc.*", LogLevel.Warn, target);
-            SameLoggingRule loggingRuleComparer = new();
+            LoggingRuleComparer loggingRuleComparer = new();
             NLogManager manager = new("test", null, "JsonRpc.*: Warn;");
             
             LogManager.Configuration.LoggingRules.Contains(loggingRule, loggingRuleComparer).Should().BeFalse();
@@ -223,7 +223,7 @@ namespace Nethermind.Runner.Test
             LogManager.Configuration.LoggingRules.Contains(loggingRule, loggingRuleComparer).Should().BeTrue();
         }
 
-        class SameLoggingRule : IEqualityComparer<LoggingRule>
+        class LoggingRuleComparer : IEqualityComparer<LoggingRule>
         {
             public bool Equals(LoggingRule? a, LoggingRule? b)
             {
