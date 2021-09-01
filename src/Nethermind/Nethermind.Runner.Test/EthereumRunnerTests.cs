@@ -26,8 +26,6 @@ using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
-using FluentAssertions.Common;
-using FluentAssertions.Execution;
 using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -41,8 +39,6 @@ using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Runner.Ethereum;
-using Nethermind.Serialization.Json;
-using Nethermind.Stats;
 using Nethermind.Db.Blooms;
 using Nethermind.Logging.NLog;
 using Nethermind.Runner.Ethereum.Api;
@@ -51,7 +47,6 @@ using NLog;
 using NLog.Config;
 using NLog.Targets;
 using NUnit.Framework;
-using Websocket.Client.Logging;
 using LogLevel = NLog.LogLevel;
 
 namespace Nethermind.Runner.Test
