@@ -251,7 +251,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return ResultWrapper<UInt256?>.Fail(searchResult);
             }
 
-            return ResultWrapper<UInt256?>.Success((UInt256)searchResult.Object.Ommers.Length);
+            return ResultWrapper<UInt256?>.Success((UInt256)searchResult.Object.Uncles.Length);
         }
 
         public ResultWrapper<UInt256?> eth_getUncleCountByBlockNumber(BlockParameter? blockParameter)
@@ -262,7 +262,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return ResultWrapper<UInt256?>.Fail(searchResult);
             }
 
-            return ResultWrapper<UInt256?>.Success((UInt256)searchResult.Object.Ommers.Length);
+            return ResultWrapper<UInt256?>.Success((UInt256)searchResult.Object.Uncles.Length);
         }
 
         public ResultWrapper<byte[]> eth_getCode(Address address, BlockParameter? blockParameter = null)
@@ -519,13 +519,13 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
 
             Block block = searchResult.Object;
-            if (positionIndex < 0 || positionIndex > block.Ommers.Length - 1)
+            if (positionIndex < 0 || positionIndex > block.Uncles.Length - 1)
             {
                 return ResultWrapper<BlockForRpc>.Fail("Position Index is incorrect", ErrorCodes.InvalidParams);
             }
 
-            BlockHeader ommerHeader = block.Ommers[(int)positionIndex];
-            return ResultWrapper<BlockForRpc>.Success(new BlockForRpc(new Block(ommerHeader, BlockBody.Empty), false, _specProvider));
+            BlockHeader uncleHeader = block.Uncles[(int)positionIndex];
+            return ResultWrapper<BlockForRpc>.Success(new BlockForRpc(new Block(uncleHeader, BlockBody.Empty), false, _specProvider));
         }
 
         public ResultWrapper<UInt256?> eth_newFilter(Filter filter)

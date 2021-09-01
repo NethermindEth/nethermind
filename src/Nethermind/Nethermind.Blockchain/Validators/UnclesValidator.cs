@@ -24,45 +24,45 @@ using Nethermind.Logging;
 namespace Nethermind.Blockchain.Validators
 {
     [Todo(Improve.Performance, "We execute the search up the tree twice - once for IsKin and once for HasAlreadyBeenIncluded")]
-    public class OmmersValidator : IOmmersValidator
+    public class UnclesValidator : IUnclesValidator
     {
         private readonly IBlockTree _blockTree;
         private readonly IHeaderValidator _headerValidator;
         private readonly ILogger _logger;
 
-        public OmmersValidator(IBlockTree? blockTree, IHeaderValidator? headerValidator, ILogManager? logManager)
+        public UnclesValidator(IBlockTree? blockTree, IHeaderValidator? headerValidator, ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _headerValidator = headerValidator ?? throw new ArgumentNullException(nameof(headerValidator));
         }
         
-        public bool Validate(BlockHeader header, BlockHeader[] ommers)
+        public bool Validate(BlockHeader header, BlockHeader[] uncles)
         {
-            if (ommers.Length > 2)
+            if (uncles.Length > 2)
             {
-                _logger.Info($"Invalid block ({header.ToString(BlockHeader.Format.Full)}) - too many ommers");
+                _logger.Info($"Invalid block ({header.ToString(BlockHeader.Format.Full)}) - too many uncles");
                 return false;
             }
 
-            if (ommers.Length == 2 && ommers[0].Hash == ommers[1].Hash)
+            if (uncles.Length == 2 && uncles[0].Hash == uncles[1].Hash)
             {
-                _logger.Info($"Invalid block ({header.ToString(BlockHeader.Format.Full)}) - duplicated ommer");
+                _logger.Info($"Invalid block ({header.ToString(BlockHeader.Format.Full)}) - duplicated uncle");
                 return false;
             }
 
-            for (int i = 0; i < ommers.Length; i++)
+            for (int i = 0; i < uncles.Length; i++)
             {
-                BlockHeader ommer = ommers[i];
-                if (!_headerValidator.Validate(ommer, true))
+                BlockHeader uncle = uncles[i];
+                if (!_headerValidator.Validate(uncle, true))
                 {
-                    _logger.Info($"Invalid block ({header.ToString(BlockHeader.Format.Full)}) - ommer's header invalid");
+                    _logger.Info($"Invalid block ({header.ToString(BlockHeader.Format.Full)}) - uncle's header invalid");
                     return false;
                 }
                 
-                if (!IsKin(header, ommer, 6))
+                if (!IsKin(header, uncle, 6))
                 {
-                    _logger.Info($"Invalid block ({header.ToString(BlockHeader.Format.Full)}) - ommer just pretending to be ommer");
+                    _logger.Info($"Invalid block ({header.ToString(BlockHeader.Format.Full)}) - uncle just pretending to be uncle");
                     return false;
                 }
 
@@ -74,9 +74,9 @@ namespace Nethermind.Blockchain.Validators
                         break;
                     }
                     
-                    if (ancestor.Ommers.Any(o => o.Hash == ommer.Hash))
+                    if (ancestor.Uncles.Any(o => o.Hash == uncle.Hash))
                     {
-                        _logger.Info($"Invalid block ({header.ToString(BlockHeader.Format.Full)}) - ommers has already been included by an ancestor");
+                        _logger.Info($"Invalid block ({header.ToString(BlockHeader.Format.Full)}) - uncles has already been included by an ancestor");
                         return false;
                     }
                     
@@ -87,7 +87,7 @@ namespace Nethermind.Blockchain.Validators
             return true;
         }
 
-        private bool IsKin(BlockHeader header, BlockHeader ommer, int relationshipLevel)
+        private bool IsKin(BlockHeader header, BlockHeader uncle, int relationshipLevel)
         {
             if (relationshipLevel == 0)
             {
@@ -96,10 +96,10 @@ namespace Nethermind.Blockchain.Validators
 
             if (relationshipLevel > header.Number)
             {
-                return IsKin(header, ommer, (int)header.Number);
+                return IsKin(header, uncle, (int)header.Number);
             }
             
-            if (ommer.Number < header.Number - relationshipLevel)
+            if (uncle.Number < header.Number - relationshipLevel)
             {
                 return false;
             }
@@ -110,17 +110,17 @@ namespace Nethermind.Blockchain.Validators
                 return false;
             }
 
-            if (parent.Hash == ommer.Hash)
+            if (parent.Hash == uncle.Hash)
             {
                 return false;
             }
 
-            if (parent.ParentHash == ommer.ParentHash)
+            if (parent.ParentHash == uncle.ParentHash)
             {
                 return true;
             }
             
-            return IsKin(parent, ommer, relationshipLevel - 1);
+            return IsKin(parent, uncle, relationshipLevel - 1);
         }
     }
 }

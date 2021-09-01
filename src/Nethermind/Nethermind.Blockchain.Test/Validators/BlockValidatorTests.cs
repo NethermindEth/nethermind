@@ -39,7 +39,7 @@ namespace Nethermind.Blockchain.Test.Validators
             bool noiseRemoved = blockValidator.ValidateSuggestedBlock(Build.A.Block.TestObject);
             Assert.True(noiseRemoved);
             
-            bool result = blockValidator.ValidateSuggestedBlock(Build.A.Block.WithOmmers(Build.A.BlockHeader.TestObject).TestObject);
+            bool result = blockValidator.ValidateSuggestedBlock(Build.A.Block.WithUncles(Build.A.BlockHeader.TestObject).TestObject);
             Assert.False(result);
         }
     }

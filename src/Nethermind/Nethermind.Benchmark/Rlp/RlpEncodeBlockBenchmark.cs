@@ -49,7 +49,7 @@ namespace Nethermind.Benchmarks.Rlp
             _scenarios = new[]
             {
                 Build.A.Block.WithNumber(1).TestObject,
-                Build.A.Block.WithNumber(1).WithTransactions(transactions).WithOmmers(Build.A.BlockHeader.TestObject).WithMixHash(Keccak.EmptyTreeHash).TestObject
+                Build.A.Block.WithNumber(1).WithTransactions(transactions).WithUncles(Build.A.BlockHeader.TestObject).WithMixHash(Keccak.EmptyTreeHash).TestObject
             };
         }
         

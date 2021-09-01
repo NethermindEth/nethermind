@@ -119,7 +119,7 @@ namespace Nethermind.Synchronization.Test
                     {
                         if (block.Hash == blockHashes[i])
                         {
-                            result[i] = new BlockBody(block.Transactions, block.Ommers);
+                            result[i] = new BlockBody(block.Transactions, block.Uncles);
                         }
                     }
                 }

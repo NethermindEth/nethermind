@@ -153,8 +153,8 @@ namespace Nethermind.Synchronization.FastBlocks
         {
             BlockHeader header = _blockTree.FindHeader(blockInfo.BlockHash);
             bool txRootIsValid = new TxTrie(blockBody.Transactions).RootHash == header.TxRoot;
-            bool ommersHashIsValid = OmmersHash.Calculate(blockBody.Ommers) == header.OmmersHash;
-            if (txRootIsValid && ommersHashIsValid)
+            bool unclesHashIsValid = UnclesHash.Calculate(blockBody.Uncles) == header.UnclesHash;
+            if (txRootIsValid && unclesHashIsValid)
             {
                 block = new Block(header, blockBody);
             }
@@ -196,11 +196,11 @@ namespace Nethermind.Synchronization.FastBlocks
                     else
                     {
                         hasBreachedProtocol = true;
-                        if (_logger.IsDebug) _logger.Debug($"{batch} - reporting INVALID - tx or ommers");
+                        if (_logger.IsDebug) _logger.Debug($"{batch} - reporting INVALID - tx or uncles");
 
                         if (batch.ResponseSourcePeer != null)
                         {
-                            _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, "invalid tx or ommers root");
+                            _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, "invalid tx or uncles root");
                         }
 
                         _syncStatusList.MarkUnknown(blockInfo.BlockNumber);

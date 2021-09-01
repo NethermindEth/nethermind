@@ -91,7 +91,7 @@ namespace Nethermind.Synchronization.Test
             for (int i = 0; i < blockHashes.Count; i++)
             {
                 Block block = _remoteTree.FindBlock(blockHashes[i], BlockTreeLookupOptions.RequireCanonical);
-                result[i] = new BlockBody(block.Transactions, block.Ommers);
+                result[i] = new BlockBody(block.Transactions, block.Uncles);
             }
             
             return Task.FromResult(result);

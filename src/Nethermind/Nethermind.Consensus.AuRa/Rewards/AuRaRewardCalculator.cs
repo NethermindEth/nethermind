@@ -86,16 +86,16 @@ namespace Nethermind.Consensus.AuRa.Rewards
         {
             (Address[] beneficieries, ushort[] kinds) GetBeneficiaries()
             {
-                var length = block.Ommers.Length + 1;
+                var length = block.Uncles.Length + 1;
                 
                 Address[] beneficiariesList = new Address[length];
                 ushort[] kindsList = new ushort[length];
                 beneficiariesList[0] = block.Beneficiary;
                 kindsList[0] = BenefactorKind.Author;
                 
-                for (int i = 0; i < block.Ommers.Length; i++)
+                for (int i = 0; i < block.Uncles.Length; i++)
                 {
-                    var uncle = block.Ommers[i];
+                    var uncle = block.Uncles[i];
                     if (BenefactorKind.TryGetUncle(block.Number - uncle.Number, out var kind))
                     {
                         beneficiariesList[i + 1] = uncle.Beneficiary;

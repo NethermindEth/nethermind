@@ -219,7 +219,7 @@ namespace Nethermind.EthStats.Integrations
                     block.Transactions.Select(t => new Transaction((t.Hash ?? Keccak.Zero).ToString())),
                     (block.TxRoot ?? Keccak.Zero).ToString(),
                     (block.StateRoot ?? Keccak.Zero).ToString(),
-                    block.Ommers.Select(_ => new Uncle()))));
+                    block.Uncles.Select(_ => new Uncle()))));
 
         // ReSharper disable once UnusedMethodReturnValue.Local
         private Task SendPendingAsync(int pending)
