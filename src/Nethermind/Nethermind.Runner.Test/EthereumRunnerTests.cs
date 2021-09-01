@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+#nullable enable
 using System;
 using System.Collections;
 using System.Collections.Concurrent;
@@ -25,6 +26,7 @@ using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using FluentAssertions.Common;
 using FluentAssertions.Execution;
 using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
@@ -42,6 +44,7 @@ using Nethermind.Runner.Ethereum;
 using Nethermind.Serialization.Json;
 using Nethermind.Stats;
 using Nethermind.Db.Blooms;
+using Nethermind.Logging.NLog;
 using Nethermind.Runner.Ethereum.Api;
 using Nethermind.TxPool;
 using NLog;
@@ -207,16 +210,40 @@ namespace Nethermind.Runner.Test
         }
 
         [Test]
-        public void Run_GivenConfigOption_AddsRule()
+        public void GetClassLogger_GivenConfigurationOptions_ConfigurationRuleIsAdded()
         {
             Target target = LogManager.Configuration!.FindTargetByName("auto-colored-console-async");
-            LoggingRule loggingRule = new LoggingRule("JsonRpc.*", LogLevel.Warn, target);
+            LoggingRule loggingRule = new("JsonRpc.*", LogLevel.Warn, target);
+            SameLoggingRule loggingRuleComparer = new();
+            NLogManager manager = new("test", null, "JsonRpc.*: Warn;");
             
-            LogManager.Configuration.LoggingRules.Contains(loggingRule).Should().BeFalse();
-            Program.Main(new[] {"--configOption: JsonRpc.*: Warn;"});
+            LogManager.Configuration.LoggingRules.Contains(loggingRule, loggingRuleComparer).Should().BeFalse();
+            manager.GetClassLogger();
+            
+            LogManager.Configuration.LoggingRules.Contains(loggingRule, loggingRuleComparer).Should().BeTrue();
+        }
 
-            LogManager.Configuration = LogManager.Configuration.Reload();
-            LogManager.Configuration.LoggingRules.Contains(loggingRule).Should().BeTrue();
+        class SameLoggingRule : IEqualityComparer<LoggingRule>
+        {
+            public bool Equals(LoggingRule? a, LoggingRule? b)
+            {
+                if (a == null && b == null)
+                    return true;
+                else if (a == null)
+                    return false;
+                else if (b == null)
+                    return false;
+                else
+                {
+                    return a.LoggerNamePattern == b.LoggerNamePattern && a.Targets.SequenceEqual(b.Targets) && a.Levels.SequenceEqual(b.Levels);
+                }
+            }
+
+            public int GetHashCode(LoggingRule obj)
+            {
+                string hashString = obj.RuleName ?? "" + obj.ChildRules + obj.Targets;
+                return hashString.GetHashCode();
+            }
         }
     }
 }

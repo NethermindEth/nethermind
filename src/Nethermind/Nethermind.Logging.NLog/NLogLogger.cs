@@ -19,8 +19,6 @@ using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using NLog;
-using NLog.Config;
-using NLog.Fluent;
 using NLog.Targets;
 
 [assembly: InternalsVisibleTo("Nethermind.Logging.NLog.Test")]
@@ -72,13 +70,13 @@ namespace Nethermind.Logging.NLog
                     string[] ruleBreakdown = rule.Split(": ");
                     string loggerNamePattern = ruleBreakdown[0].Trim();
                     string level = ruleBreakdown[1].Trim();
-                    global::NLog.LogLevel logLevel = getLogLevel(level);
+                    global::NLog.LogLevel logLevel = GetLogLevel(level);
                     Target target = LogManager.Configuration!.FindTargetByName("auto-colored-console-async");
-                    LogManager.Configuration.AddRuleForOneLevel(logLevel, target, loggerNamePattern);
+                    LogManager.Configuration.AddRule(logLevel, global::NLog.LogLevel.Fatal, target, loggerNamePattern);
                 }
             }
 
-            global::NLog.LogLevel getLogLevel(string level)
+            global::NLog.LogLevel GetLogLevel(string level)
             {
                 switch (level)
                 {
