@@ -16,12 +16,14 @@
 // 
 
 using Nethermind.Consensus;
+using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Blockchain.Producers
 {
     public interface IBlockProducerInfo
     {
-        public IBlockProducer BlockProducer { get; }
-        public IManualBlockProductionTrigger BlockProductionTrigger { get; }
+        IBlockProducer BlockProducer { get; }
+        IManualBlockProductionTrigger BlockProductionTrigger { get; }
+        IBlockTracer BlockTracer => NullBlockTracer.Instance;
     }
 }

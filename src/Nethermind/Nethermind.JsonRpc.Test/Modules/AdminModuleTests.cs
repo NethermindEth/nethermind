@@ -50,10 +50,10 @@ namespace Nethermind.JsonRpc.Test.Modules
             _blockTree = Build.A.BlockTree().OfChainLength(5).TestObject;
             _networkConfig = new NetworkConfig();
             IPeerManager peerManager = Substitute.For<IPeerManager>();
-            peerManager.ActivePeers.Returns(new List<Peer> {new Peer(new Node("127.0.0.1", 30303, true))});
+            peerManager.ActivePeers.Returns(new List<Peer> {new(new Node("127.0.0.1", 30303, true))});
             
             IStaticNodesManager staticNodesManager = Substitute.For<IStaticNodesManager>();
-            Enode enode = new Enode(_enodeString);
+            Enode enode = new(_enodeString);
             _adminRpcModule = new AdminRpcModule(_blockTree, _networkConfig, peerManager, staticNodesManager, enode, _exampleDataDir);
             _serializer = new EthereumJsonSerializer();
         }
@@ -63,7 +63,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             string serialized = RpcTest.TestSerializedRequest(_adminRpcModule, "admin_nodeInfo");
             JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized);
-            JsonSerializerSettings settings = new JsonSerializerSettings();
+            JsonSerializerSettings settings = new();
             settings.Converters = EthereumJsonSerializer.CommonConverters.ToList();
             
             NodeInfo nodeInfo = ((JObject) response.Result).ToObject<NodeInfo>(JsonSerializer.Create(settings));

@@ -41,7 +41,7 @@ namespace Nethermind.Serialization.Rlp
             int headerCheck = decoderContext.Position + headerSequenceLength;
 
             Keccak? parentHash = decoderContext.DecodeKeccak();
-            Keccak? ommersHash = decoderContext.DecodeKeccak();
+            Keccak? unclesHash = decoderContext.DecodeKeccak();
             Address? beneficiary = decoderContext.DecodeAddress();
             Keccak? stateRoot = decoderContext.DecodeKeccak();
             Keccak? transactionsRoot = decoderContext.DecodeKeccak();
@@ -56,7 +56,7 @@ namespace Nethermind.Serialization.Rlp
 
             BlockHeader blockHeader = new(
                 parentHash,
-                ommersHash,
+                unclesHash,
                 beneficiary,
                 difficulty,
                 (long)number,
@@ -109,7 +109,7 @@ namespace Nethermind.Serialization.Rlp
             int headerCheck = rlpStream.Position + headerSequenceLength;
 
             Keccak? parentHash = rlpStream.DecodeKeccak();
-            Keccak? ommersHash = rlpStream.DecodeKeccak();
+            Keccak? unclesHash = rlpStream.DecodeKeccak();
             Address? beneficiary = rlpStream.DecodeAddress();
             Keccak? stateRoot = rlpStream.DecodeKeccak();
             Keccak? transactionsRoot = rlpStream.DecodeKeccak();
@@ -124,7 +124,7 @@ namespace Nethermind.Serialization.Rlp
 
             BlockHeader blockHeader = new(
                 parentHash,
-                ommersHash,
+                unclesHash,
                 beneficiary,
                 difficulty,
                 (long)number,
@@ -175,7 +175,7 @@ namespace Nethermind.Serialization.Rlp
             bool notForSealing = (rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing;
             rlpStream.StartSequence(GetContentLength(header, rlpBehaviors));
             rlpStream.Encode(header.ParentHash);
-            rlpStream.Encode(header.OmmersHash);
+            rlpStream.Encode(header.UnclesHash);
             rlpStream.Encode(header.Beneficiary);
             rlpStream.Encode(header.StateRoot);
             rlpStream.Encode(header.TxRoot);
@@ -232,7 +232,7 @@ namespace Nethermind.Serialization.Rlp
             bool notForSealing = (rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing;
             int contentLength = 0
                                 + Rlp.LengthOf(item.ParentHash)
-                                + Rlp.LengthOf(item.OmmersHash)
+                                + Rlp.LengthOf(item.UnclesHash)
                                 + Rlp.LengthOf(item.Beneficiary)
                                 + Rlp.LengthOf(item.StateRoot)
                                 + Rlp.LengthOf(item.TxRoot)

@@ -95,7 +95,8 @@ namespace Nethermind.Blockchain.Producers
 
         private void OnTriggerBlockProduction(object? sender, BlockProductionEventArgs e)
         {
-            e.BlockProductionTask = TryProduceAndAnnounceNewBlock(e.CancellationToken, e.ParentHeader);
+            BlockHeader? parent = BlockTree.GetProducedBlockParent(e.ParentHeader);
+            e.BlockProductionTask = TryProduceAndAnnounceNewBlock(e.CancellationToken, parent, e.BlockTracer);
         }
 
         public virtual void Start()
@@ -123,7 +124,7 @@ namespace Nethermind.Blockchain.Producers
             return IsRunning() && (maxProducingInterval == null || _lastProducedBlockDateTime.AddSeconds(maxProducingInterval.Value) > DateTime.UtcNow);
         }
 
-        private async Task<Block?> TryProduceAndAnnounceNewBlock(CancellationToken token, BlockHeader? parentHeader = null)
+        private async Task<Block?> TryProduceAndAnnounceNewBlock(CancellationToken token, BlockHeader? parentHeader, IBlockTracer? blockTracer = null)
         {
             using CancellationTokenSource tokenSource = CancellationTokenSource.CreateLinkedTokenSource(token, _producerCancellationToken!.Token);
             token = tokenSource.Token;
@@ -133,7 +134,7 @@ namespace Nethermind.Blockchain.Producers
             {
                 try
                 {
-                    block = await TryProduceNewBlock(token, parentHeader);
+                    block = await TryProduceNewBlock(token, parentHeader, blockTracer);
                     if (block is not null)
                     {
                         BlockProduced?.Invoke(this, new BlockEventArgs(block));
@@ -158,9 +159,8 @@ namespace Nethermind.Blockchain.Producers
             return block;
         }
 
-        private Task<Block?> TryProduceNewBlock(CancellationToken token, BlockHeader? parentHeader = null)
+        protected virtual Task<Block?> TryProduceNewBlock(CancellationToken token, BlockHeader? parentHeader, IBlockTracer? blockTracer = null)
         {
-            parentHeader = GetProducedBlockParent(parentHeader);
             if (parentHeader == null)
             {
                 if (Logger.IsWarn) Logger.Warn("Preparing new block - parent header is null");
@@ -170,7 +170,7 @@ namespace Nethermind.Blockchain.Producers
                 if (Sealer.CanSeal(parentHeader.Number + 1, parentHeader.Hash))
                 {
                     Interlocked.Exchange(ref Metrics.CanProduceBlocks, 1);
-                    return ProduceNewBlock(parentHeader, token);
+                    return ProduceNewBlock(parentHeader, token, blockTracer);
                 }
                 else
                 {
@@ -182,16 +182,14 @@ namespace Nethermind.Blockchain.Producers
             return Task.FromResult((Block?)null);
         }
 
-        protected virtual BlockHeader? GetProducedBlockParent(BlockHeader? parentHeader) => parentHeader ?? BlockTree.Head?.Header;
-
-        private Task<Block?> ProduceNewBlock(BlockHeader parent, CancellationToken token)
+        private Task<Block?> ProduceNewBlock(BlockHeader parent, CancellationToken token, IBlockTracer? blockTracer)
         {
             if (TrySetState(parent.StateRoot))
             {
                 Block block = PrepareBlock(parent);
                 if (PreparedBlockCanBeMined(block))
                 {
-                    Block? processedBlock = ProcessPreparedBlock(block);
+                    Block? processedBlock = ProcessPreparedBlock(block, blockTracer);
                     if (processedBlock is null)
                     {
                         if (Logger.IsError) Logger.Error("Block prepared by block producer was rejected by processor.");
@@ -260,8 +258,8 @@ namespace Nethermind.Blockchain.Producers
         protected virtual Task<Block> SealBlock(Block block, BlockHeader parent, CancellationToken token) =>
             Sealer.SealBlock(block, token);
 
-        protected virtual Block? ProcessPreparedBlock(Block block) =>
-            Processor.Process(block, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance);
+        protected virtual Block? ProcessPreparedBlock(Block block, IBlockTracer? blockTracer) =>
+            Processor.Process(block, ProcessingOptions.ProducingBlock, blockTracer ?? NullBlockTracer.Instance);
 
         private bool PreparedBlockCanBeMined(Block? block)
         {

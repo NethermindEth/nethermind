@@ -22,23 +22,14 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Rlp;
-using Nethermind.TxPool;
-using Nethermind.JsonRpc.Test;
 using Nethermind.Core.Extensions;
-using Nethermind.JsonRpc.Data;
 using Nethermind.Int256;
 using Nethermind.Crypto;
-using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc;
-using Nethermind.Facade;
-using NSubstitute;
 using NUnit.Framework;
-using Newtonsoft.Json;
 using FluentAssertions;
-using Google.Protobuf.WellKnownTypes;
 using Nethermind.Evm;
 using Nethermind.Mev.Data;
 using Nethermind.Specs.Forks;
@@ -138,6 +129,19 @@ namespace Nethermind.Mev.Test
             string parameters = $"{{\"txs\":[\"{Rlp.Encode(setTx).Bytes.ToHexString()}\",\"{Rlp.Encode(getTx).Bytes.ToHexString()}\"]}}";
             string result = chain.TestSerializedRequest(chain.MevRpcModule, "eth_callBundle", parameters);
             result.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":{{\"{setTx.Hash!}\":{{\"value\":\"0x\"}},\"{getTx.Hash!}\":{{\"value\":\"0x000000000000000000000000000000000000000000000000000000000000000f\"}}}},\"id\":67}}");
+        }
+        
+        [Test]
+        public async Task Should_execute_eth_callBundle_and_not_change_block() 
+        {
+            var chain = await CreateChain(2);
+            Address contractAddress = await Contracts.Deploy(chain, Contracts.CallableCode);
+            Transaction getTx = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(1ul).WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.CallableInvokeGet)).WithValue(0).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            Transaction setTx = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(1ul).WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.CallableInvokeSet)).WithValue(0).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+            string parameters = $"{{\"txs\":[\"{Rlp.Encode(setTx).Bytes.ToHexString()}\",\"{Rlp.Encode(getTx).Bytes.ToHexString()}\"],\"blockNumber\":0x1}}";
+            long headNumber = chain.BlockTree.Head!.Number;
+            chain.TestSerializedRequest(chain.MevRpcModule, "eth_callBundle", parameters);
+            chain.BlockTree.Head!.Number.Should().Be(headNumber);
         }
 
         [Test]

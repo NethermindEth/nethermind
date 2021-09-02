@@ -46,6 +46,18 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             }
         }
 
+        public void RequestTransactionsEth66(Action<Eth.V66.GetPooledTransactionsMessage> send, IReadOnlyList<Keccak> hashes)
+        {
+            IList<Keccak> discoveredTxHashes = GetAndMarkUnknownHashes(hashes);
+            
+            if (discoveredTxHashes.Count != 0)
+            {
+                GetPooledTransactionsMessage msg65 = new GetPooledTransactionsMessage(discoveredTxHashes.ToArray());
+                send(new V66.GetPooledTransactionsMessage() {EthMessage = msg65});
+                Metrics.Eth65GetPooledTransactionsRequested++;
+            }
+        }
+        
         private IList<Keccak> GetAndMarkUnknownHashes(IReadOnlyList<Keccak> hashes)
         {
             List<Keccak> discoveredTxHashes = new();

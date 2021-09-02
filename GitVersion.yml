@@ -1,5 +1,0 @@
-assembly-versioning-scheme: MajorMinor
-assembly-informational-format: '{SemVer}+{ShortSha}'
-branches: {}
-ignore:
-  sha: []

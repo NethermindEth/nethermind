@@ -80,7 +80,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             }
         }
 
-        private void Handle(NewPooledTransactionHashesMessage msg)
+        protected virtual void Handle(NewPooledTransactionHashesMessage msg)
         {
             Metrics.Eth65NewPooledTransactionHashesReceived++;
             Stopwatch stopwatch = Stopwatch.StartNew();
@@ -98,6 +98,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             Metrics.Eth65GetPooledTransactionsReceived++;
 
             Stopwatch stopwatch = Stopwatch.StartNew();
+            Send(FulfillPooledTransactionsRequest(msg));
+            stopwatch.Stop();
+            if (Logger.IsTrace)
+                Logger.Trace($"OUT {Counter:D5} {nameof(GetPooledTransactionsMessage)} to {Node:c} " +
+                             $"in {stopwatch.Elapsed.TotalMilliseconds}ms");
+        }
+
+        protected PooledTransactionsMessage FulfillPooledTransactionsRequest(
+            GetPooledTransactionsMessage msg)
+        {
             List<Transaction> txs = new();
             int responseSize = Math.Min(256, msg.Hashes.Count);
             for (int i = 0; i < responseSize; i++)
@@ -108,11 +118,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                 }
             }
 
-            Send(new PooledTransactionsMessage(txs));
-            stopwatch.Stop();
-            if (Logger.IsTrace)
-                Logger.Trace($"OUT {Counter:D5} {nameof(GetPooledTransactionsMessage)} to {Node:c} " +
-                             $"in {stopwatch.Elapsed.TotalMilliseconds}ms");
+            return new PooledTransactionsMessage(txs);
         }
 
         public override bool SendNewTransaction(Transaction transaction, bool isPriority)

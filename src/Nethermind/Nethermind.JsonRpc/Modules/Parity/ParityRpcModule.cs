@@ -27,7 +27,6 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.KeyStore;
-using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
 using Nethermind.Network;
@@ -55,7 +54,6 @@ namespace Nethermind.JsonRpc.Modules.Parity
             ISignerStore signerStore,
             IKeyStore keyStore,
             ISpecProvider specProvider,
-            ILogManager logManager,
             IPeerManager peerManager)
         {
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));

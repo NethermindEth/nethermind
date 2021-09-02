@@ -251,7 +251,7 @@ namespace Nethermind.Blockchain.Processing
             
             _receiptsTracer.SetOtherTracer(blockTracer);
             _receiptsTracer.StartNewBlockTrace(block);
-            TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, blockTracer, _receiptsTracer, spec);
+            TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, _receiptsTracer, spec);
             _receiptsTracer.EndBlockTrace();
             
             block.Header.ReceiptsRoot = receipts.GetReceiptsRoot(spec, block.ReceiptsRoot);
@@ -279,7 +279,7 @@ namespace Nethermind.Blockchain.Processing
             BlockHeader bh = suggestedBlock.Header;
             BlockHeader headerForProcessing = new(
                 bh.ParentHash,
-                bh.OmmersHash,
+                bh.UnclesHash,
                 bh.Beneficiary,
                 bh.Difficulty,
                 bh.Number,

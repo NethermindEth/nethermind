@@ -25,7 +25,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             JsonWriter writer = Substitute.For<JsonWriter>();
             JsonSerializer serializer = Substitute.For<JsonSerializer>();
 
-            ParityAccountStateChange change = new ParityAccountStateChange
+            ParityAccountStateChange change = new()
             {
                 Code = new ParityStateChange<byte[]>(new byte[] {1}, null)
             };
@@ -39,7 +39,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             JsonWriter writer = Substitute.For<JsonWriter>();
             JsonSerializer serializer = Substitute.For<JsonSerializer>();
 
-            ParityAccountStateChange change = new ParityAccountStateChange
+            ParityAccountStateChange change = new()
             {
                 Code = new ParityStateChange<byte[]>(null, new byte[] {1})
             };
@@ -53,7 +53,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             JsonWriter writer = Substitute.For<JsonWriter>();
             JsonSerializer serializer = Substitute.For<JsonSerializer>();
 
-            ParityAccountStateChange change = new ParityAccountStateChange
+            ParityAccountStateChange change = new()
             {
                 Storage = new Dictionary<UInt256, ParityStateChange<byte[]>>
                 {

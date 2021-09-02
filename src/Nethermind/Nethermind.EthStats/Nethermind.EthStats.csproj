@@ -14,6 +14,7 @@
     <ItemGroup>
       <ProjectReference Include="..\Nethermind.Blockchain\Nethermind.Blockchain.csproj" />
       <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
+      <ProjectReference Include="..\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj" />
       <ProjectReference Include="..\Nethermind.Logging\Nethermind.Logging.csproj" />
       <ProjectReference Include="..\Nethermind.Network\Nethermind.Network.csproj" />
     </ItemGroup>

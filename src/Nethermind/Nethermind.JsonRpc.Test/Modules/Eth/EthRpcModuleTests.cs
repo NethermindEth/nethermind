@@ -16,9 +16,7 @@
 
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Linq;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -40,18 +38,14 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Facade;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
-using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
-using Nethermind.State;
-using Nethermind.State.Repositories;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
-using Newtonsoft.Json.Linq;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -134,7 +128,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                 specProvider.GetSpec(Arg.Any<long>()).Returns(releaseSpec);
             }
             using Context ctx = await Context.Create();
-            Block block = Build.A.Block.WithOmmers(Build.A.BlockHeader.TestObject, Build.A.BlockHeader.TestObject).TestObject;
+            Block block = Build.A.Block.WithUncles(Build.A.BlockHeader.TestObject, Build.A.BlockHeader.TestObject).TestObject;
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             blockTree.FindBlock((BlockParameter) null).ReturnsForAnyArgs(block);
             ctx._test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockTree).Build(specProvider);
@@ -155,7 +149,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             }
                 
             using Context ctx = await Context.Create();
-            Block block = Build.A.Block.WithOmmers(Build.A.BlockHeader.WithNumber(2).TestObject, Build.A.BlockHeader.TestObject).WithNumber(3).TestObject;
+            Block block = Build.A.Block.WithUncles(Build.A.BlockHeader.WithNumber(2).TestObject, Build.A.BlockHeader.TestObject).WithNumber(3).TestObject;
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             blockTree.FindBlock((BlockParameter) null).ReturnsForAnyArgs(block);
             ctx._test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockTree).Build(specProvider);
@@ -455,7 +449,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         {
             using Context ctx = await Context.Create();
             string serialized = ctx._test.TestEthRpc("eth_protocolVersion");
-            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x41\",\"id\":67}", serialized);
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x42\",\"id\":67}", serialized);
         }
 
         [Test]
@@ -886,7 +880,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         }
 
 
-        private class Context : IDisposable
+        protected class Context : IDisposable
         {
             public TestRpcBlockchain _test;
             public TestRpcBlockchain _auraTest;
@@ -901,7 +895,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                 return await Create(specProvider);
             }
             
-            public static async Task<Context> Create(ISpecProvider specProvider = null) =>
+            public static async Task<Context> Create(ISpecProvider? specProvider = null) =>
                 new()
                 {
                     _test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(specProvider), 

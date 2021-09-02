@@ -231,7 +231,19 @@ namespace Nethermind.Cli.Modules
         {
             return NodeManager.Post<long>("eth_newPendingTransactionFilter").Result;
         }
+        
+        [CliFunction("eth", "feeHistory")]
+        public JsValue FeeHistory(int blockCount, string newestBlock, double[]? rewardPercentiles = null)
+        {
+            return NodeManager.PostJint("eth_feeHistory", blockCount, newestBlock, rewardPercentiles).Result;
+        }
 
+        [CliFunction("eth", "gasPrice")]
+        public JsValue GasPrice()
+        {
+            return NodeManager.PostJint("eth_gasPrice").Result;
+        }
+        
         public EthCliModule(ICliEngine cliEngine, INodeManager nodeManager) : base(cliEngine, nodeManager)
         {
         }

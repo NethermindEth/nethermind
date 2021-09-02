@@ -386,7 +386,7 @@ namespace Nethermind.Network.Test
             disconnections.Should().Be(1);
         }
 
-        [Test]
+        [Test, Retry(3)]
         public async Task Will_connect_and_disconnect_on_peer_management()
         {
             await using Context ctx = new Context();

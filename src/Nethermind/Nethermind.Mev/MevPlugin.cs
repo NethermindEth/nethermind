@@ -30,9 +30,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Db;
-using Nethermind.Evm.Tracing;
 using Nethermind.Facade;
-using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
@@ -154,54 +152,59 @@ namespace Nethermind.Mev
             return Task.CompletedTask;
         }
 
-        public async Task<IBlockProducer> InitBlockProducer(IConsensusPlugin consensusPlugin, ITxSource? txSource = null)
+        public async Task<IBlockProducer> InitBlockProducer(IConsensusPlugin consensusPlugin)
         {
-            if (!_mevConfig.Enabled)
+            if (!Enabled)
             {
                 throw new InvalidOperationException("Plugin is disabled");
             }
 
-            MevBlockProducerEnvFactory producerEnvFactory = new(_nethermindApi.DbProvider!,
-                _nethermindApi.BlockTree!,
-                _nethermindApi.ReadOnlyTrieStore!,
-                _nethermindApi.SpecProvider!,
-                _nethermindApi.BlockValidator!,
-                _nethermindApi.RewardCalculatorSource!,
-                _nethermindApi.ReceiptStorage!,
-                _nethermindApi.BlockPreprocessor,
-                _nethermindApi.TxPool!,
-                _nethermindApi.Config<IMiningConfig>(),
-                _nethermindApi.LogManager);
-
-            _nethermindApi.BlockProducerEnvFactory = producerEnvFactory;
-
+            _nethermindApi.BlockProducerEnvFactory.TransactionsExecutorFactory = new MevBlockProducerTransactionsExecutorFactory(_nethermindApi.SpecProvider!, _nethermindApi.LogManager);
+            
             List<MevBlockProducer.MevBlockProducerInfo> blockProducers =
                 new(_mevConfig.MaxMergedBundles + 1);
                 
             // Add non-mev block
-            MevBlockProducer.MevBlockProducerInfo standardProducer = await CreateProducer(consensusPlugin, producerEnvFactory);
+            MevBlockProducer.MevBlockProducerInfo standardProducer = await CreateProducer(consensusPlugin);
             blockProducers.Add(standardProducer);
             
             // Try blocks with all bundle numbers <= MaxMergedBundles
             for (int bundleLimit = 1; bundleLimit <= _mevConfig.MaxMergedBundles; bundleLimit++)
             {
                 BundleSelector bundleSelector = new(BundlePool, bundleLimit);
-                MevBlockProducer.MevBlockProducerInfo bundleProducer = await CreateProducer(consensusPlugin, producerEnvFactory, new BundleTxSource(bundleSelector, _nethermindApi.Timestamper));
+                MevBlockProducer.MevBlockProducerInfo bundleProducer = await CreateProducer(consensusPlugin, bundleLimit, new BundleTxSource(bundleSelector, _nethermindApi.Timestamper));
                 blockProducers.Add(bundleProducer);
             }
 
-            return _nethermindApi.BlockProducer = new MevBlockProducer(consensusPlugin.DefaultBlockProductionTrigger, blockProducers.ToArray());
+            return new MevBlockProducer(consensusPlugin.DefaultBlockProductionTrigger, _nethermindApi.LogManager, blockProducers.ToArray());
         }
 
-        private static async Task<MevBlockProducer.MevBlockProducerInfo> CreateProducer(
-            IConsensusPlugin consensusPlugin, 
-            MevBlockProducerEnvFactory producerEnvFactory,
+        private async Task<MevBlockProducer.MevBlockProducerInfo> CreateProducer(
+            IConsensusPlugin consensusPlugin,
+            int bundleLimit = 0,
             ITxSource? additionalTxSource = null)
         {
-            IManualBlockProductionTrigger trigger = new BuildBlocksWhenRequested();
+            bool BundleLimitTriggerCondition(BlockProductionEventArgs e)
+            {
+                BlockHeader? parent = _nethermindApi.BlockTree!.GetProducedBlockParent(e.ParentHeader);
+                if (parent is not null)
+                {
+                    IEnumerable<MevBundle> bundles = BundlePool.GetBundles(parent, _nethermindApi.Timestamper);
+                    return bundles.Count() >= bundleLimit;
+                }
+
+                return false;
+            }
+            
+            IManualBlockProductionTrigger manualTrigger = new BuildBlocksWhenRequested();
+            IBlockProductionTrigger trigger = manualTrigger;
+            if (bundleLimit != 0)
+            {
+                trigger = new TriggerWithCondition(manualTrigger, BundleLimitTriggerCondition);
+            }
+            
             IBlockProducer producer = await consensusPlugin.InitBlockProducer(trigger, additionalTxSource);
-            IBeneficiaryBalanceSource beneficiaryBalanceSource = producerEnvFactory.LastMevBlockProcessor;
-            return new MevBlockProducer.MevBlockProducerInfo(producer, trigger, beneficiaryBalanceSource);
+            return new MevBlockProducer.MevBlockProducerInfo(producer, manualTrigger, new BeneficiaryTracer());
         }
 
         public bool Enabled => _mevConfig.Enabled;

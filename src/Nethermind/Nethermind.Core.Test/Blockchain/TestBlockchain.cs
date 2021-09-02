@@ -97,16 +97,16 @@ namespace Nethermind.Core.Test.Blockchain
         public static Address AccountC = TestItem.AddressC;
         public SemaphoreSlim _resetEvent;
         private ManualResetEvent _suggestedBlockResetEvent;
-        private AutoResetEvent _oneAtATime = new AutoResetEvent(true);
+        private AutoResetEvent _oneAtATime = new(true);
         private IBlockFinder _blockFinder;
 
         public static readonly UInt256 InitialValue = 1000.Ether();
         private BlockValidator _blockValidator;
-        public BuildBlocksWhenRequested BlockProductionTrigger { get; } = new BuildBlocksWhenRequested();
+        public BuildBlocksWhenRequested BlockProductionTrigger { get; } = new();
 
         public IReadOnlyTrieStore ReadOnlyTrieStore { get; private set; }
 
-        public ManualTimestamper Timestamper { get; private set; }
+        public ManualTimestamper Timestamper { get; protected set; }
         
         public ProducedBlockSuggester Suggester { get; private set; }
 
@@ -148,7 +148,7 @@ namespace Nethermind.Core.Test.Blockchain
             TxPool = CreateTxPool();
 
             ReceiptStorage = new InMemoryReceiptStorage();
-            VirtualMachine virtualMachine = new VirtualMachine(State, Storage, new BlockhashProvider(BlockTree, LogManager), SpecProvider, LogManager);
+            VirtualMachine virtualMachine = new(State, Storage, new BlockhashProvider(BlockTree, LogManager), SpecProvider, LogManager);
             TxProcessor = new TransactionProcessor(SpecProvider, State, Storage, virtualMachine, LogManager);
             BlockPreprocessorStep = new RecoverSignatures(EthereumEcdsa, TxPool, SpecProvider, LogManager);
             HeaderValidator headerValidator = new(BlockTree, Always.Valid, SpecProvider, LogManager);
@@ -162,14 +162,15 @@ namespace Nethermind.Core.Test.Blockchain
             
             BlockProcessor = CreateBlockProcessor();
             
-            BlockchainProcessor chainProcessor = new BlockchainProcessor(BlockTree, BlockProcessor, BlockPreprocessorStep, LogManager, Nethermind.Blockchain.Processing.BlockchainProcessor.Options.Default);
+            BlockchainProcessor chainProcessor = new(BlockTree, BlockProcessor, BlockPreprocessorStep, LogManager, Nethermind.Blockchain.Processing.BlockchainProcessor.Options.Default);
             BlockchainProcessor = chainProcessor;
             BlockProcessingQueue = chainProcessor;
             chainProcessor.Start();
             
             TxPoolTxSource txPoolTxSource = CreateTxPoolTxSource();
             ISealer sealer = new NethDevSealEngine(TestItem.AddressD);
-            BlockProducer = CreateTestBlockProducer(txPoolTxSource, sealer);
+            ITransactionComparerProvider transactionComparerProvider = new TransactionComparerProvider(SpecProvider, BlockFinder);
+            BlockProducer = CreateTestBlockProducer(txPoolTxSource, sealer, transactionComparerProvider);
             Suggester = new ProducedBlockSuggester(BlockTree, BlockProducer);
             BlockProducer.Start();
 
@@ -207,7 +208,7 @@ namespace Nethermind.Core.Test.Blockchain
             }
         }
 
-        protected virtual IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer)
+        protected virtual IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
         {
             MiningConfig miningConfig = new();
 
@@ -221,6 +222,7 @@ namespace Nethermind.Core.Test.Blockchain
                 ReceiptStorage,
                 BlockPreprocessorStep,
                 TxPool,
+                transactionComparerProvider,
                 miningConfig,
                 LogManager);
 
@@ -231,7 +233,7 @@ namespace Nethermind.Core.Test.Blockchain
         public virtual ILogManager LogManager { get; } = LimboLogs.Instance;
 
         protected virtual TxPool.TxPool CreateTxPool() =>
-            new TxPool.TxPool(
+            new(
                 EthereumEcdsa,
                 new ChainHeadInfoProvider(new FixedBlockChainHeadSpecProvider(SpecProvider), BlockTree, ReadOnlyState),
                 new TxPoolConfig(),
@@ -273,7 +275,7 @@ namespace Nethermind.Core.Test.Blockchain
         }
 
         protected virtual BlockProcessor CreateBlockProcessor() =>
-            new BlockProcessor(
+            new(
                 SpecProvider,
                 _blockValidator,
                 NoBlockRewards.Instance,
@@ -334,7 +336,7 @@ namespace Nethermind.Core.Test.Blockchain
 
         public virtual void Dispose()
         {
-            TestContext.Out.WriteLine($"dispozing {this.GetHashCode()}");
+            TestContext.Out.WriteLine($"disposing {this.GetHashCode()}");
             BlockProducer?.StopAsync();
             CodeDb?.Dispose();
             StateDb?.Dispose();
@@ -358,7 +360,7 @@ namespace Nethermind.Core.Test.Blockchain
         
         private Transaction GetFundsTransaction(Address address, UInt256 ether, uint index = 0)
         {
-            var nonce = StateReader.GetNonce(BlockTree.Head.StateRoot, TestItem.AddressA);
+            UInt256 nonce = StateReader.GetNonce(BlockTree.Head.StateRoot, TestItem.AddressA);
             Transaction tx = Builders.Build.A.Transaction
                 .SignedAndResolved(TestItem.PrivateKeyA)
                 .To(address)
@@ -370,7 +372,7 @@ namespace Nethermind.Core.Test.Blockchain
         
         private Transaction GetFunds1559Transaction(Address address, UInt256 ether, uint index = 0)
         {
-            var nonce = StateReader.GetNonce(BlockTree.Head.StateRoot, TestItem.AddressA);
+            UInt256 nonce = StateReader.GetNonce(BlockTree.Head.StateRoot, TestItem.AddressA);
             Transaction tx = Builders.Build.A.Transaction
                 .SignedAndResolved(TestItem.PrivateKeyA)
                 .To(address)

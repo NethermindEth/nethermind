@@ -97,7 +97,10 @@ namespace Nethermind.Network.P2P
         
         protected void ReportIn(MessageBase msg)
         {
-            ReportIn(msg.ToString());
+            if (Logger.IsTrace || NetworkDiagTracer.IsEnabled)
+            {
+                ReportIn(msg.ToString());
+            }
         }
         
         protected void ReportIn(string messageInfo)

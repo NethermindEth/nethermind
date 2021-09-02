@@ -104,10 +104,9 @@ namespace Nethermind.Consensus.Clique
             
             ReadOnlyDbProvider readOnlyDbProvider = getFromApi.DbProvider.AsReadOnly(false);
             ReadOnlyBlockTree readOnlyBlockTree = getFromApi.BlockTree.AsReadOnly();
-            ITransactionComparerProvider transactionComparerProvider =
-                new TransactionComparerProvider(getFromApi.SpecProvider, readOnlyBlockTree);
-            
-                ReadOnlyTxProcessingEnv producerEnv = new ReadOnlyTxProcessingEnv(
+            ITransactionComparerProvider transactionComparerProvider = getFromApi.TransactionComparerProvider;
+
+            ReadOnlyTxProcessingEnv producerEnv = new ReadOnlyTxProcessingEnv(
                 readOnlyDbProvider,
                 getFromApi.ReadOnlyTrieStore,
                 readOnlyBlockTree,
@@ -118,7 +117,7 @@ namespace Nethermind.Consensus.Clique
                 getFromApi!.SpecProvider,
                 getFromApi!.BlockValidator,
                 NoBlockRewards.Instance,
-                new BlockProcessor.BlockProductionTransactionsExecutor(producerEnv, getFromApi!.SpecProvider, getFromApi.LogManager),
+                getFromApi.BlockProducerEnvFactory.TransactionsExecutorFactory.Create(producerEnv),
                 producerEnv.StateProvider,
                 producerEnv.StorageProvider, // do not remove transactions from the pool when preprocessing
                 NullReceiptStorage.Instance,
@@ -151,7 +150,7 @@ namespace Nethermind.Consensus.Clique
 
             IGasLimitCalculator gasLimitCalculator = setInApi.GasLimitCalculator = new TargetAdjustedGasLimitCalculator(getFromApi.SpecProvider, _miningConfig);
             
-            IBlockProducer blockProducer = setInApi.BlockProducer = new CliqueBlockProducer(
+            IBlockProducer blockProducer = new CliqueBlockProducer(
                 additionalTxSource.Then(txPoolTxSource),
                 chainProcessor,
                 producerEnv.StateProvider,

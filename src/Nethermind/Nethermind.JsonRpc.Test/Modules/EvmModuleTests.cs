@@ -29,7 +29,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void Evm_mine()
         {
             IManualBlockProductionTrigger trigger = Substitute.For<IManualBlockProductionTrigger>();
-            EvmRpcModule rpcModule = new EvmRpcModule(trigger);
+            EvmRpcModule rpcModule = new(trigger);
             string response = RpcTest.TestSerializedRequest<IEvmRpcModule>(rpcModule, "evm_mine");
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}", response);
             trigger.Received().BuildBlock();

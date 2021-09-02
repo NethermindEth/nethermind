@@ -172,6 +172,36 @@ namespace Nethermind.Network
         
         [Description("Number of eth.65 PooledTransactions messages received")]
         public static long Eth65PooledTransactionsReceived { get; set; }
+        
+        [Description("Number of eth.66 GetBlockHeaders messages received")]
+        public static long Eth66GetBlockHeadersReceived { get; set; }
+        
+        [Description("Number of eth.66 BlockHeaders messages received")]
+        public static long Eth66BlockHeadersReceived { get; set; }
+        
+        [Description("Number of eth.66 GetBlockBodies messages received")]
+        public static long Eth66GetBlockBodiesReceived { get; set; }
+        
+        [Description("Number of eth.66 BlockBodies messages received")]
+        public static long Eth66BlockBodiesReceived { get; set; }
+        
+        [Description("Number of eth.66 GetNodeData messages received")]
+        public static long Eth66GetNodeDataReceived { get; set; }
+        
+        [Description("Number of eth.66 NodeData messages received")]
+        public static long Eth66NodeDataReceived { get; set; }
+        
+        [Description("Number of eth.66 GetReceipts messages received")]
+        public static long Eth66GetReceiptsReceived { get; set; }
+        
+        [Description("Number of eth.66 Receipts messages received")]
+        public static long Eth66ReceiptsReceived { get; set; }
+        
+        [Description("Number of eth.66 GetPooledTransactions messages sent")]
+        public static long Eth66GetPooledTransactionsRequested { get; set; }
+        
+        [Description("Number of eth.66 PooledTransactions messages received")]
+        public static long Eth66PooledTransactionsReceived { get; set; }
 
         [Description("Number of bytes sent through P2P (TCP).")]
         public static long P2PBytesSent;

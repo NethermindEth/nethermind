@@ -25,10 +25,10 @@ namespace Nethermind.Blockchain.Test.Builders
     public class FilterBuilder
     {
         private static int _id;
-        private BlockParameter _fromBlock = new BlockParameter(BlockParameterType.Latest);
-        private BlockParameter _toBlock = new BlockParameter(BlockParameterType.Latest);
-        private AddressFilter _address = new AddressFilter((Address)null);
-        private SequenceTopicsFilter _topicsFilter = new SequenceTopicsFilter();
+        private BlockParameter _fromBlock = new(BlockParameterType.Latest);
+        private BlockParameter _toBlock = new(BlockParameterType.Latest);
+        private AddressFilter _address = new((Address)null);
+        private SequenceTopicsFilter _topicsFilter = new();
 
         private FilterBuilder()
         {
@@ -143,6 +143,6 @@ namespace Nethermind.Blockchain.Test.Builders
             return this;
         }
 
-        public LogFilter Build() => new LogFilter(_id, _fromBlock, _toBlock, _address, _topicsFilter);
+        public LogFilter Build() => new(_id, _fromBlock, _toBlock, _address, _topicsFilter);
     }
 }

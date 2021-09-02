@@ -24,5 +24,6 @@ namespace Nethermind.Blockchain.Contracts.Json
         AbiDefinition Parse(string json, string name = null);
         AbiDefinition Parse(Type type);
         public AbiDefinition Parse<T>() => Parse(typeof(T));
+        void RegisterAbiTypeFactory(IAbiTypeFactory abiTypeFactory);
     }
 }

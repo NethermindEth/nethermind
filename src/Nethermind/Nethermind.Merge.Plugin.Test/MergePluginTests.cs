@@ -18,6 +18,7 @@
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Core.Test.Builders;
@@ -55,6 +56,7 @@ namespace Nethermind.Merge.Plugin.Test
                 _context.ReceiptStorage!,
                 _context.BlockPreprocessor!,
                 _context.TxPool!,
+                _context.TransactionComparerProvider,
                 new MiningConfig(),
                 _context.LogManager!);
             _plugin = new MergePlugin();
@@ -84,7 +86,7 @@ namespace Nethermind.Merge.Plugin.Test
             await _plugin.InitBlockProducer();
             Assert.IsInstanceOf<Eth2BlockProducer>(_context.BlockProducer);
             await _plugin.InitRpcModules();
-            _context.RpcModuleProvider.Received().Register(Arg.Is<IRpcModulePool<IConsensusRpcModule>>(m => m is SingletonModulePool<IConsensusRpcModule>));
+            _context.RpcModuleProvider.Received().Register(Arg.Is<IRpcModulePool<IEngineRpcModule>>(m => m is SingletonModulePool<IEngineRpcModule>));
             await _context.BlockchainProcessor!.Received().StopAsync(true);
             await _plugin.DisposeAsync();
         }

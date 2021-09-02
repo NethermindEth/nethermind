@@ -29,15 +29,15 @@ namespace Nethermind.JsonRpc.Test.Data
 {
     public class Eip2930Tests
     {
-        private readonly EthereumJsonSerializer _serializer = new EthereumJsonSerializer();
-        private Transaction _transaction = new Transaction();
-        private Dictionary<Address, IReadOnlySet<UInt256>> _data = new Dictionary<Address, IReadOnlySet<UInt256>>();
-        private TransactionForRpc _transactionForRpc = new TransactionForRpc();
-        private HashSet<UInt256> _storageKeys = new HashSet<UInt256>();
+        private readonly EthereumJsonSerializer _serializer = new();
+        private Transaction _transaction = new();
+        private Dictionary<Address, IReadOnlySet<UInt256>> _data = new();
+        private TransactionForRpc _transactionForRpc = new();
+        private HashSet<UInt256> _storageKeys = new();
 
         private AccessList GetTestAccessList()
         {
-            AccessListBuilder accessListBuilder = new AccessListBuilder();
+            AccessListBuilder accessListBuilder = new();
 
             accessListBuilder.AddAddress(TestItem.AddressA);
             accessListBuilder.AddStorage(1);
