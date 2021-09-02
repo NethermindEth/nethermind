@@ -32,7 +32,7 @@ namespace Nethermind.Blockchain.Test.Filters
         [Test]
         public void Can_save_and_load_block_filter()
         {
-            FilterStore store = new FilterStore();
+            FilterStore store = new();
             BlockFilter filter = store.CreateBlockFilter(1);
             store.SaveFilter(filter);
             Assert.True(store.FilterExists(0), "exists");
@@ -42,7 +42,7 @@ namespace Nethermind.Blockchain.Test.Filters
         [Test]
         public void Can_save_and_load_log_filter()
         {
-            FilterStore store = new FilterStore();
+            FilterStore store = new();
             LogFilter filter = store.CreateLogFilter(new BlockParameter(1), new BlockParameter(2));
             store.SaveFilter(filter);
             Assert.True(store.FilterExists(0), "exists");
@@ -52,9 +52,9 @@ namespace Nethermind.Blockchain.Test.Filters
         [Test]
         public void Cannot_overwrite_filters()
         {
-            FilterStore store = new FilterStore();
+            FilterStore store = new();
 
-            BlockFilter externalFilter = new BlockFilter(100, 1);
+            BlockFilter externalFilter = new(100, 1);
             store.SaveFilter(externalFilter);
             Assert.Throws<InvalidOperationException>(() => store.SaveFilter(externalFilter));
         }
@@ -62,9 +62,9 @@ namespace Nethermind.Blockchain.Test.Filters
         [Test]
         public void Ids_are_incremented_when_storing_externally_created_filter()
         {
-            FilterStore store = new FilterStore();
+            FilterStore store = new();
 
-            BlockFilter externalFilter = new BlockFilter(100, 1);
+            BlockFilter externalFilter = new(100, 1);
             store.SaveFilter(externalFilter);
             LogFilter filter = store.CreateLogFilter(new BlockParameter(1), new BlockParameter(2));
             store.SaveFilter(filter);
@@ -77,7 +77,7 @@ namespace Nethermind.Blockchain.Test.Filters
         [Test]
         public void Remove_filter_removes_and_notifies()
         {
-            FilterStore store = new FilterStore();
+            FilterStore store = new();
             BlockFilter filter = store.CreateBlockFilter(1);
             store.SaveFilter(filter);
             bool hasNotified = false;
@@ -91,7 +91,7 @@ namespace Nethermind.Blockchain.Test.Filters
         [Test]
         public void Can_get_filters_by_type()
         {
-            FilterStore store = new FilterStore();
+            FilterStore store = new();
             BlockFilter filter1 = store.CreateBlockFilter(1);
             store.SaveFilter(filter1);
             LogFilter filter2 = store.CreateLogFilter(new BlockParameter(1), new BlockParameter(2));
@@ -120,9 +120,9 @@ namespace Nethermind.Blockchain.Test.Filters
         [TestCaseSource(nameof(CorrectlyCreatesAddressFilterTestCases))]
         public void Correctly_creates_address_filter(object address, AddressFilter expected)
         {
-            BlockParameter from = new BlockParameter(100);
-            BlockParameter to = new BlockParameter(BlockParameterType.Latest);
-            FilterStore store = new FilterStore();
+            BlockParameter from = new(100);
+            BlockParameter to = new(BlockParameterType.Latest);
+            FilterStore store = new();
             LogFilter filter = store.CreateLogFilter(from, to, address);
             filter.AddressFilter.Should().BeEquivalentTo(expected);
         }
@@ -142,9 +142,9 @@ namespace Nethermind.Blockchain.Test.Filters
         [TestCaseSource(nameof(CorrectlyCreatesTopicsFilterTestCases))]
         public void Correctly_creates_topics_filter(IEnumerable<object> topics)
         {
-            BlockParameter from = new BlockParameter(100);
-            BlockParameter to = new BlockParameter(BlockParameterType.Latest);
-            FilterStore store = new FilterStore();
+            BlockParameter from = new(100);
+            BlockParameter to = new(BlockParameterType.Latest);
+            FilterStore store = new();
             LogFilter filter = store.CreateLogFilter(from, to, null, topics);
         }
     }

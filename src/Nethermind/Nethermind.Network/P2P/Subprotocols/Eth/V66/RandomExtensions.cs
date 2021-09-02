@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,13 +13,14 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using Nethermind.Core;
+using System;
 
-namespace Nethermind.Blockchain.Validators
+namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 {
-    public interface IOmmersValidator
+    internal static class RandomExtensions
     {
-        bool Validate(BlockHeader header, BlockHeader[] ommers);
+        public static long NextLong(this Random random) => ((long)random.Next() << 32) | (long)random.Next();
     }
 }

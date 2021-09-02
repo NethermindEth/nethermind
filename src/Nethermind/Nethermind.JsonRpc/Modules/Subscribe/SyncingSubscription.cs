@@ -19,6 +19,7 @@ using System;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 
@@ -27,18 +28,19 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
     public class SyncingSubscription : Subscription
     {
         private readonly IBlockTree _blockTree;
+        private readonly IEthSyncingInfo _ethSyncingInfo;
         private readonly ILogger _logger;
-        private bool IsSyncing { get; set; }
-        private long BestSuggestedNumber { get; set; }
+        private bool _lastIsSyncing;
         
-        public SyncingSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, IBlockTree? blockTree, ILogManager? logManager) 
+        public SyncingSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, IBlockTree? blockTree, IEthSyncingInfo ethSyncingInfo, ILogManager? logManager) 
             : base(jsonRpcDuplexClient)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _ethSyncingInfo = ethSyncingInfo ?? throw new ArgumentNullException(nameof(ethSyncingInfo));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             
-            IsSyncing = CheckSyncing();
-            if(_logger.IsTrace) _logger.Trace($"Syncing subscription {Id}: Syncing status on start is {IsSyncing}");
+            _lastIsSyncing = _ethSyncingInfo.IsSyncing();
+            if(_logger.IsTrace) _logger.Trace($"Syncing subscription {Id}: Syncing status on start is {_lastIsSyncing}");
             
             _blockTree.NewBestSuggestedBlock += OnConditionsChange;
             if(_logger.IsTrace) _logger.Trace($"Syncing subscription {Id} will track NewBestSuggestedBlocks");
@@ -47,27 +49,22 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             if(_logger.IsTrace) _logger.Trace($"Syncing subscription {Id} will track NewHeadBlocks");
         }
 
-        private bool CheckSyncing()
-        {
-            BestSuggestedNumber = _blockTree.FindBestSuggestedHeader().Number;
-            return BestSuggestedNumber > _blockTree.Head.Number + 8;
-        }
-
         private void OnConditionsChange(object? sender, BlockEventArgs e)
         {
             Task.Run(() =>
             {
-                bool isSyncing = CheckSyncing();
+                SyncingResult syncingResult =  _ethSyncingInfo.GetFullInfo();
+                bool isSyncing = syncingResult.IsSyncing;
 
-                if (isSyncing == IsSyncing)
+                if (isSyncing == _lastIsSyncing)
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Syncing subscription {Id} didn't changed syncing status: {IsSyncing}");
+                    if (_logger.IsTrace) _logger.Trace($"Syncing subscription {Id} didn't changed syncing status: {_lastIsSyncing}");
                     return;
                 }
 
-                if (_logger.IsTrace) _logger.Trace($"Syncing subscription {Id} changed syncing status from {IsSyncing} to {isSyncing}");
+                if (_logger.IsTrace) _logger.Trace($"Syncing subscription {Id} changed syncing status from {_lastIsSyncing} to {isSyncing}");
 
-                IsSyncing = isSyncing;
+                _lastIsSyncing = isSyncing;
                 JsonRpcResult result;
 
                 if (isSyncing == false)
@@ -76,13 +73,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                 }
                 else
                 {
-                    result = CreateSubscriptionMessage(new SyncingResult
-                    {
-                        IsSyncing = isSyncing,
-                        CurrentBlock = _blockTree.Head.Number,
-                        HighestBlock = BestSuggestedNumber,
-                        StartingBlock = 0L
-                    });
+                    result = CreateSubscriptionMessage(syncingResult);
                 }
 
                 

@@ -59,7 +59,7 @@ namespace Nethermind.JsonRpc.Test
 
         private JsonRpcResponse TestRequest<T>(T module, string method, params string[] parameters) where T : IRpcModule
         {
-            RpcModuleProvider moduleProvider = new RpcModuleProvider(new FileSystem(), _configurationProvider.GetConfig<IJsonRpcConfig>(), LimboLogs.Instance);
+            RpcModuleProvider moduleProvider = new(new FileSystem(), _configurationProvider.GetConfig<IJsonRpcConfig>(), LimboLogs.Instance);
             moduleProvider.Register(new SingletonModulePool<T>(new SingletonFactory<T>(module), true));
             _jsonRpcService = new JsonRpcService(moduleProvider, _logManager);
             JsonRpcRequest request = RpcTest.GetJsonRequest(method, parameters);
@@ -91,7 +91,7 @@ namespace Nethermind.JsonRpc.Test
         [Test]
         public void CanHandleOptionalArguments()
         {
-            EthereumJsonSerializer serializer = new EthereumJsonSerializer();
+            EthereumJsonSerializer serializer = new();
             string serialized = serializer.Serialize(new TransactionForRpc());
             IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
             ethRpcModule.eth_call(Arg.Any<TransactionForRpc>()).ReturnsForAnyArgs(x => ResultWrapper<string>.Success("0x1"));

@@ -52,7 +52,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.JUMP)
                 .Done;
 
-            var receipt = Execute(8000000, 8000000, code);
+            TestAllTracerWithOutput receipt = Execute(8000000, 8000000, code);
             
             AssertGas(receipt, 8000000);
         }

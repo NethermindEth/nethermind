@@ -19,6 +19,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
 using NSubstitute;
@@ -30,6 +31,7 @@ namespace Nethermind.Evm.Test.Tracing
     public class CancellationTracerTests
     {
         [Test]
+        [Retry(3)]
         public async Task Throw_operation_canceled_after_given_timeout()
         {
             TimeSpan timeout = TimeSpan.FromMilliseconds(10);
@@ -57,8 +59,8 @@ namespace Nethermind.Evm.Test.Tracing
         [Test]
         public void Creates_inner_tx_cancellation_tracers()
         {
-            var blockTracer = new CancellationBlockTracer(Substitute.For<IBlockTracer>());
-            var transaction = Build.A.Transaction.TestObject;
+            CancellationBlockTracer blockTracer = new CancellationBlockTracer(Substitute.For<IBlockTracer>());
+            Transaction transaction = Build.A.Transaction.TestObject;
             blockTracer.StartNewTxTrace(transaction).Should().BeOfType<CancellationTxTracer>();
         }
     }

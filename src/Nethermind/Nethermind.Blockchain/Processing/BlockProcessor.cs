@@ -279,7 +279,7 @@ namespace Nethermind.Blockchain.Processing
             BlockHeader bh = suggestedBlock.Header;
             BlockHeader headerForProcessing = new(
                 bh.ParentHash,
-                bh.OmmersHash,
+                bh.UnclesHash,
                 bh.Beneficiary,
                 bh.Difficulty,
                 bh.Number,

@@ -10,24 +10,17 @@ namespace Nethermind.HealthChecks
 {
     public class HealthChecksWebhookInfo
     {
-        private string _description;
-        private string _ip;
-        private string _hostname;
-        private string _nodeName;
+        private readonly string _description;
+        private readonly string _ip;
+        private readonly string _hostname;
+        private readonly string _nodeName;
 
         public HealthChecksWebhookInfo(string description, IIPResolver ipResolver, IMetricsConfig metricsConfig, string hostname)
         {
-            //description
             _description = description;
-
-            //hostName
-            _hostname = hostname;                        
-
-            //IP
+            _hostname = hostname; 
             IPAddress externalIp = ipResolver.ExternalIp;
             _ip = externalIp.ToString();
-
-            //nodeName
             _nodeName = metricsConfig.NodeName;
         }
 

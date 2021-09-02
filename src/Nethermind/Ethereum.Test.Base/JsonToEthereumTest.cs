@@ -92,11 +92,11 @@ namespace Ethereum.Test.Base
         public static Block Convert(PostStateJson postStateJson, TestBlockJson testBlockJson)
         {
             BlockHeader? header = Convert(testBlockJson.BlockHeader);
-            BlockHeader[] ommers = testBlockJson.UncleHeaders?.Select(Convert).ToArray()
+            BlockHeader[] uncles = testBlockJson.UncleHeaders?.Select(Convert).ToArray()
                                    ?? Array.Empty<BlockHeader>();
             Transaction[] transactions = testBlockJson.Transactions?.Select(Convert).ToArray()
                                          ?? Array.Empty<Transaction>();
-            Block block = new(header, transactions, ommers);
+            Block block = new(header, transactions, uncles);
             return block;
         }
 

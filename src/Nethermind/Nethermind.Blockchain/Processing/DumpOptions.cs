@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,16 +13,19 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-namespace Nethermind.JsonRpc.Modules.Eth
+using System;
+
+namespace Nethermind.Blockchain.Processing
 {
-    public class SyncingResult
+    [Flags]
+    public enum DumpOptions
     {
-        public static SyncingResult NotSyncing = new();
-        
-        public bool IsSyncing { get; set; }
-        public long StartingBlock { get; set; }
-        public long CurrentBlock { get; set; }
-        public long HighestBlock { get; set; }
+        None = 0,
+        Receipts = 1,
+        Parity = 2,
+        Geth = 4,
+        All = Receipts | Parity | Geth
     }
 }

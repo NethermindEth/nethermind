@@ -81,7 +81,7 @@ namespace Nethermind.Blockchain.Test
                 baseFeeGreaterThanGasPrice.BaseFee = 1.GWei();
                 yield return new TestCaseData(baseFeeGreaterThanGasPrice).SetName("Legacy transactions: None transactions selected - BaseFee greater than gas price");
 
-                ProperTransactionsSelectedTestCase balanceCheckWithTxValue = new ProperTransactionsSelectedTestCase()
+                ProperTransactionsSelectedTestCase balanceCheckWithTxValue = new()
                 {
                     Eip1559Enabled = true,
                     BaseFee = 5,
@@ -121,7 +121,7 @@ namespace Nethermind.Blockchain.Test
                 baseFeeGreaterThanGasPrice.BaseFee = 1.GWei();
                 yield return new TestCaseData(baseFeeGreaterThanGasPrice).SetName("EIP1559 transactions: None transactions selected - BaseFee greater than gas price");
                 
-                ProperTransactionsSelectedTestCase balanceCheckWithTxValue = new ProperTransactionsSelectedTestCase()
+                ProperTransactionsSelectedTestCase balanceCheckWithTxValue = new()
                 {
                     Eip1559Enabled = true,
                     BaseFee = 5,
@@ -139,7 +139,7 @@ namespace Nethermind.Blockchain.Test
                     new[] { 1 }.Select(i => balanceCheckWithTxValue.Transactions[i]));
                 yield return new TestCaseData(balanceCheckWithTxValue).SetName("EIP1559 transactions: one transaction selected because of account balance");
                 
-                ProperTransactionsSelectedTestCase balanceCheckWithGasPremium = new ProperTransactionsSelectedTestCase()
+                ProperTransactionsSelectedTestCase balanceCheckWithGasPremium = new()
                 {
                     Eip1559Enabled = true,
                     BaseFee = 5,
@@ -164,12 +164,12 @@ namespace Nethermind.Blockchain.Test
         [TestCaseSource(nameof(Eip1559TestCases))]
         public void Proper_transactions_selected(ProperTransactionsSelectedTestCase testCase)
         {
-            MemDb stateDb = new MemDb();
-            MemDb codeDb = new MemDb();
-            TrieStore trieStore = new TrieStore(stateDb, LimboLogs.Instance);
-            StateProvider stateProvider = new StateProvider(trieStore, codeDb, LimboLogs.Instance);
+            MemDb stateDb = new();
+            MemDb codeDb = new();
+            TrieStore trieStore = new(stateDb, LimboLogs.Instance);
+            StateProvider stateProvider = new(trieStore, codeDb, LimboLogs.Instance);
             StateReader stateReader =
-                new StateReader(new TrieStore(stateDb, LimboLogs.Instance), codeDb, LimboLogs.Instance);
+                new(new TrieStore(stateDb, LimboLogs.Instance), codeDb, LimboLogs.Instance);
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
 
             void SetAccountStates(IEnumerable<Address> missingAddresses)
@@ -200,7 +200,7 @@ namespace Nethermind.Blockchain.Test
             };
             specProvider.GetSpec(Arg.Any<long>()).Returns(spec);
             TransactionComparerProvider transactionComparerProvider =
-                new TransactionComparerProvider(specProvider, blockTree);
+                new(specProvider, blockTree);
             IComparer<Transaction> defaultComparer = transactionComparerProvider.GetDefaultComparer();
             IComparer<Transaction> comparer = CompareTxByNonce.Instance.ThenBy(defaultComparer);
             Dictionary<Address?, Transaction[]> transactions = testCase.Transactions
@@ -217,7 +217,7 @@ namespace Nethermind.Blockchain.Test
 
             SetAccountStates(testCase.MissingAddresses);
 
-            TxPoolTxSource poolTxSource = new TxPoolTxSource(transactionPool, specProvider,
+            TxPoolTxSource poolTxSource = new(transactionPool, specProvider,
                 transactionComparerProvider, LimboLogs.Instance, txFilterPipeline);
 
 
@@ -234,9 +234,9 @@ namespace Nethermind.Blockchain.Test
         public IDictionary<Address, (UInt256 Balance, UInt256 Nonce)> AccountStates { get; } =
             new Dictionary<Address, (UInt256 Balance, UInt256 Nonce)>();
 
-        public List<Transaction> Transactions { get; } = new List<Transaction>();
+        public List<Transaction> Transactions { get; } = new();
         public long GasLimit { get; set; }
-        public List<Transaction> ExpectedSelectedTransactions { get; } = new List<Transaction>();
+        public List<Transaction> ExpectedSelectedTransactions { get; } = new();
         public UInt256 MinGasPriceForMining { get; set; } = 1;
         
         public bool Eip1559Enabled { get; set; }
@@ -244,7 +244,7 @@ namespace Nethermind.Blockchain.Test
         public UInt256 BaseFee { get; set; }
 
         public static ProperTransactionsSelectedTestCase Default =>
-            new ProperTransactionsSelectedTestCase()
+            new()
             {
                 AccountStates = {{TestItem.AddressA, (1000, 1)}},
                 Transactions =
@@ -260,7 +260,7 @@ namespace Nethermind.Blockchain.Test
             };
         
         public static ProperTransactionsSelectedTestCase Eip1559DefaultLegacyTransactions =>
-            new ProperTransactionsSelectedTestCase()
+            new()
             {
                 Eip1559Enabled = true,
                 BaseFee = 1.GWei(),
@@ -278,7 +278,7 @@ namespace Nethermind.Blockchain.Test
             };
         
         public static ProperTransactionsSelectedTestCase Eip1559Default =>
-            new ProperTransactionsSelectedTestCase()
+            new()
             {
                 Eip1559Enabled = true,
                 BaseFee = 1.GWei(),
@@ -295,6 +295,6 @@ namespace Nethermind.Blockchain.Test
                 GasLimit = 10000000
             };
 
-        public List<Address> MissingAddresses { get; } = new List<Address>();
+        public List<Address> MissingAddresses { get; } = new();
     }
 }

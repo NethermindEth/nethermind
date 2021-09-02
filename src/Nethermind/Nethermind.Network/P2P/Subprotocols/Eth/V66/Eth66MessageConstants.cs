@@ -13,27 +13,14 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Serialization.Rlp;
+using System;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 {
-    public static class OmmersHash
+    internal class Eth66MessageConstants
     {
-        public static Keccak Calculate(Block block)
-        {
-            return block.Ommers.Length == 0
-                ? Keccak.OfAnEmptySequenceRlp
-                : Keccak.Compute(Rlp.Encode(block.Ommers).Bytes);
-        }
-        
-        public static Keccak Calculate(BlockHeader[] ommers)
-        {
-            return ommers.Length == 0
-                ? Keccak.OfAnEmptySequenceRlp
-                : Keccak.Compute(Rlp.Encode(ommers).Bytes);
-        }
+        public static readonly Random Random = new Random();
     }
 }

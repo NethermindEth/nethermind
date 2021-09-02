@@ -55,8 +55,8 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void Personal_import_raw_key()
         {
-            Address expectedAddress = new Address( "707Fc13C0eB628c074f7ff514Ae21ACaeE0ec072");
-            PrivateKey privateKey = new PrivateKey("a8fceb14d53045b1c8baedf7bc1f38b2540ce132ac28b1ec8b93b8113165abc0");
+            Address expectedAddress = new( "707Fc13C0eB628c074f7ff514Ae21ACaeE0ec072");
+            PrivateKey privateKey = new("a8fceb14d53045b1c8baedf7bc1f38b2540ce132ac28b1ec8b93b8113165abc0");
             string passphrase = "testPass";
             IPersonalRpcModule rpcModule = new PersonalRpcModule(_ecdsa, _wallet, _keyStore);
             string serialized = RpcTest.TestSerializedRequest( rpcModule, "personal_importRawKey", privateKey.KeyBytes.ToHexString(), passphrase);

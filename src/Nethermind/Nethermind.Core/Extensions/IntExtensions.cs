@@ -85,6 +85,11 @@ namespace Nethermind.Core.Extensions
     
     public static class IntExtensions
     {
+        public static string ToHexString(this int @this)
+        {
+            return $"0x{@this:X}";
+        }
+        
         public static UInt256 Ether(this int @this)
         {
             return (uint)@this * Unit.Ether;

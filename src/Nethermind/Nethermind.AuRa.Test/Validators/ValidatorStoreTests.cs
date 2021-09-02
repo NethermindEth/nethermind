@@ -40,7 +40,7 @@ namespace Nethermind.AuRa.Test.Validators
             {
                 yield return new TestCaseData(CreateMemDbWithValidators(), null, null, Array.Empty<Address>()).SetCategory("InitializedDb").SetName("EmptyDb");
 
-                var db = CreateMemDbWithValidators(new []
+                MemDb db = CreateMemDbWithValidators(new []
                 {
                     (10L, new[] {TestItem.AddressA})
                 });
@@ -101,10 +101,10 @@ namespace Nethermind.AuRa.Test.Validators
         [TestCaseSource(nameof(ValidatorsTests))]
         public void validators_return_as_expected(IDb db, long? blockNumber, IEnumerable<(long FinalizingBlock, Address[] Validators)> validatorsToAdd, Address[] expectedValidators)
         {
-            var store = new ValidatorStore(db);
+            ValidatorStore store = new(db);
             if (validatorsToAdd != null)
             {
-                foreach (var validator in validatorsToAdd.OrderBy(v => v.FinalizingBlock))
+                foreach ((long FinalizingBlock, Address[] Validators) validator in validatorsToAdd.OrderBy(v => v.FinalizingBlock))
                 {
                     store.SetValidators(validator.FinalizingBlock, validator.Validators);
                 }
@@ -120,10 +120,10 @@ namespace Nethermind.AuRa.Test.Validators
                 yield return new TestCaseData(new MemDb(), null, false, null);
                 yield return new TestCaseData(new MemDb(), null, true, null);
 
-                var validators = new PendingValidators(100, Keccak.EmptyTreeHash, TestItem.Addresses.Take(5).ToArray());
+                PendingValidators validators = new(100, Keccak.EmptyTreeHash, TestItem.Addresses.Take(5).ToArray());
                 yield return new TestCaseData(new MemDb(), validators, true, validators);
 
-                var db = new MemDb();
+                MemDb db = new();
                 db.Set(ValidatorStore.PendingValidatorsKey, Rlp.Encode(validators).Bytes);
                 yield return new TestCaseData(db, null, false, validators);
                 yield return new TestCaseData(db, null, true, null);
@@ -137,7 +137,7 @@ namespace Nethermind.AuRa.Test.Validators
         [TestCaseSource(nameof(PendingValidatorsTests))]
         public void pending_validators_return_as_expected(IDb db, PendingValidators validators, bool setValidators, PendingValidators expectedValidators)
         {
-            var store = new ValidatorStore(db);
+            ValidatorStore store = new(db);
             if (setValidators)
             {
                 store.PendingValidators = validators;
@@ -152,15 +152,15 @@ namespace Nethermind.AuRa.Test.Validators
             Keccak GetKey(in long blockNumber) => Keccak.Compute("Validators" + blockNumber);
 
             validators ??= Array.Empty<(long FinalizingBlock, Address[] Validators)>();
-            var ordered = validators.OrderByDescending(v => v.FinalizingBlock).ToArray();
+            (long FinalizingBlock, Address[] Validators)[] ordered = validators.OrderByDescending(v => v.FinalizingBlock).ToArray();
 
-            var memDb = new MemDb();
+            MemDb memDb = new();
 
             for (int i = 0; i < ordered.Length; i++)
             {
-                var current = ordered[i];
-                var next = i + 1 < ordered.Length ? ordered[i + 1] : (-1, Array.Empty<Address>());
-                var validatorInfo = new ValidatorInfo(current.FinalizingBlock, next.FinalizingBlock, current.Validators);
+                (long FinalizingBlock, Address[] Validators) current = ordered[i];
+                (long FinalizingBlock, Address[] Validators) next = i + 1 < ordered.Length ? ordered[i + 1] : (-1, Array.Empty<Address>());
+                ValidatorInfo validatorInfo = new(current.FinalizingBlock, next.FinalizingBlock, current.Validators);
 
                 if (i == 0)
                 {
