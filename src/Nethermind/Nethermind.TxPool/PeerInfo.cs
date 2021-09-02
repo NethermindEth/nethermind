@@ -60,7 +60,10 @@ namespace Nethermind.TxPool
                 }
             }
 
-            Peer.SendNewTransactions(txsToSend);
+            if (txsToSend.Count > 0)
+            {
+                Peer.SendNewTransactions(txsToSend);
+            }
         }
 
         public override string ToString() => Peer.Enode;

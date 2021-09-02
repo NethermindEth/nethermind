@@ -828,7 +828,7 @@ namespace Nethermind.TxPool.Test
             ITxPoolPeer txPoolPeer = Substitute.For<ITxPoolPeer>();
             txPoolPeer.Id.Returns(TestItem.PublicKeyA);
             _txPool.AddPeer(txPoolPeer);
-            txPoolPeer.Received().SendNewTransaction(tx, false);
+            txPoolPeer.Received().SendNewTransactions(Arg.Is<IList<Transaction>>(i => i.Contains(tx) && i.Count == 1));
         }
         
         [Test]
@@ -840,7 +840,7 @@ namespace Nethermind.TxPool.Test
             _txPool.AddPeer(txPoolPeer);
             Transaction tx = AddOwnTransactionToPool();
             await Task.Delay(1000);
-            txPoolPeer.Received(1).SendNewTransaction(tx, true);
+            txPoolPeer.Received(1).SendNewTransactions(Arg.Is<IList<Transaction>>(i => i.Contains(tx) && i.Count == 1));
         }
 
         [Test]
