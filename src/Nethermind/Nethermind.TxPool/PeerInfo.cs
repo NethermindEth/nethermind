@@ -35,17 +35,6 @@ namespace Nethermind.TxPool
 
         public PublicKey Id => Peer.Id;
 
-        public bool SendNewTransaction(Transaction tx, bool isPriority)
-        {
-            if (!NotifiedTransactions.Get(tx.Hash))
-            {
-                NotifiedTransactions.Set(tx.Hash);
-                return Peer.SendNewTransaction(tx, isPriority);                     
-            }
-
-            return false;
-        }
-
         public void SendNewTransactions(IList<Transaction> txs)
         {
             List<Transaction> txsToSend = new(txs.Count);

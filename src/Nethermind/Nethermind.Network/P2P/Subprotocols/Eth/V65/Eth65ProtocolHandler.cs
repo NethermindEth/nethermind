@@ -121,22 +121,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
             return new PooledTransactionsMessage(txs);
         }
-
-        public override bool SendNewTransaction(Transaction transaction, bool isPriority)
-        {
-            if (isPriority)
-            {
-                base.SendNewTransaction(transaction, true);
-            }
-            else
-            {
-                Counter++;
-                NewPooledTransactionHashesMessage msg = new(new[] {transaction.Hash});
-                Send(msg);
-            }
-
-            return true;
-        }
         
         public override void SendNewTransactions(IList<Transaction> txs)
         {

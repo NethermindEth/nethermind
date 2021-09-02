@@ -165,8 +165,6 @@ namespace Nethermind.Synchronization.Test
         }
 
         public PublicKey Id => Node.Id;
-
-        public bool SendNewTransaction(Transaction transaction, bool isPriority) => true;
         
         public void SendNewTransactions(IList<Transaction> txs) { }
 
