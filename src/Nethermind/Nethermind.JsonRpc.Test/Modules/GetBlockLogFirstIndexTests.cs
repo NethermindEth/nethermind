@@ -25,11 +25,10 @@ using NUnit.Framework;
 namespace Nethermind.JsonRpc.Test.Modules
 {
     [TestFixture]
-    public class RpcHelperTests
+    public class GetBlockLogFirstIndexTests
     {
-        
         [Test]
-        public async Task sum_of_previous_log_indexes_test()
+        public void sum_of_previous_log_indexes_test()
         {
             LogEntry[] logEntries = new[] {Build.A.LogEntry.TestObject, Build.A.LogEntry.TestObject};
             
