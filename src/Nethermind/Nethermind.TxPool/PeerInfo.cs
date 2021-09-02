@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -43,6 +44,23 @@ namespace Nethermind.TxPool
             }
 
             return false;
+        }
+
+        public void SendNewTransactions(IList<Transaction> txs)
+        {
+            List<Transaction> txsToSend = new(txs.Count);
+
+            for (int i = 0; i < txs.Count; i++)
+            {
+                Transaction tx = txs[i];
+                if (!NotifiedTransactions.Get(tx.Hash))
+                {
+                    NotifiedTransactions.Set(tx.Hash);
+                    txsToSend.Add(tx);
+                }
+            }
+
+            Peer.SendNewTransactions(txsToSend);
         }
 
         public override string ToString() => Peer.Enode;

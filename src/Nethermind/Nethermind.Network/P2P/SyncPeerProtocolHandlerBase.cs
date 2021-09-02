@@ -19,7 +19,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
-using DotNetty.Buffers;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
@@ -30,7 +29,6 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
-using Nethermind.Network.P2P.Subprotocols.Wit;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -227,6 +225,32 @@ namespace Nethermind.Network.P2P
             TransactionsMessage msg = new(new[] {transaction});
             Send(msg);
             return true;
+        }
+
+        public virtual void SendNewTransactions(IList<Transaction> txs)
+        {
+            List<Transaction> txsToSend = new(Math.Min(256, txs.Count));
+            
+            for (int i = 0; i < txs.Count; i++)
+            {
+                if (txs[i].Hash is not null)
+                {
+                    txsToSend.Add(txs[i]);
+                }
+
+                if (txsToSend.Count > 255)
+                {
+                    TransactionsMessage msg = new(txsToSend);
+                    Send(msg);
+                    txsToSend.Clear();
+                }
+            }
+            
+            if (txsToSend.Count > 0)
+            {
+                TransactionsMessage msg = new(txsToSend);
+                Send(msg);
+            }
         }
 
         public override void HandleMessage(Packet message)

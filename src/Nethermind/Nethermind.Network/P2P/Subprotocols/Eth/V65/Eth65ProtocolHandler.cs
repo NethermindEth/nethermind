@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols.Eth.V64;
@@ -135,6 +136,26 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             }
 
             return true;
+        }
+        
+        public override void SendNewTransactions(IList<Transaction> txs)
+        {
+            List<Keccak> hashes = new(txs.Count);
+            
+            for (int i = 0; i < txs.Count; i++)
+            {
+                if (txs[i].Hash is not null)
+                {
+                    hashes.Add(txs[i].Hash);
+                }
+            }
+
+            if (hashes.Count > 0)
+            {
+                Counter++;
+                NewPooledTransactionHashesMessage msg = new(hashes.ToArray());
+                Send(msg);
+            }
         }
     }
 }
