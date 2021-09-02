@@ -223,16 +223,16 @@ namespace Nethermind.Network.P2P
             
             for (int i = 0; i < txsCount; i++)
             {
-                if (txs[i].Hash is not null)
-                {
-                    txsToSend.Add(txs[i]);
-                }
-
                 if (txsToSend.Count == maxCapacity)
                 {
                     TransactionsMessage msg = new(txsToSend);
                     Send(msg);
                     txsToSend.Clear();
+                }
+                
+                if (txs[i].Hash is not null)
+                {
+                    txsToSend.Add(txs[i]);
                 }
             }
             
