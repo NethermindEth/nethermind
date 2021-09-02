@@ -57,7 +57,7 @@
 //         private HashSet<LatencySyncPeerMock> _maliciousByRepetition;
 //         private HashSet<LatencySyncPeerMock> _maliciousByInvalidReceipts;
 //         private HashSet<LatencySyncPeerMock> _maliciousByInvalidTxs;
-//         private HashSet<LatencySyncPeerMock> _maliciousByInvalidOmmers;
+//         private HashSet<LatencySyncPeerMock> _maliciousByInvalidUncles;
 //         private HashSet<LatencySyncPeerMock> _maliciousByShiftedOneForward;
 //         private HashSet<LatencySyncPeerMock> _maliciousByShiftedOneBack;
 //         private HashSet<LatencySyncPeerMock> _maliciousByShortAtStart;
@@ -95,7 +95,7 @@
 //             _invalidBlocks = new Dictionary<LatencySyncPeerMock, HashSet<long>>();
 //             _maliciousByRepetition = new HashSet<LatencySyncPeerMock>();
 //             _maliciousByInvalidTxs = new HashSet<LatencySyncPeerMock>();
-//             _maliciousByInvalidOmmers = new HashSet<LatencySyncPeerMock>();
+//             _maliciousByInvalidUncles = new HashSet<LatencySyncPeerMock>();
 //             _maliciousByShiftedOneForward = new HashSet<LatencySyncPeerMock>();
 //             _maliciousByShiftedOneBack = new HashSet<LatencySyncPeerMock>();
 //             _maliciousByShortAtStart = new HashSet<LatencySyncPeerMock>();
@@ -285,11 +285,11 @@
 //         }
 //
 //         [Test]
-//         public void Two_peers_one_malicious_by_invalid_ommers()
+//         public void Two_peers_one_malicious_by_invalid_uncles()
 //         {
 //             LatencySyncPeerMock syncPeer1 = new LatencySyncPeerMock(_validTree2048);
 //             LatencySyncPeerMock syncPeer2 = new LatencySyncPeerMock(_validTree2048);
-//             _maliciousByInvalidOmmers.Add(syncPeer1);
+//             _maliciousByInvalidUncles.Add(syncPeer1);
 //             SetupFeed(true);
 //
 //             SetupSyncPeers(syncPeer1, syncPeer2);
@@ -930,7 +930,7 @@
 //             for (int i = 0; i < Math.Min(maxResponseSize, requestSize); i++)
 //             {
 //                 Block block = tree.FindBlock(bodiesSyncBatch.Request[i], BlockTreeLookupOptions.None);
-//                 bodiesSyncBatch.Response[i] = new BlockBody(block.Transactions, block.Ommers);
+//                 bodiesSyncBatch.Response[i] = new BlockBody(block.Transactions, block.Uncles);
 //             }
 //
 //             if (_maliciousByShortAtStart.Contains(syncPeer))
@@ -944,16 +944,16 @@
 //                 for (int i = 0; i < bodiesSyncBatch.Response.Length; i++)
 //                 {
 //                     BlockBody valid = bodiesSyncBatch.Response[i];
-//                     bodiesSyncBatch.Response[i] = new BlockBody(new[] {Build.A.Transaction.WithData(Bytes.FromHexString("bad")).TestObject}, valid.Ommers);
+//                     bodiesSyncBatch.Response[i] = new BlockBody(new[] {Build.A.Transaction.WithData(Bytes.FromHexString("bad")).TestObject}, valid.Uncles);
 //                 }
 //             }
 //
-//             if (_maliciousByInvalidOmmers.Contains(syncPeer))
+//             if (_maliciousByInvalidUncles.Contains(syncPeer))
 //             {
 //                 for (int i = 0; i < bodiesSyncBatch.Response.Length; i++)
 //                 {
 //                     BlockBody valid = bodiesSyncBatch.Response[i];
-//                     bodiesSyncBatch.Response[i] = new BlockBody(valid.Transactions, new[] {Build.A.BlockHeader.WithAuthor(new Address(Keccak.Compute("bad_ommer").Bytes.Take(20).ToArray())).TestObject});
+//                     bodiesSyncBatch.Response[i] = new BlockBody(valid.Transactions, new[] {Build.A.BlockHeader.WithAuthor(new Address(Keccak.Compute("bad_uncle").Bytes.Take(20).ToArray())).TestObject});
 //                 }
 //             }
 //         }

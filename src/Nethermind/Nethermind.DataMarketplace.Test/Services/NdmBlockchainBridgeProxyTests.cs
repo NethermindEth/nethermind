@@ -263,7 +263,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         private static void ValidateBlock(Block block, BlockModel<Keccak> model)
         {
             block.Header.ParentHash.Should().Be(model.ParentHash);
-            block.Header.OmmersHash.Should().Be(model.Sha3Uncles);
+            block.Header.UnclesHash.Should().Be(model.Sha3Uncles);
             block.Header.Beneficiary.Should().Be(model.Miner);
             block.Header.Difficulty.Should().Be(model.Difficulty);
             block.Header.Number.Should().Be((long)model.Number);

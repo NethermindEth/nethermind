@@ -33,7 +33,7 @@ namespace Nethermind.Blockchain.Test.Producers
             var pool = Substitute.For<ITxPool>();
             pool.GetPendingTransactionsCount().Returns(txCount);
             bool triggered = false;
-            BuildBlocksWhenRequested trigger = new BuildBlocksWhenRequested();
+            BuildBlocksWhenRequested trigger = new();
             IBlockProductionTrigger withCondition = trigger.IfPoolIsNotEmpty(pool);
             withCondition.TriggerBlockProduction += (s, e) => triggered = true;
             trigger.BuildBlock();

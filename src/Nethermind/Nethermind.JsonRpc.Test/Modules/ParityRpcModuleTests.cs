@@ -135,7 +135,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             LogEntry[] logEntries = new[] {Build.A.LogEntry.TestObject};
             
-            TxReceipt receipt1 = new TxReceipt()
+            TxReceipt receipt1 = new()
             {
                 Bloom = new Bloom(logEntries),
                 Index = 0,
@@ -151,7 +151,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Logs = logEntries
             };
 
-            TxReceipt receipt2 = new TxReceipt()
+            TxReceipt receipt2 = new()
             {
                 Bloom = new Bloom(logEntries),
                 Index = 1,
@@ -167,7 +167,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Logs = logEntries
             };
 
-            TxReceipt receipt3 = new TxReceipt()
+            TxReceipt receipt3 = new()
             {
                 Bloom = new Bloom(logEntries),
                 Index = 2,

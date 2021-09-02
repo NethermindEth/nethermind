@@ -13,68 +13,76 @@
 |Docker||https://hub.docker.com/r/nethermind/nethermind|
 |Codecov.io| [![codecov](https://codecov.io/gh/NethermindEth/nethermind/branch/master/graph/badge.svg)](https://codecov.io/gh/NethermindEth/nethermind) | https://codecov.io/gh/NethermindEth/nethermind |
 | Fund | with Gitcoin | https://gitcoin.co/grants/142/nethermind |
-| Github Actions | ![Standard Build](https://github.com/NethermindEth/nethermind/workflows/Standard%20Build/badge.svg) ![Build with Code Coverage](https://github.com/NethermindEth/nethermind/workflows/Build%20with%20Code%20Coverage/badge.svg) ![Update Documentation](https://github.com/NethermindEth/nethermind/workflows/Update%20Documentation/badge.svg) ![Publish Nethermind Image to Docker Registry](https://github.com/NethermindEth/nethermind/workflows/Publish%20Nethermind%20Image%20to%20Docker%20Registry/badge.svg) ![Publish ARM64 Image to Docker Registry](https://github.com/NethermindEth/nethermind/workflows/Publish%20ARM64%20Image%20to%20Docker%20Registry/badge.svg) | https://github.com/NethermindEth/nethermind/actions |
+| Github Actions | [![[RUN] Consensus Legacy Tests](https://github.com/NethermindEth/nethermind/actions/workflows/run-consesus-legacy-tests.yml/badge.svg)](https://github.com/NethermindEth/nethermind/actions/workflows/run-consesus-legacy-tests.yml) [![[RUN] Nethermind/Ethereum Tests with Code Coverage](https://github.com/NethermindEth/nethermind/actions/workflows/run-nethermind-tests-with-code-coverage.yml/badge.svg)](https://github.com/NethermindEth/nethermind/actions/workflows/run-nethermind-tests-with-code-coverage.yml) [![[UPDATE] GitBook Docs](https://github.com/NethermindEth/nethermind/actions/workflows/update-gitbook-docs.yml/badge.svg)](https://github.com/NethermindEth/nethermind/actions/workflows/update-gitbook-docs.yml) | https://github.com/NethermindEth/nethermind/actions |
 
 ## Download and run:
 
 [Windows](http://downloads.nethermind.io)<br/>
-[Linux](http://downloads.nethermind.io)<br/>
+[Linux x64/arm64](http://downloads.nethermind.io)<br/>
 [MacOS](http://downloads.nethermind.io)<br/>
 
 It syncs fully on: 
-* Mainnet
-* Goerli
-* Rinkeby
-* Ropsten
-* xDai
-* Poacore
-* Sokol
-* Energyweb
-* Volta
-* Kovan (only fast sync and may fail if pWASM transactions appear)
+* `Mainnet`
+* `Goerli`
+* `Rinkeby`
+* `Ropsten`
+* `xDai`
+* `Poacore`
+* `Sokol`
+* `Energyweb`
+* `Volta`
+* `Kovan` (only fast sync and may fail if pWASM transactions appear)
+
+**PPA**
+(Tested on Ubuntu Series: `Focal`, `Bionic`, `Xenial` and `Trusty`)
+1. `sudo add-apt-repository ppa:nethermindeth/nethermind`
+1. `sudo apt install nethermind`
+1. To execute the launcher
+``nethermind``
+1. To execute the runner
+``nethermind --config mainnet``
+
+**Homebrew**
+1. `brew tap nethermindeth/nethermind`
+1. `brew install nethermind`
+1. To execute the launcher
+``nethermind-launcher``
+1. To execute the runner
+``nethermind --config mainnet``
 
 # Build from Source
 
 ## Prerequisites :construction:
 
-**.NET 3.1** SDK for 1.9.* series or **.NET 5.0** for 1.10.*
+**.NET 5.0** SDK
 
 ### Windows
 
-* Install .NET https://www.microsoft.com/net/download
-* You may need to install https://support.microsoft.com/en-us/help/2977003/the-latest-supported-visual-c-downloads
+* [Install .NET](https://www.microsoft.com/net/download)
+* You may need to install [this](https://support.microsoft.com/en-us/help/2977003/the-latest-supported-visual-c-downloads).
 
 ### Linux
 
-#### - Ubuntu
+#### Ubuntu
+* [Install .NET](https://docs.microsoft.com/en-gb/dotnet/core/install/linux-ubuntu)
+* Install dependencies
 ```sh
-# Install .NET
-https://docs.microsoft.com/en-gb/dotnet/core/install/linux-ubuntu
-
-# Install dependencies
 sudo apt-get install libsnappy-dev libc6-dev libc6
 ```
-*Tested on Ubuntu 20.04 LTS and 18.04 LTS*
+*Tested on Ubuntu 21.04, 20.04 and 18.04 LTS*
 
-#### - Debian
+#### Debian
+* [Install .NET](https://docs.microsoft.com/en-gb/dotnet/core/install/linux-debian)
+* Install dependencies
 ```sh
-
-# Install .NET
-https://docs.microsoft.com/en-gb/dotnet/core/install/linux-debian
-
-# Install dependencies
 sudo apt-get install libsnappy-dev libc6-dev libc6
 ```
-
 *Tested on Debian 10 (9 not working)*
 
-
-#### - CentOS
+#### CentOS
+* [Install .NET](https://docs.microsoft.com/en-gb/dotnet/core/install/linux-centos)
+* Install dependencies
 ```sh
-# Install .NET
-https://docs.microsoft.com/en-gb/dotnet/core/install/linux-centos
-
-# Install dependencies
 sudo yum install -y glibc-devel bzip2-devel libzstd
 
 # Link libraries
@@ -83,12 +91,10 @@ sudo ln -s `find /usr/lib64/ -type f -name "libsnappy.so.1*"` /usr/lib64/libsnap
 ```
 *Tested on CentOS 8*
 
-#### - Fedora
+#### Fedora
+* [Install .NET](https://docs.microsoft.com/en-gb/dotnet/core/install/linux-fedora)
+* Install dependencies
 ```sh
-# Install .NET
-https://docs.microsoft.com/en-gb/dotnet/core/install/linux-fedora
-
-# Install dependencies
 sudo yum install -y glibc-devel snappy libzstd
 
 # Link libraries
@@ -97,15 +103,17 @@ sudo ln -s `find /usr/lib64/ -type f -name "libsnappy.so.1*"` /usr/lib64/libsnap
 ```
 *Tested on Fedora 32*
 
-### Mac
+### MacOS
 
-* Install .NET https://www.microsoft.com/net/download
-* Install deps `brew install gmp snappy lz4 zstd`
-* Additionally, if you have problems with startup `brew install rocksdb`
+* [Install .NET](https://www.microsoft.com/net/download)
+* Install dependencies
+```sh
+brew install rocksdb gmp snappy lz4 zstd
+```
 
 ## Build and Run
 
-```
+```sh
 git clone https://github.com/NethermindEth/nethermind --recursive
 cd nethermind/src/Nethermind
 dotnet build Nethermind.sln -c Release
@@ -130,7 +138,7 @@ The output must show the image digest, and then you can copy that output in the 
 ## Test
 
 If you want to run the Nethermind or Ethereum Foundation tests, then:
-```
+```sh
 dotnet build Nethermind.sln -c Debug
 dotnet test Nethermind.sln
 
@@ -140,8 +148,8 @@ dotnet test EthereumTests.sln
 
 ## IDE
 
-* JetBrains Rider ([Link](https://www.jetbrains.com/rider))
-* Visual Studio Code ([Link](https://code.visualstudio.com/docs/other/dotnet))
+* [JetBrains Rider](https://www.jetbrains.com/rider)
+* [Visual Studio Code](https://code.visualstudio.com/docs/other/dotnet)
 
 
 ## Contributors welcome
@@ -152,8 +160,6 @@ dotnet test EthereumTests.sln
 At Nethermind we are building an open source multiplatform Ethereum client implementation in .NET Core (running seamlessly on Linux, Windows and MacOS). Simultaneously our team works on Nethermind Data Marketplace and on-chain data extraction tools and client customizations.
 
 Nethermind client can be used in your projects, when setting up private Ethereum networks or dApps. The latest prod version of Nethermind can be found at downloads.nethermind.io.
-# Links
-https://nethermind.io/
 
 # License
 [![GitHub](https://img.shields.io/github/license/nethermindeth/nethermind.svg)](https://github.com/NethermindEth/nethermind/blob/master/LICENSE)

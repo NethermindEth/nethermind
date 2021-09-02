@@ -70,7 +70,7 @@ namespace Nethermind.AuRa.Test.Contract
         [Test]
         public void finalize_change_should_call_correct_transaction()
         {
-            var expectation = new SystemTransaction()
+            SystemTransaction expectation = new()
             {
                 Value = 0, 
                 Data = new byte[] {0x75, 0x28, 0x62, 0x11},
@@ -83,7 +83,7 @@ namespace Nethermind.AuRa.Test.Contract
             };
             expectation.Hash = expectation.CalculateHash();
             
-            var contract = new ValidatorContract(
+            ValidatorContract contract = new(
                 _transactionProcessor,
                 AbiEncoder.Instance,
                 _contractAddress,

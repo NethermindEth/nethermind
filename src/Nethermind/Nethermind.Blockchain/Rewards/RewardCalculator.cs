@@ -46,24 +46,24 @@ namespace Nethermind.Blockchain.Rewards
             }
             
             UInt256 blockReward = GetBlockReward(block);
-            BlockReward[] rewards = new BlockReward[1 + block.Ommers.Length];
+            BlockReward[] rewards = new BlockReward[1 + block.Uncles.Length];
 
             BlockHeader blockHeader = block.Header;
-            UInt256 mainReward = blockReward + (uint) block.Ommers.Length * (blockReward >> 5);
+            UInt256 mainReward = blockReward + (uint) block.Uncles.Length * (blockReward >> 5);
             rewards[0] = new BlockReward(blockHeader.Beneficiary, mainReward);
 
-            for (int i = 0; i < block.Ommers.Length; i++)
+            for (int i = 0; i < block.Uncles.Length; i++)
             {
-                UInt256 ommerReward = GetOmmerReward(blockReward, blockHeader, block.Ommers[i]);
-                rewards[i + 1] = new BlockReward(block.Ommers[i].Beneficiary, ommerReward, BlockRewardType.Uncle);
+                UInt256 uncleReward = GetUncleReward(blockReward, blockHeader, block.Uncles[i]);
+                rewards[i + 1] = new BlockReward(block.Uncles[i].Beneficiary, uncleReward, BlockRewardType.Uncle);
             }
 
             return rewards;
         }
 
-        private UInt256 GetOmmerReward(UInt256 blockReward, BlockHeader blockHeader, BlockHeader ommer)
+        private UInt256 GetUncleReward(UInt256 blockReward, BlockHeader blockHeader, BlockHeader uncle)
         {
-            return blockReward - ((uint) (blockHeader.Number - ommer.Number) * blockReward >> 3);
+            return blockReward - ((uint) (blockHeader.Number - uncle.Number) * blockReward >> 3);
         }
 
         public IRewardCalculator Get(ITransactionProcessor processor) => this;

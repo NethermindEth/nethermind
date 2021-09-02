@@ -31,8 +31,10 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using Nethermind.Db.Blooms;
+using Nethermind.Facade.Eth;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
+using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.KeyStore;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -40,7 +42,6 @@ using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Newtonsoft.Json;
-using NSubstitute;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
@@ -56,6 +57,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         
         public IKeyStore KeyStore { get; } = new MemKeyStore(TestItem.PrivateKeys);
         public IWallet TestWallet { get; } = new DevKeyStoreWallet(new MemKeyStore(TestItem.PrivateKeys), LimboLogs.Instance);
+        public IFeeHistoryOracle FeeHistoryOracle { get; private set; }
         public static Builder<TestRpcBlockchain> ForTest(string sealEngineType) => ForTest<TestRpcBlockchain>(sealEngineType);
 
         public static Builder<T> ForTest<T>(string sealEngineType) where T : TestRpcBlockchain, new() => 
@@ -107,7 +109,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 _blockchain.GasPriceOracle = gasPriceOracle;
                 return this;
             }
-            
+
             public async Task<T> Build(ISpecProvider specProvider = null, UInt256? initialValues = null)
             {
                 return (T)(await _blockchain.Build(specProvider, initialValues));
@@ -122,10 +124,10 @@ namespace Nethermind.JsonRpc.Test.Modules
             IFilterStore filterStore = new FilterStore();
             IFilterManager filterManager = new FilterManager(filterStore, BlockProcessor, TxPool, LimboLogs.Instance);
 
-            ReceiptsRecovery receiptsRecovery = new ReceiptsRecovery(new EthereumEcdsa(specProvider.ChainId, LimboLogs.Instance), specProvider);
+            ReceiptsRecovery receiptsRecovery = new(new EthereumEcdsa(specProvider.ChainId, LimboLogs.Instance), specProvider);
             LogFinder = new LogFinder(BlockTree, ReceiptStorage, bloomStorage, LimboLogs.Instance, receiptsRecovery);
             
-            ReadOnlyTxProcessingEnv processingEnv = new ReadOnlyTxProcessingEnv(
+            ReadOnlyTxProcessingEnv processingEnv = new(
                 new ReadOnlyDbProvider(DbProvider, false),
                 new TrieStore(DbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
                 new ReadOnlyBlockTree(BlockTree),
@@ -141,6 +143,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             ITxSealer txSealer0 = new TxSealer(txSigner, Timestamper);
             ITxSealer txSealer1 = new NonceReservingTxSealer(txSigner, Timestamper, TxPool);
             TxSender ??= new TxPoolSender(TxPool, txSealer0, txSealer1);
+            GasPriceOracle ??= new GasPriceOracle(BlockFinder, SpecProvider);
+            FeeHistoryOracle ??= new FeeHistoryOracle(BlockFinder, ReceiptStorage, SpecProvider);
             EthRpcModule = new EthRpcModule(
                 new JsonRpcConfig(),
                 Bridge,
@@ -152,7 +156,9 @@ namespace Nethermind.JsonRpc.Test.Modules
                 ReceiptFinder, 
                 LimboLogs.Instance, 
                 SpecProvider, 
-                GasPriceOracle);
+                GasPriceOracle,
+                new EthSyncingInfo(BlockFinder),
+                FeeHistoryOracle);
             
             return this;
         }

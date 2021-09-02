@@ -60,9 +60,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Chains", "Chains", "{D75E83
 		Chains\energyweb.json = Chains\energyweb.json
 		Chains\baseline.json = Chains\baseline.json
 		Chains\kovan.json = Chains\kovan.json
-		Chains\eip1559.json = Chains\eip1559.json
 		Chains\wit.json = Chains\wit.json
-		Chains\xdai1559.json = Chains\xdai1559.json
 		Chains\yolo_v3x.json = Chains\yolo_v3x.json
 		Chains\catalyst.json = Chains\catalyst.json
 	EndProjectSection
@@ -214,6 +212,8 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Consensus.Test", "Nethermind.Consensus.Test\Nethermind.Consensus.Test.csproj", "{1343D865-029A-490F-A904-0015D10365F9}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.TxPool.Test", "Nethermind.TxPool.Test\Nethermind.TxPool.Test.csproj", "{E218301C-9B8F-46A6-AE8D-236DB0A38112}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Init", "Nethermind.Init\Nethermind.Init.csproj", "{F6356747-7925-46D9-AA4C-72671B199A31}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -569,6 +569,10 @@ Global
 		{E218301C-9B8F-46A6-AE8D-236DB0A38112}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{E218301C-9B8F-46A6-AE8D-236DB0A38112}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{E218301C-9B8F-46A6-AE8D-236DB0A38112}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F6356747-7925-46D9-AA4C-72671B199A31}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F6356747-7925-46D9-AA4C-72671B199A31}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F6356747-7925-46D9-AA4C-72671B199A31}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F6356747-7925-46D9-AA4C-72671B199A31}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

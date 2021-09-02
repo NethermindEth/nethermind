@@ -73,12 +73,12 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
         [SetUp]
         public async Task Setup()
         {
-            InMemoryReceiptStorage receiptStorage = new InMemoryReceiptStorage();
+            InMemoryReceiptStorage receiptStorage = new();
             _specProvider = new TestSpecProvider(London.Instance);
             _blockTree = Build.A.BlockTree().WithTransactions(receiptStorage, _specProvider).OfChainLength(10).TestObject;
             _dbProvider = await TestMemDbProvider.InitAsync();
 
-            ProofModuleFactory moduleFactory = new ProofModuleFactory(
+            ProofModuleFactory moduleFactory = new(
                 _dbProvider,
                 _blockTree,
                 new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
@@ -259,7 +259,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
 
             // would need to setup state root somehow...
 
-            TransactionForRpc tx = new TransactionForRpc
+            TransactionForRpc tx = new()
             {
                 From = TestItem.AddressA,
                 To = TestItem.AddressB,
@@ -268,7 +268,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             
             _proofRpcModule.proof_call(tx, new BlockParameter(block.Number));
 
-            EthereumJsonSerializer serializer = new EthereumJsonSerializer();
+            EthereumJsonSerializer serializer = new();
             string response = RpcTest.TestSerializedRequest(_proofRpcModule, "proof_call", $"{serializer.Serialize(tx)}", $"{block.Number}");
             Assert.True(response.Contains("\"result\""));
         }
@@ -284,7 +284,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
 
             // would need to setup state root somehow...
 
-            TransactionForRpc tx = new TransactionForRpc
+            TransactionForRpc tx = new()
             {
                 From = TestItem.AddressA,
                 To = TestItem.AddressB,
@@ -292,7 +292,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             };
             _proofRpcModule.proof_call(tx, new BlockParameter(block.Hash));
 
-            EthereumJsonSerializer serializer = new EthereumJsonSerializer();
+            EthereumJsonSerializer serializer = new();
             string response = RpcTest.TestSerializedRequest(_proofRpcModule, "proof_call", $"{serializer.Serialize(tx)}", $"{block.Hash}");
             Assert.True(response.Contains("\"result\""));
         }
@@ -308,14 +308,14 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
 
             // would need to setup state root somehow...
 
-            TransactionForRpc tx = new TransactionForRpc
+            TransactionForRpc tx = new()
             {
                 From = TestItem.AddressA,
                 To = TestItem.AddressB,
                 GasPrice = _useNonZeroGasPrice ? 10.GWei() : 0
             };
 
-            EthereumJsonSerializer serializer = new EthereumJsonSerializer();
+            EthereumJsonSerializer serializer = new();
             string response = RpcTest.TestSerializedRequest(_proofRpcModule, "proof_call", $"{serializer.Serialize(tx)}", $"{{\"blockHash\" : \"{block.Hash}\", \"requireCanonical\" : true}}");
             Assert.True(response.Contains("-32000"));
 
@@ -788,7 +788,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
 
             // would need to setup state root somehow...
 
-            TransactionForRpc tx = new TransactionForRpc
+            TransactionForRpc tx = new()
             {
                 From = from,
                 To = TestItem.AddressB,
@@ -807,7 +807,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 }
             }
 
-            EthereumJsonSerializer serializer = new EthereumJsonSerializer();
+            EthereumJsonSerializer serializer = new();
             string response = RpcTest.TestSerializedRequest(_proofRpcModule, "proof_call", $"{serializer.Serialize(tx)}", $"{blockOnTop.Number}");
             Assert.True(response.Contains("\"result\""));
             
@@ -817,7 +817,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
         private void TestCallWithStorageAndCode(byte[] code, UInt256 gasPrice, Address from = null)
         {
             StateProvider stateProvider = CreateInitialState(code);
-            StorageProvider storageProvider = new StorageProvider(new TrieStore(_dbProvider.StateDb, LimboLogs.Instance), stateProvider, LimboLogs.Instance);
+            StorageProvider storageProvider = new(new TrieStore(_dbProvider.StateDb, LimboLogs.Instance), stateProvider, LimboLogs.Instance);
 
             for (int i = 0; i < 10000; i++)
             {
@@ -839,7 +839,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
 
             // would need to setup state root somehow...
 
-            TransactionForRpc tx = new TransactionForRpc
+            TransactionForRpc tx = new()
             {
                 // we are testing system transaction here when From is null
                 From = from,
@@ -886,14 +886,14 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 }
             }
 
-            EthereumJsonSerializer serializer = new EthereumJsonSerializer();
+            EthereumJsonSerializer serializer = new();
             string response = RpcTest.TestSerializedRequest(_proofRpcModule, "proof_call", $"{serializer.Serialize(tx)}", $"{blockOnTop.Number}");
             Assert.True(response.Contains("\"result\""));
         }
 
         private StateProvider CreateInitialState(byte[] code)
         {
-            StateProvider stateProvider = new StateProvider(new TrieStore(_dbProvider.StateDb, LimboLogs.Instance), _dbProvider.CodeDb, LimboLogs.Instance);
+            StateProvider stateProvider = new(new TrieStore(_dbProvider.StateDb, LimboLogs.Instance), _dbProvider.CodeDb, LimboLogs.Instance);
             AddAccount(stateProvider, TestItem.AddressA, 1.Ether());
             AddAccount(stateProvider, TestItem.AddressB, 1.Ether());
 

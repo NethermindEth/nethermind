@@ -148,11 +148,11 @@ namespace Nethermind.Core.Test.Builders
                     .WithBeneficiary(beneficiary)
                     .TestObject;
 
-                List<TxReceipt> receipts = new List<TxReceipt>();
+                List<TxReceipt> receipts = new();
                 foreach (var transaction in currentBlock.Transactions)
                 {
                     var logEntries = _logCreationFunction?.Invoke(currentBlock, transaction)?.ToArray() ?? Array.Empty<LogEntry>();
-                    TxReceipt receipt = new TxReceipt
+                    TxReceipt receipt = new()
                     {
                         Logs = logEntries,
                         TxHash = transaction.Hash,

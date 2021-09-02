@@ -45,7 +45,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
         [TestCase(false, "{\"output\":null,\"stateDiff\":{\"0x76e68a8696537e4141926f3e528733af9e237d69\":{\"balance\":{\"*\":{\"from\":\"0x1\",\"to\":\"0x2\"}},\"code\":\"=\",\"nonce\":{\"*\":{\"from\":\"0x0\",\"to\":\"0x1\"}},\"storage\":{\"0x0000000000000000000000000000000000000000000000000000000000000001\":{\"*\":{\"from\":\"0x0000000000000000000000000000000000000000000000000000000000000001\",\"to\":\"0x0000000000000000000000000000000000000000000000000000000000000002\"}}}}},\"trace\":[{\"action\":{\"callType\":\"init\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"gas\":\"0x9c40\",\"input\":\"0x010203040506\",\"to\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"value\":\"0x3039\"},\"result\":{\"gasUsed\":\"0x0\",\"output\":null},\"subtraces\":1,\"traceAddress\":[1,2,3],\"type\":null},{\"action\":{\"callType\":\"call\",\"from\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"gas\":\"0x2710\",\"input\":\"0x\",\"to\":\"0x475674cb523a0a2736b7f7534390288fce16982c\",\"value\":\"0x10932\"},\"result\":{\"gasUsed\":\"0x0\",\"output\":null},\"subtraces\":0,\"traceAddress\":[0,0],\"type\":null}],\"vmTrace\":null}")]
         public void Can_serialize(bool includeTransactionHash, string expectedResult)
         {
-            ParityTraceAction subtrace = new ParityTraceAction
+            ParityTraceAction subtrace = new()
             {
                 Value = 67890,
                 CallType = "call",
@@ -56,7 +56,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
                 TraceAddress = new int[] {0, 0}
             };
 
-            ParityLikeTxTrace result = new ParityLikeTxTrace
+            ParityLikeTxTrace result = new()
             {
                 Action = new ParityTraceAction
                 {
@@ -76,11 +76,11 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             result.Action.TraceAddress = new int[] {1, 2, 3};
             result.Action.Subtraces.Add(subtrace);
 
-            ParityAccountStateChange stateChange = new ParityAccountStateChange
+            ParityAccountStateChange stateChange = new()
             {
                 Balance = new ParityStateChange<UInt256?>(1, 2),
                 Nonce = new ParityStateChange<UInt256?>(0, 1),
-                Storage = new Dictionary<UInt256, ParityStateChange<byte[]>> {[1] = new ParityStateChange<byte[]>(new byte[] {1}, new byte[] {2})}
+                Storage = new Dictionary<UInt256, ParityStateChange<byte[]>> {[1] = new(new byte[] {1}, new byte[] {2})}
             };
 
             result.StateChanges = new Dictionary<Address, ParityAccountStateChange> {{TestItem.AddressC, stateChange}};
@@ -109,7 +109,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
         {
             string expectedResult = "{\"output\":null,\"stateDiff\":{\"0x76e68a8696537e4141926f3e528733af9e237d69\":{\"balance\":{\"*\":{\"from\":\"0x1\",\"to\":\"0x2\"}},\"code\":\"=\",\"nonce\":{\"*\":{\"from\":\"0x0\",\"to\":\"0x1\"}},\"storage\":{\"0x0000000000000000000000000000000000000000000000000000000000000001\":{\"*\":{\"from\":\"0x0000000000000000000000000000000000000000000000000000000000000001\",\"to\":\"0x0000000000000000000000000000000000000000000000000000000000000002\"}}}}},\"trace\":[{\"action\":{\"creationMethod\":\"create2\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"gas\":\"0x9c40\",\"init\":\"0x010203040506\",\"value\":\"0x3039\"},\"result\":{\"gasUsed\":\"0x0\",\"output\":null},\"subtraces\":1,\"traceAddress\":[1,2,3],\"type\":\"create\"},{\"action\":{\"callType\":\"call\",\"from\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"gas\":\"0x2710\",\"input\":\"0x\",\"to\":\"0x475674cb523a0a2736b7f7534390288fce16982c\",\"value\":\"0x10932\"},\"result\":{\"gasUsed\":\"0x0\",\"output\":null},\"subtraces\":0,\"traceAddress\":[0,0],\"type\":null}],\"vmTrace\":null}";
             
-            ParityTraceAction subtrace = new ParityTraceAction
+            ParityTraceAction subtrace = new()
             {
                 Value = 67890,
                 CallType = "call",
@@ -120,7 +120,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
                 TraceAddress = new int[] {0, 0}
             };
 
-            ParityLikeTxTrace result = new ParityLikeTxTrace
+            ParityLikeTxTrace result = new()
             {
                 Action = new ParityTraceAction
                 {
@@ -142,11 +142,11 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             result.Action.TraceAddress = new int[] {1, 2, 3};
             result.Action.Subtraces.Add(subtrace);
 
-            ParityAccountStateChange stateChange = new ParityAccountStateChange
+            ParityAccountStateChange stateChange = new()
             {
                 Balance = new ParityStateChange<UInt256?>(1, 2),
                 Nonce = new ParityStateChange<UInt256?>(0, 1),
-                Storage = new Dictionary<UInt256, ParityStateChange<byte[]>> {[1] = new ParityStateChange<byte[]>(new byte[] {1}, new byte[] {2})}
+                Storage = new Dictionary<UInt256, ParityStateChange<byte[]>> {[1] = new(new byte[] {1}, new byte[] {2})}
             };
 
             result.StateChanges = new Dictionary<Address, ParityAccountStateChange> {{TestItem.AddressC, stateChange}};

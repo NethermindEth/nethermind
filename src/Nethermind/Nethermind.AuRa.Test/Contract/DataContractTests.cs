@@ -30,27 +30,27 @@ namespace Nethermind.AuRa.Test.Contract
         [Test]
         public void IncrementalChanges()
         {
-            var dataContract = new DataContract<int>(GetAll, GetFromReceipts);
+            DataContract<int> dataContract = new(GetAll, GetFromReceipts);
             dataContract.IncrementalChanges.Should().BeTrue();
-            dataContract.TryGetItemsChangedFromBlock(Build.A.BlockHeader.TestObject, Array.Empty<TxReceipt>(), out var items).Should().BeTrue();
+            dataContract.TryGetItemsChangedFromBlock(Build.A.BlockHeader.TestObject, Array.Empty<TxReceipt>(), out IEnumerable<int> items).Should().BeTrue();
             items.Should().BeEquivalentTo(new[] {1, 5});
         }
         
         [Test]
         public void NonIncrementalChanges_check_found()
         {
-            var dataContract = new DataContract<int>(GetAll, TryGetFromReceiptsTrue);
+            DataContract<int> dataContract = new(GetAll, TryGetFromReceiptsTrue);
             dataContract.IncrementalChanges.Should().BeFalse();
-            dataContract.TryGetItemsChangedFromBlock(Build.A.BlockHeader.TestObject, Array.Empty<TxReceipt>(), out var items).Should().BeTrue();
+            dataContract.TryGetItemsChangedFromBlock(Build.A.BlockHeader.TestObject, Array.Empty<TxReceipt>(), out IEnumerable<int> items).Should().BeTrue();
             items.Should().BeEquivalentTo(new[] {1, 5});
         }
         
         [Test]
         public void NonIncrementalChanges_check_non_found()
         {
-            var dataContract = new DataContract<int>(GetAll, TryGetFromReceiptsFalse);
+            DataContract<int> dataContract = new(GetAll, TryGetFromReceiptsFalse);
             dataContract.IncrementalChanges.Should().BeFalse();
-            dataContract.TryGetItemsChangedFromBlock(Build.A.BlockHeader.TestObject, Array.Empty<TxReceipt>(), out var items).Should().BeFalse();
+            dataContract.TryGetItemsChangedFromBlock(Build.A.BlockHeader.TestObject, Array.Empty<TxReceipt>(), out IEnumerable<int> items).Should().BeFalse();
             items.Should().BeEmpty();
         }
 

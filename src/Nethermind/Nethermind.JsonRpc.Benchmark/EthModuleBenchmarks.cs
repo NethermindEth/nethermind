@@ -37,6 +37,10 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
+using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Facade.Eth;
+using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
+using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
@@ -82,8 +86,9 @@ namespace Nethermind.JsonRpc.Benchmark
             
             TransactionProcessor transactionProcessor
                  = new TransactionProcessor(MainnetSpecProvider.Instance, stateProvider, storageProvider, _virtualMachine, LimboLogs.Instance);
-            
-            BlockProcessor blockProcessor = new BlockProcessor(specProvider, Always.Valid, new RewardCalculator(specProvider), transactionProcessor,
+
+            IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider);
+            BlockProcessor blockProcessor = new BlockProcessor(specProvider, Always.Valid, new RewardCalculator(specProvider), transactionsExecutor, 
                 stateProvider, storageProvider, NullReceiptStorage.Instance, NullWitnessCollector.Instance, LimboLogs.Instance);
 
             EthereumEcdsa ecdsa = new EthereumEcdsa(specProvider.ChainId, LimboLogs.Instance);
@@ -127,6 +132,10 @@ namespace Nethermind.JsonRpc.Benchmark
                 specProvider,
                 false,
                 false);
+
+            GasPriceOracle gasPriceOracle = new(blockTree, specProvider);
+            FeeHistoryOracle feeHistoryOracle = new(blockTree, NullReceiptStorage.Instance, specProvider);
+            EthSyncingInfo ethSyncingInfo = new(blockTree);
             
             _ethModule = new EthRpcModule(
                 new JsonRpcConfig(),
@@ -137,7 +146,10 @@ namespace Nethermind.JsonRpc.Benchmark
                 NullTxSender.Instance,
                 NullWallet.Instance,
                 LimboLogs.Instance,
-                specProvider);
+                specProvider, 
+                gasPriceOracle,
+                ethSyncingInfo,
+                feeHistoryOracle);
         }
 
         [Benchmark]

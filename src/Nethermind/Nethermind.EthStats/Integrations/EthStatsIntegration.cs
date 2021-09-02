@@ -25,6 +25,9 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.EthStats.Messages;
 using Nethermind.EthStats.Messages.Models;
+using Nethermind.Facade.Eth;
+using Nethermind.Int256;
+using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.TxPool;
@@ -52,6 +55,9 @@ namespace Nethermind.EthStats.Integrations
         private readonly IBlockTree _blockTree;
         private readonly IPeerManager _peerManager;
         private readonly ILogger _logger;
+        private readonly IGasPriceOracle _gasPriceOracle;
+        private readonly IEthSyncingInfo _ethSyncingInfo;
+        private readonly bool _isMining;
         private IWebsocketClient? _websocketClient;
         private bool _connected;
         private long _lastBlockProcessedTimestamp;
@@ -75,6 +81,9 @@ namespace Nethermind.EthStats.Integrations
             ITxPool? txPool,
             IBlockTree? blockTree,
             IPeerManager? peerManager,
+            IGasPriceOracle? gasPriceOracle,
+            IEthSyncingInfo ethSyncingInfo,
+            bool isMining,
             ILogManager? logManager)
         {
             _name = name;
@@ -92,6 +101,9 @@ namespace Nethermind.EthStats.Integrations
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _peerManager = peerManager ?? throw new ArgumentNullException(nameof(peerManager));
+            _gasPriceOracle = gasPriceOracle ?? throw new ArgumentNullException(nameof(gasPriceOracle));
+            _ethSyncingInfo = ethSyncingInfo ?? throw new ArgumentNullException(nameof(ethSyncingInfo));
+            _isMining = isMining;
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
@@ -207,7 +219,7 @@ namespace Nethermind.EthStats.Integrations
                     block.Transactions.Select(t => new Transaction((t.Hash ?? Keccak.Zero).ToString())),
                     (block.TxRoot ?? Keccak.Zero).ToString(),
                     (block.StateRoot ?? Keccak.Zero).ToString(),
-                    block.Ommers.Select(_ => new Uncle()))));
+                    block.Uncles.Select(_ => new Uncle()))));
 
         // ReSharper disable once UnusedMethodReturnValue.Local
         private Task SendPendingAsync(int pending)
@@ -215,7 +227,17 @@ namespace Nethermind.EthStats.Integrations
 
         // ReSharper disable once UnusedMethodReturnValue.Local
         private Task SendStatsAsync()
-            => _sender.SendAsync(_websocketClient!, new StatsMessage(new Messages.Models.Stats(true, true, false, 0,
-                _peerManager.ActivePeers.Count, (long)20.GWei(), 100)));
+        {
+            UInt256 gasPrice = _gasPriceOracle.GetGasPriceEstimate();
+            if (gasPrice > long.MaxValue)
+            {
+                // EthStats doesn't work with UInt256, long should be enough
+                if (_logger.IsTrace) _logger.Trace($"Gas price beyond the eth stats expected scope {gasPrice}");
+                gasPrice = long.MaxValue;
+            }
+            
+            return _sender.SendAsync(_websocketClient!, new StatsMessage(new Messages.Models.Stats(true, _ethSyncingInfo.IsSyncing(), _isMining, 0,
+                _peerManager.ActivePeers.Count, (long)gasPrice, 100)));
+        }
     }
 }

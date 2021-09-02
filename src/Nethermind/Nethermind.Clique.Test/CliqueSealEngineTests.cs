@@ -139,14 +139,14 @@ namespace Nethermind.Clique.Test
         private Block GetRinkebyGenesis()
         {
             Keccak parentHash = Keccak.Zero;
-            Keccak ommersHash = Keccak.OfAnEmptySequenceRlp;
+            Keccak unclesHash = Keccak.OfAnEmptySequenceRlp;
             Address beneficiary = Address.Zero;
             UInt256 difficulty = new UInt256(1);
             long number = 0L;
             int gasLimit = 4700000;
             UInt256 timestamp = new UInt256(1492009146);
             byte[] extraData = Bytes.FromHexString(GetGenesisExtraData());
-            BlockHeader header = new BlockHeader(parentHash, ommersHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData);
+            BlockHeader header = new BlockHeader(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData);
             header.Bloom = Bloom.Empty;
             Block genesis = new Block(header);            
             genesis.Header.Bloom = Bloom.Empty;
@@ -180,14 +180,14 @@ namespace Nethermind.Clique.Test
         private Block CreateBlock(int blockDifficulty, int blockNumber, Block lastBlock)
         {
             Keccak parentHash = lastBlock.Hash;
-            Keccak ommersHash = Keccak.OfAnEmptySequenceRlp;
+            Keccak unclesHash = Keccak.OfAnEmptySequenceRlp;
             Address beneficiary = Address.Zero;
             UInt256 difficulty = (UInt256)blockDifficulty;
             long number = blockNumber;
             int gasLimit = 4700000;
             UInt256 timestamp = (UInt256)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             byte[] extraData = Bytes.FromHexString("d883010812846765746888676f312e31312e31856c696e75780000000000000028eb026ab5355b45499053382886754f1db544618d45edc979de1864d83a626b77513bd34d7f21059e79e303c3ab210e1424e71bcb8347835cbd378a785a06f800");
-            BlockHeader header = new BlockHeader(parentHash, ommersHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData);
+            BlockHeader header = new BlockHeader(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData);
             header.MixHash = Keccak.Zero;
             Block block = new Block(header);
             block.Header.Bloom = Bloom.Empty;
@@ -209,7 +209,7 @@ namespace Nethermind.Clique.Test
         {
             BlockHeader header = Build.A.BlockHeader
                 .WithParentHash(new Keccak("0x6d31ab6b6ee360d075bb032a094fb4ea52617268b760d15b47aa439604583453"))
-                .WithOmmersHash(Keccak.OfAnEmptySequenceRlp)
+                .WithUnclesHash(Keccak.OfAnEmptySequenceRlp)
                 .WithBeneficiary(Address.Zero)
                 .WithBloom(Bloom.Empty)
                 .WithStateRoot(new Keccak("0x9853b6c62bd454466f4843b73e2f0bdd655a4e754c259d6cc0ad4e580d788f43"))

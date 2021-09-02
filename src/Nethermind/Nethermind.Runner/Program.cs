@@ -27,13 +27,13 @@ using Microsoft.Extensions.CommandLineUtils;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Config;
+using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Core;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 using Nethermind.Logging.NLog;
-using Nethermind.Mev;
 using Nethermind.Runner.Ethereum;
 using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Runner.Logging;
@@ -106,12 +106,12 @@ namespace Nethermind.Runner
             CommandOption configsDirectory = app.Option("-cd|--configsDirectory <configsDirectory>", "configs directory", CommandOptionType.SingleValue);
             CommandOption loggerConfigSource = app.Option("-lcs|--loggerConfigSource <loggerConfigSource>", "path to the NLog config file", CommandOptionType.SingleValue);
             _ = app.Option("-pd|--pluginsDirectory <pluginsDirectory>", "plugins directory", CommandOptionType.SingleValue);
-            
+
             IFileSystem fileSystem = new FileSystem();
             
             string pluginsDirectoryPath = LoadPluginsDirectory(args);
             PluginLoader pluginLoader = new(pluginsDirectoryPath, fileSystem, 
-                typeof(CliquePlugin), typeof(EthashPlugin), typeof(NethDevPlugin));
+                typeof(AuRaPlugin), typeof(CliquePlugin), typeof(EthashPlugin), typeof(NethDevPlugin));
 
             // leaving here as an example of adding Debug plugin
             // IPluginLoader mevLoader = SinglePluginLoader<MevPlugin>.Instance;
@@ -130,7 +130,8 @@ namespace Nethermind.Runner
                 }
 
                 ConfigCategoryAttribute? typeLevel = configType.GetCustomAttribute<ConfigCategoryAttribute>();
-                if (typeLevel?.HiddenFromDocs ?? false)
+                
+                if (typeLevel!=null && (typeLevel?.DisabledForCli ?? true))
                 {
                     continue;
                 }
@@ -140,9 +141,10 @@ namespace Nethermind.Runner
                     .OrderBy(p => p.Name))
                 {
                     ConfigItemAttribute? configItemAttribute = propertyInfo.GetCustomAttribute<ConfigItemAttribute>();
-                    if (!(configItemAttribute?.HiddenFromDocs ?? false))
+                    if (!(configItemAttribute?.DisabledForCli ?? false))
                     {
                         _ = app.Option($"--{configType.Name[1..].Replace("Config", string.Empty)}.{propertyInfo.Name}", $"{(configItemAttribute == null ? "<missing documentation>" : configItemAttribute.Description + $" (DEFAULT: {configItemAttribute.DefaultValue})" ?? "<missing documentation>")}", CommandOptionType.SingleValue);
+                        
                     }
                 }
             }
@@ -172,15 +174,26 @@ namespace Nethermind.Runner
                 if (_logger.IsDebug) _logger.Debug($"Nethermind config:{Environment.NewLine}{serializer.Serialize(initConfig, true)}{Environment.NewLine}");
 
                 ApiBuilder apiBuilder = new(configProvider, logManager);
-                INethermindApi nethermindApi = apiBuilder.Create();
+                
+                IList<INethermindPlugin> plugins = new List<INethermindPlugin>();
                 foreach (Type pluginType in pluginLoader.PluginTypes)
                 {
-                    if (Activator.CreateInstance(pluginType) is INethermindPlugin plugin)
+                    try
                     {
-                        ((IList<INethermindPlugin>)nethermindApi.Plugins).Add(plugin);
+                        if (Activator.CreateInstance(pluginType) is INethermindPlugin plugin)
+                        {
+                            plugins.Add(plugin);
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        if(_logger.IsError) _logger.Error($"Failed to create plugin {pluginType.FullName}", e);
                     }
                 }
-
+                
+                INethermindApi nethermindApi = apiBuilder.Create(plugins.OfType<IConsensusPlugin>());
+                ((List<INethermindPlugin>)nethermindApi.Plugins).AddRange(plugins);
+                
                 EthereumRunner ethereumRunner = new(nethermindApi);
                 await ethereumRunner.Start(_processCloseCancellationSource.Token).ContinueWith(x =>
                 {

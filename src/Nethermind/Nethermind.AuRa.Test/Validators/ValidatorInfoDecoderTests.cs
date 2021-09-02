@@ -27,9 +27,9 @@ namespace Nethermind.AuRa.Test.Validators
         [Test]
         public void Can_decode_previously_encoded()
         {
-            var info = new ValidatorInfo(10, 5, new[] {TestItem.AddressA, TestItem.AddressC});
-            var rlp = Rlp.Encode(info);
-            var decoded = Rlp.Decode<ValidatorInfo>(rlp);
+            ValidatorInfo info = new(10, 5, new[] {TestItem.AddressA, TestItem.AddressC});
+            Rlp rlp = Rlp.Encode(info);
+            ValidatorInfo decoded = Rlp.Decode<ValidatorInfo>(rlp);
             decoded.Should().BeEquivalentTo(info);
         }
     }

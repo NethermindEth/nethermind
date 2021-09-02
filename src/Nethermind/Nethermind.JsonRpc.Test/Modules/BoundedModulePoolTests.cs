@@ -28,6 +28,9 @@ using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
 using Nethermind.Trie.Pruning;
 using Nethermind.Facade;
+using Nethermind.Facade.Eth;
+using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
+using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
@@ -50,7 +53,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             ITxPool txPool = NullTxPool.Instance;
             IDbProvider dbProvider = await TestMemDbProvider.InitAsync();
 
-            BlockTree blockTree = new BlockTree(
+            BlockTree blockTree = new(
                 dbProvider.BlocksDb,
                 dbProvider.HeadersDb,
                 dbProvider.BlockInfosDb,
@@ -70,7 +73,9 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Substitute.For<IStateReader>(),
                 Substitute.For<IBlockchainBridgeFactory>(),
                 Substitute.For<ISpecProvider>(),
-                Substitute.For<IReceiptFinder>()),
+                Substitute.For<IReceiptStorage>(),
+                Substitute.For<IGasPriceOracle>(),
+                Substitute.For<IEthSyncingInfo>()),		
                  1, 1000);
         }
 

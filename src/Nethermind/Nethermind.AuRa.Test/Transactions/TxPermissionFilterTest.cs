@@ -74,7 +74,7 @@ namespace Nethermind.AuRa.Test.Transactions
         
         private static TransactionBuilder<Transaction> CreateV1Transaction(Test test, ITransactionPermissionContract.TxPermissions txType)
         {
-            var transactionBuilder = Build.A.Transaction.WithData(null).WithSenderAddress(test.Sender);
+            TransactionBuilder<Transaction> transactionBuilder = Build.A.Transaction.WithData(null).WithSenderAddress(test.Sender);
             
             switch (txType)
             {
@@ -120,7 +120,7 @@ namespace Nethermind.AuRa.Test.Transactions
         
         private static TransactionBuilder<Transaction> CreateV2Transaction(Test test, ITransactionPermissionContract.TxPermissions txPermissions)
         {
-            var transactionBuilder = CreateV1Transaction(test, txPermissions);
+            TransactionBuilder<Transaction> transactionBuilder = CreateV1Transaction(test, txPermissions);
             transactionBuilder.To(test.To);
             
             switch (txPermissions)
@@ -175,7 +175,7 @@ namespace Nethermind.AuRa.Test.Transactions
         
         private static TransactionBuilder<Transaction> CreateV3Transaction(Test test, ITransactionPermissionContract.TxPermissions txPermissions)
         {
-            var transactionBuilder = CreateV2Transaction(test, txPermissions);
+            TransactionBuilder<Transaction> transactionBuilder = CreateV2Transaction(test, txPermissions);
             transactionBuilder.WithData(test.Data);
             transactionBuilder.WithGasPrice(test.GasPrice);
             return transactionBuilder;
@@ -214,9 +214,9 @@ namespace Nethermind.AuRa.Test.Transactions
         public async Task<(bool IsAllowed, bool Cache)> V4(Func<Task<TestTxPermissionsBlockchain>> chainFactory, Transaction tx) => await ChainTest(chainFactory, tx, 4);
         private static async Task<(bool IsAllowed, bool Cache)> ChainTest(Func<Task<TestTxPermissionsBlockchain>> chainFactory, Transaction tx, UInt256 version)
         {
-            using var chain = await chainFactory();
-            var head = chain.BlockTree.Head;
-            var isAllowed = chain.PermissionBasedTxFilter.IsAllowed(tx, head.Header);
+            using TestTxPermissionsBlockchain chain = await chainFactory();
+            Block? head = chain.BlockTree.Head;
+            (bool Allowed, string Reason) isAllowed = chain.PermissionBasedTxFilter.IsAllowed(tx, head.Header);
             chain.TransactionPermissionContractVersions.Get(head.Header.Hash).Should().Be(version);
             return (isAllowed.Allowed, chain.TxPermissionFilterCache.Permissions.Contains((head.Hash, tx.SenderAddress)));
         }
@@ -228,21 +228,21 @@ namespace Nethermind.AuRa.Test.Transactions
                 Test test,
                 ITransactionPermissionContract.TxPermissions txType)
             {
-                var result = (test.ContractPermissions & txType) != ITransactionPermissionContract.TxPermissions.None;
+                bool result = (test.ContractPermissions & txType) != ITransactionPermissionContract.TxPermissions.None;
                 return new TestCaseData(chainFactory, transactionBuilder(test, txType).TestObject)
                     .SetName($"{testsName} - {test.Number}: Expected {test.ContractPermissions}, check {txType} is {result}")
                     .SetCategory(testsName + "Tests")
                     .Returns((result, test.Cache ?? true));
             }
             
-            foreach (var test in tests)
+            foreach (Test test in tests)
             {
-                foreach (var txType in TxPermissionsTypes)
+                foreach (ITransactionPermissionContract.TxPermissions txType in TxPermissionsTypes)
                 {
-                    var chainTask = TestContractBlockchain.ForTest<TestTxPermissionsBlockchain, TxPermissionFilterTest>(testsName);
+                    Task<TestTxPermissionsBlockchain> chainTask = TestContractBlockchain.ForTest<TestTxPermissionsBlockchain, TxPermissionFilterTest>(testsName);
                     Func<Task<TestTxPermissionsBlockchain>> testFactory = async () =>
                     {
-                        var chain = await chainTask;
+                        TestTxPermissionsBlockchain chain = await chainTask;
                         chain.TxPermissionFilterCache.Permissions.Clear();
                         chain.TransactionPermissionContractVersions.Clear();
                         return chain;
@@ -259,14 +259,14 @@ namespace Nethermind.AuRa.Test.Transactions
         [TestCase(3, ExpectedResult = true)]
         public bool allows_transactions_before_transitions(long blockNumber)
         {
-            var transactionPermissionContract = new VersionedTransactionPermissionContract(AbiEncoder.Instance, 
+            VersionedTransactionPermissionContract transactionPermissionContract = new(AbiEncoder.Instance, 
                 TestItem.AddressA,
                 5, 
                 Substitute.For<IReadOnlyTxProcessorSource>(), new LruCache<Keccak, UInt256>(100, "TestCache"),
                 LimboLogs.Instance,
                 Substitute.For<ISpecProvider>());
             
-            var filter = new PermissionBasedTxFilter(transactionPermissionContract, new PermissionBasedTxFilter.Cache(), LimboLogs.Instance);
+            PermissionBasedTxFilter filter = new(transactionPermissionContract, new PermissionBasedTxFilter.Cache(), LimboLogs.Instance);
             return filter.IsAllowed(Build.A.Transaction.WithSenderAddress(TestItem.AddressB).TestObject, Build.A.BlockHeader.WithNumber(blockNumber).TestObject).Allowed;
         }
 
@@ -288,7 +288,7 @@ namespace Nethermind.AuRa.Test.Transactions
                 TransactionPermissionContractVersions =
                     new LruCache<Keccak, UInt256>(PermissionBasedTxFilter.Cache.MaxCacheSize, nameof(TransactionPermissionContract));
 
-                var trieStore = new TrieStore(DbProvider.StateDb, LimboLogs.Instance).AsReadOnly();
+                IReadOnlyTrieStore trieStore = new TrieStore(DbProvider.StateDb, LimboLogs.Instance).AsReadOnly();
                 IReadOnlyTxProcessorSource txProcessorSource = new ReadOnlyTxProcessingEnv(
                     DbProvider,
                     trieStore,
@@ -296,7 +296,7 @@ namespace Nethermind.AuRa.Test.Transactions
                     SpecProvider,
                     LimboLogs.Instance);
 
-                var transactionPermissionContract = new VersionedTransactionPermissionContract(AbiEncoder.Instance, _contractAddress, 1,
+                VersionedTransactionPermissionContract transactionPermissionContract = new(AbiEncoder.Instance, _contractAddress, 1,
                     new ReadOnlyTxProcessingEnv(DbProvider, trieStore, BlockTree, SpecProvider, LimboLogs.Instance), TransactionPermissionContractVersions, LimboLogs.Instance, SpecProvider);
 
                 TxPermissionFilterCache = new PermissionBasedTxFilter.Cache();
@@ -318,7 +318,7 @@ namespace Nethermind.AuRa.Test.Transactions
             protected override async Task AddBlocksOnStart() 
             {
                 await AddBlock();
-                var tx = Nethermind.Core.Test.Builders.Build.A.GeneratedTransaction.WithData(new byte[]{0, 1})
+                GeneratedTransaction tx = Nethermind.Core.Test.Builders.Build.A.GeneratedTransaction.WithData(new byte[]{0, 1})
                     .SignedAndResolved(GetPrivateKey(1)).WithChainId(105).WithGasPrice(0).WithValue(0).TestObject;
                 await AddBlock(tx);
                 await AddBlock(BuildSimpleTransaction.WithNonce(1).TestObject, BuildSimpleTransaction.WithNonce(2).TestObject);

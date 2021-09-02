@@ -27,8 +27,8 @@ namespace Nethermind.Blockchain.Processing
     {
         public static Block CreateCopy(this Block block, BlockHeader header) =>
             block is BlockToProduce blockToProduce 
-                ? new BlockToProduce(header, blockToProduce.Transactions, blockToProduce.Ommers) 
-                : new Block(header, block.Transactions, block.Ommers);
+                ? new BlockToProduce(header, blockToProduce.Transactions, blockToProduce.Uncles) 
+                : new Block(header, block.Transactions, block.Uncles);
 
         public static IEnumerable<Transaction> GetTransactions(this Block block) =>
             block is BlockToProduce blockToProduce

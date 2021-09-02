@@ -109,7 +109,7 @@ namespace Nethermind.Consensus.Ethash
                 .IfPoolIsNotEmpty(getFromApi.TxPool)
                 .Or(getFromApi.ManualBlockProductionTrigger);
             
-            IBlockProducer blockProducer = setInApi.BlockProducer = new DevBlockProducer(
+            IBlockProducer blockProducer = new DevBlockProducer(
                 additionalTxSource.Then(txPoolTxSource).ServeTxsOneByOne(),
                 producerChainProcessor,
                 producerEnv.StateProvider,

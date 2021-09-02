@@ -18,6 +18,6 @@ namespace Nethermind.Core.Test.Builders
 {
     public partial class Build
     {
-        public AccountBuilder Account => new AccountBuilder();
+        public AccountBuilder Account => new();
     }
 }

@@ -43,7 +43,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void Module_provider_will_recognize_disabled_modules()
         {
-            JsonRpcConfig jsonRpcConfig = new JsonRpcConfig();
+            JsonRpcConfig jsonRpcConfig = new();
             jsonRpcConfig.EnabledModules = new string[0];
             _moduleProvider = new RpcModuleProvider(new FileSystem(), jsonRpcConfig, LimboLogs.Instance);
             _moduleProvider.Register(new SingletonModulePool<IProofRpcModule>(Substitute.For<IProofRpcModule>(), false));
@@ -54,7 +54,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void Method_resolution_is_case_sensitive()
         {
-            SingletonModulePool<INetRpcModule> pool = new SingletonModulePool<INetRpcModule>(new NetRpcModule(LimboLogs.Instance, Substitute.For<INetBridge>()), true);
+            SingletonModulePool<INetRpcModule> pool = new(new NetRpcModule(LimboLogs.Instance, Substitute.For<INetBridge>()), true);
             _moduleProvider.Register(pool);
 
             _moduleProvider.Check("net_VeRsIoN", RpcEndpoint.Http).Should().Be(ModuleResolution.Unknown);
@@ -67,12 +67,12 @@ namespace Nethermind.JsonRpc.Test.Modules
         [TestCase("net_.*", ModuleResolution.Enabled)]
         public void With_filter_can_reject(string regex, ModuleResolution expectedResult)
         {
-            JsonRpcConfig config = new JsonRpcConfig();
+            JsonRpcConfig config = new();
             _fileSystem.File.Exists(Arg.Any<string>()).Returns(true);
             _fileSystem.File.ReadLines(Arg.Any<string>()).Returns(new[] {regex});
             _moduleProvider = new RpcModuleProvider(_fileSystem, config, LimboLogs.Instance);
             
-            SingletonModulePool<INetRpcModule> pool = new SingletonModulePool<INetRpcModule>(new NetRpcModule(LimboLogs.Instance, Substitute.For<INetBridge>()), true);
+            SingletonModulePool<INetRpcModule> pool = new(new NetRpcModule(LimboLogs.Instance, Substitute.For<INetBridge>()), true);
             _moduleProvider.Register(pool);
 
             ModuleResolution resolution = _moduleProvider.Check("net_version", RpcEndpoint.Http);
@@ -82,7 +82,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void Returns_politely_when_no_method_found()
         {
-            SingletonModulePool<INetRpcModule> pool = new SingletonModulePool<INetRpcModule>(Substitute.For<INetRpcModule>(), true);
+            SingletonModulePool<INetRpcModule> pool = new(Substitute.For<INetRpcModule>(), true);
             _moduleProvider.Register(pool);
 
             ModuleResolution resolution = _moduleProvider.Check("unknown_method", RpcEndpoint.Http);
