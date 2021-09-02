@@ -128,7 +128,7 @@ namespace Nethermind.Clique.Test
         {
             BlockHeader header = Build.A.BlockHeader
                 .WithParentHash(new Keccak("0x6d31ab6b6ee360d075bb032a094fb4ea52617268b760d15b47aa439604583453"))
-                .WithOmmersHash(Keccak.OfAnEmptySequenceRlp)
+                .WithUnclesHash(Keccak.OfAnEmptySequenceRlp)
                 .WithBeneficiary(Address.Zero)
                 .WithBloom(Bloom.Empty)
                 .WithStateRoot(new Keccak("0x9853b6c62bd454466f4843b73e2f0bdd655a4e754c259d6cc0ad4e580d788f43"))

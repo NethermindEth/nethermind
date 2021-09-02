@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,25 +15,11 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Serialization.Rlp;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Blockchain.Validators
 {
-    public static class OmmersHash
+    public interface IUnclesValidator
     {
-        public static Keccak Calculate(Block block)
-        {
-            return block.Ommers.Length == 0
-                ? Keccak.OfAnEmptySequenceRlp
-                : Keccak.Compute(Rlp.Encode(block.Ommers).Bytes);
-        }
-        
-        public static Keccak Calculate(BlockHeader[] ommers)
-        {
-            return ommers.Length == 0
-                ? Keccak.OfAnEmptySequenceRlp
-                : Keccak.Compute(Rlp.Encode(ommers).Bytes);
-        }
+        bool Validate(BlockHeader header, BlockHeader[] uncles);
     }
 }

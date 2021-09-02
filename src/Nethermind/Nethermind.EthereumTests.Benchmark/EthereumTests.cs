@@ -9,7 +9,7 @@ using Nethermind.Evm;
 
 namespace Nethermind.EthereumTests.Benchmark
 {
-    [SimpleJob()]
+    [ShortRunJob()]
     public class EthereumTests : GeneralStateTestBase
     {
         public static IEnumerable<string> TestFileSource() => Directory.EnumerateFiles(@"EthereumTestFiles", "*.json",  SearchOption.AllDirectories);

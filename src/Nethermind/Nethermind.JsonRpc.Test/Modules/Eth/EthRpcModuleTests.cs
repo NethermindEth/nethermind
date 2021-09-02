@@ -125,7 +125,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                 specProvider.GetSpec(Arg.Any<long>()).Returns(releaseSpec);
             }
             using Context ctx = await Context.Create();
-            Block block = Build.A.Block.WithOmmers(Build.A.BlockHeader.TestObject, Build.A.BlockHeader.TestObject).TestObject;
+            Block block = Build.A.Block.WithUncles(Build.A.BlockHeader.TestObject, Build.A.BlockHeader.TestObject).TestObject;
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             blockTree.FindBlock((BlockParameter) null).ReturnsForAnyArgs(block);
             ctx._test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockTree).Build(specProvider);
@@ -146,7 +146,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             }
                 
             using Context ctx = await Context.Create();
-            Block block = Build.A.Block.WithOmmers(Build.A.BlockHeader.WithNumber(2).TestObject, Build.A.BlockHeader.TestObject).WithNumber(3).TestObject;
+            Block block = Build.A.Block.WithUncles(Build.A.BlockHeader.WithNumber(2).TestObject, Build.A.BlockHeader.TestObject).WithNumber(3).TestObject;
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             blockTree.FindBlock((BlockParameter) null).ReturnsForAnyArgs(block);
             ctx._test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockTree).Build(specProvider);
