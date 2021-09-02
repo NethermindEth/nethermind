@@ -229,16 +229,18 @@ namespace Nethermind.Network.P2P
 
         public virtual void SendNewTransactions(IList<Transaction> txs)
         {
-            List<Transaction> txsToSend = new(Math.Min(256, txs.Count));
+            const int maxCapacity = 256;
+            int txsCount = txs.Count;
+            List<Transaction> txsToSend = new(Math.Min(maxCapacity, txsCount));
             
-            for (int i = 0; i < txs.Count; i++)
+            for (int i = 0; i < txsCount; i++)
             {
                 if (txs[i].Hash is not null)
                 {
                     txsToSend.Add(txs[i]);
                 }
 
-                if (txsToSend.Count > 255)
+                if (txsToSend.Count == maxCapacity)
                 {
                     TransactionsMessage msg = new(txsToSend);
                     Send(msg);
