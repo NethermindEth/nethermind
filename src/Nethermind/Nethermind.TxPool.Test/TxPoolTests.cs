@@ -832,6 +832,28 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public void should_notify_added_peer_of_all_own_txs_in_one_msg()
+        {
+            _txPool = CreatePool();
+            Transaction[] txs = GetTransactions(GetPeers(10), true, false);
+            
+            foreach (Address address in txs.Select(t => t.SenderAddress).Distinct())
+            {
+                EnsureSenderBalance(address, UInt256.MaxValue);
+            }
+            
+            foreach (Transaction transaction in txs)
+            {
+                _txPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast);
+            }
+            
+            ITxPoolPeer txPoolPeer = Substitute.For<ITxPoolPeer>();
+            txPoolPeer.Id.Returns(TestItem.PublicKeyA);
+            _txPool.AddPeer(txPoolPeer);
+            txPoolPeer.Received().SendNewTransactions(Arg.Is<IList<Transaction>>(i => i.Count == txs.Length));
+        }
+
+        [Test]
         public void should_accept_access_list_transactions_only_when_eip2930_enabled([Values(false, true)] bool eip2930Enabled)
         {
             if (!eip2930Enabled)
