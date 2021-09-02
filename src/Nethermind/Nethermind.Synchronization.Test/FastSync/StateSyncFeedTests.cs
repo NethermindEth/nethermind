@@ -245,6 +245,11 @@ namespace Nethermind.Synchronization.Test.FastSync
                 throw new NotImplementedException();
             }
 
+            public void SendNewTransactions(IList<Transaction> txs)
+            {
+                throw new NotImplementedException();
+            }
+
             public Task<TxReceipt[][]> GetReceipts(IList<Keccak> blockHash, CancellationToken token)
             {
                 throw new NotImplementedException();

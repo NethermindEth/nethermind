@@ -33,7 +33,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         {
             BlockHeader header = Build.A.BlockHeader.TestObject;
             header.ParentHash = Keccak.Zero;
-            header.OmmersHash = Keccak.Zero;
+            header.UnclesHash = Keccak.Zero;
             header.Beneficiary = Address.Zero;
             header.StateRoot = Keccak.Zero;
             header.TxRoot = Keccak.Zero;
