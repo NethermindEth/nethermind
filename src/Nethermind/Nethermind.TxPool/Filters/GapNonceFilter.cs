@@ -26,16 +26,14 @@ namespace Nethermind.TxPool.Filters
     /// Filters out transactions with nonces set too far in the future.
     /// Without this filter it would be possible to fill in TX pool with transactions that have low chance of being executed soon.
     /// </summary>
-    internal class TooFarNonceFilter : IIncomingTxFilter
+    internal class GapNonceFilter : IIncomingTxFilter
     {
         private readonly TxDistinctSortedPool _txs;
         private readonly IAccountStateProvider _accounts;
         private readonly ILogger _logger;
-        private readonly uint _futureNonceRetention;
 
-        public TooFarNonceFilter(ITxPoolConfig txPoolConfig, IAccountStateProvider accountStateProvider, TxDistinctSortedPool txs, ILogger logger)
+        public GapNonceFilter(IAccountStateProvider accountStateProvider, TxDistinctSortedPool txs, ILogger logger)
         {
-            _futureNonceRetention  = txPoolConfig.FutureNonceRetention;
             _txs = txs;
             _accounts = accountStateProvider;
             _logger = logger;
@@ -47,13 +45,12 @@ namespace Nethermind.TxPool.Filters
             bool isTxPoolFull = _txs.IsFull();
             UInt256 currentNonce = _accounts.GetAccount(tx.SenderAddress!).Nonce;
             bool isTxNonceNextInOrder = tx.Nonce <= (long)currentNonce + numberOfSenderTxsInPending;
-            bool isTxNonceTooFarInFuture = tx.Nonce > currentNonce + _futureNonceRetention;
-            if (isTxPoolFull && !isTxNonceNextInOrder || isTxNonceTooFarInFuture)
+            if (isTxPoolFull && !isTxNonceNextInOrder)
             {
-                Metrics.PendingTransactionsTooFarInFuture++;
+                Metrics.PendingTransactionsNonceGap++;
                 if (_logger.IsTrace)
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, nonce in future.");
-                return (false, AddTxResult.NonceTooFarInTheFuture);
+                return (false, AddTxResult.NonceGap);
             }
 
             return (true, null);

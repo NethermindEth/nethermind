@@ -110,7 +110,7 @@ namespace Nethermind.TxPool
             _filterPipeline.Add(new GasLimitTxFilter(_headInfo, txPoolConfig, _logger));
             _filterPipeline.Add(new UnknownSenderFilter(ecdsa, _logger));
             _filterPipeline.Add(new LowNonceFilter(_accounts, _logger));
-            _filterPipeline.Add(new TooFarNonceFilter(txPoolConfig, _accounts, _transactions, _logger));
+            _filterPipeline.Add(new GapNonceFilter(_accounts, _transactions, _logger));
             _filterPipeline.Add(new TooExpensiveTxFilter(_headInfo, _accounts, _transactions, _logger));
             _filterPipeline.Add(new FeeToLowFilter(_headInfo, _accounts, _transactions, _logger));
             _filterPipeline.Add(new ReusedOwnNonceTxFilter(_accounts, _nonces, _logger));

@@ -29,8 +29,8 @@ namespace Nethermind.TxPool
         [Description("Number of pending transactions received that were ignored.")]
         public static long PendingTransactionsDiscarded { get; set; }
         
-        [Description("Number of pending transactions received that were ignored because of nonce bigger than current nonce about more than FutureNonceRetention.")]
-        public static long PendingTransactionsTooFarInFuture { get; set; }
+        [Description("Number of pending transactions received that were ignored because of not having preceding nonce of this sender in TxPool.")]
+        public static long PendingTransactionsNonceGap { get; set; }
         
         [Description("Number of pending transactions received that were ignored because of effective fee lower than the lowest effective fee in transaction pool.")]
         public static long PendingTransactionsTooLowFee { get; set; }
