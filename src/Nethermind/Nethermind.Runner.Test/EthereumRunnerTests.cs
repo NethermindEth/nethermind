@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+#nullable enable
 using System;
 using System.Collections;
 using System.Collections.Concurrent;
@@ -24,7 +25,7 @@ using System.Linq;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions.Execution;
+using FluentAssertions;
 using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -38,12 +39,15 @@ using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Runner.Ethereum;
-using Nethermind.Serialization.Json;
-using Nethermind.Stats;
 using Nethermind.Db.Blooms;
+using Nethermind.Logging.NLog;
 using Nethermind.Runner.Ethereum.Api;
 using Nethermind.TxPool;
+using NLog;
+using NLog.Config;
+using NLog.Targets;
 using NUnit.Framework;
+using LogLevel = NLog.LogLevel;
 
 namespace Nethermind.Runner.Test
 {
@@ -106,7 +110,7 @@ namespace Nethermind.Runner.Test
             
             await SmokeTest(testCase.configProvider, testIndex, 30430, true);
         }
-
+        
         private static async Task SmokeTest(ConfigProvider configProvider, int testIndex, int basePort, bool cancel = false)
         {
             Type type1 = typeof(ITxPoolConfig);
@@ -197,6 +201,45 @@ namespace Nethermind.Runner.Test
                         throw;
                     }
                 }
+            }
+        }
+
+        [Test]
+        public void GetClassLogger_GivenConfigurationOptions_ConfigurationRuleIsAdded()
+        {
+            Target target = LogManager.Configuration!.FindTargetByName("auto-colored-console-async");
+            LoggingRule loggingRule = new("JsonRpc.*", LogLevel.Warn, target);
+            LoggingRuleComparer loggingRuleComparer = new();
+            NLogManager manager = new("test", null, "JsonRpc.*: Warn;");
+            
+            LogManager.Configuration.LoggingRules.Contains(loggingRule, loggingRuleComparer).Should().BeFalse();
+            manager.GetClassLogger();
+            
+            LogManager.Configuration.LoggingRules.Contains(loggingRule, loggingRuleComparer).Should().BeTrue();
+        }
+
+        class LoggingRuleComparer : IEqualityComparer<LoggingRule>
+        {
+            public bool Equals(LoggingRule? a, LoggingRule? b)
+            {
+                if (a == null && b == null)
+                {
+                    return true;
+                }
+                else if (a == null || b == null)
+                {
+                    return false;
+                }
+                else
+                {
+                    return a.LoggerNamePattern == b.LoggerNamePattern && a.Targets.SequenceEqual(b.Targets) && a.Levels.SequenceEqual(b.Levels);
+                }
+            }
+
+            public int GetHashCode(LoggingRule obj)
+            {
+                string hashString = obj.LoggerNamePattern ?? "" + obj.Targets + obj.Levels;
+                return hashString.GetHashCode();
             }
         }
     }

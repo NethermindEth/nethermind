@@ -24,18 +24,20 @@ namespace Nethermind.Logging.NLog
     {
         private readonly string _logFileName;
         private readonly string _logDirectory;
+        private readonly string _logConfig;
 
-        public NLogManager(string logFileName, string logDirectory)
+        public NLogManager(string logFileName, string logDirectory, string logConfig = null)
         {
             _logFileName = logFileName;
             _logDirectory = logDirectory;
+            _logConfig = logConfig;
         }
 
         private ConcurrentDictionary<Type, NLogLogger> _loggers = new();
 
         private NLogLogger BuildLogger(Type type)
         {
-            return new(type, _logFileName, _logDirectory);
+            return new(type, _logFileName, _logDirectory, loggerConfig: _logConfig);
         }
 
         public ILogger GetClassLogger(Type type)
@@ -50,12 +52,12 @@ namespace Nethermind.Logging.NLog
 
         public ILogger GetClassLogger()
         {
-            return new NLogLogger(_logFileName, _logDirectory);
+            return new NLogLogger(_logFileName, _logDirectory, loggerConfig: _logConfig);
         }
 
         public ILogger GetLogger(string loggerName)
         {
-            return new NLogLogger(_logFileName, _logDirectory, loggerName);
+            return new NLogLogger(_logFileName, _logDirectory, loggerName, _logConfig);
         }
 
         public void SetGlobalVariable(string name, object value)
