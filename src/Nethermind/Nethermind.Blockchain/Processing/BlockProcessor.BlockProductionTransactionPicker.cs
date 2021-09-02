@@ -69,8 +69,7 @@ namespace Nethermind.Blockchain.Processing
                 }
 
                 IReleaseSpec spec = _specProvider.GetSpec(block.Number);
-                //if (spec.IsEip3607Enabled && stateProvider.HasCode(currentTx.SenderAddress))
-                if (stateProvider.HasCode(currentTx.SenderAddress))
+                if (spec.IsEip3607Enabled && stateProvider.HasCode(currentTx.SenderAddress))
                 {
                     return args.Set(TxAction.Skip, $"Sender is contract");
                 }
