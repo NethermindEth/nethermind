@@ -212,59 +212,22 @@ namespace Nethermind.TxPool.Test
             txPool.GetPendingTransactions().Length.Should().Be(1);
         }
         
-        [Test]
-        public void should_reject_transactions_with_deployed_code_when_eip3607_enabled([Values(false, true)] bool eip3607Enabled)
+        [TestCase(false, false, ExpectedResult = AddTxResult.Added)]
+        [TestCase(false, true, ExpectedResult = AddTxResult.Added)]
+        [TestCase(true, false, ExpectedResult = AddTxResult.Added)]
+        [TestCase(true, true, ExpectedResult = AddTxResult.SenderIsContract)]
+        public AddTxResult should_reject_transactions_with_deployed_code_when_eip3607_enabled(bool eip3607Enabled, bool hasCode)
         {
-            TxPool txPool = null;
+            ISpecProvider specProvider = new TestSpecProvider(London.Instance);
+            TxPool txPool = CreatePool(null, eip3607Enabled ? specProvider : _specProvider);
 
-            if (eip3607Enabled)
-            {
-                ISpecProvider specProvider = new TestSpecProvider(London.Instance);
-                _stateProvider = Substitute.For<IStateProvider>();
-                var hash = new Keccak("0xd6d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a551");
-                Account account = new Account(UInt256.One, UInt256.MinValue, Keccak.Zero, hash);
-                _stateProvider.GetAccount(Arg.Any<Address>()).Returns(account);
-                txPool = CreatePool(null, specProvider);
-            } 
-            
-            else
-            {
-                txPool = CreatePool(null, _specProvider);
-            }
-            
             Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(tx);
-            AddTxResult result = txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
-            result.Should().Be(eip3607Enabled ? AddTxResult.SenderIsContract : AddTxResult.Added);
-        }
-        
-        [Test]
-        public void should_send_transactions_with_empty_code_hash([Values(false, true)] bool eip3607Enabled)
-        {
-            TxPool txPool = null;
-
-            if (eip3607Enabled)
-            {
-                ISpecProvider specProvider = new TestSpecProvider(London.Instance);
-                _stateProvider = Substitute.For<IStateProvider>();
-                var hash = Keccak.OfAnEmptyString;
-                _stateProvider.GetCodeHash(Arg.Any<Address>()).Returns(hash);
-                Account account = new Account(0x726537);
-                _stateProvider.GetAccount(Arg.Any<Address>()).Returns(account);
-                txPool = CreatePool(null, specProvider);
-            }
-
-            else
-            {
-                txPool = CreatePool(null, _specProvider);
-            }
+            _stateProvider.UpdateCodeHash(TestItem.AddressA, hasCode ? TestItem.KeccakH : Keccak.OfAnEmptyString, London.Instance);
             
-            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
-            EnsureSenderBalance(tx);
-            AddTxResult result = txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
-            result.Should().Be(AddTxResult.Added);
+            return txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
         }
-        
+
         [Test]
         public void should_ignore_insufficient_funds_transactions()
         {
