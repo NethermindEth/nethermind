@@ -85,22 +85,11 @@ namespace Nethermind.JsonRpc.Modules.Parity
             Block block = searchResult.Object;
             TxReceipt[] receipts = _receiptFinder.Get(block) ?? new TxReceipt[block.Transactions.Length];
             bool isEip1559Enabled = _specProvider.GetSpec(block.Number).IsEip1559Enabled;
-            RpcHelper rpcHelp = new();
-            IEnumerable<ReceiptForRpc> result = receipts.Zip(block.Transactions, (r, t) => new ReceiptForRpc(t.Hash, r, t.CalculateEffectiveGasPrice(isEip1559Enabled, block.BaseFeePerGas), rpcHelp.SumOfPreviousLogIndexesInBlock(r.Index, receipts)));
+            IEnumerable<ReceiptForRpc> result = receipts
+                .Zip(block.Transactions, (r, t) => 
+                    new ReceiptForRpc(t.Hash, r, t.CalculateEffectiveGasPrice(isEip1559Enabled, block.BaseFeePerGas), receipts.GetBlockLogFirstIndex(r.Index)));
             ReceiptForRpc[] resultAsArray = result.ToArray();
             return ResultWrapper<ReceiptForRpc[]>.Success(resultAsArray);
-        }
-
-        private static void MakeLogIndexesUniqueInBlock(ReceiptForRpc[] resultAsArray)
-        {
-            int logIndexInBlock = 0;
-            for (int receiptIndex = 0; receiptIndex < resultAsArray.Length; receiptIndex++)
-            {
-                for (int logIndexInTx = 0; logIndexInTx < resultAsArray[receiptIndex].Logs.Length; logIndexInTx++)
-                {
-                    resultAsArray[receiptIndex].Logs[logIndexInTx].LogIndex = logIndexInBlock++;
-                }
-            }
         }
 
         public ResultWrapper<bool> parity_setEngineSigner(Address address, string password)

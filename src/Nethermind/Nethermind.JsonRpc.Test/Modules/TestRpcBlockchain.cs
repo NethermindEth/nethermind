@@ -147,10 +147,10 @@ namespace Nethermind.JsonRpc.Test.Modules
                 TxPool,
                 TxSender,
                 TestWallet,
-                LimboLogs.Instance,
-                SpecProvider,
-                GasPriceOracle ?? new GasPriceOracle(BlockFinder, SpecProvider),
-                ReceiptFinder);
+                ReceiptFinder, 
+                LimboLogs.Instance, 
+                SpecProvider, 
+                GasPriceOracle ?? new GasPriceOracle(BlockFinder, SpecProvider));
             
             return this;
         }

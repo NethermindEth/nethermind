@@ -33,9 +33,9 @@ namespace Nethermind.JsonRpc.Test.Data
         public void Are_log_indexes_unique()
         {
             Keccak txHash = Keccak.OfAnEmptyString;
-            LogEntry[] logEntries = new[] {Build.A.LogEntry.TestObject, Build.A.LogEntry.TestObject, Build.A.LogEntry.TestObject};
+            LogEntry[] logEntries = {Build.A.LogEntry.TestObject, Build.A.LogEntry.TestObject, Build.A.LogEntry.TestObject};
             
-            TxReceipt receipt1 = new TxReceipt()
+            TxReceipt receipt1 = new()
             {
                 Bloom = new Bloom(logEntries),
                 Index = 1,
@@ -51,8 +51,8 @@ namespace Nethermind.JsonRpc.Test.Data
                 Logs = logEntries
             };
             
-            UInt256 effectiveGasPrice = new UInt256(5526);
-            ReceiptForRpc receiptForRpc = new ReceiptForRpc(txHash, receipt1, effectiveGasPrice);
+            UInt256 effectiveGasPrice = new(5526);
+            ReceiptForRpc receiptForRpc = new(txHash, receipt1, effectiveGasPrice);
             long?[] indexes = receiptForRpc.Logs.Select(log => log.LogIndex).ToArray();
             long?[] expected = {0, 1, 2};
             

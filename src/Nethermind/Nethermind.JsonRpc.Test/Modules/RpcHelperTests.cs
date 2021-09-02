@@ -16,6 +16,7 @@
 // 
 
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.JsonRpc.Modules;
@@ -82,9 +83,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             
             TxReceipt[] receipts = {receipt1, receipt2, receipt3};
             int index = 2;
-
-            RpcHelper rpcHelper = new();
-            int sum = rpcHelper.SumOfPreviousLogIndexesInBlock(index, receipts);
+            
+            int sum = receipts.GetBlockLogFirstIndex(index);
             
             Assert.AreEqual(sum, 4);
         }

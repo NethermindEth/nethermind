@@ -171,8 +171,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
             bool isEip1559Enabled = _specProvider.GetSpec(block.Number).IsEip1559Enabled;
             Transaction? tx = txs.FirstOrDefault(x => x.Hash == txHash);
             
-            RpcHelper rpcHelper = new();
-            int logIndexStart = rpcHelper.SumOfPreviousLogIndexesInBlock(receipt.Index, _receiptFinder.Get(block));
+            int logIndexStart = _receiptFinder.Get(block).GetBlockLogFirstIndex(receipt.Index);
             receiptWithProof.Receipt = new ReceiptForRpc(txHash, receipt, tx?.CalculateEffectiveGasPrice(isEip1559Enabled, block.BaseFeePerGas), logIndexStart);
             receiptWithProof.ReceiptProof = BuildReceiptProofs(block.Number, receipts, receipt.Index);
             receiptWithProof.TxProof = BuildTxProofs(txs, _specProvider.GetSpec(block.Number), receipt.Index);

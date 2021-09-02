@@ -69,18 +69,17 @@ namespace Nethermind.JsonRpc.Modules.Eth
         }
         
         
-        public EthRpcModule(
-            IJsonRpcConfig rpcConfig,
+        public EthRpcModule(IJsonRpcConfig rpcConfig,
             IBlockchainBridge blockchainBridge,
             IBlockFinder blockFinder,
             IStateReader stateReader,
             ITxPool txPool,
             ITxSender txSender,
             IWallet wallet,
+            IReceiptFinder receiptFinder,
             ILogManager logManager,
             ISpecProvider specProvider,
-            IGasPriceOracle gasPriceOracle,
-            IReceiptFinder receiptFinder = null)
+            IGasPriceOracle gasPriceOracle)
         {
             _logger = logManager.GetClassLogger();
             _rpcConfig = rpcConfig ?? throw new ArgumentNullException(nameof(rpcConfig));
@@ -92,7 +91,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _gasPriceOracle = gasPriceOracle ?? throw new ArgumentNullException(nameof(gasPriceOracle));
-            _receiptFinder = receiptFinder;
+            _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
         }
 
         public ResultWrapper<string> eth_protocolVersion()
@@ -506,11 +505,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
 
             Keccak blockHash = result.Receipt.BlockHash;
-            TxReceipt[] receipts = _receiptFinder.Get(blockHash);
-            RpcHelper rpcHelper = new();
-            int logIndexStart = rpcHelper.SumOfPreviousLogIndexesInBlock(result.Receipt.Index, receipts);
+            TxReceipt[] receipts = _receiptFinder.Get(blockHash!);
+            int logIndexStart = receipts.GetBlockLogFirstIndex(result.Receipt.Index);
             ReceiptForRpc receiptModel = new(txHash, result.Receipt, result.EffectiveGasPrice, logIndexStart);
-            if (receiptModel.Error == "") receiptModel.Error = null;
 
             if (_logger.IsTrace) _logger.Trace($"eth_getTransactionReceipt request {txHash}, result: {txHash}");
             return Task.FromResult(ResultWrapper<ReceiptForRpc>.Success(receiptModel));

@@ -45,7 +45,7 @@ namespace Nethermind.JsonRpc.Data
             LogsBloom = receipt.Bloom;
             Root = receipt.PostTransactionState;
             Status = receipt.StatusCode;
-            Error = receipt.Error;
+            Error = string.IsNullOrEmpty(receipt.Error) ? null : receipt.Error;
             Type = receipt.TxType;
         }
 
@@ -68,7 +68,7 @@ namespace Nethermind.JsonRpc.Data
         public Bloom? LogsBloom { get; set; }
         public Keccak Root { get; set; }
         public long Status { get; set; }
-        public string Error { get; set; }
+        public string? Error { get; set; }
         public TxType Type { get; set; }
 
         public TxReceipt ToReceipt()
