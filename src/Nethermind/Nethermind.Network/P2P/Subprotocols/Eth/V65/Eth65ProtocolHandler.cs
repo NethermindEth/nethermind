@@ -140,19 +140,27 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
         
         public override void SendNewTransactions(IList<Transaction> txs)
         {
-            List<Keccak> hashes = new(txs.Count);
+            const int maxCapacity = 4096;
+            int txsCount = txs.Count;
+            List<Keccak> hashes = new(Math.Min(maxCapacity, txsCount));
             
-            for (int i = 0; i < txs.Count; i++)
+            for (int i = 0; i < txsCount; i++)
             {
                 if (txs[i].Hash is not null)
                 {
                     hashes.Add(txs[i].Hash);
                 }
+
+                if (hashes.Count == maxCapacity)
+                {
+                    NewPooledTransactionHashesMessage msg = new(hashes.ToArray());
+                    Send(msg);
+                    hashes.Clear();
+                }
             }
 
             if (hashes.Count > 0)
             {
-                Counter++;
                 NewPooledTransactionHashesMessage msg = new(hashes.ToArray());
                 Send(msg);
             }
