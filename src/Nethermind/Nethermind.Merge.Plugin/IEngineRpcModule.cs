@@ -25,33 +25,33 @@ using Nethermind.Merge.Plugin.Data;
 namespace Nethermind.Merge.Plugin
 {
     [RpcModule(ModuleType.Consensus)]
-    public interface IConsensusRpcModule : IRpcModule
+    public interface IEngineRpcModule : IRpcModule
     {
         [JsonRpcMethod(
             Description = "Requests a block to be assembled from the tx pool transactions.",
             IsSharable = true,
             IsImplemented = true)]
-        Task<ResultWrapper<BlockRequestResult?>> consensus_assembleBlock(AssembleBlockRequest request);
+        Task<ResultWrapper<BlockRequestResult?>> engine_assembleBlock(AssembleBlockRequest request);
         
         [JsonRpcMethod(
             Description = "Injects a new block from the consensus layer.",
             IsSharable = true,
             IsImplemented = true)]
-        Task<ResultWrapper<NewBlockResult>> consensus_newBlock(
+        Task<ResultWrapper<NewBlockResult>> engine_newBlock(
             BlockRequestResult requestResult);
         
         [JsonRpcMethod(
             Description = "Changes consensus layer head block.",
             IsSharable = true,
             IsImplemented = true)]
-        Task<ResultWrapper<Result>> consensus_setHead(
+        Task<ResultWrapper<Result>> engine_setHead(
             Keccak blockHash);        
         
         [JsonRpcMethod(
             Description = "Marks consensus layer block as finalized.",
             IsSharable = true,
             IsImplemented = true)]
-        Task<ResultWrapper<Result>> consensus_finaliseBlock(
+        Task<ResultWrapper<Result>> engine_finaliseBlock(
             Keccak blockHash);
     }
 }
