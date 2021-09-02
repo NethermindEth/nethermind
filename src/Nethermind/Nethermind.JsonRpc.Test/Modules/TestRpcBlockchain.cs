@@ -134,6 +134,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             
             Bridge ??= new BlockchainBridge(processingEnv, TxPool, ReceiptStorage, filterStore, filterManager, EthereumEcdsa, Timestamper, LogFinder, SpecProvider, false, false);
             BlockFinder ??= BlockTree;
+            GasPriceOracle ??= new GasPriceOracle(BlockFinder, SpecProvider);
+            ReceiptFinder ??= ReceiptStorage;
             
             ITxSigner txSigner = new WalletTxSigner(TestWallet, specProvider?.ChainId ?? 0);
             ITxSealer txSealer0 = new TxSealer(txSigner, Timestamper);
@@ -150,7 +152,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 ReceiptFinder, 
                 LimboLogs.Instance, 
                 SpecProvider, 
-                GasPriceOracle ?? new GasPriceOracle(BlockFinder, SpecProvider));
+                GasPriceOracle);
             
             return this;
         }
