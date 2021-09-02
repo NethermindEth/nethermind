@@ -16,17 +16,29 @@
 // 
 
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using Nethermind.Core;
-using Nethermind.Crypto;
-using Nethermind.JsonRpc;
+using Nethermind.Core.Timers;
 
 namespace Nethermind.AccountAbstraction.Source
 {
     public class PaymasterThrottler
     {
-        internal enum PaymasterStatus { Ok, Throttled, Banned };
+        public enum PaymasterStatus { Ok, Throttled, Banned };
+
+        public const int TimerHoursSpan = 24;
+        
+        public const int TimerMinutesSpan = 0;
+        
+        public const int TimerSecondsSpan = 0;
+
+        private ITimer _timer = (new TimerFactory())
+            .CreateTimer(new TimeSpan(
+                TimerHoursSpan, 
+                TimerMinutesSpan,
+                TimerSecondsSpan
+                )
+            );
         
         public const uint MinInclusionRateDenominator = 100;
 
@@ -42,6 +54,19 @@ namespace Nethermind.AccountAbstraction.Source
         {
             _opsSeen = new Dictionary<Address, uint>();
             _opsIncluded = new Dictionary<Address, uint>();
+
+            SetupAndStartTimer();
+        }
+
+        public PaymasterThrottler(int hourSpan, int minuteSpan, int secondSpan) : this()
+        {
+            _timer = (new TimerFactory())
+                .CreateTimer(new TimeSpan(
+                        hourSpan,
+                        minuteSpan,
+                        secondSpan
+                    )
+                );
         }
         
         public PaymasterThrottler(
@@ -51,49 +76,86 @@ namespace Nethermind.AccountAbstraction.Source
         {
             _opsSeen = opsSeen;
             _opsIncluded = opsIncluded;
+            
+            SetupAndStartTimer();
         }
 
-        internal uint GetPaymasterOpsSeen(Address paymaster)
+        public uint GetPaymasterOpsSeen(Address paymaster)
         {
-            return (_opsSeen.ContainsKey(paymaster)) ? _opsSeen[paymaster] : 0;
+            lock (_opsSeen) return (_opsSeen.ContainsKey(paymaster)) ? _opsSeen[paymaster] : 0;
         }
 
-        internal uint GetPaymasterOpsIncluded(Address paymaster)
+        public uint GetPaymasterOpsIncluded(Address paymaster)
         {
-            return (_opsIncluded.ContainsKey(paymaster)) ? _opsIncluded[paymaster] : 0;
+            lock (_opsIncluded) return (_opsIncluded.ContainsKey(paymaster)) ? _opsIncluded[paymaster] : 0;
         }
 
-        internal uint IncrementOpsSeen(Address paymaster)
+        public uint IncrementOpsSeen(Address paymaster)
         {
-            if (!_opsSeen.ContainsKey(paymaster)) _opsSeen.Add(paymaster, 1);
-            else _opsSeen[paymaster]++;
+            lock (_opsSeen)
+            {
+                if (!_opsSeen.ContainsKey(paymaster)) _opsSeen.Add(paymaster, 1);
+                else _opsSeen[paymaster]++;
 
-            return _opsSeen[paymaster];
+                return _opsSeen[paymaster];    
+            }
         }
 
-        internal uint IncrementOpsIncluded(Address paymaster)
+        public uint IncrementOpsIncluded(Address paymaster)
         {
-            if (!_opsIncluded.ContainsKey(paymaster)) _opsIncluded.Add(paymaster, 1);
-            else _opsIncluded[paymaster]++;
+            lock (_opsIncluded)
+            {
+                if (!_opsIncluded.ContainsKey(paymaster)) _opsIncluded.Add(paymaster, 1);
+                else _opsIncluded[paymaster]++;
 
-            return _opsIncluded[paymaster];
+                return _opsIncluded[paymaster];    
+            }
         }
         
-        //_opsSeen[paymaster] = _opsSeen[paymaster] - _opsSeen[paymaster] // 24
-        internal void UpdateUserOperationMaps()
+        internal void UpdateUserOperationMaps(Object source, EventArgs args)
         {
-            
+
+            lock (_opsSeen)
+            {
+                foreach (Address paymaster in _opsSeen.Keys)
+                {
+                    uint correction = FloorDivision(_opsSeen[paymaster], TimerHoursSpan);
+
+                    _opsSeen[paymaster] = (_opsSeen[paymaster] >= correction)
+                        ? _opsSeen[paymaster] - correction
+                        : 0;
+                }
+            }
+
+            lock (_opsIncluded)
+            {
+                foreach (Address paymaster in _opsIncluded.Keys)
+                {
+                    uint correction = _opsIncluded[paymaster] - FloorDivision(_opsIncluded[paymaster], TimerHoursSpan);
+
+                    _opsIncluded[paymaster] = (_opsIncluded[paymaster] >= correction)
+                        ? _opsIncluded[paymaster] - correction
+                        : 0;
+                }    
+            }
         }
 
-        internal PaymasterStatus GetPaymasterStatus(Address paymaster)
+        public PaymasterStatus GetPaymasterStatus(Address paymaster)
         {
-            if (!_opsSeen.ContainsKey(paymaster)) return PaymasterStatus.Ok;
+            uint minExpectedIncluded;
+            
+            lock (_opsSeen)
+            {
+                if (!_opsSeen.ContainsKey(paymaster)) return PaymasterStatus.Ok;
+                minExpectedIncluded = FloorDivision(_opsSeen[paymaster], MinInclusionRateDenominator);    
+            }
 
-            uint minExpectedIncluded = FloorDivision(_opsSeen[paymaster], MinInclusionRateDenominator);
-
-            if (_opsIncluded[paymaster] <= minExpectedIncluded + ThrottlingSlack) return PaymasterStatus.Ok;
-            if (_opsIncluded[paymaster] <= minExpectedIncluded + BanSlack) return PaymasterStatus.Throttled;
- 
+            lock (_opsIncluded)
+            {
+                if (_opsIncluded[paymaster] <= minExpectedIncluded + ThrottlingSlack) return PaymasterStatus.Ok;
+                if (_opsIncluded[paymaster] <= minExpectedIncluded + BanSlack) return PaymasterStatus.Throttled;    
+            }
+            
             return PaymasterStatus.Banned;
         }
         
@@ -103,6 +165,13 @@ namespace Nethermind.AccountAbstraction.Source
 
             uint remainder = dividend % divisor;
             return (dividend - remainder) / divisor;
+        }
+
+        private void SetupAndStartTimer()
+        {
+            _timer.Elapsed += UpdateUserOperationMaps;
+            _timer.AutoReset = true;
+            _timer.Enabled = true;
         }
     }
 }
