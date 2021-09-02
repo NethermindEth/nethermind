@@ -25,9 +25,9 @@ using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Data
 {
-    [Parallelizable(ParallelScope.Self)]
+    [Parallelizable(ParallelScope.All)]
     [TestFixture]
-    public class ReceiptsForRpcTests : SerializationTestBase
+    public class ReceiptsForRpcTests
     {
         [Test]
         public void Are_log_indexes_unique()
