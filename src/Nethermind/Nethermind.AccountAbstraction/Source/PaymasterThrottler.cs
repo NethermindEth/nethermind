@@ -131,7 +131,7 @@ namespace Nethermind.AccountAbstraction.Source
             {
                 foreach (Address paymaster in _opsIncluded.Keys)
                 {
-                    uint correction = _opsIncluded[paymaster] - FloorDivision(_opsIncluded[paymaster], TimerHoursSpan);
+                    uint correction = FloorDivision(_opsIncluded[paymaster], TimerHoursSpan);
 
                     _opsIncluded[paymaster] = (_opsIncluded[paymaster] >= correction)
                         ? _opsIncluded[paymaster] - correction
