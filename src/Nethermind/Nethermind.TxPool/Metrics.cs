@@ -23,6 +23,9 @@ namespace Nethermind.TxPool
         [Description("Number of pending transactions broadcasted to peers.")]
         public static long PendingTransactionsSent { get; set; }
         
+        [Description("Number of hashes of pending transactions broadcasted to peers.")]
+        public static long PendingTransactionsHashesSent { get; set; }
+        
         [Description("Number of pending transactions received from peers.")]
         public static long PendingTransactionsReceived { get; set; }
         

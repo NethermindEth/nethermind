@@ -233,6 +233,7 @@ namespace Nethermind.Network.P2P
                 if (txs[i].Hash is not null)
                 {
                     txsToSend.Add(txs[i]);
+                    TxPool.Metrics.PendingTransactionsSent++;
                 }
             }
             
