@@ -193,16 +193,6 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             string serialized = ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction));
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32015,\"message\":\"VM execution error.\",\"data\":\"insufficient sender balance\"},\"id\":67}", serialized);
         }
-
-        [Test]
-        public async Task Eth_call_without_gas_pricing_after_1559_legacy()
-        {
-            using Context ctx = await Context.CreateWithLondonEnabled();
-            TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>(
-                "{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"to\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\"}");
-            string serialized = ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction));
-            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}", serialized);
-        }
         
         /// <summary>
         /// 3. Before 1559: If you specify a gas price of type 1559, it will be ignored and the gas price will be 0.
@@ -210,9 +200,19 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         [Test]
         public async Task Eth_call_with_1559_gas_pricing_after_1559_legacy()
         {
-            using Context ctx = await Context.CreateWithLondonEnabled();
+            using Context ctx = await Context.Create();
             TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>(
                 "{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"to\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"maxFeePerGas\": \"0x100\"}");
+            string serialized = ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction));
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}", serialized);
+        }
+
+        [Test]
+        public async Task Eth_call_without_gas_pricing_after_1559_legacy()
+        {
+            using Context ctx = await Context.CreateWithLondonEnabled();
+            TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>(
+                "{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"to\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\"}");
             string serialized = ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction));
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}", serialized);
         }
