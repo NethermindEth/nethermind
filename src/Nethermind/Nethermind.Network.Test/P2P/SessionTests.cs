@@ -509,7 +509,7 @@ namespace Nethermind.Network.Test.P2P
             p2p.DidNotReceive().HandleMessage(Arg.Is<Packet>(p => p.Protocol == "p2p" && p.PacketType == 3));
         }
 
-        [Test]
+        [Test, Retry(3)]
         public void Can_receive_messages()
         {
             Metrics.P2PBytesReceived = 0;

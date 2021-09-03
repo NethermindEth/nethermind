@@ -50,7 +50,7 @@ namespace Nethermind.Merge.Plugin.Test
         private static readonly DateTime Timestamp = DateTimeOffset.FromUnixTimeSeconds(1000).UtcDateTime;
         private ITimestamper Timestamper { get; } = new ManualTimestamper(Timestamp);
 
-        [Test]
+        [Test, Retry(3)]
         public async Task assembleBlock_should_create_block_on_top_of_genesis()
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
