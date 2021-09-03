@@ -67,6 +67,8 @@ namespace Nethermind.AccountAbstraction.Source
                         secondSpan
                     )
                 );
+            
+            SetupAndStartTimer();
         }
         
         public PaymasterThrottler(
@@ -171,7 +173,7 @@ namespace Nethermind.AccountAbstraction.Source
         {
             _timer.Elapsed += UpdateUserOperationMaps;
             _timer.AutoReset = true;
-            _timer.Enabled = true;
+            _timer.Start();
         }
     }
 }

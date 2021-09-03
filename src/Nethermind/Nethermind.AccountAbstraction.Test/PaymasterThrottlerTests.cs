@@ -16,6 +16,7 @@
 // 
 
 using System;
+using System.Threading;
 using FluentAssertions;
 using Nethermind.AccountAbstraction.Source;
 using Nethermind.Core;
@@ -26,6 +27,8 @@ namespace Nethermind.AccountAbstraction.Test
     [TestFixture]
     public class PaymasterThrottlerTests
     {
+        private Random rand;
+        
         private PaymasterThrottler _paymasterThrottler;
 
         private Address[] _addresses =
@@ -41,14 +44,14 @@ namespace Nethermind.AccountAbstraction.Test
         [SetUp]
         public void SetUp()
         {
-            // Modifying internal timer interval so that internal maps are updated every 5 secs
-            _paymasterThrottler = new PaymasterThrottler(0, 0 ,5);
+            // Modifying internal timer interval so that internal maps are updated every 2 secs
+            _paymasterThrottler = new PaymasterThrottler(0, 0 ,2);
+            rand = new Random();
         }
 
         [Test]
         public void Can_read_and_increment_internal_maps()
         {
-            Random rand = new();
             int index;
             
             for (int i = 0; i < 1000; i++)
@@ -63,6 +66,84 @@ namespace Nethermind.AccountAbstraction.Test
                 _paymasterThrottler.GetPaymasterOpsSeen(addr)
                     .Should().Be(_paymasterThrottler.GetPaymasterOpsIncluded(addr));
             }
+        }
+
+        [Test]
+        public void Internal_maps_are_correctly_updated()
+        {
+            const uint HourSpan = 24;
+            
+            for (int i = 0; i < 100; i++)
+            {
+                _paymasterThrottler.IncrementOpsSeen(_addresses[0]);
+                _paymasterThrottler.IncrementOpsIncluded(_addresses[1]);
+            }
+
+            _paymasterThrottler.IncrementOpsSeen(_addresses[2]);
+            
+             /*
+              100 - 100 // 24 = 96
+              96 - 96 // 24 = 92
+              92 - 92 // 24 = 89
+              89 - 89 // 24 = 86
+              */
+
+             uint opsSeenBeforeUpdate;
+             uint opsIncludedBeforeUpdate;
+             const uint PERIODS = 10;
+             
+             for (int i = 0; i < PERIODS; i++)
+             {
+                 opsSeenBeforeUpdate = _paymasterThrottler.GetPaymasterOpsSeen(_addresses[0]);
+                 opsIncludedBeforeUpdate = _paymasterThrottler.GetPaymasterOpsIncluded(_addresses[1]);
+
+                 Thread.Sleep(2050);
+
+                 _paymasterThrottler.GetPaymasterOpsSeen(_addresses[0])
+                     .Should().Be(opsSeenBeforeUpdate - FloorDivision(opsSeenBeforeUpdate, HourSpan));
+                 _paymasterThrottler.GetPaymasterOpsIncluded(_addresses[1])
+                     .Should().Be(opsIncludedBeforeUpdate - FloorDivision(opsIncludedBeforeUpdate, HourSpan));
+                 _paymasterThrottler.GetPaymasterOpsSeen(_addresses[2])
+                     .Should().Be(1);
+             }
+        }
+        
+        [Test]
+        public void Internal_maps_are_randomly_incremented_and_correctly_updated()
+        {
+            const uint HourSpan = 24;
+            int index;
+            
+            for (int i = 0; i < 10000; i++)
+            {
+                index = rand.Next(0, _addresses.Length - 1);
+                if (i % 2 == 0) _paymasterThrottler.IncrementOpsSeen(_addresses[index]);
+                else _paymasterThrottler.IncrementOpsIncluded(_addresses[index]);
+            }
+            
+            uint opsSeenBeforeUpdate;
+            uint opsIncludedBeforeUpdate;
+
+            foreach (Address addr in _addresses)
+            {
+                opsSeenBeforeUpdate = _paymasterThrottler.GetPaymasterOpsSeen(addr);
+                opsIncludedBeforeUpdate = _paymasterThrottler.GetPaymasterOpsIncluded(addr);
+
+                Thread.Sleep(2050);
+
+                _paymasterThrottler.GetPaymasterOpsSeen(addr)
+                    .Should().Be(opsSeenBeforeUpdate - FloorDivision(opsSeenBeforeUpdate, HourSpan));
+                _paymasterThrottler.GetPaymasterOpsIncluded(addr)
+                    .Should().Be(opsIncludedBeforeUpdate - FloorDivision(opsIncludedBeforeUpdate, HourSpan));
+            }
+        }
+        
+        private uint FloorDivision(uint dividend, uint divisor)
+        {
+            if (divisor == 0) throw new Exception("PaymasterThrottler: Divisor cannot be == 0");
+
+            uint remainder = dividend % divisor;
+            return (dividend - remainder) / divisor;
         }
     }
 }
