@@ -153,7 +153,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             {
                 NewPooledTransactionHashesMessage msg = new(hashes.ToArray());
                 Send(msg);
-                Metrics.Eth65NewPooledTransactionHashesRequested++;
+                Metrics.Eth65NewPooledTransactionHashesSent++;
             }
         }
     }
