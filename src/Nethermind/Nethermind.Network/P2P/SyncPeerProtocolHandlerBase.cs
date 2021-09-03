@@ -225,8 +225,7 @@ namespace Nethermind.Network.P2P
             {
                 if (txsToSend.Count == maxCapacity)
                 {
-                    TransactionsMessage msg = new(txsToSend);
-                    Send(msg);
+                    SendMessage();
                     txsToSend.Clear();
                 }
                 
@@ -238,6 +237,12 @@ namespace Nethermind.Network.P2P
             }
             
             if (txsToSend.Count > 0)
+            {
+                SendMessage();
+            }
+
+
+            void SendMessage()
             {
                 TransactionsMessage msg = new(txsToSend);
                 Send(msg);
