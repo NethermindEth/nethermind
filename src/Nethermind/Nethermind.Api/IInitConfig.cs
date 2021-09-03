@@ -62,6 +62,9 @@ namespace Nethermind.Api
         
         [ConfigItem(Description = "In case of null, the path is set to [applicationDirectiory]\\logs", DefaultValue = "logs")]
         string LogDirectory { get; set; }
+        
+        [ConfigItem(Description = "Overrides for default logs in format LogPath:LogLevel;*", DefaultValue = "null")]
+        string? LogRules { get; set; }
 
         [ConfigItem(Description = "If set to 'false' then transaction receipts will not be stored in the database after a new block is processed. This setting is independent from downloading receipts in fast sync mode.", DefaultValue = "true")]
         bool StoreReceipts { get; set; }
