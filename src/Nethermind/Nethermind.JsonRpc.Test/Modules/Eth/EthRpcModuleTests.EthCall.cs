@@ -198,7 +198,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         /// 3. Before 1559: If you specify a gas price of type 1559, it will be ignored and the gas price will be 0.
         /// </summary>
         [Test]
-        public async Task Eth_call_with_1559_gas_pricing_after_1559_legacy()
+        public async Task Eth_call_with_1559_gas_pricing()
         {
             using Context ctx = await Context.Create();
             TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>(
