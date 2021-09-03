@@ -197,6 +197,9 @@ namespace Nethermind.Network
         [Description("Number of eth.66 Receipts messages received")]
         public static long Eth66ReceiptsReceived { get; set; }
         
+        [Description("Number of eth.66 GetPooledTransactions messages received")]
+        public static long Eth66GetPooledTransactionsReceived { get; set; }
+        
         [Description("Number of eth.66 GetPooledTransactions messages sent")]
         public static long Eth66GetPooledTransactionsRequested { get; set; }
         

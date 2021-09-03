@@ -97,7 +97,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                 case Eth66MessageCode.GetPooledTransactions:
                     GetPooledTransactionsMessage getPooledTxMsg
                         = Deserialize<GetPooledTransactionsMessage>(message.Content);
-                    Metrics.Eth66GetPooledTransactionsRequested++;
+                    Metrics.Eth66GetPooledTransactionsReceived++;
                     ReportIn(getPooledTxMsg);
                     Handle(getPooledTxMsg);
                     break;
