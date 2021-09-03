@@ -138,16 +138,22 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
                 if (hashes.Count == maxCapacity)
                 {
-                    NewPooledTransactionHashesMessage msg = new(hashes.ToArray());
-                    Send(msg);
+                    SendMessage();
                     hashes.Clear();
                 }
             }
 
             if (hashes.Count > 0)
             {
+                SendMessage();
+            }
+
+
+            void SendMessage()
+            {
                 NewPooledTransactionHashesMessage msg = new(hashes.ToArray());
                 Send(msg);
+                Metrics.Eth65NewPooledTransactionHashesRequested++;
             }
         }
     }
