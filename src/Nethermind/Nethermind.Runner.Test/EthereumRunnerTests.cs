@@ -203,44 +203,5 @@ namespace Nethermind.Runner.Test
                 }
             }
         }
-
-        [Test]
-        public void GetClassLogger_GivenConfigurationOptions_ConfigurationRuleIsAdded()
-        {
-            Target target = LogManager.Configuration!.FindTargetByName("auto-colored-console-async");
-            LoggingRule loggingRule = new("JsonRpc.*", LogLevel.Warn, target);
-            LoggingRuleComparer loggingRuleComparer = new();
-            NLogManager manager = new("test", null, "JsonRpc.*: Warn;");
-            
-            LogManager.Configuration.LoggingRules.Contains(loggingRule, loggingRuleComparer).Should().BeFalse();
-            manager.GetClassLogger();
-            
-            LogManager.Configuration.LoggingRules.Contains(loggingRule, loggingRuleComparer).Should().BeTrue();
-        }
-
-        class LoggingRuleComparer : IEqualityComparer<LoggingRule>
-        {
-            public bool Equals(LoggingRule? a, LoggingRule? b)
-            {
-                if (a == null && b == null)
-                {
-                    return true;
-                }
-                else if (a == null || b == null)
-                {
-                    return false;
-                }
-                else
-                {
-                    return a.LoggerNamePattern == b.LoggerNamePattern && a.Targets.SequenceEqual(b.Targets) && a.Levels.SequenceEqual(b.Levels);
-                }
-            }
-
-            public int GetHashCode(LoggingRule obj)
-            {
-                string hashString = obj.LoggerNamePattern ?? "" + obj.Targets + obj.Levels;
-                return hashString.GetHashCode();
-            }
-        }
     }
 }

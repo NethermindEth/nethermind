@@ -21,128 +21,64 @@ using System.Runtime.CompilerServices;
 using NLog;
 using NLog.Targets;
 
-[assembly: InternalsVisibleTo("Nethermind.Logging.NLog.Test")]
-
 namespace Nethermind.Logging.NLog
 {
     public class NLogLogger : ILogger
     {
-        private const string DefaultFileTargetName = "file-async_wrapped";
+        public bool IsError { get; }
+        public bool IsWarn { get; }
+        public bool IsInfo { get; }
+        public bool IsDebug { get; }
+        public bool IsTrace { get; }
+        
+        public string Name { get; }
 
-        public bool IsError { get; private set; }
-        public bool IsWarn { get; private set; }
-        public bool IsInfo { get; private set; }
-        public bool IsDebug { get; private set; }
-        public bool IsTrace { get; private set; }
+        private readonly Logger _logger;
 
-        internal readonly Logger Logger;
-
-        public NLogLogger(Type type, string fileName, string logDirectory = null, string loggerName = null, string loggerConfig = null)
+        public NLogLogger(Type type) : this(GetTypeName(type.FullName))
         {
-            loggerName = string.IsNullOrEmpty(loggerName) ? type.FullName.Replace("Nethermind.", string.Empty) : loggerName;
-            Logger = LogManager.GetLogger(loggerName);
-            Init(fileName, logDirectory, loggerConfig);
         }
 
-        private void Init(string fileName, string logDirectory, string loggerConfig = null)
+        public NLogLogger(string loggerName = null)
         {
-            var logsDir = (string.IsNullOrEmpty(logDirectory) ? "logs" : logDirectory).GetApplicationResourcePath();
-            if (!Directory.Exists(logsDir))
-            {
-                Directory.CreateDirectory(logsDir);
-            }
+            loggerName = string.IsNullOrEmpty(loggerName) ? GetTypeName(StackTraceUsageUtils.GetClassFullName()) : loggerName;
+            _logger = LogManager.GetLogger(loggerName);
             
-            if (LogManager.Configuration?.AllTargets != null)
-            {
-                foreach (FileTarget target in LogManager.Configuration?.AllTargets.OfType<FileTarget>())
-                {
-                    string fileNameToUse = (target.Name == DefaultFileTargetName) ? fileName : target.FileName.Render(LogEventInfo.CreateNullEvent());
-                    target.FileName = !Path.IsPathFullyQualified(fileNameToUse) ? Path.GetFullPath(Path.Combine(logsDir, fileNameToUse)) : fileNameToUse;
-                }
-            }
-            
-            //Add rules here for e.g. 'JsonRpc.*: Warn; Block.*: Error;',
-            if (loggerConfig != null)
-            {
-                string[] rules = loggerConfig.Split(";", StringSplitOptions.RemoveEmptyEntries);
-                foreach (string rule in rules)
-                {
-                    string[] ruleBreakdown = rule.Split(": ");
-                    string loggerNamePattern = ruleBreakdown[0].Trim();
-                    string level = ruleBreakdown[1].Trim();
-                    global::NLog.LogLevel logLevel = GetLogLevel(level);
-                    Target target = LogManager.Configuration!.FindTargetByName("auto-colored-console-async");
-                    LogManager.Configuration.AddRule(logLevel, global::NLog.LogLevel.Fatal, target, loggerNamePattern);
-                }
-            }
-
-            global::NLog.LogLevel GetLogLevel(string level)
-            {
-                switch (level)
-                {
-                    case "Trace":
-                        return global::NLog.LogLevel.Trace;
-                    case "Debug":
-                        return global::NLog.LogLevel.Debug;
-                    case "Info":
-                        return global::NLog.LogLevel.Info;
-                    case "Warn":
-                        return global::NLog.LogLevel.Warn;
-                    case "Error":
-                        return global::NLog.LogLevel.Error;
-                    case "Fatal":
-                        return global::NLog.LogLevel.Fatal;
-                    default:
-                        throw new ArgumentException(
-                            "Configuration string was not formatted properly or LogLevel was not spelled correctly.");
-                }
-            }
-            
-
             /* NOTE: minor perf gain - not planning to switch logging levels while app is running */
             // TODO: review the behaviour on log levels switching
-            IsInfo = Logger.IsInfoEnabled;
-            IsWarn = Logger.IsWarnEnabled;
-            IsDebug = Logger.IsDebugEnabled;
-            IsTrace = Logger.IsTraceEnabled;
-            IsError = Logger.IsErrorEnabled || Logger.IsFatalEnabled;
+            IsInfo = _logger.IsInfoEnabled;
+            IsWarn = _logger.IsWarnEnabled;
+            IsDebug = _logger.IsDebugEnabled;
+            IsTrace = _logger.IsTraceEnabled;
+            IsError = _logger.IsErrorEnabled || _logger.IsFatalEnabled;
+            Name = _logger.Name;
         }
 
-        public NLogLogger(string fileName, string logDirectory = null, string loggerName = null, string loggerConfig = null)
-        {
-            loggerName = string.IsNullOrEmpty(loggerName) ? StackTraceUsageUtils.GetClassFullName().Replace("Nethermind.", string.Empty) : loggerName;
-            Logger = LogManager.GetLogger(loggerName);
-            Init(fileName, logDirectory, loggerConfig);
-        }
+        private static string GetTypeName(string typeName) => typeName.Replace("Nethermind.", string.Empty);
 
         public void Info(string text)
         {
-            Logger.Info(text);
+            _logger.Info(text);
         }
 
         public void Warn(string text)
         {
-            Logger.Warn(text);
+            _logger.Warn(text);
         }
 
         public void Debug(string text)
         {
-            Logger.Debug(text);
+            _logger.Debug(text);
         }
 
         public void Trace(string text)
         {
-            Logger.Trace(text);
+            _logger.Trace(text);
         }
 
         public void Error(string text, Exception ex = null)
         {
-            Logger.Error(ex, text);
-        }
-
-        public static void Shutdown()
-        {
-            LogManager.Shutdown();
+            _logger.Error(ex, text);
         }
     }
 }
