@@ -27,7 +27,7 @@ using Org.BouncyCastle.Asn1.Cms;
 
 namespace Nethermind.Merge.Plugin
 {
-    public class ConsensusRpcModule : IConsensusRpcModule
+    public class EngineRpcModule : IEngineRpcModule
     {
         private readonly IHandlerAsync<AssembleBlockRequest, BlockRequestResult?> _assembleBlockHandler;
         private readonly IHandler<BlockRequestResult, NewBlockResult> _newBlockHandler;
@@ -37,7 +37,7 @@ namespace Nethermind.Merge.Plugin
         private readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
         private readonly ILogger _logger;
 
-        public ConsensusRpcModule(
+        public EngineRpcModule(
             IHandlerAsync<AssembleBlockRequest, BlockRequestResult?> assembleBlockHandler,
             IHandler<BlockRequestResult, NewBlockResult> newBlockHandler,
             IHandler<Keccak, Result> setHeadHandler,
@@ -51,12 +51,12 @@ namespace Nethermind.Merge.Plugin
             _logger = logManager.GetClassLogger();
         }
 
-        public Task<ResultWrapper<BlockRequestResult?>> consensus_assembleBlock(AssembleBlockRequest request)
+        public Task<ResultWrapper<BlockRequestResult?>> engine_assembleBlock(AssembleBlockRequest request)
         {
             return _assembleBlockHandler.HandleAsync(request);
         }
 
-        public async Task<ResultWrapper<NewBlockResult>> consensus_newBlock(BlockRequestResult requestResult)
+        public async Task<ResultWrapper<NewBlockResult>> engine_newBlock(BlockRequestResult requestResult)
         {
             if (await _locker.WaitAsync(Timeout))
             {
@@ -71,12 +71,12 @@ namespace Nethermind.Merge.Plugin
             }
             else
             {
-                if (_logger.IsWarn) _logger.Warn($"{nameof(consensus_newBlock)} timeout.");
+                if (_logger.IsWarn) _logger.Warn($"{nameof(engine_newBlock)} timeout.");
                 return ResultWrapper<NewBlockResult>.Success(new NewBlockResult {Valid = false});
             }
         }
 
-        public async Task<ResultWrapper<Result>> consensus_setHead(Keccak blockHash)
+        public async Task<ResultWrapper<Result>> engine_setHead(Keccak blockHash)
         {
             if (await _locker.WaitAsync(Timeout))
             {
@@ -91,12 +91,12 @@ namespace Nethermind.Merge.Plugin
             }
             else
             {
-                if (_logger.IsWarn) _logger.Warn($"{nameof(consensus_setHead)} timeout.");
+                if (_logger.IsWarn) _logger.Warn($"{nameof(engine_setHead)} timeout.");
                 return ResultWrapper<Result>.Success(Result.Fail);
             }
         }
 
-        public Task<ResultWrapper<Result>> consensus_finaliseBlock(Keccak blockHash) => 
+        public Task<ResultWrapper<Result>> engine_finaliseBlock(Keccak blockHash) => 
             Task.FromResult(_finaliseBlockHandler.Handle(blockHash));
     }
 }

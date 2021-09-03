@@ -43,6 +43,11 @@ using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NUnit.Framework;
 using System.Threading.Tasks;
+using Nethermind.Evm.Tracing;
+using Nethermind.Facade;
+using Nethermind.JsonRpc.Modules;
+using NSubstitute;
+using NSubstitute.Core.DependencyInjection;
 
 namespace Nethermind.JsonRpc.Test.Modules.Proof
 {
@@ -158,7 +163,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             ReceiptWithProof receiptWithProof = _proofRpcModule.proof_getTransactionReceipt(txHash, withHeader).Data;
             Assert.NotNull(receiptWithProof.Receipt);
             Assert.AreEqual(2, receiptWithProof.ReceiptProof.Length);
-            Assert.GreaterOrEqual(receiptWithProof.ReceiptProof.Last().Length, 256 /* bloom length */);
+            
             if (withHeader)
             {
                 Assert.NotNull(receiptWithProof.BlockHeader);
@@ -172,6 +177,77 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             Assert.AreEqual(expectedResult, response);
         }
 
+        [TestCase(true, "{\"jsonrpc\":\"2.0\",\"result\":{\"receipt\":{\"transactionHash\":\"0x8282a49856d07ccb78ad3a59cde08c882448af58dd6ee5dae93f9480f3a167f2\",\"transactionIndex\":\"0x1\",\"blockHash\":\"0xb1e7593b3eea16f8caddf3f185858f92f7a9b32db8368821a70a48340479a531\",\"blockNumber\":\"0x1\",\"cumulativeGasUsed\":\"0x7d0\",\"gasUsed\":\"0x3e8\",\"effectiveGasPrice\":\"0x1\",\"from\":\"0x475674cb523a0a2736b7f7534390288fce16982c\",\"to\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"contractAddress\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"logs\":[{\"removed\":false,\"logIndex\":\"0x2\",\"transactionIndex\":\"0x1\",\"transactionHash\":\"0x8282a49856d07ccb78ad3a59cde08c882448af58dd6ee5dae93f9480f3a167f2\",\"blockHash\":\"0xb1e7593b3eea16f8caddf3f185858f92f7a9b32db8368821a70a48340479a531\",\"blockNumber\":\"0x1\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]},{\"removed\":false,\"logIndex\":\"0x3\",\"transactionIndex\":\"0x1\",\"transactionHash\":\"0x8282a49856d07ccb78ad3a59cde08c882448af58dd6ee5dae93f9480f3a167f2\",\"blockHash\":\"0xb1e7593b3eea16f8caddf3f185858f92f7a9b32db8368821a70a48340479a531\",\"blockNumber\":\"0x1\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]}],\"logsBloom\":\"0x00000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000800000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000\",\"status\":\"0x0\",\"type\":\"0x0\"},\"txProof\":[\"0xf851a011f2d93515d9963f68e6746135f7a786a37ae47ac5b18a5e9fb2e8e9dbf23fad80808080808080a07c3834793d56420b91a53b153d0a67a0ab32cecd250dbc197130eb17e88f32538080808080808080\",\"0xf86431b861f85f8001825208940000000000000000000000000000000000000000020123a037d5bf7701bca57284acd641137b3d699b273106b2ad71949e004b78b79b0ccea0571a5f11033f7d825edb7a623556e506cd8f982f47fe5270ce36c601a59690bf\"],\"receiptProof\":[\"0xf851a053e4a8d7d8438fa45d6b75bbd6fb699b08049c1caf1c21ada42a746ddfb61d0b80808080808080a04de834bd23b53a3d82923ae5f359239b326c66758f2ae636ab934844dba2b9658080808080808080\",\"0xf9010f31b9010bf901088082a410b9010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000c0\"],\"blockHeader\":\"0xf901f9a0b3157bcccab04639f6393042690a6c9862deebe88c781f911e8dfd265531e9ffa01dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347940000000000000000000000000000000000000000a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a0c5054cffd7f5a0b215b5df35420edb8059cc8585f8201dd31e5e10436437364ca0e1b1585a222beceb3887dc6701802facccf186c2d0f6aa69e26ae0c431fc2b5db9010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000830f424001833d090080830f424183010203a02ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e28800000000000003e8\"},\"id\":67}")]
+        [TestCase(false, "{\"jsonrpc\":\"2.0\",\"result\":{\"receipt\":{\"transactionHash\":\"0x8282a49856d07ccb78ad3a59cde08c882448af58dd6ee5dae93f9480f3a167f2\",\"transactionIndex\":\"0x1\",\"blockHash\":\"0xb1e7593b3eea16f8caddf3f185858f92f7a9b32db8368821a70a48340479a531\",\"blockNumber\":\"0x1\",\"cumulativeGasUsed\":\"0x7d0\",\"gasUsed\":\"0x3e8\",\"effectiveGasPrice\":\"0x1\",\"from\":\"0x475674cb523a0a2736b7f7534390288fce16982c\",\"to\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"contractAddress\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"logs\":[{\"removed\":false,\"logIndex\":\"0x2\",\"transactionIndex\":\"0x1\",\"transactionHash\":\"0x8282a49856d07ccb78ad3a59cde08c882448af58dd6ee5dae93f9480f3a167f2\",\"blockHash\":\"0xb1e7593b3eea16f8caddf3f185858f92f7a9b32db8368821a70a48340479a531\",\"blockNumber\":\"0x1\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]},{\"removed\":false,\"logIndex\":\"0x3\",\"transactionIndex\":\"0x1\",\"transactionHash\":\"0x8282a49856d07ccb78ad3a59cde08c882448af58dd6ee5dae93f9480f3a167f2\",\"blockHash\":\"0xb1e7593b3eea16f8caddf3f185858f92f7a9b32db8368821a70a48340479a531\",\"blockNumber\":\"0x1\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]}],\"logsBloom\":\"0x00000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000800000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000\",\"status\":\"0x0\",\"type\":\"0x0\"},\"txProof\":[\"0xf851a011f2d93515d9963f68e6746135f7a786a37ae47ac5b18a5e9fb2e8e9dbf23fad80808080808080a07c3834793d56420b91a53b153d0a67a0ab32cecd250dbc197130eb17e88f32538080808080808080\",\"0xf86431b861f85f8001825208940000000000000000000000000000000000000000020123a037d5bf7701bca57284acd641137b3d699b273106b2ad71949e004b78b79b0ccea0571a5f11033f7d825edb7a623556e506cd8f982f47fe5270ce36c601a59690bf\"],\"receiptProof\":[\"0xf851a053e4a8d7d8438fa45d6b75bbd6fb699b08049c1caf1c21ada42a746ddfb61d0b80808080808080a04de834bd23b53a3d82923ae5f359239b326c66758f2ae636ab934844dba2b9658080808080808080\",\"0xf9010f31b9010bf901088082a410b9010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000c0\"]},\"id\":67}")]
+        public void Get_receipt_when_block_has_few_receipts(bool withHeader, string expectedResult)
+        {
+            IReceiptFinder _receiptFinder = Substitute.For<IReceiptFinder>();
+            LogEntry[] logEntries = new[] {Build.A.LogEntry.TestObject, Build.A.LogEntry.TestObject};
+
+            TxReceipt receipt1 = new TxReceipt()
+            {
+                Bloom = new Bloom(logEntries),
+                Index = 0,
+                Recipient = TestItem.AddressA,
+                Sender = TestItem.AddressB,
+                BlockHash = _blockTree.FindBlock(1).Hash,
+                BlockNumber = 1,
+                ContractAddress = TestItem.AddressC,
+                GasUsed = 1000,
+                TxHash = _blockTree.FindBlock(1).Transactions[0].Hash,
+                StatusCode = 0,
+                GasUsedTotal = 2000,
+                Logs = logEntries
+            };
+        
+            TxReceipt receipt2 = new TxReceipt()
+            {
+                Bloom = new Bloom(logEntries),
+                Index = 1,
+                Recipient = TestItem.AddressC,
+                Sender = TestItem.AddressD,
+                BlockHash = _blockTree.FindBlock(1).Hash,
+                BlockNumber = 1,
+                ContractAddress = TestItem.AddressC,
+                GasUsed = 1000,
+                TxHash = _blockTree.FindBlock(1).Transactions[1].Hash,
+                StatusCode = 0,
+                GasUsedTotal = 2000,
+                Logs = logEntries
+            };
+            
+            Block block = _blockTree.FindBlock(1);
+            Keccak txHash = _blockTree.FindBlock(1).Transactions[1].Hash;
+            TxReceipt[] receipts = {receipt1, receipt2};
+            _receiptFinder.Get(Arg.Any<Block>()).Returns(receipts);
+            _receiptFinder.Get(Arg.Any<Keccak>()).Returns(receipts);
+            _receiptFinder.FindBlockHash(Arg.Any<Keccak>()).Returns(_blockTree.FindBlock(1).Hash);
+
+            ProofModuleFactory moduleFactory = new ProofModuleFactory(
+                _dbProvider,
+                _blockTree,
+                new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
+                new CompositeBlockPreprocessorStep(new RecoverSignatures(new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance), NullTxPool.Instance, _specProvider, LimboLogs.Instance)),
+                _receiptFinder,
+                _specProvider,
+                LimboLogs.Instance);
+
+            _proofRpcModule = moduleFactory.Create();
+             ReceiptWithProof receiptWithProof = _proofRpcModule.proof_getTransactionReceipt(txHash, withHeader).Data;
+             
+             if (withHeader)
+             {
+                 Assert.NotNull(receiptWithProof.BlockHeader);
+             }
+             else
+             {
+                 Assert.Null(receiptWithProof.BlockHeader);
+             }
+             
+            string response = RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionReceipt", $"{txHash}", $"{withHeader}");
+            Assert.AreEqual(expectedResult, response);
+        }
+        
         [Test]
         public void Can_call()
         {
