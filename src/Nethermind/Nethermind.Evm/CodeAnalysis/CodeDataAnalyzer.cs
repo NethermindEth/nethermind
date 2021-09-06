@@ -13,42 +13,33 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
 using System;
-using System.Collections;
-using System.Reflection.PortableExecutable;
-using Nethermind.Evm.Precompiles;
+using System.Threading;
 
-namespace Nethermind.Evm
+namespace Nethermind.Evm.CodeAnalysis
 {
-    public class CodeInfo
+    public class CodeDataAnalyzer : ICodeInfoAnalyzer
     {
         private byte[]? _codeBitmap;
-        public byte[]? MachineCode { get; set; }
-        public IPrecompile? Precompile { get; set; }
+        public byte[] MachineCode { get; set; }
         
-        public CodeInfo(byte[] code)
+        public CodeDataAnalyzer(byte[] code)
         {
             MachineCode = code;
         }
-
-        public bool IsPrecompile => Precompile != null;
         
-        public CodeInfo(IPrecompile precompile)
-        {
-            Precompile = precompile;
-            MachineCode = Array.Empty<byte>();
-        }
         public bool ValidateJump(int destination, bool isSubroutine)
         {
-            if (destination < 0 || MachineCode == null || destination >= MachineCode.Length)
+            _codeBitmap ??= CodeDataAnalyzerHelper.CreateCodeBitmap(MachineCode);
+     
+            if (destination < 0 || destination >= MachineCode.Length)
             {
                 return false;
             }
 
-            _codeBitmap ??= CodeInfoHelper.CreateCodeBitmap(MachineCode);
-
-            if (!CodeInfoHelper.IsCodeSegment(_codeBitmap, destination))
+            if (!CodeDataAnalyzerHelper.IsCodeSegment(_codeBitmap, destination))
             {
                 return false;
             }
@@ -62,7 +53,7 @@ namespace Nethermind.Evm
         }
     }
     
-    public static class CodeInfoHelper
+    public static class CodeDataAnalyzerHelper
     {
         private const UInt16 Set2BitsMask = 0b1100_0000_0000_0000;
         private const UInt16 Set3BitsMask = 0b1110_0000_0000_0000;
