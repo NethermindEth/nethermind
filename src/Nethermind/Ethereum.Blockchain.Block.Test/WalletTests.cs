@@ -27,7 +27,7 @@ namespace Ethereum.Blockchain.Block.Test
     [Parallelizable(ParallelScope.All)]
     public class WalletTests : BlockchainTestBase
     {
-        [TestCaseSource(nameof(LoadTests))]
+        [TestCaseSource(nameof(LoadTests)), Retry(3)]
         public async Task Test(BlockchainTest test)
         {
             await RunTest(test);
