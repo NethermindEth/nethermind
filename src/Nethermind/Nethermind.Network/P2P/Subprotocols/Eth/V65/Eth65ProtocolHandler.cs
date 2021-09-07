@@ -124,7 +124,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
         
         public override void SendNewTransactions(IList<Transaction> txs)
         {
-            const int maxCapacity = 4096;
+            const int maxCapacity = 3200;
             int txsCount = txs.Count;
             List<Keccak> hashes = new(Math.Min(maxCapacity, txsCount));
             
