@@ -24,11 +24,14 @@ namespace Nethermind.Evm.CodeAnalysis
 {
     public class CodeInfo
     {
-        private ICodeInfoAnalyzer? _calculator;
+        private const int SampledCodeLength = 10_001;
+        private const int PercentageOfPush1 = 40;
+        private const int NumberOfSamples = 100;
+        private static Random _rand = new();
         
         public byte[] MachineCode { get; set; }
         public IPrecompile? Precompile { get; set; }
-        
+        private ICodeInfoAnalyzer? _analyzer;
 
         public CodeInfo(byte[] code)
         {
@@ -45,39 +48,44 @@ namespace Nethermind.Evm.CodeAnalysis
 
         public bool ValidateJump(int destination, bool isSubroutine)
         {
-            if (_calculator == null)
+            if (_analyzer == null)
             {
-                // Do sampling to choose an algo
-                if (MachineCode.Length > 10_000)
+                CreateAnalyzer();
+            }
+
+            return _analyzer.ValidateJump(destination, isSubroutine);
+        }
+        
+        /// <summary>
+        /// Do sampling to choose an algo when the code is big enough.
+        /// When the code size is small we can use the default analyzer.
+        /// </summary>
+        private void CreateAnalyzer()
+        {
+            if (MachineCode.Length >= SampledCodeLength)
+            {
+                byte push1Count = 0;
+
+                // we check (by sampling randomly) how many PUSH1 instructions are in the code
+                for (int i = 0; i < NumberOfSamples; i++)
                 {
-                    byte push1Count = 0;
-                    
-                    Random rand = new ();
-                    for (int i = 0; i < 100; i++)
+                    byte instruction = MachineCode[_rand.Next(0, MachineCode.Length)];
+
+                    // PUSH1
+                    if (instruction == 0x60)
                     {
-                        byte instruction = MachineCode[rand.Next(0, MachineCode.Length)];
-
-                        // PUSH1
-                        if (instruction == 0x60)
-                        {
-                            push1Count++;
-                        }
+                        push1Count++;
                     }
-
-                    // if there are many PUSH1 ops then use JUMPDEST analyzer
-                    _calculator = push1Count > 40 ? new JumpdestAnalyzer(MachineCode) : new CodeDataAnalyzer(MachineCode);
                 }
-                else
-                {
-                    _calculator = new CodeDataAnalyzer(MachineCode);
-                }
-                
-                return _calculator.ValidateJump(destination, isSubroutine);
 
+                // If there are many PUSH1 ops then use the JUMPDEST analyzer.
+                // The JumpdestAnalyzer can perform up to 40% better than the default Code Data Analyzer
+                // in a scenario when the code consists only of PUSH1 instructions.
+                _analyzer = push1Count > PercentageOfPush1 ? new JumpdestAnalyzer(MachineCode) : new CodeDataAnalyzer(MachineCode);
             }
             else
             {
-                return _calculator.ValidateJump(destination, isSubroutine);
+                _analyzer = new CodeDataAnalyzer(MachineCode);
             }
         }
     }

@@ -24,16 +24,16 @@ namespace Nethermind.Evm.CodeAnalysis
     {
         private byte[]? _codeBitmap;
         public byte[] MachineCode { get; set; }
-        
+
         public CodeDataAnalyzer(byte[] code)
         {
             MachineCode = code;
         }
-        
+
         public bool ValidateJump(int destination, bool isSubroutine)
         {
             _codeBitmap ??= CodeDataAnalyzerHelper.CreateCodeBitmap(MachineCode);
-     
+
             if (destination < 0 || destination >= MachineCode.Length)
             {
                 return false;
@@ -43,7 +43,7 @@ namespace Nethermind.Evm.CodeAnalysis
             {
                 return false;
             }
-            
+
             if (isSubroutine)
             {
                 return MachineCode[destination] == 0x5c;
@@ -52,7 +52,7 @@ namespace Nethermind.Evm.CodeAnalysis
             return MachineCode[destination] == 0x5b;
         }
     }
-    
+
     public static class CodeDataAnalyzerHelper
     {
         private const UInt16 Set2BitsMask = 0b1100_0000_0000_0000;
@@ -63,7 +63,7 @@ namespace Nethermind.Evm.CodeAnalysis
         private const UInt16 Set7BitsMask = 0b1111_1110_0000_0000;
 
         private static readonly byte[] _lookup = new byte[8] { 0x80, 0x40, 0x20, 0x10, 0x8, 0x4, 0x2, 0x1, };
-        
+
         /// <summary>
         /// Collects data locations in code.
         /// An unset bit means the byte is an opcode, a set bit means it's data.
@@ -74,29 +74,31 @@ namespace Nethermind.Evm.CodeAnalysis
             // ends with a PUSH32, the algorithm will push zeroes onto the
             // bitvector outside the bounds of the actual code.
             byte[] bitvec = new byte[(code.Length / 8) + 1 + 4];
-            
+
             byte push1 = 0x60;
             byte push32 = 0x7f;
-            
+
             for (int pc = 0; pc < code.Length;)
             {
                 byte op = code[pc];
                 pc++;
-                
+
                 if (op < push1 || op > push32)
                 {
                     continue;
                 }
 
                 int numbits = op - push1 + 1;
-                
-                if (numbits >= 8) {
+
+                if (numbits >= 8)
+                {
                     for (; numbits >= 16; numbits -= 16)
                     {
                         bitvec.Set16(pc);
                         pc += 16;
                     }
-                    for( ; numbits >= 8; numbits -= 8)
+
+                    for (; numbits >= 8; numbits -= 8)
                     {
                         bitvec.Set8(pc);
                         pc += 8;
@@ -126,7 +128,7 @@ namespace Nethermind.Evm.CodeAnalysis
                         pc += 5;
                         break;
                     case 6:
-                        bitvec.SetN(pc,Set6BitsMask);
+                        bitvec.SetN(pc, Set6BitsMask);
                         pc += 6;
                         break;
                     case 7:
@@ -135,7 +137,7 @@ namespace Nethermind.Evm.CodeAnalysis
                         break;
                 }
             }
-            
+
             return bitvec;
         }
 
@@ -157,7 +159,8 @@ namespace Nethermind.Evm.CodeAnalysis
             ushort a = (ushort)(flag >> (pos % 8));
             bitvec[pos / 8] |= (byte)(a >> 8);
             byte b = (byte)a;
-            if (b != 0 ){
+            if (b != 0)
+            {
                 //	If the bit-setting affects the neighbouring byte, we can assign - no need to OR it,
                 //	since it's the first write to that byte
                 bitvec[pos / 8 + 1] = b;
@@ -176,7 +179,7 @@ namespace Nethermind.Evm.CodeAnalysis
             byte a = (byte)(0xFF >> (pos % 8));
             bitvec[pos / 8] |= a;
             bitvec[pos / 8 + 1] = 0xFF;
-            bitvec[pos/8+2] = (byte)~a;
+            bitvec[pos / 8 + 2] = (byte)~a;
         }
     }
 }
