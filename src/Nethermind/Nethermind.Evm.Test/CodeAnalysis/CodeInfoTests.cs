@@ -26,6 +26,8 @@ namespace Nethermind.Evm.Test.CodeAnalysis
     [TestFixture]
     public class CodeInfoTests
     {
+        private const string AnalyzerField = "_analyzer";
+
         [TestCase(-1, false)]
         [TestCase(0, true)]
         [TestCase(1, false)]
@@ -129,7 +131,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             
             codeInfo.ValidateJump(10, false).Should().BeTrue();
             
-            FieldInfo field = typeof(CodeInfo).GetField("_calculator", BindingFlags.Instance | BindingFlags.NonPublic);
+            FieldInfo field = typeof(CodeInfo).GetField(AnalyzerField, BindingFlags.Instance | BindingFlags.NonPublic);
             var calc = field.GetValue(codeInfo);
             
             Assert.IsInstanceOf<CodeDataAnalyzer>(calc);
@@ -147,7 +149,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             
             codeInfo.ValidateJump(10, false).Should().BeFalse();
             
-            FieldInfo field = typeof(CodeInfo).GetField("_calculator", BindingFlags.Instance | BindingFlags.NonPublic);
+            FieldInfo field = typeof(CodeInfo).GetField(AnalyzerField, BindingFlags.Instance | BindingFlags.NonPublic);
             var calc = field.GetValue(codeInfo);
             
             Assert.IsInstanceOf<CodeDataAnalyzer>(calc);
@@ -162,7 +164,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             
             codeInfo.ValidateJump(10, false).Should().BeTrue();
             
-            FieldInfo field = typeof(CodeInfo).GetField("_calculator", BindingFlags.Instance | BindingFlags.NonPublic);
+            FieldInfo field = typeof(CodeInfo).GetField(AnalyzerField, BindingFlags.Instance | BindingFlags.NonPublic);
             var calc = field.GetValue(codeInfo);
             
             Assert.IsInstanceOf<CodeDataAnalyzer>(calc);
@@ -177,7 +179,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             
             codeInfo.ValidateJump(10, false).Should().BeFalse();
             
-            FieldInfo field = typeof(CodeInfo).GetField("_calculator", BindingFlags.Instance | BindingFlags.NonPublic);
+            FieldInfo field = typeof(CodeInfo).GetField(AnalyzerField, BindingFlags.Instance | BindingFlags.NonPublic);
             var calc = field.GetValue(codeInfo);
             
             Assert.IsInstanceOf<JumpdestAnalyzer>(calc);
@@ -201,7 +203,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 codeInfo.ValidateJump(10, false).Should().BeFalse();
                 codeInfo.ValidateJump(11, false).Should().BeFalse(); // 0x5b but not JUMPDEST but data
 
-                FieldInfo field = typeof(CodeInfo).GetField("_calculator", BindingFlags.Instance | BindingFlags.NonPublic);
+                FieldInfo field = typeof(CodeInfo).GetField(AnalyzerField, BindingFlags.Instance | BindingFlags.NonPublic);
                 calc = (ICodeInfoAnalyzer)field.GetValue(codeInfo);
 
                 if (calc is JumpdestAnalyzer)
