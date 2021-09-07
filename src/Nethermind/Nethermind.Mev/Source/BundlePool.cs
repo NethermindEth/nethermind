@@ -87,7 +87,7 @@ namespace Nethermind.Mev.Source
                 _mevConfig.BundlePoolSize,
                 comparer,
                 logManager );
-            _nutCracker = new(_ourValidatorPrivateKey, _logger);
+            _carriedTxExtractor = new(_ourValidatorPrivateKey, _logger);
 
             _bundles.Removed += OnBundleRemoved;
             _blockTree.NewHeadBlock += OnNewBlock;
@@ -100,7 +100,7 @@ namespace Nethermind.Mev.Source
             // search through transactions
             foreach (Transaction transaction in e.Block!.Transactions)
             {
-                MevBundle? mevBundle = _nutCracker.ExtractBundleFromCarrier(transaction);
+                MevBundle? mevBundle = _carriedTxExtractor.ExtractBundleFromCarrier(transaction);
                 if (mevBundle is not null)
                 {
                     _bundles.TryInsert(mevBundle, mevBundle);
@@ -110,11 +110,11 @@ namespace Nethermind.Mev.Source
 
         private static readonly PrivateKey _ourValidatorPrivateKey = new(new byte[64]);
 
-        private readonly NutCracker _nutCracker;
+        private readonly CarriedTxExtractor _carriedTxExtractor;
         
         private void TxPoolOnNewPending(object? sender, TxEventArgs e)
         {
-            MevBundle? bundle = _nutCracker.ExtractBundleFromCarrier(e.Transaction);
+            MevBundle? bundle = _carriedTxExtractor.ExtractBundleFromCarrier(e.Transaction);
             if (bundle is not null)
             {
                 _bundles.TryInsert(bundle, bundle);

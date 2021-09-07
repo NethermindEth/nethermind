@@ -26,9 +26,9 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Mev.Source
 {
-    public class NutCracker
+    public class CarriedTxExtractor
     {
-        public NutCracker(PrivateKey ourValidatorPrivateKey, ILogger? logger)
+        public CarriedTxExtractor(PrivateKey ourValidatorPrivateKey, ILogger? logger)
         {
             _ourValidatorPrivateKey = ourValidatorPrivateKey;
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
