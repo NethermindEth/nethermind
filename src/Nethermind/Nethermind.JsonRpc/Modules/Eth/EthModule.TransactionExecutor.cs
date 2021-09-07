@@ -21,10 +21,12 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Facade;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
+using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 
 namespace Nethermind.JsonRpc.Modules.Eth
@@ -36,12 +38,14 @@ namespace Nethermind.JsonRpc.Modules.Eth
             protected readonly IBlockchainBridge _blockchainBridge;
             private readonly IBlockFinder _blockFinder;
             private readonly IJsonRpcConfig _rpcConfig;
+            private readonly ISpecProvider _specProvider;
 
-            protected TxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig)
+            protected TxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig, ISpecProvider specProvider)
             {
                 _blockchainBridge = blockchainBridge;
                 _blockFinder = blockFinder;
                 _rpcConfig = rpcConfig;
+                _specProvider = specProvider;
             }
             
             public ResultWrapper<TResult> ExecuteTx(
@@ -69,6 +73,18 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     return ResultWrapper<TResult>.Fail("both gasPrice and (maxFeePerGas or maxPriorityFeePerGas) specified", ErrorCodes.InvalidInput);
                 }
 
+                bool isEip1559Enabled = _specProvider.GetSpec(header.Number).IsEip1559Enabled;
+
+                transactionCall.Type = transactionCall.Type != TxType.AccessList
+                    ? (isEip1559Enabled ? TxType.EIP1559 : TxType.Legacy)
+                    : transactionCall.Type;
+
+                if (isEip1559Enabled && transactionCall.Type == TxType.EIP1559 && transactionCall.GasPrice != null)
+                {
+                    transactionCall.MaxPriorityFeePerGas = transactionCall.GasPrice;
+                    transactionCall.MaxFeePerGas = transactionCall.GasPrice;
+                }
+                
                 using CancellationTokenSource cancellationTokenSource = new(_rpcConfig.Timeout);
                 Transaction tx = transactionCall.ToTransaction(_blockchainBridge.GetChainId());
                 return ExecuteTx(header, tx, cancellationTokenSource.Token);
@@ -96,8 +112,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         private class CallTxExecutor : TxExecutor<string>
         {
-            public CallTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig)
-                : base(blockchainBridge, blockFinder, rpcConfig)
+            public CallTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig, ISpecProvider specProvider)
+                : base(blockchainBridge, blockFinder, rpcConfig, specProvider)
             {
             }
 
@@ -118,8 +134,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         private class EstimateGasTxExecutor : TxExecutor<UInt256?>
         {
-            public EstimateGasTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig) 
-                : base(blockchainBridge, blockFinder, rpcConfig)
+            public EstimateGasTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig, ISpecProvider specProvider) 
+                : base(blockchainBridge, blockFinder, rpcConfig, specProvider)
             {
             }
             
@@ -142,8 +158,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             private readonly bool _optimize;
 
-            public CreateAccessListTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig, bool optimize) 
-                : base(blockchainBridge, blockFinder, rpcConfig)
+            public CreateAccessListTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig, ISpecProvider specProvider, bool optimize) 
+                : base(blockchainBridge, blockFinder, rpcConfig, specProvider)
             {
                 _optimize = optimize;
             }

@@ -90,10 +90,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
         public void CallAndRestore(Transaction transaction, BlockHeader block, ITxTracer txTracer)
         {
-            IReleaseSpec spec = _specProvider.GetSpec(block.Number);
-            spec = new SystemTransactionReleaseSpec(spec);
-
-            bool skipGasPricing = spec.IsEip1559Enabled
+            bool skipGasPricing = _specProvider.GetSpec(block.Number).IsEip1559Enabled
                 ? (transaction.IsEip1559
                     ? (transaction.MaxFeePerGas.IsZero && transaction.MaxPriorityFeePerGas.IsZero)
                     : transaction.GasPrice.IsZero)

@@ -371,15 +371,15 @@ namespace Nethermind.JsonRpc.Modules.Eth
         }
 
         public ResultWrapper<string> eth_call(TransactionForRpc transactionCall, BlockParameter? blockParameter = null) =>
-            new CallTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig)
+            new CallTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig, _specProvider)
                 .ExecuteTx(transactionCall, blockParameter);
 
         public ResultWrapper<UInt256?> eth_estimateGas(TransactionForRpc transactionCall, BlockParameter blockParameter) =>
-            new EstimateGasTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig)
+            new EstimateGasTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig, _specProvider)
                 .ExecuteTx(transactionCall, blockParameter);
 
         public ResultWrapper<AccessListForRpc> eth_createAccessList(TransactionForRpc transactionCall, BlockParameter? blockParameter = null, bool optimize = true) =>
-            new CreateAccessListTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig, optimize)
+            new CreateAccessListTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig, _specProvider, optimize)
                 .ExecuteTx(transactionCall, blockParameter);
 
         public ResultWrapper<BlockForRpc> eth_getBlockByHash(Keccak blockHash, bool returnFullTransactionObjects)
