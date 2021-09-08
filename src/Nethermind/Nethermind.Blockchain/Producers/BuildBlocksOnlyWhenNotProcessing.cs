@@ -106,15 +106,15 @@ namespace Nethermind.Blockchain.Producers
 
         private async Task<Block?> InvokeTriggerBlockProductionDelayed(BlockProductionEventArgs e)
         {
+            CancellationToken cancellationToken = e.CancellationToken;
             // retry production until its allowed or its cancelled
-            bool wasNotCancelled = !e.CancellationToken.IsCancellationRequested;
-            while (!CanTriggerBlockProduction && wasNotCancelled)
+            while (!CanTriggerBlockProduction && !cancellationToken.IsCancellationRequested)
             {
                 if (_logger.IsDebug) _logger.Debug($"Delaying producing block, chain not processed yet. BlockProcessingQueue count {_blockProcessingQueue.Count}.");
-                await Task.Delay(ChainNotYetProcessedMillisecondsDelay, e.CancellationToken);
+                await Task.Delay(ChainNotYetProcessedMillisecondsDelay, cancellationToken);
             }
 
-            if (wasNotCancelled)
+            if (!cancellationToken.IsCancellationRequested)
             {
                 TriggerBlockProduction?.Invoke(this, e);
             }
