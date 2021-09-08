@@ -15,7 +15,9 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Collections.Generic;
+using System.IO;
 using Ethereum.Test.Base;
 using NUnit.Framework;
 
@@ -30,7 +32,7 @@ namespace Ethereum.Blockchain.Test
             Assert.True(RunTest(test).Pass);
         }
         
-        public static IEnumerable<GeneralStateTest> LoadTests() { var loader = new TestsSourceLoader(new LoadTestsFromLocalFile(), "Blockhash");
+        public static IEnumerable<GeneralStateTest> LoadTests() { var loader = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Blockhash"));
             return (IEnumerable<GeneralStateTest>)loader.LoadTests(); }
     }
 }
