@@ -46,7 +46,7 @@ namespace Nethermind.AuRa.Test
                         .ContinueWith(t => (Block?)null);
                 };
 
-                await TaskExt.DelayAtLeast(TimeSpan.FromMilliseconds(TestAuRaStepCalculator.StepDuration * 10));
+                await TaskExt.DelayAtLeast(TimeSpan.FromMilliseconds(TestAuRaStepCalculator.StepDuration * 20));
             }
 
             args.Should().HaveCountGreaterOrEqualTo(2);
@@ -67,7 +67,7 @@ namespace Nethermind.AuRa.Test
                     args.Add(e);
                 };
 
-                await TaskExt.DelayAtLeast(TimeSpan.FromMilliseconds(TestAuRaStepCalculator.StepDuration * 10));
+                await TaskExt.DelayAtLeast(TimeSpan.FromMilliseconds(TestAuRaStepCalculator.StepDuration * 20));
             }
 
             IEnumerable<bool> enumerable = args.Select(e => e.CancellationToken.IsCancellationRequested);
