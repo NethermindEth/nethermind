@@ -32,8 +32,8 @@ using NSubstitute;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Facade.Eth;
-using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 
 namespace Nethermind.JsonRpc.Test.Modules
