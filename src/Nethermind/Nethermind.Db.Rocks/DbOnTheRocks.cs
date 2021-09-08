@@ -22,6 +22,7 @@ using System.Reflection;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Db.Rocks.Config;
+using Nethermind.Db.Rocks.Statistics;
 using Nethermind.Logging;
 using RocksDbSharp;
 
@@ -41,6 +42,8 @@ namespace Nethermind.Db.Rocks
         
         internal readonly RocksDb _db;
         internal WriteOptions? WriteOptions { get; private set; }
+
+        internal DbOptions? DbOptions { get; private set; }
 
         public string Name { get; }
 
@@ -96,14 +99,21 @@ namespace Nethermind.Db.Rocks
             {
                 // ReSharper disable once VirtualMemberCallInConstructor
                 if (_logger.IsDebug) _logger.Debug($"Building options for {Name} DB");
-                DbOptions options = BuildOptions(dbConfig);
+                DbOptions = BuildOptions(dbConfig);
                 InitCache(dbConfig);
 
                 // ReSharper disable once VirtualMemberCallInConstructor
                 if (_logger.IsDebug)
                     _logger.Debug(
                         $"Loading DB {Name.PadRight(13)} from {_fullPath} with max memory footprint of {_maxThisDbSize / 1000 / 1000}MB");
-                return _dbsByPath.GetOrAdd(_fullPath, Open, (options, columnFamilies));
+                var db = _dbsByPath.GetOrAdd(_fullPath, Open, (DbOptions, columnFamilies));
+
+                if (dbConfig.EnableMetricsUpdater)
+                {
+                    new DbMetricsUpdater(Name, DbOptions, db, dbConfig, _logger).StartUpdating();
+                }
+
+                return db;
             }
             catch (DllNotFoundException e) when (e.Message.Contains("libdl"))
             {
@@ -224,6 +234,12 @@ namespace Nethermind.Db.Rocks
             WriteOptions.SetSync(dbConfig
                 .WriteAheadLogSync); // potential fix for corruption on hard process termination, may cause performance degradation
 
+            if (dbConfig.EnableDbStatistics)
+            {
+                options.EnableStatistics();
+            }
+            options.SetStatsDumpPeriodSec(dbConfig.StatsDumpPeriodSec);
+
             return options;
         }
 
@@ -276,6 +292,7 @@ namespace Nethermind.Db.Rocks
                 }
 
                 UpdateWriteMetrics();
+
                 if (value == null)
                 {
                     _db.Remove(key, null, WriteOptions);

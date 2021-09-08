@@ -32,6 +32,7 @@ namespace Nethermind.Monitoring.Metrics
         private Dictionary<string, Gauge> _gauges = new Dictionary<string, Gauge>();
         private Dictionary<Type, (PropertyInfo, string)[]> _propertiesCache = new Dictionary<Type, (PropertyInfo, string)[]>();
         private Dictionary<Type, (FieldInfo, string)[]> _fieldsCache = new Dictionary<Type, (FieldInfo, string)[]>();
+        private Dictionary<Type, (string DictName, IDictionary<string, long> Dict)> _dynamicPropCache = new Dictionary<Type, (string DictName, IDictionary<string, long> Dict)>();
         private HashSet<Type> _metricTypes = new HashSet<Type>();
 
         public void RegisterMetrics(Type type)
@@ -54,14 +55,23 @@ namespace Nethermind.Monitoring.Metrics
         {
             if (!_propertiesCache.ContainsKey(type))
             {
-                _propertiesCache[type] = type.GetProperties().Select(
-                    p => (p, string.Concat(type.Name, ".", p.Name))).ToArray();
+                _propertiesCache[type] = type.GetProperties().Where(p => !p.PropertyType.IsAssignableTo(typeof(System.Collections.IEnumerable))).Select(
+                    p => (p, GetGaugeNameKey(type.Name, p.Name))).ToArray();
             }
             
             if (!_fieldsCache.ContainsKey(type))
             {
-                _fieldsCache[type] = type.GetFields().Select(
-                    f => (f, string.Concat(type.Name, ".", f.Name))).ToArray();
+                _fieldsCache[type] = type.GetFields().Where(f => !f.FieldType.IsAssignableTo(typeof(System.Collections.IEnumerable))).Select(
+                    f => (f, GetGaugeNameKey(type.Name, f.Name))).ToArray();
+            }
+
+            if(!_dynamicPropCache.ContainsKey(type))
+            {
+                var p = type.GetProperties().Where(p => p.PropertyType.IsAssignableTo(typeof(IDictionary<string, long>))).FirstOrDefault();
+                if(p != null)
+                {
+                    _dynamicPropCache[type] = (p.Name, (IDictionary<string, long>)p.GetValue(null));
+                }              
             }
         }
 
@@ -98,26 +108,53 @@ namespace Nethermind.Monitoring.Metrics
         
         private void UpdateMetrics(Type type)
         {
-            EnsurePropertiesCached(type);
-            
+            EnsurePropertiesCached(type);          
             
             foreach ((PropertyInfo propertyInfo, string gaugeName) in _propertiesCache[type])
             {
                 double value = Convert.ToDouble(propertyInfo.GetValue(null));
-                if (Math.Abs(_gauges[gaugeName].Value - value) > double.Epsilon)
-                {
-                    _gauges[gaugeName].Set(value);    
-                }
+                ReplaceValueIfChanged(value, gaugeName);
             }
             
             foreach ((FieldInfo fieldInfo, string gaugeName) in _fieldsCache[type])
             {
                 double value = Convert.ToDouble(fieldInfo.GetValue(null));
-                if (Math.Abs(_gauges[gaugeName].Value - value) > double.Epsilon)
+                ReplaceValueIfChanged(value, gaugeName);
+            }
+
+            if (_dynamicPropCache.TryGetValue(type, out var dict))
+            {
+                foreach (var kvp in dict.Dict)
                 {
-                    _gauges[gaugeName].Set(Convert.ToDouble(fieldInfo.GetValue(null)));
+                    double value = Convert.ToDouble(kvp.Value);
+                    var gaugeName = GetGaugeNameKey(dict.DictName, kvp.Key);
+
+                    if(ReplaceValueIfChanged(value, gaugeName) == null)
+                    {
+                        var gauge = CreateGauge(BuildGaugeName(kvp.Key));
+                        _gauges[gaugeName] = gauge;
+                        gauge.Set(value);
+                    }
                 }
             }
+
+            Gauge ReplaceValueIfChanged(double value, string gaugeName)
+            {
+                if (_gauges.TryGetValue(gaugeName, out var gauge))
+                {
+                    if (Math.Abs(gauge.Value - value) > double.Epsilon)
+                    {
+                        gauge.Set(value);
+                    }
+                }
+
+                return gauge;
+            }
+        }
+
+        private string GetGaugeNameKey(params string[] par)
+        {
+            return string.Join('.', par);
         }
     }
 }

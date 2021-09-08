@@ -91,7 +91,7 @@ namespace Nethermind.Config.Test
         private static void CheckDefault(PropertyInfo property, object instance)
         {
             ConfigItemAttribute attribute = property.GetCustomAttribute<ConfigItemAttribute>();
-            if (attribute == null)
+            if (attribute == null || attribute.DisabledForCli)
             {
                 //there are properties without attribute - we don't pay attention to them 
                 return;

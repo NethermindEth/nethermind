@@ -21,11 +21,11 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.State
 {
-    public class NullWitnessCollector : IWitnessCollector
+    public class NullWitnessCollector : IWitnessCollector, IWitnessRepository
     {
         private NullWitnessCollector() { }
 
-        public static IWitnessCollector Instance { get; } = new NullWitnessCollector();
+        public static NullWitnessCollector Instance { get; } = new();
         
         public IReadOnlyCollection<Keccak> Collected => Array.Empty<Keccak>();
 
@@ -38,7 +38,7 @@ namespace Nethermind.State
         public void Reset() { }
         
         public void Persist(Keccak blockHash) { }
-        
+
         public Keccak[]? Load(Keccak blockHash)
         {
             throw new InvalidOperationException(

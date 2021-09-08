@@ -32,7 +32,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.EXTCODECOPY)
                 .Done;
 
-            var result = Execute(code);
+            TestAllTracerWithOutput result = Execute(code);
             result.Error.Should().BeNull();
         }
     }

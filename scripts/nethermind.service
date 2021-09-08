@@ -8,7 +8,6 @@ User=nethermind
 Group=nethermind
 LockPersonality=true
 NoNewPrivileges=true
-PrivateUsers=true
 ProtectSystem=strict
 ProtectClock=true
 PrivateDevices=true

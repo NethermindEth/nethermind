@@ -14,13 +14,14 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Channels.Grpc;
 using Nethermind.DataMarketplace.WebSockets;
 using Nethermind.Grpc;
 using Nethermind.Logging;
-using Nethermind.WebSockets;
+using Nethermind.Sockets;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -35,7 +36,7 @@ namespace Nethermind.DataMarketplace.Channels.Test
             NdmConsumerChannelManager manager = new NdmConsumerChannelManager();
             manager.Add(new JsonRpcNdmConsumerChannel(LimboLogs.Instance));
             manager.Add(new GrpcNdmConsumerChannel(Substitute.For<IGrpcServer>()));
-            manager.Add(new NdmWebSocketsConsumerChannel(Substitute.For<IWebSocketsClient>()));
+            manager.Add(new NdmWebSocketsConsumerChannel(Substitute.For<ISocketsClient>()));
         }
 
         [Test]
@@ -56,11 +57,11 @@ namespace Nethermind.DataMarketplace.Channels.Test
         }
         
         [Test]
-        public void Can_publish_on_various_channel_types()
+        public async Task Can_publish_on_various_channel_types()
         {
             NdmConsumerChannelManager manager = new NdmConsumerChannelManager();
 
-            IWebSocketsClient client = Substitute.For<IWebSocketsClient>();
+            ISocketsClient client = Substitute.For<ISocketsClient>();
             INdmConsumerChannel[] channels = new INdmConsumerChannel[]
             {
                 new JsonRpcNdmConsumerChannel(LimboLogs.Instance),
@@ -78,21 +79,21 @@ namespace Nethermind.DataMarketplace.Channels.Test
             channels[0].Type.Should().Be(NdmConsumerChannelType.JsonRpc);
             channels[1].Type.Should().Be(NdmConsumerChannelType.Grpc);
 
-            manager.PublishAsync(Keccak.Zero, "client1", "data1");
-            manager.PublishAsync(Keccak.Zero, "client2", "data2");
+            await manager.PublishAsync(Keccak.Zero, "client1", "data1");
+            await manager.PublishAsync(Keccak.Zero, "client2", "data2");
             
             for (int i = 0; i < 3; i++)
             {
                 manager.Remove(channels[i]);    
             }
 
-            manager.PublishAsync(Keccak.Zero, "client3", "data3");
+            await manager.PublishAsync(Keccak.Zero, "client3", "data3");
             
             for (int i = 0; i < 3; i++)
             {
-                client.Received().SendAsync(Arg.Is<WebSocketsMessage>(wm => wm.Client == "client1"));
-                client.Received().SendAsync(Arg.Is<WebSocketsMessage>(wm => wm.Client == "client2"));
-                client.DidNotReceive().SendAsync(Arg.Is<WebSocketsMessage>(wm => wm.Client == "client3"));
+                await client.Received().SendAsync(Arg.Is<SocketsMessage>(wm => wm.Client == "client1"));
+                await client.Received().SendAsync(Arg.Is<SocketsMessage>(wm => wm.Client == "client2"));
+                await client.DidNotReceive().SendAsync(Arg.Is<SocketsMessage>(wm => wm.Client == "client3"));
             }
 
             ((JsonRpcNdmConsumerChannel) channels[0]).Pull(Keccak.Zero).Should().NotBeNull();

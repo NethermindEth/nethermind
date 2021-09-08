@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -39,8 +39,9 @@ namespace Nethermind.JsonRpc
             set => _webSocketsPort = value;
         }
 
+        public string? IpcUnixDomainSocketPath { get; set; } = null;
+
         public string[] EnabledModules { get; set; } = ModuleType.DefaultModules.ToArray();
-        public int FindLogBlockDepthLimit { get; set; } = 1000;
         public long? GasCap { get; set; } = 100000000;
         public int ReportIntervalSeconds { get; set; } = 300;
         public bool BufferResponses { get; set; }

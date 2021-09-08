@@ -37,7 +37,7 @@ namespace Nethermind.Evm.Test
                 .FromCode("0x60045e005c5d")
                 .Done;
 
-            var result = Execute(code);
+            TestAllTracerWithOutput result = Execute(code);
             // result.StatusCode.Should().Be(1);
             // AssertGas(result, GasCostOf.Transaction + 18);
             result.Error.Should().Be(EvmExceptionType.BadInstruction.ToString());
@@ -52,7 +52,7 @@ namespace Nethermind.Evm.Test
                 .FromCode("0x6800000000000000000c5e005c60115e5d5c5d")
                 .Done;
 
-            var result = Execute(code);
+            TestAllTracerWithOutput result = Execute(code);
             // result.StatusCode.Should().Be(1);
             // AssertGas(result, GasCostOf.Transaction + 36);
             result.Error.Should().Be(EvmExceptionType.BadInstruction.ToString());
@@ -67,7 +67,7 @@ namespace Nethermind.Evm.Test
                 .FromCode("0x6801000000000000000c5e005c60115e5d5c5d")
                 .Done;
 
-            var result = Execute(code);
+            TestAllTracerWithOutput result = Execute(code);
             result.StatusCode.Should().Be(0);
             result.Error.Should().Be(EvmExceptionType.BadInstruction.ToString());
         }
@@ -81,7 +81,7 @@ namespace Nethermind.Evm.Test
                 .FromCode("0x5d5858")
                 .Done;
 
-            var result = Execute(code);
+            TestAllTracerWithOutput result = Execute(code);
             result.StatusCode.Should().Be(0);
             result.Error.Should().Be(EvmExceptionType.BadInstruction.ToString());
         }
@@ -95,7 +95,7 @@ namespace Nethermind.Evm.Test
                 .FromCode("0x6005565c5d5b60035e")
                 .Done;
 
-            var result = Execute(code);
+            TestAllTracerWithOutput result = Execute(code);
             // result.StatusCode.Should().Be(1);
             // AssertGas(result, GasCostOf.Transaction + 30);
             result.Error.Should().Be(EvmExceptionType.BadInstruction.ToString());
@@ -110,7 +110,7 @@ namespace Nethermind.Evm.Test
                 .FromCode("0x5c5d00")
                 .Done;
 
-            var result = Execute(code);
+            TestAllTracerWithOutput result = Execute(code);
             result.StatusCode.Should().Be(0);
             result.Error.Should().Be(EvmExceptionType.BadInstruction.ToString());
         }

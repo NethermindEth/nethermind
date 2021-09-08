@@ -42,7 +42,7 @@ namespace Nethermind.Mining.Test
             BlockHeader header = new BlockHeader(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, 27, 1, 21000, 1, new byte[] {1, 2, 3});
             header.TxRoot = Keccak.Zero;
             header.ReceiptsRoot = Keccak.Zero;
-            header.OmmersHash = Keccak.Zero;
+            header.UnclesHash = Keccak.Zero;
             header.StateRoot = Keccak.Zero;
             header.Bloom = Bloom.Empty;
 
@@ -63,7 +63,7 @@ namespace Nethermind.Mining.Test
             BlockHeader header = new BlockHeader(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, (UInt256)BigInteger.Pow(2, 32), 1, 21000, 1, new byte[] {1, 2, 3});
             header.TxRoot = Keccak.Zero;
             header.ReceiptsRoot = Keccak.Zero;
-            header.OmmersHash = Keccak.Zero;
+            header.UnclesHash = Keccak.Zero;
             header.StateRoot = Keccak.Zero;
             header.Bloom = Bloom.Empty;
 
@@ -77,7 +77,7 @@ namespace Nethermind.Mining.Test
         }
 
         [Test]
-        [Ignore("use just for finding nonces for other tests")]
+        [Explicit("use just for finding nonces for other tests")]
         public async Task Find_nonce()
         {
             BlockHeader parentHeader = new BlockHeader(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, 131072, 0, 21000, 0, new byte[] { });

@@ -48,6 +48,7 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NUnit.Framework;
@@ -132,20 +133,17 @@ namespace Nethermind.Clique.Test
                 _snapshotManager[privateKey] = snapshotManager;
                 CliqueSealer cliqueSealer = new CliqueSealer(new Signer(ChainId.Goerli, privateKey, LimboLogs.Instance), _cliqueConfig, snapshotManager, nodeLogManager);
 
-
-
                 _genesis.Header.StateRoot = _genesis3Validators.Header.StateRoot = stateProvider.StateRoot;
                 _genesis.Header.Hash = _genesis.Header.CalculateHash();
                 _genesis3Validators.Header.Hash = _genesis3Validators.Header.CalculateHash();
                 
                 StorageProvider storageProvider = new StorageProvider(trieStore, stateProvider, nodeLogManager);
                 TransactionProcessor transactionProcessor = new TransactionProcessor(goerliSpecProvider, stateProvider, storageProvider, new VirtualMachine(stateProvider, storageProvider, blockhashProvider, specProvider, nodeLogManager), nodeLogManager);
-
                 BlockProcessor blockProcessor = new BlockProcessor(
                     goerliSpecProvider,
                     Always.Valid,
                     NoBlockRewards.Instance,
-                    transactionProcessor,
+                    new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
                     stateProvider,
                     storageProvider,
                     NullReceiptStorage.Instance,
@@ -161,12 +159,12 @@ namespace Nethermind.Clique.Test
                 StorageProvider minerStorageProvider = new StorageProvider(minerTrieStore, minerStateProvider, nodeLogManager);
                 VirtualMachine minerVirtualMachine = new VirtualMachine(minerStateProvider, minerStorageProvider, blockhashProvider, specProvider, nodeLogManager);
                 TransactionProcessor minerTransactionProcessor = new TransactionProcessor(goerliSpecProvider, minerStateProvider, minerStorageProvider, minerVirtualMachine, nodeLogManager);
-
+                
                 BlockProcessor minerBlockProcessor = new BlockProcessor(
                     goerliSpecProvider,
                     Always.Valid,
                     NoBlockRewards.Instance,
-                    minerTransactionProcessor,
+                    new BlockProcessor.BlockProductionTransactionsExecutor(minerTransactionProcessor, minerStateProvider, minerStorageProvider, goerliSpecProvider, _logManager),
                     minerStateProvider,
                     minerStorageProvider,
                     NullReceiptStorage.Instance,
@@ -181,7 +179,7 @@ namespace Nethermind.Clique.Test
                 }
                 
                 ITxFilterPipeline txFilterPipeline = TxFilterPipelineBuilder.CreateStandardFilteringPipeline(nodeLogManager, specProvider);
-                TxPoolTxSource txPoolTxSource = new TxPoolTxSource(txPool, stateReader, specProvider, transactionComparerProvider, nodeLogManager, txFilterPipeline);
+                TxPoolTxSource txPoolTxSource = new TxPoolTxSource(txPool, specProvider, transactionComparerProvider, nodeLogManager, txFilterPipeline);
                 CliqueBlockProducer blockProducer = new CliqueBlockProducer(
                     txPoolTxSource,
                     minerProcessor,
@@ -195,6 +193,8 @@ namespace Nethermind.Clique.Test
                     MainnetSpecProvider.Instance, 
                     _cliqueConfig,
                     nodeLogManager);
+
+                var suggester = new ProducedBlockSuggester(blockTree, blockProducer);
                 blockProducer.Start();
 
                 _producers.Add(privateKey, blockProducer);
@@ -213,7 +213,7 @@ namespace Nethermind.Clique.Test
             private Block GetGenesis(int validatorsCount = 2)
             {
                 Keccak parentHash = Keccak.Zero;
-                Keccak ommersHash = Keccak.OfAnEmptySequenceRlp;
+                Keccak unclesHash = Keccak.OfAnEmptySequenceRlp;
                 Address beneficiary = Address.Zero;
                 UInt256 difficulty = new UInt256(1);
                 long number = 0L;
@@ -230,7 +230,7 @@ namespace Nethermind.Clique.Test
                 extraDataHex += "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
 
                 byte[] extraData = Bytes.FromHexString(extraDataHex);
-                BlockHeader header = new BlockHeader(parentHash, ommersHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData);
+                BlockHeader header = new BlockHeader(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData);
                 Block genesis = new Block(header);
                 genesis.Header.Hash = genesis.Header.CalculateHash();
                 genesis.Header.StateRoot = Keccak.EmptyTreeHash;

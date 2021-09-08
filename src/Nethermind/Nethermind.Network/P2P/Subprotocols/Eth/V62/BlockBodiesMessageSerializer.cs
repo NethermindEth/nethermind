@@ -21,7 +21,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 {
-    public class BlockBodiesMessageSerializer : IZeroMessageSerializer<BlockBodiesMessage>
+    public class BlockBodiesMessageSerializer : IZeroInnerMessageSerializer<BlockBodiesMessage>
     {
         public byte[] Serialize(BlockBodiesMessage message)
         {
@@ -29,7 +29,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 ? Rlp.OfEmptySequence
                 : Rlp.Encode(
                     Rlp.Encode(b.Transactions),
-                    Rlp.Encode(b.Ommers))).ToArray()).Bytes;
+                    Rlp.Encode(b.Uncles))).ToArray()).Bytes;
         }
 
         public void Serialize(IByteBuffer byteBuffer, BlockBodiesMessage message)
@@ -44,7 +44,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             NettyRlpStream rlpStream = new NettyRlpStream(byteBuffer);
             return Deserialize(rlpStream);
         }
-        
+
+        public int GetLength(BlockBodiesMessage message, out int contentLength)
+        {
+            byte[] oldWay = Serialize(message);
+            contentLength = oldWay.Length;
+            return contentLength;
+        }
+
         public static BlockBodiesMessage Deserialize(RlpStream rlpStream)
         {
             BlockBodiesMessage message = new();
@@ -59,8 +66,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 // quite significant allocations (>0.5%) here based on a sample 3M blocks sync
                 // (just on these delegates)
                 Transaction[] transactions = rlpStream.DecodeArray(_ => Rlp.Decode<Transaction>(ctx));
-                BlockHeader[] ommers = rlpStream.DecodeArray(_ => Rlp.Decode<BlockHeader>(ctx));
-                return new BlockBody(transactions, ommers);
+                BlockHeader[] uncles = rlpStream.DecodeArray(_ => Rlp.Decode<BlockHeader>(ctx));
+                return new BlockBody(transactions, uncles);
             }, false);
 
             return message;

@@ -22,6 +22,7 @@ using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Facade.Eth;
 using Nethermind.Int256;
 using Nethermind.Facade.Proxy;
 using Nethermind.Facade.Proxy.Models;
@@ -64,6 +65,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
         }
 
         public ResultWrapper<bool?> eth_mining()
+        {
+            throw new NotSupportedException();
+        }
+
+        public ResultWrapper<FeeHistoryResults> eth_feeHistory(int blockCount, BlockParameter newestBlock, double[]? rewardPercentiles = null)
         {
             throw new NotSupportedException();
         }
@@ -207,14 +213,14 @@ namespace Nethermind.JsonRpc.Modules.Eth
             throw new NotSupportedException();
         }
 
-        public async Task<ResultWrapper<GetTransactionReceiptResponse>> eth_getTransactionReceipt(Keccak txHashData)
+        public async Task<ResultWrapper<ReceiptForRpc>> eth_getTransactionReceipt(Keccak txHashData)
         {
             RpcResult<ReceiptModel> result = await _proxy.eth_getTransactionReceipt(txHashData);
-            GetTransactionReceiptResponse? receipt = MapReceipt(result.Result);
+            ReceiptForRpc? receipt = MapReceipt(result.Result);
 
             return receipt is null
-                ? ResultWrapper<GetTransactionReceiptResponse>.Fail("Receipt was not found.")
-                : ResultWrapper<GetTransactionReceiptResponse>.Success(receipt);
+                ? ResultWrapper<ReceiptForRpc>.Fail("Receipt was not found.")
+                : ResultWrapper<ReceiptForRpc>.Success(receipt);
         }
 
         public ResultWrapper<BlockForRpc> eth_getUncleByBlockHashAndIndex(Keccak blockHashData, UInt256 positionIndex)
@@ -306,14 +312,14 @@ namespace Nethermind.JsonRpc.Modules.Eth
             };
         }
         
-        private static GetTransactionReceiptResponse? MapReceipt(ReceiptModel? receipt)
+        private static ReceiptForRpc? MapReceipt(ReceiptModel? receipt)
         {
             if (receipt is null)
             {
                 return null;
             }
 
-            return new GetTransactionReceiptResponse
+            return new ReceiptForRpc
             {
                 BlockHash = receipt.BlockHash,
                 BlockNumber = (long)receipt.BlockNumber,

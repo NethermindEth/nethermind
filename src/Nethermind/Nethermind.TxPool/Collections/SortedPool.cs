@@ -102,6 +102,16 @@ namespace Nethermind.TxPool.Collections
         }
 
         /// <summary>
+        /// Gets all items of requested group.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public TValue[] GetBucketSnapshot(TGroupKey group)
+        {
+            if (group == null) throw new ArgumentNullException(nameof(group));
+            return _buckets.TryGetValue(group, out ICollection<TValue> bucket) ? bucket.ToArray() : Array.Empty<TValue>();
+        }
+        
+        /// <summary>
         /// Gets number of items in requested group.
         /// </summary>
         [MethodImpl(MethodImplOptions.Synchronized)]
@@ -148,9 +158,13 @@ namespace Nethermind.TxPool.Collections
                     if (_buckets.TryGetValue(groupMapping, out bucket))
                     {
                         bucket!.Remove(value);
+                        if (bucket.Count == 0)
+                        {
+                            _buckets.Remove(groupMapping);
+                        }
                         return true;
                     }
-
+                    
                     Removed?.Invoke(this, new SortedPoolRemovedEventArgs(key, value, groupMapping, evicted));
                 }
             }
@@ -159,7 +173,7 @@ namespace Nethermind.TxPool.Collections
             bucket = null;
             return false;
         }
-
+        
         [MethodImpl(MethodImplOptions.Synchronized)]
         public bool TryRemove(TKey key, [MaybeNullWhen(false)] out TValue value) => TryRemove(key, out value, out _);
         
@@ -195,12 +209,7 @@ namespace Nethermind.TxPool.Collections
 
                 if (group is not null)
                 {
-                    if (!_buckets.TryGetValue(group, out ICollection<TValue> bucket))
-                    {
-                        _buckets[group] = bucket = new SortedSet<TValue>(_groupComparer);
-                    }
-
-                    InsertCore(key, value, group, bucket);
+                    InsertCore(key, value, group);
 
                     if (_cacheMap.Count > _capacity)
                     {
@@ -219,12 +228,12 @@ namespace Nethermind.TxPool.Collections
 
         [MethodImpl(MethodImplOptions.Synchronized)]
         public bool TryInsert(TKey key, TValue value) => TryInsert(key, value, out _);
-
+        
         private void RemoveLast(out TValue? removed)
         {
             TryRemove(_sortedValues.Max.Value, true, out removed, out _);
         }
-        
+
         /// <summary>
         /// Checks if element can be inserted.
         /// </summary>
@@ -241,9 +250,14 @@ namespace Nethermind.TxPool.Collections
         /// <summary>
         /// Actual insert mechanism.
         /// </summary>
-        protected virtual void InsertCore(TKey key, TValue value, TGroupKey groupKey, ICollection<TValue> bucketCollection)
+        protected virtual void InsertCore(TKey key, TValue value, TGroupKey groupKey)
         {
-            bucketCollection.Add(value);
+            if (!_buckets.TryGetValue(groupKey, out ICollection<TValue> bucket))
+            {
+                _buckets[groupKey] = bucket = new SortedSet<TValue>(_groupComparer);
+            }
+            
+            bucket.Add(value);
             _cacheMap[key] = value;
             _sortedValues.Add(value, key);
             

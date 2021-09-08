@@ -21,6 +21,6 @@ namespace Nethermind.Blockchain.Producers
 {
     public interface IBlockProductionTrigger
     {
-        event EventHandler TriggerBlockProduction;
+        event EventHandler<BlockProductionEventArgs>? TriggerBlockProduction;
     }
 }

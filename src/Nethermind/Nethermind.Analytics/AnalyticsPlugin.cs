@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2020 Demerzel Solutions Limited
+//  Copyright (c) 2020 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -90,7 +90,7 @@ namespace Nethermind.Analytics
             
             if (_isOn)
             {
-                AnalyticsWebSocketsModule webSocketsModule = new AnalyticsWebSocketsModule(getFromAPi.EthereumJsonSerializer);
+                AnalyticsWebSocketsModule webSocketsModule = new AnalyticsWebSocketsModule(getFromAPi.EthereumJsonSerializer, getFromAPi.LogManager);
                 getFromAPi.WebSocketsManager!.AddModule(webSocketsModule, true);
                 getFromAPi.Publishers.Add(webSocketsModule);
             }

@@ -23,7 +23,7 @@ namespace Nethermind.Evm.Tracing
 {
     public abstract class BlockTracerBase<TTrace, TTracer> : IBlockTracer where TTracer : class, ITxTracer
     {
-        private readonly Keccak _txHash;
+        private readonly Keccak? _txHash;
 
         private bool IsTracingEntireBlock => _txHash == null;
 
@@ -38,9 +38,9 @@ namespace Nethermind.Evm.Tracing
             TxTraces = new List<TTrace>();
         }
 
-        private TTracer CurrentTxTracer { get; set; }
+        private TTracer? CurrentTxTracer { get; set; }
 
-        protected abstract TTracer OnStart(Keccak? txHash);
+        protected abstract TTracer OnStart(Transaction? tx);
         protected abstract TTrace OnEnd(TTracer txTracer);
 
         public virtual bool IsTracingRewards => false;
@@ -53,9 +53,9 @@ namespace Nethermind.Evm.Tracing
 
         ITxTracer IBlockTracer.StartNewTxTrace(Transaction? tx)
         {
-            if (IsTracingEntireBlock || tx?.Hash == _txHash)
+            if (ShouldTraceTx(tx))
             {
-                CurrentTxTracer = OnStart(tx?.Hash);
+                CurrentTxTracer = OnStart(tx);
                 return CurrentTxTracer;
             }
 
@@ -70,8 +70,13 @@ namespace Nethermind.Evm.Tracing
                 CurrentTxTracer = null;
             }
         }
-
+        
         public abstract void EndBlockTrace();
+
+        protected virtual bool ShouldTraceTx(Transaction? tx)
+        {
+            return IsTracingEntireBlock || tx?.Hash == _txHash;
+        }
 
         protected List<TTrace> TxTraces { get; }
 

@@ -63,10 +63,10 @@ namespace Nethermind.Blockchain.Test.Visitors
         [Test]
         public void Deletes_everything_after_the_missing_level()
         {
-            MemDb blocksDb = new MemDb();
-            MemDb blockInfosDb = new MemDb();
-            MemDb headersDb = new MemDb();
-            BlockTree tree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+            MemDb blocksDb = new();
+            MemDb blockInfosDb = new();
+            MemDb headersDb = new();
+            BlockTree tree = new(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
             Block block2 = Build.A.Block.WithNumber(2).WithDifficulty(3).WithParent(block1).TestObject;
@@ -89,7 +89,7 @@ namespace Nethermind.Blockchain.Test.Visitors
 
             tree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
             
-            StartupBlockTreeFixer fixer = new StartupBlockTreeFixer(new SyncConfig(), tree, new MemDb(), LimboNoErrorLogger.Instance);
+            StartupBlockTreeFixer fixer = new(new SyncConfig(), tree, new MemDb(), LimboNoErrorLogger.Instance);
             tree.Accept(fixer, CancellationToken.None);
 
             Assert.Null(blockInfosDb.Get(3), "level 3");
@@ -119,13 +119,13 @@ namespace Nethermind.Blockchain.Test.Visitors
             SuggestNumberOfBlocks(tree, suggestedBlocksAmount);
             
             // simulating restarts - we stopped the old blockchain processor and create the new one
-            BlockchainProcessor newBlockchainProcessor = new BlockchainProcessor(tree, testRpc.BlockProcessor,
+            BlockchainProcessor newBlockchainProcessor = new(tree, testRpc.BlockProcessor,
                 testRpc.BlockPreprocessorStep, LimboLogs.Instance, BlockchainProcessor.Options.Default);
             newBlockchainProcessor.Start();
             testRpc.BlockchainProcessor = newBlockchainProcessor;
             
             // fixing after restart
-            StartupBlockTreeFixer fixer = new StartupBlockTreeFixer(new SyncConfig(), tree, testRpc.DbProvider.StateDb, LimboNoErrorLogger.Instance, 5);
+            StartupBlockTreeFixer fixer = new(new SyncConfig(), tree, testRpc.DbProvider.StateDb, LimboNoErrorLogger.Instance, 5);
             await tree.Accept(fixer, CancellationToken.None);
 
             // waiting for N new heads
@@ -152,13 +152,13 @@ namespace Nethermind.Blockchain.Test.Visitors
             SuggestNumberOfBlocks(tree, suggestedBlocksAmount);
             
             // simulating restarts - we stopped the old blockchain processor and create the new one
-            BlockchainProcessor newBlockchainProcessor = new BlockchainProcessor(tree, testRpc.BlockProcessor,
+            BlockchainProcessor newBlockchainProcessor = new(tree, testRpc.BlockProcessor,
                 testRpc.BlockPreprocessorStep, LimboLogs.Instance, BlockchainProcessor.Options.Default);
             newBlockchainProcessor.Start();
             testRpc.BlockchainProcessor = newBlockchainProcessor;
             
             // we create a new empty db for stateDb so we shouldn't suggest new blocks
-            MemDb stateDb = new MemDb();
+            MemDb stateDb = new();
             IBlockTreeVisitor fixer = new StartupBlockTreeFixer(new SyncConfig(), tree, stateDb, LimboNoErrorLogger.Instance, 5);
             BlockVisitOutcome result = await fixer.VisitBlock(tree.Head!, CancellationToken.None);
             
@@ -175,7 +175,7 @@ namespace Nethermind.Blockchain.Test.Visitors
             SuggestNumberOfBlocks(tree, 1);
             
             // simulating restarts - we stopped the old blockchain processor and create the new one
-            BlockchainProcessor newBlockchainProcessor = new BlockchainProcessor(tree, testRpc.BlockProcessor,
+            BlockchainProcessor newBlockchainProcessor = new(tree, testRpc.BlockProcessor,
                 testRpc.BlockPreprocessorStep, LimboLogs.Instance, BlockchainProcessor.Options.Default);
             newBlockchainProcessor.Start();
             testRpc.BlockchainProcessor = newBlockchainProcessor;
@@ -191,8 +191,11 @@ namespace Nethermind.Blockchain.Test.Visitors
             Block newParent = blockTree.Head;
             for (int i = 0; i < blockAmount; ++i)
             {
-                Block newBlock = Build.A.Block.WithNumber(newParent!.Number + 1)
-                    .WithDifficulty(newParent.Difficulty + 1).WithParent(newParent).TestObject;
+                Block newBlock = Build.A.Block
+                    .WithNumber(newParent!.Number + 1)
+                    .WithDifficulty(newParent.Difficulty + 1)
+                    .WithParent(newParent)
+                    .WithStateRoot(newParent.StateRoot!).TestObject;
                 blockTree.SuggestBlock(newBlock);
                 newParent = newBlock;
             }
@@ -202,10 +205,10 @@ namespace Nethermind.Blockchain.Test.Visitors
         [Test]
         public void When_head_block_is_followed_by_a_block_bodies_gap_it_should_delete_all_levels_after_the_gap_start()
         {
-            MemDb blocksDb = new MemDb();
-            MemDb blockInfosDb = new MemDb();
-            MemDb headersDb = new MemDb();
-            BlockTree tree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+            MemDb blocksDb = new();
+            MemDb blockInfosDb = new();
+            MemDb headersDb = new();
+            BlockTree tree = new(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
             Block block2 = Build.A.Block.WithNumber(2).WithDifficulty(3).WithParent(block1).TestObject;
@@ -222,7 +225,7 @@ namespace Nethermind.Blockchain.Test.Visitors
 
             tree.UpdateMainChain(block2);
 
-            StartupBlockTreeFixer fixer = new StartupBlockTreeFixer(new SyncConfig(), tree, new MemDb(), LimboNoErrorLogger.Instance);
+            StartupBlockTreeFixer fixer = new(new SyncConfig(), tree, new MemDb(), LimboNoErrorLogger.Instance);
             tree.Accept(fixer, CancellationToken.None);
 
             Assert.Null(blockInfosDb.Get(3), "level 3");

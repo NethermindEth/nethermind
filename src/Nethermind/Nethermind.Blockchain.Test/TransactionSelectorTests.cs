@@ -51,50 +51,6 @@ namespace Nethermind.Blockchain.Test
                     allTransactionsSelected.Transactions.OrderBy(t => t.Nonce));
                 yield return new TestCaseData(allTransactionsSelected).SetName("All transactions selected");
 
-                ProperTransactionsSelectedTestCase noneTransactionSelectedDueToValue =
-                    ProperTransactionsSelectedTestCase.Default;
-                noneTransactionSelectedDueToValue.Transactions.ForEach(t => t.Value = 901);
-                yield return new TestCaseData(noneTransactionSelectedDueToValue).SetName(
-                    "None transactions selected due to value");
-
-                ProperTransactionsSelectedTestCase noneTransactionsSelectedDueToGasPrice =
-                    ProperTransactionsSelectedTestCase.Default;
-                noneTransactionsSelectedDueToGasPrice.Transactions.ForEach(t => t.GasPrice = 100);
-                yield return new TestCaseData(noneTransactionsSelectedDueToGasPrice).SetName(
-                    "None transactions selected due to transaction gas price and limit");
-
-                ProperTransactionsSelectedTestCase oneTransactionSelectedDueToValue =
-                    ProperTransactionsSelectedTestCase.Default;
-                oneTransactionSelectedDueToValue.Transactions.ForEach(t => t.Value = 500);
-                oneTransactionSelectedDueToValue.ExpectedSelectedTransactions.AddRange(oneTransactionSelectedDueToValue
-                    .Transactions.OrderBy(t => t.Nonce).Take(1));
-                yield return new TestCaseData(oneTransactionSelectedDueToValue).SetName(
-                    "One transaction selected due to gas limit and value");
-
-                ProperTransactionsSelectedTestCase twoTransactionSelectedDueToValue =
-                    ProperTransactionsSelectedTestCase.Default;
-                twoTransactionSelectedDueToValue.Transactions.ForEach(t => t.Value = 400);
-                twoTransactionSelectedDueToValue.ExpectedSelectedTransactions.AddRange(twoTransactionSelectedDueToValue
-                    .Transactions.OrderBy(t => t.Nonce).Take(2));
-                yield return new TestCaseData(twoTransactionSelectedDueToValue).SetName(
-                    "Two transaction selected due to gas limit and value");
-
-                ProperTransactionsSelectedTestCase twoTransactionSelectedDueToMinGasPriceForMining =
-                    ProperTransactionsSelectedTestCase.Default;
-                twoTransactionSelectedDueToMinGasPriceForMining.MinGasPriceForMining = 2;
-                twoTransactionSelectedDueToMinGasPriceForMining.ExpectedSelectedTransactions.AddRange(
-                    twoTransactionSelectedDueToValue.Transactions.OrderBy(t => t.Nonce).Take(2));
-                yield return new TestCaseData(twoTransactionSelectedDueToValue).SetName(
-                    "Two transaction selected due to min gas price for mining");
-
-                ProperTransactionsSelectedTestCase twoTransactionSelectedDueToWrongNonce =
-                    ProperTransactionsSelectedTestCase.Default;
-                twoTransactionSelectedDueToWrongNonce.Transactions.First().Nonce = 4;
-                twoTransactionSelectedDueToWrongNonce.ExpectedSelectedTransactions.AddRange(
-                    twoTransactionSelectedDueToWrongNonce.Transactions.OrderBy(t => t.Nonce).Take(2));
-                yield return new TestCaseData(twoTransactionSelectedDueToWrongNonce).SetName(
-                    "Two transaction selected due to wrong nonce");
-
                 ProperTransactionsSelectedTestCase twoTransactionSelectedDueToLackOfSenderAddress =
                     ProperTransactionsSelectedTestCase.Default;
                 twoTransactionSelectedDueToLackOfSenderAddress.Transactions.First().SenderAddress = null;
@@ -102,59 +58,6 @@ namespace Nethermind.Blockchain.Test
                     twoTransactionSelectedDueToLackOfSenderAddress.Transactions.OrderBy(t => t.Nonce).Take(2));
                 yield return new TestCaseData(twoTransactionSelectedDueToLackOfSenderAddress).SetName(
                     "Two transaction selected due to lack of sender address");
-
-                ProperTransactionsSelectedTestCase missingAddressState = ProperTransactionsSelectedTestCase.Default;
-                missingAddressState.MissingAddresses.Add(TestItem.AddressA);
-                yield return new TestCaseData(missingAddressState).SetName("Missing address state");
-
-                ProperTransactionsSelectedTestCase complexCase = new ProperTransactionsSelectedTestCase()
-                {
-                    AccountStates =
-                    {
-                        {TestItem.AddressA, (1000, 1)},
-                        {TestItem.AddressB, (1000, 0)},
-                        {TestItem.AddressC, (1000, 3)}
-                    },
-                    Transactions =
-                    {
-                        // A
-                        /*0*/
-                        Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(1).WithValue(10)
-                            .WithGasPrice(10).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
-                        /*1*/
-                        Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(3).WithValue(1)
-                            .WithGasPrice(10).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
-                        /*2*/
-                        Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(2).WithValue(10)
-                            .WithGasPrice(10).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
-
-                        //B
-                        /*3*/
-                        Build.A.Transaction.WithSenderAddress(TestItem.AddressB).WithNonce(0).WithValue(1)
-                            .WithGasPrice(10).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyB).TestObject,
-                        /*4*/
-                        Build.A.Transaction.WithSenderAddress(TestItem.AddressB).WithNonce(1).WithValue(1)
-                            .WithGasPrice(10).WithGasLimit(9).SignedAndResolved(TestItem.PrivateKeyB).TestObject,
-                        /*5*/
-                        Build.A.Transaction.WithSenderAddress(TestItem.AddressB).WithNonce(3).WithValue(1)
-                            .WithGasPrice(10).WithGasLimit(9).SignedAndResolved(TestItem.PrivateKeyB).TestObject,
-
-                        //C
-                        /*6*/
-                        Build.A.Transaction.WithSenderAddress(TestItem.AddressC).WithNonce(3).WithValue(500)
-                            .WithGasPrice(19).WithGasLimit(9).SignedAndResolved(TestItem.PrivateKeyC).TestObject,
-                        /*7*/
-                        Build.A.Transaction.WithSenderAddress(TestItem.AddressC).WithNonce(3).WithValue(500)
-                            .WithGasPrice(20).WithGasLimit(9).SignedAndResolved(TestItem.PrivateKeyC).TestObject,
-                        /*8*/
-                        Build.A.Transaction.WithSenderAddress(TestItem.AddressC).WithNonce(4).WithValue(500)
-                            .WithGasPrice(20).WithGasLimit(9).SignedAndResolved(TestItem.PrivateKeyC).TestObject,
-                    },
-                    GasLimit = 10000000
-                };
-                complexCase.ExpectedSelectedTransactions.AddRange(
-                    new[] {7, 3, 4, 0, 2, 1}.Select(i => complexCase.Transactions[i]));
-                yield return new TestCaseData(complexCase).SetName("Complex case");
             }
         }
 
@@ -177,28 +80,8 @@ namespace Nethermind.Blockchain.Test
                 ProperTransactionsSelectedTestCase baseFeeGreaterThanGasPrice = ProperTransactionsSelectedTestCase.Eip1559DefaultLegacyTransactions;
                 baseFeeGreaterThanGasPrice.BaseFee = 1.GWei();
                 yield return new TestCaseData(baseFeeGreaterThanGasPrice).SetName("Legacy transactions: None transactions selected - BaseFee greater than gas price");
-                
-                ProperTransactionsSelectedTestCase baseFeeBalanceCheck = new ProperTransactionsSelectedTestCase()
-                {
-                    Eip1559Enabled = true,
-                    BaseFee = 5,
-                    AccountStates = {{TestItem.AddressA, (1000, 1)}},
-                    Transactions =
-                    {
-                        Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(3)
-                            .WithGasPrice(60).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
-                        Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(1)
-                            .WithGasPrice(30).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
-                        Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(2)
-                            .WithGasPrice(20).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject
-                    },
-                    GasLimit = 10000000
-                };
-                baseFeeBalanceCheck.ExpectedSelectedTransactions.AddRange(
-                    new[] {1, 2 }.Select(i => baseFeeBalanceCheck.Transactions[i]));
-                yield return new TestCaseData(baseFeeBalanceCheck).SetName("Legacy transactions: two transactions selected because of account balance");
-                
-                ProperTransactionsSelectedTestCase balanceCheckWithTxValue = new ProperTransactionsSelectedTestCase()
+
+                ProperTransactionsSelectedTestCase balanceCheckWithTxValue = new()
                 {
                     Eip1559Enabled = true,
                     BaseFee = 5,
@@ -238,7 +121,7 @@ namespace Nethermind.Blockchain.Test
                 baseFeeGreaterThanGasPrice.BaseFee = 1.GWei();
                 yield return new TestCaseData(baseFeeGreaterThanGasPrice).SetName("EIP1559 transactions: None transactions selected - BaseFee greater than gas price");
                 
-                ProperTransactionsSelectedTestCase balanceCheckWithTxValue = new ProperTransactionsSelectedTestCase()
+                ProperTransactionsSelectedTestCase balanceCheckWithTxValue = new()
                 {
                     Eip1559Enabled = true,
                     BaseFee = 5,
@@ -256,7 +139,7 @@ namespace Nethermind.Blockchain.Test
                     new[] { 1 }.Select(i => balanceCheckWithTxValue.Transactions[i]));
                 yield return new TestCaseData(balanceCheckWithTxValue).SetName("EIP1559 transactions: one transaction selected because of account balance");
                 
-                ProperTransactionsSelectedTestCase balanceCheckWithGasPremium = new ProperTransactionsSelectedTestCase()
+                ProperTransactionsSelectedTestCase balanceCheckWithGasPremium = new()
                 {
                     Eip1559Enabled = true,
                     BaseFee = 5,
@@ -273,20 +156,6 @@ namespace Nethermind.Blockchain.Test
                 balanceCheckWithGasPremium.ExpectedSelectedTransactions.AddRange(
                     new[] { 1 }.Select(i => balanceCheckWithGasPremium.Transactions[i]));
                 yield return new TestCaseData(balanceCheckWithGasPremium).SetName("EIP1559 transactions: one transaction selected because of account balance and miner tip");
-                
-                ProperTransactionsSelectedTestCase balanceBelowMaxFeeTimesGasLimit = new ProperTransactionsSelectedTestCase()
-                {
-                    Eip1559Enabled = true,
-                    BaseFee = 5,
-                    AccountStates = {{TestItem.AddressA, (400, 1)}},
-                    Transactions =
-                    {
-                        Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(1)
-                            .WithMaxFeePerGas(45).WithMaxPriorityFeePerGas(25).WithGasLimit(10).WithType(TxType.EIP1559).WithValue(60).SignedAndResolved(TestItem.PrivateKeyA).TestObject
-                    },
-                    GasLimit = 10000000
-                };
-                yield return new TestCaseData(balanceBelowMaxFeeTimesGasLimit).SetName("EIP1559 transactions: none transactions selected because balance is lower than MaxFeePerGas times GasLimit");
             }
         }
 
@@ -295,12 +164,12 @@ namespace Nethermind.Blockchain.Test
         [TestCaseSource(nameof(Eip1559TestCases))]
         public void Proper_transactions_selected(ProperTransactionsSelectedTestCase testCase)
         {
-            MemDb stateDb = new MemDb();
-            MemDb codeDb = new MemDb();
-            TrieStore trieStore = new TrieStore(stateDb, LimboLogs.Instance);
-            StateProvider stateProvider = new StateProvider(trieStore, codeDb, LimboLogs.Instance);
+            MemDb stateDb = new();
+            MemDb codeDb = new();
+            TrieStore trieStore = new(stateDb, LimboLogs.Instance);
+            StateProvider stateProvider = new(trieStore, codeDb, LimboLogs.Instance);
             StateReader stateReader =
-                new StateReader(new TrieStore(stateDb, LimboLogs.Instance), codeDb, LimboLogs.Instance);
+                new(new TrieStore(stateDb, LimboLogs.Instance), codeDb, LimboLogs.Instance);
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
 
             void SetAccountStates(IEnumerable<Address> missingAddresses)
@@ -331,7 +200,7 @@ namespace Nethermind.Blockchain.Test
             };
             specProvider.GetSpec(Arg.Any<long>()).Returns(spec);
             TransactionComparerProvider transactionComparerProvider =
-                new TransactionComparerProvider(specProvider, blockTree);
+                new(specProvider, blockTree);
             IComparer<Transaction> defaultComparer = transactionComparerProvider.GetDefaultComparer();
             IComparer<Transaction> comparer = CompareTxByNonce.Instance.ThenBy(defaultComparer);
             Dictionary<Address?, Transaction[]> transactions = testCase.Transactions
@@ -348,7 +217,7 @@ namespace Nethermind.Blockchain.Test
 
             SetAccountStates(testCase.MissingAddresses);
 
-            TxPoolTxSource poolTxSource = new TxPoolTxSource(transactionPool, stateReader, specProvider,
+            TxPoolTxSource poolTxSource = new(transactionPool, specProvider,
                 transactionComparerProvider, LimboLogs.Instance, txFilterPipeline);
 
 
@@ -365,9 +234,9 @@ namespace Nethermind.Blockchain.Test
         public IDictionary<Address, (UInt256 Balance, UInt256 Nonce)> AccountStates { get; } =
             new Dictionary<Address, (UInt256 Balance, UInt256 Nonce)>();
 
-        public List<Transaction> Transactions { get; } = new List<Transaction>();
+        public List<Transaction> Transactions { get; } = new();
         public long GasLimit { get; set; }
-        public List<Transaction> ExpectedSelectedTransactions { get; } = new List<Transaction>();
+        public List<Transaction> ExpectedSelectedTransactions { get; } = new();
         public UInt256 MinGasPriceForMining { get; set; } = 1;
         
         public bool Eip1559Enabled { get; set; }
@@ -375,7 +244,7 @@ namespace Nethermind.Blockchain.Test
         public UInt256 BaseFee { get; set; }
 
         public static ProperTransactionsSelectedTestCase Default =>
-            new ProperTransactionsSelectedTestCase()
+            new()
             {
                 AccountStates = {{TestItem.AddressA, (1000, 1)}},
                 Transactions =
@@ -391,7 +260,7 @@ namespace Nethermind.Blockchain.Test
             };
         
         public static ProperTransactionsSelectedTestCase Eip1559DefaultLegacyTransactions =>
-            new ProperTransactionsSelectedTestCase()
+            new()
             {
                 Eip1559Enabled = true,
                 BaseFee = 1.GWei(),
@@ -409,7 +278,7 @@ namespace Nethermind.Blockchain.Test
             };
         
         public static ProperTransactionsSelectedTestCase Eip1559Default =>
-            new ProperTransactionsSelectedTestCase()
+            new()
             {
                 Eip1559Enabled = true,
                 BaseFee = 1.GWei(),
@@ -426,6 +295,6 @@ namespace Nethermind.Blockchain.Test
                 GasLimit = 10000000
             };
 
-        public List<Address> MissingAddresses { get; } = new List<Address>();
+        public List<Address> MissingAddresses { get; } = new();
     }
 }

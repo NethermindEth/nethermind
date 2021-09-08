@@ -61,15 +61,15 @@ namespace Nethermind.Blockchain.Validators
         /// </summary>
         /// <param name="header">BlockHeader to validate</param>
         /// <param name="parent">BlockHeader which is the parent of <paramref name="header"/></param>
-        /// <param name="isOmmer"><value>True</value> if uncle block, otherwise <value>False</value></param>
+        /// <param name="isUncle"><value>True</value> if uncle block, otherwise <value>False</value></param>
         /// <returns></returns>
-        public bool Validate(BlockHeader header, BlockHeader? parent, bool isOmmer = false)
+        public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle = false)
         {
             bool hashAsExpected = ValidateHash(header);
 
             IReleaseSpec spec = _specProvider.GetSpec(header.Number);
             bool extraDataValid = header.ExtraData.Length <= spec.MaximumExtraDataSize
-                                  && (isOmmer
+                                  && (isUncle
                                       || _daoBlockNumber == null
                                       || header.Number < _daoBlockNumber
                                       || header.Number >= _daoBlockNumber + 10
@@ -194,12 +194,12 @@ namespace Nethermind.Blockchain.Validators
         /// Validates all the header elements (usually in relation to parent). Difficulty calculation is validated in <see cref="ISealValidator"/>
         /// </summary>
         /// <param name="header">Block header to validate</param>
-        /// <param name="isOmmer"><value>True</value> if the <paramref name="header"/> is an ommer, otherwise <value>False</value></param>
+        /// <param name="isUncle"><value>True</value> if the <paramref name="header"/> is an uncle, otherwise <value>False</value></param>
         /// <returns><value>True</value> if <paramref name="header"/> is valid, otherwise <value>False</value></returns>
-        public bool Validate(BlockHeader header, bool isOmmer = false)
+        public bool Validate(BlockHeader header, bool isUncle = false)
         {
             BlockHeader parent = _blockTree.FindParentHeader(header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-            return Validate(header, parent, isOmmer);
+            return Validate(header, parent, isUncle);
         }
 
         private bool ValidateGenesis(BlockHeader header)

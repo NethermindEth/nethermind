@@ -91,8 +91,13 @@ namespace Nethermind.Blockchain.Validators
             }
         }
         
-        private bool ValidateSignature(Signature signature, IReleaseSpec spec)
+        private bool ValidateSignature(Signature? signature, IReleaseSpec spec)
         {
+            if (signature is null)
+            {
+                return false;
+            }
+            
             BigInteger sValue = signature.SAsSpan.ToUnsignedBigInteger();
             BigInteger rValue = signature.RAsSpan.ToUnsignedBigInteger();
             

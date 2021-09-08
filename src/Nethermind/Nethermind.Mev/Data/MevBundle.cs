@@ -31,32 +31,26 @@ namespace Nethermind.Mev.Data
     {
         private static int _sequenceNumber = 0;
 
-        public MevBundle(long blockNumber, IReadOnlyList<Transaction> transactions, UInt256? minTimestamp = null, UInt256? maxTimestamp = null, Keccak[]? revertingTxHashes = null)
+        public MevBundle(long blockNumber, IReadOnlyList<BundleTransaction> transactions, UInt256? minTimestamp = null, UInt256? maxTimestamp = null)
         {
             Transactions = transactions;
             BlockNumber = blockNumber;
 
             Hash = GetHash(this);
+            for (int i = 0; i < transactions.Count; i++)
+            {
+                transactions[i].BundleHash = Hash;
+            }
 
-            RevertingTxHashes = revertingTxHashes ?? Array.Empty<Keccak>();
             MinTimestamp = minTimestamp ?? UInt256.Zero;
             MaxTimestamp = maxTimestamp ?? UInt256.Zero;
             SequenceNumber = Interlocked.Increment(ref _sequenceNumber);
-            
-            Keccak[] missingRevertingTxHashes = RevertingTxHashes.Except(transactions.Select(t => t.Hash!)).ToArray();
-            if (missingRevertingTxHashes.Length > 0)
-            {
-                throw new ArgumentException(
-                    $"Bundle didn't contain some of revertingTxHashes: [{string.Join(", ", missingRevertingTxHashes.OfType<object>())}]",
-                    nameof(revertingTxHashes));
-            }
         }
         
-        public IReadOnlyList<Transaction> Transactions { get; }
+        public IReadOnlyList<BundleTransaction> Transactions { get; }
 
         public long BlockNumber { get; }
-        public Keccak[] RevertingTxHashes { get; }
-
+        
         public UInt256 MaxTimestamp { get; }
         
         public UInt256 MinTimestamp { get; }
@@ -82,6 +76,6 @@ namespace Nethermind.Mev.Data
 
         public override int GetHashCode() => Hash.GetHashCode();
 
-        public override string ToString() => $"Block:{BlockNumber}; Min:{MinTimestamp}; Max:{MaxTimestamp}; TxCount:{Transactions.Count};";
+        public override string ToString() => $"Hash:{Hash}; Block:{BlockNumber}; Min:{MinTimestamp}; Max:{MaxTimestamp}; TxCount:{Transactions.Count};";
     }
 }

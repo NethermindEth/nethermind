@@ -18,6 +18,6 @@ namespace Nethermind.Core.Test.Builders
 {
     public partial class Build
     {
-        public AddressBuilder Address => new AddressBuilder();
+        public AddressBuilder Address => new();
     }
 }

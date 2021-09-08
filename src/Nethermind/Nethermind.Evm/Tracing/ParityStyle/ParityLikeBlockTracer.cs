@@ -17,6 +17,7 @@
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing.ParityStyle
@@ -24,7 +25,10 @@ namespace Nethermind.Evm.Tracing.ParityStyle
     public class ParityLikeBlockTracer : BlockTracerBase<ParityLikeTxTrace, ParityLikeTxTracer>
     {
         private Block _block = null!;
+        private bool _validateChainId;
         private readonly ParityTraceTypes _types;
+        private readonly ISpecProvider _specProvider;
+        private readonly TxTraceFilter? _traceFilter = null;
 
         public ParityLikeBlockTracer(Keccak txHash, ParityTraceTypes types)
             : base(txHash)
@@ -38,9 +42,17 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             _types = types;
             IsTracingRewards = (types & ParityTraceTypes.Rewards) == ParityTraceTypes.Rewards;
         }
+        
+        public ParityLikeBlockTracer(ParityTraceTypes types, TxTraceFilter? traceFilter, ISpecProvider specProvider)
+        {
+            _types = types;
+            _traceFilter = traceFilter;
+            _specProvider = specProvider;
+            IsTracingRewards = (types & ParityTraceTypes.Rewards) == ParityTraceTypes.Rewards;
+        }
 
-        protected override ParityLikeTxTracer OnStart(Keccak? txHash) => 
-            new(_block, txHash is null ? null : _block.Transactions.Single(t => t.Hash == txHash), _types);
+        protected override ParityLikeTxTracer OnStart(Transaction? tx) => 
+            new(_block, tx, _types);
 
         protected override ParityLikeTxTrace OnEnd(ParityLikeTxTracer txTracer) => txTracer.BuildResult();
 
@@ -48,7 +60,10 @@ namespace Nethermind.Evm.Tracing.ParityStyle
 
         public override void ReportReward(Address author, string rewardType, UInt256 rewardValue)
         {
-            ParityLikeTxTrace rewardTrace = TxTraces.Last();
+            ParityLikeTxTrace rewardTrace = TxTraces.LastOrDefault();
+            if (rewardTrace == null)
+                return;
+            
             rewardTrace.Action = new ParityTraceAction();
             rewardTrace.Action.RewardType = rewardType;
             rewardTrace.Action.Value = rewardValue;
@@ -61,11 +76,22 @@ namespace Nethermind.Evm.Tracing.ParityStyle
 
         public override void StartNewBlockTrace(Block block)
         {
+            _validateChainId = _specProvider != null ? _specProvider.GetSpec(block.Number).ValidateChainId : true;
             _block = block;
         }
-
+        
         public override void EndBlockTrace()
         {
+        }
+
+        protected override bool ShouldTraceTx(Transaction? tx)
+        {
+            if (base.ShouldTraceTx(tx))
+            {
+                return _traceFilter == null || _traceFilter.ShouldTraceTx(tx, _validateChainId);
+            }
+
+            return false;
         }
     }
 }

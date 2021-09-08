@@ -29,10 +29,10 @@ namespace Nethermind.Core.Test
         [Test]
         public void Test()
         {
-            Bloom bloom = new Bloom();
+            Bloom bloom = new();
             bloom.Set(Keccak.OfAnEmptyString.Bytes);
             byte[] bytes = bloom.Bytes;
-            Bloom bloom2 = new Bloom(bytes);
+            Bloom bloom2 = new(bytes);
             Assert.AreEqual(bloom.ToString(), bloom2.ToString());
         }
 
@@ -66,7 +66,7 @@ namespace Nethermind.Core.Test
 
         public void MatchingTest(Func<LogEntry[]> addedEntries, Func<LogEntry[], LogEntry[]> testedEntries, bool isMatchExpectation)
         {
-            Bloom bloom = new Bloom();
+            Bloom bloom = new();
             var entries = addedEntries();
             bloom.Add(entries);
 
@@ -81,7 +81,7 @@ namespace Nethermind.Core.Test
             var entries = new LogEntry[count];
             for (int i = start; i < count + start; i++)
             {
-                var topicsCount = i % topicsMax + 1;
+                int topicsCount = i % topicsMax + 1;
                 var topics = new Keccak[topicsCount];
                 for (int j = 0; j < topicsCount; j++)
                 {

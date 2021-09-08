@@ -64,14 +64,14 @@ namespace Nethermind.Core.Test
         {
             byte[] bytes = new byte[32];
             new Random(12).NextBytes(bytes);
-            PrivateKey privateKey = new PrivateKey(bytes);
+            PrivateKey privateKey = new(bytes);
             Assert.True(Bytes.AreEqual(bytes, privateKey.KeyBytes));
         }
 
         [TestCase(TestPrivateKeyHex)]
         public void String_representation_is_correct(string hexString)
         {
-            PrivateKey privateKey = new PrivateKey(hexString);
+            PrivateKey privateKey = new(hexString);
             string privateKeyString = privateKey.ToString();
             Assert.AreEqual(hexString, privateKeyString);
         }
@@ -80,7 +80,7 @@ namespace Nethermind.Core.Test
         [TestCase("56e044e40c2d225593bc0a4ae3fd4a31ab11f9351f98e60109c1fb429b52e876", "0xd1dc4a77be62d06f0760187be2e505d270c170fd")]
         public void Address_as_expected(string privateKeyHex, string addressHex)
         {
-            PrivateKey privateKey = new PrivateKey(privateKeyHex);
+            PrivateKey privateKey = new(privateKeyHex);
             Address address = privateKey.Address;
             Assert.AreEqual(addressHex, address.ToString());
         }
@@ -88,7 +88,7 @@ namespace Nethermind.Core.Test
         [Test]
         public void Address_returns_the_same_value_when_called_twice()
         {
-            PrivateKey privateKey = new PrivateKey(TestPrivateKeyHex);
+            PrivateKey privateKey = new(TestPrivateKeyHex);
             Address address1 = privateKey.Address;
             Address address2 = privateKey.Address;
             Assert.AreSame(address1, address2);

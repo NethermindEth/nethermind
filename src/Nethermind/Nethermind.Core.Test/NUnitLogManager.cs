@@ -21,7 +21,7 @@ namespace Nethermind.Core.Test
 {
     public class NUnitLogManager : ILogManager
     {
-        public static readonly NUnitLogManager Instance = new NUnitLogManager();
+        public static readonly NUnitLogManager Instance = new();
         private readonly NUnitLogger _logger;
 
         public NUnitLogManager(LogLevel level = LogLevel.Info)

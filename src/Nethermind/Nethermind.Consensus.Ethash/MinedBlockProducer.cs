@@ -23,6 +23,7 @@ using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -32,97 +33,29 @@ namespace Nethermind.Consensus.Ethash
 {
     public class MinedBlockProducer : BlockProducerBase
     {
-        private bool _isRunning;
-        private readonly IDifficultyCalculator _difficultyCalculator;
-        private readonly object _syncToken = new();
-        private CancellationTokenSource _cancellationTokenSource = new();
-
         public MinedBlockProducer(ITxSource txSource,
             IBlockchainProcessor processor,
             ISealer sealer,
             IBlockTree blockTree,
-            IBlockProcessingQueue blockProcessingQueue,
+            IBlockProductionTrigger blockProductionTrigger,
             IStateProvider stateProvider,
             IGasLimitCalculator gasLimitCalculator,
             ITimestamper timestamper,
             ISpecProvider specProvider,
-            ILogManager logManager,
-            IDifficultyCalculator difficultyCalculator) 
+            ILogManager logManager)
             : base(
                 txSource,
                 processor,
                 sealer,
                 blockTree,
-                blockProcessingQueue,
+                blockProductionTrigger,
                 stateProvider,
                 gasLimitCalculator,
                 timestamper,
                 specProvider,
-                logManager)
+                logManager, 
+                new EthashDifficultyCalculator(specProvider))
         {
-            _difficultyCalculator = difficultyCalculator ?? throw new ArgumentNullException(nameof(difficultyCalculator));
-        }
-
-        private void BlockTreeOnNewBestSuggestedBlock(object sender, BlockEventArgs e)
-        {
-            lock (_syncToken)
-            {
-                _cancellationTokenSource.Cancel();
-            }
-        }
-
-        private void OnBlockProcessorQueueEmpty(object sender, EventArgs e)
-        {
-            CancellationToken token;
-            lock (_syncToken)
-            {
-                _cancellationTokenSource.Cancel();
-                _cancellationTokenSource = new CancellationTokenSource();
-                token = _cancellationTokenSource.Token;
-            }
-
-            TryProduceNewBlock(token);
-        }
-
-        public override void Start()
-        {
-            BlockProcessingQueue.ProcessingQueueEmpty += OnBlockProcessorQueueEmpty;
-            BlockTree.NewBestSuggestedBlock += BlockTreeOnNewBestSuggestedBlock;
-            _lastProducedBlockDateTime = DateTime.UtcNow;
-            _isRunning = true;
-        }
-
-        public override async Task StopAsync()
-        {
-            BlockProcessingQueue.ProcessingQueueEmpty -= OnBlockProcessorQueueEmpty;
-            BlockTree.NewBestSuggestedBlock -= BlockTreeOnNewBestSuggestedBlock;
-            
-            lock (_syncToken)
-            {
-                _cancellationTokenSource.Cancel();
-            }
-
-            _isRunning = false;
-            await Task.CompletedTask;
-        }
-
-        protected override bool IsRunning() => _isRunning;
-
-        protected override UInt256 CalculateDifficulty(BlockHeader parent, UInt256 timestamp)
-        {
-            if (parent.Hash is null)
-            {
-                throw new InvalidDataException("parent.Hash is null when calculating difficulty");
-            }
-            
-            Block? parentBlock = BlockTree.FindBlock(parent.Hash, BlockTreeLookupOptions.None);
-            if (parentBlock is null)
-            {
-                throw new InvalidDataException("parentBlock is null when calculating difficulty");
-            }
-            
-            return _difficultyCalculator.Calculate(
-                parent.Difficulty, parent.Timestamp, timestamp, parent.Number + 1, parentBlock.Ommers.Length > 0);
         }
     }
 }

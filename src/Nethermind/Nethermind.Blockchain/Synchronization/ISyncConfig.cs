@@ -67,13 +67,13 @@ namespace Nethermind.Blockchain.Synchronization
         [ConfigItem(Description = "Hash of the pivot block for the Fast Blocks sync.", DefaultValue = "null")]
         string PivotHash { get; set; }
 
-        [ConfigItem(HiddenFromDocs = true, DefaultValue = "0")]
+        [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "0")]
         long PivotNumberParsed => LongConverter.FromString(PivotNumber ?? "0");
         
-        [ConfigItem(HiddenFromDocs = true, DefaultValue = "0")]
+        [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "0")]
         UInt256 PivotTotalDifficultyParsed => UInt256.Parse(PivotTotalDifficulty ?? "0");
 
-        [ConfigItem(HiddenFromDocs = true)]
+        [ConfigItem(DisabledForCli = true, HiddenFromDocs = true)]
         Keccak PivotHashParsed => PivotHash == null ? null : new Keccak(Bytes.FromHexString(PivotHash));
         
         [ConfigItem(Description = "Number of seconds before a single beam sync request expires and throw an exception. If you want your JSON RPC requests to keep trying then set this value to a higher number.", DefaultValue = "4")]
@@ -91,13 +91,13 @@ namespace Nethermind.Blockchain.Synchronization
         [ConfigItem(Description = "[EXPERIMENTAL] Defines the earliest body downloaded in fast sync when DownloadBodiesInFastSync is enabled. Actual values used will be Math.Max(1, Math.Min(PivotNumber, AncientBodiesBarrier))", DefaultValue = "0")]
         public long AncientBodiesBarrier { get; set; }
 
-        [ConfigItem(HiddenFromDocs = true, DefaultValue = "1")]
+        [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "1")]
         public long AncientBodiesBarrierCalc => Math.Max(1, Math.Min(PivotNumberParsed, AncientBodiesBarrier));
         
         [ConfigItem(Description = "[EXPERIMENTAL] Defines the earliest receipts downloaded in fast sync when DownloadReceiptsInFastSync is enabled. Actual value used will be Math.Max(1, Math.Min(PivotNumber, Math.Max(AncientBodiesBarrier, AncientReceiptsBarrier)))", DefaultValue = "0")]
         public long AncientReceiptsBarrier { get; set; }
 
-        [ConfigItem(HiddenFromDocs = true, DefaultValue = "1")]
+        [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "1")]
         public long AncientReceiptsBarrierCalc => Math.Max(1, Math.Min(PivotNumberParsed, Math.Max(AncientBodiesBarrier, AncientReceiptsBarrier)));
         
         [ConfigItem(Description = "Enables witness protocol.", DefaultValue = "false")]
@@ -107,7 +107,7 @@ namespace Nethermind.Blockchain.Synchronization
                                   "If used please check that PivotNumber is same as original used when syncing the node as its used as a cut-off point.", DefaultValue = "false")]
         public bool FixReceipts { get; set; }
         
-        [ConfigItem(HiddenFromDocs = true, DefaultValue = "true")]
+        [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "true")]
         public bool BlockGossipEnabled { get; set; }
     }
 }

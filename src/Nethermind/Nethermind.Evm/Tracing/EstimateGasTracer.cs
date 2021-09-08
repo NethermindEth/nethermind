@@ -250,13 +250,23 @@ namespace Nethermind.Evm.Tracing
 
         public void ReportActionError(EvmExceptionType exceptionType)
         {
-            UpdateAdditionalGas(_currentGasAndNesting.Peek().GasLeft);
+            UpdateAdditionalGas();
         }
 
-        private void UpdateAdditionalGas(long gas)
+        public void ReportActionError(EvmExceptionType exceptionType, long gasLeft)
         {
-            var current = _currentGasAndNesting.Pop();
-            current.GasLeft = gas;
+            UpdateAdditionalGas(gasLeft);
+        }
+
+        private void UpdateAdditionalGas(long? gasLeft = null)
+        {
+            GasAndNesting current = _currentGasAndNesting.Pop();
+            
+            if (gasLeft.HasValue)
+            {
+                current.GasLeft = gasLeft.Value;
+            }
+
             _currentGasAndNesting.Peek().GasUsageFromChildren += current.AdditionalGasRequired;
             _currentNestingLevel--;
 

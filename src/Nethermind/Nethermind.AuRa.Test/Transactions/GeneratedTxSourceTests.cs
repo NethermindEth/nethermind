@@ -45,7 +45,7 @@ namespace Nethermind.AuRa.Test.Transactions
             GeneratedTransaction generatedTx = Build.A.GeneratedTransaction.WithSenderAddress(TestItem.AddressB).TestObject;
             innerSource.GetTransactions(parent, gasLimit).Returns(new[] {poolTx, generatedTx});
             
-            var txSource = new GeneratedTxSource(innerSource, txSealer, stateReader, LimboLogs.Instance);
+            GeneratedTxSource txSource = new(innerSource, txSealer, stateReader, LimboLogs.Instance);
 
             txSource.GetTransactions(parent, gasLimit).ToArray();
             

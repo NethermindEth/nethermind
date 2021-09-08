@@ -30,7 +30,7 @@ namespace Nethermind.State.Witnesses
     /// <summary>
     /// <threadsafety static="true" instance="false" />
     /// </summary>
-    public class WitnessCollector : IWitnessCollector
+    public class WitnessCollector : IWitnessCollector, IWitnessRepository
     {
         private readonly LruCache<Keccak, Keccak[]> _witnessCache
             = new(256, "Witnesses");

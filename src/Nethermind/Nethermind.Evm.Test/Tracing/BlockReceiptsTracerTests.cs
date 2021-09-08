@@ -19,7 +19,6 @@ using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
-using Nethermind.Specs.Forks;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -95,7 +94,7 @@ namespace Nethermind.Evm.Test.Tracing
             tracer.SetOtherTracer(otherTracer);
             tracer.StartNewBlockTrace(block);
             tracer.StartNewTxTrace(block.Transactions[0]);
-            var logEntries = new LogEntry[0];
+            LogEntry[] logEntries = new LogEntry[0];
             tracer.MarkAsSuccess(TestItem.AddressA, 100,Array.Empty<byte>(), logEntries, TestItem.KeccakF);
             
             (otherTracer as ITxTracer).Received().MarkAsSuccess(TestItem.AddressA, 100, Array.Empty<byte>(), logEntries, TestItem.KeccakF);

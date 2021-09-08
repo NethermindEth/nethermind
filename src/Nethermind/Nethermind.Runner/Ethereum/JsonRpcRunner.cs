@@ -31,7 +31,7 @@ using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Runner.JsonRpc;
 using Nethermind.Runner.Logging;
-using Nethermind.WebSockets;
+using Nethermind.Sockets;
 using ILogger = Nethermind.Logging.ILogger;
 using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 

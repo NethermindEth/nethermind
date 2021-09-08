@@ -16,22 +16,13 @@
 //
 
 using System;
-using System.Numerics;
 using Nethermind.Api;
-using Nethermind.JsonRpc;
-using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
-using System.Collections.Generic;
 using System.Threading.Tasks;
-using Nethermind.Core;
 using FluentAssertions;
 using Nethermind.Api.Extensions;
 using Nethermind.Consensus;
-using Nethermind.Core.Test.Builders;
-using Nethermind.Mev.Data;
-using Nethermind.Mev.Source;
-using Nethermind.Runner.Ethereum.Api;
 
 namespace Nethermind.Mev.Test
 {
@@ -71,7 +62,7 @@ namespace Nethermind.Mev.Test
             await plugin.InitRpcModules();
 
             IConsensusPlugin consensusPlugin = Substitute.For<IConsensusPlugin>();
-            consensusPlugin.InitBlockProducer().Returns(Substitute.For<IManualBlockProducer>());
+            consensusPlugin.InitBlockProducer().Returns(Substitute.For<IBlockProducer>());
             
             Task<IBlockProducer> blockProducer = plugin.InitBlockProducer(consensusPlugin);
 

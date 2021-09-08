@@ -41,9 +41,9 @@ namespace Nethermind.Blockchain.Comparers
             
             // if gas bottleneck was calculated, it's highest priority for sorting
             // if not, different method of sorting by gas price is needed
-            if (x.GasBottleneck != 0 || y.GasBottleneck != 0)
+            if (x.GasBottleneck !=null && y.GasBottleneck != null)
             {
-                return y!.GasBottleneck.CompareTo(x!.GasBottleneck);
+                return y!.GasBottleneck.Value.CompareTo(x!.GasBottleneck);
             }
             
             // When we're adding Tx to TxPool we don't know the base fee of the block in which transaction will be added.

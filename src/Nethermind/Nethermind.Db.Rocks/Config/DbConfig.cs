@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -77,5 +77,9 @@ namespace Nethermind.Db.Rocks.Config
         
         public uint RecycleLogFileNum { get; set; } = 0;
         public bool WriteAheadLogSync { get; set; } = false;
+
+        public bool EnableDbStatistics { get; set; } = false;
+        public bool EnableMetricsUpdater { get; set; } = false;
+        public uint StatsDumpPeriodSec { get; set; } = 600;
     }
 }

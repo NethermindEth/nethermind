@@ -23,6 +23,7 @@ using Nethermind.Blockchain.Processing;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Facade.Eth;
 using Nethermind.Synchronization;
 using NSubstitute;
 using NUnit.Framework;
@@ -53,10 +54,10 @@ namespace Nethermind.HealthChecks.Test
             {
                 blockFinder.FindBestSuggestedHeader().Returns(GetBlockHeader(2).TestObject);
             }
-            
 
+            IEthSyncingInfo ethSyncingInfo = new EthSyncingInfo(blockFinder);
             NodeHealthService nodeHealthService =
-                new(syncServer, blockFinder, blockchainProcessor, blockProducer, new HealthChecksConfig(),  healthHintService, test.IsMining);
+                new(syncServer, blockFinder, blockchainProcessor, blockProducer, new HealthChecksConfig(),  healthHintService, ethSyncingInfo, test.IsMining);
             CheckHealthResult result = nodeHealthService.CheckHealth();
             Assert.AreEqual(test.ExpectedHealthy, result.Healthy);
             Assert.AreEqual(test.ExpectedMessage, FormatMessages(result.Messages.Select(x => x.Message)));
@@ -117,7 +118,7 @@ namespace Nethermind.HealthChecks.Test
                     PeerCount = 7,
                     ExpectedHealthy = false,
                     ExpectedMessage = "Still syncing. Peers: 7.",
-                    ExpectedLongMessage = $"The node is still syncing, CurrentBlock: 4, HighestBlock: 15. Peers: 7."
+                    ExpectedLongMessage = $"The node is still syncing, CurrentBlock: 4, HighestBlock: 15. The status will change to healthy once synced. Peers: 7."
                 };
                 yield return new CheckHealthTest()
                 {
@@ -139,7 +140,7 @@ namespace Nethermind.HealthChecks.Test
                     PeerCount = 4,
                     ExpectedHealthy = true,
                     ExpectedMessage = "Still syncing. Peers: 4.",
-                    ExpectedLongMessage = $"The node is still syncing, CurrentBlock: 4, HighestBlock: 15. Peers: 4."
+                    ExpectedLongMessage = $"The node is still syncing, CurrentBlock: 4, HighestBlock: 15. The status will change to healthy once synced. Peers: 4."
                 };
                 yield return new CheckHealthTest()
                 {
@@ -151,7 +152,7 @@ namespace Nethermind.HealthChecks.Test
                     PeerCount = 0,
                     ExpectedHealthy = false,
                     ExpectedMessage = "Still syncing. Node is not connected to any peers.",
-                    ExpectedLongMessage = "The node is still syncing, CurrentBlock: 4, HighestBlock: 15. Node is not connected to any peers."
+                    ExpectedLongMessage = "The node is still syncing, CurrentBlock: 4, HighestBlock: 15. The status will change to healthy once synced. Node is not connected to any peers."
                 };
                 yield return new CheckHealthTest()
                 {

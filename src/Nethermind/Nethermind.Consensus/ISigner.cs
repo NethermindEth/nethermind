@@ -24,7 +24,7 @@ namespace Nethermind.Consensus
 {
     public interface ISigner : ITxSigner
     {
-        ProtectedPrivateKey Key { get; }
+        PrivateKey? Key { get; }
         Address Address { get; }
         Signature Sign(Keccak message);
         bool CanSign { get; }

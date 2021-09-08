@@ -34,7 +34,7 @@ namespace Nethermind.Blockchain.Test.Consensus
         public void To_string_does_not_throw()
         {
             ITxSource txSource = Substitute.For<ITxSource>();
-            CompositeTxSource selector = new CompositeTxSource(txSource);
+            CompositeTxSource selector = new(txSource);
             _ = selector.ToString();
         } 
         
@@ -68,7 +68,7 @@ namespace Nethermind.Blockchain.Test.Consensus
             
             var parentHeader = Build.A.BlockHeader.TestObject;
             var gasLimit = 1000;
-            List<Transaction> expected = new List<Transaction>();
+            List<Transaction> expected = new();
             
             var innerPendingTxSelector = Substitute.For<ITxSource>();
             

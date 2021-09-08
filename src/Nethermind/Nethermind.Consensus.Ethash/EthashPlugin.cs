@@ -18,6 +18,7 @@
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
@@ -47,7 +48,7 @@ namespace Nethermind.Consensus.Ethash
             var (getFromApi, setInApi) = _nethermindApi.ForInit;
             setInApi.RewardCalculatorSource = new RewardCalculator(getFromApi.SpecProvider);
             
-            DifficultyCalculator difficultyCalculator = new(getFromApi.SpecProvider);
+            EthashDifficultyCalculator difficultyCalculator = new(getFromApi.SpecProvider);
             Ethash ethash = new(getFromApi.LogManager);
             
             setInApi.Sealer = getFromApi.Config<IMiningConfig>().Enabled
@@ -59,7 +60,7 @@ namespace Nethermind.Consensus.Ethash
             return Task.CompletedTask;
         }
         
-        public Task<IBlockProducer> InitBlockProducer(ITxSource? txSource = null)
+        public Task<IBlockProducer> InitBlockProducer(IBlockProductionTrigger? blockProductionTrigger = null, ITxSource? additionalTxSource = null)
         {
             return Task.FromResult((IBlockProducer)null);
         }
@@ -75,5 +76,7 @@ namespace Nethermind.Consensus.Ethash
         }
         
         public string SealEngineType => Nethermind.Core.SealEngineType.Ethash;
+
+        public IBlockProductionTrigger DefaultBlockProductionTrigger => _nethermindApi.ManualBlockProductionTrigger;
     }
 }

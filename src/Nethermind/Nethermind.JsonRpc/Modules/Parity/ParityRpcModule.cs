@@ -22,10 +22,11 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.KeyStore;
-using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
 using Nethermind.Network;
@@ -41,6 +42,7 @@ namespace Nethermind.JsonRpc.Modules.Parity
         private readonly IEnode _enode;
         private readonly ISignerStore _signerStore;
         private readonly IKeyStore _keyStore;
+        private readonly ISpecProvider _specProvider;
         private readonly IPeerManager _peerManager;
 
         public ParityRpcModule(
@@ -51,7 +53,7 @@ namespace Nethermind.JsonRpc.Modules.Parity
             IEnode enode,
             ISignerStore signerStore,
             IKeyStore keyStore,
-            ILogManager logManager,
+            ISpecProvider specProvider,
             IPeerManager peerManager)
         {
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
@@ -61,6 +63,7 @@ namespace Nethermind.JsonRpc.Modules.Parity
             _enode = enode ?? throw new ArgumentNullException(nameof(enode));
             _signerStore = signerStore ?? throw new ArgumentNullException(nameof(signerStore));
             _keyStore = keyStore ?? throw new ArgumentNullException(nameof(keyStore));
+            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _peerManager = peerManager ?? throw new ArgumentNullException(nameof(peerManager));
         }
 
@@ -79,8 +82,12 @@ namespace Nethermind.JsonRpc.Modules.Parity
 
             Block block = searchResult.Object;
             TxReceipt[] receipts = _receiptFinder.Get(block) ?? new TxReceipt[block.Transactions.Length];
-            IEnumerable<ReceiptForRpc> result = receipts.Zip(block.Transactions, (r, t) => new ReceiptForRpc(t.Hash, r));
-            return ResultWrapper<ReceiptForRpc[]>.Success(result.ToArray());
+            bool isEip1559Enabled = _specProvider.GetSpec(block.Number).IsEip1559Enabled;
+            IEnumerable<ReceiptForRpc> result = receipts
+                .Zip(block.Transactions, (r, t) => 
+                    new ReceiptForRpc(t.Hash, r, t.CalculateEffectiveGasPrice(isEip1559Enabled, block.BaseFeePerGas), receipts.GetBlockLogFirstIndex(r.Index)));
+            ReceiptForRpc[] resultAsArray = result.ToArray();
+            return ResultWrapper<ReceiptForRpc[]>.Success(resultAsArray);
         }
 
         public ResultWrapper<bool> parity_setEngineSigner(Address address, string password)

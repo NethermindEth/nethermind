@@ -105,6 +105,20 @@ namespace Nethermind.Evm.Test
                                 // }
                                 new Instruction[] { }
                             ))))).ToArray();
+        
+        private static readonly Instruction[] LondonInstructions =
+            FrontierInstructions.Union(
+                HomesteadInstructions.Union(
+                    ByzantiumInstructions.Union(
+                        ConstantinopleFixInstructions.Union(
+                            IstanbulInstructions.Union(
+                                BerlinInstructions.Union(
+                                new Instruction[]
+                                    {
+                                        Instruction.BASEFEE
+                                    }
+                                )
+                            ))))).ToArray();
 
         private Dictionary<long, Instruction[]> _validOpcodes
             = new()
@@ -118,7 +132,8 @@ namespace Nethermind.Evm.Test
                 {MainnetSpecProvider.IstanbulBlockNumber, IstanbulInstructions},
                 {MainnetSpecProvider.MuirGlacierBlockNumber, IstanbulInstructions},
                 {MainnetSpecProvider.BerlinBlockNumber, BerlinInstructions},
-                {long.MaxValue, BerlinInstructions}
+                {MainnetSpecProvider.LondonBlockNumber, LondonInstructions},
+                {long.MaxValue, LondonInstructions}
             };
 
         private const string InvalidOpCodeErrorMessage = "BadInstruction";
@@ -141,11 +156,12 @@ namespace Nethermind.Evm.Test
         [TestCase(MainnetSpecProvider.MuirGlacierBlockNumber)]
         [TestCase(MainnetSpecProvider.BerlinBlockNumber)]
         [TestCase(MainnetSpecProvider.BerlinBlockNumber)]
+        [TestCase(MainnetSpecProvider.LondonBlockNumber)]
         [TestCase(long.MaxValue)]
         public void Test(long blockNumber)
         {
             ILogger logger = _logManager.GetClassLogger();
-            var validOpcodes = _validOpcodes[blockNumber];
+            Instruction[] validOpcodes = _validOpcodes[blockNumber];
             for (int i = 0; i <= byte.MaxValue; i++)
             {
                 logger.Info($"============ Testing opcode {i}==================");
@@ -154,7 +170,7 @@ namespace Nethermind.Evm.Test
                     .Done;
 
                 bool isValidOpcode = ((Instruction)i != Instruction.INVALID) && validOpcodes.Contains((Instruction)i);
-                var result = Execute(blockNumber, 1_000_000, code);
+                TestAllTracerWithOutput result = Execute(blockNumber, 1_000_000, code);
 
                 if (isValidOpcode)
                 {

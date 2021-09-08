@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
@@ -25,7 +26,15 @@ namespace Nethermind.Mev.Source
 {
     public interface IBundlePool : IBundleSource
     {
+        event EventHandler<BundleEventArgs> NewReceived;
+        event EventHandler<BundleEventArgs> NewPending;
         bool AddBundle(MevBundle bundle);
         IEnumerable<MevBundle> GetBundles(long block, UInt256 timestamp, CancellationToken token = default);
+    }
+    
+    public static class BundlePoolExtensions
+    {
+        public static IEnumerable<MevBundle> GetBundles(this IBundlePool bundleSource, BlockHeader parent, ITimestamper timestamper, CancellationToken token = default) => 
+            bundleSource.GetBundles(parent.Number + 1, timestamper.UnixTime.Seconds, token);
     }
 }

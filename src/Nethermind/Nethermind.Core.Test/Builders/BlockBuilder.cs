@@ -31,7 +31,7 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal = new Block(header);
             header.Hash = TestObjectInternal.CalculateHash();
         }
-
+        
         public BlockBuilder WithHeader(BlockHeader header)
         {
             TestObjectInternal = TestObjectInternal.WithReplacedHeader(header);
@@ -78,7 +78,7 @@ namespace Nethermind.Core.Test.Builders
 
             return WithTransactions(txs);
         }
-        
+
         public BlockBuilder WithTransactions(int txCount, ISpecProvider specProvider)
         {
             Transaction[] txs = new Transaction[txCount];
@@ -93,8 +93,8 @@ namespace Nethermind.Core.Test.Builders
                 receipts[i] = Build.A.Receipt.TestObject;
             }
 
-            var number = TestObjectInternal.Number;
-            ReceiptTrie receiptTrie = new ReceiptTrie(specProvider.GetSpec(number), receipts);
+            long number = TestObjectInternal.Number;
+            ReceiptTrie receiptTrie = new(specProvider.GetSpec(number), receipts);
             receiptTrie.UpdateRootHash();
 
             BlockBuilder result = WithTransactions(txs);
@@ -106,7 +106,7 @@ namespace Nethermind.Core.Test.Builders
         {
             TestObjectInternal = TestObjectInternal.WithReplacedBody(
                 TestObjectInternal.Body.WithChangedTransactions(transactions));
-            TxTrie trie = new TxTrie(transactions);
+            TxTrie trie = new(transactions);
             trie.UpdateRootHash();
 
             TestObjectInternal.Header.TxRoot = trie.RootHash;
@@ -162,17 +162,17 @@ namespace Nethermind.Core.Test.Builders
             return WithParent(block.Header);
         }
 
-        public BlockBuilder WithOmmers(params Block[] ommers)
+        public BlockBuilder WithUncles(params Block[] uncles)
         {
             TestObjectInternal = TestObjectInternal.WithReplacedBody(
-                TestObjectInternal.Body.WithChangedOmmers(ommers.Select(o => o.Header).ToArray()));
+                TestObjectInternal.Body.WithChangedUncles(uncles.Select(o => o.Header).ToArray()));
             return this;
         }
 
-        public BlockBuilder WithOmmers(params BlockHeader[] ommers)
+        public BlockBuilder WithUncles(params BlockHeader[] uncles)
         {
             TestObjectInternal = TestObjectInternal.WithReplacedBody(
-                TestObjectInternal.Body.WithChangedOmmers(ommers));
+                TestObjectInternal.Body.WithChangedUncles(uncles));
             return this;
         }
 

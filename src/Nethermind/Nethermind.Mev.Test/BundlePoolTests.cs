@@ -23,9 +23,10 @@ using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -33,13 +34,10 @@ using Nethermind.Logging;
 using Nethermind.Mev.Data;
 using Nethermind.Mev.Execution;
 using Nethermind.Mev.Source;
-using Nethermind.Runner.Ethereum.Api;
 using NSubstitute;
-using NSubstitute.Exceptions;
-using NSubstitute.ReturnsExtensions;
 using NUnit.Framework;
-using Nethermind.Mev.Test;
-using Nethermind.TxPool.Collections;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 
 namespace Nethermind.Mev.Test
 {
@@ -56,7 +54,7 @@ namespace Nethermind.Mev.Test
                 yield return new BundleTest(8, DefaultTimestamp, 0);
                 yield return new BundleTest(9, DefaultTimestamp, 3);
                 yield return new BundleTest(10, 8, 0, 
-                    p => p.AddBundle(new MevBundle(10, Array.Empty<Transaction>(), 5, 7)));
+                    p => p.AddBundle(new MevBundle(10, Array.Empty<BundleTransaction>(), 5, 7)));
                 yield return new BundleTest(11, DefaultTimestamp, 0);
                 yield return new BundleTest(12, DefaultTimestamp, 1);
                 yield return new BundleTest(15, DefaultTimestamp, 1);
@@ -98,14 +96,9 @@ namespace Nethermind.Mev.Test
         
             TestContext test = new TestContext(timestamper);
 
-            Transaction[] tx1 = new Transaction[]
-            {
-                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyD).TestObject
-            };
-            Transaction[] tx2 = new Transaction[]
-            {
-                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject
-            };
+            BundleTransaction[] tx1 = {Build.A.TypedTransaction<BundleTransaction>().SignedAndResolved(TestItem.PrivateKeyD).TestObject};
+            BundleTransaction[] tx2 = {Build.A.TypedTransaction<BundleTransaction>().SignedAndResolved(TestItem.PrivateKeyA).TestObject};
+            
             MevConfig mevConfig = new MevConfig();
             UInt256 bundleHorizon = mevConfig.BundleHorizon;
             MevBundle[] bundles = new []
@@ -127,15 +120,9 @@ namespace Nethermind.Mev.Test
         public void should_reject_bundle_without_transactions()
         {
            TestContext tc = new();
-           Transaction[] emptyArr = Array.Empty<Transaction>();
-           Transaction[] filledArr = new Transaction[]
-           {
-               Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyD).TestObject,
-               Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject
-           };
            
            //Adding empty transaction array bundles
-           MevBundle bundleNoTx1 = new MevBundle(10, emptyArr);
+           MevBundle bundleNoTx1 = new MevBundle(10, Array.Empty<BundleTransaction>());
            tc.BundlePool.AddBundle(bundleNoTx1).Should().BeFalse();
         }
         
@@ -145,10 +132,10 @@ namespace Nethermind.Mev.Test
         [TestCase(17, ExpectedResult = true)]
         public bool should_reject_bundle_on_block_before_head(long bundleBlock)
         { 
-            Transaction[] filledArr = new Transaction[]
+            BundleTransaction[] filledArr =
             {
-               Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyD).TestObject,
-               Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject
+               Build.A.TypedTransaction<BundleTransaction>().SignedAndResolved(TestItem.PrivateKeyD).TestObject,
+               Build.A.TypedTransaction<BundleTransaction>().SignedAndResolved(TestItem.PrivateKeyA).TestObject
             };
             
             TestContext tc = new TestContext();
@@ -168,11 +155,10 @@ namespace Nethermind.Mev.Test
 
             MevBundle replacedBundle = bundles[0];
 
-            Keccak[] txHashes = replacedBundle.Transactions.Select(t => t.Hash!).ToArray();
-            MevBundle replacingBundle = new(replacedBundle.BlockNumber, replacedBundle.Transactions, 10, 100, txHashes);
+            MevBundle replacingBundle = new(replacedBundle.BlockNumber, replacedBundle.Transactions, 10, 100);
             test.BundlePool.AddBundle(replacingBundle).Should().BeTrue();
 
-            test.BundlePool.GetBundles(5, 1).Should().BeEquivalentTo(replacingBundle);
+            test.BundlePool.GetBundles(5, 15).Should().BeEquivalentTo(replacingBundle);
         }
         
         [Test]
@@ -192,14 +178,14 @@ namespace Nethermind.Mev.Test
                 testContext.Simulator.ClearReceivedCalls();
             }
             testContext.Simulator.Simulate(Arg.Any<MevBundle>(), Arg.Any<BlockHeader>()).
-                Returns(SimulatedMevBundle.Cancelled(new MevBundle(1, new Transaction[]{}))).AndDoes(c => ss.Release());
+                Returns(SimulatedMevBundle.Cancelled(new MevBundle(1, Array.Empty<BundleTransaction>()))).AndDoes(c => ss.Release());
             int head = 4;
 
             await CheckSimulationsForBlock(head++, 1); //4 -> 5
             await CheckSimulationsForBlock(head++, 1); //5 -> 6
             await CheckSimulationsForBlock(head++, 0); //6 -> 7
             await CheckSimulationsForBlock(head++, 0); //7 -> 8
-            await CheckSimulationsForBlock(head++, 3); //8 -> 9
+            await CheckSimulationsForBlock(head, 3); //8 -> 9
         }
         
         [Test]
@@ -208,7 +194,7 @@ namespace Nethermind.Mev.Test
             TestContext test = new();
             Block block = Build.A.Block.WithNumber(5).TestObject;
             test.BlockTree.Head.Returns(block);
-            MevBundle mevBundle = new MevBundle(6, new[] {Build.A.Transaction.TestObject});
+            MevBundle mevBundle = new MevBundle(6, new[] {Build.A.TypedTransaction<BundleTransaction>().SignedAndResolved(TestItem.PrivateKeyA).TestObject});
             test.BundlePool.AddBundle(mevBundle);
             
             test.Simulator.Received(1).Simulate(mevBundle, block.Header, Arg.Any<CancellationToken>());
@@ -222,15 +208,14 @@ namespace Nethermind.Mev.Test
         [TestCase(5, new int[] {0, 0, 0, 0, 0, 3})]
         public async Task should_remove_simulations_on_eviction(long headDelta, int[] expectedSimulations)
         {
-            SemaphoreSlim ss = new SemaphoreSlim(0);
             int head = 3;
             IBundleSimulator bundleSimulator = Substitute.For<IBundleSimulator>();
-            Transaction[] emptyArr = new Transaction[]{};
-            SimulatedMevBundle successfulBundle = new SimulatedMevBundle(new MevBundle(1, emptyArr),
+            SimulatedMevBundle successfulBundle = new(new MevBundle(1, Array.Empty<BundleTransaction>()),
                 0, true, UInt256.Zero, UInt256.Zero, UInt256.Zero);
+
             bundleSimulator.Simulate(Arg.Any<MevBundle>(), Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>())
-                            .Returns( Task.FromResult(successfulBundle))
-                            .AndDoes(c => ss.Release());
+                .Returns(Task.FromResult(successfulBundle));
+
             TestContext tc = new(default, bundleSimulator, new MevConfig() {BundlePoolSize = 10}, head);
             ISimulatedBundleSource simulatedBundleSource = tc.BundlePool;
             
@@ -241,35 +226,42 @@ namespace Nethermind.Mev.Test
                         tc.Timestamper.UnixTime.Seconds,
                         long.MaxValue);
             }
-            
-            async Task CheckSimulatedBundles(int[] expectedSimulations)
+
+            long buildBlockNumber = head + headDelta;
+
+            async Task CheckSimulatedBundles(int[] expectedSimulationsLenght)
             {
-                int index = 0;
-                for (int i = 3; i <= 8; i++)
+                CancellationTokenSource cts = new(TestBlockchain.DefaultTimeout);
+                foreach (MevBundle bundle in tc.Bundles.Where(b => b.BlockNumber == buildBlockNumber + 1))
                 {
-                    for (int j = 0; j < expectedSimulations[index]; j++)
-                    {
-                        await ss.WaitAsync(TimeSpan.FromMilliseconds(10));
-                    }
-                    SimulatedMevBundle[] simulatedBundles = (await GetSimulatedBundlesForBlock(i)).ToArray();
-                    simulatedBundles.Length.Should().Be(expectedSimulations[index++]);
+                    await tc.BundlePool.WaitForSimulationToFinish(bundle, cts.Token);
+                }
+                
+                for (int i = 0; i < expectedSimulationsLenght.Length; i++)
+                {
+                    SimulatedMevBundle[] simulatedBundles = (await GetSimulatedBundlesForBlock(i + head)).ToArray();
+                    simulatedBundles.Length.Should().Be(expectedSimulationsLenght[i]);
                 }
             }
-            
-            tc.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.WithNumber(head+headDelta).TestObject));
+
+            tc.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.WithNumber(buildBlockNumber).TestObject));
             await CheckSimulatedBundles(expectedSimulations);
         }
         
         [Test]
-        public async Task should_remove_bundle_when_simulation_fails() //not working
+        public async Task should_remove_bundle_when_simulation_fails()
         {
-            
             var chain = await MevRpcModuleTests.CreateChain(1);
             chain.GasLimitCalculator.GasLimit = 10_000_000;
             
             Address contractAddress = await MevRpcModuleTests.Contracts.Deploy(chain, MevRpcModuleTests.Contracts.ReverterCode);
-            Transaction revertingBundleTx = Build.A.Transaction.WithGasLimit(MevRpcModuleTests.Contracts.LargeGasLimit).WithGasPrice(500).WithTo(contractAddress).WithData(Bytes.FromHexString(MevRpcModuleTests.Contracts.ReverterInvokeFail)).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
-            Transaction normalBundleTx = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            BundleTransaction revertingBundleTx = Build.A.TypedTransaction<BundleTransaction>()
+                .WithGasLimit(MevRpcModuleTests.Contracts.LargeGasLimit)
+                .WithGasPrice(500).WithTo(contractAddress)
+                .WithData(Bytes.FromHexString(MevRpcModuleTests.Contracts.ReverterInvokeFail))
+                .SignedAndResolved(TestItem.PrivateKeyC).TestObject;
+            
+            BundleTransaction normalBundleTx = Build.A.TypedTransaction<BundleTransaction>().SignedAndResolved(TestItem.PrivateKeyA).TestObject;
             
             MevBundle failingBundle = new(2, new[]{revertingBundleTx});
             MevBundle normalBundle = new(2, new[]{normalBundleTx});
@@ -277,10 +269,14 @@ namespace Nethermind.Mev.Test
             chain.BundlePool.AddBundle(failingBundle);
             chain.BundlePool.AddBundle(normalBundle);
 
+            CancellationTokenSource cts = new(TestBlockchain.DefaultTimeout);
+            (await chain.BundlePool.WaitForSimulationToFinish(failingBundle, cts.Token)).Should().BeFalse();
+            (await chain.BundlePool.WaitForSimulationToFinish(normalBundle, cts.Token)).Should().BeTrue();
+
+            await Task.Delay(10, cts.Token); //give time for background task to remove failed simulation
+            
             MevBundle[] bundlePoolBundles = chain.BundlePool.GetBundles(2, UInt256.Zero).ToArray();
-            bundlePoolBundles.Should().NotContain(failingBundle);
-            bundlePoolBundles.Should().Contain(normalBundle);
-            bundlePoolBundles.Length.Should().Be(1);
+            bundlePoolBundles.Should().BeEquivalentTo(normalBundle);
         }
         
         [TestCase(1u, 1)]
@@ -320,14 +316,15 @@ namespace Nethermind.Mev.Test
         
         private class TestContext
         {
-            public TestContext(ITimestamper? timestamper = null, IBundleSimulator? bundleSimulator = null, IMevConfig? config = null, long? BlockTreeHead = null, bool addTestBundles = true)
+            public TestContext(ITimestamper? timestamper = null, IBundleSimulator? bundleSimulator = null, IMevConfig? config = null, long? blockTreeHead = null, bool addTestBundles = true)
             {
-                Transaction CreateTransaction(PrivateKey privateKey) => Build.A.Transaction.SignedAndResolved(privateKey).TestObject;
-                
-                if (BlockTreeHead != null)
+                BundleTransaction CreateTransaction(PrivateKey privateKey) => Build.A.TypedTransaction<BundleTransaction>().SignedAndResolved(privateKey).TestObject;
+                if (blockTreeHead != null)
                 {
-                    BlockTree.Head.Returns(Build.A.Block.WithNumber((long) BlockTreeHead).TestObject);
+                    BlockTree.Head.Returns(Build.A.Block.WithNumber((long) blockTreeHead).TestObject);
                 }
+
+                BlockTree.ChainId.Returns((ulong) ChainId.Mainnet);
 
                 if (timestamper != null)
                 {
@@ -339,37 +336,45 @@ namespace Nethermind.Mev.Test
                     Simulator = bundleSimulator;
                 }
                 
-                BundlePool = new(
+                BundlePool = new TestBundlePool(
                     BlockTree,
                     Simulator,
                     Timestamper,
+                    new TxValidator(BlockTree.ChainId),
+                    new TestSpecProvider(London.Instance),
                     config ?? new MevConfig(),
                     LimboLogs.Instance);
 
                 if (!addTestBundles) return;
-                Transaction tx1 = CreateTransaction(TestItem.PrivateKeyA);
-                Transaction tx2 = CreateTransaction(TestItem.PrivateKeyB);
-                Transaction tx3 = CreateTransaction(TestItem.PrivateKeyC);
+                BundleTransaction tx1 = CreateTransaction(TestItem.PrivateKeyA);
+                BundleTransaction tx2 = CreateTransaction(TestItem.PrivateKeyB);
+                BundleTransaction tx3 = CreateTransaction(TestItem.PrivateKeyC);
 
-                BundlePool.AddBundle(CreateBundle(4, tx1));
-                BundlePool.AddBundle(CreateBundle(5, tx2));
-                BundlePool.AddBundle(CreateBundle(6, tx2));
-                BundlePool.AddBundle(new MevBundle(9, new []{tx1}, 0, 0));
-                BundlePool.AddBundle(new MevBundle(9, new []{tx2}, 10, 100));
-                BundlePool.AddBundle(new MevBundle(9, new []{tx3}, 5, 50));
-                BundlePool.AddBundle(CreateBundle(12, tx1, tx2, tx3));
-                BundlePool.AddBundle(CreateBundle(15, tx1, tx2));
+                AddBundle(CreateBundle(4, tx1));
+                AddBundle(CreateBundle(5, tx2));
+                AddBundle(CreateBundle(6, tx2));
+                AddBundle(new MevBundle(9, new []{tx1}, 0, 0));
+                AddBundle(new MevBundle(9, new []{tx2}, 10, 100));
+                AddBundle(new MevBundle(9, new []{tx3}, 5, 50));
+                AddBundle(CreateBundle(12, tx1, tx2, tx3));
+                AddBundle(CreateBundle(15, tx1, tx2));
             }
 
-            public IBundleSimulator Simulator { get; } = Substitute.For<IBundleSimulator>();
+            private void AddBundle(MevBundle bundle)
+            {
+                Bundles.Add(bundle);
+                BundlePool.AddBundle(bundle);
+            }
 
+            public List<MevBundle> Bundles = new();
+            public IBundleSimulator Simulator { get; } = Substitute.For<IBundleSimulator>();
             public IBlockTree BlockTree { get; } = Substitute.For<IBlockTree>();
-            public BundlePool BundlePool { get; }
+            public TestBundlePool BundlePool { get; }
 
             public ITimestamper Timestamper { get; private set; } =
                  new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(DefaultTimestamp)); 
             
-            private MevBundle CreateBundle(long blockNumber, params Transaction[] transactions) => new(blockNumber, transactions);
+            private MevBundle CreateBundle(long blockNumber, params BundleTransaction[] transactions) => new(blockNumber, transactions);
         }
     }
 }

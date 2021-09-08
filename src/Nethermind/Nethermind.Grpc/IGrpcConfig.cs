@@ -18,7 +18,7 @@ using Nethermind.Config;
 
 namespace Nethermind.Grpc
 {
-    [ConfigCategory(HiddenFromDocs = true)]
+    [ConfigCategory(DisabledForCli = true, HiddenFromDocs = true)]
     public interface IGrpcConfig : IConfig
     {
         [ConfigItem(Description = "If 'false' then it disables gRPC protocol", DefaultValue = "false")]

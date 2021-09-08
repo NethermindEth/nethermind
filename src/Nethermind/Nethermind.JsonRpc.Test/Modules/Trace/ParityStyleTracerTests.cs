@@ -40,6 +40,7 @@ using NUnit.Framework;
 using Nethermind.Evm.Tracing.ParityStyle;
 using System.Threading;
 using System;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
 
@@ -52,7 +53,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
         private BlockchainProcessor _processor;
         private BlockTree _blockTree;
         private Tracer _tracer;
-        private IJsonRpcConfig _jsonRpcConfig = new JsonRpcConfig();
+        private readonly IJsonRpcConfig _jsonRpcConfig = new JsonRpcConfig();
 
         [SetUp]
         public void Setup()
@@ -60,32 +61,32 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             IDb blocksDb = new MemDb();
             IDb blocksInfoDb = new MemDb();
             IDb headersDb = new MemDb();
-            ChainLevelInfoRepository repository = new ChainLevelInfoRepository(blocksInfoDb);
+            ChainLevelInfoRepository repository = new(blocksInfoDb);
             ISpecProvider specProvider = MainnetSpecProvider.Instance;
             _blockTree = new BlockTree(blocksDb, headersDb, blocksInfoDb, repository, specProvider, NullBloomStorage.Instance, new SyncConfig(), LimboLogs.Instance);
 
-            MemDb stateDb = new MemDb();
-            MemDb codeDb = new MemDb();
+            MemDb stateDb = new();
+            MemDb codeDb = new();
             ITrieStore trieStore = new TrieStore(stateDb, LimboLogs.Instance).AsReadOnly();
-            StateProvider stateProvider = new StateProvider(trieStore, codeDb, LimboLogs.Instance);
-            StorageProvider storageProvider = new StorageProvider(trieStore, stateProvider, LimboLogs.Instance);
+            StateProvider stateProvider = new(trieStore, codeDb, LimboLogs.Instance);
+            StorageProvider storageProvider = new(trieStore, stateProvider, LimboLogs.Instance);
 
-            BlockhashProvider blockhashProvider = new BlockhashProvider(_blockTree, LimboLogs.Instance);
-            VirtualMachine virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, specProvider, LimboLogs.Instance);
-            TransactionProcessor transactionProcessor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, LimboLogs.Instance);
+            BlockhashProvider blockhashProvider = new(_blockTree, LimboLogs.Instance);
+            VirtualMachine virtualMachine = new(stateProvider, storageProvider, blockhashProvider, specProvider, LimboLogs.Instance);
+            TransactionProcessor transactionProcessor = new(specProvider, stateProvider, storageProvider, virtualMachine, LimboLogs.Instance);
             
-            BlockProcessor blockProcessor = new BlockProcessor(
+            BlockProcessor blockProcessor = new(
                 specProvider,
                 Always.Valid,
                 NoBlockRewards.Instance,
-                transactionProcessor,
+                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
                 stateProvider,
                 storageProvider,
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,
                 LimboLogs.Instance);
 
-            var txRecovery = new RecoverSignatures(new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance), NullTxPool.Instance, specProvider, LimboLogs.Instance);
+            RecoverSignatures txRecovery = new(new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance), NullTxPool.Instance, specProvider, LimboLogs.Instance);
             _processor = new BlockchainProcessor(_blockTree, blockProcessor, txRecovery, LimboLogs.Instance, BlockchainProcessor.Options.NoReceipts);
 
             Block genesis = Build.A.Block.Genesis.TestObject;
@@ -98,7 +99,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
         [Test]
         public void Can_trace_raw_parity_style()
         {
-            TraceRpcModule traceRpcModule = new TraceRpcModule(NullReceiptStorage.Instance, _tracer, _blockTree, _jsonRpcConfig);
+            TraceRpcModule traceRpcModule = new(NullReceiptStorage.Instance, _tracer, _blockTree, _jsonRpcConfig, MainnetSpecProvider.Instance, LimboLogs.Instance);
             ResultWrapper<ParityTxTraceFromReplay> result = traceRpcModule.trace_rawTransaction(Bytes.FromHexString("f889808609184e72a00082271094000000000000000000000000000000000000000080a47f74657374320000000000000000000000000000000000000000000000000000006000571ca08a8bbf888cfa37bbf0bb965423625641fc956967b81d12e23709cead01446075a01ce999b56a8a88504be365442ea61239198e23d1fce7d00fcfc5cd3b44b7215f"), new[] {"trace"});
             Assert.NotNull(result.Data);
         }
@@ -106,7 +107,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
         [Test]
         public void Can_trace_raw_parity_style_berlin_tx()
         {
-            TraceRpcModule traceRpcModule = new TraceRpcModule(NullReceiptStorage.Instance, _tracer, _blockTree, _jsonRpcConfig);
+            TraceRpcModule traceRpcModule = new(NullReceiptStorage.Instance, _tracer, _blockTree, _jsonRpcConfig, MainnetSpecProvider.Instance, LimboLogs.Instance);
             ResultWrapper<ParityTxTraceFromReplay> result = traceRpcModule.trace_rawTransaction(Bytes.FromHexString("01f85b821e8e8204d7847735940083030d408080853a60005500c080a0f43e70c79190701347517e283ef63753f6143a5225cbb500b14d98eadfb7616ba070893923d8a1fc97499f426524f9e82f8e0322dfac7c3d7e8a9eee515f0bcdc4"), new[] {"trace"});
             Assert.NotNull(result.Data);
         }

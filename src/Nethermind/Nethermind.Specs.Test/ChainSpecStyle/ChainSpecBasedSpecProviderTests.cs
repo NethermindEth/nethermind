@@ -118,13 +118,16 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                 MainnetSpecProvider.IstanbulBlockNumber,
                 MainnetSpecProvider.MuirGlacierBlockNumber - 1,
                 MainnetSpecProvider.MuirGlacierBlockNumber,
+                MainnetSpecProvider.BerlinBlockNumber - 1,
                 MainnetSpecProvider.BerlinBlockNumber,
-                MainnetSpecProvider.BerlinBlockNumber,
+                MainnetSpecProvider.LondonBlockNumber - 1,
+                MainnetSpecProvider.LondonBlockNumber,
                 99000000, // far in the future
             };
 
             CompareSpecProviders(mainnet, provider, blockNumbersToTest);
 
+            Assert.AreEqual(MainnetSpecProvider.LondonBlockNumber, provider.GenesisSpec.Eip1559TransitionBlock);
             Assert.AreEqual(0_000_000, provider.GetSpec(4_369_999).DifficultyBombDelay);
             Assert.AreEqual(3_000_000, provider.GetSpec(4_370_000).DifficultyBombDelay);
             Assert.AreEqual(3_000_000, provider.GetSpec(7_279_999).DifficultyBombDelay);
@@ -133,7 +136,9 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(5_000_000, provider.GetSpec(9_199_999).DifficultyBombDelay);
             Assert.AreEqual(9_000_000, provider.GetSpec(9_200_000).DifficultyBombDelay);
             Assert.AreEqual(9_000_000, provider.GetSpec(12_000_000).DifficultyBombDelay);
-            Assert.AreEqual(9_000_000, provider.GetSpec(15_000_000).DifficultyBombDelay);
+            Assert.AreEqual(9_000_000, provider.GetSpec(12_964_999).DifficultyBombDelay);
+            Assert.AreEqual(9_700_000, provider.GetSpec(12_965_000).DifficultyBombDelay);
+            Assert.AreEqual(9_700_000, provider.GetSpec(15_000_000).DifficultyBombDelay);
         }
 
         private static void CompareSpecProviders(
@@ -164,7 +169,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                 .Where(p => isMainnet || p.Name != nameof(IReleaseSpec.BlockReward))
                 .Where(p => isMainnet || checkDifficultyBomb || p.Name != nameof(IReleaseSpec.DifficultyBombDelay))
                 .Where(p => isMainnet || checkDifficultyBomb || p.Name != nameof(IReleaseSpec.DifficultyBoundDivisor))
-                .Where(p => isMainnet || p.Name != nameof(IReleaseSpec.Eip1559TransitionBlock)))
+                .Where(p => p.Name != nameof(IReleaseSpec.Eip1559TransitionBlock)))
             {
                 Assert.AreEqual(propertyInfo.GetValue(oldSpec), propertyInfo.GetValue(newSpec),
                     blockNumber + "." + propertyInfo.Name);

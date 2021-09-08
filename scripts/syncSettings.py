@@ -61,7 +61,39 @@ configs = {
         "blockReduced": 8192,
         "multiplierRequirement": 10000
     },
-    # beam sections
+    # mev section
+    "mainnet_mev": {
+        "url": "api.etherscan.io",
+        "blockReduced": 2000,
+        "multiplierRequirement": 2000
+    },
+    "goerli_mev": {
+        "url": "api-goerli.etherscan.io",
+        "blockReduced": 8192,
+        "multiplierRequirement": 30000 
+    },
+    "xdai_mev": {
+        "url": "https://dai.poa.network",
+        "blockReduced": 8192,
+        "multiplierRequirement": 10000
+    },
+    # pruned mev section
+    "mainnet_pruned_mev": {
+        "url": "api.etherscan.io",
+        "blockReduced": 2000,
+        "multiplierRequirement": 2000
+    },
+    "goerli_pruned_mev": {
+        "url": "api-goerli.etherscan.io",
+        "blockReduced": 8192,
+        "multiplierRequirement": 30000 
+    },
+    "xdai_pruned_mev": {
+        "url": "https://dai.poa.network",
+        "blockReduced": 8192,
+        "multiplierRequirement": 10000
+    },
+    # beam section
     "mainnet_beam": {
         "url": "api.etherscan.io",
         "blockReduced": 2000,
@@ -87,7 +119,7 @@ configs = {
         "blockReduced": 8192,
         "multiplierRequirement": 10000
     },
-    # pruning sections
+    # pruning section
     "mainnet_pruned": {
         "url": "api.etherscan.io",
         "blockReduced": 2000,
@@ -133,7 +165,7 @@ configs = {
         "blockReduced": 8192,
         "multiplierRequirement": 10000
     },
-    # ndm sections
+    # ndm section
     "ndm_consumer_mainnet": {
         "url": "api.etherscan.io",
         "blockReduced": 2000,
