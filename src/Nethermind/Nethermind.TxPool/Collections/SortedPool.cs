@@ -158,6 +158,10 @@ namespace Nethermind.TxPool.Collections
                     if (_buckets.TryGetValue(groupMapping, out bucket))
                     {
                         bucket!.Remove(value);
+                        if (bucket.Count == 0)
+                        {
+                            _buckets.Remove(groupMapping);
+                        }
                         return true;
                     }
                     
