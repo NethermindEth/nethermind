@@ -27,7 +27,7 @@ namespace Nethermind.Blockchain.Producers
 {
     public class BuildBlocksOnlyWhenNotProcessing : IBlockProductionTrigger, IDisposable
     {
-        private const int ChainNotYetProcessedMillisecondsDelay = 100;
+        public const int ChainNotYetProcessedMillisecondsDelay = 100;
         private readonly IBlockProductionTrigger _blockProductionTrigger;
         private readonly IBlockProcessingQueue _blockProcessingQueue;
         private readonly IBlockTree _blockTree;
@@ -84,18 +84,42 @@ namespace Nethermind.Blockchain.Producers
 
         }
 
-        private void OnTriggerBlockProduction(object? sender, BlockProductionEventArgs e)
+        private void OnTriggerBlockProduction(object? sender, BlockProductionEventArgs e) => InvokeTriggerBlockProduction(e);
+
+        private void InvokeTriggerBlockProduction(BlockProductionEventArgs e)
         {
-            if (_canProduce == 1 && _blockProcessingQueue.IsEmpty)
+            if (CanTriggerBlockProduction)
             {
+                // if we can trigger production lets do it directly, this should be most common case
                 TriggerBlockProduction?.Invoke(this, e);
             }
             else
             {
-                if (_logger.IsDebug) _logger.Debug($"Delaying producing block, chain not processed yet. BlockProcessingQueue count {_blockProcessingQueue.Count}.");
-                e.BlockProductionTask = Task.Delay(ChainNotYetProcessedMillisecondsDelay, e.CancellationToken)
-                    .ContinueWith(t => (Block?)null);
+                // otherwise set delayed production task
+                // we need to clone event args as its BlockProductionTask will be awaited in delayed production task
+                e.BlockProductionTask = InvokeTriggerBlockProductionDelayed(e.Clone());
             }
+        }
+
+        private bool CanTriggerBlockProduction => _canProduce == 1 && _blockProcessingQueue.IsEmpty;
+        
+
+        private async Task<Block?> InvokeTriggerBlockProductionDelayed(BlockProductionEventArgs e)
+        {
+            // retry production until its allowed or its cancelled
+            bool wasNotCancelled = !e.CancellationToken.IsCancellationRequested;
+            while (!CanTriggerBlockProduction && wasNotCancelled)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Delaying producing block, chain not processed yet. BlockProcessingQueue count {_blockProcessingQueue.Count}.");
+                await Task.Delay(ChainNotYetProcessedMillisecondsDelay, e.CancellationToken);
+            }
+
+            if (wasNotCancelled)
+            {
+                TriggerBlockProduction?.Invoke(this, e);
+            }
+
+            return await e.BlockProductionTask;
         }
 
         public event EventHandler<BlockProductionEventArgs>? TriggerBlockProduction;

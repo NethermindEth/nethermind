@@ -31,22 +31,7 @@ namespace Nethermind.Blockchain.Producers
             if (txPool == null) throw new ArgumentNullException(nameof(txPool));
             return new TriggerWithCondition(trigger, () => txPool.GetPendingTransactionsCount() > 0);
         }
-        
-        public static IBlockProductionTrigger IfNotProcessing(
-            this IBlockProductionTrigger? trigger, 
-            IBlockProcessingQueue? blockProcessingQueue,
-            IBlockTree? blockTree,
-            ILogManager logManager,
-            bool waitForInitialSync = true)
-        {
-            if (trigger == null) throw new ArgumentNullException(nameof(trigger));
-            if (blockProcessingQueue == null) throw new ArgumentNullException(nameof(blockProcessingQueue));
-            if (blockTree == null) throw new ArgumentNullException(nameof(blockTree));
-            if (logManager == null) throw new ArgumentNullException(nameof(logManager));
 
-            return new BuildBlocksOnlyWhenNotProcessing(trigger, blockProcessingQueue, blockTree, logManager, waitForInitialSync);
-        }
-        
         public static IBlockProductionTrigger Or(this IBlockProductionTrigger? trigger, IBlockProductionTrigger? alternative)
         {
             if (trigger == null) throw new ArgumentNullException(nameof(trigger));
