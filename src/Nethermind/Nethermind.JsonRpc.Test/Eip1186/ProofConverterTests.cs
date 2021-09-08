@@ -23,7 +23,6 @@ using Nethermind.JsonRpc.Test.Data;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Proofs;
-using Nethermind.Db.Blooms;
 using Nethermind.Logging;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;

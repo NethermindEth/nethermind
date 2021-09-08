@@ -15,12 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Net;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core.Test.Builders;
 using Nethermind.JsonRpc.Modules.Net;
 using Nethermind.Logging;
-using Nethermind.Network;
 using Nethermind.Synchronization;
 using NSubstitute;
 using NUnit.Framework;
