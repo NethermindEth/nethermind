@@ -26,6 +26,7 @@ namespace Ethereum.Blockchain.Test
     public class BadOpcodeTests : GeneralStateTestBase
     {
         [TestCaseSource(nameof(LoadTests))]
+        [Retry(3)]
         public void Test(GeneralStateTest test)
         {
             Assert.True(RunTest(test).Pass);

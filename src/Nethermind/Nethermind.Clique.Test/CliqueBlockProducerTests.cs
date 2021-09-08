@@ -213,7 +213,7 @@ namespace Nethermind.Clique.Test
             private Block GetGenesis(int validatorsCount = 2)
             {
                 Keccak parentHash = Keccak.Zero;
-                Keccak ommersHash = Keccak.OfAnEmptySequenceRlp;
+                Keccak unclesHash = Keccak.OfAnEmptySequenceRlp;
                 Address beneficiary = Address.Zero;
                 UInt256 difficulty = new UInt256(1);
                 long number = 0L;
@@ -230,7 +230,7 @@ namespace Nethermind.Clique.Test
                 extraDataHex += "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
 
                 byte[] extraData = Bytes.FromHexString(extraDataHex);
-                BlockHeader header = new BlockHeader(parentHash, ommersHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData);
+                BlockHeader header = new BlockHeader(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData);
                 Block genesis = new Block(header);
                 genesis.Header.Hash = genesis.Header.CalculateHash();
                 genesis.Header.StateRoot = Keccak.EmptyTreeHash;

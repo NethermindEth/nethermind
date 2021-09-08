@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using Nethermind.Abi;
@@ -28,6 +29,7 @@ namespace Nethermind.Blockchain.Contracts.Json
     public class AbiDefinitionParser : IAbiDefinitionParser
     {
         private readonly JsonSerializer _serializer;
+        private readonly IList<IAbiTypeFactory> _abiTypeFactories = new List<IAbiTypeFactory>(); 
 
         public AbiDefinitionParser()
         {
@@ -44,6 +46,11 @@ namespace Nethermind.Blockchain.Contracts.Json
         {
             using var reader = LoadResource(type);
             return Parse(reader, type.Name);
+        }
+
+        public void RegisterAbiTypeFactory(IAbiTypeFactory abiTypeFactory)
+        {
+            _abiTypeFactories.Add(abiTypeFactory);
         }
 
         public string LoadContract(Type type)
@@ -78,12 +85,12 @@ namespace Nethermind.Blockchain.Contracts.Json
             return new StreamReader(stream);
         }
 
-        private static JsonSerializerSettings GetJsonSerializerSettings()
+        private JsonSerializerSettings GetJsonSerializerSettings()
         {
             var jsonSerializerSettings = new JsonSerializerSettings();
             jsonSerializerSettings.Converters.Add(new AbiDefinitionConverter());
-            jsonSerializerSettings.Converters.Add(new AbiEventParameterConverter());
-            jsonSerializerSettings.Converters.Add(new AbiParameterConverter());
+            jsonSerializerSettings.Converters.Add(new AbiEventParameterConverter(_abiTypeFactories));
+            jsonSerializerSettings.Converters.Add(new AbiParameterConverter(_abiTypeFactories));
             jsonSerializerSettings.Converters.Add(new StringEnumConverter() {NamingStrategy = new LowerCaseNamingStrategy()});
             jsonSerializerSettings.Converters.Add(new AbiTypeConverter());
             jsonSerializerSettings.Formatting = Formatting.Indented;

@@ -26,6 +26,7 @@ using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Services;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Validators;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
@@ -34,8 +35,10 @@ using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Converters;
 using Nethermind.JsonRpc.Modules.DebugModule;
+using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -82,6 +85,7 @@ namespace Nethermind.Init.Steps
             IInitConfig initConfig = getApi.Config<IInitConfig>();
             ISyncConfig syncConfig = getApi.Config<ISyncConfig>();
             IPruningConfig pruningConfig = getApi.Config<IPruningConfig>();
+            IMiningConfig miningConfig = getApi.Config<IMiningConfig>();
 
             if (syncConfig.DownloadReceiptsInFastSync && !syncConfig.DownloadBodiesInFastSync)
             {
@@ -200,7 +204,7 @@ namespace Nethermind.Init.Steps
             /* validation */
             IHeaderValidator? headerValidator = setApi.HeaderValidator = CreateHeaderValidator();
 
-            OmmersValidator ommersValidator = new(
+            UnclesValidator unclesValidator = new(
                 getApi.BlockTree,
                 headerValidator,
                 getApi.LogManager);
@@ -208,7 +212,7 @@ namespace Nethermind.Init.Steps
             IBlockValidator? blockValidator = setApi.BlockValidator = new BlockValidator(
                 txValidator,
                 headerValidator,
-                ommersValidator,
+                unclesValidator,
                 getApi.SpecProvider,
                 getApi.LogManager);
 
@@ -226,10 +230,13 @@ namespace Nethermind.Init.Steps
                 {
                     AutoProcess = !syncConfig.BeamSync,
                     StoreReceiptsByDefault = initConfig.StoreReceipts,
+                    DumpOptions = initConfig.AutoDump
                 });
 
             setApi.BlockProcessingQueue = blockchainProcessor;
             setApi.BlockchainProcessor = blockchainProcessor;
+            setApi.GasPriceOracle = new GasPriceOracle(_api.BlockTree, _api.SpecProvider, miningConfig.MinGasPrice);
+            setApi.EthSyncingInfo = new EthSyncingInfo(_api.BlockTree);
 
             if (syncConfig.BeamSync)
             {

@@ -15,6 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using Nethermind.Core.Extensions;
 
@@ -22,7 +24,7 @@ namespace Nethermind.Abi
 {
     public class AbiFixedLengthArray : AbiType
     {
-        private readonly AbiType _elementType;
+        public AbiType ElementType { get; }
 
         public AbiFixedLengthArray(AbiType elementType, int length)
         {
@@ -31,35 +33,21 @@ namespace Nethermind.Abi
                 throw new ArgumentException($"Length of {nameof(AbiFixedLengthArray)} has to be greater than 0", nameof(length));
             }
 
-            _elementType = elementType;
+            ElementType = elementType;
             Length = length;
-            CSharpType = _elementType.CSharpType.MakeArrayType();
+            Name =  $"{ElementType}[{Length}]";
+            CSharpType = ElementType.CSharpType.MakeArrayType();
+            IsDynamic = Length != 0 && ElementType.IsDynamic;
         }
 
-        public override bool IsDynamic => Length != 0 && _elementType.IsDynamic;
+        public override bool IsDynamic { get; }
 
         public int Length { get; }
 
-        public override string Name => $"{_elementType}[{Length}]";
+        public override string Name { get; }
 
-        public override (object, int) Decode(byte[] data, int position, bool packed)
-        {
-            Array result = Array.CreateInstance(_elementType.CSharpType, Length);
-
-            if (_elementType.IsDynamic)
-            {
-                position += (Length - 1) * UInt256.LengthInBytes;
-            }
-
-            for (int i = 0; i < Length; i++)
-            {
-                (object element, int newPosition) = _elementType.Decode(data, position, packed);
-                result.SetValue(element, i);
-                position = newPosition;
-            }
-
-            return (result, position);
-        }
+        public override (object, int) Decode(byte[] data, int position, bool packed) => 
+            DecodeSequence(ElementType.CSharpType, Length, ElementTypes, data, packed, position);
 
         public override byte[] Encode(object? arg, bool packed)
         {
@@ -70,41 +58,21 @@ namespace Nethermind.Abi
                     throw new AbiException(AbiEncodingExceptionMessage);
                 }
 
-                if (_elementType.IsDynamic)
-                {
-                    byte[][] encodedItems = new byte[Length * 2 - 1][];
-                    BigInteger currentOffset = (Length - 1) * UInt256.LengthInBytes;
-                    int i = 0;
-                    foreach (object? o in input)
-                    {
-                        encodedItems[Length + i - 1] = _elementType.Encode(o, packed);
-                        if (i != 0)
-                        {
-                            encodedItems[i - 1] = UInt256.Encode(currentOffset, packed);
-                            currentOffset += new BigInteger(encodedItems[Length + i - 1].Length);
-                        }
-
-                        i++;
-                    }
-
-                    return Bytes.Concat(encodedItems);
-                }
-                else
-                {
-                    byte[][] encodedItems = new byte[Length][];
-                    int i = 0;
-                    foreach (object? o in input)
-                    {
-                        encodedItems[i++] = _elementType.Encode(o, packed);
-                    }
-
-                    return Bytes.Concat(encodedItems);
-                }
+                byte[][] encodedItems = EncodeSequence(input.Length, ElementTypes, input.Cast<object?>(), packed);
+                return Bytes.Concat(encodedItems);
             }
 
             throw new AbiException(AbiEncodingExceptionMessage);
         }
 
         public override Type CSharpType { get; }
+        
+        private IEnumerable<AbiType> ElementTypes
+        {
+            get
+            {
+                yield return ElementType;
+            }
+        }
     }
 }

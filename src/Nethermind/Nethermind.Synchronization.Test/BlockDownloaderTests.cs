@@ -403,13 +403,13 @@ namespace Nethermind.Synchronization.Test
                 return true;
             }
 
-            public bool Validate(BlockHeader header, BlockHeader parent, bool isOmmer)
+            public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle)
             {
                 Thread.Sleep(1000);
                 return true;
             }
 
-            public bool Validate(BlockHeader header, bool isOmmer)
+            public bool Validate(BlockHeader header, bool isUncle)
             {
                 Thread.Sleep(1000);
                 return true;
@@ -1042,7 +1042,7 @@ namespace Nethermind.Synchronization.Test
                     {
                         Keccak receiptRoot = i == 1 ? Keccak.EmptyTreeHash : new Keccak("0x9904791428367d3f36f2be68daf170039dd0b3d6b23da00697de816a05fb5cc1");
                         headers[i] = consistent
-                            ? Build.A.BlockHeader.WithReceiptsRoot(receiptRoot).WithParent(headers[i - 1]).WithOmmersHash(noBody ? Keccak.OfAnEmptySequenceRlp : Keccak.Zero).TestObject
+                            ? Build.A.BlockHeader.WithReceiptsRoot(receiptRoot).WithParent(headers[i - 1]).WithUnclesHash(noBody ? Keccak.OfAnEmptySequenceRlp : Keccak.Zero).TestObject
                             : Build.A.BlockHeader.WithReceiptsRoot(receiptRoot).WithNumber(headers[i - 1].Number + 1).TestObject;
 
                         if (allKnown)
@@ -1117,7 +1117,7 @@ namespace Nethermind.Synchronization.Test
                         }
 
                         Block block = blockBuilder.TestObject;
-                        blockBodies[i] = new BlockBody(block.Transactions, block.Ommers);
+                        blockBodies[i] = new BlockBody(block.Transactions, block.Uncles);
                         _bodies[blockHashes[i]] = blockBodies[i];
 
                         if (allKnown)

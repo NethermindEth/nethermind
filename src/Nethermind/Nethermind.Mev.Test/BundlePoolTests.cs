@@ -21,35 +21,23 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Threading;
-using System.Threading.Tasks;
 using FluentAssertions;
-using FluentAssertions.Common;
-using Microsoft.AspNetCore.Mvc;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Validators;
-using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Mev.Data;
 using Nethermind.Mev.Execution;
 using Nethermind.Mev.Source;
-using Nethermind.Runner.Ethereum.Api;
 using NSubstitute;
-using NSubstitute.Exceptions;
-using NSubstitute.ReturnsExtensions;
 using NUnit.Framework;
-using Nethermind.Mev.Test;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.TxPool.Collections;
 
 namespace Nethermind.Mev.Test
 {

@@ -16,6 +16,7 @@
 
 using System;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
@@ -26,6 +27,8 @@ using Nethermind.Logging;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
 using Nethermind.Facade;
+using Nethermind.Facade.Eth;
+using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.State;
 using Nethermind.TxPool;
@@ -49,7 +52,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             ITxPool txPool = NullTxPool.Instance;
             IDbProvider dbProvider = await TestMemDbProvider.InitAsync();
 
-            BlockTree blockTree = new BlockTree(
+            BlockTree blockTree = new(
                 dbProvider.BlocksDb,
                 dbProvider.HeadersDb,
                 dbProvider.BlockInfosDb,
@@ -69,7 +72,9 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Substitute.For<IStateReader>(),
                 Substitute.For<IBlockchainBridgeFactory>(),
                 Substitute.For<ISpecProvider>(),
-                Substitute.For<IGasPriceOracle>()),
+                Substitute.For<IReceiptStorage>(),
+                Substitute.For<IGasPriceOracle>(),
+                Substitute.For<IEthSyncingInfo>()),		
                  1, 1000);
         }
 

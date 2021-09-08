@@ -20,7 +20,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 {
-    public class PooledTransactionsMessageSerializer : IZeroMessageSerializer<PooledTransactionsMessage>
+    public class PooledTransactionsMessageSerializer : IZeroInnerMessageSerializer<PooledTransactionsMessage>
     {
         private readonly TransactionsMessageSerializer _txsMessageDeserializer = new();
         
@@ -34,6 +34,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             NettyRlpStream rlpStream = new(byteBuffer);
             Transaction[] txs = _txsMessageDeserializer.DeserializeTxs(rlpStream);
             return new PooledTransactionsMessage(txs);
+        }
+
+        public int GetLength(PooledTransactionsMessage message, out int contentLength)
+        {
+            return _txsMessageDeserializer.GetLength(message, out contentLength);
         }
     }
 }

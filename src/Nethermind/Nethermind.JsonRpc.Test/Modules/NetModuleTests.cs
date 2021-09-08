@@ -32,9 +32,9 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void NetPeerCountSuccessTest()
         {
-            Enode enode = new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303);
-            NetBridge netBridge = new NetBridge(enode, Substitute.For<ISyncServer>());
-            NetRpcModule rpcModule = new NetRpcModule(LimboLogs.Instance, netBridge);
+            Enode enode = new(TestItem.PublicKeyA, IPAddress.Loopback, 30303);
+            NetBridge netBridge = new(enode, Substitute.For<ISyncServer>());
+            NetRpcModule rpcModule = new(LimboLogs.Instance, netBridge);
             string response = RpcTest.TestSerializedRequest<INetRpcModule>(rpcModule, "net_peerCount");
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x0\",\"id\":67}", response);
         }
@@ -42,9 +42,9 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void NetVersionSuccessTest()
         {
-            Enode enode = new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303);
-            NetBridge netBridge = new NetBridge(enode, Substitute.For<ISyncServer>());
-            NetRpcModule rpcModule = new NetRpcModule(LimboLogs.Instance, netBridge);
+            Enode enode = new(TestItem.PublicKeyA, IPAddress.Loopback, 30303);
+            NetBridge netBridge = new(enode, Substitute.For<ISyncServer>());
+            NetRpcModule rpcModule = new(LimboLogs.Instance, netBridge);
             string response = RpcTest.TestSerializedRequest<INetRpcModule>(rpcModule, "net_version");
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0\",\"id\":67}", response);
         }
@@ -52,9 +52,9 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void NetListeningSuccessTest()
         {
-            Enode enode = new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303);
-            NetBridge netBridge = new NetBridge(enode, Substitute.For<ISyncServer>());
-            NetRpcModule rpcModule = new NetRpcModule(LimboLogs.Instance, netBridge);
+            Enode enode = new(TestItem.PublicKeyA, IPAddress.Loopback, 30303);
+            NetBridge netBridge = new(enode, Substitute.For<ISyncServer>());
+            NetRpcModule rpcModule = new(LimboLogs.Instance, netBridge);
             string response = RpcTest.TestSerializedRequest<INetRpcModule>(rpcModule, "net_listening");
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}", response);
         }

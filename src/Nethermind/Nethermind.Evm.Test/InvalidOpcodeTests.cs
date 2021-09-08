@@ -161,7 +161,7 @@ namespace Nethermind.Evm.Test
         public void Test(long blockNumber)
         {
             ILogger logger = _logManager.GetClassLogger();
-            var validOpcodes = _validOpcodes[blockNumber];
+            Instruction[] validOpcodes = _validOpcodes[blockNumber];
             for (int i = 0; i <= byte.MaxValue; i++)
             {
                 logger.Info($"============ Testing opcode {i}==================");
@@ -170,7 +170,7 @@ namespace Nethermind.Evm.Test
                     .Done;
 
                 bool isValidOpcode = ((Instruction)i != Instruction.INVALID) && validOpcodes.Contains((Instruction)i);
-                var result = Execute(blockNumber, 1_000_000, code);
+                TestAllTracerWithOutput result = Execute(blockNumber, 1_000_000, code);
 
                 if (isValidOpcode)
                 {

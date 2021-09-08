@@ -121,8 +121,8 @@ namespace Nethermind.AuRa.Test.Contract
                 dataContract.IncrementalChanges.Returns(true);
             }
 
-            var blockTree = Substitute.For<IBlockTree>();
-            var receiptsFinder = Substitute.For<IReceiptFinder>();
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            IReceiptFinder receiptsFinder = Substitute.For<IReceiptFinder>();
             receiptsFinder.Get(Arg.Any<Block>()).Returns(Array.Empty<TxReceipt>());
 
             return new TestCase<T>()

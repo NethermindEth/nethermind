@@ -31,12 +31,6 @@ namespace Nethermind.Core.Caching
         private readonly Dictionary<TKey, LinkedListNode<TKey>> _cacheMap;
         private readonly LinkedList<TKey> _lruList;
 
-        public void Clear()
-        {
-            _cacheMap.Clear();
-            _lruList.Clear();
-        }
-
         public LruKeyCache(int maxCapacity, int startCapacity, string name)
         {
             _maxCapacity = maxCapacity;
@@ -51,6 +45,13 @@ namespace Nethermind.Core.Caching
             : this(maxCapacity, 0, name)
         {
         }
+        
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public void Clear()
+        {
+            _cacheMap.Clear();
+            _lruList.Clear();
+        }        
 
         [MethodImpl(MethodImplOptions.Synchronized)]
         public bool Get(TKey key)

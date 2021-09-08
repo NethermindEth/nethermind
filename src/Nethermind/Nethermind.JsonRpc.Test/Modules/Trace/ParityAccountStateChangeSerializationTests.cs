@@ -29,7 +29,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
         [Test]
         public void Can_serialize()
         {
-            ParityAccountStateChange result = new ParityAccountStateChange();
+            ParityAccountStateChange result = new();
             result.Balance = new ParityStateChange<UInt256?>(1, 2);
             result.Nonce = new ParityStateChange<UInt256?>(0, 1);
             result.Storage = new Dictionary<UInt256, ParityStateChange<byte[]>>();
@@ -41,7 +41,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
         [Test]
         public void Can_serialize_null_to_1_change()
         {
-            ParityAccountStateChange result = new ParityAccountStateChange();
+            ParityAccountStateChange result = new();
             result.Balance = new ParityStateChange<UInt256?>(null, 1);
 
             TestToJson(result, "{\"balance\":{\"+\":\"0x1\"},\"code\":\"=\",\"nonce\":\"=\",\"storage\":{}}");
@@ -50,7 +50,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
         [Test]
         public void Can_serialize_1_to_null()
         {
-            ParityAccountStateChange result = new ParityAccountStateChange();
+            ParityAccountStateChange result = new();
             result.Balance = new ParityStateChange<UInt256?>(1, null);
 
             TestToJson(result, "{\"balance\":{\"*\":{\"from\":\"0x1\",\"to\":null}},\"code\":\"=\",\"nonce\":\"=\",\"storage\":{}}");
@@ -59,7 +59,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
         [Test]
         public void Can_serialize_nulls()
         {
-            ParityAccountStateChange result = new ParityAccountStateChange();
+            ParityAccountStateChange result = new();
 
             TestToJson(result, "{\"balance\":\"=\",\"code\":\"=\",\"nonce\":\"=\",\"storage\":{}}");
         }

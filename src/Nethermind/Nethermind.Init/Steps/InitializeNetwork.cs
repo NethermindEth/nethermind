@@ -395,8 +395,10 @@ namespace Nethermind.Init.Steps
             _api.MessageSerializationService.Register(new AuthEip8MessageSerializer(eip8Pad));
             _api.MessageSerializationService.Register(new AckEip8MessageSerializer(eip8Pad));
             _api.MessageSerializationService.Register(Assembly.GetAssembly(typeof(HelloMessageSerializer)));
-            _api.MessageSerializationService.Register(new ReceiptsMessageSerializer(_api.SpecProvider));
-
+            ReceiptsMessageSerializer receiptsMessageSerializer = new(_api.SpecProvider);
+            _api.MessageSerializationService.Register(receiptsMessageSerializer);
+            _api.MessageSerializationService.Register(new Nethermind.Network.P2P.Subprotocols.Eth.V66.ReceiptsMessageSerializer(receiptsMessageSerializer));
+            
             HandshakeService encryptionHandshakeServiceA = new(
                 _api.MessageSerializationService,
                 eciesCipher,
@@ -407,8 +409,7 @@ namespace Nethermind.Init.Steps
 
             IDiscoveryConfig discoveryConfig = _api.Config<IDiscoveryConfig>();
             IInitConfig initConfig = _api.Config<IInitConfig>();
-
-            // _api.DisconnectsAnalyzer = new DisconnectsAnalyzer(_api.LogManager);
+            
             _api.DisconnectsAnalyzer = new MetricsDisconnectsAnalyzer();
             _api.SessionMonitor = new SessionMonitor(_networkConfig, _api.LogManager);
             _api.RlpxPeer = new RlpxPeer(

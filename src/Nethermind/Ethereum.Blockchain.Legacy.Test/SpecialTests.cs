@@ -26,6 +26,7 @@ namespace Ethereum.Blockchain.Legacy.Test
     public class SpecialTests : GeneralStateTestBase
     { 
         [TestCaseSource(nameof(LoadTests))]
+        [Retry(3)]
         public void Test(GeneralStateTest test)
         {
             Assert.True(RunTest(test).Pass);

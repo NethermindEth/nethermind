@@ -51,7 +51,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void Setup()
         {
             _block =  Build.A.Block
-                .WithOmmers(Build.A.BlockHeader.TestObject, Build.A.BlockHeader.TestObject).TestObject;
+                .WithUncles(Build.A.BlockHeader.TestObject, Build.A.BlockHeader.TestObject).TestObject;
             
             _blockFinder = Substitute.For<IBlockTree>();
             _witnessRepository = new WitnessCollector(new MemDb(), LimboLogs.Instance);

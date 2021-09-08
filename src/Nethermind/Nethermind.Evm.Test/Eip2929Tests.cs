@@ -40,7 +40,7 @@ namespace Nethermind.Evm.Test
                 .FromCode("0x60013f5060023b506003315060f13f5060f23b5060f3315060f23f5060f33b5060f1315032315030315000")
                 .Done;
 
-            var result = Execute(code);
+            TestAllTracerWithOutput result = Execute(code);
             result.StatusCode.Should().Be(1);
             AssertGas(result, GasCostOf.Transaction + 8653);
         }
@@ -54,7 +54,7 @@ namespace Nethermind.Evm.Test
                 .FromCode("0x60006000600060ff3c60006000600060ff3c600060006000303c00")
                 .Done;
 
-            var result = Execute(code);
+            TestAllTracerWithOutput result = Execute(code);
             result.StatusCode.Should().Be(1);
             AssertGas(result, GasCostOf.Transaction + 2835);
         }
@@ -68,7 +68,7 @@ namespace Nethermind.Evm.Test
                 .FromCode("0x60015450601160015560116002556011600255600254600154")
                 .Done;
 
-            var result = Execute(code);
+            TestAllTracerWithOutput result = Execute(code);
             result.StatusCode.Should().Be(1);
             AssertGas(result, GasCostOf.Transaction + 44529);
         }
@@ -82,7 +82,7 @@ namespace Nethermind.Evm.Test
                 .FromCode("0x60008080808060046000f15060008080808060ff6000f15060008080808060ff6000fa50")
                 .Done;
 
-            var result = Execute(code);
+            TestAllTracerWithOutput result = Execute(code);
             result.StatusCode.Should().Be(1);
             AssertGas(result, GasCostOf.Transaction + 2869);
         }

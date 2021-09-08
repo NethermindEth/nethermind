@@ -38,14 +38,14 @@ namespace Nethermind.JsonRpc.Test.Data
         [Test]
         public void Can_handle_int()
         {
-            IdConverter converter = new IdConverter();
+            IdConverter converter = new();
             converter.WriteJson(new JsonTextWriter(new StringWriter()), 1, JsonSerializer.CreateDefault());
         }
         
         [Test]
         public void Throws_on_writing_decimal()
         {
-            IdConverter converter = new IdConverter();
+            IdConverter converter = new();
             Assert.Throws<NotSupportedException>(
                 () => converter.WriteJson(new JsonTextWriter(new StringWriter()), 1.1, JsonSerializer.CreateDefault()));
         }
@@ -59,7 +59,7 @@ namespace Nethermind.JsonRpc.Test.Data
         [TestCase(typeof(UInt256))]
         public void It_supports_the_types_that_it_needs_to_support(Type type)
         {
-            IdConverter converter = new IdConverter();
+            IdConverter converter = new();
             converter.CanConvert(type).Should().Be(true);
         }
         
@@ -67,7 +67,7 @@ namespace Nethermind.JsonRpc.Test.Data
         [TestCase(typeof(IdConverterTests))]
         public void It_supports_all_silly_types_and_we_can_live_with_it(Type type)
         {
-            IdConverter converter = new IdConverter();
+            IdConverter converter = new();
             converter.CanConvert(type).Should().Be(true);
         }
 

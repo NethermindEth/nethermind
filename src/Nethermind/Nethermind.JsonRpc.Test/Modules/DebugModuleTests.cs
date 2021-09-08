@@ -45,7 +45,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             debugBridge.GetDbValue(Arg.Any<string>(), Arg.Any<byte[]>()).Returns(value);
 
             IConfigProvider configProvider = Substitute.For<IConfigProvider>();
-            DebugRpcModule rpcModule = new DebugRpcModule(LimboLogs.Instance, debugBridge, jsonRpcConfig);
+            DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig);
             JsonRpcSuccessResponse response = RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getFromDb", "STATE", key.ToHexString(true)) as JsonRpcSuccessResponse;
 
             byte[] result = response.Result as byte[];
@@ -58,7 +58,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             debugBridge.GetDbValue(Arg.Any<string>(), Arg.Any<byte[]>()).Returns((byte[]) null);
 
             IConfigProvider configProvider = Substitute.For<IConfigProvider>();
-            DebugRpcModule rpcModule = new DebugRpcModule(LimboLogs.Instance, debugBridge, jsonRpcConfig);
+            DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig);
             JsonRpcSuccessResponse response = RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getFromDb", "STATE", key.ToHexString(true)) as JsonRpcSuccessResponse;
 
             Assert.NotNull(response);
@@ -77,7 +77,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                         new BlockInfo(TestItem.KeccakB, 1001),
                     }));
 
-            DebugRpcModule rpcModule = new DebugRpcModule(LimboLogs.Instance, debugBridge, jsonRpcConfig);
+            DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig);
             JsonRpcSuccessResponse response = RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getChainLevel", parameter) as JsonRpcSuccessResponse;
             ChainLevelForRpc chainLevel = response?.Result as ChainLevelForRpc;
             Assert.NotNull(chainLevel);
@@ -88,11 +88,11 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void Get_block_rlp_by_hash()
         {
-            BlockDecoder decoder = new BlockDecoder();
+            BlockDecoder decoder = new();
             Rlp rlp = decoder.Encode(Build.A.Block.WithNumber(1).TestObject);
             debugBridge.GetBlockRlp(Keccak.Zero).Returns(rlp.Bytes);
 
-            DebugRpcModule rpcModule = new DebugRpcModule(LimboLogs.Instance, debugBridge, jsonRpcConfig);
+            DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig);
             JsonRpcSuccessResponse response = RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getBlockRlpByHash", $"{Keccak.Zero.Bytes.ToHexString()}") as JsonRpcSuccessResponse;
             Assert.AreEqual(rlp.Bytes, (byte[]) response?.Result);
         }
@@ -100,12 +100,12 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void Get_block_rlp()
         {
-            BlockDecoder decoder = new BlockDecoder();
+            BlockDecoder decoder = new();
             IDebugBridge debugBridge = Substitute.For<IDebugBridge>();
             Rlp rlp = decoder.Encode(Build.A.Block.WithNumber(1).TestObject);
             debugBridge.GetBlockRlp(1).Returns(rlp.Bytes);
 
-            DebugRpcModule rpcModule = new DebugRpcModule(LimboLogs.Instance, debugBridge, jsonRpcConfig);
+            DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig);
             JsonRpcSuccessResponse response = RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getBlockRlp", "1") as JsonRpcSuccessResponse;
 
             Assert.AreEqual(rlp.Bytes, (byte[]) response?.Result);
@@ -116,7 +116,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             debugBridge.GetBlockRlp(1).Returns((byte[]) null);
 
-            DebugRpcModule rpcModule = new DebugRpcModule(LimboLogs.Instance, debugBridge, jsonRpcConfig);
+            DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig);
             JsonRpcErrorResponse response = RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getBlockRlp", "1") as JsonRpcErrorResponse;
 
             Assert.AreEqual(-32001, response?.Error.Code);
@@ -125,11 +125,11 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void Get_block_rlp_by_hash_when_missing()
         {
-            BlockDecoder decoder = new BlockDecoder();
+            BlockDecoder decoder = new();
             Rlp rlp = decoder.Encode(Build.A.Block.WithNumber(1).TestObject);
             debugBridge.GetBlockRlp(Keccak.Zero).Returns((byte[]) null);
 
-            DebugRpcModule rpcModule = new DebugRpcModule(LimboLogs.Instance, debugBridge, jsonRpcConfig);
+            DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig);
             JsonRpcErrorResponse response = RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getBlockRlpByHash", $"{Keccak.Zero.Bytes.ToHexString()}") as JsonRpcErrorResponse;
 
             Assert.AreEqual(-32001, response.Error.Code);
@@ -138,7 +138,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void Get_trace()
         {
-            GethTxTraceEntry entry = new GethTxTraceEntry();
+            GethTxTraceEntry entry = new();
             entry.Storage = new Dictionary<string, string>
             {
                 {"1".PadLeft(64, '0'), "2".PadLeft(64, '0')},
@@ -168,7 +168,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             debugBridge.GetTransactionTrace(Arg.Any<Keccak>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>()).Returns(trace);
 
-            DebugRpcModule rpcModule = new DebugRpcModule(LimboLogs.Instance, debugBridge, jsonRpcConfig);
+            DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig);
             string response = RpcTest.TestSerializedRequest<IDebugRpcModule>(DebugModuleFactory.Converters, rpcModule, "debug_traceTransaction", TestItem.KeccakA.ToString(true), "{}");
 
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":{\"gas\":\"0x0\",\"failed\":false,\"returnValue\":\"0xa2\",\"structLogs\":[{\"pc\":0,\"op\":\"STOP\",\"gas\":22000,\"gasCost\":1,\"depth\":1,\"error\":null,\"stack\":[\"0000000000000000000000000000000000000000000000000000000000000007\",\"0000000000000000000000000000000000000000000000000000000000000008\"],\"memory\":[\"0000000000000000000000000000000000000000000000000000000000000005\",\"0000000000000000000000000000000000000000000000000000000000000006\"],\"storage\":{\"0000000000000000000000000000000000000000000000000000000000000001\":\"0000000000000000000000000000000000000000000000000000000000000002\",\"0000000000000000000000000000000000000000000000000000000000000003\":\"0000000000000000000000000000000000000000000000000000000000000004\"}}]},\"id\":67}", response);
@@ -177,7 +177,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void Get_trace_with_options()
         {
-            GethTxTraceEntry entry = new GethTxTraceEntry();
+            GethTxTraceEntry entry = new();
             entry.Storage = new Dictionary<string, string>
             {
                 {"1".PadLeft(64, '0'), "2".PadLeft(64, '0')},
@@ -205,7 +205,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             debugBridge.GetTransactionTrace(Arg.Any<Keccak>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>()).Returns(trace);
 
-            DebugRpcModule rpcModule = new DebugRpcModule(LimboLogs.Instance, debugBridge, jsonRpcConfig);
+            DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig);
             string response = RpcTest.TestSerializedRequest<IDebugRpcModule>(DebugModuleFactory.Converters, rpcModule, "debug_traceTransaction", TestItem.KeccakA.ToString(true), "{disableStack : true}");
 
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":{\"gas\":\"0x0\",\"failed\":false,\"returnValue\":\"0xa2\",\"structLogs\":[{\"pc\":0,\"op\":\"STOP\",\"gas\":22000,\"gasCost\":1,\"depth\":1,\"error\":null,\"stack\":[],\"memory\":[\"0000000000000000000000000000000000000000000000000000000000000005\",\"0000000000000000000000000000000000000000000000000000000000000006\"],\"storage\":{\"0000000000000000000000000000000000000000000000000000000000000001\":\"0000000000000000000000000000000000000000000000000000000000000002\",\"0000000000000000000000000000000000000000000000000000000000000003\":\"0000000000000000000000000000000000000000000000000000000000000004\"}}]},\"id\":67}", response);

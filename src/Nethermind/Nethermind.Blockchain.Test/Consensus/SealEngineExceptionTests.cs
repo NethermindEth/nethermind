@@ -27,7 +27,7 @@ namespace Nethermind.Blockchain.Test.Consensus
         [Test]
         public void Test()
         {
-            SealEngineException exception = new SealEngineException("message");
+            SealEngineException exception = new("message");
             exception.Message.Should().Be("message");
         }
     }

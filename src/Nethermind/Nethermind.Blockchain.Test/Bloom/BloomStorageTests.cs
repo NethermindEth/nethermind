@@ -210,7 +210,7 @@ namespace Nethermind.Blockchain.Test.Bloom
         {
             _config.IndexLevelBucketSizes = new[]{byte.MaxValue + 1};
             var storage = new BloomStorage(_config, _bloomDb, _fileStoreFactory);
-            Core.Bloom expectedBloom = new Core.Bloom();
+            Core.Bloom expectedBloom = new();
             for (int i = 0; i <= byte.MaxValue; i++)
             {
                 expectedBloom.Set(i);

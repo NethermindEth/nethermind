@@ -28,7 +28,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
     {
         protected static ParityLikeTxTrace BuildParityTxTrace()
         {
-            ParityTraceAction subtrace = new ParityTraceAction
+            ParityTraceAction subtrace = new()
             {
                 Value = 67890,
                 CallType = "call",
@@ -39,7 +39,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
                 TraceAddress = new int[] {0, 0}
             };
 
-            ParityLikeTxTrace result = new ParityLikeTxTrace
+            ParityLikeTxTrace result = new()
             {
                 Action = new ParityTraceAction
                 {
@@ -59,11 +59,11 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             result.Action.TraceAddress = new int[] {1, 2, 3};
             result.Action.Subtraces.Add(subtrace);
 
-            ParityAccountStateChange stateChange = new ParityAccountStateChange
+            ParityAccountStateChange stateChange = new()
             {
                 Balance = new ParityStateChange<UInt256?>(1, 2),
                 Nonce = new ParityStateChange<UInt256?>(0, 1),
-                Storage = new Dictionary<UInt256, ParityStateChange<byte[]>> {[1] = new ParityStateChange<byte[]>(new byte[] {1}, new byte[] {2})},
+                Storage = new Dictionary<UInt256, ParityStateChange<byte[]>> {[1] = new(new byte[] {1}, new byte[] {2})},
                 Code = new ParityStateChange<byte[]>(new byte[] {1}, new byte[] {2})
             };
 

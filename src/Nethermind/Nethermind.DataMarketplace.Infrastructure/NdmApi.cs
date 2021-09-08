@@ -45,12 +45,13 @@ using Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo;
 using Nethermind.DataMarketplace.Infrastructure.Updaters;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
-using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade;
+using Nethermind.Facade.Eth;
 using Nethermind.Facade.Proxy;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.KeyStore;
 using Nethermind.Logging;
 using Nethermind.Monitoring;
@@ -532,6 +533,17 @@ namespace Nethermind.DataMarketplace.Infrastructure
             set => _nethermindApi.BlockProducerEnvFactory = value;
         }
 
+        public IGasPriceOracle? GasPriceOracle
+        {
+            get => _nethermindApi.GasPriceOracle;
+            set => _nethermindApi.GasPriceOracle = value;
+        }
+        public IEthSyncingInfo? EthSyncingInfo        
+        {
+            get => _nethermindApi.EthSyncingInfo;
+            set => _nethermindApi.EthSyncingInfo = value;
+        }
+
         public IWallet? Wallet
         {
             get => _nethermindApi.Wallet;
@@ -549,7 +561,7 @@ namespace Nethermind.DataMarketplace.Infrastructure
             get => _nethermindApi.WebSocketsManager;
             set => _nethermindApi.WebSocketsManager = value;
         }
-        
+
         public IWitnessCollector? WitnessCollector
         {
             get => _nethermindApi.WitnessCollector;

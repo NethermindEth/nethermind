@@ -20,6 +20,7 @@ using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Facade.Eth;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.State.Proofs;
@@ -44,7 +45,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         [JsonRpcMethod(IsImplemented = true, 
             Description = "Returns syncing status", 
             IsSharable = true, 
-            ExampleResponse = "{\"startingBlock\":\"0x0\",\"currentBlock\":\"0x0\",\"highestBlock\":\"0x4df8a4\"},\"id\":1}")]
+            ExampleResponse = "{\"isSyncing\":true,\"startingBlock\":\"0x0\",\"currentBlock\":\"0x0\",\"highestBlock\":\"0x4df8a4\"},\"id\":1}")]
         ResultWrapper<SyncingResult> eth_syncing();
         
         [JsonRpcMethod(IsImplemented = false, 
@@ -55,6 +56,12 @@ namespace Nethermind.JsonRpc.Modules.Eth
         
         [JsonRpcMethod(IsImplemented = false, Description = "Returns mining status", IsSharable = true)]
         ResultWrapper<bool?> eth_mining();
+        
+        [JsonRpcMethod(IsImplemented = true, 
+            Description = "Returns block fee history.", 
+            IsSharable = true, 
+            ExampleResponse = "{\"baseFeePerGas\": [\"0x116c1cbb03\", \"0x10c3714c06\"], \"gasUsedRatio\": [0.3487305666666667, 0.3], \"oldestBlock\": \"0xc7e5ff\", \"reward\": [[\"0x3b9aca00\",\"0x3b9aca00\"], [\"0x0\",\"0x3bb24dfa\"]]}")]
+        ResultWrapper<FeeHistoryResults> eth_feeHistory(int blockCount, BlockParameter newestBlock, double[]? rewardPercentiles = null);
         
         [JsonRpcMethod(IsImplemented = false, Description = "Returns full state snapshot", IsSharable = true)]
         ResultWrapper<byte[]> eth_snapshot();
@@ -109,7 +116,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
             [JsonRpcParameter(ExampleValue = "[\"0x199c2ef63392fb67f929fe0580e11f62fa6c54b9951a624896da91375a6805b1\"]")] Keccak blockHash);
         
         [JsonRpcMethod(IsImplemented = true, 
-	    Description = "Returns number of transactions in the block by block number",        	    IsSharable = true,
+            Description = "Returns number of transactions in the block by block number",
+            IsSharable = true,
             ExampleResponse = "0x20")]
         ResultWrapper<UInt256?> eth_getBlockTransactionCountByNumber([JsonRpcParameter(ExampleValue = "[\"8934677\"]")] BlockParameter blockParameter);
         
@@ -209,9 +217,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
         [JsonRpcParameter(ExampleValue = "[\"5111256\",\"0x8\"]" )] BlockParameter blockParameter, UInt256 positionIndex);
         
         [JsonRpcMethod(IsImplemented = true, 
-        Description = "Retrieves a transaction receipt by tx hash", 
-        IsSharable = true,
-        ExampleResponse = "{\"transactionHash\":\"0x80757153e93d1b475e203406727b62a501187f63e23b8fa999279e219ee3be71\",\"transactionIndex\":\"0x7\",\"blockHash\":\"0x42def051b21038905cd2a2bc28d460a94df2249466847f0e1bcb4be4eb21891a\",\"blockNumber\":\"0x4e3f39\",\"cumulativeGasUsed\":\"0x62c9d\",\"gasUsed\":\"0xe384\",\"effectiveGasPrice\":\"0x12a05f200\",\"from\":\"0x0afe0a94415e8974052e7e6cfab19ee1c2ef4f69\",\"to\":\"0x19e8c84d4943e58b035626b064cfc76ee13ee6cb\",\"contractAddress\":null,\"logs\":[{\"removed\":false,\"logIndex\":\"0x0\",\"transactionIndex\":\"0x7\",\"transactionHash\":\"0x80757153e93d1b475e203406727b62a501187f63e23b8fa999279e219ee3be71\",\"blockHash\":\"0x42def051b21038905cd2a2bc28d460a94df2249466847f0e1bcb4be4eb21891a\",\"blockNumber\":\"0x4e3f39\",\"address\":\"0x2ac3c1d3e24b45c6c310534bc2dd84b5ed576335\",\"data\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"topics\":[\"0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef\",\"0x00000000000000000000000019e8c84d4943e58b035626b064cfc76ee13ee6cb\",\"0x00000000000000000000000028078300a459a9e136f872285654cdc74463041e\"]},{\"removed\":false,\"logIndex\":\"0x1\",\"transactionIndex\":\"0x7\",\"transactionHash\":\"0x80757153e93d1b475e203406727b62a501187f63e23b8fa999279e219ee3be71\",\"blockHash\":\"0x42def051b21038905cd2a2bc28d460a94df2249466847f0e1bcb4be4eb21891a\",\"blockNumber\":\"0x4e3f39\",\"address\":\"0x19e8c84d4943e58b035626b064cfc76ee13ee6cb\",\"data\":\"0x000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000007735940000000000000000000000000000000000000000000000000000000000000000000\",\"topics\":[\"0x950494fc3642fae5221b6c32e0e45765c95ebb382a04a71b160db0843e74c99f\",\"0x0000000000000000000000000afe0a94415e8974052e7e6cfab19ee1c2ef4f69\",\"0x00000000000000000000000028078300a459a9e136f872285654cdc74463041e\",\"0x0000000000000000000000000afe0a94415e8974052e7e6cfab19ee1c2ef4f69\"]}],\"logsBloom\":\"0x00000000000000000000000000000000000000000000000020000000000000800000000000000000000400000000000000000000000000000000000000002000000000000000000000000008000000000000000000000000000000000000000000000002002000000000000000000000000000000000000000000812000000000000000000000000000001000000000000000000000008000400008000000000000000000000000000000000000000000000000000000000800000000000000000000002000000000000000000000000000000000000100000000000000000002000000000000000000000000010000000000000000000000400000000020000\",\"status\":\"0x1\",\"type\":\"0x0\"}")]
+            Description = "Retrieves a transaction receipt by tx hash", 
+            IsSharable = true,
+            ExampleResponse = "{\"transactionHash\":\"0x80757153e93d1b475e203406727b62a501187f63e23b8fa999279e219ee3be71\",\"transactionIndex\":\"0x7\",\"blockHash\":\"0x42def051b21038905cd2a2bc28d460a94df2249466847f0e1bcb4be4eb21891a\",\"blockNumber\":\"0x4e3f39\",\"cumulativeGasUsed\":\"0x62c9d\",\"gasUsed\":\"0xe384\",\"effectiveGasPrice\":\"0x12a05f200\",\"from\":\"0x0afe0a94415e8974052e7e6cfab19ee1c2ef4f69\",\"to\":\"0x19e8c84d4943e58b035626b064cfc76ee13ee6cb\",\"contractAddress\":null,\"logs\":[{\"removed\":false,\"logIndex\":\"0x0\",\"transactionIndex\":\"0x7\",\"transactionHash\":\"0x80757153e93d1b475e203406727b62a501187f63e23b8fa999279e219ee3be71\",\"blockHash\":\"0x42def051b21038905cd2a2bc28d460a94df2249466847f0e1bcb4be4eb21891a\",\"blockNumber\":\"0x4e3f39\",\"address\":\"0x2ac3c1d3e24b45c6c310534bc2dd84b5ed576335\",\"data\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"topics\":[\"0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef\",\"0x00000000000000000000000019e8c84d4943e58b035626b064cfc76ee13ee6cb\",\"0x00000000000000000000000028078300a459a9e136f872285654cdc74463041e\"]},{\"removed\":false,\"logIndex\":\"0x1\",\"transactionIndex\":\"0x7\",\"transactionHash\":\"0x80757153e93d1b475e203406727b62a501187f63e23b8fa999279e219ee3be71\",\"blockHash\":\"0x42def051b21038905cd2a2bc28d460a94df2249466847f0e1bcb4be4eb21891a\",\"blockNumber\":\"0x4e3f39\",\"address\":\"0x19e8c84d4943e58b035626b064cfc76ee13ee6cb\",\"data\":\"0x000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000007735940000000000000000000000000000000000000000000000000000000000000000000\",\"topics\":[\"0x950494fc3642fae5221b6c32e0e45765c95ebb382a04a71b160db0843e74c99f\",\"0x0000000000000000000000000afe0a94415e8974052e7e6cfab19ee1c2ef4f69\",\"0x00000000000000000000000028078300a459a9e136f872285654cdc74463041e\",\"0x0000000000000000000000000afe0a94415e8974052e7e6cfab19ee1c2ef4f69\"]}],\"logsBloom\":\"0x00000000000000000000000000000000000000000000000020000000000000800000000000000000000400000000000000000000000000000000000000002000000000000000000000000008000000000000000000000000000000000000000000000002002000000000000000000000000000000000000000000812000000000000000000000000000001000000000000000000000008000400008000000000000000000000000000000000000000000000000000000000800000000000000000000002000000000000000000000000000000000000100000000000000000002000000000000000000000000010000000000000000000000400000000020000\",\"status\":\"0x1\",\"type\":\"0x0\"}")]
         Task<ResultWrapper<ReceiptForRpc>> eth_getTransactionReceipt([JsonRpcParameter(ExampleValue = "[\"0x80757153e93d1b475e203406727b62a501187f63e23b8fa999279e219ee3be71\"]")] Keccak txHashData);
         
         [JsonRpcMethod(IsImplemented = true, 
@@ -225,8 +233,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         [JsonRpcMethod(IsImplemented = true, 
             Description = "Creates an update filter", 
             IsSharable = false,
-            ExampleResponse = "0x9"
-            )]
+            ExampleResponse = "0x9")]
         ResultWrapper<UInt256?> eth_newFilter([JsonRpcParameter(ExampleValue = "[{\"toBlock\":\"latest\"}]" )] Filter filter);
         
         [JsonRpcMethod(IsImplemented = true, 

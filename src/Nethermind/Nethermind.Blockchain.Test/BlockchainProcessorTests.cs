@@ -51,9 +51,9 @@ namespace Nethermind.Blockchain.Test
             {
                 private ILogger _logger;
                 
-                private HashSet<Keccak> _allowed = new HashSet<Keccak>();
+                private HashSet<Keccak> _allowed = new();
 
-                private HashSet<Keccak> _allowedToFail = new HashSet<Keccak>();
+                private HashSet<Keccak> _allowedToFail = new();
 
                 public BlockProcessorMock(ILogManager logManager)
                 {
@@ -129,9 +129,9 @@ namespace Nethermind.Blockchain.Test
             {
                 private ILogger _logger;
                 
-                private ConcurrentDictionary<Keccak, object> _allowed = new ConcurrentDictionary<Keccak, object>();
+                private ConcurrentDictionary<Keccak, object> _allowed = new();
 
-                private ConcurrentDictionary<Keccak, object> _allowedToFail = new ConcurrentDictionary<Keccak, object>();
+                private ConcurrentDictionary<Keccak, object> _allowedToFail = new();
 
                 public RecoveryStepMock(ILogManager logManager)
                 {
@@ -190,9 +190,9 @@ namespace Nethermind.Blockchain.Test
             public ProcessingTestContext(bool startProcessor)
             {
                 _logger = _logManager.GetClassLogger();
-                MemDb blockDb = new MemDb();
-                MemDb blockInfoDb = new MemDb();
-                MemDb headersDb = new MemDb();
+                MemDb blockDb = new();
+                MemDb blockInfoDb = new();
+                MemDb headersDb = new();
                 Block genesis = Build.A.Block.Genesis.TestObject;
 
                 _blockTree = new BlockTree(blockDb, headersDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
@@ -227,7 +227,7 @@ namespace Nethermind.Blockchain.Test
             public AfterBlock Processed(Block block)
             {
                 _headBefore = _blockTree.Head?.Hash;
-                ManualResetEvent processedEvent = new ManualResetEvent(false);
+                ManualResetEvent processedEvent = new(false);
                 bool wasProcessed = false;
                 _blockProcessor.BlockProcessed += (sender, args) =>
                 {
@@ -257,7 +257,7 @@ namespace Nethermind.Blockchain.Test
             public AfterBlock ProcessedFail(Block block)
             {
                 _headBefore = _blockTree.Head?.Hash;
-                ManualResetEvent processedEvent = new ManualResetEvent(false);
+                ManualResetEvent processedEvent = new(false);
                 bool wasProcessed = false;
                 _blockProcessor.BlockProcessed += (sender, args) =>
                 {
@@ -404,9 +404,9 @@ namespace Nethermind.Blockchain.Test
 
         private static class When
         {
-            public static ProcessingTestContext ProcessingBlocks => new ProcessingTestContext(true);
+            public static ProcessingTestContext ProcessingBlocks => new(true);
 
-            public static ProcessingTestContext ProcessorIsNotStarted => new ProcessingTestContext(false);
+            public static ProcessingTestContext ProcessorIsNotStarted => new(false);
         }
 
         private static Block _block0 = Build.A.Block.WithNumber(0).WithNonce(0).WithDifficulty(0).TestObject;

@@ -18,8 +18,6 @@
 using System.Collections;
 using System.Collections.Generic;
 using FluentAssertions;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;

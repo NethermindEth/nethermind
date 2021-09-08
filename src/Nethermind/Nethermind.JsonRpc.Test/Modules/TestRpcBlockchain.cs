@@ -31,8 +31,10 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using Nethermind.Db.Blooms;
+using Nethermind.Facade.Eth;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
+using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.KeyStore;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -50,10 +52,12 @@ namespace Nethermind.JsonRpc.Test.Modules
         public ITxSender TxSender { get; private set; }
         public ILogFinder LogFinder { get; private set; }
         
+        public IReceiptFinder ReceiptFinder { get; private set; }
         public IGasPriceOracle GasPriceOracle { get; private set; }
         
         public IKeyStore KeyStore { get; } = new MemKeyStore(TestItem.PrivateKeys);
         public IWallet TestWallet { get; } = new DevKeyStoreWallet(new MemKeyStore(TestItem.PrivateKeys), LimboLogs.Instance);
+        public IFeeHistoryOracle FeeHistoryOracle { get; private set; }
         public static Builder<TestRpcBlockchain> ForTest(string sealEngineType) => ForTest<TestRpcBlockchain>(sealEngineType);
 
         public static Builder<T> ForTest<T>(string sealEngineType) where T : TestRpcBlockchain, new() => 
@@ -83,6 +87,11 @@ namespace Nethermind.JsonRpc.Test.Modules
                 return this;
             }
             
+            public Builder<T> WithReceiptFinder(IReceiptFinder receiptFinder)
+            {
+                _blockchain.ReceiptFinder = receiptFinder;
+                return this;
+            }
             public Builder<T> WithTxSender(ITxSender txSender)
             {
                 _blockchain.TxSender = txSender;
@@ -100,7 +109,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 _blockchain.GasPriceOracle = gasPriceOracle;
                 return this;
             }
-            
+
             public async Task<T> Build(ISpecProvider specProvider = null, UInt256? initialValues = null)
             {
                 return (T)(await _blockchain.Build(specProvider, initialValues));
@@ -115,10 +124,10 @@ namespace Nethermind.JsonRpc.Test.Modules
             IFilterStore filterStore = new FilterStore();
             IFilterManager filterManager = new FilterManager(filterStore, BlockProcessor, TxPool, LimboLogs.Instance);
 
-            ReceiptsRecovery receiptsRecovery = new ReceiptsRecovery(new EthereumEcdsa(specProvider.ChainId, LimboLogs.Instance), specProvider);
+            ReceiptsRecovery receiptsRecovery = new(new EthereumEcdsa(specProvider.ChainId, LimboLogs.Instance), specProvider);
             LogFinder = new LogFinder(BlockTree, ReceiptStorage, bloomStorage, LimboLogs.Instance, receiptsRecovery);
             
-            ReadOnlyTxProcessingEnv processingEnv = new ReadOnlyTxProcessingEnv(
+            ReadOnlyTxProcessingEnv processingEnv = new(
                 new ReadOnlyDbProvider(DbProvider, false),
                 new TrieStore(DbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
                 new ReadOnlyBlockTree(BlockTree),
@@ -127,11 +136,15 @@ namespace Nethermind.JsonRpc.Test.Modules
             
             Bridge ??= new BlockchainBridge(processingEnv, TxPool, ReceiptStorage, filterStore, filterManager, EthereumEcdsa, Timestamper, LogFinder, SpecProvider, false, false);
             BlockFinder ??= BlockTree;
+            GasPriceOracle ??= new GasPriceOracle(BlockFinder, SpecProvider);
+            ReceiptFinder ??= ReceiptStorage;
             
             ITxSigner txSigner = new WalletTxSigner(TestWallet, specProvider?.ChainId ?? 0);
             ITxSealer txSealer0 = new TxSealer(txSigner, Timestamper);
             ITxSealer txSealer1 = new NonceReservingTxSealer(txSigner, Timestamper, TxPool);
             TxSender ??= new TxPoolSender(TxPool, txSealer0, txSealer1);
+            GasPriceOracle ??= new GasPriceOracle(BlockFinder, SpecProvider);
+            FeeHistoryOracle ??= new FeeHistoryOracle(BlockFinder, ReceiptStorage, SpecProvider);
             EthRpcModule = new EthRpcModule(
                 new JsonRpcConfig(),
                 Bridge,
@@ -140,9 +153,12 @@ namespace Nethermind.JsonRpc.Test.Modules
                 TxPool,
                 TxSender,
                 TestWallet,
-                LimboLogs.Instance,
-                SpecProvider,
-                GasPriceOracle ?? new GasPriceOracle(BlockFinder, SpecProvider));
+                ReceiptFinder, 
+                LimboLogs.Instance, 
+                SpecProvider, 
+                GasPriceOracle,
+                new EthSyncingInfo(BlockFinder),
+                FeeHistoryOracle);
             
             return this;
         }

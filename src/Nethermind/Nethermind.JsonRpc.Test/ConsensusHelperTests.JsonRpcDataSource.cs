@@ -41,7 +41,7 @@ namespace Nethermind.JsonRpc.Test
             
             protected async Task<string> SendRequest(JsonRpcRequest request)
             {
-                using HttpRequestMessage message = new HttpRequestMessage(HttpMethod.Post, _uri)
+                using HttpRequestMessage message = new(HttpMethod.Post, _uri)
                 {
                     Content = new StringContent(_serializer.Serialize(request), Encoding.UTF8, "application/json")
                     
@@ -52,7 +52,7 @@ namespace Nethermind.JsonRpc.Test
             }
 
             protected JsonRpcRequestWithParams CreateRequest(string methodName, params object[] parameters) =>
-                new JsonRpcRequestWithParams()
+                new()
                 {
                     Id = 1,
                     JsonRpc = "2.0",
@@ -68,7 +68,7 @@ namespace Nethermind.JsonRpc.Test
             protected class JsonRpcSuccessResponse<T> : JsonRpcSuccessResponse
             {
                 [JsonProperty(PropertyName = "result", NullValueHandling = NullValueHandling.Include, Order = 1)]
-                public new T Result { get { return (T)base.Result;} set { base.Result = value; } }
+                public new T Result { get { return (T)base.Result; } set { base.Result = value; } }
             }
 
             public virtual async Task<(T, string)> GetData()

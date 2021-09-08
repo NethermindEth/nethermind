@@ -33,10 +33,10 @@ namespace Nethermind.Core
             Body = body;
         }
 
-        public Block(BlockHeader blockHeader, IEnumerable<Transaction> transactions, IEnumerable<BlockHeader> ommers)
+        public Block(BlockHeader blockHeader, IEnumerable<Transaction> transactions, IEnumerable<BlockHeader> uncles)
         {
             Header = blockHeader;
-            Body = new BlockBody(transactions.ToArray(), ommers.ToArray());
+            Body = new BlockBody(transactions.ToArray(), uncles.ToArray());
         }
 
         public Block(BlockHeader blockHeader)
@@ -62,7 +62,7 @@ namespace Nethermind.Core
 
         public Transaction[] Transactions { get => Body.Transactions; protected set => Body.Transactions = value; } // setter needed to produce blocks with unknown transaction count on start
 
-        public BlockHeader[] Ommers => Body.Ommers; // do not add setter here
+        public BlockHeader[] Uncles => Body.Uncles; // do not add setter here
 
         public Keccak? Hash => Header.Hash; // do not add setter here
 
@@ -76,7 +76,7 @@ namespace Nethermind.Core
 
         public Bloom? Bloom => Header.Bloom; // do not add setter here
 
-        public Keccak? OmmersHash => Header.OmmersHash; // do not add setter here
+        public Keccak? UnclesHash => Header.UnclesHash; // do not add setter here
 
         public Address? Beneficiary => Header.Beneficiary; // do not add setter here
 
@@ -132,10 +132,10 @@ namespace Nethermind.Core
             builder.AppendLine("  Header:");
             builder.Append($"{Header.ToString("    ")}");
 
-            builder.AppendLine("  Ommers:");
-            foreach (BlockHeader ommer in Body.Ommers ?? Array.Empty<BlockHeader>())
+            builder.AppendLine("  Uncles:");
+            foreach (BlockHeader uncle in Body.Uncles ?? Array.Empty<BlockHeader>())
             {
-                builder.Append($"{ommer.ToString("    ")}");
+                builder.Append($"{uncle.ToString("    ")}");
             }
 
             builder.AppendLine("  Transactions:");

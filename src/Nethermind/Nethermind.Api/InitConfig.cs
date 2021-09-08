@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using Nethermind.Blockchain.Processing;
 
 namespace Nethermind.Api
 {
@@ -34,9 +35,12 @@ namespace Nethermind.Api
         public string? GenesisHash { get; set; }
         public string StaticNodesPath { get; set; } = "Data/static-nodes.json";
         public string LogDirectory { get; set; } = "logs";
+        public string? LogRules { get; set; } = null;
         public bool StoreReceipts { get; set; } = true;
         public bool ReceiptsMigration { get; set; } = false;
         public DiagnosticMode DiagnosticMode { get; set; } = DiagnosticMode.None;
+        public DumpOptions AutoDump { get; set; } = DumpOptions.Receipts;
+
         public string RpcDbUrl { get; set; } = String.Empty;
         public long? MemoryHint { get; set; }
 
