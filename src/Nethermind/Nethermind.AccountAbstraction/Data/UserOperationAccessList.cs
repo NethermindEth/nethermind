@@ -28,6 +28,8 @@ namespace Nethermind.AccountAbstraction.Data
             Data = data;
         }
 
+        public static UserOperationAccessList Empty = new UserOperationAccessList(new Dictionary<Address, HashSet<UInt256>>());
+
         public IDictionary<Address, HashSet<UInt256>> Data { get; set; }
         
         public static IDictionary<Address, HashSet<UInt256>> CombineAccessLists(IDictionary<Address, HashSet<UInt256>> accessList1, IDictionary<Address, HashSet<UInt256>> accessList2)

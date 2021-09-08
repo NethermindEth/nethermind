@@ -16,6 +16,7 @@
 // 
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Abi;
 using Nethermind.AccountAbstraction.Broadcaster;
 using Nethermind.Core;
@@ -41,6 +42,8 @@ namespace Nethermind.AccountAbstraction.Data
             Paymaster = paymaster;
             Signature = signature;
             PaymasterData = paymasterData;
+
+            AccessList = UserOperationAccessList.Empty;
             
             Hash = CalculateHash(this);
         }

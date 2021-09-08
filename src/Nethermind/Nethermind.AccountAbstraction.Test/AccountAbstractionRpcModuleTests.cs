@@ -80,10 +80,11 @@ namespace Nethermind.AccountAbstraction.Test
                 
             }
             
-            public static long LargeGasLimit = 2_000_000;
+            public static long LargeGasLimit = 5_000_000;
             
-            private static PrivateKey ContractCreatorPrivateKey = TestItem.PrivateKeyC;
-            public static Address WalletOwner = TestItem.AddressA;
+            public static PrivateKey ContractCreatorPrivateKey = TestItem.PrivateKeyC;
+            public static PrivateKey WalletOwnerPrivateKey = TestItem.PrivateKeyA;
+            public static Address WalletOwner = WalletOwnerPrivateKey.Address;
 
             public UInt256 GetCount(TestRpcBlockchain chain, Address counter, Address wallet)
             {
@@ -287,6 +288,61 @@ namespace Nethermind.AccountAbstraction.Test
             UInt256 countAfter1 = _contracts.GetCount(chain, counterAddress, accountAddress!);
             countAfter.Should().Be(1);
             countAfter1.Should().Be(1);
+        }
+        
+        [Test]
+        public async Task Should_create_account_with_tokens()
+        {
+            var chain = await CreateChain();
+            chain.GasLimitCalculator.GasLimit = 20_000_000;
+
+            byte[] paymasterBytecode = Bytes.Concat(
+                _contracts.TokenPaymasterAbi.Bytecode,
+                _encoder.Encode(
+                    AbiEncodingStyle.None,
+                    _contracts.TokenPaymasterAbi.Constructors[0].GetCallInfo().Signature, "tst", 
+                    new Address("0xd75a3a95360e44a3874e691fb48d77855f127069")));
+            
+            (Address singletonAddress, Address? walletAddress, Address? paymasterAddress) = await _contracts.Deploy(chain, paymasterBytecode);
+
+            byte[] walletConstructor = _contracts.GetWalletConstructor(singletonAddress);
+            Address accountAddress = _contracts.GetAccountAddress(chain, singletonAddress, walletConstructor, 0);
+            
+            UserOperation createOp = Build.A.UserOperation
+                .WithPaymaster(paymasterAddress!)
+                .WithTarget(accountAddress)
+                .WithInitCode(walletConstructor)
+                .WithCallGas(10_000_000)
+                .WithVerificationGas(2_000_000)
+                .SignedAndResolved(TestItem.PrivateKeyA)
+                .TestObject;
+
+            byte[] addStakeCallData = _encoder.Encode(AbiEncodingStyle.IncludeSignature, _contracts.TokenPaymasterAbi.Functions["addStake"].GetCallInfo().Signature);
+            Transaction fundTransaction = Core.Test.Builders.Build.A.Transaction
+                .WithTo(paymasterAddress!)
+                .WithGasLimit(100_000)
+                .WithGasPrice(2)
+                .WithValue(2.Ether())
+                .WithData(addStakeCallData)
+                .WithNonce(0)
+                .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+            await chain.AddBlock(true, fundTransaction);
+
+            byte[] mintTokensCallData = _encoder.Encode(AbiEncodingStyle.IncludeSignature, _contracts.TokenPaymasterAbi.Functions["mintTokens"].GetCallInfo().Signature, accountAddress, 1.Ether());
+            Transaction mintTokensTransaction = Core.Test.Builders.Build.A.Transaction
+                .WithTo(paymasterAddress!)
+                .WithGasLimit(100_000)
+                .WithGasPrice(2)
+                .WithData(mintTokensCallData)
+                .WithValue(0)
+                .WithNonce(chain.State.GetNonce(Contracts.ContractCreatorPrivateKey.Address))
+                .SignedAndResolved(Contracts.ContractCreatorPrivateKey).TestObject;
+            await chain.AddBlock(true, mintTokensTransaction);
+            
+            chain.SendUserOperation(createOp);
+            await chain.AddBlock(true);
+
+            chain.State.GetCode(accountAddress).Should().BeEquivalentTo(_contracts.SimpleWalletAbi.DeployedBytecode!);
         }
 
         public static void SignUserOperation(UserOperation op, PrivateKey privateKey)

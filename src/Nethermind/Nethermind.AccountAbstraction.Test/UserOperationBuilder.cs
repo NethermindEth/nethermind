@@ -41,7 +41,8 @@ namespace Nethermind.AccountAbstraction.Test
                 MaxPriorityFeePerGas = 1,
                 CallGas = 500_000,
                 VerificationGas = 500_000,
-                PaymasterData = Bytes.Empty
+                PaymasterData = Bytes.Empty,
+                AccessList = UserOperationAccessList.Empty
             };
         }
 

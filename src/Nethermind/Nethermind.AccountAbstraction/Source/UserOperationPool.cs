@@ -28,6 +28,7 @@ using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Executor;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm.Tracing.Access;
 using Nethermind.Int256;
 using Nethermind.Network;
@@ -140,7 +141,7 @@ namespace Nethermind.AccountAbstraction.Source
             // make sure target account exists
             if (
                 userOperation.Target == Address.Zero
-                || !_stateProvider.AccountExists(userOperation.Target))
+                || !(_stateProvider.AccountExists(userOperation.Target) || userOperation.InitCode != Bytes.Empty))
             {
                 return false;
             }
