@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.JsonRpc.Test.Data;
 using NUnit.Framework;

@@ -19,16 +19,13 @@ using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Witness;
 using Nethermind.Logging;
 using Nethermind.State.Witnesses;
 using NSubstitute;
-using NSubstitute.Extensions;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules

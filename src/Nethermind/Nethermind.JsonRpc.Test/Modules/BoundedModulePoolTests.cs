@@ -25,7 +25,6 @@ using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
-using Nethermind.Trie.Pruning;
 using Nethermind.Facade;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.State;

@@ -16,7 +16,6 @@
 
 using System.Collections.Generic;
 using Nethermind.Int256;
-using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.JsonRpc.Test.Data;
 using NUnit.Framework;

@@ -16,39 +16,21 @@
 
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.Comparers;
-using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Tracing;
-using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Crypto;
-using Nethermind.Db;
-using Nethermind.Db.Blooms;
 using Nethermind.Int256;
-using Nethermind.Evm;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
-using Nethermind.State;
-using Nethermind.State.Repositories;
-using Nethermind.TxPool;
 using NUnit.Framework;
-using BlockTree = Nethermind.Blockchain.BlockTree;
 using Nethermind.Blockchain.Find;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Serialization.Json;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
@@ -58,117 +40,6 @@ namespace Nethermind.JsonRpc.Test.Modules
     {
         private class Context
         {
-            private readonly IBlockTree _blockTree;
-            AutoResetEvent resetEvent = new(false);
-
-
-            public Context(bool auRa = false)
-            {
-                // IDbProvider dbProvider = TestMemDbProvider.Init();
-                // ISpecProvider specProvider = MainnetSpecProvider.Instance;
-                //
-                // IEthereumEcdsa ethereumEcdsa = new EthereumEcdsa(specProvider.ChainId, LimboLogs.Instance);
-                //
-                // MemDb stateDb = new MemDb();
-                // ITrieStore trieStore = new TrieStore(stateDb, LimboLogs.Instance);
-                // MemDb codeDb = new();
-                // IStateProvider stateProvider = new StateProvider(trieStore, codeDb, LimboLogs.Instance);
-                // IStateReader stateReader = new StateReader(trieStore, codeDb, LimboLogs.Instance);
-                //
-                // stateProvider.CreateAccount(TestItem.AddressA, 1000.Ether());
-                // stateProvider.CreateAccount(TestItem.AddressB, 1000.Ether());
-                // stateProvider.CreateAccount(TestItem.AddressC, 1000.Ether());
-                // byte[] code = Bytes.FromHexString("0xabcd");
-                // Keccak codeHash = Keccak.Compute(code);
-                // stateProvider.UpdateCode(code);
-                // stateProvider.UpdateCodeHash(TestItem.AddressA, codeHash, specProvider.GenesisSpec);
-                //
-                // IStorageProvider storageProvider = new StorageProvider(trieStore, stateProvider, LimboLogs.Instance);
-                // storageProvider.Set(new StorageCell(TestItem.AddressA, UInt256.One), Bytes.FromHexString("0xabcdef"));
-                // storageProvider.Commit();
-                //
-                // stateProvider.Commit(specProvider.GenesisSpec);
-                // stateProvider.CommitTree(0);
-                //
-                // IChainLevelInfoRepository chainLevels = new ChainLevelInfoRepository(dbProvider);
-                // _blockTree = new BlockTree(dbProvider, chainLevels, specProvider, NullBloomStorage.Instance,
-                //     LimboLogs.Instance);
-                // ITransactionComparerProvider transactionComparerProvider =
-                //     new TransactionComparerProvider(specProvider, _blockTree);
-                // ITxPool txPool = new TxPool.TxPool(ethereumEcdsa,
-                //     new ChainHeadInfoProvider(specProvider, _blockTree, stateReader),
-                //     new TxPoolConfig(), new TxValidator(specProvider.ChainId), LimboLogs.Instance,
-                //     transactionComparerProvider.GetDefaultComparer());
-                //
-                // IReceiptStorage receiptStorage = new InMemoryReceiptStorage();
-                // VirtualMachine virtualMachine = new(stateProvider, storageProvider,
-                //     new BlockhashProvider(_blockTree, LimboLogs.Instance), specProvider, LimboLogs.Instance);
-                // TransactionProcessor txProcessor = new(specProvider, stateProvider, storageProvider, virtualMachine,
-                //     LimboLogs.Instance);
-                // IBlockProcessor blockProcessor = new BlockProcessor(
-                //     specProvider,
-                //     Always.Valid,
-                //     new RewardCalculator(specProvider),
-                //     new BlockProcessor.BlockValidationTransactionsExecutor(txProcessor, stateProvider),
-                //     stateProvider,
-                //     storageProvider,
-                //     receiptStorage,
-                //     NullWitnessCollector.Instance,
-                //     LimboLogs.Instance);
-                //
-                // RecoverSignatures signatureRecovery = new(ethereumEcdsa, txPool, specProvider, LimboLogs.Instance);
-                // BlockchainProcessor blockchainProcessor = new(_blockTree, blockProcessor, signatureRecovery,
-                //     LimboLogs.Instance, BlockchainProcessor.Options.Default);
-                //
-                // blockchainProcessor.Start();
-                // _blockTree.NewHeadBlock += (s, e) =>
-                // {
-                //     if (e.Block!.Number >= 9)
-                //         resetEvent.Set();
-                // };
-                //
-                // BlockBuilder genesisBlockBuilder =
-                //     Build.A.Block.Genesis.WithStateRoot(
-                //         new Keccak("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"));
-                // if (auRa)
-                // {
-                //     genesisBlockBuilder.WithAura(0, new byte[65]);
-                // }
-                //
-                // Block genesis = genesisBlockBuilder.TestObject;
-                // _blockTree.SuggestBlock(genesis);
-                //
-                // Block previousBlock = genesis;
-                // for (int i = 1; i < 10; i++)
-                // {
-                //     List<Transaction> transactions = new();
-                //     for (int j = 0; j < i; j++)
-                //     {
-                //         transactions.Add(Build.A.Transaction.WithNonce((UInt256)j).SignedAndResolved().TestObject);
-                //     }
-                //
-                //     BlockBuilder builder = Build.A.Block.WithNumber(i).WithParent(previousBlock)
-                //         .WithTransactions(transactions.ToArray()).WithStateRoot(
-                //             new Keccak("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"));
-                //     if (auRa)
-                //     {
-                //         builder.WithAura(i, i.ToByteArray());
-                //     }
-                //
-                //     Block block = builder.TestObject;
-                //     _blockTree.SuggestBlock(block);
-                //     previousBlock = block;
-                // }
-                //
-                // ReceiptsRecovery receiptsRecovery =
-                //     new(new EthereumEcdsa(specProvider.ChainId, LimboLogs.Instance), specProvider);
-                // IReceiptFinder receiptFinder = new FullInfoReceiptFinder(_test.ReceiptStorage, receiptsRecovery, _blockTree);
-                // resetEvent.WaitOne();
-                //
-                // TraceRpcModule = new TraceRpcModule(receiptFinder, new Tracer(stateProvider, blockchainProcessor),
-                //     _blockTree, JsonRpcConfig, MainnetSpecProvider.Instance, LimboLogs.Instance);
-            }
-
             public async Task Build(ISpecProvider specProvider = null)
             {
                 JsonRpcConfig = new JsonRpcConfig();
@@ -193,18 +64,6 @@ namespace Nethermind.JsonRpc.Test.Modules
 
                     await Blockchain.AddBlock(transactions.ToArray());
                 }
-            }
-
-            public void BuildNewBlock(Transaction[] transactions)
-            {
-                Block? currentHead = _blockTree.Head;
-                Block block = Core.Test.Builders.Build.A.Block.WithParent(currentHead!).WithNumber(currentHead!.Number + 1)
-                    .WithTransactions(transactions)
-                    .WithStateRoot(
-                        new Keccak("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"))
-                    .TestObject;
-                _blockTree.SuggestBlock(block);
-                resetEvent.WaitOne();
             }
 
             public ITraceRpcModule TraceRpcModule { get; private set;  }

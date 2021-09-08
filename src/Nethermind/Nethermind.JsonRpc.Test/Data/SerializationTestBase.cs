@@ -15,21 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.IO;
-using System.Text;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.Tracing;
-using Nethermind.Facade;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Trace;
-using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Newtonsoft.Json;
-using Newtonsoft.Json.Serialization;
-using NSubstitute;
 using NUnit.Framework;
-using JsonSerializer = Newtonsoft.Json.JsonSerializer;
 
 namespace Nethermind.JsonRpc.Test.Data
 {

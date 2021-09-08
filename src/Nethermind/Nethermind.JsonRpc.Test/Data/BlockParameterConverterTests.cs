@@ -15,9 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.IO;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.JsonRpc.Data;
 using Newtonsoft.Json;

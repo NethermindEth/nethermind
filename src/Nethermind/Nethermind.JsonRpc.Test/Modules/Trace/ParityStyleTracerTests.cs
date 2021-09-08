@@ -37,12 +37,8 @@ using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
 using Nethermind.TxPool;
 using NUnit.Framework;
-using Nethermind.Evm.Tracing.ParityStyle;
-using System.Threading;
-using System;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Trie.Pruning;
-using NSubstitute;
 
 namespace Nethermind.JsonRpc.Test.Modules.Trace
 {

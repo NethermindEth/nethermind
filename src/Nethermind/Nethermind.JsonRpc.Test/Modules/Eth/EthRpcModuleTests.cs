@@ -16,9 +16,7 @@
 
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Linq;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -44,7 +42,6 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.TxPool;
-using Newtonsoft.Json.Linq;
 using NSubstitute;
 using NUnit.Framework;
 

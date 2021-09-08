@@ -20,12 +20,8 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
-using Nethermind.Specs;
-using Nethermind.Specs.Forks;
-using NSubstitute;
 using NUnit.Framework;
 using static Nethermind.JsonRpc.Test.Modules.GasPriceOracleTests;
 
