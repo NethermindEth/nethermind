@@ -130,16 +130,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             
             for (int i = 0; i < txsCount; i++)
             {
-                if (txs[i].Hash is not null)
-                {
-                    hashes.Add(txs[i].Hash);
-                    TxPool.Metrics.PendingTransactionsHashesSent++;
-                }
-
                 if (hashes.Count == maxCapacity)
                 {
                     SendMessage();
                     hashes.Clear();
+                }
+                
+                if (txs[i].Hash is not null)
+                {
+                    hashes.Add(txs[i].Hash);
+                    TxPool.Metrics.PendingTransactionsHashesSent++;
                 }
             }
 
@@ -151,7 +151,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
             void SendMessage()
             {
-                NewPooledTransactionHashesMessage msg = new(hashes.ToArray());
+                NewPooledTransactionHashesMessage msg = new(hashes);
                 Send(msg);
                 Metrics.Eth65NewPooledTransactionHashesSent++;
             }
