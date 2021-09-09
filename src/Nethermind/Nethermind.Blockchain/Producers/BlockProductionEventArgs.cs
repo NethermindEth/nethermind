@@ -40,5 +40,7 @@ namespace Nethermind.Blockchain.Producers
             BlockTracer = blockTracer;
             CancellationToken = cancellationToken ?? CancellationToken.None;
         }
+
+        public BlockProductionEventArgs Clone() => (BlockProductionEventArgs)MemberwiseClone();
     }
 }

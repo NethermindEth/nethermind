@@ -19,8 +19,6 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-using Jint.Parser.Ast;
-using Microsoft.FSharp.Reflection;
 using Nethermind.JsonRpc.Modules;
 using NUnit.Framework;
 

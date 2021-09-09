@@ -13,16 +13,26 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-namespace Nethermind.JsonRpc.Modules.Eth
+using System;
+using System.Collections.Generic;
+using System.IO;
+using Ethereum.Test.Base;
+using NUnit.Framework;
+
+namespace Ethereum.Blockchain.Test
 {
-    public class SyncingResult
+    [TestFixture][Parallelizable(ParallelScope.All)]
+    public class BlockhashTests : GeneralStateTestBase
     {
-        public static SyncingResult NotSyncing = new();
+        [TestCaseSource(nameof(LoadTests))]
+        public void Test(GeneralStateTest test)
+        {    
+            Assert.True(RunTest(test).Pass);
+        }
         
-        public bool IsSyncing { get; set; }
-        public long StartingBlock { get; set; }
-        public long CurrentBlock { get; set; }
-        public long HighestBlock { get; set; }
+        public static IEnumerable<GeneralStateTest> LoadTests() { var loader = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Blockhash"));
+            return (IEnumerable<GeneralStateTest>)loader.LoadTests(); }
     }
 }

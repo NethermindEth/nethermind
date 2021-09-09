@@ -16,15 +16,9 @@
 // 
 
 using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
 using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
-using Nethermind.Core.Crypto;
-using Nethermind.JsonRpc.Data;
-using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Serialization.Json;
 using Newtonsoft.Json;
 

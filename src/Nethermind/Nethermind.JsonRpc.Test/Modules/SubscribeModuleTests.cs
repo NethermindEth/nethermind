@@ -29,6 +29,7 @@ using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
+using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Subscribe;
@@ -72,7 +73,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                 _blockTree,
                 _txPool,
                 _receiptStorage,
-                _filterStore);
+                _filterStore,
+                new EthSyncingInfo(_blockTree));
             
             _subscriptionManager = new SubscriptionManager(
                 subscriptionFactory,
@@ -153,8 +155,10 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             Block block = Build.A.Block.WithNumber(head).TestObject;
             _blockTree.Head.Returns(block);
+
+            EthSyncingInfo ethSyncingInfo = new(_blockTree);
             
-            SyncingSubscription syncingSubscription = new(_jsonRpcDuplexClient, _blockTree, _logManager);
+            SyncingSubscription syncingSubscription = new(_jsonRpcDuplexClient, _blockTree, ethSyncingInfo, _logManager);
             
             return syncingSubscription;
         }
@@ -227,6 +231,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
         
         [Test]
+        [Retry(3)]
         public void NewHeadSubscription_should_send_notifications_when_adding_multiple_blocks_at_once_and_after_reorgs()
         {
             MemDb blocksDb = new();
@@ -307,6 +312,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
+        [Retry(3)]
         public void LogsSubscription_with_null_arguments_on_NewHeadBlock_event()
         {
             int blockNumber = 55555;

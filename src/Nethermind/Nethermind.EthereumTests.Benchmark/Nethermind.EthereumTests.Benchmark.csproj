@@ -22,17 +22,5 @@
           <Link>EthereumTestFiles\%(RecursiveDir)%(FileName)%(Extension)</Link>
           <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </Content>
-        <None Remove="AdditionalTests\10MGas_0xdead.json" />
-        <Content Include="AdditionalTests\10MGas_0xdead.json">
-          <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-        </Content>
-        <None Remove="AdditionalTests\10MGas_bnAdd.json" />
-        <Content Include="AdditionalTests\10MGas_bnAdd.json">
-          <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-        </Content>
       </ItemGroup>
-
-
-  
-
 </Project>

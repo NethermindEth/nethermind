@@ -73,14 +73,14 @@ namespace Nethermind.JsonRpc.Modules.Eth
             Number = block.Number;
             ParentHash = block.ParentHash;
             ReceiptsRoot = block.ReceiptsRoot;
-            Sha3Uncles = block.OmmersHash;
+            Sha3Uncles = block.UnclesHash;
             Size = _blockDecoder.GetLength(block, RlpBehaviors.None);
             StateRoot = block.StateRoot;
             Timestamp = block.Timestamp;
             TotalDifficulty = block.TotalDifficulty ?? 0;
             Transactions = includeFullTransactionData ? block.Transactions.Select((t, idx) => new TransactionForRpc(block.Hash, block.Number, idx, t, block.BaseFeePerGas)).ToArray() : block.Transactions.Select(t => t.Hash).OfType<object>().ToArray();
             TransactionsRoot = block.TxRoot;
-            Uncles = block.Ommers.Select(o => o.Hash);
+            Uncles = block.Uncles.Select(o => o.Hash);
         }
         
         public Address Author { get; set; }

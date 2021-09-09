@@ -22,7 +22,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Blockchain.Validators
 {
-    public class Always : IBlockValidator, ISealValidator, IOmmersValidator, ITxValidator
+    public class Always : IBlockValidator, ISealValidator, IUnclesValidator, ITxValidator
     {
         private readonly bool _result;
 
@@ -48,12 +48,12 @@ namespace Nethermind.Blockchain.Validators
             return _result;
         }
 
-        public bool Validate(BlockHeader blockHeader, BlockHeader parent, bool isOmmer = false)
+        public bool Validate(BlockHeader blockHeader, BlockHeader parent, bool isUncle = false)
         {
             return _result;
         }
 
-        public bool Validate(BlockHeader blockHeader, bool isOmmer = false)
+        public bool Validate(BlockHeader blockHeader, bool isUncle = false)
         {
             return _result;
         }
@@ -78,7 +78,7 @@ namespace Nethermind.Blockchain.Validators
             return _result;
         }
 
-        public bool Validate(BlockHeader header, BlockHeader[] ommers)
+        public bool Validate(BlockHeader header, BlockHeader[] uncles)
         {
             return _result;
         }

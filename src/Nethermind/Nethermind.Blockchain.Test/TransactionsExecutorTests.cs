@@ -238,7 +238,7 @@ namespace Nethermind.Blockchain.Test
                 .WithGasLimit(testCase.GasLimit)
                 .WithTransactions(txArray)
                 .TestObject;
-            BlockToProduce blockToProduce = new(block.Header, block.Transactions, block.Ommers);
+            BlockToProduce blockToProduce = new(block.Header, block.Transactions, block.Uncles);
             blockTree.Head.Returns(blockToProduce);
 
             void SetAccountStates(IEnumerable<Address> missingAddresses)

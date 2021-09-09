@@ -39,6 +39,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Trie.Pruning;
 using System.Threading.Tasks;
+using Nethermind.Core.Crypto;
 using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Facade.Test
@@ -233,5 +234,6 @@ namespace Nethermind.Facade.Test
 
             _blockchainBridge.BeamHead.Number.Should().Be(7);
         }
+        
     }
 }

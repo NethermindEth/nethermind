@@ -42,7 +42,6 @@ namespace Nethermind.JsonRpc
         public string? IpcUnixDomainSocketPath { get; set; } = null;
 
         public string[] EnabledModules { get; set; } = ModuleType.DefaultModules.ToArray();
-        public int FindLogBlockDepthLimit { get; set; } = 1000;
         public long? GasCap { get; set; } = 100000000;
         public int ReportIntervalSeconds { get; set; } = 300;
         public bool BufferResponses { get; set; }
