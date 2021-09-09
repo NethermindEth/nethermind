@@ -37,37 +37,42 @@ namespace Nethermind.AuRa.Test
         public async Task should_cancel_block_production_trigger_on_next_step_if_not_finished_yet()
         {
             List<BlockProductionEventArgs> args = new();
-            using (BuildBlocksOnAuRaSteps buildBlocksOnAuRaSteps = new(LimboLogs.Instance, new TestAuRaStepCalculator()))
+            await using (BuildBlocksOnAuRaSteps buildBlocksOnAuRaSteps = new(LimboLogs.Instance, new TestAuRaStepCalculator()))
             {
                 buildBlocksOnAuRaSteps.TriggerBlockProduction += (o, e) =>
                 {
                     args.Add(e);
-                    e.BlockProductionTask = Task.Delay(TimeSpan.FromMilliseconds(TestAuRaStepCalculator.StepDuration * 3))
-                        .ContinueWith(t => (Block?)null);
+                    e.BlockProductionTask = TaskExt.DelayAtLeast(TestAuRaStepCalculator.StepDurationTimeSpan * 10, e.CancellationToken)
+                        .ContinueWith(t => (Block?)null, e.CancellationToken);
                 };
 
-                await TaskExt.DelayAtLeast(TimeSpan.FromMilliseconds(TestAuRaStepCalculator.StepDuration * 20));
+                while (args.Count < 3)
+                {
+                    await TaskExt.DelayAtLeast(TestAuRaStepCalculator.StepDurationTimeSpan);
+                }
             }
 
-            args.Should().HaveCountGreaterOrEqualTo(2);
-            IEnumerable<bool> enumerable = args.SkipLast(1).Select(e => e.CancellationToken.IsCancellationRequested);
-            enumerable.Should().AllBeEquivalentTo(true);
-            args[^1].CancellationToken.IsCancellationRequested.Should().BeFalse();
+            bool[] allButLastCancellations = args.SkipLast(1).Select(e => e.CancellationToken.IsCancellationRequested).ToArray();
+            allButLastCancellations.Should().AllBeEquivalentTo(true);
+            allButLastCancellations.Should().HaveCountGreaterOrEqualTo(2);
         }
         
         [Test]
         public async Task should_not_cancel_block_production_trigger_on_next_step_finished()
         {
             List<BlockProductionEventArgs> args = new();
-            
-            using (BuildBlocksOnAuRaSteps buildBlocksOnAuRaSteps = new(LimboLogs.Instance, new TestAuRaStepCalculator()))
+
+            await using (BuildBlocksOnAuRaSteps buildBlocksOnAuRaSteps = new(LimboLogs.Instance, new TestAuRaStepCalculator()))
             {
                 buildBlocksOnAuRaSteps.TriggerBlockProduction += (o, e) =>
                 {
                     args.Add(e);
                 };
 
-                await TaskExt.DelayAtLeast(TimeSpan.FromMilliseconds(TestAuRaStepCalculator.StepDuration * 20));
+                while (args.Count < 2)
+                {
+                    await TaskExt.DelayAtLeast(TestAuRaStepCalculator.StepDurationTimeSpan);
+                }
             }
 
             IEnumerable<bool> enumerable = args.Select(e => e.CancellationToken.IsCancellationRequested);
@@ -77,6 +82,8 @@ namespace Nethermind.AuRa.Test
         private class TestAuRaStepCalculator : IAuRaStepCalculator
         {
             public const long StepDuration = 10;
+            public static readonly TimeSpan StepDurationTimeSpan = TimeSpan.FromMilliseconds(StepDuration);
+            
             public long CurrentStep => UnixTime.MillisecondsLong / StepDuration;
 
             public TimeSpan TimeToNextStep
