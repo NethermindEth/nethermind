@@ -366,6 +366,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             await context.Build();
             TestRpcBlockchain blockchain = context.Blockchain;
             UInt256 currentNonceAddressA = blockchain.State.GetAccount(TestItem.AddressA).Nonce;
+            UInt256 currentNonceAddressB = blockchain.State.GetAccount(TestItem.AddressB).Nonce;
             await blockchain.AddFunds(TestItem.AddressA, 10000.Ether());
             byte[] deployedCode = new byte[3];
             byte[] initCode = Prepare.EvmCode
@@ -377,25 +378,28 @@ namespace Nethermind.JsonRpc.Test.Modules
                 .Op(Instruction.STOP)
                 .Done;
             
-            Transaction transaction = Build.A.Transaction.WithNonce(currentNonceAddressA++).WithTo(TestItem.AddressC)
+            Transaction transaction = Build.A.Transaction.WithNonce(currentNonceAddressA++)
                 .WithData(createCode)
-                .WithGasLimit(22500).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+                .WithTo(null)
+                .WithGasLimit(93548).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
             await blockchain.AddBlock(transaction);
 
 
             var contractAddress = ContractAddress.From(TestItem.AddressA, currentNonceAddressA);
             byte[] code = Prepare.EvmCode
                 .Call(contractAddress, 50000)
+                .Call(contractAddress, 50000)
                 .Op(Instruction.STOP)
                 .Done;
             
-            Transaction transaction2 = Build.A.Transaction.WithNonce(currentNonceAddressA++)
-                .WithData(code).SignedAndResolved(TestItem.PrivateKeyA)
-                .WithGasLimit(22500).TestObject;
+            Transaction transaction2 = Build.A.Transaction.WithNonce(currentNonceAddressB++)
+                .WithData(code).SignedAndResolved(TestItem.PrivateKeyB)
+                .WithTo(null)
+                .WithGasLimit(93548).TestObject;
             await blockchain.AddBlock(transaction2);
 
             ResultWrapper<ParityTxTraceFromStore[]> traces = context.TraceRpcModule.trace_transaction(transaction2.Hash!);
-            Assert.AreEqual(1, traces.Data.Length);
+            Assert.AreEqual(3, traces.Data.Length);
             Assert.AreEqual(transaction2.Hash!, traces.Data[0].TransactionHash);
         }
 
