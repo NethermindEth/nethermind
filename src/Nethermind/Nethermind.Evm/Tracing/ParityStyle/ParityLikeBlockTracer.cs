@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -58,20 +59,41 @@ namespace Nethermind.Evm.Tracing.ParityStyle
 
         public override bool IsTracingRewards { get; }
 
+        // public override void ReportReward(Address author, string rewardType, UInt256 rewardValue)
+        // {
+        //     ParityLikeTxTrace rewardTrace = TxTraces.LastOrDefault();
+        //     if (rewardTrace == null)
+        //         return;
+        //     
+        //     rewardTrace.Action = new ParityTraceAction();
+        //     rewardTrace.Action.RewardType = rewardType;
+        //     rewardTrace.Action.Value = rewardValue;
+        //     rewardTrace.Action.Author = author;
+        //     rewardTrace.Action.CallType = "reward";
+        //     rewardTrace.Action.TraceAddress = new int[] { };
+        //     rewardTrace.Action.Type = "reward";
+        //     rewardTrace.Action.Result = null;
+        // }
+        
         public override void ReportReward(Address author, string rewardType, UInt256 rewardValue)
         {
-            ParityLikeTxTrace rewardTrace = TxTraces.LastOrDefault();
-            if (rewardTrace == null)
-                return;
+            List<ParityLikeTxTrace> rewardTraces = TxTraces;
+
+            foreach (ParityLikeTxTrace rewardTrace in rewardTraces)
+            {
+                if (rewardTrace == null)
+                    return;
             
-            rewardTrace.Action = new ParityTraceAction();
-            rewardTrace.Action.RewardType = rewardType;
-            rewardTrace.Action.Value = rewardValue;
-            rewardTrace.Action.Author = author;
-            rewardTrace.Action.CallType = "reward";
-            rewardTrace.Action.TraceAddress = new int[] { };
-            rewardTrace.Action.Type = "reward";
-            rewardTrace.Action.Result = null;
+                rewardTrace.Action = new ParityTraceAction();
+                rewardTrace.Action.RewardType = rewardType;
+                rewardTrace.Action.Value = rewardValue;
+                rewardTrace.Action.Author = author;
+                rewardTrace.Action.CallType = "reward";
+                rewardTrace.Action.TraceAddress = new int[] { };
+                rewardTrace.Action.Type = "reward";
+                rewardTrace.Action.Result = null;
+            }
+            
         }
 
         public override void StartNewBlockTrace(Block block)

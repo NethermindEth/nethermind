@@ -62,6 +62,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         private class Context
         {
             private readonly IBlockTree _blockTree;
+            public IReceiptStorage receiptStorage;
             AutoResetEvent resetEvent = new(false);
 
             public Context(bool auRa = false)
@@ -102,7 +103,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                     new TxPoolConfig(), new TxValidator(specProvider.ChainId), LimboLogs.Instance,
                     transactionComparerProvider.GetDefaultComparer());
 
-                IReceiptStorage receiptStorage = new InMemoryReceiptStorage();
+                receiptStorage = new InMemoryReceiptStorage();
                 VirtualMachine virtualMachine = new(stateProvider, storageProvider,
                     new BlockhashProvider(_blockTree, LimboLogs.Instance), specProvider, LimboLogs.Instance);
                 TransactionProcessor txProcessor = new(specProvider, stateProvider, storageProvider, virtualMachine,
@@ -139,25 +140,15 @@ namespace Nethermind.JsonRpc.Test.Modules
 
                 Block genesis = genesisBlockBuilder.TestObject;
                 _blockTree.SuggestBlock(genesis);
-                
-                Keccak txHash1 = new Keccak("0x361eea0892e3e55cfb79170f88d1096f10b9da54a84e90597b1df1b50b69d7c4");
-
                 Block previousBlock = genesis;
                 for (int i = 1; i < 10; i++)
                 {
-                    
                     List<Transaction> transactions = new();
                     for (int j = 0; j < i; j++)
                     {
                         transactions.Add(Build.A.Transaction.WithNonce((UInt256)j).SignedAndResolved().TestObject);
                     }
                     
-                    if (i == 9)
-                    {
-                        transactions.Add(Build.A.Transaction.WithHash(txHash1).WithNonce((UInt256)9).WithTo(TestItem.AddressD)
-                            .SignedAndResolved(TestItem.PrivateKeyA).TestObject);
-                    }
-
                     BlockBuilder builder = Build.A.Block.WithNumber(i).WithParent(previousBlock)
                         .WithTransactions(transactions.ToArray()).WithStateRoot(
                             new Keccak("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"));
@@ -169,43 +160,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                     Block block = builder.TestObject;
                     _blockTree.SuggestBlock(block);
                     previousBlock = block;
-
-                    if (i == 9)
-                    {
-                        LogEntry[] logEntries = new[] {Build.A.LogEntry.TestObject, Build.A.LogEntry.TestObject, Build.A.LogEntry.TestObject};
-
-                    
-                        TxReceipt receipt1 = new TxReceipt()
-                        {
-                            Bloom = new Bloom(logEntries),
-                            Index = 1,
-                            Recipient = TestItem.AddressD,
-                            Sender = TestItem.AddressB,
-                            BlockHash = block.Hash,
-                            BlockNumber = block.Number,
-                            ContractAddress = TestItem.AddressC,
-                            GasUsed = 1000,
-                            TxHash = txHash1,
-                            StatusCode = 0,
-                            GasUsedTotal = 2000,
-                            Logs = logEntries
-                        };
-
-                        TxReceipt[] receipts = {receipt1};
-                    
-                        receiptStorage.Insert(block, receipts);
-                    }
-                    
                 }
-                
-                // Keccak blockHash = new Keccak("0x9c847e39f5c36cd0f4696b05670850edd4de9a37b36bd66b1d6dde083a65dcb5");
-                // Keccak blockHash = new Keccak("0x7a4597196e0e3c1e6c843bcdad49a0946b2096b1817f49eca911627748950d8b");
-             
-                // // Keccak txHash1 = new Keccak("0x361eea0892e3e55cfb79170f88d1096f10b9da54a84e90597b1df1b50b69d7c4");
-                // Keccak txHash2 = new Keccak("0x0a1828b5461743ec262a7904fa6bf134733d09b9a42692a77e60cc10bf4fd094");
-                // Keccak txHash3 = new Keccak("0x7ef3ebfaf9c888500b254743d29f24eacdbf31d80da534409e1d06c5c21bd43e");
-             
-
 
                 ReceiptsRecovery receiptsRecovery =
                     new(new EthereumEcdsa(specProvider.ChainId, LimboLogs.Instance), specProvider);
@@ -230,7 +185,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 resetEvent.WaitOne();
             }
 
-            public Block BuildNewBlock1(Transaction[] transactions)
+            public Block BuildNewBlockAndReturn(Transaction[] transactions)
             {
                 Block? currentHead = _blockTree.Head;
                 Block block = Build.A.Block.WithParent(currentHead!).WithNumber(currentHead!.Number + 1)
@@ -429,9 +384,36 @@ namespace Nethermind.JsonRpc.Test.Modules
             Context context = new();
             IJsonRpcConfig jsonRpcConfig = context.JsonRpcConfig;
             jsonRpcConfig.Timeout = 25;
-            Keccak txHash1 = new Keccak("0x361eea0892e3e55cfb79170f88d1096f10b9da54a84e90597b1df1b50b69d7c4");
-            ResultWrapper<ParityTxTraceFromStore[]> traces = context.TraceRpcModule.trace_transaction(txHash1);
-            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":[{\"action\":{\"author\":\"0x01ca8a0ba4a80d12a8fb6e3655688f57b16608cf\",\"rewardType\":\"block\",\"value\":\"0x1bc16d674ec80000\"},\"blockHash\":\"0x80de8fd3f0244191bb8636974c4a760a29b6b5f916d82dda727205cc4def2a82\",\"blockNumber\":13102267,\"subtraces\":0,\"traceAddress\":[],\"transactionHash\":\"0x361eea0892e3e55cfb79170f88d1096f10b9da54a84e90597b1df1b50b69d7c4\",\"transactionPosition\":4,\"type\":\"reward\"}]", traces.Data);
+            List<Transaction> transactions = new();
+            Transaction transaction = Build.A.Transaction.WithNonce((UInt256)10).SignedAndResolved().TestObject;
+            transactions.Add(transaction);
+            Block createdBlock = context.BuildNewBlockAndReturn(transactions.ToArray());
+
+            LogEntry[] logEntries = new[] {Build.A.LogEntry.TestObject, Build.A.LogEntry.TestObject, Build.A.LogEntry.TestObject};
+
+            TxReceipt receipt1 = new TxReceipt()
+            {
+                Bloom = new Bloom(logEntries),
+                Index = (int) createdBlock.Number,
+                Recipient = TestItem.AddressD,
+                Sender = TestItem.AddressB,
+                BlockHash = createdBlock.Hash,
+                BlockNumber = createdBlock.Number,
+                ContractAddress = TestItem.AddressC,
+                GasUsed = 1000,
+                TxHash = transaction.Hash,
+                StatusCode = 0,
+                GasUsedTotal = 2000,
+                Logs = logEntries
+            };
+
+            TxReceipt[] receipts = {receipt1};
+            context.receiptStorage.Insert(createdBlock, receipts);
+            
+            // Keccak txHash1 = new Keccak("0x361eea0892e3e55cfb79170f88d1096f10b9da54a84e90597b1df1b50b69d7c4");
+            ResultWrapper<ParityTxTraceFromStore[]> traces = context.TraceRpcModule.trace_transaction(transaction.Hash);
+            Assert.AreEqual(1, traces.Data.Length);
+            //Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":[{\"action\":{\"author\":\"0x01ca8a0ba4a80d12a8fb6e3655688f57b16608cf\",\"rewardType\":\"block\",\"value\":\"0x1bc16d674ec80000\"},\"blockHash\":\"0x80de8fd3f0244191bb8636974c4a760a29b6b5f916d82dda727205cc4def2a82\",\"blockNumber\":13102267,\"subtraces\":0,\"traceAddress\":[],\"transactionHash\":\"0x361eea0892e3e55cfb79170f88d1096f10b9da54a84e90597b1df1b50b69d7c4\",\"transactionPosition\":4,\"type\":\"reward\"}]", traces.Data);
             
         }
         
