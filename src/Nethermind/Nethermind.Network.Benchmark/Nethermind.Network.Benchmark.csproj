@@ -6,6 +6,11 @@
         <RootNamespace>Nethermind.Network.Benchmarks</RootNamespace>
     </PropertyGroup>
 
+    <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+      <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+      <WarningsAsErrors />
+    </PropertyGroup>
+
     <ItemGroup>
       <PackageReference Include="BenchmarkDotNet" Version="0.13.1" />
     </ItemGroup>
