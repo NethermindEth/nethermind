@@ -17,6 +17,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
@@ -30,7 +31,11 @@ using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
 using NUnit.Framework;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Processing;
+using Nethermind.Blockchain.Rewards;
+using Nethermind.Blockchain.Validators;
 using Nethermind.Core.Crypto;
+using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Serialization.Json;
 
@@ -49,11 +54,27 @@ namespace Nethermind.JsonRpc.Test.Modules
                 await Blockchain.AddFunds(TestItem.AddressA, 1000.Ether());
                 await Blockchain.AddFunds(TestItem.AddressB, 1000.Ether());
                 await Blockchain.AddFunds(TestItem.AddressC, 1000.Ether());
-                
+                ReadOnlyDbProvider? dbProvider = Blockchain.DbProvider.AsReadOnly(false);
                 ReceiptsRecovery receiptsRecovery =
                     new (Blockchain.EthereumEcdsa, Blockchain.SpecProvider);
                 IReceiptFinder receiptFinder = new FullInfoReceiptFinder(Blockchain.ReceiptStorage, receiptsRecovery, Blockchain.BlockFinder);
-                TraceRpcModule = new TraceRpcModule(receiptFinder, new Tracer(Blockchain.State, Blockchain.BlockchainProcessor),
+                ReadOnlyTxProcessingEnv txProcessingEnv =
+                    new(dbProvider, Blockchain.ReadOnlyTrieStore, Blockchain.BlockTree.AsReadOnly(), Blockchain.SpecProvider, Blockchain.LogManager);
+
+                var rewardCalculatorSource = new RewardCalculator(Blockchain.SpecProvider);
+            
+                IRewardCalculator rewardCalculator = rewardCalculatorSource.Get(txProcessingEnv.TransactionProcessor);
+            
+                ReadOnlyChainProcessingEnv chainProcessingEnv = new(
+                    txProcessingEnv,
+                    Always.Valid,
+                    Blockchain.BlockPreprocessorStep,
+                    rewardCalculator,
+                    Blockchain.ReceiptStorage,
+                    dbProvider,
+                    Blockchain.SpecProvider,
+                    Blockchain.LogManager);
+                TraceRpcModule = new TraceRpcModule(receiptFinder, new Tracer(chainProcessingEnv.StateProvider, chainProcessingEnv.ChainProcessor),
                     Blockchain.BlockFinder, JsonRpcConfig, MainnetSpecProvider.Instance, LimboLogs.Instance);
                 
                 for (int i = 1; i < 10; i++)
@@ -385,7 +406,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             await blockchain.AddBlock(transaction);
 
 
-            var contractAddress = ContractAddress.From(TestItem.AddressA, currentNonceAddressA);
+            Address? contractAddress = ContractAddress.From(TestItem.AddressA, currentNonceAddressA);
             byte[] code = Prepare.EvmCode
                 .Call(contractAddress, 50000)
                 .Call(contractAddress, 50000)
