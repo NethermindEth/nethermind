@@ -21,11 +21,16 @@ using System.IO.Abstractions;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Processing;
+using Nethermind.Blockchain.Rewards;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
@@ -39,6 +44,7 @@ namespace Nethermind.Runner.Hive
         private readonly IConfigProvider _configurationProvider;
         private readonly IFileSystem _fileSystem;
         private readonly IBlockValidator _blockValidator;
+        private readonly ITracer _tracer;
         private SemaphoreSlim _resetEvent;
         
         public HiveRunner(
@@ -46,13 +52,16 @@ namespace Nethermind.Runner.Hive
             IConfigProvider configurationProvider,
             ILogger logger,
             IFileSystem fileSystem, 
-            IBlockValidator blockValidator)
+            IBlockValidator blockValidator,
+            ITracer tracer)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _configurationProvider = configurationProvider ?? throw new ArgumentNullException(nameof(configurationProvider));
             _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
             _blockValidator = blockValidator;
+            _tracer = tracer;
+
 
             _resetEvent = new SemaphoreSlim(0);
         }
@@ -61,7 +70,7 @@ namespace Nethermind.Runner.Hive
         {
             if(_logger.IsInfo) _logger.Info("HIVE initialization started");
             _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
-            var hiveConfig = _configurationProvider.GetConfig<IHiveConfig>();
+            IHiveConfig hiveConfig = _configurationProvider.GetConfig<IHiveConfig>();
 
             ListEnvironmentVariables();
             await InitializeBlocks(hiveConfig.BlocksDir, cancellationToken);
@@ -120,7 +129,7 @@ namespace Nethermind.Runner.Hive
 
             if (_logger.IsInfo) _logger.Info($"HIVE Loading blocks from {blocksDir}");
 
-            var files = Directory.GetFiles(blocksDir).OrderBy(x => x).ToArray();
+            string[] files = Directory.GetFiles(blocksDir).OrderBy(x => x).ToArray();
             var blocks = files.Select(x => new {File = x, Block = DecodeBlock(x)}).OrderBy(x => x.Block.Header.Number).ToArray();
 
             foreach (var block in blocks)
@@ -144,8 +153,8 @@ namespace Nethermind.Runner.Hive
             }
 
             byte[] chainFileContent = _fileSystem.File.ReadAllBytes(chainFile);
-            var rlpStream = new RlpStream(chainFileContent);
-            var blocks = new List<Block>();
+            RlpStream rlpStream = new RlpStream(chainFileContent);
+            List<Block> blocks = new List<Block>();
             
             if (_logger.IsInfo) _logger.Info($"HIVE Loading blocks from {chainFile}");
             while (rlpStream.ReadNumberOfItemsRemaining() > 0)
@@ -166,9 +175,9 @@ namespace Nethermind.Runner.Hive
 
         private Block DecodeBlock(string file)
         {
-            var fileContent = File.ReadAllBytes(file);
+            byte[] fileContent = File.ReadAllBytes(file);
             if (_logger.IsInfo) _logger.Info(fileContent.ToHexString());
-            var blockRlp = new Rlp(fileContent);
+            Rlp blockRlp = new Rlp(fileContent);
 
             return Rlp.Decode<Block>(blockRlp);
         }
@@ -191,7 +200,18 @@ namespace Nethermind.Runner.Hive
                     return;
                 }
 
-                var result = _blockTree.SuggestBlock(block);
+                try
+                {
+                    _tracer.Trace(block, NullBlockTracer.Instance);
+                }
+                catch (Exception ex)
+                {
+                    if (_logger.IsError) _logger.Error($"Failed to process block {block}", ex);
+                    return;
+                }
+                
+
+                AddBlockResult result = _blockTree.SuggestBlock(block);
                 await WaitAsync(_resetEvent, string.Empty);
                 if (_logger.IsInfo) _logger.Info($"HIVE suggested {block.ToString(Block.Format.Short)}, now best suggested header {_blockTree.BestSuggestedHeader}, head {_blockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}");
             }

@@ -18,6 +18,12 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Processing;
+using Nethermind.Blockchain.Rewards;
+using Nethermind.Blockchain.Tracing;
+using Nethermind.Blockchain.Validators;
+using Nethermind.Db;
 using Nethermind.Init.Steps;
 using Nethermind.Runner.Hive;
 
@@ -41,13 +47,36 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (hiveEnabled)
             {
                 if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.BlockTree));
-
+                if (_api.ReceiptStorage == null) throw new StepDependencyException(nameof(_api.ReceiptStorage));
+                if (_api.SpecProvider == null) throw new StepDependencyException(nameof(_api.SpecProvider));
+                if (_api.DbProvider == null) throw new StepDependencyException(nameof(_api.DbProvider));
+                if (_api.BlockValidator == null) throw new StepDependencyException(nameof(_api.BlockValidator));
+                
+                ReadOnlyDbProvider readonlyDbProvider = _api.DbProvider.AsReadOnly(false);
+                ReadOnlyTxProcessingEnv txProcessingEnv =
+                    new(readonlyDbProvider, _api.ReadOnlyTrieStore, _api.BlockTree.AsReadOnly(), _api.SpecProvider, _api.LogManager);
+            
+                IRewardCalculator rewardCalculator = _api.RewardCalculatorSource!.Get(txProcessingEnv.TransactionProcessor);
+            
+                ReadOnlyChainProcessingEnv chainProcessingEnv = new(
+                    txProcessingEnv,
+                    Always.Valid,
+                    _api.BlockPreprocessor,
+                    rewardCalculator,
+                    _api.ReceiptStorage,
+                    readonlyDbProvider,
+                    _api.SpecProvider,
+                    _api.LogManager);
+            
+                Tracer tracer = new(chainProcessingEnv.StateProvider, chainProcessingEnv.ChainProcessor, ProcessingOptions.StoreReceipts);
+                
                 HiveRunner hiveRunner = new(
                     _api.BlockTree,
                     _api.ConfigProvider,
                     _api.LogManager.GetClassLogger(),
                     _api.FileSystem,
-                    _api.BlockValidator!
+                    _api.BlockValidator,
+                    tracer
                 );
                 
                 await hiveRunner.Start(cancellationToken);
