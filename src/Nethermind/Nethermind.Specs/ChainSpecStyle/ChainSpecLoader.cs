@@ -54,7 +54,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                 ChainSpecJson chainSpecJson = _serializer.Deserialize<ChainSpecJson>(jsonData);
                 ChainSpec chainSpec = new();
 
-                chainSpec.ChainId = (ulong?)chainSpecJson.Params.NetworkId ?? chainSpecJson.Params.ChainId;
+                chainSpec.ChainId = chainSpecJson.Params.NetworkId ?? chainSpecJson.Params.ChainId;
                 chainSpec.Name = chainSpecJson.Name;
                 chainSpec.DataDir = chainSpecJson.DataDir;
                 LoadGenesis(chainSpecJson, chainSpec);
