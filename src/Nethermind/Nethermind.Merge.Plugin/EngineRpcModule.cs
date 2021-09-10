@@ -18,12 +18,15 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
 using Org.BouncyCastle.Asn1.Cms;
+using Result = Nethermind.Merge.Plugin.Data.Result;
 
 namespace Nethermind.Merge.Plugin
 {
@@ -98,5 +101,46 @@ namespace Nethermind.Merge.Plugin
 
         public Task<ResultWrapper<Result>> engine_finaliseBlock(Keccak blockHash) => 
             Task.FromResult(_finaliseBlockHandler.Handle(blockHash));
+
+        public Task engine_preparePayload(Keccak parentHash, UInt256 timestamp, Keccak random, Address coinbase)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task<ResultWrapper<BlockRequestResult?>> engine_getPayload(Keccak parentHash, UInt256 timeStamp,
+            Keccak random, Address coinbase)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task<ResultWrapper<ExecutePayloadResult>> engine_executePayload(BlockRequestResult executionPayload)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task engine_consensusValidated(Keccak parentHash, VerificationStatus status)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task engine_forkchoiceUpdated(Keccak headBlockHash, Keccak finalizedBlockHash, Keccak confirmedBlockHash)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task engine_terminalTotalDifficultyOverride(UInt256 terminalTotalDifficulty)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task engine_terminalPoWBlockOverride(Keccak blockHash)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task<ResultWrapper<Block?>> engine_getPowBlock(Keccak blockHash)
+        {
+            throw new NotImplementedException();
+        }
     }
 }
