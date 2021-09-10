@@ -16,6 +16,7 @@
 
 using System;
 using System.IO.Abstractions;
+using System.Linq;
 using System.Numerics;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -187,6 +188,15 @@ namespace Nethermind.JsonRpc.Test
             result.Response.Should().BeNull();
         }
 
+        [Test]
+        public async Task Can_process_batch_request_with_single_request_and_array_with_two()
+        {
+            JsonRpcResult result = await _jsonRpcProcessor.ProcessAsync("{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]},[{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]},{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}]", JsonRpcContext.Http);
+            result.Response.Should().BeNull();
+            result.Responses.Should().NotBeNull();
+            result.Responses.Should().HaveCount(3);
+        }
+        
         private JsonRpcErrorResponse _errorResponse = new();
 
         [Test]
@@ -202,6 +212,7 @@ namespace Nethermind.JsonRpc.Test
             JsonRpcResult result = await _jsonRpcProcessor.ProcessAsync("[]", JsonRpcContext.Http);
             result.Response.Should().BeNull();
             result.Responses.Should().NotBeNull();
+            Assert.IsTrue(result.Responses.All(r => r != _errorResponse));
         }
 
         [Test]
@@ -210,8 +221,19 @@ namespace Nethermind.JsonRpc.Test
             JsonRpcResult result = await _jsonRpcProcessor.ProcessAsync("{}", JsonRpcContext.Http);
             result.Response.Should().NotBeNull();
             result.Responses.Should().BeNull();
+            result.Response.Should().NotBeSameAs(_errorResponse);
         }
 
+        [Test]
+        public async Task Can_handle_array_of_empty_requests()
+        {
+            JsonRpcResult result = await _jsonRpcProcessor.ProcessAsync("[{},{},{}]", JsonRpcContext.Http);
+            result.Response.Should().BeNull();
+            result.Responses.Should().NotBeNull();
+            result.Responses.Should().HaveCount(3);
+            Assert.IsTrue(result.Responses.All(r => r != _errorResponse));
+        }
+        
         [Test]
         public async Task Can_handle_value_request()
         {

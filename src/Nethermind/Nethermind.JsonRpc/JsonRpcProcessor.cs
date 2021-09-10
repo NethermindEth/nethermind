@@ -23,6 +23,7 @@ using System.Text;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.JsonRpc.Utils;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Newtonsoft.Json;
@@ -79,7 +80,7 @@ namespace Nethermind.JsonRpc
             _traceSerializer = Newtonsoft.Json.JsonSerializer.Create(jsonSettings);
         }
 
-        private (JsonRpcRequest Model, List<JsonRpcRequest> Collection) DeserializeObjectOrArray(string json)
+        private (JsonRpcRequest Model, List<JsonRpcRequest> Collection) DeserializeObjectOrArray1(string json)
         {
             JToken token = JToken.Parse(json);
             if (token is JArray array)
@@ -94,6 +95,57 @@ namespace Nethermind.JsonRpc
 
             UpdateParams(token);
             return (token.ToObject<JsonRpcRequest>(_obsoleteBasicJsonSerializer), null);
+        }
+
+        private (JsonRpcRequest Model, List<JsonRpcRequest> Collection) DeserializeObjectOrArray(string json)
+        {
+            void CreateRequest(JToken tokenElement, List<JsonRpcRequest> jsonRpcRequests)
+            {
+                UpdateParams(tokenElement);
+                JsonRpcRequest request = tokenElement.ToObject<JsonRpcRequest>(_obsoleteBasicJsonSerializer);
+                if (request != null)
+                {
+                    jsonRpcRequests.Add(request);
+                }
+            }
+
+            var parsedJson = JTokenUtils.ParseMulticontent(json);
+
+            List<JsonRpcRequest> collection = new();
+            bool isEmptyArray = false;
+            foreach (JToken jToken in parsedJson)
+            {
+                if (jToken is JArray array)
+                {
+                    if (array.Count == 0)
+                    {
+                        isEmptyArray = true;
+                    }
+                    else
+                    {
+                        foreach (var tokenElement in array)
+                        {
+                            CreateRequest(tokenElement, collection);
+                        }
+                    }
+                }
+                else
+                {
+                    CreateRequest(jToken, collection);
+                }
+            }
+
+            if (collection.Count > 1 || isEmptyArray)
+            {
+                return (null, collection);
+            }
+
+            if (collection.Count == 1)
+            {
+                return (collection[0], null);
+            }
+
+            return (null, null);
         }
 
         private void UpdateParams(JToken token)
