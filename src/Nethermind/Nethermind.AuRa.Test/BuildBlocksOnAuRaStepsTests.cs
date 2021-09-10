@@ -34,6 +34,7 @@ namespace Nethermind.AuRa.Test
     public class BuildBlocksOnAuRaStepsTests
     {
         [Test]
+        [Retry(3)]
         public async Task should_cancel_block_production_trigger_on_next_step_if_not_finished_yet()
         {
             List<BlockProductionEventArgs> args = new();
