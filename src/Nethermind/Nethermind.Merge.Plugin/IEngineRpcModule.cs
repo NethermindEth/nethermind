@@ -109,5 +109,34 @@ namespace Nethermind.Merge.Plugin
             IsSharable = true,
             IsImplemented = false)]
         Task<ResultWrapper<Block?>> engine_getPowBlock(Keccak blockHash);
+        
+        [JsonRpcMethod(
+            Description =
+                "Propagates the header of the payload obtained from the state at the weak subjectivity checkpoint.",
+            IsSharable = true,
+            IsImplemented = false)]
+        Task engine_syncCheckpointSet(BlockRequestResult executionPayloadHeader);
+        
+        [JsonRpcMethod(
+            Description =
+                "An execution client responds with this status to any request of the consensus layer while sync is being in progress.",
+            IsSharable = true,
+            IsImplemented = false)]
+        Task engine_syncStatus(SyncStatus sync, Keccak blockHash, UInt256 blockNumber);
+        
+        [JsonRpcMethod(
+            Description =
+                "Sends information on the state of the client to the execution side.",
+            IsSharable = true,
+            IsImplemented = false)]
+        Task engine_consensusStatus(UInt256 transitionTotalDifficulty, Keccak terminalPowBlockHash,
+            Keccak finalizedBlockHash, Keccak confirmedBlockHash, Keccak headBlockHash);
+
+        [JsonRpcMethod(
+            Description =
+                "Responds with information on the state of the execution client to either engine_consensusStatus or any other call if consistency failure has occurred.",
+            IsSharable = true,
+            IsImplemented = false)]
+        Task engine_executionStatus(Keccak finalizedBlockHash, Keccak confirmedBlockHash, Keccak headBlockHash);
     }
 }

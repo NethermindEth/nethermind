@@ -142,5 +142,27 @@ namespace Nethermind.Merge.Plugin
         {
             throw new NotImplementedException();
         }
+
+        public Task engine_syncCheckpointSet(BlockRequestResult executionPayloadHeader)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task engine_syncStatus(SyncStatus sync, Keccak blockHash, UInt256 blockNumber)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task engine_consensusStatus(UInt256 transitionTotalDifficulty, Keccak terminalPowBlockHash,
+            Keccak finalizedBlockHash,
+            Keccak confirmedBlockHash, Keccak headBlockHash)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task engine_executionStatus(Keccak finalizedBlockHash, Keccak confirmedBlockHash, Keccak headBlockHash)
+        {
+            throw new NotImplementedException();
+        }
     }
 }
