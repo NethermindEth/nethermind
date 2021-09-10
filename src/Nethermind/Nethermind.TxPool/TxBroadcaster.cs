@@ -131,43 +131,45 @@ namespace Nethermind.TxPool
 
             _txsToSend = Interlocked.Exchange(ref _accumulatedTemporaryTxs, _txsToSend);
             
-            List<Transaction> txsToSend = new(persistentTxs.Length + _txsToSend.Count);
-
             foreach ((_, ITxPoolPeer peer) in _peers)
             {
-                txsToSend.AddRange(persistentTxs);
-                foreach (Transaction tx in _txsToSend)
-                {
-                    if (tx.DeliveredBy.Equals(peer.Id))
-                    {
-                        continue;
-                    }
+                if (_logger.IsDebug) _logger.Debug($"Broadcasting transactions to all peers");
 
-                    txsToSend.Add(tx);
-                }
-
-                if (txsToSend.Count > 0)
-                {
-                    if (_logger.IsDebug) _logger.Debug($"Broadcasting {txsToSend.Count} transactions to all peers");
-
-                    Notify(peer, txsToSend);
-                    txsToSend.Clear();
-                }
+                Notify(peer, GetTxsToSend(peer, persistentTxs));
+                
             }
 
             _txsToSend.Clear();
         }
 
-        private void Notify(ITxPoolPeer peer, IList<Transaction> txs)
+        private IEnumerable<Transaction> GetTxsToSend(ITxPoolPeer peer, IReadOnlyList<Transaction> persistentTxs)
+        {
+            for (int i = 0; i < persistentTxs.Count; i++)
+            {
+                yield return persistentTxs[i];
+            }
+
+            foreach (Transaction tx in _txsToSend)
+            {
+                if (tx.DeliveredBy.Equals(peer.Id))
+                {
+                    continue;
+                }
+
+                yield return tx;
+            }
+        }
+
+        private void Notify(ITxPoolPeer peer, IEnumerable<Transaction> txs)
         {
             try
             {
                 peer.SendNewTransactions(txs);
-                if (_logger.IsTrace) _logger.Trace($"Notified {peer} about {txs.Count} transactions.");
+                if (_logger.IsTrace) _logger.Trace($"Notified {peer} about transactions.");
             }
             catch (Exception e)
             {
-                if (_logger.IsError) _logger.Error($"Failed to notify {peer} about {txs.Count} transactions.", e);
+                if (_logger.IsError) _logger.Error($"Failed to notify {peer} about transactions.", e);
             }
         }
 

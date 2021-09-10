@@ -25,6 +25,6 @@ namespace Nethermind.TxPool
     {
         public PublicKey Id { get; }
         public string Enode => string.Empty;
-        void SendNewTransactions(IList<Transaction> txs);
+        void SendNewTransactions(IEnumerable<Transaction> txs);
     }
 }

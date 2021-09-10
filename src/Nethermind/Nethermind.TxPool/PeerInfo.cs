@@ -35,23 +35,20 @@ namespace Nethermind.TxPool
 
         public PublicKey Id => Peer.Id;
 
-        public void SendNewTransactions(IList<Transaction> txs)
+        public void SendNewTransactions(IEnumerable<Transaction> txs)
         {
-            List<Transaction> txsToSend = new(txs.Count);
+            Peer.SendNewTransactions(GetTxsToSendAndMarkAsNotified(txs));
+        }
 
-            for (int i = 0; i < txs.Count; i++)
+        private IEnumerable<Transaction> GetTxsToSendAndMarkAsNotified(IEnumerable<Transaction> txs)
+        {
+            foreach (Transaction tx in txs)
             {
-                Transaction tx = txs[i];
                 if (!NotifiedTransactions.Get(tx.Hash))
                 {
                     NotifiedTransactions.Set(tx.Hash);
-                    txsToSend.Add(tx);
+                    yield return tx;
                 }
-            }
-
-            if (txsToSend.Count > 0)
-            {
-                Peer.SendNewTransactions(txsToSend);
             }
         }
 

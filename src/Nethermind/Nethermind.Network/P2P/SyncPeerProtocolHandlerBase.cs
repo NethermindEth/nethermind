@@ -215,38 +215,36 @@ namespace Nethermind.Network.P2P
 
         public abstract void NotifyOfNewBlock(Block block, SendBlockPriority priority);
 
-        public virtual void SendNewTransactions(IList<Transaction> txs)
+        public virtual void SendNewTransactions(IEnumerable<Transaction> txs)
         {
             const int maxCapacity = 256;
-            int txsCount = txs.Count;
-            List<Transaction> txsToSend = new(Math.Min(maxCapacity, txsCount));
-            
-            for (int i = 0; i < txsCount; i++)
+            List<Transaction> txsToSend = new(maxCapacity);
+
+            foreach (Transaction tx in txs)
             {
                 if (txsToSend.Count == maxCapacity)
                 {
-                    SendMessage();
+                    SendMessage(txsToSend);
                     txsToSend.Clear();
                 }
                 
-                if (txs[i].Hash is not null)
+                if (tx.Hash is not null)
                 {
-                    txsToSend.Add(txs[i]);
+                    txsToSend.Add(tx);
                     TxPool.Metrics.PendingTransactionsSent++;
                 }
             }
             
             if (txsToSend.Count > 0)
             {
-                SendMessage();
+                SendMessage(txsToSend);
             }
-
-
-            void SendMessage()
-            {
-                TransactionsMessage msg = new(txsToSend);
-                Send(msg);
-            }
+        }
+        
+        private void SendMessage(IList<Transaction> txsToSend)
+        {
+            TransactionsMessage msg = new(txsToSend);
+            Send(msg);
         }
 
         public override void HandleMessage(Packet message)

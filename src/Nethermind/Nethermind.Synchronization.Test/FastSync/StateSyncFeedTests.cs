@@ -240,7 +240,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             public PublicKey Id => Node.Id;
 
-            public void SendNewTransactions(IList<Transaction> txs)
+            public void SendNewTransactions(IEnumerable<Transaction> txs)
             {
                 throw new NotImplementedException();
             }

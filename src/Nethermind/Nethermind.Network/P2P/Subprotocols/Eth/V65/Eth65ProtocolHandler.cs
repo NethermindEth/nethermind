@@ -122,39 +122,37 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             return new PooledTransactionsMessage(txs);
         }
         
-        public override void SendNewTransactions(IList<Transaction> txs)
+        public override void SendNewTransactions(IEnumerable<Transaction> txs)
         {
             const int maxCapacity = 3200;
-            int txsCount = txs.Count;
-            List<Keccak> hashes = new(Math.Min(maxCapacity, txsCount));
-            
-            for (int i = 0; i < txsCount; i++)
+            List<Keccak> hashes = new(maxCapacity);
+
+            foreach (Transaction tx in txs)
             {
                 if (hashes.Count == maxCapacity)
                 {
-                    SendMessage();
-                    hashes.Clear();
+                    SendMessage(hashes);
+                    hashes = new(maxCapacity);
                 }
                 
-                if (txs[i].Hash is not null)
+                if (tx.Hash is not null)
                 {
-                    hashes.Add(txs[i].Hash);
+                    hashes.Add(tx.Hash);
                     TxPool.Metrics.PendingTransactionsHashesSent++;
                 }
             }
 
             if (hashes.Count > 0)
             {
-                SendMessage();
+                SendMessage(hashes);
             }
-
-
-            void SendMessage()
-            {
-                NewPooledTransactionHashesMessage msg = new(hashes);
-                Send(msg);
-                Metrics.Eth65NewPooledTransactionHashesSent++;
-            }
+        }
+        
+        private void SendMessage(IList<Keccak> hashes)
+        {
+            NewPooledTransactionHashesMessage msg = new(hashes);
+            Send(msg);
+            Metrics.Eth65NewPooledTransactionHashesSent++;
         }
     }
 }
