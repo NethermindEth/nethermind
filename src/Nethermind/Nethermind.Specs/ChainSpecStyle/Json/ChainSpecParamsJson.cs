@@ -27,7 +27,7 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
     internal class ChainSpecParamsJson
     {
         public ulong ChainId { get; set; }
-        public ulong? NetworkId { get; set; }
+        public long? NetworkId { get; set; }
         
         [JsonProperty(PropertyName = "registrar")]
         public Address EnsRegistrar { get; set; }

@@ -77,7 +77,6 @@ namespace Nethermind.Trie
             if (!trieVisitContext.IsStorage)
             {
                 Account account = decoder.Decode(new RlpStream(value));
-                _builder.AppendLine($"{GetPrefix(trieVisitContext)}  ACCOUNT: {account}");
                 _builder.AppendLine($"{GetPrefix(trieVisitContext)}  NONCE: {account.Nonce}");
                 _builder.AppendLine($"{GetPrefix(trieVisitContext)}  BALANCE: {account.Balance}");
                 _builder.AppendLine($"{GetPrefix(trieVisitContext)}  IS_CONTRACT: {account.IsContract}");

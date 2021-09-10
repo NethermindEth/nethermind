@@ -49,8 +49,8 @@ namespace Nethermind.State
 
         private int _capacity = StartCapacity;
         private Change?[] _changes = new Change?[StartCapacity];
-        private int _currentPosition = Resettable.EmptyPosition;
-        
+        private int _currentPosition = -1;
+
         public StateProvider(ITrieStore? trieStore, IKeyValueStore? codeDb, ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger<StateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
@@ -676,8 +676,6 @@ namespace Nethermind.State
 
         private void SetState(Address address, Account? account)
         {
-            _logger.Info($"Address {address}");
-            _logger.Info($"Account {account}");
             _needsStateRootUpdate = true;
             Metrics.StateTreeWrites++;
             _tree.Set(address, account);
@@ -797,7 +795,7 @@ namespace Nethermind.State
             _intraBlockCache.Reset();
             _committedThisRound.Reset();
             _readsForTracing.Clear();
-            _currentPosition = Resettable.EmptyPosition;
+            _currentPosition = -1;
             Array.Clear(_changes, 0, _changes.Length);
             _needsStateRootUpdate = false;
         }

@@ -1005,7 +1005,6 @@ namespace Nethermind.Trie
                 rootRef = RootHash == rootHash ? RootRef : TrieStore.FindCachedOrUnknown(rootHash);
                 try
                 {
-                    Console.WriteLine(rootHash);
                     rootRef!.ResolveNode(TrieStore);
                 }
                 catch (TrieException)
