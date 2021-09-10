@@ -18,6 +18,7 @@ using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm;
+using Nethermind.Evm.CodeAnalysis;
 
 namespace Nethermind.Benchmarks.Evm
 {
