@@ -207,12 +207,32 @@ namespace Nethermind.JsonRpc.Modules.Trace
             {
                 return ResultWrapper<ParityTxTraceFromStore[]>.Fail(blockSearch);
             }
-
+        
             Block block = blockSearch.Object;
-
-            ParityLikeTxTrace txTrace = TraceTx(block, txHash, ParityTraceTypes.Trace);
+        
+            IReadOnlyCollection<ParityLikeTxTrace> txTrace = TraceTxT(block, txHash, ParityTraceTypes.Trace | ParityTraceTypes.Rewards);
             return ResultWrapper<ParityTxTraceFromStore[]>.Success(ParityTxTraceFromStore.FromTxTrace(txTrace));
         }
+        
+        // public ResultWrapper<ParityTxTraceFromStore[]> trace_transaction(Keccak txHash)
+        // {
+        //     SearchResult<Keccak> blockHashSearch = _receiptFinder.SearchForReceiptBlockHash(txHash);
+        //     if (blockHashSearch.IsError)
+        //     {
+        //         return ResultWrapper<ParityTxTraceFromStore[]>.Fail(blockHashSearch);
+        //     }
+        //     
+        //     SearchResult<Block> blockSearch = _blockFinder.SearchForBlock(new BlockParameter(blockHashSearch.Object));
+        //     if (blockSearch.IsError)
+        //     {
+        //         return ResultWrapper<ParityTxTraceFromStore[]>.Fail(blockSearch);
+        //     }
+        //
+        //     Block block = blockSearch.Object;
+        //
+        //     ParityLikeTxTrace txTrace = TraceTx(block, txHash, ParityTraceTypes.Trace | ParityTraceTypes.Rewards);
+        //     return ResultWrapper<ParityTxTraceFromStore[]>.Success(ParityTxTraceFromStore.FromTxTrace(txTrace));
+        // }
 
         private IReadOnlyCollection<ParityLikeTxTrace> TraceBlock(Block block, ParityTraceTypes traceTypes, TxTraceFilter txTraceFilter = null)
         {
@@ -224,8 +244,8 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
             return listener.BuildResult();
         }
-
-        private ParityLikeTxTrace TraceTx(Block block, Keccak txHash, ParityTraceTypes traceTypes)
+        
+        private IReadOnlyCollection<ParityLikeTxTrace> TraceTxT(Block block, Keccak txHash, ParityTraceTypes traceTypes)
         {
             using CancellationTokenSource cancellationTokenSource = new(_cancellationTokenTimeout);
             CancellationToken cancellationToken = cancellationTokenSource.Token;
@@ -233,6 +253,17 @@ namespace Nethermind.JsonRpc.Modules.Trace
             ParityLikeBlockTracer listener = new(txHash, traceTypes);
             _tracer.Trace(block, listener.WithCancellation(cancellationToken));
 
+            return listener.BuildResult();
+        }
+
+        private ParityLikeTxTrace TraceTx(Block block, Keccak txHash, ParityTraceTypes traceTypes)
+        {
+            using CancellationTokenSource cancellationTokenSource = new(_cancellationTokenTimeout);
+            CancellationToken cancellationToken = cancellationTokenSource.Token;
+        
+            ParityLikeBlockTracer listener = new(txHash, traceTypes);
+            _tracer.Trace(block, listener.WithCancellation(cancellationToken));
+        
             return listener.BuildResult().SingleOrDefault();
         }
     }
