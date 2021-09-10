@@ -529,11 +529,11 @@ namespace Nethermind.Blockchain.Processing
                 return false;
             }
 
-            // if (suggestedBlock.Header.TotalDifficulty == null)
-            // {
-            //     if (_logger.IsDebug) _logger.Debug($"Skipping processing block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} without total difficulty");
-            //     throw new InvalidOperationException("Block without total difficulty calculated was suggested for processing");
-            // }
+            if (suggestedBlock.Header.TotalDifficulty == null)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Skipping processing block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} without total difficulty");
+                throw new InvalidOperationException("Block without total difficulty calculated was suggested for processing");
+            }
 
             if ((options & ProcessingOptions.NoValidation) == 0 && suggestedBlock.Hash == null)
             {

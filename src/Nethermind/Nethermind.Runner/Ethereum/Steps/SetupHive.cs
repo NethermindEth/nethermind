@@ -68,7 +68,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _api.SpecProvider,
                     _api.LogManager);
             
-                Tracer tracer = new(chainProcessingEnv.StateProvider, chainProcessingEnv.ChainProcessor, ProcessingOptions.StoreReceipts);
+                Tracer tracer = new(chainProcessingEnv.StateProvider, chainProcessingEnv.ChainProcessor, ProcessingOptions.DoNotUpdateHead | ProcessingOptions.ReadOnlyChain);
                 
                 HiveRunner hiveRunner = new(
                     _api.BlockTree,

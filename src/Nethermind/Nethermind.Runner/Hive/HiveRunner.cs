@@ -21,6 +21,7 @@ using System.IO.Abstractions;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.VisualBasic.CompilerServices;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
@@ -199,10 +200,25 @@ namespace Nethermind.Runner.Hive
                     if (_logger.IsInfo) _logger.Info($"Invalid block {block}");
                     return;
                 }
+                AddBlockResult result = _blockTree.SuggestBlock(block);
+                if (result != AddBlockResult.Added && result != AddBlockResult.AlreadyKnown)
+                {
+                    if (_logger.IsError) _logger.Error($"Cannot add block {block} to the blockTree, add result {result}");
+                    return;
+                }
 
                 try
                 {
-                    _tracer.Trace(block, NullBlockTracer.Instance);
+                    // BlockHeader? header = _blockTree.FindHeader(block.ParentHash!);
+                    // if (header == null)
+                    // {
+                    //     if (_logger.IsError) _logger.Error($"Unable to find parent for {block}");
+                    // }
+                    // else
+                    // {
+                    //     block.Header.TotalDifficulty = header.TotalDifficulty + block.Difficulty;
+                        _tracer.Trace(block, NullBlockTracer.Instance);
+                   // }
                 }
                 catch (Exception ex)
                 {
@@ -210,8 +226,6 @@ namespace Nethermind.Runner.Hive
                     return;
                 }
                 
-
-                AddBlockResult result = _blockTree.SuggestBlock(block);
                 await WaitAsync(_resetEvent, string.Empty);
                 if (_logger.IsInfo) _logger.Info($"HIVE suggested {block.ToString(Block.Format.Short)}, now best suggested header {_blockTree.BestSuggestedHeader}, head {_blockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}");
             }
