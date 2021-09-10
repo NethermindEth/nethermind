@@ -59,22 +59,6 @@ namespace Nethermind.Evm.Tracing.ParityStyle
 
         public override bool IsTracingRewards { get; }
 
-        // public override void ReportReward(Address author, string rewardType, UInt256 rewardValue)
-        // {
-        //     ParityLikeTxTrace rewardTrace = TxTraces.LastOrDefault();
-        //     if (rewardTrace == null)
-        //         return;
-        //     
-        //     rewardTrace.Action = new ParityTraceAction();
-        //     rewardTrace.Action.RewardType = rewardType;
-        //     rewardTrace.Action.Value = rewardValue;
-        //     rewardTrace.Action.Author = author;
-        //     rewardTrace.Action.CallType = "reward";
-        //     rewardTrace.Action.TraceAddress = new int[] { };
-        //     rewardTrace.Action.Type = "reward";
-        //     rewardTrace.Action.Result = null;
-        // }
-        
         public override void ReportReward(Address author, string rewardType, UInt256 rewardValue)
         {
             List<ParityLikeTxTrace> rewardTraces = TxTraces;
