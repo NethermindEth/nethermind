@@ -47,18 +47,19 @@ namespace Nethermind.Runner.Hive
         private readonly IBlockValidator _blockValidator;
         private readonly ITracer _tracer;
         private SemaphoreSlim _resetEvent;
-        
+
         public HiveRunner(
             IBlockTree blockTree,
             IConfigProvider configurationProvider,
             ILogger logger,
-            IFileSystem fileSystem, 
+            IFileSystem fileSystem,
             IBlockValidator blockValidator,
             ITracer tracer)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _configurationProvider = configurationProvider ?? throw new ArgumentNullException(nameof(configurationProvider));
+            _configurationProvider =
+                configurationProvider ?? throw new ArgumentNullException(nameof(configurationProvider));
             _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
             _blockValidator = blockValidator;
             _tracer = tracer;
@@ -69,7 +70,7 @@ namespace Nethermind.Runner.Hive
 
         public async Task Start(CancellationToken cancellationToken)
         {
-            if(_logger.IsInfo) _logger.Info("HIVE initialization started");
+            if (_logger.IsInfo) _logger.Info("HIVE initialization started");
             _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
             IHiveConfig hiveConfig = _configurationProvider.GetConfig<IHiveConfig>();
 
@@ -79,13 +80,13 @@ namespace Nethermind.Runner.Hive
 
             _blockTree.NewHeadBlock -= BlockTreeOnNewHeadBlock;
 
-            if(_logger.IsInfo) _logger.Info("HIVE initialization completed");
+            if (_logger.IsInfo) _logger.Info("HIVE initialization completed");
         }
 
         private void BlockTreeOnNewHeadBlock(object? sender, BlockEventArgs e)
         {
             _logger.Info($"HIVE new head block {e.Block.ToString(Block.Format.Short)}");
-                _resetEvent.Release(1);
+            _resetEvent.Release(1);
         }
 
         private void ListEnvironmentVariables()
@@ -108,10 +109,16 @@ namespace Nethermind.Runner.Hive
 // #  - HIVE_MINER_EXTRA    extra-data field to set for newly minted blocks
 // #  - HIVE_SKIP_POW       If set, skip PoW verification during block import
 
-            string[] variableNames = {"HIVE_CHAIN_ID", "HIVE_BOOTNODE", "HIVE_TESTNET", "HIVE_NODETYPE", "HIVE_FORK_HOMESTEAD", "HIVE_FORK_DAO_BLOCK", "HIVE_FORK_DAO_VOTE", "HIVE_FORK_TANGERINE", "HIVE_FORK_SPURIOUS", "HIVE_FORK_METROPOLIS", "HIVE_FORK_BYZANTIUM", "HIVE_FORK_CONSTANTINOPLE", "HIVE_FORK_PETERSBURG", "HIVE_MINER", "HIVE_MINER_EXTRA", "HIVE_FORK_BERLIN", "HIVE_FORK_LONDON"};
+            string[] variableNames =
+            {
+                "HIVE_CHAIN_ID", "HIVE_BOOTNODE", "HIVE_TESTNET", "HIVE_NODETYPE", "HIVE_FORK_HOMESTEAD",
+                "HIVE_FORK_DAO_BLOCK", "HIVE_FORK_DAO_VOTE", "HIVE_FORK_TANGERINE", "HIVE_FORK_SPURIOUS",
+                "HIVE_FORK_METROPOLIS", "HIVE_FORK_BYZANTIUM", "HIVE_FORK_CONSTANTINOPLE", "HIVE_FORK_PETERSBURG",
+                "HIVE_MINER", "HIVE_MINER_EXTRA", "HIVE_FORK_BERLIN", "HIVE_FORK_LONDON"
+            };
             foreach (string variableName in variableNames)
             {
-                if(_logger.IsInfo) _logger.Info($"{variableName}: {Environment.GetEnvironmentVariable(variableName)}");
+                if (_logger.IsInfo) _logger.Info($"{variableName}: {Environment.GetEnvironmentVariable(variableName)}");
             }
         }
 
@@ -131,7 +138,8 @@ namespace Nethermind.Runner.Hive
             if (_logger.IsInfo) _logger.Info($"HIVE Loading blocks from {blocksDir}");
 
             string[] files = Directory.GetFiles(blocksDir).OrderBy(x => x).ToArray();
-            var blocks = files.Select(x => new {File = x, Block = DecodeBlock(x)}).OrderBy(x => x.Block.Header.Number).ToArray();
+            var blocks = files.Select(x => new {File = x, Block = DecodeBlock(x)}).OrderBy(x => x.Block.Header.Number)
+                .ToArray();
 
             foreach (var block in blocks)
             {
@@ -139,8 +147,10 @@ namespace Nethermind.Runner.Hive
                 {
                     break;
                 }
-                
-                if (_logger.IsInfo) _logger.Info($"HIVE Processing block file: {block.File} - {block.Block.ToString(Block.Format.Short)}");
+
+                if (_logger.IsInfo)
+                    _logger.Info(
+                        $"HIVE Processing block file: {block.File} - {block.Block.ToString(Block.Format.Short)}");
                 await ProcessBlock(block.Block);
             }
         }
@@ -156,20 +166,22 @@ namespace Nethermind.Runner.Hive
             byte[] chainFileContent = _fileSystem.File.ReadAllBytes(chainFile);
             RlpStream rlpStream = new RlpStream(chainFileContent);
             List<Block> blocks = new List<Block>();
-            
+
             if (_logger.IsInfo) _logger.Info($"HIVE Loading blocks from {chainFile}");
             while (rlpStream.ReadNumberOfItemsRemaining() > 0)
             {
                 rlpStream.PeekNextItem();
                 Block block = Rlp.Decode<Block>(rlpStream);
-                if (_logger.IsInfo) _logger.Info($"HIVE Reading a chain.rlp block {block.ToString(Block.Format.Short)}");
+                if (_logger.IsInfo)
+                    _logger.Info($"HIVE Reading a chain.rlp block {block.ToString(Block.Format.Short)}");
                 blocks.Add(block);
             }
 
             for (int i = 0; i < blocks.Count; i++)
             {
                 Block block = blocks[i];
-                if (_logger.IsInfo) _logger.Info($"HIVE Processing a chain.rlp block {block.ToString(Block.Format.Short)}");
+                if (_logger.IsInfo)
+                    _logger.Info($"HIVE Processing a chain.rlp block {block.ToString(Block.Format.Short)}");
                 await ProcessBlock(block);
             }
         }
@@ -182,7 +194,7 @@ namespace Nethermind.Runner.Hive
 
             return Rlp.Decode<Block>(blockRlp);
         }
-        
+
         private async Task WaitAsync(SemaphoreSlim semaphore, string error)
         {
             if (!await semaphore.WaitAsync(-1))
@@ -200,34 +212,29 @@ namespace Nethermind.Runner.Hive
                     if (_logger.IsInfo) _logger.Info($"Invalid block {block}");
                     return;
                 }
+
                 AddBlockResult result = _blockTree.SuggestBlock(block);
                 if (result != AddBlockResult.Added && result != AddBlockResult.AlreadyKnown)
                 {
-                    if (_logger.IsError) _logger.Error($"Cannot add block {block} to the blockTree, add result {result}");
+                    if (_logger.IsError)
+                        _logger.Error($"Cannot add block {block} to the blockTree, add result {result}");
                     return;
                 }
 
                 try
                 {
-                    // BlockHeader? header = _blockTree.FindHeader(block.ParentHash!);
-                    // if (header == null)
-                    // {
-                    //     if (_logger.IsError) _logger.Error($"Unable to find parent for {block}");
-                    // }
-                    // else
-                    // {
-                    //     block.Header.TotalDifficulty = header.TotalDifficulty + block.Difficulty;
-                        _tracer.Trace(block, NullBlockTracer.Instance);
-                   // }
+                    _tracer.Trace(block, NullBlockTracer.Instance);
                 }
                 catch (Exception ex)
                 {
                     if (_logger.IsError) _logger.Error($"Failed to process block {block}", ex);
                     return;
                 }
-                
+
                 await WaitAsync(_resetEvent, string.Empty);
-                if (_logger.IsInfo) _logger.Info($"HIVE suggested {block.ToString(Block.Format.Short)}, now best suggested header {_blockTree.BestSuggestedHeader}, head {_blockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}");
+                if (_logger.IsInfo)
+                    _logger.Info(
+                        $"HIVE suggested {block.ToString(Block.Format.Short)}, now best suggested header {_blockTree.BestSuggestedHeader}, head {_blockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}");
             }
             catch (Exception e)
             {

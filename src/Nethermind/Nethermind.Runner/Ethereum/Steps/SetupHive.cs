@@ -60,7 +60,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             
                 ReadOnlyChainProcessingEnv chainProcessingEnv = new(
                     txProcessingEnv,
-                    Always.Valid,
+                    _api.BlockValidator,
                     _api.BlockPreprocessor,
                     rewardCalculator,
                     _api.ReceiptStorage,
