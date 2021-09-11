@@ -95,6 +95,7 @@ namespace Nethermind.AccountAbstraction.Executor
         {
             _beneficiary = beneficiary;
             Transaction = transaction;
+            Success = true;
             AccessedStorage = new Dictionary<Address, HashSet<UInt256>>();
             _currentExecutor = transaction?.To ?? Address.Zero;
         }
@@ -117,9 +118,9 @@ namespace Nethermind.AccountAbstraction.Executor
             Instruction.BASEFEE,
             Instruction.BLOCKHASH,
             Instruction.NUMBER,
+            Instruction.SELFBALANCE,
             Instruction.BALANCE,
             Instruction.ORIGIN,
-            Instruction.GAS
         };
         private readonly Address _beneficiary;
         private Address _currentExecutor { get; set; }
@@ -137,13 +138,12 @@ namespace Nethermind.AccountAbstraction.Executor
         public bool IsTracingState => true;
         public bool IsTracingStorage => true;
         public bool IsTracingBlockHash => false;
-        public bool IsTracingAccess => false;
+        public bool IsTracingAccess => true;
 
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs,
             Keccak? stateRoot = null)
         {
             GasSpent = gasSpent;
-            Success = true;
             Output = output;
         }
 
@@ -180,24 +180,17 @@ namespace Nethermind.AccountAbstraction.Executor
 
         public void ReportStorageChange(StorageCell storageCell, byte[] before, byte[] after)
         {
-            // not allowed during verification
-            Success = false;
+            throw new NotImplementedException();
         }
 
         public void ReportStorageRead(StorageCell storageCell)
         {
-            if (AccessedStorage.ContainsKey(storageCell.Address))
-            {
-                AccessedStorage[storageCell.Address].Add(storageCell.Index);
-                return;
-            }
-            AccessedStorage.Add(storageCell.Address, new HashSet<UInt256>{storageCell.Index});
-            
+            throw new NotImplementedException();
         }
 
         public void StartOperation(int depth, long gas, Instruction opcode, int pc)
         {
-            if (_bannedOpcodes.Contains(opcode))
+            if (depth > 1 && _bannedOpcodes.Contains(opcode))
             {
                 Success = false;
             }
@@ -298,7 +291,41 @@ namespace Nethermind.AccountAbstraction.Executor
         public void ReportAccess(IReadOnlySet<Address> accessedAddresses,
             IReadOnlySet<StorageCell> accessedStorageCells)
         {
-            throw new NotImplementedException();
+            void AddToAccessedStorage(StorageCell storageCell)
+            {
+                if (AccessedStorage.ContainsKey(storageCell.Address))
+                {
+                    AccessedStorage[storageCell.Address].Add(storageCell.Index);
+                    return;
+                }
+                AccessedStorage.Add(storageCell.Address, new HashSet<UInt256>{storageCell.Index});
+            }
+
+            Address[] accessedAddressesArray = accessedAddresses.ToArray();
+            Address? walletOrPaymasterAddress = accessedAddressesArray.Length > 2 ? accessedAddressesArray[2] : null;
+            if (walletOrPaymasterAddress is null)
+            {
+                Success = false;
+                return;
+            }
+
+            List<Address>? furtherAddresses = accessedAddressesArray.Length > 3 ? accessedAddressesArray.Skip(3).ToList() : null;
+            
+            foreach (StorageCell accessedStorageCell in accessedStorageCells)
+            {
+                if (accessedStorageCell.Address == walletOrPaymasterAddress)
+                {
+                    AddToAccessedStorage(accessedStorageCell);
+                }
+
+                if (furtherAddresses is not null)
+                {
+                    if (furtherAddresses.Contains(accessedStorageCell.Address))
+                    {
+                        Success = false;
+                    }
+                }
+            }
         }
     }
 }

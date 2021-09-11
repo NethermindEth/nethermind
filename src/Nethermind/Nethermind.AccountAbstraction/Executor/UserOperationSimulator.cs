@@ -184,6 +184,8 @@ namespace Nethermind.AccountAbstraction.Executor
         {
             UserOperationBlockTracer blockTracer = SimulateValidation(transaction, parent, transactionProcessor);
 
+            if (!blockTracer.Success) return (false, UInt256.Zero, UserOperationAccessList.Empty);
+            
             // uint gasUsedByPayForSelfOp
             object[] result = _abiEncoder.Decode(
                 AbiEncodingStyle.None,
@@ -200,6 +202,8 @@ namespace Nethermind.AccountAbstraction.Executor
         private (bool success, UInt256 gasUsed, UserOperationAccessList accessList) SimulatePaymasterValidation(Transaction transaction, BlockHeader parent, ITransactionProcessor transactionProcessor)
         {
             UserOperationBlockTracer blockTracer = SimulateValidation(transaction, parent, transactionProcessor);
+
+            if (!blockTracer.Success) return (false, UInt256.Zero, UserOperationAccessList.Empty);
 
             // bytes context, uint gasUsedByPayForOp
             object[] result = _abiEncoder.Decode(

@@ -19,7 +19,9 @@ using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.AccountAbstraction.Executor;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Evm.Test;
 using Nethermind.Int256;
@@ -54,18 +56,56 @@ namespace Nethermind.AccountAbstraction.Test
             tracer.Success.Should().BeTrue();
         }
         
-        [Test]
-        public void Should_fail_if_SSTORE_is_used()
+        [TestCase(Instruction.GASPRICE, false)]
+        [TestCase(Instruction.GASLIMIT, false)]
+        [TestCase(Instruction.DIFFICULTY, false)]
+        [TestCase(Instruction.TIMESTAMP, false)]
+        [TestCase(Instruction.BASEFEE, false)]
+        [TestCase(Instruction.BLOCKHASH, false)]
+        [TestCase(Instruction.NUMBER, false)]
+        [TestCase(Instruction.BALANCE, false)]
+        [TestCase(Instruction.SELFBALANCE, false)]
+        [TestCase(Instruction.ORIGIN, false)]
+        [TestCase(Instruction.BALANCE, false)]
+        [TestCase(Instruction.DUP1, true)]
+        [TestCase(Instruction.ISZERO, true)]
+        [TestCase(Instruction.AND, true)]
+        public void Should_fail_if_banned_opcode_is_used_when_call_depth_is_more_than_one(Instruction instruction, bool success)
         {
-            byte[] code = Prepare.EvmCode
+            //GASPRICE, GASLIMIT, DIFFICULTY, TIMESTAMP, BASEFEE, BLOCKHASH, NUMBER, BALANCE, ORIGIN
+            byte[] deployedCode = Prepare.EvmCode
                 .PushData("0x01")
                 .PushData("0x69")
-                .Op(Instruction.SSTORE)
+                .Op(instruction)
                 .Done;
-            
-            (UserOperationTxTracer tracer, _, _) = ExecuteAndTraceAccessCall(SenderRecipientAndMiner.Default, code);
 
-            tracer.Success.Should().BeFalse();
+            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+            Keccak deployedCodeHash = TestState.UpdateCode(deployedCode);
+            TestState.UpdateCodeHash(TestItem.AddressC, deployedCodeHash, Spec);
+
+            byte[] code = Prepare.EvmCode
+                .Call(TestItem.AddressC, 50000)
+                .Op(Instruction.STOP)
+                .Done;
+
+            (UserOperationTxTracer tracer, _, _) = ExecuteAndTraceAccessCall(SenderRecipientAndMiner.Default, code);
+            
+            tracer.Success.Should().Be(success);
+        }
+
+        [TestCase(Instruction.NUMBER)]
+        [TestCase(Instruction.GASPRICE)]
+        public void Should_succeed_if_banned_opcode_is_used_with_calldepth_one(Instruction instruction)
+        {
+            byte[] code = Prepare.EvmCode
+                .PushData("0x69")
+                .PushData("0x01")
+                .Op(instruction)
+                .Done;
+
+            (UserOperationTxTracer tracer, _, _) = ExecuteAndTraceAccessCall(SenderRecipientAndMiner.Default, code);
+            
+            tracer.Success.Should().BeTrue();
         }
         
         private (UserOperationTxTracer trace, Block block, Transaction transaction) ExecuteAndTraceAccessCall(SenderRecipientAndMiner addresses, params byte[] code)
