@@ -23,6 +23,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
+using Nethermind.State;
 
 namespace Nethermind.AccountAbstraction.Executor
 {
@@ -30,16 +31,18 @@ namespace Nethermind.AccountAbstraction.Executor
     {
         private readonly long _gasLimit;
         private readonly Address _beneficiary;
+        private readonly IStateProvider _stateProvider;
 
         private UserOperationTxTracer? _tracer;
 
         private UInt256? _beneficiaryBalanceBefore;
         private UInt256? _beneficiaryBalanceAfter;
         
-        public UserOperationBlockTracer(long gasLimit, Address beneficiary)
+        public UserOperationBlockTracer(long gasLimit, Address beneficiary, IStateProvider stateProvider)
         {
             _gasLimit = gasLimit;
             _beneficiary = beneficiary;
+            _stateProvider = stateProvider;
             AccessedStorage = new Dictionary<Address, HashSet<UInt256>>();
         }
 
@@ -60,8 +63,8 @@ namespace Nethermind.AccountAbstraction.Executor
         public ITxTracer StartNewTxTrace(Transaction? tx)
         {
             return tx is null
-                ? new UserOperationTxTracer(_beneficiary, null)
-                : _tracer = new UserOperationTxTracer(_beneficiary, tx);
+                ? new UserOperationTxTracer(_beneficiary, null, _stateProvider)
+                : _tracer = new UserOperationTxTracer(_beneficiary, tx, _stateProvider);
         }
 
         public void EndTxTrace()
@@ -91,13 +94,13 @@ namespace Nethermind.AccountAbstraction.Executor
 
     public class UserOperationTxTracer : ITxTracer
     {
-        public UserOperationTxTracer(Address beneficiary, Transaction? transaction)
+        public UserOperationTxTracer(Address beneficiary, Transaction? transaction, IStateProvider stateProvider)
         {
             _beneficiary = beneficiary;
             Transaction = transaction;
             Success = true;
             AccessedStorage = new Dictionary<Address, HashSet<UInt256>>();
-            _currentExecutor = transaction?.To ?? Address.Zero;
+            _stateProvider = stateProvider;
         }
 
         public Transaction? Transaction { get; }
@@ -123,7 +126,8 @@ namespace Nethermind.AccountAbstraction.Executor
             Instruction.ORIGIN,
         };
         private readonly Address _beneficiary;
-        private Address _currentExecutor { get; set; }
+        private List<int> _codeAccessedAtDepth = new();
+        private IStateProvider _stateProvider;
         
 
 
@@ -167,7 +171,6 @@ namespace Nethermind.AccountAbstraction.Executor
 
         public void ReportCodeChange(Address address, byte[]? before, byte[]? after)
         {
-            _currentExecutor = address;
         }
 
         public void ReportNonceChange(Address address, UInt256? before, UInt256? after)
@@ -193,6 +196,11 @@ namespace Nethermind.AccountAbstraction.Executor
             if (depth > 1 && _bannedOpcodes.Contains(opcode))
             {
                 Success = false;
+            }
+
+            if (depth > 2 && opcode == Instruction.CODECOPY)
+            {
+                _codeAccessedAtDepth.Add(depth);
             }
         }
 
@@ -301,6 +309,34 @@ namespace Nethermind.AccountAbstraction.Executor
                 AccessedStorage.Add(storageCell.Address, new HashSet<UInt256>{storageCell.Index});
             }
 
+            bool ContainsSelfDestructOrDelegateCall(Address address)
+            {
+                // simple static analysis
+                byte[] code = _stateProvider.GetCode(address);
+                
+                int i = 0;
+                while (i < code.Length)
+                {
+                    byte currentInstruction = code[i];
+                    
+                    if (currentInstruction == (byte)Instruction.SELFDESTRUCT
+                        || currentInstruction == (byte)Instruction.DELEGATECALL)
+                    {
+                        return true;
+                    }
+
+                    // push opcodes
+                    else if (currentInstruction >= 0x60 || currentInstruction <= 0x7f)
+                    {
+                        i += currentInstruction - 0x5f;
+                    }
+
+                    i++;
+                }
+
+                return false;
+            }
+
             Address[] accessedAddressesArray = accessedAddresses.ToArray();
             Address? walletOrPaymasterAddress = accessedAddressesArray.Length > 2 ? accessedAddressesArray[2] : null;
             if (walletOrPaymasterAddress is null)
@@ -326,6 +362,20 @@ namespace Nethermind.AccountAbstraction.Executor
                     }
                 }
             }
+
+
+            foreach (int depth in _codeAccessedAtDepth)
+            {
+                Address codeAccessedAddress = accessedAddressesArray[depth];
+                if (!_stateProvider.HasCode(codeAccessedAddress)
+                    || ContainsSelfDestructOrDelegateCall(codeAccessedAddress))
+                {
+                    Success = false;
+                }
+            }
+            
+            
+            
         }
     }
 }

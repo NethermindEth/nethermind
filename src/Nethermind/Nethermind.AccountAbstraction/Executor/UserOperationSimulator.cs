@@ -285,7 +285,7 @@ namespace Nethermind.AccountAbstraction.Executor
         }
 
         private UserOperationBlockTracer CreateBlockTracer(BlockHeader parent) =>
-            new(parent.GasLimit, _signer.Address);
+            new(parent.GasLimit, _signer.Address, _stateProvider);
         
         private AbiDefinition LoadContract(JObject obj)
         {
