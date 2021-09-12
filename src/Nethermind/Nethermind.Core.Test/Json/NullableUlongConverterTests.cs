@@ -24,7 +24,7 @@ using NUnit.Framework;
 namespace Nethermind.Core.Test.Json
 {
     [TestFixture]
-    public class NullableULongConverterTests : ConverterTestBase<ulong??>
+    public class NullableULongConverterTests : ConverterTestBase<ulong?>
     {
         [TestCase(NumberConversion.Hex)]
         [TestCase(NumberConversion.Decimal)]
@@ -63,7 +63,7 @@ namespace Nethermind.Core.Test.Json
             JsonReader reader = new JsonTextReader(new StringReader("0x0"));
             reader.ReadAsString();
             ulong? result = converter.ReadJson(reader, typeof(ulong?), 0L, false, JsonSerializer.CreateDefault());
-            Assert.AreEqual(ulong?.Parse("0"), result);
+            Assert.AreEqual(ulong.Parse("0"), result);
         }
         
         [Test]
@@ -83,7 +83,7 @@ namespace Nethermind.Core.Test.Json
             JsonReader reader = new JsonTextReader(new StringReader("0"));
             reader.ReadAsString();
             ulong? result = converter.ReadJson(reader, typeof(ulong?), 0L, false, JsonSerializer.CreateDefault());
-            Assert.AreEqual(ulong?.Parse("0"), result);
+            Assert.AreEqual(ulong.Parse("0"), result);
         }
         
         [Test]
@@ -93,16 +93,26 @@ namespace Nethermind.Core.Test.Json
             JsonReader reader = new JsonTextReader(new StringReader("1"));
             reader.ReadAsString();
             ulong? result = converter.ReadJson(reader, typeof(ulong?), 0L, false, JsonSerializer.CreateDefault());
-            Assert.AreEqual(ulong?.Parse("1"), result);
+            Assert.AreEqual(ulong.Parse("1"), result);
         }
 
         [Test]
-        public void Throws_on_null()
+        public void Can_read_null()
         {
             NullableULongConverter converter = new();
             JsonReader reader = new JsonTextReader(new StringReader("null"));
             reader.ReadAsString();
-            Assert.Throws<JsonException>(
+            ulong? result = converter.ReadJson(reader, typeof(ulong?), 0L, false, JsonSerializer.CreateDefault());
+            Assert.AreEqual(null, result);
+        }
+        
+        [Test]
+        public void Throws_on_negative_numbers()
+        {
+            NullableULongConverter converter = new();
+            JsonReader reader = new JsonTextReader(new StringReader("-1"));
+            reader.ReadAsString();
+            Assert.Throws<OverflowException>(
                 () => converter.ReadJson(reader, typeof(ulong?), 0L, false, JsonSerializer.CreateDefault()));
         }
     }
