@@ -14,7 +14,6 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Text;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
@@ -108,15 +107,6 @@ namespace Nethermind.Core
         public Account WithChangedCodeHash(Keccak newCodeHash)
         {
             return new(Nonce, Balance, StorageRoot, newCodeHash, IsTotallyEmpty && newCodeHash == Keccak.OfAnEmptyString);
-        }
-
-        public override string ToString()
-        {
-            StringBuilder builder = new();
-
-            builder.Append($"Balance: {Balance}");
-
-            return builder.ToString();
         }
     }
 }
