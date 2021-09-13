@@ -25,7 +25,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Blockchain.Producers
 {
-    public class BuildBlocksOnlyWhenNotProcessing : IBlockProductionTrigger, IDisposable
+    public class BuildBlocksOnlyWhenNotProcessing : IBlockProductionTrigger, IDisposable, IAsyncDisposable
     {
         public const int ChainNotYetProcessedMillisecondsDelay = 100;
         private readonly IBlockProductionTrigger _blockProductionTrigger;
@@ -126,14 +126,29 @@ namespace Nethermind.Blockchain.Producers
         
         public void Dispose()
         {
-            _blockProductionTrigger.TriggerBlockProduction -= OnTriggerBlockProduction;
-            _blockTree.NewBestSuggestedBlock -= BlockTreeOnNewBestSuggestedBlock;
-            _blockProcessingQueue.ProcessingQueueEmpty -= OnBlockProcessorQueueEmpty;
+            DetachEvents();
 
             if (_blockProductionTrigger is IDisposable disposableTrigger)
             {
                 disposableTrigger.Dispose();
             }
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            DetachEvents();
+            
+            if (_blockProductionTrigger is IAsyncDisposable disposableTrigger)
+            {
+                await disposableTrigger.DisposeAsync();
+            }
+        }
+        
+        private void DetachEvents()
+        {
+            _blockProductionTrigger.TriggerBlockProduction -= OnTriggerBlockProduction;
+            _blockTree.NewBestSuggestedBlock -= BlockTreeOnNewBestSuggestedBlock;
+            _blockProcessingQueue.ProcessingQueueEmpty -= OnBlockProcessorQueueEmpty;
         }
     }
 }
