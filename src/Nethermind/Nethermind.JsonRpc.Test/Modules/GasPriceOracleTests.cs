@@ -62,8 +62,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             GasPriceOracle testGasPriceOracle = new(blockFinder, specProvider, gasPrice);
 
             testGasPriceOracle.GetGasPriceEstimate();
-            
-            testGasPriceOracle.FallbackGasPrice.Should().BeEquivalentTo(gasPrice ?? 1.GWei());
+            UInt256 expectedGasPrice = 110 * (gasPrice ?? 1.GWei()) / 100;
+            testGasPriceOracle.FallbackGasPrice.Should().BeEquivalentTo(expectedGasPrice);
         }
 
         [TestCase(3)]
