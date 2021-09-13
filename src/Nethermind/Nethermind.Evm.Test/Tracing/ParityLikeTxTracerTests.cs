@@ -304,8 +304,9 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.AreEqual("delegatecall", trace.Action.Subtraces[0].CallType, "[0] type");
         }
 
-        [Test]
-        public void Can_trace_call_code_calls()
+        [TestCase(0ul)]
+        [TestCase(ulong.MaxValue)]
+        public void Can_trace_call_code_calls(ulong dataOffset)
         {
             byte[] deployedCode = new byte[3];
 
@@ -323,7 +324,7 @@ namespace Nethermind.Evm.Test.Tracing
             TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
 
             byte[] code = Prepare.EvmCode
-                .CallCode(TestItem.AddressC, 50000)
+                .CallCode(TestItem.AddressC, 50000, dataOffset)
                 .Op(Instruction.STOP)
                 .Done;
 

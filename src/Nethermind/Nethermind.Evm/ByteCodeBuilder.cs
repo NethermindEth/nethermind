@@ -154,12 +154,12 @@ namespace Nethermind.Evm
             return this;
         }
 
-        public Prepare CallCode(Address address, long gasLimit)
+        public Prepare CallCode(Address address, long gasLimit, ulong dataOffset = 0)
         {
             PushData(0);
             PushData(0);
             PushData(0);
-            PushData(0);
+            PushData(dataOffset);
             PushData(0);
             PushData(address);
             PushData(gasLimit);
