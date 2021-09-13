@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -99,6 +100,14 @@ namespace Nethermind.Evm.Tracing
         void SetOperationMemorySize(ulong newSize);
 
         void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data);
+
+        void ReportMemoryChange(UInt256 offset, in ReadOnlySpan<byte> data)
+        {
+            if (offset.u1 <= 0 && offset.u2 <= 0 && offset.u3 <= 0 && offset.u0 <= long.MaxValue)
+            {
+                ReportMemoryChange((long) offset, data);
+            }
+        }
 
         void ReportMemoryChange(long offset, byte data)
         {

@@ -1754,7 +1754,7 @@ namespace Nethermind.Evm
                         stack.PopUInt256(out UInt256 memPosition);
                         UpdateMemoryCost(in memPosition, 32);
                         Span<byte> memData = vmState.Memory.LoadSpan(in memPosition);
-                        if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long) memPosition, memData);
+                        if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange(memPosition, memData);
 
                         stack.PushBytes(memData);
                         break;
@@ -2498,7 +2498,7 @@ namespace Nethermind.Evm
                             {
                                 // very specific for Parity trace, need to find generalization - very peculiar 32 length...
                                 ReadOnlyMemory<byte> memoryTrace = vmState.Memory.Load(in dataOffset, 32);
-                                _txTracer.ReportMemoryChange((long) dataOffset, memoryTrace.Span);
+                                _txTracer.ReportMemoryChange(dataOffset, memoryTrace.Span);
                             }
 
                             if (isTrace) _logger.Trace("FAIL - call depth");
