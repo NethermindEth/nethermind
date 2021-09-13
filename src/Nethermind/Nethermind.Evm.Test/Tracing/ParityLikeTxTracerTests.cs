@@ -16,6 +16,7 @@
 
 using System;
 using System.Linq;
+using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
@@ -304,9 +305,9 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.AreEqual("delegatecall", trace.Action.Subtraces[0].CallType, "[0] type");
         }
 
-        [TestCase(0ul)]
-        [TestCase(ulong.MaxValue)]
-        public void Can_trace_call_code_calls(ulong dataOffset)
+
+        [Test]
+        public void Can_trace_call_code_calls()
         {
             byte[] deployedCode = new byte[3];
 
@@ -324,7 +325,7 @@ namespace Nethermind.Evm.Test.Tracing
             TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
 
             byte[] code = Prepare.EvmCode
-                .CallCode(TestItem.AddressC, 50000, dataOffset)
+                .CallCode(TestItem.AddressC, 50000)
                 .Op(Instruction.STOP)
                 .Done;
 
@@ -339,6 +340,34 @@ namespace Nethermind.Evm.Test.Tracing
             };
 
             Assert.AreEqual("callcode", trace.Action.Subtraces[0].CallType, "[0] type");
+        }
+        
+        [Test]
+        public void Can_trace_call_code_calls_with_large_data_offset()
+        {
+            byte[] deployedCode = new byte[3];
+
+            byte[] initCode = Prepare.EvmCode
+                .ForInitOf(deployedCode)
+                .Done;
+
+            byte[] createCode = Prepare.EvmCode
+                .Create(initCode, 0)
+                .Op(Instruction.STOP)
+                .Done;
+
+            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+            Keccak createCodeHash = TestState.UpdateCode(createCode);
+            TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
+
+            byte[] code = Prepare.EvmCode
+                .CallCode(TestItem.AddressC, 50000, UInt256.MaxValue, ulong.MaxValue)
+                .Op(Instruction.STOP)
+                .Done;
+
+            ParityLikeTxTrace trace = ExecuteAndTraceParityCall(code).trace;
+            trace.Action!.Error.Should().BeNullOrEmpty();
+
         }
 
         [Test]
