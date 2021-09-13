@@ -151,12 +151,10 @@ namespace Nethermind.TxPool
 
             foreach (Transaction tx in _txsToSend)
             {
-                if (tx.DeliveredBy.Equals(peer.Id))
+                if (tx.DeliveredBy is null || !tx.DeliveredBy.Equals(peer.Id))
                 {
-                    continue;
+                    yield return tx;
                 }
-
-                yield return tx;
             }
         }
 
