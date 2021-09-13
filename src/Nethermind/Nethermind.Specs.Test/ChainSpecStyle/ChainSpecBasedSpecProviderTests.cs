@@ -1771,7 +1771,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(true, underTest.IsEip3198Enabled);
             Assert.AreEqual(true, underTest.IsEip3529Enabled);
             Assert.AreEqual(true, underTest.IsEip3541Enabled);
-            Assert.AreEqual(false, underTest.IsEip3675Enabled);
+            Assert.AreEqual(true, underTest.IsEip3675Enabled);
         }
     }
 }
