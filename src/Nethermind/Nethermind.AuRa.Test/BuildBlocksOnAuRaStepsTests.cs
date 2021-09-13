@@ -46,13 +46,13 @@ namespace Nethermind.AuRa.Test
                         .ContinueWith(t => (Block?)null, e.CancellationToken);
                 };
 
-                while (args.Count < 3)
+                while (args.Count < 4)
                 {
                     await TaskExt.DelayAtLeast(TestAuRaStepCalculator.StepDurationTimeSpan);
                 }
             }
 
-            bool[] allButLastCancellations = args.SkipLast(1).Select(e => e.CancellationToken.IsCancellationRequested).ToArray();
+            bool[] allButLastCancellations = args.Skip(1).SkipLast(1).Select(e => e.CancellationToken.IsCancellationRequested).ToArray();
             allButLastCancellations.Should().AllBeEquivalentTo(true);
             allButLastCancellations.Should().HaveCountGreaterOrEqualTo(2);
         }
