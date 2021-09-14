@@ -17,6 +17,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using MathNet.Numerics.Optimization.TrustRegion;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Tracing;
@@ -37,6 +38,7 @@ using Nethermind.Blockchain.Validators;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm;
+using Nethermind.JsonRpc.Data;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.Test.Modules
@@ -94,6 +96,53 @@ namespace Nethermind.JsonRpc.Test.Modules
             public IJsonRpcConfig JsonRpcConfig { get; private set; }
             
             public TestRpcBlockchain Blockchain { get; set; }
+        }
+        
+        [Test]
+        public async Task trace_call_test()
+        {
+            Context context = new();
+            await context.Build();
+            
+            TestRpcBlockchain blockchain = context.Blockchain;
+            UInt256 currentNonceAddressA = blockchain.State.GetAccount(TestItem.AddressA).Nonce;
+            Transaction transaction = Build.A.Transaction.WithNonce(currentNonceAddressA++).WithTo(TestItem.AddressC)
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            await blockchain.AddBlock(transaction);
+            TransactionForRpc txForRpc = new(transaction);
+            string[] traceTypes = {"Trace"};
+            
+            ResultWrapper<ParityTxTraceFromReplay> tr = context.TraceRpcModule.trace_call(txForRpc, traceTypes, new BlockParameter(16));
+            Assert.AreEqual(TestItem.AddressC, tr.Data.Action.To);
+            Assert.AreEqual("call", tr.Data.Action.Type.ToString());
+        }
+        
+        [Test]
+        public async Task trace_callMany_test()
+        {
+            Context context = new();
+            await context.Build();
+            
+            TestRpcBlockchain blockchain = context.Blockchain;
+            UInt256 currentNonceAddressA = blockchain.State.GetAccount(TestItem.AddressA).Nonce;
+            
+            Transaction transaction = Build.A.Transaction.WithNonce(currentNonceAddressA++).WithTo(TestItem.AddressC)
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            TransactionForRpc txForRpc = new(transaction);
+            string[] traceTypes = {"Trace"};
+            
+            Transaction transaction2 = Build.A.Transaction.WithNonce(currentNonceAddressA++).WithTo(TestItem.AddressD)
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            await blockchain.AddBlock(transaction, transaction2);
+            
+            TransactionForRpc txForRpc2 = new(transaction2);
+            string[] traceTypes2 = {"Trace"};
+
+            (TransactionForRpc message, string[] traceTypes, BlockParameter numberOrTag)[] a = {(txForRpc, traceTypes, new BlockParameter(16)), (txForRpc2, traceTypes2, new BlockParameter(16)) };
+            
+            ResultWrapper<ParityTxTraceFromReplay[]> tr = context.TraceRpcModule.trace_callMany(a);
+            Assert.AreEqual(2, tr.Data.Length);
+          
         }
 
         [Test]

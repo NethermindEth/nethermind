@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading;
 using MathNet.Numerics.Distributions;
@@ -71,7 +72,19 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         public ResultWrapper<ParityTxTraceFromReplay[]> trace_callMany((TransactionForRpc message, string[] traceTypes, BlockParameter numberOrTag)[] a)
         {
-            throw new NotImplementedException();
+            List<ParityTxTraceFromReplay> traces = new();
+            foreach (var par in a)
+            {
+                TransactionForRpc txForRpc = par.message;
+                Transaction tx = txForRpc.ToTransaction();
+                string[] traceTypes = par.traceTypes;
+                BlockParameter blockParameter = par.numberOrTag;
+
+                ResultWrapper<ParityTxTraceFromReplay> trace = TraceTx(tx, traceTypes, blockParameter);
+                traces.Add(trace.Data);
+            }
+            
+            return ResultWrapper<ParityTxTraceFromReplay[]>.Success(traces.ToArray());
         }
 
         public ResultWrapper<ParityTxTraceFromReplay> trace_rawTransaction(byte[] data, string[] traceTypes)
