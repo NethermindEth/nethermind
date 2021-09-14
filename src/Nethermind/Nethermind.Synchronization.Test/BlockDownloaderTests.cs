@@ -507,7 +507,7 @@ namespace Nethermind.Synchronization.Test
                 .Returns(blockHeaders);
 
             PeerInfo peerInfo = new(syncPeer);
-            syncPeer.HeadNumber.Returns(510);
+            syncPeer.HeadNumber.Returns(511);
 
             Task task = downloader.DownloadHeaders(peerInfo, new BlocksRequest(DownloaderOptions.WithBodies, 0), CancellationToken.None);
             await task;
