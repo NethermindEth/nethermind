@@ -169,14 +169,18 @@ namespace Nethermind.Blockchain.Validators
             long maxGasLimitDifference = adjustedParentGasLimit / spec.GasLimitBoundDivisor;
 
             long maxNextGasLimit = adjustedParentGasLimit + maxGasLimitDifference;
-            bool gasLimitNotTooHigh = header.GasLimit < maxNextGasLimit;
-            bool notTooHighWithOverflow = long.MaxValue - maxGasLimitDifference < adjustedParentGasLimit;
-            if (notTooHighWithOverflow)
+            bool gasLimitNotTooHigh;
+            bool checkInCaseOfOverflow = long.MaxValue - maxGasLimitDifference < adjustedParentGasLimit;
+            if (checkInCaseOfOverflow)
             {
                 // The edge case used in hive tests. If adjustedParentGasLimit + maxGasLimitDifference >=  long.MaxValue,
                 // we can check for long.MaxValue - maxGasLimitDifference < adjustedParentGasLimit to ensure that we are in range.
                 // In hive we have tests that using long.MaxValue in the genesis block
-                gasLimitNotTooHigh = true;
+                gasLimitNotTooHigh = header.GasLimit - maxGasLimitDifference < adjustedParentGasLimit;
+            }
+            else
+            {
+                gasLimitNotTooHigh = header.GasLimit < maxNextGasLimit;
             }
 
             
