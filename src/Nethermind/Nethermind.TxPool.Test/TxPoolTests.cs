@@ -816,7 +816,7 @@ namespace Nethermind.TxPool.Test
             ITxPoolPeer txPoolPeer = Substitute.For<ITxPoolPeer>();
             txPoolPeer.Id.Returns(TestItem.PublicKeyA);
             _txPool.AddPeer(txPoolPeer);
-            txPoolPeer.Received().SendNewTransactions(Arg.Is<IList<Transaction>>(i => i.Contains(tx) && i.Count == 1));
+            txPoolPeer.Received().SendNewTransactions(Arg.Any<IEnumerable<Transaction>>());
         }
         
         [Test]
@@ -827,30 +827,8 @@ namespace Nethermind.TxPool.Test
             txPoolPeer.Id.Returns(TestItem.PublicKeyA);
             _txPool.AddPeer(txPoolPeer);
             Transaction tx = AddOwnTransactionToPool();
-            await Task.Delay(1000);
-            txPoolPeer.Received(1).SendNewTransactions(Arg.Is<IList<Transaction>>(i => i.Contains(tx) && i.Count == 1));
-        }
-
-        [Test]
-        public void should_notify_added_peer_of_all_own_txs_in_one_msg()
-        {
-            _txPool = CreatePool();
-            Transaction[] txs = GetTransactions(GetPeers(10), true, false);
-            
-            foreach (Address address in txs.Select(t => t.SenderAddress).Distinct())
-            {
-                EnsureSenderBalance(address, UInt256.MaxValue);
-            }
-            
-            foreach (Transaction transaction in txs)
-            {
-                _txPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast);
-            }
-            
-            ITxPoolPeer txPoolPeer = Substitute.For<ITxPoolPeer>();
-            txPoolPeer.Id.Returns(TestItem.PublicKeyA);
-            _txPool.AddPeer(txPoolPeer);
-            txPoolPeer.Received().SendNewTransactions(Arg.Is<IList<Transaction>>(i => i.Count == txs.Length));
+            await Task.Delay(500);
+            txPoolPeer.Received(1).SendNewTransactions(Arg.Any<IEnumerable<Transaction>>());
         }
 
         [Test]
