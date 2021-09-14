@@ -118,7 +118,6 @@ namespace Nethermind.AccountAbstraction
 
             if (_accountAbstractionConfig.Enabled)
             {
-                _nethermindApi.BlockchainProcessor!.Tracers.Add(AccessBlockTracer);
                 bool parsed = Address.TryParse(_accountAbstractionConfig.SingletonContractAddress, out Address _singletonContractAddress);
                 if (!parsed) _logger.Error("Account Abstraction Plugin: Singleton contract address could not be parsed");
             }

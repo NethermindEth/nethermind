@@ -18,6 +18,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Net.Http;
 using System.Threading;
@@ -28,6 +29,7 @@ using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Executor;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Tracing.Access;
 using Nethermind.Int256;
@@ -75,7 +77,6 @@ namespace Nethermind.AccountAbstraction.Source
             _userOperationSortedPool = userOperationSortedPool;
             _userOperationSimulator = userOperationSimulator;
 
-            blockTree.NewHeadBlock += OnNewBlock;
             _userOperationSortedPool.Inserted += UserOperationInserted;
         }
         
@@ -93,24 +94,6 @@ namespace Nethermind.AccountAbstraction.Source
             {
                 _broadcaster.BroadcastOnce(userOperation);
             });
-        }
-
-        private void OnNewBlock(object? sender, BlockEventArgs e)
-        {
-            Block block = e.Block;
-
-            IDictionary<Address, HashSet<UInt256>> blockAccessedList = (IDictionary<Address, HashSet<UInt256>>) _accessListSource.CombinedAccessList;
-
-            blockAccessedList.Remove(block.Beneficiary);
-            blockAccessedList.Remove(new Address(_accountAbstractionConfig.SingletonContractAddress));
-
-            foreach (UserOperation op in GetUserOperations().Where(op => !op.AccessListTouched))
-            {
-                if (UserOperationAccessList.AccessListOverlaps(blockAccessedList, op.AccessList.Data))
-                {
-                    op.AccessListTouched = true;
-                }
-            }
         }
 
         public IEnumerable<UserOperation> GetUserOperations() => _userOperationSortedPool.GetSnapshot();
