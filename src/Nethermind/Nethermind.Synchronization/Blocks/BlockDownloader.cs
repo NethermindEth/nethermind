@@ -48,7 +48,7 @@ namespace Nethermind.Synchronization.Blocks
         private readonly IReceiptsRecovery _receiptsRecovery;
         private readonly ISpecProvider _specProvider;
         private readonly ILogger _logger;
-        private readonly Random _rnd = new Random();
+        private readonly Random _rnd = new();
 
         private bool _cancelDueToBetterPeer;
         private AllocationWithCancellation _allocationWithCancellation;
