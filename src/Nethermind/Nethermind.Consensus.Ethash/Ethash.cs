@@ -154,8 +154,8 @@ namespace Nethermind.Consensus.Ethash
         private bool IsLessOrEqualThanTarget(byte[] result, UInt256 difficulty)
         {
             UInt256 resultAsInteger = new(result, true);
-            BigInteger threshold = BigInteger.Divide(_2To256, (BigInteger)difficulty);
-            return (BigInteger)resultAsInteger <= threshold;
+            BigInteger target = BigInteger.Divide(_2To256, (BigInteger)difficulty);
+            return (BigInteger)resultAsInteger <= target;
         }
 
         public (Keccak MixHash, ulong Nonce) Mine(BlockHeader header, ulong? startNonce = null)
