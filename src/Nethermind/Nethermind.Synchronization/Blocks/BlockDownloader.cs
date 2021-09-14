@@ -495,7 +495,7 @@ namespace Nethermind.Synchronization.Blocks
         {
             if (_logger.IsTrace) _logger.Trace("Starting seal validation");
             ConcurrentQueue<Exception> exceptions = new();
-            int randomNumberForValidation = _rnd.Next(Math.Max(1, headers.Length - 2));
+            int randomNumberForValidation = _rnd.Next(Math.Max(0, headers.Length - 2));
             Parallel.For(0, headers.Length, (i, state) =>
             {
                 if (cancellation.IsCancellationRequested)
