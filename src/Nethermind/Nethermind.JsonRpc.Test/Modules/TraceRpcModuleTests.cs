@@ -427,6 +427,24 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
         
         [Test]
+        public async Task trace_get_can_trace_simple_tx()
+        {
+            Context context = new();
+            await context.Build();
+            TestRpcBlockchain blockchain = context.Blockchain;
+            UInt256 currentNonceAddressA = blockchain.State.GetAccount(TestItem.AddressA).Nonce;
+
+            Transaction transaction = Build.A.Transaction.WithNonce(currentNonceAddressA++).WithTo(TestItem.AddressC)
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            await blockchain.AddBlock(transaction);
+
+            int[] positions = {0};
+            ResultWrapper<ParityTxTraceFromStore[]> traces = context.TraceRpcModule.trace_get(transaction.Hash!, positions);
+            Assert.AreEqual(1, traces.Data.Length);
+            Assert.AreEqual(transaction.Hash!, traces.Data[0].TransactionHash);
+        }
+        
+        [Test]
         public async Task trace_transaction_can_trace_internal_tx()
         {
             Context context = new();
@@ -469,6 +487,54 @@ namespace Nethermind.JsonRpc.Test.Modules
             Assert.AreEqual(3, traces.Data.Length);
             Assert.AreEqual(transaction2.Hash!, traces.Data[0].TransactionHash);
         }
+        
+        [Test]
+        public async Task trace_get_can_trace_internal_tx()
+        {
+            Context context = new();
+            await context.Build();
+            TestRpcBlockchain blockchain = context.Blockchain;
+            UInt256 currentNonceAddressA = blockchain.State.GetAccount(TestItem.AddressA).Nonce;
+            UInt256 currentNonceAddressB = blockchain.State.GetAccount(TestItem.AddressB).Nonce;
+            await blockchain.AddFunds(TestItem.AddressA, 10000.Ether());
+            byte[] deployedCode = new byte[3];
+            byte[] initCode = Prepare.EvmCode
+                .ForInitOf(deployedCode)
+                .Done;
+
+            byte[] createCode = Prepare.EvmCode
+                .Create(initCode, 0)
+                .Op(Instruction.STOP)
+                .Done;
+            
+            Transaction transaction = Build.A.Transaction.WithNonce(currentNonceAddressA++)
+                .WithData(createCode)
+                .WithTo(null)
+                .WithGasLimit(93548).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            await blockchain.AddBlock(transaction);
+
+
+            Address? contractAddress = ContractAddress.From(TestItem.AddressA, currentNonceAddressA);
+            byte[] code = Prepare.EvmCode
+                .Call(contractAddress, 50000)
+                .Call(contractAddress, 50000)
+                .Op(Instruction.STOP)
+                .Done;
+            
+            Transaction transaction2 = Build.A.Transaction.WithNonce(currentNonceAddressB++)
+                .WithData(code).SignedAndResolved(TestItem.PrivateKeyB)
+                .WithTo(null)
+                .WithGasLimit(93548).TestObject;
+            await blockchain.AddBlock(transaction2);
+
+            int[] positions = {0};
+
+            ResultWrapper<ParityTxTraceFromStore[]> traces = context.TraceRpcModule.trace_get(transaction2.Hash!, positions);
+            Assert.AreEqual(1, traces.Data.Length);
+            Assert.AreEqual(transaction2.Hash!, traces.Data[0].TransactionHash);
+        }
+        
+        
 
 
         [Test]

@@ -204,7 +204,17 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         public ResultWrapper<ParityTxTraceFromStore[]> trace_get(Keccak txHash, int[] positions)
         {
-            throw new NotImplementedException();
+            ResultWrapper<ParityTxTraceFromStore[]> traceTransaction = trace_transaction(txHash);
+            
+            List<ParityTxTraceFromStore> traces = new();
+            for (int i = 0; i < positions.Length; ++i)
+            {
+                ParityTxTraceFromStore tr = traceTransaction.Data[positions[i]];
+                traces.Add(tr);
+            }
+            
+            return ResultWrapper<ParityTxTraceFromStore[]>.Success(traces.ToArray());
+
         }
 
         public ResultWrapper<ParityTxTraceFromStore[]> trace_transaction(Keccak txHash)
@@ -222,9 +232,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             }
         
             Block block = blockSearch.Object;
-
-            // ParityLikeTxTrace txTrace = TraceTx(block, txHash, ParityTraceTypes.Trace);
-        
+            
             IReadOnlyCollection<ParityLikeTxTrace> txTrace = TraceTx(block, txHash, ParityTraceTypes.Trace);
             return ResultWrapper<ParityTxTraceFromStore[]>.Success(ParityTxTraceFromStore.FromTxTrace(txTrace));
         }
