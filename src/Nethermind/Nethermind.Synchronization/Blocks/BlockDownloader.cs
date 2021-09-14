@@ -511,7 +511,8 @@ namespace Nethermind.Synchronization.Blocks
 
                 try
                 {
-                    if (!_sealValidator.ValidateSeal(header, false))
+                    bool forceValidation = i == headers.Length - 1;
+                    if (!_sealValidator.ValidateSeal(header, forceValidation))
                     {
                         if (_logger.IsTrace) _logger.Trace("One of the seals is invalid");
                         throw new EthSyncException("Peer sent a block with an invalid seal");
