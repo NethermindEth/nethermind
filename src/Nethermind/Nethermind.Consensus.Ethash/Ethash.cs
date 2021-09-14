@@ -151,11 +151,11 @@ namespace Nethermind.Consensus.Ethash
             return BitConverter.ToUInt64(buffer, 0);
         }
 
-        private bool IsLessThanTarget(byte[] result, UInt256 difficulty)
+        private bool IsLessOrEqualThanTarget(byte[] result, UInt256 difficulty)
         {
             UInt256 resultAsInteger = new(result, true);
             BigInteger threshold = BigInteger.Divide(_2To256, (BigInteger)difficulty);
-            return (BigInteger)resultAsInteger < threshold;
+            return (BigInteger)resultAsInteger <= threshold;
         }
 
         public (Keccak MixHash, ulong Nonce) Mine(BlockHeader header, ulong? startNonce = null)
@@ -178,7 +178,7 @@ namespace Nethermind.Consensus.Ethash
             {
                 byte[] result;
                 (mixHash, result, _) = Hashimoto(fullSize, dataSet, headerHashed, null, nonce);
-                if (IsLessThanTarget(result, header.Difficulty))
+                if (IsLessOrEqualThanTarget(result, header.Difficulty))
                 {
                     break;
                 }
@@ -243,7 +243,7 @@ namespace Nethermind.Consensus.Ethash
                 return false;
             }
             
-            return IsLessThanTarget(result, header.Difficulty);
+            return IsLessOrEqualThanTarget(result, header.Difficulty);
         }
 
         private readonly Stopwatch _cacheStopwatch = new();
