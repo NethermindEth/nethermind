@@ -47,6 +47,38 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                 serialized);
             ctx._test.ReadOnlyState.AccountExists(someAccount).Should().BeFalse();
         }
+        
+        [Test]
+        public async Task Eth_estimateGas_web3_without_gas_pricing()
+        {
+            using Context ctx = await Context.Create();
+            Address someAccount = new("0x0001020304050607080910111213141516171819");
+            ctx._test.ReadOnlyState.AccountExists(someAccount).Should().BeFalse();
+            TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>(
+                "{\"from\":\"0x0001020304050607080910111213141516171819\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\", \"value\": 500}");
+            string serialized =
+                ctx._test.TestEthRpc("eth_estimateGas", ctx._test.JsonSerializer.Serialize(transaction));
+            Assert.AreEqual(
+                "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"insufficient funds for transfer: address 0x0001020304050607080910111213141516171819\"},\"id\":67}",
+                serialized);
+            ctx._test.ReadOnlyState.AccountExists(someAccount).Should().BeFalse();
+        }
+        
+        [Test]
+        public async Task Eth_estimateGas_web3_without_gas_pricing_and_value()
+        {
+            using Context ctx = await Context.Create();
+            Address someAccount = new("0x0001020304050607080910111213141516171819");
+            ctx._test.ReadOnlyState.AccountExists(someAccount).Should().BeFalse();
+            TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>(
+                "{\"from\":\"0x0001020304050607080910111213141516171819\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
+            string serialized =
+                ctx._test.TestEthRpc("eth_estimateGas", ctx._test.JsonSerializer.Serialize(transaction));
+            Assert.AreEqual(
+                "{\"jsonrpc\":\"2.0\",\"result\":\"0x53b8\",\"id\":67}",
+                serialized);
+            ctx._test.ReadOnlyState.AccountExists(someAccount).Should().BeFalse();
+        }
 
 
         [Test]
@@ -58,7 +90,10 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                 "{\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
             string serialized =
                 ctx._test.TestEthRpc("eth_estimateGas", ctx._test.JsonSerializer.Serialize(transaction));
-            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"insufficient funds for transfer: address 0xfffffffffffffffffffffffffffffffffffffffe\"},\"id\":67}", serialized);
+            Assert.AreEqual(
+                "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"insufficient funds for transfer: address 0xfffffffffffffffffffffffffffffffffffffffe\"},\"id\":67}",
+                serialized);
+            
             ctx._test.ReadOnlyState.AccountExists(Address.SystemUser).Should().BeFalse();
         }
 
@@ -72,21 +107,27 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                 "{\"from\":\"0x0001020304050607080910111213141516171819\",\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
             string serialized =
                 ctx._test.TestEthRpc("eth_estimateGas", ctx._test.JsonSerializer.Serialize(transaction));
-            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"insufficient funds for gas * price + value: address 0x0001020304050607080910111213141516171819, have 0, want 26214400000000\"},\"id\":67}", serialized);
+            Assert.AreEqual(
+                "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"insufficient funds for gas * price + value: address 0x0001020304050607080910111213141516171819, have 0, want 26214400000000\"},\"id\":67}",
+                serialized);
+            
             ctx._test.ReadOnlyState.AccountExists(someAccount).Should().BeFalse();
         }
 
         [Test]
-        public async Task Eth_estimateGas_web3_above_block_gas_limit()
+        public async Task Eth_estimateGas_web3_below_intrinsic_gas_limit()
         {
             using Context ctx = await Context.Create();
             Address someAccount = new("0x0001020304050607080910111213141516171819");
             ctx._test.ReadOnlyState.AccountExists(someAccount).Should().BeFalse();
             TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>(
-                "{\"from\":\"0x0001020304050607080910111213141516171819\",\"gas\":\"0x100000000\",\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
+                "{\"from\":\"0x0001020304050607080910111213141516171819\",\"gas\":\"0x100\",\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
             string serialized =
                 ctx._test.TestEthRpc("eth_estimateGas", ctx._test.JsonSerializer.Serialize(transaction));
-            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"insufficient funds for gas * price + value: address 0x0001020304050607080910111213141516171819, have 0, want 26214400000000\"},\"id\":67}", serialized);
+            Assert.AreEqual(
+                "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"gas limit below intrinsic gas: have 256, want 21432\"},\"id\":67}",
+                serialized);
+            
             ctx._test.ReadOnlyState.AccountExists(someAccount).Should().BeFalse();
         }
 
@@ -185,7 +226,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             using Context ctx = await Context.Create();
             TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>(
                 "{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"to\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"gasPrice\": \"0x10\"}");
-            string serialized = ctx._test.TestEthRpc("eth_estimateGas", ctx._test.JsonSerializer.Serialize(transaction));
+            string serialized =
+                ctx._test.TestEthRpc("eth_estimateGas", ctx._test.JsonSerializer.Serialize(transaction));
+            
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"insufficient funds for gas * price + value: address 0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24, have 0, want 400000000\"},\"id\":67}", serialized);
         }
 
@@ -194,9 +237,12 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         {
             using Context ctx = await Context.CreateWithLondonEnabled();
             TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>(
-                "{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"to\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\"}");
+                "{\"gasPrice\": \"0x10\", \"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"to\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\"}");
             string serialized = ctx._test.TestEthRpc("eth_estimateGas", ctx._test.JsonSerializer.Serialize(transaction));
-            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x5208\",\"id\":67}", serialized);
+            Assert.AreEqual(
+                "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"max fee per gas less than block base fee: address 0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24, maxFeePerGas: 16, baseFee 669921875\"},\"id\":67}",
+                serialized);
+            
         }
 
         [Test]
@@ -207,11 +253,6 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                 "{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"to\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\"}");
             string serialized = ctx._test.TestEthRpc("eth_estimateGas", ctx._test.JsonSerializer.Serialize(transaction));
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x5208\",\"id\":67}", serialized);
-            byte[] code = Prepare.EvmCode
-                .Op(Instruction.BASEFEE)
-                .PushData(0)
-                .Op(Instruction.SSTORE)
-                .Done;
         }
 
         [Test]
@@ -231,7 +272,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             string dataStr = code.ToHexString();
             TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>(
                 $"{{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"data\": \"{dataStr}\"}}");
-            string serialized = ctx._test.TestEthRpc("eth_estimateGas", ctx._test.JsonSerializer.Serialize(transaction));
+            string serialized =
+                ctx._test.TestEthRpc("eth_estimateGas", ctx._test.JsonSerializer.Serialize(transaction));
+            
             Assert.AreEqual(
                 "{\"jsonrpc\":\"2.0\",\"result\":\"0xe891\",\"id\":67}",
                 serialized);
