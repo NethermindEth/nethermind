@@ -70,16 +70,16 @@ namespace Nethermind.JsonRpc.Modules.Trace
             return TraceTx(tx, traceTypes, blockParameter);
         }
 
-        public ResultWrapper<ParityTxTraceFromReplay[]> trace_callMany(CallObj[] a)
+        public ResultWrapper<ParityTxTraceFromReplay[]> trace_callMany((TransactionForRpc message, string[] traceTypes, BlockParameter numberOrTag)[] a)
         {
             List<ParityTxTraceFromReplay> traces = new();
             foreach (var par in a)
             {
-                TransactionForRpc txForRpc = par._message;
+                TransactionForRpc txForRpc = par.message;
                 Transaction tx = txForRpc.ToTransaction();
-                string[] traceTypes = par._traceTypes;
+                string[] traceTypes = par.traceTypes;
 
-                ResultWrapper<ParityTxTraceFromReplay> trace = TraceTx(tx, traceTypes, par._numberOrTag);
+                ResultWrapper<ParityTxTraceFromReplay> trace = TraceTx(tx, traceTypes, par.numberOrTag);
                 traces.Add(trace.Data);
             }
             
