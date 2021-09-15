@@ -323,5 +323,7 @@ namespace Nethermind.Core.Specs
         public bool Use63Over64Rule => UseShanghaiDDosProtection;
         
         public bool BaseFeeEnabled => IsEip3198Enabled;
+
+        public bool TheMergeEnabled => IsEip3675Enabled;
     }
 }

@@ -97,7 +97,7 @@ namespace Nethermind.Blockchain.Validators
             }
 
             bool totalDifficultyCorrect = true;
-            if (header.TotalDifficulty != null)
+            if (spec.TheMergeEnabled == false && header.TotalDifficulty != null)
             {
                 if (parent.TotalDifficulty + header.Difficulty != header.TotalDifficulty)
                 {
@@ -204,6 +204,11 @@ namespace Nethermind.Blockchain.Validators
                 header.Number == 0 &&
                 header.Bloom is not null &&
                 header.ExtraData.Length <= _specProvider.GenesisSpec.MaximumExtraDataSize;
+        }
+
+        private bool IsCorrectTheMergeBlock(BlockHeader header)
+        {
+            
         }
     }
 }

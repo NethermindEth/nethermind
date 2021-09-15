@@ -62,15 +62,14 @@ namespace Nethermind.Merge.Plugin
                 "Builds an execution payload on top of a given parent with transactions selected from the mempool.",
             IsSharable = true,
             IsImplemented = false)]
-        Task engine_preparePayload(Keccak parentHash, UInt256 timestamp, Keccak random, Address coinbase);
+        Task engine_preparePayload(Keccak parentHash, UInt256 timestamp, Keccak random, Address coinbase, uint payloadId);
         
         [JsonRpcMethod(
             Description =
                 "Returns the most recent version of an execution payload with respect to the transaction set contained by the mempool.",
             IsSharable = true,
             IsImplemented = false)]
-        Task<ResultWrapper<BlockRequestResult?>> engine_getPayload(Keccak parentHash, UInt256 timeStamp, Keccak random, 
-            Address coinbase);
+        Task<ResultWrapper<BlockRequestResult?>> engine_getPayload(uint payloadId);
 
         [JsonRpcMethod(
             Description =

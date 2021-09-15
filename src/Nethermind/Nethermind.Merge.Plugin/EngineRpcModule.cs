@@ -102,13 +102,12 @@ namespace Nethermind.Merge.Plugin
         public Task<ResultWrapper<Result>> engine_finaliseBlock(Keccak blockHash) => 
             Task.FromResult(_finaliseBlockHandler.Handle(blockHash));
 
-        public Task engine_preparePayload(Keccak parentHash, UInt256 timestamp, Keccak random, Address coinbase)
+        public Task engine_preparePayload(Keccak parentHash, UInt256 timestamp, Keccak random, Address coinbase, uint payloadId)
         {
             throw new NotImplementedException();
         }
 
-        public Task<ResultWrapper<BlockRequestResult?>> engine_getPayload(Keccak parentHash, UInt256 timeStamp,
-            Keccak random, Address coinbase)
+        public Task<ResultWrapper<BlockRequestResult?>> engine_getPayload(uint payloadId)
         {
             throw new NotImplementedException();
         }
