@@ -126,7 +126,7 @@ namespace Nethermind.Mev
             BundleTransaction[] txs = new BundleTransaction[transactions.Length];
             for (int i = 0; i < transactions.Length; i++)
             {
-                BundleTransaction bundleTransaction = Rlp.Decode<BundleTransaction>(transactions[i]);
+                BundleTransaction bundleTransaction = Rlp.Decode<BundleTransaction>(transactions[i], RlpBehaviors.SkipTypedWrapping);
                 Keccak transactionHash = bundleTransaction.Hash!;
                 bundleTransaction.CanRevert = revertingTxHashes.Contains(transactionHash);
                 revertingTxHashes.Remove(transactionHash);
