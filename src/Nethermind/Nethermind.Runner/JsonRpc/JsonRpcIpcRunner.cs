@@ -124,28 +124,27 @@ namespace Nethermind.Runner.JsonRpc
                     _jsonRpcService,
                     _jsonRpcLocalStats,
                     _jsonSerializer);
-                
+
                 await socketsClient.ReceiveAsync();
             }
             catch (IOException exc) when (exc.InnerException != null && exc.InnerException is SocketException se && se.SocketErrorCode == SocketError.ConnectionReset)
             {
                 LogInfo("Client disconnected.");
-                socketsClient?.Dispose();
             }
             catch (SocketException exc) when (exc.SocketErrorCode == SocketError.ConnectionReset)
             {
                 LogInfo("Client disconnected.");
-                socketsClient?.Dispose();
             }
             catch (SocketException exc)
             {
                 _logger.Warn($"Error {exc.ErrorCode}:{exc.Message}");
-                socketsClient?.Dispose();
             }
             catch (Exception exc)
             {
                 _logger.Error("Error when handling IPC communication with a client.", exc);
-
+            }
+            finally
+            {
                 socketsClient?.Dispose();
             }
         }

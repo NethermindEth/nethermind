@@ -17,9 +17,11 @@
 using System;
 using System.Buffers;
 using System.Diagnostics;
+using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
@@ -62,23 +64,63 @@ namespace Nethermind.JsonRpc.WebSockets
         public override async Task ProcessAsync(Memory<byte> data)
         {
             Stopwatch stopwatch = Stopwatch.StartNew();
-            Interlocked.Add(ref Metrics.JsonRpcBytesReceivedWebSockets, data.Length);
-            using JsonRpcResult result = await _jsonRpcProcessor.ProcessAsync(Encoding.UTF8.GetString(data.Span), _jsonRpcContext);
+            IncrementBytesReceivedMetric(data.Length);
+            var responses = await _jsonRpcProcessor.ProcessAsync(Encoding.UTF8.GetString(data.Span), _jsonRpcContext);
 
-            var size = await SendJsonRpcResult(result);
-
-            long handlingTimeMicroseconds = stopwatch.ElapsedMicroseconds();
-            if (result.IsCollection)
+            if (responses.Count == 1 && !responses[0].IsCollection)
             {
-                _jsonRpcLocalStats.ReportCalls(result.Reports);
-                _jsonRpcLocalStats.ReportCall(new RpcReport("# collection serialization #", handlingTimeMicroseconds, true), handlingTimeMicroseconds, size);
-            }
-            else
-            {
+                using var result = responses[0];
+                var size = await SendJsonRpcResult(result);
+                long handlingTimeMicroseconds = stopwatch.ElapsedMicroseconds();
+                
                 _jsonRpcLocalStats.ReportCall(result.Report, handlingTimeMicroseconds, size);
+                
+                IncrementBytesSentMetric(size);
+            }
+            else if (responses.Count > 0)   // multiple responses or one array response
+            {
+                int size = 0;
+                foreach (var result in responses)
+                {
+                    using (result)
+                    {
+                        size += await SendJsonRpcResult(result);
+                        
+                        _jsonRpcLocalStats.ReportCalls(result.Reports);
+                    }
+                }
+                
+                long handlingTimeMicroseconds = stopwatch.ElapsedMicroseconds();
+                _jsonRpcLocalStats.ReportCall(new RpcReport("# collection serialization #", handlingTimeMicroseconds, true), handlingTimeMicroseconds, size);
+                
+                IncrementBytesSentMetric(size);
+            }
+        }
+
+        private void IncrementBytesReceivedMetric(int size)
+        {
+            if (_jsonRpcContext.RpcEndpoint == RpcEndpoint.WebSocket)
+            {
+                Interlocked.Add(ref Metrics.JsonRpcBytesReceivedWebSockets, size);
             }
 
-            Interlocked.Add(ref Metrics.JsonRpcBytesSentWebSockets, data.Length);
+            if (_jsonRpcContext.RpcEndpoint == RpcEndpoint.IPC)
+            {
+                Interlocked.Add(ref Metrics.JsonRpcBytesReceivedIpc, size);
+            }
+        }
+        
+        private void IncrementBytesSentMetric(int size)
+        {
+            if (_jsonRpcContext.RpcEndpoint == RpcEndpoint.WebSocket)
+            {
+                Interlocked.Add(ref Metrics.JsonRpcBytesSentWebSockets, size);
+            }
+
+            if (_jsonRpcContext.RpcEndpoint == RpcEndpoint.IPC)
+            {
+                Interlocked.Add(ref Metrics.JsonRpcBytesSentIpc, size);
+            }
         }
 
         public async Task<int> SendJsonRpcResult(JsonRpcResult result)
