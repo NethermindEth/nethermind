@@ -5,9 +5,13 @@ using System.Net.WebSockets;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.WebSockets;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using NSubstitute;
+using NSubstitute.Extensions;
 using NUnit.Framework;
 using NUnit.Framework.Constraints;
 
@@ -99,6 +103,52 @@ namespace Nethermind.Sockets.Test
             await webSocketsClient.Received().ProcessAsync(Arg.Is<Memory<byte>>(ba => ba.Length == 2 * 4096 + 1024));
         }
 
+        [Test]
+        public async Task Updates_Metrics_And_Stats_Successfully()
+        {
+            Queue<WebSocketReceiveResult> receiveResult = new Queue<WebSocketReceiveResult>();
+            receiveResult.Enqueue(new WebSocketReceiveResult(1024, WebSocketMessageType.Text, true));
+            receiveResult.Enqueue(new WebSocketReceiveResult(0, WebSocketMessageType.Close, true));
+            WebSocketMock mock = new (receiveResult);
+            
+            var processor = Substitute.For<IJsonRpcProcessor>();
+            processor.ProcessAsync(default, default).ReturnsForAnyArgs((x) =>
+            {
+                return new List<JsonRpcResult>()
+                {
+                    new(), 
+                    JsonRpcResult.Collection(new List<JsonRpcResponse>(){new(), new(), new()}, new List<RpcReport>{new(), new(), new()})
+                }.ToAsyncEnumerable();
+            });
+            
+            var service = Substitute.For<IJsonRpcService>();
+
+            var localStats = Substitute.For<IJsonRpcLocalStats>();
+
+            var webSocketsClient = Substitute.ForPartsOf< JsonRpcSocketsClient>(
+                "TestClient",
+                new WebSocketHandler(mock, Substitute.For<ILogManager>()),
+                RpcEndpoint.WebSocket,
+                processor,
+                service,
+                localStats,
+                Substitute.For<IJsonSerializer>());
+
+            webSocketsClient.Configure().SendJsonRpcResult(default).ReturnsForAnyArgs((x) =>
+            {
+                var par = x.Arg<JsonRpcResult>();
+                return Task.FromResult(par.IsCollection ? par.Responses.Count * 100 : 100);
+            });
+
+            await webSocketsClient.ReceiveAsync();
+
+            Assert.AreEqual(1024, Metrics.JsonRpcBytesReceivedWebSockets);
+            Assert.AreEqual(400, Metrics.JsonRpcBytesSentWebSockets);
+            localStats.Received(1).ReportCall(Arg.Any<RpcReport>(), Arg.Any<long>(), 100);
+            localStats.Received(1).ReportCall(Arg.Any<RpcReport>(), Arg.Any<long>(), 300);
+            localStats.Received(1).ReportCalls(Arg.Is<List<RpcReport>>(l => l.Count == 3));
+        }
+        
         [Test]
         public async Task Can_receive_many_messages()
         {
