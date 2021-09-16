@@ -105,7 +105,7 @@ namespace Nethermind.Blockchain.Filters
         {
             if (topics == null)
             {
-                return TopicsFilter.AnyTopic;
+                return SequenceTopicsFilter.AnyTopic;
             }
 
             FilterTopic?[]? filterTopics = GetFilterTopics(topics);
@@ -116,7 +116,7 @@ namespace Nethermind.Blockchain.Filters
                 expressions.Add(GetTopicExpression(filterTopics[i]));
             }
 
-            return new TopicsFilter(expressions.ToArray());
+            return new SequenceTopicsFilter(expressions.ToArray());
         }
 
         private TopicExpression GetTopicExpression(FilterTopic? filterTopic)
