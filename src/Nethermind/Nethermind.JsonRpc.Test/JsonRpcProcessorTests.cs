@@ -209,15 +209,43 @@ namespace Nethermind.JsonRpc.Test
         }
 
         [Test]
+        public async Task Can_process_batch_request_with_two_requests()
+        {
+            IList<JsonRpcResult> result = await ProcessAsync("{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}{\"id\":68,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}");
+            result.Should().HaveCount(2);
+            result[0].Response.Should().NotBeNull();
+            result[0].Responses.Should().BeNull();
+            result[0].Response.Should().NotBeSameAs(_errorResponse);
+            result[1].Response.Should().NotBeNull();
+            result[1].Responses.Should().BeNull();
+            result[1].Response.Should().NotBeSameAs(_errorResponse);
+        }
+        
+        [Test]
         public async Task Can_process_batch_request_with_single_request_and_array_with_two()
         {
             IList<JsonRpcResult> result = await ProcessAsync("{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}[{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]},{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}]");
             result.Should().HaveCount(2);
             result[0].Response.Should().NotBeNull();
+            result[0].Response.Should().NotBeSameAs(_errorResponse);
             result[0].Responses.Should().BeNull();
             result[1].Response.Should().BeNull();
             result[1].Responses.Should().NotBeNull();
             result[1].Responses.Should().HaveCount(2);
+            Assert.IsTrue(result[1].Responses.All(r => r != _errorResponse));
+        }
+        
+        [Test]
+        public async Task Can_process_batch_request_with_second_not_closed_request()
+        {
+            IList<JsonRpcResult> result = await ProcessAsync("{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}{\"id\":68,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]");
+            result.Should().HaveCount(2);
+            result[0].Response.Should().NotBeNull();
+            result[0].Responses.Should().BeNull();
+            result[0].Response.Should().NotBeSameAs(_errorResponse);
+            result[1].Response.Should().NotBeNull();
+            result[1].Responses.Should().BeNull();
+            result[1].Response.Should().BeSameAs(_errorResponse);
         }
         
         [Test]
