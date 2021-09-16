@@ -26,10 +26,10 @@ namespace Nethermind.Sockets
                 ? Task.CompletedTask 
                 : _webSocket.SendAsync(data, WebSocketMessageType.Text, true, CancellationToken.None);
 
-        public async Task<ReceiveResult?> GetReceiveResult(byte[] buffer)
+        public async Task<ReceiveResult?> GetReceiveResult(ArraySegment<byte> buffer)
         {
             ReceiveResult? result = null;
-            Task<WebSocketReceiveResult> resultTask = _webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
+            Task<WebSocketReceiveResult> resultTask = _webSocket.ReceiveAsync(buffer, CancellationToken.None);
 
             await resultTask.ContinueWith(t =>
             {

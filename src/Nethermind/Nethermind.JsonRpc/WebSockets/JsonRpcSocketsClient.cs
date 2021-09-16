@@ -64,36 +64,34 @@ namespace Nethermind.JsonRpc.WebSockets
             Closed?.Invoke(this, EventArgs.Empty);
         }
 
-        public override async Task ProcessAsync(Memory<byte> data)
+        public override async Task ProcessAsync(ArraySegment<byte> data)
         {
             Stopwatch stopwatch = Stopwatch.StartNew();
-            IncrementBytesReceivedMetric(data.Length);
-            if (MemoryMarshal.TryGetArray(data, out ArraySegment<byte> segment))
+            IncrementBytesReceivedMetric(data.Count);
+            using TextReader request = new StreamReader(new MemoryStream(data.Array!, data.Offset, data.Count), Encoding.UTF8);
+            int size = 0;
+            await foreach (JsonRpcResult result in _jsonRpcProcessor.ProcessAsync(request, _jsonRpcContext))
             {
-                using TextReader request = new StreamReader(new MemoryStream(segment.Array!), Encoding.UTF8);
-                int size = 0;
-                await foreach (JsonRpcResult result in _jsonRpcProcessor.ProcessAsync(request, _jsonRpcContext))
+                using (result)
                 {
-                    using (result)
+                    size += await SendJsonRpcResult(result);
+                    if (result.IsCollection)
                     {
-                        size += await SendJsonRpcResult(result);
-                        if (result.IsCollection)
-                        {
-                            _jsonRpcLocalStats.ReportCalls(result.Reports);
+                        _jsonRpcLocalStats.ReportCalls(result.Reports);
 
-                            long handlingTimeMicroseconds = stopwatch.ElapsedMicroseconds();
-                            _jsonRpcLocalStats.ReportCall(new RpcReport("# collection serialization #", handlingTimeMicroseconds, true), handlingTimeMicroseconds, size);
-                        }
-                        else
-                        {
-                            long handlingTimeMicroseconds = stopwatch.ElapsedMicroseconds();
-                            _jsonRpcLocalStats.ReportCall(result.Report, handlingTimeMicroseconds, size);
-                        }
+                        long handlingTimeMicroseconds = stopwatch.ElapsedMicroseconds();
+                        _jsonRpcLocalStats.ReportCall(new RpcReport("# collection serialization #", handlingTimeMicroseconds, true), handlingTimeMicroseconds, size);
+                    }
+                    else
+                    {
+                        long handlingTimeMicroseconds = stopwatch.ElapsedMicroseconds();
+                        _jsonRpcLocalStats.ReportCall(result.Report, handlingTimeMicroseconds, size);
                     }
                 }
-                
-                IncrementBytesSentMetric(size);
             }
+            
+            IncrementBytesSentMetric(size);
+            
         }
 
         private void IncrementBytesReceivedMetric(int size)

@@ -3,6 +3,7 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Nethermind.Serialization.Json;
 
@@ -25,7 +26,7 @@ namespace Nethermind.Sockets
             _jsonSerializer = jsonSerializer;
         }
 
-        public virtual Task ProcessAsync(Memory<byte> data) => Task.CompletedTask;
+        public virtual Task ProcessAsync(ArraySegment<byte> data) => Task.CompletedTask;
 
         public virtual Task SendAsync(SocketsMessage message)
         {
@@ -50,48 +51,54 @@ namespace Nethermind.Sockets
 
         public async Task ReceiveAsync()
         {
+            const int standardBufferLength = 4 * 4;
             int currentMessageLength = 0;
-            byte[] buffer = new byte[1024 * 4];
-            byte[] combinedData = Array.Empty<byte>();
+            byte[] buffer = ArrayPool<byte>.Shared.Rent(standardBufferLength);
+            ReceiveResult? result = null;
 
-            ReceiveResult? result = await _handler.GetReceiveResult(buffer);
-            while (result?.Closed == false)
+            try
             {
-                int newMessageLength = currentMessageLength + result.Read;
-                if (newMessageLength > MAX_POOLED_SIZE)
+                result = await _handler.GetReceiveResult(buffer);
+                while (result?.Closed == false)
                 {
-                    throw new InvalidOperationException("Message too long");
-                }
+                    currentMessageLength += result.Read;
 
-                byte[] newBytes = ArrayPool<byte>.Shared.Rent(newMessageLength);
-                try
-                {
-                    buffer.AsSpan(0, result.Read).CopyTo(newBytes.AsSpan(currentMessageLength, result.Read));
-                    if (!ReferenceEquals(combinedData, Array.Empty<byte>()))
+                    if (currentMessageLength > MAX_POOLED_SIZE)
                     {
-                        combinedData.AsSpan(0, currentMessageLength).CopyTo(newBytes.AsSpan(0, currentMessageLength));
+                        throw new InvalidOperationException("Message too long");
                     }
-
-                    combinedData = newBytes;
-                    currentMessageLength = newMessageLength;
 
                     if (result.EndOfMessage)
                     {
-                        Memory<byte> data = combinedData.AsMemory(0, currentMessageLength);
-                        await ProcessAsync(data);
-                        currentMessageLength = 0;
-                        combinedData = Array.Empty<byte>();
+                        // process the already filled bytes
+                        await ProcessAsync(new ArraySegment<byte>(buffer, 0, currentMessageLength));
+                        currentMessageLength = 0; // reset message length
+                        
+                        // if we grew the buffer lets reset it
+                        if (buffer.Length > 2 * standardBufferLength)
+                        {
+                            ArrayPool<byte>.Shared.Return(buffer);
+                            buffer = ArrayPool<byte>.Shared.Rent(standardBufferLength);
+                        }
                     }
-                }
-                finally
-                {
-                    ArrayPool<byte>.Shared.Return(combinedData);
-                }
+                    else
+                    {
+                        // grow the buffer 4x
+                        byte[] newBuffer = ArrayPool<byte>.Shared.Rent(buffer.Length * 4);
+                        buffer.CopyTo(newBuffer, 0);
+                        ArrayPool<byte>.Shared.Return(buffer);
+                        buffer = newBuffer;
+                    }
 
-                result = await _handler.GetReceiveResult(buffer);
+                    // receive only new bytes, leave already filled buffer alone
+                    result = await _handler.GetReceiveResult(new ArraySegment<byte>(buffer, currentMessageLength, buffer.Length - currentMessageLength));
+                }
             }
-
-            await _handler.CloseAsync(result);
+            finally
+            {
+                await _handler.CloseAsync(result);
+                ArrayPool<byte>.Shared.Return(buffer);
+            }
         }
 
         public virtual void Dispose()
