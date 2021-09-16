@@ -32,7 +32,7 @@ namespace Nethermind.JsonRpc.Utils
                 
                 while (reader.Read())
                 {
-                    JToken t = JToken.Load(reader, null);
+                    JToken t = JToken.Load(reader);
                     yield return t;
                 }
             }
