@@ -23,9 +23,13 @@ namespace Nethermind.Consensus
 {
     public class NoPoS : IPoSSwitcher
     {
+        private NoPoS() { }
+
+        public static NoPoS Instance { get; } = new();
         public void SetTerminalTotalDifficulty(UInt256 totalDifficulty) { }
 
         public void SetTerminalPoWHash(Keccak blockHash) { }
+        public bool WasEverInPoS() => false;
 
         public bool TrySwitchToPoS(BlockHeader header) => false;
     }

@@ -28,7 +28,9 @@ namespace Nethermind.Consensus
 
         public void SetTerminalPoWHash(Keccak blockHash);
 
-        bool IsPos();
+        bool IsPos(BlockHeader header);
+
+        bool WasEverInPoS();
 
         public bool TrySwitchToPoS(BlockHeader header);
     }

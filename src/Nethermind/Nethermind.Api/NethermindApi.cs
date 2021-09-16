@@ -201,5 +201,7 @@ namespace Nethermind.Api
         public DisposableStack DisposeStack { get; } = new();
         public IReadOnlyList<INethermindPlugin> Plugins { get; } = new List<INethermindPlugin>();
         public IList<IPublisher> Publishers { get; } = new List<IPublisher>(); // this should be called publishers
+
+        public IPoSSwitcher PoSSwitcher { get; } = NoPoS.Instance;
     }
 }
