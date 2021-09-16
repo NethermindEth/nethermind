@@ -49,7 +49,7 @@ namespace Nethermind.Merge.Plugin
             return _firstPoSBlockNumber != null;
         }
 
-        public bool TrySwitchToPoS(BlockHeader header)
+        public bool IsPos(BlockHeader header, bool trySwitchToPos)
         {
             if (_firstPoSBlockNumber != null && _firstPoSBlockNumber <= header.Number)
             {
@@ -63,7 +63,8 @@ namespace Nethermind.Merge.Plugin
 
             if (_firstPoSBlockNumber == null && (_terminalBlockHash == header.ParentHash || header.TotalDifficulty >= _terminalTotalDifficulty))
             {
-                _firstPoSBlockNumber = header.Number;
+                if (trySwitchToPos)
+                    _firstPoSBlockNumber = header.Number;
                 return true;
             }
 

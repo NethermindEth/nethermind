@@ -29,8 +29,8 @@ namespace Nethermind.Consensus
         public void SetTerminalTotalDifficulty(UInt256 totalDifficulty) { }
 
         public void SetTerminalPoWHash(Keccak blockHash) { }
-        public bool WasEverInPoS() => false;
+        public bool IsPos(BlockHeader header, bool trySwitchToPos) => false;
 
-        public bool TrySwitchToPoS(BlockHeader header) => false;
+        public bool WasEverInPoS() => false;
     }
 }
