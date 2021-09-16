@@ -132,19 +132,19 @@ namespace Nethermind.Blockchain.Test.Filters
         {
             get
             {
-                yield return new TestCaseData(null, TopicsFilter.AnyTopic);
+                yield return new TestCaseData(null, SequenceTopicsFilter.AnyTopic);
                 
                 yield return new TestCaseData(new[] {TestItem.KeccakA.ToString()}, 
-                    new TopicsFilter(new SpecificTopic(TestItem.KeccakA)));
+                    new SequenceTopicsFilter(new SpecificTopic(TestItem.KeccakA)));
                 
                 yield return new TestCaseData(new[] {TestItem.KeccakA.ToString(), TestItem.KeccakB.ToString()}, 
-                    new TopicsFilter(new SpecificTopic(TestItem.KeccakA), new SpecificTopic(TestItem.KeccakB)));
+                    new SequenceTopicsFilter(new SpecificTopic(TestItem.KeccakA), new SpecificTopic(TestItem.KeccakB)));
                 
                 yield return new TestCaseData(new[] {null, TestItem.KeccakB.ToString()}, 
-                    new TopicsFilter(AnyTopic.Instance, new SpecificTopic(TestItem.KeccakB)));
+                    new SequenceTopicsFilter(AnyTopic.Instance, new SpecificTopic(TestItem.KeccakB)));
                 
                 yield return new TestCaseData(new object[] {new[] {TestItem.KeccakA.ToString(), TestItem.KeccakB.ToString(), TestItem.KeccakC.ToString()}, TestItem.KeccakD.ToString()}, 
-                    new TopicsFilter(new OrExpression(new SpecificTopic(TestItem.KeccakA), new SpecificTopic(TestItem.KeccakB), new SpecificTopic(TestItem.KeccakC)), new SpecificTopic(TestItem.KeccakD)));
+                    new SequenceTopicsFilter(new OrExpression(new SpecificTopic(TestItem.KeccakA), new SpecificTopic(TestItem.KeccakB), new SpecificTopic(TestItem.KeccakC)), new SpecificTopic(TestItem.KeccakD)));
             }
         }
         
