@@ -21,7 +21,7 @@ namespace Nethermind.Sockets
                 ? Task.CompletedTask
                 : _socket.SendAsync(data, SocketFlags.None);
 
-        public async Task<ReceiveResult> GetReceiveResult(byte[] buffer)
+        public async Task<ReceiveResult?> GetReceiveResult(byte[] buffer)
         {
             int read = await _socket.ReceiveAsync(new ArraySegment<byte>(buffer), SocketFlags.None);
             return new ReceiveResult()
@@ -33,9 +33,9 @@ namespace Nethermind.Sockets
             };
         }
 
-        public async Task CloseAsync(ReceiveResult result)
+        public Task CloseAsync(ReceiveResult? result)
         {
-            await Task.Factory.StartNew(_socket.Close);
+            return Task.Factory.StartNew(_socket.Close);
         }
 
         public void Dispose()

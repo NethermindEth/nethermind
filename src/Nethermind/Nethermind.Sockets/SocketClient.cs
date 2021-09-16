@@ -54,13 +54,8 @@ namespace Nethermind.Sockets
             byte[] buffer = new byte[1024 * 4];
             byte[] combinedData = Array.Empty<byte>();
 
-            var result = await _handler.GetReceiveResult(buffer);
-            if (result == null)
-            {
-                return;
-            }
-
-            while (!result.Closed)
+            ReceiveResult? result = await _handler.GetReceiveResult(buffer);
+            while (result?.Closed == false)
             {
                 int newMessageLength = currentMessageLength + result.Read;
                 if (newMessageLength > MAX_POOLED_SIZE)
@@ -94,10 +89,6 @@ namespace Nethermind.Sockets
                 }
 
                 result = await _handler.GetReceiveResult(buffer);
-                if (result == null)
-                {
-                    return;
-                }
             }
 
             await _handler.CloseAsync(result);

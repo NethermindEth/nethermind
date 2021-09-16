@@ -26,9 +26,9 @@ namespace Nethermind.Sockets
                 ? Task.CompletedTask 
                 : _webSocket.SendAsync(data, WebSocketMessageType.Text, true, CancellationToken.None);
 
-        public async Task<ReceiveResult> GetReceiveResult(byte[] buffer)
+        public async Task<ReceiveResult?> GetReceiveResult(byte[] buffer)
         {
-            ReceiveResult result = null;
+            ReceiveResult? result = null;
             Task<WebSocketReceiveResult> resultTask = _webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
 
             await resultTask.ContinueWith(t =>
@@ -69,12 +69,10 @@ namespace Nethermind.Sockets
             return result;
         }
 
-        public async Task CloseAsync(ReceiveResult result)
-        {
-            await _webSocket.CloseAsync((result is WebSocketsReceiveResult r && r.CloseStatus.HasValue) ? r.CloseStatus.Value : WebSocketCloseStatus.Empty, 
-                result.CloseStatusDescription, 
+        public Task CloseAsync(ReceiveResult? result) =>
+            _webSocket.CloseAsync(result is WebSocketsReceiveResult { CloseStatus: { } } r ? r.CloseStatus.Value : WebSocketCloseStatus.Empty, 
+                result?.CloseStatusDescription, 
                 CancellationToken.None);
-        }
 
         public void Dispose()
         {

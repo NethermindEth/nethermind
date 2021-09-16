@@ -12,7 +12,7 @@ namespace Nethermind.Sockets
     public interface ISocketHandler : IDisposable
     {
         Task SendRawAsync(ArraySegment<byte> data);
-        Task<ReceiveResult> GetReceiveResult(byte[] buffer);
-        Task CloseAsync(ReceiveResult result);
+        Task<ReceiveResult?> GetReceiveResult(byte[] buffer);
+        Task CloseAsync(ReceiveResult? result);
     }
 }
