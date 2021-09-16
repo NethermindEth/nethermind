@@ -15,9 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -136,19 +139,8 @@ namespace Nethermind.Blockchain.Validators
 
             if (_logger.IsTrace) _logger.Trace($"Validating block {header.ToString(BlockHeader.Format.Short)}, extraData {header.ExtraData.ToHexString(true)}");
 
-            bool isEip1559Correct = true;
-            bool isEip1559Enabled = spec.IsEip1559Enabled;
-            if (isEip1559Enabled)
-            {
-                UInt256? expectedBaseFee = BaseFeeCalculator.Calculate(parent, spec);
-                isEip1559Correct = expectedBaseFee == header.BaseFeePerGas;
-                
-                if (expectedBaseFee != header.BaseFeePerGas)
-                {
-                    if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.ToString(BlockHeader.Format.Short)}) incorrect base fee. Expected base fee: {expectedBaseFee}, Current base fee: {header.BaseFeePerGas} ");
-                    isEip1559Correct = false;
-                }
-            }
+            bool eip1559Valid = Validate1559Checks(header, parent, spec);
+            bool theMergeValid = ValidateTheMergeChecks(header, spec);
 
             return
                 totalDifficultyCorrect &&
@@ -160,7 +152,8 @@ namespace Nethermind.Blockchain.Validators
                 numberIsParentPlusOne &&
                 hashAsExpected &&
                 extraDataValid &&
-                isEip1559Correct;
+                eip1559Valid &&
+                theMergeValid;
         }
 
         protected virtual bool ValidateGasLimitRange(BlockHeader header, BlockHeader parent, IReleaseSpec spec)
@@ -206,9 +199,50 @@ namespace Nethermind.Blockchain.Validators
                 header.ExtraData.Length <= _specProvider.GenesisSpec.MaximumExtraDataSize;
         }
 
-        private bool IsCorrectTheMergeBlock(BlockHeader header)
+        private bool Validate1559Checks(BlockHeader header, BlockHeader parent, IReleaseSpec spec)
         {
+            if (spec.IsEip1559Enabled == false)
+                return true; 
             
+            UInt256? expectedBaseFee = BaseFeeCalculator.Calculate(parent, spec);
+            bool isBaseFeeCorrect = ValidateHeaderField(header, header.BaseFeePerGas, expectedBaseFee, nameof(header.BaseFeePerGas));
+            return isBaseFeeCorrect;
+        }
+
+        private bool ValidateTheMergeChecks(BlockHeader header, IReleaseSpec spec)
+        {
+            if (spec.TheMergeEnabled == false)
+                return true;
+            
+            bool validDifficulty = ValidateHeaderField(header, header.Difficulty, UInt256.One, nameof(header.Difficulty));
+            bool validNonce = ValidateHeaderField(header, header.Nonce, 0ul, nameof(header.Nonce));
+            bool validExtraData = ValidateHeaderField<byte>(header, header.ExtraData, Array.Empty<byte>(), nameof(header.ExtraData));
+            bool validMixHash = ValidateHeaderField(header, header.MixHash, Keccak.Zero, nameof(header.MixHash));
+            bool validUncles = ValidateHeaderField(header, header.UnclesHash, Keccak.OfAnEmptyString, nameof(header.UnclesHash));
+            
+            return validDifficulty
+                   && validNonce
+                   && validExtraData
+                   && validMixHash
+                   && validUncles;
+
+        }
+        private bool ValidateHeaderField<T>(BlockHeader header, T value, T expected, string name)
+        {
+            if (Equals(value, expected)) return true;
+            if (_logger.IsWarn) _logger.Warn($"Invalid block header {header.ToString(BlockHeader.Format.Short)} - the {name} is incorrect expected {expected}, got {value} .");
+            return false;
+
+        }
+        
+        private bool ValidateHeaderField<T>(BlockHeader request, IEnumerable<T>? value, IEnumerable<T> expected, string name)
+        {
+            if ((value ?? Array.Empty<T>()).SequenceEqual(expected)) return true;
+            if (_logger.IsWarn) _logger.Warn($"Block {request} has invalid {name}, expected {expected}, got {value} .");
+            return false;
+
         }
     }
+    
+    
 }
