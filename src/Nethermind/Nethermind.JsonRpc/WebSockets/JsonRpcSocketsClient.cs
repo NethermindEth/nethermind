@@ -69,29 +69,31 @@ namespace Nethermind.JsonRpc.WebSockets
             Stopwatch stopwatch = Stopwatch.StartNew();
             IncrementBytesReceivedMetric(data.Count);
             using TextReader request = new StreamReader(new MemoryStream(data.Array!, data.Offset, data.Count), Encoding.UTF8);
-            int size = 0;
+            int allResponsesSize = 0;
             await foreach (JsonRpcResult result in _jsonRpcProcessor.ProcessAsync(request, _jsonRpcContext))
             {
                 using (result)
                 {
-                    size += await SendJsonRpcResult(result);
+                    int singleResponseSize = await SendJsonRpcResult(result);
+                    allResponsesSize += singleResponseSize;
                     if (result.IsCollection)
                     {
                         _jsonRpcLocalStats.ReportCalls(result.Reports);
 
                         long handlingTimeMicroseconds = stopwatch.ElapsedMicroseconds();
-                        _jsonRpcLocalStats.ReportCall(new RpcReport("# collection serialization #", handlingTimeMicroseconds, true), handlingTimeMicroseconds, size);
+                        _jsonRpcLocalStats.ReportCall(new RpcReport("# collection serialization #", handlingTimeMicroseconds, true), handlingTimeMicroseconds, singleResponseSize);
+                        stopwatch.Restart();
                     }
                     else
                     {
                         long handlingTimeMicroseconds = stopwatch.ElapsedMicroseconds();
-                        _jsonRpcLocalStats.ReportCall(result.Report, handlingTimeMicroseconds, size);
+                        _jsonRpcLocalStats.ReportCall(result.Report, handlingTimeMicroseconds, singleResponseSize);
+                        stopwatch.Restart();
                     }
                 }
             }
-            
-            IncrementBytesSentMetric(size);
-            
+
+            IncrementBytesSentMetric(allResponsesSize);
         }
 
         private void IncrementBytesReceivedMetric(int size)
@@ -120,7 +122,7 @@ namespace Nethermind.JsonRpc.WebSockets
             }
         }
 
-        public async Task<int> SendJsonRpcResult(JsonRpcResult result)
+        public virtual async Task<int> SendJsonRpcResult(JsonRpcResult result)
         {
             void SerializeTimeoutException(MemoryStream stream)
             {
