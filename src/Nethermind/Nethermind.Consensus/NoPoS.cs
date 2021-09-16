@@ -19,20 +19,14 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
-namespace Nethermind.Specs
+namespace Nethermind.Consensus
 {
-    public interface IPoSSwitcher
+    public class NoPoS : IPoSSwitcher
     {
+        public void SetTerminalTotalDifficulty(UInt256 totalDifficulty) { }
 
-        public void SetTerminalTotalDifficulty(UInt256 totalDifficulty);
+        public void SetTerminalPoWHash(Keccak blockHash) { }
 
-        public void SetTerminalPoWHash(Keccak blockHash);
-        
-        
-     //   public bool IsPoWTerminalBlock(UInt256 difficulty, Keccak blockHash);
-        
-        // header.ParentHash == terminalBlockHash => PoS -> zapisać numer tego bloku 
-
-        public bool IsPoS(BlockHeader header);
+        public bool IsPoS(BlockHeader header) => false;
     }
 }

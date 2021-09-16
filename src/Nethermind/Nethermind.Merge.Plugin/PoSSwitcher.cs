@@ -18,7 +18,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
-using Nethermind.Specs;
+using Nethermind.Consensus;
 
 namespace Nethermind.Merge.Plugin
 {
@@ -41,7 +41,7 @@ namespace Nethermind.Merge.Plugin
 
         public bool IsPoS(BlockHeader header)
         {
-            if (_firstPoSBlockNumber != null && _firstPoSBlockNumber >= header.Number)
+            if (_firstPoSBlockNumber != null && _firstPoSBlockNumber <= header.Number)
             {
                 return true;
             }
