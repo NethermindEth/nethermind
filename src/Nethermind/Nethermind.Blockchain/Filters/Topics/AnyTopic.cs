@@ -30,8 +30,6 @@ namespace Nethermind.Blockchain.Filters.Topics
 
         public override bool Matches(Bloom bloom) => true;
         public override bool Matches(ref BloomStructRef bloom) => true;
-
-        public override bool Equals(object? obj) => ReferenceEquals(obj, this);
         
         public override string ToString() => "null";
     }
