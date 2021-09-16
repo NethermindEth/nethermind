@@ -18,6 +18,7 @@ using System;
 using System.Linq;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Primitives;
 using Nethermind.Logging;
 
 namespace Nethermind.Sockets
@@ -55,11 +56,11 @@ namespace Nethermind.Sockets
                         return;
                     }
 
-                    clientName = context.Request.Query.TryGetValue("client", out var clientValues)
+                    clientName = context.Request.Query.TryGetValue("client", out StringValues clientValues)
                         ? clientValues.FirstOrDefault()
                         : string.Empty;
 
-                    if (logger.IsInfo) logger.Info($"Initializing WebSockets for client: '{clientName}'.");
+                    if (logger.IsDebug) logger.Info($"Initializing WebSockets for client: '{clientName}'.");
                     var webSocket = await context.WebSockets.AcceptWebSocketAsync();
                     var socketsClient = module.CreateClient(webSocket, clientName);
                     id = socketsClient.Id;
@@ -74,7 +75,7 @@ namespace Nethermind.Sockets
                     if (!(module is null) && !string.IsNullOrWhiteSpace(id))
                     {
                         module.RemoveClient(id);
-                        if (logger.IsInfo) logger.Info($"Closing WebSockets for client: '{clientName}'.");
+                        if (logger.IsDebug) logger.Info($"Closing WebSockets for client: '{clientName}'.");
                     }
                 }
             });
