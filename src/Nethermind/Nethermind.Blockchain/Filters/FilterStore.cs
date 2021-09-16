@@ -71,7 +71,7 @@ namespace Nethermind.Blockchain.Filters
         }
 
         public LogFilter CreateLogFilter(BlockParameter fromBlock, BlockParameter toBlock,
-            object address = null, IEnumerable<object> topics = null, bool setId = true)
+            object? address = null, IEnumerable<object?>? topics = null, bool setId = true)
         {
             var filterId = setId ? GetFilterId() : 0;
             var filter = new LogFilter(filterId, fromBlock, toBlock,
@@ -101,11 +101,11 @@ namespace Nethermind.Blockchain.Filters
 
         private int GetFilterId() => _nextFilterId++;
 
-        private SequenceTopicsFilter GetTopicsFilter(IEnumerable<object> topics = null)
+        private TopicsFilter GetTopicsFilter(IEnumerable<object?>? topics = null)
         {
             if (topics == null)
             {
-                return SequenceTopicsFilter.AnyTopic;
+                return TopicsFilter.AnyTopic;
             }
 
             FilterTopic?[]? filterTopics = GetFilterTopics(topics);
@@ -116,7 +116,7 @@ namespace Nethermind.Blockchain.Filters
                 expressions.Add(GetTopicExpression(filterTopics[i]));
             }
 
-            return new SequenceTopicsFilter(expressions.ToArray());
+            return new TopicsFilter(expressions.ToArray());
         }
 
         private TopicExpression GetTopicExpression(FilterTopic? filterTopic)

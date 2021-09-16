@@ -248,10 +248,11 @@ namespace Nethermind.JsonRpc
                     }
 
                     object? executionParam;
-                    if (typeof(IJsonRpcRequest).IsAssignableFrom(paramType))
+                    if (typeof(IJsonRpcParam).IsAssignableFrom(paramType))
                     {
-                        executionParam = Activator.CreateInstance(paramType) as IJsonRpcRequest;
-                        ((IJsonRpcRequest) executionParam).FromJson(providedParameter);
+                        IJsonRpcParam jsonRpcParam = (IJsonRpcParam)Activator.CreateInstance(paramType);
+                        jsonRpcParam!.FromJson(providedParameter);
+                        executionParam = jsonRpcParam;
                     }
                     else if (paramType == typeof(string))
                     {
