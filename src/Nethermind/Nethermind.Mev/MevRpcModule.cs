@@ -84,6 +84,14 @@ namespace Nethermind.Mev
             return ResultWrapper<bool>.Success(result);
         }
 
+        public ResultWrapper<bool> eth_sendMegabundle(MevMegabundleRpc mevMegabundleRpc)
+        {
+            BundleTransaction[] txs = Decode(mevMegabundleRpc.Txs, mevMegabundleRpc.RevertingTxHashes?.ToHashSet());
+            MevBundle bundle = new(mevMegabundleRpc.BlockNumber, txs, mevMegabundleRpc.MinTimestamp, mevMegabundleRpc.MaxTimestamp);
+            bool result = _bundlePool.AddBundle(bundle);
+            return ResultWrapper<bool>.Success(result);
+        }
+
         public ResultWrapper<TxsResults> eth_callBundle(MevCallBundleRpc mevBundleRpc)
         {
             BundleTransaction[] txs = Decode(mevBundleRpc.Txs);
