@@ -51,7 +51,7 @@ namespace Nethermind.Sockets
 
         public async Task ReceiveAsync()
         {
-            const int standardBufferLength = 4 * 4;
+            const int standardBufferLength = 1024 * 4;
             int currentMessageLength = 0;
             byte[] buffer = ArrayPool<byte>.Shared.Rent(standardBufferLength);
             ReceiveResult? result = null;
@@ -74,7 +74,7 @@ namespace Nethermind.Sockets
                         await ProcessAsync(new ArraySegment<byte>(buffer, 0, currentMessageLength));
                         currentMessageLength = 0; // reset message length
                         
-                        // if we grew the buffer lets reset it
+                        // if we grew the buffer too big lets reset it
                         if (buffer.Length > 2 * standardBufferLength)
                         {
                             ArrayPool<byte>.Shared.Return(buffer);
