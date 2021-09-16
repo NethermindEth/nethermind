@@ -26,15 +26,10 @@ namespace Nethermind.JsonRpc.Utils
     {
         public static IEnumerable<JToken> ParseMulticontent(TextReader jsonReader)
         {
-            using (JsonReader reader = new JsonTextReader(jsonReader))
+            using JsonReader reader = new JsonTextReader(jsonReader) { SupportMultipleContent = true };
+            while (reader.Read())
             {
-                reader.SupportMultipleContent = true;
-                
-                while (reader.Read())
-                {
-                    JToken t = JToken.Load(reader, null);
-                    yield return t;
-                }
+                yield return JToken.Load(reader);
             }
         }
     }
