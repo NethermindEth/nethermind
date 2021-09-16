@@ -140,9 +140,9 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             BlockParameter numberOrTag = new BlockParameter(16);
 
-            (TransactionForRpc message, string[] traceTypes, BlockParameter numberOrTag)[] a = {(txForRpc, traceTypes, numberOrTag), (txForRpc2, traceTypes2, numberOrTag)};
+            (TransactionForRpc message, string[] traceTypes)[] a = {(txForRpc, traceTypes), (txForRpc2, traceTypes2)};
             
-            ResultWrapper<ParityTxTraceFromReplay[]> tr = context.TraceRpcModule.trace_callMany(a);
+            ResultWrapper<ParityTxTraceFromReplay[]> tr = context.TraceRpcModule.trace_callMany(a, numberOrTag);
             Assert.AreEqual(2, tr.Data.Length);
           
         }
