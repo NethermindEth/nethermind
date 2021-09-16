@@ -17,9 +17,8 @@
 
 using System.Collections.Generic;
 using System.IO;
-using System.Threading.Tasks;
 
-namespace Nethermind.JsonRpc
+namespace Nethermind.JsonRpc.Test
 {
     public static class JsonRpcProcessorExtensions
     {

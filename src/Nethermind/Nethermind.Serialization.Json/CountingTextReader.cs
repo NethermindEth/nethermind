@@ -20,7 +20,7 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Nethermind.Runner.JsonRpc
+namespace Nethermind.Serialization.Json
 {
     public class CountingTextReader : TextReader
     {
@@ -41,7 +41,10 @@ namespace Nethermind.Runner.JsonRpc
         protected override void Dispose(bool disposing)
         {
             base.Dispose(disposing);
-            _innerReader.Dispose();
+            if (disposing)
+            {
+                _innerReader.Dispose();
+            }
         }
 
         public override int Peek() => _innerReader.Peek();
@@ -70,7 +73,7 @@ namespace Nethermind.Runner.JsonRpc
 
         public override async Task<int> ReadBlockAsync(char[] buffer, int index, int count) => IncrementLength(await _innerReader.ReadBlockAsync(buffer, index, count));
 
-        public override async Task<string?> ReadLineAsync() => IncrementLength(await _innerReader.ReadLineAsync());
+        public override async Task<string> ReadLineAsync() => IncrementLength(await _innerReader.ReadLineAsync());
 
         public override string ReadToEnd() => IncrementLength(_innerReader.ReadToEnd());
 
