@@ -1,6 +1,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Serialization.Json;
@@ -36,12 +37,12 @@ namespace Nethermind.Sockets
             if (message.Client == ClientName || string.IsNullOrWhiteSpace(ClientName) ||
                 string.IsNullOrWhiteSpace(message.Client))
             {
-                return _handler.SendRawAsync(_jsonSerializer.Serialize(new
+                MemoryStream memoryStream = new();
+                _jsonSerializer.Serialize(memoryStream, new { type = message.Type, client = ClientName, data = message.Data });
+                if (memoryStream.TryGetBuffer(out ArraySegment<byte> data))
                 {
-                    type = message.Type,
-                    client = ClientName,
-                    data = message.Data
-                }));
+                    return _handler.SendRawAsync(data);
+                }
             }
 
             return Task.CompletedTask;

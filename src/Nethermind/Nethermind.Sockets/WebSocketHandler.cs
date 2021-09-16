@@ -21,17 +21,10 @@ namespace Nethermind.Sockets
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        public Task SendRawAsync(string data)
-        {
-            if (_webSocket.State != WebSocketState.Open)
-            {
-                return Task.CompletedTask;
-            }
-
-            var bytes = Encoding.UTF8.GetBytes(data);
-            return _webSocket.SendAsync(new ArraySegment<byte>(bytes, 0, bytes.Length), WebSocketMessageType.Text,
-                true, CancellationToken.None);
-        }
+        public Task SendRawAsync(ArraySegment<byte> data) => 
+            _webSocket.State != WebSocketState.Open 
+                ? Task.CompletedTask 
+                : _webSocket.SendAsync(data, WebSocketMessageType.Text, true, CancellationToken.None);
 
         public async Task<ReceiveResult> GetReceiveResult(byte[] buffer)
         {

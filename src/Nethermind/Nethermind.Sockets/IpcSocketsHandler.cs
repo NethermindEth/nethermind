@@ -16,15 +16,10 @@ namespace Nethermind.Sockets
             _socket = socket;
         }
 
-        public Task SendRawAsync(string data)
-        {
-            if (!_socket.Connected)
-            {
-                return Task.CompletedTask;
-            }
-            var bytes = Encoding.UTF8.GetBytes(data);
-            return _socket.SendAsync(new ArraySegment<byte>(bytes), SocketFlags.None);
-        }
+        public Task SendRawAsync(ArraySegment<byte> data) =>
+            !_socket.Connected
+                ? Task.CompletedTask
+                : _socket.SendAsync(data, SocketFlags.None);
 
         public async Task<ReceiveResult> GetReceiveResult(byte[] buffer)
         {
