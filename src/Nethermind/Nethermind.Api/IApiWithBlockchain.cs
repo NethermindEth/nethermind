@@ -96,5 +96,7 @@ namespace Nethermind.Api
         IGasPriceOracle? GasPriceOracle { get; set; }
         
         IEthSyncingInfo? EthSyncingInfo { get; set; }
+
+        IPoSSwitcher PoSSwitcher { get; set; }
     }
 }

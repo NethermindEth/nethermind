@@ -23,7 +23,6 @@ namespace Nethermind.Consensus
 {
     public interface IPoSSwitcher
     {
-
         public void SetTerminalTotalDifficulty(UInt256 totalDifficulty);
 
         public void SetTerminalPoWHash(Keccak blockHash);
