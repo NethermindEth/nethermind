@@ -69,7 +69,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             await _client.ReceivedWithAnyArgs().GetAsync<Dictionary<string, PriceResult>>(Arg.Any<string>());
         }
 
-        [Test]
+        [Test, Retry(3)]
         public async Task update_async_should_be_call_every_5s()
         {
             _timestamper.UtcNow = _timestamper.UtcNow.AddSeconds(10);

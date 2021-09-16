@@ -246,6 +246,11 @@ namespace Nethermind.Core.Specs
         bool IsEip3541Enabled { get; }
         
         /// <summary>
+        /// Upgrade consensus to Proof-of-Stake
+        /// </summary>
+        bool IsEip3675Enabled { get; }
+        
+        /// <summary>
         /// Should transactions be validated against chainId.
         /// </summary>
         /// <remarks>Backward compatibility for early Kovan blocks.</remarks>

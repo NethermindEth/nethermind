@@ -239,7 +239,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         {
             if (_currentAction != null)
             {
-                throw new InvalidOperationException($"Closing trace at level {_currentAction.TraceAddress.Length}");
+                throw new InvalidOperationException($"Closing trace at level {_currentAction.TraceAddress?.Length ?? 0}");
             }
 
             if (_trace.Action.TraceAddress.Length == 0)

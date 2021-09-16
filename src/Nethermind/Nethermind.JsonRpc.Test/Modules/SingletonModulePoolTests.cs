@@ -15,13 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.Processing;
-using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Specs;
 using Nethermind.JsonRpc.Modules;
@@ -31,15 +26,14 @@ using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
 using Nethermind.Facade;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using NSubstitute;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Facade.Eth;
-using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 
 namespace Nethermind.JsonRpc.Test.Modules

@@ -72,7 +72,7 @@ namespace Nethermind.Facade.Test
             _ethereumEcdsa = Substitute.For<IEthereumEcdsa>();
             _specProvider = MainnetSpecProvider.Instance;
 
-            ReadOnlyTxProcessingEnv processingEnv = new ReadOnlyTxProcessingEnv(
+            ReadOnlyTxProcessingEnv processingEnv = new(
                 new ReadOnlyDbProvider(_dbProvider, false),
                 new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly(), 
                 new ReadOnlyBlockTree(_blockTree),
@@ -135,7 +135,7 @@ namespace Nethermind.Facade.Test
             _timestamper.UtcNow = DateTime.MinValue;
             _timestamper.Add(TimeSpan.FromDays(123));
             BlockHeader header = Build.A.BlockHeader.WithNumber(10).TestObject;
-            Transaction tx = new Transaction();
+            Transaction tx = new();
             tx.Data = new byte[0];
             tx.GasLimit = Transaction.BaseTxGasCost;
 
@@ -154,7 +154,7 @@ namespace Nethermind.Facade.Test
             _timestamper.UtcNow = DateTime.MinValue;
             _timestamper.Add(TimeSpan.FromDays(123));
             BlockHeader header = Build.A.BlockHeader.WithNumber(10).TestObject;
-            Transaction tx = new Transaction();
+            Transaction tx = new();
             tx.GasLimit = Transaction.BaseTxGasCost;
 
             _blockchainBridge.Call(header, tx, CancellationToken.None);
@@ -170,7 +170,7 @@ namespace Nethermind.Facade.Test
         [TestCase(false, 7, 7)]
         public void Bridge_beam_head_is_correct(bool isBeam, long headNumber, long? expectedNumber)
         {
-            ReadOnlyTxProcessingEnv processingEnv = new ReadOnlyTxProcessingEnv(
+            ReadOnlyTxProcessingEnv processingEnv = new(
                 new ReadOnlyDbProvider(_dbProvider, false),
                 new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly(), 
                 new ReadOnlyBlockTree(_blockTree),
@@ -209,7 +209,7 @@ namespace Nethermind.Facade.Test
         [Test]
         public void Bridge_beam_head_is_correct_in_beam()
         {
-            ReadOnlyTxProcessingEnv processingEnv = new ReadOnlyTxProcessingEnv(
+            ReadOnlyTxProcessingEnv processingEnv = new(
                 new ReadOnlyDbProvider(_dbProvider, false),
                 new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly(), 
                 new ReadOnlyBlockTree(_blockTree),

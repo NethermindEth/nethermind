@@ -17,7 +17,6 @@
 using System;
 using System.IO;
 using System.Numerics;
-using System.Text;
 using FluentAssertions;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;

@@ -25,9 +25,9 @@ using Nethermind.Logging;
 
 namespace Nethermind.Blockchain.Producers
 {
-    public class BuildBlocksOnlyWhenNotProcessing : IBlockProductionTrigger, IDisposable
+    public class BuildBlocksOnlyWhenNotProcessing : IBlockProductionTrigger, IDisposable, IAsyncDisposable
     {
-        private const int ChainNotYetProcessedMillisecondsDelay = 100;
+        public const int ChainNotYetProcessedMillisecondsDelay = 100;
         private readonly IBlockProductionTrigger _blockProductionTrigger;
         private readonly IBlockProcessingQueue _blockProcessingQueue;
         private readonly IBlockTree _blockTree;
@@ -84,32 +84,71 @@ namespace Nethermind.Blockchain.Producers
 
         }
 
-        private void OnTriggerBlockProduction(object? sender, BlockProductionEventArgs e)
+        private void OnTriggerBlockProduction(object? sender, BlockProductionEventArgs e) => InvokeTriggerBlockProduction(e);
+
+        private void InvokeTriggerBlockProduction(BlockProductionEventArgs e)
         {
-            if (_canProduce == 1 && _blockProcessingQueue.IsEmpty)
+            if (CanTriggerBlockProduction)
             {
+                // if we can trigger production lets do it directly, this should be most common case
                 TriggerBlockProduction?.Invoke(this, e);
             }
             else
             {
-                if (_logger.IsDebug) _logger.Debug($"Delaying producing block, chain not processed yet. BlockProcessingQueue count {_blockProcessingQueue.Count}.");
-                e.BlockProductionTask = Task.Delay(ChainNotYetProcessedMillisecondsDelay, e.CancellationToken)
-                    .ContinueWith(t => (Block?)null);
+                // otherwise set delayed production task
+                // we need to clone event args as its BlockProductionTask will be awaited in delayed production task
+                e.BlockProductionTask = InvokeTriggerBlockProductionDelayed(e.Clone());
             }
+        }
+
+        private bool CanTriggerBlockProduction => _canProduce == 1 && _blockProcessingQueue.IsEmpty;
+        
+
+        private async Task<Block?> InvokeTriggerBlockProductionDelayed(BlockProductionEventArgs e)
+        {
+            CancellationToken cancellationToken = e.CancellationToken;
+            // retry production until its allowed or its cancelled
+            while (!CanTriggerBlockProduction && !cancellationToken.IsCancellationRequested)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Delaying producing block, chain not processed yet. BlockProcessingQueue count {_blockProcessingQueue.Count}.");
+                await Task.Delay(ChainNotYetProcessedMillisecondsDelay, cancellationToken);
+            }
+
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                TriggerBlockProduction?.Invoke(this, e);
+            }
+
+            return await e.BlockProductionTask;
         }
 
         public event EventHandler<BlockProductionEventArgs>? TriggerBlockProduction;
         
         public void Dispose()
         {
-            _blockProductionTrigger.TriggerBlockProduction -= OnTriggerBlockProduction;
-            _blockTree.NewBestSuggestedBlock -= BlockTreeOnNewBestSuggestedBlock;
-            _blockProcessingQueue.ProcessingQueueEmpty -= OnBlockProcessorQueueEmpty;
+            DetachEvents();
 
             if (_blockProductionTrigger is IDisposable disposableTrigger)
             {
                 disposableTrigger.Dispose();
             }
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            DetachEvents();
+            
+            if (_blockProductionTrigger is IAsyncDisposable disposableTrigger)
+            {
+                await disposableTrigger.DisposeAsync();
+            }
+        }
+        
+        private void DetachEvents()
+        {
+            _blockProductionTrigger.TriggerBlockProduction -= OnTriggerBlockProduction;
+            _blockTree.NewBestSuggestedBlock -= BlockTreeOnNewBestSuggestedBlock;
+            _blockProcessingQueue.ProcessingQueueEmpty -= OnBlockProcessorQueueEmpty;
         }
     }
 }

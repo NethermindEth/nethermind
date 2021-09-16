@@ -13,42 +13,34 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System;
 using System.Collections;
+using System.Threading;
 using Nethermind.Evm.Precompiles;
 
-namespace Nethermind.Evm
+namespace Nethermind.Evm.CodeAnalysis
 {
-    public class CodeInfo
+    public class JumpdestAnalyzer : ICodeInfoAnalyzer
     {
-        private BitArray _validJumpDestinations;
-        private BitArray _validJumpSubDestinations;
+        private byte[] MachineCode { get; set; }
 
-        public CodeInfo(byte[] code)
+        private BitArray? _validJumpDestinations;
+        private BitArray? _validJumpSubDestinations;
+
+        public JumpdestAnalyzer(byte[] code)
         {
             MachineCode = code;
         }
-
-        public bool IsPrecompile => Precompile != null;
-        
-        public CodeInfo(IPrecompile precompile)
-        {
-            Precompile = precompile;
-            MachineCode = Array.Empty<byte>();
-        }
-        
-        public byte[] MachineCode { get; set; }
-        public IPrecompile Precompile { get; set; }
-
+    
         public bool ValidateJump(int destination, bool isSubroutine)
         {
             if (_validJumpDestinations is null)
             {
                 CalculateJumpDestinations();
             }
-
-            if (destination < 0 || destination >= MachineCode.Length ||
+            
+            if (destination < 0 || destination >= _validJumpDestinations.Length ||
                 (isSubroutine ? !_validJumpSubDestinations.Get(destination) : !_validJumpDestinations.Get(destination)))
             {
                 return false;
@@ -56,30 +48,29 @@ namespace Nethermind.Evm
 
             return true;
         }
-      
+
         private void CalculateJumpDestinations()
         {
             _validJumpDestinations = new BitArray(MachineCode.Length);
             _validJumpSubDestinations = new BitArray(MachineCode.Length);
-            
+
             int index = 0;
             while (index < MachineCode.Length)
             {
-                //Instruction instruction = (Instruction)code[index];
-                byte instruction = MachineCode[index];                
-                
-                //if (instruction == Instruction.JUMPDEST
+                byte instruction = MachineCode[index];
+
+                // JUMPDEST
                 if (instruction == 0x5b)
                 {
                     _validJumpDestinations.Set(index, true);
                 }
-                //if (instruction == Instruction.BEGINSUB
+                // BEGINSUB
                 else if (instruction == 0x5c)
                 {
                     _validJumpSubDestinations.Set(index, true);
                 }
-                //if (instruction >= Instruction.PUSH1 && instruction <= Instruction.PUSH32)
                 
+                // instruction >= Instruction.PUSH1 && instruction <= Instruction.PUSH32
                 if (instruction >= 0x60 && instruction <= 0x7f)
                 {
                     //index += instruction - Instruction.PUSH1 + 2;

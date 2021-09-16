@@ -4,6 +4,11 @@
         <TargetFramework>net5.0</TargetFramework>
     </PropertyGroup>
 
+    <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+      <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+      <WarningsAsErrors />
+    </PropertyGroup>
+
     <ItemGroup>
       <PackageReference Include="BenchmarkDotNet" Version="0.13.1" />
     </ItemGroup>

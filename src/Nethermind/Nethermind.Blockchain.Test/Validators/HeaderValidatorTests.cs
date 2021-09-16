@@ -21,6 +21,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -45,6 +46,7 @@ namespace Nethermind.Blockchain.Test.Validators
         private Block _parentBlock;
         private Block _block;
         private IBlockTree _blockTree;
+        private ISpecProvider _specProvider;
 
         [SetUp]
         public void Setup()
@@ -54,8 +56,9 @@ namespace Nethermind.Blockchain.Test.Validators
             _testLogger = new TestLogger();
             MemDb blockInfoDb = new();
             _blockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), FrontierSpecProvider.Instance, Substitute.For<IBloomStorage>(), LimboLogs.Instance);
+            _specProvider = new SingleReleaseSpecProvider(Byzantium.Instance, 3);
             
-            _validator = new HeaderValidator(_blockTree, _ethash, new SingleReleaseSpecProvider(Byzantium.Instance, 3), new OneLoggerLogManager(_testLogger));
+            _validator = new HeaderValidator(_blockTree, _ethash, _specProvider , new OneLoggerLogManager(_testLogger));
             _parentBlock = Build.A.Block.WithDifficulty(1).TestObject;
             _block = Build.A.Block.WithParent(_parentBlock)
                 .WithDifficulty(131072)
@@ -92,7 +95,7 @@ namespace Nethermind.Blockchain.Test.Validators
             bool result = _validator.Validate(_block.Header);
             Assert.False(result);
         }
-        
+
         [Test]
         public void When_gas_limit_just_correct_high()
         {
@@ -231,6 +234,28 @@ namespace Nethermind.Blockchain.Test.Validators
             
             bool result = _validator.Validate(_block.Header, _parentBlock.Header);
             Assert.AreEqual(expectedResult, result);
+        }
+        
+        [Test]
+        public void When_gas_limit_is_long_max_value()
+        {
+            _validator = new HeaderValidator(_blockTree, _ethash, _specProvider, new OneLoggerLogManager(_testLogger));
+            _parentBlock = Build.A.Block.WithDifficulty(1)
+                .WithGasLimit(long.MaxValue)
+                .WithNumber(5)
+                .TestObject;
+            _block = Build.A.Block.WithParent(_parentBlock)
+                .WithDifficulty(131072)
+                .WithMixHash(new Keccak("0xd7db5fdd332d3a65d6ac9c4c530929369905734d3ef7a91e373e81d0f010b8e8"))
+                .WithGasLimit(long.MaxValue)
+                .WithNumber(_parentBlock.Number + 1)
+                .WithNonce(0).TestObject;
+            _block.Header.SealEngineType = SealEngineType.None;
+            _block.Header.Hash = _block.CalculateHash();
+            
+            bool result = _validator.Validate(_block.Header, _parentBlock.Header);
+            
+            Assert.True(result);
         }
     }
 }

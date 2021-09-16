@@ -16,6 +16,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm
