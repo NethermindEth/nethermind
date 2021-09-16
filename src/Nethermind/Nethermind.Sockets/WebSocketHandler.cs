@@ -37,7 +37,7 @@ namespace Nethermind.Sockets
                 {
                     result = null;
 
-                    Exception innerException = t.Exception;
+                    Exception? innerException = t.Exception;
                     while (innerException?.InnerException != null)
                     {
                         innerException = innerException.InnerException;

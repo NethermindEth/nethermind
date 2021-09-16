@@ -67,7 +67,7 @@ namespace Nethermind.Serialization.Json
 
         public override int ReadBlock(Span<char> buffer) => IncrementLength(_innerReader.ReadBlock(buffer));
 
-        public override string? ReadLine() => IncrementLength(_innerReader.ReadLine());
+        public override string ReadLine() => IncrementLength(_innerReader.ReadLine());
 
         public override async ValueTask<int> ReadBlockAsync(Memory<char> buffer, CancellationToken cancellationToken = default) => IncrementLength(await _innerReader.ReadBlockAsync(buffer, cancellationToken));
 

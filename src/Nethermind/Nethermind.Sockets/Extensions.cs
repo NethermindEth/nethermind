@@ -27,19 +27,19 @@ namespace Nethermind.Sockets
     {
         public static void UseWebSocketsModules(this IApplicationBuilder app)
         {
-            IWebSocketsManager webSocketsManager;
-            ILogger logger;
+            IWebSocketsManager? webSocketsManager;
+            ILogger? logger;
             using (var scope = app.ApplicationServices.CreateScope())
             {
                 webSocketsManager = scope.ServiceProvider.GetService<IWebSocketsManager>();
-                logger = scope.ServiceProvider.GetService<ILogManager>().GetClassLogger();
+                logger = scope.ServiceProvider.GetService<ILogManager>()?.GetClassLogger();
             }
 
             app.Use(async (context, next) =>
             {
-                var id = string.Empty;
-                var clientName = string.Empty;
-                IWebSocketsModule module = null;
+                string id = string.Empty;
+                string clientName = string.Empty;
+                IWebSocketsModule? module = null;
                 try
                 {
                     string moduleName = string.Empty;
@@ -49,7 +49,7 @@ namespace Nethermind.Sockets
                         moduleName = path.Split("/", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault() ?? string.Empty;
                     }
 
-                    module = webSocketsManager.GetModule(moduleName);
+                    module = webSocketsManager?.GetModule(moduleName);
                     if (module is null)
                     {
                         context.Response.StatusCode = 400;
@@ -57,10 +57,10 @@ namespace Nethermind.Sockets
                     }
 
                     clientName = context.Request.Query.TryGetValue("client", out StringValues clientValues)
-                        ? clientValues.FirstOrDefault()
+                        ? clientValues.FirstOrDefault() ?? string.Empty
                         : string.Empty;
 
-                    if (logger.IsDebug) logger.Info($"Initializing WebSockets for client: '{clientName}'.");
+                    if (logger?.IsDebug == true) logger.Info($"Initializing WebSockets for client: '{clientName}'.");
                     var webSocket = await context.WebSockets.AcceptWebSocketAsync();
                     var socketsClient = module.CreateClient(webSocket, clientName);
                     id = socketsClient.Id;
@@ -68,14 +68,14 @@ namespace Nethermind.Sockets
                 }
                 catch (Exception ex)
                 {
-                    logger.Error("WebSockets error.", ex);
+                    logger?.Error("WebSockets error.", ex);
                 }
                 finally
                 {
                     if (!(module is null) && !string.IsNullOrWhiteSpace(id))
                     {
                         module.RemoveClient(id);
-                        if (logger.IsDebug) logger.Info($"Closing WebSockets for client: '{clientName}'.");
+                        if (logger?.IsDebug == true) logger.Info($"Closing WebSockets for client: '{clientName}'.");
                     }
                 }
             });
