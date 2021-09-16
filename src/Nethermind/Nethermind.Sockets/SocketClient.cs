@@ -37,7 +37,7 @@ namespace Nethermind.Sockets
             if (message.Client == ClientName || string.IsNullOrWhiteSpace(ClientName) ||
                 string.IsNullOrWhiteSpace(message.Client))
             {
-                MemoryStream memoryStream = new();
+                using MemoryStream memoryStream = new();
                 _jsonSerializer.Serialize(memoryStream, new { type = message.Type, client = ClientName, data = message.Data });
                 if (memoryStream.TryGetBuffer(out ArraySegment<byte> data))
                 {

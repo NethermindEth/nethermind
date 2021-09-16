@@ -130,7 +130,7 @@ namespace Nethermind.JsonRpc.WebSockets
                 _jsonSerializer.Serialize(stream, error);
             }
 
-            MemoryStream resultData = new();
+            await using MemoryStream resultData = new();
 
             try
             {
