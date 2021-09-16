@@ -39,7 +39,12 @@ namespace Nethermind.Merge.Plugin
             _terminalBlockHash = blockHash;
         }
 
-        public bool IsPoS(BlockHeader header)
+        public bool IsPos()
+        {
+            return _firstPoSBlockNumber != null;
+        }
+
+        public bool TrySwitchToPoS(BlockHeader header)
         {
             if (_firstPoSBlockNumber != null && _firstPoSBlockNumber <= header.Number)
             {
