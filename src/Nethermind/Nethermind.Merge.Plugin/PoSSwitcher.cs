@@ -51,7 +51,7 @@ namespace Nethermind.Merge.Plugin
                 return false;
             }
 
-            if (_terminalBlockHash == header.ParentHash || header.TotalDifficulty >= _terminalTotalDifficulty)
+            if (_firstPoSBlockNumber == null && (_terminalBlockHash == header.ParentHash || header.TotalDifficulty >= _terminalTotalDifficulty))
             {
                 _firstPoSBlockNumber = header.Number;
                 return true;
