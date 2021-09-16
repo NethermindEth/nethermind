@@ -46,7 +46,8 @@ namespace Nethermind.Analytics
             BlockRewards = _genesisAllocations;
         }
 
-        private RewardCalculator _rewardCalculator = new RewardCalculator(MainnetSpecProvider.Instance);
+        private readonly MergeRewardCalculator _rewardCalculator =
+            new(new RewardCalculator(MainnetSpecProvider.Instance), MainnetSpecProvider.Instance);
 
         public Task<BlockVisitOutcome> VisitBlock(Block block, CancellationToken cancellationToken)
         {

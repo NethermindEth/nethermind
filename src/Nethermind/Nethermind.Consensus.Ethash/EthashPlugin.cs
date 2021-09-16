@@ -46,7 +46,8 @@ namespace Nethermind.Consensus.Ethash
             }
             
             var (getFromApi, setInApi) = _nethermindApi.ForInit;
-            setInApi.RewardCalculatorSource = new RewardCalculator(getFromApi.SpecProvider);
+            setInApi.RewardCalculatorSource = new MergeRewardCalculator(new RewardCalculator(getFromApi!.SpecProvider),
+                getFromApi.SpecProvider);
             
             EthashDifficultyCalculator difficultyCalculator = new(getFromApi.SpecProvider);
             Ethash ethash = new(getFromApi.LogManager);

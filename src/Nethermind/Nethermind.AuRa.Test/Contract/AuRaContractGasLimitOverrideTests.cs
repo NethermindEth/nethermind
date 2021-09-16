@@ -106,7 +106,7 @@ namespace Nethermind.AuRa.Test.Contract
                 return new AuRaBlockProcessor(
                     SpecProvider,
                     Always.Valid,
-                    new RewardCalculator(SpecProvider),
+                    new MergeRewardCalculator(new RewardCalculator(SpecProvider), SpecProvider),
                     new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
                     State,
                     Storage,
