@@ -13,17 +13,25 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
 using System.Collections.Generic;
-using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.JsonRpc.Modules;
-using Nethermind.Serialization.Json;
 
-namespace Nethermind.JsonRpc
+namespace Nethermind.Core.Extensions
 {
-    public interface IJsonRpcProcessor
+    public static class AsyncEnumerableExtensions
     {
-        IAsyncEnumerable<JsonRpcResult> ProcessAsync(TextReader request, JsonRpcContext context);
+        public static async Task<List<T>> ToListAsync<T>(this IAsyncEnumerable<T> items, CancellationToken cancellationToken = default)
+        {
+            List<T>? results = new();
+            await foreach (T item in items.WithCancellation(cancellationToken).ConfigureAwait(false))
+            {
+                results.Add(item);
+            }
+
+            return results;
+        }
     }
 }

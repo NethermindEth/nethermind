@@ -24,9 +24,9 @@ namespace Nethermind.JsonRpc.Utils
 {
     public static class JTokenUtils
     {
-        public static IEnumerable<JToken> ParseMulticontent(string json)
+        public static IEnumerable<JToken> ParseMulticontent(TextReader jsonReader)
         {
-            using (JsonReader reader = new JsonTextReader(new StringReader(json)))
+            using (JsonReader reader = new JsonTextReader(jsonReader))
             {
                 reader.SupportMultipleContent = true;
                 
