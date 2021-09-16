@@ -63,7 +63,7 @@ namespace Nethermind.Sockets
                 {
                     currentMessageLength += result.Read;
 
-                    if (currentMessageLength > MAX_POOLED_SIZE)
+                    if (currentMessageLength >= MAX_POOLED_SIZE)
                     {
                         throw new InvalidOperationException("Message too long");
                     }
@@ -81,13 +81,17 @@ namespace Nethermind.Sockets
                             buffer = ArrayPool<byte>.Shared.Rent(standardBufferLength);
                         }
                     }
-                    else
+                    else if (buffer.Length - currentMessageLength < standardBufferLength) // there is little room in current buffer
                     {
-                        // grow the buffer 4x
-                        byte[] newBuffer = ArrayPool<byte>.Shared.Rent(buffer.Length * 4);
-                        buffer.CopyTo(newBuffer, 0);
-                        ArrayPool<byte>.Shared.Return(buffer);
-                        buffer = newBuffer;
+                        // grow the buffer 4x, but not more than max
+                        int newLength = Math.Min(buffer.Length * 4, MAX_POOLED_SIZE);
+                        if (newLength > buffer.Length)
+                        {
+                            byte[] newBuffer = ArrayPool<byte>.Shared.Rent(newLength);
+                            buffer.CopyTo(newBuffer, 0);
+                            ArrayPool<byte>.Shared.Return(buffer);
+                            buffer = newBuffer;
+                        }
                     }
 
                     // receive only new bytes, leave already filled buffer alone

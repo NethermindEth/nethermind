@@ -100,7 +100,7 @@ namespace Nethermind.Sockets.Test
             SocketClient webSocketsClient = Substitute.ForPartsOf<SocketClient>("TestClient", new WebSocketHandler(mock, Substitute.For<ILogManager>()), Substitute.For<IJsonSerializer>());
 
             await webSocketsClient.ReceiveAsync();
-            await webSocketsClient.Received().ProcessAsync(Arg.Is<Memory<byte>>(ba => ba.Length == 2 * 4096 + 1024));
+            await webSocketsClient.Received().ProcessAsync(Arg.Is<ArraySegment<byte>>(ba => ba.Count == 2 * 4096 + 1024));
         }
 
         [Test]
@@ -164,7 +164,7 @@ namespace Nethermind.Sockets.Test
             SocketClient webSocketsClient = Substitute.ForPartsOf<SocketClient>("TestClient", new WebSocketHandler(mock, Substitute.For<ILogManager>()), Substitute.For<IJsonSerializer>());
 
             await webSocketsClient.ReceiveAsync();
-            await webSocketsClient.Received(1000).ProcessAsync(Arg.Is<Memory<byte>>(ba => ba.Length == 1234));
+            await webSocketsClient.Received(1000).ProcessAsync(Arg.Is<ArraySegment<byte>>(ba => ba.Count == 1234));
         }
 
         [Test]
@@ -183,7 +183,7 @@ namespace Nethermind.Sockets.Test
             SocketClient webSocketsClient = Substitute.ForPartsOf<SocketClient>("TestClient", new WebSocketHandler(mock, Substitute.For<ILogManager>()), Substitute.For<IJsonSerializer>());
 
             await webSocketsClient.ReceiveAsync();
-            await webSocketsClient.Received().ProcessAsync(Arg.Is<Memory<byte>>(ba => ba.Length == 6 * 2000 + 1));
+            await webSocketsClient.Received().ProcessAsync(Arg.Is<ArraySegment<byte>>(ba => ba.Count == 6 * 2000 + 1));
         }
 
         [Test]
@@ -202,7 +202,7 @@ namespace Nethermind.Sockets.Test
             SocketClient webSocketsClient = Substitute.ForPartsOf<SocketClient>("TestClient", new WebSocketHandler(mock, Substitute.For<ILogManager>()), Substitute.For<IJsonSerializer>());
 
             Assert.ThrowsAsync<InvalidOperationException>(async () => await webSocketsClient.ReceiveAsync());
-            await webSocketsClient.DidNotReceive().ProcessAsync(Arg.Any<Memory<byte>>());
+            await webSocketsClient.DidNotReceive().ProcessAsync(Arg.Any<ArraySegment<byte>>());
         }
         
         [Test, Timeout(5000)]
