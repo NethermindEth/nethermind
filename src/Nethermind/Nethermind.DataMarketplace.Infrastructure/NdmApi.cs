@@ -544,6 +544,12 @@ namespace Nethermind.DataMarketplace.Infrastructure
             set => _nethermindApi.EthSyncingInfo = value;
         }
 
+        public IPoSSwitcher PoSSwitcher
+        {
+            get => _nethermindApi.PoSSwitcher;
+            set => _nethermindApi.PoSSwitcher = value;
+        }
+
         public IWallet? Wallet
         {
             get => _nethermindApi.Wallet;
