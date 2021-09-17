@@ -155,7 +155,7 @@ namespace Nethermind.Blockchain.Test.Filters
             BlockParameter to = new(BlockParameterType.Latest);
             FilterStore store = new();
             LogFilter filter = store.CreateLogFilter(from, to, null, topics);
-            filter.TopicsFilter.Should().BeEquivalentTo(expected);
+            filter.TopicsFilter.Should().BeEquivalentTo(expected, c => c.ComparingByValue<TopicsFilter>());
         }
     }
 }
