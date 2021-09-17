@@ -208,19 +208,12 @@ namespace Nethermind.JsonRpc.Modules.Trace
             List<ParityTxTraceFromStore> traces = new();
             for (int i = 0; i < positions.Length; ++i)
             {
-                ParityTxTraceFromStore[] traa = traceTransaction.Data;
-                int lenn = traceTransaction.Data.Length;
-                for (int j = 0; j < traceTransaction.Data.Length; ++j)
+                if (traceTransaction.Data.Length > positions[i]+1)
                 {
-                    int[] adr = traceTransaction.Data[0].TraceAddress;
-                    if (traceTransaction.Data[j].TraceAddress[0] == positions[i])
-                    {
-                        ParityTxTraceFromStore tr = traceTransaction.Data[j];
-                        traces.Add(tr);
-                        break;
-                    }
+                    ParityTxTraceFromStore tr = traceTransaction.Data[positions[i]+1];
+                    traces.Add(tr);
                 }
-                
+
             }
             
             return ResultWrapper<ParityTxTraceFromStore[]>.Success(traces.ToArray());

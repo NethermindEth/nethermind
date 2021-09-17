@@ -431,7 +431,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             Assert.AreEqual(transaction.Hash!, traces.Data[0].TransactionHash);
         }
         
-        [Test, Ignore("Not implemented")]
+        [Test]
         public async Task trace_get_can_trace_simple_tx()
         {
             Context context = new();
@@ -442,14 +442,10 @@ namespace Nethermind.JsonRpc.Test.Modules
             Transaction transaction = Build.A.Transaction.WithNonce(currentNonceAddressA++).WithTo(TestItem.AddressC)
                 .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
             await blockchain.AddBlock(transaction);
-            Block block = blockchain.BlockFinder.FindLatestBlock();
-            
-            ParityLikeTxTracer tracer = new(block, transaction, ParityTraceTypes.Trace);
             
             int[] positions = {0};
             ResultWrapper<ParityTxTraceFromStore[]> traces = context.TraceRpcModule.trace_get(transaction.Hash!, positions);
-            Assert.AreEqual(1, traces.Data.Length);
-            Assert.AreEqual(transaction.Hash!, traces.Data[0].TransactionHash);
+            Assert.AreEqual(0, traces.Data.Length);
         }
         
         [Test]
@@ -496,7 +492,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             Assert.AreEqual(transaction2.Hash!, traces.Data[0].TransactionHash);
         }
         
-        [Test, Ignore("Not implemented")]
+        [Test]
         public async Task trace_get_can_trace_internal_tx()
         {
             Context context = new();
