@@ -221,7 +221,7 @@ namespace Nethermind.Mev.Test
             
             public MevBundle SendBundle(int blockNumber, params BundleTransaction[] txs)
             {
-                byte[][] bundleBytes = txs.Select(t => Rlp.Encode(t).Bytes).ToArray();
+                byte[][] bundleBytes = txs.Select(t => Rlp.Encode(t, RlpBehaviors.SkipTypedWrapping).Bytes).ToArray();
                 Keccak[] revertingTxHashes = txs.Where(t => t.CanRevert).Select(t => t.Hash!).ToArray();
                 MevBundleRpc mevBundleRpc = new() {BlockNumber = blockNumber, Txs = bundleBytes, RevertingTxHashes = revertingTxHashes};
                 ResultWrapper<bool> resultOfBundle = MevRpcModule.eth_sendBundle(mevBundleRpc);

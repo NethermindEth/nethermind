@@ -13,27 +13,15 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.IO;
 
-namespace Nethermind.Sockets
+namespace Nethermind.JsonRpc.Test
 {
-    public class WebSocketsManager : IWebSocketsManager
+    public static class JsonRpcProcessorExtensions
     {
-        private readonly ConcurrentDictionary<string, IWebSocketsModule> _modules = new();
-
-        private IWebSocketsModule _defaultModule = null!;
-
-        public void AddModule(IWebSocketsModule module, bool isDefault = false)
-        {
-            _modules.TryAdd(module.Name, module);
-            
-            if (isDefault)
-            {
-                _defaultModule = module;
-            }
-        }
-
-        public IWebSocketsModule GetModule(string name) => _modules.TryGetValue(name, out var module) ? module : _defaultModule;
+        public static IAsyncEnumerable<JsonRpcResult> ProcessAsync(this IJsonRpcProcessor processor, string request, JsonRpcContext context) => processor.ProcessAsync(new StringReader(request), context);
     }
 }

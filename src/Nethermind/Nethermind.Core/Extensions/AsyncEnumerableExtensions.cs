@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,11 +13,25 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-namespace Nethermind.JsonRpc
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace Nethermind.Core.Extensions
 {
-    public interface IJsonRpcRequest
+    public static class AsyncEnumerableExtensions
     {
-        void FromJson(string jsonValue);
+        public static async Task<List<T>> ToListAsync<T>(this IAsyncEnumerable<T> items, CancellationToken cancellationToken = default)
+        {
+            List<T>? results = new();
+            await foreach (T item in items.WithCancellation(cancellationToken).ConfigureAwait(false))
+            {
+                results.Add(item);
+            }
+
+            return results;
+        }
     }
 }

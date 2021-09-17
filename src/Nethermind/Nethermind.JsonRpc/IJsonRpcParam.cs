@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,26 +14,10 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Collections.Concurrent;
-
-namespace Nethermind.Sockets
+namespace Nethermind.JsonRpc
 {
-    public class WebSocketsManager : IWebSocketsManager
+    public interface IJsonRpcParam
     {
-        private readonly ConcurrentDictionary<string, IWebSocketsModule> _modules = new();
-
-        private IWebSocketsModule _defaultModule = null!;
-
-        public void AddModule(IWebSocketsModule module, bool isDefault = false)
-        {
-            _modules.TryAdd(module.Name, module);
-            
-            if (isDefault)
-            {
-                _defaultModule = module;
-            }
-        }
-
-        public IWebSocketsModule GetModule(string name) => _modules.TryGetValue(name, out var module) ? module : _defaultModule;
+        void FromJson(string jsonValue);
     }
 }

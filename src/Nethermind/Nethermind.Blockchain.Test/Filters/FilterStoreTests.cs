@@ -19,6 +19,7 @@ using System.Collections;
 using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Blockchain.Filters;
+using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
@@ -131,21 +132,30 @@ namespace Nethermind.Blockchain.Test.Filters
         {
             get
             {
-                yield return new TestCaseData(null);
-                yield return new TestCaseData(new object[] {new string[] {TestItem.KeccakA.ToString()}});
-                yield return new TestCaseData(new object[] {new string[] {TestItem.KeccakA.ToString(), TestItem.KeccakB.ToString()}});
-                yield return new TestCaseData(new object[] {new string[] {null, TestItem.KeccakB.ToString()}});
-                yield return new TestCaseData(new object[] {new object[] {null, new string[] {TestItem.KeccakA.ToString(), TestItem.KeccakB.ToString(), TestItem.KeccakC.ToString()}, TestItem.KeccakD.ToString()}});
+                yield return new TestCaseData(null, SequenceTopicsFilter.AnyTopic);
+                
+                yield return new TestCaseData(new[] {TestItem.KeccakA.ToString()}, 
+                    new SequenceTopicsFilter(new SpecificTopic(TestItem.KeccakA)));
+                
+                yield return new TestCaseData(new[] {TestItem.KeccakA.ToString(), TestItem.KeccakB.ToString()}, 
+                    new SequenceTopicsFilter(new SpecificTopic(TestItem.KeccakA), new SpecificTopic(TestItem.KeccakB)));
+                
+                yield return new TestCaseData(new[] {null, TestItem.KeccakB.ToString()}, 
+                    new SequenceTopicsFilter(AnyTopic.Instance, new SpecificTopic(TestItem.KeccakB)));
+                
+                yield return new TestCaseData(new object[] {new[] {TestItem.KeccakA.ToString(), TestItem.KeccakB.ToString(), TestItem.KeccakC.ToString()}, TestItem.KeccakD.ToString()}, 
+                    new SequenceTopicsFilter(new OrExpression(new SpecificTopic(TestItem.KeccakA), new SpecificTopic(TestItem.KeccakB), new SpecificTopic(TestItem.KeccakC)), new SpecificTopic(TestItem.KeccakD)));
             }
         }
         
         [TestCaseSource(nameof(CorrectlyCreatesTopicsFilterTestCases))]
-        public void Correctly_creates_topics_filter(IEnumerable<object> topics)
+        public void Correctly_creates_topics_filter(IEnumerable<object> topics, TopicsFilter expected)
         {
             BlockParameter from = new(100);
             BlockParameter to = new(BlockParameterType.Latest);
             FilterStore store = new();
             LogFilter filter = store.CreateLogFilter(from, to, null, topics);
+            filter.TopicsFilter.Should().BeEquivalentTo(expected, c => c.ComparingByValue<TopicsFilter>());
         }
     }
 }

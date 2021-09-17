@@ -59,10 +59,10 @@ using Nethermind.Monitoring;
 using Nethermind.Wallet;
 using Nethermind.DataMarketplace.Consumers.Shared;
 using Nethermind.DataMarketplace.Infrastructure.Updaters;
-using Nethermind.Sockets;
 using System.Threading.Tasks;
 using Nethermind.Db;
 using Nethermind.Api;
+using Nethermind.Sockets;
 
 namespace Nethermind.DataMarketplace.Consumers.Infrastructure
 {
