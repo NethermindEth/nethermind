@@ -95,7 +95,8 @@ namespace Nethermind.Synchronization
             _pivotNumber = _syncConfig.PivotNumberParsed;
             _pivotHash = new Keccak(_syncConfig.PivotHash ?? Keccak.Zero.ToString());
             
-            NotifyPeersAboutNewBlocks(true);
+            _blockTree.NewHeadBlock += OnNewHeadBlock;
+            _pool.NotifyPeerBlock += OnNotifyPeerBlock;
         }
 
         public ulong ChainId => _blockTree.ChainId;
@@ -433,19 +434,6 @@ namespace Nethermind.Synchronization
             return null;
         }
         
-        public void NotifyPeersAboutNewBlocks(bool shouldNotify)
-        {
-            if (shouldNotify)
-            {
-                _blockTree.NewHeadBlock += OnNewHeadBlock;
-                _pool.NotifyPeerBlock += OnNotifyPeerBlock;
-            }
-            else
-            {
-                _blockTree.NewHeadBlock -= OnNewHeadBlock;
-                _pool.NotifyPeerBlock -= OnNotifyPeerBlock;
-            }
-        }
 
         private Random _broadcastRandomizer = new();
 
@@ -515,11 +503,16 @@ namespace Nethermind.Synchronization
         }
         
         private void OnNotifyPeerBlock(object? sender, PeerBlockNotificationEventArgs e) => NotifyOfNewBlock(null, e.SyncPeer, e.Block, SendBlockPriority.High);
-
-        public void Dispose()
+        
+        public void StopNotifyingPeersAboutNewBlocks()
         {
             _blockTree.NewHeadBlock -= OnNewHeadBlock;
             _pool.NotifyPeerBlock -= OnNotifyPeerBlock;
+        }
+
+        public void Dispose()
+        {
+            StopNotifyingPeersAboutNewBlocks();
         }
     }
 }
