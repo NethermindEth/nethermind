@@ -195,7 +195,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             if (_poSSwitcher.WasEverInPoS())
             {
                 WasEverInPoS = true;
-                SyncServer.NotifyPeersAboutNewBlocks(false);
+                SyncServer.StopNotifyingPeersAboutNewBlocks();
                 return true;
             }
 

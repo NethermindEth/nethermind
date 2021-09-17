@@ -29,7 +29,7 @@ namespace Nethermind.Synchronization
     {
         void HintBlock(Keccak hash, long number, ISyncPeer receivedFrom);
         void AddNewBlock(Block block, ISyncPeer node);
-        void NotifyPeersAboutNewBlocks(bool shouldNotify);
+        void StopNotifyingPeersAboutNewBlocks();
         TxReceipt[] GetReceipts(Keccak blockHashes);
         Block? Find(Keccak hash);
         BlockHeader FindLowestCommonAncestor(BlockHeader firstDescendant, BlockHeader secondDescendant);
