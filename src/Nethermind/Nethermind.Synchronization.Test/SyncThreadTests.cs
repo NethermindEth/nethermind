@@ -300,7 +300,7 @@ namespace Nethermind.Synchronization.Test
                 ? SyncConfig.WithFastSync
                 : SyncConfig.WithFullSyncOnly;
 
-            RewardCalculator rewardCalculator = new(specProvider);
+            MergeRewardCalculator rewardCalculator = new(new RewardCalculator(specProvider),specProvider);
             TransactionProcessor txProcessor =
                 new(specProvider, stateProvider, storageProvider, virtualMachine, logManager);
 

@@ -95,7 +95,7 @@ namespace Nethermind.Blockchain.Test
             BlockProcessor blockProcessor = new (
                 MainnetSpecProvider.Instance,
                 Always.Valid,
-                new RewardCalculator(specProvider),
+                new MergeRewardCalculator(new RewardCalculator(specProvider), specProvider),
                 new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
                 stateProvider,
                 storageProvider,
