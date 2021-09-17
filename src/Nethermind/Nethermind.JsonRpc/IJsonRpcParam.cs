@@ -16,7 +16,7 @@
 
 namespace Nethermind.JsonRpc
 {
-    public interface IJsonRpcRequest
+    public interface IJsonRpcParam
     {
         void FromJson(string jsonValue);
     }
