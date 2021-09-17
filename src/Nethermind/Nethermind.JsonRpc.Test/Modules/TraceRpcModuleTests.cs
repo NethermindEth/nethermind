@@ -443,7 +443,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
             await blockchain.AddBlock(transaction);
             
-            int[] positions = {0};
+            long[] positions = {0};
             ResultWrapper<ParityTxTraceFromStore[]> traces = context.TraceRpcModule.trace_get(transaction.Hash!, positions);
             Assert.AreEqual(0, traces.Data.Length);
         }
@@ -531,7 +531,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 .WithGasLimit(93548).TestObject;
             await blockchain.AddBlock(transaction2);
 
-            int[] positions = {0};
+            long[] positions = {0};
 
             ResultWrapper<ParityTxTraceFromStore[]> traces = context.TraceRpcModule.trace_get(transaction2.Hash!, positions);
             Assert.AreEqual(1, traces.Data.Length);
