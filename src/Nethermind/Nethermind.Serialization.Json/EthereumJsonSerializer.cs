@@ -116,7 +116,7 @@ namespace Nethermind.Serialization.Json
 
         public long Serialize<T>(Stream stream, T value, bool indented = false)
         {
-            using StreamWriter streamWriter = new(stream, Encoding.UTF8, leaveOpen: true);
+            using StreamWriter streamWriter = new(stream, leaveOpen: true);
             using CountingTextWriter countingTextWriter = new(streamWriter);
             using JsonTextWriter jsonTextWriter = new(countingTextWriter);
             if (indented)
