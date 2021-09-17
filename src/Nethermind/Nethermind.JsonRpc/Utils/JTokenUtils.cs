@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,27 +13,24 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.IO;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
-namespace Nethermind.Sockets
+namespace Nethermind.JsonRpc.Utils
 {
-    public class WebSocketsManager : IWebSocketsManager
+    public static class JTokenUtils
     {
-        private readonly ConcurrentDictionary<string, IWebSocketsModule> _modules = new();
-
-        private IWebSocketsModule _defaultModule = null!;
-
-        public void AddModule(IWebSocketsModule module, bool isDefault = false)
+        public static IEnumerable<JToken> ParseMulticontent(TextReader jsonReader)
         {
-            _modules.TryAdd(module.Name, module);
-            
-            if (isDefault)
+            using JsonReader reader = new JsonTextReader(jsonReader) { SupportMultipleContent = true };
+            while (reader.Read())
             {
-                _defaultModule = module;
+                yield return JToken.Load(reader);
             }
         }
-
-        public IWebSocketsModule GetModule(string name) => _modules.TryGetValue(name, out var module) ? module : _defaultModule;
     }
 }

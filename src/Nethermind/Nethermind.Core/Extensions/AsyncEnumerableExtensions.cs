@@ -13,27 +13,25 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 
-namespace Nethermind.Sockets
+namespace Nethermind.Core.Extensions
 {
-    public class WebSocketsManager : IWebSocketsManager
+    public static class AsyncEnumerableExtensions
     {
-        private readonly ConcurrentDictionary<string, IWebSocketsModule> _modules = new();
-
-        private IWebSocketsModule _defaultModule = null!;
-
-        public void AddModule(IWebSocketsModule module, bool isDefault = false)
+        public static async Task<List<T>> ToListAsync<T>(this IAsyncEnumerable<T> items, CancellationToken cancellationToken = default)
         {
-            _modules.TryAdd(module.Name, module);
-            
-            if (isDefault)
+            List<T>? results = new();
+            await foreach (T item in items.WithCancellation(cancellationToken).ConfigureAwait(false))
             {
-                _defaultModule = module;
+                results.Add(item);
             }
-        }
 
-        public IWebSocketsModule GetModule(string name) => _modules.TryGetValue(name, out var module) ? module : _defaultModule;
+            return results;
+        }
     }
 }
