@@ -214,12 +214,10 @@ namespace Nethermind.TxPool
 
         public void RemovePeer(PublicKey nodeId)
         {
-            if (!_broadcaster.RemovePeer(nodeId))
+            if (_broadcaster.RemovePeer(nodeId))
             {
-                return;
+                if (_logger.IsTrace) _logger.Trace($"Removed a peer from TX pool: {nodeId}");
             }
-
-            if (_logger.IsTrace) _logger.Trace($"Removed a peer from TX pool: {nodeId}");
         }
 
         public AddTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions)

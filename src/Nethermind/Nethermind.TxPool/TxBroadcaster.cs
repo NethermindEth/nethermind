@@ -121,35 +121,34 @@ namespace Nethermind.TxPool
         
         private void TimerOnElapsed(object sender, EventArgs args)
         {
+            void NotifyPeers()
+            {
+                Transaction[] persistentTxs = _persistentTxs.GetSnapshot();
+
+                _txsToSend = Interlocked.Exchange(ref _accumulatedTemporaryTxs, _txsToSend);
+            
+                foreach ((_, ITxPoolPeer peer) in _peers)
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Broadcasting transactions to all peers");
+
+                    Notify(peer, GetTxsToSend(peer, persistentTxs, _txsToSend));
+                }
+
+                _txsToSend.Clear();
+            }
+            
             NotifyPeers();
             _timer.Enabled = true;
         }
 
-        private void NotifyPeers()
-        {
-            Transaction[] persistentTxs = _persistentTxs.GetSnapshot();
-
-            _txsToSend = Interlocked.Exchange(ref _accumulatedTemporaryTxs, _txsToSend);
-            
-            foreach ((_, ITxPoolPeer peer) in _peers)
-            {
-                if (_logger.IsDebug) _logger.Debug($"Broadcasting transactions to all peers");
-
-                Notify(peer, GetTxsToSend(peer, persistentTxs));
-                
-            }
-
-            _txsToSend.Clear();
-        }
-
-        private IEnumerable<Transaction> GetTxsToSend(ITxPoolPeer peer, IReadOnlyList<Transaction> persistentTxs)
+        private static IEnumerable<Transaction> GetTxsToSend(ITxPoolPeer peer, IReadOnlyList<Transaction> persistentTxs, IEnumerable<Transaction> txsToSend)
         {
             for (int i = 0; i < persistentTxs.Count; i++)
             {
                 yield return persistentTxs[i];
             }
 
-            foreach (Transaction tx in _txsToSend)
+            foreach (Transaction tx in txsToSend)
             {
                 if (tx.DeliveredBy is null || !tx.DeliveredBy.Equals(peer.Id))
                 {
