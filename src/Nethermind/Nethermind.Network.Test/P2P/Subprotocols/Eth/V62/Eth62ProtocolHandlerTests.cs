@@ -346,6 +346,43 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _handler.SubprotocolRequested += HandlerOnSubprotocolRequested;
             _handler.SubprotocolRequested -= HandlerOnSubprotocolRequested;
         }
+
+        [TestCase(1)]
+        [TestCase(255)]
+        [TestCase(256)]
+        public void should_send_up_to_256_txs_in_one_TransactionsMessage(int txCount)
+        {
+            Transaction[] txs = new Transaction[txCount];
+
+            for (int i = 0; i < txCount; i++)
+            {
+                txs[i] = Build.A.Transaction.SignedAndResolved().TestObject;
+            }
+
+            _handler.SendNewTransactions(txs);
+            
+            _session.Received(1).DeliverMessage(Arg.Is<TransactionsMessage>(m => m.Transactions.Count == txCount));
+        }
+        
+        [TestCase(257)]
+        [TestCase(300)]
+        [TestCase(1500)]
+        [TestCase(10000)]
+        public void should_send_more_than_256_txs_in_more_than_one_TransactionsMessage(int txCount)
+        {
+            int messagesCount = txCount / 256 + 1;
+            int nonFullMsgTxsCount = txCount % 256;
+            Transaction[] txs = new Transaction[txCount];
+
+            for (int i = 0; i < txCount; i++)
+            {
+                txs[i] = Build.A.Transaction.SignedAndResolved().TestObject;
+            }
+
+            _handler.SendNewTransactions(txs);
+            
+            _session.Received(messagesCount).DeliverMessage(Arg.Is<TransactionsMessage>(m => m.Transactions.Count == 256 || m.Transactions.Count == nonFullMsgTxsCount));
+        }
             
         private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase
         {

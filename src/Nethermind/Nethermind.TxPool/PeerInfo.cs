@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -34,15 +35,21 @@ namespace Nethermind.TxPool
 
         public PublicKey Id => Peer.Id;
 
-        public bool SendNewTransaction(Transaction tx, bool isPriority)
+        public void SendNewTransactions(IEnumerable<Transaction> txs)
         {
-            if (!NotifiedTransactions.Get(tx.Hash))
-            {
-                NotifiedTransactions.Set(tx.Hash);
-                return Peer.SendNewTransaction(tx, isPriority);                     
-            }
+            Peer.SendNewTransactions(GetTxsToSendAndMarkAsNotified(txs));
+        }
 
-            return false;
+        private IEnumerable<Transaction> GetTxsToSendAndMarkAsNotified(IEnumerable<Transaction> txs)
+        {
+            foreach (Transaction tx in txs)
+            {
+                if (!NotifiedTransactions.Get(tx.Hash))
+                {
+                    NotifiedTransactions.Set(tx.Hash);
+                    yield return tx;
+                }
+            }
         }
 
         public override string ToString() => Peer.Enode;

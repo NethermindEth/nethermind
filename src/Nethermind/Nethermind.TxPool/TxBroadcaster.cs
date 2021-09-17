@@ -19,7 +19,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Timers;
@@ -59,10 +58,20 @@ namespace Nethermind.TxPool
         /// <summary>
         /// Transactions published locally (initiated by this node users) or reorganised.
         /// </summary>
-        private readonly SortedPool<Keccak, Transaction, Address> _txs;
+        private readonly SortedPool<Keccak, Transaction, Address> _persistentTxs;
+        
+        /// <summary>
+        /// Transactions added by external peers between timer elapses.
+        /// </summary>
+        private ConcurrentBag<Transaction> _accumulatedTemporaryTxs;
+
+        /// <summary>
+        /// Bag for exchanging with _accumulatedTemporaryTxs and for preparing sending message.
+        /// </summary>
+        private ConcurrentBag<Transaction> _txsToSend;
 
         private readonly ILogger _logger;
-        
+
         public TxBroadcaster(IComparer<Transaction> comparer,
             ITimerFactory timerFactory,
             ITxPoolConfig txPoolConfig,
@@ -70,36 +79,38 @@ namespace Nethermind.TxPool
         {
             _txPoolConfig = txPoolConfig;
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _txs = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, comparer, logManager);
+            _persistentTxs = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, comparer, logManager);
+            _accumulatedTemporaryTxs = new ConcurrentBag<Transaction>();
+            _txsToSend = new ConcurrentBag<Transaction>();
 
-            _timer = timerFactory.CreateTimer(TimeSpan.FromMilliseconds(500));
+            _timer = timerFactory.CreateTimer(TimeSpan.FromMilliseconds(1000));
             _timer.Elapsed += TimerOnElapsed;
             _timer.AutoReset = false;
             _timer.Start();
         }
 
-        internal Transaction[] GetSnapshot() => _txs.GetSnapshot();
+        internal Transaction[] GetSnapshot() => _persistentTxs.GetSnapshot();
 
         public void StartBroadcast(Transaction tx)
         {
-            _txs.TryInsert(tx.Hash, tx);
+            _persistentTxs.TryInsert(tx.Hash, tx);
         }
       
         public void BroadcastOnce(Transaction tx)
         {
-            NotifySelectedPeers(tx);
+            _accumulatedTemporaryTxs.Add(tx);
         }
         
-        public void BroadcastOnce(ITxPoolPeer peer, Transaction tx)
+        public void BroadcastOnce(ITxPoolPeer peer, Transaction[] txs)
         {
-            Notify(peer, tx, false);
+            Notify(peer, txs);
         }
         
         public void StopBroadcast(Keccak txHash)
         {
-            if (_txs.Count != 0)
+            if (_persistentTxs.Count != 0)
             {
-                bool wasIncluded = _txs.TryRemove(txHash, out Transaction _);
+                bool wasIncluded = _persistentTxs.TryRemove(txHash, out Transaction _);
                 if (wasIncluded)
                 {
                     if (_logger.IsTrace) _logger.Trace(
@@ -110,82 +121,55 @@ namespace Nethermind.TxPool
         
         private void TimerOnElapsed(object sender, EventArgs args)
         {
-            if (_txs.Count > 0)
+            void NotifyPeers()
             {
-                foreach (Transaction tx in _txs.GetSnapshot())
+                Transaction[] persistentTxs = _persistentTxs.GetSnapshot();
+
+                _txsToSend = Interlocked.Exchange(ref _accumulatedTemporaryTxs, _txsToSend);
+            
+                foreach ((_, ITxPoolPeer peer) in _peers)
                 {
-                    // note that this is parallelized outside which I would like to change
-                    NotifyAllPeers(tx);
+                    if (_logger.IsDebug) _logger.Debug($"Broadcasting transactions to all peers");
+
+                    Notify(peer, GetTxsToSend(peer, persistentTxs, _txsToSend));
                 }
+
+                _txsToSend.Clear();
             }
             
+            NotifyPeers();
             _timer.Enabled = true;
         }
 
-        private void Notify(ITxPoolPeer peer, Transaction tx, bool isPriority)
+        private static IEnumerable<Transaction> GetTxsToSend(ITxPoolPeer peer, IReadOnlyList<Transaction> persistentTxs, IEnumerable<Transaction> txsToSend)
+        {
+            for (int i = 0; i < persistentTxs.Count; i++)
+            {
+                yield return persistentTxs[i];
+            }
+
+            foreach (Transaction tx in txsToSend)
+            {
+                if (tx.DeliveredBy is null || !tx.DeliveredBy.Equals(peer.Id))
+                {
+                    yield return tx;
+                }
+            }
+        }
+
+        private void Notify(ITxPoolPeer peer, IEnumerable<Transaction> txs)
         {
             try
             {
-                if (peer.SendNewTransaction(tx, isPriority))
-                {
-                    Metrics.PendingTransactionsSent++;
-                    if (_logger.IsTrace) _logger.Trace($"Notified {peer} about a transaction: {tx.Hash}");
-                }
+                peer.SendNewTransactions(txs);
+                if (_logger.IsTrace) _logger.Trace($"Notified {peer} about transactions.");
             }
             catch (Exception e)
             {
-                if (_logger.IsError) _logger.Error($"Failed to notify {peer} about a transaction: {tx.Hash}", e);
+                if (_logger.IsError) _logger.Error($"Failed to notify {peer} about transactions.", e);
             }
         }
 
-        private void NotifySelectedPeers(Transaction tx)
-        {
-            Task.Run(() =>
-            {
-                foreach ((_, ITxPoolPeer peer) in _peers)
-                {
-                    if (tx.DeliveredBy == null)
-                    {
-                        Notify(peer, tx, true);
-                        continue;
-                    }
-
-                    if (tx.DeliveredBy.Equals(peer.Id))
-                    {
-                        continue;
-                    }
-
-                    if (_txPoolConfig.PeerNotificationThreshold < Random.Value.Next(1, 100))
-                    {
-                        continue;
-                    }
-
-                    Notify(peer, tx, 3 < Random.Value.Next(1, 10));
-                }
-            });
-        }
-
-        private void NotifyAllPeers(Transaction tx)
-        {
-            if (_logger.IsDebug)
-            {
-                _logger.Debug($"Broadcasting transaction {tx.Hash} to all peers");
-            }
-            else if (_logger.IsTrace)
-            {
-                _logger.Trace($"Broadcasting transaction {tx.ToString("  ")} to all peers");
-            }
-
-            
-            Task.Run(() =>
-            {
-                foreach ((_, ITxPoolPeer peer) in _peers)
-                {
-                    Notify(peer, tx, true);
-                }
-            });
-        }
-        
         public bool AddPeer(ITxPoolPeer peer)
         {
             return _peers.TryAdd(peer.Id, peer);
