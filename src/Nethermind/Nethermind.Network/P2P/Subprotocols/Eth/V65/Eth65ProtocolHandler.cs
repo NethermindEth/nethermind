@@ -18,6 +18,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
@@ -42,9 +43,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             ISyncServer syncServer,
             ITxPool txPool,
             IPooledTxsRequestor pooledTxsRequestor,
+            IPoSSwitcher poSSwitcher,
             ISpecProvider specProvider,
             ILogManager logManager)
-            : base(session, serializer, nodeStatsManager, syncServer, txPool, specProvider, logManager)
+            : base(session, serializer, nodeStatsManager, syncServer, txPool, poSSwitcher, specProvider, logManager)
         {
             _pooledTxsRequestor = pooledTxsRequestor;
         }

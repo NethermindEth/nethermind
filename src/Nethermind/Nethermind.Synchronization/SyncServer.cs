@@ -93,10 +93,9 @@ namespace Nethermind.Synchronization
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _cht = cht;
             _pivotNumber = _syncConfig.PivotNumberParsed;
-
-            _blockTree.NewHeadBlock += OnNewHeadBlock;
-            pool.NotifyPeerBlock += OnNotifyPeerBlock;
             _pivotHash = new Keccak(_syncConfig.PivotHash ?? Keccak.Zero.ToString());
+            
+            NotifyPeersAboutNewBlocks(true);
         }
 
         public ulong ChainId => _blockTree.ChainId;
@@ -432,6 +431,20 @@ namespace Nethermind.Synchronization
             }
 
             return null;
+        }
+        
+        public void NotifyPeersAboutNewBlocks(bool shouldNotify)
+        {
+            if (shouldNotify)
+            {
+                _blockTree.NewHeadBlock += OnNewHeadBlock;
+                _pool.NotifyPeerBlock += OnNotifyPeerBlock;
+            }
+            else
+            {
+                _blockTree.NewHeadBlock -= OnNewHeadBlock;
+                _pool.NotifyPeerBlock -= OnNotifyPeerBlock;
+            }
         }
 
         private Random _broadcastRandomizer = new();

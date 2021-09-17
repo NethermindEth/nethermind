@@ -448,6 +448,7 @@ namespace Nethermind.Init.Steps
                 protocolValidator,
                 peerStorage,
                 _api.SpecProvider,
+                _api.PoSSwitcher,
                 _api.LogManager);
             
             if (_syncConfig.WitnessProtocolEnabled)

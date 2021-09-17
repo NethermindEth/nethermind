@@ -23,6 +23,7 @@ using DotNetty.Buffers;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -51,6 +52,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         private ITxPool _transactionPool;
         private Block _genesisBlock;
         private Eth62ProtocolHandler _handler;
+        private IPoSSwitcher _poSSwitcher;
 
         [SetUp]
         public void Setup()
@@ -68,12 +70,14 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _syncManager.Head.Returns(_genesisBlock.Header);
             _syncManager.Genesis.Returns(_genesisBlock.Header);
             ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
+            _poSSwitcher = Substitute.For<IPoSSwitcher>();
             _handler = new Eth62ProtocolHandler(
                 _session,
                 _svc,
                 new NodeStatsManager(timerFactory, LimboLogs.Instance),
                 _syncManager,
                 _transactionPool,
+                _poSSwitcher,
                 LimboLogs.Instance);
             _handler.Init();
         }

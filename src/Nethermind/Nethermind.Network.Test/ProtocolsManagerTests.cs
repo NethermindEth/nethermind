@@ -21,6 +21,7 @@ using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
@@ -76,6 +77,7 @@ namespace Nethermind.Network.Test
             private IChannelPipeline _pipeline;
             private IPacketSender _packetSender;
             private IBlockTree _blockTree;
+            private IPoSSwitcher _poSSwitcher;
 
             public Context()
             {
@@ -105,6 +107,7 @@ namespace Nethermind.Network.Test
                 _protocolValidator = new ProtocolValidator(_nodeStatsManager, _blockTree, LimboLogs.Instance);
                 _peerStorage = Substitute.For<INetworkStorage>();
                 _syncPeerPool = Substitute.For<ISyncPeerPool>();
+                _poSSwitcher = Substitute.For<IPoSSwitcher>();
                 _manager = new ProtocolsManager(
                     _syncPeerPool,
                     _syncServer,
@@ -116,7 +119,8 @@ namespace Nethermind.Network.Test
                     _nodeStatsManager,
                     _protocolValidator,
                     _peerStorage,
-                    MainnetSpecProvider.Instance, 
+                    MainnetSpecProvider.Instance,
+                    _poSSwitcher,
                     LimboLogs.Instance);
 
                 _serializer.Register(new HelloMessageSerializer());

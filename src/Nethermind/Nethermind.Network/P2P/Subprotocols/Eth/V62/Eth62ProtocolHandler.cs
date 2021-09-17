@@ -17,12 +17,14 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
+using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
 
@@ -33,6 +35,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         private bool _statusReceived;
         private readonly TxFloodController _floodController;
         protected readonly ITxPool _txPool;
+        private readonly IPoSSwitcher _poSSwitcher;
 
         public Eth62ProtocolHandler(
             ISession session,
@@ -40,10 +43,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             INodeStatsManager statsManager,
             ISyncServer syncServer,
             ITxPool txPool,
+            IPoSSwitcher poSSwitcher,
             ILogManager logManager) : base(session, serializer, statsManager, syncServer, logManager)
         {
             _floodController = new TxFloodController(this, Timestamper.Default, Logger);
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
+            _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
+
+            WasEverInPoS = IsPoS();
         }
 
         public void DisableTxFiltering()
@@ -56,6 +63,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         public override int MessageIdSpaceSize => 8;
         public override string Name => "eth62";
         protected override TimeSpan InitTimeout => Timeouts.Eth62Status;
+        private bool WasEverInPoS { get; set; }
 
         public override event EventHandler<ProtocolInitializedEventArgs>? ProtocolInitialized;
 
@@ -119,9 +127,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                     Handle(statusMsg);
                     break;
                 case Eth62MessageCode.NewBlockHashes:
-                    NewBlockHashesMessage newBlockHashesMessage = Deserialize<NewBlockHashesMessage>(message.Content);
-                    ReportIn(newBlockHashesMessage);
-                    Handle(newBlockHashesMessage);
+                    Metrics.Eth62NewBlockHashesReceived++;
+                    if (IsPoS())
+                    {
+                        Disconnect(DisconnectReason.BreachOfProtocol, "NewBlockHashes message received while PoS protocol activated.");
+                    }
+                    else
+                    {
+                        NewBlockHashesMessage newBlockHashesMessage = Deserialize<NewBlockHashesMessage>(message.Content);
+                        ReportIn(newBlockHashesMessage);
+                        Handle(newBlockHashesMessage);
+                    }
                     break;
                 case Eth62MessageCode.Transactions:
                     Metrics.Eth62TransactionsReceived++;
@@ -154,11 +170,36 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                     HandleBodies(bodiesMsg, size);
                     break;
                 case Eth62MessageCode.NewBlock:
-                    NewBlockMessage newBlockMsg = Deserialize<NewBlockMessage>(message.Content);
-                    ReportIn(newBlockMsg);
-                    Handle(newBlockMsg);
+                    Metrics.Eth62NewBlockReceived++;
+                    if (IsPoS())
+                    {
+                        Disconnect(DisconnectReason.BreachOfProtocol, "NewBlock message received while PoS protocol activated.");
+                    }
+                    else
+                    {
+                        NewBlockMessage newBlockMsg = Deserialize<NewBlockMessage>(message.Content);
+                        ReportIn(newBlockMsg);
+                        Handle(newBlockMsg);
+                    }
                     break;
             }
+        }
+
+        private bool IsPoS()
+        {
+            if (WasEverInPoS)
+            {
+                return true;
+            }
+            
+            if (_poSSwitcher.WasEverInPoS())
+            {
+                WasEverInPoS = true;
+                SyncServer.NotifyPeersAboutNewBlocks(false);
+                return true;
+            }
+
+            return false;
         }
 
         private void Handle(StatusMessage status)
@@ -207,7 +248,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         private void Handle(NewBlockHashesMessage newBlockHashes)
         {
-            Metrics.Eth62NewBlockHashesReceived++;
             (Keccak, long)[] blockHashes = newBlockHashes.BlockHashes;
             for (int i = 0; i < blockHashes.Length; i++)
             {
@@ -218,8 +258,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         private void Handle(NewBlockMessage msg)
         {
-            Metrics.Eth62NewBlockReceived++;
-            
             try
             {
                 msg.Block.Header.TotalDifficulty = msg.TotalDifficulty;
@@ -234,6 +272,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         public override void NotifyOfNewBlock(Block block, SendBlockPriority priority)
         {
+            if (IsPoS())
+            {
+                return;
+            }
+            
             switch (priority)
             {
                 case SendBlockPriority.High:

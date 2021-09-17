@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using Nethermind.Consensus;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
@@ -37,8 +38,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V64
             INodeStatsManager nodeStatsManager,
             ISyncServer syncServer,
             ITxPool txPool,
+            IPoSSwitcher poSSwitcher,
             ISpecProvider specProvider,
-            ILogManager logManager) : base(session, serializer, nodeStatsManager, syncServer, txPool, logManager)
+            ILogManager logManager) : base(session, serializer, nodeStatsManager, syncServer, txPool, poSSwitcher, logManager)
         {
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         }

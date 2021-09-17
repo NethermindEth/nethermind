@@ -21,6 +21,7 @@ using System.Threading;
 using DotNetty.Buffers;
 using FluentAssertions;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -51,6 +52,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         private ISyncServer _syncManager;
         private ITxPool _transactionPool;
         private IPooledTxsRequestor _pooledTxsRequestor;
+        private IPoSSwitcher _poSSwitcher;
         private ISpecProvider _specProvider;
         private Block _genesisBlock;
         private Eth66ProtocolHandler _handler;
@@ -69,6 +71,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             _transactionPool = Substitute.For<ITxPool>();
             _pooledTxsRequestor = Substitute.For<IPooledTxsRequestor>();
             _specProvider = Substitute.For<ISpecProvider>();
+            _poSSwitcher = Substitute.For<IPoSSwitcher>();
             _genesisBlock = Build.A.Block.Genesis.TestObject;
             _syncManager.Head.Returns(_genesisBlock.Header);
             _syncManager.Genesis.Returns(_genesisBlock.Header);
@@ -80,6 +83,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
                 _syncManager,
                 _transactionPool,
                 _pooledTxsRequestor,
+                _poSSwitcher,
                 _specProvider,
                 LimboLogs.Instance);
             _handler.Init();

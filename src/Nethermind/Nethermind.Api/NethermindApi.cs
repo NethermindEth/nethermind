@@ -186,6 +186,7 @@ namespace Nethermind.Api
         public IGasPriceOracle? GasPriceOracle { get; set; }
         
         public IEthSyncingInfo EthSyncingInfo { get; set; }
+        public IPoSSwitcher PoSSwitcher { get; set; }
         public IWallet? Wallet { get; set; }
         public ITransactionComparerProvider TransactionComparerProvider { get; set; }
         public IWebSocketsManager WebSocketsManager { get; set; } = new WebSocketsManager();
