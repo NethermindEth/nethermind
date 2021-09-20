@@ -19,14 +19,21 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Consensus;
+using Nethermind.Logging;
 
 namespace Nethermind.Merge.Plugin
 {
     public class PoSSwitcher : IPoSSwitcher, ITransitionProcessHandler
     {
+        private readonly ILogger _logger;
         private UInt256? _terminalTotalDifficulty;
         private Keccak? _terminalBlockHash;
         private long? _firstPoSBlockNumber;
+
+        public PoSSwitcher(ILogManager logManager)
+        {
+            _logger = logManager.GetClassLogger();
+        }
         
         
         public void SetTerminalTotalDifficulty(UInt256 totalDifficulty)
@@ -59,7 +66,11 @@ namespace Nethermind.Merge.Plugin
             if (_firstPoSBlockNumber == null && (_terminalBlockHash == header.ParentHash || header.TotalDifficulty >= _terminalTotalDifficulty))
             {
                 if (trySwitchToPos)
+                {
+                    if (_logger.IsInfo) _logger.Info($"Switched to Proof of Stake at block {header}");
                     _firstPoSBlockNumber = header.Number;
+                }
+
                 return true;
             }
 

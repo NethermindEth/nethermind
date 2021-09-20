@@ -59,7 +59,7 @@ namespace Nethermind.Merge.Plugin
                     Environment.Exit(13); // ERROR_INVALID_DATA
                 }
 
-                _poSSwitcher = new PoSSwitcher();
+                _poSSwitcher = new PoSSwitcher(_api.LogManager);
                 _api.EngineSigner = new Eth2Signer(new Address(_mergeConfig.BlockAuthorAccount));
                 _api.RewardCalculatorSource = new MergeRewardCalculator(NoBlockRewards.Instance, _poSSwitcher);
                 _api.PoSSwitcher = _poSSwitcher;

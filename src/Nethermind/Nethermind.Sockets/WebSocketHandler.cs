@@ -68,11 +68,12 @@ namespace Nethermind.Sockets
 
             return result;
         }
-
+        
         public Task CloseAsync(ReceiveResult? result) =>
-            _webSocket.CloseAsync(result is WebSocketsReceiveResult { CloseStatus: { } } r ? r.CloseStatus.Value : WebSocketCloseStatus.Empty, 
+            _webSocket.CloseAsync(result is WebSocketsReceiveResult { CloseStatus: { } } r ? r.CloseStatus!.Value : WebSocketCloseStatus.Empty, 
                 result?.CloseStatusDescription, 
                 CancellationToken.None);
+
 
         public void Dispose()
         {

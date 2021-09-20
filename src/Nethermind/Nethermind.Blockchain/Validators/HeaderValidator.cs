@@ -227,6 +227,7 @@ namespace Nethermind.Blockchain.Validators
 
         private bool ValidateTheMergeChecks(BlockHeader header, IReleaseSpec spec)
         {
+            // ToDo it need to be changed to IPoSSwitcher
             if (spec.TheMergeEnabled == false)
                 return true;
             
