@@ -36,6 +36,7 @@ namespace Nethermind.Merge.Plugin
         private readonly IHandler<BlockRequestResult, NewBlockResult> _newBlockHandler;
         private readonly IHandler<Keccak, Result> _setHeadHandler;
         private readonly IHandler<Keccak, Result> _finaliseBlockHandler;
+        private readonly ITransitionProcessHandler _transitionProcessHandler;
         private readonly SemaphoreSlim _locker = new(1, 1);
         private readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
         private readonly ILogger _logger;
@@ -45,12 +46,14 @@ namespace Nethermind.Merge.Plugin
             IHandler<BlockRequestResult, NewBlockResult> newBlockHandler,
             IHandler<Keccak, Result> setHeadHandler,
             IHandler<Keccak, Result> finaliseBlockHandler,
+            ITransitionProcessHandler transitionProcessHandler,
             ILogManager logManager)
         {
             _assembleBlockHandler = assembleBlockHandler;
             _newBlockHandler = newBlockHandler;
             _setHeadHandler = setHeadHandler;
             _finaliseBlockHandler = finaliseBlockHandler;
+            _transitionProcessHandler = transitionProcessHandler;
             _logger = logManager.GetClassLogger();
         }
 
@@ -129,16 +132,19 @@ namespace Nethermind.Merge.Plugin
 
         public Task engine_terminalTotalDifficultyUpdated(UInt256 terminalTotalDifficulty)
         {
-            throw new NotImplementedException();
+            _transitionProcessHandler.SetTerminalTotalDifficulty(terminalTotalDifficulty);
+            return Task.CompletedTask;
         }
 
         public Task engine_terminalPoWBlockOverride(Keccak blockHash)
         {
-            throw new NotImplementedException();
+            _transitionProcessHandler.SetTerminalPoWHash(blockHash);
+            return Task.CompletedTask;
         }
-
+        
         public Task<ResultWrapper<Block?>> engine_getPowBlock(Keccak blockHash)
         {
+            // probably this method won't be needed
             throw new NotImplementedException();
         }
 

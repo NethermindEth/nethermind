@@ -38,6 +38,7 @@ namespace Nethermind.Merge.Plugin
         private INethermindApi _api = null!;
         private ILogger _logger = null!;
         private IMergeConfig _mergeConfig = null!;
+        private PoSSwitcher _poSSwitcher = null;
         private ManualBlockFinalizationManager _blockFinalizationManager = null!;
 
         public string Name => "Merge";
@@ -57,9 +58,11 @@ namespace Nethermind.Merge.Plugin
                     if (_logger.IsError) _logger.Error($"{nameof(MergeConfig)}.{nameof(_mergeConfig.BlockAuthorAccount)} is not set up. Cannot create blocks. Stopping.");
                     Environment.Exit(13); // ERROR_INVALID_DATA
                 }
-                
+
+                _poSSwitcher = new PoSSwitcher();
                 _api.EngineSigner = new Eth2Signer(new Address(_mergeConfig.BlockAuthorAccount));
                 _api.RewardCalculatorSource = NoBlockRewards.Instance;
+                _api.PoSSwitcher = _poSSwitcher;
             }
 
             return Task.CompletedTask;
@@ -98,6 +101,7 @@ namespace Nethermind.Merge.Plugin
                     new NewBlockHandler(_api.BlockTree, _api.BlockPreprocessor, _api.BlockchainProcessor, _api.StateProvider, _api.Config<IInitConfig>(), _api.LogManager),
                     new SetHeadBlockHandler(_api.BlockTree, _api.StateProvider, _api.LogManager),
                     new FinaliseBlockHandler(_api.BlockTree, _blockFinalizationManager, _api.LogManager),
+                    _poSSwitcher,
                     _api.LogManager);
                 
                 _api.RpcModuleProvider.RegisterSingle(engineRpcModule);

@@ -22,7 +22,7 @@ using Nethermind.Consensus;
 
 namespace Nethermind.Merge.Plugin
 {
-    public class PoSSwitcher : IPoSSwitcher
+    public class PoSSwitcher : IPoSSwitcher, ITransitionProcessHandler
     {
         private UInt256? _terminalTotalDifficulty;
         private Keccak? _terminalBlockHash;
