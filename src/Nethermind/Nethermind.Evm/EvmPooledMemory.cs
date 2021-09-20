@@ -172,7 +172,7 @@ namespace Nethermind.Evm
                 return new byte[(long)length];
             }
 
-            if (location + length > _memory.Length)
+            if (_memory == null || location + length > _memory.Length)
             {
                 return ReadOnlyMemory<byte>.Empty;
             }
