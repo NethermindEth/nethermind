@@ -227,10 +227,9 @@ namespace Nethermind.Blockchain.Validators
             return isBaseFeeCorrect;
         }
 
-        private bool ValidateTheMergeChecks(BlockHeader header, IReleaseSpec spec)
+        private bool ValidateTheMergeChecks(BlockHeader header)
         {
-            // ToDo it need to be changed to IPoSSwitcher
-            if (spec.TheMergeEnabled == false)
+            if (_poSSwitcher.IsPos(header, false) == false)
                 return true;
             
             bool validDifficulty = ValidateHeaderField(header, header.Difficulty, UInt256.One, nameof(header.Difficulty));
