@@ -29,6 +29,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Evm;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Specs;

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -2497,7 +2497,7 @@ namespace Nethermind.Evm
                             if (_txTracer.IsTracingInstructions)
                             {
                                 // very specific for Parity trace, need to find generalization - very peculiar 32 length...
-                                ReadOnlyMemory<byte> memoryTrace = vmState.Memory.Load(in dataOffset, 32);
+                                ReadOnlyMemory<byte> memoryTrace = vmState.Memory.Inspect(in dataOffset, 32);
                                 _txTracer.ReportMemoryChange(dataOffset, memoryTrace.Span);
                             }
 
