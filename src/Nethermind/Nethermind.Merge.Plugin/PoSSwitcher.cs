@@ -39,11 +39,6 @@ namespace Nethermind.Merge.Plugin
             _terminalBlockHash = blockHash;
         }
 
-        public bool IsPos(BlockHeader header)
-        {
-            throw new System.NotImplementedException();
-        }
-
         public bool WasEverInPoS()
         {
             return _firstPoSBlockNumber != null;

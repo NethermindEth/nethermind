@@ -127,7 +127,7 @@ namespace Nethermind.Merge.Plugin
             throw new NotImplementedException();
         }
 
-        public Task engine_terminalTotalDifficultyOverride(UInt256 terminalTotalDifficulty)
+        public Task engine_terminalTotalDifficultyUpdated(UInt256 terminalTotalDifficulty)
         {
             throw new NotImplementedException();
         }
