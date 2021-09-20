@@ -120,7 +120,7 @@ namespace Nethermind.Blockchain.Test
             BlockProcessor processor = new(
                 RinkebySpecProvider.Instance,
                 TestBlockValidator.AlwaysValid,
-                new MergeRewardCalculator(new RewardCalculator(MainnetSpecProvider.Instance), MainnetSpecProvider.Instance),
+                new RewardCalculator(MainnetSpecProvider.Instance),
                 new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
                 stateProvider,
                 new StorageProvider(trieStore, stateProvider, LimboLogs.Instance),

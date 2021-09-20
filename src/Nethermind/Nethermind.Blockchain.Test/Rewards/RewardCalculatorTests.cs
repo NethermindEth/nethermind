@@ -16,6 +16,7 @@
 
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Specs;
 using NUnit.Framework;
@@ -31,7 +32,7 @@ namespace Nethermind.Blockchain.Test.Rewards
             Block uncle2 = Build.A.Block.WithNumber(1).TestObject;
             Block block = Build.A.Block.WithNumber(3).WithUncles(uncle, uncle2).TestObject;
             
-            MergeRewardCalculator calculator = new(new RewardCalculator(RopstenSpecProvider.Instance), RopstenSpecProvider.Instance);
+            RewardCalculator calculator = new(RopstenSpecProvider.Instance);
             BlockReward[] rewards = calculator.CalculateRewards(block);
             
             Assert.AreEqual(3, rewards.Length);
@@ -46,7 +47,7 @@ namespace Nethermind.Blockchain.Test.Rewards
             Block uncle = Build.A.Block.WithNumber(1).TestObject;
             Block block = Build.A.Block.WithNumber(3).WithUncles(uncle).TestObject;
             
-            MergeRewardCalculator calculator = new(new RewardCalculator(RopstenSpecProvider.Instance), RopstenSpecProvider.Instance);
+            RewardCalculator calculator = new(RopstenSpecProvider.Instance);
             BlockReward[] rewards = calculator.CalculateRewards(block);
             
             Assert.AreEqual(2, rewards.Length);
@@ -59,7 +60,7 @@ namespace Nethermind.Blockchain.Test.Rewards
         {
             Block block = Build.A.Block.WithNumber(3).TestObject;
             
-            MergeRewardCalculator calculator = new(new RewardCalculator(RopstenSpecProvider.Instance), RopstenSpecProvider.Instance);
+            RewardCalculator calculator = new(RopstenSpecProvider.Instance);
             BlockReward[] rewards = calculator.CalculateRewards(block);
             
             Assert.AreEqual(1, rewards.Length);
@@ -74,7 +75,7 @@ namespace Nethermind.Blockchain.Test.Rewards
             Block uncle2 = Build.A.Block.WithNumber(blockNumber - 2).TestObject;
             Block block = Build.A.Block.WithNumber(blockNumber).WithUncles(uncle, uncle2).TestObject;
             
-            MergeRewardCalculator calculator = new(new RewardCalculator(RopstenSpecProvider.Instance), RopstenSpecProvider.Instance);
+            RewardCalculator calculator = new(RopstenSpecProvider.Instance);
             BlockReward[] rewards = calculator.CalculateRewards(block);
             
             Assert.AreEqual(3, rewards.Length);
@@ -91,7 +92,7 @@ namespace Nethermind.Blockchain.Test.Rewards
             Block uncle2 = Build.A.Block.WithNumber(blockNumber - 2).TestObject;
             Block block = Build.A.Block.WithNumber(blockNumber).WithUncles(uncle, uncle2).TestObject;
             
-            MergeRewardCalculator calculator = new(new RewardCalculator(RopstenSpecProvider.Instance), RopstenSpecProvider.Instance);
+            RewardCalculator calculator = new(RopstenSpecProvider.Instance);
             BlockReward[] rewards = calculator.CalculateRewards(block);
             
             Assert.AreEqual(3, rewards.Length);

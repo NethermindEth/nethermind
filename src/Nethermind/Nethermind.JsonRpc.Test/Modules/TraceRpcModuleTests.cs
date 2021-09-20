@@ -61,7 +61,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 ReadOnlyTxProcessingEnv txProcessingEnv =
                     new(dbProvider, Blockchain.ReadOnlyTrieStore, Blockchain.BlockTree.AsReadOnly(), Blockchain.SpecProvider, Blockchain.LogManager);
 
-                MergeRewardCalculator? rewardCalculatorSource = new(new RewardCalculator(Blockchain.SpecProvider),Blockchain.SpecProvider);
+                RewardCalculator? rewardCalculatorSource = new(Blockchain.SpecProvider);
             
                 IRewardCalculator rewardCalculator = rewardCalculatorSource.Get(txProcessingEnv.TransactionProcessor);
             
