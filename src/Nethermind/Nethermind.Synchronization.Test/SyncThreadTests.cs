@@ -31,6 +31,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
@@ -300,7 +301,7 @@ namespace Nethermind.Synchronization.Test
                 ? SyncConfig.WithFastSync
                 : SyncConfig.WithFullSyncOnly;
 
-            MergeRewardCalculator rewardCalculator = new(new RewardCalculator(specProvider),specProvider);
+            RewardCalculator rewardCalculator = new(specProvider);
             TransactionProcessor txProcessor =
                 new(specProvider, stateProvider, storageProvider, virtualMachine, logManager);
 

@@ -16,25 +16,27 @@
 // 
 
 using System;
+using Nethermind.Blockchain.Rewards;
+using Nethermind.Consensus;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 
-namespace Nethermind.Blockchain.Rewards
+namespace Nethermind.Merge.Plugin
 {
     public class MergeRewardCalculator : IRewardCalculator, IRewardCalculatorSource
     {
         private readonly IRewardCalculator _preMergeRewardCalculator;
-        private readonly ISpecProvider _specProvider;
-        
-        public MergeRewardCalculator(IRewardCalculator preMergeRewardCalculator, ISpecProvider specProvider)
+        private readonly IPoSSwitcher _poSSwitcher;
+
+        public MergeRewardCalculator(IRewardCalculator preMergeRewardCalculator, IPoSSwitcher poSSwitcher)
         {
             _preMergeRewardCalculator = preMergeRewardCalculator;
-            _specProvider = specProvider;
+            _poSSwitcher = poSSwitcher;
         }
+
         public BlockReward[] CalculateRewards(Block block)
         {
-            return _specProvider.GetSpec(block.Number).IsEip3675Enabled
+            return _poSSwitcher.IsPos(block.Header, false)
                 ? Array.Empty<BlockReward>()
                 : _preMergeRewardCalculator.CalculateRewards(block);
         }

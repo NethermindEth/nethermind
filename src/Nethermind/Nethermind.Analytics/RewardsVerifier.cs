@@ -21,6 +21,7 @@ using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
@@ -46,8 +47,7 @@ namespace Nethermind.Analytics
             BlockRewards = _genesisAllocations;
         }
 
-        private readonly MergeRewardCalculator _rewardCalculator =
-            new(new RewardCalculator(MainnetSpecProvider.Instance), MainnetSpecProvider.Instance);
+        private readonly RewardCalculator _rewardCalculator = new(MainnetSpecProvider.Instance);
 
         public Task<BlockVisitOutcome> VisitBlock(Block block, CancellationToken cancellationToken)
         {
