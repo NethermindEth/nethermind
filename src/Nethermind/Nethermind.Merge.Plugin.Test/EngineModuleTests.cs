@@ -51,14 +51,15 @@ namespace Nethermind.Merge.Plugin.Test
         private ITimestamper Timestamper { get; } = new ManualTimestamper(Timestamp);
 
         [Test, Retry(3)]
-        public async Task assembleBlock_should_create_block_on_top_of_genesis()
+        [Ignore("ToDo")]
+        public async Task getPayload_should_create_block_on_top_of_genesis()
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
             IEngineRpcModule rpc = CreateConsensusModule(chain);
             Keccak startingHead = chain.BlockTree.HeadHash;
             UInt256 timestamp = Timestamper.UnixTime.Seconds;
-            AssembleBlockRequest assembleBlockRequest = new() {ParentHash = startingHead, Timestamp = timestamp};
-            ResultWrapper<BlockRequestResult?> response = await rpc.engine_assembleBlock(assembleBlockRequest);
+            uint getPayloadRequest = 3;
+            ResultWrapper<BlockRequestResult?> response = await rpc.engine_getPayload(getPayloadRequest);
 
             BlockRequestResult expected = CreateParentBlockRequestOnHead(chain.BlockTree);
             expected.GasLimit = 4000000L;
