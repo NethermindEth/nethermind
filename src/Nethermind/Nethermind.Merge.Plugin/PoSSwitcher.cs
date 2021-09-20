@@ -35,7 +35,6 @@ namespace Nethermind.Merge.Plugin
             _logger = logManager.GetClassLogger();
         }
         
-        
         public void SetTerminalTotalDifficulty(UInt256 totalDifficulty)
         {
             _terminalTotalDifficulty = totalDifficulty;

@@ -34,9 +34,10 @@ namespace Nethermind.Consensus.AuRa
             IBlockTree blockTree, 
             ISealValidator sealValidator, 
             ISpecProvider specProvider, 
+            IPoSSwitcher poSSwitcher,
             ILogManager logManager,
             IList<long> blockGasLimitContractTransitions)
-            : base(blockTree, sealValidator, specProvider, logManager)
+            : base(blockTree, sealValidator, specProvider, poSSwitcher, logManager)
         {
             _blockGasLimitContractTransitions = blockGasLimitContractTransitions ?? throw new ArgumentNullException(nameof(blockGasLimitContractTransitions));
         }

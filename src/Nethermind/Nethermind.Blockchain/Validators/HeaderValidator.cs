@@ -35,16 +35,18 @@ namespace Nethermind.Blockchain.Validators
 
         private readonly ISealValidator _sealValidator;
         private readonly ISpecProvider _specProvider;
+        private readonly IPoSSwitcher _poSSwitcher;
         private readonly long? _daoBlockNumber;
         private readonly ILogger _logger;
         private readonly IBlockTree _blockTree;
 
-        public HeaderValidator(IBlockTree? blockTree, ISealValidator? sealValidator, ISpecProvider? specProvider, ILogManager? logManager)
+        public HeaderValidator(IBlockTree? blockTree, ISealValidator? sealValidator, ISpecProvider? specProvider, IPoSSwitcher poSSwitcher, ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _sealValidator = sealValidator ?? throw new ArgumentNullException(nameof(sealValidator));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+            _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));;
             _daoBlockNumber = specProvider.DaoBlockNumber;
         }
 

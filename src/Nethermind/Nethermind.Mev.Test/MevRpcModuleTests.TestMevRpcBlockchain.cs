@@ -207,7 +207,7 @@ namespace Nethermind.Mev.Test
             
             private IBlockValidator CreateBlockValidator()
             {
-                HeaderValidator headerValidator = new(BlockTree, new Eth2SealEngine(Signer), SpecProvider, LogManager);
+                HeaderValidator headerValidator = new(BlockTree, new Eth2SealEngine(Signer), SpecProvider, PoSSwitcher, LogManager);
                 
                 return new BlockValidator(
                     new TxValidator(SpecProvider.ChainId),
