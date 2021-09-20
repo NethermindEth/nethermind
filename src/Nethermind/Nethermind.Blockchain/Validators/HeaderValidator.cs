@@ -142,7 +142,7 @@ namespace Nethermind.Blockchain.Validators
             if (_logger.IsTrace) _logger.Trace($"Validating block {header.ToString(BlockHeader.Format.Short)}, extraData {header.ExtraData.ToHexString(true)}");
 
             bool eip1559Valid = Validate1559Checks(header, parent, spec);
-            bool theMergeValid = ValidateTheMergeChecks(header, spec);
+            bool theMergeValid = ValidateTheMergeChecks(header);
 
             return
                 totalDifficultyCorrect &&
