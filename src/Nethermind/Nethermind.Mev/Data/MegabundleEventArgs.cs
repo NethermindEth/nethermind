@@ -15,17 +15,18 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Int256;
+using System;
+using Nethermind.Core;
 
-namespace Nethermind.Mev
+namespace Nethermind.Mev.Data
 {
-    public class MevConfig : IMevConfig
+    public class MegabundleEventArgs : BundleEventArgs
     {
-        public static readonly MevConfig Default = new();
-        public bool Enabled { get; set; }
-        public UInt256 BundleHorizon { get; set; } = 60 * 60;
-        public int BundlePoolSize { get; set; } = 200;
-        public int MaxMergedBundles { get; set; } = 1;
-        public string TrustedRelays { get; set; } = "";
+        public Address RelayAddress { get; }
+        
+        public MegabundleEventArgs(MevBundle mevBundle, Address relayAddress): base(mevBundle)
+        {
+            RelayAddress = relayAddress;
+        }
     }
 }

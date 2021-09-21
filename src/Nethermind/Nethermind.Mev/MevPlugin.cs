@@ -16,11 +16,9 @@
 // 
 
 using System;
-using System.Collections.Concurrent;
-using System.Threading.Tasks;
 using System.Collections.Generic;
-using System.ComponentModel.Design;
 using System.Linq;
+using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
@@ -29,15 +27,12 @@ using Nethermind.Blockchain.Producers;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
-using Nethermind.Db;
-using Nethermind.Facade;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Mev.Data;
 using Nethermind.Mev.Execution;
 using Nethermind.Mev.Source;
-using Nethermind.TxPool;
 
 namespace Nethermind.Mev
 {
@@ -92,7 +87,8 @@ namespace Nethermind.Mev
                         getFromApi.SpecProvider!,
                         _mevConfig,
                         getFromApi.ChainHeadStateProvider!,
-                        getFromApi.LogManager);
+                        getFromApi.LogManager,
+                        getFromApi.EthereumEcdsa!);
                 }
 
                 return _bundlePool;
@@ -163,7 +159,7 @@ namespace Nethermind.Mev
             _nethermindApi.BlockProducerEnvFactory.TransactionsExecutorFactory = new MevBlockProducerTransactionsExecutorFactory(_nethermindApi.SpecProvider!, _nethermindApi.LogManager);
             
             List<MevBlockProducer.MevBlockProducerInfo> blockProducers =
-                new(_mevConfig.MaxMergedBundles + 1);
+                new(_mevConfig.MaxMergedBundles + _mevConfig.GetTrustedRelayAddresses().Count() + 1);
                 
             // Add non-mev block
             MevBlockProducer.MevBlockProducerInfo standardProducer = await CreateProducer(consensusPlugin);
@@ -174,6 +170,13 @@ namespace Nethermind.Mev
             {
                 BundleSelector bundleSelector = new(BundlePool, bundleLimit);
                 MevBlockProducer.MevBlockProducerInfo bundleProducer = await CreateProducer(consensusPlugin, bundleLimit, new BundleTxSource(bundleSelector, _nethermindApi.Timestamper));
+                blockProducers.Add(bundleProducer);
+            }
+
+            foreach (Address address in _mevConfig.GetTrustedRelayAddresses())
+            {
+                MegabundleSelector megabundleSelector = new(BundlePool, address);
+                MevBlockProducer.MevBlockProducerInfo bundleProducer = await CreateProducer(consensusPlugin, address, new BundleTxSource(megabundleSelector, _nethermindApi.Timestamper));
                 blockProducers.Add(bundleProducer);
             }
 
@@ -204,6 +207,30 @@ namespace Nethermind.Mev
                 trigger = new TriggerWithCondition(manualTrigger, BundleLimitTriggerCondition);
             }
             
+            IBlockProducer producer = await consensusPlugin.InitBlockProducer(trigger, additionalTxSource);
+            return new MevBlockProducer.MevBlockProducerInfo(producer, manualTrigger, new BeneficiaryTracer());
+        }
+
+        private async Task<MevBlockProducer.MevBlockProducerInfo> CreateProducer(
+            IConsensusPlugin consensusPlugin,
+            Address relayAddress,
+            ITxSource? additionalTxSource = null)
+        {
+            bool MegabundleTriggerCondition(BlockProductionEventArgs e)
+            {
+                BlockHeader? parent = _nethermindApi.BlockTree!.GetProducedBlockParent(e.ParentHeader);
+                if (parent is not null)
+                {
+                    MevBundle? bundle = BundlePool.GetMegabundle(parent, _nethermindApi.Timestamper, relayAddress);
+                    return bundle is not null;
+                }
+
+                return false;
+            }
+            
+            IManualBlockProductionTrigger manualTrigger = new BuildBlocksWhenRequested();
+            IBlockProductionTrigger trigger = new TriggerWithCondition(manualTrigger, MegabundleTriggerCondition);
+
             IBlockProducer producer = await consensusPlugin.InitBlockProducer(trigger, additionalTxSource);
             return new MevBlockProducer.MevBlockProducerInfo(producer, manualTrigger, new BeneficiaryTracer());
         }

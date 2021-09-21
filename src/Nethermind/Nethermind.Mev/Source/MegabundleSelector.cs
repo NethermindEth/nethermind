@@ -16,6 +16,7 @@
 // 
 
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -24,12 +25,22 @@ using Nethermind.Mev.Data;
 
 namespace Nethermind.Mev.Source
 {
-    public interface ISimulatedBundleSource
+    public class MegabundleSelector : IBundleSource
     {
-        Task<IEnumerable<SimulatedMevBundle>> GetBundles(BlockHeader parent, UInt256 timestamp, long gasLimit,
-            CancellationToken token = default);
-        
-        Task<SimulatedMevBundle?> GetMegabundle(BlockHeader parent, UInt256 timestamp, long gasLimit, Address relayAddress,
-            CancellationToken token = default);
+        private readonly ISimulatedBundleSource _simulatedBundleSource;
+        private readonly Address _relayAddress;
+
+        public MegabundleSelector(ISimulatedBundleSource simulatedBundleSource, Address relayAddress)
+        {
+            _simulatedBundleSource = simulatedBundleSource;
+            _relayAddress = relayAddress;
+        }
+
+        public async Task<IEnumerable<MevBundle>> GetBundles(BlockHeader parent, UInt256 timestamp, long gasLimit,
+            CancellationToken token = default)
+        {
+            SimulatedMevBundle? simulatedBundle = await _simulatedBundleSource.GetMegabundle(parent, timestamp, gasLimit, _relayAddress, token);
+            return simulatedBundle is null ? Enumerable.Empty<MevBundle>() : new [] {simulatedBundle.Bundle};
+        }
     }
 }

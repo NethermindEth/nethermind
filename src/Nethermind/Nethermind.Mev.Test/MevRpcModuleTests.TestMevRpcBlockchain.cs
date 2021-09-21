@@ -33,6 +33,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test.Modules;
@@ -186,7 +187,7 @@ namespace Nethermind.Mev.Test
                     ProcessingOptions.ProducingBlock);
                 
                 TxBundleSimulator txBundleSimulator = new(_tracerFactory, GasLimitCalculator, Timestamper, TxPool, SpecProvider, Signer);
-                BundlePool = new TestBundlePool(BlockTree, txBundleSimulator, Timestamper, new TxValidator(BlockTree.ChainId), SpecProvider, _mevConfig, LogManager);
+                BundlePool = new TestBundlePool(BlockTree, txBundleSimulator, Timestamper, new TxValidator(BlockTree.ChainId), SpecProvider, _mevConfig, LogManager, EthereumEcdsa);
 
                 return blockProcessor;
             }

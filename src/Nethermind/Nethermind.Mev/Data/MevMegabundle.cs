@@ -15,17 +15,28 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Int256;
+using System;
+using Nethermind.Core.Crypto;
 
-namespace Nethermind.Mev
+namespace Nethermind.Mev.Data
 {
-    public class MevConfig : IMevConfig
+    public class MevMegabundle: IEquatable<MevMegabundle>
     {
-        public static readonly MevConfig Default = new();
-        public bool Enabled { get; set; }
-        public UInt256 BundleHorizon { get; set; } = 60 * 60;
-        public int BundlePoolSize { get; set; } = 200;
-        public int MaxMergedBundles { get; set; } = 1;
-        public string TrustedRelays { get; set; } = "";
+        public MevMegabundle(MevBundle bundle, Signature relaySignature)
+        {
+            Bundle = bundle;
+            RelaySignature = relaySignature;
+        }
+        
+        public MevBundle Bundle { get; }
+        public Signature RelaySignature { get; }
+        
+        public bool Equals(MevMegabundle? other)
+        {
+            if (ReferenceEquals(null, other)) return false;
+            if (ReferenceEquals(this, other)) return true;
+            return Equals(Bundle, other.Bundle)
+                && Equals(RelaySignature, other.RelaySignature);
+        }
     }
 }

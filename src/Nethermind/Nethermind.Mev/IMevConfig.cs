@@ -14,10 +14,11 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Int256;
-using Nethermind.Mev.Data;
 
 namespace Nethermind.Mev
 {
@@ -44,5 +45,8 @@ namespace Nethermind.Mev
         [ConfigItem(Description = "Defines the trusted relay addresses to receive megabundles from",
             DefaultValue = "")]
         string TrustedRelays { get; set;  }
+        
+        public IEnumerable<Address> GetTrustedRelayAddresses() => 
+            TrustedRelays.Split(",").Select(address => new Address(address));
     }
 }

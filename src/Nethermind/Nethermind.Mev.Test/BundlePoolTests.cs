@@ -343,7 +343,8 @@ namespace Nethermind.Mev.Test
                     new TxValidator(BlockTree.ChainId),
                     new TestSpecProvider(London.Instance),
                     config ?? new MevConfig(),
-                    LimboLogs.Instance);
+                    LimboLogs.Instance,
+                    EthereumEcdsa);
 
                 if (!addTestBundles) return;
                 BundleTransaction tx1 = CreateTransaction(TestItem.PrivateKeyA);
@@ -372,8 +373,10 @@ namespace Nethermind.Mev.Test
             public TestBundlePool BundlePool { get; }
 
             public ITimestamper Timestamper { get; private set; } =
-                 new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(DefaultTimestamp)); 
-            
+                 new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(DefaultTimestamp));
+
+            public IEthereumEcdsa EthereumEcdsa { get; } = Substitute.For<IEthereumEcdsa>();
+
             private MevBundle CreateBundle(long blockNumber, params BundleTransaction[] transactions) => new(blockNumber, transactions);
         }
     }

@@ -21,6 +21,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Mev.Data;
 using Nethermind.Mev.Execution;
@@ -40,7 +41,7 @@ namespace Nethermind.Mev.Test
             ISpecProvider specProvider,
             IMevConfig mevConfig,
             ILogManager logManager)
-            : base(blockTree, simulator, timestamper, txValidator, specProvider, mevConfig, new MockProvider(), logManager)
+            : base(blockTree, simulator, timestamper, txValidator, specProvider, mevConfig, new MockProvider(), logManager, ecdsa)
         {
         }
 

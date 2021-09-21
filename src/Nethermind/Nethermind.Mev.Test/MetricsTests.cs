@@ -24,6 +24,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Mev.Data;
@@ -166,7 +167,8 @@ namespace Nethermind.Mev.Test
                 new TxValidator(blockTree.ChainId),
                 new TestSpecProvider(London.Instance),
                 new MevConfig(),
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                Substitute.For<IEthereumEcdsa>());
             return bundlePool;
         }
     }
