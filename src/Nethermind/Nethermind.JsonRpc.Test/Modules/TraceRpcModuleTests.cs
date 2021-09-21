@@ -385,7 +385,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
-        public async Task trace_transaction_can_trace_simple_tx()
+        public async Task trace_transaction_and_get_simple_tx()
         {
             Context context = new();
             await context.Build();
@@ -399,27 +399,14 @@ namespace Nethermind.JsonRpc.Test.Modules
             ResultWrapper<ParityTxTraceFromStore[]> traces = context.TraceRpcModule.trace_transaction(transaction.Hash!);
             Assert.AreEqual(1, traces.Data.Length);
             Assert.AreEqual(transaction.Hash!, traces.Data[0].TransactionHash);
-        }
-        
-        [Test]
-        public async Task trace_get_can_trace_simple_tx()
-        {
-            Context context = new();
-            await context.Build();
-            TestRpcBlockchain blockchain = context.Blockchain;
-            UInt256 currentNonceAddressA = blockchain.State.GetAccount(TestItem.AddressA).Nonce;
-
-            Transaction transaction = Build.A.Transaction.WithNonce(currentNonceAddressA++).WithTo(TestItem.AddressC)
-                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-            await blockchain.AddBlock(transaction);
             
             long[] positions = {0};
-            ResultWrapper<ParityTxTraceFromStore[]> traces = context.TraceRpcModule.trace_get(transaction.Hash!, positions);
-            Assert.AreEqual(0, traces.Data.Length);
+            ResultWrapper<ParityTxTraceFromStore[]> traceGet = context.TraceRpcModule.trace_get(transaction.Hash!, positions);
+            Assert.AreEqual(0, traceGet.Data.Length);
         }
-        
+      
         [Test]
-        public async Task trace_transaction_can_trace_internal_tx()
+        public async Task trace_transaction_and_get_internal_tx()
         {
             Context context = new();
             await context.Build();
@@ -460,56 +447,16 @@ namespace Nethermind.JsonRpc.Test.Modules
             ResultWrapper<ParityTxTraceFromStore[]> traces = context.TraceRpcModule.trace_transaction(transaction2.Hash!);
             Assert.AreEqual(3, traces.Data.Length);
             Assert.AreEqual(transaction2.Hash!, traces.Data[0].TransactionHash);
-        }
-        
-        [Test]
-        public async Task trace_get_can_trace_internal_tx()
-        {
-            Context context = new();
-            await context.Build();
-            TestRpcBlockchain blockchain = context.Blockchain;
-            UInt256 currentNonceAddressA = blockchain.State.GetAccount(TestItem.AddressA).Nonce;
-            UInt256 currentNonceAddressB = blockchain.State.GetAccount(TestItem.AddressB).Nonce;
-            await blockchain.AddFunds(TestItem.AddressA, 10000.Ether());
-            byte[] deployedCode = new byte[3];
-            byte[] initCode = Prepare.EvmCode
-                .ForInitOf(deployedCode)
-                .Done;
-
-            byte[] createCode = Prepare.EvmCode
-                .Create(initCode, 0)
-                .Op(Instruction.STOP)
-                .Done;
             
-            Transaction transaction = Build.A.Transaction.WithNonce(currentNonceAddressA++)
-                .WithData(createCode)
-                .WithTo(null)
-                .WithGasLimit(93548).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-            await blockchain.AddBlock(transaction);
-
-
-            Address? contractAddress = ContractAddress.From(TestItem.AddressA, currentNonceAddressA);
-            byte[] code = Prepare.EvmCode
-                .Call(contractAddress, 50000)
-                .Call(contractAddress, 50000)
-                .Op(Instruction.STOP)
-                .Done;
-            
-            Transaction transaction2 = Build.A.Transaction.WithNonce(currentNonceAddressB++)
-                .WithData(code).SignedAndResolved(TestItem.PrivateKeyB)
-                .WithTo(null)
-                .WithGasLimit(93548).TestObject;
-            await blockchain.AddBlock(transaction2);
-
             long[] positions = {0};
 
-            ResultWrapper<ParityTxTraceFromStore[]> traces = context.TraceRpcModule.trace_get(transaction2.Hash!, positions);
-            Assert.AreEqual(1, traces.Data.Length);
-            Assert.AreEqual(transaction2.Hash!, traces.Data[0].TransactionHash);
+            ResultWrapper<ParityTxTraceFromStore[]> tracesGet = context.TraceRpcModule.trace_get(transaction2.Hash!, positions);
+            Assert.AreEqual(1, tracesGet.Data.Length);
+            Assert.AreEqual(transaction2.Hash!, tracesGet.Data[0].TransactionHash);
+            Assert.AreEqual(traces.Data[1].TransactionHash, tracesGet.Data[0].TransactionHash);
+            Assert.AreEqual(traces.Data[1].BlockHash, tracesGet.Data[0].BlockHash);
+            Assert.AreEqual(traces.Data[1].BlockNumber, tracesGet.Data[0].BlockNumber);
         }
-        
-        
-
 
         [Test]
         public async Task trace_timeout_is_separate_for_rpc_calls()
