@@ -23,6 +23,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Merge.Plugin
 {
+    // ToDo think about reorgs in this class & maybe we should persist data (_terminalTotalDifficulty, _terminalBlockHash, _firstPoSBlockHeader)  to db
     public class PoSSwitcher : IPoSSwitcher, ITransitionProcessHandler
     {
         private readonly ILogger _logger;
