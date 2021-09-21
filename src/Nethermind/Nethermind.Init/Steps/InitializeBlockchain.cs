@@ -302,6 +302,7 @@ namespace Nethermind.Init.Steps
                 _api.BlockTree,
                 _api.SealValidator,
                 _api.SpecProvider,
+                _api.PoSSwitcher,
                 _api.LogManager);
 
         // TODO: remove from here - move to consensus?

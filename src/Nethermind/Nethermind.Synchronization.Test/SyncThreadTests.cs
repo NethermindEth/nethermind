@@ -291,7 +291,7 @@ namespace Nethermind.Synchronization.Test
                 new(stateProvider, storageProvider, blockhashProvider, specProvider, logManager);
 
             Always sealValidator = Always.Valid;
-            HeaderValidator headerValidator = new(tree, sealValidator, specProvider, logManager);
+            HeaderValidator headerValidator = new(tree, sealValidator, specProvider, NoPoS.Instance, logManager);
             Always txValidator = Always.Valid;
             UnclesValidator unclesValidator = new(tree, headerValidator, logManager);
             BlockValidator blockValidator =

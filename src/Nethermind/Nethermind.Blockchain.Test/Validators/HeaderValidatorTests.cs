@@ -58,7 +58,7 @@ namespace Nethermind.Blockchain.Test.Validators
             _blockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), FrontierSpecProvider.Instance, Substitute.For<IBloomStorage>(), LimboLogs.Instance);
             _specProvider = new SingleReleaseSpecProvider(Byzantium.Instance, 3);
             
-            _validator = new HeaderValidator(_blockTree, _ethash, _specProvider , new OneLoggerLogManager(_testLogger));
+            _validator = new HeaderValidator(_blockTree, _ethash, _specProvider , NoPoS.Instance, new OneLoggerLogManager(_testLogger));
             _parentBlock = Build.A.Block.WithDifficulty(1).TestObject;
             _block = Build.A.Block.WithParent(_parentBlock)
                 .WithDifficulty(131072)
@@ -217,7 +217,7 @@ namespace Nethermind.Blockchain.Test.Validators
                 Eip1559TransitionBlock = 5
             };
             TestSpecProvider specProvider = new(spec);
-            _validator = new HeaderValidator(_blockTree, _ethash, specProvider, new OneLoggerLogManager(_testLogger));
+            _validator = new HeaderValidator(_blockTree, _ethash, specProvider, NoPoS.Instance, new OneLoggerLogManager(_testLogger));
             _parentBlock = Build.A.Block.WithDifficulty(1)
                             .WithGasLimit(parentGasLimit)
                             .WithNumber(blockNumber)
@@ -239,7 +239,7 @@ namespace Nethermind.Blockchain.Test.Validators
         [Test]
         public void When_gas_limit_is_long_max_value()
         {
-            _validator = new HeaderValidator(_blockTree, _ethash, _specProvider, new OneLoggerLogManager(_testLogger));
+            _validator = new HeaderValidator(_blockTree, _ethash, _specProvider,  NoPoS.Instance, new OneLoggerLogManager(_testLogger));
             _parentBlock = Build.A.Block.WithDifficulty(1)
                 .WithGasLimit(long.MaxValue)
                 .WithNumber(5)

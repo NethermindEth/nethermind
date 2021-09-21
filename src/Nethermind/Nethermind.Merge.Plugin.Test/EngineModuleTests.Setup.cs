@@ -64,11 +64,12 @@ namespace Nethermind.Merge.Plugin.Test
                 GenesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.Genesis
                     .WithTimestamp(UInt256.One);
                 Signer = new Eth2Signer(MinerAddress);
+                PoSSwitcher = new PoSSwitcher(LogManager);
             }
             
             protected override Task AddBlocksOnStart() => Task.CompletedTask;
 
-            public override ILogManager LogManager { get; } = new NUnitLogManager();
+            public sealed override ILogManager LogManager { get; } = new NUnitLogManager();
             
             private IBlockValidator BlockValidator { get; set; } = null!;
 
@@ -121,7 +122,7 @@ namespace Nethermind.Merge.Plugin.Test
 
             private IBlockValidator CreateBlockValidator()
             {
-                HeaderValidator headerValidator = new(BlockTree, new Eth2SealEngine(Signer), SpecProvider, LogManager);
+                HeaderValidator headerValidator = new(BlockTree, new Eth2SealEngine(Signer), SpecProvider, PoSSwitcher, LogManager);
                 
                 return new BlockValidator(
                     new TxValidator(SpecProvider.ChainId),
