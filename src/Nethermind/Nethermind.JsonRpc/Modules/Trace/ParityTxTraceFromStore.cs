@@ -49,7 +49,6 @@ namespace Nethermind.JsonRpc.Modules.Trace
             {
                 Action = txTraceAction,
                 Result = txTraceAction.Result,
-                Error = txTraceAction.Error,
                 Subtraces = txTraceAction.Subtraces.Count,
                 Type = txTraceAction.Type,
                 BlockHash = txTrace.BlockHash,
@@ -89,6 +88,5 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public string Type { get; set; }
-        public string? Error { get; set; }
     }
 }

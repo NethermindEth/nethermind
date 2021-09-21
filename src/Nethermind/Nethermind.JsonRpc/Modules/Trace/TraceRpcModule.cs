@@ -205,7 +205,6 @@ namespace Nethermind.JsonRpc.Modules.Trace
             }
             
             return ResultWrapper<ParityTxTraceFromStore[]>.Success(traces.ToArray());
-
         }
 
         public ResultWrapper<ParityTxTraceFromStore[]> trace_transaction(Keccak txHash)

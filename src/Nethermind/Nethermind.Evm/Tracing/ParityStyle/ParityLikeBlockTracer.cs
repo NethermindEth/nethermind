@@ -62,7 +62,6 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         public override void ReportReward(Address author, string rewardType, UInt256 rewardValue)
         {
            ParityLikeTxTrace rewardTrace = TxTraces.LastOrDefault();
-
            if (rewardTrace == null)
                 return;
         
