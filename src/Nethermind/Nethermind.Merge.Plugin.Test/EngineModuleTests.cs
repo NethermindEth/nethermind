@@ -52,14 +52,18 @@ namespace Nethermind.Merge.Plugin.Test
 
         [Test, Retry(3)]
         [Ignore("ToDo")]
-        public async Task getPayload_should_create_block_on_top_of_genesis()
+        public async Task preparePayload_should_create_block_on_top_of_genesis()
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
             IEngineRpcModule rpc = CreateEngineModule(chain);
             Keccak startingHead = chain.BlockTree.HeadHash;
             UInt256 timestamp = Timestamper.UnixTime.Seconds;
-            uint getPayloadRequest = 3;
-            ResultWrapper<BlockRequestResult?> response = await rpc.engine_getPayload(getPayloadRequest);
+            Keccak random = Keccak.Zero;
+            Address feeRecipient = Address.Zero;
+            uint payloadId = 111;
+            
+            await rpc.engine_preparePayload(startingHead, timestamp, random, feeRecipient, payloadId);
+            ResultWrapper<BlockRequestResult?> response = await rpc.engine_getPayload(payloadId);
 
             BlockRequestResult expected = CreateParentBlockRequestOnHead(chain.BlockTree);
             expected.GasLimit = 4000000L;
@@ -73,7 +77,52 @@ namespace Nethermind.Merge.Plugin.Test
             
             response.Data.Should().BeEquivalentTo(expected);
         }
+
+        [Test]
+        [Ignore("ToDo")]
+        public async Task getPayload_should_return_error_if_there_was_no_preparePayload_at_all()
+        {
+            using MergeTestBlockchain chain = await CreateBlockChain();
+            IEngineRpcModule rpc = CreateEngineModule(chain);
+            uint payloadId = 111;
+
+            ResultWrapper<BlockRequestResult?> response = await rpc.engine_getPayload(payloadId);
+
+            response.Data.Should().Be("some kind of error message");
+        }
         
+        [Test]
+        [Ignore("ToDo")]
+        public async Task getPayload_should_return_error_if_there_was_no_corresponding_preparePayload()
+        {
+            using MergeTestBlockchain chain = await CreateBlockChain();
+            IEngineRpcModule rpc = CreateEngineModule(chain);
+            Keccak startingHead = chain.BlockTree.HeadHash;
+            UInt256 timestamp = Timestamper.UnixTime.Seconds;
+            Keccak random = Keccak.Zero;
+            Address feeRecipient = Address.Zero;
+            uint payloadId = 111;
+            
+            await rpc.engine_preparePayload(startingHead, timestamp, random, feeRecipient, payloadId);
+
+            uint requestedPayloadId = 222;
+            ResultWrapper<BlockRequestResult?> response = await rpc.engine_getPayload(requestedPayloadId);
+
+            BlockRequestResult expected = CreateParentBlockRequestOnHead(chain.BlockTree);
+            expected.GasLimit = 4000000L;
+            expected.BlockHash = new Keccak("0xfe37027d377e75ffb161f11733d8880083378fe6236270c7a2ee1fc7efe71cfd");
+            expected.LogsBloom = Bloom.Empty;
+            expected.Miner = chain.MinerAddress;
+            expected.Number = 1;
+            expected.ParentHash = startingHead;
+            expected.SetTransactions(Array.Empty<Transaction>());
+            expected.Timestamp = timestamp;
+            
+            response.Data.Should().BeEquivalentTo(expected);
+
+            response.Data.Should().Be("some kind of error message");
+        }
+
         [Test]
         public async Task assembleBlock_should_not_create_block_with_unknown_parent()
         {
