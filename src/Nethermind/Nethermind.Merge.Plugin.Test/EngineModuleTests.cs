@@ -20,6 +20,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
+using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using FluentAssertions.Extensions;
@@ -88,7 +89,7 @@ namespace Nethermind.Merge.Plugin.Test
 
             ResultWrapper<BlockRequestResult?> response = await rpc.engine_getPayload(payloadId);
 
-            response.Data.Should().Be("some kind of error message");
+            response.Data.Should().Be("some kind of error message - requested unprepared payload");
         }
         
         [Test]
@@ -108,19 +109,30 @@ namespace Nethermind.Merge.Plugin.Test
             uint requestedPayloadId = 222;
             ResultWrapper<BlockRequestResult?> response = await rpc.engine_getPayload(requestedPayloadId);
 
-            BlockRequestResult expected = CreateParentBlockRequestOnHead(chain.BlockTree);
-            expected.GasLimit = 4000000L;
-            expected.BlockHash = new Keccak("0xfe37027d377e75ffb161f11733d8880083378fe6236270c7a2ee1fc7efe71cfd");
-            expected.LogsBloom = Bloom.Empty;
-            expected.Miner = chain.MinerAddress;
-            expected.Number = 1;
-            expected.ParentHash = startingHead;
-            expected.SetTransactions(Array.Empty<Transaction>());
-            expected.Timestamp = timestamp;
+            response.Data.Should().Be("some kind of error message - requested unprepared payload");
+        }
+        
+        [Test]
+        [Ignore("ToDo")]
+        public async Task getPayload_should_return_error_if_called_after_timeout()
+        {
+            const int timeout = 5000;
             
-            response.Data.Should().BeEquivalentTo(expected);
+            using MergeTestBlockchain chain = await CreateBlockChain();
+            IEngineRpcModule rpc = CreateEngineModule(chain);
+            Keccak startingHead = chain.BlockTree.HeadHash;
+            UInt256 timestamp = Timestamper.UnixTime.Seconds;
+            Keccak random = Keccak.Zero;
+            Address feeRecipient = Address.Zero;
+            uint payloadId = 111;
+            
+            await rpc.engine_preparePayload(startingHead, timestamp, random, feeRecipient, payloadId);
+            
+            Thread.Sleep(timeout);
+            
+            ResultWrapper<BlockRequestResult?> response = await rpc.engine_getPayload(payloadId);
 
-            response.Data.Should().Be("some kind of error message");
+            response.Data.Should().Be("some kind of error message - timeout");
         }
 
         [Test]
