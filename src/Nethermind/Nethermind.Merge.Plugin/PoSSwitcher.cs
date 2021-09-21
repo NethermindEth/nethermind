@@ -28,7 +28,7 @@ namespace Nethermind.Merge.Plugin
         private readonly ILogger _logger;
         private UInt256? _terminalTotalDifficulty;
         private Keccak? _terminalBlockHash;
-        private long? _firstPoSBlockNumber;
+        private BlockHeader? _firstPoSBlockHeader;
 
         public PoSSwitcher(ILogManager logManager)
         {
@@ -47,12 +47,12 @@ namespace Nethermind.Merge.Plugin
 
         public bool WasEverInPoS()
         {
-            return _firstPoSBlockNumber != null;
+            return _firstPoSBlockHeader != null;
         }
 
         public bool IsPos(BlockHeader header, bool trySwitchToPos)
         {
-            if (_firstPoSBlockNumber != null && _firstPoSBlockNumber <= header.Number)
+            if (_firstPoSBlockHeader != null && _firstPoSBlockHeader.TotalDifficulty <= header.TotalDifficulty)
             {
                 return true;
             }
@@ -62,12 +62,12 @@ namespace Nethermind.Merge.Plugin
                 return false;
             }
 
-            if (_firstPoSBlockNumber == null && (_terminalBlockHash == header.ParentHash || header.TotalDifficulty >= _terminalTotalDifficulty))
+            if (_firstPoSBlockHeader == null && (_terminalBlockHash == header.ParentHash || header.TotalDifficulty >= _terminalTotalDifficulty))
             {
                 if (trySwitchToPos)
                 {
                     if (_logger.IsInfo) _logger.Info($"Switched to Proof of Stake at block {header}");
-                    _firstPoSBlockNumber = header.Number;
+                    _firstPoSBlockHeader = header;
                 }
 
                 return true;
