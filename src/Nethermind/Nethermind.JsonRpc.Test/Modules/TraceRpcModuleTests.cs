@@ -100,25 +100,6 @@ namespace Nethermind.JsonRpc.Test.Modules
             public TestRpcBlockchain Blockchain { get; set; }
             
         }
-        
-        [Test]
-        public async Task trace_call_test()
-        {
-            Context context = new();
-            await context.Build();
-            
-            TestRpcBlockchain blockchain = context.Blockchain;
-            UInt256 currentNonceAddressA = blockchain.State.GetAccount(TestItem.AddressA).Nonce;
-            Transaction transaction = Build.A.Transaction.WithNonce(currentNonceAddressA++).WithTo(TestItem.AddressC)
-                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-            await blockchain.AddBlock(transaction);
-            TransactionForRpc txForRpc = new(transaction);
-            string[] traceTypes = {"Trace"};
-            
-            ResultWrapper<ParityTxTraceFromReplay> tr = context.TraceRpcModule.trace_call(txForRpc, traceTypes, new BlockParameter(16));
-            Assert.AreEqual(TestItem.AddressC, tr.Data.Action.To);
-            Assert.AreEqual("call", tr.Data.Action.Type.ToString());
-        }
 
         [Test]
         public async Task Tx_positions_are_fine()
