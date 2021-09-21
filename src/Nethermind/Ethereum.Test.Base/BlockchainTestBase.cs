@@ -136,7 +136,7 @@ namespace Ethereum.Test.Base
             IReceiptStorage receiptStorage = NullReceiptStorage.Instance;
             IBlockhashProvider blockhashProvider = new BlockhashProvider(blockTree, _logManager);
             ITxValidator txValidator = new TxValidator(ChainId.Mainnet);
-            IHeaderValidator headerValidator = new HeaderValidator(blockTree, Sealer, specProvider, _logManager);
+            IHeaderValidator headerValidator = new HeaderValidator(blockTree, Sealer, specProvider, NoPoS.Instance, _logManager);
             IUnclesValidator unclesValidator = new UnclesValidator(blockTree, headerValidator, _logManager);
             IBlockValidator blockValidator = new BlockValidator(txValidator, headerValidator, unclesValidator, specProvider, _logManager);
             IStorageProvider storageProvider = new StorageProvider(trieStore, stateProvider, _logManager);
