@@ -20,6 +20,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
+using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using FluentAssertions.Extensions;
@@ -52,14 +53,18 @@ namespace Nethermind.Merge.Plugin.Test
 
         [Test, Retry(3)]
         [Ignore("ToDo")]
-        public async Task getPayload_should_create_block_on_top_of_genesis()
+        public async Task preparePayload_should_create_block_on_top_of_genesis()
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
-            IEngineRpcModule rpc = CreateConsensusModule(chain);
+            IEngineRpcModule rpc = CreateEngineModule(chain);
             Keccak startingHead = chain.BlockTree.HeadHash;
             UInt256 timestamp = Timestamper.UnixTime.Seconds;
-            uint getPayloadRequest = 3;
-            ResultWrapper<BlockRequestResult?> response = await rpc.engine_getPayload(getPayloadRequest);
+            Keccak random = Keccak.Zero;
+            Address feeRecipient = Address.Zero;
+            uint payloadId = 111;
+            
+            await rpc.engine_preparePayload(startingHead, timestamp, random, feeRecipient, payloadId);
+            ResultWrapper<BlockRequestResult?> response = await rpc.engine_getPayload(payloadId);
 
             BlockRequestResult expected = CreateParentBlockRequestOnHead(chain.BlockTree);
             expected.GasLimit = 4000000L;
@@ -73,12 +78,68 @@ namespace Nethermind.Merge.Plugin.Test
             
             response.Data.Should().BeEquivalentTo(expected);
         }
+
+        [Test]
+        [Ignore("ToDo")]
+        public async Task getPayload_should_return_error_if_there_was_no_preparePayload_at_all()
+        {
+            using MergeTestBlockchain chain = await CreateBlockChain();
+            IEngineRpcModule rpc = CreateEngineModule(chain);
+            uint payloadId = 111;
+
+            ResultWrapper<BlockRequestResult?> response = await rpc.engine_getPayload(payloadId);
+
+            response.Data.Should().Be("some kind of error message - requested unprepared payload");
+        }
         
+        [Test]
+        [Ignore("ToDo")]
+        public async Task getPayload_should_return_error_if_there_was_no_corresponding_preparePayload()
+        {
+            using MergeTestBlockchain chain = await CreateBlockChain();
+            IEngineRpcModule rpc = CreateEngineModule(chain);
+            Keccak startingHead = chain.BlockTree.HeadHash;
+            UInt256 timestamp = Timestamper.UnixTime.Seconds;
+            Keccak random = Keccak.Zero;
+            Address feeRecipient = Address.Zero;
+            uint payloadId = 111;
+            
+            await rpc.engine_preparePayload(startingHead, timestamp, random, feeRecipient, payloadId);
+
+            uint requestedPayloadId = 222;
+            ResultWrapper<BlockRequestResult?> response = await rpc.engine_getPayload(requestedPayloadId);
+
+            response.Data.Should().Be("some kind of error message - requested unprepared payload");
+        }
+        
+        [Test]
+        [Ignore("ToDo")]
+        public async Task getPayload_should_return_error_if_called_after_timeout()
+        {
+            const int timeout = 5000;
+            
+            using MergeTestBlockchain chain = await CreateBlockChain();
+            IEngineRpcModule rpc = CreateEngineModule(chain);
+            Keccak startingHead = chain.BlockTree.HeadHash;
+            UInt256 timestamp = Timestamper.UnixTime.Seconds;
+            Keccak random = Keccak.Zero;
+            Address feeRecipient = Address.Zero;
+            uint payloadId = 111;
+            
+            await rpc.engine_preparePayload(startingHead, timestamp, random, feeRecipient, payloadId);
+            
+            Thread.Sleep(timeout);
+            
+            ResultWrapper<BlockRequestResult?> response = await rpc.engine_getPayload(payloadId);
+
+            response.Data.Should().Be("some kind of error message - timeout");
+        }
+
         [Test]
         public async Task assembleBlock_should_not_create_block_with_unknown_parent()
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
-            IEngineRpcModule rpc = CreateConsensusModule(chain);
+            IEngineRpcModule rpc = CreateEngineModule(chain);
             Keccak notExistingHash = TestItem.KeccakH;
             AssembleBlockRequest assembleBlockRequest = new() {ParentHash = notExistingHash};
             ResultWrapper<BlockRequestResult?> response = await rpc.engine_assembleBlock(assembleBlockRequest);
@@ -89,7 +150,7 @@ namespace Nethermind.Merge.Plugin.Test
         public async Task newBlock_accepts_previously_assembled_block_multiple_times([Values(1, 3)] int times)
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
-            IEngineRpcModule rpc = CreateConsensusModule(chain);
+            IEngineRpcModule rpc = CreateEngineModule(chain);
             Keccak startingHead = chain.BlockTree.HeadHash;
             BlockHeader startingBestSuggestedHeader = chain.BlockTree.BestSuggestedHeader!;
             AssembleBlockRequest assembleBlockRequest = new() {ParentHash = startingHead};
@@ -134,7 +195,7 @@ namespace Nethermind.Merge.Plugin.Test
         public async Task newBlock_rejects_incorrect_input(Action<BlockRequestResult> breakerAction)
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
-            IEngineRpcModule rpc = CreateConsensusModule(chain);
+            IEngineRpcModule rpc = CreateEngineModule(chain);
             BlockRequestResult assembleBlockResult = await GetAssembleBlockResult(chain, rpc);
             Keccak blockHash = assembleBlockResult.BlockHash;
             breakerAction(assembleBlockResult);
@@ -151,7 +212,7 @@ namespace Nethermind.Merge.Plugin.Test
         public async Task newBlock_accepts_already_known_block()
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
-            IEngineRpcModule rpc = CreateConsensusModule(chain);
+            IEngineRpcModule rpc = CreateEngineModule(chain);
             Block block = Build.A.Block.WithNumber(1).WithParent(chain.BlockTree.Head!).TestObject;
             block.Header.Hash = new Keccak("0xdc3419cbd81455372f3e576f930560b35ec828cd6cdfbd4958499e43c68effdf");
             chain.BlockTree.SuggestBlock(block);
@@ -164,7 +225,7 @@ namespace Nethermind.Merge.Plugin.Test
         public async Task setHead_should_change_head()
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
-            IEngineRpcModule rpc = CreateConsensusModule(chain);
+            IEngineRpcModule rpc = CreateEngineModule(chain);
             Keccak startingHead = chain.BlockTree.HeadHash;
 
             BlockRequestResult blockRequestResult = CreateBlockRequest(
@@ -186,7 +247,7 @@ namespace Nethermind.Merge.Plugin.Test
         public async Task setHead_to_unknown_block_fails()
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
-            IEngineRpcModule rpc = CreateConsensusModule(chain);
+            IEngineRpcModule rpc = CreateEngineModule(chain);
             ResultWrapper<Result> setHeadResult = await rpc.engine_setHead(TestItem.KeccakF);
             setHeadResult.Data.Success.Should().BeFalse();
         }
@@ -195,7 +256,7 @@ namespace Nethermind.Merge.Plugin.Test
         public async Task setHead_no_common_branch_fails()
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
-            IEngineRpcModule rpc = CreateConsensusModule(chain);
+            IEngineRpcModule rpc = CreateEngineModule(chain);
             BlockHeader parent = Build.A.BlockHeader.WithNumber(1).WithHash(TestItem.KeccakA).TestObject;
             Block block = Build.A.Block.WithNumber(2).WithParent(parent).TestObject;
             chain.BlockTree.SuggestBlock(block);
@@ -208,7 +269,7 @@ namespace Nethermind.Merge.Plugin.Test
         public async Task finaliseBlock_should_succeed()
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
-            IEngineRpcModule rpc = CreateConsensusModule(chain);
+            IEngineRpcModule rpc = CreateEngineModule(chain);
             Block block = Build.A.Block.WithParent(chain.BlockTree.Head!).TestObject;
             chain.BlockTree.SuggestBlock(block);
             ResultWrapper<Result> resultWrapper = await rpc.engine_finaliseBlock(block.Hash!);
@@ -219,7 +280,7 @@ namespace Nethermind.Merge.Plugin.Test
         public async Task newBlock_accepts_first_block()
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
-            IEngineRpcModule rpc = CreateConsensusModule(chain);
+            IEngineRpcModule rpc = CreateEngineModule(chain);
             BlockRequestResult blockRequestResult = CreateBlockRequest(
                 CreateParentBlockRequestOnHead(chain.BlockTree), 
                 TestItem.AddressD);
@@ -232,7 +293,7 @@ namespace Nethermind.Merge.Plugin.Test
         public async Task can_progress_chain_one_by_one(int count)
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
-            IEngineRpcModule rpc = CreateConsensusModule(chain);
+            IEngineRpcModule rpc = CreateEngineModule(chain);
             Keccak lastHash = (await ProduceBranch(rpc, chain.BlockTree, count, chain.BlockTree.HeadHash, true)).Last().BlockHash;
             chain.BlockTree.HeadHash.Should().Be(lastHash);
             Block? last = RunForAllBlocksInBranch(chain.BlockTree, chain.BlockTree.HeadHash, b => b.IsGenesis, true);
@@ -244,7 +305,7 @@ namespace Nethermind.Merge.Plugin.Test
         public async Task setHead_can_reorganize_to_any_block()
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
-            IEngineRpcModule rpc = CreateConsensusModule(chain);
+            IEngineRpcModule rpc = CreateEngineModule(chain);
             
             async Task CanReorganizeToBlock(BlockRequestResult block, MergeTestBlockchain testChain)
             {
@@ -291,7 +352,7 @@ namespace Nethermind.Merge.Plugin.Test
         public async Task assembleBlock_can_build_on_any_block()
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
-            IEngineRpcModule rpc = CreateConsensusModule(chain);
+            IEngineRpcModule rpc = CreateEngineModule(chain);
             
             async Task CanAssembleOnBlock(BlockRequestResult block)
             {
@@ -340,7 +401,7 @@ namespace Nethermind.Merge.Plugin.Test
         public async Task newBlock_processes_passed_transactions([Values(false, true)] bool moveHead)
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
-            IEngineRpcModule rpc = CreateConsensusModule(chain);
+            IEngineRpcModule rpc = CreateEngineModule(chain);
             IReadOnlyList<BlockRequestResult> branch = await ProduceBranch(rpc, chain.BlockTree, 10, chain.BlockTree.HeadHash, moveHead);
 
             foreach (BlockRequestResult block in branch)
@@ -379,7 +440,7 @@ namespace Nethermind.Merge.Plugin.Test
         public async Task newBlock_transactions_produce_receipts()
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
-            IEngineRpcModule rpc = CreateConsensusModule(chain);
+            IEngineRpcModule rpc = CreateEngineModule(chain);
             IReadOnlyList<BlockRequestResult> branch = await ProduceBranch(rpc, chain.BlockTree, 1, chain.BlockTree.HeadHash, false);
 
             foreach (BlockRequestResult block in branch)
@@ -414,7 +475,7 @@ namespace Nethermind.Merge.Plugin.Test
         public async Task assembleBlock_picks_transactions_from_pool()
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
-            IEngineRpcModule rpc = CreateConsensusModule(chain);
+            IEngineRpcModule rpc = CreateEngineModule(chain);
             Keccak startingHead = chain.BlockTree.HeadHash;
             uint count = 3;
             int value = 10;
