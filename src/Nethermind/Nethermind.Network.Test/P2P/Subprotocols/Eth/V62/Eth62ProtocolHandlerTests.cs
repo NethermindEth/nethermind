@@ -109,6 +109,23 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         }
 
         [Test]
+        public void Should_stop_notifying_about_new_blocks_and_new_block_hashes_if_in_PoS()
+        {
+            _poSSwitcher.WasEverInPoS().Returns(true);
+            
+            _handler = new Eth62ProtocolHandler(
+                _session,
+                _svc,
+                new NodeStatsManager(Substitute.For<ITimerFactory>(), LimboLogs.Instance),
+                _syncManager,
+                _transactionPool,
+                _poSSwitcher,
+                LimboLogs.Instance);
+            
+            _syncManager.Received().StopNotifyingPeersAboutNewBlocks();
+        }
+
+        [Test]
         public void Can_broadcast_a_block()
         {
             Block block = Build.A.Block.WithTotalDifficulty(1L).TestObject;
@@ -120,6 +137,21 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _session.ClearReceivedCalls();
             _handler.NotifyOfNewBlock(block, (SendBlockPriority) 99);
             _session.Received().DeliverMessage(Arg.Any<NewBlockHashesMessage>());
+        }
+        
+        [Test]
+        public void Should_not_broadcast_a_block_if_in_PoS()
+        {
+            Block block = Build.A.Block.WithTotalDifficulty(1L).TestObject;
+            _poSSwitcher.WasEverInPoS().Returns(true);
+            _handler.NotifyOfNewBlock(block, SendBlockPriority.High);
+            _session.Received(0).DeliverMessage(Arg.Any<NewBlockMessage>());
+            _session.ClearReceivedCalls();
+            _handler.NotifyOfNewBlock(block, SendBlockPriority.Low);
+            _session.Received(0).DeliverMessage(Arg.Any<NewBlockHashesMessage>());
+            _session.ClearReceivedCalls();
+            _handler.NotifyOfNewBlock(block, (SendBlockPriority) 99);
+            _session.Received(0).DeliverMessage(Arg.Any<NewBlockHashesMessage>());
         }
 
         [Test]
@@ -240,6 +272,21 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
                 Arg.Is<Block>(b => b.Hash == newBlockMessage.Block.Hash),
                 _handler);
         }
+        
+        [Test]
+        public void Should_disconnect_peer_sending_new_block_message_in_PoS()
+        {
+            NewBlockMessage newBlockMessage = new NewBlockMessage();
+            newBlockMessage.Block = Build.A.Block.WithParent(_genesisBlock).TestObject;
+            newBlockMessage.TotalDifficulty = _genesisBlock.Difficulty + newBlockMessage.Block.Difficulty;
+
+            _poSSwitcher.WasEverInPoS().Returns(true);
+
+            HandleIncomingStatusMessage();
+            HandleZeroMessage(newBlockMessage, Eth62MessageCode.NewBlock);
+
+            _session.Received().InitiateDisconnect(DisconnectReason.BreachOfProtocol, "NewBlock message received while PoS protocol activated.");
+        }
 
         [Test]
         public void Throws_if_adding_new_block_fails()
@@ -265,6 +312,19 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             NewBlockHashesMessage msg = new NewBlockHashesMessage((Keccak.Zero, 1), (Keccak.Zero, 2));
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg, Eth62MessageCode.NewBlockHashes);
+        }
+        
+        [Test]
+        public void Should_disconnect_peer_sending_new_block_hashes_in_PoS()
+        {
+            NewBlockHashesMessage msg = new NewBlockHashesMessage((Keccak.Zero, 1), (Keccak.Zero, 2));
+            
+            _poSSwitcher.WasEverInPoS().Returns(true);
+            
+            HandleIncomingStatusMessage();
+            HandleZeroMessage(msg, Eth62MessageCode.NewBlockHashes);
+            
+            _session.Received().InitiateDisconnect(DisconnectReason.BreachOfProtocol, "NewBlockHashes message received while PoS protocol activated.");
         }
 
         [Test]
