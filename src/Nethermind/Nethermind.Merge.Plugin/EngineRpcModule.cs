@@ -32,7 +32,7 @@ namespace Nethermind.Merge.Plugin
     public class EngineRpcModule : IEngineRpcModule
     {
         private readonly IHandlerAsync<AssembleBlockRequest, BlockRequestResult?> _assembleBlockHandler;
-        private readonly IHandler<BlockRequestResult, NewBlockResult> _newBlockHandler;
+        private readonly IHandler<BlockRequestResult, ExecutePayloadResult> _executePayloadHandler;
         private readonly IHandler<Keccak, Result> _setHeadHandler;
         private readonly IHandler<Keccak, Result> _finaliseBlockHandler;
         private readonly ITransitionProcessHandler _transitionProcessHandler;
@@ -42,14 +42,14 @@ namespace Nethermind.Merge.Plugin
 
         public EngineRpcModule(
             IHandlerAsync<AssembleBlockRequest, BlockRequestResult?> assembleBlockHandler,
-            IHandler<BlockRequestResult, NewBlockResult> newBlockHandler,
+            IHandler<BlockRequestResult, ExecutePayloadResult> executePayloadHandler,
             IHandler<Keccak, Result> setHeadHandler,
             IHandler<Keccak, Result> finaliseBlockHandler,
             ITransitionProcessHandler transitionProcessHandler,
             ILogManager logManager)
         {
             _assembleBlockHandler = assembleBlockHandler;
-            _newBlockHandler = newBlockHandler;
+            _executePayloadHandler = executePayloadHandler;
             _setHeadHandler = setHeadHandler;
             _finaliseBlockHandler = finaliseBlockHandler;
             _transitionProcessHandler = transitionProcessHandler;
@@ -63,22 +63,26 @@ namespace Nethermind.Merge.Plugin
 
         public async Task<ResultWrapper<NewBlockResult>> engine_newBlock(BlockRequestResult requestResult)
         {
-            if (await _locker.WaitAsync(Timeout))
-            {
-                try
-                {
-                    return _newBlockHandler.Handle(requestResult);
-                }
-                finally
-                {
-                    _locker.Release();
-                }
-            }
-            else
-            {
-                if (_logger.IsWarn) _logger.Warn($"{nameof(engine_newBlock)} timeout.");
-                return ResultWrapper<NewBlockResult>.Success(new NewBlockResult {Valid = false});
-            }
+            //commented out after introducing executePayload and changing handler
+            throw new NotImplementedException();
+            
+            
+            // if (await _locker.WaitAsync(Timeout))
+            // {
+            //     try
+            //     {
+            //         return _executePayloadHandler.Handle(requestResult);
+            //     }
+            //     finally
+            //     {
+            //         _locker.Release();
+            //     }
+            // }
+            // else
+            // {
+            //     if (_logger.IsWarn) _logger.Warn($"{nameof(engine_newBlock)} timeout.");
+            //     return ResultWrapper<NewBlockResult>.Success(new NewBlockResult {Valid = false});
+            // }
         }
 
         public async Task<ResultWrapper<Result>> engine_setHead(Keccak blockHash)
@@ -114,9 +118,24 @@ namespace Nethermind.Merge.Plugin
             throw new NotImplementedException();
         }
 
-        public Task<ResultWrapper<ExecutePayloadResult>> engine_executePayload(BlockRequestResult executionPayload)
+        public async Task<ResultWrapper<ExecutePayloadResult>> engine_executePayload(BlockRequestResult executionPayload)
         {
-            throw new NotImplementedException();
+            if (await _locker.WaitAsync(Timeout))
+            {
+                try
+                {
+                    return _executePayloadHandler.Handle(executionPayload);
+                }
+                finally
+                {
+                    _locker.Release();
+                }
+            }
+            else
+            {
+                if (_logger.IsWarn) _logger.Warn($"{nameof(engine_executePayload)} timeout.");
+                return ResultWrapper<ExecutePayloadResult>.Success(new ExecutePayloadResult() {BlockHash = executionPayload.BlockHash, Status = VerificationStatus.Invalid});
+            }
         }
 
         public Task engine_consensusValidated(Keccak parentHash, VerificationStatus status)
