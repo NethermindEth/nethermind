@@ -16,27 +16,30 @@
 // 
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 
 namespace Nethermind.Mev.Data
 {
-    public class MevMegabundle: IEquatable<MevMegabundle>
+    public class MevMegabundle: MevBundle, IEquatable<MevMegabundle>
     {
-        public MevMegabundle(MevBundle bundle, Signature relaySignature)
+        public MevMegabundle(Signature relaySignature, long blockNumber, IReadOnlyList<BundleTransaction> transactions, UInt256? minTimestamp = null, UInt256? maxTimestamp = null)
+        : base(blockNumber, transactions, minTimestamp, maxTimestamp)
         {
-            Bundle = bundle;
             RelaySignature = relaySignature;
         }
         
-        public MevBundle Bundle { get; }
         public Signature RelaySignature { get; }
-        
+
         public bool Equals(MevMegabundle? other)
         {
             if (ReferenceEquals(null, other)) return false;
             if (ReferenceEquals(this, other)) return true;
-            return Equals(Bundle, other.Bundle)
+            return Equals(Hash, other.Hash)
                 && Equals(RelaySignature, other.RelaySignature);
         }
+
+        public override string ToString() => $"Hash:{Hash}; Block:{BlockNumber}; Min:{MinTimestamp}; Max:{MaxTimestamp}; TxCount:{Transactions.Count}; RelaySignature:{RelaySignature};";
     }
 }

@@ -28,19 +28,21 @@ namespace Nethermind.Mev.Source
     public class MegabundleSelector : IBundleSource
     {
         private readonly ISimulatedBundleSource _simulatedBundleSource;
-        private readonly Address _relayAddress;
 
-        public MegabundleSelector(ISimulatedBundleSource simulatedBundleSource, Address relayAddress)
+        public MegabundleSelector(ISimulatedBundleSource simulatedBundleSource)
         {
             _simulatedBundleSource = simulatedBundleSource;
-            _relayAddress = relayAddress;
         }
 
         public async Task<IEnumerable<MevBundle>> GetBundles(BlockHeader parent, UInt256 timestamp, long gasLimit,
             CancellationToken token = default)
         {
-            SimulatedMevBundle? simulatedBundle = await _simulatedBundleSource.GetMegabundle(parent, timestamp, gasLimit, _relayAddress, token);
-            return simulatedBundle is null ? Enumerable.Empty<MevBundle>() : new [] {simulatedBundle.Bundle};
+            IEnumerable<SimulatedMevBundle> simulatedBundles = await _simulatedBundleSource.GetMegabundles(parent, timestamp, gasLimit, token);
+            return simulatedBundles
+                .OrderByDescending(bundle => bundle.BundleAdjustedGasPrice)
+                .ThenBy(bundle => bundle.Bundle.SequenceNumber)
+                .Take(1)
+                .Select(s => s.Bundle);
         }
     }
 }

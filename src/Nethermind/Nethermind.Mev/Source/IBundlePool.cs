@@ -28,12 +28,10 @@ namespace Nethermind.Mev.Source
     {
         event EventHandler<BundleEventArgs> NewReceivedBundle;
         event EventHandler<BundleEventArgs> NewPendingBundle;
-        event EventHandler<MegabundleEventArgs> NewReceivedMegabundle;
-        event EventHandler<MegabundleEventArgs> NewPendingMegabundle;
         bool AddBundle(MevBundle bundle);
         bool AddMegabundle(MevMegabundle megabundle);
         IEnumerable<MevBundle> GetBundles(long block, UInt256 timestamp, CancellationToken token = default); 
-        MevBundle? GetMegabundle(long block, UInt256 timestamp, Address relayAddress, CancellationToken token = default);
+        IEnumerable<MevBundle> GetMegabundles(long block, UInt256 timestamp, CancellationToken token = default);
     }
     
     public static class BundlePoolExtensions
@@ -41,7 +39,7 @@ namespace Nethermind.Mev.Source
         public static IEnumerable<MevBundle> GetBundles(this IBundlePool bundleSource, BlockHeader parent, ITimestamper timestamper, CancellationToken token = default) => 
             bundleSource.GetBundles(parent.Number + 1, timestamper.UnixTime.Seconds, token);
         
-        public static MevBundle? GetMegabundle(this IBundlePool bundleSource, BlockHeader parent, ITimestamper timestamper, Address relayAddress, CancellationToken token = default) => 
-            bundleSource.GetMegabundle(parent.Number + 1, timestamper.UnixTime.Seconds, relayAddress, token);
+        public static IEnumerable<MevBundle> GetMegabundles(this IBundlePool bundleSource, BlockHeader parent, ITimestamper timestamper, CancellationToken token = default) => 
+            bundleSource.GetMegabundles(parent.Number + 1, timestamper.UnixTime.Seconds, token);
     }
 }
