@@ -29,42 +29,45 @@ namespace Nethermind.Sockets
         public async Task<ReceiveResult?> GetReceiveResult(ArraySegment<byte> buffer)
         {
             ReceiveResult? result = null;
-            Task<WebSocketReceiveResult> resultTask = _webSocket.ReceiveAsync(buffer, CancellationToken.None);
-
-            await resultTask.ContinueWith(t =>
+            if (_webSocket.State == WebSocketState.Open)
             {
-                if (t.IsFaulted)
+                Task<WebSocketReceiveResult> resultTask = _webSocket.ReceiveAsync(buffer, CancellationToken.None);
+
+                await resultTask.ContinueWith(t =>
                 {
-                    result = null;
-
-                    Exception? innerException = t.Exception;
-                    while (innerException?.InnerException != null)
+                    if (t.IsFaulted)
                     {
-                        innerException = innerException.InnerException;
+                        result = null;
+
+                        Exception? innerException = t.Exception;
+                        while (innerException?.InnerException != null)
+                        {
+                            innerException = innerException.InnerException;
+                        }
+
+                        if (innerException is SocketException socketException && socketException.SocketErrorCode == SocketError.ConnectionReset)
+                        {
+                            if (_logger.IsDebug) _logger.Debug("Client disconnected.");
+                        }
+                        else
+                        {
+                            if (_logger.IsError) _logger.Error($"Error when reading from WebSockets.", t.Exception);
+                        }
                     }
 
-                    if (innerException is SocketException socketException && socketException.SocketErrorCode == SocketError.ConnectionReset)
+                    if (t.IsCompletedSuccessfully)
                     {
-                        _logger.Info("Client disconnected.");
+                        result = new WebSocketsReceiveResult()
+                        {
+                            Closed = t.Result.MessageType == WebSocketMessageType.Close,
+                            Read = t.Result.Count,
+                            EndOfMessage = t.Result.EndOfMessage,
+                            CloseStatus = t.Result.CloseStatus,
+                            CloseStatusDescription = t.Result.CloseStatusDescription
+                        };
                     }
-                    else
-                    {
-                        _logger.Error($"Error when reading from WebSockets.", t.Exception);
-                    }
-                }
-
-                if (t.IsCompletedSuccessfully)
-                {
-                    result = new WebSocketsReceiveResult()
-                    {
-                        Closed = t.Result.MessageType == WebSocketMessageType.Close,
-                        Read = t.Result.Count,
-                        EndOfMessage = t.Result.EndOfMessage,
-                        CloseStatus = t.Result.CloseStatus,
-                        CloseStatusDescription = t.Result.CloseStatusDescription
-                    };
-                }
-            });
+                });
+            }
 
             return result;
         }
