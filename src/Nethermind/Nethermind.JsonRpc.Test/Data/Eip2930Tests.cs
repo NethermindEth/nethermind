@@ -180,8 +180,8 @@ namespace Nethermind.JsonRpc.Test.Data
         {
             _transactionForRpc = _serializer.Deserialize<TransactionForRpc>("{\"nonce\":\"0x0\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null,\"to\":null,\"value\":\"0x0\",\"gasPrice\":\"0x0\",\"gas\":\"0x0\",\"input\":null}");
             
-            // if there is not TxType provided, default value should be TxType.Legacy equal 0
-            _transactionForRpc.Type.Should().Be(0);
+            // if there is not TxType provided, default value should be null
+            _transactionForRpc.Type.Should().Be(null);
         }
 
         [Test]
@@ -189,8 +189,8 @@ namespace Nethermind.JsonRpc.Test.Data
         {
             _transactionForRpc = _serializer.Deserialize<TransactionForRpc>("{\"nonce\":\"0x0\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null,\"to\":null,\"value\":\"0x0\",\"gasPrice\":\"0x0\",\"gas\":\"0x0\",\"input\":null,\"type\":null}");
 
-            // if there is null TxType provided, still default value should be TxType.Legacy equal 0
-            _transactionForRpc.Type.Should().Be(0);
+            // if there is null TxType provided, still default value should be null
+            _transactionForRpc.Type.Should().Be(null);
         }
 
         [Test]
