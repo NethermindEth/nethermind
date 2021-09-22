@@ -115,27 +115,32 @@ namespace Nethermind.Evm.TransactionProcessing
 
         private void QuickFail(Transaction tx, BlockHeader block, ITxTracer txTracer, bool eip658NotEnabled, string? reason, bool deleteCallerAccount = false)
         {
-            block.GasUsed += tx.GasLimit;
-            
-            Address recipient = tx.To ?? ContractAddress.From(
-                tx.SenderAddress ?? Address.Zero,
-                _stateProvider.GetNonce(tx.SenderAddress ?? Address.Zero));
-            
-            if (txTracer.IsTracingReceipt)
+            try
             {
-                Keccak? stateRoot = null;
-                if (eip658NotEnabled)
-                {
-                    _stateProvider.RecalculateStateRoot();
-                    stateRoot = _stateProvider.StateRoot;
-                }
-                
-                txTracer.MarkAsFailed(recipient, tx.GasLimit, Array.Empty<byte>(), reason ?? "invalid", stateRoot);
-            }
+                block.GasUsed += tx.GasLimit;
 
-            if (deleteCallerAccount)
+                Address recipient = tx.To ?? ContractAddress.From(
+                    tx.SenderAddress ?? Address.Zero,
+                    _stateProvider.GetNonce(tx.SenderAddress ?? Address.Zero));
+
+                if (txTracer.IsTracingReceipt)
+                {
+                    Keccak? stateRoot = null;
+                    if (eip658NotEnabled)
+                    {
+                        _stateProvider.RecalculateStateRoot();
+                        stateRoot = _stateProvider.StateRoot;
+                    }
+
+                    txTracer.MarkAsFailed(recipient, tx.GasLimit, Array.Empty<byte>(), reason ?? "invalid", stateRoot);
+                }
+            }
+            finally
             {
-                _stateProvider.DeleteAccount(tx.SenderAddress ?? throw new InvalidOperationException());
+                if (deleteCallerAccount)
+                {
+                    _stateProvider.DeleteAccount(tx.SenderAddress ?? throw new InvalidOperationException());
+                }
             }
         }
 

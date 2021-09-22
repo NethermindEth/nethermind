@@ -57,7 +57,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 {
                     return ResultWrapper<TResult>.Fail(searchResult);
                 }
-
                 BlockHeader header = searchResult.Object;
                 if (!HasStateForBlock(_blockchainBridge, header))
                 {
@@ -73,17 +72,12 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     return ResultWrapper<TResult>.Fail("both gasPrice and (maxFeePerGas or maxPriorityFeePerGas) specified", ErrorCodes.InvalidInput);
                 }
                 
-                /*(if there is not TxType provided or null, default value should be TxType.Legacy equal 0) we have implemented it this way
-                In the case when we did not specify the TxType in the transaction, but we will get legacy transaction type due to what is specified above,
-                and the gas price of 1559 is still specified in the transaction. In this case, if EIP1559 is enabled, we can process the transaction as follows*/
+                bool isEip1559Enabled = _specProvider.GetSpec(header.Number).IsEip1559Enabled;
 
-                /*bool isEip1559Enabled = _specProvider.GetSpec(header.Number).IsEip1559Enabled;
-                
-                if (isEip1559Enabled && transactionCall.Type == TxType.Legacy &&
-                     (transactionCall.MaxPriorityFeePerGas != null || transactionCall.MaxFeePerGas != null))
-                {
-                     transactionCall.Type = TxType.EIP1559;
-                }*/
+                transactionCall.Type ??= (isEip1559Enabled &&
+                                          (transactionCall.MaxFeePerGas != null || transactionCall.MaxPriorityFeePerGas != null))
+                    ? TxType.EIP1559
+                    : TxType.Legacy;
                 
                 using CancellationTokenSource cancellationTokenSource = new(_rpcConfig.Timeout);
                 Transaction tx = transactionCall.ToTransaction(_blockchainBridge.GetChainId());
