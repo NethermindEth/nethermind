@@ -17,43 +17,47 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.Data;
 using Nethermind.State;
-using Result = Nethermind.Merge.Plugin.Data.Result;
 
 namespace Nethermind.Merge.Plugin.Handlers
 {
-    public class SetHeadBlockHandler : IHandler<Keccak, Result>
+    public class ForkChoiceUpdatedHandler : IHandler<ForkChoiceUpdatedRequest, Task>
     {
         private readonly IBlockTree _blockTree;
         private readonly IStateProvider _stateProvider;
         private readonly ILogger _logger;
 
-        public SetHeadBlockHandler(IBlockTree blockTree, IStateProvider stateProvider, ILogManager logManager)
+        public ForkChoiceUpdatedHandler(IBlockTree blockTree, IStateProvider stateProvider, ILogManager logManager)
         {
             _blockTree = blockTree;
             _stateProvider = stateProvider;
             _logger = logManager.GetClassLogger();
         }
 
-        public ResultWrapper<Result> Handle(Keccak blockHash)
+        public ResultWrapper<Task> Handle(ForkChoiceUpdatedRequest request)
         {
+            Keccak? blockHash = request.HeadBlockHash;
             Block? newHeadBlock = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.None);
             if (newHeadBlock == null)
             {
-                if (_logger.IsWarn) _logger.Warn($"Block {blockHash} cannot be found and it will not be set as head.");
-                return ResultWrapper<Result>.Success(Result.Fail);
+                string errorMsg = $"Block {blockHash} cannot be found and it will not be set as head.";
+                if (_logger.IsWarn) _logger.Warn(errorMsg);
+                return ResultWrapper<Task>.Fail(errorMsg, ErrorCodes.InvalidInput);
             }
 
             if (!TryGetBranch(newHeadBlock, out Block[] blocks))
             {
-                if (_logger.IsWarn) _logger.Warn($"Block's {blockHash} main chain predecessor cannot be found and it will not be set as head.");
-                return ResultWrapper<Result>.Success(Result.Fail);
+                string errorMsg = $"Block's {blockHash} main chain predecessor cannot be found and it will not be set as head.";
+                if (_logger.IsWarn) _logger.Warn(errorMsg);
+                return ResultWrapper<Task>.Fail(errorMsg, ErrorCodes.InvalidInput);
             }
 
             _blockTree.UpdateMainChain(blocks, true, true);
@@ -69,8 +73,9 @@ namespace Nethermind.Merge.Plugin.Handlers
                 if (_logger.IsWarn) _logger.Warn($"Block {blockHash} was not set as head.");
             }
 
-            return ResultWrapper<Result>.Success(success);
+            return ResultWrapper<Task>.Success(Task.CompletedTask);
         }
+        
 
         private bool TryGetBranch(Block block, out Block[] blocks)
         {
