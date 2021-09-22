@@ -30,6 +30,7 @@ namespace Nethermind.Core.Test.Json
         [TestCase((TxType)255)]
         [TestCase(TxType.Legacy)]
         [TestCase(TxType.AccessList)]
+        [TestCase(TxType.EIP1559)]
         public void Test_roundtrip(TxType arg)
         {
             TestConverter(arg, (before, after) => before.Equals(after), new TxTypeConverter());
