@@ -47,11 +47,11 @@ namespace Nethermind.Sockets
 
                         if (innerException is SocketException socketException && socketException.SocketErrorCode == SocketError.ConnectionReset)
                         {
-                            _logger.Debug("Client disconnected.");
+                            if (_logger.IsDebug) _logger.Debug("Client disconnected.");
                         }
                         else
                         {
-                            _logger.Error($"Error when reading from WebSockets.", t.Exception);
+                            if (_logger.IsError) _logger.Error($"Error when reading from WebSockets.", t.Exception);
                         }
                     }
 
