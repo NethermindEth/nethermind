@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Linq;
 using MathGmp.Native;
 using Nethermind.Core;
@@ -100,7 +101,8 @@ namespace Nethermind.JsonRpc.Data
         
         public UInt256? ChainId { get; set; }
         
-        public TxType Type { get; set; }
+        [JsonProperty(NullValueHandling = NullValueHandling.Include)]
+        public TxType? Type { get; set; }
         
         public AccessListItemForRpc[]? AccessList { get; set; }
 
@@ -123,7 +125,7 @@ namespace Nethermind.JsonRpc.Data
                 SenderAddress = From,
                 Value = Value ?? 0,
                 Data = Data ?? Input,
-                Type = Type,
+                Type = Type ?? TxType.Legacy,
                 AccessList = TryGetAccessList(),
                 ChainId = chainId,
                 DecodedMaxFeePerGas = MaxFeePerGas ?? 0
@@ -150,7 +152,7 @@ namespace Nethermind.JsonRpc.Data
                 SenderAddress = From,
                 Value = Value ?? 0,
                 Data = Data ?? Input,
-                Type = Type,
+                Type = Type ?? TxType.Legacy,
                 AccessList = TryGetAccessList(),
                 ChainId = chainId
             };
