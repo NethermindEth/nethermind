@@ -31,7 +31,8 @@ namespace Nethermind.Merge.Plugin
 {
     public class EngineRpcModule : IEngineRpcModule
     {
-        private readonly IHandlerAsync<AssembleBlockRequest, BlockRequestResult?> _assembleBlockHandler;
+        private readonly IHandlerAsync<PreparePayloadRequest, Result?> _preparePayloadHandler;
+        private readonly IHandler<UInt256, BlockRequestResult?> _getPayloadHandler;
         private readonly IHandler<BlockRequestResult, NewBlockResult> _newBlockHandler;
         private readonly IHandler<Keccak, Result> _setHeadHandler;
         private readonly IHandler<Keccak, Result> _finaliseBlockHandler;
@@ -41,24 +42,21 @@ namespace Nethermind.Merge.Plugin
         private readonly ILogger _logger;
 
         public EngineRpcModule(
-            IHandlerAsync<AssembleBlockRequest, BlockRequestResult?> assembleBlockHandler,
+            IHandlerAsync<PreparePayloadRequest, Result?> preparePayloadHandler,
+            IHandler<UInt256, BlockRequestResult?> getPayloadHandler,
             IHandler<BlockRequestResult, NewBlockResult> newBlockHandler,
             IHandler<Keccak, Result> setHeadHandler,
             IHandler<Keccak, Result> finaliseBlockHandler,
             ITransitionProcessHandler transitionProcessHandler,
             ILogManager logManager)
         {
-            _assembleBlockHandler = assembleBlockHandler;
+            _preparePayloadHandler = preparePayloadHandler;
+            _getPayloadHandler = getPayloadHandler;
             _newBlockHandler = newBlockHandler;
             _setHeadHandler = setHeadHandler;
             _finaliseBlockHandler = finaliseBlockHandler;
             _transitionProcessHandler = transitionProcessHandler;
             _logger = logManager.GetClassLogger();
-        }
-
-        public Task<ResultWrapper<BlockRequestResult?>> engine_assembleBlock(AssembleBlockRequest request)
-        {
-            return _assembleBlockHandler.HandleAsync(request);
         }
 
         public async Task<ResultWrapper<NewBlockResult>> engine_newBlock(BlockRequestResult requestResult)
@@ -106,12 +104,12 @@ namespace Nethermind.Merge.Plugin
 
         public Task engine_preparePayload(Keccak parentHash, UInt256 timestamp, Keccak random, Address coinbase, uint payloadId)
         {
-            throw new NotImplementedException();
+            return _preparePayloadHandler.HandleAsync(new PreparePayloadRequest(parentHash, timestamp, random, coinbase, payloadId));
         }
 
         public Task<ResultWrapper<BlockRequestResult?>> engine_getPayload(uint payloadId)
         {
-            throw new NotImplementedException();
+            return Task.FromResult(_getPayloadHandler.Handle(payloadId));
         }
 
         public Task<ResultWrapper<ExecutePayloadResult>> engine_executePayload(BlockRequestResult executionPayload)

@@ -17,6 +17,7 @@
 
 using System;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
@@ -31,6 +32,8 @@ namespace Nethermind.Merge.Plugin
     {
         private IMiningConfig _miningConfig = null!;
         private Eth2BlockProducer _blockProducer = null!;
+        private Eth2BlockProducer _emptyBlockProducer = null!;
+        private IManualBlockProductionTrigger _emptyBlockProductionTrigger = null!;
         private ManualTimestamper? _manualTimestamper;
         private readonly IManualBlockProductionTrigger _defaultBlockProductionTrigger = new BuildBlocksWhenRequested();
 
@@ -66,6 +69,21 @@ namespace Nethermind.Merge.Plugin
                     _miningConfig,
                     _api.LogManager
                 );
+                    
+                _emptyBlockProductionTrigger = new BuildBlocksWhenRequested();
+                
+                _emptyBlockProducer = new Eth2EmptyBlockProducerFactory().Create(
+                    _api.BlockProducerEnvFactory,
+                    _api.BlockTree,
+                    _emptyBlockProductionTrigger,
+                    _api.SpecProvider,
+                    _api.EngineSigner,
+                    _manualTimestamper,
+                    _miningConfig,
+                    _api.LogManager
+                );
+                
+                _emptyBlockProducer.Start();
             }
 
             return Task.FromResult((IBlockProducer)_blockProducer);

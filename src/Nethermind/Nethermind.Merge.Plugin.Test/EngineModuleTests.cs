@@ -51,15 +51,14 @@ namespace Nethermind.Merge.Plugin.Test
         private ITimestamper Timestamper { get; } = new ManualTimestamper(Timestamp);
 
         [Test, Retry(3)]
-        [Ignore("ToDo")]
-        public async Task getPayload_should_create_block_on_top_of_genesis()
+        public async Task assembleBlock_should_create_block_on_top_of_genesis()
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
             IEngineRpcModule rpc = CreateConsensusModule(chain);
             Keccak startingHead = chain.BlockTree.HeadHash;
             UInt256 timestamp = Timestamper.UnixTime.Seconds;
-            uint getPayloadRequest = 3;
-            ResultWrapper<BlockRequestResult?> response = await rpc.engine_getPayload(getPayloadRequest);
+            PreparePayloadRequest preparePayloadRequest = new() {ParentHash = startingHead, Timestamp = timestamp};
+            ResultWrapper<BlockRequestResult?> response = await rpc.engine_assembleBlock(preparePayloadRequest);
 
             BlockRequestResult expected = CreateParentBlockRequestOnHead(chain.BlockTree);
             expected.GasLimit = 4000000L;
@@ -80,8 +79,8 @@ namespace Nethermind.Merge.Plugin.Test
             using MergeTestBlockchain chain = await CreateBlockChain();
             IEngineRpcModule rpc = CreateConsensusModule(chain);
             Keccak notExistingHash = TestItem.KeccakH;
-            AssembleBlockRequest assembleBlockRequest = new() {ParentHash = notExistingHash};
-            ResultWrapper<BlockRequestResult?> response = await rpc.engine_assembleBlock(assembleBlockRequest);
+            PreparePayloadRequest preparePayloadRequest = new() {ParentHash = notExistingHash};
+            ResultWrapper<BlockRequestResult?> response = await rpc.engine_assembleBlock(preparePayloadRequest);
             response.Data.Should().BeNull();
         }
         
@@ -92,8 +91,8 @@ namespace Nethermind.Merge.Plugin.Test
             IEngineRpcModule rpc = CreateConsensusModule(chain);
             Keccak startingHead = chain.BlockTree.HeadHash;
             BlockHeader startingBestSuggestedHeader = chain.BlockTree.BestSuggestedHeader!;
-            AssembleBlockRequest assembleBlockRequest = new() {ParentHash = startingHead};
-            ResultWrapper<BlockRequestResult?> assembleBlockResult = await rpc.engine_assembleBlock(assembleBlockRequest);
+            PreparePayloadRequest preparePayloadRequest = new() {ParentHash = startingHead};
+            ResultWrapper<BlockRequestResult?> assembleBlockResult = await rpc.engine_assembleBlock(preparePayloadRequest);
             assembleBlockResult.Data!.ParentHash.Should().Be(startingHead);
 
             for (int i = 0; i < times; i++)
@@ -296,8 +295,8 @@ namespace Nethermind.Merge.Plugin.Test
             async Task CanAssembleOnBlock(BlockRequestResult block)
             {
                 UInt256 timestamp = Timestamper.UnixTime.Seconds;
-                AssembleBlockRequest assembleBlockRequest = new() {ParentHash = block.BlockHash, Timestamp = timestamp};
-                ResultWrapper<BlockRequestResult?> response = await rpc.engine_assembleBlock(assembleBlockRequest);
+                PreparePayloadRequest preparePayloadRequest = new() {ParentHash = block.BlockHash, Timestamp = timestamp};
+                ResultWrapper<BlockRequestResult?> response = await rpc.engine_assembleBlock(preparePayloadRequest);
 
                 response.Data.Should().NotBeNull();
                 response.Data!.ParentHash.Should().Be(block.BlockHash);
@@ -422,8 +421,8 @@ namespace Nethermind.Merge.Plugin.Test
             PrivateKey sender = TestItem.PrivateKeyB;
             Transaction[] transactions = BuildTransactions(chain, startingHead, sender, recipient, count, value, out _, out _);
             chain.AddTransactions(transactions);
-            AssembleBlockRequest assembleBlockRequest = new() {ParentHash = startingHead};
-            BlockRequestResult assembleBlockResult = (await rpc.engine_assembleBlock(assembleBlockRequest)).Data!;
+            PreparePayloadRequest preparePayloadRequest = new() {ParentHash = startingHead};
+            BlockRequestResult assembleBlockResult = (await rpc.engine_assembleBlock(preparePayloadRequest)).Data!;
 
             assembleBlockResult.StateRoot.Should().NotBe(chain.BlockTree.Genesis!.StateRoot!);
             
@@ -504,8 +503,8 @@ namespace Nethermind.Merge.Plugin.Test
             ManualTimestamper timestamper = new(Timestamp);
             for (int i = 0; i < count; i++)
             {
-                AssembleBlockRequest assembleBlockRequest = new() {ParentHash = parentBlockHash, Timestamp = ((ITimestamper) timestamper).UnixTime.Seconds};
-                BlockRequestResult assembleBlockResponse = (await rpc.engine_assembleBlock(assembleBlockRequest)).Data!;
+                PreparePayloadRequest preparePayloadRequest = new() {ParentHash = parentBlockHash, Timestamp = ((ITimestamper) timestamper).UnixTime.Seconds};
+                BlockRequestResult assembleBlockResponse = (await rpc.engine_assembleBlock(preparePayloadRequest)).Data!;
                 NewBlockResult newBlockResponse = (await rpc.engine_newBlock(assembleBlockResponse!)).Data;
                 newBlockResponse.Valid.Should().BeTrue();
                 if (setHead)
@@ -538,8 +537,8 @@ namespace Nethermind.Merge.Plugin.Test
         private static async Task<BlockRequestResult> GetAssembleBlockResult(MergeTestBlockchain chain, IEngineRpcModule rpc)
         {
             Keccak startingHead = chain.BlockTree.HeadHash;
-            AssembleBlockRequest assembleBlockRequest = new() {ParentHash = startingHead};
-            ResultWrapper<BlockRequestResult?> assembleBlockResult = await rpc.engine_assembleBlock(assembleBlockRequest);
+            PreparePayloadRequest preparePayloadRequest = new() {ParentHash = startingHead};
+            ResultWrapper<BlockRequestResult?> assembleBlockResult = await rpc.engine_assembleBlock(preparePayloadRequest);
             return assembleBlockResult.Data!;
         }
         
