@@ -135,7 +135,7 @@ namespace Nethermind.Merge.Plugin.Test
             Assert.AreEqual(1500000000000000000, (long)rewards[1].Value, "uncle1");
             Assert.AreEqual(1500000000000000000, (long)rewards[2].Value, "uncle2");
             
-            rewards = calculator.CalculateRewards(block);
+            rewards = calculator.CalculateRewards(block2);
             Assert.AreEqual(0, rewards.Length);
         }
 
