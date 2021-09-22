@@ -28,6 +28,7 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -254,6 +255,27 @@ namespace Nethermind.Blockchain.Test.Validators
             _block.Header.Hash = _block.CalculateHash();
             
             bool result = _validator.Validate(_block.Header, _parentBlock.Header);
+            
+            Assert.True(result);
+        }
+
+        [Test]
+        public void When_valid_after_the_merge()
+        {
+            PoSSwitcher poSSwitcher = new(NullLogManager.Instance);
+            poSSwitcher.SetTerminalTotalDifficulty(0);
+            poSSwitcher.IsPos(Build.A.BlockHeader.WithTotalDifficulty(0).TestObject, true);
+            
+            _validator = new HeaderValidator(_blockTree, _ethash, _specProvider, poSSwitcher, new OneLoggerLogManager(_testLogger));
+            _block = Build.A.Block
+                .WithDifficulty(0)
+                .WithMixHash(Keccak.Zero)
+                .WithNonce(0ul)
+                .WithTotalDifficulty(0L).TestObject;
+            _block.Header.SealEngineType = SealEngineType.None;
+            _block.Header.Hash = _block.CalculateHash();
+            
+            bool result = _validator.Validate(_block.Header);
             
             Assert.True(result);
         }
