@@ -26,56 +26,93 @@ namespace Nethermind.Merge.Plugin.Test
     public class PoSSwitcherTests
     {
         [Test]
-        public void Is_pos()
+        public void Is_pos_with_total_difficulty()
         {
             PoSSwitcher poSSwitcher = new(NUnitLogManager.Instance);
-            BlockHeader blockHeader = Build.A.BlockHeader.WithTotalDifficulty(100L).WithParentHash(Keccak.OfAnEmptyString).TestObject;
-            BlockHeader blockHeader2 = Build.A.BlockHeader.WithTotalDifficulty(300L).WithParentHash(Keccak.Compute("terminal")).TestObject;
-            BlockHeader blockHeader3 = Build.A.BlockHeader.WithTotalDifficulty(400L).TestObject;
+            poSSwitcher.SetTerminalTotalDifficulty(200);
+
+            BlockHeader blockHeader = Build.A.BlockHeader.WithTotalDifficulty(100L).TestObject;
+            BlockHeader blockHeader2 = Build.A.BlockHeader.WithTotalDifficulty(200L).TestObject;
+            BlockHeader blockHeader3 = Build.A.BlockHeader.WithTotalDifficulty(300L).TestObject;
 
             Assert.AreEqual(false, poSSwitcher.IsPos(blockHeader, false));
-            
-            poSSwitcher.SetTerminalTotalDifficulty(300);
-            
+            Assert.AreEqual(true, poSSwitcher.IsPos(blockHeader2, false));
+            Assert.AreEqual(true, poSSwitcher.IsPos(blockHeader3, false));
+
+            poSSwitcher.SetTerminalTotalDifficulty(500);
+
+            Assert.AreEqual(false, poSSwitcher.IsPos(blockHeader, false));
+            Assert.AreEqual(false, poSSwitcher.IsPos(blockHeader2, false));
+            Assert.AreEqual(false, poSSwitcher.IsPos(blockHeader3, false));
+        }
+
+        [Test]
+        public void Is_pos_with_terminal_hash()
+        {
+            PoSSwitcher poSSwitcher = new(NUnitLogManager.Instance);
+            poSSwitcher.SetTerminalPoWHash(Keccak.Compute("test1"));
+
+            BlockHeader blockHeader = Build.A.BlockHeader.WithParentHash(Keccak.Compute("test2")).TestObject;
+            BlockHeader blockHeader2 = Build.A.BlockHeader.WithParentHash(Keccak.Compute("test1")).TestObject;
+
             Assert.AreEqual(false, poSSwitcher.IsPos(blockHeader, false));
             Assert.AreEqual(true, poSSwitcher.IsPos(blockHeader2, false));
-            
-            poSSwitcher.SetTerminalPoWHash(Keccak.Compute("terminal"));
-            
-            Assert.AreEqual(false, poSSwitcher.IsPos(blockHeader, false));
+
+            poSSwitcher.SetTerminalPoWHash(Keccak.Compute("test2"));
+
+            Assert.AreEqual(true, poSSwitcher.IsPos(blockHeader, false));
+            Assert.AreEqual(false, poSSwitcher.IsPos(blockHeader2, false));
+        }
+
+        [Test]
+        public void Is_pos_try_switch_to_PoS()
+        {
+            PoSSwitcher poSSwitcher = new(NUnitLogManager.Instance);
+            poSSwitcher.SetTerminalTotalDifficulty(200);
+
+            BlockHeader blockHeader = Build.A.BlockHeader.WithTotalDifficulty(200L).TestObject;
+            BlockHeader blockHeader2 = Build.A.BlockHeader.WithTotalDifficulty(400L).TestObject;
+
+            Assert.AreEqual(true, poSSwitcher.IsPos(blockHeader, true));
+            poSSwitcher.SetTerminalTotalDifficulty(500);
+
+            Assert.AreEqual(true, poSSwitcher.IsPos(blockHeader, false));
+            Assert.AreEqual(true, poSSwitcher.IsPos(blockHeader2, false));
+        }
+
+        [Test]
+        public void Is_pos_sets_first_PoS_header_once()
+        {
+            PoSSwitcher poSSwitcher = new(NUnitLogManager.Instance);
+            poSSwitcher.SetTerminalTotalDifficulty(200);
+
+            BlockHeader blockHeader = Build.A.BlockHeader.WithTotalDifficulty(200L).TestObject;
+            BlockHeader blockHeader2 = Build.A.BlockHeader.WithTotalDifficulty(400L).TestObject;
+
+            poSSwitcher.IsPos(blockHeader, true);
+            poSSwitcher.SetTerminalTotalDifficulty(400);
+
+            Assert.AreEqual(true, poSSwitcher.IsPos(blockHeader, false));
             Assert.AreEqual(true, poSSwitcher.IsPos(blockHeader2, false));
 
             poSSwitcher.IsPos(blockHeader2, true);
-            
-            Assert.AreEqual(true, poSSwitcher.IsPos(blockHeader3, false));
-            Assert.AreEqual(false, poSSwitcher.IsPos(blockHeader, false));
-            
-            poSSwitcher.IsPos(blockHeader, true);
-            poSSwitcher.SetTerminalTotalDifficulty(0L);
-            poSSwitcher.SetTerminalPoWHash(Keccak.OfAnEmptyString);
-            
-            Assert.AreEqual(false, poSSwitcher.IsPos(blockHeader, false));
+
+            Assert.AreEqual(true, poSSwitcher.IsPos(blockHeader, false));
             Assert.AreEqual(true, poSSwitcher.IsPos(blockHeader2, false));
-            Assert.AreEqual(true, poSSwitcher.IsPos(blockHeader3, false));
         }
-        
+
         [Test]
         public void Was_ever_in_pos()
         {
             PoSSwitcher poSSwitcher = new(NUnitLogManager.Instance);
-            
-            Assert.AreEqual(false,poSSwitcher.WasEverInPoS());
-            
-            poSSwitcher.SetTerminalTotalDifficulty(25L);
-            BlockHeader blockHeader = Build.A.BlockHeader.WithTotalDifficulty(30L).TestObject;
+            poSSwitcher.SetTerminalTotalDifficulty(200L);
+
+            Assert.AreEqual(false, poSSwitcher.WasEverInPoS());
+
+            BlockHeader blockHeader = Build.A.BlockHeader.WithTotalDifficulty(300L).TestObject;
             poSSwitcher.IsPos(blockHeader, true);
-            
-            Assert.AreEqual(true,poSSwitcher.WasEverInPoS());
-            
-            poSSwitcher.SetTerminalTotalDifficulty(1L);
-            
-            Assert.AreEqual(true,poSSwitcher.WasEverInPoS());
+
+            Assert.AreEqual(true, poSSwitcher.WasEverInPoS());
         }
     }
 }
-
