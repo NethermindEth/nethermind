@@ -337,7 +337,7 @@ namespace Nethermind.Mev.Source
                 UInt256 timestamp = _timestamper.UnixTime.Seconds;
                 IEnumerable<MevBundle> bundles = GetBundles(e.Block.Number + 1, UInt256.MaxValue, timestamp);
                 IEnumerable<MevBundle> megabundles = GetMegabundles(e.Block.Number + 1, UInt256.MaxValue, timestamp);
-                IEnumerable<MevBundle> allBundles = bundles.Concat(megabundles)
+                IEnumerable<MevBundle> allBundles = bundles.Concat(megabundles);
                 foreach (MevBundle bundle in allBundles)
                 {
                     SimulateBundle(bundle, e.Block.Header);

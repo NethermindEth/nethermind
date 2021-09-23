@@ -39,7 +39,17 @@ namespace Nethermind.Mev.Data
             return Equals(Hash, other.Hash)
                 && Equals(RelaySignature, other.RelaySignature);
         }
+        
+        public override bool Equals(object? obj)
+        {
+            if (ReferenceEquals(null, obj)) return false;
+            if (ReferenceEquals(this, obj)) return true;
+            if (obj.GetType() != GetType()) return false;
+            return Equals((MevMegabundle) obj);
+        }
 
+        public override int GetHashCode() => Hash.GetHashCode();
+        
         public override string ToString() => $"Hash:{Hash}; Block:{BlockNumber}; Min:{MinTimestamp}; Max:{MaxTimestamp}; TxCount:{Transactions.Count}; RelaySignature:{RelaySignature};";
     }
 }

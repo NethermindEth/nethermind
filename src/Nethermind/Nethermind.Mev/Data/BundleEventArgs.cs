@@ -16,16 +16,19 @@
 // 
 
 using System;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Mev.Data
 {
     public class BundleEventArgs : EventArgs
     {
         public MevBundle MevBundle { get; }
-        
-        public BundleEventArgs(MevBundle mevBundle)
+        public Signature? RelaySignature { get;  }
+
+        public BundleEventArgs(MevBundle mevBundle, Signature? relaySignature = null)
         {
             MevBundle = mevBundle;
+            RelaySignature = relaySignature;
         }
     }
 }
