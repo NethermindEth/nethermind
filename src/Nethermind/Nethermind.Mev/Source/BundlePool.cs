@@ -166,7 +166,7 @@ namespace Nethermind.Mev.Source
         public bool AddMegabundle(MevMegabundle megabundle)
         {
             Metrics.MegabundlesReceived++;
-            BundleEventArgs bundleEventArgs = new(megabundle);
+            BundleEventArgs bundleEventArgs = new(megabundle, megabundle.RelaySignature);
             NewReceivedBundle?.Invoke(this, bundleEventArgs);
 
             if (ValidateBundle(megabundle))
@@ -336,7 +336,9 @@ namespace Nethermind.Mev.Source
             {
                 UInt256 timestamp = _timestamper.UnixTime.Seconds;
                 IEnumerable<MevBundle> bundles = GetBundles(e.Block.Number + 1, UInt256.MaxValue, timestamp);
-                foreach (MevBundle bundle in bundles)
+                IEnumerable<MevBundle> megabundles = GetMegabundles(e.Block.Number + 1, UInt256.MaxValue, timestamp);
+                IEnumerable<MevBundle> allBundles = bundles.Concat(megabundles)
+                foreach (MevBundle bundle in allBundles)
                 {
                     SimulateBundle(bundle, e.Block.Header);
                 }
@@ -366,6 +368,14 @@ namespace Nethermind.Mev.Source
                 {
                     _bundles.TryRemove(mevBundle);
                 }
+            }
+
+            IEnumerable<Address> megabundleKeysToRemove = _megabundles
+                .Where(m => m.Value.BlockNumber <= blockNumber)
+                .Select(m => m.Key);
+            foreach (Address address in megabundleKeysToRemove)
+            {
+                _megabundles.TryRemove(address, out _);
             }
         }
 
