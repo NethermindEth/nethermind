@@ -188,7 +188,7 @@ namespace Nethermind.Merge.Plugin.Test
             using MergeTestBlockchain chain = await CreateBlockChain();
             IEngineRpcModule rpc = CreateConsensusModule(chain);
             ResultWrapper<Result> setHeadResult = rpc.engine_forkchoiceUpdated(TestItem.KeccakF, TestItem.KeccakF, TestItem.KeccakF);
-            Assert.AreEqual(null, setHeadResult.Data);
+            Assert.AreEqual(ErrorCodes.InvalidInput, setHeadResult.ErrorCode);
         }
         
         [Test]
