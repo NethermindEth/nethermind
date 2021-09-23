@@ -61,30 +61,6 @@ namespace Nethermind.Merge.Plugin
             return _assembleBlockHandler.HandleAsync(request);
         }
 
-        public async Task<ResultWrapper<NewBlockResult>> engine_newBlock(BlockRequestResult requestResult)
-        {
-            //commented out after introducing executePayload and changing handler
-            throw new NotImplementedException();
-            
-            
-            // if (await _locker.WaitAsync(Timeout))
-            // {
-            //     try
-            //     {
-            //         return _executePayloadHandler.Handle(requestResult);
-            //     }
-            //     finally
-            //     {
-            //         _locker.Release();
-            //     }
-            // }
-            // else
-            // {
-            //     if (_logger.IsWarn) _logger.Warn($"{nameof(engine_newBlock)} timeout.");
-            //     return ResultWrapper<NewBlockResult>.Success(new NewBlockResult {Valid = false});
-            // }
-        }
-
         public async Task<ResultWrapper<Result>> engine_setHead(Keccak blockHash)
         {
             if (await _locker.WaitAsync(Timeout))

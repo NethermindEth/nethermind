@@ -37,13 +37,6 @@ namespace Nethermind.Merge.Plugin
         Task<ResultWrapper<BlockRequestResult?>> engine_assembleBlock(AssembleBlockRequest request);
         
         [JsonRpcMethod(
-            Description = "Injects a new block from the consensus layer.",
-            IsSharable = true,
-            IsImplemented = true)]
-        Task<ResultWrapper<NewBlockResult>> engine_newBlock(
-            BlockRequestResult requestResult);
-        
-        [JsonRpcMethod(
             Description = "Changes consensus layer head block.",
             IsSharable = true,
             IsImplemented = true)]
