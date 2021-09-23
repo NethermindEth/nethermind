@@ -26,8 +26,8 @@ namespace Nethermind.Mev.Source
 {
     public interface IBundlePool : IBundleSource
     {
-        event EventHandler<BundleEventArgs> NewReceivedBundle;
-        event EventHandler<BundleEventArgs> NewPendingBundle;
+        event EventHandler<BundleEventArgs> NewReceived;
+        event EventHandler<BundleEventArgs> NewPending;
         bool AddBundle(MevBundle bundle);
         bool AddMegabundle(MevMegabundle megabundle);
         IEnumerable<MevBundle> GetBundles(long block, UInt256 timestamp, CancellationToken token = default); 

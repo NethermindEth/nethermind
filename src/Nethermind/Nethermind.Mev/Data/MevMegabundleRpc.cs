@@ -15,12 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Core.Crypto;
+using System;
 
 namespace Nethermind.Mev.Data
 {
     public class MevMegabundleRpc : MevBundleRpc
     {
-        public Signature? RelaySignature { get; set; } = null;
+        public byte[] RelaySignature { get; set; } = Array.Empty<byte>();
     }
 }

@@ -168,7 +168,41 @@ namespace Nethermind.Mev.Test
             string parameters = $"{{\"txs\":[\"{EncodeTx(setTx).Bytes.ToHexString()}\",\"{EncodeTx(getTx).Bytes.ToHexString()}\"],\"blockNumber\":\"0x4\"}}";
             string result = chain.TestSerializedRequest(chain.MevRpcModule, "eth_sendBundle", parameters);
             result.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}}");
-        }        
+        }
+
+        [Test]
+        public async Task Should_execute_eth_sendMegabundle_and_serialize_successful_response_properly()
+        {
+            var chain = await CreateChain(2, null, null, new []{ TestItem.AddressC });
+        
+            Address contractAddress = await Contracts.Deploy(chain, Contracts.CallableCode);
+            
+            Transaction getTx = Build.A.Transaction
+                .WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(1ul)
+                .WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.CallableInvokeGet)).WithValue(0)
+                .SignedAndResolved(TestItem.PrivateKeyA)
+                .TestObject;
+            Transaction setTx = Build.A.Transaction
+                .WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(1ul)
+                .WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.CallableInvokeSet)).WithValue(0)
+                .SignedAndResolved(TestItem.PrivateKeyB)
+                .TestObject;
+            
+            BundleTransaction[] txs =
+            {
+                Rlp.Decode<BundleTransaction>(Rlp.Encode(getTx).Bytes), 
+                Rlp.Decode<BundleTransaction>(Rlp.Encode(setTx).Bytes)
+            };
+            txs[0].CanRevert = false;
+            txs[1].CanRevert = false;
+            MevBundle bundle = new (4, txs, 0, 0);
+            Signature relaySignature = chain.EthereumEcdsa.Sign(TestItem.PrivateKeyC, bundle.Hash);
+            
+            string parameters = $"{{\"txs\":[\"{Rlp.Encode(setTx).Bytes.ToHexString()}\",\"{Rlp.Encode(getTx).Bytes.ToHexString()}\"]," +
+                                $"\"blockNumber\":\"0x4\",\"relaySignature\":\"{relaySignature}\"}}";
+            string result = chain.TestSerializedRequest(chain.MevRpcModule, "eth_sendMegabundle", parameters);
+            result.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}}");
+        }
 
         [Test]
         public async Task Should_pick_one_highest_scoring_bundle_from_several_with_no_pool_txs_with_1_maxMergedBundles()
