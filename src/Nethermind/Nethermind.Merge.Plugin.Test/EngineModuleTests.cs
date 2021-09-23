@@ -183,12 +183,12 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         [Test]
-        public async Task setHead_to_unknown_block_fails()
+        public async Task forkChoiceUpdated_to_unknown_block_fails()
         {
-            using MergeTestBlockchain chain = await CreateBlockChain();
-            IEngineRpcModule rpc = CreateConsensusModule(chain);
-            ResultWrapper<Result> setHeadResult = await rpc.engine_setHead(TestItem.KeccakF);
-            setHeadResult.Data.Success.Should().BeFalse();
+            // using MergeTestBlockchain chain = await CreateBlockChain();
+            // IEngineRpcModule rpc = CreateConsensusModule(chain);
+            // ResultWrapper<Result> setHeadResult = await rpc.engine_forkchoiceUpdated(TestItem.KeccakF, TestItem.KeccakF, TestItem.KeccakF);
+            // Assert.AreEqual(null, setHeadResult.Data);
         }
         
         [Test]

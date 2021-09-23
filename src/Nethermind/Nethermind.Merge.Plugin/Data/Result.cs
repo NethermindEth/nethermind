@@ -15,8 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Text.Json.Serialization;
-
 namespace Nethermind.Merge.Plugin.Data
 {
     public class Result

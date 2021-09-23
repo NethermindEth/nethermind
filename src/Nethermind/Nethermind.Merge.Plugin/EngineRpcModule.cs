@@ -35,6 +35,7 @@ namespace Nethermind.Merge.Plugin
         private readonly IHandler<BlockRequestResult, NewBlockResult> _newBlockHandler;
         private readonly IHandler<Keccak, Result> _setHeadHandler;
         private readonly IHandler<Keccak, Result> _finaliseBlockHandler;
+        private readonly IHandler<ForkChoiceUpdatedRequest, Result> _fori
         private readonly ITransitionProcessHandler _transitionProcessHandler;
         private readonly SemaphoreSlim _locker = new(1, 1);
         private readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
@@ -124,7 +125,7 @@ namespace Nethermind.Merge.Plugin
             throw new NotImplementedException();
         }
 
-        public Task engine_forkchoiceUpdated(Keccak headBlockHash, Keccak finalizedBlockHash, Keccak confirmedBlockHash)
+        public ResultWrapper<Result> engine_forkchoiceUpdated(Keccak headBlockHash, Keccak finalizedBlockHash, Keccak confirmedBlockHash)
         {
             throw new NotImplementedException();
         }
