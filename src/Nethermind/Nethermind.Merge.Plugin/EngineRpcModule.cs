@@ -35,7 +35,7 @@ namespace Nethermind.Merge.Plugin
         private readonly IHandler<BlockRequestResult, NewBlockResult> _newBlockHandler;
         private readonly IHandler<Keccak, Result> _setHeadHandler;
         private readonly IHandler<Keccak, Result> _finaliseBlockHandler;
-        private readonly IHandler<ForkChoiceUpdatedRequest, Result> _fori
+        private readonly IHandler<ForkChoiceUpdatedRequest, Result> _forkChoiceUpdateHandler;
         private readonly ITransitionProcessHandler _transitionProcessHandler;
         private readonly SemaphoreSlim _locker = new(1, 1);
         private readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
@@ -45,8 +45,9 @@ namespace Nethermind.Merge.Plugin
             IHandlerAsync<AssembleBlockRequest, BlockRequestResult?> assembleBlockHandler,
             IHandler<BlockRequestResult, NewBlockResult> newBlockHandler,
             IHandler<Keccak, Result> setHeadHandler,
-            IHandler<Keccak, Result> finaliseBlockHandler,
+            IHandler<Keccak, Result> finaliseBlockHandler,                                                                                                                                                                                     
             ITransitionProcessHandler transitionProcessHandler,
+            IHandler<ForkChoiceUpdatedRequest, Result> forkChoiceUpdateHandler,
             ILogManager logManager)
         {
             _assembleBlockHandler = assembleBlockHandler;
@@ -54,6 +55,7 @@ namespace Nethermind.Merge.Plugin
             _setHeadHandler = setHeadHandler;
             _finaliseBlockHandler = finaliseBlockHandler;
             _transitionProcessHandler = transitionProcessHandler;
+            _forkChoiceUpdateHandler = forkChoiceUpdateHandler;
             _logger = logManager.GetClassLogger();
         }
 
@@ -127,7 +129,12 @@ namespace Nethermind.Merge.Plugin
 
         public ResultWrapper<Result> engine_forkchoiceUpdated(Keccak headBlockHash, Keccak finalizedBlockHash, Keccak confirmedBlockHash)
         {
-            throw new NotImplementedException();
+            return _forkChoiceUpdateHandler.Handle(new ForkChoiceUpdatedRequest()
+            {
+                ConfirmedBlockHash = confirmedBlockHash,
+                FinalizedBlockHash = finalizedBlockHash,
+                HeadBlockHash = headBlockHash
+            });
         }
 
         public Task engine_terminalTotalDifficultyUpdated(UInt256 terminalTotalDifficulty)
