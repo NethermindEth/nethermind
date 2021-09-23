@@ -16,14 +16,13 @@
 // 
 
 using Nethermind.Core.Crypto;
-using Nethermind.Int256;
 
-namespace Nethermind.Merge.Plugin
+namespace Nethermind.Merge.Plugin.Data
 {
-    public interface ITransitionProcessHandler
+    public class ForkChoiceUpdatedRequest
     {
-        void SetTerminalTotalDifficulty(UInt256 totalDifficulty);
-
-        void SetTerminalPoWHash(Keccak blockHash);
+        public Keccak HeadBlockHash { get; set; }
+        public Keccak FinalizedBlockHash { get; set; }
+        public Keccak ConfirmedBlockHash { get; set; }
     }
 }

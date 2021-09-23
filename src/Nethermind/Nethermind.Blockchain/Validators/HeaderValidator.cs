@@ -102,7 +102,7 @@ namespace Nethermind.Blockchain.Validators
             }
 
             bool totalDifficultyCorrect = true;
-            if (spec.TheMergeEnabled == false && header.TotalDifficulty != null)
+            if (_poSSwitcher.IsPos(header, false) == false && header.TotalDifficulty != null)
             {
                 if (parent.TotalDifficulty + header.Difficulty != header.TotalDifficulty)
                 {
