@@ -1,0 +1,55 @@
+//  Copyright (c) 2021 Demerzel Solutions Limited
+//  This file is part of the Nethermind library.
+// 
+//  The Nethermind library is free software: you can redistribute it and/or modify
+//  it under the terms of the GNU Lesser General Public License as published by
+//  the Free Software Foundation, either version 3 of the License, or
+//  (at your option) any later version.
+// 
+//  The Nethermind library is distributed in the hope that it will be useful,
+//  but WITHOUT ANY WARRANTY; without even the implied warranty of
+//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+//  GNU Lesser General Public License for more details.
+// 
+//  You should have received a copy of the GNU Lesser General Public License
+//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
+
+using System.Threading.Tasks;
+using Nethermind.Blockchain;
+using Nethermind.Core;
+using Nethermind.Int256;
+using Nethermind.JsonRpc;
+using Nethermind.Logging;
+using Nethermind.Merge.Plugin.Data;
+
+namespace Nethermind.Merge.Plugin.Handlers
+{
+    public class GetPayloadHandler : IHandler<UInt256, BlockRequestResult?>
+    {
+        private readonly IBlockTree _blockTree;
+        private readonly PayloadStorage _payloadStorage;
+        private readonly ILogger _logger;
+
+        public GetPayloadHandler(IBlockTree blockTree, PayloadStorage payloadStorage, ILogManager logManager)
+        {
+            _blockTree = blockTree;
+            _payloadStorage = payloadStorage;
+            _logger = logManager.GetClassLogger();
+        }
+
+        public ResultWrapper<BlockRequestResult?> Handle(UInt256 payloadId)
+        {
+            Block? block = _payloadStorage.GetPayload(payloadId);
+            if (block == null)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Block production failed");
+                return ResultWrapper<BlockRequestResult?>.Success(null);
+            }
+            else
+            {
+                return ResultWrapper<BlockRequestResult?>.Success(new BlockRequestResult(block));
+            }
+        }
+    }
+}

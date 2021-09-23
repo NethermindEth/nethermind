@@ -31,12 +31,6 @@ namespace Nethermind.Merge.Plugin
     public interface IEngineRpcModule : IRpcModule
     {
         [JsonRpcMethod(
-            Description = "Requests a block to be assembled from the tx pool transactions.",
-            IsSharable = true,
-            IsImplemented = true)]
-        Task<ResultWrapper<BlockRequestResult?>> engine_assembleBlock(AssembleBlockRequest request);
-        
-        [JsonRpcMethod(
             Description = "Injects a new block from the consensus layer.",
             IsSharable = true,
             IsImplemented = true)]
