@@ -232,15 +232,13 @@ namespace Nethermind.Blockchain.Validators
             if (_poSSwitcher.IsPos(header, false) == false)
                 return true;
             
-            bool validDifficulty = ValidateHeaderField(header, header.Difficulty, UInt256.One, nameof(header.Difficulty));
+            bool validDifficulty = ValidateHeaderField(header, header.Difficulty, UInt256.Zero, nameof(header.Difficulty));
             bool validNonce = ValidateHeaderField(header, header.Nonce, 0ul, nameof(header.Nonce));
-            bool validExtraData = ValidateHeaderField<byte>(header, header.ExtraData, Array.Empty<byte>(), nameof(header.ExtraData));
             bool validMixHash = ValidateHeaderField(header, header.MixHash, Keccak.Zero, nameof(header.MixHash));
             bool validUncles = ValidateHeaderField(header, header.UnclesHash, Keccak.OfAnEmptyString, nameof(header.UnclesHash));
             
             return validDifficulty
                    && validNonce
-                   && validExtraData
                    && validMixHash
                    && validUncles;
 

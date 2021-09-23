@@ -187,15 +187,13 @@ namespace Nethermind.Merge.Plugin.Handlers
 
         private bool CheckInput(BlockRequestResult request)
         {
-            bool validDifficulty = CheckInputIs(request, request.Difficulty, UInt256.One, nameof(request.Difficulty));
+            bool validDifficulty = CheckInputIs(request, request.Difficulty, UInt256.Zero, nameof(request.Difficulty));
             bool validNonce = CheckInputIs(request, request.Nonce, 0ul, nameof(request.Nonce));
-            bool validExtraData = CheckInputIs<byte>(request, request.ExtraData, Array.Empty<byte>(), nameof(request.ExtraData));
             bool validMixHash = CheckInputIs(request, request.MixHash, Keccak.Zero, nameof(request.MixHash));
             bool validUncles = CheckInputIs(request, request.Uncles, Array.Empty<Keccak>(), nameof(request.Uncles));
             
             return validDifficulty
                    && validNonce
-                   && validExtraData
                    && validMixHash
                    && validUncles;
         }

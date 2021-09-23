@@ -56,7 +56,7 @@ namespace Nethermind.Merge.Plugin.Handlers
                 timestamper, 
                 specProvider, 
                 logManager,
-                ConstantDifficultyCalculator.One)
+                ConstantDifficultyCalculator.Zero)
         {
         }
 
