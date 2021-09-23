@@ -33,44 +33,88 @@ namespace Nethermind.Merge.Plugin.Handlers
     {
         private readonly IBlockTree _blockTree;
         private readonly IStateProvider _stateProvider;
+        private readonly IManualBlockFinalizationManager _manualBlockFinalizationManager;
         private readonly ILogger _logger;
 
-        public ForkChoiceUpdatedHandler(IBlockTree blockTree, IStateProvider stateProvider, ILogManager logManager)
+        public ForkChoiceUpdatedHandler(IBlockTree blockTree, IStateProvider stateProvider, IManualBlockFinalizationManager manualBlockFinalizationManager, ILogManager logManager)
         {
             _blockTree = blockTree;
             _stateProvider = stateProvider;
+            _manualBlockFinalizationManager = manualBlockFinalizationManager;
             _logger = logManager.GetClassLogger();
         }
 
         public ResultWrapper<Task> Handle(ForkChoiceUpdatedRequest request)
         {
-            Keccak? blockHash = request.HeadBlockHash;
-            Block? newHeadBlock = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.None);
-            if (newHeadBlock == null)
+            (BlockHeader? BlockHeader, string? ErrorMsg) EnsureHeaderForFinalization(Keccak finalizedBlockHash)
             {
-                string errorMsg = $"Block {blockHash} cannot be found and it will not be set as head.";
-                if (_logger.IsWarn) _logger.Warn(errorMsg);
-                return ResultWrapper<Task>.Fail(errorMsg, ErrorCodes.InvalidInput);
-            }
+                //ToDo Ensure zero header here
+                string? errorMsg = null;
+                BlockHeader? blockHeader = _blockTree.FindHeader(finalizedBlockHash, BlockTreeLookupOptions.None);
+                if (blockHeader is null)
+                {
+                    errorMsg = $"Block {finalizedBlockHash} not found for finalization.";
+                    if (_logger.IsWarn) _logger.Warn(errorMsg);
+                }
 
-            if (!TryGetBranch(newHeadBlock, out Block[] blocks))
+                return (blockHeader, errorMsg);
+            }
+            
+            (BlockHeader? BlockHeader, string? ErrorMsg) EnsureHeaderForConfirmation(Keccak confirmedBlockHash)
             {
-                string errorMsg = $"Block's {blockHash} main chain predecessor cannot be found and it will not be set as head.";
-                if (_logger.IsWarn) _logger.Warn(errorMsg);
-                return ResultWrapper<Task>.Fail(errorMsg, ErrorCodes.InvalidInput);
+                string? errorMsg = null;
+                BlockHeader? blockHeader = _blockTree.FindHeader(confirmedBlockHash, BlockTreeLookupOptions.None);
+                if (blockHeader is null)
+                {
+                    errorMsg = $"Block {confirmedBlockHash} not found for confirmation.";
+                    if (_logger.IsWarn) _logger.Warn(errorMsg);
+                }
+                return (blockHeader, errorMsg);
             }
+            
+            (Block? NewHeadBlock, Block[]? Blocks, string? ErrorMsg) EnsureBlocksForSetHead(Keccak headBlockHash)
+            {
+                string? errorMsg = null;
+                Block? newHeadBlock = _blockTree.FindBlock(headBlockHash, BlockTreeLookupOptions.None);
+                if (newHeadBlock == null)
+                {
+                    errorMsg = $"Block {headBlockHash} cannot be found and it will not be set as head.";
+                    if (_logger.IsWarn) _logger.Warn(errorMsg);
+                    return (newHeadBlock, null, errorMsg);
+                }
+                
+                if (!TryGetBranch(newHeadBlock, out Block[] blocks))
+                {
+                    errorMsg = $"Block's {headBlockHash} main chain predecessor cannot be found and it will not be set as head.";
+                    if (_logger.IsWarn) _logger.Warn(errorMsg);
+                }
+                
+                return (newHeadBlock, blocks, errorMsg);
+            }
+            
 
+            (BlockHeader? finalizedHeader, string? finalizationErrorMsg) = EnsureHeaderForFinalization(request.FinalizedBlockHash);
+            if (finalizationErrorMsg != null)
+                return ResultWrapper<Task>.Fail(finalizationErrorMsg, ErrorCodes.InvalidInput);
+            (BlockHeader? confirmedHeader, string? confirmationErrorMsg) = EnsureHeaderForConfirmation(request.FinalizedBlockHash);
+            if (confirmationErrorMsg != null)
+                return ResultWrapper<Task>.Fail(confirmationErrorMsg, ErrorCodes.InvalidInput);
+            (Block? newHeadBlock, Block[]? blocks, string? setHeadErrorMsg) = EnsureBlocksForSetHead(request.FinalizedBlockHash);
+            if (confirmationErrorMsg != null)
+                return ResultWrapper<Task>.Fail(confirmationErrorMsg, ErrorCodes.InvalidInput);
+ 
+            _manualBlockFinalizationManager.MarkFinalized(newHeadBlock.Header, finalizedHeader);
             _blockTree.UpdateMainChain(blocks, true, true);
 
             bool success = _blockTree.Head == newHeadBlock;
             if (success)
             {
                 _stateProvider.ResetStateTo(newHeadBlock.StateRoot!);
-                if (_logger.IsInfo) _logger.Info($"Block {blockHash} was set as head.");
+                if (_logger.IsInfo) _logger.Info($"Block {request.FinalizedBlockHash} was set as head.");
             }
             else
             {
-                if (_logger.IsWarn) _logger.Warn($"Block {blockHash} was not set as head.");
+                if (_logger.IsWarn) _logger.Warn($"Block {request.FinalizedBlockHash} was not set as head.");
             }
 
             return ResultWrapper<Task>.Success(Task.CompletedTask);
