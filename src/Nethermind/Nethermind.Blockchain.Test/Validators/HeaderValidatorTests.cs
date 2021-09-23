@@ -80,7 +80,7 @@ namespace Nethermind.Blockchain.Test.Validators
         {
             block.Header.Difficulty = 0;
             block.Header.Nonce = 0ul;
-            block.Header.ExtraData = Array.Empty<byte>();
+            //block.Header.ExtraData = Array.Empty<byte>();
             block.Header.MixHash = Keccak.Zero;
             block.Header.UnclesHash = Keccak.OfAnEmptySequenceRlp;
             block.Header.SealEngineType = SealEngineType.None;
@@ -333,7 +333,8 @@ namespace Nethermind.Blockchain.Test.Validators
             Assert.False(result);
         }
 
-        [Test]
+        // needed in previous version of EIP-3675 specification
+        /*[Test]
         public void When_incorrect_extra_data_after_the_merge()
         {
             _validator = new HeaderValidator(_blockTree, _ethash, _specProvider, _poSSwitcher,
@@ -344,7 +345,7 @@ namespace Nethermind.Blockchain.Test.Validators
 
             bool result = _validator.Validate(_block.Header);
             Assert.False(result);
-        }
+        }*/
 
         [Test]
         public void When_incorrect_nonce_after_the_merge()
