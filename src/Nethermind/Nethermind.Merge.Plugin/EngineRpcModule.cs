@@ -43,7 +43,7 @@ namespace Nethermind.Merge.Plugin
         private readonly ILogger _logger;
 
         public EngineRpcModule(
-            IHandlerAsync<PreparePayloadRequest, Result?> preparePayloadHandler,
+            PreparePayloadHandler preparePayloadHandler,
             IHandler<UInt256, BlockRequestResult?> getPayloadHandler,
             IHandler<BlockRequestResult, NewBlockResult> newBlockHandler,
             IHandler<Keccak, Result> setHeadHandler,

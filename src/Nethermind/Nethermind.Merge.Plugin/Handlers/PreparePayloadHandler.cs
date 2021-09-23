@@ -41,7 +41,13 @@ namespace Nethermind.Merge.Plugin.Handlers
         private readonly ILogger _logger;
         private static readonly TimeSpan _timeout = TimeSpan.FromSeconds(10);
 
-        public PreparePayloadHandler(IBlockTree blockTree, PayloadStorage payloadStorage, IManualBlockProductionTrigger blockProductionTrigger, IManualBlockProductionTrigger emptyBlockProductionTrigger, ManualTimestamper timestamper, ILogManager logManager)
+        public PreparePayloadHandler(
+            IBlockTree blockTree, 
+            PayloadStorage payloadStorage, 
+            IManualBlockProductionTrigger blockProductionTrigger, 
+            IManualBlockProductionTrigger emptyBlockProductionTrigger, 
+            ManualTimestamper timestamper, 
+            ILogManager logManager)
         {
             _blockTree = blockTree;
             _payloadStorage = payloadStorage;
