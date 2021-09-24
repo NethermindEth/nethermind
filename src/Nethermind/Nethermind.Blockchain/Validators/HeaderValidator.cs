@@ -112,10 +112,15 @@ namespace Nethermind.Blockchain.Validators
             }
 
             // seal is validated when synchronizing so we can remove it from here - review and test
-            bool sealParamsCorrect = _sealValidator.ValidateParams(parent, header);
-            if (!sealParamsCorrect)
+            bool sealParamsCorrect = true;
+            if (_poSSwitcher.IsPos(header) == false)
             {
-                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - seal parameters incorrect");
+                sealParamsCorrect = _sealValidator.ValidateParams(parent, header);
+                if (!sealParamsCorrect)
+                {
+                    if (_logger.IsWarn)
+                        _logger.Warn($"Invalid block header ({header.Hash}) - seal parameters incorrect");
+                }
             }
 
             bool gasUsedBelowLimit = header.GasUsed <= header.GasLimit;
@@ -232,15 +237,16 @@ namespace Nethermind.Blockchain.Validators
             if (_poSSwitcher.IsPos(header) == false)
                 return true;
             
-            bool validDifficulty = ValidateHeaderField(header, header.Difficulty, UInt256.One, nameof(header.Difficulty));
+            bool validDifficulty = ValidateHeaderField(header, header.Difficulty, UInt256.Zero, nameof(header.Difficulty));
             bool validNonce = ValidateHeaderField(header, header.Nonce, 0ul, nameof(header.Nonce));
-            bool validExtraData = ValidateHeaderField<byte>(header, header.ExtraData, Array.Empty<byte>(), nameof(header.ExtraData));
+            // validExtraData needed in previous version of EIP-3675 specification
+            //bool validExtraData = ValidateHeaderField<byte>(header, header.ExtraData, Array.Empty<byte>(), nameof(header.ExtraData));
             bool validMixHash = ValidateHeaderField(header, header.MixHash, Keccak.Zero, nameof(header.MixHash));
-            bool validUncles = ValidateHeaderField(header, header.UnclesHash, Keccak.OfAnEmptyString, nameof(header.UnclesHash));
+            bool validUncles = ValidateHeaderField(header, header.UnclesHash, Keccak.OfAnEmptySequenceRlp, nameof(header.UnclesHash));
             
             return validDifficulty
                    && validNonce
-                   && validExtraData
+                   //&& validExtraData
                    && validMixHash
                    && validUncles;
 
