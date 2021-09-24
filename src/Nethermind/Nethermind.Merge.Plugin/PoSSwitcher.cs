@@ -47,12 +47,22 @@ namespace Nethermind.Merge.Plugin
             _terminalBlockHash = blockHash;
         }
 
+        public bool TrySwitchToPos(BlockHeader header)
+        {
+            return VerifyPoS(header, true);
+        }
+
+        public bool IsPos(BlockHeader header)
+        {
+            return VerifyPoS(header, false);
+        }
+
         public bool WasEverInPoS()
         {
             return _firstPoSBlockHeader != null;
         }
 
-        public bool IsPos(BlockHeader header, bool trySwitchToPos)
+        private bool VerifyPoS(BlockHeader header, bool withSwitchToPoS)
         {
             if (_firstPoSBlockHeader != null && _firstPoSBlockHeader.TotalDifficulty <= header.TotalDifficulty)
             {
@@ -66,7 +76,7 @@ namespace Nethermind.Merge.Plugin
 
             if (_firstPoSBlockHeader == null && (_terminalBlockHash == header.ParentHash || header.TotalDifficulty >= _terminalTotalDifficulty))
             {
-                if (trySwitchToPos)
+                if (withSwitchToPoS)
                 {
                     if (_logger.IsInfo) _logger.Info($"Switched to Proof of Stake at block {header}");
                     _firstPoSBlockHeader = header;

@@ -19,6 +19,7 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
@@ -34,13 +35,20 @@ namespace Nethermind.Merge.Plugin.Handlers
         private readonly IBlockTree _blockTree;
         private readonly IStateProvider _stateProvider;
         private readonly IManualBlockFinalizationManager _manualBlockFinalizationManager;
+        private readonly IPoSSwitcher _poSSwitcher;
         private readonly ILogger _logger;
 
-        public ForkChoiceUpdatedHandler(IBlockTree blockTree, IStateProvider stateProvider, IManualBlockFinalizationManager manualBlockFinalizationManager, ILogManager logManager)
+        public ForkChoiceUpdatedHandler(
+            IBlockTree blockTree,
+            IStateProvider stateProvider,
+            IManualBlockFinalizationManager manualBlockFinalizationManager, 
+            IPoSSwitcher poSSwitcher,
+            ILogManager logManager)
         {
             _blockTree = blockTree;
             _stateProvider = stateProvider;
             _manualBlockFinalizationManager = manualBlockFinalizationManager;
+            _poSSwitcher = poSSwitcher;
             _logger = logManager.GetClassLogger();
         }
 
@@ -65,6 +73,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             bool success = _blockTree.Head == newHeadBlock;
             if (success)
             {
+                _poSSwitcher.TrySwitchToPos(newHeadBlock!.Header);
                 _stateProvider.ResetStateTo(newHeadBlock.StateRoot!);
                 if (_logger.IsInfo) _logger.Info($"Block {request.FinalizedBlockHash} was set as head.");
             }
