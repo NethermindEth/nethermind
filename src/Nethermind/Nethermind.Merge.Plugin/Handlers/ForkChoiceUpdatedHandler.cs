@@ -56,8 +56,10 @@ namespace Nethermind.Merge.Plugin.Handlers
             if (setHeadErrorMsg != null)
                 return ResultWrapper<Result>.Success(Result.Fail);
  
-            if (request.FinalizedBlockHash != Keccak.Zero)
+            if (ShouldFinalize(request.FinalizedBlockHash))
                 _manualBlockFinalizationManager.MarkFinalized(newHeadBlock!.Header, finalizedHeader!);
+            else if (_manualBlockFinalizationManager.LastFinalizedHash != Keccak.Zero)
+                if (_logger.IsWarn) _logger.Warn($"Cannot finalize block. The current finalized block is: {_manualBlockFinalizationManager.LastFinalizedHash}, the requested hash: {request.FinalizedBlockHash}");
             
             _blockTree.UpdateMainChain(blocks!, true, true);
             bool success = _blockTree.Head == newHeadBlock;
@@ -114,7 +116,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             string? errorMsg = null;
             BlockHeader? blockHeader = _blockTree.FindHeader(finalizedBlockHash, BlockTreeLookupOptions.None);
 
-            if (finalizedBlockHash != Keccak.Zero)
+            if (ShouldFinalize(finalizedBlockHash))
             {
                 blockHeader = _blockTree.FindHeader(finalizedBlockHash, BlockTreeLookupOptions.None);
                 if (blockHeader is null)
@@ -127,6 +129,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             return (blockHeader, errorMsg);
         }
 
+        private bool ShouldFinalize(Keccak finalizedBlockHash) => finalizedBlockHash != Keccak.Zero;
 
         private bool TryGetBranch(Block block, out Block[] blocks)
         {

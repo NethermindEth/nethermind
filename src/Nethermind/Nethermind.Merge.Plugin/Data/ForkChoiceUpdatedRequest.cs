@@ -21,8 +21,14 @@ namespace Nethermind.Merge.Plugin.Data
 {
     public class ForkChoiceUpdatedRequest
     {
-        public Keccak HeadBlockHash { get; set; }
-        public Keccak FinalizedBlockHash { get; set; }
-        public Keccak ConfirmedBlockHash { get; set; }
+        public ForkChoiceUpdatedRequest(Keccak headBlockHash, Keccak finalizedBlockHash, Keccak confirmedBlockHash)
+        {
+            HeadBlockHash = headBlockHash;
+            FinalizedBlockHash = finalizedBlockHash;
+            ConfirmedBlockHash = confirmedBlockHash;
+        }
+        public Keccak HeadBlockHash { get; }
+        public Keccak FinalizedBlockHash { get; }
+        public Keccak ConfirmedBlockHash { get; }
     }
 }

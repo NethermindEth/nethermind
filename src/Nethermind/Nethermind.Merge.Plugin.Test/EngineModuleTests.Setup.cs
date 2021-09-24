@@ -17,7 +17,6 @@
 
 using System.Threading.Tasks;
 using Nethermind.Api;
-using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Processing;
@@ -30,11 +29,9 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
-using Nethermind.Runner.Ethereum;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
