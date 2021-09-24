@@ -550,6 +550,12 @@ namespace Nethermind.DataMarketplace.Infrastructure
             set => _nethermindApi.PoSSwitcher = value;
         }
 
+        public IBlockConfirmationManager BlockConfirmationManager
+        {
+            get => _nethermindApi.BlockConfirmationManager;
+            set => _nethermindApi.BlockConfirmationManager = value;
+        }
+
         public IWallet? Wallet
         {
             get => _nethermindApi.Wallet;
