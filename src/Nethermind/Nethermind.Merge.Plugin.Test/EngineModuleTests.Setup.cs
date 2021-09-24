@@ -53,7 +53,7 @@ namespace Nethermind.Merge.Plugin.Test
                 new SetHeadBlockHandler(chain.BlockTree, chain.State, chain.LogManager),
                 new FinaliseBlockHandler(chain.BlockFinder, chain.BlockFinalizationManager, chain.LogManager),
                 _poSSwitcher,
-                new ForkChoiceUpdatedHandler(chain.BlockTree, chain.State, chain.BlockFinalizationManager, _poSSwitcher, chain.LogManager),
+                new ForkChoiceUpdatedHandler(chain.BlockTree, chain.State, chain.BlockFinalizationManager, _poSSwitcher, chain.BlockConfirmationManager, chain.LogManager),
                 chain.LogManager);
         }
 
@@ -66,6 +66,7 @@ namespace Nethermind.Merge.Plugin.Test
                     .WithTimestamp(UInt256.One);
                 Signer = new Eth2Signer(MinerAddress);
                 PoSSwitcher = _poSSwitcher;
+                BlockConfirmationManager = new BlockConfirmationManager();
             }
             
             protected override Task AddBlocksOnStart() => Task.CompletedTask;

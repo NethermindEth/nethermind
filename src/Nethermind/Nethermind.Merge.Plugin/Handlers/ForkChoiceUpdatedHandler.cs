@@ -36,6 +36,7 @@ namespace Nethermind.Merge.Plugin.Handlers
         private readonly IStateProvider _stateProvider;
         private readonly IManualBlockFinalizationManager _manualBlockFinalizationManager;
         private readonly IPoSSwitcher _poSSwitcher;
+        private readonly IBlockConfirmationManager _blockConfirmationManager;
         private readonly ILogger _logger;
 
         public ForkChoiceUpdatedHandler(
@@ -43,12 +44,14 @@ namespace Nethermind.Merge.Plugin.Handlers
             IStateProvider stateProvider,
             IManualBlockFinalizationManager manualBlockFinalizationManager, 
             IPoSSwitcher poSSwitcher,
+            IBlockConfirmationManager blockConfirmationManager,
             ILogManager logManager)
         {
             _blockTree = blockTree;
             _stateProvider = stateProvider;
             _manualBlockFinalizationManager = manualBlockFinalizationManager;
             _poSSwitcher = poSSwitcher;
+            _blockConfirmationManager = blockConfirmationManager;
             _logger = logManager.GetClassLogger();
         }
 
@@ -69,6 +72,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             else if (_manualBlockFinalizationManager.LastFinalizedHash != Keccak.Zero)
                 if (_logger.IsWarn) _logger.Warn($"Cannot finalize block. The current finalized block is: {_manualBlockFinalizationManager.LastFinalizedHash}, the requested hash: {request.FinalizedBlockHash}");
             
+            _blockConfirmationManager.Confirm(confirmedHeader);
             _blockTree.UpdateMainChain(blocks!, true, true);
             bool success = _blockTree.Head == newHeadBlock;
             if (success)
@@ -81,8 +85,6 @@ namespace Nethermind.Merge.Plugin.Handlers
             {
                 if (_logger.IsWarn) _logger.Warn($"Block {request.FinalizedBlockHash} was not set as head.");
             }
-            
-            // ToDo add confirmation to block tree
 
             return ResultWrapper<Result>.Success(Result.Ok);
         }

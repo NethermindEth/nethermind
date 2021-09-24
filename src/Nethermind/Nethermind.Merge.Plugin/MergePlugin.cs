@@ -105,7 +105,7 @@ namespace Nethermind.Merge.Plugin
                     new SetHeadBlockHandler(_api.BlockTree, _api.StateProvider, _api.LogManager),
                     new FinaliseBlockHandler(_api.BlockTree, _blockFinalizationManager, _api.LogManager),
                     _poSSwitcher,
-                    new ForkChoiceUpdatedHandler(_api.BlockTree, _api.StateProvider, _blockFinalizationManager, _poSSwitcher, _api.LogManager),
+                    new ForkChoiceUpdatedHandler(_api.BlockTree, _api.StateProvider, _blockFinalizationManager, _poSSwitcher, _api.BlockConfirmationManager, _api.LogManager),
                     _api.LogManager);
                 
                 _api.RpcModuleProvider.RegisterSingle(engineRpcModule);

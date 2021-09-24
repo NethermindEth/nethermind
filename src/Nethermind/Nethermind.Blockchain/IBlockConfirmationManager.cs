@@ -27,11 +27,11 @@ namespace Nethermind.Blockchain
         void Confirm(BlockHeader? blockHeader);
     }
     
-    public class NoBlockConfirmationConfirmation : IBlockConfirmationManager
+    public class NoBlockConfirmation : IBlockConfirmationManager
     {
-        private NoBlockConfirmationConfirmation() { }
+        private NoBlockConfirmation() { }
 
-        public static NoBlockConfirmationConfirmation Instance { get; } = new();
+        public static NoBlockConfirmation Instance { get; } = new();
         
         public Keccak LastConfirmedHash { get; } = Keccak.Zero;
         public void Confirm(BlockHeader? blockHeader) { }
