@@ -17,6 +17,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain
 {
@@ -25,10 +26,14 @@ namespace Nethermind.Blockchain
         // We could save in DB, but its not really needed yet
         public long LastFinalizedBlockLevel { get; private set; } = 0;
         
+        // We could save in DB, but its not really needed yet
+        public Keccak LastFinalizedHash { get; private set; } = Keccak.Zero;
+        
         public event EventHandler<FinalizeEventArgs>? BlocksFinalized;
 
         public void MarkFinalized(BlockHeader finalizingBlock, BlockHeader finalizedBlock)
         {
+            LastFinalizedHash = finalizedBlock.Hash!;
             LastFinalizedBlockLevel = Math.Max(LastFinalizedBlockLevel, finalizedBlock.Number);
             BlocksFinalized?.Invoke(this, new FinalizeEventArgs(finalizingBlock, finalizedBlock));
         }
@@ -38,6 +43,7 @@ namespace Nethermind.Blockchain
 
     public interface IManualBlockFinalizationManager : IBlockFinalizationManager
     {
+        Keccak LastFinalizedHash { get; }
         void MarkFinalized(BlockHeader finalizingBlock, BlockHeader finalizedBlock);
     }
 }

@@ -48,17 +48,18 @@ namespace Nethermind.Merge.Plugin.Handlers
         {
             (BlockHeader? finalizedHeader, string? finalizationErrorMsg) = EnsureHeaderForFinalization(request.FinalizedBlockHash);
             if (finalizationErrorMsg != null)
-                return ResultWrapper<Result>.Fail(finalizationErrorMsg, ErrorCodes.InvalidInput);
+                return ResultWrapper<Result>.Success(Result.Fail);
             (BlockHeader? confirmedHeader, string? confirmationErrorMsg) = EnsureHeaderForConfirmation(request.ConfirmedBlockHash);
             if (confirmationErrorMsg != null)
-                return ResultWrapper<Result>.Fail(confirmationErrorMsg, ErrorCodes.InvalidInput);
+                return ResultWrapper<Result>.Success(Result.Fail);
             (Block? newHeadBlock, Block[]? blocks, string? setHeadErrorMsg) = EnsureBlocksForSetHead(request.HeadBlockHash);
             if (setHeadErrorMsg != null)
-                return ResultWrapper<Result>.Fail(setHeadErrorMsg, ErrorCodes.InvalidInput);
+                return ResultWrapper<Result>.Success(Result.Fail);
  
-            _manualBlockFinalizationManager.MarkFinalized(newHeadBlock!.Header, finalizedHeader!);
+            if (request.FinalizedBlockHash != Keccak.Zero)
+                _manualBlockFinalizationManager.MarkFinalized(newHeadBlock!.Header, finalizedHeader!);
+            
             _blockTree.UpdateMainChain(blocks!, true, true);
-
             bool success = _blockTree.Head == newHeadBlock;
             if (success)
             {
@@ -110,13 +111,17 @@ namespace Nethermind.Merge.Plugin.Handlers
 
         private (BlockHeader? BlockHeader, string? ErrorMsg) EnsureHeaderForFinalization(Keccak finalizedBlockHash)
         {
-            //ToDo Ensure zero header here
             string? errorMsg = null;
             BlockHeader? blockHeader = _blockTree.FindHeader(finalizedBlockHash, BlockTreeLookupOptions.None);
-            if (blockHeader is null)
+
+            if (finalizedBlockHash != Keccak.Zero)
             {
-                errorMsg = $"Block {finalizedBlockHash} not found for finalization.";
-                if (_logger.IsWarn) _logger.Warn(errorMsg);
+                blockHeader = _blockTree.FindHeader(finalizedBlockHash, BlockTreeLookupOptions.None);
+                if (blockHeader is null)
+                {
+                    errorMsg = $"Block {finalizedBlockHash} not found for finalization.";
+                    if (_logger.IsWarn) _logger.Warn(errorMsg);
+                }
             }
 
             return (blockHeader, errorMsg);

@@ -238,8 +238,8 @@ namespace Nethermind.Merge.Plugin.Test
             newBlockResult.Data.Valid.Should().BeTrue();
             
             Keccak newHeadHash = blockRequestResult.BlockHash;
-            ResultWrapper<Result> setHeadResult = await rpc.engine_forkchoiceUpdated(newHeadHash!, startingHead, startingHead);
-            setHeadResult.Data.Should().Be(Result.Ok);
+            ResultWrapper<Result> forkchoiceUpdatedResult = await rpc.engine_forkchoiceUpdated(newHeadHash!, startingHead, startingHead);
+            forkchoiceUpdatedResult.Data.Should().Be(Result.Ok);
             
             Keccak actualHead = chain.BlockTree.HeadHash;
             actualHead.Should().NotBe(startingHead);
@@ -251,32 +251,40 @@ namespace Nethermind.Merge.Plugin.Test
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
             IEngineRpcModule rpc = CreateEngineModule(chain);
-            ResultWrapper<Result> setHeadResult = await rpc.engine_forkchoiceUpdated(TestItem.KeccakF, TestItem.KeccakF, TestItem.KeccakF);
-            Assert.AreEqual(ErrorCodes.InvalidInput, setHeadResult.ErrorCode);
+            ResultWrapper<Result> forkchoiceUpdatedResult = await rpc.engine_forkchoiceUpdated(TestItem.KeccakF, TestItem.KeccakF, TestItem.KeccakF);
+            forkchoiceUpdatedResult.Data.Success.Should().BeFalse();
         }
         
         [Test]
-        public async Task setHead_no_common_branch_fails()
+        public async Task forkChoiceUpdated_no_common_branch_fails()
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
             IEngineRpcModule rpc = CreateEngineModule(chain);
+            Keccak? startingHead = chain.BlockTree.HeadHash;
             BlockHeader parent = Build.A.BlockHeader.WithNumber(1).WithHash(TestItem.KeccakA).TestObject;
             Block block = Build.A.Block.WithNumber(2).WithParent(parent).TestObject;
             chain.BlockTree.SuggestBlock(block);
             
-            ResultWrapper<Result> setHeadResult = await rpc.engine_setHead(block.Hash!);
-            setHeadResult.Data.Success.Should().BeFalse();
+            ResultWrapper<Result> forkchoiceUpdatedResult = await rpc.engine_forkchoiceUpdated(block.Hash!, startingHead, startingHead);
+            forkchoiceUpdatedResult.Data.Success.Should().BeFalse();
         }
 
         [Test]
-        public async Task finaliseBlock_should_succeed()
+        public async Task engine_forkchoiceUpdated_should_change_head_when_all_parameters_are_the_newHeadHash()
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
             IEngineRpcModule rpc = CreateEngineModule(chain);
             Block block = Build.A.Block.WithParent(chain.BlockTree.Head!).TestObject;
-            chain.BlockTree.SuggestBlock(block);
-            ResultWrapper<Result> resultWrapper = await rpc.engine_finaliseBlock(block.Hash!);
+            BlockRequestResult blockRequestResult = CreateBlockRequest(
+                CreateParentBlockRequestOnHead(chain.BlockTree), 
+                TestItem.AddressD);
+            ResultWrapper<NewBlockResult> newBlockResult = await rpc.engine_newBlock(blockRequestResult);
+            newBlockResult.Data.Valid.Should().BeTrue();
+            
+            Keccak newHeadHash = blockRequestResult.BlockHash;
+            ResultWrapper<Result> resultWrapper = await rpc.engine_forkchoiceUpdated(newHeadHash, newHeadHash, newHeadHash);
             resultWrapper.Data.Should().Be(Result.Ok);
+            Assert.AreEqual(newHeadHash, chain.BlockTree.Head.Hash);
         }
         
         [Test]
