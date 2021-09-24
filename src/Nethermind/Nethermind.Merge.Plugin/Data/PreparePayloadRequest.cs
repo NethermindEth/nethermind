@@ -19,18 +19,23 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
-namespace Nethermind.Consensus
+namespace Nethermind.Merge.Plugin.Data
 {
-    public class NoPoS : IPoSSwitcher
+    public class PreparePayloadRequest
     {
-        private NoPoS() { }
+        public PreparePayloadRequest(Keccak parentHash, UInt256 timestamp, Keccak random, Address feeRecipient, UInt256 payloadId)
+        {
+            ParentHash = parentHash;
+            Timestamp = timestamp;
+            Random = random;
+            FeeRecipient = feeRecipient;
+            PayloadId = payloadId;
+        }
 
-        public static NoPoS Instance { get; } = new();
-        
-        public bool TrySwitchToPos(BlockHeader header) => false;
-        
-        public bool IsPos(BlockHeader header) => false;
-        
-        public bool WasEverInPoS() => false;
+        public Keccak ParentHash { get; set; }
+        public UInt256 Timestamp { get; set; }
+        public Keccak Random { get; set; }
+        public Address FeeRecipient { get; set; }
+        public UInt256 PayloadId { get; set; }
     }
 }

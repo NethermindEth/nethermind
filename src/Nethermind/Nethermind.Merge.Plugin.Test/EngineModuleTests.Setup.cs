@@ -17,7 +17,6 @@
 
 using System.Threading.Tasks;
 using Nethermind.Api;
-using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Processing;
@@ -30,11 +29,9 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
-using Nethermind.Runner.Ethereum;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
@@ -44,15 +41,19 @@ namespace Nethermind.Merge.Plugin.Test
     public partial class EngineModuleTests
     {
         private async Task<MergeTestBlockchain> CreateBlockChain() => await new MergeTestBlockchain(new ManualTimestamper()).Build(new SingleReleaseSpecProvider(Berlin.Instance, 1));
+        private static readonly PoSSwitcher _poSSwitcher = new(LimboLogs.Instance);
 
         private IEngineRpcModule CreateEngineModule(MergeTestBlockchain chain)
         {
+            PayloadStorage? payloadStorage = new();
             return new EngineRpcModule(
-                new AssembleBlockHandler(chain.BlockTree, chain.BlockProductionTrigger, chain.Timestamper, chain.LogManager),
+                new PreparePayloadHandler(chain.BlockTree, payloadStorage, new BuildBlocksWhenRequested(), chain.BlockProductionTrigger, chain.Timestamper, chain.LogManager),
+                new GetPayloadHandler(chain.BlockTree, payloadStorage,  chain.LogManager),
                 new NewBlockHandler(chain.BlockTree, chain.BlockPreprocessorStep, chain.BlockchainProcessor, chain.State, new InitConfig(), chain.LogManager),
                 new SetHeadBlockHandler(chain.BlockTree, chain.State, chain.LogManager),
                 new FinaliseBlockHandler(chain.BlockFinder, chain.BlockFinalizationManager, chain.LogManager),
-                new PoSSwitcher(LimboLogs.Instance),
+                _poSSwitcher,
+                new ForkChoiceUpdatedHandler(chain.BlockTree, chain.State, chain.BlockFinalizationManager, _poSSwitcher, chain.BlockConfirmationManager, chain.LogManager),
                 chain.LogManager);
         }
 
@@ -64,7 +65,8 @@ namespace Nethermind.Merge.Plugin.Test
                 GenesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.Genesis
                     .WithTimestamp(UInt256.One);
                 Signer = new Eth2Signer(MinerAddress);
-                PoSSwitcher = new PoSSwitcher(LogManager);
+                PoSSwitcher = _poSSwitcher;
+                BlockConfirmationManager = new BlockConfirmationManager();
             }
             
             protected override Task AddBlocksOnStart() => Task.CompletedTask;

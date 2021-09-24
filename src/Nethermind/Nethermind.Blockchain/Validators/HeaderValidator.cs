@@ -102,7 +102,7 @@ namespace Nethermind.Blockchain.Validators
             }
 
             bool totalDifficultyCorrect = true;
-            if (_poSSwitcher.IsPos(header, false) == false && header.TotalDifficulty != null)
+            if (_poSSwitcher.IsPos(header) == false && header.TotalDifficulty != null)
             {
                 if (parent.TotalDifficulty + header.Difficulty != header.TotalDifficulty)
                 {
@@ -234,7 +234,7 @@ namespace Nethermind.Blockchain.Validators
 
         private bool ValidateTheMergeChecks(BlockHeader header)
         {
-            if (_poSSwitcher.IsPos(header, false) == false)
+            if (_poSSwitcher.IsPos(header) == false)
                 return true;
             
             bool validDifficulty = ValidateHeaderField(header, header.Difficulty, UInt256.Zero, nameof(header.Difficulty));

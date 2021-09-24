@@ -187,6 +187,7 @@ namespace Nethermind.Api
         
         public IEthSyncingInfo EthSyncingInfo { get; set; }
         public IPoSSwitcher PoSSwitcher { get; set; }
+        public IBlockConfirmationManager BlockConfirmationManager { get; set; } = NoBlockConfirmation.Instance;
         public IWallet? Wallet { get; set; }
         public ITransactionComparerProvider TransactionComparerProvider { get; set; }
         public IWebSocketsManager WebSocketsManager { get; set; } = new WebSocketsManager();

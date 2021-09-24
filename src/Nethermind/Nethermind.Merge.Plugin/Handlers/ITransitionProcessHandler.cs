@@ -15,22 +15,15 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
-namespace Nethermind.Consensus
+namespace Nethermind.Merge.Plugin.Handlers
 {
-    public class NoPoS : IPoSSwitcher
+    public interface ITransitionProcessHandler
     {
-        private NoPoS() { }
+        void SetTerminalTotalDifficulty(UInt256 totalDifficulty);
 
-        public static NoPoS Instance { get; } = new();
-        
-        public bool TrySwitchToPos(BlockHeader header) => false;
-        
-        public bool IsPos(BlockHeader header) => false;
-        
-        public bool WasEverInPoS() => false;
+        void SetTerminalPoWHash(Keccak blockHash);
     }
 }

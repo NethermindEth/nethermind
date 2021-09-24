@@ -17,20 +17,18 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Int256;
 
-namespace Nethermind.Consensus
+namespace Nethermind.Blockchain
 {
-    public class NoPoS : IPoSSwitcher
+    public class BlockConfirmationManager : IBlockConfirmationManager
     {
-        private NoPoS() { }
+        public Keccak LastConfirmedHash { get; private set; } = Keccak.Zero;
 
-        public static NoPoS Instance { get; } = new();
-        
-        public bool TrySwitchToPos(BlockHeader header) => false;
-        
-        public bool IsPos(BlockHeader header) => false;
-        
-        public bool WasEverInPoS() => false;
+        public void Confirm(BlockHeader? blockHeader)
+        {
+            if (blockHeader?.Hash != null)
+                LastConfirmedHash = blockHeader.Hash;
+        }
     }
 }
+  

@@ -31,12 +31,6 @@ namespace Nethermind.Merge.Plugin
     public interface IEngineRpcModule : IRpcModule
     {
         [JsonRpcMethod(
-            Description = "Requests a block to be assembled from the tx pool transactions.",
-            IsSharable = true,
-            IsImplemented = true)]
-        Task<ResultWrapper<BlockRequestResult?>> engine_assembleBlock(AssembleBlockRequest request);
-        
-        [JsonRpcMethod(
             Description = "Injects a new block from the consensus layer.",
             IsSharable = true,
             IsImplemented = true)]
@@ -89,7 +83,7 @@ namespace Nethermind.Merge.Plugin
             Description = "Propagates the change in the fork choice to the execution client.",
             IsSharable = true,
             IsImplemented = false)]
-        Task engine_forkchoiceUpdated(Keccak headBlockHash, Keccak finalizedBlockHash, Keccak confirmedBlockHash);
+        Task<ResultWrapper<Result>> engine_forkchoiceUpdated(Keccak headBlockHash, Keccak finalizedBlockHash, Keccak confirmedBlockHash);
 
         [JsonRpcMethod(
             Description = "Propagates an override of the TERMINAL_TOTAL_DIFFICULTY to the execution client.",

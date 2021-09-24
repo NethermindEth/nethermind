@@ -98,5 +98,6 @@ namespace Nethermind.Api
         IEthSyncingInfo? EthSyncingInfo { get; set; }
 
         IPoSSwitcher PoSSwitcher { get; set; }
+        IBlockConfirmationManager BlockConfirmationManager { get; set; }
     }
 }
