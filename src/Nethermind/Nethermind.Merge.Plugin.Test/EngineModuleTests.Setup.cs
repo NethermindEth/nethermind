@@ -54,6 +54,7 @@ namespace Nethermind.Merge.Plugin.Test
                 new FinaliseBlockHandler(chain.BlockFinder, chain.BlockFinalizationManager, chain.LogManager),
                 _poSSwitcher,
                 new ForkChoiceUpdatedHandler(chain.BlockTree, chain.State, chain.BlockFinalizationManager, _poSSwitcher, chain.BlockConfirmationManager, chain.LogManager),
+                new ExecutionStatusHandler(chain.BlockTree, chain.BlockConfirmationManager, chain.BlockFinalizationManager),
                 chain.LogManager);
         }
 

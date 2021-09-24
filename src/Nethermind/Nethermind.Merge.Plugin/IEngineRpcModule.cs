@@ -21,7 +21,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
-using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Merge.Plugin.Data;
 using Result = Nethermind.Merge.Plugin.Data.Result;
 
@@ -130,6 +129,6 @@ namespace Nethermind.Merge.Plugin
                 "Responds with information on the state of the execution client to either engine_consensusStatus or any other call if consistency failure has occurred.",
             IsSharable = true,
             IsImplemented = false)]
-        Task engine_executionStatus(Keccak finalizedBlockHash, Keccak confirmedBlockHash, Keccak headBlockHash);
+        ResultWrapper<ExecutionStatusResult> engine_executionStatus();
     }
 }

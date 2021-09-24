@@ -99,13 +99,18 @@ namespace Nethermind.Merge.Plugin
                 PayloadStorage payloadStorage = new PayloadStorage();
 
                 IEngineRpcModule engineRpcModule = new EngineRpcModule(
-                    new PreparePayloadHandler(_api.BlockTree, payloadStorage, _defaultBlockProductionTrigger, _emptyBlockProductionTrigger, _manualTimestamper, _api.LogManager),
+                    new PreparePayloadHandler(_api.BlockTree, payloadStorage, _defaultBlockProductionTrigger,
+                        _emptyBlockProductionTrigger, _manualTimestamper, _api.LogManager),
                     new GetPayloadHandler(_api.BlockTree, payloadStorage, _api.LogManager),
-                    new NewBlockHandler(_api.BlockTree, _api.BlockPreprocessor, _api.BlockchainProcessor, _api.StateProvider, _api.Config<IInitConfig>(), _api.LogManager),
+                    new NewBlockHandler(_api.BlockTree, _api.BlockPreprocessor, _api.BlockchainProcessor,
+                        _api.StateProvider, _api.Config<IInitConfig>(), _api.LogManager),
                     new SetHeadBlockHandler(_api.BlockTree, _api.StateProvider, _api.LogManager),
                     new FinaliseBlockHandler(_api.BlockTree, _blockFinalizationManager, _api.LogManager),
                     _poSSwitcher,
-                    new ForkChoiceUpdatedHandler(_api.BlockTree, _api.StateProvider, _blockFinalizationManager, _poSSwitcher, _api.BlockConfirmationManager, _api.LogManager),
+                    new ForkChoiceUpdatedHandler(_api.BlockTree, _api.StateProvider, _blockFinalizationManager,
+                        _poSSwitcher, _api.BlockConfirmationManager, _api.LogManager),
+                    new ExecutionStatusHandler(_api.BlockTree, _api.BlockConfirmationManager,
+                        _blockFinalizationManager),
                     _api.LogManager);
                 
                 _api.RpcModuleProvider.RegisterSingle(engineRpcModule);
