@@ -50,8 +50,6 @@ namespace Nethermind.Merge.Plugin.Test
                 new PreparePayloadHandler(chain.BlockTree, payloadStorage, new BuildBlocksWhenRequested(), chain.BlockProductionTrigger, chain.Timestamper, chain.LogManager),
                 new GetPayloadHandler(chain.BlockTree, payloadStorage,  chain.LogManager),
                 new NewBlockHandler(chain.BlockTree, chain.BlockPreprocessorStep, chain.BlockchainProcessor, chain.State, new InitConfig(), chain.LogManager),
-                new SetHeadBlockHandler(chain.BlockTree, chain.State, chain.LogManager),
-                new FinaliseBlockHandler(chain.BlockFinder, chain.BlockFinalizationManager, chain.LogManager),
                 _poSSwitcher,
                 new ForkChoiceUpdatedHandler(chain.BlockTree, chain.State, chain.BlockFinalizationManager, _poSSwitcher, chain.BlockConfirmationManager, chain.LogManager),
                 new ExecutionStatusHandler(chain.BlockTree, chain.BlockConfirmationManager, chain.BlockFinalizationManager),

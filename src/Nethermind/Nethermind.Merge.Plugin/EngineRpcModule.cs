@@ -34,8 +34,6 @@ namespace Nethermind.Merge.Plugin
         private readonly IHandlerAsync<PreparePayloadRequest, Result?> _preparePayloadHandler;
         private readonly IHandler<UInt256, BlockRequestResult?> _getPayloadHandler;
         private readonly IHandler<BlockRequestResult, NewBlockResult> _newBlockHandler;
-        private readonly IHandler<Keccak, Result> _setHeadHandler;
-        private readonly IHandler<Keccak, Result> _finaliseBlockHandler;
         private readonly IHandler<ForkChoiceUpdatedRequest, Result> _forkChoiceUpdateHandler;
         private readonly IHandler<ExecutionStatusResult> _executionStatusHandler;
         private readonly ITransitionProcessHandler _transitionProcessHandler;
@@ -47,8 +45,6 @@ namespace Nethermind.Merge.Plugin
             PreparePayloadHandler preparePayloadHandler,
             IHandler<UInt256, BlockRequestResult?> getPayloadHandler,
             IHandler<BlockRequestResult, NewBlockResult> newBlockHandler,
-            IHandler<Keccak, Result> setHeadHandler,
-            IHandler<Keccak, Result> finaliseBlockHandler,
             ITransitionProcessHandler transitionProcessHandler,
             IHandler<ForkChoiceUpdatedRequest, Result> forkChoiceUpdateHandler,
             IHandler<ExecutionStatusResult> executionStatusHandler,
@@ -57,8 +53,6 @@ namespace Nethermind.Merge.Plugin
             _preparePayloadHandler = preparePayloadHandler;
             _getPayloadHandler = getPayloadHandler;
             _newBlockHandler = newBlockHandler;
-            _setHeadHandler = setHeadHandler;
-            _finaliseBlockHandler = finaliseBlockHandler;
             _transitionProcessHandler = transitionProcessHandler;
             _forkChoiceUpdateHandler = forkChoiceUpdateHandler;
             _executionStatusHandler = executionStatusHandler;
@@ -84,29 +78,6 @@ namespace Nethermind.Merge.Plugin
                 return ResultWrapper<NewBlockResult>.Success(new NewBlockResult {Valid = false});
             }
         }
-
-        public async Task<ResultWrapper<Result>> engine_setHead(Keccak blockHash)
-        {
-            if (await _locker.WaitAsync(Timeout))
-            {
-                try
-                {
-                    return _setHeadHandler.Handle(blockHash);
-                }
-                finally
-                {
-                    _locker.Release();
-                }
-            }
-            else
-            {
-                if (_logger.IsWarn) _logger.Warn($"{nameof(engine_setHead)} timeout.");
-                return ResultWrapper<Result>.Success(Result.Fail);
-            }
-        }
-
-        public Task<ResultWrapper<Result>> engine_finaliseBlock(Keccak blockHash) =>
-            Task.FromResult(_finaliseBlockHandler.Handle(blockHash));
 
         public Task engine_preparePayload(Keccak parentHash, UInt256 timestamp, Keccak random, Address coinbase,
             uint payloadId)
@@ -148,7 +119,7 @@ namespace Nethermind.Merge.Plugin
             }
             else
             {
-                if (_logger.IsWarn) _logger.Warn($"{nameof(engine_setHead)} timeout.");
+                if (_logger.IsWarn) _logger.Warn($"{nameof(engine_forkchoiceUpdated)} timeout.");
                 return ResultWrapper<Result>.Success(Result.Fail);
             }
         }

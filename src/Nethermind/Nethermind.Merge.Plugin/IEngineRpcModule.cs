@@ -35,20 +35,6 @@ namespace Nethermind.Merge.Plugin
             IsImplemented = true)]
         Task<ResultWrapper<NewBlockResult>> engine_newBlock(
             BlockRequestResult requestResult);
-        
-        [JsonRpcMethod(
-            Description = "Changes consensus layer head block.",
-            IsSharable = true,
-            IsImplemented = true)]
-        Task<ResultWrapper<Result>> engine_setHead(
-            Keccak blockHash);        
-        
-        [JsonRpcMethod(
-            Description = "Marks consensus layer block as finalized.",
-            IsSharable = true,
-            IsImplemented = true)]
-        Task<ResultWrapper<Result>> engine_finaliseBlock(
-            Keccak blockHash);
 
         [JsonRpcMethod(
             Description =
