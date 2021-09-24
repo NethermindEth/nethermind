@@ -28,6 +28,7 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -47,6 +48,7 @@ namespace Nethermind.Blockchain.Test.Validators
         private Block _block;
         private IBlockTree _blockTree;
         private ISpecProvider _specProvider;
+        private IPoSSwitcher _poSSwitcher;
 
         [SetUp]
         public void Setup()
@@ -58,6 +60,11 @@ namespace Nethermind.Blockchain.Test.Validators
             _blockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), FrontierSpecProvider.Instance, Substitute.For<IBloomStorage>(), LimboLogs.Instance);
             _specProvider = new SingleReleaseSpecProvider(Byzantium.Instance, 3);
             
+            PoSSwitcher poSSwitcher = new(NullLogManager.Instance);
+            poSSwitcher.SetTerminalTotalDifficulty(0);
+            poSSwitcher.IsPos(Build.A.BlockHeader.WithTotalDifficulty(0).TestObject, true);
+            _poSSwitcher = poSSwitcher;
+            
             _validator = new HeaderValidator(_blockTree, _ethash, _specProvider , NoPoS.Instance, new OneLoggerLogManager(_testLogger));
             _parentBlock = Build.A.Block.WithDifficulty(1).TestObject;
             _block = Build.A.Block.WithParent(_parentBlock)
@@ -67,6 +74,17 @@ namespace Nethermind.Blockchain.Test.Validators
 
             _blockTree.SuggestBlock(_parentBlock);
             _blockTree.SuggestBlock(_block);
+        }
+        
+        private void AssignValidPoSFields(Block block)
+        {
+            block.Header.Difficulty = 0;
+            block.Header.Nonce = 0ul;
+            //block.Header.ExtraData = Array.Empty<byte>();
+            block.Header.MixHash = Keccak.Zero;
+            block.Header.UnclesHash = Keccak.OfAnEmptySequenceRlp;
+            block.Header.SealEngineType = SealEngineType.None;
+            block.Header.Hash = _block.CalculateHash();
         }
         
         [Test]
@@ -256,6 +274,102 @@ namespace Nethermind.Blockchain.Test.Validators
             bool result = _validator.Validate(_block.Header, _parentBlock.Header);
             
             Assert.True(result);
+        }
+
+        [Test]
+        public void Valid_before_invalid_after_the_merge()
+        {
+            _block.Header.SealEngineType = SealEngineType.None;
+            _block.Header.Hash = _block.CalculateHash();
+            bool result = _validator.Validate(_block.Header);
+
+            Assert.True(result, "before");
+
+            _validator = new HeaderValidator(_blockTree, _ethash, _specProvider, _poSSwitcher,
+                new OneLoggerLogManager(_testLogger));
+            result = _validator.Validate(_block.Header);
+
+            Assert.False(result, "after");
+        }
+
+        [Test]
+        public void Invalid_before_valid_after_the_merge()
+        {
+            AssignValidPoSFields(_block);
+            bool result = _validator.Validate(_block.Header);
+
+            Assert.False(result, "before");
+
+            _validator = new HeaderValidator(_blockTree, _ethash, _specProvider, _poSSwitcher,
+                new OneLoggerLogManager(_testLogger));
+            result = _validator.Validate(_block.Header);
+
+            Assert.True(result, "after");
+        }
+
+        [Test]
+        public void When_incorrect_difficulty_after_the_merge()
+        {
+            _validator = new HeaderValidator(_blockTree, _ethash, _specProvider, _poSSwitcher,
+                new OneLoggerLogManager(_testLogger));
+            AssignValidPoSFields(_block);
+            _block.Header.Difficulty = 131072;
+            _block.Header.Hash = _block.CalculateHash();
+
+            bool result = _validator.Validate(_block.Header);
+            Assert.False(result);
+        }
+
+        [Test]
+        public void When_incorrect_mix_hash_after_the_merge()
+        {
+            _validator = new HeaderValidator(_blockTree, _ethash, _specProvider, _poSSwitcher,
+                new OneLoggerLogManager(_testLogger));
+            AssignValidPoSFields(_block);
+            _block.Header.MixHash = Keccak.Compute("mix_hash");
+            _block.Header.Hash = _block.CalculateHash();
+
+            bool result = _validator.Validate(_block.Header);
+            Assert.False(result);
+        }
+
+        // needed in previous version of EIP-3675 specification
+        /*[Test]
+        public void When_incorrect_extra_data_after_the_merge()
+        {
+            _validator = new HeaderValidator(_blockTree, _ethash, _specProvider, _poSSwitcher,
+                new OneLoggerLogManager(_testLogger));
+            AssignValidPoSFields(_block);
+            _block.Header.ExtraData = new byte[] {1, 2, 3};
+            _block.Header.Hash = _block.CalculateHash();
+
+            bool result = _validator.Validate(_block.Header);
+            Assert.False(result);
+        }*/
+
+        [Test]
+        public void When_incorrect_nonce_after_the_merge()
+        {
+            _validator = new HeaderValidator(_blockTree, _ethash, _specProvider, _poSSwitcher,
+                new OneLoggerLogManager(_testLogger));
+            AssignValidPoSFields(_block);
+            _block.Header.Nonce = 1000;
+            _block.Header.Hash = _block.CalculateHash();
+
+            bool result = _validator.Validate(_block.Header);
+            Assert.False(result);
+        }
+
+        [Test]
+        public void When_incorrect_uncles_after_the_merge()
+        {
+            _validator = new HeaderValidator(_blockTree, _ethash, _specProvider, _poSSwitcher, new OneLoggerLogManager(_testLogger));
+            AssignValidPoSFields(_block);
+            _block.Header.UnclesHash = Keccak.Compute("unclesHash");
+            _block.Header.Hash = _block.CalculateHash();
+            
+            bool result = _validator.Validate(_block.Header);
+            Assert.False(result);
         }
     }
 }
