@@ -125,14 +125,29 @@ namespace Nethermind.Merge.Plugin
             throw new NotImplementedException();
         }
 
-        public ResultWrapper<Result> engine_forkchoiceUpdated(Keccak headBlockHash, Keccak finalizedBlockHash, Keccak confirmedBlockHash)
+        public async Task<ResultWrapper<Result>> engine_forkchoiceUpdated(Keccak headBlockHash, Keccak finalizedBlockHash, Keccak confirmedBlockHash)
         {
-            return _forkChoiceUpdateHandler.Handle(new ForkChoiceUpdatedRequest()
+            if (await _locker.WaitAsync(Timeout))
             {
-                ConfirmedBlockHash = confirmedBlockHash,
-                FinalizedBlockHash = finalizedBlockHash,
-                HeadBlockHash = headBlockHash
-            });
+                try
+                {
+                    return _forkChoiceUpdateHandler.Handle(new ForkChoiceUpdatedRequest()
+                    {
+                        ConfirmedBlockHash = confirmedBlockHash,
+                        FinalizedBlockHash = finalizedBlockHash,
+                        HeadBlockHash = headBlockHash
+                    });
+                }
+                finally
+                {
+                    _locker.Release();
+                }
+            }
+            else
+            {
+                if (_logger.IsWarn) _logger.Warn($"{nameof(engine_setHead)} timeout.");
+                return ResultWrapper<Result>.Success(Result.Fail);
+            }
         }
 
         public Task engine_terminalTotalDifficultyUpdated(UInt256 terminalTotalDifficulty)
