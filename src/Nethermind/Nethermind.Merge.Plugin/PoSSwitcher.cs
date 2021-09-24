@@ -20,6 +20,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Consensus;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.Handlers;
 
 namespace Nethermind.Merge.Plugin
 {

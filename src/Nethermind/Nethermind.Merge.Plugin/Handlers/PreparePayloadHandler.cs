@@ -16,56 +16,64 @@
 // 
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Producers;
-using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
+using Result = Nethermind.Merge.Plugin.Data.Result;
 
 namespace Nethermind.Merge.Plugin.Handlers
 {
-    public class AssembleBlockHandler : IHandlerAsync<AssembleBlockRequest, BlockRequestResult?>
+    public class PreparePayloadHandler: IHandlerAsync<PreparePayloadRequest, Result>
     {
         private readonly IBlockTree _blockTree;
+        private readonly PayloadStorage _payloadStorage;
         private readonly IManualBlockProductionTrigger _blockProductionTrigger;
+        private readonly IManualBlockProductionTrigger _emptyBlockProductionTrigger;
         private readonly ManualTimestamper _timestamper;
         private readonly ILogger _logger;
         private static readonly TimeSpan _timeout = TimeSpan.FromSeconds(10);
 
-        public AssembleBlockHandler(IBlockTree blockTree, IManualBlockProductionTrigger blockProductionTrigger, ManualTimestamper timestamper, ILogManager logManager)
+        public PreparePayloadHandler(
+            IBlockTree blockTree, 
+            PayloadStorage payloadStorage, 
+            IManualBlockProductionTrigger blockProductionTrigger, 
+            IManualBlockProductionTrigger emptyBlockProductionTrigger, 
+            ManualTimestamper timestamper, 
+            ILogManager logManager)
         {
             _blockTree = blockTree;
+            _payloadStorage = payloadStorage;
             _blockProductionTrigger = blockProductionTrigger;
+            _emptyBlockProductionTrigger = emptyBlockProductionTrigger;
             _timestamper = timestamper;
             _logger = logManager.GetClassLogger();
         }
 
-        public async Task<ResultWrapper<BlockRequestResult?>> HandleAsync(AssembleBlockRequest request)
+        public async Task<ResultWrapper<Result>> HandleAsync(PreparePayloadRequest request)
         {
             BlockHeader? parentHeader = _blockTree.FindHeader(request.ParentHash);
             if (parentHeader is null)
             {
                 if (_logger.IsWarn) _logger.Warn($"Parent block {request.ParentHash} cannot be found. New block will not be produced.");
-                return ResultWrapper<BlockRequestResult?>.Success(null);
+                return ResultWrapper<Result>.Success(Result.Fail);
             }
 
             _timestamper.Set(DateTimeOffset.FromUnixTimeSeconds((long) request.Timestamp).UtcDateTime);
             using CancellationTokenSource cts = new(_timeout);
-            Block? block = await _blockProductionTrigger.BuildBlock(parentHeader, cts.Token);
-            if (block == null)
-            {
-                if (_logger.IsWarn) _logger.Warn($"Block production on parent {request.ParentHash} with timestamp {request.Timestamp} failed.");
-                return ResultWrapper<BlockRequestResult?>.Success(null);
-            }
-            else
-            {
-                return ResultWrapper<BlockRequestResult?>.Success(new BlockRequestResult(block));
-            }
+            
+            Block? emptyBlock = await _emptyBlockProductionTrigger.BuildBlock(parentHeader, cts.Token);
+            Task<Block?> idealBlock = _blockProductionTrigger.BuildBlock(parentHeader, cts.Token);
+            _payloadStorage.AddPayload(request.PayloadId, emptyBlock, idealBlock); // not awaiting on purpose
+            
+            return ResultWrapper<Result>.Success(Result.Ok);
         }
     }
 }

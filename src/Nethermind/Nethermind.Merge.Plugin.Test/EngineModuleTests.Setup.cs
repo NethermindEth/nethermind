@@ -47,12 +47,15 @@ namespace Nethermind.Merge.Plugin.Test
 
         private IEngineRpcModule CreateEngineModule(MergeTestBlockchain chain)
         {
+            PayloadStorage? payloadStorage = new();
             return new EngineRpcModule(
-                new AssembleBlockHandler(chain.BlockTree, chain.BlockProductionTrigger, chain.Timestamper, chain.LogManager),
+                new PreparePayloadHandler(chain.BlockTree, payloadStorage, new BuildBlocksWhenRequested(), chain.BlockProductionTrigger, chain.Timestamper, chain.LogManager),
+                new GetPayloadHandler(chain.BlockTree, payloadStorage,  chain.LogManager),
                 new ExecutePayloadHandler(chain.BlockTree, chain.BlockPreprocessorStep, chain.BlockchainProcessor, chain.State, new InitConfig(), chain.LogManager),
                 new SetHeadBlockHandler(chain.BlockTree, chain.State, chain.LogManager),
                 new FinaliseBlockHandler(chain.BlockFinder, chain.BlockFinalizationManager, chain.LogManager),
-                new PoSSwitcher(LimboLogs.Instance),
+new PoSSwitcher(chain.LogManager),
+                new ForkChoiceUpdatedHandler(chain.BlockTree, chain.State, chain.BlockFinalizationManager, chain.LogManager),
                 chain.LogManager);
         }
 

@@ -31,34 +31,35 @@ namespace Nethermind.Merge.Plugin
 {
     public class EngineRpcModule : IEngineRpcModule
     {
-        private readonly IHandlerAsync<AssembleBlockRequest, BlockRequestResult?> _assembleBlockHandler;
+        private readonly IHandlerAsync<PreparePayloadRequest, Result?> _preparePayloadHandler;
+        private readonly IHandler<UInt256, BlockRequestResult?> _getPayloadHandler;
         private readonly IHandler<BlockRequestResult, ExecutePayloadResult> _executePayloadHandler;
         private readonly IHandler<Keccak, Result> _setHeadHandler;
         private readonly IHandler<Keccak, Result> _finaliseBlockHandler;
+        private readonly IHandler<ForkChoiceUpdatedRequest, Result> _forkChoiceUpdateHandler;
         private readonly ITransitionProcessHandler _transitionProcessHandler;
         private readonly SemaphoreSlim _locker = new(1, 1);
         private readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
         private readonly ILogger _logger;
 
         public EngineRpcModule(
-            IHandlerAsync<AssembleBlockRequest, BlockRequestResult?> assembleBlockHandler,
+            PreparePayloadHandler preparePayloadHandler,
+            IHandler<UInt256, BlockRequestResult?> getPayloadHandler,
             IHandler<BlockRequestResult, ExecutePayloadResult> executePayloadHandler,
             IHandler<Keccak, Result> setHeadHandler,
-            IHandler<Keccak, Result> finaliseBlockHandler,
+            IHandler<Keccak, Result> finaliseBlockHandler,                                                                                                                                                                                     
             ITransitionProcessHandler transitionProcessHandler,
+            IHandler<ForkChoiceUpdatedRequest, Result> forkChoiceUpdateHandler,
             ILogManager logManager)
         {
-            _assembleBlockHandler = assembleBlockHandler;
+            _preparePayloadHandler = preparePayloadHandler;
+            _getPayloadHandler = getPayloadHandler;
             _executePayloadHandler = executePayloadHandler;
             _setHeadHandler = setHeadHandler;
             _finaliseBlockHandler = finaliseBlockHandler;
             _transitionProcessHandler = transitionProcessHandler;
+            _forkChoiceUpdateHandler = forkChoiceUpdateHandler;
             _logger = logManager.GetClassLogger();
-        }
-
-        public Task<ResultWrapper<BlockRequestResult?>> engine_assembleBlock(AssembleBlockRequest request)
-        {
-            return _assembleBlockHandler.HandleAsync(request);
         }
 
         public async Task<ResultWrapper<Result>> engine_setHead(Keccak blockHash)
@@ -86,12 +87,12 @@ namespace Nethermind.Merge.Plugin
 
         public Task engine_preparePayload(Keccak parentHash, UInt256 timestamp, Keccak random, Address coinbase, uint payloadId)
         {
-            throw new NotImplementedException();
+            return _preparePayloadHandler.HandleAsync(new PreparePayloadRequest(parentHash, timestamp, random, coinbase, payloadId));
         }
 
         public Task<ResultWrapper<BlockRequestResult?>> engine_getPayload(uint payloadId)
         {
-            throw new NotImplementedException();
+            return Task.FromResult(_getPayloadHandler.Handle(payloadId));
         }
 
         public async Task<ResultWrapper<ExecutePayloadResult>> engine_executePayload(BlockRequestResult executionPayload)
@@ -119,9 +120,29 @@ namespace Nethermind.Merge.Plugin
             throw new NotImplementedException();
         }
 
-        public Task engine_forkchoiceUpdated(Keccak headBlockHash, Keccak finalizedBlockHash, Keccak confirmedBlockHash)
+        public async Task<ResultWrapper<Result>> engine_forkchoiceUpdated(Keccak headBlockHash, Keccak finalizedBlockHash, Keccak confirmedBlockHash)
         {
-            throw new NotImplementedException();
+            if (await _locker.WaitAsync(Timeout))
+            {
+                try
+                {
+                    return _forkChoiceUpdateHandler.Handle(new ForkChoiceUpdatedRequest()
+                    {
+                        ConfirmedBlockHash = confirmedBlockHash,
+                        FinalizedBlockHash = finalizedBlockHash,
+                        HeadBlockHash = headBlockHash
+                    });
+                }
+                finally
+                {
+                    _locker.Release();
+                }
+            }
+            else
+            {
+                if (_logger.IsWarn) _logger.Warn($"{nameof(engine_setHead)} timeout.");
+                return ResultWrapper<Result>.Success(Result.Fail);
+            }
         }
 
         public Task engine_terminalTotalDifficultyUpdated(UInt256 terminalTotalDifficulty)

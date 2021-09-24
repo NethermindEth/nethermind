@@ -16,14 +16,13 @@
 // 
 
 using Nethermind.Core.Crypto;
-using Nethermind.Int256;
 
 namespace Nethermind.Merge.Plugin.Data
 {
-    public class AssembleBlockRequest
+    public class ForkChoiceUpdatedRequest
     {
-        public Keccak ParentHash { get; set; }
-
-        public UInt256 Timestamp { get; set; }
+        public Keccak HeadBlockHash { get; set; }
+        public Keccak FinalizedBlockHash { get; set; }
+        public Keccak ConfirmedBlockHash { get; set; }
     }
 }

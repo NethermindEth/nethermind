@@ -15,15 +15,15 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-namespace Nethermind.Merge.Plugin.Data
-{
-    public class Result
-    {
-        public static readonly Result Ok = new Result() {Success = true};
-        public static readonly Result Fail = new Result() {Success = false};
+using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 
-        public static implicit operator Result(bool value) => value ? Ok : Fail;
-        
-        public bool Success { get; init; }
+namespace Nethermind.Merge.Plugin.Handlers
+{
+    public interface ITransitionProcessHandler
+    {
+        void SetTerminalTotalDifficulty(UInt256 totalDifficulty);
+
+        void SetTerminalPoWHash(Keccak blockHash);
     }
 }
