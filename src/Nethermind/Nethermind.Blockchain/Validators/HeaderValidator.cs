@@ -113,7 +113,7 @@ namespace Nethermind.Blockchain.Validators
 
             // seal is validated when synchronizing so we can remove it from here - review and test
             bool sealParamsCorrect = true;
-            if (_poSSwitcher.IsPos(header, false) == false)
+            if (_poSSwitcher.IsPos(header) == false)
             {
                 sealParamsCorrect = _sealValidator.ValidateParams(parent, header);
                 if (!sealParamsCorrect)
