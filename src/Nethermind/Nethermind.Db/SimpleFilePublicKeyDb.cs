@@ -24,7 +24,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
 
-namespace Nethermind.Network
+namespace Nethermind.Db
 {
     public class SimpleFilePublicKeyDb : IFullDb
     {

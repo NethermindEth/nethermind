@@ -23,6 +23,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
@@ -69,7 +70,7 @@ namespace Nethermind.Network.Test.Discovery
             NetworkNodeDecoder.Init();
             SetupNodeIds();
 
-            var logManager = LimboLogs.Instance;
+            LimboLogs logManager = LimboLogs.Instance;
             _loggerMock = Substitute.For<ILogger>();
             //setting config to store 3 nodes in a bucket and for table to have one bucket//setting config to store 3 nodes in a bucket and for table to have one bucket
 
@@ -84,7 +85,7 @@ namespace Nethermind.Network.Test.Discovery
 
             _ipResolverMock = Substitute.For<IIPResolver>();
 
-            var calculator = new NodeDistanceCalculator(discoveryConfig);
+            NodeDistanceCalculator calculator = new NodeDistanceCalculator(discoveryConfig);
 
             _nodeTable = new NodeTable(calculator, discoveryConfig, _networkConfig, logManager);
             _nodeTable.Initialize(TestItem.PublicKeyA);
@@ -92,15 +93,15 @@ namespace Nethermind.Network.Test.Discovery
             
             _timestamper = Timestamper.Default;
 
-            var evictionManager = new EvictionManager(_nodeTable, logManager);
+            EvictionManager evictionManager = new EvictionManager(_nodeTable, logManager);
             _evictionManagerMock = Substitute.For<IEvictionManager>();
             ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
-            var lifecycleFactory = new NodeLifecycleManagerFactory(_nodeTable, new DiscoveryMessageFactory(_timestamper), evictionManager, 
+            NodeLifecycleManagerFactory lifecycleFactory = new NodeLifecycleManagerFactory(_nodeTable, new DiscoveryMessageFactory(_timestamper), evictionManager, 
                 new NodeStatsManager(timerFactory, logManager), discoveryConfig, logManager);
 
             _udpClient = Substitute.For<IMessageSender>();
 
-            var discoveryDb = new SimpleFilePublicKeyDb("Test","test", logManager);
+            SimpleFilePublicKeyDb discoveryDb = new SimpleFilePublicKeyDb("Test","test", logManager);
             _discoveryManager = new DiscoveryManager(lifecycleFactory, _nodeTable, new NetworkStorage(discoveryDb, logManager), discoveryConfig, logManager, _ipResolverMock);
             _discoveryManager.MessageSender = _udpClient;
 
@@ -110,11 +111,11 @@ namespace Nethermind.Network.Test.Discovery
         [Test]
         public async Task sending_ping_recieving_proper_pong_sets_bounded()
         {
-            var node = new Node(_host, _port);
-            var nodeManager = new NodeLifecycleManager(node, _discoveryManagerMock
+            Node node = new Node(_host, _port);
+            NodeLifecycleManager nodeManager = new NodeLifecycleManager(node, _discoveryManagerMock
             , _nodeTable, new DiscoveryMessageFactory(_timestamper), _evictionManagerMock, _nodeStatsMock, _discoveryConfigMock, _loggerMock);
 
-            var sentPing = new PingMessage();
+            PingMessage sentPing = new PingMessage();
             _discoveryManagerMock.SendMessage(Arg.Do<PingMessage>(msg => sentPing = msg));
 
             await nodeManager.SendPingAsync();
@@ -126,8 +127,8 @@ namespace Nethermind.Network.Test.Discovery
         [Test]
         public async Task sending_ping_recieving_incorect_pong_does_not_bond()
         {
-            var node = new Node(_host, _port);
-            var nodeManager = new NodeLifecycleManager(node, _discoveryManagerMock
+            Node node = new Node(_host, _port);
+            NodeLifecycleManager nodeManager = new NodeLifecycleManager(node, _discoveryManagerMock
             , _nodeTable, new DiscoveryMessageFactory(_timestamper), _evictionManagerMock, _nodeStatsMock, _discoveryConfigMock, _loggerMock);
 
             PingMessage sentPing = new PingMessage();
@@ -142,8 +143,8 @@ namespace Nethermind.Network.Test.Discovery
         [Test]
         public void Wrong_pong_will_get_ignored()
         {
-            var node = new Node(_host, _port);
-            var manager = _discoveryManager.GetNodeLifecycleManager(node);
+            Node node = new Node(_host, _port);
+            INodeLifecycleManager manager = _discoveryManager.GetNodeLifecycleManager(node);
             Assert.AreEqual(NodeLifecycleState.New, manager.State);
             
             manager.ProcessPongMessage(new PongMessage {FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port), FarPublicKey = _nodeIds[0], PingMdc = new byte[32]});
@@ -155,8 +156,8 @@ namespace Nethermind.Network.Test.Discovery
         [Retry(3)]
         public void UnreachableStateTest()
         {
-            var node = new Node(_host, _port);
-            var manager = _discoveryManager.GetNodeLifecycleManager(node);
+            Node node = new Node(_host, _port);
+            INodeLifecycleManager manager = _discoveryManager.GetNodeLifecycleManager(node);
             Assert.AreEqual(NodeLifecycleState.New, manager.State);
 
             //await Task.Delay(500);
@@ -169,12 +170,12 @@ namespace Nethermind.Network.Test.Discovery
         public void EvictCandidateStateWonEvictionTest()
         {
             //adding 3 active nodes
-            var managers = new List<INodeLifecycleManager>();
-            for (var i = 0; i < 3; i++)
+            List<INodeLifecycleManager> managers = new List<INodeLifecycleManager>();
+            for (int i = 0; i < 3; i++)
             {
-                var host = "192.168.1." + i;
-                var node = new Node(_nodeIds[i], host, _port);
-                var manager = _discoveryManager.GetNodeLifecycleManager(node);
+                string host = "192.168.1." + i;
+                Node node = new Node(_nodeIds[i], host, _port);
+                INodeLifecycleManager manager = _discoveryManager.GetNodeLifecycleManager(node);
                 managers.Add(manager);
                 Assert.AreEqual(NodeLifecycleState.New, manager.State);
 
@@ -183,20 +184,20 @@ namespace Nethermind.Network.Test.Discovery
             }
 
             //table should contain 3 active nodes
-            var closestNodes = _nodeTable.GetClosestNodes();
+            IEnumerable<Node> closestNodes = _nodeTable.GetClosestNodes();
             Assert.IsTrue(closestNodes.Count(x => x.Host == managers[0].ManagedNode.Host) == 0);
             Assert.IsTrue(closestNodes.Count(x => x.Host == managers[1].ManagedNode.Host) == 0);
             Assert.IsTrue(closestNodes.Count(x => x.Host == managers[2].ManagedNode.Host) == 0);
 
             //adding 4th node - table can store only 3, eviction process should start
-            var candidateNode = new Node(_nodeIds[3], _host, _port);
-            var candidateManager = _discoveryManager.GetNodeLifecycleManager(candidateNode);
+            Node candidateNode = new Node(_nodeIds[3], _host, _port);
+            INodeLifecycleManager candidateManager = _discoveryManager.GetNodeLifecycleManager(candidateNode);
 
             Assert.AreEqual(NodeLifecycleState.New, candidateManager.State);
 
             _discoveryManager.OnIncomingMessage(new PongMessage { FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port), FarPublicKey = _nodeIds[3]});
             Assert.AreEqual(NodeLifecycleState.New, candidateManager.State);
-            var evictionCandidate = managers.First(x => x.State == NodeLifecycleState.EvictCandidate);
+            INodeLifecycleManager evictionCandidate = managers.First(x => x.State == NodeLifecycleState.EvictCandidate);
 
             //receiving pong for eviction candidate - should survive
             _discoveryManager.OnIncomingMessage(new PongMessage { FarAddress = new IPEndPoint(IPAddress.Parse(evictionCandidate.ManagedNode.Host), _port), FarPublicKey = evictionCandidate.ManagedNode.Id });
@@ -226,12 +227,12 @@ namespace Nethermind.Network.Test.Discovery
         public void EvictCandidateStateLostEvictionTest()
         {
             //adding 3 active nodes
-            var managers = new List<INodeLifecycleManager>();
-            for (var i = 0; i < 3; i++)
+            List<INodeLifecycleManager> managers = new List<INodeLifecycleManager>();
+            for (int i = 0; i < 3; i++)
             {
-                var host = "192.168.1." + i;
-                var node = new Node(_nodeIds[i], host, _port);
-                var manager = _discoveryManager.GetNodeLifecycleManager(node);
+                string host = "192.168.1." + i;
+                Node node = new Node(_nodeIds[i], host, _port);
+                INodeLifecycleManager manager = _discoveryManager.GetNodeLifecycleManager(node);
                 managers.Add(manager);
                 Assert.AreEqual(NodeLifecycleState.New, manager.State);
 
@@ -241,16 +242,16 @@ namespace Nethermind.Network.Test.Discovery
             }
 
             //table should contain 3 active nodes
-            var closestNodes = _nodeTable.GetClosestNodes();
+            IEnumerable<Node> closestNodes = _nodeTable.GetClosestNodes();
             for (int i = 0; i < 3; i++)
             {
                 Assert.IsTrue(closestNodes.Count(x => x.Host == managers[0].ManagedNode.Host) == 1);
             }
 
             //adding 4th node - table can store only 3, eviction process should start
-            var candidateNode = new Node(_nodeIds[3], _host, _port);
+            Node candidateNode = new Node(_nodeIds[3], _host, _port);
 
-            var candidateManager = _discoveryManager.GetNodeLifecycleManager(candidateNode);
+            INodeLifecycleManager candidateManager = _discoveryManager.GetNodeLifecycleManager(candidateNode);
             Assert.AreEqual(NodeLifecycleState.New, candidateManager.State);
             _discoveryManager.OnIncomingMessage(new PongMessage
             {
@@ -262,7 +263,7 @@ namespace Nethermind.Network.Test.Discovery
             Assert.That(() => candidateManager.State, Is.EqualTo(NodeLifecycleState.Active).After(10, 5));
             //Assert.AreEqual(NodeLifecycleState.Active, candidateManager.State);
 
-            var evictionCandidate = managers.First(x => x.State == NodeLifecycleState.EvictCandidate);
+            INodeLifecycleManager evictionCandidate = managers.First(x => x.State == NodeLifecycleState.EvictCandidate);
             //await Task.Delay(300);
 
             //3th node should be evicted, 4th node should be added to the table

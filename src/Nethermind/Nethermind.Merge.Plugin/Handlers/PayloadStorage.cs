@@ -26,17 +26,17 @@ namespace Nethermind.Merge.Plugin.Handlers
     public class PayloadStorage
     {
         // first BlockRequestResult is empty (without txs), second one is the ideal one
-        private IDictionary<UInt256, Block?> _payloadStorage =
-            new ConcurrentDictionary<UInt256, Block?>();
+        private IDictionary<ulong, Block?> _payloadStorage =
+            new ConcurrentDictionary<ulong, Block?>();
 
-        public async Task AddPayload(UInt256 payloadId, Block? emptyBlock, Task<Block?> blockTask)
+        public async Task AddPayload(ulong payloadId, Block? emptyBlock, Task<Block?> blockTask)
         {
             _payloadStorage.TryAdd(payloadId, emptyBlock);
             Block? idealBlock = await blockTask;
             _payloadStorage[payloadId] = idealBlock;
         }
 
-        public Block? GetPayload(UInt256 payloadId)
+        public Block? GetPayload(ulong payloadId)
         {
             if (_payloadStorage.ContainsKey(payloadId))
             {

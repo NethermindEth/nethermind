@@ -15,27 +15,15 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Int256;
-
-namespace Nethermind.Merge.Plugin.Data
+namespace Nethermind.Merge.Plugin
 {
-    public class PreparePayloadRequest
+    public static class MergeErrorCodes
     {
-        public PreparePayloadRequest(Keccak parentHash, UInt256 timestamp, Keccak random, Address feeRecipient, ulong payloadId)
-        {
-            ParentHash = parentHash;
-            Timestamp = timestamp;
-            Random = random;
-            FeeRecipient = feeRecipient;
-            PayloadId = payloadId;
-        }
+        public const int None = 0;
 
-        public Keccak ParentHash { get; set; }
-        public UInt256 Timestamp { get; set; }
-        public Keccak Random { get; set; }
-        public Address FeeRecipient { get; set; }
-        public ulong PayloadId { get; set; }
+        /// <summary>
+        /// Invalid JSON
+        /// </summary>
+        public const int UnknownHeader = 4;
     }
 }

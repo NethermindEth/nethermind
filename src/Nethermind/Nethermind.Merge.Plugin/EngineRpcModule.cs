@@ -32,7 +32,7 @@ namespace Nethermind.Merge.Plugin
     public class EngineRpcModule : IEngineRpcModule
     {
         private readonly IHandlerAsync<PreparePayloadRequest, Result?> _preparePayloadHandler;
-        private readonly IHandler<UInt256, BlockRequestResult?> _getPayloadHandler;
+        private readonly IHandler<ulong, BlockRequestResult?> _getPayloadHandler;
         private readonly IHandler<BlockRequestResult, ExecutePayloadResult> _executePayloadHandler;
         private readonly IHandler<ForkChoiceUpdatedRequest, Result> _forkChoiceUpdateHandler;
         private readonly IHandler<ExecutionStatusResult> _executionStatusHandler;
@@ -43,7 +43,7 @@ namespace Nethermind.Merge.Plugin
 
         public EngineRpcModule(
             PreparePayloadHandler preparePayloadHandler,
-            IHandler<UInt256, BlockRequestResult?> getPayloadHandler,
+            IHandler<ulong, BlockRequestResult?> getPayloadHandler,
             IHandler<BlockRequestResult, ExecutePayloadResult> executePayloadHandler,
             ITransitionProcessHandler transitionProcessHandler,
             IHandler<ForkChoiceUpdatedRequest, Result> forkChoiceUpdateHandler,
@@ -60,13 +60,13 @@ namespace Nethermind.Merge.Plugin
         }
 
         public Task engine_preparePayload(Keccak parentHash, UInt256 timestamp, Keccak random, Address coinbase,
-            uint payloadId)
+            ulong payloadId)
         {
             return _preparePayloadHandler.HandleAsync(new PreparePayloadRequest(parentHash, timestamp, random, coinbase,
                 payloadId));
         }
 
-        public Task<ResultWrapper<BlockRequestResult?>> engine_getPayload(uint payloadId)
+        public Task<ResultWrapper<BlockRequestResult?>> engine_getPayload(ulong payloadId)
         {
             return Task.FromResult(_getPayloadHandler.Handle(payloadId));
         }
@@ -119,16 +119,14 @@ namespace Nethermind.Merge.Plugin
             }
         }
 
-        public Task engine_terminalTotalDifficultyUpdated(UInt256 terminalTotalDifficulty)
+        public void engine_terminalTotalDifficultyUpdated(UInt256 terminalTotalDifficulty)
         {
             _transitionProcessHandler.SetTerminalTotalDifficulty(terminalTotalDifficulty);
-            return Task.CompletedTask;
         }
 
-        public Task engine_terminalPoWBlockOverride(Keccak blockHash)
+        public void engine_terminalPoWBlockOverride(Keccak blockHash)
         {
             _transitionProcessHandler.SetTerminalPoWHash(blockHash);
-            return Task.CompletedTask;
         }
 
         public Task<ResultWrapper<Block?>> engine_getPowBlock(Keccak blockHash)

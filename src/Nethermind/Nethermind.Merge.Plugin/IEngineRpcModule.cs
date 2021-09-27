@@ -34,14 +34,14 @@ namespace Nethermind.Merge.Plugin
                 "Builds an execution payload on top of a given parent with transactions selected from the mempool.",
             IsSharable = true,
             IsImplemented = false)]
-        Task engine_preparePayload(Keccak parentHash, UInt256 timestamp, Keccak random, Address coinbase, uint payloadId);
+        Task engine_preparePayload(Keccak parentHash, UInt256 timestamp, Keccak random, Address coinbase, ulong payloadId);
         
         [JsonRpcMethod(
             Description =
                 "Returns the most recent version of an execution payload with respect to the transaction set contained by the mempool.",
             IsSharable = true,
             IsImplemented = false)]
-        Task<ResultWrapper<BlockRequestResult?>> engine_getPayload(uint payloadId);
+        Task<ResultWrapper<BlockRequestResult?>> engine_getPayload(ulong payloadId);
 
         [JsonRpcMethod(
             Description =
@@ -67,13 +67,13 @@ namespace Nethermind.Merge.Plugin
             Description = "Propagates an override of the TERMINAL_TOTAL_DIFFICULTY to the execution client.",
             IsSharable = true,
             IsImplemented = false)]
-        Task engine_terminalTotalDifficultyUpdated(UInt256 terminalTotalDifficulty);
+        void engine_terminalTotalDifficultyUpdated(UInt256 terminalTotalDifficulty);
         
         [JsonRpcMethod(
             Description = "Propagates the hash of the terminal PoW block.",
             IsSharable = true,
             IsImplemented = false)]
-        Task engine_terminalPoWBlockOverride(Keccak blockHash);
+        void engine_terminalPoWBlockOverride(Keccak blockHash);
         
         [JsonRpcMethod(
             Description = "Given the hash returns the information of the PoW block.",
