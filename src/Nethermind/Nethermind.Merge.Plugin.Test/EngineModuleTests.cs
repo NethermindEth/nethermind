@@ -248,6 +248,7 @@ namespace Nethermind.Merge.Plugin.Test
             Keccak actualHead = chain.BlockTree.HeadHash;
             actualHead.Should().NotBe(startingHead);
             actualHead.Should().Be(newHeadHash);
+            AssertExecutionStatusChanged(rpc, newHeadHash!, startingHead, startingHead);
         }
 
         [Test]
@@ -258,6 +259,7 @@ namespace Nethermind.Merge.Plugin.Test
             ResultWrapper<Result> forkchoiceUpdatedResult =
                 await rpc.engine_forkchoiceUpdated(TestItem.KeccakF, TestItem.KeccakF, TestItem.KeccakF);
             forkchoiceUpdatedResult.Data.Success.Should().BeFalse();
+            AssertExecutionStatusNotChanged(rpc, TestItem.KeccakF, TestItem.KeccakF, TestItem.KeccakF);
         }
 
         [Test]
@@ -290,6 +292,7 @@ namespace Nethermind.Merge.Plugin.Test
             ResultWrapper<Result> forkchoiceUpdatedResult =
                 await rpc.engine_forkchoiceUpdated(block.Hash!, startingHead, startingHead);
             forkchoiceUpdatedResult.Data.Success.Should().BeFalse();
+            AssertExecutionStatusNotChanged(rpc, block.Hash!, startingHead, startingHead);
         }
 
         [Test]
@@ -303,7 +306,7 @@ namespace Nethermind.Merge.Plugin.Test
             ResultWrapper<Result> resultWrapper =
                 await rpc.engine_forkchoiceUpdated(newHeadHash, newHeadHash, newHeadHash);
             resultWrapper.Data.Should().Be(Result.Ok);
-            Assert.AreEqual(newHeadHash, chain.BlockTree.Head.Hash);
+            AssertExecutionStatusChanged(rpc, newHeadHash, newHeadHash, newHeadHash);
         }
 
         [Test]
@@ -328,6 +331,22 @@ namespace Nethermind.Merge.Plugin.Test
             ResultWrapper<NewBlockResult> newBlockResult = await rpc.engine_newBlock(blockRequestResult);
             newBlockResult.Data.Valid.Should().BeTrue();
             return blockRequestResult; // ToDo need to be changed to ExecutionPayload
+        }
+        
+        private void AssertExecutionStatusChanged(IEngineRpcModule rpc, Keccak headBlockHash, Keccak finalizedBlockHash, Keccak confirmedBlockHash)
+        {
+            ExecutionStatusResult? result = rpc.engine_executionStatus().Data;
+            Assert.AreEqual(headBlockHash, result.HeadBlockHash);
+            Assert.AreEqual(finalizedBlockHash, result.FinalizedBlockHash);
+            Assert.AreEqual(confirmedBlockHash, result.ConfirmedBlockHash);
+        }
+        
+        private void AssertExecutionStatusNotChanged(IEngineRpcModule rpc, Keccak headBlockHash, Keccak finalizedBlockHash, Keccak confirmedBlockHash)
+        {
+            ExecutionStatusResult? result = rpc.engine_executionStatus().Data;
+            Assert.AreNotEqual(headBlockHash, result.HeadBlockHash);
+            Assert.AreNotEqual(finalizedBlockHash, result.FinalizedBlockHash);
+            Assert.AreNotEqual(confirmedBlockHash, result.ConfirmedBlockHash);
         }
 
         // ToDo need for rework
