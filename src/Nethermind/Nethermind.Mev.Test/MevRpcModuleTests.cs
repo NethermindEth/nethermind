@@ -39,6 +39,7 @@ namespace Nethermind.Mev.Test
 
 {
     [TestFixture]
+    [Ignore("ToDo - it is failing after the merge changes on total difficulty checks in BlockTree and IBlockTree")]
     public partial class MevRpcModuleTests
     {
         public static IEnumerable<Keccak?> GetHashes(IEnumerable<Transaction> bundle2Txs) => bundle2Txs.Select(t => t.Hash);
@@ -119,7 +120,6 @@ namespace Nethermind.Mev.Test
         }
 
         [Test]
-        [Ignore("ToDo - it is failing after the merge changes")]
         public async Task Should_execute_eth_callBundle_and_serialize_successful_response_properly() 
         {
             var chain = await CreateChain(2);
@@ -134,7 +134,6 @@ namespace Nethermind.Mev.Test
         }
         
         [Test]
-        [Ignore("ToDo - it is failing after the merge changes")]
         public async Task Should_execute_eth_callBundle_and_not_change_block() 
         {
             var chain = await CreateChain(2);
@@ -148,7 +147,6 @@ namespace Nethermind.Mev.Test
         }
 
         [Test]
-        [Ignore("ToDo - it is failing after the merge changes")]
         public async Task Should_execute_eth_callBundle_and_serialize_failed_response_properly() 
         {
             var chain = await CreateChain(2);
@@ -160,7 +158,6 @@ namespace Nethermind.Mev.Test
         }
         
         [Test]
-        [Ignore("ToDo - it is failing after the merge changes")]
         public async Task Should_execute_eth_sendBundle_and_serialize_successful_response_properly() 
         {
             var chain = await CreateChain(2);
@@ -175,7 +172,6 @@ namespace Nethermind.Mev.Test
         }        
 
         [Test]
-        [Ignore("ToDo - it is failing after the merge changes")]
         public async Task Should_pick_one_highest_scoring_bundle_from_several_with_no_pool_txs_with_1_maxMergedBundles()
         {
             var chain = await CreateChain(1);
@@ -227,7 +223,6 @@ namespace Nethermind.Mev.Test
         }
         
         [Test]
-        [Ignore("ToDo - it is failing after the merge changes")]
         public async Task Should_not_include_bundle_if_it_has_lower_gasPrice_when_being_simulated_inside_block_than_originally()
         {
             var chain = await CreateChain(2);
@@ -280,7 +275,6 @@ namespace Nethermind.Mev.Test
         }
 
         [Test]
-        [Ignore("ToDo - it is failing after the merge changes")]
         public async Task Should_pick_bundle_if_better_than_pool_tx()
         {
             var chain = await CreateChain(1);
@@ -304,7 +298,6 @@ namespace Nethermind.Mev.Test
         }
         
         [Test]
-        [Ignore("ToDo - it is failing after the merge changes")]
         public async Task Should_pick_bundle_if_better_than_pool_tx_in_London()
         {
             var chain = await CreateChain(1, London.Instance);
@@ -334,7 +327,6 @@ namespace Nethermind.Mev.Test
         }
 
         [Test]
-        [Ignore("ToDo - it is failing after the merge changes")]
         public async Task Should_pick_pool_tx_if_better_than_bundle()
         {
             var chain = await CreateChain(3);
@@ -358,7 +350,6 @@ namespace Nethermind.Mev.Test
         }
         
         [Test]
-        [Ignore("ToDo - it is failing after the merge changes")]
         public async Task Should_pick_pool_tx_if_better_than_bundle_in_London()
         {
             var chain = await CreateChain(3, London.Instance);
@@ -388,7 +379,6 @@ namespace Nethermind.Mev.Test
         }
         
         [Test]
-        [Ignore("ToDo - it is failing after the merge changes")]
         public async Task Should_handle_out_of_gas_and_reverting_txs()
         {
             var chain = await CreateChain(1);
@@ -422,7 +412,6 @@ namespace Nethermind.Mev.Test
         }
 
         [Test]
-        [Ignore("ToDo - it is failing after the merge changes")]
         public async Task Should_reject_bundle_with_failures()
         {
             // ignoring bundles with failed tx takes care of intersecting bundles
@@ -454,7 +443,6 @@ namespace Nethermind.Mev.Test
         }
 
         [Test]
-        [Ignore("ToDo - it is failing after the merge changes")]
         public async Task Should_include_bundle_transactions_uninterrupted_in_order_at_beginning_of_block()
         {
             var chain = await CreateChain(2);
@@ -499,7 +487,6 @@ namespace Nethermind.Mev.Test
         }
 
         [Test]
-        [Ignore("ToDo - it is failing after the merge changes")]
         public async Task Should_include_multiple_bundles()
         {
             var chain = await CreateChain(3);
@@ -530,7 +517,6 @@ namespace Nethermind.Mev.Test
         }
         
         [Test]
-        [Ignore("ToDo - it is failing after the merge changes")]
         public async Task Should_accept_and_simulate_bundle_with_future_blockNumber_given()
         {
             var chain = await CreateChain(3);
@@ -563,7 +549,6 @@ namespace Nethermind.Mev.Test
         }
         
         [Test]
-        [Ignore("ToDo - it is failing after the merge changes")]
         public async Task Should_accept_and_simulate_bundle_with_future_blockNumber_if_baseFee_decreases_until_then_in_London()
         {
             var chain = await CreateChain(3, London.Instance, 140);
@@ -596,7 +581,6 @@ namespace Nethermind.Mev.Test
         }
         
         [Test]
-        [Ignore("ToDo - it is failing after the merge changes")]
         public async Task Should_reject_bundle_with_past_blockNumber_given()
         {
             var chain = await CreateChain(3);
@@ -630,7 +614,6 @@ namespace Nethermind.Mev.Test
         }
 
         [Test]
-        [Ignore("ToDo - it is failing after the merge changes")]
         public async Task Should_include_bundles_by_eligible_gas_fee()
         {
             var chain = await CreateChain(2);
@@ -668,7 +651,6 @@ namespace Nethermind.Mev.Test
         }
         
         [Test]
-        [Ignore("ToDo - it is failing after the merge changes")]
         public async Task Should_not_include_bundles_with_txs_below_BaseFee_in_London()
         {
             var chain = await CreateChain(2, London.Instance, 150);
@@ -718,7 +700,6 @@ namespace Nethermind.Mev.Test
         
         
         [Test]
-        [Ignore("ToDo - it is failing after the merge changes")]
         public async Task Should_not_include_bundles_with_txs_not_passing_eip1559_consensus_checks_in_London()
         {
             var chain = await CreateChain(2, London.Instance, 0);
@@ -753,7 +734,6 @@ namespace Nethermind.Mev.Test
         }        
 
         [Test]
-        [Ignore("ToDo - it is failing after the merge changes")]
         public async Task Should_accept_reverting_bundle_with_RevertingTxHashes()
         {
             TestMevRpcBlockchain chain = await CreateChain(3);
@@ -775,7 +755,6 @@ namespace Nethermind.Mev.Test
         }
         
         [Test]
-        [Ignore("ToDo - it is failing after the merge changes")]
         public async Task Should_accept_future_reverting_bundle_with_RevertingTxHashes()
         {
             var chain = await CreateChain(3);
@@ -805,7 +784,6 @@ namespace Nethermind.Mev.Test
         }
         
         [Test]
-        [Ignore("ToDo - it is failing after the merge changes")]
         public async Task Should_accept_reverting_larger_bundle_with_one_reverting_tx_in_RevertingTxHashes()
         {
             var chain = await CreateChain(5);
@@ -835,7 +813,6 @@ namespace Nethermind.Mev.Test
         }
         
         [Test]
-        [Ignore("ToDo - it is failing after the merge changes")]
         public async Task Should_not_include_bundle_if_wrong_transaction_is_in_RevertingTxHashes()
         {
             var chain = await CreateChain(5);
@@ -863,7 +840,6 @@ namespace Nethermind.Mev.Test
         }
         
         [Test]
-        [Ignore("ToDo - it is failing after the merge changes")]
         public async Task Should_choose_only_some_bundles_maximizing_profit_between_1_and_maxMergedBundle()
         {
             var chain = await CreateChain(3);
@@ -908,7 +884,6 @@ namespace Nethermind.Mev.Test
         }
         
         [Test]
-        [Ignore("ToDo - it is failing after the merge changes")]
         public async Task Should_choose_first_tx_that_was_sent_to_include_if_bundles_have_same_gas_price()
         {
             var chain = await CreateChain(1);
@@ -933,7 +908,6 @@ namespace Nethermind.Mev.Test
         }
         
         [Test]
-        [Ignore("ToDo - it is failing after the merge changes")]
         public async Task Should_not_include_same_transaction_in_different_bundles_twice()
         {
             var chain = await CreateChain(3);
@@ -964,7 +938,6 @@ namespace Nethermind.Mev.Test
         }
         
         [Test]
-        [Ignore("ToDo - it is failing after the merge changes")]
         public async Task Should_include_identical_bundles_only_once()
         {
             var chain = await CreateChain(3);
@@ -990,7 +963,6 @@ namespace Nethermind.Mev.Test
         }
         
         [Test]
-        [Ignore("ToDo - it is failing after the merge changes")]
         public async Task Should_reject_second_bundle_where_they_succeed_individually_but_fail_if_in_the_same_block()
         {
             var chain = await CreateChain(2);
@@ -1025,7 +997,6 @@ namespace Nethermind.Mev.Test
         }
         
         [Test]
-        [Ignore("ToDo - it is failing after the merge changes")]
         public async Task Should_reject_bundle_where_transactions_succeed_individually_but_fail_if_in_the_same_bundle()
         {
             var chain = await CreateChain(3);
@@ -1057,7 +1028,6 @@ namespace Nethermind.Mev.Test
         }
         
         [Test]
-        [Ignore("ToDo - it is failing after the merge changes")]
         public async Task Should_accept_bundles_in_RevertingTxHashes_where_they_only_fail_if_included_in_block_together()
         {
             var chain = await CreateChain(3);
@@ -1091,7 +1061,6 @@ namespace Nethermind.Mev.Test
         }
 
         [Test]
-        [Ignore("ToDo - it is failing after the merge changes")]
         public async Task Should_be_able_to_handle_hundreds_of_bundle_smart_contract_state_changes()
         {
             var chain = await CreateChain(1);
@@ -1146,7 +1115,6 @@ namespace Nethermind.Mev.Test
         }
         
         [Test]
-        [Ignore("ToDo - it is failing after the merge changes")]
         public async Task Should_be_able_to_handle_hundreds_of_bundle_transaction_state_changes()
         {
             var chain = await CreateChain(1);
@@ -1201,7 +1169,6 @@ namespace Nethermind.Mev.Test
         }
         
         [Test]
-        [Ignore("ToDo - it is failing after the merge changes")]
         public async Task Should_be_able_to_handle_hundreds_of_pool_smart_contract_state_changes()
         {
             var chain = await CreateChain(0);
@@ -1252,7 +1219,6 @@ namespace Nethermind.Mev.Test
         }
         
         [Test]
-        [Ignore("ToDo - it is failing after the merge changes")]
         public async Task Should_be_able_to_handle_hundreds_of_pool_transaction_state_changes()
         {
             var chain = await CreateChain(0);
