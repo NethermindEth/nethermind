@@ -87,6 +87,8 @@ namespace Nethermind.Core.Test.Blockchain
         public IPoSSwitcher PoSSwitcher { get; set; } = NoPoS.Instance;
         
         public ITransactionComparerProvider TransactionComparerProvider { get; set; }
+        
+        public IBlockConfirmationManager BlockConfirmationManager { get; set; } = NoBlockConfirmation.Instance;
 
         protected TestBlockchain()
         {

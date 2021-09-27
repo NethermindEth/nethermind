@@ -35,15 +35,15 @@ namespace Nethermind.Merge.Plugin.Test
             BlockHeader blockHeader2 = Build.A.BlockHeader.WithTotalDifficulty(200L).TestObject;
             BlockHeader blockHeader3 = Build.A.BlockHeader.WithTotalDifficulty(300L).TestObject;
 
-            Assert.AreEqual(false, poSSwitcher.IsPos(blockHeader, false));
-            Assert.AreEqual(true, poSSwitcher.IsPos(blockHeader2, false));
-            Assert.AreEqual(true, poSSwitcher.IsPos(blockHeader3, false));
+            Assert.AreEqual(false, poSSwitcher.IsPos(blockHeader));
+            Assert.AreEqual(true, poSSwitcher.IsPos(blockHeader2));
+            Assert.AreEqual(true, poSSwitcher.IsPos(blockHeader3));
 
             poSSwitcher.SetTerminalTotalDifficulty(500);
 
-            Assert.AreEqual(false, poSSwitcher.IsPos(blockHeader, false));
-            Assert.AreEqual(false, poSSwitcher.IsPos(blockHeader2, false));
-            Assert.AreEqual(false, poSSwitcher.IsPos(blockHeader3, false));
+            Assert.AreEqual(false, poSSwitcher.IsPos(blockHeader));
+            Assert.AreEqual(false, poSSwitcher.IsPos(blockHeader2));
+            Assert.AreEqual(false, poSSwitcher.IsPos(blockHeader3));
         }
 
         [Test]
@@ -55,13 +55,13 @@ namespace Nethermind.Merge.Plugin.Test
             BlockHeader blockHeader = Build.A.BlockHeader.WithParentHash(Keccak.Compute("test2")).TestObject;
             BlockHeader blockHeader2 = Build.A.BlockHeader.WithParentHash(Keccak.Compute("test1")).TestObject;
 
-            Assert.AreEqual(false, poSSwitcher.IsPos(blockHeader, false));
-            Assert.AreEqual(true, poSSwitcher.IsPos(blockHeader2, false));
+            Assert.AreEqual(false, poSSwitcher.IsPos(blockHeader));
+            Assert.AreEqual(true, poSSwitcher.IsPos(blockHeader2));
 
             poSSwitcher.SetTerminalPoWHash(Keccak.Compute("test2"));
 
-            Assert.AreEqual(true, poSSwitcher.IsPos(blockHeader, false));
-            Assert.AreEqual(false, poSSwitcher.IsPos(blockHeader2, false));
+            Assert.AreEqual(true, poSSwitcher.IsPos(blockHeader));
+            Assert.AreEqual(false, poSSwitcher.IsPos(blockHeader2));
         }
 
         [Test]
@@ -73,11 +73,11 @@ namespace Nethermind.Merge.Plugin.Test
             BlockHeader blockHeader = Build.A.BlockHeader.WithTotalDifficulty(200L).TestObject;
             BlockHeader blockHeader2 = Build.A.BlockHeader.WithTotalDifficulty(400L).TestObject;
 
-            Assert.AreEqual(true, poSSwitcher.IsPos(blockHeader, true));
+            Assert.AreEqual(true, poSSwitcher.TrySwitchToPos(blockHeader));
             poSSwitcher.SetTerminalTotalDifficulty(500);
 
-            Assert.AreEqual(true, poSSwitcher.IsPos(blockHeader, false));
-            Assert.AreEqual(true, poSSwitcher.IsPos(blockHeader2, false));
+            Assert.AreEqual(true, poSSwitcher.IsPos(blockHeader));
+            Assert.AreEqual(true, poSSwitcher.IsPos(blockHeader2));
         }
 
         [Test]
@@ -89,16 +89,16 @@ namespace Nethermind.Merge.Plugin.Test
             BlockHeader blockHeader = Build.A.BlockHeader.WithTotalDifficulty(200L).TestObject;
             BlockHeader blockHeader2 = Build.A.BlockHeader.WithTotalDifficulty(400L).TestObject;
 
-            poSSwitcher.IsPos(blockHeader, true);
+            poSSwitcher.TrySwitchToPos(blockHeader);
             poSSwitcher.SetTerminalTotalDifficulty(400);
 
-            Assert.AreEqual(true, poSSwitcher.IsPos(blockHeader, false));
-            Assert.AreEqual(true, poSSwitcher.IsPos(blockHeader2, false));
+            Assert.AreEqual(true, poSSwitcher.IsPos(blockHeader));
+            Assert.AreEqual(true, poSSwitcher.IsPos(blockHeader2));
 
-            poSSwitcher.IsPos(blockHeader2, true);
+            poSSwitcher.TrySwitchToPos(blockHeader2);
 
-            Assert.AreEqual(true, poSSwitcher.IsPos(blockHeader, false));
-            Assert.AreEqual(true, poSSwitcher.IsPos(blockHeader2, false));
+            Assert.AreEqual(true, poSSwitcher.IsPos(blockHeader));
+            Assert.AreEqual(true, poSSwitcher.IsPos(blockHeader2));
         }
 
         [Test]
@@ -110,7 +110,7 @@ namespace Nethermind.Merge.Plugin.Test
             Assert.AreEqual(false, poSSwitcher.WasEverInPoS());
 
             BlockHeader blockHeader = Build.A.BlockHeader.WithTotalDifficulty(300L).TestObject;
-            poSSwitcher.IsPos(blockHeader, true);
+            poSSwitcher.TrySwitchToPos(blockHeader);
 
             Assert.AreEqual(true, poSSwitcher.WasEverInPoS());
         }

@@ -19,6 +19,7 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
@@ -34,13 +35,23 @@ namespace Nethermind.Merge.Plugin.Handlers
         private readonly IBlockTree _blockTree;
         private readonly IStateProvider _stateProvider;
         private readonly IManualBlockFinalizationManager _manualBlockFinalizationManager;
+        private readonly IPoSSwitcher _poSSwitcher;
+        private readonly IBlockConfirmationManager _blockConfirmationManager;
         private readonly ILogger _logger;
 
-        public ForkChoiceUpdatedHandler(IBlockTree blockTree, IStateProvider stateProvider, IManualBlockFinalizationManager manualBlockFinalizationManager, ILogManager logManager)
+        public ForkChoiceUpdatedHandler(
+            IBlockTree blockTree,
+            IStateProvider stateProvider,
+            IManualBlockFinalizationManager manualBlockFinalizationManager, 
+            IPoSSwitcher poSSwitcher,
+            IBlockConfirmationManager blockConfirmationManager,
+            ILogManager logManager)
         {
             _blockTree = blockTree;
             _stateProvider = stateProvider;
             _manualBlockFinalizationManager = manualBlockFinalizationManager;
+            _poSSwitcher = poSSwitcher;
+            _blockConfirmationManager = blockConfirmationManager;
             _logger = logManager.GetClassLogger();
         }
 
@@ -48,20 +59,25 @@ namespace Nethermind.Merge.Plugin.Handlers
         {
             (BlockHeader? finalizedHeader, string? finalizationErrorMsg) = EnsureHeaderForFinalization(request.FinalizedBlockHash);
             if (finalizationErrorMsg != null)
-                return ResultWrapper<Result>.Fail(finalizationErrorMsg, ErrorCodes.InvalidInput);
+                return ResultWrapper<Result>.Success(Result.Fail);
             (BlockHeader? confirmedHeader, string? confirmationErrorMsg) = EnsureHeaderForConfirmation(request.ConfirmedBlockHash);
             if (confirmationErrorMsg != null)
-                return ResultWrapper<Result>.Fail(confirmationErrorMsg, ErrorCodes.InvalidInput);
+                return ResultWrapper<Result>.Success(Result.Fail);
             (Block? newHeadBlock, Block[]? blocks, string? setHeadErrorMsg) = EnsureBlocksForSetHead(request.HeadBlockHash);
             if (setHeadErrorMsg != null)
-                return ResultWrapper<Result>.Fail(setHeadErrorMsg, ErrorCodes.InvalidInput);
+                return ResultWrapper<Result>.Success(Result.Fail);
  
-            _manualBlockFinalizationManager.MarkFinalized(newHeadBlock!.Header, finalizedHeader!);
+            if (ShouldFinalize(request.FinalizedBlockHash))
+                _manualBlockFinalizationManager.MarkFinalized(newHeadBlock!.Header, finalizedHeader!);
+            else if (_manualBlockFinalizationManager.LastFinalizedHash != Keccak.Zero)
+                if (_logger.IsWarn) _logger.Warn($"Cannot finalize block. The current finalized block is: {_manualBlockFinalizationManager.LastFinalizedHash}, the requested hash: {request.FinalizedBlockHash}");
+            
+            _blockConfirmationManager.Confirm(confirmedHeader);
             _blockTree.UpdateMainChain(blocks!, true, true);
-
             bool success = _blockTree.Head == newHeadBlock;
             if (success)
             {
+                _poSSwitcher.TrySwitchToPos(newHeadBlock!.Header);
                 _stateProvider.ResetStateTo(newHeadBlock.StateRoot!);
                 if (_logger.IsInfo) _logger.Info($"Block {request.FinalizedBlockHash} was set as head.");
             }
@@ -69,8 +85,6 @@ namespace Nethermind.Merge.Plugin.Handlers
             {
                 if (_logger.IsWarn) _logger.Warn($"Block {request.FinalizedBlockHash} was not set as head.");
             }
-            
-            // ToDo add confirmation to block tree
 
             return ResultWrapper<Result>.Success(Result.Ok);
         }
@@ -110,18 +124,23 @@ namespace Nethermind.Merge.Plugin.Handlers
 
         private (BlockHeader? BlockHeader, string? ErrorMsg) EnsureHeaderForFinalization(Keccak finalizedBlockHash)
         {
-            //ToDo Ensure zero header here
             string? errorMsg = null;
             BlockHeader? blockHeader = _blockTree.FindHeader(finalizedBlockHash, BlockTreeLookupOptions.None);
-            if (blockHeader is null)
+
+            if (ShouldFinalize(finalizedBlockHash))
             {
-                errorMsg = $"Block {finalizedBlockHash} not found for finalization.";
-                if (_logger.IsWarn) _logger.Warn(errorMsg);
+                blockHeader = _blockTree.FindHeader(finalizedBlockHash, BlockTreeLookupOptions.None);
+                if (blockHeader is null)
+                {
+                    errorMsg = $"Block {finalizedBlockHash} not found for finalization.";
+                    if (_logger.IsWarn) _logger.Warn(errorMsg);
+                }
             }
 
             return (blockHeader, errorMsg);
         }
 
+        private bool ShouldFinalize(Keccak finalizedBlockHash) => finalizedBlockHash != Keccak.Zero;
 
         private bool TryGetBranch(Block block, out Block[] blocks)
         {

@@ -36,7 +36,7 @@ namespace Nethermind.Merge.Plugin
 
         public BlockReward[] CalculateRewards(Block block)
         {
-            return _poSSwitcher.IsPos(block.Header, false)
+            return _poSSwitcher.IsPos(block.Header)
                 ? Array.Empty<BlockReward>()
                 : _preMergeRewardCalculator.CalculateRewards(block);
         }

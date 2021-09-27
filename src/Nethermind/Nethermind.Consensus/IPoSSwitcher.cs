@@ -23,7 +23,8 @@ namespace Nethermind.Consensus
 {
     public interface IPoSSwitcher
     {
-        bool IsPos(BlockHeader header, bool trySwitchToPos);
+        bool TrySwitchToPos(BlockHeader header);
+        bool IsPos(BlockHeader header);
 
         bool WasEverInPoS();
     }

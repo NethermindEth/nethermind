@@ -15,17 +15,20 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.JsonRpc;
+using Nethermind.Core.Crypto;
 
-namespace Nethermind.Merge.Plugin.Handlers
+namespace Nethermind.Merge.Plugin.Data
 {
-    public interface IHandler<in TRequest, TResult>
+    public class ExecutionStatusResult
     {
-        ResultWrapper<TResult> Handle(TRequest request);
-    }
-    
-    public interface IHandler<TResult>
-    {
-        ResultWrapper<TResult> Handle();
+        public ExecutionStatusResult(Keccak headBlockHash, Keccak finalizedBlockHash, Keccak confirmedBlockHash)
+        {
+            HeadBlockHash = headBlockHash;
+            FinalizedBlockHash = finalizedBlockHash;
+            ConfirmedBlockHash = confirmedBlockHash;
+        }
+        public Keccak HeadBlockHash { get; }
+        public Keccak FinalizedBlockHash { get; }
+        public Keccak ConfirmedBlockHash { get; }
     }
 }

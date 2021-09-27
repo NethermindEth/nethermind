@@ -15,17 +15,25 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.JsonRpc;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 
-namespace Nethermind.Merge.Plugin.Handlers
+namespace Nethermind.Blockchain
 {
-    public interface IHandler<in TRequest, TResult>
+    public interface IBlockConfirmationManager
     {
-        ResultWrapper<TResult> Handle(TRequest request);
+        Keccak LastConfirmedHash { get; }
+
+        void Confirm(BlockHeader? blockHeader);
     }
     
-    public interface IHandler<TResult>
+    public class NoBlockConfirmation : IBlockConfirmationManager
     {
-        ResultWrapper<TResult> Handle();
+        private NoBlockConfirmation() { }
+
+        public static NoBlockConfirmation Instance { get; } = new();
+        
+        public Keccak LastConfirmedHash { get; } = Keccak.Zero;
+        public void Confirm(BlockHeader? blockHeader) { }
     }
 }

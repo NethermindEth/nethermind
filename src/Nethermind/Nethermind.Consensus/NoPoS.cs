@@ -26,8 +26,11 @@ namespace Nethermind.Consensus
         private NoPoS() { }
 
         public static NoPoS Instance { get; } = new();
-        public bool IsPos(BlockHeader header, bool trySwitchToPos) => false;
-
+        
+        public bool TrySwitchToPos(BlockHeader header) => false;
+        
+        public bool IsPos(BlockHeader header) => false;
+        
         public bool WasEverInPoS() => false;
     }
 }
