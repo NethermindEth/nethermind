@@ -175,12 +175,12 @@ namespace Nethermind.Merge.Plugin.Test
             get
             {
                 yield return GetNewBlockRequestBadDataTestCase(r => r.BlockHash, TestItem.KeccakA);
-                yield return GetNewBlockRequestBadDataTestCase(r => r.Difficulty, UInt256.Zero);
+                yield return GetNewBlockRequestBadDataTestCase(r => r.Difficulty, UInt256.One);
                 yield return GetNewBlockRequestBadDataTestCase(r => r.Difficulty, 2ul);
                 yield return GetNewBlockRequestBadDataTestCase(r => r.Nonce, 1ul);
                 yield return GetNewBlockRequestBadDataTestCase(r => r.ExtraData, new byte[] {1});
                 yield return GetNewBlockRequestBadDataTestCase(r => r.MixHash, TestItem.KeccakC);
-                yield return GetNewBlockRequestBadDataTestCase(r => r.Uncles, new Keccak[] {TestItem.KeccakB});
+                yield return GetNewBlockRequestBadDataTestCase(r => r.Uncles, new[] {TestItem.KeccakB});
                 yield return GetNewBlockRequestBadDataTestCase(r => r.ParentHash, TestItem.KeccakD);
                 yield return GetNewBlockRequestBadDataTestCase(r => r.ReceiptsRoot, TestItem.KeccakD);
                 yield return GetNewBlockRequestBadDataTestCase(r => r.StateRoot, TestItem.KeccakD);
@@ -226,6 +226,25 @@ namespace Nethermind.Merge.Plugin.Test
             ResultWrapper<NewBlockResult> newBlockResult = await rpc.engine_newBlock(new BlockRequestResult(block));
             newBlockResult.Data.Valid.Should().BeTrue();
         }
+        
+        [Test]
+        public async Task forkchoiceUpdated_should_work_with_zero_keccak_for_finalization()
+        {
+            using MergeTestBlockchain chain = await CreateBlockChain();
+            IEngineRpcModule rpc = CreateEngineModule(chain);
+            Keccak startingHead = chain.BlockTree.HeadHash;
+            BlockRequestResult blockRequestResult = await SendNewBlock(rpc, chain);
+
+            Keccak newHeadHash = blockRequestResult.BlockHash;
+            ResultWrapper<Result> forkchoiceUpdatedResult =
+                await rpc.engine_forkchoiceUpdated(newHeadHash!, Keccak.Zero, startingHead);
+            forkchoiceUpdatedResult.Data.Should().Be(Result.Ok);
+
+            Keccak actualHead = chain.BlockTree.HeadHash;
+            actualHead.Should().NotBe(startingHead);
+            actualHead.Should().Be(newHeadHash);
+            AssertExecutionStatusChanged(rpc, newHeadHash!, Keccak.Zero, startingHead);
+        }
 
         [Test]
         public async Task forkchoiceUpdated_should_change_head()
@@ -233,12 +252,7 @@ namespace Nethermind.Merge.Plugin.Test
             using MergeTestBlockchain chain = await CreateBlockChain();
             IEngineRpcModule rpc = CreateEngineModule(chain);
             Keccak startingHead = chain.BlockTree.HeadHash;
-
-            BlockRequestResult blockRequestResult = CreateBlockRequest(
-                CreateParentBlockRequestOnHead(chain.BlockTree),
-                TestItem.AddressD);
-            ResultWrapper<NewBlockResult> newBlockResult = await rpc.engine_newBlock(blockRequestResult);
-            newBlockResult.Data.Valid.Should().BeTrue();
+            BlockRequestResult blockRequestResult = await SendNewBlock(rpc, chain);
 
             Keccak newHeadHash = blockRequestResult.BlockHash;
             ResultWrapper<Result> forkchoiceUpdatedResult =
