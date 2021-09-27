@@ -146,7 +146,7 @@ namespace Nethermind.Merge.Plugin.Test
         //     ResultWrapper<BlockRequestResult?> response = await rpc.engine_preparePayload(preparePayloadRequest);
         //     response.Data.Should().BeNull();
         // }
-        
+
         // ToDo need for rework
         // [Test]
         // [Ignore("ToDo - it is failing because of total difficulty check in blockTree")]
@@ -156,8 +156,8 @@ namespace Nethermind.Merge.Plugin.Test
         //     IEngineRpcModule rpc = CreateEngineModule(chain);
         //     Keccak startingHead = chain.BlockTree.HeadHash;
         //     BlockHeader startingBestSuggestedHeader = chain.BlockTree.BestSuggestedHeader!;
-        //     AssembleBlockRequest assembleBlockRequest = new() {ParentHash = startingHead};
-        //     ResultWrapper<BlockRequestResult?> assembleBlockResult = await rpc.engine_assembleBlock(assembleBlockRequest);
+        //     PreparePayloadRequest preparePayloadRequest = new() {ParentHash = startingHead};
+        //     ResultWrapper<BlockRequestResult?> assembleBlockResult = await rpc.engine_assembleBlock(preparePayloadRequest);
         //     assembleBlockResult.Data!.ParentHash.Should().Be(startingHead);
         //
         //     ResultWrapper<ExecutePayloadResult> executePayloadResult = await rpc.engine_executePayload(assembleBlockResult.Data!);
@@ -183,7 +183,7 @@ namespace Nethermind.Merge.Plugin.Test
                 yield return GetNewBlockRequestBadDataTestCase(r => r.Difficulty, 2ul);
                 yield return GetNewBlockRequestBadDataTestCase(r => r.Nonce, 1ul);
                 yield return GetNewBlockRequestBadDataTestCase(r => r.MixHash, TestItem.KeccakC);
-                yield return GetNewBlockRequestBadDataTestCase(r => r.Uncles, new Keccak[] {TestItem.KeccakB});
+                yield return GetNewBlockRequestBadDataTestCase(r => r.Uncles, new[] {TestItem.KeccakB});
                 yield return GetNewBlockRequestBadDataTestCase(r => r.ParentHash, TestItem.KeccakD);
                 yield return GetNewBlockRequestBadDataTestCase(r => r.ReceiptsRoot, TestItem.KeccakD);
                 yield return GetNewBlockRequestBadDataTestCase(r => r.StateRoot, TestItem.KeccakD);
@@ -198,7 +198,7 @@ namespace Nethermind.Merge.Plugin.Test
                 yield return GetNewBlockRequestBadDataTestCase(r => r.GasUsed, 1);
             }
         }
-        
+
         // ToDo need for rework
         // [TestCaseSource(nameof(WrongInputTests))]
         // public async Task executePayload_rejects_incorrect_input(Action<BlockRequestResult> breakerAction)
@@ -228,7 +228,26 @@ namespace Nethermind.Merge.Plugin.Test
             
             ResultWrapper<ExecutePayloadResult> executePayloadResult = await rpc.engine_executePayload(new BlockRequestResult(block));
             executePayloadResult.Data.Status.Should().Be(VerificationStatus.Known);
-        } 
+        }
+        
+        [Test]
+        public async Task forkchoiceUpdated_should_work_with_zero_keccak_for_finalization()
+        {
+            using MergeTestBlockchain chain = await CreateBlockChain();
+            IEngineRpcModule rpc = CreateEngineModule(chain);
+            Keccak startingHead = chain.BlockTree.HeadHash;
+            BlockRequestResult blockRequestResult = await SendNewBlock(rpc, chain);
+
+            Keccak newHeadHash = blockRequestResult.BlockHash;
+            ResultWrapper<Result> forkchoiceUpdatedResult =
+                await rpc.engine_forkchoiceUpdated(newHeadHash!, Keccak.Zero, startingHead);
+            forkchoiceUpdatedResult.Data.Should().Be(Result.Ok);
+
+            Keccak actualHead = chain.BlockTree.HeadHash;
+            actualHead.Should().NotBe(startingHead);
+            actualHead.Should().Be(newHeadHash);
+            AssertExecutionStatusChanged(rpc, newHeadHash!, Keccak.Zero, startingHead);
+        }
 
         [Test]
         public async Task forkchoiceUpdated_should_change_head()
@@ -236,13 +255,8 @@ namespace Nethermind.Merge.Plugin.Test
             using MergeTestBlockchain chain = await CreateBlockChain();
             IEngineRpcModule rpc = CreateEngineModule(chain);
             Keccak startingHead = chain.BlockTree.HeadHash;
+            BlockRequestResult blockRequestResult = await SendNewBlock(rpc, chain);
 
-            BlockRequestResult blockRequestResult = CreateBlockRequest(
-                CreateParentBlockRequestOnHead(chain.BlockTree),
-                TestItem.AddressD);
-            ResultWrapper<ExecutePayloadResult> executePayloadResult = await rpc.engine_executePayload(blockRequestResult);
-            executePayloadResult.Data.Status.Should().Be(VerificationStatus.Valid);
-            
             Keccak newHeadHash = blockRequestResult.BlockHash;
             ResultWrapper<Result> forkchoiceUpdatedResult =
                 await rpc.engine_forkchoiceUpdated(newHeadHash!, startingHead, startingHead);
@@ -462,7 +476,7 @@ namespace Nethermind.Merge.Plugin.Test
         //     
         //     await CanAssembleOnAnyBlock(branch1, branch2, branch3, branch4);
         // }
-        
+
         // ToDo need for rework
         // [Test]
         // // [Repeat(1000)] // to test multi-thread issue, warning - long and eliminated in test already
@@ -503,7 +517,7 @@ namespace Nethermind.Merge.Plugin.Test
         //         }
         //     }
         // }
-        
+
         // ToDo need for rework
         // [Test]
         // public async Task executePayload_transactions_produce_receipts()
@@ -635,7 +649,7 @@ namespace Nethermind.Merge.Plugin.Test
             blockRequest.BlockHash = hash;
             return blockRequest;
         }
-        
+
         // ToDo need for rework
         // private async Task<IReadOnlyList<BlockRequestResult>> ProduceBranch(IEngineRpcModule rpc, IBlockTree blockTree, int count, Keccak parentBlockHash, bool setHead)
         // {
@@ -643,7 +657,7 @@ namespace Nethermind.Merge.Plugin.Test
         //     ManualTimestamper timestamper = new(Timestamp);
         //     for (int i = 0; i < count; i++)
         //     {
-        //         AssembleBlockRequest assembleBlockRequest = new() {ParentHash = parentBlockHash, Timestamp = ((ITimestamper) timestamper).UnixTime.Seconds};
+        //         PreparePayloadRequest preparePayloadRequest = new() {ParentHash = parentBlockHash, Timestamp = ((ITimestamper) timestamper).UnixTime.Seconds};
         //         BlockRequestResult assembleBlockResponse = (await rpc.engine_assembleBlock(assembleBlockRequest)).Data!;
         //         ExecutePayloadResult executePayloadResponse = (await rpc.engine_executePayload(assembleBlockResponse!)).Data;
         //         executePayloadResponse.Status.Should().NotBe(VerificationStatus.Invalid);
@@ -661,8 +675,9 @@ namespace Nethermind.Merge.Plugin.Test
         //
         //     return blocks;
         // }
-        
-        private Block? RunForAllBlocksInBranch(IBlockTree blockTree, Keccak blockHash, Func<Block, bool> shouldStop, bool requireCanonical)
+
+        private Block? RunForAllBlocksInBranch(IBlockTree blockTree, Keccak blockHash, Func<Block, bool> shouldStop,
+            bool requireCanonical)
         {
             var options = requireCanonical ? BlockTreeLookupOptions.RequireCanonical : BlockTreeLookupOptions.None;
             Block? current = blockTree.FindBlock(blockHash, options);
@@ -673,17 +688,18 @@ namespace Nethermind.Merge.Plugin.Test
 
             return current;
         }
-        
+
         // ToDo need for rework
         // private static async Task<BlockRequestResult> GetAssembleBlockResult(MergeTestBlockchain chain, IEngineRpcModule rpc)
         // {
         //     Keccak startingHead = chain.BlockTree.HeadHash;
-        //     AssembleBlockRequest assembleBlockRequest = new() {ParentHash = startingHead};
-        //     ResultWrapper<BlockRequestResult?> assembleBlockResult = await rpc.engine_assembleBlock(assembleBlockRequest);
+        //     PreparePayloadRequest preparePayloadRequest = new() {ParentHash = startingHead};
+        //     ResultWrapper<BlockRequestResult?> assembleBlockResult = await rpc.engine_assembleBlock(preparePayloadRequest);
         //     return assembleBlockResult.Data!;
         // }
-        
-        private static TestCaseData GetNewBlockRequestBadDataTestCase<T>(Expression<Func<BlockRequestResult, T>> propertyAccess, T wrongValue)
+
+        private static TestCaseData GetNewBlockRequestBadDataTestCase<T>(
+            Expression<Func<BlockRequestResult, T>> propertyAccess, T wrongValue)
         {
             Action<BlockRequestResult, T> setter = propertyAccess.GetSetter();
             // ReSharper disable once ConvertToLocalFunction
