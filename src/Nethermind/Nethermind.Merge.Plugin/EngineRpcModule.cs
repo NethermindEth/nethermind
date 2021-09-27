@@ -33,7 +33,7 @@ namespace Nethermind.Merge.Plugin
     {
         private readonly IHandlerAsync<PreparePayloadRequest, Result?> _preparePayloadHandler;
         private readonly IHandler<ulong, BlockRequestResult?> _getPayloadHandler;
-        private readonly IHandler<BlockRequestResult, NewBlockResult> _newBlockHandler;
+        private readonly IHandler<BlockRequestResult, ExecutePayloadResult> _executePayloadHandler;
         private readonly IHandler<ForkChoiceUpdatedRequest, Result> _forkChoiceUpdateHandler;
         private readonly IHandler<ExecutionStatusResult> _executionStatusHandler;
         private readonly ITransitionProcessHandler _transitionProcessHandler;
@@ -44,7 +44,7 @@ namespace Nethermind.Merge.Plugin
         public EngineRpcModule(
             PreparePayloadHandler preparePayloadHandler,
             IHandler<ulong, BlockRequestResult?> getPayloadHandler,
-            IHandler<BlockRequestResult, NewBlockResult> newBlockHandler,
+            IHandler<BlockRequestResult, ExecutePayloadResult> executePayloadHandler,
             ITransitionProcessHandler transitionProcessHandler,
             IHandler<ForkChoiceUpdatedRequest, Result> forkChoiceUpdateHandler,
             IHandler<ExecutionStatusResult> executionStatusHandler,
@@ -52,31 +52,11 @@ namespace Nethermind.Merge.Plugin
         {
             _preparePayloadHandler = preparePayloadHandler;
             _getPayloadHandler = getPayloadHandler;
-            _newBlockHandler = newBlockHandler;
+            _executePayloadHandler = executePayloadHandler;
             _transitionProcessHandler = transitionProcessHandler;
             _forkChoiceUpdateHandler = forkChoiceUpdateHandler;
             _executionStatusHandler = executionStatusHandler;
             _logger = logManager.GetClassLogger();
-        }
-
-        public async Task<ResultWrapper<NewBlockResult>> engine_newBlock(BlockRequestResult requestResult)
-        {
-            if (await _locker.WaitAsync(Timeout))
-            {
-                try
-                {
-                    return _newBlockHandler.Handle(requestResult);
-                }
-                finally
-                {
-                    _locker.Release();
-                }
-            }
-            else
-            {
-                if (_logger.IsWarn) _logger.Warn($"{nameof(engine_newBlock)} timeout.");
-                return ResultWrapper<NewBlockResult>.Success(new NewBlockResult {Valid = false});
-            }
         }
 
         public Task engine_preparePayload(Keccak parentHash, UInt256 timestamp, Keccak random, Address coinbase,
@@ -91,9 +71,24 @@ namespace Nethermind.Merge.Plugin
             return Task.FromResult(_getPayloadHandler.Handle(payloadId));
         }
 
-        public Task<ResultWrapper<ExecutePayloadResult>> engine_executePayload(BlockRequestResult executionPayload)
+        public async Task<ResultWrapper<ExecutePayloadResult>> engine_executePayload(BlockRequestResult executionPayload)
         {
-            throw new NotImplementedException();
+            if (await _locker.WaitAsync(Timeout))
+            {
+                try
+                {
+                    return _executePayloadHandler.Handle(executionPayload);
+                }
+                finally
+                {
+                    _locker.Release();
+                }
+            }
+            else
+            {
+                if (_logger.IsWarn) _logger.Warn($"{nameof(engine_executePayload)} timeout.");
+                return ResultWrapper<ExecutePayloadResult>.Success(new ExecutePayloadResult() {BlockHash = executionPayload.BlockHash, Status = VerificationStatus.Invalid});
+            }
         }
 
         public Task engine_consensusValidated(Keccak parentHash, VerificationStatus status)

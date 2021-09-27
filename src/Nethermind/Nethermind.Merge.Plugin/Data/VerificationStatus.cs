@@ -15,12 +15,15 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
+
 namespace Nethermind.Merge.Plugin.Data
 {
+    [Flags]
     public enum VerificationStatus
     {
-        Valid,
-        Invalid,
-        Known
+        Invalid = 0,
+        Valid = 1,
+        Known = 2
     }
 }

@@ -44,9 +44,8 @@ namespace Nethermind.Merge.Plugin.Data
         {
             if (setDefaults)
             {
-                Difficulty = UInt256.One;
+                Difficulty = UInt256.Zero;
                 Nonce = 0;
-                ExtraData = Bytes.Empty;
                 MixHash = Keccak.Zero;
                 Uncles = Array.Empty<Keccak>();
             }
