@@ -19,6 +19,7 @@ using System.IO;
 using System.Linq;
 using Nethermind.Config;
 using Nethermind.Core.Test.IO;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Stats;
