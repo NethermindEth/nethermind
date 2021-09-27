@@ -15,6 +15,9 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Collections.Generic;
+using System.Linq;
+using Nethermind.Core;
 using Nethermind.Int256;
 
 namespace Nethermind.Mev
@@ -27,5 +30,12 @@ namespace Nethermind.Mev
         public int BundlePoolSize { get; set; } = 200;
         public int MaxMergedBundles { get; set; } = 1;
         public string TrustedRelays { get; set; } = "";
+
+        public IEnumerable<Address> GetTrustedRelayAddresses() =>
+            TrustedRelays
+                .Split(",")
+                .Where(s => !string.IsNullOrWhiteSpace(s))
+                .Distinct()
+                .Select(s => new Address(s));
     }
 }

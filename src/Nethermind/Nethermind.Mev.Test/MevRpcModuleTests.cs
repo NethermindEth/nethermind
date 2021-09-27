@@ -107,6 +107,14 @@ namespace Nethermind.Mev.Test
         public static MevBundle UnSuccessfullySendBundle(TestMevRpcBlockchain chain, int blockNumber, params BundleTransaction[] txs) => 
             SendBundle(chain, blockNumber, txs, false);
 
+        public static MevMegabundle SuccessfullySendMegabundle(TestMevRpcBlockchain chain, int blockNumber, PrivateKey privateKey,
+            params BundleTransaction[] txs) =>
+            SendMegabundle(chain, blockNumber, privateKey, txs, true);
+        
+        public static MevMegabundle UnuccessfullySendMegabundle(TestMevRpcBlockchain chain, int blockNumber, PrivateKey privateKey,
+            params BundleTransaction[] txs) =>
+            SendMegabundle(chain, blockNumber, privateKey, txs, true);
+
         private static MevBundle SendBundle(TestMevRpcBlockchain chain, int blockNumber, BundleTransaction[] txs, bool success)
         {
             byte[][] bundleBytes = txs.Select(t => EncodeTx(t).Bytes).ToArray();
@@ -116,6 +124,25 @@ namespace Nethermind.Mev.Test
             resultOfBundle.GetResult().ResultType.Should().NotBe(ResultType.Failure);
             resultOfBundle.GetData().Should().Be(success);
             return new MevBundle(blockNumber, txs);
+        }
+
+        private static MevMegabundle SendMegabundle(TestMevRpcBlockchain chain, int blockNumber, PrivateKey privateKey, BundleTransaction[] txs, bool success)
+        {
+            byte[][] bundleBytes = txs.Select(t => Rlp.Encode(t).Bytes).ToArray();
+            List<Keccak> revertingTxHashes = txs.Where(tx => tx.CanRevert).Select(tx => tx.Hash!).ToList();
+            MevBundle mevBundle = new (blockNumber, txs);
+            Signature relaySignature = chain.EthereumEcdsa.Sign(privateKey, mevBundle.Hash);
+            MevMegabundleRpc mevMegabundleRpc = new()
+            {
+                BlockNumber = blockNumber,
+                Txs = bundleBytes,
+                RevertingTxHashes = revertingTxHashes.Count > 0 ? revertingTxHashes.ToArray() : null,
+                RelaySignature = relaySignature.Bytes
+            };
+            ResultWrapper<bool> resultOfBundle = chain.MevRpcModule.eth_sendMegabundle(mevMegabundleRpc);
+            resultOfBundle.GetResult().ResultType.Should().NotBe(ResultType.Failure);
+            resultOfBundle.GetData().Should().Be(success);
+            return new MevMegabundle(relaySignature, blockNumber, txs);
         }
 
         [Test]
@@ -173,29 +200,23 @@ namespace Nethermind.Mev.Test
         [Test]
         public async Task Should_execute_eth_sendMegabundle_and_serialize_successful_response_properly()
         {
-            var chain = await CreateChain(2, null, null, new []{ TestItem.AddressC });
+            var chain = await CreateChain(2, relayAddresses: new []{ TestItem.AddressC });
         
             Address contractAddress = await Contracts.Deploy(chain, Contracts.CallableCode);
             
-            Transaction getTx = Build.A.Transaction
+            BundleTransaction getTx = Build.A.TypedTransaction<BundleTransaction>()
                 .WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(1ul)
                 .WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.CallableInvokeGet)).WithValue(0)
                 .SignedAndResolved(TestItem.PrivateKeyA)
                 .TestObject;
-            Transaction setTx = Build.A.Transaction
+            BundleTransaction setTx = Build.A.TypedTransaction<BundleTransaction>()
                 .WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(1ul)
                 .WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.CallableInvokeSet)).WithValue(0)
                 .SignedAndResolved(TestItem.PrivateKeyB)
                 .TestObject;
             
-            BundleTransaction[] txs =
-            {
-                Rlp.Decode<BundleTransaction>(Rlp.Encode(getTx).Bytes), 
-                Rlp.Decode<BundleTransaction>(Rlp.Encode(setTx).Bytes)
-            };
-            txs[0].CanRevert = false;
-            txs[1].CanRevert = false;
-            MevBundle bundle = new (4, txs, 0, 0);
+            BundleTransaction[] txs = { setTx, getTx };
+            MevBundle bundle = new (4, txs);
             Signature relaySignature = chain.EthereumEcdsa.Sign(TestItem.PrivateKeyC, bundle.Hash);
             
             string parameters = $"{{\"txs\":[\"{Rlp.Encode(setTx).Bytes.ToHexString()}\",\"{Rlp.Encode(getTx).Bytes.ToHexString()}\"]," +

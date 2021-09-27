@@ -45,8 +45,7 @@ namespace Nethermind.Mev
         [ConfigItem(Description = "Defines the trusted relay addresses to receive megabundles from",
             DefaultValue = "")]
         string TrustedRelays { get; set;  }
-        
-        public IEnumerable<Address> GetTrustedRelayAddresses() => 
-            TrustedRelays.Split(",").Select(address => new Address(address));
+
+        public IEnumerable<Address> GetTrustedRelayAddresses();
     }
 }
