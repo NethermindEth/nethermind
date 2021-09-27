@@ -163,7 +163,10 @@ namespace Nethermind.Blockchain
                              || (header.TotalDifficulty == Head?.TotalDifficulty &&
                                  ((Head?.Hash ?? Keccak.Zero).CompareTo(header.Hash) > 0))
                              || (header.TotalDifficulty == Head?.TotalDifficulty &&
-                                 ((Head?.Number ?? 0L).CompareTo(header.Number) > 0));
+                                 ((Head?.Number ?? 0L).CompareTo(header.Number) > 0))
+                             
+                             // ToDo: line below is temporary hack for the merge
+                             || (header.TotalDifficulty == Head?.TotalDifficulty);
                 }
             }
 
