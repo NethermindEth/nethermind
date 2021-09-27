@@ -23,7 +23,7 @@ namespace Nethermind.Merge.Plugin.Data
 {
     public class PreparePayloadRequest
     {
-        public PreparePayloadRequest(Keccak parentHash, UInt256 timestamp, Keccak random, Address feeRecipient, UInt256 payloadId)
+        public PreparePayloadRequest(Keccak parentHash, UInt256 timestamp, Keccak random, Address feeRecipient, ulong payloadId)
         {
             ParentHash = parentHash;
             Timestamp = timestamp;
@@ -36,6 +36,6 @@ namespace Nethermind.Merge.Plugin.Data
         public UInt256 Timestamp { get; set; }
         public Keccak Random { get; set; }
         public Address FeeRecipient { get; set; }
-        public UInt256 PayloadId { get; set; }
+        public ulong PayloadId { get; set; }
     }
 }

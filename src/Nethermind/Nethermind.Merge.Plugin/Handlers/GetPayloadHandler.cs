@@ -25,7 +25,7 @@ using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.Merge.Plugin.Handlers
 {
-    public class GetPayloadHandler : IHandler<UInt256, BlockRequestResult?>
+    public class GetPayloadHandler : IHandler<ulong, BlockRequestResult?>
     {
         private readonly IBlockTree _blockTree;
         private readonly PayloadStorage _payloadStorage;
@@ -38,7 +38,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             _logger = logManager.GetClassLogger();
         }
 
-        public ResultWrapper<BlockRequestResult?> Handle(UInt256 payloadId)
+        public ResultWrapper<BlockRequestResult?> Handle(ulong payloadId)
         {
             Block? block = _payloadStorage.GetPayload(payloadId);
             if (block == null)
