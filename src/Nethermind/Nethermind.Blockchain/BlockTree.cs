@@ -574,8 +574,7 @@ namespace Nethermind.Blockchain
                 NewSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
             }
 
-            // ToDo: '>=' is temporary hack for the merge
-            if (header.IsGenesis || header.TotalDifficulty >= (BestSuggestedHeader?.TotalDifficulty ?? 0))
+            if (header.IsGenesis || header.TotalDifficulty > (BestSuggestedHeader?.TotalDifficulty ?? 0))
             {
                 if (header.IsGenesis)
                 {
@@ -1133,8 +1132,7 @@ namespace Nethermind.Blockchain
 
             BlockAddedToMain?.Invoke(this, new BlockReplacementEventArgs(block, previous));
 
-            // ToDo: '>=' is temporary hack for the merge
-            if (forceUpdateHeadBlock || block.IsGenesis || block.TotalDifficulty >= (Head?.TotalDifficulty ?? 0))
+            if (forceUpdateHeadBlock || block.IsGenesis || block.TotalDifficulty > (Head?.TotalDifficulty ?? 0))
             {
                 if (block.Number == 0)
                 {
