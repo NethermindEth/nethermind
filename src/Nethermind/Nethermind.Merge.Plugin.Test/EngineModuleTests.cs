@@ -371,7 +371,6 @@ namespace Nethermind.Merge.Plugin.Test
             Assert.True(chain.PoSSwitcher.WasEverInPoS());
         }
 
-
         [Test]
         public async Task newBlock_accepts_first_block()
         {
