@@ -332,9 +332,9 @@ namespace Nethermind.Merge.Plugin.Test
             BlockRequestResult blockRequestResult = CreateBlockRequest(
                 CreateParentBlockRequestOnHead(chain.BlockTree),
                 TestItem.AddressD);
-            ResultWrapper<NewBlockResult> newBlockResult = await rpc.engine_newBlock(blockRequestResult);
-            newBlockResult.Data.Valid.Should().BeTrue();
-            return blockRequestResult; // ToDo need to be changed to ExecutionPayload
+            ResultWrapper<ExecutePayloadResult> executePayloadResult = await rpc.engine_executePayload(blockRequestResult);
+            executePayloadResult.Data.Status.Should().Be(VerificationStatus.Valid);
+            return blockRequestResult;
         }
         
         private void AssertExecutionStatusChanged(IEngineRpcModule rpc, Keccak headBlockHash, Keccak finalizedBlockHash, Keccak confirmedBlockHash)

@@ -52,7 +52,7 @@ namespace Nethermind.Merge.Plugin
         {
             _preparePayloadHandler = preparePayloadHandler;
             _getPayloadHandler = getPayloadHandler;
-            IHandler<BlockRequestResult, ExecutePayloadResult> executePayloadHandler,
+            _executePayloadHandler = executePayloadHandler;
             _transitionProcessHandler = transitionProcessHandler;
             _forkChoiceUpdateHandler = forkChoiceUpdateHandler;
             _executionStatusHandler = executionStatusHandler;
