@@ -74,13 +74,13 @@ namespace Nethermind.Merge.Plugin
             Description = "Propagates an override of the TERMINAL_TOTAL_DIFFICULTY to the execution client.",
             IsSharable = true,
             IsImplemented = false)]
-        Task engine_terminalTotalDifficultyUpdated(UInt256 terminalTotalDifficulty);
+        void engine_terminalTotalDifficultyUpdated(UInt256 terminalTotalDifficulty);
         
         [JsonRpcMethod(
             Description = "Propagates the hash of the terminal PoW block.",
             IsSharable = true,
             IsImplemented = false)]
-        Task engine_terminalPoWBlockOverride(Keccak blockHash);
+        void engine_terminalPoWBlockOverride(Keccak blockHash);
         
         [JsonRpcMethod(
             Description = "Given the hash returns the information of the PoW block.",

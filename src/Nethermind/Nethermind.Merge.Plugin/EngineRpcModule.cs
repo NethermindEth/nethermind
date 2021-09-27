@@ -124,16 +124,14 @@ namespace Nethermind.Merge.Plugin
             }
         }
 
-        public Task engine_terminalTotalDifficultyUpdated(UInt256 terminalTotalDifficulty)
+        public void engine_terminalTotalDifficultyUpdated(UInt256 terminalTotalDifficulty)
         {
             _transitionProcessHandler.SetTerminalTotalDifficulty(terminalTotalDifficulty);
-            return Task.CompletedTask;
         }
 
-        public Task engine_terminalPoWBlockOverride(Keccak blockHash)
+        public void engine_terminalPoWBlockOverride(Keccak blockHash)
         {
             _transitionProcessHandler.SetTerminalPoWHash(blockHash);
-            return Task.CompletedTask;
         }
 
         public Task<ResultWrapper<Block?>> engine_getPowBlock(Keccak blockHash)

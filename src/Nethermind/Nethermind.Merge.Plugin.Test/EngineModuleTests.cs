@@ -310,7 +310,7 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         [Test]
-        public async Task engine_forkchoiceUpdated_should_change_head_when_all_parameters_are_the_newHeadHash()
+        public async Task forkchoiceUpdated_should_change_head_when_all_parameters_are_the_newHeadHash()
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
             IEngineRpcModule rpc = CreateEngineModule(chain);
@@ -322,6 +322,55 @@ namespace Nethermind.Merge.Plugin.Test
             resultWrapper.Data.Should().Be(Result.Ok);
             AssertExecutionStatusChanged(rpc, newHeadHash, newHeadHash, newHeadHash);
         }
+        
+        [Test]
+        public async Task forkchoiceUpdated_switch_to_pos_when_total_terminal_difficulty_was_met()
+        {
+            using MergeTestBlockchain chain = await CreateBlockChain();
+            IEngineRpcModule rpc = CreateEngineModule(chain);
+            BlockRequestResult blockRequestResult = await SendNewBlock(rpc, chain);
+            Assert.False(chain.PoSSwitcher.WasEverInPoS());
+
+            rpc.engine_terminalTotalDifficultyUpdated((UInt256)1000000);
+            Keccak newHeadHash = blockRequestResult.BlockHash;
+            ResultWrapper<Result> resultWrapper =
+                await rpc.engine_forkchoiceUpdated(newHeadHash, newHeadHash, newHeadHash);
+            resultWrapper.Data.Should().Be(Result.Ok);
+            AssertExecutionStatusChanged(rpc, newHeadHash, newHeadHash, newHeadHash);
+            Assert.True(chain.PoSSwitcher.WasEverInPoS());
+        }
+        
+        [Test]
+        public async Task forkchoiceUpdated_not_switch_to_pos_where_no_terminal_values()
+        {
+            using MergeTestBlockchain chain = await CreateBlockChain();
+            IEngineRpcModule rpc = CreateEngineModule(chain);
+            BlockRequestResult blockRequestResult = await SendNewBlock(rpc, chain);
+            Assert.False(chain.PoSSwitcher.WasEverInPoS());
+            Keccak newHeadHash = blockRequestResult.BlockHash;
+            ResultWrapper<Result> resultWrapper =
+                await rpc.engine_forkchoiceUpdated(newHeadHash, newHeadHash, newHeadHash);
+            resultWrapper.Data.Should().Be(Result.Ok);
+            AssertExecutionStatusChanged(rpc, newHeadHash, newHeadHash, newHeadHash);
+            Assert.False(chain.PoSSwitcher.WasEverInPoS());
+        }
+        
+        [Test]
+        public async Task forkchoiceUpdated_switch_to_pos_by_terminal_block_hash()
+        {
+            using MergeTestBlockchain chain = await CreateBlockChain();
+            IEngineRpcModule rpc = CreateEngineModule(chain);
+            BlockRequestResult blockRequestResult = await SendNewBlock(rpc, chain);
+            
+            rpc.engine_terminalPoWBlockOverride(chain.BlockTree.HeadHash);
+            Keccak newHeadHash = blockRequestResult.BlockHash;
+            ResultWrapper<Result> resultWrapper =
+                await rpc.engine_forkchoiceUpdated(newHeadHash, newHeadHash, newHeadHash);
+            resultWrapper.Data.Should().Be(Result.Ok);
+            AssertExecutionStatusChanged(rpc, newHeadHash, newHeadHash, newHeadHash);
+            Assert.True(chain.PoSSwitcher.WasEverInPoS());
+        }
+
 
         [Test]
         public async Task newBlock_accepts_first_block()
