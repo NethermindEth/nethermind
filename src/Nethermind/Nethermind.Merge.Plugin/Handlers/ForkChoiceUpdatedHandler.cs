@@ -59,13 +59,13 @@ namespace Nethermind.Merge.Plugin.Handlers
         {
             (BlockHeader? finalizedHeader, string? finalizationErrorMsg) = EnsureHeaderForFinalization(request.FinalizedBlockHash);
             if (finalizationErrorMsg != null)
-                return ResultWrapper<Result>.Success(Result.Fail);
+                return ResultWrapper<Result>.Fail(finalizationErrorMsg, MergeErrorCodes.UnknownHeader);
             (BlockHeader? confirmedHeader, string? confirmationErrorMsg) = EnsureHeaderForConfirmation(request.ConfirmedBlockHash);
             if (confirmationErrorMsg != null)
-                return ResultWrapper<Result>.Success(Result.Fail);
+                return ResultWrapper<Result>.Fail(confirmationErrorMsg, MergeErrorCodes.UnknownHeader);
             (Block? newHeadBlock, Block[]? blocks, string? setHeadErrorMsg) = EnsureBlocksForSetHead(request.HeadBlockHash);
             if (setHeadErrorMsg != null)
-                return ResultWrapper<Result>.Success(Result.Fail);
+                return ResultWrapper<Result>.Fail(setHeadErrorMsg, MergeErrorCodes.UnknownHeader);
  
             if (ShouldFinalize(request.FinalizedBlockHash))
                 _manualBlockFinalizationManager.MarkFinalized(newHeadBlock!.Header, finalizedHeader!);

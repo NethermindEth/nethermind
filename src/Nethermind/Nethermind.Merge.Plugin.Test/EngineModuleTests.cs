@@ -272,7 +272,7 @@ namespace Nethermind.Merge.Plugin.Test
             IEngineRpcModule rpc = CreateEngineModule(chain);
             ResultWrapper<Result> forkchoiceUpdatedResult =
                 await rpc.engine_forkchoiceUpdated(TestItem.KeccakF, TestItem.KeccakF, TestItem.KeccakF);
-            forkchoiceUpdatedResult.Data.Success.Should().BeFalse();
+            forkchoiceUpdatedResult.ErrorCode.Should().Be(MergeErrorCodes.UnknownHeader);
             AssertExecutionStatusNotChanged(rpc, TestItem.KeccakF, TestItem.KeccakF, TestItem.KeccakF);
         }
 
@@ -287,7 +287,7 @@ namespace Nethermind.Merge.Plugin.Test
             Keccak newHeadHash = blockRequestResult.BlockHash;
             ResultWrapper<Result> forkchoiceUpdatedResult =
                 await rpc.engine_forkchoiceUpdated(newHeadHash!, startingHead, TestItem.KeccakF);
-            forkchoiceUpdatedResult.Data.Should().Be(Result.Fail);
+            forkchoiceUpdatedResult.ErrorCode.Should().Be(MergeErrorCodes.UnknownHeader);
 
             Keccak actualHead = chain.BlockTree.HeadHash;
             actualHead.Should().NotBe(newHeadHash);
@@ -305,7 +305,7 @@ namespace Nethermind.Merge.Plugin.Test
 
             ResultWrapper<Result> forkchoiceUpdatedResult =
                 await rpc.engine_forkchoiceUpdated(block.Hash!, startingHead, startingHead);
-            forkchoiceUpdatedResult.Data.Success.Should().BeFalse();
+            forkchoiceUpdatedResult.ErrorCode.Should().Be(MergeErrorCodes.UnknownHeader);
             AssertExecutionStatusNotChanged(rpc, block.Hash!, startingHead, startingHead);
         }
 

@@ -15,21 +15,17 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Diagnostics;
-using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
-using Nethermind.Network.Config;
 
 namespace Nethermind.Merge.Plugin
 {
@@ -96,7 +92,7 @@ namespace Nethermind.Merge.Plugin
 
                 _api.Config<IJsonRpcConfig>().EnableModules(ModuleType.Consensus);
 
-                PayloadStorage payloadStorage = new PayloadStorage();
+                PayloadStorage payloadStorage = new();
 
                 IEngineRpcModule engineRpcModule = new EngineRpcModule(
                     new PreparePayloadHandler(_api.BlockTree, payloadStorage, _defaultBlockProductionTrigger,
