@@ -568,6 +568,7 @@ namespace Nethermind.Merge.Plugin.Test
                 TryCalculateHash(newBlockRequest, out Keccak? hash);
                 newBlockRequest.BlockHash = hash;
                 ResultWrapper<ExecutePayloadResult> result = await rpc.engine_executePayload(newBlockRequest);
+                await rpc.engine_consensusValidated(newBlockRequest.BlockHash, ConsensusValidationStatus.Valid);
                 await Task.Delay(10);
 
                 result.Data.Status.Should().Be(VerificationStatus.Valid);
@@ -612,6 +613,7 @@ namespace Nethermind.Merge.Plugin.Test
                 TryCalculateHash(newBlockRequest, out var hash);
                 newBlockRequest.BlockHash = hash;
                 ResultWrapper<ExecutePayloadResult> result = await rpc.engine_executePayload(newBlockRequest);
+                await rpc.engine_consensusValidated(newBlockRequest.BlockHash, ConsensusValidationStatus.Valid);
                 await Task.Delay(10);
 
                 result.Data.Status.Should().Be(VerificationStatus.Valid);
@@ -747,6 +749,7 @@ namespace Nethermind.Merge.Plugin.Test
                 Keccak? blockHash = getPayloadResult.BlockHash;
                 await rpc.engine_consensusValidated(blockHash, ConsensusValidationStatus.Valid);
                 ExecutePayloadResult executePayloadResponse = (await rpc.engine_executePayload(getPayloadResult)).Data;
+                await rpc.engine_consensusValidated(getPayloadResult.BlockHash, ConsensusValidationStatus.Valid);
                 executePayloadResponse.Status.Should().NotBe(VerificationStatus.Invalid);
                 if (setHead)
                 {
