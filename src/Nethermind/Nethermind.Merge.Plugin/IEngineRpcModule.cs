@@ -55,7 +55,7 @@ namespace Nethermind.Merge.Plugin
                 "Communicates that full consensus validation of an execution payload is complete along with its corresponding status.",
             IsSharable = true,
             IsImplemented = false)]
-        Task engine_consensusValidated(Keccak parentHash, VerificationStatus status);
+        Task engine_consensusValidated(Keccak blockHash, ConsensusValidationStatus status);
         
         [JsonRpcMethod(
             Description = "Propagates the change in the fork choice to the execution client.",

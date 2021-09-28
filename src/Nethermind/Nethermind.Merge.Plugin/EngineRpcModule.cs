@@ -91,7 +91,7 @@ namespace Nethermind.Merge.Plugin
             }
         }
 
-        public Task engine_consensusValidated(Keccak parentHash, VerificationStatus status)
+        public Task engine_consensusValidated(Keccak blockHash, ConsensusValidationStatus status)
         {
             throw new NotImplementedException();
         }

@@ -694,37 +694,39 @@ namespace Nethermind.Merge.Plugin.Test
             blockRequest.BlockHash = hash;
             return blockRequest;
         }
-
-        // ToDo need for rework
-        // private async Task<IReadOnlyList<BlockRequestResult>> ProduceBranch(IEngineRpcModule rpc, IBlockTree blockTree, int count, Keccak parentBlockHash, bool setHead)
-        // {
-        //     List<BlockRequestResult> blocks = new();
-        //     ManualTimestamper timestamper = new(Timestamp);
-        //     for (int i = 0; i < count; i++)
-        //     {
-        //         PreparePayloadRequest preparePayloadRequest = new() {ParentHash = parentBlockHash, Timestamp = ((ITimestamper) timestamper).UnixTime.Seconds};
-        //         BlockRequestResult assembleBlockResponse = (await rpc.engine_assembleBlock(assembleBlockRequest)).Data!;
-        //         ExecutePayloadResult executePayloadResponse = (await rpc.engine_executePayload(assembleBlockResponse!)).Data;
-        //         executePayloadResponse.Status.Should().NotBe(VerificationStatus.Invalid);
-        //         if (setHead)
-        //         {
-        //             Keccak newHead = assembleBlockResponse.BlockHash;
-        //             ResultWrapper<Result> setHeadResponse = await rpc.engine_setHead(newHead);
-        //             setHeadResponse.Data.Should().Be(Result.Ok);
-        //             blockTree.HeadHash.Should().Be(newHead);
-        //         }
-        //         blocks.Add((assembleBlockResponse));
-        //         parentBlockHash = assembleBlockResponse.BlockHash;
-        //         timestamper.Add(TimeSpan.FromSeconds(12));
-        //     }
-        //
-        //     return blocks;
-        // }
+        
+        private async Task<IReadOnlyList<BlockRequestResult>> ProduceBranch(IEngineRpcModule rpc, IBlockTree blockTree, int count, Keccak parentBlockHash, bool setHead)
+        {
+            List<BlockRequestResult> blocks = new();
+            ManualTimestamper timestamper = new(Timestamp);
+            for (int i = 0; i < count; i++)
+            {
+                ulong payloadId = 1;
+                await rpc.engine_preparePayload(parentBlockHash,((ITimestamper) timestamper).UnixTime.Seconds, TestItem.KeccakA, Address.Zero, payloadId);
+                BlockRequestResult getPayloadResult = (await rpc.engine_getPayload(payloadId)).Data!;
+                Keccak? blockHash = getPayloadResult.BlockHash;
+                await rpc.engine_consensusValidated(blockHash, ConsensusValidationStatus.Valid);
+                ExecutePayloadResult executePayloadResponse = (await rpc.engine_executePayload(getPayloadResult)).Data;
+                executePayloadResponse.Status.Should().NotBe(VerificationStatus.Invalid);
+                if (setHead)
+                {
+                    Keccak newHead = getPayloadResult!.BlockHash;
+                    ResultWrapper<Result> setHeadResponse = await rpc.engine_forkchoiceUpdated(newHead, newHead, newHead);
+                    setHeadResponse.Data.Should().Be(Result.Ok);
+                    blockTree.HeadHash.Should().Be(newHead);
+                }
+                blocks.Add((getPayloadResult));
+                parentBlockHash = getPayloadResult.BlockHash;
+                timestamper.Add(TimeSpan.FromSeconds(12));
+            }
+        
+            return blocks;
+        }
 
         private Block? RunForAllBlocksInBranch(IBlockTree blockTree, Keccak blockHash, Func<Block, bool> shouldStop,
             bool requireCanonical)
         {
-            var options = requireCanonical ? BlockTreeLookupOptions.RequireCanonical : BlockTreeLookupOptions.None;
+            BlockTreeLookupOptions options = requireCanonical ? BlockTreeLookupOptions.RequireCanonical : BlockTreeLookupOptions.None;
             Block? current = blockTree.FindBlock(blockHash, options);
             while (current is not null && !shouldStop(current))
             {
