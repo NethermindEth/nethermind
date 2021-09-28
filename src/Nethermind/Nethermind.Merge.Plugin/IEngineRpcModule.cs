@@ -30,13 +30,6 @@ namespace Nethermind.Merge.Plugin
     public interface IEngineRpcModule : IRpcModule
     {
         [JsonRpcMethod(
-            Description = "Injects a new block from the consensus layer.",
-            IsSharable = true,
-            IsImplemented = true)]
-        Task<ResultWrapper<NewBlockResult>> engine_newBlock(
-            BlockRequestResult requestResult);
-
-        [JsonRpcMethod(
             Description =
                 "Builds an execution payload on top of a given parent with transactions selected from the mempool.",
             IsSharable = true,

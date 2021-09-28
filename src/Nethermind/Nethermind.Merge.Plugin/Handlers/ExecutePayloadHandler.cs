@@ -35,7 +35,7 @@ using Nethermind.State;
 
 namespace Nethermind.Merge.Plugin.Handlers
 {
-    public class NewBlockHandler: IHandler<BlockRequestResult, NewBlockResult>
+    public class ExecutePayloadHandler: IHandler<BlockRequestResult, ExecutePayloadResult>
     {
         private const string AndWontBeAcceptedToTheTree = "and wont be accepted to the tree";
         private readonly IBlockTree _blockTree;
@@ -46,7 +46,7 @@ namespace Nethermind.Merge.Plugin.Handlers
         private readonly ILogger _logger;
         private readonly LruCache<Keccak, bool> _latestBlocks = new(50, "LatestBlocks");
         
-        public NewBlockHandler(
+        public ExecutePayloadHandler(
             IBlockTree blockTree, 
             IBlockPreprocessorStep preprocessor, 
             IBlockchainProcessor processor, 
@@ -62,24 +62,35 @@ namespace Nethermind.Merge.Plugin.Handlers
             _logger = logManager.GetClassLogger();
         }
 
-        public ResultWrapper<NewBlockResult> Handle(BlockRequestResult request)
+        public ResultWrapper<ExecutePayloadResult> Handle(BlockRequestResult request)
         {
-            ValidationResult result = ValidateRequestAndProcess(request, out Block? processedBlock);
-            if ((result & ValidationResult.AlreadyKnown) != 0 || result == ValidationResult.Invalid)
+            ExecutePayloadResult executePayloadResult = new() {BlockHash = request.BlockHash};
+
+            VerificationStatus status = ValidateRequestAndProcess(request, out Block? processedBlock);
+            if ((status & VerificationStatus.Known) != 0)
             {
-                return ResultWrapper<NewBlockResult>.Success((result & ValidationResult.Valid) != 0);
+                executePayloadResult.Status = VerificationStatus.Known;
+                return ResultWrapper<ExecutePayloadResult>.Success(executePayloadResult);
             }
-            else if (processedBlock == null)
+            else if (status == VerificationStatus.Invalid || processedBlock is null)
             {
-                return ResultWrapper<NewBlockResult>.Success(false);
+                executePayloadResult.Status = VerificationStatus.Invalid;
+                return ResultWrapper<ExecutePayloadResult>.Success(executePayloadResult);
             }
 
             AddBlockResult blockResult = _blockTree.SuggestBlock(processedBlock);
-            bool isValid = blockResult is AddBlockResult.Added or AddBlockResult.AlreadyKnown;
-            return ResultWrapper<NewBlockResult>.Success(isValid);
+            
+            executePayloadResult.Status = blockResult switch
+            {
+                AddBlockResult.Added => VerificationStatus.Valid,
+                AddBlockResult.AlreadyKnown => VerificationStatus.Known,
+                _ => VerificationStatus.Invalid
+            };
+
+            return ResultWrapper<ExecutePayloadResult>.Success(executePayloadResult);
         }
 
-        private ValidationResult ValidateRequestAndProcess(BlockRequestResult request, out Block? processedBlock)
+        private VerificationStatus ValidateRequestAndProcess(BlockRequestResult request, out Block? processedBlock)
         {
             processedBlock = null;
             
@@ -92,7 +103,7 @@ namespace Nethermind.Merge.Plugin.Handlers
                     bool isRecentBlock = _latestBlocks.TryGet(request.BlockHash, out bool isValid);
                     if (isRecentBlock)
                     {
-                        return ValidationResult.AlreadyKnown | (isValid ? ValidationResult.Valid : ValidationResult.Invalid);
+                        return VerificationStatus.Known | (isValid ? VerificationStatus.Valid : VerificationStatus.Invalid);
                     }
                     else
                     {
@@ -100,7 +111,7 @@ namespace Nethermind.Merge.Plugin.Handlers
 
                         if (processedBlock != null)
                         {
-                            return ValidationResult.Valid | ValidationResult.AlreadyKnown;
+                            return VerificationStatus.Valid | VerificationStatus.Known;
                         }
 
                         bool validAndProcessed =
@@ -110,7 +121,7 @@ namespace Nethermind.Merge.Plugin.Handlers
 
                         _latestBlocks.Set(request.BlockHash, validAndProcessed);
 
-                        return validAndProcessed ? ValidationResult.Valid : ValidationResult.Invalid;
+                        return validAndProcessed ? VerificationStatus.Valid : VerificationStatus.Invalid;
                     }
                 }
             }
@@ -119,7 +130,7 @@ namespace Nethermind.Merge.Plugin.Handlers
                 if (_logger.IsWarn) _logger.Warn($"Block {request} could not be parsed as block {AndWontBeAcceptedToTheTree}.");
             }
 
-            return ValidationResult.Invalid;
+            return VerificationStatus.Invalid;
         }
 
         private bool CheckParent(Keccak? parentHash, out BlockHeader? parent)
@@ -176,15 +187,13 @@ namespace Nethermind.Merge.Plugin.Handlers
 
         private bool CheckInput(BlockRequestResult request)
         {
-            bool validDifficulty = CheckInputIs(request, request.Difficulty, UInt256.One, nameof(request.Difficulty));
+            bool validDifficulty = CheckInputIs(request, request.Difficulty, UInt256.Zero, nameof(request.Difficulty));
             bool validNonce = CheckInputIs(request, request.Nonce, 0ul, nameof(request.Nonce));
-            bool validExtraData = CheckInputIs<byte>(request, request.ExtraData, Array.Empty<byte>(), nameof(request.ExtraData));
             bool validMixHash = CheckInputIs(request, request.MixHash, Keccak.Zero, nameof(request.MixHash));
             bool validUncles = CheckInputIs(request, request.Uncles, Array.Empty<Keccak>(), nameof(request.Uncles));
             
             return validDifficulty
                    && validNonce
-                   && validExtraData
                    && validMixHash
                    && validUncles;
         }
@@ -209,14 +218,6 @@ namespace Nethermind.Merge.Plugin.Handlers
             }
 
             return true;
-        }
-        
-        [Flags]
-        private enum ValidationResult
-        {
-            Invalid = 0,
-            Valid = 1,
-            AlreadyKnown = 2
         }
     }
 }
