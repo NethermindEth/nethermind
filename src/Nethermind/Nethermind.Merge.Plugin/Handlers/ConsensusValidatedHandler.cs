@@ -22,13 +22,30 @@ namespace Nethermind.Merge.Plugin.Handlers
 {
     public class ConsensusValidatedHandler : IHandler<ConsensusValidatedRequest, Result>
     {
-        public ConsensusValidatedHandler()
+        private readonly PayloadManager _payloadManager;
+
+        public ConsensusValidatedHandler(PayloadManager payloadManager)
         {
-            
+            _payloadManager = payloadManager;
         }
 
         public ResultWrapper<Result> Handle(ConsensusValidatedRequest request)
         {
+            if (!_payloadManager.CheckIfExecutePayloadIsFinished(request.BlockHash, out var executePayloadIsFinished))
+            {
+                return ResultWrapper<Result>.Fail($"Unknown blockHash: {request.BlockHash}", MergeErrorCodes.UnknownHeader);
+            }
+            
+            bool isValid = (request.Status & ConsensusValidationStatus.Valid) != 0;
+
+            if (executePayloadIsFinished && isValid)
+            {
+                _payloadManager.ProcessValidatedPayload(request.BlockHash);
+            }
+            else
+            {
+                _payloadManager.TryAddConsensusValidatedResult(request.BlockHash, isValid);
+            }
             
             return ResultWrapper<Result>.Success(Result.Ok);
         }
