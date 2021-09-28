@@ -51,7 +51,7 @@ namespace Nethermind.Merge.Plugin.Data
             }
         }
         
-        public BlockRequestResult(Block block)
+        public BlockRequestResult(Block block, Keccak random)
         {
             BlockHash = block.Hash;
             ParentHash = block.ParentHash;
@@ -62,6 +62,7 @@ namespace Nethermind.Merge.Plugin.Data
             GasUsed = block.GasUsed;
             ReceiptsRoot = block.ReceiptsRoot;
             LogsBloom = block.Bloom;
+            Random = random;
             SetTransactions(block.Transactions);
             Difficulty = block.Difficulty;
             Nonce = block.Nonce;
@@ -107,6 +108,7 @@ namespace Nethermind.Merge.Plugin.Data
         public Keccak BlockHash { get; set; } = null!;
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public Bloom LogsBloom { get; set; } = Bloom.Empty;
+        public Keccak Random { get; set; }
         public Address? Miner { get; set; }
         public Keccak MixHash { get; set; } = null!;
         public bool ShouldSerializeMixHash() => false;

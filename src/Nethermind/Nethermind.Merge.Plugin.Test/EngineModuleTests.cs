@@ -224,7 +224,7 @@ namespace Nethermind.Merge.Plugin.Test
             block.Header.Hash = new Keccak("0xdc3419cbd81455372f3e576f930560b35ec828cd6cdfbd4958499e43c68effdf");
             chain.BlockTree.SuggestBlock(block);
             
-            ResultWrapper<ExecutePayloadResult> executePayloadResult = await rpc.engine_executePayload(new BlockRequestResult(block));
+            ResultWrapper<ExecutePayloadResult> executePayloadResult = await rpc.engine_executePayload(new BlockRequestResult(block, Keccak.Zero));
             executePayloadResult.Data.Status.Should().Be(VerificationStatus.Known);
         }
         
@@ -383,7 +383,7 @@ namespace Nethermind.Merge.Plugin.Test
                 TestItem.AddressD);
             ResultWrapper<ExecutePayloadResult> resultWrapper = await rpc.engine_executePayload(blockRequestResult);
             resultWrapper.Data.Status.Should().Be(VerificationStatus.Valid);
-            new BlockRequestResult(chain.BlockTree.BestSuggestedBody).Should().BeEquivalentTo(blockRequestResult);
+            new BlockRequestResult(chain.BlockTree.BestSuggestedBody, blockRequestResult.Random).Should().BeEquivalentTo(blockRequestResult);
         }
 
         private async Task<BlockRequestResult> SendNewBlock(IEngineRpcModule rpc, MergeTestBlockchain chain)
