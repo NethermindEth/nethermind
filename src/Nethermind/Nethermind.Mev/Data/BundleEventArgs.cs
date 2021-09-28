@@ -23,12 +23,10 @@ namespace Nethermind.Mev.Data
     public class BundleEventArgs : EventArgs
     {
         public MevBundle MevBundle { get; }
-        public Signature? RelaySignature { get;  }
 
-        public BundleEventArgs(MevBundle mevBundle, Signature? relaySignature = null)
+        public BundleEventArgs(MevBundle mevBundle)
         {
             MevBundle = mevBundle;
-            RelaySignature = relaySignature;
         }
     }
 }

@@ -51,7 +51,8 @@ namespace Nethermind.Mev.Source
         private readonly ConcurrentDictionary<long, ConcurrentDictionary<(MevBundle Bundle, Keccak BlockHash), SimulatedMevBundleContext>> _simulatedBundles = new();
         private readonly ILogger _logger;
         private readonly IEthereumEcdsa _ecdsa;
-        
+        private readonly HashSet<Address> _trustedRelays;
+
         private long HeadNumber => _blockTree.Head?.Number ?? 0;
         
         public event EventHandler<BundleEventArgs>? NewReceived;
@@ -77,6 +78,8 @@ namespace Nethermind.Mev.Source
             _simulator = simulator;
             _logger = logManager.GetClassLogger();
             _ecdsa = ecdsa;
+
+            _trustedRelays = _mevConfig.GetTrustedRelayAddresses().ToHashSet();
             
             IComparer<MevBundle> comparer = CompareMevBundleByBlock.Default.ThenBy(CompareMevBundleByMinTimestamp.Default);
             _bundles = new BundleSortedPool(
@@ -166,12 +169,12 @@ namespace Nethermind.Mev.Source
         public bool AddMegabundle(MevMegabundle megabundle)
         {
             Metrics.MegabundlesReceived++;
-            BundleEventArgs bundleEventArgs = new(megabundle, megabundle.RelaySignature);
+            BundleEventArgs bundleEventArgs = new(megabundle);
             NewReceived?.Invoke(this, bundleEventArgs);
 
             if (ValidateBundle(megabundle))
             {
-                Address relayAddress = _ecdsa.RecoverAddress(megabundle.RelaySignature, megabundle.Hash)!;
+                Address relayAddress = megabundle.RelayAddress = _ecdsa.RecoverAddress(megabundle.RelaySignature, megabundle.Hash)!;
                 if (IsTrustedRelay(relayAddress))
                 {
                     Metrics.ValidMegabundlesReceived++;
@@ -204,10 +207,7 @@ namespace Nethermind.Mev.Source
             return !bundleIsInFuture && !bundleIsTooOld;
         }
         
-        private bool IsTrustedRelay(Address relayAddress)
-        {
-            return _mevConfig.GetTrustedRelayAddresses().Contains(relayAddress);
-        }
+        private bool IsTrustedRelay(Address relayAddress) => _trustedRelays.Contains(relayAddress);
 
         private bool ValidateBundle(MevBundle bundle)
         {

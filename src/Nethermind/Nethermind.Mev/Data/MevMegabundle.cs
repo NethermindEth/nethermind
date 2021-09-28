@@ -17,6 +17,7 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
@@ -31,6 +32,8 @@ namespace Nethermind.Mev.Data
         }
         
         public Signature RelaySignature { get; }
+
+        public Address? RelayAddress { get; internal set; }
 
         public bool Equals(MevMegabundle? other)
         {
@@ -48,7 +51,7 @@ namespace Nethermind.Mev.Data
             return Equals((MevMegabundle) obj);
         }
 
-        public override int GetHashCode() => Hash.GetHashCode();
+        public override int GetHashCode() => HashCode.Combine(Hash, RelaySignature).GetHashCode();
         
         public override string ToString() => $"Hash:{Hash}; Block:{BlockNumber}; Min:{MinTimestamp}; Max:{MaxTimestamp}; TxCount:{Transactions.Count}; RelaySignature:{RelaySignature};";
     }
