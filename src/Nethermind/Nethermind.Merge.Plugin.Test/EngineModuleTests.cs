@@ -52,7 +52,6 @@ namespace Nethermind.Merge.Plugin.Test
         private ITimestamper Timestamper { get; } = new ManualTimestamper(Timestamp);
 
         [Test, Retry(3)]
-        [Ignore("ToDo")]
         public async Task preparePayload_should_create_block_on_top_of_genesis()
         {
             using MergeTestBlockchain chain = await CreateBlockChain();

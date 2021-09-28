@@ -46,7 +46,7 @@ namespace Nethermind.Merge.Plugin.Test
         {
             PayloadStorage? payloadStorage = new();
             return new EngineRpcModule(
-                new PreparePayloadHandler(chain.BlockTree, payloadStorage, new BuildBlocksWhenRequested(), chain.BlockProductionTrigger, chain.Timestamper, chain.LogManager),
+                new PreparePayloadHandler(chain.BlockTree, payloadStorage, chain.BlockProductionTrigger, chain.EmptyBlockProducerTrigger, chain.Timestamper, chain.LogManager),
                 new GetPayloadHandler(chain.BlockTree, payloadStorage,  chain.LogManager),
                 new NewBlockHandler(chain.BlockTree, chain.BlockPreprocessorStep, chain.BlockchainProcessor, chain.State, new InitConfig(), chain.LogManager),
                 (PoSSwitcher)chain.PoSSwitcher,
@@ -57,6 +57,8 @@ namespace Nethermind.Merge.Plugin.Test
 
         private class MergeTestBlockchain : TestBlockchain
         {
+            public IBlockProducer EmptyBlockProducer { get; private set; }
+            public BuildBlocksWhenRequested EmptyBlockProducerTrigger { get; private set; } = new BuildBlocksWhenRequested();
             public MergeTestBlockchain(ManualTimestamper timestamper)
             {
                 Timestamper = timestamper;
@@ -93,6 +95,19 @@ namespace Nethermind.Merge.Plugin.Test
                     transactionComparerProvider,
                     miningConfig,
                     LogManager);
+                
+                EmptyBlockProducer = new Eth2EmptyBlockProducerFactory().Create(
+                    blockProducerEnvFactory,
+                    BlockTree,
+                    EmptyBlockProducerTrigger,
+                    SpecProvider,
+                    Signer,
+                    Timestamper,
+                    miningConfig,
+                    LogManager
+                );
+                
+                EmptyBlockProducer.Start();
                 
                 return new Eth2TestBlockProducerFactory(targetAdjustedGasLimitCalculator).Create(
                     blockProducerEnvFactory,
