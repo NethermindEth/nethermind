@@ -93,7 +93,7 @@ namespace Nethermind.Merge.Plugin
 
         public Task engine_consensusValidated(Keccak blockHash, ConsensusValidationStatus status)
         {
-            throw new NotImplementedException();
+            return Task.CompletedTask;
         }
 
         public async Task<ResultWrapper<Result>> engine_forkchoiceUpdated(Keccak headBlockHash,
@@ -137,19 +137,19 @@ namespace Nethermind.Merge.Plugin
 
         public Task engine_syncCheckpointSet(BlockRequestResult executionPayloadHeader)
         {
-            throw new NotImplementedException();
+            return Task.CompletedTask;
         }
 
         public Task engine_syncStatus(SyncStatus sync, Keccak blockHash, UInt256 blockNumber)
         {
-            throw new NotImplementedException();
+            return Task.CompletedTask;
         }
 
         public Task engine_consensusStatus(UInt256 transitionTotalDifficulty, Keccak terminalPowBlockHash,
             Keccak finalizedBlockHash,
             Keccak confirmedBlockHash, Keccak headBlockHash)
         {
-            throw new NotImplementedException();
+            return Task.CompletedTask;
         }
 
         public ResultWrapper<ExecutionStatusResult> engine_executionStatus()

@@ -391,6 +391,7 @@ namespace Nethermind.Merge.Plugin.Test
             BlockRequestResult blockRequestResult = CreateBlockRequest(
                 CreateParentBlockRequestOnHead(chain.BlockTree),
                 TestItem.AddressD);
+            await rpc.engine_consensusValidated(blockRequestResult.BlockHash, ConsensusValidationStatus.Valid);
             ResultWrapper<ExecutePayloadResult> executePayloadResult = await rpc.engine_executePayload(blockRequestResult);
             executePayloadResult.Data.Status.Should().Be(VerificationStatus.Valid);
             return blockRequestResult;
