@@ -64,7 +64,7 @@ namespace Nethermind.Merge.Plugin.Handlers
         {
             Block block = base.PrepareBlock(parent);
             block.Header.MixHash = Keccak.Zero;
-            block.Header.ExtraData = Bytes.Empty;
+            block.Header.ExtraData = null;
             return block;
         }
     }

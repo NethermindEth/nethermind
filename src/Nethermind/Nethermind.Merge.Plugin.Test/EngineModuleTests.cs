@@ -67,7 +67,7 @@ namespace Nethermind.Merge.Plugin.Test
 
             BlockRequestResult expected = CreateParentBlockRequestOnHead(chain.BlockTree);
             expected.GasLimit = 4000000L;
-            expected.BlockHash = new Keccak("0xfe37027d377e75ffb161f11733d8880083378fe6236270c7a2ee1fc7efe71cfd");
+            expected.BlockHash = new Keccak("0xdc4e882186c2723e6ed279634d6b7f502bf2712dc3113c743903786b61c55c87");
             expected.LogsBloom = Bloom.Empty;
             expected.Miner = chain.MinerAddress;
             expected.Number = 1;
