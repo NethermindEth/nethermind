@@ -392,7 +392,10 @@ namespace Nethermind.Merge.Plugin.Test
                 CreateParentBlockRequestOnHead(chain.BlockTree),
                 TestItem.AddressD);
             ResultWrapper<ExecutePayloadResult> executePayloadResult = await rpc.engine_executePayload(blockRequestResult);
+            ResultWrapper<Result> consensusValidatedResult =
+                await rpc.engine_consensusValidated(blockRequestResult.BlockHash, ConsensusValidationStatus.Valid);
             executePayloadResult.Data.Status.Should().Be(VerificationStatus.Valid);
+            consensusValidatedResult.Data.Should().Be(Result.Ok);
             return blockRequestResult;
         }
         

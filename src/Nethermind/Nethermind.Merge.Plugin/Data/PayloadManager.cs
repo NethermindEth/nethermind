@@ -48,9 +48,9 @@ namespace Nethermind.Merge.Plugin.Data
 
         public void MarkPayloadValidationAsFinished(Keccak blockhash)
         {
-            if (_executePayloadHashes.TryGet(blockhash, out bool isFinished))
+            if (!_executePayloadHashes.Get(blockhash))
             {
-                isFinished = true;
+                _executePayloadHashes.Set(blockhash, true);
             }
         }
 
