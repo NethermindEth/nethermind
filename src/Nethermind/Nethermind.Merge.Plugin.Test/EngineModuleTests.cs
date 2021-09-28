@@ -148,7 +148,6 @@ namespace Nethermind.Merge.Plugin.Test
         // }
 
         [Test]
-        [Ignore("ToDo")]
         public async Task executePayload_accepts_previously_assembled_block_multiple_times([Values(1, 3)] int times)
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
@@ -158,13 +157,14 @@ namespace Nethermind.Merge.Plugin.Test
             BlockRequestResult getPayloadResult = await PrepareAndGetPayloadResult(chain, rpc);
             getPayloadResult.ParentHash.Should().Be(startingHead);
 
-            ResultWrapper<ExecutePayloadResult>
-                executePayloadResult = await rpc.engine_executePayload(getPayloadResult);
+            ResultWrapper<ExecutePayloadResult> executePayloadResult = await rpc.engine_executePayload(getPayloadResult);
+            await rpc.engine_consensusValidated(getPayloadResult.BlockHash, ConsensusValidationStatus.Valid);
             executePayloadResult.Data.Status.Should().Be(VerificationStatus.Valid);
 
             for (int i = 1; i < times; i++)
             {
                 executePayloadResult = await rpc.engine_executePayload(getPayloadResult);
+                await rpc.engine_consensusValidated(getPayloadResult.BlockHash, ConsensusValidationStatus.Valid);
                 executePayloadResult.Data.Status.Should().Be(VerificationStatus.Known);
             }
 

@@ -511,7 +511,7 @@ namespace Nethermind.Blockchain
             }
         }
 
-        private AddBlockResult Suggest(Block? block, BlockHeader header, bool shouldProcess = true, bool? setAsMain = null)
+        private AddBlockResult Suggest(Block? block, BlockHeader header, bool shouldProcess = true, bool? setAsMain = null, bool poSEnabled = false)
         {
 #if DEBUG
             /* this is just to make sure that we do not fall into this trap when creating tests */
@@ -574,7 +574,7 @@ namespace Nethermind.Blockchain
                 NewSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
             }
 
-            if (header.IsGenesis || header.TotalDifficulty > (BestSuggestedHeader?.TotalDifficulty ?? 0))
+            if (poSEnabled || header.IsGenesis || header.TotalDifficulty > (BestSuggestedHeader?.TotalDifficulty ?? 0))
             {
                 if (header.IsGenesis)
                 {
@@ -597,14 +597,14 @@ namespace Nethermind.Blockchain
             return Suggest(null, header);
         }
 
-        public AddBlockResult SuggestBlock(Block block, bool shouldProcess = true, bool? setAsMain = null)
+        public AddBlockResult SuggestBlock(Block block, bool shouldProcess = true, bool? setAsMain = null, bool poSEnabled = false)
         {
             if (Genesis is null && !block.IsGenesis)
             {
                 throw new InvalidOperationException("Block tree should be initialized with genesis before suggesting other blocks.");
             }
 
-            return Suggest(block, block.Header, shouldProcess, setAsMain);
+            return Suggest(block, block.Header, shouldProcess, setAsMain, poSEnabled);
         }
 
         public BlockHeader? FindHeader(long number, BlockTreeLookupOptions options)
