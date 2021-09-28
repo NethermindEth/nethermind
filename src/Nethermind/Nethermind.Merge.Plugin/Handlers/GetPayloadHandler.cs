@@ -47,7 +47,9 @@ namespace Nethermind.Merge.Plugin.Handlers
             if (blockAndRandom?.Item1 == null)
             {
                 if (_logger.IsWarn) _logger.Warn($"Block production failed");
-                return ResultWrapper<BlockRequestResult?>.Success(null);
+                return ResultWrapper<BlockRequestResult?>.Fail(
+                    $"Execution payload requested with id={payloadId} cannot be found.",
+                    MergeErrorCodes.UnavailablePayload);
             }
             else
             {
