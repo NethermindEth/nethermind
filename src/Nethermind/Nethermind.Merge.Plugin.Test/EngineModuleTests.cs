@@ -74,6 +74,7 @@ namespace Nethermind.Merge.Plugin.Test
             expected.ParentHash = startingHead;
             expected.SetTransactions(Array.Empty<Transaction>());
             expected.Timestamp = timestamp;
+            expected.Random = random;
 
             response.Data.Should().BeEquivalentTo(expected);
         }
@@ -205,7 +206,7 @@ namespace Nethermind.Merge.Plugin.Test
             BlockRequestResult getPayloadResult = await PrepareAndGetPayloadResult(chain, rpc);
             Keccak blockHash = getPayloadResult.BlockHash;
             breakerAction(getPayloadResult);
-            if (blockHash == getPayloadResult.BlockHash && TryCalculateHash(getPayloadResult, out var hash))
+            if (blockHash == getPayloadResult.BlockHash && TryCalculateHash(getPayloadResult, out Keccak? hash))
             {
                 getPayloadResult.BlockHash = hash;
             }
@@ -441,12 +442,12 @@ namespace Nethermind.Merge.Plugin.Test
             
             async Task CanReorganizeToAnyBlock(MergeTestBlockchain testChain, params IReadOnlyList<BlockRequestResult>[] branches)
             {
-                foreach (var branch in branches)
+                foreach (IReadOnlyList<BlockRequestResult>? branch in branches)
                 {
                     await CanReorganizeToBlock(branch.Last(), testChain);
                 }
                 
-                foreach (var branch in branches)
+                foreach (IReadOnlyList<BlockRequestResult>? branch in branches)
                 {
                     foreach (BlockRequestResult block in branch)
                     {
@@ -493,12 +494,12 @@ namespace Nethermind.Merge.Plugin.Test
             
             async Task CanAssembleOnAnyBlock(params IReadOnlyList<BlockRequestResult>[] branches)
             {
-                foreach (var branch in branches) 
+                foreach (IReadOnlyList<BlockRequestResult>? branch in branches) 
                 {
                     await CanAssembleOnBlock(branch.Last());
                 }
                 
-                foreach (var branch in branches)
+                foreach (IReadOnlyList<BlockRequestResult>? branch in branches)
                 {
                     foreach (BlockRequestResult block in branch)
                     {
@@ -522,116 +523,117 @@ namespace Nethermind.Merge.Plugin.Test
             
             await CanAssembleOnAnyBlock(branch1, branch2, branch3, branch4);
         }
-
-        // ToDo need for rework
-        // [Test]
-        // // [Repeat(1000)] // to test multi-thread issue, warning - long and eliminated in test already
-        // public async Task executePayload_processes_passed_transactions([Values(false, true)] bool moveHead)
-        // {
-        //     using MergeTestBlockchain chain = await CreateBlockChain();
-        //     IEngineRpcModule rpc = CreateEngineModule(chain);
-        //     IReadOnlyList<BlockRequestResult> branch = await ProduceBranch(rpc, chain.BlockTree, 10, chain.BlockTree.HeadHash, moveHead);
-        //
-        //     foreach (BlockRequestResult block in branch)
-        //     {
-        //         uint count = 10;
-        //         BlockRequestResult newBlockRequest = CreateBlockRequest(block, TestItem.AddressA);
-        //         PrivateKey from = TestItem.PrivateKeyB;
-        //         Address to = TestItem.AddressD;
-        //         var (_, toBalanceAfter) = AddTransactions(chain, newBlockRequest, from, to, count, 1, out var parentHeader);
-        //
-        //         newBlockRequest.GasUsed = GasCostOf.Transaction * count;
-        //         newBlockRequest.StateRoot = new Keccak("0x3d2e3ced6da0d1e94e65894dc091190480f045647610ef614e1cab4241ca66e0");
-        //         newBlockRequest.ReceiptsRoot = new Keccak("0xc538d36ed1acf6c28187110a2de3e5df707d6d38982f436eb0db7a623f9dc2cd");
-        //         TryCalculateHash(newBlockRequest, out var hash);
-        //         newBlockRequest.BlockHash = hash;
-        //         ResultWrapper<ExecutePayloadResult> result = await rpc.engine_executePayload(newBlockRequest);
-        //         await Task.Delay(10);
-        //
-        //         result.Data.Status.Should().Be(VerificationStatus.Valid);
-        //         RootCheckVisitor rootCheckVisitor = new();
-        //         chain.StateReader.RunTreeVisitor(rootCheckVisitor, newBlockRequest.StateRoot);
-        //         rootCheckVisitor.HasRoot.Should().BeTrue();
-        //         // Chain.StateReader.GetBalance(newBlockRequest.StateRoot, from.Address).Should().Be(fromBalanceAfter);
-        //         chain.StateReader.GetBalance(newBlockRequest.StateRoot, to).Should().Be(toBalanceAfter);
-        //         if (moveHead)
-        //         {
-        //             await rpc.engine_setHead(newBlockRequest.BlockHash);
-        //             await Task.Delay(10);
-        //             chain.State.StateRoot.Should().Be(newBlockRequest.StateRoot);
-        //             chain.State.StateRoot.Should().NotBe(parentHeader.StateRoot!);
-        //         }
-        //     }
-        // }
-
-        // ToDo need for rework
-        // [Test]
-        // public async Task executePayload_transactions_produce_receipts()
-        // {
-        //     using MergeTestBlockchain chain = await CreateBlockChain();
-        //     IEngineRpcModule rpc = CreateEngineModule(chain);
-        //     IReadOnlyList<BlockRequestResult> branch = await ProduceBranch(rpc, chain.BlockTree, 1, chain.BlockTree.HeadHash, false);
-        //
-        //     foreach (BlockRequestResult block in branch)
-        //     {
-        //         uint count = 10;
-        //         BlockRequestResult newBlockRequest = CreateBlockRequest(block, TestItem.AddressA);
-        //         PrivateKey from = TestItem.PrivateKeyB;
-        //         Address to = TestItem.AddressD;
-        //         var (_, toBalanceAfter) = AddTransactions(chain, newBlockRequest, from, to, count, 1, out var parentHeader);
-        //
-        //         newBlockRequest.GasUsed = GasCostOf.Transaction * count;
-        //         newBlockRequest.StateRoot = new Keccak("0x3d2e3ced6da0d1e94e65894dc091190480f045647610ef614e1cab4241ca66e0");
-        //         newBlockRequest.ReceiptsRoot = new Keccak("0xc538d36ed1acf6c28187110a2de3e5df707d6d38982f436eb0db7a623f9dc2cd");
-        //         TryCalculateHash(newBlockRequest, out var hash);
-        //         newBlockRequest.BlockHash = hash;
-        //         ResultWrapper<ExecutePayloadResult> result = await rpc.engine_executePayload(newBlockRequest);
-        //         await Task.Delay(10);
-        //
-        //         result.Data.Status.Should().Be(VerificationStatus.Valid);
-        //         RootCheckVisitor rootCheckVisitor = new();
-        //         chain.StateReader.RunTreeVisitor(rootCheckVisitor, newBlockRequest.StateRoot);
-        //         rootCheckVisitor.HasRoot.Should().BeTrue();
-        //         // Chain.StateReader.GetBalance(newBlockRequest.StateRoot, from.Address).Should().Be(fromBalanceAfter);
-        //         chain.StateReader.GetBalance(newBlockRequest.StateRoot, to).Should().Be(toBalanceAfter);
-        //         Block findBlock = chain.BlockTree.FindBlock(newBlockRequest.BlockHash, BlockTreeLookupOptions.None)!;
-        //         TxReceipt[]? receipts = chain.ReceiptStorage.Get(findBlock);
-        //         findBlock.Transactions.Select(t => t.Hash).Should().BeEquivalentTo(receipts.Select(r => r.TxHash));
-        //     }
-        // }
-
-        // ToDo need for rework
-        // [Test]
-        // public async Task assembleBlock_picks_transactions_from_pool()
-        // {
-        //     using MergeTestBlockchain chain = await CreateBlockChain();
-        //     IEngineRpcModule rpc = CreateEngineModule(chain);
-        //     Keccak startingHead = chain.BlockTree.HeadHash;
-        //     uint count = 3;
-        //     int value = 10;
-        //     Address recipient = TestItem.AddressD;
-        //     PrivateKey sender = TestItem.PrivateKeyB;
-        //     Transaction[] transactions = BuildTransactions(chain, startingHead, sender, recipient, count, value, out _, out _);
-        //     chain.AddTransactions(transactions);
-        //     PreparePayloadRequest preparePayloadRequest = new() {ParentHash = startingHead};
-        //     BlockRequestResult assembleBlockResult = (await rpc.engine_assembleBlock(preparePayloadRequest)).Data!;
-        //
-        //     assembleBlockResult.StateRoot.Should().NotBe(chain.BlockTree.Genesis!.StateRoot!);
-        //     
-        //     Transaction[] transactionsInBlock = assembleBlockResult.GetTransactions();
-        //     transactionsInBlock.Should().BeEquivalentTo(transactions, 
-        //         o => o.Excluding(t => t.ChainId)
-        //             .Excluding(t => t.SenderAddress)
-        //             .Excluding(t => t.Timestamp)
-        //             .Excluding(t => t.PoolIndex)
-        //             .Excluding(t => t.GasBottleneck));
-        //
-        //     ResultWrapper<NewBlockResult> newBlockResult = await rpc.engine_newBlock(assembleBlockResult);
-        //     newBlockResult.Data.Valid.Should().BeTrue();
-        //
-        //     UInt256 totalValue = ((int)(count * value)).GWei();
-        //     chain.StateReader.GetBalance(assembleBlockResult.StateRoot, recipient).Should().Be(totalValue);
-        // }
+        
+        [Test]
+        // [Repeat(1000)] // to test multi-thread issue, warning - long and eliminated in test already
+        public async Task executePayload_processes_passed_transactions([Values(false, true)] bool moveHead)
+        {
+            using MergeTestBlockchain chain = await CreateBlockChain();
+            IEngineRpcModule rpc = CreateEngineModule(chain);
+            IReadOnlyList<BlockRequestResult> branch = await ProduceBranch(rpc, chain.BlockTree, 10, chain.BlockTree.HeadHash, moveHead);
+        
+            foreach (BlockRequestResult block in branch)
+            {
+                uint count = 10;
+                BlockRequestResult newBlockRequest = CreateBlockRequest(block, TestItem.AddressA);
+                PrivateKey from = TestItem.PrivateKeyB;
+                Address to = TestItem.AddressD;
+                (_, UInt256 toBalanceAfter) = AddTransactions(chain, newBlockRequest, from, to, count, 1, out BlockHeader? parentHeader);
+        
+                newBlockRequest.GasUsed = GasCostOf.Transaction * count;
+                newBlockRequest.StateRoot = new Keccak("0x3d2e3ced6da0d1e94e65894dc091190480f045647610ef614e1cab4241ca66e0");
+                newBlockRequest.ReceiptsRoot = new Keccak("0xc538d36ed1acf6c28187110a2de3e5df707d6d38982f436eb0db7a623f9dc2cd");
+                TryCalculateHash(newBlockRequest, out Keccak? hash);
+                newBlockRequest.BlockHash = hash;
+                ResultWrapper<ExecutePayloadResult> result = await rpc.engine_executePayload(newBlockRequest);
+                await Task.Delay(10);
+        
+                result.Data.Status.Should().Be(VerificationStatus.Valid);
+                RootCheckVisitor rootCheckVisitor = new();
+                chain.StateReader.RunTreeVisitor(rootCheckVisitor, newBlockRequest.StateRoot);
+                rootCheckVisitor.HasRoot.Should().BeTrue();
+                // Chain.StateReader.GetBalance(newBlockRequest.StateRoot, from.Address).Should().Be(fromBalanceAfter);
+                chain.StateReader.GetBalance(newBlockRequest.StateRoot, to).Should().Be(toBalanceAfter);
+                if (moveHead)
+                {
+                    await rpc.engine_forkchoiceUpdated(newBlockRequest.BlockHash, newBlockRequest.BlockHash, newBlockRequest.BlockHash);
+                    await Task.Delay(10);
+                    chain.State.StateRoot.Should().Be(newBlockRequest.StateRoot);
+                    chain.State.StateRoot.Should().NotBe(parentHeader.StateRoot!);
+                }
+            }
+        }
+        
+        [Test]
+        public async Task executePayload_transactions_produce_receipts()
+        {
+            using MergeTestBlockchain chain = await CreateBlockChain();
+            IEngineRpcModule rpc = CreateEngineModule(chain);
+            IReadOnlyList<BlockRequestResult> branch = await ProduceBranch(rpc, chain.BlockTree, 1, chain.BlockTree.HeadHash, false);
+        
+            foreach (BlockRequestResult block in branch)
+            {
+                uint count = 10;
+                BlockRequestResult newBlockRequest = CreateBlockRequest(block, TestItem.AddressA);
+                PrivateKey from = TestItem.PrivateKeyB;
+                Address to = TestItem.AddressD;
+                var (_, toBalanceAfter) = AddTransactions(chain, newBlockRequest, from, to, count, 1, out var parentHeader);
+        
+                newBlockRequest.GasUsed = GasCostOf.Transaction * count;
+                newBlockRequest.StateRoot = new Keccak("0x3d2e3ced6da0d1e94e65894dc091190480f045647610ef614e1cab4241ca66e0");
+                newBlockRequest.ReceiptsRoot = new Keccak("0xc538d36ed1acf6c28187110a2de3e5df707d6d38982f436eb0db7a623f9dc2cd");
+                TryCalculateHash(newBlockRequest, out var hash);
+                newBlockRequest.BlockHash = hash;
+                ResultWrapper<ExecutePayloadResult> result = await rpc.engine_executePayload(newBlockRequest);
+                await Task.Delay(10);
+        
+                result.Data.Status.Should().Be(VerificationStatus.Valid);
+                RootCheckVisitor rootCheckVisitor = new();
+                chain.StateReader.RunTreeVisitor(rootCheckVisitor, newBlockRequest.StateRoot);
+                rootCheckVisitor.HasRoot.Should().BeTrue();
+                // Chain.StateReader.GetBalance(newBlockRequest.StateRoot, from.Address).Should().Be(fromBalanceAfter);
+                chain.StateReader.GetBalance(newBlockRequest.StateRoot, to).Should().Be(toBalanceAfter);
+                Block findBlock = chain.BlockTree.FindBlock(newBlockRequest.BlockHash, BlockTreeLookupOptions.None)!;
+                TxReceipt[]? receipts = chain.ReceiptStorage.Get(findBlock);
+                findBlock.Transactions.Select(t => t.Hash).Should().BeEquivalentTo(receipts.Select(r => r.TxHash));
+            }
+        }
+        
+        [Test]
+        public async Task assembleBlock_picks_transactions_from_pool()
+        {
+            uint payloadId = 1;
+            ManualTimestamper timestamper = new(Timestamp);
+            using MergeTestBlockchain chain = await CreateBlockChain();
+            IEngineRpcModule rpc = CreateEngineModule(chain);
+            Keccak startingHead = chain.BlockTree.HeadHash;
+            uint count = 3;
+            int value = 10;
+            Address recipient = TestItem.AddressD;
+            PrivateKey sender = TestItem.PrivateKeyB;
+            Transaction[] transactions = BuildTransactions(chain, startingHead, sender, recipient, count, value, out _, out _);
+            chain.AddTransactions(transactions);
+            await rpc.engine_preparePayload(startingHead,((ITimestamper) timestamper).UnixTime.Seconds, TestItem.KeccakA, Address.Zero, payloadId);
+            await Task.Delay(8000);
+            BlockRequestResult assembleBlockResult = (await rpc.engine_getPayload(payloadId)).Data!;
+        
+            assembleBlockResult.StateRoot.Should().NotBe(chain.BlockTree.Genesis!.StateRoot!);
+            
+            Transaction[] transactionsInBlock = assembleBlockResult.GetTransactions();
+            transactionsInBlock.Should().BeEquivalentTo(transactions, 
+                o => o.Excluding(t => t.ChainId)
+                    .Excluding(t => t.SenderAddress)
+                    .Excluding(t => t.Timestamp)
+                    .Excluding(t => t.PoolIndex)
+                    .Excluding(t => t.GasBottleneck));
+            
+            await rpc.engine_consensusValidated(assembleBlockResult.BlockHash, ConsensusValidationStatus.Valid);
+            ResultWrapper<ExecutePayloadResult> executePayloadResult = await rpc.engine_executePayload(assembleBlockResult);
+            executePayloadResult.Data.Status.Should().Be(VerificationStatus.Valid);
+        
+            UInt256 totalValue = ((int)(count * value)).GWei();
+            chain.StateReader.GetBalance(assembleBlockResult.StateRoot, recipient).Should().Be(totalValue);
+        }
 
         private (UInt256, UInt256) AddTransactions(MergeTestBlockchain chain, BlockRequestResult newBlockRequest,
             PrivateKey from, Address to, uint count, int value, out BlockHeader parentHeader)
@@ -691,7 +693,7 @@ namespace Nethermind.Merge.Plugin.Test
             };
 
             blockRequest.SetTransactions(Array.Empty<Transaction>());
-            TryCalculateHash(blockRequest, out var hash);
+            TryCalculateHash(blockRequest, out Keccak? hash);
             blockRequest.BlockHash = hash;
             return blockRequest;
         }
