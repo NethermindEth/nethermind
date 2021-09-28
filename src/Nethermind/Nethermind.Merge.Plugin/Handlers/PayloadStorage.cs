@@ -15,10 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
 namespace Nethermind.Merge.Plugin.Handlers
@@ -26,24 +28,19 @@ namespace Nethermind.Merge.Plugin.Handlers
     public class PayloadStorage
     {
         // first BlockRequestResult is empty (without txs), second one is the ideal one
-        private IDictionary<ulong, Block?> _payloadStorage =
-            new ConcurrentDictionary<ulong, Block?>();
+        private readonly IDictionary<ulong, Tuple<Block?, Keccak>> _payloadStorage =
+            new ConcurrentDictionary<ulong, Tuple<Block?, Keccak>>();
 
-        public async Task AddPayload(ulong payloadId, Block? emptyBlock, Task<Block?> blockTask)
+        public async Task AddPayload(ulong payloadId, Keccak random, Block? emptyBlock, Task<Block?> blockTask)
         {
-            _payloadStorage.TryAdd(payloadId, emptyBlock);
+            _payloadStorage.TryAdd(payloadId, Tuple.Create(emptyBlock, random));
             Block? idealBlock = await blockTask;
-            _payloadStorage[payloadId] = idealBlock;
+            _payloadStorage[payloadId] = Tuple.Create(idealBlock, random);
         }
 
-        public Block? GetPayload(ulong payloadId)
+        public Tuple<Block?, Keccak>? GetPayload(ulong payloadId)
         {
-            if (_payloadStorage.ContainsKey(payloadId))
-            {
-                Block? blockToReturn = _payloadStorage[payloadId];
-                return blockToReturn;
-            }
-            return null;
+            return _payloadStorage.ContainsKey(payloadId) ? _payloadStorage[payloadId] : null;
         }
     }
 }

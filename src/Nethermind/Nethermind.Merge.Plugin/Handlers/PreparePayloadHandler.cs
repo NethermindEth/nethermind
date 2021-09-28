@@ -71,7 +71,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             
             Block? emptyBlock = await _emptyBlockProductionTrigger.BuildBlock(parentHeader, cts.Token);
             Task<Block?> idealBlock = _blockProductionTrigger.BuildBlock(parentHeader, cts.Token);
-            _payloadStorage.AddPayload(request.PayloadId, emptyBlock, idealBlock); // not awaiting on purpose
+            _payloadStorage.AddPayload(request.PayloadId, request.Random, emptyBlock, idealBlock); // not awaiting on purpose
             
             return ResultWrapper<Result>.Success(Result.Ok);
         }
