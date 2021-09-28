@@ -99,6 +99,7 @@ namespace Nethermind.Merge.Plugin
                         _emptyBlockProductionTrigger, _manualTimestamper, _api.LogManager),
                     new GetPayloadHandler(_api.BlockTree, payloadStorage, _api.LogManager),
                     new ExecutePayloadHandler(_api.BlockTree, _api.BlockPreprocessor, _api.BlockchainProcessor, _api.StateProvider, _api.Config<IInitConfig>(), _api.LogManager),
+                    new ConsensusValidatedHandler(),
                     _poSSwitcher,
                     new ForkChoiceUpdatedHandler(_api.BlockTree, _api.StateProvider, _blockFinalizationManager,
                         _poSSwitcher, _api.BlockConfirmationManager, _api.LogManager),
