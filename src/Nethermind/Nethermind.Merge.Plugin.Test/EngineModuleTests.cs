@@ -71,6 +71,7 @@ namespace Nethermind.Merge.Plugin.Test
             expected.LogsBloom = Bloom.Empty;
             expected.Miner = chain.MinerAddress;
             expected.Number = 1;
+            expected.Random = random;
             expected.ParentHash = startingHead;
             expected.SetTransactions(Array.Empty<Transaction>());
             expected.Timestamp = timestamp;
@@ -80,7 +81,6 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         [Test]
-        [Ignore("ToDo")]
         public async Task getPayload_should_return_error_if_there_was_no_preparePayload_at_all()
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
@@ -88,12 +88,10 @@ namespace Nethermind.Merge.Plugin.Test
             uint payloadId = 111;
 
             ResultWrapper<BlockRequestResult?> response = await rpc.engine_getPayload(payloadId);
-
-            response.Data.Should().Be("some kind of error message - requested unprepared payload");
+            response.ErrorCode.Should().Be(MergeErrorCodes.UnavailablePayload);
         }
 
         [Test]
-        [Ignore("ToDo")]
         public async Task getPayload_should_return_error_if_there_was_no_corresponding_preparePayload()
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
@@ -109,7 +107,7 @@ namespace Nethermind.Merge.Plugin.Test
             uint requestedPayloadId = 222;
             ResultWrapper<BlockRequestResult?> response = await rpc.engine_getPayload(requestedPayloadId);
 
-            response.Data.Should().Be("some kind of error message - requested unprepared payload");
+            response.ErrorCode.Should().Be(MergeErrorCodes.UnavailablePayload);
         }
 
         [Test]
@@ -132,20 +130,28 @@ namespace Nethermind.Merge.Plugin.Test
 
             ResultWrapper<BlockRequestResult?> response = await rpc.engine_getPayload(payloadId);
 
-            response.Data.Should().Be("some kind of error message - timeout");
+            response.ErrorCode.Should().Be(MergeErrorCodes.UnavailablePayload);
         }
 
-        // ToDo need for rework
-        // [Test]
-        // public async Task assembleBlock_should_not_create_block_with_unknown_parent()
-        // {
-        //     using MergeTestBlockchain chain = await CreateBlockChain();
-        //     IEngineRpcModule rpc = CreateEngineModule(chain);
-        //     Keccak notExistingHash = TestItem.KeccakH;
-        //     PreparePayloadRequest preparePayloadRequest = new() {ParentHash = notExistingHash};
-        //     ResultWrapper<BlockRequestResult?> response = await rpc.engine_preparePayload(preparePayloadRequest);
-        //     response.Data.Should().BeNull();
-        // }
+        [Test]
+        public async Task preparePayload_should_not_create_block_with_unknown_parent()
+        {
+            using MergeTestBlockchain chain = await CreateBlockChain();
+            IEngineRpcModule rpc = CreateEngineModule(chain);
+            Keccak notExistingHash = TestItem.KeccakH;
+            UInt256 timestamp = Timestamper.UnixTime.Seconds;
+            Keccak random = Keccak.Zero;
+            Address feeRecipient = Address.Zero;
+            uint payloadId = 111;
+
+            ResultWrapper<Result?> prepareResponse = await rpc.engine_preparePayload(notExistingHash, timestamp, random, feeRecipient, payloadId);
+            
+            prepareResponse.ErrorCode.Should().Be(MergeErrorCodes.UnknownHeader);
+            
+            ResultWrapper<BlockRequestResult?> getResponse = await rpc.engine_getPayload(payloadId);
+
+            getResponse.ErrorCode.Should().Be(MergeErrorCodes.UnavailablePayload);
+        }
 
         [Test]
         public async Task executePayload_accepts_previously_assembled_block_multiple_times([Values(1, 3)] int times)
