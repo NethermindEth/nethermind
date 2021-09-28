@@ -199,7 +199,6 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         [TestCaseSource(nameof(WrongInputTests))]
-        [Ignore("ToDo")]
         public async Task executePayload_rejects_incorrect_input(Action<BlockRequestResult> breakerAction)
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
