@@ -41,22 +41,25 @@ namespace Nethermind.Merge.Plugin.Handlers
         private readonly IBlockTree _blockTree;
         private readonly IBlockPreprocessorStep _preprocessor;
         private readonly IBlockchainProcessor _processor;
+        private readonly PayloadManager _payloadManager;
         private readonly IStateProvider _stateProvider;
         private readonly IInitConfig _initConfig;
         private readonly ILogger _logger;
         private readonly LruCache<Keccak, bool> _latestBlocks = new(50, "LatestBlocks");
         
         public ExecutePayloadHandler(
-            IBlockTree blockTree, 
-            IBlockPreprocessorStep preprocessor, 
-            IBlockchainProcessor processor, 
-            IStateProvider stateProvider, 
+            IBlockTree blockTree,
+            IBlockPreprocessorStep preprocessor,
+            IBlockchainProcessor processor,
+            PayloadManager payloadManager,
+            IStateProvider stateProvider,
             IInitConfig initConfig,
             ILogManager logManager)
         {
             _blockTree = blockTree;
             _preprocessor = preprocessor;
             _processor = processor;
+            _payloadManager = payloadManager;
             _stateProvider = stateProvider;
             _initConfig = initConfig;
             _logger = logManager.GetClassLogger();
@@ -64,6 +67,7 @@ namespace Nethermind.Merge.Plugin.Handlers
 
         public ResultWrapper<ExecutePayloadResult> Handle(BlockRequestResult request)
         {
+            _payloadManager.TryAddPayloadBlockHash(request.BlockHash);
             ExecutePayloadResult executePayloadResult = new() {BlockHash = request.BlockHash};
 
             VerificationStatus status = ValidateRequestAndProcess(request, out Block? processedBlock);
@@ -74,18 +78,22 @@ namespace Nethermind.Merge.Plugin.Handlers
             }
             else if (status == VerificationStatus.Invalid || processedBlock is null)
             {
+                _payloadManager.MarkPayloadValidationAsFinished(request.BlockHash);
                 executePayloadResult.Status = VerificationStatus.Invalid;
                 return ResultWrapper<ExecutePayloadResult>.Success(executePayloadResult);
             }
-
-            AddBlockResult blockResult = _blockTree.SuggestBlock(processedBlock);
             
-            executePayloadResult.Status = blockResult switch
+            executePayloadResult.Status = VerificationStatus.Valid;
+            
+            if (!_payloadManager.CheckConsensusValidatedResult(request.BlockHash, out bool isValid))
             {
-                AddBlockResult.Added => VerificationStatus.Valid,
-                AddBlockResult.AlreadyKnown => VerificationStatus.Known,
-                _ => VerificationStatus.Invalid
-            };
+                _payloadManager.MarkPayloadValidationAsFinished(request.BlockHash);
+                _payloadManager.TryAddValidPayload(request.BlockHash, processedBlock);
+            }
+            else if (isValid)
+            {
+                _payloadManager.ProcessValidatedPayload(processedBlock);
+            }
 
             return ResultWrapper<ExecutePayloadResult>.Success(executePayloadResult);
         }

@@ -25,6 +25,7 @@ using Nethermind.Core;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
 
 namespace Nethermind.Merge.Plugin
@@ -93,12 +94,14 @@ namespace Nethermind.Merge.Plugin
                 _api.Config<IJsonRpcConfig>().EnableModules(ModuleType.Consensus);
 
                 PayloadStorage payloadStorage = new();
+                PayloadManager payloadManager = new(_api.BlockTree);
 
                 IEngineRpcModule engineRpcModule = new EngineRpcModule(
                     new PreparePayloadHandler(_api.BlockTree, payloadStorage, _defaultBlockProductionTrigger,
                         _emptyBlockProductionTrigger, _manualTimestamper, _api.LogManager),
                     new GetPayloadHandler(_api.BlockTree, payloadStorage, _api.LogManager),
-                    new ExecutePayloadHandler(_api.BlockTree, _api.BlockPreprocessor, _api.BlockchainProcessor, _api.StateProvider, _api.Config<IInitConfig>(), _api.LogManager),
+                    new ExecutePayloadHandler(_api.BlockTree, _api.BlockPreprocessor, _api.BlockchainProcessor, payloadManager, _api.StateProvider, _api.Config<IInitConfig>(), _api.LogManager),
+                    new ConsensusValidatedHandler(payloadManager),
                     _poSSwitcher,
                     new ForkChoiceUpdatedHandler(_api.BlockTree, _api.StateProvider, _blockFinalizationManager,
                         _poSSwitcher, _api.BlockConfirmationManager, _api.LogManager),

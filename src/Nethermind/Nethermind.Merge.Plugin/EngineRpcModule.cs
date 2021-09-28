@@ -34,6 +34,7 @@ namespace Nethermind.Merge.Plugin
         private readonly IHandlerAsync<PreparePayloadRequest, Result?> _preparePayloadHandler;
         private readonly IHandler<ulong, BlockRequestResult?> _getPayloadHandler;
         private readonly IHandler<BlockRequestResult, ExecutePayloadResult> _executePayloadHandler;
+        private readonly IHandler<ConsensusValidatedRequest, Result> _consensusValidatedHandler;
         private readonly IHandler<ForkChoiceUpdatedRequest, Result> _forkChoiceUpdateHandler;
         private readonly IHandler<ExecutionStatusResult> _executionStatusHandler;
         private readonly ITransitionProcessHandler _transitionProcessHandler;
@@ -45,6 +46,7 @@ namespace Nethermind.Merge.Plugin
             PreparePayloadHandler preparePayloadHandler,
             IHandler<ulong, BlockRequestResult?> getPayloadHandler,
             IHandler<BlockRequestResult, ExecutePayloadResult> executePayloadHandler,
+            IHandler<ConsensusValidatedRequest, Result> consensusValidatedHandler,
             ITransitionProcessHandler transitionProcessHandler,
             IHandler<ForkChoiceUpdatedRequest, Result> forkChoiceUpdateHandler,
             IHandler<ExecutionStatusResult> executionStatusHandler,
@@ -53,6 +55,7 @@ namespace Nethermind.Merge.Plugin
             _preparePayloadHandler = preparePayloadHandler;
             _getPayloadHandler = getPayloadHandler;
             _executePayloadHandler = executePayloadHandler;
+            _consensusValidatedHandler = consensusValidatedHandler;
             _transitionProcessHandler = transitionProcessHandler;
             _forkChoiceUpdateHandler = forkChoiceUpdateHandler;
             _executionStatusHandler = executionStatusHandler;
@@ -91,9 +94,24 @@ namespace Nethermind.Merge.Plugin
             }
         }
 
-        public Task engine_consensusValidated(Keccak blockHash, ConsensusValidationStatus status)
+        public async Task<ResultWrapper<Result>> engine_consensusValidated(Keccak blockHash, ConsensusValidationStatus status)
         {
-            return Task.CompletedTask;
+            if (await _locker.WaitAsync(Timeout))
+            {
+                try
+                {
+                    return _consensusValidatedHandler.Handle(new ConsensusValidatedRequest(blockHash, status));
+                }
+                finally
+                {
+                    _locker.Release();
+                }
+            }
+            else
+            {
+                if (_logger.IsWarn) _logger.Warn($"{nameof(engine_consensusStatus)} timeout.");
+                return ResultWrapper<Result>.Success(Result.Fail);
+            }
         }
 
         public async Task<ResultWrapper<Result>> engine_forkchoiceUpdated(Keccak headBlockHash,
