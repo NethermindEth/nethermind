@@ -179,9 +179,9 @@ namespace Nethermind.Mev.Source
 
                     _megabundles.AddOrUpdate(relayAddress,
                         _ => megabundle,
-                        (_, _) =>
+                        (_, previousBundle) =>
                         {
-                            RemoveSimulation(megabundle);
+                            RemoveSimulation(previousBundle);
                             return megabundle;
                         });
 
@@ -376,7 +376,10 @@ namespace Nethermind.Mev.Source
                 .Select(m => m.Key);
             foreach (Address address in megabundleKeysToRemove)
             {
-                _megabundles.TryRemove(address, out _);
+                if (_megabundles.TryRemove(address, out MevBundle? megabundle))
+                {
+                    RemoveSimulation(megabundle);
+                }
             }
         }
 

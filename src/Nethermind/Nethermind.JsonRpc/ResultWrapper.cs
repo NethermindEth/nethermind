@@ -43,7 +43,7 @@ namespace Nethermind.JsonRpc
         
         public static ResultWrapper<T> Fail(Exception e)
         {
-            return new() { Result = Result.Fail(e.Message), ErrorCode = ErrorCodes.InternalError};
+            return new() { Result = Result.Fail(e.ToString()), ErrorCode = ErrorCodes.InternalError};
         }
 
         public static ResultWrapper<T> Fail(string error, int errorCode, T outputData)
