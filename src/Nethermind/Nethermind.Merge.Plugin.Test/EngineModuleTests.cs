@@ -387,7 +387,6 @@ namespace Nethermind.Merge.Plugin.Test
 
         private async Task<BlockRequestResult> SendNewBlock(IEngineRpcModule rpc, MergeTestBlockchain chain)
         {
-            // ToDo need to be changed to consensus_validated and execute_payload
             BlockRequestResult blockRequestResult = CreateBlockRequest(
                 CreateParentBlockRequestOnHead(chain.BlockTree),
                 TestItem.AddressD);
@@ -412,116 +411,117 @@ namespace Nethermind.Merge.Plugin.Test
             Assert.AreNotEqual(finalizedBlockHash, result.FinalizedBlockHash);
             Assert.AreNotEqual(confirmedBlockHash, result.ConfirmedBlockHash);
         }
-
-        // ToDo need for rework
-        // [TestCase(30)]
-        // public async Task can_progress_chain_one_by_one(int count)
-        // {
-        //     using MergeTestBlockchain chain = await CreateBlockChain();
-        //     IEngineRpcModule rpc = CreateEngineModule(chain);
-        //     Keccak lastHash = (await ProduceBranch(rpc, chain.BlockTree, count, chain.BlockTree.HeadHash, true)).Last().BlockHash;
-        //     chain.BlockTree.HeadHash.Should().Be(lastHash);
-        //     Block? last = RunForAllBlocksInBranch(chain.BlockTree, chain.BlockTree.HeadHash, b => b.IsGenesis, true);
-        //     last.Should().NotBeNull();
-        //     last!.IsGenesis.Should().BeTrue();
-        // }
-
-        // ToDo need for rework
-        // [Test]
-        // public async Task setHead_can_reorganize_to_any_block()
-        // {
-        //     using MergeTestBlockchain chain = await CreateBlockChain();
-        //     IEngineRpcModule rpc = CreateEngineModule(chain);
-        //     
-        //     async Task CanReorganizeToBlock(BlockRequestResult block, MergeTestBlockchain testChain)
-        //     {
-        //         ResultWrapper<Result> result = await rpc.engine_setHead(block.BlockHash);
-        //         result.Data.Should().Be(Result.Ok);
-        //         testChain.BlockTree.HeadHash.Should().Be(block.BlockHash);
-        //         testChain.BlockTree.Head!.Number.Should().Be(block.Number);
-        //         testChain.State.StateRoot.Should().Be(testChain.BlockTree.Head!.StateRoot!);
-        //     }
-        //     
-        //     async Task CanReorganizeToAnyBlock(MergeTestBlockchain testChain, params IReadOnlyList<BlockRequestResult>[] branches)
-        //     {
-        //         foreach (var branch in branches)
-        //         {
-        //             await CanReorganizeToBlock(branch.Last(), testChain);
-        //         }
-        //         
-        //         foreach (var branch in branches)
-        //         {
-        //             foreach (BlockRequestResult block in branch)
-        //             {
-        //                 await CanReorganizeToBlock(block, testChain);
-        //             }
-        //             
-        //             foreach (BlockRequestResult block in branch.Reverse())
-        //             {
-        //                 await CanReorganizeToBlock(block, testChain);
-        //             }
-        //         }
-        //     }
-        //     
-        //     IReadOnlyList<BlockRequestResult> branch1 = await ProduceBranch(rpc, chain.BlockTree, 10, chain.BlockTree.HeadHash, false);
-        //     IReadOnlyList<BlockRequestResult> branch2 = await ProduceBranch(rpc, chain.BlockTree, 5, branch1[3].BlockHash, false);
-        //     branch2.Last().Number.Should().Be(1 + 3 + 5);
-        //     IReadOnlyList<BlockRequestResult> branch3 = await ProduceBranch(rpc, chain.BlockTree, 7, branch1[7].BlockHash, false);
-        //     branch3.Last().Number.Should().Be(1 + 7 + 7);
-        //     IReadOnlyList<BlockRequestResult> branch4 = await ProduceBranch(rpc, chain.BlockTree, 3, branch3[4].BlockHash, false);
-        //     branch3.Last().Number.Should().Be(1 + 7 + 4 + 3);
-        //
-        //     await CanReorganizeToAnyBlock(chain, branch1, branch2, branch3, branch4);
-        // }
-
-        // ToDo need for rework
-        // [Test]
-        // public async Task assembleBlock_can_build_on_any_block()
-        // {
-        //     using MergeTestBlockchain chain = await CreateBlockChain();
-        //     IEngineRpcModule rpc = CreateEngineModule(chain);
-        //     
-        //     async Task CanAssembleOnBlock(BlockRequestResult block)
-        //     {
-        //         UInt256 timestamp = Timestamper.UnixTime.Seconds;
-        //         PreparePayloadRequest preparePayloadRequest = new() {ParentHash = block.BlockHash, Timestamp = timestamp};
-        //         ResultWrapper<BlockRequestResult?> response = await rpc.engine_preparePayload(preparePayloadRequest);
-        //
-        //         response.Data.Should().NotBeNull();
-        //         response.Data!.ParentHash.Should().Be(block.BlockHash);
-        //     }
-        //     
-        //     async Task CanAssembleOnAnyBlock(params IReadOnlyList<BlockRequestResult>[] branches)
-        //     {
-        //         foreach (var branch in branches)
-        //         {
-        //             await CanAssembleOnBlock(branch.Last());
-        //         }
-        //         
-        //         foreach (var branch in branches)
-        //         {
-        //             foreach (BlockRequestResult block in branch)
-        //             {
-        //                 await CanAssembleOnBlock(block);
-        //             }
-        //             
-        //             foreach (BlockRequestResult block in branch.Reverse())
-        //             {
-        //                 await CanAssembleOnBlock(block);
-        //             }
-        //         }
-        //     }
-        //
-        //     IReadOnlyList<BlockRequestResult> branch1 = await ProduceBranch(rpc, chain.BlockTree, 10, chain.BlockTree.HeadHash, false);
-        //     IReadOnlyList<BlockRequestResult> branch2 = await ProduceBranch(rpc, chain.BlockTree, 5, branch1[3].BlockHash, false);
-        //     branch2.Last().Number.Should().Be(1 + 3 + 5);
-        //     IReadOnlyList<BlockRequestResult> branch3 = await ProduceBranch(rpc, chain.BlockTree, 7, branch1[7].BlockHash, false);
-        //     branch3.Last().Number.Should().Be(1 + 7 + 7);
-        //     IReadOnlyList<BlockRequestResult> branch4 = await ProduceBranch(rpc, chain.BlockTree, 3, branch3[4].BlockHash, false);
-        //     branch3.Last().Number.Should().Be(1 + 7 + 4 + 3);
-        //     
-        //     await CanAssembleOnAnyBlock(branch1, branch2, branch3, branch4);
-        // }
+        
+        [TestCase(30)]
+        public async Task can_progress_chain_one_by_one(int count)
+        {
+            using MergeTestBlockchain chain = await CreateBlockChain();
+            IEngineRpcModule rpc = CreateEngineModule(chain);
+            Keccak lastHash = (await ProduceBranch(rpc, chain.BlockTree, count, chain.BlockTree.HeadHash, true)).Last().BlockHash;
+            chain.BlockTree.HeadHash.Should().Be(lastHash);
+            Block? last = RunForAllBlocksInBranch(chain.BlockTree, chain.BlockTree.HeadHash, b => b.IsGenesis, true);
+            last.Should().NotBeNull();
+            last!.IsGenesis.Should().BeTrue();
+        }
+        
+        [Test]
+        public async Task forkchoiceUpdated_can_reorganize_to_any_block()
+        {
+            using MergeTestBlockchain chain = await CreateBlockChain();
+            IEngineRpcModule rpc = CreateEngineModule(chain);
+            
+            async Task CanReorganizeToBlock(BlockRequestResult block, MergeTestBlockchain testChain)
+            {
+                ResultWrapper<Result> result = await rpc.engine_forkchoiceUpdated(block.BlockHash, block.BlockHash, block.BlockHash);
+                result.Data.Should().Be(Result.Ok);
+                testChain.BlockTree.HeadHash.Should().Be(block.BlockHash);
+                testChain.BlockTree.Head!.Number.Should().Be(block.Number);
+                testChain.State.StateRoot.Should().Be(testChain.BlockTree.Head!.StateRoot!);
+            }
+            
+            async Task CanReorganizeToAnyBlock(MergeTestBlockchain testChain, params IReadOnlyList<BlockRequestResult>[] branches)
+            {
+                foreach (var branch in branches)
+                {
+                    await CanReorganizeToBlock(branch.Last(), testChain);
+                }
+                
+                foreach (var branch in branches)
+                {
+                    foreach (BlockRequestResult block in branch)
+                    {
+                        await CanReorganizeToBlock(block, testChain);
+                    }
+                    
+                    foreach (BlockRequestResult block in branch.Reverse())
+                    {
+                        await CanReorganizeToBlock(block, testChain);
+                    }
+                }
+            }
+            
+            IReadOnlyList<BlockRequestResult> branch1 = await ProduceBranch(rpc, chain.BlockTree, 10, chain.BlockTree.HeadHash, false);
+            IReadOnlyList<BlockRequestResult> branch2 = await ProduceBranch(rpc, chain.BlockTree, 5, branch1[3].BlockHash, false, 2);
+            branch2.Last().Number.Should().Be(1 + 3 + 5);
+            IReadOnlyList<BlockRequestResult> branch3 = await ProduceBranch(rpc, chain.BlockTree, 7, branch1[7].BlockHash, false, 3);
+            branch3.Last().Number.Should().Be(1 + 7 + 7);
+            IReadOnlyList<BlockRequestResult> branch4 = await ProduceBranch(rpc, chain.BlockTree, 3, branch3[4].BlockHash, false, 4);
+            branch3.Last().Number.Should().Be(1 + 7 + 4 + 3);
+        
+            await CanReorganizeToAnyBlock(chain, branch1, branch2, branch3, branch4);
+        }
+        
+        [Test]
+        public async Task assembleBlock_can_build_on_any_block()
+        {
+            using MergeTestBlockchain chain = await CreateBlockChain();
+            IEngineRpcModule rpc = CreateEngineModule(chain);
+            ulong payloadId = 500;
+            
+            async Task CanAssembleOnBlock(BlockRequestResult block)
+            {
+                UInt256 timestamp = Timestamper.UnixTime.Seconds;
+                Keccak random = Keccak.Zero;
+                Address feeRecipient = Address.Zero;
+                await rpc.engine_preparePayload(block.BlockHash, timestamp, random, feeRecipient, payloadId);
+                ResultWrapper<BlockRequestResult?>? response = await rpc.engine_getPayload(payloadId);
+        
+                response.Data.Should().NotBeNull();
+                response.Data!.ParentHash.Should().Be(block.BlockHash);
+                ++payloadId;
+            }
+            
+            async Task CanAssembleOnAnyBlock(params IReadOnlyList<BlockRequestResult>[] branches)
+            {
+                foreach (var branch in branches) 
+                {
+                    await CanAssembleOnBlock(branch.Last());
+                }
+                
+                foreach (var branch in branches)
+                {
+                    foreach (BlockRequestResult block in branch)
+                    {
+                        await CanAssembleOnBlock(block);
+                    }
+                    
+                    foreach (BlockRequestResult block in branch.Reverse())
+                    {
+                        await CanAssembleOnBlock(block);
+                    }
+                }
+            }
+        
+            IReadOnlyList<BlockRequestResult> branch1 = await ProduceBranch(rpc, chain.BlockTree, 10, chain.BlockTree.HeadHash, false);
+            IReadOnlyList<BlockRequestResult> branch2 = await ProduceBranch(rpc, chain.BlockTree, 5, branch1[3].BlockHash, false, 2);
+            branch2.Last().Number.Should().Be(1 + 3 + 5);
+            IReadOnlyList<BlockRequestResult> branch3 = await ProduceBranch(rpc, chain.BlockTree, 7, branch1[7].BlockHash, false, 3);
+            branch3.Last().Number.Should().Be(1 + 7 + 7);
+            IReadOnlyList<BlockRequestResult> branch4 = await ProduceBranch(rpc, chain.BlockTree, 3, branch3[4].BlockHash, false, 4);
+            branch3.Last().Number.Should().Be(1 + 7 + 4 + 3);
+            
+            await CanAssembleOnAnyBlock(branch1, branch2, branch3, branch4);
+        }
 
         // ToDo need for rework
         // [Test]
@@ -696,13 +696,13 @@ namespace Nethermind.Merge.Plugin.Test
             return blockRequest;
         }
         
-        private async Task<IReadOnlyList<BlockRequestResult>> ProduceBranch(IEngineRpcModule rpc, IBlockTree blockTree, int count, Keccak parentBlockHash, bool setHead)
+        private async Task<IReadOnlyList<BlockRequestResult>> ProduceBranch(IEngineRpcModule rpc, IBlockTree blockTree, int count, Keccak parentBlockHash, bool setHead, ulong payloadIdOffset  = 1)
         {
             List<BlockRequestResult> blocks = new();
             ManualTimestamper timestamper = new(Timestamp);
             for (int i = 0; i < count; i++)
             {
-                ulong payloadId = 1;
+                ulong payloadId = payloadIdOffset * 1000 + (ulong)i;
                 await rpc.engine_preparePayload(parentBlockHash,((ITimestamper) timestamper).UnixTime.Seconds, TestItem.KeccakA, Address.Zero, payloadId);
                 BlockRequestResult getPayloadResult = (await rpc.engine_getPayload(payloadId)).Data!;
                 Keccak? blockHash = getPayloadResult.BlockHash;
