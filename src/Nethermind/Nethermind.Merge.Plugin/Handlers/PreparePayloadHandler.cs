@@ -63,7 +63,9 @@ namespace Nethermind.Merge.Plugin.Handlers
             if (parentHeader is null)
             {
                 if (_logger.IsWarn) _logger.Warn($"Parent block {request.ParentHash} cannot be found. New block will not be produced.");
-                return ResultWrapper<Result>.Success(Result.Fail);
+                return ResultWrapper<Result>.Fail(
+                    $"Parent block {request.ParentHash} cannot be found. New block will not be produced.",
+                    MergeErrorCodes.UnknownHeader);
             }
 
             _timestamper.Set(DateTimeOffset.FromUnixTimeSeconds((long) request.Timestamp).UtcDateTime);

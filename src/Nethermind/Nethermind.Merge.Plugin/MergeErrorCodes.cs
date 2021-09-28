@@ -25,5 +25,7 @@ namespace Nethermind.Merge.Plugin
         /// Invalid JSON
         /// </summary>
         public const int UnknownHeader = 4;
+        
+        public const int UnavailablePayload = 5;
     }
 }
