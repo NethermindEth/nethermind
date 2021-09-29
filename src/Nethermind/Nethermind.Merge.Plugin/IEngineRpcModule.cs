@@ -34,8 +34,7 @@ namespace Nethermind.Merge.Plugin
                 "Builds an execution payload on top of a given parent with transactions selected from the mempool.",
             IsSharable = true,
             IsImplemented = false)]
-        Task<ResultWrapper<Result?>> engine_preparePayload(Keccak parentHash, UInt256 timestamp, Keccak random,
-            Address coinbase, ulong payloadId);
+        Task<ResultWrapper<Result?>> engine_preparePayload(PreparePayloadRequest preparePayloadRequest);
         
         [JsonRpcMethod(
             Description =
@@ -56,7 +55,7 @@ namespace Nethermind.Merge.Plugin
                 "Communicates that full consensus validation of an execution payload is complete along with its corresponding status.",
             IsSharable = true,
             IsImplemented = false)]
-        Task<ResultWrapper<Result>> engine_consensusValidated(Keccak blockHash, ConsensusValidationStatus status);
+        Task<ResultWrapper<Result>> engine_consensusValidated(ConsensusValidatedRequest consensusValidatedRequest);
         
         [JsonRpcMethod(
             Description = "Propagates the change in the fork choice to the execution client.",
