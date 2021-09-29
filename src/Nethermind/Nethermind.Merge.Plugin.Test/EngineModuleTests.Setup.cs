@@ -48,7 +48,7 @@ namespace Nethermind.Merge.Plugin.Test
             PayloadStorage? payloadStorage = new();
             PayloadManager payloadManager = new PayloadManager(chain.BlockTree);
             return new EngineRpcModule(
-                new PreparePayloadHandler(chain.BlockTree, payloadStorage, chain.BlockProductionTrigger, chain.EmptyBlockProducerTrigger, chain.Timestamper, chain.LogManager),
+                new PreparePayloadHandler(chain.BlockTree, payloadStorage, chain.BlockProductionTrigger, chain.EmptyBlockProducerTrigger, chain.Timestamper, new Eth2SealEngine(new Eth2Signer(chain.MinerAddress)), chain.LogManager),
                 new GetPayloadHandler(chain.BlockTree, payloadStorage,  chain.LogManager),
                 new ExecutePayloadHandler(chain.BlockTree, chain.BlockPreprocessorStep, chain.BlockchainProcessor, payloadManager, chain.State, new InitConfig(), chain.LogManager),
                 new ConsensusValidatedHandler(payloadManager),

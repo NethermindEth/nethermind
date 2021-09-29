@@ -20,6 +20,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Producers;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
@@ -35,6 +36,7 @@ namespace Nethermind.Merge.Plugin.Handlers
         private readonly IManualBlockProductionTrigger _blockProductionTrigger;
         private readonly IManualBlockProductionTrigger _emptyBlockProductionTrigger;
         private readonly ManualTimestamper _timestamper;
+        private readonly ISealer _sealer;
         private readonly ILogger _logger;
         private static readonly TimeSpan _timeout = TimeSpan.FromSeconds(10);
 
@@ -44,6 +46,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             IManualBlockProductionTrigger blockProductionTrigger, 
             IManualBlockProductionTrigger emptyBlockProductionTrigger, 
             ManualTimestamper timestamper, 
+            ISealer sealer,
             ILogManager logManager)
         {
             _blockTree = blockTree;
@@ -51,6 +54,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             _blockProductionTrigger = blockProductionTrigger;
             _emptyBlockProductionTrigger = emptyBlockProductionTrigger;
             _timestamper = timestamper;
+            _sealer = sealer;
             _logger = logManager.GetClassLogger();
         }
 
@@ -67,9 +71,11 @@ namespace Nethermind.Merge.Plugin.Handlers
 
             _timestamper.Set(DateTimeOffset.FromUnixTimeSeconds((long) request.Timestamp).UtcDateTime);
             using CancellationTokenSource cts = new(_timeout);
+
+            Address blockAuthor = request.FeeRecipient == Address.Zero ? _sealer.Address : request.FeeRecipient;
             
-            Block? emptyBlock = await _emptyBlockProductionTrigger.BuildBlock(parentHeader, cts.Token, null, request.FeeRecipient);
-            Task<Block?> idealBlock = _blockProductionTrigger.BuildBlock(parentHeader, cts.Token, null, request.FeeRecipient);
+            Block? emptyBlock = await _emptyBlockProductionTrigger.BuildBlock(parentHeader, cts.Token, null, blockAuthor);
+            Task<Block?> idealBlock = _blockProductionTrigger.BuildBlock(parentHeader, cts.Token, null, blockAuthor);
             _payloadStorage.AddPayload(request.PayloadId, request.Random, emptyBlock, idealBlock); // not awaiting on purpose
             
             return ResultWrapper<Result>.Success(Result.Ok);

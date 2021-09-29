@@ -59,7 +59,7 @@ namespace Nethermind.Merge.Plugin.Test
             Keccak startingHead = chain.BlockTree.HeadHash;
             UInt256 timestamp = Timestamper.UnixTime.Seconds;
             Keccak random = Keccak.Zero;
-            Address feeRecipient = Address.Zero;
+            Address feeRecipient = chain.MinerAddress;
             uint payloadId = 111;
 
             await rpc.engine_preparePayload(startingHead, timestamp, random, feeRecipient, payloadId);
@@ -67,9 +67,9 @@ namespace Nethermind.Merge.Plugin.Test
 
             BlockRequestResult expected = CreateParentBlockRequestOnHead(chain.BlockTree);
             expected.GasLimit = 4000000L;
-            expected.BlockHash = new Keccak("0xbf5ad36f30b7074147b2d4e206b4397f247496253de2b160b2635b6e3a3e4a85");
+            expected.BlockHash = new Keccak("0xdc4e882186c2723e6ed279634d6b7f502bf2712dc3113c743903786b61c55c87");
             expected.LogsBloom = Bloom.Empty;
-            expected.Miner = feeRecipient;
+            expected.Miner = chain.MinerAddress;
             expected.Number = 1;
             expected.Random = random;
             expected.ParentHash = startingHead;
