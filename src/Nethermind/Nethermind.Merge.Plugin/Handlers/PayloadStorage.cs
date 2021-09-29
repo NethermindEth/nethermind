@@ -26,8 +26,10 @@ namespace Nethermind.Merge.Plugin.Handlers
 {
     public class PayloadStorage
     {
+        private readonly object _locker = new();
+        private uint _currentPayloadId = 0;
         // first BlockRequestResult is empty (without txs), second one is the ideal one
-        private readonly IDictionary<ulong, Tuple<Block?, Keccak>> _payloadStorage =
+        private readonly ConcurrentDictionary<ulong, Tuple<Block?, Keccak>> _payloadStorage =
             new ConcurrentDictionary<ulong, Tuple<Block?, Keccak>>();
 
         public async Task AddPayload(ulong payloadId, Keccak random, Block? emptyBlock, Task<Block?> blockTask)
@@ -39,7 +41,37 @@ namespace Nethermind.Merge.Plugin.Handlers
 
         public Tuple<Block?, Keccak>? GetPayload(ulong payloadId)
         {
-            return _payloadStorage.ContainsKey(payloadId) ? _payloadStorage[payloadId] : null;
+            if (_payloadStorage.ContainsKey(payloadId))
+            {
+                Tuple<Block?, Keccak>? payload = _payloadStorage[payloadId];
+                _payloadStorage.TryRemove(payloadId, out payload);
+                return payload;
+            }
+
+            return null;
+        }
+
+        public uint RentNextPayloadId()
+        {
+            lock (_locker)
+            {
+                while (_payloadStorage.ContainsKey(_currentPayloadId))
+                {
+                    if (_currentPayloadId == uint.MaxValue)
+                        _currentPayloadId = 0;
+                    else
+                        ++_currentPayloadId;
+                }
+
+                uint rentedPayloadId = _currentPayloadId;
+                ++_currentPayloadId;
+                return rentedPayloadId;
+            }
+        }
+
+        public void CleanupOldPayloads()
+        {
+            
         }
     }
 }

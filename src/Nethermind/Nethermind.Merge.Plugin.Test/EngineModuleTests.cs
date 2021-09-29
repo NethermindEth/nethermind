@@ -60,10 +60,9 @@ namespace Nethermind.Merge.Plugin.Test
             UInt256 timestamp = Timestamper.UnixTime.Seconds;
             Keccak random = Keccak.Zero;
             Address feeRecipient = Address.Zero;
-            uint payloadId = 111;
 
-            await rpc.engine_preparePayload(startingHead, timestamp, random, feeRecipient, payloadId);
-            ResultWrapper<BlockRequestResult?> response = await rpc.engine_getPayload(payloadId);
+            var payloadId = await rpc.engine_preparePayload(startingHead, timestamp, random, feeRecipient);
+            ResultWrapper<BlockRequestResult?> response = await rpc.engine_getPayload((uint)payloadId.Data);
 
             BlockRequestResult expected = CreateParentBlockRequestOnHead(chain.BlockTree);
             expected.GasLimit = 4000000L;
@@ -647,7 +646,7 @@ namespace Nethermind.Merge.Plugin.Test
                 BlockRequestResult newBlockRequest = CreateBlockRequest(block, TestItem.AddressA);
                 PrivateKey from = TestItem.PrivateKeyB;
                 Address to = TestItem.AddressD;
-                var (_, toBalanceAfter) =
+                (_, UInt256 toBalanceAfter) =
                     AddTransactions(chain, newBlockRequest, from, to, count, 1, out var parentHeader);
 
                 newBlockRequest.GasUsed = GasCostOf.Transaction * count;

@@ -36,7 +36,7 @@ namespace Nethermind.Merge.Plugin.Handlers
         private readonly IManualBlockProductionTrigger _emptyBlockProductionTrigger;
         private readonly ManualTimestamper _timestamper;
         private readonly ILogger _logger;
-        private static readonly TimeSpan _timeout = TimeSpan.FromSeconds(10);
+        private static readonly TimeSpan _timeout = TimeSpan.FromSeconds(15);
 
         public PreparePayloadHandler(
             IBlockTree blockTree, 
@@ -67,10 +67,11 @@ namespace Nethermind.Merge.Plugin.Handlers
 
             _timestamper.Set(DateTimeOffset.FromUnixTimeSeconds((long) request.Timestamp).UtcDateTime);
             using CancellationTokenSource cts = new(_timeout);
-            
+
+            uint payloadId = _payloadStorage.RentNextPayloadId();
             Block? emptyBlock = await _emptyBlockProductionTrigger.BuildBlock(parentHeader, cts.Token);
             Task<Block?> idealBlock = _blockProductionTrigger.BuildBlock(parentHeader, cts.Token);
-            _payloadStorage.AddPayload(request.PayloadId, request.Random, emptyBlock, idealBlock); // not awaiting on purpose
+            _payloadStorage.AddPayload(payloadId, request.Random, emptyBlock, idealBlock); // not awaiting on purpose
             
             return ResultWrapper<Result>.Success(Result.Ok);
         }

@@ -33,47 +33,47 @@ namespace Nethermind.Merge.Plugin
             Description =
                 "Builds an execution payload on top of a given parent with transactions selected from the mempool.",
             IsSharable = true,
-            IsImplemented = false)]
-        Task<ResultWrapper<Result?>> engine_preparePayload(Keccak parentHash, UInt256 timestamp, Keccak random,
-            Address coinbase, ulong payloadId);
+            IsImplemented = true)]
+        Task<ResultWrapper<ulong>> engine_preparePayload(Keccak parentHash, UInt256 timestamp, Keccak random,
+            Address coinbase);
         
         [JsonRpcMethod(
             Description =
                 "Returns the most recent version of an execution payload with respect to the transaction set contained by the mempool.",
             IsSharable = true,
-            IsImplemented = false)]
+            IsImplemented = true)]
         Task<ResultWrapper<BlockRequestResult?>> engine_getPayload(ulong payloadId);
 
         [JsonRpcMethod(
             Description =
                 "Verifies the payload according to the execution environment rule set and returns the status of the verification.",
             IsSharable = true,
-            IsImplemented = false)]
+            IsImplemented = true)]
         Task<ResultWrapper<ExecutePayloadResult>> engine_executePayload(BlockRequestResult executionPayload);
         
         [JsonRpcMethod(
             Description =
                 "Communicates that full consensus validation of an execution payload is complete along with its corresponding status.",
             IsSharable = true,
-            IsImplemented = false)]
+            IsImplemented = true)]
         Task<ResultWrapper<Result>> engine_consensusValidated(Keccak blockHash, ConsensusValidationStatus status);
         
         [JsonRpcMethod(
             Description = "Propagates the change in the fork choice to the execution client.",
             IsSharable = true,
-            IsImplemented = false)]
+            IsImplemented = true)]
         Task<ResultWrapper<Result>> engine_forkchoiceUpdated(Keccak headBlockHash, Keccak finalizedBlockHash, Keccak confirmedBlockHash);
 
         [JsonRpcMethod(
             Description = "Propagates an override of the TERMINAL_TOTAL_DIFFICULTY to the execution client.",
             IsSharable = true,
-            IsImplemented = false)]
+            IsImplemented = true)]
         void engine_terminalTotalDifficultyUpdated(UInt256 terminalTotalDifficulty);
         
         [JsonRpcMethod(
             Description = "Propagates the hash of the terminal PoW block.",
             IsSharable = true,
-            IsImplemented = false)]
+            IsImplemented = true)]
         void engine_terminalPoWBlockOverride(Keccak blockHash);
         
         [JsonRpcMethod(
@@ -86,14 +86,14 @@ namespace Nethermind.Merge.Plugin
             Description =
                 "Propagates the header of the payload obtained from the state at the weak subjectivity checkpoint.",
             IsSharable = true,
-            IsImplemented = false)]
+            IsImplemented = true)]
         Task engine_syncCheckpointSet(BlockRequestResult executionPayloadHeader);
         
         [JsonRpcMethod(
             Description =
                 "An execution client responds with this status to any request of the consensus layer while sync is being in progress.",
             IsSharable = true,
-            IsImplemented = false)]
+            IsImplemented = true)]
         Task engine_syncStatus(SyncStatus sync, Keccak blockHash, UInt256 blockNumber);
         
         [JsonRpcMethod(
@@ -108,7 +108,7 @@ namespace Nethermind.Merge.Plugin
             Description =
                 "Responds with information on the state of the execution client to either engine_consensusStatus or any other call if consistency failure has occurred.",
             IsSharable = true,
-            IsImplemented = false)]
+            IsImplemented = true)]
         ResultWrapper<ExecutionStatusResult> engine_executionStatus();
     }
 }

@@ -62,11 +62,9 @@ namespace Nethermind.Merge.Plugin
             _logger = logManager.GetClassLogger();
         }
 
-        public Task<ResultWrapper<Result?>> engine_preparePayload(Keccak parentHash, UInt256 timestamp, Keccak random, Address coinbase,
-            ulong payloadId)
+        public Task<ResultWrapper<Result?>> engine_preparePayload(Keccak parentHash, UInt256 timestamp, Keccak random, Address coinbase)
         {
-            return _preparePayloadHandler.HandleAsync(new PreparePayloadRequest(parentHash, timestamp, random, coinbase,
-                payloadId));
+            return _preparePayloadHandler.HandleAsync(new PreparePayloadRequest(parentHash, timestamp, random, coinbase));
         }
 
         public Task<ResultWrapper<BlockRequestResult?>> engine_getPayload(ulong payloadId)
