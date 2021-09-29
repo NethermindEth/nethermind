@@ -18,7 +18,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
