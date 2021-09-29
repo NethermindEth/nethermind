@@ -20,21 +20,22 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Producers;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
-using Result = Nethermind.Merge.Plugin.Data.Result;
 
 namespace Nethermind.Merge.Plugin.Handlers
 {
-    public class PreparePayloadHandler: IHandlerAsync<PreparePayloadRequest, Result>
+    public class PreparePayloadHandler: IHandlerAsync<PreparePayloadRequest, PreparePayloadResult>
     {
         private readonly IBlockTree _blockTree;
         private readonly PayloadStorage _payloadStorage;
         private readonly IManualBlockProductionTrigger _blockProductionTrigger;
         private readonly IManualBlockProductionTrigger _emptyBlockProductionTrigger;
         private readonly ManualTimestamper _timestamper;
+        private readonly ISealer _sealer;
         private readonly ILogger _logger;
         private static readonly TimeSpan _timeout = TimeSpan.FromSeconds(15);
 
@@ -44,6 +45,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             IManualBlockProductionTrigger blockProductionTrigger, 
             IManualBlockProductionTrigger emptyBlockProductionTrigger, 
             ManualTimestamper timestamper, 
+            ISealer sealer,
             ILogManager logManager)
         {
             _blockTree = blockTree;
@@ -51,16 +53,17 @@ namespace Nethermind.Merge.Plugin.Handlers
             _blockProductionTrigger = blockProductionTrigger;
             _emptyBlockProductionTrigger = emptyBlockProductionTrigger;
             _timestamper = timestamper;
+            _sealer = sealer;
             _logger = logManager.GetClassLogger();
         }
 
-        public async Task<ResultWrapper<Result>> HandleAsync(PreparePayloadRequest request)
+        public async Task<ResultWrapper<PreparePayloadResult>> HandleAsync(PreparePayloadRequest request)
         {
             BlockHeader? parentHeader = _blockTree.FindHeader(request.ParentHash);
             if (parentHeader is null)
             {
                 if (_logger.IsWarn) _logger.Warn($"Parent block {request.ParentHash} cannot be found. New block will not be produced.");
-                return ResultWrapper<Result>.Fail(
+                return ResultWrapper<PreparePayloadResult>.Fail(
                     $"Parent block {request.ParentHash} cannot be found. New block will not be produced.",
                     MergeErrorCodes.UnknownHeader);
             }
@@ -68,12 +71,14 @@ namespace Nethermind.Merge.Plugin.Handlers
             _timestamper.Set(DateTimeOffset.FromUnixTimeSeconds((long) request.Timestamp).UtcDateTime);
             using CancellationTokenSource cts = new(_timeout);
 
-            uint payloadId = _payloadStorage.RentNextPayloadId();
-            Block? emptyBlock = await _emptyBlockProductionTrigger.BuildBlock(parentHeader, cts.Token);
-            Task<Block?> idealBlock = _blockProductionTrigger.BuildBlock(parentHeader, cts.Token);
+            var payloadId = _payloadStorage.RentNextPayloadId();
+            Address blockAuthor = request.FeeRecipient == Address.Zero ? _sealer.Address : request.FeeRecipient;
+            
+            Block? emptyBlock = await _emptyBlockProductionTrigger.BuildBlock(parentHeader, cts.Token, null, blockAuthor);
+            Task<Block?> idealBlock = _blockProductionTrigger.BuildBlock(parentHeader, cts.Token, null, blockAuthor);
             _payloadStorage.AddPayload(payloadId, request.Random, emptyBlock, idealBlock); // not awaiting on purpose
             
-            return ResultWrapper<Result>.Success(Result.Ok);
+            return ResultWrapper<PreparePayloadResult>.Success(new PreparePayloadResult(payloadId));
         }
     }
 }

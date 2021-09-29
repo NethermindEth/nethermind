@@ -27,8 +27,8 @@ namespace Nethermind.Merge.Plugin.Data
             FinalizedBlockHash = finalizedBlockHash;
             ConfirmedBlockHash = confirmedBlockHash;
         }
-        public Keccak HeadBlockHash { get; }
-        public Keccak FinalizedBlockHash { get; }
-        public Keccak ConfirmedBlockHash { get; }
+        public Keccak HeadBlockHash { get; set; }
+        public Keccak FinalizedBlockHash { get; set;}
+        public Keccak ConfirmedBlockHash { get; set; }
     }
 }

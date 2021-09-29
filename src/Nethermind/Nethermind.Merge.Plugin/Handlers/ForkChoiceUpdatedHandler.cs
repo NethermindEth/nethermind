@@ -60,9 +60,11 @@ namespace Nethermind.Merge.Plugin.Handlers
             (BlockHeader? finalizedHeader, string? finalizationErrorMsg) = EnsureHeaderForFinalization(request.FinalizedBlockHash);
             if (finalizationErrorMsg != null)
                 return ResultWrapper<Result>.Fail(finalizationErrorMsg, MergeErrorCodes.UnknownHeader);
-            (BlockHeader? confirmedHeader, string? confirmationErrorMsg) = EnsureHeaderForConfirmation(request.ConfirmedBlockHash);
-            if (confirmationErrorMsg != null)
-                return ResultWrapper<Result>.Fail(confirmationErrorMsg, MergeErrorCodes.UnknownHeader);
+            
+            // (BlockHeader? confirmedHeader, string? confirmationErrorMsg) = EnsureHeaderForConfirmation(request.ConfirmedBlockHash);
+            // if (confirmationErrorMsg != null)
+            //     return ResultWrapper<Result>.Fail(confirmationErrorMsg, MergeErrorCodes.UnknownHeader);
+            
             (Block? newHeadBlock, Block[]? blocks, string? setHeadErrorMsg) = EnsureBlocksForSetHead(request.HeadBlockHash);
             if (setHeadErrorMsg != null)
                 return ResultWrapper<Result>.Fail(setHeadErrorMsg, MergeErrorCodes.UnknownHeader);
@@ -72,7 +74,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             else if (_manualBlockFinalizationManager.LastFinalizedHash != Keccak.Zero)
                 if (_logger.IsWarn) _logger.Warn($"Cannot finalize block. The current finalized block is: {_manualBlockFinalizationManager.LastFinalizedHash}, the requested hash: {request.FinalizedBlockHash}");
             
-            _blockConfirmationManager.Confirm(confirmedHeader);
+            // _blockConfirmationManager.Confirm(confirmedHeader);
             _blockTree.UpdateMainChain(blocks!, true, true);
             bool success = _blockTree.Head == newHeadBlock;
             if (success)

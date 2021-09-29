@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,15 +15,14 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Threading;
-using System.Threading.Tasks;
-using Nethermind.Core;
-using Nethermind.Evm.Tracing;
-
-namespace Nethermind.Blockchain.Producers
+namespace Nethermind.Merge.Plugin.Data
 {
-    public interface IManualBlockProductionTrigger : IBlockProductionTrigger
+    public class PreparePayloadResult
     {
-        public Task<Block?> BuildBlock(BlockHeader? parentHeader = null, CancellationToken? cancellationToken = null, IBlockTracer? blockTracer = null, Address? blockAuthor = null);
+        public PreparePayloadResult(ulong payloadId)
+        {
+            PayloadId = payloadId;
+        }
+        public ulong PayloadId { get; set; }
     }
 }

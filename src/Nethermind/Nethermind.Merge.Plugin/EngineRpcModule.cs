@@ -31,7 +31,7 @@ namespace Nethermind.Merge.Plugin
 {
     public class EngineRpcModule : IEngineRpcModule
     {
-        private readonly IHandlerAsync<PreparePayloadRequest, Result?> _preparePayloadHandler;
+        private readonly IHandlerAsync<PreparePayloadRequest, PreparePayloadResult> _preparePayloadHandler;
         private readonly IHandler<ulong, BlockRequestResult?> _getPayloadHandler;
         private readonly IHandler<BlockRequestResult, ExecutePayloadResult> _executePayloadHandler;
         private readonly IHandler<ConsensusValidatedRequest, Result> _consensusValidatedHandler;
@@ -62,9 +62,9 @@ namespace Nethermind.Merge.Plugin
             _logger = logManager.GetClassLogger();
         }
 
-        public Task<ResultWrapper<Result?>> engine_preparePayload(Keccak parentHash, UInt256 timestamp, Keccak random, Address coinbase)
+        public Task<ResultWrapper<PreparePayloadResult>> engine_preparePayload(PreparePayloadRequest preparePayloadRequest)
         {
-            return _preparePayloadHandler.HandleAsync(new PreparePayloadRequest(parentHash, timestamp, random, coinbase));
+            return _preparePayloadHandler.HandleAsync(preparePayloadRequest);
         }
 
         public Task<ResultWrapper<BlockRequestResult?>> engine_getPayload(ulong payloadId)
@@ -92,13 +92,13 @@ namespace Nethermind.Merge.Plugin
             }
         }
 
-        public async Task<ResultWrapper<Result>> engine_consensusValidated(Keccak blockHash, ConsensusValidationStatus status)
+        public async Task<ResultWrapper<Result>> engine_consensusValidated(ConsensusValidatedRequest consensusValidatedRequest)
         {
             if (await _locker.WaitAsync(Timeout))
             {
                 try
                 {
-                    return _consensusValidatedHandler.Handle(new ConsensusValidatedRequest(blockHash, status));
+                    return _consensusValidatedHandler.Handle(consensusValidatedRequest);
                 }
                 finally
                 {
@@ -112,16 +112,13 @@ namespace Nethermind.Merge.Plugin
             }
         }
 
-        public async Task<ResultWrapper<Result>> engine_forkchoiceUpdated(Keccak headBlockHash,
-            Keccak finalizedBlockHash, Keccak confirmedBlockHash)
+        public async Task<ResultWrapper<Result>> engine_forkchoiceUpdated(ForkChoiceUpdatedRequest forkChoiceUpdatedRequest)
         {
             if (await _locker.WaitAsync(Timeout))
             {
                 try
                 {
-                    return _forkChoiceUpdateHandler.Handle(new ForkChoiceUpdatedRequest(
-                        headBlockHash, finalizedBlockHash, confirmedBlockHash
-                    ));
+                    return _forkChoiceUpdateHandler.Handle(forkChoiceUpdatedRequest);
                 }
                 finally
                 {

@@ -55,9 +55,9 @@ namespace Nethermind.Merge.Plugin.Handlers
         {
         }
 
-        protected override Block PrepareBlock(BlockHeader parent)
+        protected override Block PrepareBlock(BlockHeader parent, Address? blockAuthor)
         {
-            Block block = base.PrepareBlock(parent);
+            Block block = base.PrepareBlock(parent, blockAuthor);
             block.Header.MixHash = Keccak.Zero;
             block.Header.ExtraData = null;
             return block;

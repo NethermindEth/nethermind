@@ -26,6 +26,7 @@ using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
+using Nethermind.Facade.Eth;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
@@ -41,6 +42,7 @@ namespace Nethermind.Merge.Plugin.Handlers
         private readonly IBlockPreprocessorStep _preprocessor;
         private readonly IBlockchainProcessor _processor;
         private readonly PayloadManager _payloadManager;
+        private readonly IEthSyncingInfo _ethSyncingInfo;
         private readonly IStateProvider _stateProvider;
         private readonly IInitConfig _initConfig;
         private readonly ILogger _logger;
@@ -51,6 +53,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             IBlockPreprocessorStep preprocessor,
             IBlockchainProcessor processor,
             PayloadManager payloadManager,
+            IEthSyncingInfo ethSyncingInfo,
             IStateProvider stateProvider,
             IInitConfig initConfig,
             ILogManager logManager)
@@ -59,6 +62,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             _preprocessor = preprocessor;
             _processor = processor;
             _payloadManager = payloadManager;
+            _ethSyncingInfo = ethSyncingInfo;
             _stateProvider = stateProvider;
             _initConfig = initConfig;
             _logger = logManager.GetClassLogger();
@@ -68,36 +72,44 @@ namespace Nethermind.Merge.Plugin.Handlers
         {
             _payloadManager.TryAddPayloadBlockHash(request.BlockHash);
             ExecutePayloadResult executePayloadResult = new() {BlockHash = request.BlockHash};
+            
+            // uncomment when Syncing implementation will be ready
+            // if (_ethSyncingInfo.IsSyncing())
+            // {
+            //     executePayloadResult.Status = VerificationStatus.Syncing;
+            //     return ResultWrapper<ExecutePayloadResult>.Success(executePayloadResult);
+            // }
 
-            VerificationStatus status = ValidateRequestAndProcess(request, out Block? processedBlock);
-            if ((status & VerificationStatus.Known) != 0)
+            ValidationResult result = ValidateRequestAndProcess(request, out Block? processedBlock);
+            if ((result & ValidationResult.AlreadyKnown) != 0 || result == ValidationResult.Invalid)
             {
-                executePayloadResult.Status = VerificationStatus.Known;
+                _payloadManager.MarkPayloadValidationAsFinished(request.BlockHash);
+                bool isValid = (result & ValidationResult.Valid) != 0;
+                executePayloadResult.Status = isValid ? VerificationStatus.Valid : VerificationStatus.Invalid;
                 return ResultWrapper<ExecutePayloadResult>.Success(executePayloadResult);
             }
-            else if (status == VerificationStatus.Invalid || processedBlock is null)
+            else if (processedBlock == null)
             {
                 _payloadManager.MarkPayloadValidationAsFinished(request.BlockHash);
                 executePayloadResult.Status = VerificationStatus.Invalid;
                 return ResultWrapper<ExecutePayloadResult>.Success(executePayloadResult);
             }
             
-            executePayloadResult.Status = VerificationStatus.Valid;
-            
-            if (!_payloadManager.CheckConsensusValidatedResult(request.BlockHash, out bool isValid))
+            if (!_payloadManager.CheckConsensusValidatedResult(request.BlockHash, out bool isResultValid))
             {
                 _payloadManager.MarkPayloadValidationAsFinished(request.BlockHash);
                 _payloadManager.TryAddValidPayload(request.BlockHash, processedBlock);
             }
-            else if (isValid)
+            else if (isResultValid)
             {
                 _payloadManager.ProcessValidatedPayload(processedBlock);
             }
-
+            
+            executePayloadResult.Status = VerificationStatus.Valid;
             return ResultWrapper<ExecutePayloadResult>.Success(executePayloadResult);
         }
 
-        private VerificationStatus ValidateRequestAndProcess(BlockRequestResult request, out Block? processedBlock)
+        private ValidationResult ValidateRequestAndProcess(BlockRequestResult request, out Block? processedBlock)
         {
             processedBlock = null;
             
@@ -110,7 +122,7 @@ namespace Nethermind.Merge.Plugin.Handlers
                     bool isRecentBlock = _latestBlocks.TryGet(request.BlockHash, out bool isValid);
                     if (isRecentBlock)
                     {
-                        return VerificationStatus.Known | (isValid ? VerificationStatus.Valid : VerificationStatus.Invalid);
+                        return ValidationResult.AlreadyKnown | (isValid ? ValidationResult.Valid : ValidationResult.Invalid);
                     }
                     else
                     {
@@ -118,7 +130,7 @@ namespace Nethermind.Merge.Plugin.Handlers
 
                         if (processedBlock != null)
                         {
-                            return VerificationStatus.Valid | VerificationStatus.Known;
+                            return ValidationResult.Valid | ValidationResult.AlreadyKnown;
                         }
 
                         bool validAndProcessed =
@@ -128,7 +140,7 @@ namespace Nethermind.Merge.Plugin.Handlers
 
                         _latestBlocks.Set(request.BlockHash, validAndProcessed);
 
-                        return validAndProcessed ? VerificationStatus.Valid : VerificationStatus.Invalid;
+                        return validAndProcessed ? ValidationResult.Valid : ValidationResult.Invalid;
                     }
                 }
             }
@@ -137,7 +149,7 @@ namespace Nethermind.Merge.Plugin.Handlers
                 if (_logger.IsWarn) _logger.Warn($"Block {request} could not be parsed as block {AndWontBeAcceptedToTheTree}.");
             }
 
-            return VerificationStatus.Invalid;
+            return ValidationResult.Invalid;
         }
 
         private bool CheckParent(Keccak? parentHash, out BlockHeader? parent)
@@ -196,11 +208,14 @@ namespace Nethermind.Merge.Plugin.Handlers
         {
             bool validDifficulty = CheckInputIs(request, request.Difficulty, UInt256.Zero, nameof(request.Difficulty));
             bool validNonce = CheckInputIs(request, request.Nonce, 0ul, nameof(request.Nonce));
+            // validExtraData needed in previous version of EIP-3675 specification
+            // bool validExtraData = CheckInputIs<byte>(request, request.ExtraData, Array.Empty<byte>(), nameof(request.ExtraData));
             bool validMixHash = CheckInputIs(request, request.MixHash, Keccak.Zero, nameof(request.MixHash));
             bool validUncles = CheckInputIs(request, request.Uncles, Array.Empty<Keccak>(), nameof(request.Uncles));
             
             return validDifficulty
                    && validNonce
+                   // && validExtraData
                    && validMixHash
                    && validUncles;
         }
@@ -225,6 +240,14 @@ namespace Nethermind.Merge.Plugin.Handlers
             }
 
             return true;
+        }
+        
+        [Flags]
+        private enum ValidationResult
+        {
+            Invalid = 0,
+            Valid = 1,
+            AlreadyKnown = 2
         }
     }
 }
