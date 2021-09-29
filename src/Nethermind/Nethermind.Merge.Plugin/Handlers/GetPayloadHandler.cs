@@ -16,6 +16,7 @@
 // 
 
 using System;
+using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -27,13 +28,11 @@ namespace Nethermind.Merge.Plugin.Handlers
 {
     public class GetPayloadHandler : IHandler<ulong, BlockRequestResult?>
     {
-        private readonly IBlockTree _blockTree;
         private readonly PayloadStorage _payloadStorage;
         private readonly ILogger _logger;
 
-        public GetPayloadHandler(IBlockTree blockTree, PayloadStorage payloadStorage, ILogManager logManager)
+        public GetPayloadHandler(PayloadStorage payloadStorage, ILogManager logManager)
         {
-            _blockTree = blockTree;
             _payloadStorage = payloadStorage;
             _logger = logManager.GetClassLogger();
         }

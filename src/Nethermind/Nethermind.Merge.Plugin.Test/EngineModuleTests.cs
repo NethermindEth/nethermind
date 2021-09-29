@@ -857,7 +857,7 @@ namespace Nethermind.Merge.Plugin.Test
             return new TestCaseData(wrongValueSetter)
             {
                 TestName =
-                    $"newBlock_rejects_incorrect_{propertyAccess.GetName().ToLower()}({wrongValue?.ToString()})"
+                    $"executePayload_rejects_incorrect_{propertyAccess.GetName().ToLower()}({wrongValue?.ToString()})"
             };
         }
 

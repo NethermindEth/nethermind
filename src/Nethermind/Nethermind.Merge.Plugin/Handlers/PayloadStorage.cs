@@ -18,6 +18,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -30,21 +31,21 @@ namespace Nethermind.Merge.Plugin.Handlers
         private uint _currentPayloadId = 0;
         // first BlockRequestResult is empty (without txs), second one is the ideal one
         private readonly ConcurrentDictionary<ulong, Tuple<Block?, Keccak>> _payloadStorage =
-            new ConcurrentDictionary<ulong, Tuple<Block?, Keccak>>();
+            new();
 
         public async Task AddPayload(ulong payloadId, Keccak random, Block? emptyBlock, Task<Block?> blockTask)
         {
-            _payloadStorage.TryAdd(payloadId, Tuple.Create(emptyBlock, random));
+            Tuple<Block?, Keccak>? emptyBlockTuple = Tuple.Create(emptyBlock, random);
+            _payloadStorage.TryAdd(payloadId, emptyBlockTuple);
             Block? idealBlock = await blockTask;
-            _payloadStorage[payloadId] = Tuple.Create(idealBlock, random);
+            _payloadStorage.TryUpdate(payloadId, Tuple.Create(idealBlock, random), emptyBlockTuple);
         }
 
         public Tuple<Block?, Keccak>? GetPayload(ulong payloadId)
         {
             if (_payloadStorage.ContainsKey(payloadId))
             {
-                Tuple<Block?, Keccak>? payload = _payloadStorage[payloadId];
-                _payloadStorage.TryRemove(payloadId, out payload);
+                _payloadStorage.TryRemove(payloadId, out Tuple<Block?, Keccak>? payload);
                 return payload;
             }
 

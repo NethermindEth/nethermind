@@ -99,7 +99,7 @@ namespace Nethermind.Merge.Plugin
                 IEngineRpcModule engineRpcModule = new EngineRpcModule(
                     new PreparePayloadHandler(_api.BlockTree, payloadStorage, _defaultBlockProductionTrigger,
                         _emptyBlockProductionTrigger, _manualTimestamper, _api.Sealer, _api.LogManager),
-                    new GetPayloadHandler(_api.BlockTree, payloadStorage, _api.LogManager),
+                    new GetPayloadHandler(payloadStorage, _api.LogManager),
                     new ExecutePayloadHandler(_api.BlockTree, _api.BlockPreprocessor, _api.BlockchainProcessor, payloadManager, _api.EthSyncingInfo, _api.StateProvider, _api.Config<IInitConfig>(), _api.LogManager),
                     new ConsensusValidatedHandler(payloadManager),
                     _poSSwitcher,

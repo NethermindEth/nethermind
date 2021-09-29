@@ -71,9 +71,8 @@ namespace Nethermind.Merge.Plugin.Handlers
             _timestamper.Set(DateTimeOffset.FromUnixTimeSeconds((long) request.Timestamp).UtcDateTime);
             using CancellationTokenSource cts = new(_timeout);
 
-            var payloadId = _payloadStorage.RentNextPayloadId();
+            uint payloadId = _payloadStorage.RentNextPayloadId();
             Address blockAuthor = request.FeeRecipient == Address.Zero ? _sealer.Address : request.FeeRecipient;
-            
             Block? emptyBlock = await _emptyBlockProductionTrigger.BuildBlock(parentHeader, cts.Token, null, blockAuthor);
             Task<Block?> idealBlock = _blockProductionTrigger.BuildBlock(parentHeader, cts.Token, null, blockAuthor);
             _payloadStorage.AddPayload(payloadId, request.Random, emptyBlock, idealBlock); // not awaiting on purpose
