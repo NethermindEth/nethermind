@@ -132,7 +132,7 @@ namespace Nethermind.Merge.Plugin.Data
             Transactions = new byte[transactions.Length][];
             for (int i = 0; i < Transactions.Length; i++)
             {
-                Transactions[i] = Rlp.Encode(transactions[i]).Bytes;
+                Transactions[i] = Rlp.Encode(transactions[i], RlpBehaviors.SkipTypedWrapping).Bytes;
             }
         }
 
@@ -141,7 +141,7 @@ namespace Nethermind.Merge.Plugin.Data
             Transaction[] transactions = new Transaction[Transactions.Length];
             for (int i = 0; i < Transactions.Length; i++)
             {
-                transactions[i] = Rlp.Decode<Transaction>(Transactions[i]);
+                transactions[i] = Rlp.Decode<Transaction>(Transactions[i], RlpBehaviors.SkipTypedWrapping);
             }
             return transactions;
         }
