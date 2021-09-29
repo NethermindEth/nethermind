@@ -113,7 +113,7 @@ namespace Nethermind.Mev.Test
         
         public static MevMegabundle UnuccessfullySendMegabundle(TestMevRpcBlockchain chain, int blockNumber, PrivateKey privateKey,
             params BundleTransaction[] txs) =>
-            SendMegabundle(chain, blockNumber, privateKey, txs, true);
+            SendMegabundle(chain, blockNumber, privateKey, txs, false);
 
         private static MevBundle SendBundle(TestMevRpcBlockchain chain, int blockNumber, BundleTransaction[] txs, bool success)
         {
@@ -137,7 +137,7 @@ namespace Nethermind.Mev.Test
                 BlockNumber = blockNumber,
                 Txs = bundleBytes,
                 RevertingTxHashes = revertingTxHashes.Count > 0 ? revertingTxHashes.ToArray() : null,
-                RelaySignature = relaySignature.Bytes
+                RelaySignature = relaySignature.BytesWithRecovery
             };
             ResultWrapper<bool> resultOfBundle = chain.MevRpcModule.eth_sendMegabundle(mevMegabundleRpc);
             resultOfBundle.GetResult().ResultType.Should().NotBe(ResultType.Failure);
@@ -250,8 +250,8 @@ namespace Nethermind.Mev.Test
                 .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
             
             BundleTransaction tx3 = Build.A.TypedTransaction<BundleTransaction>()
-                .WithGasLimit(Contracts.LargeGasLimit).
-                WithData(Bytes.FromHexString(Contracts.CoinbaseInvokePay))
+                .WithGasLimit(Contracts.LargeGasLimit)
+                .WithData(Bytes.FromHexString(Contracts.CoinbaseInvokePay))
                 .WithTo(contractAddress)
                 .WithNonce(1)
                 .WithGasPrice(0ul)
@@ -270,6 +270,55 @@ namespace Nethermind.Mev.Test
             SuccessfullySendBundle(chain, 4, tx1, tx3);
             SuccessfullySendBundle(chain, 4, tx1WithLowerGasPrice, tx3);
             SuccessfullySendBundle(chain, 4, looperBundleTx);
+
+            await chain.AddBlock(true);
+
+            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new []{tx1, tx3}));
+        }
+
+        [Test]
+        public async Task Should_pick_one_highest_scoring_megabundle_from_several_with_no_pool_txs_or_bundles()
+        {
+            var chain = await CreateChain(1, relayAddresses: new []{ TestItem.AddressA, TestItem.AddressB, TestItem.AddressC });
+            chain.GasLimitCalculator.GasLimit = 10_000_000;
+
+            Address contractAddress = await Contracts.Deploy(chain, Contracts.CoinbaseCode);
+            // put money into contract
+            Transaction seedContractTx = Build.A.Transaction.WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.CoinbaseDeposit)).WithValue(10_000000000000000000).WithNonce(1).WithGasLimit(1_000_000).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
+            await chain.AddBlock(true, seedContractTx);
+
+            BundleTransaction tx1 = Build.A.TypedTransaction<BundleTransaction>()
+                .WithGasLimit(GasCostOf.Transaction)
+                .WithGasPrice(120ul)
+                .WithValue(0)
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            
+            BundleTransaction tx1WithLowerGasPrice = Build.A.TypedTransaction<BundleTransaction>()
+                .WithGasLimit(GasCostOf.Transaction)
+                .WithGasPrice(100ul).WithValue(0)
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            
+            BundleTransaction tx3 = Build.A.TypedTransaction<BundleTransaction>()
+                .WithGasLimit(Contracts.LargeGasLimit)
+                .WithData(Bytes.FromHexString(Contracts.CoinbaseInvokePay))
+                .WithTo(contractAddress)
+                .WithNonce(1)
+                .WithGasPrice(0ul)
+                .WithValue(0)
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+
+            Address looperContractAddress = await Contracts.Deploy(chain, Contracts.LooperCode, 2);
+            BundleTransaction looperBundleTx = Build.A.TypedTransaction<BundleTransaction>()
+                .WithGasLimit(Contracts.LargeGasLimit)
+                .WithGasPrice(100ul)
+                .WithTo(looperContractAddress)
+                .WithData(Bytes.FromHexString(Contracts.LooperInvokeLoop2000))
+                .WithValue(0)
+                .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+
+            SuccessfullySendMegabundle(chain, 4, TestItem.PrivateKeyA,  tx1, tx3);
+            SuccessfullySendMegabundle(chain, 4, TestItem.PrivateKeyB, tx1WithLowerGasPrice, tx3);
+            SuccessfullySendMegabundle(chain, 4, TestItem.PrivateKeyC, looperBundleTx);
 
             await chain.AddBlock(true);
 
