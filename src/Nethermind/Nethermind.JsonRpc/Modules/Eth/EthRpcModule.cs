@@ -329,6 +329,13 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public Task<ResultWrapper<Keccak>> eth_sendTransaction(TransactionForRpc rpcTx)
         {
+            bool isError;
+            string message;
+            (isError, message) = DetermineTxType(rpcTx, null);
+            if (isError)
+            {
+                return Task.FromResult(ResultWrapper<Keccak>.Fail(message, ErrorCodes.InvalidInput));
+            }
             Transaction tx = rpcTx.ToTransactionWithDefaults(_blockchainBridge.GetChainId());
             TxHandlingOptions options = rpcTx.Nonce == null ? TxHandlingOptions.ManagedNonce : TxHandlingOptions.None;
             return SendTx(tx, options);
@@ -713,6 +720,25 @@ namespace Nethermind.JsonRpc.Modules.Eth
             {
                 _blockchainBridge.RecoverTxSender(transaction);
             }
+        }
+
+        private (bool, string) DetermineTxType(TransactionForRpc transactionForRpc, BlockParameter? blockParameter)
+        {
+            SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
+            BlockHeader header = searchResult.Object;
+            bool isEip1559Enabled = _specProvider.GetSpec(header.Number).IsEip1559Enabled;
+            
+            if ((transactionForRpc.MaxFeePerGas != null || transactionForRpc.MaxPriorityFeePerGas != null) &&
+                transactionForRpc.GasPrice != null)
+            {
+                return (false, "both gasPrice and (maxFeePerGas or maxPriorityFeePerGas) specified");
+            }
+            
+            transactionForRpc.Type ??= (isEip1559Enabled &&
+                                        (transactionForRpc.MaxFeePerGas != null || transactionForRpc.MaxPriorityFeePerGas != null))
+                ? TxType.EIP1559
+                : TxType.Legacy;
+            return (false, string.Empty);
         }
     }
 }
