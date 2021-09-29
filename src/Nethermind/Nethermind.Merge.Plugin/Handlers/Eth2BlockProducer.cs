@@ -15,9 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
-using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
@@ -25,9 +22,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 
@@ -60,9 +55,9 @@ namespace Nethermind.Merge.Plugin.Handlers
         {
         }
 
-        protected override Block PrepareBlock(BlockHeader parent)
+        protected override Block PrepareBlock(BlockHeader parent, Address? blockAuthor)
         {
-            Block block = base.PrepareBlock(parent);
+            Block block = base.PrepareBlock(parent, blockAuthor);
             block.Header.MixHash = Keccak.Zero;
             block.Header.ExtraData = null;
             return block;
