@@ -59,6 +59,13 @@ namespace Nethermind.Merge.Plugin.Handlers
 
         public async Task<ResultWrapper<PreparePayloadResult>> HandleAsync(PreparePayloadRequest request)
         {
+            // add syncing check when implementation will be ready
+            // if (_ethSyncingInfo.IsSyncing())
+            // {
+            //     executePayloadResult.Status = VerificationStatus.Syncing;
+            //     return ResultWrapper<PreparePayloadResult>.Fail($"Syncing in progress.",MergeErrorCodes.ActionNotAllowed);
+            // }
+            
             BlockHeader? parentHeader = _blockTree.FindHeader(request.ParentHash);
             if (parentHeader is null)
             {

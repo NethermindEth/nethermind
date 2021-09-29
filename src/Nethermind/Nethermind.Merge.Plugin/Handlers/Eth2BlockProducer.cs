@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
@@ -59,7 +60,7 @@ namespace Nethermind.Merge.Plugin.Handlers
         {
             Block block = base.PrepareBlock(parent, blockAuthor);
             block.Header.MixHash = Keccak.Zero;
-            block.Header.ExtraData = null;
+            block.Header.ExtraData = Array.Empty<byte>();
             return block;
         }
     }

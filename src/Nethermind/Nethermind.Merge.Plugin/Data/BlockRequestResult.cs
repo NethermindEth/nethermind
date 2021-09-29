@@ -55,7 +55,7 @@ namespace Nethermind.Merge.Plugin.Data
         {
             BlockHash = block.Hash;
             ParentHash = block.ParentHash;
-            Miner = block.Beneficiary;
+            Coinbase = block.Beneficiary;
             StateRoot = block.StateRoot;
             Number = block.Number;
             GasLimit = block.GasLimit;
@@ -76,7 +76,7 @@ namespace Nethermind.Merge.Plugin.Data
         {
             try
             {
-                BlockHeader header = new(ParentHash, Keccak.OfAnEmptySequenceRlp, Miner, Difficulty, Number, GasLimit, Timestamp, ExtraData)
+                BlockHeader header = new(ParentHash, Keccak.OfAnEmptySequenceRlp, Coinbase, Difficulty, Number, GasLimit, Timestamp, ExtraData)
                 {
                     Hash = BlockHash,
                     ReceiptsRoot = ReceiptsRoot,
@@ -109,7 +109,7 @@ namespace Nethermind.Merge.Plugin.Data
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public Bloom LogsBloom { get; set; } = Bloom.Empty;
         public Keccak Random { get; set; }
-        public Address? Miner { get; set; }
+        public Address? Coinbase { get; set; }
         public Keccak MixHash { get; set; } = null!;
         public bool ShouldSerializeMixHash() => false;
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
@@ -125,6 +125,8 @@ namespace Nethermind.Merge.Plugin.Data
         public bool ShouldSerializeUncles() => false;
         public UInt256 Timestamp { get; set; }
 
+        public UInt256 BaseFeePerGas { get; set; }
+        
         public override string ToString() => BlockHash == null ? $"{Number} null" : $"{Number} ({BlockHash})";
 
         public void SetTransactions(params Transaction[] transactions)

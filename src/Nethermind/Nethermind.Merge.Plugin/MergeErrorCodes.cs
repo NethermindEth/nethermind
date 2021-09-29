@@ -21,9 +21,8 @@ namespace Nethermind.Merge.Plugin
     {
         public const int None = 0;
 
-        /// <summary>
-        /// Invalid JSON
-        /// </summary>
+        public const int ActionNotAllowed = 2;
+        
         public const int UnknownHeader = 4;
         
         public const int UnavailablePayload = 5;
