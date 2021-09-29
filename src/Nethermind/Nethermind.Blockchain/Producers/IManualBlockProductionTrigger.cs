@@ -24,6 +24,6 @@ namespace Nethermind.Blockchain.Producers
 {
     public interface IManualBlockProductionTrigger : IBlockProductionTrigger
     {
-        public Task<Block?> BuildBlock(BlockHeader? parentHeader = null, CancellationToken? cancellationToken = null, IBlockTracer? blockTracer = null);
+        public Task<Block?> BuildBlock(BlockHeader? parentHeader = null, CancellationToken? cancellationToken = null, IBlockTracer? blockTracer = null, Address? blockAuthor = null);
     }
 }
