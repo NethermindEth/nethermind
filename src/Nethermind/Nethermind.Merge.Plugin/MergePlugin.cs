@@ -100,7 +100,7 @@ namespace Nethermind.Merge.Plugin
                     new PreparePayloadHandler(_api.BlockTree, payloadStorage, _defaultBlockProductionTrigger,
                         _emptyBlockProductionTrigger, _manualTimestamper, _api.Sealer, _api.LogManager),
                     new GetPayloadHandler(_api.BlockTree, payloadStorage, _api.LogManager),
-                    new ExecutePayloadHandler(_api.BlockTree, _api.BlockPreprocessor, _api.BlockchainProcessor, payloadManager, _api.StateProvider, _api.Config<IInitConfig>(), _api.LogManager),
+                    new ExecutePayloadHandler(_api.BlockTree, _api.BlockPreprocessor, _api.BlockchainProcessor, payloadManager, _api.EthSyncingInfo, _api.StateProvider, _api.Config<IInitConfig>(), _api.LogManager),
                     new ConsensusValidatedHandler(payloadManager),
                     _poSSwitcher,
                     new ForkChoiceUpdatedHandler(_api.BlockTree, _api.StateProvider, _blockFinalizationManager,
