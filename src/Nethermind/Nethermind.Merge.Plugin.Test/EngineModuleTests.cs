@@ -471,7 +471,6 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         [Test]
-        [Ignore("ToDo - there are produced more than 8 blocks in the future and executePayload is Syncing instead of valid (in ProduceBranch)")]
         public async Task forkchoiceUpdated_can_reorganize_to_any_block()
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
@@ -525,7 +524,6 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         [Test]
-        [Ignore("ToDo - there are produced more than 8 blocks in the future and executePayload is Syncing instead of valid (in ProduceBranch)")]
         public async Task assembleBlock_can_build_on_any_block()
         {
             using MergeTestBlockchain chain = await CreateBlockChain();

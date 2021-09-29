@@ -73,11 +73,12 @@ namespace Nethermind.Merge.Plugin.Handlers
             _payloadManager.TryAddPayloadBlockHash(request.BlockHash);
             ExecutePayloadResult executePayloadResult = new() {BlockHash = request.BlockHash};
             
-            if (_ethSyncingInfo.IsSyncing())
-            {
-                executePayloadResult.Status = VerificationStatus.Syncing;
-                return ResultWrapper<ExecutePayloadResult>.Success(executePayloadResult);
-            }
+            // uncomment when Syncing implementation will be ready
+            // if (_ethSyncingInfo.IsSyncing())
+            // {
+            //     executePayloadResult.Status = VerificationStatus.Syncing;
+            //     return ResultWrapper<ExecutePayloadResult>.Success(executePayloadResult);
+            // }
 
             ValidationResult result = ValidateRequestAndProcess(request, out Block? processedBlock);
             if ((result & ValidationResult.AlreadyKnown) != 0 || result == ValidationResult.Invalid)
