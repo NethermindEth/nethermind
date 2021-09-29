@@ -57,7 +57,7 @@ namespace Nethermind.Merge.Plugin.Test
             Keccak random = Keccak.Zero;
             Address feeRecipient = Address.Zero;
 
-            var blockRequestResult =  await PrepareAndGetPayloadResult(rpc, startingHead, timestamp, random, feeRecipient);
+            BlockRequestResult? blockRequestResult =  await PrepareAndGetPayloadResult(rpc, startingHead, timestamp, random, feeRecipient);
 
             BlockRequestResult expected = CreateParentBlockRequestOnHead(chain.BlockTree);
             expected.GasLimit = 4000000L;
@@ -544,7 +544,7 @@ namespace Nethermind.Merge.Plugin.Test
                 UInt256 timestamp = Timestamper.UnixTime.Seconds;
                 Keccak random = Keccak.Zero;
                 Address feeRecipient = Address.Zero;
-                var blockResult = await PrepareAndGetPayloadResult(rpc, block.BlockHash, timestamp, random,
+                BlockRequestResult? blockResult = await PrepareAndGetPayloadResult(rpc, block.BlockHash, timestamp, random,
                     feeRecipient);
 
                 blockResult.Should().NotBeNull();
@@ -694,7 +694,7 @@ namespace Nethermind.Merge.Plugin.Test
             {
                 semaphoreSlim.Release(1);
             };
-            var payloadId = (await rpc.engine_preparePayload(new PreparePayloadRequest(startingHead,
+            ulong payloadId = (await rpc.engine_preparePayload(new PreparePayloadRequest(startingHead,
                 ((ITimestamper)timestamper).UnixTime.Seconds,
                 TestItem.KeccakA, Address.Zero))).Data.PayloadId;
             await semaphoreSlim.WaitAsync(-1);
@@ -789,7 +789,7 @@ namespace Nethermind.Merge.Plugin.Test
             ManualTimestamper timestamper = new(Timestamp);
             for (int i = 0; i < count; i++)
             {
-                var getPayloadResult = await PrepareAndGetPayloadResult(rpc, parentBlockHash,
+                BlockRequestResult? getPayloadResult = await PrepareAndGetPayloadResult(rpc, parentBlockHash,
                     ((ITimestamper)timestamper).UnixTime.Seconds,
                     TestItem.KeccakA, Address.Zero);
                 Keccak? blockHash = getPayloadResult.BlockHash;
@@ -832,7 +832,7 @@ namespace Nethermind.Merge.Plugin.Test
         private async Task<BlockRequestResult> PrepareAndGetPayloadResult(
             IEngineRpcModule rpc, Keccak parentHash, UInt256 timestamp, Keccak random, Address feeRecipient)
         {
-            var payloadId = (await rpc.engine_preparePayload(new PreparePayloadRequest(parentHash, timestamp, random, feeRecipient))).Data.PayloadId;
+            ulong payloadId = (await rpc.engine_preparePayload(new PreparePayloadRequest(parentHash, timestamp, random, feeRecipient))).Data.PayloadId;
             ResultWrapper<BlockRequestResult?> getPayloadResult = await rpc.engine_getPayload(payloadId);
             return getPayloadResult.Data!;
         }
