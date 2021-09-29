@@ -62,7 +62,7 @@ namespace Nethermind.Merge.Plugin
             Description = "Propagates the change in the fork choice to the execution client.",
             IsSharable = true,
             IsImplemented = false)]
-        Task<ResultWrapper<Result>> engine_forkchoiceUpdated(Keccak headBlockHash, Keccak finalizedBlockHash, Keccak confirmedBlockHash);
+        Task<ResultWrapper<Result>> engine_forkchoiceUpdated(ForkChoiceUpdatedRequest forkChoiceUpdatedRequest);
 
         [JsonRpcMethod(
             Description = "Propagates an override of the TERMINAL_TOTAL_DIFFICULTY to the execution client.",

@@ -114,16 +114,13 @@ namespace Nethermind.Merge.Plugin
             }
         }
 
-        public async Task<ResultWrapper<Result>> engine_forkchoiceUpdated(Keccak headBlockHash,
-            Keccak finalizedBlockHash, Keccak confirmedBlockHash)
+        public async Task<ResultWrapper<Result>> engine_forkchoiceUpdated(ForkChoiceUpdatedRequest forkChoiceUpdatedRequest)
         {
             if (await _locker.WaitAsync(Timeout))
             {
                 try
                 {
-                    return _forkChoiceUpdateHandler.Handle(new ForkChoiceUpdatedRequest(
-                        headBlockHash, finalizedBlockHash, confirmedBlockHash
-                    ));
+                    return _forkChoiceUpdateHandler.Handle(forkChoiceUpdatedRequest);
                 }
                 finally
                 {
