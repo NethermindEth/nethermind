@@ -23,36 +23,51 @@ using Nethermind.Int256;
 
 namespace Nethermind.Mev.Data
 {
-    public class MevMegabundle: MevBundle, IEquatable<MevMegabundle>
+    public partial class MevMegabundle : MevBundle, IEquatable<MevMegabundle>
     {
-        public MevMegabundle(Signature relaySignature, long blockNumber, IReadOnlyList<BundleTransaction> transactions, UInt256? minTimestamp = null, UInt256? maxTimestamp = null)
-        : base(blockNumber, transactions, minTimestamp, maxTimestamp)
+        public MevMegabundle(Signature relaySignature, long blockNumber, IReadOnlyList<BundleTransaction> transactions,
+            UInt256? minTimestamp = null, UInt256? maxTimestamp = null, Keccak[]? revertingTxHashes = null)
+            : base(blockNumber, transactions, minTimestamp, maxTimestamp)
         {
             RelaySignature = relaySignature;
+            RevertingTxHashes = revertingTxHashes ?? Array.Empty<Keccak>();
+            Hash = GetHash(this);
         }
-        
-        public Signature RelaySignature { get; }
+
+        public MevMegabundle(long blockNumber, IReadOnlyList<BundleTransaction> transactions,
+            UInt256? minTimestamp = null, UInt256? maxTimestamp = null, Keccak[]? revertingTxHashes = null)
+            : base(blockNumber, transactions, minTimestamp, maxTimestamp)
+        {
+            RevertingTxHashes = revertingTxHashes ?? Array.Empty<Keccak>();
+            Hash = GetHash(this);
+        }
+
+        public override Keccak Hash { get; }
+        public Signature? RelaySignature { get; }
 
         public Address? RelayAddress { get; internal set; }
+
+        public Keccak[] RevertingTxHashes { get; }
 
         public bool Equals(MevMegabundle? other)
         {
             if (ReferenceEquals(null, other)) return false;
             if (ReferenceEquals(this, other)) return true;
             return Equals(Hash, other.Hash)
-                && Equals(RelaySignature, other.RelaySignature);
+                   && Equals(RelaySignature, other.RelaySignature);
         }
-        
+
         public override bool Equals(object? obj)
         {
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;
             if (obj.GetType() != GetType()) return false;
-            return Equals((MevMegabundle) obj);
+            return Equals((MevMegabundle)obj);
         }
 
         public override int GetHashCode() => HashCode.Combine(Hash, RelaySignature).GetHashCode();
-        
-        public override string ToString() => $"Hash:{Hash}; Block:{BlockNumber}; Min:{MinTimestamp}; Max:{MaxTimestamp}; TxCount:{Transactions.Count}; RelaySignature:{RelaySignature};";
+
+        public override string ToString() =>
+            $"Hash:{Hash}; Block:{BlockNumber}; Min:{MinTimestamp}; Max:{MaxTimestamp}; TxCount:{Transactions.Count}; RelaySignature:{RelaySignature};";
     }
 }

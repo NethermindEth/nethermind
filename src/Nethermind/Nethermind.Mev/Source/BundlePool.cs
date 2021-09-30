@@ -174,7 +174,7 @@ namespace Nethermind.Mev.Source
 
             if (ValidateBundle(megabundle))
             {
-                Address relayAddress = megabundle.RelayAddress = _ecdsa.RecoverAddress(megabundle.RelaySignature, megabundle.Hash)!;
+                Address relayAddress = megabundle.RelayAddress = _ecdsa.RecoverAddress(megabundle.RelaySignature!, megabundle.Hash)!;
                 if (IsTrustedRelay(relayAddress))
                 {
                     Metrics.ValidMegabundlesReceived++;

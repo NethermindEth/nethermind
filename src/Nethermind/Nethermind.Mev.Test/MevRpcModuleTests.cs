@@ -216,7 +216,7 @@ namespace Nethermind.Mev.Test
                 .TestObject;
             
             BundleTransaction[] txs = { setTx, getTx };
-            MevBundle bundle = new (4, txs);
+            MevMegabundle bundle = new (4, txs);
             Signature relaySignature = chain.EthereumEcdsa.Sign(TestItem.PrivateKeyC, bundle.Hash);
             
             string parameters = $"{{\"txs\":[\"{Rlp.Encode(setTx).Bytes.ToHexString()}\",\"{Rlp.Encode(getTx).Bytes.ToHexString()}\"]," +
