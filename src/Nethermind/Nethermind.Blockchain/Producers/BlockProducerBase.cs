@@ -96,7 +96,7 @@ namespace Nethermind.Blockchain.Producers
         private void OnTriggerBlockProduction(object? sender, BlockProductionEventArgs e)
         {
             BlockHeader? parent = BlockTree.GetProducedBlockParent(e.ParentHeader);
-            e.BlockProductionTask = TryProduceAndAnnounceNewBlock(e.CancellationToken, parent, e.BlockTracer, e.BlockAuthor);
+            e.BlockProductionTask = TryProduceAndAnnounceNewBlock(e.CancellationToken, parent, e.BlockTracer, e.BlockAuthor, e.Timestamp);
         }
 
         public virtual void Start()
@@ -124,7 +124,7 @@ namespace Nethermind.Blockchain.Producers
             return IsRunning() && (maxProducingInterval == null || _lastProducedBlockDateTime.AddSeconds(maxProducingInterval.Value) > DateTime.UtcNow);
         }
 
-        private async Task<Block?> TryProduceAndAnnounceNewBlock(CancellationToken token, BlockHeader? parentHeader, IBlockTracer? blockTracer = null, Address? blockAuthor = null)
+        private async Task<Block?> TryProduceAndAnnounceNewBlock(CancellationToken token, BlockHeader? parentHeader, IBlockTracer? blockTracer = null, Address? blockAuthor = null, UInt256? timestamp = null)
         {
             using CancellationTokenSource tokenSource = CancellationTokenSource.CreateLinkedTokenSource(token, _producerCancellationToken!.Token);
             token = tokenSource.Token;
@@ -159,7 +159,7 @@ namespace Nethermind.Blockchain.Producers
             return block;
         }
 
-        protected virtual Task<Block?> TryProduceNewBlock(CancellationToken token, BlockHeader? parentHeader, IBlockTracer? blockTracer = null, Address? blockAuthor = null)
+        protected virtual Task<Block?> TryProduceNewBlock(CancellationToken token, BlockHeader? parentHeader, IBlockTracer? blockTracer = null, Address? blockAuthor = null, UInt256? timestamp = null)
         {
             if (parentHeader == null)
             {
@@ -170,7 +170,7 @@ namespace Nethermind.Blockchain.Producers
                 if (Sealer.CanSeal(parentHeader.Number + 1, parentHeader.Hash))
                 {
                     Interlocked.Exchange(ref Metrics.CanProduceBlocks, 1);
-                    return ProduceNewBlock(parentHeader, token, blockTracer, blockAuthor);
+                    return ProduceNewBlock(parentHeader, token, blockTracer, blockAuthor, timestamp);
                 }
                 else
                 {
@@ -182,7 +182,7 @@ namespace Nethermind.Blockchain.Producers
             return Task.FromResult((Block?)null);
         }
 
-        private Task<Block?> ProduceNewBlock(BlockHeader parent, CancellationToken token, IBlockTracer? blockTracer, Address? blockAuthor)
+        private Task<Block?> ProduceNewBlock(BlockHeader parent, CancellationToken token, IBlockTracer? blockTracer, Address? blockAuthor, UInt256? timestamp)
         {
             if (TrySetState(parent.StateRoot))
             {
@@ -278,7 +278,7 @@ namespace Nethermind.Blockchain.Producers
             return _txSource.GetTransactions(parent, gasLimit);
         }
 
-        protected virtual Block PrepareBlock(BlockHeader parent, Address? blockAuthor = null)
+        protected virtual Block PrepareBlock(BlockHeader parent, Address? blockAuthor = null, UInt256? manualTimestamp = null)
         {
             UInt256 timestamp = UInt256.Max(parent.Timestamp + 1, Timestamper.UnixTime.Seconds);
             BlockHeader header = new(
@@ -288,7 +288,7 @@ namespace Nethermind.Blockchain.Producers
                 UInt256.Zero, 
                 parent.Number + 1,
                 _gasLimitCalculator.GetGasLimit(parent),
-                timestamp,
+                manualTimestamp ?? timestamp,
                 GetExtraData(parent))
             {
                 Author = blockAuthor ?? Sealer.Address

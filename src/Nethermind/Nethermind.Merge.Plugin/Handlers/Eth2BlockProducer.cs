@@ -24,6 +24,7 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 
@@ -56,9 +57,9 @@ namespace Nethermind.Merge.Plugin.Handlers
         {
         }
 
-        protected override Block PrepareBlock(BlockHeader parent, Address? blockAuthor)
+        protected override Block PrepareBlock(BlockHeader parent, Address? blockAuthor, UInt256? timestamp)
         {
-            Block block = base.PrepareBlock(parent, blockAuthor);
+            Block block = base.PrepareBlock(parent, blockAuthor, timestamp);
             block.Header.MixHash = Keccak.Zero;
             block.Header.ExtraData = Array.Empty<byte>();
             return block;

@@ -20,6 +20,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Evm.Tracing;
+using Nethermind.Int256;
 
 namespace Nethermind.Blockchain.Producers
 {
@@ -29,6 +30,8 @@ namespace Nethermind.Blockchain.Producers
         public BlockHeader? ParentHeader { get; }
         public IBlockTracer? BlockTracer { get; }
         public Address? BlockAuthor { get; }
+        
+        public UInt256? Timestamp { get; }
         public CancellationToken CancellationToken { get; }
         public Task<Block?> BlockProductionTask { get; set; } = DefaultBlockProductionTask;
 
@@ -36,11 +39,13 @@ namespace Nethermind.Blockchain.Producers
             BlockHeader? parentHeader = null, 
             CancellationToken? cancellationToken = null,
             IBlockTracer? blockTracer = null,
-            Address? blockAuthor = null)
+            Address? blockAuthor = null,
+            UInt256? timestamp = null)
         {
             ParentHeader = parentHeader;
             BlockTracer = blockTracer;
             BlockAuthor = blockAuthor;
+            Timestamp = timestamp;
             CancellationToken = cancellationToken ?? CancellationToken.None;
         }
 

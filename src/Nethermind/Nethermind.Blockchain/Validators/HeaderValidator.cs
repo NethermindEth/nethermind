@@ -132,6 +132,7 @@ namespace Nethermind.Blockchain.Validators
             bool gasLimitInRange = ValidateGasLimitRange(header, parent, spec);
 
             // bool gasLimitAboveAbsoluteMinimum = header.GasLimit >= 125000; // described in the YellowPaper but not followed
+            
             bool timestampMoreThanAtParent = header.Timestamp > parent.Timestamp;
             if (!timestampMoreThanAtParent)
             {
@@ -155,7 +156,7 @@ namespace Nethermind.Blockchain.Validators
                 gasLimitInRange &&
                 sealParamsCorrect &&
                 // gasLimitAboveAbsoluteMinimum && // described in the YellowPaper but not followed
-                timestampMoreThanAtParent &&
+               // timestampMoreThanAtParent &&  // temporary commented for merge - interop. It shouldn't be merged to master
                 numberIsParentPlusOne &&
                 hashAsExpected &&
                 extraDataValid &&

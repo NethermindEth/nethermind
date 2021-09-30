@@ -70,7 +70,7 @@ namespace Nethermind.Consensus.AuRa
             _config = config ?? throw new ArgumentNullException(nameof(config));
         }
 
-        protected override Block PrepareBlock(BlockHeader parent, Address? blockAuthor)
+        protected override Block PrepareBlock(BlockHeader parent, Address? blockAuthor, UInt256? timestamp)
         {
             var block = base.PrepareBlock(parent, blockAuthor);
             block.Header.AuRaStep = _auRaStepCalculator.CurrentStep;

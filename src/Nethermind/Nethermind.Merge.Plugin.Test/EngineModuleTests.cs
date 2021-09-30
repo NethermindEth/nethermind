@@ -53,15 +53,16 @@ namespace Nethermind.Merge.Plugin.Test
             using MergeTestBlockchain chain = await CreateBlockChain();
             IEngineRpcModule rpc = CreateEngineModule(chain);
             Keccak startingHead = chain.BlockTree.HeadHash;
-            UInt256 timestamp = Timestamper.UnixTime.Seconds;
+            UInt256 timestamp = 30;
             Keccak random = Keccak.Zero;
             Address feeRecipient = Address.Zero;
 
-            BlockRequestResult? blockRequestResult =  await PrepareAndGetPayloadResult(rpc, startingHead, timestamp, random, feeRecipient);
+            BlockRequestResult? blockRequestResult =
+                await PrepareAndGetPayloadResult(rpc, startingHead, timestamp, random, feeRecipient);
 
             BlockRequestResult expected = CreateParentBlockRequestOnHead(chain.BlockTree);
             expected.GasLimit = 4000000L;
-            expected.BlockHash = new Keccak("0xdc4e882186c2723e6ed279634d6b7f502bf2712dc3113c743903786b61c55c87");
+            expected.BlockHash = new Keccak("0x33228284b2c8d36e3fd34c31de3ab0604412bf9ab71725307d13daa2c4f44348");
             expected.LogsBloom = Bloom.Empty;
             expected.Coinbase = chain.MinerAddress;
             expected.Number = 1;
@@ -70,6 +71,7 @@ namespace Nethermind.Merge.Plugin.Test
             expected.SetTransactions(Array.Empty<Transaction>());
             expected.Timestamp = timestamp;
             expected.Random = random;
+            expected.ExtraData = Array.Empty<byte>();
 
             blockRequestResult.Should().BeEquivalentTo(expected);
         }
@@ -94,7 +96,9 @@ namespace Nethermind.Merge.Plugin.Test
             UInt256 timestamp = Timestamper.UnixTime.Seconds;
             Keccak random = Keccak.Zero;
             Address feeRecipient = Address.Zero;
-            ulong payloadId = (await rpc.engine_preparePayload(new PreparePayloadRequest(startingHead, timestamp, random, feeRecipient))).Data.PayloadId;
+            ulong payloadId =
+                (await rpc.engine_preparePayload(new PreparePayloadRequest(startingHead, timestamp, random,
+                    feeRecipient))).Data.PayloadId;
 
             ulong requestedPayloadId = payloadId + 1;
             ResultWrapper<BlockRequestResult?> response = await rpc.engine_getPayload(requestedPayloadId);
@@ -115,7 +119,9 @@ namespace Nethermind.Merge.Plugin.Test
             Keccak random = Keccak.Zero;
             Address feeRecipient = Address.Zero;
 
-            ulong payloadId = (await rpc.engine_preparePayload(new PreparePayloadRequest(startingHead, timestamp, random, feeRecipient))).Data.PayloadId;
+            ulong payloadId =
+                (await rpc.engine_preparePayload(new PreparePayloadRequest(startingHead, timestamp, random,
+                    feeRecipient))).Data.PayloadId;
 
             Thread.Sleep(timeout);
 
@@ -137,9 +143,9 @@ namespace Nethermind.Merge.Plugin.Test
             ResultWrapper<PreparePayloadResult> prepareResponse =
                 await rpc.engine_preparePayload(new PreparePayloadRequest(notExistingHash, timestamp, random,
                     feeRecipient));
-            
+
             prepareResponse.ErrorCode.Should().Be(MergeErrorCodes.UnknownHeader);
-            
+
             ResultWrapper<BlockRequestResult?> getResponse = await rpc.engine_getPayload(11);
 
             getResponse.ErrorCode.Should().Be(MergeErrorCodes.UnavailablePayload);
@@ -158,8 +164,10 @@ namespace Nethermind.Merge.Plugin.Test
 
             for (int i = 0; i < times; i++)
             {
-                ResultWrapper<ExecutePayloadResult> executePayloadResult = await rpc.engine_executePayload(getPayloadResult);
-                await rpc.engine_consensusValidated(new ConsensusValidatedRequest(getPayloadResult.BlockHash, ConsensusValidationStatus.Valid));
+                ResultWrapper<ExecutePayloadResult> executePayloadResult =
+                    await rpc.engine_executePayload(getPayloadResult);
+                await rpc.engine_consensusValidated(new ConsensusValidatedRequest(getPayloadResult.BlockHash,
+                    ConsensusValidationStatus.Valid));
                 executePayloadResult.Data.Status.Should().Be(VerificationStatus.Valid);
             }
 
@@ -235,16 +243,18 @@ namespace Nethermind.Merge.Plugin.Test
             BlockRequestResult getPayloadResult = await PrepareAndGetPayloadResult(chain, rpc);
             getPayloadResult.ParentHash.Should().Be(startingHead);
 
-            ResultWrapper<ExecutePayloadResult> executePayloadResult = await rpc.engine_executePayload(getPayloadResult);
-            
-            await rpc.engine_consensusValidated(new ConsensusValidatedRequest(getPayloadResult.BlockHash, ConsensusValidationStatus.Valid));
-            
+            ResultWrapper<ExecutePayloadResult>
+                executePayloadResult = await rpc.engine_executePayload(getPayloadResult);
+
+            await rpc.engine_consensusValidated(new ConsensusValidatedRequest(getPayloadResult.BlockHash,
+                ConsensusValidationStatus.Valid));
+
             executePayloadResult.Data.Status.Should().Be(VerificationStatus.Valid);
             Keccak bestSuggestedHeaderHash = chain.BlockTree.BestSuggestedHeader!.Hash!;
             bestSuggestedHeaderHash.Should().Be(getPayloadResult.BlockHash);
             bestSuggestedHeaderHash.Should().NotBe(startingBestSuggestedHeader!.Hash!);
         }
-        
+
         [Test]
         public async Task should_not_suggest_block_on_consensusValidated_invalid()
         {
@@ -255,10 +265,12 @@ namespace Nethermind.Merge.Plugin.Test
             BlockRequestResult getPayloadResult = await PrepareAndGetPayloadResult(chain, rpc);
             getPayloadResult.ParentHash.Should().Be(startingHead);
 
-            ResultWrapper<ExecutePayloadResult> executePayloadResult = await rpc.engine_executePayload(getPayloadResult);
-            
-            await rpc.engine_consensusValidated(new ConsensusValidatedRequest(getPayloadResult.BlockHash, ConsensusValidationStatus.Invalid));
-            
+            ResultWrapper<ExecutePayloadResult>
+                executePayloadResult = await rpc.engine_executePayload(getPayloadResult);
+
+            await rpc.engine_consensusValidated(new ConsensusValidatedRequest(getPayloadResult.BlockHash,
+                ConsensusValidationStatus.Invalid));
+
             executePayloadResult.Data.Status.Should().Be(VerificationStatus.Valid);
             Keccak bestSuggestedHeaderHash = chain.BlockTree.BestSuggestedHeader!.Hash!;
             bestSuggestedHeaderHash.Should().Be(startingBestSuggestedHeader!.Hash!);
@@ -293,7 +305,7 @@ namespace Nethermind.Merge.Plugin.Test
             BlockRequestResult blockRequestResult = await SendNewBlock(rpc, chain);
 
             Keccak newHeadHash = blockRequestResult.BlockHash;
-            ForkChoiceUpdatedRequest forkChoiceUpdatedRequest = new(newHeadHash!, startingHead/*, startingHead*/);
+            ForkChoiceUpdatedRequest forkChoiceUpdatedRequest = new(newHeadHash!, startingHead /*, startingHead*/);
             ResultWrapper<Result> forkchoiceUpdatedResult =
                 await rpc.engine_forkchoiceUpdated(forkChoiceUpdatedRequest);
             forkchoiceUpdatedResult.Data.Should().Be(Result.Ok);
@@ -310,7 +322,7 @@ namespace Nethermind.Merge.Plugin.Test
             using MergeTestBlockchain chain = await CreateBlockChain();
             IEngineRpcModule rpc = CreateEngineModule(chain);
             ForkChoiceUpdatedRequest forkChoiceUpdatedRequest =
-                new(TestItem.KeccakF, TestItem.KeccakF/*, TestItem.KeccakF*/);
+                new(TestItem.KeccakF, TestItem.KeccakF /*, TestItem.KeccakF*/);
             ResultWrapper<Result> forkchoiceUpdatedResult =
                 await rpc.engine_forkchoiceUpdated(forkChoiceUpdatedRequest);
             forkchoiceUpdatedResult.ErrorCode.Should().Be(MergeErrorCodes.UnknownHeader);
@@ -428,7 +440,8 @@ namespace Nethermind.Merge.Plugin.Test
                 CreateParentBlockRequestOnHead(chain.BlockTree),
                 TestItem.AddressD);
             ResultWrapper<ExecutePayloadResult> resultWrapper = await rpc.engine_executePayload(blockRequestResult);
-            await rpc.engine_consensusValidated(new ConsensusValidatedRequest(blockRequestResult.BlockHash, ConsensusValidationStatus.Valid));
+            await rpc.engine_consensusValidated(new ConsensusValidatedRequest(blockRequestResult.BlockHash,
+                ConsensusValidationStatus.Valid));
             resultWrapper.Data.Status.Should().Be(VerificationStatus.Valid);
             new BlockRequestResult(chain.BlockTree.BestSuggestedBody, blockRequestResult.Random).Should()
                 .BeEquivalentTo(blockRequestResult);
@@ -439,9 +452,11 @@ namespace Nethermind.Merge.Plugin.Test
             BlockRequestResult blockRequestResult = CreateBlockRequest(
                 CreateParentBlockRequestOnHead(chain.BlockTree),
                 TestItem.AddressD);
-            ResultWrapper<ExecutePayloadResult> executePayloadResult = await rpc.engine_executePayload(blockRequestResult);
+            ResultWrapper<ExecutePayloadResult> executePayloadResult =
+                await rpc.engine_executePayload(blockRequestResult);
             ResultWrapper<Result> consensusValidatedResult =
-                await rpc.engine_consensusValidated(new ConsensusValidatedRequest(blockRequestResult.BlockHash, ConsensusValidationStatus.Valid));
+                await rpc.engine_consensusValidated(new ConsensusValidatedRequest(blockRequestResult.BlockHash,
+                    ConsensusValidationStatus.Valid));
             executePayloadResult.Data.Status.Should().Be(VerificationStatus.Valid);
             consensusValidatedResult.Data.Should().Be(Result.Ok);
             return blockRequestResult;
@@ -544,7 +559,8 @@ namespace Nethermind.Merge.Plugin.Test
                 UInt256 timestamp = Timestamper.UnixTime.Seconds;
                 Keccak random = Keccak.Zero;
                 Address feeRecipient = Address.Zero;
-                BlockRequestResult? blockResult = await PrepareAndGetPayloadResult(rpc, block.BlockHash, timestamp, random,
+                BlockRequestResult? blockResult = await PrepareAndGetPayloadResult(rpc, block.BlockHash, timestamp,
+                    random,
                     feeRecipient);
 
                 blockResult.Should().NotBeNull();
@@ -613,7 +629,8 @@ namespace Nethermind.Merge.Plugin.Test
                 TryCalculateHash(newBlockRequest, out Keccak? hash);
                 newBlockRequest.BlockHash = hash;
                 ResultWrapper<ExecutePayloadResult> result = await rpc.engine_executePayload(newBlockRequest);
-                await rpc.engine_consensusValidated(new ConsensusValidatedRequest(newBlockRequest.BlockHash, ConsensusValidationStatus.Valid));
+                await rpc.engine_consensusValidated(new ConsensusValidatedRequest(newBlockRequest.BlockHash,
+                    ConsensusValidationStatus.Valid));
                 await Task.Delay(10);
 
                 result.Data.Status.Should().Be(VerificationStatus.Valid);
@@ -625,7 +642,7 @@ namespace Nethermind.Merge.Plugin.Test
                 if (moveHead)
                 {
                     ForkChoiceUpdatedRequest forkChoiceUpdatedRequest = new(newBlockRequest.BlockHash,
-                        newBlockRequest.BlockHash 
+                        newBlockRequest.BlockHash
                         /*, newBlockRequest.BlockHash*/);
                     await rpc.engine_forkchoiceUpdated(forkChoiceUpdatedRequest);
                     await Task.Delay(10);
@@ -660,7 +677,8 @@ namespace Nethermind.Merge.Plugin.Test
                 TryCalculateHash(newBlockRequest, out var hash);
                 newBlockRequest.BlockHash = hash;
                 ResultWrapper<ExecutePayloadResult> result = await rpc.engine_executePayload(newBlockRequest);
-                await rpc.engine_consensusValidated(new ConsensusValidatedRequest(newBlockRequest.BlockHash, ConsensusValidationStatus.Valid));
+                await rpc.engine_consensusValidated(new ConsensusValidatedRequest(newBlockRequest.BlockHash,
+                    ConsensusValidationStatus.Valid));
                 await Task.Delay(10);
 
                 result.Data.Status.Should().Be(VerificationStatus.Valid);
@@ -710,7 +728,8 @@ namespace Nethermind.Merge.Plugin.Test
                     .Excluding(t => t.PoolIndex)
                     .Excluding(t => t.GasBottleneck));
 
-            await rpc.engine_consensusValidated(new ConsensusValidatedRequest(assembleBlockResult.BlockHash, ConsensusValidationStatus.Valid));
+            await rpc.engine_consensusValidated(new ConsensusValidatedRequest(assembleBlockResult.BlockHash,
+                ConsensusValidationStatus.Valid));
             ResultWrapper<ExecutePayloadResult> executePayloadResult =
                 await rpc.engine_executePayload(assembleBlockResult);
             executePayloadResult.Data.Status.Should().Be(VerificationStatus.Valid);
@@ -793,9 +812,11 @@ namespace Nethermind.Merge.Plugin.Test
                     ((ITimestamper)timestamper).UnixTime.Seconds,
                     TestItem.KeccakA, Address.Zero);
                 Keccak? blockHash = getPayloadResult.BlockHash;
-                await rpc.engine_consensusValidated(new ConsensusValidatedRequest(blockHash, ConsensusValidationStatus.Valid));
+                await rpc.engine_consensusValidated(new ConsensusValidatedRequest(blockHash,
+                    ConsensusValidationStatus.Valid));
                 ExecutePayloadResult executePayloadResponse = (await rpc.engine_executePayload(getPayloadResult)).Data;
-                await rpc.engine_consensusValidated(new ConsensusValidatedRequest(getPayloadResult.BlockHash, ConsensusValidationStatus.Valid));
+                await rpc.engine_consensusValidated(new ConsensusValidatedRequest(getPayloadResult.BlockHash,
+                    ConsensusValidationStatus.Valid));
                 executePayloadResponse.Status.Should().Be(VerificationStatus.Valid);
                 if (setHead)
                 {
@@ -828,11 +849,13 @@ namespace Nethermind.Merge.Plugin.Test
 
             return current;
         }
-        
+
         private async Task<BlockRequestResult> PrepareAndGetPayloadResult(
             IEngineRpcModule rpc, Keccak parentHash, UInt256 timestamp, Keccak random, Address feeRecipient)
         {
-            ulong payloadId = (await rpc.engine_preparePayload(new PreparePayloadRequest(parentHash, timestamp, random, feeRecipient))).Data.PayloadId;
+            ulong payloadId =
+                (await rpc.engine_preparePayload(new PreparePayloadRequest(parentHash, timestamp, random, feeRecipient))
+                ).Data.PayloadId;
             ResultWrapper<BlockRequestResult?> getPayloadResult = await rpc.engine_getPayload(payloadId);
             return getPayloadResult.Data!;
         }
