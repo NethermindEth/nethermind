@@ -70,6 +70,7 @@ namespace Nethermind.Merge.Plugin.Data
             MixHash = block.MixHash;
             Uncles = block.Uncles.Select(o => o.Hash!);
             Timestamp = block.Timestamp;
+            BaseFeePerGas = block.BaseFeePerGas;
         }
 
         public bool TryGetBlock(out Block? block)

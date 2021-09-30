@@ -80,8 +80,8 @@ namespace Nethermind.Merge.Plugin.Handlers
 
             uint payloadId = _payloadStorage.RentNextPayloadId();
             Address blockAuthor = request.FeeRecipient == Address.Zero ? _sealer.Address : request.FeeRecipient;
-            Block? emptyBlock = await _emptyBlockProductionTrigger.BuildBlock(parentHeader, cts.Token, null, blockAuthor);
-            Task<Block?> idealBlock = _blockProductionTrigger.BuildBlock(parentHeader, cts.Token, null, blockAuthor);
+            Block? emptyBlock = await _emptyBlockProductionTrigger.BuildBlock(parentHeader, cts.Token, null, blockAuthor, request.Timestamp);
+            Task<Block?> idealBlock = _blockProductionTrigger.BuildBlock(parentHeader, cts.Token, null, blockAuthor, request.Timestamp);
             _payloadStorage.AddPayload(payloadId, request.Random, emptyBlock, idealBlock); // not awaiting on purpose
             
             return ResultWrapper<PreparePayloadResult>.Success(new PreparePayloadResult(payloadId));

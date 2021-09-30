@@ -134,7 +134,7 @@ namespace Nethermind.Blockchain.Producers
             {
                 try
                 {
-                    block = await TryProduceNewBlock(token, parentHeader, blockTracer, blockAuthor);
+                    block = await TryProduceNewBlock(token, parentHeader, blockTracer, blockAuthor, timestamp);
                     if (block is not null)
                     {
                         BlockProduced?.Invoke(this, new BlockEventArgs(block));
@@ -186,7 +186,7 @@ namespace Nethermind.Blockchain.Producers
         {
             if (TrySetState(parent.StateRoot))
             {
-                Block block = PrepareBlock(parent, blockAuthor);
+                Block block = PrepareBlock(parent, blockAuthor, timestamp);
                 if (PreparedBlockCanBeMined(block))
                 {
                     Block? processedBlock = ProcessPreparedBlock(block, blockTracer);
