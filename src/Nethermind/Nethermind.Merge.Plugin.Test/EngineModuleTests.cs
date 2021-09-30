@@ -64,7 +64,7 @@ namespace Nethermind.Merge.Plugin.Test
             expected.BlockHash = new Keccak("0x33228284b2c8d36e3fd34c31de3ab0604412bf9ab71725307d13daa2c4f44348");
             expected.LogsBloom = Bloom.Empty;
             expected.Coinbase = chain.MinerAddress;
-            expected.Number = 1;
+            expected.BlockNumber = 1;
             expected.Random = random;
             expected.ParentHash = startingHead;
             expected.SetTransactions(Array.Empty<Transaction>());
@@ -186,7 +186,7 @@ namespace Nethermind.Merge.Plugin.Test
                 yield return GetNewBlockRequestBadDataTestCase(r => r.MixHash, TestItem.KeccakC);
                 yield return GetNewBlockRequestBadDataTestCase(r => r.Uncles, new[] {TestItem.KeccakB});
                 yield return GetNewBlockRequestBadDataTestCase(r => r.ParentHash, TestItem.KeccakD);
-                yield return GetNewBlockRequestBadDataTestCase(r => r.ReceiptsRoot, TestItem.KeccakD);
+                yield return GetNewBlockRequestBadDataTestCase(r => r.ReceiptRoot, TestItem.KeccakD);
                 yield return GetNewBlockRequestBadDataTestCase(r => r.StateRoot, TestItem.KeccakD);
 
                 Bloom bloom = new();
@@ -506,7 +506,7 @@ namespace Nethermind.Merge.Plugin.Test
                     await rpc.engine_forkchoiceUpdated(forkChoiceUpdatedRequest);
                 result.Data.Should().Be(null);
                 testChain.BlockTree.HeadHash.Should().Be(block.BlockHash);
-                testChain.BlockTree.Head!.Number.Should().Be(block.Number);
+                testChain.BlockTree.Head!.Number.Should().Be(block.BlockNumber);
                 testChain.State.StateRoot.Should().Be(testChain.BlockTree.Head!.StateRoot!);
             }
 
@@ -536,13 +536,13 @@ namespace Nethermind.Merge.Plugin.Test
                 await ProduceBranch(rpc, chain.BlockTree, 10, chain.BlockTree.HeadHash, false);
             IReadOnlyList<BlockRequestResult> branch2 =
                 await ProduceBranch(rpc, chain.BlockTree, 5, branch1[3].BlockHash, false, 2);
-            branch2.Last().Number.Should().Be(1 + 3 + 5);
+            branch2.Last().BlockNumber.Should().Be(1 + 3 + 5);
             IReadOnlyList<BlockRequestResult> branch3 =
                 await ProduceBranch(rpc, chain.BlockTree, 7, branch1[7].BlockHash, false, 3);
-            branch3.Last().Number.Should().Be(1 + 7 + 7);
+            branch3.Last().BlockNumber.Should().Be(1 + 7 + 7);
             IReadOnlyList<BlockRequestResult> branch4 =
                 await ProduceBranch(rpc, chain.BlockTree, 3, branch3[4].BlockHash, false, 4);
-            branch3.Last().Number.Should().Be(1 + 7 + 4 + 3);
+            branch3.Last().BlockNumber.Should().Be(1 + 7 + 4 + 3);
 
             await CanReorganizeToAnyBlock(chain, branch1, branch2, branch3, branch4);
         }
@@ -591,13 +591,13 @@ namespace Nethermind.Merge.Plugin.Test
                 await ProduceBranch(rpc, chain.BlockTree, 10, chain.BlockTree.HeadHash, false);
             IReadOnlyList<BlockRequestResult> branch2 =
                 await ProduceBranch(rpc, chain.BlockTree, 5, branch1[3].BlockHash, false, 2);
-            branch2.Last().Number.Should().Be(1 + 3 + 5);
+            branch2.Last().BlockNumber.Should().Be(1 + 3 + 5);
             IReadOnlyList<BlockRequestResult> branch3 =
                 await ProduceBranch(rpc, chain.BlockTree, 7, branch1[7].BlockHash, false, 3);
-            branch3.Last().Number.Should().Be(1 + 7 + 7);
+            branch3.Last().BlockNumber.Should().Be(1 + 7 + 7);
             IReadOnlyList<BlockRequestResult> branch4 =
                 await ProduceBranch(rpc, chain.BlockTree, 3, branch3[4].BlockHash, false, 4);
-            branch3.Last().Number.Should().Be(1 + 7 + 4 + 3);
+            branch3.Last().BlockNumber.Should().Be(1 + 7 + 4 + 3);
 
             await CanAssembleOnAnyBlock(branch1, branch2, branch3, branch4);
         }
@@ -623,7 +623,7 @@ namespace Nethermind.Merge.Plugin.Test
                 newBlockRequest.GasUsed = GasCostOf.Transaction * count;
                 newBlockRequest.StateRoot =
                     new Keccak("0x3d2e3ced6da0d1e94e65894dc091190480f045647610ef614e1cab4241ca66e0");
-                newBlockRequest.ReceiptsRoot =
+                newBlockRequest.ReceiptRoot =
                     new Keccak("0xc538d36ed1acf6c28187110a2de3e5df707d6d38982f436eb0db7a623f9dc2cd");
                 TryCalculateHash(newBlockRequest, out Keccak? hash);
                 newBlockRequest.BlockHash = hash;
@@ -671,7 +671,7 @@ namespace Nethermind.Merge.Plugin.Test
                 newBlockRequest.GasUsed = GasCostOf.Transaction * count;
                 newBlockRequest.StateRoot =
                     new Keccak("0x3d2e3ced6da0d1e94e65894dc091190480f045647610ef614e1cab4241ca66e0");
-                newBlockRequest.ReceiptsRoot =
+                newBlockRequest.ReceiptRoot =
                     new Keccak("0xc538d36ed1acf6c28187110a2de3e5df707d6d38982f436eb0db7a623f9dc2cd");
                 TryCalculateHash(newBlockRequest, out var hash);
                 newBlockRequest.BlockHash = hash;
@@ -800,7 +800,7 @@ namespace Nethermind.Merge.Plugin.Test
             if (head == null) throw new NotSupportedException();
             return new BlockRequestResult(true)
             {
-                Number = 0, BlockHash = head.Hash!, StateRoot = head.StateRoot!, ReceiptsRoot = head.ReceiptsRoot!
+                BlockNumber = 0, BlockHash = head.Hash!, StateRoot = head.StateRoot!, ReceiptRoot = head.ReceiptsRoot!
             };
         }
 
@@ -811,10 +811,10 @@ namespace Nethermind.Merge.Plugin.Test
                 ParentHash = parent.BlockHash,
                 Coinbase = miner,
                 StateRoot = parent.StateRoot,
-                Number = parent.Number + 1,
+                BlockNumber = parent.BlockNumber + 1,
                 GasLimit = 1_000_000,
                 GasUsed = 0,
-                ReceiptsRoot = Keccak.EmptyTreeHash,
+                ReceiptRoot = Keccak.EmptyTreeHash,
                 LogsBloom = Bloom.Empty
             };
 

@@ -57,10 +57,10 @@ namespace Nethermind.Merge.Plugin.Data
             ParentHash = block.ParentHash;
             Coinbase = block.Beneficiary;
             StateRoot = block.StateRoot;
-            Number = block.Number;
+            BlockNumber = block.Number;
             GasLimit = block.GasLimit;
             GasUsed = block.GasUsed;
-            ReceiptsRoot = block.ReceiptsRoot;
+            ReceiptRoot = block.ReceiptsRoot;
             LogsBloom = block.Bloom;
             Random = random;
             SetTransactions(block.Transactions);
@@ -77,14 +77,15 @@ namespace Nethermind.Merge.Plugin.Data
         {
             try
             {
-                BlockHeader header = new(ParentHash, Keccak.OfAnEmptySequenceRlp, Coinbase, Difficulty, Number, GasLimit, Timestamp, ExtraData)
+                BlockHeader header = new(ParentHash, Keccak.OfAnEmptySequenceRlp, Coinbase, Difficulty, BlockNumber, GasLimit, Timestamp, ExtraData)
                 {
                     Hash = BlockHash,
-                    ReceiptsRoot = ReceiptsRoot,
+                    ReceiptsRoot = ReceiptRoot,
                     StateRoot = StateRoot,
                     MixHash = MixHash,
                     Bloom = LogsBloom,
-                    GasUsed = GasUsed
+                    GasUsed = GasUsed,
+                    BaseFeePerGas = BaseFeePerGas
                 };
                 Transaction[] transactions = GetTransactions();
                 header.TxRoot = new TxTrie(transactions).RootHash;
@@ -117,9 +118,9 @@ namespace Nethermind.Merge.Plugin.Data
         public ulong Nonce { get; set; }
         public bool ShouldSerializeNonce() => false;
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
-        public long Number { get; set; }
+        public long BlockNumber { get; set; }
         public Keccak ParentHash { get; set; } = null!;
-        public Keccak ReceiptsRoot { get; set; } = null!;
+        public Keccak ReceiptRoot { get; set; } = null!;
         public Keccak StateRoot { get; set; } = null!;
         public byte[][] Transactions { get; set; } = Array.Empty<byte[]>();
         public IEnumerable<Keccak>? Uncles { get; set; }
@@ -128,7 +129,7 @@ namespace Nethermind.Merge.Plugin.Data
 
         public UInt256 BaseFeePerGas { get; set; }
         
-        public override string ToString() => BlockHash == null ? $"{Number} null" : $"{Number} ({BlockHash})";
+        public override string ToString() => BlockHash == null ? $"{BlockNumber} null" : $"{BlockNumber} ({BlockHash})";
 
         public void SetTransactions(params Transaction[] transactions)
         {
