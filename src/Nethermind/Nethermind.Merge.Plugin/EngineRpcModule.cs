@@ -34,8 +34,8 @@ namespace Nethermind.Merge.Plugin
         private readonly IHandlerAsync<PreparePayloadRequest, PreparePayloadResult> _preparePayloadHandler;
         private readonly IHandler<ulong, BlockRequestResult?> _getPayloadHandler;
         private readonly IHandler<BlockRequestResult, ExecutePayloadResult> _executePayloadHandler;
-        private readonly IHandler<ConsensusValidatedRequest, Result> _consensusValidatedHandler;
-        private readonly IHandler<ForkChoiceUpdatedRequest, Result> _forkChoiceUpdateHandler;
+        private readonly IHandler<ConsensusValidatedRequest, string> _consensusValidatedHandler;
+        private readonly IHandler<ForkChoiceUpdatedRequest, string> _forkChoiceUpdateHandler;
         private readonly IHandler<ExecutionStatusResult> _executionStatusHandler;
         private readonly ITransitionProcessHandler _transitionProcessHandler;
         private readonly SemaphoreSlim _locker = new(1, 1);
@@ -46,9 +46,9 @@ namespace Nethermind.Merge.Plugin
             PreparePayloadHandler preparePayloadHandler,
             IHandler<ulong, BlockRequestResult?> getPayloadHandler,
             IHandler<BlockRequestResult, ExecutePayloadResult> executePayloadHandler,
-            IHandler<ConsensusValidatedRequest, Result> consensusValidatedHandler,
+            IHandler<ConsensusValidatedRequest, string> consensusValidatedHandler,
             ITransitionProcessHandler transitionProcessHandler,
-            IHandler<ForkChoiceUpdatedRequest, Result> forkChoiceUpdateHandler,
+            IHandler<ForkChoiceUpdatedRequest, string> forkChoiceUpdateHandler,
             IHandler<ExecutionStatusResult> executionStatusHandler,
             ILogManager logManager)
         {
@@ -88,11 +88,11 @@ namespace Nethermind.Merge.Plugin
             else
             {
                 if (_logger.IsWarn) _logger.Warn($"{nameof(engine_executePayload)} timeout.");
-                return ResultWrapper<ExecutePayloadResult>.Success(new ExecutePayloadResult() {BlockHash = executionPayload.BlockHash, Status = VerificationStatus.Invalid});
+                return ResultWrapper<ExecutePayloadResult>.Success(new ExecutePayloadResult() {BlockHash = executionPayload.BlockHash, EnumStatus = VerificationStatus.Invalid});
             }
         }
 
-        public async Task<ResultWrapper<Result>> engine_consensusValidated(ConsensusValidatedRequest consensusValidatedRequest)
+        public async Task<ResultWrapper<string>> engine_consensusValidated(ConsensusValidatedRequest consensusValidatedRequest)
         {
             if (await _locker.WaitAsync(Timeout))
             {
@@ -108,11 +108,11 @@ namespace Nethermind.Merge.Plugin
             else
             {
                 if (_logger.IsWarn) _logger.Warn($"{nameof(engine_consensusStatus)} timeout.");
-                return ResultWrapper<Result>.Success(Result.Fail);
+                return ResultWrapper<string>.Fail($"{nameof(engine_consensusStatus)} timeout.", ErrorCodes.Timeout);
             }
         }
 
-        public async Task<ResultWrapper<Result>> engine_forkchoiceUpdated(ForkChoiceUpdatedRequest forkChoiceUpdatedRequest)
+        public async Task<ResultWrapper<string>> engine_forkchoiceUpdated(ForkChoiceUpdatedRequest forkChoiceUpdatedRequest)
         {
             if (await _locker.WaitAsync(Timeout))
             {
@@ -128,7 +128,7 @@ namespace Nethermind.Merge.Plugin
             else
             {
                 if (_logger.IsWarn) _logger.Warn($"{nameof(engine_forkchoiceUpdated)} timeout.");
-                return ResultWrapper<Result>.Success(Result.Fail);
+                return ResultWrapper<string>.Fail($"{nameof(engine_forkchoiceUpdated)} timeout.", ErrorCodes.Timeout);
             }
         }
 

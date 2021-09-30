@@ -82,6 +82,10 @@
     "Hive": {
       "commandName": "Project",
       "commandLineArgs": "--config configs\\hive.cfg --Init.DiagnosticMode MemDb"
+    },
+    "TheMergeDevnet": {
+      "commandName": "Project",
+      "commandLineArgs": "--config configs\\themerge_devnet.cfg --Init.DiagnosticMode MemDb"
     }
   }
 }

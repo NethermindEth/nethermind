@@ -55,13 +55,13 @@ namespace Nethermind.Merge.Plugin
                 "Communicates that full consensus validation of an execution payload is complete along with its corresponding status.",
             IsSharable = true,
             IsImplemented = true)]
-        Task<ResultWrapper<Result>> engine_consensusValidated(ConsensusValidatedRequest consensusValidatedRequest);
+        Task<ResultWrapper<string>> engine_consensusValidated(ConsensusValidatedRequest consensusValidatedRequest);
         
         [JsonRpcMethod(
             Description = "Propagates the change in the fork choice to the execution client.",
             IsSharable = true,
             IsImplemented = true)]
-        Task<ResultWrapper<Result>> engine_forkchoiceUpdated(ForkChoiceUpdatedRequest forkChoiceUpdatedRequest);
+        Task<ResultWrapper<string>> engine_forkchoiceUpdated(ForkChoiceUpdatedRequest forkChoiceUpdatedRequest);
 
         [JsonRpcMethod(
             Description = "Propagates an override of the TERMINAL_TOTAL_DIFFICULTY to the execution client.",

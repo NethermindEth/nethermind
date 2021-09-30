@@ -33,8 +33,8 @@ namespace Nethermind.Merge.Plugin.Data
         public PayloadManager(IBlockTree blockTree)
         {
             _blockTree = blockTree;
-            _executePayloadHashes = new LruCache<Keccak, bool>(50, "Recent Execute Payload Hashes");
-            _consensusValidatedResults = new LruCache<Keccak, bool>(50, "Recent Consensus Validated Results");
+            _executePayloadHashes = new LruCache<Keccak, bool>(300, "Recent Execute Payload Hashes");
+            _consensusValidatedResults = new LruCache<Keccak, bool>(300, "Recent Consensus Validated Results");
             _pendingValidPayloads = new ConcurrentDictionary<Keccak, Block>();
         }
 

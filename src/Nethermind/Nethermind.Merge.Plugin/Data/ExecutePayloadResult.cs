@@ -16,6 +16,7 @@
 // 
 
 using Nethermind.Core.Crypto;
+using Newtonsoft.Json;
 
 namespace Nethermind.Merge.Plugin.Data
 {
@@ -23,6 +24,9 @@ namespace Nethermind.Merge.Plugin.Data
     {
         public Keccak BlockHash { get; set; }
 
-        public VerificationStatus Status { get; set; } 
+        public string Status => nameof(EnumStatus);
+
+        [JsonIgnore]
+        public VerificationStatus EnumStatus { get; set; } 
     }
 }

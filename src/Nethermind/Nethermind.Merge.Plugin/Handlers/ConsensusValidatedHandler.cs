@@ -20,7 +20,7 @@ using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.Merge.Plugin.Handlers
 {
-    public class ConsensusValidatedHandler : IHandler<ConsensusValidatedRequest, Result>
+    public class ConsensusValidatedHandler : IHandler<ConsensusValidatedRequest, string>
     {
         private readonly PayloadManager _payloadManager;
 
@@ -29,11 +29,11 @@ namespace Nethermind.Merge.Plugin.Handlers
             _payloadManager = payloadManager;
         }
 
-        public ResultWrapper<Result> Handle(ConsensusValidatedRequest request)
+        public ResultWrapper<string> Handle(ConsensusValidatedRequest request)
         {
             if (!_payloadManager.CheckIfExecutePayloadIsFinished(request.BlockHash, out var executePayloadIsFinished))
             {
-                return ResultWrapper<Result>.Fail($"Unknown blockHash: {request.BlockHash}", MergeErrorCodes.UnknownHeader);
+                return ResultWrapper<string>.Fail($"Unknown blockHash: {request.BlockHash}", MergeErrorCodes.UnknownHeader);
             }
             
             bool isValid = (request.Status & ConsensusValidationStatus.Valid) != 0;
@@ -47,7 +47,7 @@ namespace Nethermind.Merge.Plugin.Handlers
                 _payloadManager.TryAddConsensusValidatedResult(request.BlockHash, isValid);
             }
             
-            return ResultWrapper<Result>.Success(Result.Ok);
+            return ResultWrapper<string>.Success(null);
         }
     }
 }

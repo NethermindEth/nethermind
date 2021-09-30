@@ -30,7 +30,7 @@ using Result = Nethermind.Merge.Plugin.Data.Result;
 
 namespace Nethermind.Merge.Plugin.Handlers
 {
-    public class ForkChoiceUpdatedHandler : IHandler<ForkChoiceUpdatedRequest, Result>
+    public class ForkChoiceUpdatedHandler : IHandler<ForkChoiceUpdatedRequest, string>
     {
         private readonly IBlockTree _blockTree;
         private readonly IStateProvider _stateProvider;
@@ -55,19 +55,19 @@ namespace Nethermind.Merge.Plugin.Handlers
             _logger = logManager.GetClassLogger();
         }
 
-        public ResultWrapper<Result> Handle(ForkChoiceUpdatedRequest request)
+        public ResultWrapper<string> Handle(ForkChoiceUpdatedRequest request)
         {
             (BlockHeader? finalizedHeader, string? finalizationErrorMsg) = EnsureHeaderForFinalization(request.FinalizedBlockHash);
             if (finalizationErrorMsg != null)
-                return ResultWrapper<Result>.Fail(finalizationErrorMsg, MergeErrorCodes.UnknownHeader);
+                return ResultWrapper<string>.Fail(finalizationErrorMsg, MergeErrorCodes.UnknownHeader);
             
             // (BlockHeader? confirmedHeader, string? confirmationErrorMsg) = EnsureHeaderForConfirmation(request.ConfirmedBlockHash);
             // if (confirmationErrorMsg != null)
-            //     return ResultWrapper<Result>.Fail(confirmationErrorMsg, MergeErrorCodes.UnknownHeader);
+            //     return ResultWrapper<string>.Fail(confirmationErrorMsg, MergeErrorCodes.UnknownHeader);
             
             (Block? newHeadBlock, Block[]? blocks, string? setHeadErrorMsg) = EnsureBlocksForSetHead(request.HeadBlockHash);
             if (setHeadErrorMsg != null)
-                return ResultWrapper<Result>.Fail(setHeadErrorMsg, MergeErrorCodes.UnknownHeader);
+                return ResultWrapper<string>.Fail(setHeadErrorMsg, MergeErrorCodes.UnknownHeader);
  
             if (ShouldFinalize(request.FinalizedBlockHash))
                 _manualBlockFinalizationManager.MarkFinalized(newHeadBlock!.Header, finalizedHeader!);
@@ -88,7 +88,7 @@ namespace Nethermind.Merge.Plugin.Handlers
                 if (_logger.IsWarn) _logger.Warn($"Block {request.FinalizedBlockHash} was not set as head.");
             }
 
-            return ResultWrapper<Result>.Success(Result.Ok);
+            return ResultWrapper<string>.Success(null);
         }
 
         private (BlockHeader? BlockHeader, string? ErrorMsg) EnsureHeaderForConfirmation(Keccak confirmedBlockHash)

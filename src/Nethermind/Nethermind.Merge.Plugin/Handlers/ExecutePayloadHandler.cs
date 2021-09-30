@@ -85,13 +85,13 @@ namespace Nethermind.Merge.Plugin.Handlers
             {
                 _payloadManager.MarkPayloadValidationAsFinished(request.BlockHash);
                 bool isValid = (result & ValidationResult.Valid) != 0;
-                executePayloadResult.Status = isValid ? VerificationStatus.Valid : VerificationStatus.Invalid;
+                executePayloadResult.EnumStatus = isValid ? VerificationStatus.Valid : VerificationStatus.Invalid;
                 return ResultWrapper<ExecutePayloadResult>.Success(executePayloadResult);
             }
             else if (processedBlock == null)
             {
                 _payloadManager.MarkPayloadValidationAsFinished(request.BlockHash);
-                executePayloadResult.Status = VerificationStatus.Invalid;
+                executePayloadResult.EnumStatus = VerificationStatus.Invalid;
                 return ResultWrapper<ExecutePayloadResult>.Success(executePayloadResult);
             }
             
@@ -105,7 +105,7 @@ namespace Nethermind.Merge.Plugin.Handlers
                 _payloadManager.ProcessValidatedPayload(processedBlock);
             }
             
-            executePayloadResult.Status = VerificationStatus.Valid;
+            executePayloadResult.EnumStatus = VerificationStatus.Valid;
             return ResultWrapper<ExecutePayloadResult>.Success(executePayloadResult);
         }
 
