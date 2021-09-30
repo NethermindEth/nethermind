@@ -738,6 +738,30 @@ namespace Nethermind.Merge.Plugin.Test
             chain.StateReader.GetBalance(assembleBlockResult.StateRoot, recipient).Should().Be(totalValue);
         }
 
+        [Test]
+        public async Task blockRequestResult_set_and_get_transactions_roundtrip()
+        {
+            using MergeTestBlockchain chain = await CreateBlockChain();
+            Keccak startingHead = chain.BlockTree.HeadHash;
+            uint count = 3;
+            int value = 10;
+            Address recipient = TestItem.AddressD;
+            PrivateKey sender = TestItem.PrivateKeyB;
+            
+            Transaction[] txsSource = BuildTransactions(chain, startingHead, sender, recipient, count, value, out _, out _);
+            
+            BlockRequestResult blockRequestResult = new();
+            blockRequestResult.SetTransactions(txsSource);
+
+            Transaction[] txsReceived = blockRequestResult.GetTransactions();
+
+            txsReceived.Should().BeEquivalentTo(txsSource, options => options
+                .Excluding(t => t.ChainId)
+                .Excluding(t => t.SenderAddress)
+                .Excluding(t => t.Timestamp)
+            );
+        }
+
         private (UInt256, UInt256) AddTransactions(MergeTestBlockchain chain, BlockRequestResult newBlockRequest,
             PrivateKey from, Address to, uint count, int value, out BlockHeader parentHeader)
         {
