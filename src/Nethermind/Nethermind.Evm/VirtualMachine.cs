@@ -487,12 +487,6 @@ namespace Nethermind.Evm
             return result;
         }
 
-        private enum StorageAccessType
-        {
-            SLOAD,
-            SSTORE
-        }
-        
         private bool ChargeStorageAccessGas(
             ref long gasAvailable,
             EvmState vmState,
@@ -2879,64 +2873,6 @@ namespace Nethermind.Evm
             }
 
             return executionType;
-        }
-
-        internal readonly ref struct CallResult
-        {
-            public static CallResult InvalidSubroutineEntry => new(EvmExceptionType.InvalidSubroutineEntry);
-            public static CallResult InvalidSubroutineReturn => new(EvmExceptionType.InvalidSubroutineReturn);
-            public static CallResult OutOfGasException => new(EvmExceptionType.OutOfGas);
-            public static CallResult AccessViolationException => new(EvmExceptionType.AccessViolation);
-            public static CallResult InvalidJumpDestination => new(EvmExceptionType.InvalidJumpDestination);
-            public static CallResult InvalidInstructionException
-            {
-                get
-                {
-                    return new(EvmExceptionType.BadInstruction);
-                }
-            }
-
-            public static CallResult StaticCallViolationException => new(EvmExceptionType.StaticCallViolation);
-            public static CallResult StackOverflowException => new(EvmExceptionType.StackOverflow); // TODO: use these to avoid CALL POP attacks
-            public static CallResult StackUnderflowException => new(EvmExceptionType.StackUnderflow); // TODO: use these to avoid CALL POP attacks
-            
-            public static CallResult InvalidCodeException => new(EvmExceptionType.InvalidCode); 
-            public static CallResult Empty => new(Array.Empty<byte>(), null);
-
-            public CallResult(EvmState stateToExecute)
-            {
-                StateToExecute = stateToExecute;
-                Output = Array.Empty<byte>();
-                PrecompileSuccess = null;
-                ShouldRevert = false;
-                ExceptionType = EvmExceptionType.None;
-            }
-
-            private CallResult(EvmExceptionType exceptionType)
-            {
-                StateToExecute = null;
-                Output = StatusCode.FailureBytes;
-                PrecompileSuccess = null;
-                ShouldRevert = false;
-                ExceptionType = exceptionType;
-            }
-
-            public CallResult(byte[] output, bool? precompileSuccess, bool shouldRevert = false, EvmExceptionType exceptionType = EvmExceptionType.None)
-            {
-                StateToExecute = null;
-                Output = output;
-                PrecompileSuccess = precompileSuccess;
-                ShouldRevert = shouldRevert;
-                ExceptionType = exceptionType;
-            }
-
-            public EvmState? StateToExecute { get; }
-            public byte[] Output { get; }
-            public EvmExceptionType ExceptionType { get; }
-            public bool ShouldRevert { get; }
-            public bool? PrecompileSuccess { get; } // TODO: check this behaviour as it seems it is required and previously that was not the case
-            public bool IsReturn => StateToExecute == null;
-            public bool IsException => ExceptionType != EvmExceptionType.None;
         }
     }
 }
