@@ -24,11 +24,9 @@ namespace Nethermind.Blockchain
     {
         public Keccak LastConfirmedHash { get; private set; } = Keccak.Zero;
 
-        public void Confirm(BlockHeader? blockHeader)
+        public void Confirm(Keccak blockHash)
         {
-            if (blockHeader?.Hash != null)
-                LastConfirmedHash = blockHeader.Hash;
+            LastConfirmedHash = blockHash;
         }
     }
 }
-  

@@ -72,7 +72,6 @@ namespace Nethermind.Merge.Plugin.Handlers
 
         public void CleanupOldPayloads()
         {
-            
         }
     }
 }

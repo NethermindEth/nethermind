@@ -57,7 +57,7 @@ namespace Nethermind.Merge.Plugin
             return VerifyPoS(header, false);
         }
 
-        public bool WasEverInPoS()
+        public bool HasEverBeenInPos()
         {
             return _firstPoSBlockHeader != null;
         }

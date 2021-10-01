@@ -40,13 +40,14 @@ namespace Nethermind.Blockchain.Validators
         private readonly ILogger _logger;
         private readonly IBlockTree _blockTree;
 
-        public HeaderValidator(IBlockTree? blockTree, ISealValidator? sealValidator, ISpecProvider? specProvider, IPoSSwitcher poSSwitcher, ILogManager? logManager)
+        public HeaderValidator(IBlockTree? blockTree, ISealValidator? sealValidator, ISpecProvider? specProvider,
+            IPoSSwitcher poSSwitcher, ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _sealValidator = sealValidator ?? throw new ArgumentNullException(nameof(sealValidator));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));;
+            _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
             _daoBlockNumber = specProvider.DaoBlockNumber;
         }
 
@@ -97,7 +98,8 @@ namespace Nethermind.Blockchain.Validators
                     return isGenesisValid;
                 }
 
-                if (_logger.IsDebug) _logger.Debug($"Orphan block, could not find parent ({header.ParentHash}) of ({header.Hash})");
+                if (_logger.IsDebug)
+                    _logger.Debug($"Orphan block, could not find parent ({header.ParentHash}) of ({header.Hash})");
                 return false;
             }
 
@@ -112,15 +114,11 @@ namespace Nethermind.Blockchain.Validators
             }
 
             // seal is validated when synchronizing so we can remove it from here - review and test
-            bool sealParamsCorrect = true;
-            if (_poSSwitcher.IsPos(header) == false)
+            bool sealParamsCorrect = _sealValidator.ValidateParams(parent, header);
+            if (!sealParamsCorrect)
             {
-                sealParamsCorrect = _sealValidator.ValidateParams(parent, header);
-                if (!sealParamsCorrect)
-                {
-                    if (_logger.IsWarn)
-                        _logger.Warn($"Invalid block header ({header.Hash}) - seal parameters incorrect");
-                }
+                if (_logger.IsWarn)
+                    _logger.Warn($"Invalid block header ({header.Hash}) - seal parameters incorrect");
             }
 
             bool gasUsedBelowLimit = header.GasUsed <= header.GasLimit;
@@ -132,7 +130,7 @@ namespace Nethermind.Blockchain.Validators
             bool gasLimitInRange = ValidateGasLimitRange(header, parent, spec);
 
             // bool gasLimitAboveAbsoluteMinimum = header.GasLimit >= 125000; // described in the YellowPaper but not followed
-            
+
             bool timestampMoreThanAtParent = header.Timestamp > parent.Timestamp;
             if (!timestampMoreThanAtParent)
             {
@@ -142,10 +140,13 @@ namespace Nethermind.Blockchain.Validators
             bool numberIsParentPlusOne = header.Number == parent.Number + 1;
             if (!numberIsParentPlusOne)
             {
-                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - block number is not parent + 1");
+                if (_logger.IsWarn)
+                    _logger.Warn($"Invalid block header ({header.Hash}) - block number is not parent + 1");
             }
 
-            if (_logger.IsTrace) _logger.Trace($"Validating block {header.ToString(BlockHeader.Format.Short)}, extraData {header.ExtraData.ToHexString(true)}");
+            if (_logger.IsTrace)
+                _logger.Trace(
+                    $"Validating block {header.ToString(BlockHeader.Format.Short)}, extraData {header.ExtraData.ToHexString(true)}");
 
             bool eip1559Valid = Validate1559Checks(header, parent, spec);
             bool theMergeValid = ValidateTheMergeChecks(header);
@@ -156,7 +157,7 @@ namespace Nethermind.Blockchain.Validators
                 gasLimitInRange &&
                 sealParamsCorrect &&
                 // gasLimitAboveAbsoluteMinimum && // described in the YellowPaper but not followed
-               // timestampMoreThanAtParent &&  // temporary commented for merge - interop. It shouldn't be merged to master
+                // timestampMoreThanAtParent &&  // temporary commented for merge - interop. It shouldn't be merged to master
                 numberIsParentPlusOne &&
                 hashAsExpected &&
                 extraDataValid &&
@@ -185,13 +186,14 @@ namespace Nethermind.Blockchain.Validators
                 gasLimitNotTooHigh = header.GasLimit < maxNextGasLimit;
             }
 
-            
+
             if (!gasLimitNotTooHigh)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - gas limit too high");
             }
 
-            bool gasLimitNotTooLow = header.GasLimit > adjustedParentGasLimit - maxGasLimitDifference && header.GasLimit >= spec.MinGasLimit;
+            bool gasLimitNotTooLow = header.GasLimit > adjustedParentGasLimit - maxGasLimitDifference &&
+                                     header.GasLimit >= spec.MinGasLimit;
             if (!gasLimitNotTooLow)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - gas limit too low");
@@ -226,10 +228,11 @@ namespace Nethermind.Blockchain.Validators
         private bool Validate1559Checks(BlockHeader header, BlockHeader parent, IReleaseSpec spec)
         {
             if (spec.IsEip1559Enabled == false)
-                return true; 
-            
+                return true;
+
             UInt256? expectedBaseFee = BaseFeeCalculator.Calculate(parent, spec);
-            bool isBaseFeeCorrect = ValidateHeaderField(header, header.BaseFeePerGas, expectedBaseFee, nameof(header.BaseFeePerGas));
+            bool isBaseFeeCorrect = ValidateHeaderField(header, header.BaseFeePerGas, expectedBaseFee,
+                nameof(header.BaseFeePerGas));
             return isBaseFeeCorrect;
         }
 
@@ -237,37 +240,38 @@ namespace Nethermind.Blockchain.Validators
         {
             if (_poSSwitcher.IsPos(header) == false)
                 return true;
-            
-            bool validDifficulty = ValidateHeaderField(header, header.Difficulty, UInt256.Zero, nameof(header.Difficulty));
+
+            bool validDifficulty =
+                ValidateHeaderField(header, header.Difficulty, UInt256.Zero, nameof(header.Difficulty));
             bool validNonce = ValidateHeaderField(header, header.Nonce, 0ul, nameof(header.Nonce));
             // validExtraData needed in previous version of EIP-3675 specification
             //bool validExtraData = ValidateHeaderField<byte>(header, header.ExtraData, Array.Empty<byte>(), nameof(header.ExtraData));
             bool validMixHash = ValidateHeaderField(header, header.MixHash, Keccak.Zero, nameof(header.MixHash));
-            bool validUncles = ValidateHeaderField(header, header.UnclesHash, Keccak.OfAnEmptySequenceRlp, nameof(header.UnclesHash));
-            
+            bool validUncles = ValidateHeaderField(header, header.UnclesHash, Keccak.OfAnEmptySequenceRlp,
+                nameof(header.UnclesHash));
+
             return validDifficulty
                    && validNonce
                    //&& validExtraData
                    && validMixHash
                    && validUncles;
-
         }
+
         private bool ValidateHeaderField<T>(BlockHeader header, T value, T expected, string name)
         {
             if (Equals(value, expected)) return true;
-            if (_logger.IsWarn) _logger.Warn($"Invalid block header {header.ToString(BlockHeader.Format.Short)} - the {name} is incorrect expected {expected}, got {value} .");
+            if (_logger.IsWarn)
+                _logger.Warn(
+                    $"Invalid block header {header.ToString(BlockHeader.Format.Short)} - the {name} is incorrect expected {expected}, got {value} .");
             return false;
-
         }
-        
-        private bool ValidateHeaderField<T>(BlockHeader request, IEnumerable<T>? value, IEnumerable<T> expected, string name)
+
+        private bool ValidateHeaderField<T>(BlockHeader request, IEnumerable<T>? value, IEnumerable<T> expected,
+            string name)
         {
             if ((value ?? Array.Empty<T>()).SequenceEqual(expected)) return true;
             if (_logger.IsWarn) _logger.Warn($"Block {request} has invalid {name}, expected {expected}, got {value} .");
             return false;
-
         }
     }
-    
-    
 }

@@ -107,12 +107,12 @@ namespace Nethermind.Merge.Plugin.Test
             PoSSwitcher poSSwitcher = new(NUnitLogManager.Instance);
             poSSwitcher.SetTerminalTotalDifficulty(200L);
 
-            Assert.AreEqual(false, poSSwitcher.WasEverInPoS());
+            Assert.AreEqual(false, poSSwitcher.HasEverBeenInPos());
 
             BlockHeader blockHeader = Build.A.BlockHeader.WithTotalDifficulty(300L).TestObject;
             poSSwitcher.TrySwitchToPos(blockHeader);
 
-            Assert.AreEqual(true, poSSwitcher.WasEverInPoS());
+            Assert.AreEqual(true, poSSwitcher.HasEverBeenInPos());
         }
     }
 }

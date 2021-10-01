@@ -31,6 +31,6 @@ namespace Nethermind.Consensus
         
         public bool IsPos(BlockHeader header) => false;
         
-        public bool WasEverInPoS() => false;
+        public bool HasEverBeenInPos() => false;
     }
 }

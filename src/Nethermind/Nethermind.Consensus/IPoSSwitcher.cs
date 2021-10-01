@@ -26,6 +26,6 @@ namespace Nethermind.Consensus
         bool TrySwitchToPos(BlockHeader header);
         bool IsPos(BlockHeader header);
 
-        bool WasEverInPoS();
+        bool HasEverBeenInPos();
     }
 }

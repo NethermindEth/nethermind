@@ -24,7 +24,7 @@ namespace Nethermind.Blockchain
     {
         Keccak LastConfirmedHash { get; }
 
-        void Confirm(BlockHeader? blockHeader);
+        void Confirm(Keccak blockHash);
     }
     
     public class NoBlockConfirmation : IBlockConfirmationManager
@@ -34,6 +34,6 @@ namespace Nethermind.Blockchain
         public static NoBlockConfirmation Instance { get; } = new();
         
         public Keccak LastConfirmedHash { get; } = Keccak.Zero;
-        public void Confirm(BlockHeader? blockHeader) { }
+        public void Confirm(Keccak blockHash) { }
     }
 }

@@ -385,7 +385,7 @@ namespace Nethermind.Merge.Plugin.Test
             using MergeTestBlockchain chain = await CreateBlockChain();
             IEngineRpcModule rpc = CreateEngineModule(chain);
             BlockRequestResult blockRequestResult = await SendNewBlock(rpc, chain);
-            Assert.False(chain.PoSSwitcher.WasEverInPoS());
+            Assert.False(chain.PoSSwitcher.HasEverBeenInPos());
 
             rpc.engine_terminalTotalDifficultyUpdated((UInt256)1000000);
             Keccak newHeadHash = blockRequestResult.BlockHash;
@@ -394,7 +394,7 @@ namespace Nethermind.Merge.Plugin.Test
                 await rpc.engine_forkchoiceUpdated(forkChoiceUpdatedRequest);
             resultWrapper.Data.Should().Be(null);
             AssertExecutionStatusChanged(rpc, newHeadHash, newHeadHash /*, newHeadHash*/);
-            Assert.True(chain.PoSSwitcher.WasEverInPoS());
+            Assert.True(chain.PoSSwitcher.HasEverBeenInPos());
         }
 
         [Test]
@@ -403,14 +403,14 @@ namespace Nethermind.Merge.Plugin.Test
             using MergeTestBlockchain chain = await CreateBlockChain();
             IEngineRpcModule rpc = CreateEngineModule(chain);
             BlockRequestResult blockRequestResult = await SendNewBlock(rpc, chain);
-            Assert.False(chain.PoSSwitcher.WasEverInPoS());
+            Assert.False(chain.PoSSwitcher.HasEverBeenInPos());
             Keccak newHeadHash = blockRequestResult.BlockHash;
             ForkChoiceUpdatedRequest forkChoiceUpdatedRequest = new(newHeadHash, newHeadHash /*, newHeadHash*/);
             ResultWrapper<string> resultWrapper =
                 await rpc.engine_forkchoiceUpdated(forkChoiceUpdatedRequest);
             resultWrapper.Data.Should().Be(null);
             AssertExecutionStatusChanged(rpc, newHeadHash, newHeadHash /*, newHeadHash*/);
-            Assert.False(chain.PoSSwitcher.WasEverInPoS());
+            Assert.False(chain.PoSSwitcher.HasEverBeenInPos());
         }
 
         [Test]
@@ -427,7 +427,7 @@ namespace Nethermind.Merge.Plugin.Test
                 await rpc.engine_forkchoiceUpdated(forkChoiceUpdatedRequest);
             resultWrapper.Data.Should().Be(null);
             AssertExecutionStatusChanged(rpc, newHeadHash, newHeadHash /*, newHeadHash*/);
-            Assert.True(chain.PoSSwitcher.WasEverInPoS());
+            Assert.True(chain.PoSSwitcher.HasEverBeenInPos());
         }
 
         [Test]
