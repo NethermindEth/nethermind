@@ -120,7 +120,8 @@ namespace Nethermind.Blockchain.Test
             Block block1 = Build.A.Block.WithParent(block0).WithDifficulty(1).WithTotalDifficulty(1L).TestObject;
             Block block2 = Build.A.Block.WithParent(block1).WithDifficulty(2).WithTotalDifficulty(3L).TestObject;
             Block block3 = Build.A.Block.WithParent(block2).WithDifficulty(3).WithTotalDifficulty(6L).TestObject;
-            Block block1B = Build.A.Block.WithParent(block0).WithDifficulty(10).WithTotalDifficulty(10L).TestObject;
+            Block block1B = Build.A.Block.WithParent(block0).WithDifficulty(5).WithTotalDifficulty(5L).TestObject;
+            Block block2B = Build.A.Block.WithParent(block1B).WithDifficulty(6).WithTotalDifficulty(11L).TestObject;
 
             _blockchainProcessor.Start();
             
@@ -129,9 +130,10 @@ namespace Nethermind.Blockchain.Test
             _blockTree.SuggestBlock(block2);
             _blockTree.SuggestBlock(block3);
             _blockTree.SuggestBlock(block1B);
+            _blockTree.SuggestBlock(block2B);
 
             Thread.Sleep(200);
-            _blockTree.Head.Should().Be(block1B);
+            _blockTree.Head.Should().Be(block2B);
         }
     }
 }
