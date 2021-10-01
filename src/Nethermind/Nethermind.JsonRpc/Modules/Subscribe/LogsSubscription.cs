@@ -85,17 +85,15 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         
         private void TryPublishReceiptsInBackground(BlockHeader blockHeader, Func<TxReceipt[]> getReceipts, string eventName)
         {
-            Task.Run(() => TryPublishEvent(blockHeader, getReceipts(), eventName))
-                .ContinueWith(t =>
-                        t.Exception?.Handle(ex =>
-                        {
-                            if (_logger.IsDebug) _logger.Debug($"Logs subscription {Id}: Failed Task.Run after {eventName} event.");
-                            return true;
-                        })
-                    , TaskContinuationOptions.OnlyOnFaulted
-                );
+            Task task = new (() => TryPublishEvent(blockHeader, getReceipts(), eventName));
+            ScheduleTask(task);
         }
 
+        protected override string GetErrorMsg()
+        {
+            return $"Logs subscription {Id} failed.";
+        }
+        
         private void TryPublishEvent(BlockHeader blockHeader, TxReceipt[] receipts, string eventName)
         {
             BlockHeader fromBlock = _blockTree.FindHeader(_filter.FromBlock);
@@ -154,6 +152,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         public override SubscriptionType Type => SubscriptionType.Logs;
         public override void Dispose()
         {
+            base.Dispose();
             _receiptStorage.ReceiptsInserted -= OnReceiptsInserted;
             _blockTree.NewHeadBlock -= OnNewHeadBlock;
             if(_logger.IsTrace) _logger.Trace($"Logs subscription {Id} will no longer track ReceiptsInserted.");
