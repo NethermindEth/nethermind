@@ -132,14 +132,16 @@ namespace Nethermind.Merge.Plugin
             }
         }
 
-        public void engine_terminalTotalDifficultyUpdated(UInt256 terminalTotalDifficulty)
+        public ResultWrapper<string> engine_terminalTotalDifficultyUpdated(UInt256 terminalTotalDifficulty)
         {
             _transitionProcessHandler.SetTerminalTotalDifficulty(terminalTotalDifficulty);
+            return ResultWrapper<string>.Success(null);
         }
 
-        public void engine_terminalPoWBlockOverride(Keccak blockHash)
+        public ResultWrapper<string> engine_terminalPoWBlockOverride(Keccak blockHash)
         {
             _transitionProcessHandler.SetTerminalPoWHash(blockHash);
+            return ResultWrapper<string>.Success(null);
         }
 
         public Task<ResultWrapper<Block?>> engine_getPowBlock(Keccak blockHash)
@@ -148,21 +150,21 @@ namespace Nethermind.Merge.Plugin
             throw new NotImplementedException();
         }
 
-        public Task engine_syncCheckpointSet(BlockRequestResult executionPayloadHeader)
+        public ResultWrapper<string> engine_syncCheckpointSet(BlockRequestResult executionPayloadHeader)
         {
-            return Task.CompletedTask;
+            return ResultWrapper<string>.Success(null);
         }
 
-        public Task engine_syncStatus(SyncStatus sync, Keccak blockHash, UInt256 blockNumber)
+        public ResultWrapper<string> engine_syncStatus(SyncStatus sync, Keccak blockHash, UInt256 blockNumber)
         {
-            return Task.CompletedTask;
+            return ResultWrapper<string>.Success(null);
         }
 
-        public Task engine_consensusStatus(UInt256 transitionTotalDifficulty, Keccak terminalPowBlockHash,
+        public ResultWrapper<string> engine_consensusStatus(UInt256 transitionTotalDifficulty, Keccak terminalPowBlockHash,
             Keccak finalizedBlockHash,
             Keccak confirmedBlockHash, Keccak headBlockHash)
         {
-            return Task.CompletedTask;
+            return ResultWrapper<string>.Success(null);
         }
 
         public ResultWrapper<ExecutionStatusResult> engine_executionStatus()

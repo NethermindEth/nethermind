@@ -67,13 +67,13 @@ namespace Nethermind.Merge.Plugin
             Description = "Propagates an override of the TERMINAL_TOTAL_DIFFICULTY to the execution client.",
             IsSharable = true,
             IsImplemented = true)]
-        void engine_terminalTotalDifficultyUpdated(UInt256 terminalTotalDifficulty);
+        ResultWrapper<string> engine_terminalTotalDifficultyUpdated(UInt256 terminalTotalDifficulty);
         
         [JsonRpcMethod(
             Description = "Propagates the hash of the terminal PoW block.",
             IsSharable = true,
             IsImplemented = true)]
-        void engine_terminalPoWBlockOverride(Keccak blockHash);
+        ResultWrapper<string> engine_terminalPoWBlockOverride(Keccak blockHash);
         
         [JsonRpcMethod(
             Description = "Given the hash returns the information of the PoW block.",
@@ -86,21 +86,21 @@ namespace Nethermind.Merge.Plugin
                 "Propagates the header of the payload obtained from the state at the weak subjectivity checkpoint.",
             IsSharable = true,
             IsImplemented = true)]
-        Task engine_syncCheckpointSet(BlockRequestResult executionPayloadHeader);
+        ResultWrapper<string> engine_syncCheckpointSet(BlockRequestResult executionPayloadHeader);
         
         [JsonRpcMethod(
             Description =
                 "An execution client responds with this status to any request of the consensus layer while sync is being in progress.",
             IsSharable = true,
             IsImplemented = true)]
-        Task engine_syncStatus(SyncStatus sync, Keccak blockHash, UInt256 blockNumber);
+        ResultWrapper<string> engine_syncStatus(SyncStatus sync, Keccak blockHash, UInt256 blockNumber);
         
         [JsonRpcMethod(
             Description =
                 "Sends information on the state of the client to the execution side.",
             IsSharable = true,
             IsImplemented = false)]
-        Task engine_consensusStatus(UInt256 transitionTotalDifficulty, Keccak terminalPowBlockHash,
+        ResultWrapper<string> engine_consensusStatus(UInt256 transitionTotalDifficulty, Keccak terminalPowBlockHash,
             Keccak finalizedBlockHash, Keccak confirmedBlockHash, Keccak headBlockHash);
 
         [JsonRpcMethod(
