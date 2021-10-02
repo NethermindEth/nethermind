@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -25,6 +25,7 @@ using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Precompiles.Bls.Shamatar;
@@ -1753,7 +1754,7 @@ namespace Nethermind.Evm
                         stack.PopUInt256(out UInt256 memPosition);
                         UpdateMemoryCost(in memPosition, 32);
                         Span<byte> memData = vmState.Memory.LoadSpan(in memPosition);
-                        if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long) memPosition, memData);
+                        if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange(memPosition, memData);
 
                         stack.PushBytes(memData);
                         break;
@@ -2496,8 +2497,8 @@ namespace Nethermind.Evm
                             if (_txTracer.IsTracingInstructions)
                             {
                                 // very specific for Parity trace, need to find generalization - very peculiar 32 length...
-                                ReadOnlyMemory<byte> memoryTrace = vmState.Memory.Load(in dataOffset, 32);
-                                _txTracer.ReportMemoryChange((long) dataOffset, memoryTrace.Span);
+                                ReadOnlyMemory<byte> memoryTrace = vmState.Memory.Inspect(in dataOffset, 32);
+                                _txTracer.ReportMemoryChange(dataOffset, memoryTrace.Span);
                             }
 
                             if (isTrace) _logger.Trace("FAIL - call depth");

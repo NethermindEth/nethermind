@@ -26,8 +26,8 @@ using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
-using Nethermind.Trie.Pruning;
 using Nethermind.Facade;
+using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.State;
@@ -73,7 +73,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Substitute.For<IBlockchainBridgeFactory>(),
                 Substitute.For<ISpecProvider>(),
                 Substitute.For<IReceiptStorage>(),
-                Substitute.For<IGasPriceOracle>()),				
+                Substitute.For<IGasPriceOracle>(),
+                Substitute.For<IEthSyncingInfo>()),		
                  1, 1000);
         }
 

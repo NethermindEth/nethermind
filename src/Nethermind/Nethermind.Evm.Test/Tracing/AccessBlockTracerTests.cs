@@ -24,7 +24,6 @@ using Nethermind.Core.Eip2930;
 using Nethermind.Evm.Tracing.Access;
 using Nethermind.Int256;
 using NUnit.Framework;
-using System.Collections.Generic;
 using Nethermind.Blockchain.Tracing;
 
 namespace Nethermind.Evm.Test.Tracing

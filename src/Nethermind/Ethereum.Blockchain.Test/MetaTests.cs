@@ -34,7 +34,8 @@ namespace Ethereum.Blockchain.Test
             "Specs",
             "runtimes",
             "ref",
-            "TestFiles"
+            "TestFiles",
+            "Blockhash"
         };
         
         [Test]

@@ -6,6 +6,11 @@
         <IsPackable>false</IsPackable>
     </PropertyGroup>
 
+    <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+      <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+      <WarningsAsErrors />
+    </PropertyGroup>
+
     <ItemGroup>
         <PackageReference Include="FluentAssertions" Version="5.10.3" />
         <PackageReference Include="NUnit" Version="3.13.2" />

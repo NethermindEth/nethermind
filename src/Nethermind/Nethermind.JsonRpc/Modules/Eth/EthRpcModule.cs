@@ -23,19 +23,23 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Facade;
+using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
+using Nethermind.Network.P2P;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Proofs;
+using Nethermind.Stats.Model;
 using Nethermind.Trie;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
@@ -52,6 +56,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly IJsonRpcConfig _rpcConfig;
         private readonly IBlockchainBridge _blockchainBridge;
         private readonly IBlockFinder _blockFinder;
+        private readonly IReceiptFinder _receiptFinder;
         private readonly IStateReader _stateReader;
         private readonly ITxPool _txPoolBridge;
         private readonly ITxSender _txSender;
@@ -59,6 +64,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly ISpecProvider _specProvider;
         private readonly ILogger _logger;
         private readonly IGasPriceOracle _gasPriceOracle;
+        private readonly IEthSyncingInfo _ethSyncingInfo;
+
         private readonly IFeeHistoryOracle _feeHistoryOracle;
         private static bool HasStateForBlock(IBlockchainBridge blockchainBridge, BlockHeader header)
         {
@@ -75,9 +82,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
             ITxPool txPool,
             ITxSender txSender,
             IWallet wallet,
+            IReceiptFinder receiptFinder,
             ILogManager logManager,
             ISpecProvider specProvider,
             IGasPriceOracle gasPriceOracle,
+            IEthSyncingInfo ethSyncingInfo,
             IFeeHistoryOracle feeHistoryOracle)
         {
             _logger = logManager.GetClassLogger();
@@ -88,40 +97,22 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _txPoolBridge = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
+            _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));;
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _gasPriceOracle = gasPriceOracle ?? throw new ArgumentNullException(nameof(gasPriceOracle));
+            _ethSyncingInfo = ethSyncingInfo ?? throw new ArgumentNullException(nameof(ethSyncingInfo));
             _feeHistoryOracle = feeHistoryOracle ?? throw new ArgumentNullException(nameof(feeHistoryOracle));
         }
 
         public ResultWrapper<string> eth_protocolVersion()
         {
-            return ResultWrapper<string>.Success("0x41");
+            int highestVersion =  P2PProtocolInfoProvider.GetHighestVersionOfEthProtocol();
+            return ResultWrapper<string>.Success(highestVersion.ToHexString());
         }
 
         public ResultWrapper<SyncingResult> eth_syncing()
         {
-            SyncingResult result;
-            long bestSuggestedNumber = _blockFinder.FindBestSuggestedHeader().Number;
-
-            long headNumberOrZero = _blockFinder.Head?.Number ?? 0;
-            bool isSyncing = bestSuggestedNumber > headNumberOrZero + 8;
-
-            if (isSyncing)
-            {
-                result = new SyncingResult
-                {
-                    CurrentBlock = headNumberOrZero,
-                    HighestBlock = bestSuggestedNumber,
-                    StartingBlock = 0L,
-                    IsSyncing = true
-                };
-            }
-            else
-            {
-                result = SyncingResult.NotSyncing;
-            }
-
-            return ResultWrapper<SyncingResult>.Success(result);
+           return ResultWrapper<SyncingResult>.Success(_ethSyncingInfo.GetFullInfo());
         }
 
         public ResultWrapper<byte[]> eth_snapshot()
@@ -158,7 +149,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             try
             {
-                var result = _wallet.GetAccounts();
+                Address[] result = _wallet.GetAccounts();
                 Address[] data = result.ToArray();
                 return ResultWrapper<IEnumerable<Address>>.Success(data.ToArray());
             }
@@ -264,7 +255,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return ResultWrapper<UInt256?>.Fail(searchResult);
             }
 
-            return ResultWrapper<UInt256?>.Success((UInt256)searchResult.Object.Ommers.Length);
+            return ResultWrapper<UInt256?>.Success((UInt256)searchResult.Object.Uncles.Length);
         }
 
         public ResultWrapper<UInt256?> eth_getUncleCountByBlockNumber(BlockParameter? blockParameter)
@@ -275,7 +266,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return ResultWrapper<UInt256?>.Fail(searchResult);
             }
 
-            return ResultWrapper<UInt256?>.Success((UInt256)searchResult.Object.Ommers.Length);
+            return ResultWrapper<UInt256?>.Success((UInt256)searchResult.Object.Uncles.Length);
         }
 
         public ResultWrapper<byte[]> eth_getCode(Address address, BlockParameter? blockParameter = null)
@@ -299,7 +290,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return ResultWrapper<byte[]>.Success(Array.Empty<byte>());
             }
 
-            var code = _stateReader.GetCode(account.CodeHash);
+            byte[]? code = _stateReader.GetCode(account.CodeHash);
             return ResultWrapper<byte[]>.Success(code);
         }
 
@@ -436,11 +427,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public ResultWrapper<TransactionForRpc[]> eth_pendingTransactions()
         {
-            var transactions = _txPoolBridge.GetPendingTransactions();
-            var transactionsModels = new TransactionForRpc[transactions.Length];
+            Transaction[] transactions = _txPoolBridge.GetPendingTransactions();
+            TransactionForRpc[] transactionsModels = new TransactionForRpc[transactions.Length];
             for (int i = 0; i < transactions.Length; i++)
             {
-                var transaction = transactions[i];
+                Transaction transaction = transactions[i];
                 RecoverTxSenderIfNeeded(transaction);
                 transactionsModels[i] = new TransactionForRpc(transaction);
                 transactionsModels[i].BlockHash = Keccak.Zero;
@@ -501,13 +492,17 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public Task<ResultWrapper<ReceiptForRpc>> eth_getTransactionReceipt(Keccak txHash)
         {
-            var result = _blockchainBridge.GetReceiptAndEffectiveGasPrice(txHash);
+            (TxReceipt Receipt, UInt256? EffectiveGasPrice) result = _blockchainBridge.GetReceiptAndEffectiveGasPrice(txHash);
             if (result.Receipt == null)
             {
                 return Task.FromResult(ResultWrapper<ReceiptForRpc>.Success(null));
             }
 
-            ReceiptForRpc receiptModel = new(txHash, result.Receipt, result.EffectiveGasPrice);
+            Keccak blockHash = result.Receipt.BlockHash;
+            TxReceipt[] receipts = _receiptFinder.Get(blockHash!);
+            int logIndexStart = receipts.GetBlockLogFirstIndex(result.Receipt.Index);
+            ReceiptForRpc receiptModel = new(txHash, result.Receipt, result.EffectiveGasPrice, logIndexStart);
+
             if (_logger.IsTrace) _logger.Trace($"eth_getTransactionReceipt request {txHash}, result: {txHash}");
             return Task.FromResult(ResultWrapper<ReceiptForRpc>.Success(receiptModel));
         }
@@ -532,13 +527,13 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
 
             Block block = searchResult.Object;
-            if (positionIndex < 0 || positionIndex > block.Ommers.Length - 1)
+            if (positionIndex < 0 || positionIndex > block.Uncles.Length - 1)
             {
                 return ResultWrapper<BlockForRpc>.Fail("Position Index is incorrect", ErrorCodes.InvalidParams);
             }
 
-            BlockHeader ommerHeader = block.Ommers[(int)positionIndex];
-            return ResultWrapper<BlockForRpc>.Success(new BlockForRpc(new Block(ommerHeader, BlockBody.Empty), false, _specProvider));
+            BlockHeader uncleHeader = block.Uncles[(int)positionIndex];
+            return ResultWrapper<BlockForRpc>.Success(new BlockForRpc(new Block(uncleHeader, BlockBody.Empty), false, _specProvider));
         }
 
         public ResultWrapper<UInt256?> eth_newFilter(Filter filter)

@@ -4,11 +4,17 @@
         <TargetFramework>net5.0</TargetFramework>
     </PropertyGroup>
 
+    <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+      <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+      <WarningsAsErrors />
+    </PropertyGroup>
+
     <ItemGroup>
-      <PackageReference Include="BenchmarkDotNet" Version="0.12.1" />
+      <PackageReference Include="BenchmarkDotNet" Version="0.13.1" />
     </ItemGroup>
 
     <ItemGroup>
+      <ProjectReference Include="..\Nethermind.Evm.Test\Nethermind.Evm.Test.csproj" />
       <ProjectReference Include="..\Nethermind.Evm\Nethermind.Evm.csproj" />
       <ProjectReference Include="..\Nethermind.Logging\Nethermind.Logging.csproj" />
       <ProjectReference Include="..\Nethermind.State\Nethermind.State.csproj" />

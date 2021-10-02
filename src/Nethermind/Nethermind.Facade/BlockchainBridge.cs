@@ -130,6 +130,7 @@ namespace Nethermind.Facade
                 Transaction tx = block?.Transactions[txReceipt.Index];
                 bool is1559Enabled = _specProvider.GetSpec(block.Number).IsEip1559Enabled;
                 UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(is1559Enabled, block.Header.BaseFeePerGas);
+                
                 return (txReceipt, effectiveGasPrice);
             }
 

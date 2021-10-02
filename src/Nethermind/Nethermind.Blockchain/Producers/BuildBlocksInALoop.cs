@@ -22,9 +22,10 @@ using Nethermind.Logging;
 
 namespace Nethermind.Blockchain.Producers
 {
-    public class BuildBlocksInALoop : IBlockProductionTrigger, IDisposable
+    public class BuildBlocksInALoop : IBlockProductionTrigger, IAsyncDisposable
     {
         private readonly CancellationTokenSource _loopCancellationTokenSource = new();
+        private readonly Task _loopTask;
         protected ILogger Logger { get; }
         
         public event EventHandler<BlockProductionEventArgs>? TriggerBlockProduction;
@@ -32,7 +33,7 @@ namespace Nethermind.Blockchain.Producers
         public BuildBlocksInALoop(ILogManager logManager)
         {
             Logger = logManager.GetClassLogger();
-            Task.Run(ProducerLoop, _loopCancellationTokenSource.Token).ContinueWith(t =>
+            _loopTask = Task.Run(ProducerLoop, _loopCancellationTokenSource.Token).ContinueWith(t =>
             {
                 if (t.IsFaulted)
                 {
@@ -64,9 +65,10 @@ namespace Nethermind.Blockchain.Producers
             await args.BlockProductionTask;
         }
         
-        public void Dispose()
+        public async ValueTask DisposeAsync()
         {
             _loopCancellationTokenSource.Cancel();
+            await _loopTask;
         }
     }
 }

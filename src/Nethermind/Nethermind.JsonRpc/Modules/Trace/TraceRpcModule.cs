@@ -18,7 +18,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
-using MathNet.Numerics.Distributions;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Tracing;
@@ -210,7 +209,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
             Block block = blockSearch.Object;
 
-            ParityLikeTxTrace txTrace = TraceTx(block, txHash, ParityTraceTypes.Trace | ParityTraceTypes.Rewards);
+            ParityLikeTxTrace txTrace = TraceTx(block, txHash, ParityTraceTypes.Trace);
             return ResultWrapper<ParityTxTraceFromStore[]>.Success(ParityTxTraceFromStore.FromTxTrace(txTrace));
         }
 

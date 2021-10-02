@@ -119,7 +119,7 @@ namespace Nethermind.Synchronization.Test
                     {
                         if (block.Hash == blockHashes[i])
                         {
-                            result[i] = new BlockBody(block.Transactions, block.Ommers);
+                            result[i] = new BlockBody(block.Transactions, block.Uncles);
                         }
                     }
                 }
@@ -192,8 +192,8 @@ namespace Nethermind.Synchronization.Test
             public event EventHandler Disconnected;
 
             public PublicKey Id => Node.Id;
-
-            public bool SendNewTransaction(Transaction transaction, bool isPriority) => true;
+            
+            public void SendNewTransactions(IEnumerable<Transaction> txs) { }
 
             public Task<TxReceipt[][]> GetReceipts(IList<Keccak> blockHash, CancellationToken token)
             {

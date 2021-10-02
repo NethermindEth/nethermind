@@ -19,20 +19,13 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 {
-    public class NodeDataMessageSerializer : IZeroMessageSerializer<NodeDataMessage>
+    public class NodeDataMessageSerializer : IZeroInnerMessageSerializer<NodeDataMessage>
     {
         public void Serialize(IByteBuffer byteBuffer, NodeDataMessage message)
         {
-            int contentLength = 0;
-            for (int i = 0; i < message.Data.Length; i++)
-            {
-                contentLength += Rlp.LengthOf(message.Data[i]);
-            }
-            
-            int totalLength = Rlp.LengthOfSequence(contentLength);
-            
+            int length = GetLength(message, out int contentLength);
+            byteBuffer.EnsureWritable(length, true);
             RlpStream rlpStream = new NettyRlpStream(byteBuffer);
-            byteBuffer.EnsureWritable(totalLength, true);
             
             rlpStream.StartSequence(contentLength);
             for (int i = 0; i < message.Data.Length; i++)
@@ -46,6 +39,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             RlpStream rlpStream = new NettyRlpStream(byteBuffer);
             byte[][] result = rlpStream.DecodeArray(stream => stream.DecodeByteArray());
             return new NodeDataMessage(result);
+        }
+
+        public int GetLength(NodeDataMessage message, out int contentLength)
+        {
+            contentLength = 0;
+            for (int i = 0; i < message.Data.Length; i++)
+            {
+                contentLength += Rlp.LengthOf(message.Data[i]);
+            }
+            
+            return Rlp.LengthOfSequence(contentLength);
         }
     }
 }

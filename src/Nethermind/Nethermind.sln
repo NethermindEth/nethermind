@@ -60,9 +60,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Chains", "Chains", "{D75E83
 		Chains\energyweb.json = Chains\energyweb.json
 		Chains\baseline.json = Chains\baseline.json
 		Chains\kovan.json = Chains\kovan.json
-		Chains\eip1559.json = Chains\eip1559.json
 		Chains\wit.json = Chains\wit.json
-		Chains\xdai1559.json = Chains\xdai1559.json
 		Chains\yolo_v3x.json = Chains\yolo_v3x.json
 		Chains\catalyst.json = Chains\catalyst.json
 	EndProjectSection

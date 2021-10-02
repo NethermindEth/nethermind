@@ -13,16 +13,19 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
+using System;
+using System.Linq;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain.Filters.Topics
 {
-    public class SequenceTopicsFilter : TopicsFilter
+    public class SequenceTopicsFilter : TopicsFilter, IEquatable<SequenceTopicsFilter>
     {
-        public static SequenceTopicsFilter AnyTopic { get; } = new();
+        public static readonly SequenceTopicsFilter AnyTopic = new();
 
         private readonly TopicExpression[] _expressions;
 
@@ -108,5 +111,19 @@ namespace Nethermind.Blockchain.Filters.Topics
 
             return result;
         }
+        
+        public bool Equals(SequenceTopicsFilter other) => _expressions.SequenceEqual(other._expressions);
+
+        public override bool Equals(object? obj)
+        {
+            if (ReferenceEquals(null, obj)) return false;
+            if (ReferenceEquals(this, obj)) return true;
+            if (obj.GetType() != this.GetType()) return false;
+            return Equals((SequenceTopicsFilter)obj);
+        }
+
+        public override int GetHashCode() => _expressions.GetHashCode();
+
+        public override string ToString() => $"[{string.Join<TopicExpression>(',', _expressions)}]";
     }
 }

@@ -437,8 +437,6 @@ namespace Nethermind.Blockchain.Processing
 
                     blocksToProcess.Add(block);
                 }
-
-                blocksToProcess.Reverse();
             }
 
             if (_logger.IsTrace) _logger.Trace($"Processing {blocksToProcess.Count} blocks from state root {processingBranch.Root}");
@@ -516,6 +514,7 @@ namespace Nethermind.Blockchain.Processing
 
             Keccak stateRoot = branchingPoint?.StateRoot;
             if (_logger.IsTrace) _logger.Trace($"State root lookup: {stateRoot}");
+            blocksToBeAddedToMain.Reverse();
             return new ProcessingBranch(stateRoot, blocksToBeAddedToMain);
         }
 
@@ -541,12 +540,12 @@ namespace Nethermind.Blockchain.Processing
                 throw new InvalidOperationException("Block hash should be known at this stage if running in a validating mode");
             }
 
-            for (int i = 0; i < suggestedBlock.Ommers.Length; i++)
+            for (int i = 0; i < suggestedBlock.Uncles.Length; i++)
             {
-                if (suggestedBlock.Ommers[i].Hash == null)
+                if (suggestedBlock.Uncles[i].Hash == null)
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Skipping processing block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} with null ommer hash ar {i}");
-                    throw new InvalidOperationException($"Ommer's {i} hash is null when processing block");
+                    if (_logger.IsDebug) _logger.Debug($"Skipping processing block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} with null uncle hash ar {i}");
+                    throw new InvalidOperationException($"Uncle's {i} hash is null when processing block");
                 }
             }
 

@@ -16,22 +16,13 @@
 //
 
 using System;
-using System.Numerics;
 using Nethermind.Api;
-using Nethermind.JsonRpc;
-using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
-using System.Collections.Generic;
 using System.Threading.Tasks;
-using Nethermind.Core;
 using FluentAssertions;
 using Nethermind.Api.Extensions;
 using Nethermind.Consensus;
-using Nethermind.Core.Test.Builders;
-using Nethermind.Mev.Data;
-using Nethermind.Mev.Source;
-using Nethermind.Runner.Ethereum.Api;
 
 namespace Nethermind.Mev.Test
 {

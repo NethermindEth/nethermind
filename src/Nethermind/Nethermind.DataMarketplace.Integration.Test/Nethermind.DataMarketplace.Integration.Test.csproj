@@ -8,6 +8,11 @@
         <LangVersion>8.0</LangVersion>
     </PropertyGroup>
 
+    <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+      <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+      <WarningsAsErrors />
+    </PropertyGroup>
+
     <ItemGroup>
         <PackageReference Include="coverlet.msbuild" Version="3.0.1">
           <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>

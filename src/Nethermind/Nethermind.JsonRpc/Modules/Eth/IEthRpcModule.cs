@@ -20,6 +20,7 @@ using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Facade.Eth;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.State.Proofs;
@@ -44,7 +45,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         [JsonRpcMethod(IsImplemented = true, 
             Description = "Returns syncing status", 
             IsSharable = true, 
-            ExampleResponse = "{\"startingBlock\":\"0x0\",\"currentBlock\":\"0x0\",\"highestBlock\":\"0x4df8a4\"},\"id\":1}")]
+            ExampleResponse = "{\"isSyncing\":true,\"startingBlock\":\"0x0\",\"currentBlock\":\"0x0\",\"highestBlock\":\"0x4df8a4\"},\"id\":1}")]
         ResultWrapper<SyncingResult> eth_syncing();
         
         [JsonRpcMethod(IsImplemented = false, 

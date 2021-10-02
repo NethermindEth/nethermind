@@ -61,5 +61,22 @@ namespace Nethermind.Blockchain.Receipts
             }
             return receiptsRoot;
         }
+        
+        public static int GetBlockLogFirstIndex(this TxReceipt[] receipts, int receiptIndex)
+        {
+            int sum = 0;
+            for (int i = 0; i < receipts.Length; ++i)
+            {
+                TxReceipt receipt = receipts[i];
+                if (receipt.Index < receiptIndex)
+                {
+                    if (receipt.Logs is not null)
+                    {
+                        sum += receipt.Logs.Length;
+                    }
+                }
+            }
+            return sum;
+        }
     }
 }

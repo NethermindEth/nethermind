@@ -46,7 +46,7 @@ namespace Nethermind.DataMarketplace.WebSockets.Test
             SocketsMessage message = new("type", nameof(NdmWebSocketsClientTests), "data");
             client.SendAsync(message);
 
-            _handler.Received().SendRawAsync(Arg.Any<string>());
+            _handler.Received().SendRawAsync(Arg.Any<ArraySegment<byte>>());
         }
 
         [Test]

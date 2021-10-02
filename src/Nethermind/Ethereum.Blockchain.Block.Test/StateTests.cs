@@ -29,7 +29,7 @@ namespace Ethereum.Blockchain.Block.Test
     public class StateTests : BlockchainTestBase
     {
         [Todo(Improve.TestCoverage, "SuicideStorage tests")]
-        [TestCaseSource(nameof(LoadTests))]
+        [TestCaseSource(nameof(LoadTests)), Retry(3)]
         public async Task Test(BlockchainTest test)
         {
             await RunTest(test);

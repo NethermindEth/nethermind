@@ -14,25 +14,28 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.HashLib;
 
 namespace Nethermind.Blockchain.Filters.Topics
 {
-    public class OrExpression : TopicExpression
+    public class OrExpression : TopicExpression, IEquatable<OrExpression>
     {
-        private readonly TopicExpression[] _subexpression;
+        private readonly TopicExpression[] _subexpressions;
 
-        public OrExpression(TopicExpression[] subexpression)
+        public OrExpression(params TopicExpression[] subexpressions)
         {
-            _subexpression = subexpression;
+            _subexpressions = subexpressions;
         }
 
         public override bool Accepts(Keccak topic)
         {
-            for (int i = 0; i < _subexpression.Length; i++)
+            for (int i = 0; i < _subexpressions.Length; i++)
             {
-                if (_subexpression[i].Accepts(topic))
+                if (_subexpressions[i].Accepts(topic))
                 {
                     return true;
                 }
@@ -43,9 +46,9 @@ namespace Nethermind.Blockchain.Filters.Topics
 
         public override bool Accepts(ref KeccakStructRef topic)
         {
-            for (int i = 0; i < _subexpression.Length; i++)
+            for (int i = 0; i < _subexpressions.Length; i++)
             {
-                if (_subexpression[i].Accepts(ref topic))
+                if (_subexpressions[i].Accepts(ref topic))
                 {
                     return true;
                 }
@@ -56,9 +59,9 @@ namespace Nethermind.Blockchain.Filters.Topics
 
         public override bool Matches(Bloom bloom)
         {
-            for (int i = 0; i < _subexpression.Length; i++)
+            for (int i = 0; i < _subexpressions.Length; i++)
             {
-                if (_subexpression[i].Matches(bloom))
+                if (_subexpressions[i].Matches(bloom))
                 {
                     return true;
                 }
@@ -69,9 +72,9 @@ namespace Nethermind.Blockchain.Filters.Topics
 
         public override bool Matches(ref BloomStructRef bloom)
         {
-            for (int i = 0; i < _subexpression.Length; i++)
+            for (int i = 0; i < _subexpressions.Length; i++)
             {
-                if (_subexpression[i].Matches(ref bloom))
+                if (_subexpressions[i].Matches(ref bloom))
                 {
                     return true;
                 }
@@ -79,5 +82,32 @@ namespace Nethermind.Blockchain.Filters.Topics
 
             return false;            
         }
+
+        public override bool Equals(object? obj)
+        {
+            if (ReferenceEquals(null, obj)) return false;
+            if (ReferenceEquals(this, obj)) return true;
+            return Equals(obj as OrExpression);
+        }
+
+        public override int GetHashCode()
+        {
+            HashCode hashCode = new();
+            for (int i = 0; i < _subexpressions.Length; i++)
+            {
+                hashCode.Add(_subexpressions[i].GetHashCode());
+            }
+
+            return hashCode.ToHashCode();
+        }
+
+        public bool Equals(OrExpression? other)
+        {
+            if (ReferenceEquals(null, other)) return false;
+            if (ReferenceEquals(this, other)) return true;
+            return _subexpressions.SequenceEqual(other._subexpressions);
+        }
+        
+        public override string ToString() => $"[{string.Join<TopicExpression>(',', _subexpressions)}]";
     }
 }
