@@ -85,8 +85,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         
         private void TryPublishReceiptsInBackground(BlockHeader blockHeader, Func<TxReceipt[]> getReceipts, string eventName)
         {
-            Task task = new (() => TryPublishEvent(blockHeader, getReceipts(), eventName));
-            ScheduleTask(task);
+            ScheduleAction(() => TryPublishEvent(blockHeader, getReceipts(), eventName));
         }
 
         protected override string GetErrorMsg()

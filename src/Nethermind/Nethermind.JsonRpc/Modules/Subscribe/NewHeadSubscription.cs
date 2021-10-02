@@ -40,15 +40,13 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         private void OnBlockAddedToMain(object? sender, BlockReplacementEventArgs e)
         {
-            Task task = new (() =>
+            ScheduleAction(() =>
             {
                 JsonRpcResult result = CreateSubscriptionMessage(new BlockForRpc(e.Block, false));
                 
                 JsonRpcDuplexClient.SendJsonRpcResult(result);
                 if(_logger.IsTrace) _logger.Trace($"NewHeads subscription {Id} printed new block");
             });
-
-            ScheduleTask(task);
         }
 
         protected override string GetErrorMsg()

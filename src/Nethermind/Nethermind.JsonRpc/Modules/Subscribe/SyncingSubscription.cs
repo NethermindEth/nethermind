@@ -51,7 +51,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         private void OnConditionsChange(object? sender, BlockEventArgs e)
         {
-            Task task = new (() =>
+            ScheduleAction(() =>
             {
                 SyncingResult syncingResult = _ethSyncingInfo.GetFullInfo();
                 bool isSyncing = syncingResult.IsSyncing;
@@ -80,8 +80,6 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                 JsonRpcDuplexClient.SendJsonRpcResult(result);
                 _logger.Trace($"Syncing subscription {Id} printed SyncingResult object.");
             });
-
-            ScheduleTask(task);
         }
 
         protected override string GetErrorMsg()

@@ -37,7 +37,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         public abstract SubscriptionType Type { get; }
         public IJsonRpcDuplexClient JsonRpcDuplexClient { get; }
 
-        private Channel<Task> SendChannel { get; } = Channel.CreateUnbounded<Task>();
+        private Channel<Action> SendChannel { get; } = Channel.CreateUnbounded<Action>();
 
         public virtual void Dispose()
         {
@@ -57,9 +57,9 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                 }, default);
         }
 
-        protected void ScheduleTask(Task task)
+        protected void ScheduleAction(Action action)
         {
-            SendChannel.Writer.TryWrite(task);
+            SendChannel.Writer.TryWrite(action);
         }
 
         protected virtual string GetErrorMsg()
@@ -73,20 +73,15 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             {
                 while (await SendChannel.Reader.WaitToReadAsync())
                 {
-                    Task task = await SendChannel.Reader.ReadAsync();
-
-                    task.ContinueWith(
-                        t =>
-                            t.Exception?.Handle(ex =>
-                            {
-                                if (_logger.IsDebug) _logger.Debug(GetErrorMsg());
-                                return true;
-                            })
-                        , TaskContinuationOptions.OnlyOnFaulted
-                    );
-
-                    task.Start();
-                    await task;
+                    try
+                    {
+                        Action action = await SendChannel.Reader.ReadAsync();
+                        action();
+                    }
+                    catch (Exception e)
+                    {
+                        if (_logger.IsDebug) _logger.Debug(GetErrorMsg());
+                    }
                 }
             }, TaskCreationOptions.LongRunning).ContinueWith(t =>
             {

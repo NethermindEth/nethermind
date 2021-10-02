@@ -38,14 +38,12 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         private void OnNewPending(object? sender, TxEventArgs e)
         {
-            Task task = new (() =>
+            ScheduleAction(() =>
             {
                 JsonRpcResult result = CreateSubscriptionMessage(e.Transaction.Hash);
                 JsonRpcDuplexClient.SendJsonRpcResult(result);
                 if(_logger.IsTrace) _logger.Trace($"NewPendingTransactions subscription {Id} printed hash of NewPendingTransaction.");
             });
-                
-            ScheduleTask(task);
         }
 
         protected override string GetErrorMsg()
