@@ -17,8 +17,8 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Int256;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 
 namespace Nethermind.Blockchain.Rewards
 {

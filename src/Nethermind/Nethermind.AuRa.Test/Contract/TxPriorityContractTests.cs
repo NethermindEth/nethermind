@@ -27,7 +27,6 @@ using Nethermind.Abi;
 using Nethermind.Blockchain.Data;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
-using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;

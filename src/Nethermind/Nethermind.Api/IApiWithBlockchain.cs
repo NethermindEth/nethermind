@@ -22,6 +22,7 @@ using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Rewards;
+using Nethermind.Blockchain.Services;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Config;
 using Nethermind.Consensus;

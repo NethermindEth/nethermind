@@ -20,6 +20,7 @@ using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Processing;
+using Nethermind.Blockchain.Services;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;

@@ -103,6 +103,7 @@ namespace Nethermind.Blockchain.Validators
                 return false;
             }
 
+            // TODO: difficulty check should be moved to seal params validator
             bool totalDifficultyCorrect = true;
             if (_poSSwitcher.IsPos(header) == false && header.TotalDifficulty != null)
             {

@@ -22,6 +22,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Data;
 using Nethermind.Blockchain.Processing;
+using Nethermind.Blockchain.Services;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Contracts;

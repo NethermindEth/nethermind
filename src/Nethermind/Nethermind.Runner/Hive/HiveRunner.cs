@@ -25,7 +25,6 @@ using Microsoft.VisualBasic.CompilerServices;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
-using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Config;

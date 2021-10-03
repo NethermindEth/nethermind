@@ -29,6 +29,7 @@ using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
+using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -43,6 +44,7 @@ namespace Nethermind.Blockchain.Test.Validators
     {
         private IHeaderValidator _validator;
         private ISealValidator _ethash;
+        private ISealValidator _eth2;
         private TestLogger _testLogger;
         private Block _parentBlock;
         private Block _block;
@@ -55,6 +57,7 @@ namespace Nethermind.Blockchain.Test.Validators
         {
             EthashDifficultyCalculator calculator = new(new SingleReleaseSpecProvider(Frontier.Instance, ChainId.Mainnet));
             _ethash = new EthashSealValidator(LimboLogs.Instance, calculator, new CryptoRandom(), new Ethash(LimboLogs.Instance));
+            _eth2 = new Eth2SealEngine(new Eth2Signer(Address.Zero));
             _testLogger = new TestLogger();
             MemDb blockInfoDb = new();
             _blockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), FrontierSpecProvider.Instance, Substitute.For<IBloomStorage>(), LimboLogs.Instance);
@@ -173,6 +176,8 @@ namespace Nethermind.Blockchain.Test.Validators
         [Test]
         public void When_timestamp_same_as_parent()
         {
+            // this test is failing during the Merge interop workshop but should be fine outside of it
+            
             _block.Header.Timestamp = _parentBlock.Header.Timestamp;
             _block.Header.SealEngineType = SealEngineType.None;
             _block.Header.Hash = _block.CalculateHash();
@@ -300,7 +305,7 @@ namespace Nethermind.Blockchain.Test.Validators
 
             Assert.False(result, "before");
 
-            _validator = new HeaderValidator(_blockTree, _ethash, _specProvider, _poSSwitcher,
+            _validator = new HeaderValidator(_blockTree, _eth2, _specProvider, _poSSwitcher,
                 new OneLoggerLogManager(_testLogger));
             result = _validator.Validate(_block.Header);
 
