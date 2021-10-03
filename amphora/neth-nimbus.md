@@ -42,6 +42,14 @@ if you have a linking error mentioning libbacktrace then you can disable it as w
 ./env.sh nim c -r -d:disableMarchNative -d:disable_libbacktrace tests/test_merge_vectors.nim
 ```
 
+replace the JSON RPC port inside Nimbus inside 
+```
+  vi tests/test_merge_vectors.nim
+  # then change the line below
+  let web3Provider = (waitFor newWeb3DataProvider(
+    default(Eth1Address), "ws://127.0.0.1:8550")).get
+```
+
 ### Run
 
 ```
