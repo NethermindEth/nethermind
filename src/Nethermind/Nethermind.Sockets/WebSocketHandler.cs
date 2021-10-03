@@ -51,6 +51,8 @@ namespace Nethermind.Sockets
                     {
                         _logger.Error($"Error when reading from WebSockets.", t.Exception);
                     }
+
+                    result = new ReceiveResult() { Closed = true };
                 }
 
                 if (t.IsCompletedSuccessfully)
@@ -69,10 +71,17 @@ namespace Nethermind.Sockets
             return result;
         }
         
-        public Task CloseAsync(ReceiveResult? result) =>
-            _webSocket.CloseAsync(result is WebSocketsReceiveResult { CloseStatus: { } } r ? r.CloseStatus!.Value : WebSocketCloseStatus.Empty, 
-                result?.CloseStatusDescription, 
-                CancellationToken.None);
+        public Task CloseAsync(ReceiveResult? result)
+        {
+            if (_webSocket.State == WebSocketState.Open)
+            {
+                return _webSocket.CloseAsync(result is WebSocketsReceiveResult { CloseStatus: { } } r ? r.CloseStatus!.Value : WebSocketCloseStatus.Empty,
+                    result?.CloseStatusDescription,
+                    CancellationToken.None);
+            }
+
+            return Task.CompletedTask;
+        }
 
 
         public void Dispose()
