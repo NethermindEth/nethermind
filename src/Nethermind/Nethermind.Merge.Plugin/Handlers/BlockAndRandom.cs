@@ -15,12 +15,21 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-namespace Nethermind.Merge.Plugin
-{
-    public class MergeConfig : IMergeConfig
-    {
-        public bool Enabled { get; set; }
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 
-        public string BlockAuthorAccount { get; set; } = string.Empty;
+namespace Nethermind.Merge.Plugin.Handlers
+{
+    public class BlockAndRandom
+    {
+        public BlockAndRandom(Block? block, Keccak random)
+        {
+            Block = block;
+            Random = random;
+        }
+        
+        public Block? Block { get; set; }
+
+        public Keccak Random { get; set; }
     }
 }

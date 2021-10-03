@@ -15,9 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
@@ -37,25 +35,23 @@ namespace Nethermind.Merge.Plugin.Handlers
 
         public ResultWrapper<BlockRequestResult?> Handle(ulong payloadId)
         {
-            Tuple<Block?, Keccak>? blockAndRandom = _payloadStorage.GetPayload(payloadId);
-            
-            if (blockAndRandom?.Item1 == null)
+            BlockAndRandom? blockAndRandom = _payloadStorage.GetPayload(payloadId);
+
+            if (blockAndRandom?.Block == null)
             {
                 if (_logger.IsWarn) _logger.Warn($"Block production failed");
                 return ResultWrapper<BlockRequestResult?>.Fail(
                     $"Execution payload requested with id={payloadId} cannot be found.",
                     MergeErrorCodes.UnavailablePayload);
             }
-            else
+
+            if (_logger.IsInfo)
             {
-                if (_logger.IsInfo)
-                {
-                    _logger.Info(blockAndRandom.Item1?.Header.ToString(BlockHeader.Format.Full));
-                }
-                
-                return ResultWrapper<BlockRequestResult?>.Success(new BlockRequestResult(blockAndRandom.Item1,
-                    blockAndRandom.Item2));
+                _logger.Info(blockAndRandom.Block?.Header.ToString(BlockHeader.Format.Full));
             }
+
+            return ResultWrapper<BlockRequestResult?>.Success(new BlockRequestResult(blockAndRandom.Block,
+                blockAndRandom.Random));
         }
     }
 }

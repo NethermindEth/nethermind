@@ -16,17 +16,11 @@
 // 
 
 using System;
-using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
-using Google.Protobuf.WellKnownTypes;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
-using Nethermind.Crypto;
 using Nethermind.Int256;
-using Nethermind.JsonRpc.Data;
-using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using Newtonsoft.Json;
