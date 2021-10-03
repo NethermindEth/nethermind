@@ -28,7 +28,7 @@ namespace Nethermind.Merge.Plugin.Test
         [Test]
         public void Is_pos_with_total_difficulty()
         {
-            PoSSwitcher poSSwitcher = new(NUnitLogManager.Instance);
+            PoSSwitcher poSSwitcher = new(NUnitLogManager.Instance, new MergeConfig());
             poSSwitcher.SetTerminalTotalDifficulty(200);
 
             BlockHeader blockHeader = Build.A.BlockHeader.WithTotalDifficulty(100L).TestObject;
@@ -49,7 +49,7 @@ namespace Nethermind.Merge.Plugin.Test
         [Test]
         public void Is_pos_with_terminal_hash()
         {
-            PoSSwitcher poSSwitcher = new(NUnitLogManager.Instance);
+            PoSSwitcher poSSwitcher = new(NUnitLogManager.Instance, new MergeConfig());
             poSSwitcher.SetTerminalPoWHash(Keccak.Compute("test1"));
 
             BlockHeader blockHeader = Build.A.BlockHeader.WithParentHash(Keccak.Compute("test2")).TestObject;
@@ -67,7 +67,7 @@ namespace Nethermind.Merge.Plugin.Test
         [Test]
         public void Is_pos_try_switch_to_PoS()
         {
-            PoSSwitcher poSSwitcher = new(NUnitLogManager.Instance);
+            PoSSwitcher poSSwitcher = new(NUnitLogManager.Instance, new MergeConfig());
             poSSwitcher.SetTerminalTotalDifficulty(200);
 
             BlockHeader blockHeader = Build.A.BlockHeader.WithTotalDifficulty(200L).TestObject;
@@ -83,7 +83,7 @@ namespace Nethermind.Merge.Plugin.Test
         [Test]
         public void Is_pos_sets_first_PoS_header_once()
         {
-            PoSSwitcher poSSwitcher = new(NUnitLogManager.Instance);
+            PoSSwitcher poSSwitcher = new(NUnitLogManager.Instance, new MergeConfig());
             poSSwitcher.SetTerminalTotalDifficulty(200);
 
             BlockHeader blockHeader = Build.A.BlockHeader.WithTotalDifficulty(200L).TestObject;
@@ -104,7 +104,7 @@ namespace Nethermind.Merge.Plugin.Test
         [Test]
         public void Was_ever_in_pos()
         {
-            PoSSwitcher poSSwitcher = new(NUnitLogManager.Instance);
+            PoSSwitcher poSSwitcher = new(NUnitLogManager.Instance, new MergeConfig());
             poSSwitcher.SetTerminalTotalDifficulty(200L);
 
             Assert.AreEqual(false, poSSwitcher.HasEverBeenInPos());

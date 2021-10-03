@@ -60,7 +60,7 @@ namespace Nethermind.Blockchain.Test.Validators
             _blockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), FrontierSpecProvider.Instance, Substitute.For<IBloomStorage>(), LimboLogs.Instance);
             _specProvider = new SingleReleaseSpecProvider(Byzantium.Instance, 3);
             
-            PoSSwitcher poSSwitcher = new(NullLogManager.Instance);
+            PoSSwitcher poSSwitcher = new(NullLogManager.Instance, new MergeConfig());
             poSSwitcher.SetTerminalTotalDifficulty(0);
             poSSwitcher.TrySwitchToPos(Build.A.BlockHeader.WithTotalDifficulty(0).TestObject);
             _poSSwitcher = poSSwitcher;

@@ -28,12 +28,15 @@ namespace Nethermind.Merge.Plugin
     public class PoSSwitcher : IPoSSwitcher, ITransitionProcessHandler
     {
         private readonly ILogger _logger;
+        private readonly IMergeConfig _mergeConfig;
         private UInt256? _terminalTotalDifficulty;
         private Keccak? _terminalBlockHash;
         private BlockHeader? _firstPoSBlockHeader;
 
-        public PoSSwitcher(ILogManager logManager)
+        public PoSSwitcher(ILogManager logManager, IMergeConfig mergeConfig)
         {
+            _mergeConfig = mergeConfig;
+            _terminalTotalDifficulty = _mergeConfig.TerminalTotalDifficulty;
             _logger = logManager.GetClassLogger();
         }
         
