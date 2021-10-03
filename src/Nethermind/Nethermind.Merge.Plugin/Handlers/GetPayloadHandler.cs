@@ -16,8 +16,6 @@
 // 
 
 using System;
-using System.Threading;
-using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
@@ -50,6 +48,11 @@ namespace Nethermind.Merge.Plugin.Handlers
             }
             else
             {
+                if (_logger.IsInfo)
+                {
+                    _logger.Info(blockAndRandom.Item1?.Header.ToString(BlockHeader.Format.Full));
+                }
+                
                 return ResultWrapper<BlockRequestResult?>.Success(new BlockRequestResult(blockAndRandom.Item1,
                     blockAndRandom.Item2));
             }
