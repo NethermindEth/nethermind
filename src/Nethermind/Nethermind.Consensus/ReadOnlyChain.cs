@@ -22,7 +22,6 @@ namespace Nethermind.Blockchain
 {
     public class BlockProducerEnv
     {
-        public IBlockchainProcessor ChainProcessor { get; set; }
         public IStateProvider ReadOnlyStateProvider { get; set; }
         public ITxSource TxSource { get; set; }
         public ReadOnlyTxProcessingEnv ReadOnlyTxProcessingEnv { get; set; }
