@@ -43,13 +43,13 @@ namespace Nethermind.Sockets
                             innerException = innerException.InnerException;
                         }
 
-                        if (innerException is SocketException socketException && socketException.SocketErrorCode == SocketError.ConnectionReset)
+                        if (innerException is SocketException { SocketErrorCode: SocketError.ConnectionReset })
                         {
-                            if (_logger.IsDebug) _logger.Debug("Client disconnected without a close handshake.");
+                            if (_logger.IsDebug) _logger.Debug($"Client disconnected: {innerException.Message}.");
                         }
                         else
                         {
-                            if (_logger.IsError) _logger.Error($"Error when reading from WebSockets.", t.Exception);
+                            if (_logger.IsInfo) _logger.Info($"Not able to read from WebSockets. {innerException?.Message}");
                         }
 
                         result = new WebSocketsReceiveResult() { Closed = true };
@@ -74,13 +74,19 @@ namespace Nethermind.Sockets
 
         public Task CloseAsync(ReceiveResult? result)
         {
-            if (_webSocket.State is WebSocketState.Open or WebSocketState.CloseReceived or WebSocketState.CloseSent)
+            if (_webSocket.State is WebSocketState.Open or WebSocketState.CloseSent)
             {
                 return _webSocket.CloseAsync(result is WebSocketsReceiveResult { CloseStatus: { } } r ? r.CloseStatus.Value : WebSocketCloseStatus.Empty,
                     result?.CloseStatusDescription,
                     CancellationToken.None);
             }
 
+            if (_webSocket.State is WebSocketState.CloseReceived)
+            {
+                return _webSocket.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, result?.CloseStatusDescription,
+                    CancellationToken.None);
+            }
+            
             return Task.CompletedTask;
         }
 
