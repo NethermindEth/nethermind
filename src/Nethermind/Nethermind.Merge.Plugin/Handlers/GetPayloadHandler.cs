@@ -47,7 +47,7 @@ namespace Nethermind.Merge.Plugin.Handlers
 
             if (_logger.IsInfo)
             {
-                _logger.Info(blockAndRandom.Block?.Header.ToString(BlockHeader.Format.Full));
+                _logger.Info(blockAndRandom.Block.Header.ToString(BlockHeader.Format.Full));
             }
 
             return ResultWrapper<BlockRequestResult?>.Success(new BlockRequestResult(blockAndRandom.Block,
