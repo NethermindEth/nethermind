@@ -37,8 +37,6 @@ namespace Nethermind.Sockets
                 {
                     if (t.IsFaulted)
                     {
-                        result = null;
-
                         Exception? innerException = t.Exception;
                         while (innerException?.InnerException != null)
                         {
@@ -47,12 +45,14 @@ namespace Nethermind.Sockets
 
                         if (innerException is SocketException socketException && socketException.SocketErrorCode == SocketError.ConnectionReset)
                         {
-                            if (_logger.IsDebug) _logger.Debug("Client disconnected.");
+                            if (_logger.IsDebug) _logger.Debug("Client disconnected without a close handshake.");
                         }
                         else
                         {
                             if (_logger.IsError) _logger.Error($"Error when reading from WebSockets.", t.Exception);
                         }
+
+                        result = new WebSocketsReceiveResult() { Closed = true };
                     }
 
                     if (t.IsCompletedSuccessfully)
@@ -72,10 +72,17 @@ namespace Nethermind.Sockets
             return result;
         }
 
-        public Task CloseAsync(ReceiveResult? result) =>
-            _webSocket.CloseAsync(result is WebSocketsReceiveResult { CloseStatus: { } } r ? r.CloseStatus.Value : WebSocketCloseStatus.Empty, 
-                result?.CloseStatusDescription, 
-                CancellationToken.None);
+        public Task CloseAsync(ReceiveResult? result)
+        {
+            if (_webSocket.State is WebSocketState.Open or WebSocketState.CloseReceived or WebSocketState.CloseSent)
+            {
+                return _webSocket.CloseAsync(result is WebSocketsReceiveResult { CloseStatus: { } } r ? r.CloseStatus.Value : WebSocketCloseStatus.Empty,
+                    result?.CloseStatusDescription,
+                    CancellationToken.None);
+            }
+
+            return Task.CompletedTask;
+        }
 
         public void Dispose()
         {
