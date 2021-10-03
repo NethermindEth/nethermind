@@ -16,9 +16,14 @@ https://dotnet.microsoft.com/download
 git clone https://github.com/NethermindEth/nethermind.git --recursive -b themerge
 cd src/Nethermind
 dotnet build Nethermind.sln -c Release
-cd Nethermind.Runner
 # if src/Nethermind/Nethermind.Runner/bin/Release/net5.0/plugins has no Nethermind.Merge.Plugin.dll plugin then you may need to run the build again
 dotnet build Nethermind.sln -c Release
+cd Nethermind.Runner
+```
+
+run Nethermind
+```
+rm -rf bin/Release/net5.0/nethermind_db
 dotnet run -c Release --no-build -- --config themerge_devnet
 ```
 
@@ -42,8 +47,24 @@ if you have a linking error mentioning libbacktrace then you can disable it as w
 ./env.sh nim c -r -d:disableMarchNative -d:disable_libbacktrace tests/test_merge_vectors.nim
 ```
 
+replace the JSON RPC port for test vectors 
+```
+  vi tests/test_merge_vectors.nim
+  # then change the line below
+  let web3Provider = (waitFor newWeb3DataProvider(
+    default(Eth1Address), "ws://127.0.0.1:8550")).get
+```
+
+replace the JSON RPC port for local testnets 
+```
+vi scripts/launch_local_tetsnet.sh
+# then change the line below
+WEB3_ARG="--web3-url=ws://127.0.0.1:8551"
+```
+
 ### Run
 
 ```
+export NIMFLAGS="-d:disableMarchNative -d:disable_libbacktrace"
 ./scripts/launch_local_testnet.sh --preset minimal --nodes 4 --disable-htop --stop-at-epoch 7 -- --verify-finalization --discv5:no
 ```
