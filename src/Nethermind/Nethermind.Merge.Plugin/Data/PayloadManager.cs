@@ -23,6 +23,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Merge.Plugin.Data
 {
+    // TODO: how is this class never interacting with payload storage?
     public class PayloadManager
     {
         private readonly IBlockTree _blockTree;

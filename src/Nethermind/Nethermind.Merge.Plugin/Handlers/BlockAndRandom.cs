@@ -28,8 +28,8 @@ namespace Nethermind.Merge.Plugin.Handlers
             Random = random;
         }
         
-        public Block? Block { get; set; }
+        public Block? Block { get; }
 
-        public Keccak Random { get; set; }
+        public Keccak Random { get; }
     }
 }

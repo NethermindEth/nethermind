@@ -265,7 +265,8 @@ namespace Nethermind.Blockchain.Validators
                     $"Invalid block header {header.ToString(BlockHeader.Format.Short)} - the {name} is incorrect expected {expected}, got {value} .");
             return false;
         }
-
+        
+        // TODO: can we remove it?
         private bool ValidateHeaderField<T>(BlockHeader request, IEnumerable<T>? value, IEnumerable<T> expected,
             string name)
         {

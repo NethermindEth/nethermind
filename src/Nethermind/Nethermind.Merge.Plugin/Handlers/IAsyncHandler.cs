@@ -20,7 +20,12 @@ using Nethermind.JsonRpc;
 
 namespace Nethermind.Merge.Plugin.Handlers
 {
-    public interface IHandlerAsync<in TRequest, TResult>
+    /// <summary>
+    /// Handles a parameterized JSON RPC request asynchronously.
+    /// </summary>
+    /// <typeparam name="TRequest">Request parameters type</typeparam>
+    /// <typeparam name="TResult">Request result type</typeparam>
+    public interface IAsyncHandler<in TRequest, TResult>
     {
         Task<ResultWrapper<TResult>> HandleAsync(TRequest request);
     }

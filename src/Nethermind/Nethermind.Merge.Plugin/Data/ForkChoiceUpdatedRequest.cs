@@ -21,6 +21,8 @@ namespace Nethermind.Merge.Plugin.Data
 {
     public class ForkChoiceUpdatedRequest
     {
+        // TODO: how does it work with serialization if the default constructor is not provided?
+        // TODO: was it tested?
         public ForkChoiceUpdatedRequest(Keccak headBlockHash, Keccak finalizedBlockHash/*, Keccak confirmedBlockHash*/)
         {
             HeadBlockHash = headBlockHash;

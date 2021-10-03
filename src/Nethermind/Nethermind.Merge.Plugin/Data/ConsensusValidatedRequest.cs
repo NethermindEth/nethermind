@@ -15,10 +15,13 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Merge.Plugin.Data
 {
+    [SuppressMessage("ReSharper", "MemberCanBePrivate.Global")]
+    [SuppressMessage("ReSharper", "AutoPropertyCanBeMadeGetOnly.Global")]
     public class ConsensusValidatedRequest
     {
         public ConsensusValidatedRequest(Keccak blockHash, ConsensusValidationStatus status)
@@ -28,6 +31,7 @@ namespace Nethermind.Merge.Plugin.Data
         }
         
         public Keccak BlockHash { get; set; }
+        
         public ConsensusValidationStatus Status { get; set; } 
     }
 }

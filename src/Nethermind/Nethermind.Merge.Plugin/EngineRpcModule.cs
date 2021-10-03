@@ -30,7 +30,7 @@ namespace Nethermind.Merge.Plugin
 {
     public class EngineRpcModule : IEngineRpcModule
     {
-        private readonly IHandlerAsync<PreparePayloadRequest, PreparePayloadResult> _preparePayloadHandler;
+        private readonly IAsyncHandler<PreparePayloadRequest, PreparePayloadResult> _preparePayloadHandler;
         private readonly IHandler<ulong, BlockRequestResult?> _getPayloadHandler;
         private readonly IHandler<BlockRequestResult, ExecutePayloadResult> _executePayloadHandler;
         private readonly IHandler<ConsensusValidatedRequest, string> _consensusValidatedHandler;

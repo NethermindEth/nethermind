@@ -17,6 +17,7 @@
 
 namespace Nethermind.Merge.Plugin
 {
+    // TODO: would be great to link where the spec comes from?
     public static class MergeErrorCodes
     {
         public const int None = 0;

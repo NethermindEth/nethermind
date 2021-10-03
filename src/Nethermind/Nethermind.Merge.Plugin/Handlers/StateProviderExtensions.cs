@@ -23,18 +23,21 @@ namespace Nethermind.Merge.Plugin.Handlers
     public static class StateProviderExtensions
     {
         /// <summary>
-        /// Resets state provider to state.
+        /// Resets state provider to a provided state root.
+        /// This operations clears all the cached data in the state provider.
         /// </summary>
         /// <param name="stateProvider"></param>
-        /// <param name="state"></param>
-        /// <returns>Current state provider state before reset.</returns>
-        public static Keccak ResetStateTo(this IStateProvider stateProvider, Keccak state)
+        /// <param name="stateRoot"></param>
+        /// <returns>State root from before the reset operation.</returns>
+        public static Keccak ResetStateTo(this IStateProvider stateProvider, Keccak stateRoot)
         {
-            Keccak currentState = stateProvider.StateRoot;
+            Keccak previousStateRoot = stateProvider.StateRoot;
             stateProvider.Reset();
-            stateProvider.StateRoot = state;
+            stateProvider.StateRoot = stateRoot;
+            
+            // TODO: TKS I would like to discuss with Marek why this was needed
             stateProvider.RecalculateStateRoot();
-            return currentState;
+            return previousStateRoot;
         }
     }
 }

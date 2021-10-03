@@ -20,6 +20,10 @@ using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.Merge.Plugin.Handlers
 {
+    /// <summary>
+    /// https://hackmd.io/@n0ble/consensus_api_design_space
+    /// Communicates that full consensus validation of an execution payload is complete along with its corresponding status
+    /// </summary>
     public class ConsensusValidatedHandler : IHandler<ConsensusValidatedRequest, string>
     {
         private readonly PayloadManager _payloadManager;

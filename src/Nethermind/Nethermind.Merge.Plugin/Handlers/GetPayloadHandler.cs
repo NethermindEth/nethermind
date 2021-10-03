@@ -22,6 +22,17 @@ using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.Merge.Plugin.Handlers
 {
+    /// <summary>
+    /// https://hackmd.io/@n0ble/consensus_api_design_space
+    /// engine_getPayload. Given payload_id returns the most recent version of an execution payload that is available
+    /// by the time of the call or responds with an error.
+    /// This call must be responded immediately. An exception would be the case when no version of the payload
+    /// is ready yet and in this case there might be a slight delay before the response is done.
+    /// Execution client should create a payload with empty transaction set to be able to respond as soon as possible.
+    /// If there were no prior engine_preparePayload call with the corresponding payload_id or the process of building
+    /// a payload has been cancelled due to the timeout then execution client must respond with error message.
+    /// Execution client may stop the building process with the corresponding payload_id value after serving this call.
+    /// </summary>
     public class GetPayloadHandler : IHandler<ulong, BlockRequestResult?>
     {
         private readonly PayloadStorage _payloadStorage;
@@ -36,7 +47,6 @@ namespace Nethermind.Merge.Plugin.Handlers
         public ResultWrapper<BlockRequestResult?> Handle(ulong payloadId)
         {
             BlockAndRandom? blockAndRandom = _payloadStorage.GetPayload(payloadId);
-
             if (blockAndRandom?.Block == null)
             {
                 if (_logger.IsWarn) _logger.Warn($"Block production failed");
@@ -50,8 +60,8 @@ namespace Nethermind.Merge.Plugin.Handlers
                 _logger.Info(blockAndRandom.Block.Header.ToString(BlockHeader.Format.Full));
             }
 
-            return ResultWrapper<BlockRequestResult?>.Success(new BlockRequestResult(blockAndRandom.Block,
-                blockAndRandom.Random));
+            BlockRequestResult result = new(blockAndRandom.Block, blockAndRandom.Random);
+            return ResultWrapper<BlockRequestResult?>.Success(result);
         }
     }
 }

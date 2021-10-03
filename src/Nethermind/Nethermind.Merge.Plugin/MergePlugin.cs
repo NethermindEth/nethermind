@@ -53,6 +53,7 @@ namespace Nethermind.Merge.Plugin
                 if (string.IsNullOrEmpty(_mergeConfig.BlockAuthorAccount))
                 {
                     if (_logger.IsError) _logger.Error($"{nameof(MergeConfig)}.{nameof(_mergeConfig.BlockAuthorAccount)} is not set up. Cannot create blocks. Stopping.");
+                    // TODO: where the 13 coming from?
                     Environment.Exit(13); // ERROR_INVALID_DATA
                 }
 

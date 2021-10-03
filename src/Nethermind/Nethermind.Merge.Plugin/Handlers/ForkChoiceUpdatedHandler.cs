@@ -29,6 +29,10 @@ using Nethermind.State;
 
 namespace Nethermind.Merge.Plugin.Handlers
 {
+    /// <summary>
+    /// https://hackmd.io/@n0ble/consensus_api_design_space
+    /// Propagates the change in the fork choice to the execution client
+    /// </summary>
     public class ForkChoiceUpdatedHandler : IHandler<ForkChoiceUpdatedRequest, string>
     {
         private readonly IBlockTree _blockTree;

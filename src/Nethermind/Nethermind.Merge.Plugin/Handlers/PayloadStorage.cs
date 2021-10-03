@@ -22,6 +22,12 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Merge.Plugin.Handlers
 {
+    /// <summary>
+    /// A cache of pending payloads. A payload is created whenever a consensus client requests a payload creation.
+    /// Each payload is assigned a payload ID which can be used by the consensus client to retrieve payload later
+    /// by calling a GetPayload method.
+    /// https://hackmd.io/@n0ble/consensus_api_design_space 
+    /// </summary>
     public class PayloadStorage
     {
         private readonly object _locker = new();
