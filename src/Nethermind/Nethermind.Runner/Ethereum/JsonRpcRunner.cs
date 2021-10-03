@@ -72,7 +72,6 @@ namespace Nethermind.Runner.Ethereum
             {
                 const string nethermindUrlVariable = "NETHERMIND_URL";
                 string host = _jsonRpcConfig.Host;
-                // TODO: how to mark that it may be https?
                 string scheme = "http";
                 var defaultUrl = $"{scheme}://{host}:{_jsonRpcConfig.Port}";
                 string? urlVariable = Environment.GetEnvironmentVariable(nethermindUrlVariable);
@@ -96,7 +95,7 @@ namespace Nethermind.Runner.Ethereum
 
                 if (_initConfig.WebSocketsEnabled && _jsonRpcConfig.WebSocketsPort != _jsonRpcConfig.Port)
                 {
-                    yield return  $"ws://{host}:{_jsonRpcConfig.WebSocketsPort}";
+                    yield return  $"{scheme}://{host}:{_jsonRpcConfig.WebSocketsPort}";
                 }
             }
 
@@ -124,6 +123,7 @@ namespace Nethermind.Runner.Ethereum
                 .Build();
             
             string urlsString = string.Join(" ; ", urls);
+            // TODO: replace http with ws where relevant
             
             ThisNodeInfo.AddInfo("JSON RPC     :", $"{urlsString}");
 
