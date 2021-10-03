@@ -16,25 +16,19 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Numerics;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Int256;
-using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
-using Nethermind.State.Proofs;
-using Nethermind.TxPool;
-using Nethermind.TxPool.Comparison;
 
 namespace Nethermind.Blockchain.Processing
 {

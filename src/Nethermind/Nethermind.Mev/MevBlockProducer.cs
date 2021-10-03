@@ -27,7 +27,10 @@ namespace Nethermind.Mev
 {
     public class MevBlockProducer : MultipleBlockProducer<MevBlockProducer.MevBlockProducerInfo>
     {
-        public MevBlockProducer(IBlockProductionTrigger blockProductionTrigger, ILogManager logManager, params MevBlockProducerInfo[] blockProducers) 
+        public MevBlockProducer(
+            IBlockProductionTrigger blockProductionTrigger,
+            ILogManager logManager,
+            params MevBlockProducerInfo[] blockProducers) 
             : base(blockProductionTrigger, new MevBestBlockPicker(), logManager, blockProducers)
         {
         }

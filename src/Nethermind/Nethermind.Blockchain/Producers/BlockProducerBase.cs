@@ -16,7 +16,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -289,7 +288,7 @@ namespace Nethermind.Blockchain.Producers
                 parent.Number + 1,
                 _gasLimitCalculator.GetGasLimit(parent),
                 manualTimestamp ?? timestamp,
-                GetExtraData(parent))
+                GetExtraData())
             {
                 Author = blockAuthor ?? Sealer.Address
             };
@@ -305,6 +304,7 @@ namespace Nethermind.Blockchain.Producers
             return new BlockToProduce(header, transactions, Array.Empty<BlockHeader>());
         }
 
-        private byte[] GetExtraData(BlockHeader parent) => Encoding.UTF8.GetBytes("Nethermind");
+        // TODO: why is this here if the implementations are actually filling it differently?
+        private static byte[] GetExtraData() => Encoding.UTF8.GetBytes("Nethermind");
     }
 }

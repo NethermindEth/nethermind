@@ -23,12 +23,9 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
-using Nethermind.Trie;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Comparison;
 

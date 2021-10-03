@@ -24,16 +24,16 @@ using Nethermind.Int256;
 
 namespace Nethermind.Blockchain.Producers
 {
+    // TODO: seems to have quite a lot ofr an args class
     public class BlockProductionEventArgs : EventArgs
     {
-        public static readonly Task<Block?> DefaultBlockProductionTask = Task.FromResult<Block?>(null);
         public BlockHeader? ParentHeader { get; }
         public IBlockTracer? BlockTracer { get; }
         public Address? BlockAuthor { get; }
         
         public UInt256? Timestamp { get; }
         public CancellationToken CancellationToken { get; }
-        public Task<Block?> BlockProductionTask { get; set; } = DefaultBlockProductionTask;
+        public Task<Block?> BlockProductionTask { get; set; } = Task.FromResult<Block?>(null);
 
         public BlockProductionEventArgs(
             BlockHeader? parentHeader = null, 

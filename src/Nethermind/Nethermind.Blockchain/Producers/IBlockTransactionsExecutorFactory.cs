@@ -21,6 +21,7 @@ namespace Nethermind.Blockchain.Producers
 {
     public interface IBlockTransactionsExecutorFactory
     {
+        // TODO: can we remove this?
         IBlockProcessor.IBlockTransactionsExecutor Create(ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv);
     }
 }

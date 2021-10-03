@@ -42,7 +42,8 @@ namespace Nethermind.Blockchain.Producers
             }
         }
 
-        public BlockToProduce(BlockHeader blockHeader, IEnumerable<Transaction> transactions, IEnumerable<BlockHeader> uncles) : base(blockHeader, Array.Empty<Transaction>(), uncles)
+        public BlockToProduce(BlockHeader blockHeader, IEnumerable<Transaction> transactions, IEnumerable<BlockHeader> uncles)
+            : base(blockHeader, Array.Empty<Transaction>(), uncles)
         {
             Transactions = transactions; 
         }

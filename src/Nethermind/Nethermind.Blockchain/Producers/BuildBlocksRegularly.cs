@@ -16,9 +16,7 @@
 // 
 
 using System;
-using System.Threading;
 using System.Timers;
-using Nethermind.Core;
 using Timer = System.Timers.Timer;
 
 namespace Nethermind.Blockchain.Producers

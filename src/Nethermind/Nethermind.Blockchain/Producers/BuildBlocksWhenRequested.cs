@@ -28,7 +28,12 @@ namespace Nethermind.Blockchain.Producers
     {
         public event EventHandler<BlockProductionEventArgs>? TriggerBlockProduction;
         
-        public Task<Block?> BuildBlock(BlockHeader? parentHeader = null, CancellationToken? cancellationToken = null, IBlockTracer? blockTracer = null, Address? blockAuthor = null, UInt256? timestamp = null)
+        public Task<Block?> BuildBlock(
+            BlockHeader? parentHeader = null,
+            CancellationToken? cancellationToken = null, 
+            IBlockTracer? blockTracer = null,
+            Address? blockAuthor = null,
+            UInt256? timestamp = null)
         {
             BlockProductionEventArgs args = new(parentHeader, cancellationToken, blockTracer, blockAuthor, timestamp);
             TriggerBlockProduction?.Invoke(this, args);

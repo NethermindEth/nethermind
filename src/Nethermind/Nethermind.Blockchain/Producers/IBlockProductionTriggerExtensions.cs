@@ -16,9 +16,6 @@
 // 
 
 using System;
-using System.Linq;
-using Nethermind.Blockchain.Processing;
-using Nethermind.Logging;
 using Nethermind.TxPool;
 
 namespace Nethermind.Blockchain.Producers
@@ -29,7 +26,13 @@ namespace Nethermind.Blockchain.Producers
         {
             if (trigger == null) throw new ArgumentNullException(nameof(trigger));
             if (txPool == null) throw new ArgumentNullException(nameof(txPool));
-            return new TriggerWithCondition(trigger, () => txPool.GetPendingTransactionsCount() > 0);
+            return trigger.ButOnlyWhen(() => txPool.GetPendingTransactionsCount() > 0);
+        }
+        
+        public static IBlockProductionTrigger ButOnlyWhen(this IBlockProductionTrigger? trigger, Func<bool> condition)
+        {
+            if (trigger == null) throw new ArgumentNullException(nameof(trigger));
+            return new TriggerWithCondition(trigger, condition);
         }
 
         public static IBlockProductionTrigger Or(this IBlockProductionTrigger? trigger, IBlockProductionTrigger? alternative)

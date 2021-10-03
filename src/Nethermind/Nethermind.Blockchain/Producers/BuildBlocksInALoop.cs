@@ -22,6 +22,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Blockchain.Producers
 {
+    // YAGNI - combine with the implementing class
     public class BuildBlocksInALoop : IBlockProductionTrigger, IAsyncDisposable
     {
         private readonly CancellationTokenSource _loopCancellationTokenSource = new();

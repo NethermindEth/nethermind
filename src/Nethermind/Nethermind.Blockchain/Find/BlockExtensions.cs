@@ -23,6 +23,7 @@ namespace Nethermind.Blockchain.Find
 {
     public static class BlockExtensions
     {
+        // TODO: shall we remove it?
         public static bool TryFindLog(
             this Block block,
             TxReceipt[] receipts,
@@ -42,6 +43,7 @@ namespace Nethermind.Blockchain.Find
             FindOrder logsFindOrder = FindOrder.Descending, // iterating backwards, by default we are interested only in the last one
             IEqualityComparer<LogEntry> comparer = null)
         {
+            // TODO why is it called a comparer and not a predicate? / matcher? / filter?
             comparer ??= LogEntryAddressAndTopicsMatchTemplateEqualityComparer.Instance;
 
             if (blockHeader.Bloom.Matches(matchEntry))
@@ -74,6 +76,7 @@ namespace Nethermind.Blockchain.Find
             LogEntry matchEntry,
             FindOrder receiptFindOrder = FindOrder.Ascending, // iterating forwards, by default we are interested in all items in order of appearance 
             FindOrder logsFindOrder = FindOrder.Ascending, // iterating forwards, by default we are interested in all items in order of appearance
+            // TODO: this comparer is never used, also why this is equality comparer?
             IEqualityComparer<LogEntry> comparer = null)
         {
             comparer ??= LogEntryAddressAndTopicsMatchTemplateEqualityComparer.Instance;

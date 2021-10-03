@@ -20,13 +20,13 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.FSharp.Core;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Logging;
 
 namespace Nethermind.Blockchain.Producers
 {
+    // TODO: merge with Mev block producer?
     public abstract class MultipleBlockProducer<T> : IBlockProducer where T : IBlockProducerInfo
     {
         private readonly IBlockProductionTrigger _blockProductionTrigger;

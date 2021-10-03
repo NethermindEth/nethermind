@@ -19,6 +19,7 @@ using Nethermind.Consensus.Transactions;
 
 namespace Nethermind.Blockchain.Producers
 {
+    // TODO: can we remove the factory?
     public interface IBlockProducerEnvFactory
     {
         IBlockTransactionsExecutorFactory TransactionsExecutorFactory { get; set; }

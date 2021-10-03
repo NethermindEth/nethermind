@@ -32,7 +32,8 @@ namespace Nethermind.Merge.Plugin.Handlers
 {
     public class Eth2BlockProducer : BlockProducerBase
     {
-        public Eth2BlockProducer(ITxSource txSource,
+        public Eth2BlockProducer(
+            ITxSource txSource,
             IBlockchainProcessor processor,
             IBlockTree blockTree,
             IBlockProductionTrigger blockProductionTrigger,

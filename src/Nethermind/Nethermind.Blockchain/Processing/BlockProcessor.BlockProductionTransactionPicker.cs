@@ -21,7 +21,6 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Int256;
-using Nethermind.Logging;
 using Nethermind.State;
 
 namespace Nethermind.Blockchain.Processing

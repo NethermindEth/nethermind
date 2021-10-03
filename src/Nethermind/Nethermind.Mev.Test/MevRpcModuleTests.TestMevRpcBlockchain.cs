@@ -120,12 +120,14 @@ namespace Nethermind.Mev.Test
 
                 MevBlockProducer.MevBlockProducerInfo CreateProducer(int bundleLimit = 0, ITxSource? additionalTxSource = null)
                 {
+                    // TODO: this could be simplified a lot of the parent was not retrieved, not sure why do we need the parent here
                     bool BundleLimitTriggerCondition(BlockProductionEventArgs e)
                     {
+                        // TODO: why do we need this parent? later we use only the current block number
                         BlockHeader? parent = BlockTree.GetProducedBlockParent(e.ParentHeader);
                         if (parent is not null)
                         {
-                            IEnumerable<MevBundle> bundles = BundlePool.GetBundles(parent, Timestamper);
+                            IEnumerable<MevBundle> bundles = BundlePool.GetBundles(parent.Number + 1, Timestamper);
                             return bundles.Count() >= bundleLimit;
                         }
 

@@ -20,6 +20,7 @@ using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Blockchain.Producers
 {
+    // TODO: can we remove this?
     public interface IBlockProducerInfo
     {
         IBlockProducer BlockProducer { get; }

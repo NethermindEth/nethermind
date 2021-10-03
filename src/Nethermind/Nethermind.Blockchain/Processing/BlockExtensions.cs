@@ -16,7 +16,6 @@
 // 
 
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Core;
 using Nethermind.State.Proofs;

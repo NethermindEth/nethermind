@@ -16,8 +16,6 @@
 // 
 
 using System;
-using System.Threading;
-using Nethermind.Core;
 using Nethermind.TxPool;
 
 namespace Nethermind.Blockchain.Producers

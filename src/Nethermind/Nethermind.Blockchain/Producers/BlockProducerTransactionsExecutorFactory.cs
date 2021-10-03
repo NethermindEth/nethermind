@@ -21,6 +21,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Blockchain.Producers
 {
+    // TODO: can we remove this?
     public class BlockProducerTransactionsExecutorFactory : IBlockTransactionsExecutorFactory
     {
         private readonly ISpecProvider _specProvider;

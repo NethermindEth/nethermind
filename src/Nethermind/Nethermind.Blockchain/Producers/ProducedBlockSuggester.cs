@@ -16,12 +16,12 @@
 // 
 
 using System;
-using System.Linq;
 using Nethermind.Consensus;
 using Nethermind.Core;
 
 namespace Nethermind.Blockchain.Producers
 {
+    // TODO: remove this class?
     public class ProducedBlockSuggester : IDisposable
     {
         private readonly IBlockTree _blockTree;

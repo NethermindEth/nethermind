@@ -186,10 +186,11 @@ namespace Nethermind.Mev
         {
             bool BundleLimitTriggerCondition(BlockProductionEventArgs e)
             {
+                // TODO: why we are checking parent and not the currently produced block...?
                 BlockHeader? parent = _nethermindApi.BlockTree!.GetProducedBlockParent(e.ParentHeader);
                 if (parent is not null)
                 {
-                    IEnumerable<MevBundle> bundles = BundlePool.GetBundles(parent, _nethermindApi.Timestamper);
+                    IEnumerable<MevBundle> bundles = BundlePool.GetBundles(parent.Number + 1, _nethermindApi.Timestamper);
                     return bundles.Count() >= bundleLimit;
                 }
 
