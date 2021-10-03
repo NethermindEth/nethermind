@@ -29,7 +29,7 @@ dotnet run -c Release --no-build -- --config themerge_devnet
 
 ## Terminal 2: Nimbus
 ```
-git clone https://github.com/status-im/nimbus-eth2.git -b amphora-testnet-merge
+git clone https://github.com/status-im/nimbus-eth2.git -b amphora-merge-interop
 make update -j$(nproc)
 make nimbus_beacon_node -j$(nproc)
 ```
