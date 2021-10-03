@@ -13,7 +13,7 @@ https://dotnet.microsoft.com/download
 
 ### Build Nethermind:
 ```
-git clone https://github.com/NethermindEth/nethermind.git --recursive -b themerge
+git clone --depth 1 https://github.com/NethermindEth/nethermind.git --recursive -b themerge
 cd src/Nethermind
 dotnet build Nethermind.sln -c Release
 # if src/Nethermind/Nethermind.Runner/bin/Release/net5.0/plugins has no Nethermind.Merge.Plugin.dll plugin then you may need to run the build again
