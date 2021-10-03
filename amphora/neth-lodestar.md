@@ -23,7 +23,6 @@ cd Nethermind.Runner
 
 run Nethermind
 ```
-rm -rf bin/Release/net5.0/nethermind_db
 dotnet run -c Release --no-build -- --config themerge_devnet
 ```
 
