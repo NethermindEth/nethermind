@@ -23,7 +23,6 @@ cd Nethermind.Runner
 
 run Nethermind
 ```
-rm -rf bin/Release/net5.0/nethermind_db
 dotnet run -c Release --no-build -- --config themerge_devnet
 ```
 
@@ -44,6 +43,6 @@ run Lodestar
   --params.ALTAIR_FORK_EPOCH 0 \
   --params.MERGE_FORK_EPOCH 0 \
   --params.TRANSITION_TOTAL_DIFFICULTY 0 \
-  --genesisEth1Hash "0xa0513a503d5bd6e89a144c3268e5b7e9da9dbf63df125a360e3950a7d0d67131" \
+  --genesisEth1Hash "0x3b8fb240d288781d4aac94d3fd16809ee413bc99294a085798a589dae51ddd4a" \
   --execution.urls http://localhost:8550
 ```
