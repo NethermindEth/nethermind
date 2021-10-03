@@ -1,7 +1,4 @@
-## Milestone #2: Lighthouse and Nethermind
-
-References:
-	- Nethermind PR: https://github.com/NethermindEth/nethermind/pull/3453
+## Nethermind-Lighthouse the Merge
 
 ## How To Run
 
@@ -10,15 +7,19 @@ and one for a validator client. See the per-terminal commands below.
 
 ### Terminal 1: Nethermind
 
+Install dotnet:
+```
+https://dotnet.microsoft.com/download
+```
 *Arch Linux users will need `pacman -S dotnet-sdk aspnet-runtime`.*
 
-```bash
-git clone https://github.com/NethermindEth/nethermind --recursive
-git checkout themerge
-cd nethermind/src/Nethermind
+Build Nethermind:
+```
+git clone https://github.com/NethermindEth/nethermind.git --recursive -b themerge
+cd src/Nethermind
 dotnet build Nethermind.sln -c Release
 cd Nethermind.Runner
-# build again (to get plugins)
+# if src/Nethermind/Nethermind.Runner/bin/Release/net5.0/plugins has no Nethermind.Merge.Plugin.dll plugin then you may need to run the build again
 dotnet build Nethermind.sln -c Release
 dotnet run -c Release --no-build -- --config themerge_devnet
 ```

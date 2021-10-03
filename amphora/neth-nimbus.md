@@ -1,12 +1,10 @@
-### Setup Nimbus
-```
-git clone https://github.com/status-im/nimbus-eth2.git -b amphora-testnet-merge
-make update -j$(nproc)
-make nimbus_beacon_nodgit adde -j$(nproc)
-```
+# Nethermind-Nimbus theMerge
 
-### Setup Nethermind
+## How To Run
 
+This testnet requires 2 terminal processes, one for Nethermind, one for a Nimbus node. See the per-terminal commands below.
+
+## Terminal 1: Nethermind
 Install dotnet:
 ```
 https://dotnet.microsoft.com/download
@@ -20,6 +18,14 @@ dotnet build Nethermind.sln -c Release
 cd Nethermind.Runner
 # if src/Nethermind/Nethermind.Runner/bin/Release/net5.0/plugins has no Nethermind.Merge.Plugin.dll plugin then you may need to run the build again
 dotnet build Nethermind.sln -c Release
+dotnet run -c Release --no-build -- --config themerge_devnet
+```
+
+## Terminal 2: Nimbus
+```
+git clone https://github.com/status-im/nimbus-eth2.git -b amphora-testnet-merge
+make update -j$(nproc)
+make nimbus_beacon_nodgit adde -j$(nproc)
 ```
 
 ### Verify
