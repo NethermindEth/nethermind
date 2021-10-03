@@ -143,6 +143,7 @@
 
     <Target Name="CopyPluginsAfterPublish" AfterTargets="AfterPublish">
     <Message Text="---&gt; Copying Plugins After Publish" Importance="High" />
+    <Copy SourceFiles="@(PluginsForBuild)" DestinationFolder="$(OutDir)\plugins" />
     <Copy SourceFiles="@(PluginsForPublish)" DestinationFolder="$(PublishDir)\plugins" /> 
   </Target>
  </Project>

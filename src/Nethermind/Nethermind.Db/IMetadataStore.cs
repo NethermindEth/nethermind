@@ -15,15 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Core.Crypto;
-using Nethermind.Int256;
-
-namespace Nethermind.Merge.Plugin.Handlers
+namespace Nethermind.Db
 {
-    public interface ITransitionProcessHandler
+    public interface IMetadataStore
     {
-        UInt256? TerminalTotalDifficulty { get; set; }
-
-        void SetTerminalPoWHash(Keccak blockHash);
+        
     }
 }

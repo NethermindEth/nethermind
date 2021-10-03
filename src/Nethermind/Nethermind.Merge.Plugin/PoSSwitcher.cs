@@ -19,30 +19,48 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Consensus;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Merge.Plugin
 {
     // ToDo think about reorgs in this class & maybe we should persist data (_terminalTotalDifficulty, _terminalBlockHash, _firstPoSBlockHeader)  to db
     public class PoSSwitcher : IPoSSwitcher, ITransitionProcessHandler
     {
-        private readonly ILogger _logger;
         private readonly IMergeConfig _mergeConfig;
+        private readonly IDb _db;
+        private readonly ILogger _logger;
         private UInt256? _terminalTotalDifficulty;
         private Keccak? _terminalBlockHash;
         private BlockHeader? _firstPoSBlockHeader;
 
-        public PoSSwitcher(ILogManager logManager, IMergeConfig mergeConfig)
+        public PoSSwitcher(ILogManager logManager, IMergeConfig mergeConfig, IDb db)
         {
             _mergeConfig = mergeConfig;
-            _terminalTotalDifficulty = _mergeConfig.TerminalTotalDifficulty;
+            _db = db;
+            _terminalTotalDifficulty = LoadTerminalTotalDifficulty();
             _logger = logManager.GetClassLogger();
         }
+
+        public UInt256? TerminalTotalDifficulty
+        {
+            get => _terminalTotalDifficulty;
+            set => SetTerminalTotalDifficulty(value);
+        }
+
+        private UInt256? LoadTerminalTotalDifficulty()
+        {
+            return _mergeConfig.TerminalTotalDifficulty ??
+                   (_db.KeyExists(MetadataDbKeys.TerminalTotalDifficulty) ? Rlp.Decode<UInt256?>(_db.Get(MetadataDbKeys.TerminalTotalDifficulty))
+                       : null);
+        }
         
-        public void SetTerminalTotalDifficulty(UInt256 totalDifficulty)
+        private void SetTerminalTotalDifficulty(UInt256? totalDifficulty)
         {
             _terminalTotalDifficulty = totalDifficulty;
+            _db.Set(MetadataDbKeys.TerminalTotalDifficulty, Rlp.Encode(_terminalTotalDifficulty).Bytes);
         }
 
         public void SetTerminalPoWHash(Keccak blockHash)

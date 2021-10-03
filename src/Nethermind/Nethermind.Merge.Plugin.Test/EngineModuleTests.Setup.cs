@@ -29,6 +29,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
 using Nethermind.Facade.Eth;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -69,7 +70,7 @@ namespace Nethermind.Merge.Plugin.Test
                 GenesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.Genesis
                     .WithTimestamp(UInt256.One);
                 Signer = new Eth2Signer(MinerAddress);
-                PoSSwitcher = new PoSSwitcher(LogManager, new MergeConfig() { Enabled = true });
+                PoSSwitcher = new PoSSwitcher(LogManager, new MergeConfig() { Enabled = true }, new MemDb());
                 BlockConfirmationManager = new BlockConfirmationManager();
             }
             

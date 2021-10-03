@@ -134,7 +134,7 @@ namespace Nethermind.Merge.Plugin
 
         public ResultWrapper<string> engine_terminalTotalDifficultyUpdated(UInt256 terminalTotalDifficulty)
         {
-            _transitionProcessHandler.SetTerminalTotalDifficulty(terminalTotalDifficulty);
+            _transitionProcessHandler.TerminalTotalDifficulty = terminalTotalDifficulty;
             return ResultWrapper<string>.Success(null);
         }
 

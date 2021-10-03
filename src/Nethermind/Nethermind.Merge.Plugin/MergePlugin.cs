@@ -22,6 +22,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Db;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
@@ -50,13 +51,14 @@ namespace Nethermind.Merge.Plugin
 
             if (_mergeConfig.Enabled)
             {
+                if (_api.DbProvider == null) throw new ArgumentException(nameof(_api.DbProvider));
                 if (string.IsNullOrEmpty(_mergeConfig.BlockAuthorAccount))
                 {
                     if (_logger.IsError) _logger.Error($"{nameof(MergeConfig)}.{nameof(_mergeConfig.BlockAuthorAccount)} is not set up. Cannot create blocks. Stopping.");
                     Environment.Exit(13); // ERROR_INVALID_DATA
                 }
 
-                _poSSwitcher = new PoSSwitcher(_api.LogManager, _mergeConfig);
+                _poSSwitcher = new PoSSwitcher(_api.LogManager, _mergeConfig, _api.DbProvider.GetDb<IDb>(DbNames.Metadata));
                 _api.EngineSigner = new Eth2Signer(new Address(_mergeConfig.BlockAuthorAccount));
                 _api.RewardCalculatorSource = new MergeRewardCalculator(NoBlockRewards.Instance, _poSSwitcher);
                 _api.PoSSwitcher = _poSSwitcher;
