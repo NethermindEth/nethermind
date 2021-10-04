@@ -511,7 +511,7 @@ namespace Nethermind.Blockchain
             }
         }
 
-        private AddBlockResult Suggest(Block? block, BlockHeader header, bool shouldProcess = true, bool? setAsMain = null, bool poSEnabled = false)
+        private AddBlockResult Suggest(Block? block, BlockHeader header, SuggestingOptions options = SuggestingOptions.ShouldProcess)
         {
 #if DEBUG
             /* this is just to make sure that we do not fall into this trap when creating tests */
@@ -570,11 +570,14 @@ namespace Nethermind.Blockchain
                 _headerDb.Set(header.Hash, newRlp.Bytes);
 
                 BlockInfo blockInfo = new(header.Hash, header.TotalDifficulty ?? 0);
-                UpdateOrCreateLevel(header.Number, blockInfo, setAsMain is null ? !shouldProcess : setAsMain.Value);
+                UpdateOrCreateLevel(header.Number, blockInfo,
+                    (options & SuggestingOptions.SetAsMainIsSet) != 0
+                        ? (options & SuggestingOptions.SetAsMain) != 0
+                        : (options & SuggestingOptions.ShouldProcess) == 0);
                 NewSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
             }
 
-            if (poSEnabled || header.IsGenesis || header.TotalDifficulty > (BestSuggestedHeader?.TotalDifficulty ?? 0))
+            if ((options & SuggestingOptions.PoSEnabled) != 0 || header.IsGenesis || header.TotalDifficulty > (BestSuggestedHeader?.TotalDifficulty ?? 0))
             {
                 if (header.IsGenesis)
                 {
@@ -582,7 +585,7 @@ namespace Nethermind.Blockchain
                 }
 
                 BestSuggestedHeader = header;
-                if (block is not null && shouldProcess)
+                if (block is not null && (options & SuggestingOptions.ShouldProcess) != 0)
                 {
                     BestSuggestedBody = block;
                     NewBestSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
@@ -597,14 +600,14 @@ namespace Nethermind.Blockchain
             return Suggest(null, header);
         }
 
-        public AddBlockResult SuggestBlock(Block block, bool shouldProcess = true, bool? setAsMain = null, bool poSEnabled = false)
+        public AddBlockResult SuggestBlock(Block block, SuggestingOptions options = SuggestingOptions.ShouldProcess)
         {
             if (Genesis is null && !block.IsGenesis)
             {
                 throw new InvalidOperationException("Block tree should be initialized with genesis before suggesting other blocks.");
             }
 
-            return Suggest(block, block.Header, shouldProcess, setAsMain, poSEnabled);
+            return Suggest(block, block.Header, options);
         }
 
         public BlockHeader? FindHeader(long number, BlockTreeLookupOptions options)

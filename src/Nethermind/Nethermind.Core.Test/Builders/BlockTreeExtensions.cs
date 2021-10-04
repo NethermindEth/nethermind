@@ -42,7 +42,10 @@ namespace Nethermind.Core.Test.Builders
                 block.Header.StateRoot = parent?.StateRoot;
                 block.Header.Hash = block.Header.CalculateHash();
                 parent = block;
-                blockTree.SuggestBlock(block, i == branchLength - 1, false);
+                bool shouldProcess = i == branchLength - 1;
+                SuggestingOptions suggestingOptions = shouldProcess ? SuggestingOptions.ShouldProcess : SuggestingOptions.None;
+                suggestingOptions |= SuggestingOptions.SetAsMainIsSet;
+                blockTree.SuggestBlock(block, suggestingOptions);
             }
         }
 

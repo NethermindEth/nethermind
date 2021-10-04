@@ -84,9 +84,9 @@ namespace Nethermind.Blockchain
         /// Suggests block for inclusion in the block tree.
         /// </summary>
         /// <param name="block">Block to be included</param>
-        /// <param name="shouldProcess">Whether a block should be processed or just added to the store</param>
+        /// <param name="options">Suggesting options</param>
         /// <returns>Result of the operation, eg. Added, AlreadyKnown, etc.</returns>
-        AddBlockResult SuggestBlock(Block block, bool shouldProcess = true, bool? setAsMain = null, bool poSEnabled = false);
+        AddBlockResult SuggestBlock(Block block, SuggestingOptions options = SuggestingOptions.ShouldProcess);
 
         /// <summary>
         /// Suggests a block header (without body)
