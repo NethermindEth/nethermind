@@ -51,9 +51,9 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         private void OnConditionsChange(object? sender, BlockEventArgs e)
         {
-            Task.Run(() =>
+            ScheduleAction(() =>
             {
-                SyncingResult syncingResult =  _ethSyncingInfo.GetFullInfo();
+                SyncingResult syncingResult = _ethSyncingInfo.GetFullInfo();
                 bool isSyncing = syncingResult.IsSyncing;
 
                 if (isSyncing == _lastIsSyncing)
@@ -76,23 +76,21 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                     result = CreateSubscriptionMessage(syncingResult);
                 }
 
-                
+
                 JsonRpcDuplexClient.SendJsonRpcResult(result);
                 _logger.Trace($"Syncing subscription {Id} printed SyncingResult object.");
-            }).ContinueWith(
-                t =>
-                    t.Exception?.Handle(ex =>
-                    {
-                        if (_logger.IsDebug) _logger.Debug($"Syncing subscription {Id}: Failed Task.Run.");
-                        return true;
-                    })
-                , TaskContinuationOptions.OnlyOnFaulted
-            );
+            });
+        }
+
+        protected override string GetErrorMsg()
+        {
+            return $"Syncing subscription {Id}: Failed Task.Run.";
         }
         
         public override SubscriptionType Type => SubscriptionType.Syncing;
         public override void Dispose()
         {
+            base.Dispose();
             _blockTree.NewBestSuggestedBlock -= OnConditionsChange;
             if(_logger.IsTrace) _logger.Trace($"Syncing subscription {Id} will no longer track NewBestSuggestedBlocks");
 
