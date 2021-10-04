@@ -20,15 +20,15 @@ using Nethermind.Int256;
 
 namespace Nethermind.Consensus
 {
-    public class ConstantDifficultyCalculator : IDifficultyCalculator
+    public class ConstantDifficulty : IDifficultyCalculator
     {
         private readonly UInt256 _constantDifficulty;
 
-        public static readonly IDifficultyCalculator Zero = new ConstantDifficultyCalculator(UInt256.Zero);
+        public static readonly IDifficultyCalculator Zero = new ConstantDifficulty(UInt256.Zero);
 
-        public static readonly IDifficultyCalculator One = new ConstantDifficultyCalculator(UInt256.One);
+        public static readonly IDifficultyCalculator One = new ConstantDifficulty(UInt256.One);
 
-        public ConstantDifficultyCalculator(UInt256 constantDifficulty)
+        public ConstantDifficulty(UInt256 constantDifficulty)
         {
             _constantDifficulty = constantDifficulty;
         }

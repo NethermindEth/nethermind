@@ -55,7 +55,7 @@ namespace Nethermind.Core.Test.Blockchain
                 timestamper,
                 specProvider,
                 logManager,
-                ConstantDifficultyCalculator.One)
+                ConstantDifficulty.One)
         {
         }
         
