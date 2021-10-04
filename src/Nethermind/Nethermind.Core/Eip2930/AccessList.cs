@@ -16,7 +16,6 @@
 // 
 
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using Nethermind.Int256;
 
 namespace Nethermind.Core.Eip2930
