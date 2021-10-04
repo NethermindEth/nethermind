@@ -26,9 +26,20 @@ dotnet run -c Release --no-build -- --config themerge_devnet
 
 ### Terminal 2: Lighthouse Beacon Node
 
+install lighthouse
+```
+git clone https://github.com/sigp/lighthouse.git -b merge-f2f
+cd lighthouse
+make
+make install-lcli
+cd ..
+```
+
 ```bash
-cd m2_lighthouse
-./start_beacon_node.sh 8550
+git clone https://github.com/sigp/lighthouse-merge-f2f.git
+cd lighthouse-merge-f2f
+# make sure jq is installed before the next step
+./m2_lighthouse/start_beacon_node.sh 8550
 ```
 
 *Note: it's important to start the beacon node before the validator client
@@ -37,6 +48,5 @@ since that script also generates the testnet configuration.*
 ### Terminal 3: Lighthouse Validator Client
 
 ```bash
-cd m2_lighthouse
-./start_validator_client.sh
+./m2_lighthouse/start_validator_client.sh
 ```
