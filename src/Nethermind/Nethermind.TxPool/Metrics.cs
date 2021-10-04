@@ -58,5 +58,8 @@ namespace Nethermind.TxPool
         
         [Description("Ratio of transactions in the block absent in pending transactions.")]
         public static float DarkPoolRatioLevel2 { get; set; }
+        
+        [Description("Number of transactions in pool.")]
+        public static float TransactionCount { get; set; }
     }
 }
