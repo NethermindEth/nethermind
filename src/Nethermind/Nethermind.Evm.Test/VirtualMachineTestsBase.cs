@@ -63,7 +63,7 @@ namespace Nethermind.Evm.Test
 
         protected virtual long BlockNumber => MainnetSpecProvider.ByzantiumBlockNumber;
         protected virtual ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
-        protected IReleaseSpec Spec => SpecProvider.GetSpec(BlockNumber);
+        protected IReleaseSpec Spec => SpecProvider.Resolve(BlockNumber);
 
         protected virtual ILogManager GetLogManager()
         {

@@ -54,7 +54,7 @@ namespace Nethermind.Blockchain.Test.Find
         private void SetUp(bool allowReceiptIterator)
         {
             var specProvider = Substitute.For<ISpecProvider>();
-            specProvider.GetSpec(Arg.Any<long>()).IsEip155Enabled.Returns(true);
+            specProvider.Resolve(Arg.Any<long>()).IsEip155Enabled.Returns(true);
             _receiptStorage = new InMemoryReceiptStorage(allowReceiptIterator);
             _blockTree = Build.A.BlockTree().WithTransactions(_receiptStorage, specProvider, LogsForBlockBuilder).OfChainLength(5).TestObject;
             _bloomStorage = new BloomStorage(new BloomConfig(), new MemDb(), new InMemoryDictionaryFileStoreFactory());

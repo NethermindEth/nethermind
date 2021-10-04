@@ -167,8 +167,8 @@ namespace Nethermind.Blockchain.Test
                 ReleaseSpec releaseSpec = new();
                 ReleaseSpec eip1559ReleaseSpec = new() {IsEip1559Enabled = isEip1559Enabled, Eip1559TransitionBlock = eip1559TransitionBlock};
                 ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-                specProvider.GetSpec(Arg.Is<long>(x => x >= eip1559TransitionBlock)).Returns(eip1559ReleaseSpec);
-                specProvider.GetSpec(Arg.Is<long>(x => x < eip1559TransitionBlock)).Returns(releaseSpec);
+                specProvider.Resolve(Arg.Is<long>(x => x >= eip1559TransitionBlock)).Returns(eip1559ReleaseSpec);
+                specProvider.Resolve(Arg.Is<long>(x => x < eip1559TransitionBlock)).Returns(releaseSpec);
                 _blockTree = Substitute.For<IBlockTree>();
                 UpdateBlockTreeHead();
                 _transactionComparerProvider =

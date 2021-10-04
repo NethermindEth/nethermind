@@ -34,7 +34,7 @@ namespace Nethermind.Specs
         
         private IReleaseSpec LondonNoBomb { get; } = London.Instance;
 
-        public IReleaseSpec GetSpec(long blockNumber)
+        public IReleaseSpec Resolve(long blockNumber)
         {
             if (blockNumber < IstanbulBlockNumber)
             {

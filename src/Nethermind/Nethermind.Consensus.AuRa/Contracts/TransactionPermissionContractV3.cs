@@ -52,7 +52,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             // _data Transaction data.
             
             long number = (parentHeader?.Number ?? 0) + 1;
-            bool isEip1559Enabled = _specProvider.GetSpec(number).IsEip1559Enabled;
+            bool isEip1559Enabled = _specProvider.Resolve(number).IsEip1559Enabled;
             UInt256 gasPrice = isEip1559Enabled && tx.IsEip1559 ? tx.MaxFeePerGas : tx.GasPrice;
             
             return new object[]

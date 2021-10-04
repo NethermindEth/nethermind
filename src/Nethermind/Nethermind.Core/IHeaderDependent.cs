@@ -13,36 +13,18 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using Nethermind.Core.Specs;
-using Nethermind.Specs.Forks;
-
-namespace Nethermind.Specs
+namespace Nethermind.Core
 {
-    public class SingleReleaseSpecProvider : ISpecProvider
+    /// <summary>
+    /// Provides an implementation of an interface (or an instance of a class) depending on the block header context
+    /// within which the implementation should operate.
+    /// Created to support consensus switcher with IHeaderValidator implementations.
+    /// </summary>
+    /// <typeparam name="T">Type of the object for which to resolve implementations</typeparam>
+    public interface IHeaderDependent<out T>
     {
-        public ulong ChainId { get; }
-        public long[] TransitionBlocks { get; } = {0};
-
-        private readonly IReleaseSpec _releaseSpec;
-
-        public SingleReleaseSpecProvider(IReleaseSpec releaseSpec, ulong networkId)
-        {
-            ChainId = networkId;
-            _releaseSpec = releaseSpec;
-            if (_releaseSpec == Dao.Instance)
-            {
-                DaoBlockNumber = 0;
-            }
-        }
-
-        public IReleaseSpec GenesisSpec => _releaseSpec;
-
-        public IReleaseSpec Resolve(long blockNumber)
-        {
-            return _releaseSpec;
-        }
-
-        public long? DaoBlockNumber { get; }
+        T Resolve(BlockHeader header);
     }
 }

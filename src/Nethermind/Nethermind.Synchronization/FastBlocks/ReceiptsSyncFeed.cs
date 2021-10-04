@@ -182,7 +182,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 }
                 else
                 {
-                    IReleaseSpec releaseSpec = _specProvider.GetSpec(blockInfo.BlockNumber);
+                    IReleaseSpec releaseSpec = _specProvider.Resolve(blockInfo.BlockNumber);
                     preparedReceipts = receipts.GetReceiptsRoot(releaseSpec, header.ReceiptsRoot) != header.ReceiptsRoot 
                         ? null 
                         : receipts;

@@ -47,7 +47,7 @@ namespace Nethermind.Consensus.Ethash
             long blockNumber,
             bool parentHasUncles)
         {
-            IReleaseSpec spec = _specProvider.GetSpec(blockNumber);
+            IReleaseSpec spec = _specProvider.Resolve(blockNumber);
             if (spec.FixedDifficulty != null && blockNumber != 0)
             {
                 return (UInt256)spec.FixedDifficulty.Value;

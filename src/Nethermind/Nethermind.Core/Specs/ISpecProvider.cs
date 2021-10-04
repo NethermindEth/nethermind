@@ -19,19 +19,12 @@ namespace Nethermind.Core.Specs
     /// <summary>
     /// Provides details of enabled EIPs and other chain parameters at any chain height.
     /// </summary>
-    public interface ISpecProvider
+    public interface ISpecProvider : INumberDependent<IReleaseSpec>
     {
         /// <summary>
         /// Retrieves the list of enabled EIPs at genesis block.
         /// </summary>
         IReleaseSpec GenesisSpec { get; }
-        
-        /// <summary>
-        /// Retrieves a spec (list of enabled EIPs and some other properties) for the given chain height.
-        /// </summary>
-        /// <param name="blockNumber"></param>
-        /// <returns></returns>
-        IReleaseSpec GetSpec(long blockNumber);
 
         /// <summary>
         /// Block number at which DAO happens (only relevant for mainnet)

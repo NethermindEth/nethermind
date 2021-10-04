@@ -47,7 +47,7 @@ namespace Nethermind.Consensus.Transactions
             UInt256 premiumPerGas = tx.GasPrice;
             UInt256 baseFeePerGas = UInt256.Zero;
             long blockNumber = (parentHeader?.Number ?? 0) + 1;
-            IReleaseSpec spec = _specProvider.GetSpec(blockNumber);
+            IReleaseSpec spec = _specProvider.Resolve(blockNumber);
             if (spec.IsEip1559Enabled)
             {
                 baseFeePerGas = BaseFeeCalculator.Calculate(parentHeader, spec);

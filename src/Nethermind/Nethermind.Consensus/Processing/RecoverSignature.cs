@@ -52,7 +52,7 @@ namespace Nethermind.Consensus.Processing
                 return;
             }
 
-            var releaseSpec = _specProvider.GetSpec(block.Number);
+            var releaseSpec = _specProvider.Resolve(block.Number);
             
             for (int i = 0; i < block.Transactions.Length; i++)
             {

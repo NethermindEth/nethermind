@@ -63,7 +63,7 @@ namespace Nethermind.Blockchain.Test
             TrieStore trieStore = new(stateDb, LimboLogs.Instance);
             IStateProvider stateProvider = new StateProvider(trieStore, codeDb, LimboLogs.Instance);
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-            specProvider.GetSpec(Arg.Any<long>()).Returns(Berlin.Instance);
+            specProvider.Resolve(Arg.Any<long>()).Returns(Berlin.Instance);
             StorageProvider storageProvider = new(trieStore, stateProvider, LimboLogs.Instance);
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
             GenesisLoader genesisLoader = new(chainSpec, specProvider, stateProvider, storageProvider,

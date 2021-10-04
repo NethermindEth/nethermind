@@ -24,7 +24,7 @@ namespace Nethermind.Specs
     {
         public IReleaseSpec GenesisSpec => Frontier.Instance;
 
-        public IReleaseSpec GetSpec(long blockNumber)
+        public IReleaseSpec Resolve(long blockNumber)
         {
             return Frontier.Instance;
         }

@@ -167,7 +167,7 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         public IReleaseSpec GenesisSpec => _transitions.Length == 0 ? null : _transitions[0].Release;
 
-        public IReleaseSpec GetSpec(long blockNumber)
+        public IReleaseSpec Resolve(long blockNumber)
         {
             if (_transitions.Length == 0)
             {

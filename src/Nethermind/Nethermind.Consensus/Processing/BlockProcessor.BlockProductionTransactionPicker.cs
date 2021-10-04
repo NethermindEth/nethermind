@@ -84,7 +84,7 @@ namespace Nethermind.Consensus.Processing
 
             private bool HasEnoughFounds(Transaction transaction, UInt256 senderBalance, AddingTxEventArgs e, Block block)
             {
-                IReleaseSpec releaseSpec = _specProvider.GetSpec(block.Number);
+                IReleaseSpec releaseSpec = _specProvider.Resolve(block.Number);
                 bool eip1559Enabled = releaseSpec.IsEip1559Enabled;
                 UInt256 transactionPotentialCost = transaction.CalculateTransactionPotentialCost(eip1559Enabled, block.BaseFeePerGas);
 

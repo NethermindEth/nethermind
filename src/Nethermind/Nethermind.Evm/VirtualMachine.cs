@@ -101,7 +101,7 @@ namespace Nethermind.Evm
         {
             _txTracer = txTracer;
 
-            IReleaseSpec spec = _specProvider.GetSpec(state.Env.TxExecutionContext.Header.Number);
+            IReleaseSpec spec = _specProvider.Resolve(state.Env.TxExecutionContext.Header.Number);
             EvmState currentState = state;
             byte[] previousCallResult = null;
             ZeroPaddedSpan previousCallOutput = ZeroPaddedSpan.Empty;

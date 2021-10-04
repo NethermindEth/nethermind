@@ -125,7 +125,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             {
                 specProvider = Substitute.For<ISpecProvider>();
                 ReleaseSpec releaseSpec = new() {IsEip1559Enabled = true, Eip1559TransitionBlock = 0 };
-                specProvider.GetSpec(Arg.Any<long>()).Returns(releaseSpec);
+                specProvider.Resolve(Arg.Any<long>()).Returns(releaseSpec);
             }
             using Context ctx = await Context.Create();
             Block block = Build.A.Block.WithUncles(Build.A.BlockHeader.TestObject, Build.A.BlockHeader.TestObject).TestObject;
@@ -145,7 +145,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             {
                 specProvider = Substitute.For<ISpecProvider>();
                 ReleaseSpec releaseSpec = new() {IsEip1559Enabled = true, Eip1559TransitionBlock = 1 };
-                specProvider.GetSpec(Arg.Any<long>()).Returns(releaseSpec);
+                specProvider.Resolve(Arg.Any<long>()).Returns(releaseSpec);
             }
                 
             using Context ctx = await Context.Create();

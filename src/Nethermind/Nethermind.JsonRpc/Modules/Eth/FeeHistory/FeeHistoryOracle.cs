@@ -57,7 +57,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
 
                 long oldestBlockNumber = block!.Number;
                 Stack<UInt256> baseFeePerGas = new(blockCount + 1);
-                baseFeePerGas.Push(BaseFeeCalculator.Calculate(block!.Header, _specProvider.GetSpec(block!.Number + 1)));
+                baseFeePerGas.Push(BaseFeeCalculator.Calculate(block!.Header, _specProvider.Resolve(block!.Number + 1)));
                 Stack<double> gasUsedRatio = new Stack<double>(blockCount);
                 
                 Stack<UInt256[]>? rewards = rewardPercentiles is null || rewardPercentiles.Any() is false ? null : new Stack<UInt256[]>(blockCount);

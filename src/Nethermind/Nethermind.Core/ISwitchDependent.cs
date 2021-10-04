@@ -15,17 +15,16 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Consensus.Rewards;
-using Nethermind.Consensus.Validators;
-
-namespace Nethermind.Consensus
+namespace Nethermind.Core
 {
-    public interface IConsensus
+    /// <summary>
+    /// Provides an implementation of an interface (or an instance of a class) depending on a switching event
+    /// (e.g. the Merge transition).
+    /// Created to support consensus switcher with IGossipPolicy implementations.
+    /// </summary>
+    /// <typeparam name="T">Type of the object for which to resolve implementations</typeparam>
+    public interface ISwitchDependent<out T>
     {
-        public IGossipPolicy GossipPolicy { get; }
-        
-        public IHeaderValidator HeaderValidator { get; }
-        
-        public IRewardCalculatorSource RewardCalculatorSource { get; }
+        T Resolve();
     }
 }

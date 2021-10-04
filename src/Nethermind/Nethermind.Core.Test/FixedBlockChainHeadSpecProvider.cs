@@ -32,9 +32,9 @@ namespace Nethermind.Core.Test
 
         public IReleaseSpec GenesisSpec => _specProvider.GenesisSpec;
 
-        public IReleaseSpec GetSpec(long blockNumber)
+        public IReleaseSpec Resolve(long blockNumber)
         {
-            return _specProvider.GetSpec(blockNumber);
+            return _specProvider.Resolve(blockNumber);
         }
 
         public long? DaoBlockNumber => _specProvider.DaoBlockNumber;
@@ -43,6 +43,6 @@ namespace Nethermind.Core.Test
 
         public long[] TransitionBlocks => _specProvider.TransitionBlocks;
         
-        public IReleaseSpec GetSpec() => GetSpec(_fixedBlock);
+        public IReleaseSpec GetSpec() => Resolve(_fixedBlock);
     }
 }

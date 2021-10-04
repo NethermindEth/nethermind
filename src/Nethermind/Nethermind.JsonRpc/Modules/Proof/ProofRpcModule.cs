@@ -136,7 +136,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
             TransactionWithProof txWithProof = new();
             txWithProof.Transaction = new TransactionForRpc(block.Hash, block.Number, receipt.Index, transaction, block.BaseFeePerGas);
-            txWithProof.TxProof = BuildTxProofs(txs, _specProvider.GetSpec(block.Number), receipt.Index);
+            txWithProof.TxProof = BuildTxProofs(txs, _specProvider.Resolve(block.Number), receipt.Index);
             if (includeHeader)
             {
                 txWithProof.BlockHeader = _headerDecoder.Encode(block.Header).Bytes;
@@ -168,13 +168,13 @@ namespace Nethermind.JsonRpc.Modules.Proof
             TxReceipt[] receipts = receiptsTracer.TxReceipts.ToArray();
             Transaction[] txs = block.Transactions;
             ReceiptWithProof receiptWithProof = new();
-            bool isEip1559Enabled = _specProvider.GetSpec(block.Number).IsEip1559Enabled;
+            bool isEip1559Enabled = _specProvider.Resolve(block.Number).IsEip1559Enabled;
             Transaction? tx = txs.FirstOrDefault(x => x.Hash == txHash);
             
             int logIndexStart = _receiptFinder.Get(block).GetBlockLogFirstIndex(receipt.Index);
             receiptWithProof.Receipt = new ReceiptForRpc(txHash, receipt, tx?.CalculateEffectiveGasPrice(isEip1559Enabled, block.BaseFeePerGas), logIndexStart);
             receiptWithProof.ReceiptProof = BuildReceiptProofs(block.Number, receipts, receipt.Index);
-            receiptWithProof.TxProof = BuildTxProofs(txs, _specProvider.GetSpec(block.Number), receipt.Index);
+            receiptWithProof.TxProof = BuildTxProofs(txs, _specProvider.Resolve(block.Number), receipt.Index);
             
             if (includeHeader)
             {
@@ -219,7 +219,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
         private byte[][] BuildReceiptProofs(long blockNumber, TxReceipt[] receipts, int index)
         {
-            return new ReceiptTrie(_specProvider.GetSpec(blockNumber), receipts, true).BuildProof(index);
+            return new ReceiptTrie(_specProvider.Resolve(blockNumber), receipts, true).BuildProof(index);
         }
     }
 }

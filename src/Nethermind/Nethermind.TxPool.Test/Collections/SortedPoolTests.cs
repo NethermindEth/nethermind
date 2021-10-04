@@ -48,7 +48,7 @@ namespace Nethermind.TxPool.Test.Collections
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             Block block =  Build.A.Block.WithNumber(0).TestObject;
             blockTree.Head.Returns(block);
-            specProvider.GetSpec(Arg.Any<long>()).Returns(new ReleaseSpec() {IsEip1559Enabled = false});
+            specProvider.Resolve(Arg.Any<long>()).Returns(new ReleaseSpec() {IsEip1559Enabled = false});
             ITransactionComparerProvider transactionComparerProvider = new TransactionComparerProvider(specProvider, blockTree);
             _sortedPool = new TxDistinctSortedPool(Capacity, transactionComparerProvider.GetDefaultComparer(), LimboLogs.Instance);
             for (int i = 0; i < _transactions.Length; i++)

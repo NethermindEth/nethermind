@@ -359,7 +359,7 @@ namespace Nethermind.Consensus.Clique
                 _logger.Info($"Preparing new block on top of {parentBlock.ToString(Block.Format.Short)}");
 
             UInt256 timestamp = _timestamper.UnixTime.Seconds;
-            IReleaseSpec spec = _specProvider.GetSpec(parentHeader.Number + 1);
+            IReleaseSpec spec = _specProvider.Resolve(parentHeader.Number + 1);
 
             BlockHeader header = new (
                 parentHeader.Hash,
@@ -402,7 +402,7 @@ namespace Nethermind.Consensus.Clique
             }
 
             // Set the correct difficulty
-            header.BaseFeePerGas = BaseFeeCalculator.Calculate(parentHeader, _specProvider.GetSpec(header.Number));
+            header.BaseFeePerGas = BaseFeeCalculator.Calculate(parentHeader, _specProvider.Resolve(header.Number));
             header.Difficulty = CalculateDifficulty(snapshot, _sealer.Address);
             header.TotalDifficulty = parentBlock.TotalDifficulty + header.Difficulty;
             if (_logger.IsDebug)
