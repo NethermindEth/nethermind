@@ -20,13 +20,18 @@ using Nethermind.Core;
 
 namespace Nethermind.Consensus.Producers
 {
-    public class TheMergeGrandSwitcher : ISwitchDependent<IBlockProducer>
+    public class TheMergeGrandSwitcher : ISwitchDependent<IBlockProducer, string>
     {
         public TheMergeGrandSwitcher(IBlockProducer preMergeProducer, IPoSSwitcher poSSwitcher)
         {
         }
 
         public IBlockProducer Resolve()
+        {
+            throw new NotImplementedException();
+        }
+
+        public void Register(IBlockProducer implementation, string switchingItem)
         {
             throw new NotImplementedException();
         }

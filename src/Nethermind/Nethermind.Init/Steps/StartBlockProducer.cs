@@ -74,8 +74,11 @@ namespace Nethermind.Init.Steps
             
             if (consensusPlugin is not null)
             {
+                // TODO: need to wrap preMerge producer inside theMerge first, then need to wrap all of it with MEV
+                // I am pretty sure that MEV can be done better than this way
                 foreach (IConsensusWrapperPlugin wrapperPlugin in _api.GetConsensusWrapperPlugins())
                 {
+                    // TODO: foreach returns the first one now
                     return await wrapperPlugin.InitBlockProducer(consensusPlugin);
                 }
 

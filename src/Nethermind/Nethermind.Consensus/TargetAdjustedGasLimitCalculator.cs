@@ -26,7 +26,7 @@ namespace Nethermind.Consensus
         private readonly ISpecProvider _specProvider;
         private readonly IMiningConfig _miningConfig;
 
-        public TargetAdjustedGasLimitCalculator(ISpecProvider specProvider, IMiningConfig miningConfig)
+        public TargetAdjustedGasLimitCalculator(ISpecProvider? specProvider, IMiningConfig? miningConfig)
         {
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _miningConfig = miningConfig ?? throw new ArgumentNullException(nameof(miningConfig));

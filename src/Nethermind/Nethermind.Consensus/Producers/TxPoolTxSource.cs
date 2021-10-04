@@ -43,7 +43,7 @@ namespace Nethermind.Consensus.Producers
         public TxPoolTxSource(
             ITxPool? transactionPool, 
             ISpecProvider? specProvider,
-            ITransactionComparerProvider transactionComparerProvider, 
+            ITransactionComparerProvider? transactionComparerProvider, 
             ILogManager? logManager,
             ITxFilterPipeline? txFilterPipeline)
         {

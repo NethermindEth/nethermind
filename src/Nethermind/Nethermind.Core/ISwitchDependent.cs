@@ -23,8 +23,12 @@ namespace Nethermind.Core
     /// Created to support consensus switcher with IGossipPolicy implementations.
     /// </summary>
     /// <typeparam name="T">Type of the object for which to resolve implementations</typeparam>
-    public interface ISwitchDependent<out T>
+    /// <typeparam name="TImplementation"></typeparam>
+    /// <typeparam name="TSwitchingType"></typeparam>
+    public interface ISwitchDependent<TImplementation, in TSwitchingType>
     {
-        T Resolve();
+        TImplementation Resolve();
+
+        void Register(TImplementation implementation, TSwitchingType switchingItem);
     }
 }

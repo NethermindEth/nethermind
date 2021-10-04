@@ -21,6 +21,8 @@ using Nethermind.Core.Attributes;
 
 namespace Nethermind.Consensus.Clique
 {
+    // TODO: so, this should be SwitchDependent...
+    // TODO: or actually better -> it xhould simply detect whether it is a clique block?
     public class AuthorRecoveryStep : IBlockPreprocessorStep
     {
         private readonly ISnapshotManager _snapshotManager;

@@ -24,7 +24,7 @@ using Nethermind.JsonRpc;
 
 namespace Nethermind.Consensus.Clique
 {
-    public class CliqueRpcRpcModule : ICliqueRpcModule
+    public class CliqueRpcModule : ICliqueRpcModule
     {
         private const string CannotVoteOnNonValidatorMessage = "Not a signer node - cannot vote";
 
@@ -32,7 +32,7 @@ namespace Nethermind.Consensus.Clique
         private readonly ISnapshotManager _snapshotManager;
         private readonly IBlockFinder _blockTree;
 
-        public CliqueRpcRpcModule(ICliqueBlockProducer? cliqueBlockProducer, ISnapshotManager snapshotManager, IBlockFinder blockTree)
+        public CliqueRpcModule(ICliqueBlockProducer? cliqueBlockProducer, ISnapshotManager snapshotManager, IBlockFinder blockTree)
         {
             _cliqueBlockProducer = cliqueBlockProducer;
             _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
