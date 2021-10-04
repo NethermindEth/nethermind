@@ -150,6 +150,7 @@ namespace Nethermind.TxPool
             ReAddReorganisedTransactions(previousBlock);
             RemoveProcessedTransactions(block.Transactions);
             UpdateBuckets();
+            Metrics.TransactionCount = _transactions.Count;
         }
 
         private void ReAddReorganisedTransactions(Block? previousBlock)
@@ -277,6 +278,7 @@ namespace Nethermind.TxPool
                 }
                 else
                 {
+                    Metrics.PendingTransactionsTooLowFee++;
                     return AddTxResult.FeeTooLowToCompete;
                 }
             }
@@ -286,6 +288,7 @@ namespace Nethermind.TxPool
 
             _hashCache.SetLongTerm(tx.Hash!);
             NewPending?.Invoke(this, new TxEventArgs(tx));
+            Metrics.TransactionCount = _transactions.Count;
             return AddTxResult.Added;
         }
 
