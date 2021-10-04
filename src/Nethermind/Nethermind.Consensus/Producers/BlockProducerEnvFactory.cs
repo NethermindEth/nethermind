@@ -103,13 +103,13 @@ namespace Nethermind.Blockchain.Producers
                     _logManager,
                     BlockchainProcessor.Options.NoReceipts);
 
-            // OneTimeChainProcessor chainProcessor = new(
-            //     readOnlyDbProvider,
-            //     blockchainProcessor);
+            OneTimeChainProcessor chainProcessor = new(
+                readOnlyDbProvider,
+                blockchainProcessor);
 
             return new BlockProducerEnv
             {
-                // ChainProcessor = chainProcessor,
+                ChainProcessor = chainProcessor,
                 ReadOnlyStateProvider = txProcessingEnv.StateProvider,
                 TxSource = CreateTxSourceForProducer(additionalTxSource, txProcessingEnv, _txPool, _miningConfig, _transactionComparerProvider, _logManager),
                 ReadOnlyTxProcessingEnv = txProcessingEnv

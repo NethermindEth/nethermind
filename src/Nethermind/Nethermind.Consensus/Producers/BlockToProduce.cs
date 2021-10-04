@@ -22,6 +22,7 @@ using Nethermind.Core;
 
 //TODO: Redo clique block producer
 [assembly: InternalsVisibleTo("Nethermind.Consensus.Clique")]
+[assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
 
 namespace Nethermind.Blockchain.Producers
 {   
