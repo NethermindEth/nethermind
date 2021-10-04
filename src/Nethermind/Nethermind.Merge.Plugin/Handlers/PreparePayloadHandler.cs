@@ -106,7 +106,10 @@ namespace Nethermind.Merge.Plugin.Handlers
             using CancellationTokenSource cts = new(_timeout);
 
             uint payloadId = _payloadStorage.RentNextPayloadId();
+            
+            
             Address blockAuthor = request.FeeRecipient == Address.Zero ? _sealer.Address : request.FeeRecipient;
+            _logger.Info(blockAuthor.ToString());
             Block? emptyBlock = await _emptyBlockProductionTrigger.BuildBlock(parentHeader, cts.Token, null, blockAuthor, request.Timestamp);
             Task<Block?> idealBlock = _blockProductionTrigger.BuildBlock(parentHeader, cts.Token, null, blockAuthor, request.Timestamp);
             

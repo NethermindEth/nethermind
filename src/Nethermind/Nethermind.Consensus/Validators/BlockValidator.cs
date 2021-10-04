@@ -44,7 +44,8 @@ namespace Nethermind.Consensus.Validators
 
         public bool ValidateHash(BlockHeader header)
         {
-            return _headerValidator.Resolve(header).ValidateHash(header);
+            IHeaderValidator headerValidator = _headerValidator.Resolve(header);
+            return headerValidator.ValidateHash(header);
         }
         
         public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle)

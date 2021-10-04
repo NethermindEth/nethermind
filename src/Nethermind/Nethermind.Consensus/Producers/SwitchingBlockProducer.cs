@@ -35,5 +35,12 @@ namespace Nethermind.Consensus.Producers
         {
             throw new NotImplementedException();
         }
+
+        public IBlockProducer Resolve(string switchingItem)
+        {
+            throw new NotImplementedException();
+        }
+
+        public event EventHandler<EventArgs>? Switched { add { } remove { } }
     }
 }

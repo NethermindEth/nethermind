@@ -15,6 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
+
 namespace Nethermind.Core
 {
     /// <summary>
@@ -30,5 +32,9 @@ namespace Nethermind.Core
         TImplementation Resolve();
 
         void Register(TImplementation implementation, TSwitchingType switchingItem);
+        
+        TImplementation Resolve(TSwitchingType switchingItem);
+
+        event EventHandler<EventArgs> Switched;
     }
 }
