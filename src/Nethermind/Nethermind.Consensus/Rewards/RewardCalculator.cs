@@ -26,7 +26,7 @@ namespace Nethermind.Consensus.Rewards
     {
         private readonly ISpecProvider _specProvider;
 
-        public RewardCalculator(ISpecProvider specProvider)
+        public RewardCalculator(ISpecProvider? specProvider)
         {
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         }

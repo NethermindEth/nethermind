@@ -24,7 +24,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Consensus.Ethash
 {
-    public class EthashSealValidator : ISealValidator
+    internal class EthashSealValidator : ISealValidator
     {
         private IDifficultyCalculator _difficultyCalculator;
         private ICryptoRandom _cryptoRandom;

@@ -22,7 +22,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Consensus.Ethash
 {
-    public class EthashDifficultyCalculator : IDifficultyCalculator
+    internal class EthashDifficultyCalculator : IDifficultyCalculator
     {
         private readonly ISpecProvider _specProvider;
 

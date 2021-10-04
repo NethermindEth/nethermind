@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -23,26 +22,19 @@ using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 
-[assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
-
 namespace Nethermind.Consensus.Ethash
 {
-    public class EthashSealer : ISealer
+    internal class EthashSealer : ISealer
     {
         private readonly IEthash _ethash;
         private readonly ISigner _signer;
         private readonly ILogger _logger;
 
-        internal EthashSealer(IEthash ethash, ISigner signer, ILogManager logManager)
+        internal EthashSealer(IEthash? ethash, ISigner? signer, ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _ethash = ethash ?? throw new ArgumentNullException(nameof(ethash));
             _signer = signer ?? throw new ArgumentNullException(nameof(signer));
-        }
-
-        public EthashSealer(ISigner signer, ILogManager logManager)
-            : this(new Ethash(logManager), signer, logManager)
-        {
         }
 
         public async Task<Block> SealBlock(Block processed, CancellationToken cancellationToken)

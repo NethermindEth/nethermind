@@ -26,7 +26,7 @@ namespace Nethermind.Consensus.Ethash
 {
     public class EthashPlugin : IConsensusPlugin
     {
-        private INethermindApi _nethermindApi;
+        private INethermindApi? _nethermindApi;
 
         public ValueTask DisposeAsync() { return ValueTask.CompletedTask; }
 
@@ -39,7 +39,7 @@ namespace Nethermind.Consensus.Ethash
         public Task Init(INethermindApi nethermindApi)
         {
             _nethermindApi = nethermindApi;
-            if (_nethermindApi!.SealEngineType != Nethermind.Core.SealEngineType.Ethash)
+            if (_nethermindApi!.SealEngineType != Core.SealEngineType.Ethash)
             {
                 return Task.CompletedTask;
             }
@@ -51,7 +51,7 @@ namespace Nethermind.Consensus.Ethash
             Ethash ethash = new(getFromApi.LogManager);
             
             setInApi.Sealer = getFromApi.Config<IMiningConfig>().Enabled
-                ? (ISealer) new EthashSealer(ethash, getFromApi.EngineSigner, getFromApi.LogManager)
+                ? new EthashSealer(ethash, getFromApi.EngineSigner, getFromApi.LogManager)
                 : NullSealEngine.Instance;
             setInApi.SealValidator = new EthashSealValidator(
                 getFromApi.LogManager, difficultyCalculator, getFromApi.CryptoRandom, ethash);
@@ -74,8 +74,8 @@ namespace Nethermind.Consensus.Ethash
             return Task.CompletedTask;
         }
         
-        public string SealEngineType => Nethermind.Core.SealEngineType.Ethash;
+        public string SealEngineType => Core.SealEngineType.Ethash;
 
-        public IBlockProductionTrigger DefaultBlockProductionTrigger => _nethermindApi.ManualBlockProductionTrigger;
+        public IBlockProductionTrigger DefaultBlockProductionTrigger => _nethermindApi!.ManualBlockProductionTrigger;
     }
 }
