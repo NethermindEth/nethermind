@@ -15,10 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -30,22 +27,22 @@ namespace Nethermind.Merge.Plugin.Handlers
         private readonly object _locker = new();
         private uint _currentPayloadId = 0;
         // first BlockRequestResult is empty (without txs), second one is the ideal one
-        private readonly ConcurrentDictionary<ulong, Tuple<Block?, Keccak>> _payloadStorage =
+        private readonly ConcurrentDictionary<ulong, BlockAndRandom> _payloadStorage =
             new();
 
         public async Task AddPayload(ulong payloadId, Keccak random, Block? emptyBlock, Task<Block?> blockTask)
         {
-            Tuple<Block?, Keccak>? emptyBlockTuple = Tuple.Create(emptyBlock, random);
+            BlockAndRandom emptyBlockTuple = new (emptyBlock, random);
             _payloadStorage.TryAdd(payloadId, emptyBlockTuple);
             Block? idealBlock = await blockTask;
-            _payloadStorage.TryUpdate(payloadId, Tuple.Create(idealBlock, random), emptyBlockTuple);
+            _payloadStorage.TryUpdate(payloadId, new (idealBlock, random), emptyBlockTuple);
         }
 
-        public Tuple<Block?, Keccak>? GetPayload(ulong payloadId)
+        public BlockAndRandom? GetPayload(ulong payloadId)
         {
             if (_payloadStorage.ContainsKey(payloadId))
             {
-                _payloadStorage.TryRemove(payloadId, out Tuple<Block?, Keccak>? payload);
+                _payloadStorage.TryRemove(payloadId, out BlockAndRandom? payload);
                 return payload;
             }
 
@@ -68,10 +65,6 @@ namespace Nethermind.Merge.Plugin.Handlers
                 ++_currentPayloadId;
                 return rentedPayloadId;
             }
-        }
-
-        public void CleanupOldPayloads()
-        {
         }
     }
 }

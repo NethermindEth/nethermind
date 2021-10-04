@@ -17,12 +17,10 @@
 
 using System;
 using System.Threading.Tasks;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
-using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
 

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -52,15 +52,16 @@ namespace Nethermind.Merge.Plugin
 
         private UInt256? LoadTerminalTotalDifficulty()
         {
-            return _mergeConfig.TerminalTotalDifficulty ??
-                   (_db.KeyExists(MetadataDbKeys.TerminalTotalDifficulty) ? Rlp.Decode<UInt256?>(_db.Get(MetadataDbKeys.TerminalTotalDifficulty))
-                       : null);
+            return _mergeConfig.TerminalTotalDifficulty; 
+            // ToDo we need to implement it to have persistance
+            //    ?? (_db.KeyExists(MetadataDbKeys.TerminalTotalDifficulty) ? Rlp.Decode<UInt256?>(_db.Get(MetadataDbKeys.TerminalTotalDifficulty)) : null);
         }
         
         private void SetTerminalTotalDifficulty(UInt256? totalDifficulty)
         {
             _terminalTotalDifficulty = totalDifficulty;
-            _db.Set(MetadataDbKeys.TerminalTotalDifficulty, Rlp.Encode(_terminalTotalDifficulty).Bytes);
+            // ToDo we need to implement it to have persistance
+            // _db.Set(MetadataDbKeys.TerminalTotalDifficulty, Rlp.Encode(_terminalTotalDifficulty).Bytes);
         }
 
         public void SetTerminalPoWHash(Keccak blockHash)
