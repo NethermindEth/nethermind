@@ -28,19 +28,24 @@ namespace Nethermind.Merge.Plugin.Data
         private readonly IBlockTree _blockTree;
         private readonly LruCache<Keccak, bool> _executePayloadHashes;
         private readonly LruCache<Keccak, bool> _consensusValidatedResults;
-        private readonly ConcurrentDictionary<Keccak, Block> _pendingValidPayloads;
+        private readonly LruCache<Keccak, Block> _pendingValidPayloads;
         
         /// <summary>
         /// Number of executePayload hashes and consensusValidated hashes stored in cache.
         /// </summary>
         private const int CacheSize = 300;
 
+        /// <summary>
+        /// Max number of valid payloads stored and waiting for consensusValidated message.
+        /// </summary>
+        private const int PayloadStorageSize = 100;
+
         public PayloadManager(IBlockTree blockTree)
         {
             _blockTree = blockTree;
             _executePayloadHashes = new LruCache<Keccak, bool>(CacheSize, "Recent Execute Payload Hashes");
             _consensusValidatedResults = new LruCache<Keccak, bool>(CacheSize, "Recent Consensus Validated Results");
-            _pendingValidPayloads = new ConcurrentDictionary<Keccak, Block>();
+            _pendingValidPayloads = new LruCache<Keccak, Block>(PayloadStorageSize, "Stored Pending Valid Payloads");
         }
 
         public void TryAddPayloadBlockHash(Keccak blockhash)
@@ -90,16 +95,23 @@ namespace Nethermind.Merge.Plugin.Data
             return false;
         }
         
-        public bool TryAddValidPayload(Keccak blockHash, Block block)
+        public bool TryAddValidPayload(Keccak blockhash, Block block)
         {
-            return _pendingValidPayloads.TryAdd(blockHash, block);
+            if (_pendingValidPayloads.TryGet(blockhash, out _))
+            {
+                return false;
+            }
+            
+            _pendingValidPayloads.Set(blockhash, block);
+            return true;
         }
 
         public void ProcessValidatedPayload(Keccak blockhash)
         {
-            if (_pendingValidPayloads.TryRemove(blockhash, out Block block))
+            if (_pendingValidPayloads.TryGet(blockhash, out Block block))
             {
                 ProcessValidatedPayload(block);
+                _pendingValidPayloads.Delete(blockhash);
             }
         }
         
