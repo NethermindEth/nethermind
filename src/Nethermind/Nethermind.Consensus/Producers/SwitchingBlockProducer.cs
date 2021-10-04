@@ -13,14 +13,22 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
 using System;
+using Nethermind.Core;
 
-namespace Nethermind.Consensus.Ethash
+namespace Nethermind.Consensus.Producers
 {
-    internal interface IEthashDataSet : IDisposable
+    public class TheMergeGrandSwitcher : ISwitchDependent<IBlockProducer>
     {
-        uint Size { get; }
-        uint[] CalcDataSetItem(uint i);
+        public TheMergeGrandSwitcher(IBlockProducer preMergeProducer, IPoSSwitcher poSSwitcher)
+        {
+        }
+
+        public IBlockProducer Resolve()
+        {
+            throw new NotImplementedException();
+        }
     }
 }

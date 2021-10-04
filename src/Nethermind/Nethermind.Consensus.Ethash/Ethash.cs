@@ -31,7 +31,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.Ethash
 {
-    public class Ethash : IEthash
+    internal class Ethash : IEthash
     {
         private HintBasedCache _hintBasedCache;
 

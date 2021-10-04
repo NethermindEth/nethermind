@@ -33,11 +33,16 @@ namespace Nethermind.Consensus.Ethash
         private readonly ISigner _signer;
         private readonly ILogger _logger;
 
-        public EthashSealer(IEthash ethash, ISigner signer, ILogManager logManager)
+        internal EthashSealer(IEthash ethash, ISigner signer, ILogManager logManager)
         {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));            
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _ethash = ethash ?? throw new ArgumentNullException(nameof(ethash));
             _signer = signer ?? throw new ArgumentNullException(nameof(signer));
+        }
+
+        public EthashSealer(ISigner signer, ILogManager logManager)
+            : this(new Ethash(logManager), signer, logManager)
+        {
         }
 
         public async Task<Block> SealBlock(Block processed, CancellationToken cancellationToken)

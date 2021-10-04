@@ -67,7 +67,8 @@ namespace Nethermind.Merge.Plugin.Handlers
 
         public PreparePayloadHandler(
             IBlockTree blockTree, 
-            PayloadStorage payloadStorage, 
+            PayloadStorage payloadStorage,
+            // TODO: hide this complexity -> prepare payload should not really implement the logic of delivering empty vs meaningful block
             IManualBlockProductionTrigger blockProductionTrigger, 
             IManualBlockProductionTrigger emptyBlockProductionTrigger, 
             ManualTimestamper timestamper, 
@@ -108,6 +109,8 @@ namespace Nethermind.Merge.Plugin.Handlers
             Address blockAuthor = request.FeeRecipient == Address.Zero ? _sealer.Address : request.FeeRecipient;
             Block? emptyBlock = await _emptyBlockProductionTrigger.BuildBlock(parentHeader, cts.Token, null, blockAuthor, request.Timestamp);
             Task<Block?> idealBlock = _blockProductionTrigger.BuildBlock(parentHeader, cts.Token, null, blockAuthor, request.Timestamp);
+            
+            // TODO: should have ContinueWith to log errors
             _payloadStorage.AddPayload(payloadId, request.Random, emptyBlock, idealBlock); // not awaiting on purpose
             
             return ResultWrapper<PreparePayloadResult>.Success(new PreparePayloadResult(payloadId));
