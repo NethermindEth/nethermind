@@ -16,10 +16,11 @@
 
 using System;
 using System.Diagnostics;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Logging;
 
-namespace Nethermind.Blockchain.Processing
+namespace Nethermind.Consensus.Processing
 {
     internal class ProcessingStats
     {

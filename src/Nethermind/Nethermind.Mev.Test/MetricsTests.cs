@@ -19,7 +19,7 @@ using System;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Validators;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -153,7 +153,7 @@ namespace Nethermind.Mev.Test
                 0,
                 1,
                 1,
-                null);
+                Array.Empty<byte>());
             Block head = new Block(header);
             ChainLevelInfo info = new(true, new[] {new BlockInfo(Keccak.Zero, 1)});
 

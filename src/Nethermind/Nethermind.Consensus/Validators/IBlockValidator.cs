@@ -16,7 +16,7 @@
 
 using Nethermind.Core;
 
-namespace Nethermind.Blockchain.Validators
+namespace Nethermind.Consensus.Validators
 {
     public interface IBlockValidator : IHeaderValidator
     {

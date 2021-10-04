@@ -17,7 +17,7 @@
 using Nethermind.Core;
 using Nethermind.Int256;
 
-namespace Nethermind.Blockchain.Rewards
+namespace Nethermind.Consensus.Rewards
 {
     public class BlockReward
     {

@@ -19,11 +19,12 @@ using System;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain.Processing;
+using Nethermind.Blockchain;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Logging;
 
-namespace Nethermind.Blockchain.Producers
+namespace Nethermind.Consensus.Producers
 {
     public class BuildBlocksOnlyWhenNotProcessing : IBlockProductionTrigger, IDisposable, IAsyncDisposable
     {

@@ -16,9 +16,9 @@
 
 using System;
 using System.Numerics;
-using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Ethash;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;

@@ -16,11 +16,11 @@
 // 
 
 using System.Collections.Generic;
-using Nethermind.Blockchain.Producers;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.State.Proofs;
 
-namespace Nethermind.Blockchain.Processing
+namespace Nethermind.Consensus.Processing
 {
     internal static class BlockExtensions
     {

@@ -16,7 +16,7 @@
 
 using Nethermind.Core;
 
-namespace Nethermind.Blockchain.Processing
+namespace Nethermind.Consensus.Processing
 {
     public class TxProcessedEventArgs : TxEventArgs
     {

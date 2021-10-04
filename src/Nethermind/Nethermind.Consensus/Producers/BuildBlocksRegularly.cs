@@ -19,7 +19,7 @@ using System;
 using System.Timers;
 using Timer = System.Timers.Timer;
 
-namespace Nethermind.Blockchain.Producers
+namespace Nethermind.Consensus.Producers
 {
     public class BuildBlocksRegularly : IBlockProductionTrigger, IDisposable
     {

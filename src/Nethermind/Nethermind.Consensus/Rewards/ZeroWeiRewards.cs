@@ -17,7 +17,7 @@
 
 using Nethermind.Core;
 
-namespace Nethermind.Blockchain.Rewards
+namespace Nethermind.Consensus.Rewards
 {
     /// <summary>
     /// This class may be used in Hive tests where 0 wei accounts are created for block authors.

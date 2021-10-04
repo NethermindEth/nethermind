@@ -16,10 +16,9 @@
 // 
 
 using System.Collections.Generic;
-using Nethermind.Consensus;
 using Nethermind.Core;
 
-namespace Nethermind.Blockchain.Comparers
+namespace Nethermind.Consensus.Comparers
 {
     public interface ITransactionComparerProvider
     {

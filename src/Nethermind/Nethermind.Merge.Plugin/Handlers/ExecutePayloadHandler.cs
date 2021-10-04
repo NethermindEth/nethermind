@@ -20,7 +20,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Api;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Processing;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;

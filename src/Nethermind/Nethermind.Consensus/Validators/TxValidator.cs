@@ -23,7 +23,7 @@ using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.TxPool;
 
-namespace Nethermind.Blockchain.Validators
+namespace Nethermind.Consensus.Validators
 {
     public class TxValidator : ITxValidator
     {

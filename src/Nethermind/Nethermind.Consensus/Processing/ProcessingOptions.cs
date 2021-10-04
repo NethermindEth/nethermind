@@ -16,7 +16,7 @@
 
 using System;
 
-namespace Nethermind.Blockchain.Processing
+namespace Nethermind.Consensus.Processing
 {
     [Flags]
     public enum ProcessingOptions

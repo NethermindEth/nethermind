@@ -19,7 +19,7 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 
-namespace Nethermind.Blockchain.Processing
+namespace Nethermind.Consensus.Processing
 {
     public partial class BlockProcessor
     {

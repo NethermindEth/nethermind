@@ -19,20 +19,21 @@ using System.Collections.Generic;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain.Processing;
-using Nethermind.Consensus;
+using Nethermind.Blockchain;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Int256;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.Core.Specs;
 using Nethermind.Trie;
+using Metrics = Nethermind.Blockchain.Metrics;
 
-namespace Nethermind.Blockchain.Producers
+namespace Nethermind.Consensus.Producers
 {
     /// <summary>
     /// I think this class can be significantly simplified if we split the block production into a pipeline:

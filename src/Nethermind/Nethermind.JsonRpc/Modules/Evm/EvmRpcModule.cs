@@ -15,7 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using Nethermind.Blockchain.Producers;
+using Nethermind.Consensus.Producers;
 
 namespace Nethermind.JsonRpc.Modules.Evm
 {

@@ -16,13 +16,14 @@
 // 
 
 using System;
+using Nethermind.Blockchain;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Filters;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Consensus
 {
     public class TxFilterAdapter : IIncomingTxFilter
     {

@@ -21,7 +21,7 @@ using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.TxPool;
 
-namespace Nethermind.Blockchain.Processing
+namespace Nethermind.Consensus.Processing
 {
     public class RecoverSignatures : IBlockPreprocessorStep
     {

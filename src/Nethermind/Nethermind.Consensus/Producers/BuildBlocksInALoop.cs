@@ -20,7 +20,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Logging;
 
-namespace Nethermind.Blockchain.Producers
+namespace Nethermind.Consensus.Producers
 {
     // YAGNI - combine with the implementing class
     public class BuildBlocksInALoop : IBlockProductionTrigger, IAsyncDisposable

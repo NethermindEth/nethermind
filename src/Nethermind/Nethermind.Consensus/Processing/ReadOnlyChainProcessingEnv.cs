@@ -16,14 +16,14 @@
 
 using System;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Rewards;
-using Nethermind.Blockchain.Validators;
+using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State;
 
-namespace Nethermind.Blockchain.Processing
+namespace Nethermind.Consensus.Processing
 {
     /// <summary>
     /// Not thread safe.

@@ -20,7 +20,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 
-namespace Nethermind.Blockchain.Comparers
+namespace Nethermind.Consensus.Comparers
 {
     public class GasPriceTxComparer : IComparer<Transaction>
     {

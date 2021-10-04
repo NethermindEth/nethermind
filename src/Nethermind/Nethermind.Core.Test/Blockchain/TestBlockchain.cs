@@ -19,15 +19,15 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.Processing;
-using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Rewards;
-using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Comparers;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -116,7 +116,7 @@ namespace Nethermind.Core.Test.Blockchain
 
         public static TransactionBuilder<Transaction> BuildSimpleTransaction => Builders.Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).To(AccountB);
 
-        protected virtual async Task<TestBlockchain> Build(ISpecProvider specProvider = null, UInt256? initialValues = null)
+        protected virtual async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null)
         {
             Timestamper = new ManualTimestamper(new DateTime(2020, 2, 15, 12, 50, 30, DateTimeKind.Utc));
             JsonSerializer = new EthereumJsonSerializer();
@@ -166,7 +166,7 @@ namespace Nethermind.Core.Test.Blockchain
             
             BlockProcessor = CreateBlockProcessor();
             
-            BlockchainProcessor chainProcessor = new(BlockTree, BlockProcessor, BlockPreprocessorStep, LogManager, Nethermind.Blockchain.Processing.BlockchainProcessor.Options.Default);
+            BlockchainProcessor chainProcessor = new(BlockTree, BlockProcessor, BlockPreprocessorStep, LogManager, Consensus.Processing.BlockchainProcessor.Options.Default);
             BlockchainProcessor = chainProcessor;
             BlockProcessingQueue = chainProcessor;
             chainProcessor.Start();

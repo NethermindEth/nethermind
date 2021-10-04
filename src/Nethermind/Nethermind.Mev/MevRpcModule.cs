@@ -28,7 +28,6 @@ using Nethermind.Core;
 using Nethermind.Facade;
 using Nethermind.Logging;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;

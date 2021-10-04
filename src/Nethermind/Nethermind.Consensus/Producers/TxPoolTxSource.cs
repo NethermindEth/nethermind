@@ -18,8 +18,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
-using Nethermind.Blockchain.Comparers;
-using Nethermind.Consensus;
+using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -31,7 +30,7 @@ using Nethermind.TxPool.Comparison;
 
 [assembly:InternalsVisibleTo("Nethermind.AuRa.Test")]
 
-namespace Nethermind.Blockchain.Producers
+namespace Nethermind.Consensus.Producers
 {
     public class TxPoolTxSource : ITxSource
     {

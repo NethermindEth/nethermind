@@ -22,7 +22,7 @@ using Nethermind.Core;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 
-namespace Nethermind.Blockchain.Producers
+namespace Nethermind.Consensus.Producers
 {
     // TODO: seems to have quite a lot ofr an args class
     public class BlockProductionEventArgs : EventArgs

@@ -16,8 +16,8 @@
 // 
 
 using System.Threading.Tasks;
-using Nethermind.Blockchain.Producers;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 
 namespace Nethermind.Api.Extensions

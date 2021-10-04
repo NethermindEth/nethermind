@@ -15,14 +15,14 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using Nethermind.Blockchain.Processing;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing;
 using Nethermind.State;
 using Nethermind.Trie;
 
-namespace Nethermind.Blockchain.Tracing
+namespace Nethermind.Consensus.Tracing
 {
     public class Tracer : ITracer
     {

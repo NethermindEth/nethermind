@@ -20,7 +20,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Serialization.Rlp;
 
-namespace Nethermind.Blockchain.Tracing
+namespace Nethermind.Consensus.Tracing
 {
     public interface IGethStyleTracer
     {

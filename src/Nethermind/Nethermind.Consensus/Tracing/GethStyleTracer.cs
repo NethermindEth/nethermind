@@ -17,16 +17,17 @@
 using System;
 using System.Linq;
 using System.Threading;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Serialization.Rlp;
 
-namespace Nethermind.Blockchain.Tracing
+namespace Nethermind.Consensus.Tracing
 {
     public class GethStyleTracer : IGethStyleTracer
     {

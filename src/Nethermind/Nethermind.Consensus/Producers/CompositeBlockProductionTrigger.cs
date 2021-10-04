@@ -19,7 +19,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace Nethermind.Blockchain.Producers
+namespace Nethermind.Consensus.Producers
 {
     public class CompositeBlockProductionTrigger : IBlockProductionTrigger, IDisposable
     {

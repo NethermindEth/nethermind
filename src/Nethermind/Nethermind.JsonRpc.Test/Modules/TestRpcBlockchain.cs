@@ -18,8 +18,8 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
@@ -116,7 +116,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             }
         }
 
-        protected override async Task<TestBlockchain> Build(ISpecProvider specProvider = null, UInt256? initialValues = null)
+        protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null)
         {
             BloomStorage bloomStorage = new(new BloomConfig(), new MemDb(), new InMemoryDictionaryFileStoreFactory());
             specProvider ??= new TestSpecProvider(Berlin.Instance) {ChainId = ChainId.Mainnet};

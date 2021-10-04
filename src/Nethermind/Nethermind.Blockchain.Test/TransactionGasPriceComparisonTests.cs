@@ -16,8 +16,8 @@
 // 
 
 using System.Collections.Generic;
-using Nethermind.Blockchain.Comparers;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Comparers;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;

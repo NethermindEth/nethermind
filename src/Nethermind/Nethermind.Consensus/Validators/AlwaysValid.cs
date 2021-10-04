@@ -15,12 +15,11 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Threading;
-using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.TxPool;
 
-namespace Nethermind.Blockchain.Validators
+namespace Nethermind.Consensus.Validators
 {
     public class Always : IBlockValidator, ISealValidator, IUnclesValidator, ITxValidator
     {

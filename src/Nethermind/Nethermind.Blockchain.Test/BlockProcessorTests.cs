@@ -16,7 +16,6 @@
 
 using System;
 using System.Collections.Generic;
-using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Test.Validators;
 using Nethermind.Core;
@@ -38,7 +37,8 @@ using Nethermind.JsonRpc.Test.Modules;
 using System.Threading.Tasks;
 using System.Threading;
 using FluentAssertions;
-using Nethermind.Blockchain.Rewards;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Rewards;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Evm.TransactionProcessing;
 

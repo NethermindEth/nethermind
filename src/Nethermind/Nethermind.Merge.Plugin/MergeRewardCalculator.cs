@@ -16,8 +16,8 @@
 // 
 
 using System;
-using Nethermind.Blockchain.Rewards;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
 using Nethermind.Evm.TransactionProcessing;
 

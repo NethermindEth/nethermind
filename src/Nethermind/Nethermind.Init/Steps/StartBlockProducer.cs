@@ -20,8 +20,8 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Producers;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Producers;
 using Nethermind.Logging;
 
 namespace Nethermind.Init.Steps

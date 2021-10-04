@@ -20,11 +20,10 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Logging;
 
-namespace Nethermind.Blockchain.Producers
+namespace Nethermind.Consensus.Producers
 {
     // TODO: merge with Mev block producer?
     public abstract class MultipleBlockProducer<T> : IBlockProducer where T : IBlockProducerInfo

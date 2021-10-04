@@ -23,7 +23,7 @@ using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.State;
 
-namespace Nethermind.Blockchain.Processing
+namespace Nethermind.Consensus.Processing
 {
     public partial class BlockProcessor
     {

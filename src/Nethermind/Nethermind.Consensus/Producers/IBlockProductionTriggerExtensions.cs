@@ -18,7 +18,7 @@
 using System;
 using Nethermind.TxPool;
 
-namespace Nethermind.Blockchain.Producers
+namespace Nethermind.Consensus.Producers
 {
     public static class BlockProductionTriggerExtensions
     {

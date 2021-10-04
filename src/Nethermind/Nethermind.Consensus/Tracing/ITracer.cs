@@ -19,7 +19,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing;
 using Nethermind.Trie;
 
-namespace Nethermind.Blockchain.Tracing
+namespace Nethermind.Consensus.Tracing
 {
     /// <summary>
     /// A simple and flexible bridge for any tracing operations on blocks and transactions.

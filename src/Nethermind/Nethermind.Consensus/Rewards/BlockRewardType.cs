@@ -16,7 +16,7 @@
 
 using System;
 
-namespace Nethermind.Blockchain.Rewards
+namespace Nethermind.Consensus.Rewards
 {
     public enum BlockRewardType
     {

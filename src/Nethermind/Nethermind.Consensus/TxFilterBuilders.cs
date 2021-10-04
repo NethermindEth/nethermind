@@ -15,11 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core.Specs;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Consensus
 {
     public static class TxFilterBuilders
     {

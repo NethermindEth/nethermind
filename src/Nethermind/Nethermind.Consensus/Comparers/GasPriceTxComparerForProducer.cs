@@ -16,11 +16,10 @@
 // 
 
 using System.Collections.Generic;
-using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 
-namespace Nethermind.Blockchain.Comparers
+namespace Nethermind.Consensus.Comparers
 {
     /// <summary>Block producer knows what will be base fee of next block. We can extract it from blockPreparationContextService and
     /// use to order transactions</summary>

@@ -14,11 +14,11 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Blockchain.Processing;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Transactions;
 using Nethermind.State;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Consensus
 {
     public class BlockProducerEnv
     {

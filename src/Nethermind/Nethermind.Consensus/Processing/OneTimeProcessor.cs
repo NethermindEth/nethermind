@@ -20,7 +20,7 @@ using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Evm.Tracing;
 
-namespace Nethermind.Blockchain.Processing
+namespace Nethermind.Consensus.Processing
 {
     public class OneTimeChainProcessor : IBlockchainProcessor
     {

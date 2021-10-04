@@ -22,7 +22,7 @@ using Nethermind.Core;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 
-namespace Nethermind.Blockchain.Producers
+namespace Nethermind.Consensus.Producers
 {
     public class BuildBlocksWhenRequested : IManualBlockProductionTrigger
     {

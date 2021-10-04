@@ -27,7 +27,7 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.TxPool.Comparison;
 
-namespace Nethermind.Blockchain.Processing
+namespace Nethermind.Consensus.Processing
 {
     public partial class BlockProcessor
     {

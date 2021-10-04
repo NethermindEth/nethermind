@@ -15,10 +15,9 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Consensus;
 using Nethermind.Evm.Tracing;
 
-namespace Nethermind.Blockchain.Producers
+namespace Nethermind.Consensus.Producers
 {
     // TODO: can we remove this?
     public interface IBlockProducerInfo

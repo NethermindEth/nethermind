@@ -17,20 +17,21 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Rewards;
-using Nethermind.Blockchain.Validators;
+using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
-using Nethermind.Int256;
 using Nethermind.Evm.Tracing;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 
-namespace Nethermind.Blockchain.Processing
+namespace Nethermind.Consensus.Processing
 {
     public partial class BlockProcessor : IBlockProcessor
     {

@@ -18,7 +18,7 @@
 using Nethermind.Core;
 using Nethermind.Int256;
 
-namespace Nethermind.Blockchain.Comparers
+namespace Nethermind.Consensus.Comparers
 {
     public static class GasPriceTxComparerHelper
     {

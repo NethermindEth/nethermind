@@ -24,7 +24,7 @@ using Nethermind.Core;
 [assembly: InternalsVisibleTo("Nethermind.Consensus.Clique")]
 [assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
 
-namespace Nethermind.Blockchain.Producers
+namespace Nethermind.Consensus.Producers
 {   
     internal class BlockToProduce : Block
     {

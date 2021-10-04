@@ -19,7 +19,7 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Evm.Tracing;
 
-namespace Nethermind.Blockchain.Processing
+namespace Nethermind.Consensus.Processing
 {
     public interface IBlockchainProcessor : IDisposable
     {

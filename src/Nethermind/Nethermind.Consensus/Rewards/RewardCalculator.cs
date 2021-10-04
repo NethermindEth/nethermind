@@ -20,7 +20,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 
-namespace Nethermind.Blockchain.Rewards
+namespace Nethermind.Consensus.Rewards
 {
     public class RewardCalculator : IRewardCalculator, IRewardCalculatorSource
     {

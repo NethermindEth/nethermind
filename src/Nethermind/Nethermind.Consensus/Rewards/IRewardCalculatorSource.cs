@@ -16,7 +16,7 @@
 
 using Nethermind.Evm.TransactionProcessing;
 
-namespace Nethermind.Blockchain.Rewards
+namespace Nethermind.Consensus.Rewards
 {
     public interface IRewardCalculatorSource
     {

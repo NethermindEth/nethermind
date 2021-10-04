@@ -16,10 +16,10 @@
 // 
 
 using System;
-using Nethermind.Consensus;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 
-namespace Nethermind.Blockchain.Producers
+namespace Nethermind.Consensus.Producers
 {
     // TODO: remove this class?
     public class ProducedBlockSuggester : IDisposable

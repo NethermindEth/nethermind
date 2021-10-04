@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -22,7 +23,7 @@ using Nethermind.Logging;
 using Nethermind.State.Proofs;
 using Nethermind.TxPool;
 
-namespace Nethermind.Blockchain.Validators
+namespace Nethermind.Consensus.Validators
 {
     public class BlockValidator : IBlockValidator
     {

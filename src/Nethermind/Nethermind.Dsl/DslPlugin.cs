@@ -3,7 +3,6 @@ using Antlr4.Runtime;
 using Antlr4.Runtime.Tree;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
-using Nethermind.Blockchain.Processing;
 using Nethermind.Dsl.ANTLR;
 using Nethermind.TxPool;
 using Nethermind.Pipeline;
@@ -15,6 +14,7 @@ using Nethermind.Int256;
 using System.IO;
 using Nethermind.Logging;
 using System.Linq;
+using Nethermind.Consensus.Processing;
 
 namespace Nethermind.Dsl
 {

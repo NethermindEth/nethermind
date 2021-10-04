@@ -17,12 +17,11 @@
 
 using System.Collections.Generic;
 using Nethermind.Blockchain.Find;
-using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.TxPool.Comparison;
 
-namespace Nethermind.Blockchain.Comparers
+namespace Nethermind.Consensus.Comparers
 {
     public class TransactionComparerProvider : ITransactionComparerProvider
     {

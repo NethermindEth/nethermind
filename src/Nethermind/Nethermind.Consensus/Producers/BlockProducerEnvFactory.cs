@@ -15,13 +15,13 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Blockchain.Comparers;
-using Nethermind.Blockchain.Processing;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Rewards;
-using Nethermind.Blockchain.Validators;
-using Nethermind.Consensus;
+using Nethermind.Consensus.Comparers;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -29,7 +29,7 @@ using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 
-namespace Nethermind.Blockchain.Producers
+namespace Nethermind.Consensus.Producers
 {
     public class BlockProducerEnvFactory : IBlockProducerEnvFactory
     {

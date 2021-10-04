@@ -18,7 +18,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Evm.TransactionProcessing;
 
-namespace Nethermind.Blockchain.Rewards
+namespace Nethermind.Consensus.Rewards
 {
     public class NoBlockRewards : IRewardCalculator, IRewardCalculatorSource
     {   

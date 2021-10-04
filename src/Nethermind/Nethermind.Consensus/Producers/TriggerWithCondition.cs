@@ -17,7 +17,7 @@
 
 using System;
 
-namespace Nethermind.Blockchain.Producers
+namespace Nethermind.Consensus.Producers
 {
     public class TriggerWithCondition : IBlockProductionTrigger
     {

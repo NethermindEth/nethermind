@@ -16,8 +16,8 @@
 // 
 
 using System.Collections.Generic;
-using Nethermind.Blockchain.Producers;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;

@@ -16,12 +16,13 @@
 
 using System;
 using System.Linq;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Logging;
 
-namespace Nethermind.Blockchain.Validators
+namespace Nethermind.Consensus.Validators
 {
     [Todo(Improve.Performance, "We execute the search up the tree twice - once for IsKin and once for HasAlreadyBeenIncluded")]
     public class UnclesValidator : IUnclesValidator
