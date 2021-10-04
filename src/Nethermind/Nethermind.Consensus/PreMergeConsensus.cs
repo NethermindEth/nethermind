@@ -15,17 +15,30 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 
 namespace Nethermind.Consensus
 {
-    public interface IConsensus
+    public class PreMergeConsensus : IConsensus
     {
+        public PreMergeConsensus(
+            IHeaderValidator? headerValidator,
+            IRewardCalculatorSource? rewardCalculatorSource)
+        {
+            GossipPolicy = Policy.FullGossip;
+            HeaderValidator = headerValidator ?? throw new ArgumentNullException(nameof(headerValidator));
+            RewardCalculatorSource = rewardCalculatorSource ?? throw new ArgumentNullException(nameof(rewardCalculatorSource));
+        }
+        
         public IGossipPolicy GossipPolicy { get; }
-        
         public IHeaderValidator HeaderValidator { get; }
-        
         public IRewardCalculatorSource RewardCalculatorSource { get; }
+    }
+
+    public class ConsensusSwitcher
+    {
+        
     }
 }

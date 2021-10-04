@@ -15,17 +15,35 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Consensus.Rewards;
-using Nethermind.Consensus.Validators;
-
 namespace Nethermind.Consensus
 {
-    public interface IConsensus
+    public interface IGossipPolicy
     {
-        public IGossipPolicy GossipPolicy { get; }
+        public bool ShouldGossipBlocks { get; }
+    }
+
+    internal class NoBlockGossip : IGossipPolicy
+    {
+        private NoBlockGossip() { }
+
+        public static NoBlockGossip Instance { get; } = new ();
         
-        public IHeaderValidator HeaderValidator { get; }
+        public bool ShouldGossipBlocks => false;
+    }
+    
+    internal class BlockGossip : IGossipPolicy
+    {
+        private BlockGossip() { }
+
+        public static IGossipPolicy Instance { get; } = new BlockGossip();
         
-        public IRewardCalculatorSource RewardCalculatorSource { get; }
+        public bool ShouldGossipBlocks => true;
+    }
+    
+    public static class Policy
+    {
+        public static IGossipPolicy NoBlockGossip { get; } = Nethermind.Consensus.NoBlockGossip.Instance;
+        
+        public static IGossipPolicy FullGossip { get; } = BlockGossip.Instance;
     }
 }
