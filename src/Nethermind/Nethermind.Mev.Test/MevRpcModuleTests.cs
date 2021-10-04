@@ -130,14 +130,14 @@ namespace Nethermind.Mev.Test
         {
             byte[][] bundleBytes = txs.Select(t => Rlp.Encode(t).Bytes).ToArray();
             List<Keccak> revertingTxHashes = txs.Where(tx => tx.CanRevert).Select(tx => tx.Hash!).ToList();
-            MevBundle mevBundle = new (blockNumber, txs);
-            Signature relaySignature = chain.EthereumEcdsa.Sign(privateKey, mevBundle.Hash);
+            MevMegabundle mevMegabundle = new (blockNumber, txs);
+            Signature relaySignature = chain.EthereumEcdsa.Sign(privateKey, mevMegabundle.Hash);
             MevMegabundleRpc mevMegabundleRpc = new()
             {
                 BlockNumber = blockNumber,
                 Txs = bundleBytes,
                 RevertingTxHashes = revertingTxHashes.Count > 0 ? revertingTxHashes.ToArray() : null,
-                RelaySignature = relaySignature.BytesWithRecovery
+                RelaySignature = Bytes.FromHexString(relaySignature.ToString())
             };
             ResultWrapper<bool> resultOfBundle = chain.MevRpcModule.eth_sendMegabundle(mevMegabundleRpc);
             resultOfBundle.GetResult().ResultType.Should().NotBe(ResultType.Failure);

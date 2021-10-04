@@ -149,8 +149,9 @@ namespace Nethermind.Mev.Test
                     return new MevBlockProducer.MevBlockProducerInfo(producer, manualTrigger, new BeneficiaryTracer());
                 }
 
+                int megabundleProducerCount = _relayAddresses.Any() ? 1 : 0;
                 List<MevBlockProducer.MevBlockProducerInfo> blockProducers =
-                    new(_maxMergedBundles + 1);
+                    new(_maxMergedBundles + megabundleProducerCount + 1);
                     
                 // Add non-mev block
                 MevBlockProducer.MevBlockProducerInfo standardProducer = CreateProducer();
@@ -162,6 +163,14 @@ namespace Nethermind.Mev.Test
                     BundleSelector bundleSelector = new(BundlePool, bundleLimit);
                     BundleTxSource bundleTxSource = new(bundleSelector, Timestamper);
                     MevBlockProducer.MevBlockProducerInfo bundleProducer = CreateProducer(bundleLimit, bundleTxSource);
+                    blockProducers.Add(bundleProducer);
+                }
+                
+                if (megabundleProducerCount > 0)
+                {
+                    MegabundleSelector megabundleSelector = new(BundlePool);
+                    BundleTxSource megabundleTxSource = new(megabundleSelector, Timestamper);
+                    MevBlockProducer.MevBlockProducerInfo bundleProducer = CreateProducer(0, megabundleTxSource);
                     blockProducers.Add(bundleProducer);
                 }
 
