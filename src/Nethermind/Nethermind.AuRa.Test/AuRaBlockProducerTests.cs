@@ -238,7 +238,7 @@ namespace Nethermind.AuRa.Test
                     processedEvent.Set();
                 });
 
-            context.AuRaBlockProducer.Start();
+            await context.AuRaBlockProducer.Start();
             await processedEvent.WaitOneAsync(context.StepDelay * stepDelayMultiplier, CancellationToken.None);
             context.BlockTree.ClearReceivedCalls();
             

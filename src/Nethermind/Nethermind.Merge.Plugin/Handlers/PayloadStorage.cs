@@ -146,7 +146,7 @@ namespace Nethermind.Merge.Plugin.Handlers
 
         private ProcessingOptions GetProcessingOptions()
         {
-            ProcessingOptions options = ProcessingOptions.EthereumMerge;
+            ProcessingOptions options = ProcessingOptions.EthereumMerge | ProcessingOptions.NoValidation;
             if (_initConfig.StoreReceipts)
             {
                 options |= ProcessingOptions.StoreReceipts;

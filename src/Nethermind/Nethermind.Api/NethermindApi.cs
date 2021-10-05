@@ -76,7 +76,7 @@ namespace Nethermind.Api
         }
 
         private IReadOnlyDbProvider? _readOnlyDbProvider;
-        
+
         public IBlockchainBridge CreateBlockchainBridge()
         {
             ReadOnlyBlockTree readOnlyTree = BlockTree.AsReadOnly();
@@ -134,8 +134,10 @@ namespace Nethermind.Api
         public IFilterManager? FilterManager { get; set; }
         public IGrpcServer? GrpcServer { get; set; }
         public IHeaderValidator? HeaderValidator { get; set; }
+
         public IManualBlockProductionTrigger ManualBlockProductionTrigger { get; set; } =
             new BuildBlocksWhenRequested();
+
         public IIPResolver? IpResolver { get; set; }
         public IJsonSerializer EthereumJsonSerializer { get; set; }
         public IKeyStore? KeyStore { get; set; }
@@ -144,7 +146,7 @@ namespace Nethermind.Api
         public ILogManager LogManager { get; set; }
         public IKeyValueStoreWithBatching? MainStateDbWithCache { get; set; }
         public IMessageSerializationService MessageSerializationService { get; } = new MessageSerializationService();
-        public IGossipPolicy GossipPolicy { get; } = Policy.FullGossip;
+        public IGossipPolicy GossipPolicy { get; set; } = Policy.FullGossip;
         public IMonitoringService MonitoringService { get; set; } = NullMonitoringService.Instance;
         public INodeStatsManager? NodeStatsManager { get; set; }
         public IPeerManager? PeerManager { get; set; }
@@ -160,6 +162,20 @@ namespace Nethermind.Api
         public ISealer? Sealer { get; set; } = NullSealEngine.Instance;
         public string SealEngineType { get; set; } = Nethermind.Core.SealEngineType.None;
         public ISealValidator? SealValidator { get; set; } = NullSealEngine.Instance;
+        private ISealEngine? _sealEngine;
+        public ISealEngine SealEngine
+        {
+            get
+            {
+                return _sealEngine ??= new SealEngine(Sealer, SealValidator);
+            }
+
+            set
+            {
+                _sealEngine = value;
+            }
+        }
+
         public ISessionMonitor? SessionMonitor { get; set; }
         public ISpecProvider? SpecProvider { get; set; }
         public ISyncModeSelector? SyncModeSelector { get; set; }
@@ -183,10 +199,10 @@ namespace Nethermind.Api
         public TxValidator? TxValidator { get; set; }
         public IBlockFinalizationManager? FinalizationManager { get; set; }
         public IGasLimitCalculator GasLimitCalculator { get; set; }
-        
+
         public IBlockProducerEnvFactory BlockProducerEnvFactory { get; set; }
         public IGasPriceOracle? GasPriceOracle { get; set; }
-        
+
         public IEthSyncingInfo EthSyncingInfo { get; set; }
         public IBlockConfirmationManager BlockConfirmationManager { get; set; } = NoBlockConfirmation.Instance;
         public IWallet? Wallet { get; set; }
@@ -194,7 +210,7 @@ namespace Nethermind.Api
         public IWebSocketsManager WebSocketsManager { get; set; } = new WebSocketsManager();
 
         public ProtectedPrivateKey? NodeKey { get; set; }
-        
+
         /// <summary>
         /// Key used for signing blocks. Original as its loaded on startup. This can later be changed via RPC in <see cref="Signer"/>. 
         /// </summary>

@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using Nethermind.Consensus;
 using Nethermind.Core;
 
@@ -31,5 +32,7 @@ namespace Nethermind.Merge.Plugin
         public bool IsPos(BlockHeader header) => false;
         
         public bool HasEverBeenInPos() => false;
+        
+        public event EventHandler? SwitchHappened;
     }
 }

@@ -29,8 +29,8 @@ namespace Nethermind.Merge.Plugin
     public partial class MergePlugin
     {
         private IMiningConfig _miningConfig = null!;
-        private Eth2BlockProducer _blockProducer = null!;
-        private Eth2BlockProducer _emptyBlockProducer = null!;
+        private IBlockProducer _blockProducer = null!;
+        private IBlockProducer _emptyBlockProducer = null!;
         private IManualBlockProductionTrigger _emptyBlockProductionTrigger = null!;
         private ManualTimestamper? _manualTimestamper;
         private readonly IManualBlockProductionTrigger _defaultBlockProductionTrigger = new BuildBlocksWhenRequested();
@@ -52,21 +52,25 @@ namespace Nethermind.Merge.Plugin
                 if (_api.TxPool == null) throw new ArgumentNullException(nameof(_api.TxPool));
                 if (_api.DbProvider == null) throw new ArgumentNullException(nameof(_api.DbProvider));
                 if (_api.ReadOnlyTrieStore == null) throw new ArgumentNullException(nameof(_api.ReadOnlyTrieStore));
+                if (_api.BlockchainProcessor == null) throw new ArgumentNullException(nameof(_api.BlockchainProcessor));
 
                 ILogger logger = _api.LogManager.GetClassLogger();
                 if (logger.IsWarn) logger.Warn("Starting ETH2 block producer & sealer");
 
                 _manualTimestamper ??= new ManualTimestamper();
-                _api.BlockProducer = _blockProducer = new Eth2BlockProducerFactory(additionalTxSource).Create(
+                IBlockProducer eth2BlockProducer = new Eth2BlockProducerFactory(additionalTxSource).Create(
                     _api.BlockProducerEnvFactory,
                     _api.BlockTree,
                     blockProductionTrigger ?? DefaultBlockProductionTrigger,
                     _api.SpecProvider,
-                    _api.EngineSigner,
+                    _api.SealEngine,
                     _manualTimestamper,
                     _miningConfig,
                     _api.LogManager
                 );
+
+                _api.BlockProducer = _blockProducer
+                    = new MergeBlockProducer(_api.BlockProducer, eth2BlockProducer, _poSSwitcher, _api.BlockchainProcessor);
                     
                 _emptyBlockProductionTrigger = new BuildBlocksWhenRequested();
                 
@@ -75,7 +79,7 @@ namespace Nethermind.Merge.Plugin
                     _api.BlockTree,
                     _emptyBlockProductionTrigger,
                     _api.SpecProvider,
-                    _api.EngineSigner,
+                    _api.SealEngine,
                     _manualTimestamper,
                     _miningConfig,
                     _api.LogManager
@@ -84,7 +88,7 @@ namespace Nethermind.Merge.Plugin
                 _emptyBlockProducer.Start();
             }
 
-            return Task.FromResult((IBlockProducer)_blockProducer);
+            return Task.FromResult(_blockProducer);
         }
 
         public IBlockProductionTrigger DefaultBlockProductionTrigger => _defaultBlockProductionTrigger;

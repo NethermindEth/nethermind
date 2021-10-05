@@ -16,18 +16,21 @@
 // 
 
 using System;
-using Nethermind.Core;
+using Nethermind.Consensus;
 
-namespace Nethermind.Consensus
+namespace Nethermind.Merge.Plugin
 {
-    public interface IPoSSwitcher
+    public class MergeGossipPolicy : IGossipPolicy
     {
-        bool TrySwitchToPos(BlockHeader header);
-        
-        bool IsPos(BlockHeader header);
+        private readonly IGossipPolicy preMergeGossipPolicy;
+        private readonly IPoSSwitcher _poSSwitcher;
 
-        bool HasEverBeenInPos();
+        public MergeGossipPolicy(IGossipPolicy? apiGossipPolicy, IPoSSwitcher? poSSwitcher)
+        {
+            preMergeGossipPolicy = apiGossipPolicy ?? throw new ArgumentNullException(nameof(apiGossipPolicy));
+            _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
+        }
 
-        event EventHandler SwitchHappened;
+        public bool ShouldGossipBlocks => _poSSwitcher.HasEverBeenInPos() ? false : preMergeGossipPolicy.ShouldGossipBlocks;
     }
 }

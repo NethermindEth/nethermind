@@ -201,7 +201,7 @@ namespace Nethermind.Consensus.Clique
 
         private Task? _producerTask;
 
-        public void Start()
+        public Task Start()
         {
             _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
             _producerTask = Task.Factory.StartNew(
@@ -223,6 +223,7 @@ namespace Nethermind.Consensus.Clique
                     if (_logger.IsDebug) _logger.Debug("Clique block producer complete.");
                 }
             });
+            return Task.CompletedTask;
         }
 
         private void BlockTreeOnNewHeadBlock(object? sender, BlockEventArgs e)

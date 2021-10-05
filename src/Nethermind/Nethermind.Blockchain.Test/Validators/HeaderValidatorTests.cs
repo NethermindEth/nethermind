@@ -291,19 +291,6 @@ namespace Nethermind.Blockchain.Test.Validators
             Assert.False(result);
         }
 
-        [Test]
-        public void When_incorrect_mix_hash_after_the_merge()
-        {
-            _validator = new HeaderValidator(_blockTree, _ethash, _specProvider,
-                new OneLoggerLogManager(_testLogger));
-            AssignValidPoSFields(_block);
-            _block.Header.MixHash = Keccak.Compute("mix_hash");
-            _block.Header.Hash = _block.CalculateHash();
-
-            bool result = _validator.Validate(_block.Header);
-            Assert.False(result);
-        }
-
         // needed in previous version of EIP-3675 specification
         /*[Test]
         public void When_incorrect_extra_data_after_the_merge()

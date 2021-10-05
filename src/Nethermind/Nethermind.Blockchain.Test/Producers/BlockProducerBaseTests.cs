@@ -44,7 +44,7 @@ namespace Nethermind.Blockchain.Test.Producers
             {
             }
 
-            public override void Start() { }
+            public override Task Start() { return Task.CompletedTask; }
 
             public override Task StopAsync() => Task.CompletedTask;
 

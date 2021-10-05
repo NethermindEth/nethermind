@@ -32,7 +32,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             IBlockTree blockTree,
             IBlockProductionTrigger blockProductionTrigger,
             ISpecProvider specProvider,
-            ISigner engineSigner,
+            ISealEngine sealEngine,
             ITimestamper timestamper,
             IMiningConfig miningConfig,
             ILogManager logManager)
@@ -46,7 +46,7 @@ namespace Nethermind.Merge.Plugin.Handlers
                 blockProductionTrigger,
                 producerEnv.ReadOnlyStateProvider,
                 new TargetAdjustedGasLimitCalculator(specProvider, miningConfig),
-                engineSigner,
+                sealEngine,
                 timestamper,
                 specProvider,
                 logManager);

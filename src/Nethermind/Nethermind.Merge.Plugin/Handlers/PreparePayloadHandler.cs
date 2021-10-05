@@ -66,10 +66,7 @@ namespace Nethermind.Merge.Plugin.Handlers
         private readonly IManualBlockProductionTrigger _emptyBlockProductionTrigger;
         private readonly ManualTimestamper _timestamper;
         private readonly ISealer _sealer;
-        private readonly IStateProvider _stateProvider;
         private readonly ILogger _logger;
-        private readonly IBlockchainProcessor _processor;
-        private readonly IInitConfig _initConfig;
 
         public PreparePayloadHandler(
             IBlockTree blockTree, 
@@ -79,9 +76,6 @@ namespace Nethermind.Merge.Plugin.Handlers
             IManualBlockProductionTrigger emptyBlockProductionTrigger, 
             ManualTimestamper timestamper, 
             ISealer sealer,
-            IStateProvider stateProvider,
-            IBlockchainProcessor processor,
-            IInitConfig initConfig,
             ILogManager logManager)
         {
             _blockTree = blockTree;
@@ -90,9 +84,6 @@ namespace Nethermind.Merge.Plugin.Handlers
             _emptyBlockProductionTrigger = emptyBlockProductionTrigger;
             _timestamper = timestamper;
             _sealer = sealer;
-            _stateProvider = stateProvider;
-            _processor = processor;
-            _initConfig = initConfig;
             _logger = logManager.GetClassLogger();
         }
 
