@@ -222,7 +222,7 @@ namespace Nethermind.Blockchain.Receipts
             _receiptsRecovery.TryRecover(block, txReceipts);
             
             var blockNumber = block.Number;
-            var spec = _specProvider.Resolve(blockNumber);
+            var spec = _specProvider.GetSpec(blockNumber);
             RlpBehaviors behaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts | RlpBehaviors.Storage : RlpBehaviors.Storage;
             _blocksDb.Set(block.Hash, StorageDecoder.Encode(txReceipts, behaviors).Bytes);
 

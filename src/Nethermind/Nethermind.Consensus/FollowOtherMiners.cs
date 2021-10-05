@@ -33,7 +33,7 @@ namespace Nethermind.Consensus
         {
             long gasLimit = parentHeader.GasLimit;
             long newBlockNumber = parentHeader.Number + 1;
-            IReleaseSpec spec = _specProvider.Resolve(newBlockNumber);
+            IReleaseSpec spec = _specProvider.GetSpec(newBlockNumber);
             gasLimit = Eip1559GasLimitAdjuster.AdjustGasLimit(spec, gasLimit, newBlockNumber);
             return gasLimit;
         }

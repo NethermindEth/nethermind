@@ -64,7 +64,7 @@ namespace Nethermind.TxPool.Test.Collections
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             Block block =  Build.A.Block.WithNumber(0).TestObject;
             blockTree.Head.Returns(block);
-            specProvider.Resolve(Arg.Any<long>()).Returns(new ReleaseSpec() {IsEip1559Enabled = false});
+            specProvider.GetSpec(Arg.Any<long>()).Returns(new ReleaseSpec() {IsEip1559Enabled = false});
             _transactionComparerProvider = new TransactionComparerProvider(specProvider, blockTree);
         }
 

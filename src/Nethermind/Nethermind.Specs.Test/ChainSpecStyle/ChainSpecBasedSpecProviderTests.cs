@@ -128,17 +128,17 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             CompareSpecProviders(mainnet, provider, blockNumbersToTest);
 
             Assert.AreEqual(MainnetSpecProvider.LondonBlockNumber, provider.GenesisSpec.Eip1559TransitionBlock);
-            Assert.AreEqual(0_000_000, provider.Resolve(4_369_999).DifficultyBombDelay);
-            Assert.AreEqual(3_000_000, provider.Resolve(4_370_000).DifficultyBombDelay);
-            Assert.AreEqual(3_000_000, provider.Resolve(7_279_999).DifficultyBombDelay);
-            Assert.AreEqual(3_000_000, provider.Resolve(7_279_999).DifficultyBombDelay);
-            Assert.AreEqual(5_000_000, provider.Resolve(7_280_000).DifficultyBombDelay);
-            Assert.AreEqual(5_000_000, provider.Resolve(9_199_999).DifficultyBombDelay);
-            Assert.AreEqual(9_000_000, provider.Resolve(9_200_000).DifficultyBombDelay);
-            Assert.AreEqual(9_000_000, provider.Resolve(12_000_000).DifficultyBombDelay);
-            Assert.AreEqual(9_000_000, provider.Resolve(12_964_999).DifficultyBombDelay);
-            Assert.AreEqual(9_700_000, provider.Resolve(12_965_000).DifficultyBombDelay);
-            Assert.AreEqual(9_700_000, provider.Resolve(15_000_000).DifficultyBombDelay);
+            Assert.AreEqual(0_000_000, provider.GetSpec(4_369_999).DifficultyBombDelay);
+            Assert.AreEqual(3_000_000, provider.GetSpec(4_370_000).DifficultyBombDelay);
+            Assert.AreEqual(3_000_000, provider.GetSpec(7_279_999).DifficultyBombDelay);
+            Assert.AreEqual(3_000_000, provider.GetSpec(7_279_999).DifficultyBombDelay);
+            Assert.AreEqual(5_000_000, provider.GetSpec(7_280_000).DifficultyBombDelay);
+            Assert.AreEqual(5_000_000, provider.GetSpec(9_199_999).DifficultyBombDelay);
+            Assert.AreEqual(9_000_000, provider.GetSpec(9_200_000).DifficultyBombDelay);
+            Assert.AreEqual(9_000_000, provider.GetSpec(12_000_000).DifficultyBombDelay);
+            Assert.AreEqual(9_000_000, provider.GetSpec(12_964_999).DifficultyBombDelay);
+            Assert.AreEqual(9_700_000, provider.GetSpec(12_965_000).DifficultyBombDelay);
+            Assert.AreEqual(9_700_000, provider.GetSpec(15_000_000).DifficultyBombDelay);
         }
 
         private static void CompareSpecProviders(
@@ -149,8 +149,8 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
         {
             foreach (long blockNumber in blockNumbers)
             {
-                IReleaseSpec oldSpec = oldSpecProvider.Resolve(blockNumber);
-                IReleaseSpec newSpec = newSpecProvider.Resolve(blockNumber);
+                IReleaseSpec oldSpec = oldSpecProvider.GetSpec(blockNumber);
+                IReleaseSpec newSpec = newSpecProvider.GetSpec(blockNumber);
                 long? daoBlockNumber = newSpecProvider.DaoBlockNumber;
                 bool isMainnet = daoBlockNumber != null;
 
@@ -266,11 +266,11 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             };
 
             ChainSpecBasedSpecProvider provider = new(chainSpec);
-            Assert.AreEqual(100, provider.Resolve(3).DifficultyBombDelay);
-            Assert.AreEqual(300, provider.Resolve(7).DifficultyBombDelay);
-            Assert.AreEqual(600, provider.Resolve(13).DifficultyBombDelay);
-            Assert.AreEqual(1000, provider.Resolve(17).DifficultyBombDelay);
-            Assert.AreEqual(1500, provider.Resolve(19).DifficultyBombDelay);
+            Assert.AreEqual(100, provider.GetSpec(3).DifficultyBombDelay);
+            Assert.AreEqual(300, provider.GetSpec(7).DifficultyBombDelay);
+            Assert.AreEqual(600, provider.GetSpec(13).DifficultyBombDelay);
+            Assert.AreEqual(1000, provider.GetSpec(17).DifficultyBombDelay);
+            Assert.AreEqual(1500, provider.GetSpec(19).DifficultyBombDelay);
         }
 
         [Test]
@@ -288,9 +288,9 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             };
 
             ChainSpecBasedSpecProvider provider = new(chainSpec);
-            Assert.AreEqual(long.MaxValue, provider.Resolve(maxCodeTransition - 1).MaxCodeSize, "one before");
-            Assert.AreEqual(maxCodeSize, provider.Resolve(maxCodeTransition).MaxCodeSize, "at transition");
-            Assert.AreEqual(maxCodeSize, provider.Resolve(maxCodeTransition + 1).MaxCodeSize, "one after");
+            Assert.AreEqual(long.MaxValue, provider.GetSpec(maxCodeTransition - 1).MaxCodeSize, "one before");
+            Assert.AreEqual(maxCodeSize, provider.GetSpec(maxCodeTransition).MaxCodeSize, "at transition");
+            Assert.AreEqual(maxCodeSize, provider.GetSpec(maxCodeTransition + 1).MaxCodeSize, "one after");
         }
 
         [Test]
@@ -299,7 +299,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             ChainSpec chainSpec = new() {Parameters = new ChainParameters {Eip2200Transition = 5}};
 
             ChainSpecBasedSpecProvider provider = new(chainSpec);
-            provider.Resolve(5).IsEip2200Enabled.Should().BeTrue();
+            provider.GetSpec(5).IsEip2200Enabled.Should().BeTrue();
         }
 
         [Test]
@@ -309,7 +309,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                 new() {Parameters = new ChainParameters {Eip1706Transition = 5, Eip1283Transition = 5}};
 
             ChainSpecBasedSpecProvider provider = new(chainSpec);
-            provider.Resolve(5).IsEip2200Enabled.Should().BeTrue();
+            provider.GetSpec(5).IsEip2200Enabled.Should().BeTrue();
         }
 
         [Test]
@@ -327,7 +327,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             };
 
             ChainSpecBasedSpecProvider provider = new(chainSpec);
-            provider.Resolve(5).IsEip2200Enabled.Should().BeTrue();
+            provider.GetSpec(5).IsEip2200Enabled.Should().BeTrue();
         }
 
         [Test]
@@ -342,7 +342,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             };
 
             ChainSpecBasedSpecProvider provider = new(chainSpec);
-            provider.Resolve(5).IsEip2200Enabled.Should().BeFalse();
+            provider.GetSpec(5).IsEip2200Enabled.Should().BeFalse();
         }
 
         [Test]
@@ -401,11 +401,11 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             };
 
             ChainSpecBasedSpecProvider provider = new(chainSpec);
-            Assert.AreEqual(long.MaxValue, provider.Resolve(maxCodeTransition - 1).MaxCodeSize, "one before");
-            Assert.AreEqual(maxCodeSize, provider.Resolve(maxCodeTransition).MaxCodeSize, "at transition");
-            Assert.AreEqual(maxCodeSize, provider.Resolve(maxCodeTransition + 1).MaxCodeSize, "one after");
+            Assert.AreEqual(long.MaxValue, provider.GetSpec(maxCodeTransition - 1).MaxCodeSize, "one before");
+            Assert.AreEqual(maxCodeSize, provider.GetSpec(maxCodeTransition).MaxCodeSize, "at transition");
+            Assert.AreEqual(maxCodeSize, provider.GetSpec(maxCodeTransition + 1).MaxCodeSize, "one after");
 
-            IReleaseSpec underTest = provider.Resolve(0L);
+            IReleaseSpec underTest = provider.GetSpec(0L);
             Assert.AreEqual(11L, underTest.MinGasLimit);
             Assert.AreEqual(13L, underTest.GasLimitBoundDivisor);
             Assert.AreEqual(17L, underTest.MaximumExtraDataSize);
@@ -451,7 +451,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(false, underTest.ValidateChainId);
             Assert.AreEqual(false, underTest.ValidateReceipts);
 
-            underTest = provider.Resolve(1L);
+            underTest = provider.GetSpec(1L);
             Assert.AreEqual(maxCodeSize, underTest.MaxCodeSize);
             Assert.AreEqual(false, underTest.IsEip2Enabled);
             Assert.AreEqual(false, underTest.IsEip7Enabled);
@@ -492,7 +492,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(false, underTest.ValidateChainId);
             Assert.AreEqual(false, underTest.ValidateReceipts);
 
-            underTest = provider.Resolve(70L);
+            underTest = provider.GetSpec(70L);
             Assert.AreEqual(underTest.MaxCodeSize, maxCodeSize);
             Assert.AreEqual(true, underTest.IsEip2Enabled);
             Assert.AreEqual(true, underTest.IsEip7Enabled);
@@ -534,7 +534,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(false, underTest.ValidateChainId);
             Assert.AreEqual(false, underTest.ValidateReceipts);
 
-            underTest = provider.Resolve(1000L);
+            underTest = provider.GetSpec(1000L);
             Assert.AreEqual(underTest.MaxCodeSize, maxCodeSize);
             Assert.AreEqual(true, underTest.IsEip2Enabled);
             Assert.AreEqual(true, underTest.IsEip7Enabled);
@@ -576,7 +576,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(false, underTest.ValidateChainId);
             Assert.AreEqual(false, underTest.ValidateReceipts);
 
-            underTest = provider.Resolve(1400L);
+            underTest = provider.GetSpec(1400L);
             Assert.AreEqual(underTest.MaxCodeSize, maxCodeSize);
             Assert.AreEqual(true, underTest.IsEip2Enabled);
             Assert.AreEqual(true, underTest.IsEip7Enabled);
@@ -618,7 +618,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(false, underTest.ValidateChainId);
             Assert.AreEqual(false, underTest.ValidateReceipts);
 
-            underTest = provider.Resolve(1450L);
+            underTest = provider.GetSpec(1450L);
             Assert.AreEqual(underTest.MaxCodeSize, maxCodeSize);
             Assert.AreEqual(true, underTest.IsEip2Enabled);
             Assert.AreEqual(true, underTest.IsEip7Enabled);
@@ -660,7 +660,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(false, underTest.ValidateChainId);
             Assert.AreEqual(false, underTest.ValidateReceipts);
 
-            underTest = provider.Resolve(1500L);
+            underTest = provider.GetSpec(1500L);
             Assert.AreEqual(underTest.MaxCodeSize, maxCodeSize);
             Assert.AreEqual(true, underTest.IsEip2Enabled);
             Assert.AreEqual(true, underTest.IsEip7Enabled);
@@ -702,7 +702,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(false, underTest.ValidateChainId);
             Assert.AreEqual(false, underTest.ValidateReceipts);
 
-            underTest = provider.Resolve(1520L);
+            underTest = provider.GetSpec(1520L);
             Assert.AreEqual(underTest.MaxCodeSize, maxCodeSize);
             Assert.AreEqual(true, underTest.IsEip2Enabled);
             Assert.AreEqual(true, underTest.IsEip7Enabled);
@@ -744,7 +744,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(false, underTest.ValidateChainId);
             Assert.AreEqual(false, underTest.ValidateReceipts);
 
-            underTest = provider.Resolve(1550L);
+            underTest = provider.GetSpec(1550L);
             Assert.AreEqual(underTest.MaxCodeSize, maxCodeSize);
             Assert.AreEqual(true, underTest.IsEip2Enabled);
             Assert.AreEqual(true, underTest.IsEip7Enabled);
@@ -786,7 +786,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(false, underTest.ValidateChainId);
             Assert.AreEqual(false, underTest.ValidateReceipts);
 
-            underTest = provider.Resolve(1580L);
+            underTest = provider.GetSpec(1580L);
             Assert.AreEqual(underTest.MaxCodeSize, maxCodeSize);
             Assert.AreEqual(true, underTest.IsEip2Enabled);
             Assert.AreEqual(true, underTest.IsEip7Enabled);
@@ -828,7 +828,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(false, underTest.ValidateChainId);
             Assert.AreEqual(false, underTest.ValidateReceipts);
 
-            underTest = provider.Resolve(1600L);
+            underTest = provider.GetSpec(1600L);
             Assert.AreEqual(underTest.MaxCodeSize, maxCodeSize);
             Assert.AreEqual(true, underTest.IsEip2Enabled);
             Assert.AreEqual(true, underTest.IsEip7Enabled);
@@ -870,7 +870,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(false, underTest.ValidateChainId);
             Assert.AreEqual(false, underTest.ValidateReceipts);
 
-            underTest = provider.Resolve(1700L);
+            underTest = provider.GetSpec(1700L);
             Assert.AreEqual(underTest.MaxCodeSize, maxCodeSize);
             Assert.AreEqual(true, underTest.IsEip2Enabled);
             Assert.AreEqual(true, underTest.IsEip7Enabled);
@@ -912,7 +912,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(false, underTest.ValidateChainId);
             Assert.AreEqual(false, underTest.ValidateReceipts);
 
-            underTest = provider.Resolve(1960L);
+            underTest = provider.GetSpec(1960L);
             Assert.AreEqual(underTest.MaxCodeSize, maxCodeSize);
             Assert.AreEqual(true, underTest.IsEip2Enabled);
             Assert.AreEqual(true, underTest.IsEip7Enabled);
@@ -954,7 +954,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(false, underTest.ValidateChainId);
             Assert.AreEqual(false, underTest.ValidateReceipts);
 
-            underTest = provider.Resolve(2110L);
+            underTest = provider.GetSpec(2110L);
             Assert.AreEqual(underTest.MaxCodeSize, maxCodeSize);
             Assert.AreEqual(true, underTest.IsEip2Enabled);
             Assert.AreEqual(true, underTest.IsEip7Enabled);
@@ -996,7 +996,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(false, underTest.ValidateChainId);
             Assert.AreEqual(false, underTest.ValidateReceipts);
 
-            underTest = provider.Resolve(2140L);
+            underTest = provider.GetSpec(2140L);
             Assert.AreEqual(underTest.MaxCodeSize, maxCodeSize);
             Assert.AreEqual(true, underTest.IsEip2Enabled);
             Assert.AreEqual(true, underTest.IsEip7Enabled);
@@ -1038,7 +1038,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(false, underTest.ValidateChainId);
             Assert.AreEqual(false, underTest.ValidateReceipts);
 
-            underTest = provider.Resolve(6580L);
+            underTest = provider.GetSpec(6580L);
             Assert.AreEqual(underTest.MaxCodeSize, maxCodeSize);
             Assert.AreEqual(true, underTest.IsEip2Enabled);
             Assert.AreEqual(true, underTest.IsEip7Enabled);
@@ -1080,7 +1080,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(false, underTest.ValidateChainId);
             Assert.AreEqual(false, underTest.ValidateReceipts);
 
-            underTest = provider.Resolve(10140L);
+            underTest = provider.GetSpec(10140L);
             Assert.AreEqual(underTest.MaxCodeSize, maxCodeSize);
             Assert.AreEqual(true, underTest.IsEip2Enabled);
             Assert.AreEqual(true, underTest.IsEip7Enabled);
@@ -1122,7 +1122,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(false, underTest.ValidateChainId);
             Assert.AreEqual(false, underTest.ValidateReceipts);
 
-            underTest = provider.Resolve(10520L);
+            underTest = provider.GetSpec(10520L);
             Assert.AreEqual(underTest.MaxCodeSize, maxCodeSize);
             Assert.AreEqual(true, underTest.IsEip2Enabled);
             Assert.AreEqual(true, underTest.IsEip7Enabled);
@@ -1164,7 +1164,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(false, underTest.ValidateChainId);
             Assert.AreEqual(false, underTest.ValidateReceipts);
 
-            underTest = provider.Resolve(11180L);
+            underTest = provider.GetSpec(11180L);
             Assert.AreEqual(underTest.MaxCodeSize, maxCodeSize);
             Assert.AreEqual(true, underTest.IsEip2Enabled);
             Assert.AreEqual(true, underTest.IsEip7Enabled);
@@ -1206,7 +1206,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(false, underTest.ValidateChainId);
             Assert.AreEqual(false, underTest.ValidateReceipts);
 
-            underTest = provider.Resolve(12830L);
+            underTest = provider.GetSpec(12830L);
             Assert.AreEqual(underTest.MaxCodeSize, maxCodeSize);
             Assert.AreEqual(true, underTest.IsEip2Enabled);
             Assert.AreEqual(true, underTest.IsEip7Enabled);
@@ -1248,7 +1248,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(false, underTest.ValidateChainId);
             Assert.AreEqual(false, underTest.ValidateReceipts);
 
-            underTest = provider.Resolve(12831L);
+            underTest = provider.GetSpec(12831L);
             Assert.AreEqual(underTest.MaxCodeSize, maxCodeSize);
             Assert.AreEqual(true, underTest.IsEip2Enabled);
             Assert.AreEqual(true, underTest.IsEip7Enabled);
@@ -1290,7 +1290,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(false, underTest.ValidateChainId);
             Assert.AreEqual(false, underTest.ValidateReceipts);
 
-            underTest = provider.Resolve(13440L);
+            underTest = provider.GetSpec(13440L);
             Assert.AreEqual(underTest.MaxCodeSize, maxCodeSize);
             Assert.AreEqual(true, underTest.IsEip2Enabled);
             Assert.AreEqual(true, underTest.IsEip7Enabled);
@@ -1332,7 +1332,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(false, underTest.ValidateChainId);
             Assert.AreEqual(false, underTest.ValidateReceipts);
 
-            underTest = provider.Resolve(15590L);
+            underTest = provider.GetSpec(15590L);
             Assert.AreEqual(underTest.MaxCodeSize, maxCodeSize);
             Assert.AreEqual(true, underTest.IsEip2Enabled);
             Assert.AreEqual(true, underTest.IsEip7Enabled);
@@ -1374,7 +1374,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(false, underTest.ValidateChainId);
             Assert.AreEqual(false, underTest.ValidateReceipts);
 
-            underTest = provider.Resolve(18840L);
+            underTest = provider.GetSpec(18840L);
             Assert.AreEqual(underTest.MaxCodeSize, maxCodeSize);
             Assert.AreEqual(true, underTest.IsEip2Enabled);
             Assert.AreEqual(true, underTest.IsEip7Enabled);
@@ -1416,7 +1416,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(false, underTest.ValidateChainId);
             Assert.AreEqual(false, underTest.ValidateReceipts);
 
-            underTest = provider.Resolve(20280L);
+            underTest = provider.GetSpec(20280L);
             Assert.AreEqual(underTest.MaxCodeSize, maxCodeSize);
             Assert.AreEqual(true, underTest.IsEip2Enabled);
             Assert.AreEqual(true, underTest.IsEip7Enabled);
@@ -1458,7 +1458,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(false, underTest.ValidateChainId);
             Assert.AreEqual(false, underTest.ValidateReceipts);
 
-            underTest = provider.Resolve(22000L);
+            underTest = provider.GetSpec(22000L);
             Assert.AreEqual(underTest.MaxCodeSize, maxCodeSize);
             Assert.AreEqual(true, underTest.IsEip2Enabled);
             Assert.AreEqual(true, underTest.IsEip7Enabled);
@@ -1499,7 +1499,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(false, underTest.ValidateChainId);
             Assert.AreEqual(false, underTest.ValidateReceipts);
 
-            underTest = provider.Resolve(23000L);
+            underTest = provider.GetSpec(23000L);
             Assert.AreEqual(underTest.MaxCodeSize, maxCodeSize);
             Assert.AreEqual(true, underTest.IsEip2Enabled);
             Assert.AreEqual(true, underTest.IsEip7Enabled);
@@ -1541,7 +1541,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(false, underTest.ValidateChainId);
             Assert.AreEqual(false, underTest.ValidateReceipts);
 
-            underTest = provider.Resolve(24000L);
+            underTest = provider.GetSpec(24000L);
             Assert.AreEqual(underTest.MaxCodeSize, maxCodeSize);
             Assert.AreEqual(true, underTest.IsEip2Enabled);
             Assert.AreEqual(true, underTest.IsEip7Enabled);
@@ -1583,7 +1583,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(true, underTest.ValidateChainId);
             Assert.AreEqual(true, underTest.ValidateReceipts);
 
-            underTest = provider.Resolve(29290L);
+            underTest = provider.GetSpec(29290L);
             Assert.AreEqual(underTest.MaxCodeSize, maxCodeSize);
             Assert.AreEqual(true, underTest.IsEip2Enabled);
             Assert.AreEqual(true, underTest.IsEip7Enabled);
@@ -1621,7 +1621,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(false, underTest.IsEip3529Enabled);
             Assert.AreEqual(false, underTest.IsEip3675Enabled);
 
-            underTest = provider.Resolve(29300L);
+            underTest = provider.GetSpec(29300L);
             Assert.AreEqual(underTest.MaxCodeSize, maxCodeSize);
             Assert.AreEqual(true, underTest.IsEip2Enabled);
             Assert.AreEqual(true, underTest.IsEip7Enabled);
@@ -1659,7 +1659,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(false, underTest.IsEip3529Enabled);
             Assert.AreEqual(false, underTest.IsEip3675Enabled);
             
-            underTest = provider.Resolve(31980L);
+            underTest = provider.GetSpec(31980L);
             Assert.AreEqual(underTest.MaxCodeSize, maxCodeSize);
             Assert.AreEqual(true, underTest.IsEip2Enabled);
             Assert.AreEqual(true, underTest.IsEip7Enabled);
@@ -1697,7 +1697,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(false, underTest.IsEip3529Enabled);
             Assert.AreEqual(false, underTest.IsEip3675Enabled);
             
-            underTest = provider.Resolve(35290L);
+            underTest = provider.GetSpec(35290L);
             Assert.AreEqual(underTest.MaxCodeSize, maxCodeSize);
             Assert.AreEqual(true, underTest.IsEip2Enabled);
             Assert.AreEqual(true, underTest.IsEip7Enabled);
@@ -1735,7 +1735,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(false, underTest.IsEip3541Enabled);
             Assert.AreEqual(false, underTest.IsEip3675Enabled);
             
-            underTest = provider.Resolve(35410L);
+            underTest = provider.GetSpec(35410L);
             Assert.AreEqual(underTest.MaxCodeSize, maxCodeSize);
             Assert.AreEqual(true, underTest.IsEip2Enabled);
             Assert.AreEqual(true, underTest.IsEip7Enabled);
@@ -1773,7 +1773,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(true, underTest.IsEip3541Enabled);
             Assert.AreEqual(false, underTest.IsEip3675Enabled);
             
-            underTest = provider.Resolve(36750L);
+            underTest = provider.GetSpec(36750L);
             Assert.AreEqual(underTest.MaxCodeSize, maxCodeSize);
             Assert.AreEqual(true, underTest.IsEip2Enabled);
             Assert.AreEqual(true, underTest.IsEip7Enabled);

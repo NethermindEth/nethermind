@@ -43,8 +43,8 @@ namespace Nethermind.Specs.Test
         public void When_only_one_release_is_specified_then_returns_that_release()
         {
             var specProvider = new CustomSpecProvider((0, Byzantium.Instance));
-            Assert.IsInstanceOf<Byzantium>(specProvider.Resolve(0), "0");
-            Assert.IsInstanceOf<Byzantium>(specProvider.Resolve(1), "1");
+            Assert.IsInstanceOf<Byzantium>(specProvider.GetSpec(0), "0");
+            Assert.IsInstanceOf<Byzantium>(specProvider.GetSpec(1), "1");
         }
 
         [Test]
@@ -74,16 +74,16 @@ namespace Nethermind.Specs.Test
             var specProvider = new CustomSpecProvider(
                 (0, Frontier.Instance),
                 (1, Homestead.Instance));
-            Assert.IsInstanceOf<Frontier>(specProvider.Resolve(0), "2 releases, block 0");
-            Assert.IsInstanceOf<Homestead>(specProvider.Resolve(1), "2 releases, block 1");
+            Assert.IsInstanceOf<Frontier>(specProvider.GetSpec(0), "2 releases, block 0");
+            Assert.IsInstanceOf<Homestead>(specProvider.GetSpec(1), "2 releases, block 1");
 
             specProvider = new CustomSpecProvider(
                 (0, Frontier.Instance),
                 (1, Homestead.Instance),
                 (10, Byzantium.Instance));
-            Assert.IsInstanceOf<Frontier>(specProvider.Resolve(0), "3 releases, block 0");
-            Assert.IsInstanceOf<Homestead>(specProvider.Resolve(1), "3 releases, block 1");
-            Assert.IsInstanceOf<Byzantium>(specProvider.Resolve(100), "3 releases, block 10");
+            Assert.IsInstanceOf<Frontier>(specProvider.GetSpec(0), "3 releases, block 0");
+            Assert.IsInstanceOf<Homestead>(specProvider.GetSpec(1), "3 releases, block 1");
+            Assert.IsInstanceOf<Byzantium>(specProvider.GetSpec(100), "3 releases, block 10");
         }
     }
 }

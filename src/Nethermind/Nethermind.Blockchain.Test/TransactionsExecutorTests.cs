@@ -213,7 +213,7 @@ namespace Nethermind.Blockchain.Test
             {
                 IsEip1559Enabled = testCase.Eip1559Enabled
             };
-            specProvider.Resolve(Arg.Any<long>()).Returns(spec);
+            specProvider.GetSpec(Arg.Any<long>()).Returns(spec);
             
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
             transactionProcessor.When(t => t.BuildUp(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<ITxTracer>()))

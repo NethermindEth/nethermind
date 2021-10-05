@@ -172,7 +172,7 @@ namespace Nethermind.Mev.Source
                 return false;
             }
 
-            IReleaseSpec spec = _specProvider.Resolve(bundle.BlockNumber);
+            IReleaseSpec spec = _specProvider.GetSpec(bundle.BlockNumber);
             for (int i = 0; i < bundle.Transactions.Count; i++)
             {
                 if (!_txValidator.IsWellFormed(bundle.Transactions[i], spec))

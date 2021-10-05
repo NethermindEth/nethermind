@@ -23,7 +23,7 @@ namespace Nethermind.Specs
     {
         public IReleaseSpec GenesisSpec => TangerineWhistle.Instance;
 
-        public IReleaseSpec Resolve(long blockNumber)
+        public IReleaseSpec GetSpec(long blockNumber)
         {
             if (blockNumber < SpuriousDragonBlockNumber)
             {

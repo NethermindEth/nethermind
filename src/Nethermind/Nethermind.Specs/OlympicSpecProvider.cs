@@ -23,7 +23,7 @@ namespace Nethermind.Specs
     {
         public IReleaseSpec GenesisSpec => Olympic.Instance;
 
-        public IReleaseSpec Resolve(long blockNumber)
+        public IReleaseSpec GetSpec(long blockNumber)
         {
             return Olympic.Instance;
         }

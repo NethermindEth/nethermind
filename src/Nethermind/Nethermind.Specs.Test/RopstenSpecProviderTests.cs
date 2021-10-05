@@ -31,11 +31,11 @@ namespace Nethermind.Specs.Test
         [TestCase(9_812_189, true)]
         public void Berlin_eips(long blockNumber, bool isEnabled)
         {
-            _specProvider.Resolve(blockNumber).IsEip2315Enabled.Should().Be(false);
-            _specProvider.Resolve(blockNumber).IsEip2537Enabled.Should().Be(false);
-            _specProvider.Resolve(blockNumber).IsEip2565Enabled.Should().Be(isEnabled);
-            _specProvider.Resolve(blockNumber).IsEip2929Enabled.Should().Be(isEnabled);
-            _specProvider.Resolve(blockNumber).IsEip2930Enabled.Should().Be(isEnabled);
+            _specProvider.GetSpec(blockNumber).IsEip2315Enabled.Should().Be(false);
+            _specProvider.GetSpec(blockNumber).IsEip2537Enabled.Should().Be(false);
+            _specProvider.GetSpec(blockNumber).IsEip2565Enabled.Should().Be(isEnabled);
+            _specProvider.GetSpec(blockNumber).IsEip2929Enabled.Should().Be(isEnabled);
+            _specProvider.GetSpec(blockNumber).IsEip2930Enabled.Should().Be(isEnabled);
         }
         
         [TestCase(10_499_400, false)]
@@ -43,14 +43,14 @@ namespace Nethermind.Specs.Test
         public void London_eips(long blockNumber, bool isEnabled)
         {
             if (isEnabled)
-                _specProvider.Resolve(blockNumber).DifficultyBombDelay.Should().Be(London.Instance.DifficultyBombDelay);
+                _specProvider.GetSpec(blockNumber).DifficultyBombDelay.Should().Be(London.Instance.DifficultyBombDelay);
             else
-                _specProvider.Resolve(blockNumber).DifficultyBombDelay.Should().Be(Berlin.Instance.DifficultyBombDelay);
+                _specProvider.GetSpec(blockNumber).DifficultyBombDelay.Should().Be(Berlin.Instance.DifficultyBombDelay);
             
-            _specProvider.Resolve(blockNumber).IsEip1559Enabled.Should().Be(isEnabled);
-            _specProvider.Resolve(blockNumber).IsEip3198Enabled.Should().Be(isEnabled);
-            _specProvider.Resolve(blockNumber).IsEip3529Enabled.Should().Be(isEnabled);
-            _specProvider.Resolve(blockNumber).IsEip3541Enabled.Should().Be(isEnabled);
+            _specProvider.GetSpec(blockNumber).IsEip1559Enabled.Should().Be(isEnabled);
+            _specProvider.GetSpec(blockNumber).IsEip3198Enabled.Should().Be(isEnabled);
+            _specProvider.GetSpec(blockNumber).IsEip3529Enabled.Should().Be(isEnabled);
+            _specProvider.GetSpec(blockNumber).IsEip3541Enabled.Should().Be(isEnabled);
         }
         
         [Test]

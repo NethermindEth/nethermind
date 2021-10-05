@@ -34,7 +34,7 @@ namespace Nethermind.Blockchain.Spec
 
         public IReleaseSpec GenesisSpec => _specProvider.GenesisSpec;
 
-        public IReleaseSpec Resolve(long blockNumber) => _specProvider.Resolve(blockNumber);
+        public IReleaseSpec GetSpec(long blockNumber) => _specProvider.GetSpec(blockNumber);
 
         public long? DaoBlockNumber => _specProvider.DaoBlockNumber;
 
@@ -42,6 +42,6 @@ namespace Nethermind.Blockchain.Spec
 
         public long[] TransitionBlocks => _specProvider.TransitionBlocks;
         
-        public IReleaseSpec GetSpec() => Resolve(_blockFinder.FindBestSuggestedHeader()?.Number ?? 0);
+        public IReleaseSpec GetSpec() => GetSpec(_blockFinder.FindBestSuggestedHeader()?.Number ?? 0);
     }
 }

@@ -156,7 +156,7 @@ namespace Nethermind.TxPool
         {
             if (previousBlock is not null)
             {
-                bool isEip155Enabled = _specProvider.Resolve(previousBlock.Number).IsEip155Enabled;
+                bool isEip155Enabled = _specProvider.GetSpec(previousBlock.Number).IsEip155Enabled;
                 for (int i = 0; i < previousBlock.Transactions.Length; i++)
                 {
                     Transaction tx = previousBlock.Transactions[i];

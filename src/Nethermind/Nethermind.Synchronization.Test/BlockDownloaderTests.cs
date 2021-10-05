@@ -1176,7 +1176,7 @@ namespace Nethermind.Synchronization.Test
 
                     _headers[blockHashes[i]].ReceiptsRoot = flags.HasFlag(Response.IncorrectReceiptRoot)
                         ? Keccak.EmptyTreeHash
-                        : new ReceiptTrie(MainnetSpecProvider.Instance.Resolve(_headers[blockHashes[i]].Number), receipts[i]).RootHash;
+                        : new ReceiptTrie(MainnetSpecProvider.Instance.GetSpec(_headers[blockHashes[i]].Number), receipts[i]).RootHash;
                 }
 
                 ReceiptsMessage message = new(receipts);

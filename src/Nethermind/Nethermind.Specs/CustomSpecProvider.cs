@@ -52,7 +52,7 @@ namespace Nethermind.Specs
         
         public IReleaseSpec GenesisSpec => _transitions.Length == 0 ? null : _transitions[0].Release;
         
-        public IReleaseSpec Resolve(long blockNumber)
+        public IReleaseSpec GetSpec(long blockNumber)
         {
             IReleaseSpec spec = _transitions[0].Release;
             for (int i = 1; i < _transitions.Length; i++)

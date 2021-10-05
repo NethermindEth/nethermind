@@ -37,8 +37,8 @@ namespace Nethermind.Evm.Test
             get
             {
                 ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-                specProvider.Resolve(Arg.Is<long>(x => x >= LondonTestBlockNumber)).Returns(London.Instance);
-                specProvider.Resolve(Arg.Is<long>(x => x < LondonTestBlockNumber)).Returns(Berlin.Instance);
+                specProvider.GetSpec(Arg.Is<long>(x => x >= LondonTestBlockNumber)).Returns(London.Instance);
+                specProvider.GetSpec(Arg.Is<long>(x => x < LondonTestBlockNumber)).Returns(Berlin.Instance);
                 return specProvider;
             }
         }

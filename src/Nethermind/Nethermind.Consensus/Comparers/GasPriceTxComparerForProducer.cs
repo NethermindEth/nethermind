@@ -36,7 +36,7 @@ namespace Nethermind.Consensus.Comparers
 
         public int Compare(Transaction? x, Transaction? y)
         {
-            bool isEip1559Enabled = _specProvider.Resolve(_blockPreparationContext.BlockNumber).IsEip1559Enabled;
+            bool isEip1559Enabled = _specProvider.GetSpec(_blockPreparationContext.BlockNumber).IsEip1559Enabled;
             return GasPriceTxComparerHelper.Compare(x, y, _blockPreparationContext.BaseFee, isEip1559Enabled);
         }
     }

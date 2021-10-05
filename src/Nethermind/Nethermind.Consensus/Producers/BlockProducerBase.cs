@@ -299,7 +299,7 @@ namespace Nethermind.Consensus.Producers
             header.TotalDifficulty = parent.TotalDifficulty + difficulty;
 
             if (Logger.IsDebug) Logger.Debug($"Setting total difficulty to {parent.TotalDifficulty} + {difficulty}.");
-            header.BaseFeePerGas = BaseFeeCalculator.Calculate(parent, _specProvider.Resolve(header.Number));
+            header.BaseFeePerGas = BaseFeeCalculator.Calculate(parent, _specProvider.GetSpec(header.Number));
 
             IEnumerable<Transaction> transactions = GetTransactions(parent);
             return new BlockToProduce(header, transactions, Array.Empty<BlockHeader>());

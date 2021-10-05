@@ -65,7 +65,7 @@ namespace Nethermind.Consensus.Validators
         public bool ValidateSuggestedBlock(Block block)
         {
             Transaction[] txs = block.Transactions;
-            IReleaseSpec spec = _specProvider.Resolve(block.Number);
+            IReleaseSpec spec = _specProvider.GetSpec(block.Number);
             
             for (int i = 0; i < txs.Length; i++)
             {

@@ -43,7 +43,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                         b.Select(
                             n => n == null
                                 ? Rlp.OfEmptySequence
-                                : _decoder.Encode(n, _specProvider.Resolve(n.BlockNumber).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None)).ToArray())).ToArray());
+                                : _decoder.Encode(n, _specProvider.GetSpec(n.BlockNumber).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None)).ToArray())).ToArray());
             
             RlpStream rlpStream = new NettyRlpStream(byteBuffer);
             rlpStream.Encode(rlp);
@@ -74,7 +74,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             {
                 for (int j = 0; j < message.TxReceipts[i].Length; j++)
                 {
-                    contentLength += Rlp.LengthOfSequence(_decoder.GetLength(message.TxReceipts[i][j], _specProvider.Resolve(message.TxReceipts[i][j].BlockNumber).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None));
+                    contentLength += Rlp.LengthOfSequence(_decoder.GetLength(message.TxReceipts[i][j], _specProvider.GetSpec(message.TxReceipts[i][j].BlockNumber).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None));
                 }
             }
             

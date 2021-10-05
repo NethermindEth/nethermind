@@ -175,7 +175,7 @@ namespace Nethermind.TxPool.Test
             if (eip1559Enabled)
             {
                 specProvider = Substitute.For<ISpecProvider>();
-                specProvider.Resolve(Arg.Any<long>()).Returns(London.Instance);
+                specProvider.GetSpec(Arg.Any<long>()).Returns(London.Instance);
             }
             var txPool = CreatePool(null, specProvider);
             Transaction tx = Build.A.Transaction
@@ -195,7 +195,7 @@ namespace Nethermind.TxPool.Test
         public void should_ignore_insufficient_funds_for_eip1559_transactions()
         {
             var specProvider = Substitute.For<ISpecProvider>();
-            specProvider.Resolve(Arg.Any<long>()).Returns(London.Instance);
+            specProvider.GetSpec(Arg.Any<long>()).Returns(London.Instance);
             var txPool = CreatePool(null, specProvider);
             Transaction tx = Build.A.Transaction
                 .WithType(TxType.EIP1559).WithMaxFeePerGas(20)
@@ -264,7 +264,7 @@ namespace Nethermind.TxPool.Test
         public void should_ignore_overflow_transactions_gas_premium_and_fee_cap()
         {
             var specProvider = Substitute.For<ISpecProvider>();
-            specProvider.Resolve(Arg.Any<long>()).Returns(London.Instance);
+            specProvider.GetSpec(Arg.Any<long>()).Returns(London.Instance);
             var txPool = CreatePool(null, specProvider);
             Transaction tx = Build.A.Transaction.WithGasPrice(UInt256.MaxValue / Transaction.BaseTxGasCost)
                 .WithGasLimit(Transaction.BaseTxGasCost)
@@ -352,7 +352,7 @@ namespace Nethermind.TxPool.Test
         public void should_handle_adding_1559_tx_to_full_txPool_properly(int gasPremium, int value, AddTxResult expected)
         {
             var specProvider = Substitute.For<ISpecProvider>();
-            specProvider.Resolve(Arg.Any<long>()).Returns(London.Instance);
+            specProvider.GetSpec(Arg.Any<long>()).Returns(London.Instance);
             _txPool = CreatePool(new TxPoolConfig() {Size = 30}, specProvider);
             Transaction[] transactions = GetTransactions(GetPeers(3), true, false);
 
@@ -918,7 +918,7 @@ namespace Nethermind.TxPool.Test
         public void should_replace_tx_with_same_sender_and_nonce_only_if_new_fee_is_at_least_10_percent_higher_than_old(int oldGasPrice, int newGasPrice, bool replaced)
         {
             var specProvider = Substitute.For<ISpecProvider>();
-            specProvider.Resolve(Arg.Any<long>()).Returns(London.Instance);
+            specProvider.GetSpec(Arg.Any<long>()).Returns(London.Instance);
             _txPool = CreatePool(null, specProvider);
             Transaction oldTx = Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(0).WithGasPrice((UInt256)oldGasPrice).SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             Transaction newTx = Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(0).WithGasPrice((UInt256)newGasPrice).SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
@@ -947,7 +947,7 @@ namespace Nethermind.TxPool.Test
         public void should_replace_1559tx_with_same_sender_and_nonce_only_if_both_new_maxPriorityFeePerGas_and_new_maxFeePerGas_are_at_least_10_percent_higher_than_old(int oldMaxFeePerGas, int newMaxFeePerGas, int oldMaxPriorityFeePerGas, int newMaxPriorityFeePerGas, bool replaced)
         {
             var specProvider = Substitute.For<ISpecProvider>();
-            specProvider.Resolve(Arg.Any<long>()).Returns(London.Instance);
+            specProvider.GetSpec(Arg.Any<long>()).Returns(London.Instance);
             _txPool = CreatePool(null, specProvider);
             Transaction oldTx = Build.A.Transaction
                 .WithSenderAddress(TestItem.AddressA)

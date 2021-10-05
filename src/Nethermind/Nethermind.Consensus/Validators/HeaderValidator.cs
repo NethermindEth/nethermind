@@ -74,7 +74,7 @@ namespace Nethermind.Consensus.Validators
         {
             bool hashAsExpected = ValidateHash(header);
 
-            IReleaseSpec spec = _specProvider.Resolve(header.Number);
+            IReleaseSpec spec = _specProvider.GetSpec(header.Number);
             bool extraDataValid = header.ExtraData.Length <= spec.MaximumExtraDataSize
                                   && (isUncle
                                       || _daoBlockNumber == null

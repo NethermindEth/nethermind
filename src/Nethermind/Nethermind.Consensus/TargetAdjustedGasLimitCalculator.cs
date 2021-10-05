@@ -39,7 +39,7 @@ namespace Nethermind.Consensus
             
             long? targetGasLimit = _miningConfig.TargetBlockGasLimit;
             long newBlockNumber = parentHeader.Number + 1;
-            IReleaseSpec spec = _specProvider.Resolve(newBlockNumber);
+            IReleaseSpec spec = _specProvider.GetSpec(newBlockNumber);
             if (targetGasLimit != null)
             {
                 long maxGasLimitDifference = Math.Max(0, parentGasLimit / spec.GasLimitBoundDivisor - 1);

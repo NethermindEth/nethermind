@@ -240,7 +240,7 @@ namespace Nethermind.Blockchain.Test.Validators
                 .WithMixHash(new Keccak("0xd7db5fdd332d3a65d6ac9c4c530929369905734d3ef7a91e373e81d0f010b8e8"))
                 .WithGasLimit(gasLimit)
                 .WithNumber(_parentBlock.Number + 1)
-                .WithBaseFeePerGas(BaseFeeCalculator.Calculate(_parentBlock.Header, specProvider.Resolve(_parentBlock.Number + 1)))
+                .WithBaseFeePerGas(BaseFeeCalculator.Calculate(_parentBlock.Header, specProvider.GetSpec(_parentBlock.Number + 1)))
                 .WithNonce(0).TestObject;
             _block.Header.SealEngineType = SealEngineType.None;
             _block.Header.Hash = _block.CalculateHash();

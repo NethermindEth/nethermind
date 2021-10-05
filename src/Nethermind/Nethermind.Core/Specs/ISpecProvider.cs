@@ -19,7 +19,7 @@ namespace Nethermind.Core.Specs
     /// <summary>
     /// Provides details of enabled EIPs and other chain parameters at any chain height.
     /// </summary>
-    public interface ISpecProvider : INumberDependent<IReleaseSpec>
+    public interface ISpecProvider
     {
         /// <summary>
         /// Retrieves the list of enabled EIPs at genesis block.
@@ -41,5 +41,12 @@ namespace Nethermind.Core.Specs
         /// All block numbers at which a change in spec (a fork) happens.
         /// </summary>
         long[] TransitionBlocks { get; }
+
+        /// <summary>
+        /// Resolves a spec for the given block number.
+        /// </summary>
+        /// <param name="blockNumber"></param>
+        /// <returns>A spec that is valid at the given chain height</returns>
+        IReleaseSpec GetSpec(long blockNumber);
     }
 }

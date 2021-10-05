@@ -127,7 +127,7 @@ namespace Nethermind.Facade
                 Block block = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                 TxReceipt txReceipt = _receiptFinder.Get(block).ForTransaction(txHash);
                 Transaction tx = block?.Transactions[txReceipt.Index];
-                bool is1559Enabled = _specProvider.Resolve(block.Number).IsEip1559Enabled;
+                bool is1559Enabled = _specProvider.GetSpec(block.Number).IsEip1559Enabled;
                 UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(is1559Enabled, block.Header.BaseFeePerGas);
                 
                 return (txReceipt, effectiveGasPrice);
@@ -209,7 +209,7 @@ namespace Nethermind.Facade
                 true,
                 estimateGasTracer.WithCancellation(cancellationToken));
             
-            long estimate = estimateGasTracer.CalculateEstimate(tx, _specProvider.Resolve(header.Number + 1));
+            long estimate = estimateGasTracer.CalculateEstimate(tx, _specProvider.GetSpec(header.Number + 1));
             
             return new CallOutput 
             {
@@ -289,7 +289,7 @@ namespace Nethermind.Facade
                     Array.Empty<byte>());
 
                 callHeader.BaseFeePerGas = treatBlockHeaderAsParentBlock
-                    ? BaseFeeCalculator.Calculate(blockHeader, _specProvider.Resolve(callHeader.Number))
+                    ? BaseFeeCalculator.Calculate(blockHeader, _specProvider.GetSpec(callHeader.Number))
                     : blockHeader.BaseFeePerGas;
 
                 transaction.Hash = transaction.CalculateHash();

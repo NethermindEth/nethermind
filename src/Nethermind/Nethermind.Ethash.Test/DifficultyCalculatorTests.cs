@@ -35,7 +35,7 @@ namespace Nethermind.Ethash.Test
             releaseSpec.IsEip100Enabled.Returns(true);
             releaseSpec.IsTimeAdjustmentPostOlympic.Returns(true);
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-            specProvider.Resolve(Arg.Any<long>()).Returns(releaseSpec);
+            specProvider.GetSpec(Arg.Any<long>()).Returns(releaseSpec);
             EthashDifficultyCalculator difficultyCalculator = new(specProvider);
             UInt256 result = difficultyCalculator.Calculate(0x55f78f7, 1613570258, 0x602d20d2, 200000, false);
             Assert.AreEqual((UInt256)90186983, result);
@@ -46,7 +46,7 @@ namespace Nethermind.Ethash.Test
         public void CalculateOlympic_should_returns_expected_results()
         {
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-            specProvider.Resolve(Arg.Any<long>()).Returns(Olympic.Instance);
+            specProvider.GetSpec(Arg.Any<long>()).Returns(Olympic.Instance);
             EthashDifficultyCalculator difficultyCalculator = new(specProvider);
             UInt256 result = difficultyCalculator.Calculate(0x55f78f7, 1613570258, 0x602d20d2, 200000, false);
             Assert.AreEqual((UInt256)90186983, result);
@@ -56,7 +56,7 @@ namespace Nethermind.Ethash.Test
         public void CalculateBerlin_should_returns_expected_results()
         {
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-            specProvider.Resolve(Arg.Any<long>()).Returns(Berlin.Instance);
+            specProvider.GetSpec(Arg.Any<long>()).Returns(Berlin.Instance);
             EthashDifficultyCalculator difficultyCalculator = new(specProvider);
             UInt256 result = difficultyCalculator.Calculate(0x55f78f7, 1613570258, 0x602d20d2, 200000, false);
             Assert.AreEqual((UInt256)90186982, result);
@@ -70,12 +70,12 @@ namespace Nethermind.Ethash.Test
             UInt256 parentTimestamp = 1613570258;
             UInt256 currentTimestamp = 0x602d20d2;
             ISpecProvider berlinSpecProvider = Substitute.For<ISpecProvider>();
-            berlinSpecProvider.Resolve(Arg.Any<long>()).Returns(Berlin.Instance);
+            berlinSpecProvider.GetSpec(Arg.Any<long>()).Returns(Berlin.Instance);
             EthashDifficultyCalculator berlinDifficultyCalculator = new(berlinSpecProvider);
             UInt256 berlinResult = berlinDifficultyCalculator.Calculate(parentDifficulty, parentTimestamp, currentTimestamp, 9200000L + blocksAbove, false);
             
             ISpecProvider londonSpecProvider = Substitute.For<ISpecProvider>();
-            londonSpecProvider.Resolve(Arg.Any<long>()).Returns(London.Instance);
+            londonSpecProvider.GetSpec(Arg.Any<long>()).Returns(London.Instance);
             EthashDifficultyCalculator londonDifficultyCalculator = new(londonSpecProvider);
             UInt256 londonResult = londonDifficultyCalculator.Calculate(parentDifficulty, parentTimestamp, currentTimestamp, 9200000L + blocksAbove, false);
             

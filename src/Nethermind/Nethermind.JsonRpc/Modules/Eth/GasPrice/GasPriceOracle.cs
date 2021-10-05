@@ -95,7 +95,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
             {
                 Transaction[] currentBlockTransactions = currentBlock.Transactions;
                 int txFromCurrentBlock = 0;
-                bool eip1559Enabled = SpecProvider.Resolve(currentBlock.Number).IsEip1559Enabled;
+                bool eip1559Enabled = SpecProvider.GetSpec(currentBlock.Number).IsEip1559Enabled;
                 UInt256 baseFee = currentBlock.BaseFeePerGas;
                 IEnumerable<UInt256> effectiveGasPrices = 
                     currentBlockTransactions.Where(tx => tx.SenderAddress != currentBlock.Beneficiary)

@@ -100,7 +100,7 @@ namespace Nethermind.Evm.Tracing
                 return block.Transactions.Length;
 
             int counter = 0;
-            bool validateChainId = _specProvider.Resolve(block.Number).ValidateChainId;
+            bool validateChainId = _specProvider.GetSpec(block.Number).ValidateChainId;
             for (int index = 0; index < block.Transactions.Length; index++)
             {
                 Transaction tx = block.Transactions[index];

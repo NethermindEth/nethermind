@@ -120,7 +120,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
         private void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer, ExecutionOptions executionOptions)
         {
-            bool eip658NotEnabled = !_specProvider.Resolve(block.Number).IsEip658Enabled;
+            bool eip658NotEnabled = !_specProvider.GetSpec(block.Number).IsEip658Enabled;
             
             // restore is CallAndRestore - previous call, we will restore state after the execution
             bool restore = (executionOptions & ExecutionOptions.Restore) != ExecutionOptions.None;
@@ -131,7 +131,7 @@ namespace Nethermind.Evm.TransactionProcessing
             bool notSystemTransaction = !transaction.IsSystem();
             bool deleteCallerAccount = false;
             
-            IReleaseSpec spec = _specProvider.Resolve(block.Number);
+            IReleaseSpec spec = _specProvider.GetSpec(block.Number);
             if (!notSystemTransaction)
             {
                 spec = new SystemTransactionReleaseSpec(spec);

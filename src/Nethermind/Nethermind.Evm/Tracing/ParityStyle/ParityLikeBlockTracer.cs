@@ -76,7 +76,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
 
         public override void StartNewBlockTrace(Block block)
         {
-            _validateChainId = _specProvider != null ? _specProvider.Resolve(block.Number).ValidateChainId : true;
+            _validateChainId = _specProvider != null ? _specProvider.GetSpec(block.Number).ValidateChainId : true;
             _block = block;
         }
         

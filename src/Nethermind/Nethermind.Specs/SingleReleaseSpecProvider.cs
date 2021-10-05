@@ -38,7 +38,7 @@ namespace Nethermind.Specs
 
         public IReleaseSpec GenesisSpec => _releaseSpec;
 
-        public IReleaseSpec Resolve(long blockNumber)
+        public IReleaseSpec GetSpec(long blockNumber)
         {
             return _releaseSpec;
         }

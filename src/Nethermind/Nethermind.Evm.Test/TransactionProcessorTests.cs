@@ -552,7 +552,7 @@ namespace Nethermind.Evm.Test
         {
             long blockNumber = MainnetSpecProvider.SpuriousDragonBlockNumber + 1;
             _stateProvider.CreateAccount(TestItem.PrivateKeyA.Address, 0.Ether());
-            IReleaseSpec spec = _specProvider.Resolve(blockNumber);
+            IReleaseSpec spec = _specProvider.GetSpec(blockNumber);
             _stateProvider.Commit(spec);
             Transaction tx = Build.A.SystemTransaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled)
                 .WithGasPrice(0)

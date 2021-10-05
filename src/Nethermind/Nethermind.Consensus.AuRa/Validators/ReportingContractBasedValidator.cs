@@ -169,7 +169,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         private ITxSender SetSender(long blockNumber)
         {
             bool posdao = IsPosdao(blockNumber);
-            bool isEip1559Enabled = _specProvider.Resolve(blockNumber).IsEip1559Enabled;
+            bool isEip1559Enabled = _specProvider.GetSpec(blockNumber).IsEip1559Enabled;
             return posdao ? _posdaoTxSender : (isEip1559Enabled ? _nonPosdao1559TxSender: _nonPosdaoTxSender);
         }
 
