@@ -17,13 +17,18 @@
 
 using System;
 using System.Threading.Tasks;
+using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Evm.Tracing;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.State;
 
 namespace Nethermind.Merge.Plugin.Handlers
 {
@@ -61,7 +66,10 @@ namespace Nethermind.Merge.Plugin.Handlers
         private readonly IManualBlockProductionTrigger _emptyBlockProductionTrigger;
         private readonly ManualTimestamper _timestamper;
         private readonly ISealer _sealer;
+        private readonly IStateProvider _stateProvider;
         private readonly ILogger _logger;
+        private readonly IBlockchainProcessor _processor;
+        private readonly IInitConfig _initConfig;
 
         public PreparePayloadHandler(
             IBlockTree blockTree, 
@@ -71,6 +79,9 @@ namespace Nethermind.Merge.Plugin.Handlers
             IManualBlockProductionTrigger emptyBlockProductionTrigger, 
             ManualTimestamper timestamper, 
             ISealer sealer,
+            IStateProvider stateProvider,
+            IBlockchainProcessor processor,
+            IInitConfig initConfig,
             ILogManager logManager)
         {
             _blockTree = blockTree;
@@ -79,6 +90,9 @@ namespace Nethermind.Merge.Plugin.Handlers
             _emptyBlockProductionTrigger = emptyBlockProductionTrigger;
             _timestamper = timestamper;
             _sealer = sealer;
+            _stateProvider = stateProvider;
+            _processor = processor;
+            _initConfig = initConfig;
             _logger = logManager.GetClassLogger();
         }
 

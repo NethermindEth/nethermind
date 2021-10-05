@@ -20,10 +20,14 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Api;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
+using Nethermind.State;
 
 namespace Nethermind.Merge.Plugin.Handlers
 {
@@ -37,6 +41,9 @@ namespace Nethermind.Merge.Plugin.Handlers
     {
         private readonly IManualBlockProductionTrigger _blockProductionTrigger;
         private readonly IManualBlockProductionTrigger _emptyBlockProductionTrigger;
+        private readonly IStateProvider _stateProvider;
+        private readonly IBlockchainProcessor _processor;
+        private readonly IInitConfig _initConfig;
         private readonly object _locker = new();
         private uint _currentPayloadId;
         private ulong _cleanupDelay = 12; // in seconds
@@ -45,24 +52,34 @@ namespace Nethermind.Merge.Plugin.Handlers
         private readonly ConcurrentDictionary<ulong, BlockTaskAndRandom> _payloadStorage =
             new();
 
-        public PayloadStorage(IManualBlockProductionTrigger blockProductionTrigger,
-            IManualBlockProductionTrigger emptyBlockProductionTrigger)
+        public PayloadStorage(
+            IManualBlockProductionTrigger blockProductionTrigger,
+            IManualBlockProductionTrigger emptyBlockProductionTrigger,
+            IStateProvider stateProvider,
+            IBlockchainProcessor processor,
+            IInitConfig initConfig)
         {
             _blockProductionTrigger = blockProductionTrigger;
             _emptyBlockProductionTrigger = emptyBlockProductionTrigger;
+            _stateProvider = stateProvider;
+            _processor = processor;
+            _initConfig = initConfig;
         }
 
         public async Task GeneratePayload(ulong payloadId, Keccak random, BlockHeader parentHeader, Address blockAuthor, UInt256 timestamp)
         {
             using CancellationTokenSource cts = new(_timeout);
 
-            Task<Block?> emptyBlock = _emptyBlockProductionTrigger.BuildBlock(parentHeader, cts.Token, null, blockAuthor, timestamp);
-            Task<Block?> idealBlock = _blockProductionTrigger.BuildBlock(parentHeader, cts.Token, null, blockAuthor, timestamp);
+            Task<Block?> emptyBlock = _emptyBlockProductionTrigger.BuildBlock(parentHeader, cts.Token, null, blockAuthor, timestamp)
+                .ContinueWith((x) => Process(x.Result, parentHeader), cts.Token);
+            Task<Block?> idealBlock = _blockProductionTrigger.BuildBlock(parentHeader, cts.Token, null, blockAuthor, timestamp)
+                .ContinueWith((x) => Process(x.Result, parentHeader), cts.Token);
             
             BlockTaskAndRandom emptyBlockTaskTuple = new(emptyBlock, random);
             bool _ = _payloadStorage.TryAdd(payloadId, emptyBlockTaskTuple);
-
+            
             BlockTaskAndRandom idealBlockTaskTuple = new(idealBlock, random);
+            await idealBlock;
             bool __ = _payloadStorage.TryUpdate(payloadId, idealBlockTaskTuple, emptyBlockTaskTuple);
             
             // remove after 12 seconds, it will not be needed
@@ -105,6 +122,37 @@ namespace Nethermind.Merge.Plugin.Handlers
             {
                 _payloadStorage.Remove(payloadId, out _);
             }
+        }
+                
+        private Block? Process(Block block, BlockHeader parent)
+        {
+            if (block == null)
+                return null;
+            Block? processedBlock = null;
+            block.Header.TotalDifficulty = parent.TotalDifficulty + block.Difficulty;
+            
+            Keccak currentStateRoot = _stateProvider.ResetStateTo(parent.StateRoot!);
+            try
+            {
+                processedBlock = _processor.Process(block, GetProcessingOptions(), NullBlockTracer.Instance);
+            }
+            finally
+            {
+                _stateProvider.ResetStateTo(currentStateRoot);
+            }
+
+            return processedBlock;
+        }
+
+        private ProcessingOptions GetProcessingOptions()
+        {
+            ProcessingOptions options = ProcessingOptions.EthereumMerge;
+            if (_initConfig.StoreReceipts)
+            {
+                options |= ProcessingOptions.StoreReceipts;
+            }
+
+            return options;
         }
     }
 }

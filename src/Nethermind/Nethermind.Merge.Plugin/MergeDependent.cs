@@ -25,12 +25,14 @@ namespace Nethermind.Merge.Plugin
 {
     public class MergeDependent<TImplementation> : IMergeDependent<TImplementation>
     {
+        private readonly IMergeConfig _mergeConfig;
         private readonly ILogger _logger;
 
         private Stage _currentStage = Stage.BeforeTheMerge;
 
-        public MergeDependent(IBlockTree blockTree, ILogManager? logManager)
+        public MergeDependent(IBlockTree blockTree, ILogManager? logManager, IMergeConfig mergeConfig)
         {
+            _mergeConfig = mergeConfig;
             _logger = logManager?.GetClassLogger<MergeDependent<TImplementation>>()
                       ?? throw new ArgumentNullException(nameof(logManager));
             blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
@@ -40,8 +42,10 @@ namespace Nethermind.Merge.Plugin
             IBlockTree? blockTree,
             TImplementation? beforeTheMerge,
             TImplementation? afterTheMerge,
-            ILogManager? logManager)
+            IMergeConfig mergeConfig
+,            ILogManager? logManager)
         {
+            _mergeConfig = mergeConfig;
             _logger = logManager?.GetClassLogger<MergeDependent<TImplementation>>()
                       ?? throw new ArgumentNullException(nameof(logManager));
 
@@ -56,7 +60,7 @@ namespace Nethermind.Merge.Plugin
 
         private void BlockTreeOnNewHeadBlock(object? sender, BlockEventArgs e)
         {
-            if (e.Block.TotalDifficulty!.Value > 10)
+            if (e.Block.TotalDifficulty!.Value > _mergeConfig.TerminalTotalDifficulty)
             {
                 if(_logger.IsInfo) _logger.Info("The Merge is about to happen");
                 _currentStage = Stage.AfterTheMerge;

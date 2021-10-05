@@ -25,7 +25,7 @@ using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.Merge.Plugin
 {
-    [RpcModule(ModuleType.Consensus)]
+    [RpcModule(ModuleType.Engine)]
     public interface IEngineRpcModule : IRpcModule
     {
         [JsonRpcMethod(

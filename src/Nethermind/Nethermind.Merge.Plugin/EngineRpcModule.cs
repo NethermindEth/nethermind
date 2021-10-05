@@ -31,7 +31,7 @@ namespace Nethermind.Merge.Plugin
     public class EngineRpcModule : IEngineRpcModule
     {
         private readonly IHandler<PreparePayloadRequest, PreparePayloadResult> _preparePayloadHandler;
-        private readonly IHandler<ulong, BlockRequestResult?> _getPayloadHandler;
+        private readonly IAsyncHandler<ulong, BlockRequestResult?> _getPayloadHandler;
         private readonly IHandler<BlockRequestResult, ExecutePayloadResult> _executePayloadHandler;
         private readonly IHandler<ConsensusValidatedRequest, string> _consensusValidatedHandler;
         private readonly IHandler<ForkChoiceUpdatedRequest, string> _forkChoiceUpdateHandler;
@@ -43,7 +43,7 @@ namespace Nethermind.Merge.Plugin
 
         public EngineRpcModule(
             PreparePayloadHandler preparePayloadHandler,
-            IHandler<ulong, BlockRequestResult?> getPayloadHandler,
+            IAsyncHandler<ulong, BlockRequestResult?> getPayloadHandler,
             IHandler<BlockRequestResult, ExecutePayloadResult> executePayloadHandler,
             IHandler<ConsensusValidatedRequest, string> consensusValidatedHandler,
             ITransitionProcessHandler transitionProcessHandler,
@@ -66,9 +66,9 @@ namespace Nethermind.Merge.Plugin
             return _preparePayloadHandler.Handle(preparePayloadRequest);
         }
 
-        public Task<ResultWrapper<BlockRequestResult?>> engine_getPayload(ulong payloadId)
+        public async Task<ResultWrapper<BlockRequestResult?>> engine_getPayload(ulong payloadId)
         {
-            return Task.FromResult(_getPayloadHandler.Handle(payloadId));
+            return await (_getPayloadHandler.HandleAsync(payloadId));
         }
 
         public async Task<ResultWrapper<ExecutePayloadResult>> engine_executePayload(BlockRequestResult executionPayload)
