@@ -47,7 +47,7 @@ namespace Nethermind.Init.Steps
                 _api.LogManager.SetGlobalVariable("nodeName", metricsConfig.NodeName);
             }
             
-            if (metricsConfig.Enabled)
+            if (metricsConfig.Enabled || metricsConfig.ExposePort != null)
             {
                 Metrics.Version = VersionToMetrics.ConvertToNumber(ClientVersion.Version);
                 MetricsUpdater metricsUpdater = new MetricsUpdater(metricsConfig);
