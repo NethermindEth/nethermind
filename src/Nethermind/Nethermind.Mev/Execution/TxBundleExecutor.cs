@@ -18,36 +18,44 @@
 using System;
 using System.Threading;
 using Nethermind.Blockchain.Tracing;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
 using Nethermind.Facade;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Mev.Data;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 
 namespace Nethermind.Mev.Execution
 {
     public abstract class TxBundleExecutor<TResult, TBlockTracer> where TBlockTracer : IBlockTracer
     {
         private readonly ITracerFactory _tracerFactory;
+        private readonly ISpecProvider _specProvider;
+        private readonly ISigner? _signer;
 
-        protected TxBundleExecutor(ITracerFactory tracerFactory)
+        protected TxBundleExecutor(ITracerFactory tracerFactory, ISpecProvider specProvider, ISigner? signer)
         {
             _tracerFactory = tracerFactory;
+            _specProvider = specProvider;
+            _signer = signer;
         }
             
         public TResult ExecuteBundle(MevBundle bundle, BlockHeader parent, CancellationToken cancellationToken, UInt256? timestamp = null)
         {
             Block block = BuildBlock(bundle, parent, timestamp);
-            TBlockTracer blockTracer = CreateBlockTracer();
+            TBlockTracer blockTracer = CreateBlockTracer(bundle);
             ITracer tracer = _tracerFactory.Create();
-            Keccak resultStateRoot = tracer.Trace(block, blockTracer.WithCancellation(cancellationToken));
-            return BuildResult(bundle, block, blockTracer, resultStateRoot);
+            tracer.Trace(block, blockTracer.WithCancellation(cancellationToken));
+            return BuildResult(bundle, blockTracer);
         }
 
-        protected abstract TResult BuildResult(MevBundle bundle, Block block, TBlockTracer tracer, Keccak resultStateRoot);
+        protected abstract TResult BuildResult(MevBundle bundle, TBlockTracer tracer);
 
         private Block BuildBlock(MevBundle bundle, BlockHeader parent, UInt256? timestamp)
         {
@@ -56,20 +64,24 @@ namespace Nethermind.Mev.Execution
                 Keccak.OfAnEmptySequenceRlp, 
                 Beneficiary, 
                 parent.Difficulty,  
-                parent.Number + 1, 
-                parent.GasLimit, 
+                bundle.BlockNumber, 
+                GetGasLimit(parent), 
                 timestamp ?? parent.Timestamp, 
                 Bytes.Empty)
             {
                 TotalDifficulty = parent.TotalDifficulty + parent.Difficulty
             };
 
+            header.BaseFeePerGas = BaseFeeCalculator.Calculate(parent, _specProvider.GetSpec(header.Number));
+
             return new Block(header, bundle.Transactions, Array.Empty<BlockHeader>());
         }
 
-        protected virtual Address Beneficiary => Address.Zero;
+        protected virtual long GetGasLimit(BlockHeader parent) => parent.GasLimit;
 
-        protected abstract TBlockTracer CreateBlockTracer();
+        protected Address Beneficiary => _signer?.Address ?? Address.Zero;
+
+        protected abstract TBlockTracer CreateBlockTracer(MevBundle mevBundle);
 
         protected ResultWrapper<TResult> GetInputError(BlockchainBridge.CallOutput result) => 
             ResultWrapper<TResult>.Fail(result.Error ?? "", ErrorCodes.InvalidInput);

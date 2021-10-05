@@ -25,7 +25,7 @@ namespace Nethermind.Core
     {
         public static UInt256 Calculate(BlockHeader parent, IReleaseSpec spec)
         {
-            UInt256 expectedBaseFee = UInt256.Zero;
+            UInt256 expectedBaseFee = parent.BaseFeePerGas;
             if (spec.IsEip1559Enabled)
             {
                 UInt256 parentBaseFee = parent.BaseFeePerGas;

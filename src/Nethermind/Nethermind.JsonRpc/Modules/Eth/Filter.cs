@@ -17,55 +17,46 @@
 using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
+using Nethermind.JsonRpc.Data;
 using Nethermind.Serialization.Json;
 using Newtonsoft.Json.Linq;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
-    public class Filter : IJsonRpcRequest
+    public class Filter : IJsonRpcParam
     {
         public BlockParameter FromBlock { get; set; }
         public BlockParameter ToBlock { get; set; }
-        public object Address { get; set; }
-        public IEnumerable<object> Topics { get; set; }
+        public object? Address { get; set; }
+        public IEnumerable<object?> Topics { get; set; }
 
         private readonly IJsonSerializer _jsonSerializer = new EthereumJsonSerializer();
 
         public void FromJson(string jsonValue)
         {
             var filter = _jsonSerializer.Deserialize<JObject>(jsonValue);
-            FromBlock = GetBlockParameter(filter["fromBlock"]?.ToObject<string>());
-            ToBlock = GetBlockParameter(filter["toBlock"]?.ToObject<string>());
+            FromBlock = BlockParameterConverter.GetBlockParameter(filter["fromBlock"]?.ToObject<string>());
+            ToBlock = BlockParameterConverter.GetBlockParameter(filter["toBlock"]?.ToObject<string>());
             Address = GetAddress(filter["address"]);
             Topics = GetTopics(filter["topics"] as JArray);
         }
 
-        private static BlockParameter GetBlockParameter(string value)
-        {
-            if (string.IsNullOrWhiteSpace(value))
-            {
-                return new BlockParameter(BlockParameterType.Latest);
-            }
+        private static object? GetAddress(JToken? token) => GetSingleOrMany(token);
 
-            return BlockParameter.FromJson(value);
-        }
-
-        private static object GetAddress(JToken token) => GetSingleOrMany(token);
-
-        private static IEnumerable<object> GetTopics(JArray array)
+        private static IEnumerable<object?> GetTopics(JArray? array)
         {
             if (array is null)
             {
                 yield break;
             }
 
-            foreach (var token in array)
+            foreach (JToken token in array)
             {
                 yield return GetSingleOrMany(token);
             }
         }
 
-        private static object GetSingleOrMany(JToken token)
+        private static object? GetSingleOrMany(JToken? token)
         {
             switch (token)
             {

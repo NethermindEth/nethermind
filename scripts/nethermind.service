@@ -1,11 +1,33 @@
 [Unit]
-Description=Nethermind Ethereum Daemon
+Description=Nethermind Node
+Documentation=https://docs.nethermind.io
 After=network.target
 
 [Service]
 User=nethermind
-WorkingDirectory=/home/nethermind/nethermind
-ExecStart=/home/nethermind/nethermind/Nethermind.Runner
+Group=nethermind
+LockPersonality=true
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectClock=true
+PrivateDevices=true
+ProtectControlGroups=true
+ProtectHostname=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectKernelTunables=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_NETLINK AF_PACKET AF_UNIX
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RemoveIPC=true
+SystemCallArchitectures=native
+PrivateTmp=true
+CapabilityBoundingSet=~CAP_SYS_ADMIN CAP_SYS_PTRACE CAP_SETUID CAP_SETGID CAP_SETPCAP CAP_NET_ADMIN CAP_CHOWN CAP_FSETID CAP_SETFCAP CAP_FOWNER CAP_IPC_OWNER CAP_DAC_OVERRIDE CAP_DAC_READ_SEARCH CAP_KILL CAP_SYS_BOOT
+SystemCallFilter=~@clock @debug @module @mount @raw-io @reboot @privileged @obsolete
+EnvironmentFile=/home/nethermind/data/.env
+WorkingDirectory=/home/nethermind
+ExecStart=/home/nethermind/build/Nethermind.Runner --datadir /home/nethermind/data
 Restart=on-failure
 LimitNOFILE=1000000
 

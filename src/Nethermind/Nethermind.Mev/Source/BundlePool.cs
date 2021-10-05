@@ -16,41 +16,76 @@
 // 
 
 using System;
+using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Drawing;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
+using Nethermind.JsonRpc;
+using Nethermind.Logging;
 using Nethermind.Mev.Data;
 using Nethermind.Mev.Execution;
+using Nethermind.TxPool;
+using Nethermind.TxPool.Collections;
+using Org.BouncyCastle.Security;
+using ILogger = Nethermind.Logging.ILogger;
 
 namespace Nethermind.Mev.Source
 {
+
     public class BundlePool : IBundlePool, ISimulatedBundleSource, IDisposable
     {
-        private readonly IBlockFinalizationManager? _finalizationManager;
+        private readonly ITimestamper _timestamper;
+        private readonly ITxValidator _txValidator;
+        private readonly IMevConfig _mevConfig;
+        private readonly ISpecProvider _specProvider;
         private readonly IBlockTree _blockTree;
         private readonly IBundleSimulator _simulator;
-        private readonly SortedRealList<MevBundle, ConcurrentBag<Keccak>> _bundles = new(MevBundleComparer.Default);
-        private readonly ConcurrentDictionary<Keccak, ConcurrentDictionary<MevBundle, SimulatedMevBundleContext>> _simulatedBundles = new();
-
-        public BundlePool(IBlockTree blockTree, IBundleSimulator simulator, IBlockFinalizationManager? finalizationManager)
+        private readonly BundleSortedPool _bundles;
+        private readonly ConcurrentDictionary<long, ConcurrentDictionary<(MevBundle Bundle, Keccak BlockHash), SimulatedMevBundleContext>> _simulatedBundles = new();
+        private readonly ILogger _logger;
+        
+        private long HeadNumber => _blockTree.Head?.Number ?? 0;
+        
+        public event EventHandler<BundleEventArgs>? NewReceived;
+        public event EventHandler<BundleEventArgs>? NewPending;
+        
+        public BundlePool(
+            IBlockTree blockTree, 
+            IBundleSimulator simulator,
+            ITimestamper timestamper,
+            ITxValidator txValidator, 
+            ISpecProvider specProvider,
+            IMevConfig mevConfig,
+            ILogManager logManager)
         {
-            _finalizationManager = finalizationManager;
+            _timestamper = timestamper;
+            _txValidator = txValidator;
+            _mevConfig = mevConfig;
+            _specProvider = specProvider;
             _blockTree = blockTree;
             _simulator = simulator;
-            _blockTree.NewSuggestedBlock += OnNewSuggestedBlock;
+            _logger = logManager.GetClassLogger();
             
-            if (_finalizationManager != null)
-            {
-                _finalizationManager.BlocksFinalized += OnBlocksFinalized;
-            }
+            IComparer<MevBundle> comparer = CompareMevBundleByBlock.Default.ThenBy(CompareMevBundleByMinTimestamp.Default);
+            _bundles = new BundleSortedPool(
+                _mevConfig.BundlePoolSize,
+                comparer,
+                logManager );
+
+            _bundles.Removed += OnBundleRemoved;
+            _blockTree.NewHeadBlock += OnNewBlock;
         }
 
         public Task<IEnumerable<MevBundle>> GetBundles(BlockHeader parent, UInt256 timestamp, long gasLimit, CancellationToken token = default) => 
@@ -61,35 +96,20 @@ namespace Nethermind.Mev.Source
 
         private IEnumerable<MevBundle> GetBundles(long blockNumber, UInt256 minTimestamp, UInt256 maxTimestamp, CancellationToken token = default)
         {
-            int CompareBundles(MevBundle searchedBundle, KeyValuePair<MevBundle, ConcurrentBag<Keccak>> potentialBundle)
+            if (_bundles.TryGetBucket(blockNumber, out MevBundle[] bundles))
             {
-                return searchedBundle.BlockNumber <= potentialBundle.Key.BlockNumber ? -1 : 1;
-            }
-
-            lock (_bundles)
-            {
-                MevBundle searchedBundle = MevBundle.Empty(blockNumber, minTimestamp, maxTimestamp);
-                int i = _bundles.BinarySearch(searchedBundle, CompareBundles);
-                for (int j = (i >= 0 ? i : ~i); j < _bundles.Count; j++)
+                foreach (MevBundle mevBundle in bundles)
                 {
                     if (token.IsCancellationRequested)
                     {
                         break;
                     }
 
-                    MevBundle mevBundle = _bundles[j].Key;
-                    if (mevBundle.BlockNumber == searchedBundle.BlockNumber)
+                    bool bundleIsInFuture = mevBundle.MinTimestamp != UInt256.Zero && minTimestamp < mevBundle.MinTimestamp;
+                    bool bundleIsTooOld = mevBundle.MaxTimestamp != UInt256.Zero && maxTimestamp > mevBundle.MaxTimestamp;
+                    if (!bundleIsInFuture && !bundleIsTooOld) 
                     {
-                        bool bundleIsInFuture = mevBundle.MinTimestamp != UInt256.Zero && searchedBundle.MinTimestamp < mevBundle.MinTimestamp;
-                        bool bundleIsTooOld = mevBundle.MaxTimestamp != UInt256.Zero && searchedBundle.MaxTimestamp > mevBundle.MaxTimestamp;
-                        if (!bundleIsInFuture && !bundleIsTooOld)
-                        {
-                            yield return mevBundle;
-                        }
-                    }
-                    else
-                    {
-                        break;
+                        yield return mevBundle;
                     }
                 }
             }
@@ -97,202 +117,258 @@ namespace Nethermind.Mev.Source
 
         public bool AddBundle(MevBundle bundle)
         {
-            if (_finalizationManager?.IsFinalized(bundle.BlockNumber) == true)
+            Metrics.BundlesReceived++;
+            BundleEventArgs bundleEventArgs = new(bundle);
+            NewReceived?.Invoke(this, bundleEventArgs);
+            
+            if (ValidateBundle(bundle))
+            {
+                bool result = _bundles.TryInsert(bundle, bundle);
+
+                if (result)
+                {
+                    Metrics.ValidBundlesReceived++;
+                    NewPending?.Invoke(this, bundleEventArgs);
+                    if (bundle.BlockNumber == HeadNumber + 1)
+                    { 
+                        TrySimulateBundle(bundle);
+                    }
+                }
+
+                return result;
+            }
+
+            return false;
+        }
+
+        private bool ValidateBundle(MevBundle bundle)
+        {
+            if (HeadNumber >= bundle.BlockNumber)
             {
                 return false;
             }
 
-            bool result;
-            
-            lock (_bundles)
+            if (bundle.Transactions.Count == 0)
             {
-                result = _bundles.TryAdd(bundle, new ConcurrentBag<Keccak>());
+                if (_logger.IsDebug) _logger.Debug($"Bundle rejected, because it doesn't contain transactions.");
+                return false;
             }
             
-            if (result)
+            ulong currentTimestamp = _timestamper.UnixTime.Seconds;
+
+            if (bundle.MaxTimestamp < bundle.MinTimestamp)
             {
-                SimulateBundle(bundle);
+                if (_logger.IsDebug) _logger.Debug($"Bundle rejected, because {nameof(bundle.MaxTimestamp)} {bundle.MaxTimestamp} is < {nameof(bundle.MinTimestamp)} {bundle.MinTimestamp}.");
+                return false;
+            }
+            else if (bundle.MaxTimestamp != 0 && bundle.MaxTimestamp < currentTimestamp)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Bundle rejected, because {nameof(bundle.MaxTimestamp)} {bundle.MaxTimestamp} is < current {currentTimestamp}.");
+                return false;
+            }
+            else if (bundle.MinTimestamp != 0 && bundle.MinTimestamp > currentTimestamp + _mevConfig.BundleHorizon)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Bundle rejected, because {nameof(bundle.MinTimestamp)} {bundle.MaxTimestamp} is further into the future than accepted horizon {_mevConfig.BundleHorizon}.");
+                return false;
             }
 
-            return result;
+            IReleaseSpec spec = _specProvider.GetSpec(bundle.BlockNumber);
+            for (int i = 0; i < bundle.Transactions.Count; i++)
+            {
+                if (!_txValidator.IsWellFormed(bundle.Transactions[i], spec))
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
-        private void SimulateBundle(MevBundle bundle)
+        private bool TrySimulateBundle(MevBundle bundle)
         {
-            ChainLevelInfo? level = _blockTree.FindLevel(bundle.BlockNumber - 1);
-            if (level is not null)
+            var head = _blockTree.Head;
+            if (head is not null)
             {
-                for (int i = 0; i < level.BlockInfos.Length; i++)
+                if (head.Number + 1 == bundle.BlockNumber)
                 {
-                    BlockHeader? header = _blockTree.FindHeader(level.BlockInfos[i].BlockHash, BlockTreeLookupOptions.None);
-                    if (header is not null)
+                    SimulateBundle(bundle, head.Header);
+                    return true;
+                }
+            }
+
+            return false;
+        }
+              
+        protected virtual SimulatedMevBundleContext? SimulateBundle(MevBundle bundle, BlockHeader parent)
+        {
+            SimulatedMevBundleContext? context = null;
+            (MevBundle, Keccak) key = (bundle, parent.Hash!);
+
+            Metrics.BundlesSimulated++;
+            
+            SimulatedMevBundleContext CreateContext()
+            {
+                CancellationTokenSource cancellationTokenSource = new();
+                Task<SimulatedMevBundle> simulateTask = _simulator.Simulate(bundle, parent, cancellationTokenSource.Token);
+                simulateTask.ContinueWith(TryRemoveFailedSimulatedBundle, cancellationTokenSource.Token);
+                return context = new(simulateTask, cancellationTokenSource);
+            }
+            
+            ConcurrentDictionary<(MevBundle, Keccak), SimulatedMevBundleContext> AddContext(ConcurrentDictionary<(MevBundle, Keccak), SimulatedMevBundleContext> d)
+            {
+                d.AddOrUpdate(key, 
+                    _ => CreateContext(), 
+                    (_, c) => c);
+                return d;
+            }
+            
+            _simulatedBundles.AddOrUpdate(parent.Number, 
+                    _ =>
                     {
-                        SimulateBundle(bundle, header);
-                    }
+                        ConcurrentDictionary<(MevBundle, Keccak), SimulatedMevBundleContext> d = new();
+                        return AddContext(d);
+                    },
+                    (_, d) => AddContext(d));
+
+            return context;
+        }
+
+        private void TryRemoveFailedSimulatedBundle(Task<SimulatedMevBundle> simulateTask)
+        {
+            if (simulateTask.IsCompletedSuccessfully)
+            {
+                SimulatedMevBundle simulatedMevBundle = simulateTask.Result;
+                if (!simulatedMevBundle.Success)
+                {
+                    _bundles.TryRemove(simulatedMevBundle.Bundle);
+                    RemoveSimulation(simulatedMevBundle.Bundle);
                 }
             }
         }
 
-        private void SimulateBundle(MevBundle bundle, BlockHeader parent)
-        {
-            Keccak parentHash = parent.Hash!;
-            ConcurrentDictionary<MevBundle, SimulatedMevBundleContext> blockDictionary = 
-                _simulatedBundles.GetOrAdd(parentHash, _ => new ConcurrentDictionary<MevBundle, SimulatedMevBundleContext>());
-
-            SimulatedMevBundleContext context = new();
-            if (blockDictionary.TryAdd(bundle, context))
-            {
-                context.Task = _simulator.Simulate(bundle, parent, context.CancellationTokenSource.Token);
-            }
-
-            ConcurrentBag<Keccak> blocksBag;
-            lock (_bundles)
-            {
-                blocksBag = _bundles[bundle];
-            }
-            blocksBag.Add(parentHash);
-        }
-        
-        private void OnNewSuggestedBlock(object? sender, BlockEventArgs e)
+        private void OnNewBlock(object? sender, BlockEventArgs e)
         {
             long blockNumber = e.Block!.Number;
-            if (_finalizationManager?.IsFinalized(blockNumber) != true)
+            RemoveBundlesUpToBlock(blockNumber);
+
+            Task.Run(() =>
             {
-                Task.Run(() =>
+                UInt256 timestamp = _timestamper.UnixTime.Seconds;
+                IEnumerable<MevBundle> bundles = GetBundles(e.Block.Number + 1, UInt256.MaxValue, timestamp);
+                foreach (MevBundle bundle in bundles)
                 {
-                    IEnumerable<MevBundle> bundles = GetBundles(e.Block.Number + 1, UInt256.MaxValue, UInt256.Zero);
-                    foreach (MevBundle bundle in bundles)
-                    {
-                        SimulateBundle(bundle, e.Block.Header);
-                    }
-                });
-            }
+                    SimulateBundle(bundle, e.Block.Header);
+                }
+            });
         }
 
-        private void OnBlocksFinalized(object? sender, FinalizeEventArgs e)
+        private void RemoveBundlesUpToBlock(long blockNumber)
         {
-            long maxFinalizedBlockNumber = e.FinalizedBlocks.Select(b => b.Number).Max();
-            if (_bundles.Count > 0)
+            void StopSimulations(IEnumerable<SimulatedMevBundleContext> simulations)
             {
-                lock (_bundles)
+                foreach (SimulatedMevBundleContext simulation in simulations)
                 {
-                    if (_bundles.Count > 0)
-                    {
-                        MevBundle bundle = _bundles.Keys[0];
-                        while (bundle.BlockNumber <= maxFinalizedBlockNumber)
-                        {
-                            ConcurrentBag<Keccak> blocksBag = _bundles.Values[0];
-                            foreach (Keccak blockHash in blocksBag)
-                            {
-                                if (_simulatedBundles.TryGetValue(blockHash, out ConcurrentDictionary<MevBundle, SimulatedMevBundleContext>? bundleDictionary))
-                                {
-                                    if (bundleDictionary.TryRemove(bundle, out SimulatedMevBundleContext? context))
-                                    {
-                                        context.CancellationTokenSource.Cancel();
-                                        context.Dispose();
-                                    }
+                    StopSimulation(simulation);
+                }
+            }
+            
+            IDictionary<long, MevBundle[]> bundlesToRemove = _bundles.GetBucketSnapshot(b => b <= blockNumber);
 
-                                    if (bundleDictionary.Count == 0)
-                                    {
-                                        _simulatedBundles.TryRemove(blockHash, out _);
-                                    }
-                                }
-                            }
+            foreach (KeyValuePair<long, MevBundle[]> bundleBucket in bundlesToRemove)
+            {
+                if (_simulatedBundles.TryRemove(bundleBucket.Key, out var simulations))
+                {
+                    StopSimulations(simulations.Values);
+                }
 
-                            _bundles.RemoveAt(0);
-                            
-                            if (_bundles.Count > 0)
-                            {
-                                bundle = _bundles.Keys[0];
-                            }
-                            else
-                            {
-                                break;
-                            }
-                        }
-                    }
+                foreach (MevBundle mevBundle in bundleBucket.Value)
+                {
+                    _bundles.TryRemove(mevBundle);
                 }
             }
         }
-        
+
+        private void OnBundleRemoved(object? sender, SortedPool<MevBundle, MevBundle, long>.SortedPoolRemovedEventArgs e)
+        {
+            if (e.Evicted)
+            {
+                RemoveSimulation(e.Key);
+            }
+        }
+
+        private void RemoveSimulation(MevBundle bundle)
+        {
+            if (_simulatedBundles.TryGetValue(bundle.BlockNumber, out ConcurrentDictionary<(MevBundle Bundle, Keccak BlockHash), SimulatedMevBundleContext>? simulations))
+            {
+                IEnumerable<(MevBundle Bundle, Keccak BlockHash)> keys = simulations.Keys.Where(k => Equals(k.Bundle, bundle));
+
+                foreach ((MevBundle Bundle, Keccak BlockHash) key in keys)
+                {
+                    if (simulations.TryRemove(key, out var simulation))
+                    {
+                        StopSimulation(simulation);
+                    }
+                }
+
+                if (simulations.Count == 0)
+                {
+                    _simulatedBundles.Remove(bundle.BlockNumber, out _);
+                }
+            }
+        }
+
+        private void StopSimulation(SimulatedMevBundleContext simulation)
+        {
+            if (!simulation.Task.IsCompleted)
+            {
+                simulation.CancellationTokenSource.Cancel();
+            }
+        }
+
         async Task<IEnumerable<SimulatedMevBundle>> ISimulatedBundleSource.GetBundles(BlockHeader parent, UInt256 timestamp, long gasLimit, CancellationToken token)
         {
             HashSet<MevBundle> bundles = (await GetBundles(parent, timestamp, gasLimit, token)).ToHashSet();
             
-            Keccak parentHash = parent.Hash!;
-            if (_simulatedBundles.TryGetValue(parentHash, out ConcurrentDictionary<MevBundle, SimulatedMevBundleContext>? simulatedBundlesForBlock))
+            if (_simulatedBundles.TryGetValue(parent.Number, out ConcurrentDictionary<(MevBundle Bundle, Keccak BlockHash), SimulatedMevBundleContext>? simulatedBundlesForBlock))
             {
                 IEnumerable<Task<SimulatedMevBundle>> resultTasks = simulatedBundlesForBlock
-                    .Where(b => bundles.Contains(b.Key))
+                    .Where(b => b.Key.BlockHash == parent.Hash)
+                    .Where(b => bundles.Contains(b.Key.Bundle))
                     .Select(b => b.Value.Task)
                     .ToArray();
+                
+                await Task.WhenAny(Task.WhenAll(resultTasks), token.AsTask()); 
 
-                await Task.WhenAny(Task.WhenAll(resultTasks), token.AsTask());
-
-                return resultTasks
+                IEnumerable<SimulatedMevBundle> res = resultTasks
                     .Where(t => t.IsCompletedSuccessfully)
                     .Select(t => t.Result)
                     .Where(t => t.Success)
-                    .Where(s => s.GasUsed <= gasLimit);
+                    .Where(s => s.GasUsed <= gasLimit); 
+                
+                return res;
             }
             else
             {
-                return Enumerable.Empty<SimulatedMevBundle>();
+                return (Enumerable.Empty<SimulatedMevBundle>());
             }
         }
-        
+
         public void Dispose()
         {
-            _blockTree.NewSuggestedBlock -= OnNewSuggestedBlock;
-            
-            if (_finalizationManager != null)
-            {
-                _finalizationManager.BlocksFinalized -= OnBlocksFinalized;
-            }
+            _blockTree.NewHeadBlock -= OnNewBlock;
+            _bundles.Removed -= OnBundleRemoved;
         }
-        
-        private class MevBundleComparer : IComparer<MevBundle>
+
+        protected class SimulatedMevBundleContext : IDisposable
         {
-            public static readonly MevBundleComparer Default = new();
-            
-            public int Compare(MevBundle? x, MevBundle? y)
+            public SimulatedMevBundleContext(Task<SimulatedMevBundle> task, CancellationTokenSource cancellationTokenSource)
             {
-                if (ReferenceEquals(x, y)) return 0;
-                if (ReferenceEquals(null, y)) return 1;
-                if (ReferenceEquals(null, x)) return -1;
-            
-                // block number increasing
-                int blockNumberComparison = x.BlockNumber.CompareTo(y.BlockNumber);
-                if (blockNumberComparison != 0) return blockNumberComparison;
-            
-                // min timestamp increasing
-                int minTimestampComparison = x.MinTimestamp.CompareTo(y.MinTimestamp);
-                if (minTimestampComparison != 0) return minTimestampComparison;
-            
-                // max timestamp decreasing
-                int maxTimestampComparison = y.MaxTimestamp.CompareTo(x.MaxTimestamp);
-                if (maxTimestampComparison != 0) return maxTimestampComparison;
-
-                for (int i = 0; i < Math.Max(x.Transactions.Count, y.Transactions.Count); i++)
-                {
-                    Keccak? xHash = x.Transactions.Count > i ? x.Transactions[i].Hash : null;
-                    if (xHash is null) return -1;
-                    
-                    Keccak? yHash = y.Transactions.Count > i ? y.Transactions[i].Hash : null;
-                    if (yHash is null) return 1;
-
-                    int hashComparision = xHash.CompareTo(yHash);
-                    if (hashComparision != 0) return hashComparision;
-                }
-
-                return 0;
+                Task = task;
+                CancellationTokenSource = cancellationTokenSource;
             }
-        }
-        
-        private class SimulatedMevBundleContext : IDisposable
-        {
-            public CancellationTokenSource CancellationTokenSource { get; } = new();
-            public Task<SimulatedMevBundle> Task { get; set; } = null!;
+            
+            public CancellationTokenSource CancellationTokenSource { get; }
+            public Task<SimulatedMevBundle> Task { get; }
 
             public void Dispose()
             {

@@ -32,7 +32,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Test()
         {
-            foreach (var (input, expectedResult) in Inputs)
+            foreach ((byte[] input, ReadOnlyMemory<byte> expectedResult) in Inputs)
             {
                 IPrecompile precompile = G1MulPrecompile.Instance;
                 (ReadOnlyMemory<byte> output, bool success) = precompile.Run(input, MuirGlacier.Instance);

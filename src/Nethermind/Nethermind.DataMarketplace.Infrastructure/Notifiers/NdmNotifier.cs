@@ -17,7 +17,7 @@
 using System.Threading.Tasks;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Services;
-using Nethermind.WebSockets;
+using Nethermind.Sockets;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Notifiers
 {
@@ -31,7 +31,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Notifiers
         }
 
         public Task NotifyAsync(Notification notification)
-            => _webSocketsModule.SendAsync(new WebSocketsMessage(notification.Type, notification.Client,
+            => _webSocketsModule.SendAsync(new SocketsMessage(notification.Type, notification.Client,
                 notification.Data));
     }
 }

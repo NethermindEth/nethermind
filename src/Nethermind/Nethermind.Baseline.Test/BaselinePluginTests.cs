@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using Nethermind.Api;
 using Nethermind.Baseline.Config;
 using Nethermind.Db;
 using Nethermind.Plugin.Baseline;
@@ -31,7 +32,7 @@ namespace Nethermind.Baseline.Test
         public void Init_baseline_plugin_does_not_throw_exception(bool enabled)
         {
             BaselineConfig baselineConfig = new() {Enabled = enabled};
-            Runner.Ethereum.Api.NethermindApi context = Build.ContextWithMocks();
+            NethermindApi context = Build.ContextWithMocks();
             context.ConfigProvider.GetConfig<IBaselineConfig>().Returns(baselineConfig);
             context.MemDbFactory = new MemDbFactory();
             BaselinePlugin plugin = new();

@@ -16,17 +16,21 @@
 // 
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Mev.Data;
+using Nethermind.TxPool;
 
 namespace Nethermind.Mev.Execution
 {
@@ -34,12 +38,14 @@ namespace Nethermind.Mev.Execution
     {
         private readonly IGasLimitCalculator _gasLimitCalculator;
         private readonly ITimestamper _timestamper;
+        private readonly ITxPool _txPool;
         private long _gasLimit;
 
-        public TxBundleSimulator(ITracerFactory tracerFactory, IGasLimitCalculator gasLimitCalculator, ITimestamper timestamper) : base(tracerFactory)
+        public TxBundleSimulator(ITracerFactory tracerFactory, IGasLimitCalculator gasLimitCalculator, ITimestamper timestamper, ITxPool txPool, ISpecProvider specProvider, ISigner? signer) : base(tracerFactory, specProvider, signer)
         {
             _gasLimitCalculator = gasLimitCalculator;
             _timestamper = timestamper;
+            _txPool = txPool;
         }
 
         public Task<SimulatedMevBundle> Simulate(MevBundle bundle, BlockHeader parent, CancellationToken cancellationToken = default)
@@ -51,35 +57,77 @@ namespace Nethermind.Mev.Execution
             }
             catch (OperationCanceledException)
             {
-                return Task.FromResult(new SimulatedMevBundle(bundle, false, 0, UInt256.Zero, UInt256.Zero));
+                return Task.FromResult(SimulatedMevBundle.Cancelled(bundle));
             }
         }
 
-        protected override SimulatedMevBundle BuildResult(MevBundle bundle, Block block, BundleBlockTracer tracer, Keccak resultStateRoot) => 
-            new(bundle, tracer.Success, tracer.GasUsed, tracer.TxFees, tracer.CoinbasePayments);
+        protected override long GetGasLimit(BlockHeader parent) => _gasLimitCalculator.GetGasLimit(parent);
 
-        protected override BundleBlockTracer CreateBlockTracer() => new(_gasLimit, Beneficiary);
+        protected override SimulatedMevBundle BuildResult(MevBundle bundle, BundleBlockTracer tracer)
+        {
+            UInt256 eligibleGasFeePayment = UInt256.Zero;
+            UInt256 totalGasFeePayment = UInt256.Zero;
+            bool success = true;
+            for (int i = 0; i < bundle.Transactions.Count; i++)
+            {
+                BundleTransaction tx = bundle.Transactions[i];
+
+                tx.SimulatedBundleGasUsed = (UInt256)tracer.GasUsed;
+
+                success &= tracer.TransactionResults[i];
+                
+                totalGasFeePayment += tracer.TxFees[i];
+                if (!_txPool.IsKnown(tx.Hash))
+                {
+                    eligibleGasFeePayment += tracer.TxFees[i];
+                }
+            }
+            
+            for (int i = 0; i < bundle.Transactions.Count; i++)
+            {
+                bundle.Transactions[i].SimulatedBundleFee = totalGasFeePayment + tracer.CoinbasePayments;
+            }
+
+            if ((UInt256)decimal.MaxValue >= (UInt256)Metrics.TotalCoinbasePayments + tracer.CoinbasePayments)
+            {
+                Metrics.TotalCoinbasePayments += (decimal)tracer.CoinbasePayments;
+            }
+            else
+            {
+                Metrics.TotalCoinbasePayments = ulong.MaxValue;
+            }
+
+            return new(bundle, tracer.GasUsed, success, tracer.BundleFee, tracer.CoinbasePayments, eligibleGasFeePayment);
+        }
+
+        protected override BundleBlockTracer CreateBlockTracer(MevBundle mevBundle) => new(_gasLimit, Beneficiary, mevBundle.Transactions.Count);
 
         public class BundleBlockTracer : IBlockTracer
         {
             private readonly long _gasLimit;
             private readonly Address _beneficiary;
-            
+
             private BundleTxTracer? _tracer;
             private Block? _block;
+            
             private UInt256? _beneficiaryBalanceBefore;
             private UInt256? _beneficiaryBalanceAfter;
+            private int _index = 0;
             
             public long GasUsed { get; private set; }
 
-            public BundleBlockTracer(long gasLimit, Address beneficiary)
+            public BundleBlockTracer(long gasLimit, Address beneficiary, int txCount)
             {
                 _gasLimit = gasLimit;
                 _beneficiary = beneficiary;
+                TxFees = new UInt256[txCount];
+                TransactionResults = new BitArray(txCount);
             }
 
             public bool IsTracingRewards => true;
-            public UInt256 TxFees { get; private set; }
+            public UInt256 BundleFee { get; private set; }
+
+            public UInt256[] TxFees { get; }
 
             public UInt256 CoinbasePayments
             {
@@ -87,15 +135,15 @@ namespace Nethermind.Mev.Execution
                 {
                     UInt256 beneficiaryBalanceAfter = _beneficiaryBalanceAfter ?? UInt256.Zero;
                     UInt256 beneficiaryBalanceBefore = _beneficiaryBalanceBefore ?? UInt256.Zero;
-                    return beneficiaryBalanceAfter > (beneficiaryBalanceBefore + TxFees)
-                        ? beneficiaryBalanceAfter - beneficiaryBalanceBefore - TxFees 
+                    return beneficiaryBalanceAfter > (beneficiaryBalanceBefore + BundleFee)
+                        ? beneficiaryBalanceAfter - beneficiaryBalanceBefore - BundleFee 
                         : UInt256.Zero;
                 }
             }
 
             public UInt256 Reward { get; private set; }
-
-            public bool Success { get; private set; } = true;
+            
+            public BitArray TransactionResults { get; }
 
             public void ReportReward(Address author, string rewardType, UInt256 rewardValue)
             {
@@ -112,38 +160,53 @@ namespace Nethermind.Mev.Execution
             public ITxTracer StartNewTxTrace(Transaction? tx)
             {
                 return tx is null 
-                    ? new BundleTxTracer(_beneficiary, null) 
-                    : _tracer = new BundleTxTracer(_beneficiary, _block!.Transactions.First(t => t.Hash == tx.Hash));
+                    ? new BundleTxTracer(_beneficiary, null, -1) 
+                    : _tracer = new BundleTxTracer(_beneficiary, tx, _index++);
             }
 
             public void EndTxTrace()
             {
                 GasUsed += _tracer!.GasSpent;
-                _beneficiaryBalanceBefore ??= _tracer.BeneficiaryBalanceBefore;
-                _beneficiaryBalanceAfter = _tracer.BeneficiaryBalanceAfter;
-                Success &= _tracer.Success;
-                UInt256 premiumPerGas = UInt256.Zero;
-                if (_tracer.Transaction?.TryCalculatePremiumPerGas(_block!.BaseFeePerGas, out premiumPerGas) == true)
-                {
-                    TxFees += (UInt256)_tracer.GasSpent * premiumPerGas;
-                }
                 
+                _beneficiaryBalanceBefore ??= (_tracer.BeneficiaryBalanceBefore ?? 0);
+                _beneficiaryBalanceAfter = _tracer.BeneficiaryBalanceAfter;
+                
+                Transaction? tx = _tracer.Transaction;
+                if (tx is not null)
+                {
+                    if (tx.TryCalculatePremiumPerGas(_block!.BaseFeePerGas, out UInt256 premiumPerGas))
+                    {
+                        UInt256 txFee = (UInt256)_tracer.GasSpent * premiumPerGas;
+                        BundleFee += txFee;
+                        TxFees[_tracer.Index] = txFee;
+                    }
+                    
+                    TransactionResults[_tracer.Index] = 
+                        _tracer.Success || 
+                        (tx is BundleTransaction {CanRevert: true} && _tracer.Error == "revert");
+                }
+
                 if (GasUsed > _gasLimit)
                 {
                     throw new OperationCanceledException("Block gas limit exceeded.");
                 }
             }
             
-            public void EndBlockTrace() { }
+            public void EndBlockTrace()
+            {
+            }
         }
 
         public class BundleTxTracer : ITxTracer
         {
+            public Transaction? Transaction { get; }
+            public int Index { get; }
             private readonly Address _beneficiary;
 
-            public BundleTxTracer(Address beneficiary, Transaction? transaction)
+            public BundleTxTracer(Address beneficiary, Transaction? transaction, int index)
             {
                 Transaction = transaction;
+                Index = index;
                 _beneficiary = beneficiary;
             }
 
@@ -159,13 +222,12 @@ namespace Nethermind.Mev.Execution
             public bool IsTracingStorage => false;
             public bool IsTracingBlockHash => false;
             public bool IsTracingAccess => false;
-
-            public Transaction? Transaction { get; }
             public long GasSpent { get; set; }
             public UInt256? BeneficiaryBalanceBefore { get; private set; }
             public UInt256? BeneficiaryBalanceAfter { get; private set; }
             
             public bool Success { get; private set; }
+            public string? Error { get; private set; }
             
             public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
             {
@@ -177,6 +239,7 @@ namespace Nethermind.Mev.Execution
             {
                 GasSpent = gasSpent;
                 Success = false;
+                Error = error;
             }
 
             public void StartOperation(int depth, long gas, Instruction opcode, int pc)

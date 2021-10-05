@@ -16,6 +16,7 @@
 
 using System;
 using System.Linq;
+using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Serialization.Rlp;
@@ -23,7 +24,7 @@ using Nethermind.Serialization.Rlp;
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 {
     // 3% (2GB) allocation of Goerli 3m fast sync that can be improved by implementing ZeroMessageSerializer here
-    public class ReceiptsMessageSerializer : IMessageSerializer<ReceiptsMessage>
+    public class ReceiptsMessageSerializer : IZeroInnerMessageSerializer<ReceiptsMessage>
     {
         private readonly ISpecProvider _specProvider;
         private readonly ReceiptMessageDecoder _decoder = new ReceiptMessageDecoder();
@@ -32,28 +33,30 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
         {
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         }
-
-        public byte[] Serialize(ReceiptsMessage message)
+        
+        public void Serialize(IByteBuffer byteBuffer, ReceiptsMessage message)
         {
-            if (message.TxReceipts == null) return Rlp.OfEmptySequence.Bytes;
-            return Rlp.Encode(message.TxReceipts.Select(
+            Rlp rlp = Rlp.Encode(message.TxReceipts.Select(
                 b => b == null
                     ? Rlp.OfEmptySequence
                     : Rlp.Encode(
                         b.Select(
                             n => n == null
                                 ? Rlp.OfEmptySequence
-                                : _decoder.Encode(n, _specProvider.GetSpec(n.BlockNumber).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None)).ToArray())).ToArray()).Bytes;
+                                : _decoder.Encode(n, _specProvider.GetSpec(n.BlockNumber).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None)).ToArray())).ToArray());
+            
+            RlpStream rlpStream = new NettyRlpStream(byteBuffer);
+            rlpStream.Encode(rlp);
         }
 
-        public ReceiptsMessage Deserialize(byte[] bytes)
+        public ReceiptsMessage Deserialize(IByteBuffer byteBuffer)
         {
-            if (bytes.Length == 0 || bytes[0] == Rlp.OfEmptySequence[0]) return new ReceiptsMessage(null);
-
-            RlpStream rlpStream = bytes.AsRlpStream();
+            if (byteBuffer.Array.Length == 0 || byteBuffer.Array.First() == Rlp.OfEmptySequence[0]) return new ReceiptsMessage(null);
+            
+            RlpStream rlpStream = new NettyRlpStream(byteBuffer);
             return Deserialize(rlpStream);
         }
-
+        
         public ReceiptsMessage Deserialize(RlpStream rlpStream)
         {
             TxReceipt[][] data = rlpStream.DecodeArray(itemContext =>
@@ -61,6 +64,21 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             ReceiptsMessage message = new ReceiptsMessage(data);
 
             return message;
+        }
+
+        public int GetLength(ReceiptsMessage message, out int contentLength)
+        {
+            contentLength = 0;
+            
+            for (int i = 0; i < message.TxReceipts.Length; i++)
+            {
+                for (int j = 0; j < message.TxReceipts[i].Length; j++)
+                {
+                    contentLength += Rlp.LengthOfSequence(_decoder.GetLength(message.TxReceipts[i][j], _specProvider.GetSpec(message.TxReceipts[i][j].BlockNumber).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None));
+                }
+            }
+            
+            return Rlp.LengthOfSequence(contentLength);
         }
     }
 }

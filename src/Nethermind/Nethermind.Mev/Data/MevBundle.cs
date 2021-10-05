@@ -18,48 +18,52 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Mev.Source;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Mev.Data
 {
-    public class MevBundle : IEquatable<MevBundle>
+    public partial class MevBundle : IEquatable<MevBundle>
     {
-        public MevBundle(IReadOnlyList<Transaction> transactions, long blockNumber, UInt256? minTimestamp, UInt256? maxTimestamp, Keccak[]? revertingTxHashes = null)
+        private static int _sequenceNumber = 0;
+
+        public MevBundle(long blockNumber, IReadOnlyList<BundleTransaction> transactions, UInt256? minTimestamp = null, UInt256? maxTimestamp = null)
         {
             Transactions = transactions;
             BlockNumber = blockNumber;
-            RevertingTxHashes = revertingTxHashes ?? Array.Empty<Keccak>();
+
+            Hash = GetHash(this);
+            for (int i = 0; i < transactions.Count; i++)
+            {
+                transactions[i].BundleHash = Hash;
+            }
+
             MinTimestamp = minTimestamp ?? UInt256.Zero;
             MaxTimestamp = maxTimestamp ?? UInt256.Zero;
-            
-            Keccak[] missingRevertingTxHashes = RevertingTxHashes.Except(transactions.Select(t => t.Hash!)).ToArray();
-            if (missingRevertingTxHashes.Length > 0)
-            {
-                throw new ArgumentException(
-                    $"Bundle didn't contain some of revertingTxHashes: [{string.Join(", ", missingRevertingTxHashes.OfType<object>())}]",
-                    nameof(revertingTxHashes));
-            }
+            SequenceNumber = Interlocked.Increment(ref _sequenceNumber);
         }
-
-        public IReadOnlyList<Transaction> Transactions { get; }
+        
+        public IReadOnlyList<BundleTransaction> Transactions { get; }
 
         public long BlockNumber { get; }
-        public Keccak[] RevertingTxHashes { get; }
-
+        
         public UInt256 MaxTimestamp { get; }
         
         public UInt256 MinTimestamp { get; }
+        
+        public Keccak Hash { get; }
+
+        public int SequenceNumber { get; }
 
         public bool Equals(MevBundle? other)
         {
             if (ReferenceEquals(null, other)) return false;
             if (ReferenceEquals(this, other)) return true;
-            return Transactions.Select(t => t.Hash).SequenceEqual(other.Transactions.Select(t => t.Hash))
-                   && BlockNumber == other.BlockNumber
-                   && MaxTimestamp.Equals(other.MaxTimestamp)
-                   && MinTimestamp.Equals(other.MinTimestamp);
+            return Equals(Hash, other.Hash);
         }
 
         public override bool Equals(object? obj)
@@ -70,23 +74,8 @@ namespace Nethermind.Mev.Data
             return Equals((MevBundle) obj);
         }
 
-        public override int GetHashCode()
-        {
-            HashCode hashCode = new();
-            hashCode.Add(BlockNumber);
-            hashCode.Add(MaxTimestamp);
-            hashCode.Add(MinTimestamp);
-            for (int i = 0; i < Transactions.Count; i++)
-            {
-                hashCode.Add(Transactions[i].Hash);
-            }
+        public override int GetHashCode() => Hash.GetHashCode();
 
-            return hashCode.ToHashCode();
-        }
-
-        public static MevBundle Empty(long blockNumber, UInt256 minTimestamp, UInt256 maxTimestamp) =>
-            new(Array.Empty<Transaction>(), blockNumber, minTimestamp, maxTimestamp);
-
-        public override string ToString() => $"Block:{BlockNumber}; Min:{MinTimestamp}; Max:{MaxTimestamp}; TxCount:{Transactions.Count};";
+        public override string ToString() => $"Hash:{Hash}; Block:{BlockNumber}; Min:{MinTimestamp}; Max:{MaxTimestamp}; TxCount:{Transactions.Count};";
     }
 }

@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -100,6 +101,14 @@ namespace Nethermind.Evm.Tracing
 
         void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data);
 
+        void ReportMemoryChange(UInt256 offset, in ReadOnlySpan<byte> data)
+        {
+            if (offset.u1 <= 0 && offset.u2 <= 0 && offset.u3 <= 0 && offset.u0 <= long.MaxValue)
+            {
+                ReportMemoryChange((long) offset, data);
+            }
+        }
+
         void ReportMemoryChange(long offset, byte data)
         {
             ReportMemoryChange(offset, new[] {data});
@@ -125,6 +134,8 @@ namespace Nethermind.Evm.Tracing
 
         void ReportActionEnd(long gas, ReadOnlyMemory<byte> output);
 
+        void ReportActionError(EvmExceptionType evmExceptionType, long gasLeft) => ReportActionError(evmExceptionType);
+        
         void ReportActionError(EvmExceptionType evmExceptionType);
 
         void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode);

@@ -71,7 +71,7 @@ namespace Nethermind.Blockchain.Filters
         }
 
         public LogFilter CreateLogFilter(BlockParameter fromBlock, BlockParameter toBlock,
-            object address = null, IEnumerable<object> topics = null, bool setId = true)
+            object? address = null, IEnumerable<object?>? topics = null, bool setId = true)
         {
             var filterId = setId ? GetFilterId() : 0;
             var filter = new LogFilter(filterId, fromBlock, toBlock,
@@ -86,7 +86,7 @@ namespace Nethermind.Blockchain.Filters
             FilterRemoved?.Invoke(this, new FilterEventArgs(filterId));
         }
 
-        public event EventHandler<FilterEventArgs> FilterRemoved;
+        public event EventHandler<FilterEventArgs>? FilterRemoved;
 
         public void SaveFilter(FilterBase filter)
         {
@@ -101,17 +101,17 @@ namespace Nethermind.Blockchain.Filters
 
         private int GetFilterId() => _nextFilterId++;
 
-        private SequenceTopicsFilter GetTopicsFilter(IEnumerable<object> topics = null)
+        private TopicsFilter GetTopicsFilter(IEnumerable<object?>? topics = null)
         {
             if (topics == null)
             {
                 return SequenceTopicsFilter.AnyTopic;
             }
 
-            var filterTopics = GetFilterTopics(topics);
-            var expressions = new List<TopicExpression>();
+            FilterTopic?[]? filterTopics = GetFilterTopics(topics);
+            List<TopicExpression> expressions = new();
 
-            for (int i = 0; i < filterTopics.Length; i++)
+            for (int i = 0; i < filterTopics?.Length; i++)
             {
                 expressions.Add(GetTopicExpression(filterTopics[i]));
             }
@@ -119,17 +119,17 @@ namespace Nethermind.Blockchain.Filters
             return new SequenceTopicsFilter(expressions.ToArray());
         }
 
-        private TopicExpression GetTopicExpression(FilterTopic filterTopic)
+        private TopicExpression GetTopicExpression(FilterTopic? filterTopic)
         {
             if (filterTopic == null)
             {
                 return AnyTopic.Instance;
             }
-            else if (filterTopic.Topic != null)
+            else if (filterTopic.Topic is not null)
             {
                 return new SpecificTopic(filterTopic.Topic);
             }
-            else if (filterTopic.Topics.Any())
+            else if (filterTopic.Topics?.Length > 0)
             {
                 return new OrExpression(filterTopic.Topics.Select(t => new SpecificTopic(t)).ToArray<TopicExpression>());
             }
@@ -139,7 +139,7 @@ namespace Nethermind.Blockchain.Filters
             }
         }
 
-        private static AddressFilter GetAddress(object address)
+        private static AddressFilter GetAddress(object? address)
         {
             if (address is null)
             {
@@ -159,7 +159,7 @@ namespace Nethermind.Blockchain.Filters
             throw new InvalidDataException("Invalid address filter format");
         }
 
-        private static FilterTopic[] GetFilterTopics(IEnumerable<object> topics)
+        private static FilterTopic?[]? GetFilterTopics(IEnumerable<object>? topics)
         {
             return topics?.Select(GetTopic).ToArray();
         }
@@ -198,8 +198,8 @@ namespace Nethermind.Blockchain.Filters
         
         private class FilterTopic
         {
-            public Keccak Topic { get; set; }
-            public Keccak[] Topics { get; set; }
+            public Keccak? Topic { get; set; }
+            public Keccak[]? Topics { get; set; }
         
         }
     }

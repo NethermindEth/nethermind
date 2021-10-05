@@ -68,7 +68,7 @@ namespace Nethermind.Merge.Plugin.Data
             Nonce = block.Nonce;
             ExtraData = block.ExtraData;
             MixHash = block.MixHash;
-            Uncles = block.Ommers.Select(o => o.Hash!);
+            Uncles = block.Uncles.Select(o => o.Hash!);
             Timestamp = block.Timestamp;
         }
 

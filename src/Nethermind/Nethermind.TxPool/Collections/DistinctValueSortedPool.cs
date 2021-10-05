@@ -55,15 +55,14 @@ namespace Nethermind.TxPool.Collections
 
         protected virtual IComparer<TValue> GetReplacementComparer(IComparer<TValue> comparer) => comparer;
 
-        protected override void InsertCore(TKey key, TValue value, ICollection<TValue> bucketCollection)
+        protected override void InsertCore(TKey key, TValue value, TGroupKey groupKey)
         {
-            base.InsertCore(key, value, bucketCollection);
-
             if (_distinctDictionary.TryGetValue(value, out KeyValuePair<TKey, TValue> oldKvp))
             {
                 TryRemove(oldKvp.Key);
             }
-
+            
+            base.InsertCore(key, value, groupKey);
 
             _distinctDictionary[value] = new KeyValuePair<TKey, TValue>(key, value);
         }
@@ -73,12 +72,14 @@ namespace Nethermind.TxPool.Collections
             _distinctDictionary.Remove(value);
             return base.Remove(key, value);
         }
+        
+        protected virtual bool AllowSameKeyReplacement => false; 
 
         protected override bool CanInsert(TKey key, TValue value)
         {
             // either there is no distinct value or it would go before (or at same place) as old value
             // if it would go after old value in order, we ignore it and wont add it
-            if (base.CanInsert(key, value))
+            if (AllowSameKeyReplacement || base.CanInsert(key, value))
             {
                 bool isDuplicate = _distinctDictionary.TryGetValue(value, out var oldKvp);
                 if (isDuplicate)
@@ -89,7 +90,7 @@ namespace Nethermind.TxPool.Collections
                     {
                         _logger.Trace($"Cannot insert {nameof(TValue)} {value}, its not distinct and not higher than old {nameof(TValue)} {oldKvp.Value}.");
                     }
-
+                    
                     return isHigher;
                 }
 

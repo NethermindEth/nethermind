@@ -14,6 +14,8 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.ComponentModel;
 
 namespace Nethermind.Db
@@ -94,8 +96,11 @@ namespace Nethermind.Db
         
         [Description("Number of Witness DB writes.")]
         public static long WitnessDbWrites { get; set; }
-
+		
         [Description("Indicator if StadeDb is being pruned.")]
-        public static int StateDbPruning { get; set; }
+        public static int StateDbPruning { get; set; }		
+
+        [Description("Metrics extracted from RocksDB Compacion Stats and DB Statistics")]
+        public static IDictionary<string, long> DbStats { get; set; } = new ConcurrentDictionary<string, long>();
     }
 } 

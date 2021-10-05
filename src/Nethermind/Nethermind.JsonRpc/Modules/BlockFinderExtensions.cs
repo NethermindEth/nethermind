@@ -14,10 +14,11 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
-using Nethermind.JsonRpc.Modules.Eth;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.JsonRpc.Modules
 {
@@ -63,7 +64,7 @@ namespace Nethermind.JsonRpc.Modules
                 block = blockFinder.FindBlock(blockParameter.BlockHash, BlockTreeLookupOptions.RequireCanonical);
                 if (block == null && !allowNulls)
                 {
-                    var header = blockFinder.FindHeader(blockParameter.BlockHash);
+                    BlockHeader? header = blockFinder.FindHeader(blockParameter.BlockHash);
                     if (header != null)
                     {
                         return new SearchResult<Block>($"{blockParameter.BlockHash} block is not canonical", ErrorCodes.InvalidInput);
@@ -76,25 +77,47 @@ namespace Nethermind.JsonRpc.Modules
             }
 
             return block == null && !allowNulls
-                ? new SearchResult<Block>($"{blockParameter.BlockHash?.ToString() ?? blockParameter.BlockNumber?.ToString() ?? blockParameter.Type.ToString()} could not be found", ErrorCodes.ResourceNotFound)
+                ? new SearchResult<Block>($"Block {blockParameter.BlockHash?.ToString() ?? blockParameter.BlockNumber?.ToString() ?? blockParameter.Type.ToString()} could not be found", ErrorCodes.ResourceNotFound)
                 : new SearchResult<Block>(block);
         }
 
-        public static SyncingResult CheckSyncing(this IBlockFinder blockFinder)
+        public static IEnumerable<SearchResult<Block>> SearchForBlocksOnMainChain(this IBlockFinder blockFinder, BlockParameter fromBlock, BlockParameter toBlock)
         {
-            bool isSyncing = blockFinder.IsSyncing();
-            
-            return isSyncing 
-                ? new SyncingResult
+            SearchResult<Block> startingBlock = SearchForBlock(blockFinder, fromBlock);
+            if (startingBlock.IsError || startingBlock.Object == null)
+                yield return startingBlock;
+            else
+            {
+                SearchResult<BlockHeader> finalBlockHeader = SearchForHeader(blockFinder, toBlock);
+                if (finalBlockHeader.IsError || finalBlockHeader.Object == null)
+                    yield return new SearchResult<Block>(finalBlockHeader.Error ?? string.Empty, finalBlockHeader.ErrorCode);
+                bool isFinalBlockOnMainChain =  blockFinder.IsMainChain(finalBlockHeader.Object!);
+                bool isStartingBlockOnMainChain =  blockFinder.IsMainChain(startingBlock.Object.Header);
+                if (!isFinalBlockOnMainChain || !isStartingBlockOnMainChain)
                 {
-                    IsSyncing = true,
-                    CurrentBlock = blockFinder.Head?.Number ?? 0, 
-                    HighestBlock = blockFinder.FindBestSuggestedHeader().Number, 
-                    StartingBlock = blockFinder.BestState ?? 0
-                } 
-                : SyncingResult.NotSyncing;
+                    Keccak? notCanonicalBlockHash = isFinalBlockOnMainChain
+                        ? startingBlock.Object.Hash
+                        : finalBlockHeader.Object.Hash;
+                    yield return new SearchResult<Block>($"{notCanonicalBlockHash} block is not canonical", ErrorCodes.InvalidInput);
+                }
+                else
+                {
+                    yield return startingBlock;
+                    long startingBlockNumber = startingBlock.Object.Number;
+                    long finalBlockNumber = finalBlockHeader.Object.Number;
+                    if (startingBlockNumber > finalBlockNumber)
+                    {
+                        yield return new SearchResult<Block>($"From block number: {startingBlockNumber} is greater than to block number {finalBlockNumber}", ErrorCodes.InvalidInput);
+                    }
+                    
+                    for (long i = startingBlock.Object.Number + 1; i <= finalBlockHeader.Object.Number; ++i)
+                    {
+                        yield return SearchForBlock(blockFinder, new BlockParameter(i));
+                    }
+                }
+
+            }
+            
         }
-        
-        
     }
 }

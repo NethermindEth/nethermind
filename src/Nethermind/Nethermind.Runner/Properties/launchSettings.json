@@ -79,9 +79,9 @@
       "commandName": "Project",
       "commandLineArgs": "--config configs\\xdai1559.cfg --Init.DiagnosticMode MemDb"
     },
-    "Calaveras": {
+    "Hive": {
       "commandName": "Project",
-      "commandLineArgs": "--config configs\\calaveras.cfg --Init.DiagnosticMode MemDb"
+      "commandLineArgs": "--config configs\\hive.cfg --Init.DiagnosticMode MemDb"
     }
   }
 }

@@ -22,6 +22,7 @@ using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Facade.Eth;
 using Nethermind.Int256;
 using Nethermind.Facade.Proxy;
 using Nethermind.Facade.Proxy.Models;
@@ -64,6 +65,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
         }
 
         public ResultWrapper<bool?> eth_mining()
+        {
+            throw new NotSupportedException();
+        }
+
+        public ResultWrapper<FeeHistoryResults> eth_feeHistory(int blockCount, BlockParameter newestBlock, double[]? rewardPercentiles = null)
         {
             throw new NotSupportedException();
         }
@@ -305,7 +311,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 Value = transaction.Value
             };
         }
-
+        
         private static ReceiptForRpc? MapReceipt(ReceiptModel? receipt)
         {
             if (receipt is null)
@@ -326,7 +332,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 To = receipt.To,
                 TransactionHash = receipt.TransactionHash,
                 TransactionIndex = (long)receipt.TransactionIndex,
-                LogsBloom = receipt.LogsBloom is null ? null : new Bloom(receipt.LogsBloom)
+                LogsBloom = receipt.LogsBloom is null ? null : new Bloom(receipt.LogsBloom),
+                EffectiveGasPrice = receipt.EffectiveGasPrice
             };
         }
 

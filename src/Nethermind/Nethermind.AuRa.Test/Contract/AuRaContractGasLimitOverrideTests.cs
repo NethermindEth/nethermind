@@ -47,33 +47,33 @@ namespace Nethermind.AuRa.Test.Contract
         [Test]
         public async Task can_read_block_gas_limit_from_contract()
         {
-            using var chain = await TestContractBlockchain.ForTest<TestGasLimitContractBlockchain, AuRaContractGasLimitOverrideTests>();
-            var gasLimit = chain.GasLimitCalculator.GetGasLimit(chain.BlockTree.Head.Header);
+            using TestGasLimitContractBlockchain chain = await TestContractBlockchain.ForTest<TestGasLimitContractBlockchain, AuRaContractGasLimitOverrideTests>();
+            long gasLimit = chain.GasLimitCalculator.GetGasLimit(chain.BlockTree.Head.Header);
             gasLimit.Should().Be(CorrectHeadGasLimit);
         }
         
         [Test]
         public async Task caches_read_block_gas_limit()
         {
-            using var chain = await TestContractBlockchain.ForTest<TestGasLimitContractBlockchain, AuRaContractGasLimitOverrideTests>();
+            using TestGasLimitContractBlockchain chain = await TestContractBlockchain.ForTest<TestGasLimitContractBlockchain, AuRaContractGasLimitOverrideTests>();
             chain.GasLimitCalculator.GetGasLimit(chain.BlockTree.Head.Header);
-            var gasLimit = chain.GasLimitOverrideCache.GasLimitCache.Get(chain.BlockTree.Head.Hash);
+            long? gasLimit = chain.GasLimitOverrideCache.GasLimitCache.Get(chain.BlockTree.Head.Hash);
             gasLimit.Should().Be(CorrectHeadGasLimit);
         }
         
         [Test]
         public async Task can_validate_gas_limit_correct()
         {
-            using var chain = await TestContractBlockchain.ForTest<TestGasLimitContractBlockchain, AuRaContractGasLimitOverrideTests>();
-            var isValid = ((AuRaContractGasLimitOverride) chain.GasLimitCalculator).IsGasLimitValid(chain.BlockTree.Head.Header, CorrectHeadGasLimit, out _);
+            using TestGasLimitContractBlockchain chain = await TestContractBlockchain.ForTest<TestGasLimitContractBlockchain, AuRaContractGasLimitOverrideTests>();
+            bool isValid = ((AuRaContractGasLimitOverride) chain.GasLimitCalculator).IsGasLimitValid(chain.BlockTree.Head.Header, CorrectHeadGasLimit, out _);
             isValid.Should().BeTrue();
         }
         
         [Test]
         public async Task can_validate_gas_limit_incorrect()
         {
-            using var chain = await TestContractBlockchain.ForTest<TestGasLimitContractBlockchain, AuRaContractGasLimitOverrideTests>();
-            var isValid = ((AuRaContractGasLimitOverride) chain.GasLimitCalculator).IsGasLimitValid(chain.BlockTree.Head.Header, 100000001, out long? expectedGasLimit);
+            using TestGasLimitContractBlockchain chain = await TestContractBlockchain.ForTest<TestGasLimitContractBlockchain, AuRaContractGasLimitOverrideTests>();
+            bool isValid = ((AuRaContractGasLimitOverride) chain.GasLimitCalculator).IsGasLimitValid(chain.BlockTree.Head.Header, 100000001, out long? expectedGasLimit);
             isValid.Should().BeFalse();
             expectedGasLimit.Should().Be(CorrectHeadGasLimit);
         }
@@ -81,8 +81,8 @@ namespace Nethermind.AuRa.Test.Contract
         [Test]
         public async Task skip_validate_gas_limit_before_enabled()
         {
-            using var chain = await TestContractBlockchain.ForTest<TestGasLimitContractBlockchainLateBlockGasLimit, AuRaContractGasLimitOverrideTests>();
-            var isValid = ((AuRaContractGasLimitOverride) chain.GasLimitCalculator).IsGasLimitValid(chain.BlockTree.Genesis, 100000001, out _);
+            using TestGasLimitContractBlockchainLateBlockGasLimit chain = await TestContractBlockchain.ForTest<TestGasLimitContractBlockchainLateBlockGasLimit, AuRaContractGasLimitOverrideTests>();
+            bool isValid = ((AuRaContractGasLimitOverride) chain.GasLimitCalculator).IsGasLimitValid(chain.BlockTree.Genesis, 100000001, out _);
             isValid.Should().BeTrue();
         }
 
@@ -93,8 +93,8 @@ namespace Nethermind.AuRa.Test.Contract
             
             protected override BlockProcessor CreateBlockProcessor()
             {
-                var blockGasLimitContractTransition = ChainSpec.AuRa.BlockGasLimitContractTransitions.First();
-                var gasLimitContract = new BlockGasLimitContract(AbiEncoder.Instance, blockGasLimitContractTransition.Value, blockGasLimitContractTransition.Key,
+                KeyValuePair<long, Address> blockGasLimitContractTransition = ChainSpec.AuRa.BlockGasLimitContractTransitions.First();
+                BlockGasLimitContract gasLimitContract = new(AbiEncoder.Instance, blockGasLimitContractTransition.Value, blockGasLimitContractTransition.Key,
                     new ReadOnlyTxProcessingEnv(
                         DbProvider,
                         new TrieStore(DbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
@@ -107,10 +107,9 @@ namespace Nethermind.AuRa.Test.Contract
                     SpecProvider,
                     Always.Valid,
                     new RewardCalculator(SpecProvider),
-                    TxProcessor,
+                    new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
                     State,
                     Storage,
-                    TxPool,
                     ReceiptStorage,
                     LimboLogs.Instance,
                     BlockTree,
@@ -125,7 +124,7 @@ namespace Nethermind.AuRa.Test.Contract
         {
             protected override BlockProcessor CreateBlockProcessor()
             {
-                var blockGasLimitContractTransition = ChainSpec.AuRa.BlockGasLimitContractTransitions.First();
+                KeyValuePair<long, Address> blockGasLimitContractTransition = ChainSpec.AuRa.BlockGasLimitContractTransitions.First();
                 ChainSpec.AuRa.BlockGasLimitContractTransitions = new Dictionary<long, Address>() {{10, blockGasLimitContractTransition.Value}};
                 return base.CreateBlockProcessor();
             }

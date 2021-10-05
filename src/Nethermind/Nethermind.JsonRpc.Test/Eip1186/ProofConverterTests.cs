@@ -23,7 +23,6 @@ using Nethermind.JsonRpc.Test.Data;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Proofs;
-using Nethermind.Db.Blooms;
 using Nethermind.Logging;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
@@ -44,9 +43,9 @@ namespace Nethermind.JsonRpc.Test.Eip1186
             byte[] e = Bytes.FromHexString("0x00000000001eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee");
 
             IDb memDb = new MemDb();
-            TrieStore trieStore = new TrieStore(memDb, LimboLogs.Instance);
-            StateTree tree = new StateTree(trieStore, LimboLogs.Instance);
-            StorageTree storageTree = new StorageTree(trieStore, Keccak.EmptyTreeHash, LimboLogs.Instance);
+            TrieStore trieStore = new(memDb, LimboLogs.Instance);
+            StateTree tree = new(trieStore, LimboLogs.Instance);
+            StorageTree storageTree = new(trieStore, Keccak.EmptyTreeHash, LimboLogs.Instance);
             storageTree.Set(Keccak.Compute(a).Bytes, Rlp.Encode(Bytes.FromHexString("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000")));
             storageTree.Set(Keccak.Compute(b).Bytes, Rlp.Encode(Bytes.FromHexString("0xab34000000000000000000000000000000000000000000000000000000000000000000000000000000")));
             storageTree.Set(Keccak.Compute(c).Bytes, Rlp.Encode(Bytes.FromHexString("0xab56000000000000000000000000000000000000000000000000000000000000000000000000000000")));
@@ -61,7 +60,7 @@ namespace Nethermind.JsonRpc.Test.Eip1186
             tree.Set(TestItem.AddressB, account2);
             tree.Commit(0);
 
-            AccountProofCollector accountProofCollector = new AccountProofCollector(TestItem.AddressA, new byte[][] {a, b, c, d, e});
+            AccountProofCollector accountProofCollector = new(TestItem.AddressA, new byte[][] {a, b, c, d, e});
             tree.Accept(accountProofCollector, tree.RootHash);
             AccountProof proof = accountProofCollector.BuildResult();
 
@@ -78,9 +77,9 @@ namespace Nethermind.JsonRpc.Test.Eip1186
             byte[] e = Bytes.FromHexString("0x00000000001eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee");
 
             IDb memDb = new MemDb();
-            TrieStore trieStore = new TrieStore(memDb, LimboLogs.Instance);
-            StateTree tree = new StateTree(trieStore, LimboLogs.Instance);
-            StorageTree storageTree = new StorageTree(trieStore, Keccak.EmptyTreeHash, LimboLogs.Instance);
+            TrieStore trieStore = new(memDb, LimboLogs.Instance);
+            StateTree tree = new(trieStore, LimboLogs.Instance);
+            StorageTree storageTree = new(trieStore, Keccak.EmptyTreeHash, LimboLogs.Instance);
             storageTree.Set(Keccak.Compute(a).Bytes, Rlp.Encode(Bytes.FromHexString("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000")));
             storageTree.Set(Keccak.Compute(b).Bytes, Rlp.Encode(Bytes.FromHexString("0xab34000000000000000000000000000000000000000000000000000000000000000000000000000000")));
             storageTree.Set(Keccak.Compute(c).Bytes, Rlp.Encode(Bytes.FromHexString("0xab56000000000000000000000000000000000000000000000000000000000000000000000000000000")));
@@ -95,7 +94,7 @@ namespace Nethermind.JsonRpc.Test.Eip1186
             tree.Set(TestItem.AddressB, account2);
             tree.Commit(0);
 
-            AccountProofCollector accountProofCollector = new AccountProofCollector(TestItem.AddressA, new byte[][] {a});
+            AccountProofCollector accountProofCollector = new(TestItem.AddressA, new byte[][] {a});
             tree.Accept(accountProofCollector, tree.RootHash);
             AccountProof proof = accountProofCollector.BuildResult();
 

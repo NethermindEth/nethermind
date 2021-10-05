@@ -40,18 +40,18 @@ namespace Nethermind.AuRa.Test.Contract
         {
             (ChainSpec ChainSpec, ISpecProvider SpecProvider) GetSpecProvider()
             {
-                ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());
-                var name = string.IsNullOrEmpty(testSuffix) ? $"{typeof(TTestClass).FullName}.json" : $"{typeof(TTestClass).FullName}.{testSuffix}.json";
-                using var stream = typeof(TTestClass).Assembly.GetManifestResourceStream(name);
-                using var reader = new StreamReader(stream ?? new MemoryStream());
-                var chainSpec = loader.Load(reader.ReadToEnd());
-                ChainSpecBasedSpecProvider chainSpecBasedSpecProvider = new ChainSpecBasedSpecProvider(chainSpec);
+                ChainSpecLoader loader = new(new EthereumJsonSerializer());
+                string name = string.IsNullOrEmpty(testSuffix) ? $"{typeof(TTestClass).FullName}.json" : $"{typeof(TTestClass).FullName}.{testSuffix}.json";
+                using Stream? stream = typeof(TTestClass).Assembly.GetManifestResourceStream(name);
+                using StreamReader reader = new(stream ?? new MemoryStream());
+                ChainSpec chainSpec = loader.Load(reader.ReadToEnd());
+                ChainSpecBasedSpecProvider chainSpecBasedSpecProvider = new(chainSpec);
                 return (chainSpec, chainSpecBasedSpecProvider);
             }
 
-            var provider = GetSpecProvider();
-            var test = new TTest() {ChainSpec = provider.ChainSpec};
-            return (TTest) await test.Build(provider.SpecProvider);;
+            (ChainSpec ChainSpec, ISpecProvider SpecProvider) provider = GetSpecProvider();
+            TTest test = new() {ChainSpec = provider.ChainSpec};
+            return (TTest) await test.Build(provider.SpecProvider);
         }
 
         protected override Block GetGenesisBlock() =>

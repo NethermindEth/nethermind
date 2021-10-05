@@ -105,7 +105,7 @@ namespace Nethermind.AuRa.Test.Transactions
         [Test]
         public async Task should_only_allow_addresses_from_contract_on_chain()
         {
-            using var chain = await TestContractBlockchain.ForTest<TestTxPermissionsBlockchain, TxCertifierFilterTests>();
+            using TestTxPermissionsBlockchain chain = await TestContractBlockchain.ForTest<TestTxPermissionsBlockchain, TxCertifierFilterTests>();
             chain.CertifierContract.Certified(chain.BlockTree.Head.Header, TestItem.AddressA).Should().BeFalse();
             chain.CertifierContract.Certified(chain.BlockTree.Head.Header, new Address("0xbbcaa8d48289bb1ffcf9808d9aa4b1d215054c78")).Should().BeTrue();
         }
@@ -113,7 +113,7 @@ namespace Nethermind.AuRa.Test.Transactions
         [Test]
         public async Task registry_contract_returns_correct_address()
         {
-            using var chain = await TestContractBlockchain.ForTest<TestTxPermissionsBlockchain, TxCertifierFilterTests>();
+            using TestTxPermissionsBlockchain chain = await TestContractBlockchain.ForTest<TestTxPermissionsBlockchain, TxCertifierFilterTests>();
             chain.RegisterContract.TryGetAddress(chain.BlockTree.Head.Header, CertifierContract.ServiceTransactionContractRegistryName, out Address address).Should().BeTrue();
             address.Should().Be(new Address("0x5000000000000000000000000000000000000001"));
         }
@@ -121,15 +121,15 @@ namespace Nethermind.AuRa.Test.Transactions
         [Test]
         public async Task registry_contract_returns_not_found_when_key_doesnt_exist()
         {
-            using var chain = await TestContractBlockchain.ForTest<TestTxPermissionsBlockchain, TxCertifierFilterTests>();
+            using TestTxPermissionsBlockchain chain = await TestContractBlockchain.ForTest<TestTxPermissionsBlockchain, TxCertifierFilterTests>();
             chain.RegisterContract.TryGetAddress(chain.BlockTree.Head.Header, "not existing key", out Address _).Should().BeFalse();
         }
         
         [Test]
         public async Task registry_contract_returns_not_found_when_contract_doesnt_exist()
         {
-            using var chain = await TestContractBlockchain.ForTest<TestTxPermissionsBlockchain, TxCertifierFilterTests>();
-            var contract = new RegisterContract(AbiEncoder.Instance, Address.FromNumber(1000), chain.ReadOnlyTransactionProcessorSource);
+            using TestTxPermissionsBlockchain chain = await TestContractBlockchain.ForTest<TestTxPermissionsBlockchain, TxCertifierFilterTests>();
+            RegisterContract contract = new(AbiEncoder.Instance, Address.FromNumber(1000), chain.ReadOnlyTransactionProcessorSource);
             contract.TryGetAddress(chain.BlockTree.Head.Header, CertifierContract.ServiceTransactionContractRegistryName, out Address _).Should().BeFalse();
         }
         
@@ -142,7 +142,7 @@ namespace Nethermind.AuRa.Test.Transactions
             protected override BlockProcessor CreateBlockProcessor()
             {
                 AbiEncoder abiEncoder = AbiEncoder.Instance;
-                ReadOnlyTransactionProcessorSource = new(
+                ReadOnlyTransactionProcessorSource = new ReadOnlyTxProcessingEnv(
                     DbProvider,
                     new TrieStore(DbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
                 BlockTree, SpecProvider,
@@ -157,10 +157,9 @@ namespace Nethermind.AuRa.Test.Transactions
                     SpecProvider,
                     Always.Valid,
                     new RewardCalculator(SpecProvider),
-                    TxProcessor,
+                    new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
                     State,
                     Storage,
-                    TxPool,
                     ReceiptStorage,
                     LimboLogs.Instance,
                     BlockTree);

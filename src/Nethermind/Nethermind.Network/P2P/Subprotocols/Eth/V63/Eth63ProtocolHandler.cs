@@ -83,7 +83,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
         public override string Name => "eth63";
 
-        private void Handle(ReceiptsMessage msg, long size)
+        protected virtual void Handle(ReceiptsMessage msg, long size)
         {
             Metrics.Eth63ReceiptsReceived++;
             _receiptsRequests.Handle(msg.TxReceipts, size);
@@ -92,20 +92,27 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
         private void Handle(GetNodeDataMessage msg)
         {
             Metrics.Eth63GetNodeDataReceived++;
-            if (msg.Hashes.Count > 4096)
-            {
-                throw new EthSyncException("Incoming node data request for more than 4096 nodes");
-            }
 
             Stopwatch stopwatch = Stopwatch.StartNew();
-            byte[][] nodeData = SyncServer.GetNodeData(msg.Hashes);
-            Send(new NodeDataMessage(nodeData));
+            Send(FulfillNodeDataRequest(msg));
             stopwatch.Stop();
             if (Logger.IsTrace)
                 Logger.Trace($"OUT {Counter:D5} NodeData to {Node:c} in {stopwatch.Elapsed.TotalMilliseconds}ms");
         }
 
-        private void Handle(NodeDataMessage msg, int size)
+        protected NodeDataMessage FulfillNodeDataRequest(GetNodeDataMessage msg)
+        {
+            if (msg.Hashes.Count > 4096)
+            {
+                throw new EthSyncException("Incoming node data request for more than 4096 nodes");
+            }
+            
+            byte[][] nodeData = SyncServer.GetNodeData(msg.Hashes);
+
+            return new NodeDataMessage(nodeData);
+        }
+
+        protected virtual void Handle(NodeDataMessage msg, int size)
         {
             Metrics.Eth63NodeDataReceived++;
             _nodeDataRequests.Handle(msg.Data, size);
@@ -137,7 +144,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             return txReceipts;
         }
         
-        private async Task<byte[][]> SendRequest(GetNodeDataMessage message, CancellationToken token)
+        protected virtual async Task<byte[][]> SendRequest(GetNodeDataMessage message, CancellationToken token)
         {
             if (Logger.IsTrace)
             {
@@ -175,7 +182,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             throw new TimeoutException($"{Session} Request timeout in {nameof(GetNodeDataMessage)}");
         }
         
-        private async Task<TxReceipt[][]> SendRequest(GetReceiptsMessage message, CancellationToken token)
+        protected virtual async Task<TxReceipt[][]> SendRequest(GetReceiptsMessage message, CancellationToken token)
         {
             if (Logger.IsTrace)
             {

@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols.Eth.V64;
@@ -80,7 +81,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             }
         }
 
-        private void Handle(NewPooledTransactionHashesMessage msg)
+        protected virtual void Handle(NewPooledTransactionHashesMessage msg)
         {
             Metrics.Eth65NewPooledTransactionHashesReceived++;
             Stopwatch stopwatch = Stopwatch.StartNew();
@@ -98,6 +99,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             Metrics.Eth65GetPooledTransactionsReceived++;
 
             Stopwatch stopwatch = Stopwatch.StartNew();
+            Send(FulfillPooledTransactionsRequest(msg));
+            stopwatch.Stop();
+            if (Logger.IsTrace)
+                Logger.Trace($"OUT {Counter:D5} {nameof(GetPooledTransactionsMessage)} to {Node:c} " +
+                             $"in {stopwatch.Elapsed.TotalMilliseconds}ms");
+        }
+
+        protected PooledTransactionsMessage FulfillPooledTransactionsRequest(
+            GetPooledTransactionsMessage msg)
+        {
             List<Transaction> txs = new();
             int responseSize = Math.Min(256, msg.Hashes.Count);
             for (int i = 0; i < responseSize; i++)
@@ -108,27 +119,40 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                 }
             }
 
-            Send(new PooledTransactionsMessage(txs));
-            stopwatch.Stop();
-            if (Logger.IsTrace)
-                Logger.Trace($"OUT {Counter:D5} {nameof(GetPooledTransactionsMessage)} to {Node:c} " +
-                             $"in {stopwatch.Elapsed.TotalMilliseconds}ms");
+            return new PooledTransactionsMessage(txs);
         }
-
-        public override bool SendNewTransaction(Transaction transaction, bool isPriority)
+        
+        public override void SendNewTransactions(IEnumerable<Transaction> txs)
         {
-            if (isPriority)
+            const int maxCapacity = 3200;
+            List<Keccak> hashes = new(maxCapacity);
+
+            foreach (Transaction tx in txs)
             {
-                base.SendNewTransaction(transaction, true);
-            }
-            else
-            {
-                Counter++;
-                NewPooledTransactionHashesMessage msg = new(new[] {transaction.Hash});
-                Send(msg);
+                if (hashes.Count == maxCapacity)
+                {
+                    SendMessage(hashes);
+                    hashes = new(maxCapacity);
+                }
+                
+                if (tx.Hash is not null)
+                {
+                    hashes.Add(tx.Hash);
+                    TxPool.Metrics.PendingTransactionsHashesSent++;
+                }
             }
 
-            return true;
+            if (hashes.Count > 0)
+            {
+                SendMessage(hashes);
+            }
+        }
+        
+        private void SendMessage(IList<Keccak> hashes)
+        {
+            NewPooledTransactionHashesMessage msg = new(hashes);
+            Send(msg);
+            Metrics.Eth65NewPooledTransactionHashesSent++;
         }
     }
 }

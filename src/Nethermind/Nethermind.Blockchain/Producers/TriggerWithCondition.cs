@@ -21,22 +21,27 @@ namespace Nethermind.Blockchain.Producers
 {
     public class TriggerWithCondition : IBlockProductionTrigger
     {
-        private readonly Func<bool> _checkCondition;
+        private readonly Func<BlockProductionEventArgs, bool> _checkCondition;
 
-        public TriggerWithCondition(IBlockProductionTrigger trigger, Func<bool> checkCondition)
+        public TriggerWithCondition(IBlockProductionTrigger trigger, Func<bool> checkCondition) : this(trigger, _ => checkCondition())
+        {
+        }
+        
+        public TriggerWithCondition(IBlockProductionTrigger trigger, Func<BlockProductionEventArgs, bool> checkCondition)
         {
             _checkCondition = checkCondition;
             trigger.TriggerBlockProduction += TriggerOnTriggerBlockProduction;
         }
 
-        private void TriggerOnTriggerBlockProduction(object? sender, EventArgs e)
+
+        private void TriggerOnTriggerBlockProduction(object? sender, BlockProductionEventArgs e)
         {
-            if (_checkCondition.Invoke())
+            if (_checkCondition.Invoke(e))
             {
-                TriggerBlockProduction?.Invoke(this, EventArgs.Empty);
+                TriggerBlockProduction?.Invoke(this, e);
             }
         }
 
-        public event EventHandler? TriggerBlockProduction;
+        public event EventHandler<BlockProductionEventArgs>? TriggerBlockProduction;
     }
 }

@@ -28,6 +28,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Evm;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.TxPool;
@@ -44,10 +45,10 @@ namespace Nethermind.AuRa.Test
         [TestCase(AuRaParameters.ValidatorType.Multi, typeof(MultiValidator))]
         public void returns_correct_validator_type(AuRaParameters.ValidatorType validatorType, Type expectedType)
         {
-            var stateDb = Substitute.For<IDb>();
+            IDb stateDb = Substitute.For<IDb>();
             stateDb[Arg.Any<byte[]>()].Returns((byte[]) null);
             
-            var factory = new AuRaValidatorFactory(Substitute.For<IAbiEncoder>(), 
+            AuRaValidatorFactory factory = new(Substitute.For<IAbiEncoder>(), 
                 Substitute.For<IStateProvider>(),
                 Substitute.For<ITransactionProcessor>(),
                 Substitute.For<IBlockTree>(),
@@ -62,7 +63,7 @@ namespace Nethermind.AuRa.Test
                 Substitute.For<ISigner>(),
                 Substitute.For<ISpecProvider>(), new ReportingContractBasedValidator.Cache(), long.MaxValue);
 
-            var validator = new AuRaParameters.Validator()
+            AuRaParameters.Validator validator = new()
             {
                 ValidatorType = validatorType,
                 Addresses = new[] {Address.Zero},
@@ -77,7 +78,7 @@ namespace Nethermind.AuRa.Test
                 }
             };
             
-            var result = factory.CreateValidatorProcessor(validator);
+            IAuRaValidator result = factory.CreateValidatorProcessor(validator);
             
             result.Should().BeOfType(expectedType);
         }

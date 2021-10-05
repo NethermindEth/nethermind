@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -37,6 +37,10 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
+using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Facade.Eth;
+using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
+using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
@@ -82,9 +86,10 @@ namespace Nethermind.JsonRpc.Benchmark
             
             TransactionProcessor transactionProcessor
                  = new TransactionProcessor(MainnetSpecProvider.Instance, stateProvider, storageProvider, _virtualMachine, LimboLogs.Instance);
-            
-            BlockProcessor blockProcessor = new BlockProcessor(specProvider, Always.Valid, new RewardCalculator(specProvider), transactionProcessor,
-                stateProvider, storageProvider, NullTxPool.Instance, NullReceiptStorage.Instance, NullWitnessCollector.Instance, LimboLogs.Instance);
+
+            IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider);
+            BlockProcessor blockProcessor = new BlockProcessor(specProvider, Always.Valid, new RewardCalculator(specProvider), transactionsExecutor, 
+                stateProvider, storageProvider, NullReceiptStorage.Instance, NullWitnessCollector.Instance, LimboLogs.Instance);
 
             EthereumEcdsa ecdsa = new EthereumEcdsa(specProvider.ChainId, LimboLogs.Instance);
             BlockchainProcessor blockchainProcessor = new BlockchainProcessor(
@@ -124,8 +129,13 @@ namespace Nethermind.JsonRpc.Benchmark
                 ecdsa,
                 Timestamper.Default,
                 logFinder,
+                specProvider,
                 false,
                 false);
+
+            GasPriceOracle gasPriceOracle = new(blockTree, specProvider);
+            FeeHistoryOracle feeHistoryOracle = new(blockTree, NullReceiptStorage.Instance, specProvider);
+            EthSyncingInfo ethSyncingInfo = new(blockTree);
             
             _ethModule = new EthRpcModule(
                 new JsonRpcConfig(),
@@ -135,7 +145,11 @@ namespace Nethermind.JsonRpc.Benchmark
                 NullTxPool.Instance,
                 NullTxSender.Instance,
                 NullWallet.Instance,
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                specProvider, 
+                gasPriceOracle,
+                ethSyncingInfo,
+                feeHistoryOracle);
         }
 
         [Benchmark]

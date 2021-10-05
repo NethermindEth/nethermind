@@ -22,7 +22,7 @@ namespace Nethermind.Abi
 {
     public class AbiFixed : AbiType
     {
-        public static AbiFixed Standard { get; }= new(128, 19);
+        public static readonly AbiFixed Standard = new(128, 19);
 
         private const int MaxLength = 256;
         private const int MinLength = 0;
@@ -64,11 +64,11 @@ namespace Nethermind.Abi
 
             Length = length;
             Precision = precision;
-
+            Name = $"fixed{Length}x{Precision}";
             _denominator = BigInteger.Pow(10, Precision);
         }
 
-        public override string Name => $"fixed{Length}x{Precision}";
+        public override string Name { get; }
 
         public int Length { get; }
         public int Precision { get; }

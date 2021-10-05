@@ -19,7 +19,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
-using DotNetty.Buffers;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
@@ -30,7 +29,6 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
-using Nethermind.Network.P2P.Subprotocols.Wit;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -97,7 +95,7 @@ namespace Nethermind.Network.P2P
         }
 
         [Todo(Improve.Refactor, "Generic approach to requests")]
-        private async Task<BlockBody[]> SendRequest(GetBlockBodiesMessage message, CancellationToken token)
+        protected virtual async Task<BlockBody[]> SendRequest(GetBlockBodiesMessage message, CancellationToken token)
         {
             if (Logger.IsTrace)
             {
@@ -154,7 +152,7 @@ namespace Nethermind.Network.P2P
             return headers;
         }
 
-        private async Task<BlockHeader[]> SendRequest(GetBlockHeadersMessage message, CancellationToken token)
+        protected virtual async Task<BlockHeader[]> SendRequest(GetBlockHeadersMessage message, CancellationToken token)
         {
             if (Logger.IsTrace)
             {
@@ -217,16 +215,36 @@ namespace Nethermind.Network.P2P
 
         public abstract void NotifyOfNewBlock(Block block, SendBlockPriority priority);
 
-        public virtual bool SendNewTransaction(Transaction transaction, bool isPriority)
+        public virtual void SendNewTransactions(IEnumerable<Transaction> txs)
         {
-            if (transaction.Hash == null)
-            {
-                throw new InvalidOperationException("Trying to send a transaction with null hash");
-            }
+            const int maxCapacity = 256;
+            List<Transaction> txsToSend = new(maxCapacity);
 
-            TransactionsMessage msg = new(new[] {transaction});
+            foreach (Transaction tx in txs)
+            {
+                if (txsToSend.Count == maxCapacity)
+                {
+                    SendMessage(txsToSend);
+                    txsToSend.Clear();
+                }
+                
+                if (tx.Hash is not null)
+                {
+                    txsToSend.Add(tx);
+                    TxPool.Metrics.PendingTransactionsSent++;
+                }
+            }
+            
+            if (txsToSend.Count > 0)
+            {
+                SendMessage(txsToSend);
+            }
+        }
+        
+        private void SendMessage(IList<Transaction> txsToSend)
+        {
+            TransactionsMessage msg = new(txsToSend);
             Send(msg);
-            return true;
         }
 
         public override void HandleMessage(Packet message)
@@ -330,13 +348,13 @@ namespace Nethermind.Network.P2P
             return new BlockBodiesMessage(blocks);
         }
         
-        protected void Handle(BlockHeadersMessage message, long size)
+        protected virtual void Handle(BlockHeadersMessage message, long size)
         {
             Metrics.Eth62BlockHeadersReceived++;
             _headersRequests.Handle(message.BlockHeaders, size);
         }
 
-        protected void HandleBodies(BlockBodiesMessage blockBodiesMessage, long size)
+        protected virtual void HandleBodies(BlockBodiesMessage blockBodiesMessage, long size)
         {
             Metrics.Eth62BlockBodiesReceived++;
             _bodiesRequests.Handle(blockBodiesMessage.Bodies, size);

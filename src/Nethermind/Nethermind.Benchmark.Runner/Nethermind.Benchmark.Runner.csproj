@@ -6,12 +6,12 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <PackageReference Include="BenchmarkDotNet" Version="0.12.1" />
+      <PackageReference Include="BenchmarkDotNet" Version="0.13.1" />
     </ItemGroup>
 
     <ItemGroup>
       <ProjectReference Include="..\Nethermind.Benchmark\Nethermind.Benchmark.csproj" />
-      <ProjectReference Include="..\Nethermind.Dirichlet.Benchmark\Nethermind.Dirichlet.Benchmark.csproj" />
+      <ProjectReference Include="..\Nethermind.EthereumTests.Benchmark\Nethermind.EthereumTests.Benchmark.csproj" />
       <ProjectReference Include="..\Nethermind.Evm.Benchmark\Nethermind.Evm.Benchmark.csproj" />
       <ProjectReference Include="..\Nethermind.JsonRpc.Benchmark\Nethermind.JsonRpc.Benchmark.csproj" />
       <ProjectReference Include="..\Nethermind.Network.Benchmark\Nethermind.Network.Benchmark.csproj" />

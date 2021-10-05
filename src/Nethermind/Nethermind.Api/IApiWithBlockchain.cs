@@ -27,7 +27,10 @@ using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Evm;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade;
+using Nethermind.Facade.Eth;
+using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
@@ -73,6 +76,7 @@ namespace Nethermind.Api
         ITxPool? TxPool { get; set; }
         ITxPoolInfoProvider? TxPoolInfoProvider { get; set; }
         IWitnessCollector? WitnessCollector { get; set; }
+        IWitnessRepository? WitnessRepository { get; set; }
         IHealthHintService? HealthHintService { get; set; }
         ITransactionComparerProvider? TransactionComparerProvider { get; set; }
         TxValidator? TxValidator { get; set; }
@@ -88,5 +92,9 @@ namespace Nethermind.Api
         IGasLimitCalculator GasLimitCalculator { get; set; }
         
         IBlockProducerEnvFactory BlockProducerEnvFactory { get; set; }
+        
+        IGasPriceOracle? GasPriceOracle { get; set; }
+        
+        IEthSyncingInfo? EthSyncingInfo { get; set; }
     }
 }

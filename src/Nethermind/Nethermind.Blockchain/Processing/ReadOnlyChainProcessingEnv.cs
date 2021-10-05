@@ -54,7 +54,7 @@ namespace Nethermind.Blockchain.Processing
                 specProvider,
                 blockValidator,
                 rewardCalculator,
-                _txEnv.TransactionProcessor,
+                new BlockProcessor.BlockValidationTransactionsExecutor(_txEnv.TransactionProcessor, StateProvider),
                 StateProvider,
                 _txEnv.StorageProvider,
                 receiptStorage,

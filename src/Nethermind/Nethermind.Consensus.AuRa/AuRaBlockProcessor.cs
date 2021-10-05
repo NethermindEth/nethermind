@@ -31,7 +31,6 @@ using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa
 {
@@ -48,10 +47,9 @@ namespace Nethermind.Consensus.AuRa
             ISpecProvider specProvider,
             IBlockValidator blockValidator,
             IRewardCalculator rewardCalculator,
-            ITransactionProcessor transactionProcessor,
+            IBlockProcessor.IBlockTransactionsExecutor blockTransactionsExecutor,
             IStateProvider stateProvider,
             IStorageProvider storageProvider,
-            ITxPool txPool,
             IReceiptStorage receiptStorage,
             ILogManager logManager,
             IBlockTree blockTree,
@@ -61,7 +59,7 @@ namespace Nethermind.Consensus.AuRa
                 specProvider,
                 blockValidator,
                 rewardCalculator,
-                transactionProcessor,
+                blockTransactionsExecutor,
                 stateProvider,
                 storageProvider,
                 receiptStorage,
@@ -73,6 +71,10 @@ namespace Nethermind.Consensus.AuRa
             _logger = logManager?.GetClassLogger<AuRaBlockProcessor>() ?? throw new ArgumentNullException(nameof(logManager));
             _txFilter = txFilter ?? NullTxFilter.Instance;
             _gasLimitOverride = gasLimitOverride;
+            if (blockTransactionsExecutor is IBlockProductionTransactionsExecutor produceBlockTransactionsStrategy)
+            {
+                produceBlockTransactionsStrategy.AddingTransaction += OnAddingTransaction;
+            }
         }
 
         public IAuRaValidator AuRaValidator
@@ -120,27 +122,32 @@ namespace Nethermind.Consensus.AuRa
             for (int i = 0; i < block.Transactions.Length; i++)
             {
                 Transaction tx = block.Transactions[i];
-                (TxAction Action, string Reason) txCheck = CheckTx(tx, block);
-                if (txCheck.Action != TxAction.Add)
+                AddingTxEventArgs args = CheckTxPosdaoRules(new AddingTxEventArgs(i, tx, block, block.Transactions));
+                if (args.Action != TxAction.Add)
                 {
-                    if (_logger.IsWarn) _logger.Warn($"Proposed block is not valid {block.ToString(Block.Format.FullHashAndNumber)}. {tx.ToShortString()} doesn't have required permissions. Reason: {txCheck.Reason}.");
+                    if (_logger.IsWarn) _logger.Warn($"Proposed block is not valid {block.ToString(Block.Format.FullHashAndNumber)}. {tx.ToShortString()} doesn't have required permissions. Reason: {args.Reason}.");
                     throw new InvalidBlockException(block.Hash);
                 }
             }
         }
-
-        protected override (TxAction Action, string Reason) CheckTx(Transaction currentTx, Block block)
+        
+        private void OnAddingTransaction(object? sender, AddingTxEventArgs e)
+        {
+            CheckTxPosdaoRules(e);
+        }
+        
+        private AddingTxEventArgs CheckTxPosdaoRules(AddingTxEventArgs args)
         {
             (bool Allowed, string Reason)? TryRecoverSenderAddress(Transaction tx, BlockHeader header)
             {
                 if (tx.Signature != null)
                 {
-                    IReleaseSpec spec = _specProvider.GetSpec(block.Number);
+                    IReleaseSpec spec = _specProvider.GetSpec(args.Block.Number);
                     EthereumEcdsa ecdsa = new(_specProvider.ChainId, LimboLogs.Instance);
                     Address txSenderAddress = ecdsa.RecoverAddress(tx, !spec.ValidateChainId);
                     if (tx.SenderAddress != txSenderAddress)
                     {
-                        if (_logger.IsWarn) _logger.Warn($"Transaction {tx.ToShortString()} in block {block.ToString(Block.Format.FullHashAndNumber)} had recovered sender address on validation.");
+                        if (_logger.IsWarn) _logger.Warn($"Transaction {tx.ToShortString()} in block {args.Block.ToString(Block.Format.FullHashAndNumber)} had recovered sender address on validation.");
                         tx.SenderAddress = txSenderAddress;
                         return _txFilter.IsAllowed(tx, header);
                     }
@@ -149,24 +156,19 @@ namespace Nethermind.Consensus.AuRa
                 return null;
             }
 
-            (TxAction Action, string Reason) baseResult = base.CheckTx(currentTx, block);
-            if (baseResult.Action != TxAction.Add)
+            BlockHeader parentHeader = GetParentHeader(args.Block);
+            (bool Allowed, string Reason) txFilterResult = _txFilter.IsAllowed(args.Transaction, parentHeader);
+            if (!txFilterResult.Allowed)
             {
-                return baseResult;
+                txFilterResult = TryRecoverSenderAddress(args.Transaction, parentHeader) ?? txFilterResult;
             }
-            else
-            {
-                BlockHeader parentHeader = GetParentHeader(block);
-                (bool Allowed, string Reason) txFilterResult = _txFilter.IsAllowed(currentTx, parentHeader);
-                if (!txFilterResult.Allowed)
-                {
-                    txFilterResult = TryRecoverSenderAddress(currentTx, parentHeader) ?? txFilterResult;
-                }
 
-                return txFilterResult.Allowed 
-                    ? baseResult
-                    : (TxAction.Skip, txFilterResult.Reason);
+            if (!txFilterResult.Allowed)
+            {
+                args.Set(TxAction.Skip, txFilterResult.Reason);
             }
+
+            return args;
         }
 
         private class NullAuRaValidator : IAuRaValidator

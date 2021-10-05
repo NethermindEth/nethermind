@@ -49,6 +49,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             Assert.AreEqual(0x04, after.Version);
         }
 
+        [Test]
         public void Test()
         {
             TestEncodeDecode();

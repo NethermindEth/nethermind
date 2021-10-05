@@ -51,31 +51,30 @@ namespace Nethermind.Blockchain.Test.Producers
         public async Task DevBlockProducer_IsProducingBlocks_returns_expected_results()
         {
             TestRpcBlockchain testRpc = await CreateTestRpc();
-            DevBlockProducer blockProducer = new DevBlockProducer(
+            DevBlockProducer blockProducer = new(
                 Substitute.For<ITxSource>(),
                 testRpc.BlockchainProcessor,
                 testRpc.State,
                 testRpc.BlockTree,
-                Substitute.For<IBlockProcessingQueue>(),
-                new BuildBlocksRegularly(TimeSpan.FromMilliseconds(200)).IfPoolIsNotEmpty(testRpc.TxPool),
+                Substitute.For<IBlockProductionTrigger>(),
                 testRpc.Timestamper, 
                 testRpc.SpecProvider,
                 new MiningConfig(),
                 LimboLogs.Instance);
             await AssertIsProducingBlocks(blockProducer);
         }
-        
+
         [Test]
         public async Task TestBlockProducer_IsProducingBlocks_returns_expected_results()
         {
             TestRpcBlockchain testRpc = await CreateTestRpc();
-            TestBlockProducer blockProducer = new TestBlockProducer(
+            TestBlockProducer blockProducer = new(
                 Substitute.For<ITxSource>(),
                 testRpc.BlockchainProcessor,
                 testRpc.State,
                 Substitute.For<ISealer>(),
                 testRpc.BlockTree,
-                Substitute.For<IBlockProcessingQueue>(),
+                Substitute.For<IBlockProductionTrigger>(),
                 testRpc.Timestamper,
                 testRpc.SpecProvider,
                 LimboLogs.Instance);
@@ -86,18 +85,17 @@ namespace Nethermind.Blockchain.Test.Producers
         public async Task MinedBlockProducer_IsProducingBlocks_returns_expected_results()
         {
             TestRpcBlockchain testRpc = await CreateTestRpc();
-            MinedBlockProducer blockProducer = new MinedBlockProducer(
+            MinedBlockProducer blockProducer = new(
                 Substitute.For<ITxSource>(),
                 testRpc.BlockchainProcessor,
                 Substitute.For<ISealer>(),
                 testRpc.BlockTree,
-                Substitute.For<IBlockProcessingQueue>(),
+                Substitute.For<IBlockProductionTrigger>(),
                 testRpc.State,
                 Substitute.For<IGasLimitCalculator>(),
                 testRpc.Timestamper,
                 testRpc.SpecProvider,
-                LimboLogs.Instance,
-                Substitute.For<IDifficultyCalculator>());
+                LimboLogs.Instance);
             await AssertIsProducingBlocks(blockProducer);
         }
         
@@ -106,13 +104,13 @@ namespace Nethermind.Blockchain.Test.Producers
         {
             IBlockProcessingQueue blockProcessingQueue = Substitute.For<IBlockProcessingQueue>();
             blockProcessingQueue.IsEmpty.Returns(true);
-            AuRaBlockProducer blockProducer = new AuRaBlockProducer(
+            AuRaBlockProducer blockProducer = new(
                 Substitute.For<ITxSource>(),
                 Substitute.For<IBlockchainProcessor>(),
+                Substitute.For<IBlockProductionTrigger>(),
                 Substitute.For<IStateProvider>(),
                 Substitute.For<ISealer>(),
                 Substitute.For<IBlockTree>(),
-                Substitute.For<IBlockProcessingQueue>(),
                 Substitute.For<ITimestamper>(),
                 Substitute.For<IAuRaStepCalculator>(),
                 Substitute.For<IReportingValidator>(),
@@ -127,7 +125,7 @@ namespace Nethermind.Blockchain.Test.Producers
         public async Task CliqueBlockProducer_IsProducingBlocks_returns_expected_results()
         {
             TestRpcBlockchain testRpc = await CreateTestRpc();
-            CliqueBlockProducer blockProducer = new CliqueBlockProducer(
+            CliqueBlockProducer blockProducer = new(
                 Substitute.For<ITxSource>(),
                 testRpc.BlockchainProcessor,
                 testRpc.State,
@@ -146,7 +144,7 @@ namespace Nethermind.Blockchain.Test.Producers
         private async Task<TestRpcBlockchain> CreateTestRpc()
         {
             Address address = TestItem.Addresses[0];
-            SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
+            SingleReleaseSpecProvider spec = new(ConstantinopleFix.Instance, 1);
             TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
                 .Build(spec);
             testRpc.TestWallet.UnlockAccount(address, new SecureString());

@@ -18,8 +18,8 @@
 using System;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Find;
 using Nethermind.Core;
+using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 
@@ -28,17 +28,19 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
     public class SyncingSubscription : Subscription
     {
         private readonly IBlockTree _blockTree;
+        private readonly IEthSyncingInfo _ethSyncingInfo;
         private readonly ILogger _logger;
-        private bool IsSyncing { get; set; }
+        private bool _lastIsSyncing;
         
-        public SyncingSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, IBlockTree? blockTree, ILogManager? logManager) 
+        public SyncingSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, IBlockTree? blockTree, IEthSyncingInfo ethSyncingInfo, ILogManager? logManager) 
             : base(jsonRpcDuplexClient)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _ethSyncingInfo = ethSyncingInfo ?? throw new ArgumentNullException(nameof(ethSyncingInfo));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             
-            IsSyncing = _blockTree.IsSyncing();
-            if(_logger.IsTrace) _logger.Trace($"Syncing subscription {Id}: Syncing status on start is {IsSyncing}");
+            _lastIsSyncing = _ethSyncingInfo.IsSyncing();
+            if(_logger.IsTrace) _logger.Trace($"Syncing subscription {Id}: Syncing status on start is {_lastIsSyncing}");
             
             _blockTree.NewBestSuggestedBlock += OnConditionsChange;
             if(_logger.IsTrace) _logger.Trace($"Syncing subscription {Id} will track NewBestSuggestedBlocks");
@@ -49,40 +51,46 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         private void OnConditionsChange(object? sender, BlockEventArgs e)
         {
-            Task.Run(() =>
+            ScheduleAction(() =>
             {
-                bool isSyncing = _blockTree.IsSyncing();
+                SyncingResult syncingResult = _ethSyncingInfo.GetFullInfo();
+                bool isSyncing = syncingResult.IsSyncing;
 
-                if (isSyncing == IsSyncing)
+                if (isSyncing == _lastIsSyncing)
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Syncing subscription {Id} didn't changed syncing status: {IsSyncing}");
+                    if (_logger.IsTrace) _logger.Trace($"Syncing subscription {Id} didn't changed syncing status: {_lastIsSyncing}");
                     return;
                 }
 
-                if (_logger.IsTrace) _logger.Trace($"Syncing subscription {Id} changed syncing status from {IsSyncing} to {isSyncing}");
+                if (_logger.IsTrace) _logger.Trace($"Syncing subscription {Id} changed syncing status from {_lastIsSyncing} to {isSyncing}");
 
-                IsSyncing = isSyncing;
+                _lastIsSyncing = isSyncing;
+                JsonRpcResult result;
 
-                JsonRpcResult result = isSyncing 
-                    ? CreateSubscriptionMessage(_blockTree.CheckSyncing()) 
-                    : CreateSubscriptionMessage(false);
+                if (isSyncing == false)
+                {
+                    result = CreateSubscriptionMessage(isSyncing);
+                }
+                else
+                {
+                    result = CreateSubscriptionMessage(syncingResult);
+                }
+
 
                 JsonRpcDuplexClient.SendJsonRpcResult(result);
                 _logger.Trace($"Syncing subscription {Id} printed SyncingResult object.");
-            }).ContinueWith(
-                t =>
-                    t.Exception?.Handle(ex =>
-                    {
-                        if (_logger.IsDebug) _logger.Debug($"Syncing subscription {Id}: Failed Task.Run.");
-                        return true;
-                    })
-                , TaskContinuationOptions.OnlyOnFaulted
-            );
+            });
+        }
+
+        protected override string GetErrorMsg()
+        {
+            return $"Syncing subscription {Id}: Failed Task.Run.";
         }
         
         public override SubscriptionType Type => SubscriptionType.Syncing;
         public override void Dispose()
         {
+            base.Dispose();
             _blockTree.NewBestSuggestedBlock -= OnConditionsChange;
             if(_logger.IsTrace) _logger.Trace($"Syncing subscription {Id} will no longer track NewBestSuggestedBlocks");
 

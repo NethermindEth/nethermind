@@ -137,11 +137,7 @@ namespace Nethermind.DataMarketplace.Initializers
                     _ndmApi.NdmConsumerChannelManager.Add(grpcChannel);
                 }
 
-                NdmWebSocketsModule ndmWebSocketsModule =
-                    new(
-                        _ndmApi.NdmConsumerChannelManager,
-                        _ndmApi.NdmDataPublisher,
-                        api.EthereumJsonSerializer); 
+                NdmWebSocketsModule ndmWebSocketsModule = new( _ndmApi); 
                 api.WebSocketsManager.AddModule(ndmWebSocketsModule);
             }
 

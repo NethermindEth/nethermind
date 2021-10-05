@@ -24,18 +24,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
     {
         public void Serialize(IByteBuffer byteBuffer, NewBlockHashesMessage message)
         {
+            int length = GetLength(message, out int contentLength);
+            byteBuffer.EnsureWritable(length, true);
             NettyRlpStream nettyRlpStream = new(byteBuffer);
-
-            int contentLength = 0;
-            for (int i = 0; i < message.BlockHashes.Length; i++)
-            {
-                int miniContentLength = Rlp.LengthOf(message.BlockHashes[i].Item1);
-                miniContentLength += Rlp.LengthOf(message.BlockHashes[i].Item2);
-                contentLength += Rlp.GetSequenceRlpLength(miniContentLength);
-            }
-
-            int totalLength = Rlp.LengthOfSequence(contentLength);
-            byteBuffer.EnsureWritable(totalLength, true);
             
             nettyRlpStream.StartSequence(contentLength);
             for (int i = 0; i < message.BlockHashes.Length; i++)
@@ -53,7 +44,20 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             NettyRlpStream rlpStream = new(byteBuffer);
             return Deserialize(rlpStream);
         }
-        
+
+        private int GetLength(NewBlockHashesMessage message, out int contentLength)
+        {
+            contentLength = 0;
+            for (int i = 0; i < message.BlockHashes.Length; i++)
+            {
+                int miniContentLength = Rlp.LengthOf(message.BlockHashes[i].Item1);
+                miniContentLength += Rlp.LengthOf(message.BlockHashes[i].Item2);
+                contentLength += Rlp.GetSequenceRlpLength(miniContentLength);
+            }
+
+            return Rlp.LengthOfSequence(contentLength);
+        }
+
         private static NewBlockHashesMessage Deserialize(RlpStream rlpStream)
         {
             (Keccak, long)[] blockHashes = rlpStream.DecodeArray(ctx =>

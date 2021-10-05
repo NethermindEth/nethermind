@@ -50,6 +50,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             Assert.AreEqual(before.IsTokenUsed, after.IsTokenUsed);
         }
 
+        [Test]
         public void Test()
         {
             TestEncodeDecode();

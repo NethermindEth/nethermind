@@ -37,7 +37,7 @@ using Nethermind.DataMarketplace.Providers.Validators;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.DataMarketplace.Infrastructure.Modules;
 using Nethermind.DataMarketplace.Infrastructure.Updaters;
-using Nethermind.WebSockets;
+using Nethermind.Sockets;
 using System.Threading.Tasks;
 using Nethermind.Db;
 using Nethermind.Api;

@@ -1,9 +1,14 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
         <TargetFramework>net5.0</TargetFramework>
         <AssemblyOriginatorKeyFile>strong.snk</AssemblyOriginatorKeyFile>
         <Nullable>annotations</Nullable>
+    </PropertyGroup>
+
+    <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+      <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+      <WarningsAsErrors />
     </PropertyGroup>
 
     <ItemGroup>
@@ -13,7 +18,7 @@
       <ProjectReference Include="..\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj" />
       <ProjectReference Include="..\Nethermind.Monitoring\Nethermind.Monitoring.csproj" />
       <ProjectReference Include="..\Nethermind.Network\Nethermind.Network.csproj" />
-      <ProjectReference Include="..\Nethermind.WebSockets\Nethermind.WebSockets.csproj" />
+      <ProjectReference Include="..\Nethermind.Sockets\Nethermind.Sockets.csproj" />
     </ItemGroup>
 
 </Project>

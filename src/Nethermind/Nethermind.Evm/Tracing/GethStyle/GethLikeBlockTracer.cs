@@ -34,7 +34,7 @@ namespace Nethermind.Evm.Tracing.GethStyle
             _options = options;
         }
 
-        protected override GethLikeTxTracer OnStart(Keccak txHash) => new(_options);
+        protected override GethLikeTxTracer OnStart(Transaction? tx) => new(_options);
 
         protected override GethLikeTxTrace OnEnd(GethLikeTxTracer txTracer) => txTracer.BuildResult();
 

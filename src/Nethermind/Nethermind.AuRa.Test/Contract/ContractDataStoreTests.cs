@@ -250,11 +250,11 @@ namespace Nethermind.AuRa.Test.Contract
 
         protected virtual TestCase<T> BuildTestCase<T>(IComparer<T> keyComparer = null, IComparer<T> valueComparer = null)
         {
-            var dataContract = Substitute.For<IDataContract<T>>();
+            IDataContract<T> dataContract = Substitute.For<IDataContract<T>>();
             dataContract.IncrementalChanges.Returns(true);
                 
-            var blockTree = Substitute.For<IBlockTree>();
-            var receiptsFinder = Substitute.For<IReceiptFinder>();
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            IReceiptFinder receiptsFinder = Substitute.For<IReceiptFinder>();
             receiptsFinder.Get(Arg.Any<Block>()).Returns(Array.Empty<TxReceipt>());
 
             return new TestCase<T>()

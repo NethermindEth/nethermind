@@ -22,7 +22,7 @@ using System.Linq;
 
 namespace Nethermind.Core.Collections
 {
-    public class LinkedHashSet<T> : ISet<T> where T : notnull
+    public class LinkedHashSet<T> : ISet<T>, IReadOnlySet<T> where T : notnull
     {
         private readonly IDictionary<T, LinkedListNode<T>> _dict;
         private readonly LinkedList<T> _list;
@@ -47,6 +47,12 @@ namespace Nethermind.Core.Collections
         public LinkedHashSet(int initialCapacity, IEnumerable<T> enumerable) : this(initialCapacity)
         {
             UnionWith(enumerable);
+        }
+
+        public LinkedHashSet(IEqualityComparer<T> equalityComparer)
+        {
+            _dict = new Dictionary<T, LinkedListNode<T>>(equalityComparer);
+            _list = new LinkedList<T>();
         }
 
         #region ISet

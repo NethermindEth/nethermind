@@ -123,6 +123,7 @@ namespace Nethermind.Specs.Test
         public bool IsEip3529Enabled => _spec.IsEip3529Enabled;
         
         public bool IsEip3541Enabled => _spec.IsEip3541Enabled;
+        public bool IsEip3675Enabled => _spec.IsEip3675Enabled;
 
         public bool IsEip158IgnoredAccount(Address address)
         {

@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Evm.Tracing;
@@ -23,7 +24,7 @@ namespace Nethermind.Blockchain.Processing
 {
     public interface IBlockchainProcessor : IDisposable
     {
-        CompositeBlockTracerFactory BlockTracerFactory { get; }
+        ITracerBag Tracers { get; }
 
         void Start();
         

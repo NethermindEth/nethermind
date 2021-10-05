@@ -6,6 +6,11 @@
         <IsPackable>false</IsPackable>
     </PropertyGroup>
 
+    <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+      <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+      <WarningsAsErrors />
+    </PropertyGroup>
+
     <ItemGroup>
         <PackageReference Include="coverlet.msbuild" Version="3.0.2">
           <PrivateAssets>all</PrivateAssets>
@@ -19,6 +24,13 @@
 
     <ItemGroup>
       <ProjectReference Include="..\Nethermind.Logging.NLog\Nethermind.Logging.NLog.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <None Include="..\Nethermind.Runner\NLog.config">
+        <Link>NLog.config</Link>
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </None>
     </ItemGroup>
 
 </Project>

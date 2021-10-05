@@ -25,33 +25,31 @@ namespace Nethermind.Core.Test.Builders
     {
         public static void AddBranch(this BlockTree blockTree, int branchLength, int splitBlockNumber)
         {
-            var splitVariant = 0;
-            BlockTree alternative = Build.A.BlockTree(blockTree.FindBlock(0, BlockTreeLookupOptions.RequireCanonical)).OfChainLength(branchLength, splitVariant).TestObject;
-            List<Block> blocks = new List<Block>();
-            Keccak parentHash = null;
+            int splitVariant = 0;
+            BlockTree alternative = Build.A.BlockTree(blockTree.FindBlock(0, BlockTreeLookupOptions.RequireCanonical)!).OfChainLength(branchLength, splitVariant).TestObject;
+            Block? parent = null;
             for (int i = splitBlockNumber + 1; i < branchLength; i++)
             {
-                Block block = alternative.FindBlock(i, BlockTreeLookupOptions.RequireCanonical);
+                Block block = alternative.FindBlock(i, BlockTreeLookupOptions.RequireCanonical)!;
                 if (i == splitBlockNumber + 1)
                 {
-                    var mainBlock = blockTree.FindBlock(i - 1, BlockTreeLookupOptions.RequireCanonical);
+                    Block? mainBlock = blockTree.FindBlock(i - 1, BlockTreeLookupOptions.RequireCanonical);
                     if (mainBlock != null)
-                        parentHash = mainBlock.Hash;
+                        parent = mainBlock;
                 }
 
-                block.Header.ParentHash = parentHash;
+                block.Header.ParentHash = parent?.Hash;
+                block.Header.StateRoot = parent?.StateRoot;
                 block.Header.Hash = block.Header.CalculateHash();
-                parentHash = block.Hash;
+                parent = block;
                 blockTree.SuggestBlock(block, i == branchLength - 1, false);
-                blocks.Add(block);
-
             }
         }
 
         public static void AddBranch(this BlockTree blockTree, int branchLength, int splitBlockNumber, int splitVariant)
         {
             BlockTree alternative = Build.A.BlockTree(blockTree.FindBlock(0, BlockTreeLookupOptions.RequireCanonical)).OfChainLength(branchLength, splitVariant).TestObject;
-            List<Block> blocks = new List<Block>();
+            List<Block> blocks = new();
             for (int i = splitBlockNumber + 1; i < branchLength; i++)
             {
                 Block block = alternative.FindBlock(i, BlockTreeLookupOptions.RequireCanonical);

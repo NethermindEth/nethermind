@@ -31,7 +31,7 @@ namespace Nethermind.Merge.Plugin.Handlers
         }
         
         public ValueTask Sign(Transaction tx) => default;
-        public ProtectedPrivateKey Key => null!;
+        public PrivateKey Key => null!;
         public Address Address { get; }
         public Signature Sign(Keccak message) => null!;
         public bool CanSign { get; } = true;

@@ -60,14 +60,14 @@ namespace Nethermind.Synchronization.FastBlocks
             
             long estimate = 80L;
             estimate += blockBody.Transactions.Length * 8L;
-            estimate += blockBody.Ommers.Length * 8L;
+            estimate += blockBody.Uncles.Length * 8L;
             
             foreach (Transaction transaction in blockBody.Transactions)
             {
                 estimate += EstimateSize(transaction);
             }
             
-            foreach (BlockHeader header in blockBody.Ommers)
+            foreach (BlockHeader header in blockBody.Uncles)
             {
                 estimate += EstimateSize(header);
             }

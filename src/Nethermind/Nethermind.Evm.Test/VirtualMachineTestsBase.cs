@@ -27,6 +27,7 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Synchronization.BeamSync;
@@ -91,7 +92,7 @@ namespace Nethermind.Evm.Test
         protected GethLikeTxTrace ExecuteAndTrace(params byte[] code)
         {
             GethLikeTxTracer tracer = new(GethTraceOptions.Default);
-            (var block, var transaction) = PrepareTx(BlockNumber, 100000, code);
+            (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code);
             _processor.Execute(transaction, block.Header, tracer);
             return tracer.BuildResult();
         }
@@ -99,14 +100,14 @@ namespace Nethermind.Evm.Test
         protected GethLikeTxTrace ExecuteAndTrace(long blockNumber, long gasLimit, params byte[] code)
         {
             GethLikeTxTracer tracer = new(GethTraceOptions.Default);
-            (var block, var transaction) = PrepareTx(blockNumber, gasLimit, code);
+            (Block block, Transaction transaction) = PrepareTx(blockNumber, gasLimit, code);
             _processor.Execute(transaction, block.Header, tracer);
             return tracer.BuildResult();
         }
 
         protected TestAllTracerWithOutput Execute(params byte[] code)
         {
-            (var block, var transaction) = PrepareTx(BlockNumber, 100000, code);
+            (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code);
             TestAllTracerWithOutput tracer = CreateTracer();
             _processor.Execute(transaction, block.Header, tracer);
             return tracer;
@@ -116,7 +117,7 @@ namespace Nethermind.Evm.Test
 
         protected T Execute<T>(T tracer, params byte[] code) where T : ITxTracer
         {
-            (var block, var transaction) = PrepareTx(BlockNumber, 100000, code);
+            (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code);
             _processor.Execute(transaction, block.Header, tracer);
             return tracer;
         }

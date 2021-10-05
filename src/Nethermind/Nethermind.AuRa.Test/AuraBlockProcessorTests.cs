@@ -25,15 +25,16 @@ using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
-using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -44,22 +45,7 @@ namespace Nethermind.AuRa.Test
         [Test]
         public void Prepared_block_contains_author_field()
         {
-            IDb stateDb = new MemDb();
-            IDb codeDb = new MemDb();
-            TrieStore trieStore = new TrieStore(stateDb, LimboLogs.Instance);
-            IStateProvider stateProvider = new StateProvider(trieStore, codeDb, LimboLogs.Instance);
-            ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
-            AuRaBlockProcessor processor = new(
-                RinkebySpecProvider.Instance,
-                TestBlockValidator.AlwaysValid,
-                NoBlockRewards.Instance,
-                transactionProcessor,
-                stateProvider,
-                new StorageProvider(trieStore, stateProvider, LimboLogs.Instance),
-                Substitute.For<ITxPool>(),
-                NullReceiptStorage.Instance,
-                LimboLogs.Instance,
-                Substitute.For<IBlockTree>());
+            AuRaBlockProcessor processor = CreateProcessor();
 
             BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
             Block block = Build.A.Block.WithHeader(header).TestObject;
@@ -75,27 +61,11 @@ namespace Nethermind.AuRa.Test
         [Test]
         public void For_not_empty_block_tx_filter_should_be_called()
         {
-            IDb stateDb = new MemDb();
-            IDb codeDb = new MemDb();
-            TrieStore trieStore = new TrieStore(stateDb, LimboLogs.Instance);
-            IStateProvider stateProvider = new StateProvider(trieStore, codeDb, LimboLogs.Instance);
-            ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
-            var txFilter = Substitute.For<ITxFilter>();
-                txFilter
-                    .IsAllowed(Arg.Any<Transaction>(), Arg.Any<BlockHeader>())
+            ITxFilter txFilter = Substitute.For<ITxFilter>();
+            txFilter
+                .IsAllowed(Arg.Any<Transaction>(), Arg.Any<BlockHeader>())
                 .Returns((true, string.Empty));
-            AuRaBlockProcessor processor = new(
-                RinkebySpecProvider.Instance,
-                TestBlockValidator.AlwaysValid,
-                NoBlockRewards.Instance,
-                transactionProcessor,
-                stateProvider,
-                new StorageProvider(trieStore, stateProvider, LimboLogs.Instance),
-                Substitute.For<ITxPool>(),
-                NullReceiptStorage.Instance,
-                LimboLogs.Instance,
-                Substitute.For<IBlockTree>(),
-                txFilter);
+            AuRaBlockProcessor processor = CreateProcessor(txFilter);
 
             BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).WithNumber(3).TestObject;
             Transaction tx = Nethermind.Core.Test.Builders.Build.A.Transaction.WithData(new byte[] {0, 1})
@@ -107,6 +77,44 @@ namespace Nethermind.AuRa.Test
                 ProcessingOptions.None,
                 NullBlockTracer.Instance);
             txFilter.Received().IsAllowed(Arg.Any<Transaction>(), Arg.Any<BlockHeader>());
+        }
+        
+        [Test]
+        public void For_normal_processing_it_should_not_fail_with_gas_remaining_rules()
+        {
+            AuRaBlockProcessor processor = CreateProcessor();
+            int gasLimit = 10000000;
+            BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).WithNumber(3).TestObject;
+            Transaction tx = Nethermind.Core.Test.Builders.Build.A.Transaction.WithData(new byte[] {0, 1})
+                .SignedAndResolved().WithChainId(105).WithGasPrice(0).WithValue(0).WithGasLimit(gasLimit + 1).TestObject;
+            Block block = Build.A.Block.WithHeader(header).WithTransactions(new Transaction[] { tx })
+                .WithGasLimit(gasLimit).TestObject;
+            Assert.DoesNotThrow(() => processor.Process(
+                Keccak.EmptyTreeHash,
+                new List<Block> {block},
+                ProcessingOptions.None,
+                NullBlockTracer.Instance));
+            
+        }
+
+        private AuRaBlockProcessor CreateProcessor(ITxFilter txFilter = null)
+        {
+            IDb stateDb = new MemDb();
+            IDb codeDb = new MemDb();
+            TrieStore trieStore = new(stateDb, LimboLogs.Instance);
+            IStateProvider stateProvider = new StateProvider(trieStore, codeDb, LimboLogs.Instance);
+            ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
+            return new AuRaBlockProcessor(
+                RinkebySpecProvider.Instance,
+                TestBlockValidator.AlwaysValid,
+                NoBlockRewards.Instance,
+                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
+                stateProvider,
+                new StorageProvider(trieStore, stateProvider, LimboLogs.Instance),
+                NullReceiptStorage.Instance,
+                LimboLogs.Instance,
+                Substitute.For<IBlockTree>(),
+                txFilter);
         }
     }
 }

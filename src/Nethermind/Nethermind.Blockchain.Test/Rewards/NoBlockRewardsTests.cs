@@ -26,7 +26,7 @@ namespace Nethermind.Blockchain.Test.Rewards
         [Test]
         public void No_rewards()
         {
-            Block block = Build.A.Block.WithNumber(10).WithOmmers(Build.A.Block.WithNumber(9).TestObject).TestObject;
+            Block block = Build.A.Block.WithNumber(10).WithUncles(Build.A.Block.WithNumber(9).TestObject).TestObject;
             NoBlockRewards calculator = NoBlockRewards.Instance;
             var rewards = calculator.CalculateRewards(block);
             Assert.IsEmpty(rewards);

@@ -44,6 +44,7 @@ using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Stats;
 using Nethermind.Db.Blooms;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Trie.Pruning;
@@ -291,9 +292,9 @@ namespace Nethermind.Synchronization.Test
             Always sealValidator = Always.Valid;
             HeaderValidator headerValidator = new(tree, sealValidator, specProvider, logManager);
             Always txValidator = Always.Valid;
-            OmmersValidator ommersValidator = new(tree, headerValidator, logManager);
+            UnclesValidator unclesValidator = new(tree, headerValidator, logManager);
             BlockValidator blockValidator =
-                new(txValidator, headerValidator, ommersValidator, specProvider, logManager);
+                new(txValidator, headerValidator, unclesValidator, specProvider, logManager);
 
             ISyncConfig syncConfig = _synchronizerType == SynchronizerType.Fast
                 ? SyncConfig.WithFastSync
@@ -307,7 +308,7 @@ namespace Nethermind.Synchronization.Test
                 specProvider,
                 blockValidator,
                 rewardCalculator,
-                txProcessor,
+                new BlockProcessor.BlockValidationTransactionsExecutor(txProcessor, stateProvider),
                 stateProvider,
                 storageProvider,
                 receiptStorage,
@@ -331,7 +332,7 @@ namespace Nethermind.Synchronization.Test
                 specProvider,
                 blockValidator,
                 rewardCalculator,
-                devTxProcessor,
+                new BlockProcessor.BlockProductionTransactionsExecutor(devTxProcessor, devState, devStorage, specProvider, logManager),
                 devState,
                 devStorage,
                 receiptStorage,
@@ -341,12 +342,12 @@ namespace Nethermind.Synchronization.Test
             BlockchainProcessor devChainProcessor = new(tree, devBlockProcessor, step, logManager,
                 BlockchainProcessor.Options.NoReceipts);
             ITxFilterPipeline txFilterPipeline = TxFilterPipelineBuilder.CreateStandardFilteringPipeline(LimboLogs.Instance, specProvider);
-            TxPoolTxSource transactionSelector = new(txPool, stateReader, specProvider, transactionComparerProvider, logManager, txFilterPipeline);
+            TxPoolTxSource transactionSelector = new(txPool, specProvider, transactionComparerProvider, logManager, txFilterPipeline);
             DevBlockProducer producer = new(
                 transactionSelector,
                 devChainProcessor,
-                stateProvider, tree,
-                processor,
+                stateProvider, 
+                tree,
                 new BuildBlocksRegularly(TimeSpan.FromMilliseconds(50)).IfPoolIsNotEmpty(txPool),
                 Timestamper.Default,
                 specProvider,

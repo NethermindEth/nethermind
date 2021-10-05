@@ -21,19 +21,19 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 
 namespace Nethermind.Consensus.AuRa
 {
-    public class AuRaBlockProducer : LoopBlockProducerBase
+    public class AuRaBlockProducer : BlockProducerBase
     {
         private readonly IAuRaStepCalculator _auRaStepCalculator;
         private readonly IReportingValidator _reportingValidator;
@@ -41,10 +41,10 @@ namespace Nethermind.Consensus.AuRa
 
         public AuRaBlockProducer(ITxSource txSource,
             IBlockchainProcessor processor,
+            IBlockProductionTrigger blockProductionTrigger,
             IStateProvider stateProvider,
             ISealer sealer,
             IBlockTree blockTree,
-            IBlockProcessingQueue blockProcessingQueue,
             ITimestamper timestamper,
             IAuRaStepCalculator auRaStepCalculator,
             IReportingValidator reportingValidator,
@@ -53,32 +53,23 @@ namespace Nethermind.Consensus.AuRa
             ISpecProvider specProvider,
             ILogManager logManager) 
             : base(
-                new ValidatedTxSource(txSource, logManager),
+                txSource,
                 processor,
                 sealer,
                 blockTree,
-                blockProcessingQueue,
+                blockProductionTrigger,
                 stateProvider,
-                timestamper,
                 gasLimitCalculator,
+                timestamper,
                 specProvider,
                 logManager,
-                "AuRa")
+                new AuraDifficultyCalculator(auRaStepCalculator))
         {
             _auRaStepCalculator = auRaStepCalculator ?? throw new ArgumentNullException(nameof(auRaStepCalculator));
             _reportingValidator = reportingValidator ?? throw new ArgumentNullException(nameof(reportingValidator));
             _config = config ?? throw new ArgumentNullException(nameof(config));
-            _canProduce = _config.AllowAuRaPrivateChains ? 1 : 0;
         }
-        
-        protected override async ValueTask ProducerLoopStep(CancellationToken cancellationToken)
-        {
-            await base.ProducerLoopStep(cancellationToken);
-            var timeToNextStep = _auRaStepCalculator.TimeToNextStep;
-            if (Logger.IsDebug) Logger.Debug($"Waiting {timeToNextStep} for next AuRa step.");
-            await TaskExt.DelayAtLeast(timeToNextStep, cancellationToken);
-        }
-        
+
         protected override Block PrepareBlock(BlockHeader parent)
         {
             var block = base.PrepareBlock(parent);
@@ -86,26 +77,12 @@ namespace Nethermind.Consensus.AuRa
             return block;
         }
 
-        protected override UInt256 CalculateDifficulty(BlockHeader parent, UInt256 timestamp) 
-            => AuraDifficultyCalculator.CalculateDifficulty(parent.AuRaStep.Value, _auRaStepCalculator.CurrentStep);
-        
-        protected override Block? ProcessPreparedBlock(Block block)
+        protected override Block? ProcessPreparedBlock(Block block, IBlockTracer? blockTracer)
         {
-            Block? processedBlock = base.ProcessPreparedBlock(block);
+            Block? processedBlock = base.ProcessPreparedBlock(block, blockTracer);
 
             if (processedBlock is not null)
             {
-                // We need to check if we are within gas limit. We cannot calculate this in advance because:
-                // a) GasLimit can come from contract
-                // b) Some transactions that call contracts can be added to block and we don't know how much gas they will use.
-                if (processedBlock.GasUsed > processedBlock.GasLimit)
-                {
-                    if (Logger.IsError)
-                        Logger.Error(
-                            $"Block produced used {processedBlock.GasUsed} gas and exceeded gas limit {processedBlock.GasLimit}.");
-                    return null;
-                }
-
                 // If force sealing is not on and we didn't pick up any transactions, then we should skip producing block
                 if (processedBlock.Transactions.Length == 0)
                 {
@@ -129,53 +106,6 @@ namespace Nethermind.Consensus.AuRa
             // if (block.Number < EmptyStepsTransition)
             _reportingValidator.TryReportSkipped(block.Header, parent);
             return base.SealBlock(block, parent, token);
-        }
-        
-        // This is for debugging.
-        private class ValidatedTxSource : ITxSource
-        {
-            private readonly ITxSource _innerSource;
-            private readonly ILogger _logger;
-            private readonly Dictionary<(Address, UInt256), Transaction> _senderNonces =
-                new Dictionary<(Address, UInt256), Transaction>(250);
-
-            public ValidatedTxSource(ITxSource innerSource, ILogManager logManager)
-            {
-                _innerSource = innerSource;
-                _logger = logManager.GetClassLogger();
-                if (_logger.IsDebug) _logger.Debug($"Transaction sources used when building blocks: {this}");
-            }
-
-            public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
-            {
-                int index = 0;
-                _senderNonces.Clear();
-                
-                foreach (var tx in _innerSource.GetTransactions(parent, gasLimit))
-                {
-                    var senderNonce = (SenderAddress: tx.SenderAddress, tx.Nonce);
-                    if (_senderNonces.TryGetValue(senderNonce, out var prevTx))
-                    {
-                        if (_logger.IsError)
-                            _logger.Error($"Found transactions with same Sender and Nonce when producing block {parent.Number + 1}. " + 
-                                          $"Tx1: {prevTx.Hash}, from {prevTx.SenderAddress} to {prevTx.To} with nonce {prevTx.Nonce}. " + 
-                                          $"Tx2: {tx.Hash}, from {tx.SenderAddress} to {tx.To} with nonce {tx.Nonce}. " + 
-                                          "Skipping second one.");
-                    }
-                    else
-                    {
-                        _senderNonces.Add(senderNonce, tx);
-                        if (_logger.IsDebug)
-                            _logger.Debug(
-                                $"Adding transaction {index++}: {tx.ToShortString()} to block {parent.Number + 1}.");
-                        yield return tx;
-                    }
-                }
-                
-                _senderNonces.Clear();
-            }
-            
-            public override string ToString() => $"{nameof(ValidatedTxSource)} [ {_innerSource} ]";
         }
     }
 }

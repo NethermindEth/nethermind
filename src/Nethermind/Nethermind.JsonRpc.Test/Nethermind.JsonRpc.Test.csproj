@@ -3,6 +3,7 @@
     <TargetFramework>net5.0</TargetFramework>
     <IsPackable>false</IsPackable>
     <LangVersion>9.0</LangVersion>
+    <Nullable>enable</Nullable>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
     <WarningsAsErrors />
@@ -27,5 +28,6 @@
       <Name>Nethermind.JsonRpc</Name>
     </ProjectReference>
     <ProjectReference Include="..\Nethermind.KeyStore\Nethermind.KeyStore.csproj" />
+    <ProjectReference Include="..\Nethermind.Specs.Test\Nethermind.Specs.Test.csproj" />
   </ItemGroup>
 </Project>

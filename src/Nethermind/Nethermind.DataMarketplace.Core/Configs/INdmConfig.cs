@@ -85,58 +85,58 @@ namespace Nethermind.DataMarketplace.Core.Configs
         uint CancelTransactionGasPricePercentageMultiplier { get; set; }
         [ConfigItem(Description = "If 'true', data stream results can be fetched via 'ndm_pullData('depositId')' method.", DefaultValue = "false")]
         bool JsonRpcDataChannelEnabled { get; }
-        [ConfigItem(HiddenFromDocs = true)]
+        [ConfigItem(DisabledForCli = true, HiddenFromDocs = true)]
         ulong DepositsDbWriteBufferSize { get; set; }
-        [ConfigItem(HiddenFromDocs = true)]
+        [ConfigItem(DisabledForCli = true, HiddenFromDocs = true)]
         uint DepositsDbWriteBufferNumber { get; set; }
-        [ConfigItem(HiddenFromDocs = true)]
+        [ConfigItem(DisabledForCli = true, HiddenFromDocs = true)]
         ulong DepositsDbBlockCacheSize { get; set; }
-        [ConfigItem(HiddenFromDocs = true)]
+        [ConfigItem(DisabledForCli = true, HiddenFromDocs = true)]
         bool DepositsDbCacheIndexAndFilterBlocks { get; set; }
 
-        [ConfigItem(HiddenFromDocs = true)]
+        [ConfigItem(DisabledForCli = true, HiddenFromDocs = true)]
         ulong ConsumerSessionsDbWriteBufferSize { get; set; }
-        [ConfigItem(HiddenFromDocs = true)]
+        [ConfigItem(DisabledForCli = true, HiddenFromDocs = true)]
         uint ConsumerSessionsDbWriteBufferNumber { get; set; }
-        [ConfigItem(HiddenFromDocs = true)]
+        [ConfigItem(DisabledForCli = true, HiddenFromDocs = true)]
         ulong ConsumerSessionsDbBlockCacheSize { get; set; }
-        [ConfigItem(HiddenFromDocs = true)]
+        [ConfigItem(DisabledForCli = true, HiddenFromDocs = true)]
         bool ConsumerSessionsDbCacheIndexAndFilterBlocks { get; set; }
 
-        [ConfigItem(HiddenFromDocs = true)]
+        [ConfigItem(DisabledForCli = true, HiddenFromDocs = true)]
         ulong ConsumerReceiptsDbWriteBufferSize { get; set; }
-        [ConfigItem(HiddenFromDocs = true)]
+        [ConfigItem(DisabledForCli = true, HiddenFromDocs = true)]
         uint ConsumerReceiptsDbWriteBufferNumber { get; set; }
-        [ConfigItem(HiddenFromDocs = true)]
+        [ConfigItem(DisabledForCli = true, HiddenFromDocs = true)]
         ulong ConsumerReceiptsDbBlockCacheSize { get; set; }
-        [ConfigItem(HiddenFromDocs = true)]
+        [ConfigItem(DisabledForCli = true, HiddenFromDocs = true)]
         bool ConsumerReceiptsDbCacheIndexAndFilterBlocks { get; set; }
 
-        [ConfigItem(HiddenFromDocs = true)]
+        [ConfigItem(DisabledForCli = true, HiddenFromDocs = true)]
         ulong ConsumerDepositApprovalsDbWriteBufferSize { get; set; }
-        [ConfigItem(HiddenFromDocs = true)]
+        [ConfigItem(DisabledForCli = true, HiddenFromDocs = true)]
         uint ConsumerDepositApprovalsDbWriteBufferNumber { get; set; }
-        [ConfigItem(HiddenFromDocs = true)]
+        [ConfigItem(DisabledForCli = true, HiddenFromDocs = true)]
         ulong ConsumerDepositApprovalsDbBlockCacheSize { get; set; }
-        [ConfigItem(HiddenFromDocs = true)]
+        [ConfigItem(DisabledForCli = true, HiddenFromDocs = true)]
         bool ConsumerDepositApprovalsDbCacheIndexAndFilterBlocks { get; set; }
 
-        [ConfigItem(HiddenFromDocs = true)]
+        [ConfigItem(DisabledForCli = true, HiddenFromDocs = true)]
         ulong ConfigsDbWriteBufferSize { get; set; }
-        [ConfigItem(HiddenFromDocs = true)]
+        [ConfigItem(DisabledForCli = true, HiddenFromDocs = true)]
         uint ConfigsDbWriteBufferNumber { get; set; }
-        [ConfigItem(HiddenFromDocs = true)]
+        [ConfigItem(DisabledForCli = true, HiddenFromDocs = true)]
         ulong ConfigsDbBlockCacheSize { get; set; }
-        [ConfigItem(HiddenFromDocs = true)]
+        [ConfigItem(DisabledForCli = true, HiddenFromDocs = true)]
         bool ConfigsDbCacheIndexAndFilterBlocks { get; set; }
 
-        [ConfigItem(HiddenFromDocs = true)]
+        [ConfigItem(DisabledForCli = true, HiddenFromDocs = true)]
         ulong EthRequestsDbWriteBufferSize { get; set; }
-        [ConfigItem(HiddenFromDocs = true)]
+        [ConfigItem(DisabledForCli = true, HiddenFromDocs = true)]
         uint EthRequestsDbWriteBufferNumber { get; set; }
-        [ConfigItem(HiddenFromDocs = true)]
+        [ConfigItem(DisabledForCli = true, HiddenFromDocs = true)]
         ulong EthRequestsDbBlockCacheSize { get; set; }
-        [ConfigItem(HiddenFromDocs = true)]
+        [ConfigItem(DisabledForCli = true, HiddenFromDocs = true)]
         bool EthRequestsDbCacheIndexAndFilterBlocks { get; set; }
     }
 }

@@ -37,7 +37,7 @@ namespace Nethermind.Blockchain.Test.Producers
     {
         public static class BadContract
         {
-            public static readonly AbiSignature Divide = new AbiSignature("divide"); // divide
+            public static readonly AbiSignature Divide = new("divide"); // divide
         }
         
         public static class BaseFeeTestScenario
@@ -63,7 +63,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 private async Task<ScenarioBuilder> CreateTestBlockchainAsync(long gasLimit)
                 {
                     await ExecuteAntecedentIfNeeded();
-                    SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(
+                    SingleReleaseSpecProvider spec = new(
                         new ReleaseSpec()
                         {
                             IsEip1559Enabled = _eip1559Enabled, Eip1559TransitionBlock = _eip1559TransitionBlock
@@ -94,7 +94,7 @@ namespace Nethermind.Blockchain.Test.Producers
                     await ExecuteAntecedentIfNeeded();
                     _contractAddress = ContractAddress.From(_address, 0L);
                     byte[] bytecode = await GetContractBytecode("BadContract");
-                    Transaction tx = new Transaction();
+                    Transaction tx = new();
                     tx.Value = 0;
                     tx.Data = bytecode;
                     tx.GasLimit = 1000000;
@@ -121,7 +121,7 @@ namespace Nethermind.Blockchain.Test.Producers
                     byte[] txData = _abiEncoder.Encode(
                         AbiEncodingStyle.IncludeSignature,
                         BadContract.Divide);
-                    Transaction tx = new Transaction();
+                    Transaction tx = new();
                     tx.Value = 0;
                     tx.Data = txData;
                     tx.To = _contractAddress;
@@ -240,7 +240,7 @@ namespace Nethermind.Blockchain.Test.Producers
 
             public static ScenarioBuilder GoesLikeThis()
             {
-                return new ScenarioBuilder();
+                return new();
             }
         }
 
