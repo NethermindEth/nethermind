@@ -15,34 +15,65 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
+using Timer = System.Timers.Timer;
 
 namespace Nethermind.Merge.Plugin.Handlers
 {
     public class PayloadStorage
     {
+        private readonly ITimestamper _timestamper;
+        private readonly IBlockTree _blockTree;
+        private readonly IManualBlockProductionTrigger _blockProductionTrigger;
+        private readonly IManualBlockProductionTrigger _emptyBlockProductionTrigger;
         private readonly object _locker = new();
         private uint _currentPayloadId = 0;
+        private ulong _cleanupDelay = 12; // in seconds
+        private static readonly TimeSpan _timeout = TimeSpan.FromSeconds(12);
         // first BlockRequestResult is empty (without txs), second one is the ideal one
-        private readonly ConcurrentDictionary<ulong, BlockAndRandom> _payloadStorage =
+        private readonly ConcurrentDictionary<ulong, BlockTaskAndRandom> _payloadStorage =
             new();
 
-        public async Task AddPayload(ulong payloadId, Keccak random, Block? emptyBlock, Task<Block?> blockTask)
+        public PayloadStorage(ITimestamper timestamper, IBlockTree blockTree, IManualBlockProductionTrigger blockProductionTrigger, IManualBlockProductionTrigger emptyBlockProductionTrigger)
         {
-            BlockAndRandom emptyBlockTuple = new (emptyBlock, random);
-            _payloadStorage.TryAdd(payloadId, emptyBlockTuple);
-            Block? idealBlock = await blockTask;
-            _payloadStorage.TryUpdate(payloadId, new (idealBlock, random), emptyBlockTuple);
+            _timestamper = timestamper;
+            _blockTree = blockTree;
+            _blockProductionTrigger = blockProductionTrigger;
+            _emptyBlockProductionTrigger = emptyBlockProductionTrigger;
         }
 
-        public BlockAndRandom? GetPayload(ulong payloadId)
+        public async Task GeneratePayload(ulong payloadId, Keccak random, BlockHeader parentHeader, Address blockAuthor, UInt256 timestamp)
+        {
+            using CancellationTokenSource cts = new(_timeout);
+
+            Task<Block?> emptyBlock = _emptyBlockProductionTrigger.BuildBlock(parentHeader, cts.Token, null, blockAuthor, timestamp);
+            Task<Block?> idealBlock = _blockProductionTrigger.BuildBlock(parentHeader, cts.Token, null, blockAuthor, timestamp);
+            
+            BlockTaskAndRandom emptyBlockTaskTuple = new(emptyBlock, random);
+            bool addedEmptyBlock = _payloadStorage.TryAdd(payloadId, emptyBlockTaskTuple);
+
+            BlockTaskAndRandom idealBlockTaskTuple = new(idealBlock, random);
+            bool replacedWithBetterBlock = _payloadStorage.TryUpdate(payloadId, idealBlockTaskTuple, emptyBlockTaskTuple);
+            
+            // remove after 12 seconds, it will not be needed
+            await Task.Delay(TimeSpan.FromSeconds(12), cts.Token);
+            CleanupOldPayload(payloadId);
+        }
+
+        public BlockTaskAndRandom? GetPayload(ulong payloadId)
         {
             if (_payloadStorage.ContainsKey(payloadId))
             {
-                _payloadStorage.TryRemove(payloadId, out BlockAndRandom? payload);
+                _payloadStorage.TryRemove(payloadId, out BlockTaskAndRandom? payload);
                 return payload;
             }
 
@@ -64,6 +95,14 @@ namespace Nethermind.Merge.Plugin.Handlers
                 uint rentedPayloadId = _currentPayloadId;
                 ++_currentPayloadId;
                 return rentedPayloadId;
+            }
+        }
+
+        public void CleanupOldPayload(ulong payloadId)
+        {
+            if (_payloadStorage.ContainsKey(payloadId))
+            {
+                _payloadStorage.Remove(payloadId, out _);
             }
         }
     }
