@@ -70,10 +70,12 @@ namespace Nethermind.Merge.Plugin.Handlers
         {
             using CancellationTokenSource cts = new(_timeout);
 
-            Task<Block?> emptyBlock = _emptyBlockProductionTrigger.BuildBlock(parentHeader, cts.Token, null, blockAuthor, timestamp)
-                .ContinueWith((x) => Process(x.Result, parentHeader), cts.Token);
-            Task<Block?> idealBlock = _blockProductionTrigger.BuildBlock(parentHeader, cts.Token, null, blockAuthor, timestamp)
-                .ContinueWith((x) => Process(x.Result, parentHeader), cts.Token);
+            Task<Block?> emptyBlock =
+                _emptyBlockProductionTrigger.BuildBlock(parentHeader, cts.Token, null, blockAuthor, timestamp);
+             //   .ContinueWith((x) => Process(x.Result, parentHeader), cts.Token); // commit when mergemock will be fixed
+             Task<Block?> idealBlock =
+                 _blockProductionTrigger.BuildBlock(parentHeader, cts.Token, null, blockAuthor, timestamp);
+           //     .ContinueWith((x) => Process(x.Result, parentHeader), cts.Token); commit when mergemock will be fixed
             
             BlockTaskAndRandom emptyBlockTaskTuple = new(emptyBlock, random);
             bool _ = _payloadStorage.TryAdd(payloadId, emptyBlockTaskTuple);
@@ -84,7 +86,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             
             // remove after 12 seconds, it will not be needed
             await Task.Delay(TimeSpan.FromSeconds(12), cts.Token);
-            CleanupOldPayload(payloadId);
+          //  CleanupOldPayload(payloadId);
         }
 
         public BlockTaskAndRandom? GetPayload(ulong payloadId)

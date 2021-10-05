@@ -31,7 +31,7 @@ using Nethermind.Merge.Plugin.Handlers;
 
 namespace Nethermind.Merge.Plugin
 {
-    public partial class MergePlugin : IConsensusPlugin
+    public partial class MergePlugin : IConsensusWrapperPlugin
     {
         private INethermindApi _api = null!;
         private ILogger _logger = null!;
@@ -64,9 +64,8 @@ namespace Nethermind.Merge.Plugin
                 _poSSwitcher = new PoSSwitcher(_api.LogManager, _mergeConfig, _api.DbProvider.GetDb<IDb>(DbNames.Metadata));
                 _api.EngineSigner = new Eth2Signer(new Address(_mergeConfig.BlockAuthorAccount));
                 _api.RewardCalculatorSource =
-                    new MergeRewardCalculatorSource(_poSSwitcher, _api.RewardCalculatorSource ?? NoBlockRewards.Instance);
-                _api.HealthHintService =
-                    new MergeHealthHintService(_api.HealthHintService, _poSSwitcher);
+                    new MergeRewardCalculatorSource(_poSSwitcher,
+                        _api.RewardCalculatorSource ?? NoBlockRewards.Instance);
                 _api.SealEngine = new MergeSealEngine(_api.SealEngine, _poSSwitcher, _api.EngineSigner);
                 _api.GossipPolicy = new MergeGossipPolicy(_api.GossipPolicy, _poSSwitcher);
             }
@@ -76,6 +75,9 @@ namespace Nethermind.Merge.Plugin
 
         public Task InitNetworkProtocol()
         {
+            _api.HealthHintService =
+                new MergeHealthHintService(_api.HealthHintService, _poSSwitcher);
+            
             if (_mergeConfig.Enabled)
             {
                 ISyncConfig syncConfig = _api.Config<ISyncConfig>();
@@ -84,7 +86,7 @@ namespace Nethermind.Merge.Plugin
                 _blockFinalizationManager = new ManualBlockFinalizationManager();
                 _api.FinalizationManager = _blockFinalizationManager;
             }
-
+            
             return Task.CompletedTask;
         }
         
@@ -98,10 +100,8 @@ namespace Nethermind.Merge.Plugin
                 if (_api.StateProvider is null) throw new ArgumentNullException(nameof(_api.StateProvider));
                 if (_api.StateProvider is null) throw new ArgumentNullException(nameof(_api.StateProvider));
 
-                await _api.BlockchainProcessor.StopAsync(true);
-
-                _api.Config<IJsonRpcConfig>().EnableModules(ModuleType.Engine);
                 IInitConfig? initConfig = _api.Config<IInitConfig>();
+                _api.Config<IJsonRpcConfig>().EnableModules(ModuleType.Engine);
 
                 PayloadStorage payloadStorage = new(_defaultBlockProductionTrigger, _emptyBlockProductionTrigger, _api.StateProvider, _api.BlockchainProcessor, initConfig);
                 PayloadManager payloadManager = new(_api.BlockTree);

@@ -105,8 +105,6 @@ namespace Nethermind.Merge.Plugin.Handlers
                     MergeErrorCodes.UnknownHeader);
             }
 
-            _timestamper.Set(DateTimeOffset.FromUnixTimeSeconds((long) request.Timestamp).UtcDateTime);
-
             uint payloadId = _payloadStorage.RentNextPayloadId();
             
             

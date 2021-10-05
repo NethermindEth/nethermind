@@ -177,7 +177,6 @@ namespace Nethermind.Merge.Plugin.Handlers
             Keccak currentStateRoot = _stateProvider.ResetStateTo(parent.StateRoot!);
             try
             {
-                _preprocessor.RecoverData(block);
                 processedBlock = _processor.Process(block, GetProcessingOptions(), NullBlockTracer.Instance);
                 if (processedBlock == null)
                 {
