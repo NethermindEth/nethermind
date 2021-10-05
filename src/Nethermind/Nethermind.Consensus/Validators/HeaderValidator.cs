@@ -160,13 +160,15 @@ namespace Nethermind.Consensus.Validators
 
         protected virtual bool ValidateTotalDifficulty(BlockHeader header, BlockHeader parent, bool totalDifficultyCorrect)
         {
-            if (parent.TotalDifficulty + header.Difficulty != header.TotalDifficulty)
-            {
-                if (_logger.IsDebug) _logger.Debug($"Invalid total difficulty");
-                totalDifficultyCorrect = false;
-            }
-
-            return totalDifficultyCorrect;
+            return true;
+            
+            // if (parent.TotalDifficulty + header.Difficulty != header.TotalDifficulty)
+            // {
+            //     if (_logger.IsDebug) _logger.Debug($"Invalid total difficulty");
+            //     totalDifficultyCorrect = false;
+            // }
+            //
+            // return totalDifficultyCorrect;
         }
 
         protected virtual bool ValidateGasLimitRange(BlockHeader header, BlockHeader parent, IReleaseSpec spec)

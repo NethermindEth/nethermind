@@ -202,7 +202,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
         //     _readOnlyTransactionProcessorSource ??= new ReadOnlyTxProcessorSource(
         //         _api.DbProvider, _api.ReadOnlyTrieStore, _api.BlockTree, _api.SpecProvider, _api.LogManager);
 
-        protected override HeaderValidator CreateHeaderValidator()
+        protected override IHeaderValidator CreateHeaderValidator()
         {
             if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
             var blockGasLimitContractTransitions = _api.ChainSpec.AuRa.BlockGasLimitContractTransitions;
