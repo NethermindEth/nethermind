@@ -32,6 +32,10 @@ namespace Nethermind.Mev.Data
             RelaySignature = relaySignature;
             RevertingTxHashes = revertingTxHashes ?? Array.Empty<Keccak>();
             Hash = GetHash(this);
+            for (int i = 0; i < transactions.Count; i++)
+            {
+                transactions[i].BundleHash = Hash;
+            }
         }
 
         public MevMegabundle(long blockNumber, IReadOnlyList<BundleTransaction> transactions,

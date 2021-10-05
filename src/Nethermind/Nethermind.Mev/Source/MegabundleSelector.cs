@@ -39,8 +39,8 @@ namespace Nethermind.Mev.Source
         {
             IEnumerable<SimulatedMevBundle> simulatedBundles = await _simulatedBundleSource.GetMegabundles(parent, timestamp, gasLimit, token);
             return simulatedBundles
-                .OrderByDescending(bundle => bundle.BundleAdjustedGasPrice)
-                .ThenBy(bundle => bundle.Bundle.SequenceNumber)
+                .OrderByDescending(s => s.BundleAdjustedGasPrice)
+                .ThenBy(s => s.Bundle.SequenceNumber)
                 .Take(1)
                 .Select(s => s.Bundle);
         }

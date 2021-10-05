@@ -401,6 +401,35 @@ namespace Nethermind.Mev.Test
         }
         
         [Test]
+        public async Task Should_pick_megabundle_if_better_than_pool_or_bundle_tx()
+        {
+            var chain = await CreateChain(1, relayAddresses: new []{ TestItem.AddressC });
+            chain.GasLimitCalculator.GasLimit = GasCostOf.Transaction;
+
+            Transaction poolTx = Build.A.Transaction
+                .WithGasLimit(GasCostOf.Transaction)
+                .WithGasPrice(150ul)
+                .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+            
+            BundleTransaction bundleTx = Build.A.TypedTransaction<BundleTransaction>()
+                .WithGasLimit(GasCostOf.Transaction)
+                .WithGasPrice(200ul)
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+
+            BundleTransaction megabundleTx = Build.A.TypedTransaction<BundleTransaction>()
+                .WithGasLimit(GasCostOf.Transaction)
+                .WithGasPrice(250ul)
+                .SignedAndResolved(TestItem.PrivateKeyC).TestObject;
+
+            SuccessfullySendBundle(chain, 1, bundleTx);
+            SuccessfullySendMegabundle(chain, 1, TestItem.PrivateKeyC, megabundleTx);
+
+            await chain.AddBlock(true, poolTx);
+
+            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] {megabundleTx}));
+        }
+        
+        [Test]
         public async Task Should_pick_bundle_if_better_than_pool_tx_in_London()
         {
             var chain = await CreateChain(1, London.Instance);
@@ -427,6 +456,44 @@ namespace Nethermind.Mev.Test
             await chain.AddBlock(true, poolTx);
 
             GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { bundleTx }));
+        }
+        
+        [Test]
+        public async Task Should_pick_megabundle_if_better_than_pool_or_bundle_tx_in_London()
+        {
+            var chain = await CreateChain(1, London.Instance, relayAddresses: new []{ TestItem.AddressA });
+            chain.GasLimitCalculator.GasLimit = GasCostOf.Transaction;
+
+            Transaction poolTx = Build.A.Transaction
+                .WithType(TxType.EIP1559)
+                .WithGasLimit(GasCostOf.Transaction)
+                .WithMaxFeePerGas(100ul)
+                .WithMaxPriorityFeePerGas(5ul)
+                .WithChainId(chain.BlockTree.ChainId)
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            
+            BundleTransaction bundleTx = Build.A.TypedTransaction<BundleTransaction>()
+                .WithType(TxType.EIP1559)
+                .WithGasLimit(GasCostOf.Transaction)
+                .WithMaxFeePerGas(100ul)
+                .WithMaxPriorityFeePerGas(10ul)
+                .WithChainId(chain.BlockTree.ChainId)
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            
+            BundleTransaction megabundleTx = Build.A.TypedTransaction<BundleTransaction>()
+                .WithType(TxType.EIP1559)
+                .WithGasLimit(GasCostOf.Transaction)
+                .WithMaxFeePerGas(100ul)
+                .WithMaxPriorityFeePerGas(15ul)
+                .WithChainId(chain.BlockTree.ChainId)
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+
+            SuccessfullySendBundle(chain, 1, bundleTx);
+            SuccessfullySendMegabundle(chain, 1, TestItem.PrivateKeyA, megabundleTx);
+
+            await chain.AddBlock(true, poolTx);
+
+            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { megabundleTx }));
         }
 
         [Test]
