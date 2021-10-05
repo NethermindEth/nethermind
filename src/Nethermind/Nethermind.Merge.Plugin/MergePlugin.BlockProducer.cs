@@ -16,7 +16,6 @@
 // 
 
 using System;
-using System.Security.Policy;
 using System.Threading.Tasks;
 using Nethermind.Api.Extensions;
 using Nethermind.Consensus;

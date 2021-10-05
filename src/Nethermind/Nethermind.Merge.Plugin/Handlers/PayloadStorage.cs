@@ -25,6 +25,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -77,19 +78,26 @@ namespace Nethermind.Merge.Plugin.Handlers
 
             Task<Block?> emptyBlock =
                 _emptyBlockProductionTrigger.BuildBlock(parentHeader, cts.Token, null, blockAuthor, timestamp)
-                    .ContinueWith(LogProductionResult, cts.Token);
+                    .ContinueWith(t =>
+                    {
+                        t.Result.Header.StateRoot = parentHeader.StateRoot;
+                        t.Result.Header.Hash = t.Result.CalculateHash();
+                        return  LogProductionResult(t);
+                        
+                    }, cts.Token);
+                  //  .ContinueWith(LogProductionResult, cts.Token);
              //   .ContinueWith((x) => Process(x.Result, parentHeader), cts.Token); // commit when mergemock will be fixed
-             Task<Block?> idealBlock =
-                 _blockProductionTrigger.BuildBlock(parentHeader, cts.Token, null, blockAuthor, timestamp)
-                    .ContinueWith(LogProductionResult, cts.Token);
+             // Task<Block?> idealBlock =
+             //     _blockProductionTrigger.BuildBlock(parentHeader, cts.Token, null, blockAuthor, timestamp)
+             //        .ContinueWith(LogProductionResult, cts.Token);
            //     .ContinueWith((x) => Process(x.Result, parentHeader), cts.Token); commit when mergemock will be fixed
             
             BlockTaskAndRandom emptyBlockTaskTuple = new(emptyBlock, random);
             bool _ = _payloadStorage.TryAdd(payloadId, emptyBlockTaskTuple);
             
-            BlockTaskAndRandom idealBlockTaskTuple = new(idealBlock, random);
-            await idealBlock;
-            bool __ = _payloadStorage.TryUpdate(payloadId, idealBlockTaskTuple, emptyBlockTaskTuple);
+            // BlockTaskAndRandom idealBlockTaskTuple = new(idealBlock, random);
+            // await idealBlock;
+           // bool __ = _payloadStorage.TryUpdate(payloadId, idealBlockTaskTuple, emptyBlockTaskTuple);
             
             // remove after 12 seconds, it will not be needed
             await Task.Delay(TimeSpan.FromSeconds(12), cts.Token);

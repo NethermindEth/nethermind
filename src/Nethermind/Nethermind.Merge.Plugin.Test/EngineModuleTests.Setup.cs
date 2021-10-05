@@ -71,7 +71,7 @@ namespace Nethermind.Merge.Plugin.Test
                 GenesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.Genesis
                     .WithTimestamp(UInt256.One);
                 Signer = new Eth2Signer(MinerAddress);
-                PoSSwitcher = new PoSSwitcher(LogManager, new MergeConfig() { Enabled = true }, new MemDb());
+                PoSSwitcher = new PoSSwitcher(LogManager, new MergeConfig() { Enabled = true }, new MemDb(), BlockTree);
                 SealEngine = new MergeSealEngine(Substitute.For<ISealEngine>(), PoSSwitcher, Signer);
                 BlockConfirmationManager = new BlockConfirmationManager();
             }
