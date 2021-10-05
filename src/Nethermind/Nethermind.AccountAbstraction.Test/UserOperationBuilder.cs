@@ -39,8 +39,9 @@ namespace Nethermind.AccountAbstraction.Test
                 InitCode = Bytes.Empty,
                 MaxFeePerGas = 1,
                 MaxPriorityFeePerGas = 1,
-                CallGas = 500_000,
-                VerificationGas = 500_000,
+                CallGas = 1_000_000,
+                VerificationGas = 1_000_000,
+                PreVerificationGas = 210000,
                 PaymasterData = Bytes.Empty,
                 AccessList = UserOperationAccessList.Empty
             };

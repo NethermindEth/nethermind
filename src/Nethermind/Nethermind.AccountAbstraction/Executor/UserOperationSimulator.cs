@@ -91,7 +91,7 @@ namespace Nethermind.AccountAbstraction.Executor
             
             _abiEncoder = new AbiEncoder();
 
-            using (StreamReader r = new StreamReader("Contracts/Singleton.json"))
+            using (StreamReader r = new StreamReader("Contracts/EntryPoint.json"))
             {
                 string json = r.ReadToEnd();
                 JObject obj = JObject.Parse(json);

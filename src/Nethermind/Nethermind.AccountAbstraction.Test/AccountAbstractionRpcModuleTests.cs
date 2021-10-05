@@ -61,7 +61,7 @@ namespace Nethermind.AccountAbstraction.Test
             
             public Contracts()
             {
-                SingletonAbi = LoadContract("TestContracts/Singleton.json");
+                SingletonAbi = LoadContract("TestContracts/EntryPoint.json");
                 SimpleWalletAbi = LoadContract("TestContracts/SimpleWallet.json");
                 TestCounterAbi = LoadContract("TestContracts/TestCounter.json");
                 TokenPaymasterAbi = LoadContract("TestContracts/TokenPaymaster.json");
@@ -127,7 +127,8 @@ namespace Nethermind.AccountAbstraction.Test
                 bool createMiscContract = miscContractCode is not null;
                 IList<Transaction> transactionsToInclude = new List<Transaction>();
 
-                Transaction singletonTx = Core.Test.Builders.Build.A.Transaction.WithCode(SingletonAbi.Bytecode!).WithGasLimit(6_000_000).WithNonce(0).WithValue(0).SignedAndResolved(ContractCreatorPrivateKey).TestObject;
+                byte[] singletonConstructorBytes = Bytes.Concat(SingletonAbi.Bytecode!, _encoder.Encode(AbiEncodingStyle.None, SingletonAbi.Constructors[0].GetCallInfo().Signature, 0, 2));
+                Transaction singletonTx = Core.Test.Builders.Build.A.Transaction.WithCode(singletonConstructorBytes).WithGasLimit(6_000_000).WithNonce(0).WithValue(0).SignedAndResolved(ContractCreatorPrivateKey).TestObject;
                 await chain.AddBlock(true, singletonTx);
                 TxReceipt createSingletonTxReceipt = chain.Bridge.GetReceipt(singletonTx.Hash!);
                 createSingletonTxReceipt.ContractAddress.Should().NotBeNull($"Contract transaction {singletonTx.Hash!} was not deployed.");
@@ -168,7 +169,7 @@ namespace Nethermind.AccountAbstraction.Test
 
             byte[] countCalldata = _encoder.Encode(AbiEncodingStyle.IncludeSignature, _contracts.TestCounterAbi.Functions["count"].GetCallInfo().Signature);
             byte[] execCounterCount = _encoder.Encode(AbiEncodingStyle.IncludeSignature, _contracts.SimpleWalletAbi.Functions["exec"].GetCallInfo().Signature, counterAddress, countCalldata);
-            byte[] execCounterCountFromSingleton = _encoder.Encode(AbiEncodingStyle.IncludeSignature, _contracts.SimpleWalletAbi.Functions["execFromSingleton"].GetCallInfo().Signature, execCounterCount);
+            byte[] execCounterCountFromSingleton = _encoder.Encode(AbiEncodingStyle.IncludeSignature, _contracts.SimpleWalletAbi.Functions["execFromEntryPoint"].GetCallInfo().Signature, execCounterCount);
             
             UserOperation op = Build.A.UserOperation
                 .WithTarget(walletAddress!)
@@ -178,7 +179,7 @@ namespace Nethermind.AccountAbstraction.Test
 
             Transaction fundTransaction = Core.Test.Builders.Build.A.Transaction
                 .WithTo(walletAddress!)
-                .WithGasLimit(100_000)
+                .WithGasLimit(1_000_000)
                 .WithGasPrice(2)
                 .WithValue(1.Ether())
                 .WithNonce(0)
@@ -237,7 +238,7 @@ namespace Nethermind.AccountAbstraction.Test
             
             byte[] countCalldata = _encoder.Encode(AbiEncodingStyle.IncludeSignature, _contracts.TestCounterAbi.Functions["count"].GetCallInfo().Signature);
             byte[] execCounterCount = _encoder.Encode(AbiEncodingStyle.IncludeSignature, _contracts.SimpleWalletAbi.Functions["exec"].GetCallInfo().Signature, counterAddress, countCalldata);
-            byte[] execCounterCountFromSingleton = _encoder.Encode(AbiEncodingStyle.IncludeSignature, _contracts.SimpleWalletAbi.Functions["execFromSingleton"].GetCallInfo().Signature, execCounterCount);
+            byte[] execCounterCountFromSingleton = _encoder.Encode(AbiEncodingStyle.IncludeSignature, _contracts.SimpleWalletAbi.Functions["execFromEntryPoint"].GetCallInfo().Signature, execCounterCount);
             
             UserOperation op = Build.A.UserOperation
                 .WithTarget(walletAddress!)

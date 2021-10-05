@@ -45,8 +45,8 @@
     </ItemGroup>
 
     <ItemGroup>
-      <None Remove="TestContracts\Singleton.json" />
-      <Content Include="TestContracts\Singleton.json">
+      <None Remove="TestContracts\EntryPoint.json" />
+      <Content Include="TestContracts\EntryPoint.json">
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       </Content>
     </ItemGroup>

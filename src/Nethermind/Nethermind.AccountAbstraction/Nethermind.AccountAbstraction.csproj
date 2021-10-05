@@ -16,8 +16,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Remove="Contracts\Singleton.json" />
-    <Content Include="Contracts\Singleton.json">
+    <None Remove="Contracts\EntryPoint.json" />
+    <Content Include="Contracts\EntryPoint.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>

@@ -29,7 +29,7 @@ namespace Nethermind.AccountAbstraction.Data
 {
     public partial class UserOperation
     {
-        public UserOperation(Address target, UInt256 nonce, byte[] callData, byte[] initCode, UInt256 callGas, UInt256 verificationGas, UInt256 maxFeePerGas, UInt256 maxPriorityFeePerGas, Address paymaster, Signature signature, byte[] paymasterData)
+        public UserOperation(Address target, UInt256 nonce, byte[] callData, byte[] initCode, UInt256 callGas, UInt256 verificationGas, UInt256 preVerificationGas, UInt256 maxFeePerGas, UInt256 maxPriorityFeePerGas, Address paymaster, Signature signature, byte[] paymasterData)
         {
             Target = target;
             Nonce = nonce;
@@ -37,6 +37,7 @@ namespace Nethermind.AccountAbstraction.Data
             InitCode = initCode;
             CallGas = callGas;
             VerificationGas = verificationGas;
+            PreVerificationGas = preVerificationGas;
             MaxFeePerGas = maxFeePerGas;
             MaxPriorityFeePerGas = maxPriorityFeePerGas;
             Paymaster = paymaster;
@@ -58,6 +59,7 @@ namespace Nethermind.AccountAbstraction.Data
             CallData = CallData ?? Bytes.Empty,
             CallGas = CallGas,
             VerificationGas = VerificationGas,
+            PreVerificationGas = PreVerificationGas,
             MaxFeePerGas = MaxFeePerGas,
             MaxPriorityFeePerGas = MaxPriorityFeePerGas,
             Paymaster = Paymaster!,
@@ -72,6 +74,7 @@ namespace Nethermind.AccountAbstraction.Data
         public byte[]? InitCode { get; set; }
         public UInt256 CallGas { get; set; }
         public UInt256 VerificationGas { get; set; }
+        public UInt256 PreVerificationGas { get; set; }
         public UInt256 MaxFeePerGas { get; set; }
         public UInt256 MaxPriorityFeePerGas { get; set; }
         public Address? Paymaster { get; set; }
@@ -90,6 +93,7 @@ namespace Nethermind.AccountAbstraction.Data
         public byte[] CallData { get; set; }
         public UInt256 CallGas { get; set; }
         public UInt256 VerificationGas { get; set; }
+        public UInt256 PreVerificationGas { get; set; }
         public UInt256 MaxFeePerGas { get; set; }
         public UInt256 MaxPriorityFeePerGas { get; set; }
         public Address Paymaster { get; set; }
