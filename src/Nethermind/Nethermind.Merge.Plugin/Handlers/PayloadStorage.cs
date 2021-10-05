@@ -50,7 +50,9 @@ namespace Nethermind.Merge.Plugin.Handlers
         private readonly object _locker = new();
         private uint _currentPayloadId;
         private ulong _cleanupDelay = 12; // in seconds
+
         private static readonly TimeSpan _timeout = TimeSpan.FromSeconds(12);
+
         // first BlockRequestResult is empty (without txs), second one is the ideal one
         private readonly ConcurrentDictionary<ulong, BlockTaskAndRandom> _payloadStorage =
             new();
@@ -72,7 +74,8 @@ namespace Nethermind.Merge.Plugin.Handlers
         }
 
 
-        public async Task GeneratePayload(ulong payloadId, Keccak random, BlockHeader parentHeader, Address blockAuthor, UInt256 timestamp)
+        public async Task GeneratePayload(ulong payloadId, Keccak random, BlockHeader parentHeader, Address blockAuthor,
+            UInt256 timestamp)
         {
             using CancellationTokenSource cts = new(_timeout);
 
@@ -82,29 +85,29 @@ namespace Nethermind.Merge.Plugin.Handlers
                     {
                         t.Result.Header.StateRoot = parentHeader.StateRoot;
                         t.Result.Header.Hash = t.Result.CalculateHash();
-                        return  LogProductionResult(t);
-                        
+                        return LogProductionResult(t);
                     }, cts.Token);
-                  //  .ContinueWith(LogProductionResult, cts.Token);
-             //   .ContinueWith((x) => Process(x.Result, parentHeader), cts.Token); // commit when mergemock will be fixed
-             // Task<Block?> idealBlock =
-             //     _blockProductionTrigger.BuildBlock(parentHeader, cts.Token, null, blockAuthor, timestamp)
-             //        .ContinueWith(LogProductionResult, cts.Token);
-           //     .ContinueWith((x) => Process(x.Result, parentHeader), cts.Token); commit when mergemock will be fixed
-            
+            //  .ContinueWith(LogProductionResult, cts.Token);
+            //   .ContinueWith((x) => Process(x.Result, parentHeader), cts.Token); // commit when mergemock will be fixed
+            Task<Block?> idealBlock =
+                _blockProductionTrigger.BuildBlock(parentHeader, cts.Token, null, blockAuthor, timestamp)
+                    .ContinueWith(LogProductionResult, cts.Token);
+            //     .ContinueWith((x) => Process(x.Result, parentHeader), cts.Token); commit when mergemock will be fixed
+
             BlockTaskAndRandom emptyBlockTaskTuple = new(emptyBlock, random);
             bool _ = _payloadStorage.TryAdd(payloadId, emptyBlockTaskTuple);
-            
-            // BlockTaskAndRandom idealBlockTaskTuple = new(idealBlock, random);
-            // await idealBlock;
-           // bool __ = _payloadStorage.TryUpdate(payloadId, idealBlockTaskTuple, emptyBlockTaskTuple);
-            
+
+            BlockTaskAndRandom idealBlockTaskTuple = new(idealBlock, random);
+            await idealBlock;
+            bool __ = _payloadStorage.TryUpdate(payloadId, idealBlockTaskTuple, emptyBlockTaskTuple);
+
             // remove after 12 seconds, it will not be needed
-            await Task.Delay(TimeSpan.FromSeconds(12), cts.Token);
-          //  CleanupOldPayload(payloadId);
+            await Task.Delay(TimeSpan.FromSeconds(12), cts.Token)
+                .ContinueWith(_ => _logger.Info($"Cleaning up payload {payloadId}"), cts.Token);
+            //  CleanupOldPayload(payloadId);
         }
-        
-        
+
+
         private Block? LogProductionResult(Task<Block?> t)
         {
             if (t.IsCompletedSuccessfully)
@@ -170,14 +173,14 @@ namespace Nethermind.Merge.Plugin.Handlers
                 _payloadStorage.Remove(payloadId, out _);
             }
         }
-                
+
         private Block? Process(Block block, BlockHeader parent)
         {
             if (block == null)
                 return null;
             Block? processedBlock = null;
             block.Header.TotalDifficulty = parent.TotalDifficulty + block.Difficulty;
-            
+
             Keccak currentStateRoot = _stateProvider.ResetStateTo(parent.StateRoot!);
             try
             {

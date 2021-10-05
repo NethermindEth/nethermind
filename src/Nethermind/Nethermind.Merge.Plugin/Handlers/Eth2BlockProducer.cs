@@ -41,16 +41,16 @@ namespace Nethermind.Merge.Plugin.Handlers
         // TODO: remove this
         public ITimestamper Timestamper => _preMergeProducer?.Timestamper;
 
-        public MergeBlockProducer(IBlockProducer? preMergeProducer, IBlockProducer? eth2BlockProducer, IPoSSwitcher? poSSwitcher, IBlockchainProcessor blockchainProcessor)
+        public MergeBlockProducer(IBlockProducer? preMergeProducer, IBlockProducer? postMergeBlockProducer, IPoSSwitcher? poSSwitcher, IBlockchainProcessor blockchainProcessor)
         {
             _preMergeProducer = preMergeProducer ?? throw new ArgumentNullException(nameof(preMergeProducer));
-            _eth2BlockProducer = eth2BlockProducer ?? throw new ArgumentNullException(nameof(eth2BlockProducer));
+            _eth2BlockProducer = postMergeBlockProducer ?? throw new ArgumentNullException(nameof(postMergeBlockProducer));
             _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
             _blockchainProcessor = blockchainProcessor;
             _poSSwitcher.SwitchHappened += OnSwitchHappened;
             
             _preMergeProducer.BlockProduced += OnBlockProduced;
-            eth2BlockProducer.BlockProduced += OnBlockProduced;
+            postMergeBlockProducer.BlockProduced += OnBlockProduced;
         }
 
         private void OnBlockProduced(object? sender, BlockEventArgs e)
