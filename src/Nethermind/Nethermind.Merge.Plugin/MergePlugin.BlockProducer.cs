@@ -38,10 +38,11 @@ namespace Nethermind.Merge.Plugin
 
         public IBlockProductionTrigger DefaultBlockProductionTrigger => _defaultBlockProductionTrigger;
         
-        public Task<IBlockProducer> InitBlockProducer(IConsensusPlugin consensusPlugin)
+        public async Task<IBlockProducer> InitBlockProducer(IConsensusPlugin consensusPlugin)
         {
             if (_mergeConfig.Enabled)
             {
+                var blockProducer = await consensusPlugin.InitBlockProducer();
                 _miningConfig = _api.Config<IMiningConfig>();
                 if (_api.EngineSigner == null) throw new ArgumentNullException(nameof(_api.EngineSigner));
                 if (_api.ChainSpec == null) throw new ArgumentNullException(nameof(_api.ChainSpec));
@@ -73,7 +74,7 @@ namespace Nethermind.Merge.Plugin
                 );
 
                 _api.BlockProducer = _blockProducer
-                    = new MergeBlockProducer(_api.BlockProducer, eth2BlockProducer, _poSSwitcher, _api.BlockchainProcessor);
+                    = new MergeBlockProducer(blockProducer, eth2BlockProducer, _poSSwitcher, _api.BlockchainProcessor);
                 
                 _emptyBlockProducer = new Eth2EmptyBlockProducerFactory().Create(
                     _api.BlockProducerEnvFactory,
@@ -89,7 +90,7 @@ namespace Nethermind.Merge.Plugin
                 _emptyBlockProducer.Start();
             }
 
-            return Task.FromResult(_blockProducer);
+            return _blockProducer;
         }
 
         public bool Enabled => _mergeConfig.Enabled;
