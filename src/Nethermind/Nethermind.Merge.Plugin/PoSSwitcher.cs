@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -22,7 +23,6 @@ using Nethermind.Consensus;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
-using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Merge.Plugin
 {
@@ -84,6 +84,8 @@ namespace Nethermind.Merge.Plugin
             return _firstPoSBlockHeader != null;
         }
 
+        public event EventHandler? SwitchHappened;
+
         private bool VerifyPoS(BlockHeader header, bool withSwitchToPoS)
         {
             if (_firstPoSBlockHeader != null && _firstPoSBlockHeader.TotalDifficulty <= header.TotalDifficulty)
@@ -101,6 +103,7 @@ namespace Nethermind.Merge.Plugin
                 if (withSwitchToPoS)
                 {
                     if (_logger.IsInfo) _logger.Info($"Switched to Proof of Stake at block {header}");
+                    SwitchHappened?.Invoke(this, EventArgs.Empty);
                     _firstPoSBlockHeader = header;
                 }
 

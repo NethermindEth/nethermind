@@ -13,16 +13,24 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
 using System;
-using System.Threading.Tasks;
-using Nethermind.Core;
+using Nethermind.Consensus;
 
-public interface IBlockProducer
+namespace Nethermind.Merge.Plugin
 {
-    void Start();
-    Task StopAsync();
-    bool IsProducingBlocks(ulong? maxProducingInterval);
-    ITimestamper Timestamper { get; }
-    event EventHandler<BlockEventArgs> BlockProduced;
+    public class MergeGossipPolicy : IGossipPolicy
+    {
+        private readonly IGossipPolicy preMergeGossipPolicy;
+        private readonly IPoSSwitcher _poSSwitcher;
+
+        public MergeGossipPolicy(IGossipPolicy? apiGossipPolicy, IPoSSwitcher? poSSwitcher)
+        {
+            preMergeGossipPolicy = apiGossipPolicy ?? throw new ArgumentNullException(nameof(apiGossipPolicy));
+            _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
+        }
+
+        public bool ShouldGossipBlocks => _poSSwitcher.HasEverBeenInPos() ? false : preMergeGossipPolicy.ShouldGossipBlocks;
+    }
 }

@@ -38,6 +38,7 @@ using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
+using NSubstitute;
 
 namespace Nethermind.Merge.Plugin.Test
 {
@@ -50,7 +51,7 @@ namespace Nethermind.Merge.Plugin.Test
             PayloadStorage? payloadStorage = new(chain.BlockProductionTrigger, chain.EmptyBlockProducerTrigger);
             PayloadManager payloadManager = new(chain.BlockTree);
             return new EngineRpcModule(
-                new PreparePayloadHandler(chain.BlockTree, payloadStorage, chain.BlockProductionTrigger, chain.EmptyBlockProducerTrigger, chain.Timestamper, new Eth2SealEngine(new Eth2Signer(chain.MinerAddress)), chain.LogManager),
+                new PreparePayloadHandler(chain.BlockTree, payloadStorage, chain.BlockProductionTrigger, chain.EmptyBlockProducerTrigger, chain.Timestamper, chain.SealEngine, chain.LogManager),
                 new GetPayloadHandler(payloadStorage,  chain.LogManager),
                 new ExecutePayloadHandler(chain.BlockTree, chain.BlockPreprocessorStep, chain.BlockchainProcessor, payloadManager, new EthSyncingInfo(chain.BlockFinder), chain.State, new InitConfig(), chain.LogManager),
                 new ConsensusValidatedHandler(payloadManager),
@@ -71,6 +72,7 @@ namespace Nethermind.Merge.Plugin.Test
                     .WithTimestamp(UInt256.One);
                 Signer = new Eth2Signer(MinerAddress);
                 PoSSwitcher = new PoSSwitcher(LogManager, new MergeConfig() { Enabled = true }, new MemDb());
+                SealEngine = new MergeSealEngine(Substitute.For<ISealEngine>(), PoSSwitcher, Signer);
                 BlockConfirmationManager = new BlockConfirmationManager();
             }
             
@@ -83,6 +85,8 @@ namespace Nethermind.Merge.Plugin.Test
             private ISigner Signer { get; }
             
             public IPoSSwitcher PoSSwitcher { get; }
+            
+            public ISealEngine SealEngine { get; }
 
             protected override IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
             {
@@ -108,7 +112,7 @@ namespace Nethermind.Merge.Plugin.Test
                     BlockTree,
                     EmptyBlockProducerTrigger,
                     SpecProvider,
-                    Signer,
+                    SealEngine,
                     Timestamper,
                     miningConfig,
                     LogManager
@@ -121,7 +125,7 @@ namespace Nethermind.Merge.Plugin.Test
                     BlockTree,
                     BlockProductionTrigger,
                     SpecProvider,
-                    Signer,
+                    SealEngine,
                     Timestamper,
                     miningConfig,
                     LogManager);

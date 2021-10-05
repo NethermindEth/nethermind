@@ -60,7 +60,7 @@ namespace Nethermind.Merge.Plugin
             {
                 return base.Validate(header, parent, isUncle);
             }
-            
+
             bool theMergeValid = ValidateTheMergeChecks(header);
             return _beforeTheMerge.ValidateHash(header) && theMergeValid;
         }

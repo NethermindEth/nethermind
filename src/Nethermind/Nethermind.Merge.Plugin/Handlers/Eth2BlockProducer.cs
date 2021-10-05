@@ -16,6 +16,7 @@
 // 
 
 using System;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
@@ -30,6 +31,56 @@ using Nethermind.State;
 
 namespace Nethermind.Merge.Plugin.Handlers
 {
+    public class MergeBlockProducer : IBlockProducer
+    {
+        private readonly IBlockProducer _preMergeProducer;
+        private readonly IBlockProducer _eth2BlockProducer;
+        private readonly IPoSSwitcher _poSSwitcher;
+        
+        // TODO: remove this
+        public ITimestamper Timestamper => _preMergeProducer.Timestamper;
+
+        public MergeBlockProducer(IBlockProducer? preMergeProducer, IBlockProducer? eth2BlockProducer, IPoSSwitcher? poSSwitcher)
+        {
+            _preMergeProducer = preMergeProducer ?? throw new ArgumentNullException(nameof(preMergeProducer));
+            _eth2BlockProducer = eth2BlockProducer ?? throw new ArgumentNullException(nameof(eth2BlockProducer));
+            _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
+            _poSSwitcher.SwitchHappened += OnSwitchHappened;
+        }
+
+        private void OnSwitchHappened(object? sender, EventArgs e)
+        {
+            _preMergeProducer.StopAsync();
+            _eth2BlockProducer.Start();
+        }
+
+        public void Start()
+        {
+            if (_poSSwitcher.HasEverBeenInPos())
+            {
+                _eth2BlockProducer.Start();
+            }
+            else
+            {
+                _preMergeProducer.Start();
+            }
+        }
+
+        public Task StopAsync()
+        {
+            return _poSSwitcher.HasEverBeenInPos() ? _eth2BlockProducer.StopAsync() : _preMergeProducer.StopAsync();
+        }
+
+        public bool IsProducingBlocks(ulong? maxProducingInterval)
+        {
+            return _poSSwitcher.HasEverBeenInPos()
+                ? _eth2BlockProducer.IsProducingBlocks(maxProducingInterval)
+                : _preMergeProducer.IsProducingBlocks(maxProducingInterval);
+        }
+
+        public event EventHandler<BlockEventArgs>? BlockProduced;
+    }
+    
     public class Eth2BlockProducer : BlockProducerBase
     {
         public Eth2BlockProducer(
@@ -39,14 +90,14 @@ namespace Nethermind.Merge.Plugin.Handlers
             IBlockProductionTrigger blockProductionTrigger,
             IStateProvider stateProvider,
             IGasLimitCalculator gasLimitCalculator,
-            ISigner signer,
+            ISealEngine sealEngine,
             ITimestamper timestamper,
             ISpecProvider specProvider,
             ILogManager logManager) 
             : base(
                 txSource, 
                 processor, 
-                new Eth2SealEngine(signer), 
+                sealEngine, 
                 blockTree, 
                 blockProductionTrigger, 
                 stateProvider, 

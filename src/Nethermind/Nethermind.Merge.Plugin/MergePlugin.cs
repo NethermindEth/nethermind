@@ -20,7 +20,6 @@ using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Consensus;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
 using Nethermind.Db;
@@ -37,7 +36,7 @@ namespace Nethermind.Merge.Plugin
         private INethermindApi _api = null!;
         private ILogger _logger = null!;
         private IMergeConfig _mergeConfig = null!;
-        private PoSSwitcher _poSSwitcher = null;
+        private PoSSwitcher _poSSwitcher = null!;
         private ManualBlockFinalizationManager _blockFinalizationManager = null!;
 
         public string Name => "Merge";
@@ -66,6 +65,10 @@ namespace Nethermind.Merge.Plugin
                 _api.EngineSigner = new Eth2Signer(new Address(_mergeConfig.BlockAuthorAccount));
                 _api.RewardCalculatorSource =
                     new MergeRewardCalculatorSource(_poSSwitcher, _api.RewardCalculatorSource ?? NoBlockRewards.Instance);
+                _api.HealthHintService =
+                    new MergeHealthHintService(_api.HealthHintService, _poSSwitcher);
+                _api.SealEngine = new MergeSealEngine(_api.SealEngine, _poSSwitcher, _api.EngineSigner);
+                _api.GossipPolicy = new MergeGossipPolicy(_api.GossipPolicy, _poSSwitcher);
             }
 
             return Task.CompletedTask;
@@ -84,7 +87,7 @@ namespace Nethermind.Merge.Plugin
 
             return Task.CompletedTask;
         }
-
+        
         public async Task InitRpcModules()
         {
             if (_mergeConfig.Enabled)
