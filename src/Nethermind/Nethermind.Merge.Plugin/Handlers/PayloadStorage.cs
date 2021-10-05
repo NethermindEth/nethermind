@@ -81,18 +81,13 @@ namespace Nethermind.Merge.Plugin.Handlers
 
             Task<Block?> emptyBlock =
                 _emptyBlockProductionTrigger.BuildBlock(parentHeader, cts.Token, null, blockAuthor, timestamp)
-                    .ContinueWith(t =>
-                    {
-                        t.Result.Header.StateRoot = parentHeader.StateRoot;
-                        t.Result.Header.Hash = t.Result.CalculateHash();
-                        return LogProductionResult(t);
-                    }, cts.Token);
+                   .ContinueWith((x) => Process(x.Result, parentHeader), cts.Token); // commit when mergemock will be fixed
             //  .ContinueWith(LogProductionResult, cts.Token);
             //   .ContinueWith((x) => Process(x.Result, parentHeader), cts.Token); // commit when mergemock will be fixed
             Task<Block?> idealBlock =
                 _blockProductionTrigger.BuildBlock(parentHeader, cts.Token, null, blockAuthor, timestamp)
-                    .ContinueWith(LogProductionResult, cts.Token);
-            //     .ContinueWith((x) => Process(x.Result, parentHeader), cts.Token); commit when mergemock will be fixed
+               //     .ContinueWith(LogProductionResult, cts.Token);
+                    .ContinueWith((x) => Process(x.Result, parentHeader), cts.Token); // commit when mergemock will be fixed
 
             BlockTaskAndRandom emptyBlockTaskTuple = new(emptyBlock, random);
             bool _ = _payloadStorage.TryAdd(payloadId, emptyBlockTaskTuple);
