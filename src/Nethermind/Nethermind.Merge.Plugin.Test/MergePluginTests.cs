@@ -17,15 +17,14 @@
 
 using System.Threading.Tasks;
 using Nethermind.Api;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Merge.Plugin.Handlers;
-using Nethermind.Runner.Ethereum.Api;
 using NUnit.Framework;
 using NSubstitute;
 using Build = Nethermind.Runner.Test.Ethereum.Build;
@@ -69,7 +68,7 @@ namespace Nethermind.Merge.Plugin.Test
             _mergeConfig.Enabled = enabled;
             Assert.DoesNotThrowAsync(async () => await _plugin.Init(_context));
             Assert.DoesNotThrowAsync(async () => await _plugin.InitNetworkProtocol());
-            Assert.DoesNotThrowAsync(async () => await _plugin.InitBlockProducer());
+            Assert.DoesNotThrowAsync(async () => await _plugin.InitBlockProducer(new CliquePlugin()));
             Assert.DoesNotThrowAsync(async () => await _plugin.InitRpcModules());
             Assert.DoesNotThrowAsync(async () => await _plugin.DisposeAsync());
         }
@@ -83,7 +82,7 @@ namespace Nethermind.Merge.Plugin.Test
             Assert.IsFalse(syncConfig.SynchronizationEnabled);
             Assert.IsTrue(syncConfig.NetworkingEnabled);
             Assert.IsFalse(syncConfig.BlockGossipEnabled);
-            await _plugin.InitBlockProducer();
+            await _plugin.InitBlockProducer(new CliquePlugin());
             Assert.IsInstanceOf<Eth2BlockProducer>(_context.BlockProducer);
             await _plugin.InitRpcModules();
             _context.RpcModuleProvider.Received().Register(Arg.Is<IRpcModulePool<IEngineRpcModule>>(m => m is SingletonModulePool<IEngineRpcModule>));

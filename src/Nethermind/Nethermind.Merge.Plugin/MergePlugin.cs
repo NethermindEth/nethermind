@@ -31,7 +31,7 @@ using Nethermind.Merge.Plugin.Handlers;
 
 namespace Nethermind.Merge.Plugin
 {
-    public partial class MergePlugin : IConsensusPlugin
+    public partial class MergePlugin : IConsensusWrapperPlugin
     {
         private INethermindApi _api = null!;
         private ILogger _logger = null!;
@@ -99,8 +99,6 @@ namespace Nethermind.Merge.Plugin
                 if (_api.BlockchainProcessor is null) throw new ArgumentNullException(nameof(_api.BlockchainProcessor));
                 if (_api.StateProvider is null) throw new ArgumentNullException(nameof(_api.StateProvider));
                 if (_api.StateProvider is null) throw new ArgumentNullException(nameof(_api.StateProvider));
-
-                await _api.BlockchainProcessor.StopAsync(true);
 
                 _api.Config<IJsonRpcConfig>().EnableModules(ModuleType.Consensus);
 

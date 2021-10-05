@@ -17,9 +17,9 @@
 
 using System;
 using System.Threading.Tasks;
+using Nethermind.Api.Extensions;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
-using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
@@ -35,7 +35,9 @@ namespace Nethermind.Merge.Plugin
         private ManualTimestamper? _manualTimestamper;
         private readonly IManualBlockProductionTrigger _defaultBlockProductionTrigger = new BuildBlocksWhenRequested();
 
-        public Task<IBlockProducer> InitBlockProducer(IBlockProductionTrigger? blockProductionTrigger = null, ITxSource? additionalTxSource = null)
+        public IBlockProductionTrigger DefaultBlockProductionTrigger => _defaultBlockProductionTrigger;
+        
+        public Task<IBlockProducer> InitBlockProducer(IConsensusPlugin consensusPlugin)
         {
             if (_mergeConfig.Enabled)
             {
@@ -57,10 +59,10 @@ namespace Nethermind.Merge.Plugin
                 if (logger.IsWarn) logger.Warn("Starting ETH2 block producer & sealer");
 
                 _manualTimestamper ??= new ManualTimestamper();
-                IBlockProducer eth2BlockProducer = new Eth2BlockProducerFactory(additionalTxSource).Create(
+                IBlockProducer eth2BlockProducer = new Eth2BlockProducerFactory().Create(
                     _api.BlockProducerEnvFactory,
                     _api.BlockTree,
-                    blockProductionTrigger ?? DefaultBlockProductionTrigger,
+                    DefaultBlockProductionTrigger,
                     _api.SpecProvider,
                     _api.SealEngine,
                     _manualTimestamper,
@@ -90,6 +92,6 @@ namespace Nethermind.Merge.Plugin
             return Task.FromResult(_blockProducer);
         }
 
-        public IBlockProductionTrigger DefaultBlockProductionTrigger => _defaultBlockProductionTrigger;
+        public bool Enabled { get; }
     }
 }
