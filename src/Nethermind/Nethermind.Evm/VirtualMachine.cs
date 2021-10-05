@@ -70,6 +70,7 @@ namespace Nethermind.Evm
         private readonly IBlockhashProvider _blockhashProvider;
         private static readonly ICache<Keccak, CodeInfo> _codeCache = new LruCache<Keccak, CodeInfo>(MemoryAllowance.CodeCacheSize, MemoryAllowance.CodeCacheSize, "VM bytecodes");
         private readonly ILogger _logger;
+        private IWorldState _worldState;
         private IStateProvider _state;
         private readonly Stack<EvmState> _stateStack = new();
         private IStorageProvider _storage;
@@ -95,6 +96,8 @@ namespace Nethermind.Evm
 
             _state = worldState.StateProvider;
             _storage = worldState.StorageProvider;
+            _worldState = worldState;
+            
             IReleaseSpec spec = releaseSpec;
             EvmState currentState = state;
             byte[] previousCallResult = null;
@@ -370,8 +373,9 @@ namespace Nethermind.Evm
             }
         }
 
-        public CodeInfo GetCachedCodeInfo(Address codeSource, IReleaseSpec vmSpec)
+        public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec)
         {
+            IStateProvider state = worldState.StateProvider;
             if (codeSource.IsPrecompile(vmSpec))
             {
                 if (_precompiles is null)
@@ -382,11 +386,11 @@ namespace Nethermind.Evm
                 return _precompiles[codeSource];
             }
 
-            Keccak codeHash = _state.GetCodeHash(codeSource);
+            Keccak codeHash = state.GetCodeHash(codeSource);
             CodeInfo cachedCodeInfo = _codeCache.Get(codeHash);
             if (cachedCodeInfo == null)
             {
-                byte[] code = _state.GetCode(codeHash);
+                byte[] code = state.GetCode(codeHash);
                 
                 if (code == null)
                 {
@@ -398,8 +402,8 @@ namespace Nethermind.Evm
             }
             else
             {
-                // for witness collection
-                _state.TouchCode(codeHash);
+                // need to touch code so that any collectors that track database access are informed
+                state.TouchCode(codeHash);
             }
 
             return cachedCodeInfo;
@@ -1494,7 +1498,7 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        byte[] accountCode = GetCachedCodeInfo(address, spec).MachineCode;
+                        byte[] accountCode = GetCachedCodeInfo(_worldState, address, spec).MachineCode;
                         UInt256 codeSize = (UInt256) accountCode.Length;
                         stack.PushUInt256(in codeSize);
                         break;
@@ -1524,7 +1528,7 @@ namespace Nethermind.Evm
                         {
                             UpdateMemoryCost(in dest, length);
                             
-                            byte[] externalCode = GetCachedCodeInfo(address, spec).MachineCode;
+                            byte[] externalCode = GetCachedCodeInfo(_worldState, address, spec).MachineCode;
                             ZeroPaddedSpan callDataSlice = externalCode.SliceWithZeroPadding(src, (int) length);
                             vmState.Memory.Save(in dest, callDataSlice);
                             if (_txTracer.IsTracingInstructions)
@@ -2314,7 +2318,7 @@ namespace Nethermind.Evm
                         int storageSnapshot = _storage.TakeSnapshot();
 
                         bool accountExists = _state.AccountExists(contractAddress);
-                        if (accountExists && (GetCachedCodeInfo(contractAddress, spec).MachineCode.Length != 0 || _state.GetNonce(contractAddress) != 0))
+                        if (accountExists && (GetCachedCodeInfo(_worldState, contractAddress, spec).MachineCode.Length != 0 || _state.GetNonce(contractAddress) != 0))
                         {
                             /* we get the snapshot before this as there is a possibility with that we will touch an empty account and remove it even if the REVERT operation follows */
                             if (isTrace) _logger.Trace($"Contract collision at {contractAddress}");
@@ -2519,7 +2523,7 @@ namespace Nethermind.Evm
                         callEnv.TransferValue = transferValue;
                         callEnv.Value = callValue;
                         callEnv.InputData = callData;
-                        callEnv.CodeInfo = GetCachedCodeInfo(codeSource, spec);
+                        callEnv.CodeInfo = GetCachedCodeInfo(_worldState, codeSource, spec);
 
                         if (isTrace) _logger.Trace($"Tx call gas {gasLimitUl}");
                         if (outputLength == 0)

@@ -26,6 +26,6 @@ namespace Nethermind.Evm
     {
         TransactionSubstate Run(EvmState state, IWorldState worldState, IReleaseSpec releaseSpec, ITxTracer tracer);
         
-        CodeInfo GetCachedCodeInfo(Address codeSource, IReleaseSpec spec);
+        CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec spec);
     }
 }
