@@ -84,8 +84,6 @@ namespace Nethermind.Core.Test.Blockchain
         public IDbProvider DbProvider { get; set; }
         public ISpecProvider SpecProvider { get; set; }
         
-        public IPoSSwitcher PoSSwitcher { get; set; } = NoPoS.Instance;
-        
         public ITransactionComparerProvider TransactionComparerProvider { get; set; }
         
         public IBlockConfirmationManager BlockConfirmationManager { get; set; } = NoBlockConfirmation.Instance;
@@ -155,7 +153,7 @@ namespace Nethermind.Core.Test.Blockchain
             VirtualMachine virtualMachine = new(State, Storage, new BlockhashProvider(BlockTree, LogManager), SpecProvider, LogManager);
             TxProcessor = new TransactionProcessor(SpecProvider, State, Storage, virtualMachine, LogManager);
             BlockPreprocessorStep = new RecoverSignatures(EthereumEcdsa, TxPool, SpecProvider, LogManager);
-            HeaderValidator headerValidator = new(BlockTree, Always.Valid, SpecProvider, PoSSwitcher, LogManager);
+            HeaderValidator headerValidator = new(BlockTree, Always.Valid, SpecProvider, LogManager);
                 
             _blockValidator = new BlockValidator(
                 new TxValidator(SpecProvider.ChainId),

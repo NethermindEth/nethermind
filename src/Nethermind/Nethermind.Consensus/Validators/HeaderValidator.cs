@@ -35,23 +35,24 @@ namespace Nethermind.Consensus.Validators
 
         private readonly ISealValidator _sealValidator;
         private readonly ISpecProvider _specProvider;
-        private readonly IPoSSwitcher _poSSwitcher;
         private readonly long? _daoBlockNumber;
         private readonly ILogger _logger;
         private readonly IBlockTree _blockTree;
 
-        public HeaderValidator(IBlockTree? blockTree, ISealValidator? sealValidator, ISpecProvider? specProvider,
-            IPoSSwitcher poSSwitcher, ILogManager? logManager)
+        public HeaderValidator(
+            IBlockTree? blockTree,
+            ISealValidator? sealValidator,
+            ISpecProvider? specProvider,
+            ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _sealValidator = sealValidator ?? throw new ArgumentNullException(nameof(sealValidator));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
             _daoBlockNumber = specProvider.DaoBlockNumber;
         }
 
-        public bool ValidateHash(BlockHeader header)
+        public virtual bool ValidateHash(BlockHeader header)
         {
             bool hashAsExpected = header.Hash == header.CalculateHash();
             if (!hashAsExpected)
@@ -69,7 +70,7 @@ namespace Nethermind.Consensus.Validators
         /// <param name="parent">BlockHeader which is the parent of <paramref name="header"/></param>
         /// <param name="isUncle"><value>True</value> if uncle block, otherwise <value>False</value></param>
         /// <returns></returns>
-        public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle = false)
+        public virtual bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle = false)
         {
             bool hashAsExpected = ValidateHash(header);
 
@@ -105,14 +106,7 @@ namespace Nethermind.Consensus.Validators
 
             // TODO: difficulty check should be moved to seal params validator
             bool totalDifficultyCorrect = true;
-            if (_poSSwitcher.IsPos(header) == false && header.TotalDifficulty != null)
-            {
-                if (parent.TotalDifficulty + header.Difficulty != header.TotalDifficulty)
-                {
-                    if (_logger.IsDebug) _logger.Debug($"Invalid total difficulty");
-                    totalDifficultyCorrect = false;
-                }
-            }
+            totalDifficultyCorrect = ValidateTotalDifficulty(header, parent, totalDifficultyCorrect);
 
             // seal is validated when synchronizing so we can remove it from here - review and test
             bool sealParamsCorrect = _sealValidator.ValidateParams(parent, header);
@@ -150,7 +144,6 @@ namespace Nethermind.Consensus.Validators
                     $"Validating block {header.ToString(BlockHeader.Format.Short)}, extraData {header.ExtraData.ToHexString(true)}");
 
             bool eip1559Valid = Validate1559Checks(header, parent, spec);
-            bool theMergeValid = ValidateTheMergeChecks(header);
 
             return
                 totalDifficultyCorrect &&
@@ -162,8 +155,18 @@ namespace Nethermind.Consensus.Validators
                 numberIsParentPlusOne &&
                 hashAsExpected &&
                 extraDataValid &&
-                eip1559Valid &&
-                theMergeValid;
+                eip1559Valid;
+        }
+
+        protected virtual bool ValidateTotalDifficulty(BlockHeader header, BlockHeader parent, bool totalDifficultyCorrect)
+        {
+            if (parent.TotalDifficulty + header.Difficulty != header.TotalDifficulty)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Invalid total difficulty");
+                totalDifficultyCorrect = false;
+            }
+
+            return totalDifficultyCorrect;
         }
 
         protected virtual bool ValidateGasLimitRange(BlockHeader header, BlockHeader parent, IReleaseSpec spec)
@@ -209,6 +212,7 @@ namespace Nethermind.Consensus.Validators
         /// <param name="header">Block header to validate</param>
         /// <param name="isUncle"><value>True</value> if the <paramref name="header"/> is an uncle, otherwise <value>False</value></param>
         /// <returns><value>True</value> if <paramref name="header"/> is valid, otherwise <value>False</value></returns>
+        // TODO: this should be an extension method?
         public bool Validate(BlockHeader header, bool isUncle = false)
         {
             BlockHeader parent = _blockTree.FindParentHeader(header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
@@ -237,42 +241,12 @@ namespace Nethermind.Consensus.Validators
             return isBaseFeeCorrect;
         }
 
-        private bool ValidateTheMergeChecks(BlockHeader header)
-        {
-            if (_poSSwitcher.IsPos(header) == false)
-                return true;
-
-            bool validDifficulty =
-                ValidateHeaderField(header, header.Difficulty, UInt256.Zero, nameof(header.Difficulty));
-            bool validNonce = ValidateHeaderField(header, header.Nonce, 0ul, nameof(header.Nonce));
-            // validExtraData needed in previous version of EIP-3675 specification
-            //bool validExtraData = ValidateHeaderField<byte>(header, header.ExtraData, Array.Empty<byte>(), nameof(header.ExtraData));
-            bool validMixHash = ValidateHeaderField(header, header.MixHash, Keccak.Zero, nameof(header.MixHash));
-            bool validUncles = ValidateHeaderField(header, header.UnclesHash, Keccak.OfAnEmptySequenceRlp,
-                nameof(header.UnclesHash));
-
-            return validDifficulty
-                   && validNonce
-                   //&& validExtraData
-                   && validMixHash
-                   && validUncles;
-        }
-
-        private bool ValidateHeaderField<T>(BlockHeader header, T value, T expected, string name)
+        protected bool ValidateHeaderField<T>(BlockHeader header, T value, T expected, string name)
         {
             if (Equals(value, expected)) return true;
             if (_logger.IsWarn)
                 _logger.Warn(
                     $"Invalid block header {header.ToString(BlockHeader.Format.Short)} - the {name} is incorrect expected {expected}, got {value} .");
-            return false;
-        }
-        
-        // TODO: can we remove it?
-        private bool ValidateHeaderField<T>(BlockHeader request, IEnumerable<T>? value, IEnumerable<T> expected,
-            string name)
-        {
-            if ((value ?? Array.Empty<T>()).SequenceEqual(expected)) return true;
-            if (_logger.IsWarn) _logger.Warn($"Block {request} has invalid {name}, expected {expected}, got {value} .");
             return false;
         }
     }

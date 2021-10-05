@@ -80,6 +80,8 @@ namespace Nethermind.Merge.Plugin.Test
             private IBlockValidator BlockValidator { get; set; } = null!;
 
             private ISigner Signer { get; }
+            
+            public IPoSSwitcher PoSSwitcher { get; }
 
             protected override IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
             {
@@ -141,11 +143,14 @@ namespace Nethermind.Merge.Plugin.Test
 
             private IBlockValidator CreateBlockValidator()
             {
-                HeaderValidator headerValidator = new(BlockTree, new Eth2SealEngine(Signer), SpecProvider, PoSSwitcher, LogManager);
+                HeaderValidator headerValidator =
+                    new HeaderValidator(BlockTree, Always.Valid, SpecProvider, LogManager);
+                HeaderValidator mergeHeaderValidator =
+                new MergeHeaderValidator(headerValidator, BlockTree, SpecProvider, PoSSwitcher, LogManager);
                 
                 return new BlockValidator(
                     new TxValidator(SpecProvider.ChainId),
-                    headerValidator,
+                    mergeHeaderValidator,
                     Always.Valid,
                     SpecProvider,
                     LogManager);

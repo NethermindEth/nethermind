@@ -211,7 +211,6 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                     _api.BlockTree,
                     _api.SealValidator,
                     _api.SpecProvider,
-                    _api.PoSSwitcher,
                     _api.LogManager,
                     blockGasLimitContractTransitions.Keys.ToArray())
                 : base.CreateHeaderValidator();

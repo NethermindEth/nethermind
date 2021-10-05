@@ -37,7 +37,7 @@ namespace Nethermind.Merge.Plugin.Test
             PoSSwitcher poSSwitcher = new(NUnitLogManager.Instance);
             poSSwitcher.SetTerminalTotalDifficulty(2);
             
-            MergeRewardCalculator calculator = new(new RewardCalculator(RopstenSpecProvider.Instance), poSSwitcher);
+            IRewardCalculator calculator = new MergeRewardCalculator(new RewardCalculator(RopstenSpecProvider.Instance), poSSwitcher);
             BlockReward[] rewards = calculator.CalculateRewards(block);
             
             Assert.AreEqual(3, rewards.Length);

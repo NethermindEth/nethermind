@@ -20,9 +20,9 @@ namespace Nethermind.Consensus.Validators
 {
     public interface IHeaderValidator : IHeaderDependent<IHeaderValidator>
     {
-        bool ValidateHash(BlockHeader blockHeader);
-        bool Validate(BlockHeader blockHeader, BlockHeader? parent, bool isUncle = false);
-        bool Validate(BlockHeader blockHeader, bool isUncle = false);
+        bool ValidateHash(BlockHeader header);
+        bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle = false);
+        bool Validate(BlockHeader header, bool isUncle = false);
         
         /// <summary>
         /// A trick to make each validator to be accepted as a header dependent item

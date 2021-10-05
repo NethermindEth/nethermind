@@ -21,15 +21,18 @@ using Nethermind.Evm.TransactionProcessing;
 namespace Nethermind.Consensus.Rewards
 {
     public class NoBlockRewards : IRewardCalculator, IRewardCalculatorSource
-    {   
+    {
         private NoBlockRewards() { }
 
         public static NoBlockRewards Instance { get; } = new();
-
+        
         private static readonly BlockReward[] _noRewards = Array.Empty<BlockReward>();
 
         public BlockReward[] CalculateRewards(Block block) => _noRewards;
 
-        public IRewardCalculator Get(ITransactionProcessor processor) => Instance;
+        public IRewardCalculator Get(ITransactionProcessor processor)
+        {
+            return Instance;
+        }
     }
 }

@@ -16,31 +16,26 @@
 // 
 
 using System;
-using Nethermind.Core;
+using Nethermind.Consensus;
+using Nethermind.Consensus.Rewards;
+using Nethermind.Evm.TransactionProcessing;
 
-namespace Nethermind.Consensus.Producers
+namespace Nethermind.Merge.Plugin
 {
-    public class TheMergeGrandSwitcher : ISwitchDependent<IBlockProducer, string>
+    public class MergeRewardCalculatorSource : IRewardCalculatorSource
     {
-        public TheMergeGrandSwitcher(IBlockProducer preMergeProducer, IPoSSwitcher poSSwitcher)
-        {
-        }
+        private readonly IPoSSwitcher _poSSwitcher;
+        private readonly IRewardCalculatorSource _beforeTheMerge;
 
-        public IBlockProducer Resolve()
+        public MergeRewardCalculatorSource(IPoSSwitcher? poSSwitcher, IRewardCalculatorSource? beforeTheMerge)
         {
-            throw new NotImplementedException();
+            _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
+            _beforeTheMerge = beforeTheMerge ?? throw new ArgumentNullException(nameof(beforeTheMerge));
         }
-
-        public void Register(IBlockProducer implementation, string switchingItem)
+        
+        public IRewardCalculator Get(ITransactionProcessor processor)
         {
-            throw new NotImplementedException();
+            return new MergeRewardCalculator(_beforeTheMerge.Get(processor), _poSSwitcher);
         }
-
-        public IBlockProducer Resolve(string switchingItem)
-        {
-            throw new NotImplementedException();
-        }
-
-        public event EventHandler<EventArgs>? Switched { add { } remove { } }
     }
 }

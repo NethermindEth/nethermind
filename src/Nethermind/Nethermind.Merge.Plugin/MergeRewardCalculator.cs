@@ -15,32 +15,31 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
-using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Merge.Plugin
 {
-    public class MergeRewardCalculator : IRewardCalculator, IRewardCalculatorSource
+    public class MergeRewardCalculator : IRewardCalculator
     {
-        private readonly IRewardCalculator _preMergeRewardCalculator;
         private readonly IPoSSwitcher _poSSwitcher;
+        private readonly IRewardCalculator _beforeTheMerge;
 
-        public MergeRewardCalculator(IRewardCalculator preMergeRewardCalculator, IPoSSwitcher poSSwitcher)
+        public MergeRewardCalculator(IRewardCalculator beforeTheMerge, IPoSSwitcher poSSwitcher)
         {
-            _preMergeRewardCalculator = preMergeRewardCalculator;
             _poSSwitcher = poSSwitcher;
+            _beforeTheMerge = beforeTheMerge;
         }
 
         public BlockReward[] CalculateRewards(Block block)
         {
-            return _poSSwitcher.IsPos(block.Header)
-                ? Array.Empty<BlockReward>()
-                : _preMergeRewardCalculator.CalculateRewards(block);
-        }
+            if (_poSSwitcher.IsPos(block.Header))
+            {
+                return _beforeTheMerge.CalculateRewards(block);
+            }
 
-        public IRewardCalculator Get(ITransactionProcessor processor) => this;
+            return NoBlockRewards.Instance.CalculateRewards(block);
+        }
     }
 }

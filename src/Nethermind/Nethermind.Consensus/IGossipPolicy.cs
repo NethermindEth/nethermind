@@ -22,28 +22,28 @@ namespace Nethermind.Consensus
         public bool ShouldGossipBlocks { get; }
     }
 
-    internal class NoBlockGossip : IGossipPolicy
+    internal class ShouldNotGossip : IGossipPolicy
     {
-        private NoBlockGossip() { }
+        private ShouldNotGossip() { }
 
-        public static NoBlockGossip Instance { get; } = new ();
+        public static ShouldNotGossip Instance { get; } = new ();
         
         public bool ShouldGossipBlocks => false;
     }
     
-    internal class BlockGossip : IGossipPolicy
+    internal class ShouldGossip : IGossipPolicy
     {
-        private BlockGossip() { }
+        private ShouldGossip() { }
 
-        public static IGossipPolicy Instance { get; } = new BlockGossip();
+        public static IGossipPolicy Instance { get; } = new ShouldGossip();
         
         public bool ShouldGossipBlocks => true;
     }
     
     public static class Policy
     {
-        public static IGossipPolicy NoBlockGossip { get; } = Nethermind.Consensus.NoBlockGossip.Instance;
+        public static IGossipPolicy NoBlockGossip { get; } = ShouldNotGossip.Instance;
         
-        public static IGossipPolicy FullGossip { get; } = BlockGossip.Instance;
+        public static IGossipPolicy FullGossip { get; } = ShouldGossip.Instance;
     }
 }

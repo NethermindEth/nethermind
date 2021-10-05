@@ -56,7 +56,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
             _blockchainProcessingQueue = Substitute.For<IBlockProcessingQueue>();
             _blockchainProcessor = Substitute.For<IBlockchainProcessor>();
             _blockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
-            HeaderValidator headerValidator = new HeaderValidator(_blockTree, NullSealEngine.Instance, MainnetSpecProvider.Instance, NoPoS.Instance, LimboLogs.Instance);
+            HeaderValidator headerValidator = new HeaderValidator(_blockTree, NullSealEngine.Instance, MainnetSpecProvider.Instance, LimboLogs.Instance);
             _validator = new BlockValidator(Always.Valid, headerValidator, Always.Valid, MainnetSpecProvider.Instance, LimboLogs.Instance);
         }
         

@@ -161,7 +161,6 @@ namespace Nethermind.Synchronization.Test
                 localBlockTree,
                 Always.Valid,
                 MainnetSpecProvider.Instance,
-                NoPoS.Instance,
                 LimboLogs.Instance);
 
             BlockValidator blockValidator = new(
@@ -188,7 +187,7 @@ namespace Nethermind.Synchronization.Test
             block.Header.TotalDifficulty *= 2;
 
             ctx.SyncServer.AddNewBlock(block, ctx.NodeWhoSentTheBlock);
-            Assert.AreEqual(localBlockTree.BestSuggestedHeader.Hash, block.Header.Hash);
+            Assert.AreEqual(localBlockTree.BestSuggestedHeader!.Hash, block.Header.Hash);
 
             Block parentBlock = remoteBlockTree.FindBlock(8, BlockTreeLookupOptions.None);
             Assert.AreEqual(parentBlock.TotalDifficulty + block.Difficulty, localBlockTree.BestSuggestedHeader.TotalDifficulty);

@@ -33,11 +33,10 @@ namespace Nethermind.Consensus.AuRa
         public AuRaHeaderValidator(
             IBlockTree blockTree, 
             ISealValidator sealValidator, 
-            ISpecProvider specProvider, 
-            IPoSSwitcher poSSwitcher,
+            ISpecProvider specProvider,
             ILogManager logManager,
             IList<long> blockGasLimitContractTransitions)
-            : base(blockTree, sealValidator, specProvider, poSSwitcher, logManager)
+            : base(blockTree, sealValidator, specProvider, logManager)
         {
             _blockGasLimitContractTransitions = blockGasLimitContractTransitions ?? throw new ArgumentNullException(nameof(blockGasLimitContractTransitions));
         }

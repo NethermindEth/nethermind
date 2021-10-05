@@ -19,22 +19,24 @@ using System;
 
 namespace Nethermind.Core
 {
+    public enum Stage
+    {
+        BeforeTheMerge,
+        AfterTheMerge
+    }
+
     /// <summary>
     /// Provides an implementation of an interface (or an instance of a class) depending on a switching event
     /// (e.g. the Merge transition).
     /// Created to support consensus switcher with IGossipPolicy implementations.
     /// </summary>
-    /// <typeparam name="T">Type of the object for which to resolve implementations</typeparam>
-    /// <typeparam name="TImplementation"></typeparam>
-    /// <typeparam name="TSwitchingType"></typeparam>
-    public interface ISwitchDependent<TImplementation, in TSwitchingType>
+    /// <typeparam name="TImplementation">Type of the object for which to resolve implementations</typeparam>
+    public interface IMergeDependent<TImplementation>
     {
+        void Register(TImplementation implementation, Stage stage);
+
         TImplementation Resolve();
 
-        void Register(TImplementation implementation, TSwitchingType switchingItem);
-        
-        TImplementation Resolve(TSwitchingType switchingItem);
-
-        event EventHandler<EventArgs> Switched;
+        event EventHandler<EventArgs> TheMergeHappened;
     }
 }
