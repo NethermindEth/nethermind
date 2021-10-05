@@ -29,11 +29,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             Random = random;
         }
         
-<<<<<<< HEAD:src/Nethermind/Nethermind.Merge.Plugin/Handlers/BlockAndRandom.cs
-        public Block? Block { get; }
-=======
         public Task<Block?> BlockTask { get; set; }
->>>>>>> themerge:src/Nethermind/Nethermind.Merge.Plugin/Handlers/BlockTaskAndRandom.cs
 
         public Keccak Random { get; }
     }
