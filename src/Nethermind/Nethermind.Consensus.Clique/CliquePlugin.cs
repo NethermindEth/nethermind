@@ -66,14 +66,14 @@ namespace Nethermind.Consensus.Clique
             
             setInApi.HealthHintService = new CliqueHealthHintService(_snapshotManager, getFromApi.ChainSpec);
 
-            setInApi.SealValidator = new CliqueSealValidator(
+            setInApi.SealValidator = new CliqueSealValidator( 
                 _cliqueConfig,
                 _snapshotManager,
                 getFromApi.LogManager);
             
             // both Clique and the merge provide no block rewards 
             setInApi.RewardCalculatorSource = NoBlockRewards.Instance;
-           // setInApi.BlockPreprocessor.AddLast(new AuthorRecoveryStep(_snapshotManager!));
+           setInApi.BlockPreprocessor.AddLast(new AuthorRecoveryStep(_snapshotManager!));
 
             return Task.CompletedTask;
         }
