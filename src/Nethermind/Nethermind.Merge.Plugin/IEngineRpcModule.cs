@@ -33,7 +33,7 @@ namespace Nethermind.Merge.Plugin
                 "Builds an execution payload on top of a given parent with transactions selected from the mempool.",
             IsSharable = true,
             IsImplemented = true)]
-        Task<ResultWrapper<PreparePayloadResult>> engine_preparePayload(PreparePayloadRequest preparePayloadRequest);
+        ResultWrapper<PreparePayloadResult> engine_preparePayload(PreparePayloadRequest preparePayloadRequest);
         
         [JsonRpcMethod(
             Description =

@@ -15,20 +15,25 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Merge.Plugin.Handlers
 {
-    public class BlockAndRandom
+    public class BlockTaskAndRandom
     {
-        public BlockAndRandom(Block? block, Keccak random)
+        public BlockTaskAndRandom(Task<Block?> blockTask, Keccak random)
         {
-            Block = block;
+            BlockTask = blockTask;
             Random = random;
         }
         
+<<<<<<< HEAD:src/Nethermind/Nethermind.Merge.Plugin/Handlers/BlockAndRandom.cs
         public Block? Block { get; }
+=======
+        public Task<Block?> BlockTask { get; set; }
+>>>>>>> themerge:src/Nethermind/Nethermind.Merge.Plugin/Handlers/BlockTaskAndRandom.cs
 
         public Keccak Random { get; }
     }

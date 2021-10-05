@@ -16,7 +16,6 @@
 // 
 
 using System;
-using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
@@ -54,7 +53,7 @@ namespace Nethermind.Merge.Plugin.Handlers
     /// A pair of engine_preparePayload and engine_getPayload related to each other are identified by the payload_id
     /// parameter. Consensus client implementations are free to use whatever value of the identifier they find reasonable.
     /// </summary>
-    public class PreparePayloadHandler: IAsyncHandler<PreparePayloadRequest, PreparePayloadResult>
+    public class PreparePayloadHandler: IHandler<PreparePayloadRequest, PreparePayloadResult>
     {
         private readonly IBlockTree _blockTree;
         private readonly PayloadStorage _payloadStorage;
@@ -63,7 +62,6 @@ namespace Nethermind.Merge.Plugin.Handlers
         private readonly ManualTimestamper _timestamper;
         private readonly ISealer _sealer;
         private readonly ILogger _logger;
-        private static readonly TimeSpan _timeout = TimeSpan.FromSeconds(15);
 
         public PreparePayloadHandler(
             IBlockTree blockTree, 
@@ -84,7 +82,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             _logger = logManager.GetClassLogger();
         }
 
-        public async Task<ResultWrapper<PreparePayloadResult>> HandleAsync(PreparePayloadRequest request)
+        public ResultWrapper<PreparePayloadResult> Handle(PreparePayloadRequest request)
         {
             // add syncing check when implementation will be ready
             // if (_ethSyncingInfo.IsSyncing())
@@ -103,18 +101,13 @@ namespace Nethermind.Merge.Plugin.Handlers
             }
 
             _timestamper.Set(DateTimeOffset.FromUnixTimeSeconds((long) request.Timestamp).UtcDateTime);
-            using CancellationTokenSource cts = new(_timeout);
 
             uint payloadId = _payloadStorage.RentNextPayloadId();
             
             
             Address blockAuthor = request.FeeRecipient == Address.Zero ? _sealer.Address : request.FeeRecipient;
-            _logger.Info(blockAuthor.ToString());
-            Block? emptyBlock = await _emptyBlockProductionTrigger.BuildBlock(parentHeader, cts.Token, null, blockAuthor, request.Timestamp);
-            Task<Block?> idealBlock = _blockProductionTrigger.BuildBlock(parentHeader, cts.Token, null, blockAuthor, request.Timestamp);
-            
-            // TODO: should have ContinueWith to log errors
-            _payloadStorage.AddPayload(payloadId, request.Random, emptyBlock, idealBlock); // not awaiting on purpose
+            Task generatePayloadTask =
+                _payloadStorage.GeneratePayload(payloadId, request.Random, parentHeader, blockAuthor, request.Timestamp); // not awaiting on purpose
             
             return ResultWrapper<PreparePayloadResult>.Success(new PreparePayloadResult(payloadId));
         }

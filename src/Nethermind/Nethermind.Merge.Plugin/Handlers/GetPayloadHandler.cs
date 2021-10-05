@@ -46,8 +46,11 @@ namespace Nethermind.Merge.Plugin.Handlers
 
         public ResultWrapper<BlockRequestResult?> Handle(ulong payloadId)
         {
-            BlockAndRandom? blockAndRandom = _payloadStorage.GetPayload(payloadId);
-            if (blockAndRandom?.Block == null)
+            BlockTaskAndRandom? blockAndRandom = _payloadStorage.GetPayload(payloadId);
+
+            Block? block = blockAndRandom?.BlockTask.Result;
+
+            if (block == null)
             {
                 if (_logger.IsWarn) _logger.Warn($"Block production failed");
                 return ResultWrapper<BlockRequestResult?>.Fail(
@@ -57,7 +60,7 @@ namespace Nethermind.Merge.Plugin.Handlers
 
             if (_logger.IsInfo)
             {
-                _logger.Info(blockAndRandom.Block.Header.ToString(BlockHeader.Format.Full));
+                _logger.Info(block.Header.ToString(BlockHeader.Format.Full));
             }
 
             BlockRequestResult result = new(blockAndRandom.Block, blockAndRandom.Random);
