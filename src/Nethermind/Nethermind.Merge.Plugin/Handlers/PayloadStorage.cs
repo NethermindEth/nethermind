@@ -27,6 +27,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.State;
 
 namespace Nethermind.Merge.Plugin.Handlers
@@ -44,6 +45,7 @@ namespace Nethermind.Merge.Plugin.Handlers
         private readonly IStateProvider _stateProvider;
         private readonly IBlockchainProcessor _processor;
         private readonly IInitConfig _initConfig;
+        private readonly ILogger _logger;
         private readonly object _locker = new();
         private uint _currentPayloadId;
         private ulong _cleanupDelay = 12; // in seconds
@@ -57,24 +59,29 @@ namespace Nethermind.Merge.Plugin.Handlers
             IManualBlockProductionTrigger emptyBlockProductionTrigger,
             IStateProvider stateProvider,
             IBlockchainProcessor processor,
-            IInitConfig initConfig)
+            IInitConfig initConfig,
+            ILogManager logManager)
         {
             _blockProductionTrigger = blockProductionTrigger;
             _emptyBlockProductionTrigger = emptyBlockProductionTrigger;
             _stateProvider = stateProvider;
             _processor = processor;
             _initConfig = initConfig;
+            _logger = logManager.GetClassLogger();
         }
+
 
         public async Task GeneratePayload(ulong payloadId, Keccak random, BlockHeader parentHeader, Address blockAuthor, UInt256 timestamp)
         {
             using CancellationTokenSource cts = new(_timeout);
 
             Task<Block?> emptyBlock =
-                _emptyBlockProductionTrigger.BuildBlock(parentHeader, cts.Token, null, blockAuthor, timestamp);
+                _emptyBlockProductionTrigger.BuildBlock(parentHeader, cts.Token, null, blockAuthor, timestamp)
+                    .ContinueWith(LogProductionResult, cts.Token);
              //   .ContinueWith((x) => Process(x.Result, parentHeader), cts.Token); // commit when mergemock will be fixed
              Task<Block?> idealBlock =
-                 _blockProductionTrigger.BuildBlock(parentHeader, cts.Token, null, blockAuthor, timestamp);
+                 _blockProductionTrigger.BuildBlock(parentHeader, cts.Token, null, blockAuthor, timestamp)
+                    .ContinueWith(LogProductionResult, cts.Token);
            //     .ContinueWith((x) => Process(x.Result, parentHeader), cts.Token); commit when mergemock will be fixed
             
             BlockTaskAndRandom emptyBlockTaskTuple = new(emptyBlock, random);
@@ -87,6 +94,36 @@ namespace Nethermind.Merge.Plugin.Handlers
             // remove after 12 seconds, it will not be needed
             await Task.Delay(TimeSpan.FromSeconds(12), cts.Token);
           //  CleanupOldPayload(payloadId);
+        }
+        
+        
+        private Block? LogProductionResult(Task<Block?> t)
+        {
+            if (t.IsCompletedSuccessfully)
+            {
+                if (t.Result != null)
+                {
+                    if (_logger.IsInfo)
+                        _logger.Info(
+                            $"Sealed eth2 block {t.Result.ToString(Block.Format.HashNumberDiffAndTx)}");
+                }
+                else
+                {
+                    if (_logger.IsInfo)
+                        _logger.Info(
+                            $"Failed to seal eth2 block (null seal)");
+                }
+            }
+            else if (t.IsFaulted)
+            {
+                if (_logger.IsError) _logger.Error("Producing block failed", t.Exception);
+            }
+            else if (t.IsCanceled)
+            {
+                if (_logger.IsInfo) _logger.Info($"Block producing was canceled");
+            }
+
+            return t.Result;
         }
 
         public BlockTaskAndRandom? GetPayload(ulong payloadId)
