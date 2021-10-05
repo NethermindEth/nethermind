@@ -119,11 +119,11 @@ namespace Nethermind.Merge.Plugin
                 IInitConfig? initConfig = _api.Config<IInitConfig>();
                 _api.Config<IJsonRpcConfig>().EnableModules(ModuleType.Engine);
 
-                PayloadStorage payloadStorage = new(_defaultBlockProductionTrigger, _emptyBlockProductionTrigger, _api.StateProvider, _api.BlockchainProcessor, initConfig, _api.LogManager);
+                PayloadStorage payloadStorage = new(_idealBlockProductionTrigger, _emptyBlockProductionTrigger, _api.StateProvider, _api.BlockchainProcessor, initConfig, _api.LogManager);
                 PayloadManager payloadManager = new(_api.BlockTree);
 
                 IEngineRpcModule engineRpcModule = new EngineRpcModule(
-                    new PreparePayloadHandler(_api.BlockTree, payloadStorage, _defaultBlockProductionTrigger,
+                    new PreparePayloadHandler(_api.BlockTree, payloadStorage, _idealBlockProductionTrigger,
                         _emptyBlockProductionTrigger, _manualTimestamper, _api.Sealer, _api.LogManager),
                     new GetPayloadHandler(payloadStorage, _api.LogManager),
                     new ExecutePayloadHandler(_api.BlockTree, _api.BlockPreprocessor, _api.BlockchainProcessor,
