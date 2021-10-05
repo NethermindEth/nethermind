@@ -15,24 +15,26 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Core;
-using Nethermind.Int256;
+using FluentAssertions;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Merge.Plugin.Data;
+using Nethermind.Serialization.Json;
+using NUnit.Framework;
 
-namespace Nethermind.Consensus
+namespace Nethermind.Merge.Plugin.Test
 {
-    public class ConstantDifficultyCalculator : IDifficultyCalculator
+    public class ForkChoiceUpdatedRequestTests
     {
-        private readonly UInt256 _constantDifficulty;
-
-        public static readonly IDifficultyCalculator Zero = new ConstantDifficultyCalculator(UInt256.Zero);
-
-        public static readonly IDifficultyCalculator One = new ConstantDifficultyCalculator(UInt256.One);
-
-        public ConstantDifficultyCalculator(UInt256 constantDifficulty)
-        {
-            _constantDifficulty = constantDifficulty;
-        }
+        private readonly IJsonSerializer _serializer = new EthereumJsonSerializer();
         
-        public UInt256 Calculate(BlockHeader header, BlockHeader parent) => _constantDifficulty;
+        
+        [Test]
+        public void serialization_and_deserialization_roundtrip()
+        {
+            ForkChoiceUpdatedRequest initial = new(TestItem.KeccakA, TestItem.KeccakB);
+            string? serialized = _serializer.Serialize(initial);
+            ForkChoiceUpdatedRequest deserialized = _serializer.Deserialize<ForkChoiceUpdatedRequest>(serialized);
+            deserialized.Should().BeEquivalentTo(initial);
+        }
     }
 }

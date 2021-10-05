@@ -50,7 +50,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
 
-            WasEverInPoS = IsPoS();
+            HasEverBeenInPos = IsPoS();
         }
 
         public void DisableTxFiltering()
@@ -63,7 +63,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         public override int MessageIdSpaceSize => 8;
         public override string Name => "eth62";
         protected override TimeSpan InitTimeout => Timeouts.Eth62Status;
-        private bool WasEverInPoS { get; set; }
+        private bool HasEverBeenInPos { get; set; }
 
         public override event EventHandler<ProtocolInitializedEventArgs>? ProtocolInitialized;
 
@@ -187,14 +187,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         private bool IsPoS()
         {
-            if (WasEverInPoS)
+            if (HasEverBeenInPos)
             {
                 return true;
             }
             
             if (_poSSwitcher.HasEverBeenInPos())
             {
-                WasEverInPoS = true;
+                HasEverBeenInPos = true;
                 SyncServer.StopNotifyingPeersAboutNewBlocks();
                 return true;
             }
