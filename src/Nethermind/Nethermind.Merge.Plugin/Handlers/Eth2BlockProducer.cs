@@ -33,7 +33,7 @@ namespace Nethermind.Merge.Plugin.Handlers
 {
     public class MergeBlockProducer : IBlockProducer
     {
-        private readonly IBlockProducer? _preMergeProducer;
+        private readonly IBlockProducer _preMergeProducer;
         private readonly IBlockProducer _eth2BlockProducer;
         private readonly IPoSSwitcher _poSSwitcher;
         private readonly IBlockchainProcessor _blockchainProcessor;
@@ -43,11 +43,19 @@ namespace Nethermind.Merge.Plugin.Handlers
 
         public MergeBlockProducer(IBlockProducer? preMergeProducer, IBlockProducer? eth2BlockProducer, IPoSSwitcher? poSSwitcher, IBlockchainProcessor blockchainProcessor)
         {
-            _preMergeProducer = preMergeProducer;
+            _preMergeProducer = preMergeProducer ?? throw new ArgumentNullException(nameof(preMergeProducer));
             _eth2BlockProducer = eth2BlockProducer ?? throw new ArgumentNullException(nameof(eth2BlockProducer));
             _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
             _blockchainProcessor = blockchainProcessor;
             _poSSwitcher.SwitchHappened += OnSwitchHappened;
+            
+            _preMergeProducer.BlockProduced += OnBlockProduced;
+            eth2BlockProducer.BlockProduced += OnBlockProduced;
+        }
+
+        private void OnBlockProduced(object? sender, BlockEventArgs e)
+        {
+            BlockProduced?.Invoke(this, e);
         }
 
         private void OnSwitchHappened(object? sender, EventArgs e)
