@@ -84,8 +84,6 @@ namespace Nethermind.Merge.Plugin
                 _api.SealEngine = new MergeSealEngine(_api.SealEngine, _poSSwitcher, signer);
                 _api.GossipPolicy = new MergeGossipPolicy(_api.GossipPolicy, _poSSwitcher);
             }
-            
-            _poSSwitcher = NoPoS.Instance;
 
             return Task.CompletedTask;
         }
