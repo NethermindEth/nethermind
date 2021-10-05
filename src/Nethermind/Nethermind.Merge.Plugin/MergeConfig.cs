@@ -25,6 +25,6 @@ namespace Nethermind.Merge.Plugin
 
         public string BlockAuthorAccount { get; set; } = string.Empty;
 
-        public UInt256? TerminalTotalDifficulty { get; set; }
+        public UInt256 TerminalTotalDifficulty { get; set; } = 0;
     }
 }

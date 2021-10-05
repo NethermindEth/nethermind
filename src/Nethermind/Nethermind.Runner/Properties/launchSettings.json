@@ -86,6 +86,10 @@
     "TheMergeDevnet": {
       "commandName": "Project",
       "commandLineArgs": "--config configs\\themerge_devnet.cfg --Init.DiagnosticMode MemDb"
+    },
+    "TheMergeDevnet M3": {
+      "commandName": "Project",
+      "commandLineArgs": "--config themerge_devnet_m3.cfg --Init.DiagnosticMode MemDb"
     }
   }
 }
