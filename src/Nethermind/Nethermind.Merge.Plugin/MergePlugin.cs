@@ -66,7 +66,17 @@ namespace Nethermind.Merge.Plugin
                 _poSSwitcher = new PoSSwitcher(_api.LogManager, _mergeConfig, _api.DbProvider.GetDb<IDb>(DbNames.Metadata));
 
                 //_api.EngineSigner
-                ISigner signer = new Eth2Signer(new Address(_mergeConfig.BlockAuthorAccount ?? Address.Zero.ToString()));
+                Address address;
+                if (string.IsNullOrWhiteSpace(_mergeConfig.BlockAuthorAccount))
+                {
+                    address = Address.Zero;
+                }
+                else
+                {
+                    address = new Address(_mergeConfig.BlockAuthorAccount);
+                }
+                
+                ISigner signer = new Eth2Signer(address);
 
                 _api.RewardCalculatorSource =
                     new MergeRewardCalculatorSource(_poSSwitcher,
