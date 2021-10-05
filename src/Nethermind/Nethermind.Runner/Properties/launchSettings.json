@@ -48,6 +48,10 @@
       "commandName": "Project",
       "commandLineArgs": "--JsonRpc.Enabled true --config configs\\xDai.cfg --baseDbPath C:\\nethermind_db"
     },
+    "xDai_archive": {
+      "commandName": "Project",
+      "commandLineArgs": "--JsonRpc.Enabled true --config configs\\xDai_archive.cfg --baseDbPath C:\\nethermind_db"
+    },
     "AuRaTestMiner": {
       "commandName": "Project",
       "commandLineArgs": "--JsonRpc.Enabled true --config configs\\AuRaTest.cfg --baseDbPath C:\\nethermind_db\\nethermind_db\\AuRaTest\\Miner --KeyStore.TestNodeKey 0xcff9b5a51f50cfddbbd227a273c769164dfe6b6185b56f63e4eb2c545bf5ca38 --Init.IsMining true --Init.LogFileName C:\\temp\\AuraMiner.log.txt"
