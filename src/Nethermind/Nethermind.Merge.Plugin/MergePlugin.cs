@@ -20,6 +20,7 @@ using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
 using Nethermind.Db;
@@ -62,11 +63,12 @@ namespace Nethermind.Merge.Plugin
                 }
 
                 _poSSwitcher = new PoSSwitcher(_api.LogManager, _mergeConfig, _api.DbProvider.GetDb<IDb>(DbNames.Metadata));
-                _api.EngineSigner = new Eth2Signer(new Address(_mergeConfig.BlockAuthorAccount));
+                //_api.EngineSigner
+                ISigner signer = new Eth2Signer(new Address(_mergeConfig.BlockAuthorAccount));
                 _api.RewardCalculatorSource =
                     new MergeRewardCalculatorSource(_poSSwitcher,
                         _api.RewardCalculatorSource ?? NoBlockRewards.Instance);
-                _api.SealEngine = new MergeSealEngine(_api.SealEngine, _poSSwitcher, _api.EngineSigner);
+                _api.SealEngine = new MergeSealEngine(_api.SealEngine, _poSSwitcher, signer);
                 _api.GossipPolicy = new MergeGossipPolicy(_api.GossipPolicy, _poSSwitcher);
             }
 
