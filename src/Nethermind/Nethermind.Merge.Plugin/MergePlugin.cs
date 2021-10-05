@@ -20,6 +20,7 @@ using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
 using Nethermind.Db;
@@ -36,7 +37,8 @@ namespace Nethermind.Merge.Plugin
         private INethermindApi _api = null!;
         private ILogger _logger = null!;
         private IMergeConfig _mergeConfig = null!;
-        private PoSSwitcher _poSSwitcher = null!;
+        private IPoSSwitcher _poSSwitcher = null!;
+        private ITransitionProcessHandler _transitionProcessHandler => (ITransitionProcessHandler)_poSSwitcher;
         private ManualBlockFinalizationManager _blockFinalizationManager = null!;
 
         public string Name => "Merge";
@@ -49,26 +51,28 @@ namespace Nethermind.Merge.Plugin
             _mergeConfig = nethermindApi.Config<IMergeConfig>();
             _logger = _api.LogManager.GetClassLogger();
 
-            if (_mergeConfig.Enabled)
+            // if (_mergeConfig.Enabled)
             {
                 if (_api.DbProvider == null) throw new ArgumentException(nameof(_api.DbProvider));
-                if (string.IsNullOrEmpty(_mergeConfig.BlockAuthorAccount))
-                {
-                    if (_logger.IsError)
-                        _logger.Error(
-                            $"{nameof(MergeConfig)}.{nameof(_mergeConfig.BlockAuthorAccount)} is not set up. Cannot create blocks. Stopping.");
-                    // TODO: where the 13 coming from?
-                    Environment.Exit(13); // ERROR_INVALID_DATA
-                }
+                // if (string.IsNullOrEmpty(_mergeConfig.BlockAuthorAccount))
+                // {
+                //     if (_logger.IsError)
+                //         _logger.Error(
+                //             $"{nameof(MergeConfig)}.{nameof(_mergeConfig.BlockAuthorAccount)} is not set up. Cannot create blocks. Stopping.");
+                //     // TODO: where the 13 coming from?
+                //     Environment.Exit(13); // ERROR_INVALID_DATA
+                // }
 
                 _poSSwitcher = new PoSSwitcher(_api.LogManager, _mergeConfig, _api.DbProvider.GetDb<IDb>(DbNames.Metadata));
-                _api.EngineSigner = new Eth2Signer(new Address(_mergeConfig.BlockAuthorAccount));
+                _api.EngineSigner = new Eth2Signer(new Address(_mergeConfig.BlockAuthorAccount ?? Address.Zero.ToString()));
                 _api.RewardCalculatorSource =
                     new MergeRewardCalculatorSource(_poSSwitcher,
                         _api.RewardCalculatorSource ?? NoBlockRewards.Instance);
                 _api.SealEngine = new MergeSealEngine(_api.SealEngine, _poSSwitcher, _api.EngineSigner);
                 _api.GossipPolicy = new MergeGossipPolicy(_api.GossipPolicy, _poSSwitcher);
             }
+            
+            _poSSwitcher = NoPoS.Instance;
 
             return Task.CompletedTask;
         }
@@ -114,7 +118,7 @@ namespace Nethermind.Merge.Plugin
                         payloadManager, _api.EthSyncingInfo, _api.StateProvider, _api.Config<IInitConfig>(),
                         _api.LogManager),
                     new ConsensusValidatedHandler(payloadManager),
-                    _poSSwitcher,
+                    _transitionProcessHandler,
                     new ForkChoiceUpdatedHandler(_api.BlockTree, _api.StateProvider, _blockFinalizationManager,
                         _poSSwitcher, _api.BlockConfirmationManager, _api.LogManager),
                     new ExecutionStatusHandler(_api.BlockTree, _api.BlockConfirmationManager,
@@ -124,6 +128,16 @@ namespace Nethermind.Merge.Plugin
                 _api.RpcModuleProvider.RegisterSingle(engineRpcModule);
                 if (_logger.IsInfo) _logger.Info("Consensus Module has been enabled");
             }
+        }
+
+        public void AfterHeaderValidator()
+        {
+            _api.HeaderValidator = new MergeHeaderValidator(
+                _api.HeaderValidator,
+                _api.BlockTree,
+                _api.SpecProvider,
+                _poSSwitcher,
+                _api.LogManager);
         }
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;

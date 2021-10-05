@@ -39,6 +39,13 @@ namespace Nethermind.Merge.Plugin
         
         public Task<IBlockProducer> InitBlockProducer(IConsensusPlugin consensusPlugin)
         {
+            _api.HeaderValidator = new MergeHeaderValidator(
+                _api.HeaderValidator,
+                _api.BlockTree,
+                _api.SpecProvider,
+                _poSSwitcher,
+                _api.LogManager);
+            
             if (_mergeConfig.Enabled)
             {
                 _miningConfig = _api.Config<IMiningConfig>();

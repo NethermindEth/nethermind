@@ -149,7 +149,7 @@ namespace Nethermind.Merge.Plugin.Test
             private IBlockValidator CreateBlockValidator()
             {
                 HeaderValidator headerValidator =
-                    new HeaderValidator(BlockTree, Always.Valid, SpecProvider, LogManager);
+                    new (BlockTree, Always.Valid, SpecProvider, LogManager);
                 HeaderValidator mergeHeaderValidator =
                 new MergeHeaderValidator(headerValidator, BlockTree, SpecProvider, PoSSwitcher, LogManager);
                 

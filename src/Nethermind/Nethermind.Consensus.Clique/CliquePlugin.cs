@@ -188,6 +188,11 @@ namespace Nethermind.Consensus.Clique
             return Task.CompletedTask;
         }
 
+        public void AfterHeaderValidator()
+        {
+            
+        }
+
         public string SealEngineType => Nethermind.Core.SealEngineType.Clique;
         
         [Todo("Redo clique producer to support triggers and MEV")]

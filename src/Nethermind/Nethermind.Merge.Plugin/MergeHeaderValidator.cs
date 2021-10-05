@@ -58,11 +58,11 @@ namespace Nethermind.Merge.Plugin
         {
             if (_poSSwitcher.IsPos(header))
             {
-                return base.Validate(header, parent, isUncle);
+                bool theMergeValid = ValidateTheMergeChecks(header);
+                return base.Validate(header, parent, isUncle) && theMergeValid;
             }
-
-            bool theMergeValid = ValidateTheMergeChecks(header);
-            return _beforeTheMerge.ValidateHash(header) && theMergeValid;
+            
+            return _beforeTheMerge.Validate(header, parent, isUncle);
         }
 
         private bool ValidateTheMergeChecks(BlockHeader header)
