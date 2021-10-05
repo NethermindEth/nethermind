@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Buffers;
 using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.CompilerServices;
@@ -69,39 +68,34 @@ namespace Nethermind.Evm
         private readonly byte[] _chainId;
 
         private readonly IBlockhashProvider _blockhashProvider;
-        private readonly ISpecProvider _specProvider;
         private static readonly ICache<Keccak, CodeInfo> _codeCache = new LruCache<Keccak, CodeInfo>(MemoryAllowance.CodeCacheSize, MemoryAllowance.CodeCacheSize, "VM bytecodes");
         private readonly ILogger _logger;
-        private readonly IStateProvider _state;
+        private IStateProvider _state;
         private readonly Stack<EvmState> _stateStack = new();
-        private readonly IStorageProvider _storage;
+        private IStorageProvider _storage;
         private Address? _parityTouchBugAccount;
         private Dictionary<Address, CodeInfo>? _precompiles;
         private byte[] _returnDataBuffer = Array.Empty<byte>();
         private ITxTracer _txTracer = NullTxTracer.Instance;
 
         public VirtualMachine(
-            IStateProvider? stateProvider,
-            IStorageProvider? storageProvider,
+            ulong chainId,
             IBlockhashProvider? blockhashProvider,
-            ISpecProvider? specProvider,
             ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _state = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
-            _storage = storageProvider ?? throw new ArgumentNullException(nameof(storageProvider));
             _blockhashProvider = blockhashProvider ?? throw new ArgumentNullException(nameof(blockhashProvider));
-            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _chainId = ((UInt256)specProvider.ChainId).ToBigEndian();
+            _chainId = ((UInt256)chainId).ToBigEndian();
             InitializePrecompiledContracts();
         }
 
-        // can refactor and integrate the other call
-        public TransactionSubstate Run(EvmState state, ITxTracer txTracer)
+        public TransactionSubstate Run(EvmState state, IWorldState worldState, IReleaseSpec releaseSpec, ITxTracer txTracer)
         {
             _txTracer = txTracer;
 
-            IReleaseSpec spec = _specProvider.GetSpec(state.Env.TxExecutionContext.Header.Number);
+            _state = worldState.StateProvider;
+            _storage = worldState.StorageProvider;
+            IReleaseSpec spec = releaseSpec;
             EvmState currentState = state;
             byte[] previousCallResult = null;
             ZeroPaddedSpan previousCallOutput = ZeroPaddedSpan.Empty;

@@ -49,7 +49,7 @@ namespace Ethereum.VM.Test
         private IBlockhashProvider _blockhashProvider;
         private IStateProvider _stateProvider;
         private ISpecProvider _specProvider;
-        private ILogManager _logManager = LimboLogs.Instance;
+        private readonly ILogManager _logManager = LimboLogs.Instance;
 
         [SetUp]
         public void Setup()
@@ -149,7 +149,7 @@ namespace Ethereum.VM.Test
         {
             TestContext.WriteLine($"Running {test.GetType().FullName}");
             
-            VirtualMachine machine = new VirtualMachine(_stateProvider, _storageProvider, _blockhashProvider, _specProvider, _logManager);
+            VirtualMachine machine = new VirtualMachine(_specProvider.ChainId, _blockhashProvider, _logManager);
             ExecutionEnvironment environment = new ExecutionEnvironment();
             environment.Value = test.Execution.Value;
             environment.CallDepth = 0;
@@ -198,8 +198,10 @@ namespace Ethereum.VM.Test
 
             _storageProvider.Commit();
             _stateProvider.Commit(Olympic.Instance);
-
-            TransactionSubstate substate = machine.Run(state, NullTxTracer.Instance);
+            WorldState worldState = new WorldState(_stateProvider, _storageProvider);
+            IReleaseSpec spec = _specProvider.GetSpec(test.Environment.CurrentNumber);
+            
+            TransactionSubstate substate = machine.Run(state, worldState, spec, NullTxTracer.Instance);
             if (test.Out == null)
             {
                 Assert.NotNull(substate.Error);

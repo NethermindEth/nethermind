@@ -35,7 +35,6 @@ using Nethermind.Serialization.Json;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
@@ -46,8 +45,8 @@ namespace Nethermind.Evm.Test
     [Parallelizable(ParallelScope.Self)]
     public class TransactionProcessorTests
     {
-        private bool _isEip155Enabled;
-        private ISpecProvider _specProvider;
+        private readonly bool _isEip155Enabled;
+        private readonly ISpecProvider _specProvider;
         private IEthereumEcdsa _ethereumEcdsa;
         private TransactionProcessor _transactionProcessor;
         private StateProvider _stateProvider;
@@ -69,7 +68,7 @@ namespace Nethermind.Evm.Test
             _stateProvider.CommitTree(0);
 
             StorageProvider storageProvider = new(trieStore, _stateProvider, LimboLogs.Instance);
-            VirtualMachine virtualMachine = new(_stateProvider, storageProvider, Substitute.For<IBlockhashProvider>(), _specProvider, LimboLogs.Instance);
+            VirtualMachine virtualMachine = new(_specProvider.ChainId, TestBlockhashProvider.Instance, LimboLogs.Instance);
             _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, storageProvider, virtualMachine, LimboLogs.Instance);
             _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId, LimboLogs.Instance);
         }
