@@ -30,14 +30,14 @@ namespace Nethermind.Blockchain
         ShouldProcess = 1,
         
         /// <summary>
-        /// Whether SetAsMain flag is set or not.
-        /// </summary>
-        SetAsMainIsSet = 2,
-        
-        /// <summary>
         /// Whether a block should be set as main.
         /// </summary>
-        SetAsMain = 4,
+        SetAsMain = 2,
+        
+        /// <summary>
+        /// Whether a block shouldn't be set as main.
+        /// </summary>
+        DontSetAsMain = 4,
         
         /// <summary>
         /// Whether a proof of stake is enabled.

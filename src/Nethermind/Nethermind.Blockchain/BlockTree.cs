@@ -571,9 +571,9 @@ namespace Nethermind.Blockchain
 
                 BlockInfo blockInfo = new(header.Hash, header.TotalDifficulty ?? 0);
                 UpdateOrCreateLevel(header.Number, blockInfo,
-                    (options & SuggestingOptions.SetAsMainIsSet) != 0
-                        ? (options & SuggestingOptions.SetAsMain) != 0
-                        : (options & SuggestingOptions.ShouldProcess) == 0);
+                    (options & SuggestingOptions.SetAsMain) != 0
+                    || (options & SuggestingOptions.DontSetAsMain) == 0
+                    && (options & SuggestingOptions.ShouldProcess) == 0);
                 NewSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
             }
 
