@@ -38,9 +38,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V64
             INodeStatsManager nodeStatsManager,
             ISyncServer syncServer,
             ITxPool txPool,
-            IPoSSwitcher poSSwitcher,
+            IGossipPolicy gossipPolicy,
             ISpecProvider specProvider,
-            ILogManager logManager) : base(session, serializer, nodeStatsManager, syncServer, txPool, poSSwitcher, logManager)
+            ILogManager logManager) : base(session, serializer, nodeStatsManager, syncServer, txPool, gossipPolicy, logManager)
         {
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         }

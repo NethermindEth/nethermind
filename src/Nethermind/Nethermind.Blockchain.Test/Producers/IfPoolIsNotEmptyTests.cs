@@ -16,7 +16,7 @@
 // 
 
 using FluentAssertions;
-using Nethermind.Blockchain.Producers;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.TxPool;
 using NSubstitute;

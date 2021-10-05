@@ -77,7 +77,7 @@ namespace Nethermind.Network.Test
             private IChannelPipeline _pipeline;
             private IPacketSender _packetSender;
             private IBlockTree _blockTree;
-            private IPoSSwitcher _poSSwitcher;
+            private IGossipPolicy _gossipPolicy;
 
             public Context()
             {
@@ -107,7 +107,7 @@ namespace Nethermind.Network.Test
                 _protocolValidator = new ProtocolValidator(_nodeStatsManager, _blockTree, LimboLogs.Instance);
                 _peerStorage = Substitute.For<INetworkStorage>();
                 _syncPeerPool = Substitute.For<ISyncPeerPool>();
-                _poSSwitcher = Substitute.For<IPoSSwitcher>();
+                _gossipPolicy = Substitute.For<IGossipPolicy>();
                 _manager = new ProtocolsManager(
                     _syncPeerPool,
                     _syncServer,
@@ -120,7 +120,7 @@ namespace Nethermind.Network.Test
                     _protocolValidator,
                     _peerStorage,
                     MainnetSpecProvider.Instance,
-                    _poSSwitcher,
+                    _gossipPolicy,
                     LimboLogs.Instance);
 
                 _serializer.Register(new HelloMessageSerializer());

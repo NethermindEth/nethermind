@@ -15,7 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Blockchain.Services
 {
     public static class HealthHintConstants
     {

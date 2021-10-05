@@ -68,7 +68,7 @@ namespace Nethermind.Init.Steps
                 bloomStorage,
                 _get.Config<ISyncConfig>(),
                 _get.LogManager);
-            
+
             ISigner signer = NullSigner.Instance;
             ISignerStore signerStore = NullSigner.Instance;
             if (_get.Config<IMiningConfig>().Enabled)

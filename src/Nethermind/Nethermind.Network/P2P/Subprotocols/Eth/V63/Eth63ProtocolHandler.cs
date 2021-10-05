@@ -42,8 +42,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             INodeStatsManager nodeStatsManager,
             ISyncServer syncServer,
             ITxPool txPool,
-            IPoSSwitcher poSSwitcher,
-            ILogManager logManager) : base(session, serializer, nodeStatsManager, syncServer, txPool, poSSwitcher, logManager)
+            IGossipPolicy gossipPolicy,
+            ILogManager logManager) : base(session, serializer, nodeStatsManager, syncServer, txPool, gossipPolicy, logManager)
         {
             _nodeDataRequests = new MessageQueue<GetNodeDataMessage, byte[][]>(Send);
             _receiptsRequests = new MessageQueue<GetReceiptsMessage, TxReceipt[][]>(Send);

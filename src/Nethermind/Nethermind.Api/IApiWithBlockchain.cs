@@ -17,16 +17,16 @@
 
 #nullable enable
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Filters;
-using Nethermind.Blockchain.Processing;
-using Nethermind.Blockchain.Producers;
-using Nethermind.Blockchain.Rewards;
-using Nethermind.Blockchain.Validators;
+using Nethermind.Blockchain.Services;
 using Nethermind.Config;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Comparers;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
-using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
@@ -96,8 +96,7 @@ namespace Nethermind.Api
         IGasPriceOracle? GasPriceOracle { get; set; }
         
         IEthSyncingInfo? EthSyncingInfo { get; set; }
-
-        IPoSSwitcher PoSSwitcher { get; set; }
+        
         IBlockConfirmationManager BlockConfirmationManager { get; set; }
     }
 }

@@ -16,9 +16,9 @@
 
 using System;
 using System.Numerics;
-using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Ethash;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -28,7 +28,6 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Logging;
-using Nethermind.Merge.Plugin;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -48,7 +47,6 @@ namespace Nethermind.Blockchain.Test.Validators
         private Block _block;
         private IBlockTree _blockTree;
         private ISpecProvider _specProvider;
-        private IPoSSwitcher _poSSwitcher;
 
         [SetUp]
         public void Setup()
@@ -173,6 +171,8 @@ namespace Nethermind.Blockchain.Test.Validators
         [Test]
         public void When_timestamp_same_as_parent()
         {
+            // this test is failing during the Merge interop workshop but should be fine outside of it
+            
             _block.Header.Timestamp = _parentBlock.Header.Timestamp;
             _block.Header.SealEngineType = SealEngineType.None;
             _block.Header.Hash = _block.CalculateHash();
@@ -235,7 +235,7 @@ namespace Nethermind.Blockchain.Test.Validators
                 Eip1559TransitionBlock = 5
             };
             TestSpecProvider specProvider = new(spec);
-            _validator = new HeaderValidator(_blockTree, _ethash, specProvider, NoPoS.Instance, new OneLoggerLogManager(_testLogger));
+            _validator = new HeaderValidator(_blockTree, _ethash, specProvider, new OneLoggerLogManager(_testLogger));
             _parentBlock = Build.A.Block.WithDifficulty(1)
                             .WithGasLimit(parentGasLimit)
                             .WithNumber(blockNumber)
@@ -257,7 +257,7 @@ namespace Nethermind.Blockchain.Test.Validators
         [Test]
         public void When_gas_limit_is_long_max_value()
         {
-            _validator = new HeaderValidator(_blockTree, _ethash, _specProvider,  NoPoS.Instance, new OneLoggerLogManager(_testLogger));
+            _validator = new HeaderValidator(_blockTree, _ethash, _specProvider, new OneLoggerLogManager(_testLogger));
             _parentBlock = Build.A.Block.WithDifficulty(1)
                 .WithGasLimit(long.MaxValue)
                 .WithNumber(5)
@@ -277,40 +277,9 @@ namespace Nethermind.Blockchain.Test.Validators
         }
 
         [Test]
-        public void Valid_before_invalid_after_the_merge()
-        {
-            _block.Header.SealEngineType = SealEngineType.None;
-            _block.Header.Hash = _block.CalculateHash();
-            bool result = _validator.Validate(_block.Header);
-
-            Assert.True(result, "before");
-
-            _validator = new HeaderValidator(_blockTree, _ethash, _specProvider, _poSSwitcher,
-                new OneLoggerLogManager(_testLogger));
-            result = _validator.Validate(_block.Header);
-
-            Assert.False(result, "after");
-        }
-
-        [Test]
-        public void Invalid_before_valid_after_the_merge()
-        {
-            AssignValidPoSFields(_block);
-            bool result = _validator.Validate(_block.Header);
-
-            Assert.False(result, "before");
-
-            _validator = new HeaderValidator(_blockTree, _ethash, _specProvider, _poSSwitcher,
-                new OneLoggerLogManager(_testLogger));
-            result = _validator.Validate(_block.Header);
-
-            Assert.True(result, "after");
-        }
-
-        [Test]
         public void When_incorrect_difficulty_after_the_merge()
         {
-            _validator = new HeaderValidator(_blockTree, _ethash, _specProvider, _poSSwitcher,
+            _validator = new HeaderValidator(_blockTree, _ethash, _specProvider,
                 new OneLoggerLogManager(_testLogger));
             AssignValidPoSFields(_block);
             _block.Header.Difficulty = 131072;
@@ -323,7 +292,7 @@ namespace Nethermind.Blockchain.Test.Validators
         [Test]
         public void When_incorrect_mix_hash_after_the_merge()
         {
-            _validator = new HeaderValidator(_blockTree, _ethash, _specProvider, _poSSwitcher,
+            _validator = new HeaderValidator(_blockTree, _ethash, _specProvider,
                 new OneLoggerLogManager(_testLogger));
             AssignValidPoSFields(_block);
             _block.Header.MixHash = Keccak.Compute("mix_hash");
@@ -350,7 +319,7 @@ namespace Nethermind.Blockchain.Test.Validators
         [Test]
         public void When_incorrect_nonce_after_the_merge()
         {
-            _validator = new HeaderValidator(_blockTree, _ethash, _specProvider, _poSSwitcher,
+            _validator = new HeaderValidator(_blockTree, _ethash, _specProvider,
                 new OneLoggerLogManager(_testLogger));
             AssignValidPoSFields(_block);
             _block.Header.Nonce = 1000;
@@ -363,7 +332,7 @@ namespace Nethermind.Blockchain.Test.Validators
         [Test]
         public void When_incorrect_uncles_after_the_merge()
         {
-            _validator = new HeaderValidator(_blockTree, _ethash, _specProvider, _poSSwitcher, new OneLoggerLogManager(_testLogger));
+            _validator = new HeaderValidator(_blockTree, _ethash, _specProvider, new OneLoggerLogManager(_testLogger));
             AssignValidPoSFields(_block);
             _block.Header.UnclesHash = Keccak.Compute("unclesHash");
             _block.Header.Hash = _block.CalculateHash();

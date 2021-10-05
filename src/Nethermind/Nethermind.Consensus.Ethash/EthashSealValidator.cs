@@ -24,7 +24,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Consensus.Ethash
 {
-    public class EthashSealValidator : ISealValidator
+    internal class EthashSealValidator : ISealValidator
     {
         private IDifficultyCalculator _difficultyCalculator;
         private ICryptoRandom _cryptoRandom;
@@ -35,14 +35,24 @@ namespace Nethermind.Consensus.Ethash
         private const int SealValidationIntervalConstantComponent = 1024;
         private int sealValidationInterval = SealValidationIntervalConstantComponent;
 
-        public EthashSealValidator(ILogManager logManager, IDifficultyCalculator difficultyCalculator, ICryptoRandom cryptoRandom, IEthash ethash)
+        internal EthashSealValidator(ILogManager logManager, IDifficultyCalculator difficultyCalculator,
+            ICryptoRandom cryptoRandom, IEthash ethash)
         {
-            _difficultyCalculator = difficultyCalculator ?? throw new ArgumentNullException(nameof(difficultyCalculator));
+            _difficultyCalculator =
+                difficultyCalculator ?? throw new ArgumentNullException(nameof(difficultyCalculator));
             _cryptoRandom = cryptoRandom ?? throw new ArgumentNullException(nameof(cryptoRandom));
             _ethash = ethash ?? throw new ArgumentNullException(nameof(ethash));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
             ResetValidationInterval();
+        }
+
+        public EthashSealValidator(
+            ILogManager logManager,
+            IDifficultyCalculator difficultyCalculator,
+            ICryptoRandom cryptoRandom)
+            : this(logManager, difficultyCalculator, cryptoRandom, new Ethash(logManager))
+        {
         }
 
         private void ResetValidationInterval()
@@ -77,14 +87,15 @@ namespace Nethermind.Consensus.Ethash
         public void HintValidationRange(Guid guid, long start, long end)
         {
             _ethash.HintRange(guid, start, end);
-        }  
-        
+        }
+
         public bool ValidateParams(BlockHeader parent, BlockHeader header)
         {
             bool extraDataNotTooLong = header.ExtraData.Length <= 32;
             if (!extraDataNotTooLong)
             {
-                _logger.Warn($"Invalid block header ({header.ToString(BlockHeader.Format.Full)}) - extra data too long {header.ExtraData.Length}");
+                _logger.Warn(
+                    $"Invalid block header ({header.ToString(BlockHeader.Format.Full)}) - extra data too long {header.ExtraData.Length}");
                 return false;
             }
 
@@ -92,7 +103,8 @@ namespace Nethermind.Consensus.Ethash
             bool isDifficultyCorrect = difficulty == header.Difficulty;
             if (!isDifficultyCorrect)
             {
-                _logger.Warn($"Invalid block header ({header.ToString(BlockHeader.Format.Full)}) - incorrect difficulty {header.Difficulty} instead of {difficulty}");
+                _logger.Warn(
+                    $"Invalid block header ({header.ToString(BlockHeader.Format.Full)}) - incorrect difficulty {header.Difficulty} instead of {difficulty}");
                 return false;
             }
 

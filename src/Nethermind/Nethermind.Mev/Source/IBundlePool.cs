@@ -34,7 +34,7 @@ namespace Nethermind.Mev.Source
     
     public static class BundlePoolExtensions
     {
-        public static IEnumerable<MevBundle> GetBundles(this IBundlePool bundleSource, BlockHeader parent, ITimestamper timestamper, CancellationToken token = default) => 
-            bundleSource.GetBundles(parent.Number + 1, timestamper.UnixTime.Seconds, token);
+        public static IEnumerable<MevBundle> GetBundles(this IBundlePool bundleSource, long blockNumber, ITimestamper timestamper, CancellationToken token = default) => 
+            bundleSource.GetBundles(blockNumber, timestamper.UnixTime.Seconds, token);
     }
 }

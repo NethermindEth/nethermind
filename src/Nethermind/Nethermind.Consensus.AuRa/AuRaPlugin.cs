@@ -18,8 +18,8 @@
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
-using Nethermind.Blockchain.Producers;
 using Nethermind.Consensus.AuRa.InitializationSteps;
+using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Serialization.Rlp;

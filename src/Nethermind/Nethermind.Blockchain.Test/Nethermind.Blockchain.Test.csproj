@@ -31,7 +31,6 @@
       <Name>Nethermind.Core.Test</Name>
     </ProjectReference>
     <ProjectReference Include="..\Nethermind.JsonRpc.Test\Nethermind.JsonRpc.Test.csproj" />
-    <ProjectReference Include="..\Nethermind.Merge.Plugin\Nethermind.Merge.Plugin.csproj" />
     <ProjectReference Include="..\Nethermind.Specs.Test\Nethermind.Specs.Test.csproj" />
   </ItemGroup>
   <ItemGroup>

@@ -20,6 +20,9 @@ using Nethermind.Int256;
 
 namespace Nethermind.Merge.Plugin.Handlers
 {
+    /// <summary>
+    /// Responsible for setting the final values of PoW chain when transitioning to PoS.
+    /// </summary>
     public interface ITransitionProcessHandler
     {
         UInt256? TerminalTotalDifficulty { get; set; }

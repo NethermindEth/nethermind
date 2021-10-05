@@ -17,8 +17,8 @@
 
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Visitors;
+using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;

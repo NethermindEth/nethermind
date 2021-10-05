@@ -19,8 +19,8 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.JsonRpc;
@@ -42,7 +42,7 @@ namespace Nethermind.Merge.Plugin
         public string Name => "Merge";
         public string Description => "Merge plugin for ETH1-ETH2";
         public string Author => "Nethermind";
-        
+
         public Task Init(INethermindApi nethermindApi)
         {
             _api = nethermindApi;
@@ -54,14 +54,17 @@ namespace Nethermind.Merge.Plugin
                 if (_api.DbProvider == null) throw new ArgumentException(nameof(_api.DbProvider));
                 if (string.IsNullOrEmpty(_mergeConfig.BlockAuthorAccount))
                 {
-                    if (_logger.IsError) _logger.Error($"{nameof(MergeConfig)}.{nameof(_mergeConfig.BlockAuthorAccount)} is not set up. Cannot create blocks. Stopping.");
+                    if (_logger.IsError)
+                        _logger.Error(
+                            $"{nameof(MergeConfig)}.{nameof(_mergeConfig.BlockAuthorAccount)} is not set up. Cannot create blocks. Stopping.");
+                    // TODO: where the 13 coming from?
                     Environment.Exit(13); // ERROR_INVALID_DATA
                 }
 
                 _poSSwitcher = new PoSSwitcher(_api.LogManager, _mergeConfig, _api.DbProvider.GetDb<IDb>(DbNames.Metadata));
                 _api.EngineSigner = new Eth2Signer(new Address(_mergeConfig.BlockAuthorAccount));
-                _api.RewardCalculatorSource = new MergeRewardCalculator(NoBlockRewards.Instance, _poSSwitcher);
-                _api.PoSSwitcher = _poSSwitcher;
+                _api.RewardCalculatorSource =
+                    new MergeRewardCalculatorSource(posSwitcher, _api.RewardCalculatorSource);
             }
 
             return Task.CompletedTask;
@@ -77,7 +80,7 @@ namespace Nethermind.Merge.Plugin
                 _blockFinalizationManager = new ManualBlockFinalizationManager();
                 _api.FinalizationManager = _blockFinalizationManager;
             }
-            
+
             return Task.CompletedTask;
         }
 
@@ -90,19 +93,21 @@ namespace Nethermind.Merge.Plugin
                 if (_api.BlockchainProcessor is null) throw new ArgumentNullException(nameof(_api.BlockchainProcessor));
                 if (_api.StateProvider is null) throw new ArgumentNullException(nameof(_api.StateProvider));
                 if (_api.StateProvider is null) throw new ArgumentNullException(nameof(_api.StateProvider));
-                
+
                 await _api.BlockchainProcessor.StopAsync(true);
 
                 _api.Config<IJsonRpcConfig>().EnableModules(ModuleType.Consensus);
 
-                PayloadStorage payloadStorage = new();
+                PayloadStorage payloadStorage = new(_defaultBlockProductionTrigger, _emptyBlockProductionTrigger);
                 PayloadManager payloadManager = new(_api.BlockTree);
 
                 IEngineRpcModule engineRpcModule = new EngineRpcModule(
                     new PreparePayloadHandler(_api.BlockTree, payloadStorage, _defaultBlockProductionTrigger,
                         _emptyBlockProductionTrigger, _manualTimestamper, _api.Sealer, _api.LogManager),
                     new GetPayloadHandler(payloadStorage, _api.LogManager),
-                    new ExecutePayloadHandler(_api.BlockTree, _api.BlockPreprocessor, _api.BlockchainProcessor, payloadManager, _api.EthSyncingInfo, _api.StateProvider, _api.Config<IInitConfig>(), _api.LogManager),
+                    new ExecutePayloadHandler(_api.BlockTree, _api.BlockPreprocessor, _api.BlockchainProcessor,
+                        payloadManager, _api.EthSyncingInfo, _api.StateProvider, _api.Config<IInitConfig>(),
+                        _api.LogManager),
                     new ConsensusValidatedHandler(payloadManager),
                     _poSSwitcher,
                     new ForkChoiceUpdatedHandler(_api.BlockTree, _api.StateProvider, _blockFinalizationManager,
@@ -110,12 +115,12 @@ namespace Nethermind.Merge.Plugin
                     new ExecutionStatusHandler(_api.BlockTree, _api.BlockConfirmationManager,
                         _blockFinalizationManager),
                     _api.LogManager);
-                
+
                 _api.RpcModuleProvider.RegisterSingle(engineRpcModule);
                 if (_logger.IsInfo) _logger.Info("Consensus Module has been enabled");
             }
         }
-        
+
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
         public string SealEngineType => "Eth2Merge";

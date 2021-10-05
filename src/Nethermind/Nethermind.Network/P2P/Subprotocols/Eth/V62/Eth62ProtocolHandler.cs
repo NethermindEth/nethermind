@@ -35,7 +35,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         private bool _statusReceived;
         private readonly TxFloodController _floodController;
         protected readonly ITxPool _txPool;
-        private readonly IPoSSwitcher _poSSwitcher;
+        private readonly IGossipPolicy _gossipPolicy;
 
         public Eth62ProtocolHandler(
             ISession session,
@@ -43,14 +43,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             INodeStatsManager statsManager,
             ISyncServer syncServer,
             ITxPool txPool,
-            IPoSSwitcher poSSwitcher,
+            IGossipPolicy poSSwitcher,
             ILogManager logManager) : base(session, serializer, statsManager, syncServer, logManager)
         {
             _floodController = new TxFloodController(this, Timestamper.Default, Logger);
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
-            _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
-
-            WasEverInPoS = IsPoS();
+            _gossipPolicy = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
         }
 
         public void DisableTxFiltering()
@@ -63,7 +61,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         public override int MessageIdSpaceSize => 8;
         public override string Name => "eth62";
         protected override TimeSpan InitTimeout => Timeouts.Eth62Status;
-        private bool WasEverInPoS { get; set; }
+        private bool HasEverBeenInPos { get; set; }
 
         public override event EventHandler<ProtocolInitializedEventArgs>? ProtocolInitialized;
 
@@ -86,7 +84,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
             BlockHeader head = SyncServer.Head;
             StatusMessage statusMessage = new();
-            statusMessage.ChainId = (UInt256) SyncServer.ChainId;
+            statusMessage.ChainId = (UInt256)SyncServer.ChainId;
             statusMessage.ProtocolVersion = ProtocolVersion;
             statusMessage.TotalDifficulty = head.TotalDifficulty ?? head.Difficulty;
             statusMessage.BestHash = head.Hash!;
@@ -128,16 +126,19 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                     break;
                 case Eth62MessageCode.NewBlockHashes:
                     Metrics.Eth62NewBlockHashesReceived++;
-                    if (IsPoS())
+                    if (ShouldNotGossip)
                     {
-                        Disconnect(DisconnectReason.BreachOfProtocol, "NewBlockHashes message received while PoS protocol activated.");
+                        Disconnect(DisconnectReason.BreachOfProtocol,
+                            "NewBlockHashes message received while PoS protocol activated.");
                     }
                     else
                     {
-                        NewBlockHashesMessage newBlockHashesMessage = Deserialize<NewBlockHashesMessage>(message.Content);
+                        NewBlockHashesMessage newBlockHashesMessage =
+                            Deserialize<NewBlockHashesMessage>(message.Content);
                         ReportIn(newBlockHashesMessage);
                         Handle(newBlockHashesMessage);
                     }
+
                     break;
                 case Eth62MessageCode.Transactions:
                     Metrics.Eth62TransactionsReceived++;
@@ -147,6 +148,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                         ReportIn(txMsg);
                         Handle(txMsg);
                     }
+
                     break;
                 case Eth62MessageCode.GetBlockHeaders:
                     GetBlockHeadersMessage getBlockHeadersMessage
@@ -171,9 +173,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                     break;
                 case Eth62MessageCode.NewBlock:
                     Metrics.Eth62NewBlockReceived++;
-                    if (IsPoS())
+                    if (ShouldNotGossip)
                     {
-                        Disconnect(DisconnectReason.BreachOfProtocol, "NewBlock message received while PoS protocol activated.");
+                        Disconnect(DisconnectReason.BreachOfProtocol,
+                            "NewBlock message received while PoS protocol activated.");
                     }
                     else
                     {
@@ -181,25 +184,23 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                         ReportIn(newBlockMsg);
                         Handle(newBlockMsg);
                     }
+
                     break;
             }
         }
 
-        private bool IsPoS()
+        private bool ShouldNotGossip
         {
-            if (WasEverInPoS)
+            get
             {
-                return true;
-            }
-            
-            if (_poSSwitcher.HasEverBeenInPos())
-            {
-                WasEverInPoS = true;
-                SyncServer.StopNotifyingPeersAboutNewBlocks();
-                return true;
-            }
+                if (_gossipPolicy.ShouldGossipBlocks)
+                {
+                    SyncServer.StopNotifyingPeersAboutNewBlocks();
+                    return true;
+                }
 
-            return false;
+                return false;
+            }
         }
 
         private void Handle(StatusMessage status)
@@ -241,8 +242,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 AddTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.None);
                 _floodController.Report(result == AddTxResult.Added);
 
-                if (Logger.IsTrace) Logger.Trace(
-                    $"{Node:c} sent {tx.Hash} tx and it was {result} (chain ID = {tx.Signature?.ChainId})");
+                if (Logger.IsTrace)
+                    Logger.Trace(
+                        $"{Node:c} sent {tx.Hash} tx and it was {result} (chain ID = {tx.Signature?.ChainId})");
             }
         }
 
@@ -272,11 +274,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         public override void NotifyOfNewBlock(Block block, SendBlockPriority priority)
         {
-            if (IsPoS())
+            if (ShouldNotGossip)
             {
                 return;
             }
-            
+
             switch (priority)
             {
                 case SendBlockPriority.High:
@@ -316,7 +318,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             NewBlockHashesMessage msg = new((blockHash, number));
             Send(msg);
         }
-        
+
         protected override void OnDisposed()
         {
         }

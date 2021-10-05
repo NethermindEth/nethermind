@@ -133,7 +133,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
                 set => _outStorage.MigratedBlockNumber = value;
             }
 
-            public event EventHandler<ReceiptsEventArgs> ReceiptsInserted;
+            public event EventHandler<ReceiptsEventArgs> ReceiptsInserted { add { } remove { } }
         }
     }
 }
