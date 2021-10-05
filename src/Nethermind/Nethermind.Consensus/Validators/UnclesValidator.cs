@@ -28,10 +28,10 @@ namespace Nethermind.Consensus.Validators
     public class UnclesValidator : IUnclesValidator
     {
         private readonly IBlockTree _blockTree;
-        private readonly IHeaderDependent<IHeaderValidator> _headerValidator;
+        private readonly IHeaderValidator _headerValidator;
         private readonly ILogger _logger;
 
-        public UnclesValidator(IBlockTree? blockTree, IHeaderDependent<IHeaderValidator>? headerValidator, ILogManager? logManager)
+        public UnclesValidator(IBlockTree? blockTree, IHeaderValidator? headerValidator, ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -55,7 +55,7 @@ namespace Nethermind.Consensus.Validators
             for (int i = 0; i < uncles.Length; i++)
             {
                 BlockHeader uncle = uncles[i];
-                if (!_headerValidator.Resolve(uncle).Validate(uncle, true))
+                if (!_headerValidator.Validate(uncle, true))
                 {
                     _logger.Info($"Invalid block ({header.ToString(BlockHeader.Format.Full)}) - uncle's header invalid");
                     return false;

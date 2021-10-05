@@ -18,20 +18,10 @@ using Nethermind.Core;
 
 namespace Nethermind.Consensus.Validators
 {
-    public interface IHeaderValidator : IHeaderDependent<IHeaderValidator>
+    public interface IHeaderValidator
     {
         bool ValidateHash(BlockHeader header);
         bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle = false);
         bool Validate(BlockHeader header, bool isUncle = false);
-        
-        /// <summary>
-        /// A trick to make each validator to be accepted as a header dependent item
-        /// </summary>
-        /// <param name="header"></param>
-        /// <returns></returns>
-        IHeaderValidator IHeaderDependent<IHeaderValidator>.Resolve(BlockHeader header)
-        {
-            return this;
-        }
     }
 }

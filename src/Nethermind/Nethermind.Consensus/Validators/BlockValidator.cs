@@ -27,13 +27,13 @@ namespace Nethermind.Consensus.Validators
 {
     public class BlockValidator : IBlockValidator
     {
-        private readonly IHeaderDependent<IHeaderValidator> _headerValidator;
+        private readonly IHeaderValidator _headerValidator;
         private readonly ITxValidator _txValidator;
         private readonly IUnclesValidator _unclesValidator;
         private readonly ISpecProvider _specProvider;
         private readonly ILogger _logger;
 
-        public BlockValidator(ITxValidator? txValidator, IHeaderDependent<IHeaderValidator>? headerValidator, IUnclesValidator? unclesValidator, ISpecProvider? specProvider, ILogManager? logManager)
+        public BlockValidator(ITxValidator? txValidator, IHeaderValidator? headerValidator, IUnclesValidator? unclesValidator, ISpecProvider? specProvider, ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _txValidator = txValidator ?? throw new ArgumentNullException(nameof(headerValidator));
@@ -44,18 +44,17 @@ namespace Nethermind.Consensus.Validators
 
         public bool ValidateHash(BlockHeader header)
         {
-            IHeaderValidator headerValidator = _headerValidator.Resolve(header);
-            return headerValidator.ValidateHash(header);
+            return _headerValidator.ValidateHash(header);
         }
         
         public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle)
         {
-            return _headerValidator.Resolve(header).Validate(header, parent, isUncle);
+            return _headerValidator.Validate(header, parent, isUncle);
         }
 
         public bool Validate(BlockHeader header, bool isUncle)
         {
-            return _headerValidator.Resolve(header).Validate(header, isUncle);
+            return _headerValidator.Validate(header, isUncle);
         }
 
         /// <summary>
@@ -95,7 +94,7 @@ namespace Nethermind.Consensus.Validators
                 return false;
             }
             
-            bool blockHeaderValid = _headerValidator.Resolve(block.Header).Validate(block.Header);
+            bool blockHeaderValid = _headerValidator.Validate(block.Header);
             if (!blockHeaderValid)
             {
                 if (_logger.IsDebug) _logger.Debug($"Invalid block ({block.ToString(Block.Format.FullHashAndNumber)}) - invalid header");
