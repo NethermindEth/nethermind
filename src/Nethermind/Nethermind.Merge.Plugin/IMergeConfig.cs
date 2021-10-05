@@ -31,6 +31,6 @@ namespace Nethermind.Merge.Plugin
         public string BlockAuthorAccount { get; set; }
         
         [ConfigItem(Description = "Terminal total difficulty used for transition process.", DefaultValue = "")]
-        public UInt256? TerminalTotalDifficulty { get; set; }
+        public UInt256 TerminalTotalDifficulty { get; set; }
     }
 }
