@@ -64,7 +64,7 @@ namespace Nethermind.Merge.Plugin
                 _poSSwitcher = new PoSSwitcher(_api.LogManager, _mergeConfig, _api.DbProvider.GetDb<IDb>(DbNames.Metadata));
                 _api.EngineSigner = new Eth2Signer(new Address(_mergeConfig.BlockAuthorAccount));
                 _api.RewardCalculatorSource =
-                    new MergeRewardCalculatorSource(posSwitcher, _api.RewardCalculatorSource);
+                    new MergeRewardCalculatorSource(_poSSwitcher, _api.RewardCalculatorSource);
             }
 
             return Task.CompletedTask;
