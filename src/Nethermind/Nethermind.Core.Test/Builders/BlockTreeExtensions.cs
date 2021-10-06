@@ -43,9 +43,9 @@ namespace Nethermind.Core.Test.Builders
                 block.Header.Hash = block.Header.CalculateHash();
                 parent = block;
                 bool shouldProcess = i == branchLength - 1;
-                SuggestingOptions suggestingOptions = shouldProcess ? SuggestingOptions.ShouldProcess : SuggestingOptions.None;
-                suggestingOptions |= SuggestingOptions.DontSetAsMain;
-                blockTree.SuggestBlock(block, suggestingOptions);
+                SuggestionOptions suggestionOptions = shouldProcess ? SuggestionOptions.ShouldProcess : SuggestionOptions.None;
+                suggestionOptions |= SuggestionOptions.DontSetAsMain;
+                blockTree.SuggestBlock(block, suggestionOptions);
             }
         }
 

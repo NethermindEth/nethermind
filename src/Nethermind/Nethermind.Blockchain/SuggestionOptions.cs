@@ -20,7 +20,7 @@ using System;
 namespace Nethermind.Blockchain
 {
     [Flags]
-    public enum SuggestingOptions
+    public enum SuggestionOptions
     {
         None = 0,
         

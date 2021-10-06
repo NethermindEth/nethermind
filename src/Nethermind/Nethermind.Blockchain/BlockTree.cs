@@ -511,7 +511,7 @@ namespace Nethermind.Blockchain
             }
         }
 
-        private AddBlockResult Suggest(Block? block, BlockHeader header, SuggestingOptions options = SuggestingOptions.ShouldProcess)
+        private AddBlockResult Suggest(Block? block, BlockHeader header, SuggestionOptions options = SuggestionOptions.ShouldProcess)
         {
 #if DEBUG
             /* this is just to make sure that we do not fall into this trap when creating tests */
@@ -571,13 +571,13 @@ namespace Nethermind.Blockchain
 
                 BlockInfo blockInfo = new(header.Hash, header.TotalDifficulty ?? 0);
                 UpdateOrCreateLevel(header.Number, blockInfo,
-                    (options & SuggestingOptions.SetAsMain) != 0
-                    || (options & SuggestingOptions.DontSetAsMain) == 0
-                    && (options & SuggestingOptions.ShouldProcess) == 0);
+                    (options & SuggestionOptions.SetAsMain) != 0
+                    || (options & SuggestionOptions.DontSetAsMain) == 0
+                    && (options & SuggestionOptions.ShouldProcess) == 0);
                 NewSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
             }
 
-            if ((options & SuggestingOptions.PoSEnabled) != 0 || header.IsGenesis || header.TotalDifficulty > (BestSuggestedHeader?.TotalDifficulty ?? 0))
+            if ((options & SuggestionOptions.PoSEnabled) != 0 || header.IsGenesis || header.TotalDifficulty > (BestSuggestedHeader?.TotalDifficulty ?? 0))
             {
                 if (header.IsGenesis)
                 {
@@ -585,7 +585,7 @@ namespace Nethermind.Blockchain
                 }
 
                 BestSuggestedHeader = header;
-                if (block is not null && (options & SuggestingOptions.ShouldProcess) != 0)
+                if (block is not null && (options & SuggestionOptions.ShouldProcess) != 0)
                 {
                     BestSuggestedBody = block;
                     NewBestSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
@@ -600,7 +600,7 @@ namespace Nethermind.Blockchain
             return Suggest(null, header);
         }
 
-        public AddBlockResult SuggestBlock(Block block, SuggestingOptions options = SuggestingOptions.ShouldProcess)
+        public AddBlockResult SuggestBlock(Block block, SuggestionOptions options = SuggestionOptions.ShouldProcess)
         {
             if (Genesis is null && !block.IsGenesis)
             {

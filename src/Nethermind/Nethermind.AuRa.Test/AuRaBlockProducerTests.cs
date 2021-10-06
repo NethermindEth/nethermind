@@ -231,7 +231,7 @@ namespace Nethermind.AuRa.Test
         private async Task<TestResult> StartStop(Context context, bool processingQueueEmpty = true, bool newBestSuggestedBlock = false, int stepDelayMultiplier = 100)
         {
             AutoResetEvent processedEvent = new(false);
-            context.BlockTree.SuggestBlock(Arg.Any<Block>(), Arg.Any<SuggestingOptions>())
+            context.BlockTree.SuggestBlock(Arg.Any<Block>(), Arg.Any<SuggestionOptions>())
                 .Returns(AddBlockResult.Added)
                 .AndDoes(c =>
                 {
@@ -264,7 +264,7 @@ namespace Nethermind.AuRa.Test
                 await context.AuRaBlockProducer.StopAsync();
             }
 
-            return new TestResult(q => context.BlockTree.Received(q).SuggestBlock(Arg.Any<Block>(), Arg.Any<SuggestingOptions>()));
+            return new TestResult(q => context.BlockTree.Received(q).SuggestBlock(Arg.Any<Block>(), Arg.Any<SuggestionOptions>()));
         }
         
         private class TestResult

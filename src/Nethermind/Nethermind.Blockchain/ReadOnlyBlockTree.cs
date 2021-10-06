@@ -70,7 +70,7 @@ namespace Nethermind.Blockchain
             _wrapped.UpdateHeadBlock(blockHash);
         }
 
-        public AddBlockResult SuggestBlock(Block block, SuggestingOptions options = SuggestingOptions.ShouldProcess) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(SuggestBlock)} calls");
+        public AddBlockResult SuggestBlock(Block block, SuggestionOptions options = SuggestionOptions.ShouldProcess) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(SuggestBlock)} calls");
 
         public AddBlockResult Insert(BlockHeader header) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(Insert)} calls");
 

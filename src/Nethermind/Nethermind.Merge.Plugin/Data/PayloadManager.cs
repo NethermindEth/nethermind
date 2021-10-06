@@ -100,7 +100,7 @@ namespace Nethermind.Merge.Plugin.Data
         
         public void ProcessValidatedPayload(Block block)
         {
-            _blockTree.SuggestBlock(block, SuggestingOptions.ShouldProcess | SuggestingOptions.PoSEnabled);
+            _blockTree.SuggestBlock(block, SuggestionOptions.ShouldProcess | SuggestionOptions.PoSEnabled);
         }
     }
 }
