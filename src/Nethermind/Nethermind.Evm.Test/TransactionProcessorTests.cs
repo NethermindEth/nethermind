@@ -49,7 +49,7 @@ namespace Nethermind.Evm.Test
         private readonly ISpecProvider _specProvider;
         private IEthereumEcdsa _ethereumEcdsa;
         private TransactionProcessor _transactionProcessor;
-        private StateProvider _stateProvider;
+        private IStateProvider _stateProvider;
 
         public TransactionProcessorTests(bool eip155Enabled)
         {

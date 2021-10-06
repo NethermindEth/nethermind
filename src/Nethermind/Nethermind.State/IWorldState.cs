@@ -23,8 +23,12 @@ namespace Nethermind.State
     /// </summary>
     public interface IWorldState
     {
-        public IStorageProvider StorageProvider { get; }
+        IStorageProvider StorageProvider { get; }
 
-        public IStateProvider StateProvider { get; }
+        IStateProvider StateProvider { get; }
+
+        Snapshot TakeSnapshot(bool newTransactionStart = false);
+        
+        void Restore(Snapshot snapshot);
     }
 }

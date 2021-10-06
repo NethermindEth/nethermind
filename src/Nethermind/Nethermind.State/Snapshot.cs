@@ -15,31 +15,27 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
+using System.Runtime.CompilerServices;
 
+[assembly:InternalsVisibleTo("Nethermind.Evm.Test")]
 namespace Nethermind.State
 {
-    public class WorldState : IWorldState
+    /// <summary>
+    /// Stores state and storage snapshots (as the change index that we can revert to)
+    /// At the beginning and after each commit the snapshot is set to the value of EmptyPosition
+    /// </summary>
+    public readonly struct Snapshot
     {
-        public IStateProvider StateProvider { get; }
+        public Snapshot(int stateSnapshot, int storageSnapshot)
+        {
+            StateSnapshot = stateSnapshot;
+            StorageSnapshot = storageSnapshot;
+        }
         
-        public Snapshot TakeSnapshot(bool newTransactionStart = false)
-        {
-            return new (StateProvider.TakeSnapshot(), StorageProvider.TakeSnapshot(newTransactionStart));
-        }
-
-        public void Restore(Snapshot snapshot)
-        {
-            StateProvider.Restore(snapshot.StateSnapshot);
-            StorageProvider.Restore(snapshot.StorageSnapshot);
-        }
-
-        public IStorageProvider StorageProvider { get; }
-
-        public WorldState(IStateProvider stateProvider, IStorageProvider storageProvider)
-        {
-            StateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
-            StorageProvider = storageProvider ?? throw new ArgumentNullException(nameof(storageProvider));
-        }
+        public int StateSnapshot { get; }
+        
+        public int StorageSnapshot { get; }
+        
+        public const int EmptyPosition = -1;
     }
 }

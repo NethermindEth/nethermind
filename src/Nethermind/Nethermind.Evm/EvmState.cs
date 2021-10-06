@@ -22,6 +22,7 @@ using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Int256;
+using Nethermind.State;
 
 namespace Nethermind.Evm
 {
@@ -111,15 +112,13 @@ namespace Nethermind.Evm
             ExecutionEnvironment env, 
             ExecutionType executionType, 
             bool isTopLevel, 
-            int stateSnapshot,
-            int storageSnapshot,
+            Snapshot snapshot,
             bool isContinuation)
             : this(gasAvailable, 
                 env, 
                 executionType, 
                 isTopLevel, 
-                stateSnapshot, 
-                storageSnapshot, 
+                snapshot, 
                 0L, 
                 0L, 
                 false, 
@@ -136,8 +135,7 @@ namespace Nethermind.Evm
             ExecutionEnvironment env,
             ExecutionType executionType,
             bool isTopLevel,
-            int stateSnapshot,
-            int storageSnapshot,
+            Snapshot snapshot,
             long outputDestination,
             long outputLength,
             bool isStatic,
@@ -153,8 +151,7 @@ namespace Nethermind.Evm
             GasAvailable = gasAvailable;
             ExecutionType = executionType;
             IsTopLevel = isTopLevel;
-            StateSnapshot = stateSnapshot;
-            StorageSnapshot = storageSnapshot;
+            Snapshot = snapshot;
             Env = env;
             OutputDestination = outputDestination;
             OutputLength = outputLength;
@@ -200,8 +197,7 @@ namespace Nethermind.Evm
         public bool IsStatic { get; } // TODO: move to CallEnv
         public bool IsContinuation { get; set; } // TODO: move to CallEnv
         public bool IsCreateOnPreExistingAccount { get; } // TODO: move to CallEnv
-        public int StateSnapshot { get; } // TODO: move to CallEnv
-        public int StorageSnapshot { get; } // TODO: move to CallEnv
+        public Snapshot Snapshot { get; } // TODO: move to CallEnv
         public EvmPooledMemory? Memory { get; set; } // TODO: move to CallEnv
 
         public HashSet<Address> DestroyList
