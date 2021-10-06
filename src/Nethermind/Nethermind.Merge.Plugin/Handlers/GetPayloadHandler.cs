@@ -48,12 +48,20 @@ namespace Nethermind.Merge.Plugin.Handlers
         public async Task<ResultWrapper<BlockRequestResult?>> HandleAsync(ulong payloadId)
         {
             BlockTaskAndRandom? blockAndRandom = _payloadStorage.GetPayload(payloadId);
-
-            Block? block = await blockAndRandom?.BlockTask;
+            
+            if (blockAndRandom == null)
+            {
+                if (_logger.IsWarn) _logger.Warn($"No payload with id={payloadId} found");
+                return ResultWrapper<BlockRequestResult?>.Fail(
+                    $"No payload with id={payloadId} can be found.",
+                    MergeErrorCodes.UnavailablePayload);
+            }
+            
+            Block? block = await blockAndRandom.BlockTask;
 
             if (block == null)
             {
-                if (_logger.IsWarn) _logger.Warn($"Block production failed");
+                if (_logger.IsWarn) _logger.Warn($"Block production for payload with id={payloadId} failed");
                 return ResultWrapper<BlockRequestResult?>.Fail(
                     $"Execution payload requested with id={payloadId} cannot be found.",
                     MergeErrorCodes.UnavailablePayload);
