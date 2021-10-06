@@ -33,7 +33,6 @@ namespace Nethermind.Merge.Plugin
         private readonly IHandler<PreparePayloadRequest, PreparePayloadResult> _preparePayloadHandler;
         private readonly IAsyncHandler<ulong, BlockRequestResult?> _getPayloadHandler;
         private readonly IHandler<BlockRequestResult, ExecutePayloadResult> _executePayloadHandler;
-        private readonly IHandler<ConsensusValidatedRequest, string> _consensusValidatedHandler;
         private readonly IHandler<ForkChoiceUpdatedRequest, string> _forkChoiceUpdateHandler;
         private readonly IHandler<ExecutionStatusResult> _executionStatusHandler;
         private readonly ITransitionProcessHandler _transitionProcessHandler;
@@ -45,7 +44,6 @@ namespace Nethermind.Merge.Plugin
             PreparePayloadHandler preparePayloadHandler,
             IAsyncHandler<ulong, BlockRequestResult?> getPayloadHandler,
             IHandler<BlockRequestResult, ExecutePayloadResult> executePayloadHandler,
-            IHandler<ConsensusValidatedRequest, string> consensusValidatedHandler,
             ITransitionProcessHandler transitionProcessHandler,
             IHandler<ForkChoiceUpdatedRequest, string> forkChoiceUpdateHandler,
             IHandler<ExecutionStatusResult> executionStatusHandler,
@@ -54,7 +52,6 @@ namespace Nethermind.Merge.Plugin
             _preparePayloadHandler = preparePayloadHandler;
             _getPayloadHandler = getPayloadHandler;
             _executePayloadHandler = executePayloadHandler;
-            _consensusValidatedHandler = consensusValidatedHandler;
             _transitionProcessHandler = transitionProcessHandler;
             _forkChoiceUpdateHandler = forkChoiceUpdateHandler;
             _executionStatusHandler = executionStatusHandler;
@@ -93,22 +90,7 @@ namespace Nethermind.Merge.Plugin
 
         public async Task<ResultWrapper<string>> engine_consensusValidated(ConsensusValidatedRequest consensusValidatedRequest)
         {
-            if (await _locker.WaitAsync(Timeout))
-            {
-                try
-                {
-                    return _consensusValidatedHandler.Handle(consensusValidatedRequest);
-                }
-                finally
-                {
-                    _locker.Release();
-                }
-            }
-            else
-            {
-                if (_logger.IsWarn) _logger.Warn($"{nameof(engine_consensusStatus)} timeout.");
-                return ResultWrapper<string>.Fail($"{nameof(engine_consensusStatus)} timeout.", ErrorCodes.Timeout);
-            }
+            return ResultWrapper<string>.Success(null);
         }
 
         public async Task<ResultWrapper<string>> engine_forkchoiceUpdated(ForkChoiceUpdatedRequest forkChoiceUpdatedRequest)
