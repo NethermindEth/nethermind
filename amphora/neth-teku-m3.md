@@ -47,7 +47,8 @@ generate Teku consensus genesis state
 --network=minimal \
 --Xnetwork-altair-fork-epoch=0 \
 --Xnetwork-merge-fork-epoch=1 \
---validator-count=256```
+--validator-count=256
+```
 
 run Teku
 ```
