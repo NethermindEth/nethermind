@@ -20,6 +20,7 @@ using System.Diagnostics;
 using System.Linq;
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols.Eth.V64;
@@ -122,21 +123,38 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
             return new PooledTransactionsMessage(txs);
         }
-
-        public override bool SendNewTransaction(Transaction transaction, bool isPriority)
+        
+        public override void SendNewTransactions(IEnumerable<Transaction> txs)
         {
-            if (isPriority)
+            const int maxCapacity = 3200;
+            List<Keccak> hashes = new(maxCapacity);
+
+            foreach (Transaction tx in txs)
             {
-                base.SendNewTransaction(transaction, true);
-            }
-            else
-            {
-                Counter++;
-                NewPooledTransactionHashesMessage msg = new(new[] {transaction.Hash});
-                Send(msg);
+                if (hashes.Count == maxCapacity)
+                {
+                    SendMessage(hashes);
+                    hashes = new(maxCapacity);
+                }
+                
+                if (tx.Hash is not null)
+                {
+                    hashes.Add(tx.Hash);
+                    TxPool.Metrics.PendingTransactionsHashesSent++;
+                }
             }
 
-            return true;
+            if (hashes.Count > 0)
+            {
+                SendMessage(hashes);
+            }
+        }
+        
+        private void SendMessage(IList<Keccak> hashes)
+        {
+            NewPooledTransactionHashesMessage msg = new(hashes);
+            Send(msg);
+            Metrics.Eth65NewPooledTransactionHashesSent++;
         }
     }
 }

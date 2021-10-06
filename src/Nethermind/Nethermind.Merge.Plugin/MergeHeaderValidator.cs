@@ -58,11 +58,11 @@ namespace Nethermind.Merge.Plugin
         {
             if (_poSSwitcher.IsPos(header))
             {
-                return base.Validate(header, parent, isUncle);
+                bool theMergeValid = ValidateTheMergeChecks(header);
+                return base.Validate(header, parent, isUncle) && theMergeValid;
             }
-            
-            bool theMergeValid = ValidateTheMergeChecks(header);
-            return _beforeTheMerge.ValidateHash(header) && theMergeValid;
+
+            return _beforeTheMerge.Validate(header, parent, isUncle);
         }
 
         private bool ValidateTheMergeChecks(BlockHeader header)
@@ -81,6 +81,18 @@ namespace Nethermind.Merge.Plugin
                    //&& validExtraData
                    && validMixHash
                    && validUncles;
+        }
+
+        protected override bool ValidateTotalDifficulty(BlockHeader header, BlockHeader parent,
+            bool totalDifficultyCorrect)
+        {
+            if (parent.TotalDifficulty + header.Difficulty != header.TotalDifficulty)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Invalid total difficulty");
+                totalDifficultyCorrect = false;
+            }
+
+            return totalDifficultyCorrect;
         }
     }
 }

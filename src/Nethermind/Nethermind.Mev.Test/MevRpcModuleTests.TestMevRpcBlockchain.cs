@@ -113,7 +113,7 @@ namespace Nethermind.Mev.Test
                         BlockTree,
                         blockProductionTrigger,
                         SpecProvider,
-                        Signer,
+                        Substitute.For<ISealEngine>(),
                         Timestamper,
                         miningConfig,
                         LogManager);
@@ -209,7 +209,7 @@ namespace Nethermind.Mev.Test
             
             private IBlockValidator CreateBlockValidator()
             {
-                HeaderValidator headerValidator = new(BlockTree, new Eth2SealEngine(Signer), SpecProvider, LogManager);
+                HeaderValidator headerValidator = new(BlockTree, Always.Valid, SpecProvider, LogManager);
                 
                 return new BlockValidator(
                     new TxValidator(SpecProvider.ChainId),

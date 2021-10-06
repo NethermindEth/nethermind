@@ -15,10 +15,19 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-namespace Nethermind.Db
+using System;
+
+namespace Nethermind.State
 {
-    public interface IMetadataStore
+    public class WorldState : IWorldState
     {
-        
+        public IStateProvider StateProvider { get; }
+        public IStorageProvider StorageProvider { get; }
+
+        public WorldState(IStateProvider stateProvider, IStorageProvider storageProvider)
+        {
+            StateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
+            StorageProvider = storageProvider ?? throw new ArgumentNullException(nameof(storageProvider));
+        }
     }
 }

@@ -16,6 +16,7 @@
 // 
 
 using System;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
@@ -30,6 +31,67 @@ using Nethermind.State;
 
 namespace Nethermind.Merge.Plugin.Handlers
 {
+    public class MergeBlockProducer : IBlockProducer
+    {
+        private readonly IBlockProducer _preMergeProducer;
+        private readonly IBlockProducer _eth2BlockProducer;
+        private readonly IPoSSwitcher _poSSwitcher;
+        private readonly IBlockchainProcessor _blockchainProcessor;
+
+        // TODO: remove this
+        public ITimestamper Timestamper => _preMergeProducer?.Timestamper;
+
+        public MergeBlockProducer(IBlockProducer? preMergeProducer, IBlockProducer? postMergeBlockProducer, IPoSSwitcher? poSSwitcher, IBlockchainProcessor blockchainProcessor)
+        {
+            _preMergeProducer = preMergeProducer ?? throw new ArgumentNullException(nameof(preMergeProducer));
+            _eth2BlockProducer = postMergeBlockProducer ?? throw new ArgumentNullException(nameof(postMergeBlockProducer));
+            _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
+            _blockchainProcessor = blockchainProcessor;
+            _poSSwitcher.SwitchHappened += OnSwitchHappened;
+            
+            _preMergeProducer.BlockProduced += OnBlockProduced;
+            postMergeBlockProducer.BlockProduced += OnBlockProduced;
+        }
+
+        private void OnBlockProduced(object? sender, BlockEventArgs e)
+        {
+            BlockProduced?.Invoke(this, e);
+        }
+
+        private void OnSwitchHappened(object? sender, EventArgs e)
+        {
+            _preMergeProducer?.StopAsync();
+            _eth2BlockProducer.Start();
+        }
+
+        public async Task Start()
+        {
+            if (_poSSwitcher.HasEverBeenInPos() || _preMergeProducer == null)
+            {
+                await _blockchainProcessor.StopAsync(true);
+                await _eth2BlockProducer.Start();
+            }
+            else
+            {
+                await _preMergeProducer.Start();
+            }
+        }
+
+        public Task StopAsync()
+        {
+            return (_poSSwitcher.HasEverBeenInPos() || _preMergeProducer == null ? _eth2BlockProducer.StopAsync() : _preMergeProducer.StopAsync());
+        }
+
+        public bool IsProducingBlocks(ulong? maxProducingInterval)
+        {
+            return _poSSwitcher.HasEverBeenInPos() || _preMergeProducer == null
+                ? _eth2BlockProducer.IsProducingBlocks(maxProducingInterval)
+                : _preMergeProducer.IsProducingBlocks(maxProducingInterval);
+        }
+
+        public event EventHandler<BlockEventArgs>? BlockProduced;
+    }
+    
     public class Eth2BlockProducer : BlockProducerBase
     {
         public Eth2BlockProducer(
@@ -39,14 +101,14 @@ namespace Nethermind.Merge.Plugin.Handlers
             IBlockProductionTrigger blockProductionTrigger,
             IStateProvider stateProvider,
             IGasLimitCalculator gasLimitCalculator,
-            ISigner signer,
+            ISealEngine sealEngine,
             ITimestamper timestamper,
             ISpecProvider specProvider,
             ILogManager logManager) 
             : base(
                 txSource, 
                 processor, 
-                new Eth2SealEngine(signer), 
+                sealEngine, 
                 blockTree, 
                 blockProductionTrigger, 
                 stateProvider, 

@@ -99,12 +99,13 @@ namespace Nethermind.Consensus.Producers
             e.BlockProductionTask = TryProduceAndAnnounceNewBlock(e.CancellationToken, parent, e.BlockTracer, e.BlockAuthor, e.Timestamp);
         }
 
-        public virtual void Start()
+        public virtual Task Start()
         {
             _producerCancellationToken = new CancellationTokenSource();
             _isRunning = true;
             _trigger.TriggerBlockProduction += OnTriggerBlockProduction;
             _lastProducedBlockDateTime = DateTime.UtcNow;
+            return Task.CompletedTask;
         }
 
         public virtual Task StopAsync()

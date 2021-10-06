@@ -58,7 +58,7 @@ namespace Nethermind.Api
         IRewardCalculatorSource? RewardCalculatorSource { get; set; }
         ISealer? Sealer { get; set; }
         ISealValidator? SealValidator { get; set; }
-        
+        ISealEngine SealEngine { get; set; }
         /// <summary>
         /// Can be used only for processing blocks, on all other contexts use <see cref="StateReader"/> or <see cref="ChainHeadStateProvider"/>.
         /// </summary>

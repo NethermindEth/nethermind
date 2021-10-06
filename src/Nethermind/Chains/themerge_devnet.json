@@ -1,7 +1,12 @@
 {
   "name": "TheMerge_Devnet",
   "engine": {
-    "Eth2Merge": {}
+    "clique": {
+      "params": {
+        "period": 5,
+        "epoch": 30000
+      }
+    }
   },
   "params": {
     "gasLimitBoundDivisor": "0x400",

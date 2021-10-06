@@ -60,7 +60,7 @@ namespace Nethermind.Blockchain.Test.Validators
             _blockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), FrontierSpecProvider.Instance, Substitute.For<IBloomStorage>(), LimboLogs.Instance);
             _specProvider = new SingleReleaseSpecProvider(Byzantium.Instance, 3);
             
-            PoSSwitcher poSSwitcher = new(NullLogManager.Instance, new MergeConfig(), new MemDb());
+            PoSSwitcher poSSwitcher = new(NullLogManager.Instance, new MergeConfig(), new MemDb(), _blockTree);
             poSSwitcher.TerminalTotalDifficulty = 0;
             poSSwitcher.TrySwitchToPos(Build.A.BlockHeader.WithTotalDifficulty(0).TestObject);
             _poSSwitcher = poSSwitcher;
@@ -285,19 +285,6 @@ namespace Nethermind.Blockchain.Test.Validators
                 new OneLoggerLogManager(_testLogger));
             AssignValidPoSFields(_block);
             _block.Header.Difficulty = 131072;
-            _block.Header.Hash = _block.CalculateHash();
-
-            bool result = _validator.Validate(_block.Header);
-            Assert.False(result);
-        }
-
-        [Test]
-        public void When_incorrect_mix_hash_after_the_merge()
-        {
-            _validator = new HeaderValidator(_blockTree, _ethash, _specProvider,
-                new OneLoggerLogManager(_testLogger));
-            AssignValidPoSFields(_block);
-            _block.Header.MixHash = Keccak.Compute("mix_hash");
             _block.Header.Hash = _block.CalculateHash();
 
             bool result = _validator.Validate(_block.Header);

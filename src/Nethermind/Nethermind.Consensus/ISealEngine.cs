@@ -15,31 +15,9 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Threading;
-using System.Threading.Tasks;
-using Nethermind.Consensus;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-
-namespace Nethermind.Merge.Plugin.Handlers
+namespace Nethermind.Consensus
 {
-    public class Eth2SealEngine : ISealer, ISealValidator
+    public interface ISealEngine : ISealer, ISealValidator
     {
-        private readonly ISigner _signer;
-
-        public Eth2SealEngine(ISigner signer)
-        {
-            _signer = signer;
-        }
-            
-        public Task<Block> SealBlock(Block block, CancellationToken cancellationToken) => Task.FromResult(block);
-
-        public bool CanSeal(long blockNumber, Keccak parentHash) => true;
-
-        public Address Address => _signer.Address;
-        
-        public bool ValidateParams(BlockHeader parent, BlockHeader header) => true;
-
-        public bool ValidateSeal(BlockHeader header, bool force) => true;
     }
 }

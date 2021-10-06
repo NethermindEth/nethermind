@@ -20,10 +20,16 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Api;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
+using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
+using Nethermind.Logging;
+using Nethermind.State;
 
 namespace Nethermind.Merge.Plugin.Handlers
 {
@@ -37,37 +43,101 @@ namespace Nethermind.Merge.Plugin.Handlers
     {
         private readonly IManualBlockProductionTrigger _blockProductionTrigger;
         private readonly IManualBlockProductionTrigger _emptyBlockProductionTrigger;
+        private readonly IStateProvider _stateProvider;
+        private readonly IBlockchainProcessor _processor;
+        private readonly IInitConfig _initConfig;
+        private readonly ILogger _logger;
         private readonly object _locker = new();
         private uint _currentPayloadId;
         private ulong _cleanupDelay = 12; // in seconds
+
         private static readonly TimeSpan _timeout = TimeSpan.FromSeconds(12);
+
         // first BlockRequestResult is empty (without txs), second one is the ideal one
         private readonly ConcurrentDictionary<ulong, BlockTaskAndRandom> _payloadStorage =
             new();
 
-        public PayloadStorage(IManualBlockProductionTrigger blockProductionTrigger,
-            IManualBlockProductionTrigger emptyBlockProductionTrigger)
+        public PayloadStorage(
+            IManualBlockProductionTrigger blockProductionTrigger,
+            IManualBlockProductionTrigger emptyBlockProductionTrigger,
+            IStateProvider stateProvider,
+            IBlockchainProcessor processor,
+            IInitConfig initConfig,
+            ILogManager logManager)
         {
             _blockProductionTrigger = blockProductionTrigger;
             _emptyBlockProductionTrigger = emptyBlockProductionTrigger;
+            _stateProvider = stateProvider;
+            _processor = processor;
+            _initConfig = initConfig;
+            _logger = logManager.GetClassLogger();
         }
 
-        public async Task GeneratePayload(ulong payloadId, Keccak random, BlockHeader parentHeader, Address blockAuthor, UInt256 timestamp)
+
+        public async Task GeneratePayload(ulong payloadId, Keccak random, BlockHeader parentHeader, Address blockAuthor,
+            UInt256 timestamp)
         {
             using CancellationTokenSource cts = new(_timeout);
 
-            Task<Block?> emptyBlock = _emptyBlockProductionTrigger.BuildBlock(parentHeader, cts.Token, null, blockAuthor, timestamp);
-            Task<Block?> idealBlock = _blockProductionTrigger.BuildBlock(parentHeader, cts.Token, null, blockAuthor, timestamp);
-            
+            Task<Block?> emptyBlock =
+                _emptyBlockProductionTrigger.BuildBlock(parentHeader, cts.Token, null, blockAuthor, timestamp)
+                    .ContinueWith((x) =>
+                    {
+                        x.Result.Header.StateRoot = parentHeader.StateRoot;
+                        x.Result.Header.Hash = x.Result.CalculateHash();
+                        return x.Result;
+                    }); // commit when mergemock will be fixed
+            //  .ContinueWith(LogProductionResult, cts.Token);
+            //   .ContinueWith((x) => Process(x.Result, parentHeader), cts.Token); // commit when mergemock will be fixed
+            Task<Block?> idealBlock =
+                _blockProductionTrigger.BuildBlock(parentHeader, cts.Token, null, blockAuthor, timestamp)
+               //     .ContinueWith(LogProductionResult, cts.Token);
+                    .ContinueWith((x) => Process(x.Result, parentHeader), cts.Token); // commit when mergemock will be fixed
+
             BlockTaskAndRandom emptyBlockTaskTuple = new(emptyBlock, random);
             bool _ = _payloadStorage.TryAdd(payloadId, emptyBlockTaskTuple);
 
             BlockTaskAndRandom idealBlockTaskTuple = new(idealBlock, random);
+            await idealBlock;
             bool __ = _payloadStorage.TryUpdate(payloadId, idealBlockTaskTuple, emptyBlockTaskTuple);
-            
+
             // remove after 12 seconds, it will not be needed
-            await Task.Delay(TimeSpan.FromSeconds(12), cts.Token);
+            await Task.Delay(TimeSpan.FromSeconds(_cleanupDelay), CancellationToken.None)
+                .ContinueWith(_ =>
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Cleaning up payload {payloadId}");
+                });
             CleanupOldPayload(payloadId);
+        }
+
+
+        private Block? LogProductionResult(Task<Block?> t)
+        {
+            if (t.IsCompletedSuccessfully)
+            {
+                if (t.Result != null)
+                {
+                    if (_logger.IsInfo)
+                        _logger.Info(
+                            $"Sealed eth2 block {t.Result.ToString(Block.Format.HashNumberDiffAndTx)}");
+                }
+                else
+                {
+                    if (_logger.IsInfo)
+                        _logger.Info(
+                            $"Failed to seal eth2 block (null seal)");
+                }
+            }
+            else if (t.IsFaulted)
+            {
+                if (_logger.IsError) _logger.Error("Producing block failed", t.Exception);
+            }
+            else if (t.IsCanceled)
+            {
+                if (_logger.IsInfo) _logger.Info($"Block producing was canceled");
+            }
+
+            return t.Result;
         }
 
         public BlockTaskAndRandom? GetPayload(ulong payloadId)
@@ -105,6 +175,37 @@ namespace Nethermind.Merge.Plugin.Handlers
             {
                 _payloadStorage.Remove(payloadId, out _);
             }
+        }
+
+        private Block? Process(Block block, BlockHeader parent)
+        {
+            if (block == null)
+                return null;
+            Block? processedBlock = null;
+            block.Header.TotalDifficulty = parent.TotalDifficulty + block.Difficulty;
+
+            Keccak currentStateRoot = _stateProvider.ResetStateTo(parent.StateRoot!);
+            try
+            {
+                processedBlock = _processor.Process(block, GetProcessingOptions(), NullBlockTracer.Instance);
+            }
+            finally
+            {
+                _stateProvider.ResetStateTo(currentStateRoot);
+            }
+
+            return processedBlock;
+        }
+
+        private ProcessingOptions GetProcessingOptions()
+        {
+            ProcessingOptions options = ProcessingOptions.EthereumMerge | ProcessingOptions.NoValidation;
+            if (_initConfig.StoreReceipts)
+            {
+                options |= ProcessingOptions.StoreReceipts;
+            }
+
+            return options;
         }
     }
 }

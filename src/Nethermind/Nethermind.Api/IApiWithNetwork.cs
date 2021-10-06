@@ -41,7 +41,7 @@ namespace Nethermind.Api
         IGrpcServer? GrpcServer { get; set; }
         IIPResolver? IpResolver { get; set; }
         IMessageSerializationService MessageSerializationService { get; }
-        IGossipPolicy GossipPolicy { get; }
+        IGossipPolicy GossipPolicy { get; set; }
         IMonitoringService MonitoringService { get; set; }
         INodeStatsManager? NodeStatsManager { get; set; }
         IPeerManager? PeerManager { get; set; }

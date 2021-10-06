@@ -21,6 +21,7 @@ using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.JsonRpc;
@@ -31,12 +32,13 @@ using Nethermind.Merge.Plugin.Handlers;
 
 namespace Nethermind.Merge.Plugin
 {
-    public partial class MergePlugin : IConsensusPlugin
+    public partial class MergePlugin : IConsensusWrapperPlugin
     {
         private INethermindApi _api = null!;
         private ILogger _logger = null!;
         private IMergeConfig _mergeConfig = null!;
-        private PoSSwitcher _poSSwitcher = null;
+        private IPoSSwitcher _poSSwitcher = null!;
+        private ITransitionProcessHandler _transitionProcessHandler => (ITransitionProcessHandler)_poSSwitcher;
         private ManualBlockFinalizationManager _blockFinalizationManager = null!;
 
         public string Name => "Merge";
@@ -49,22 +51,39 @@ namespace Nethermind.Merge.Plugin
             _mergeConfig = nethermindApi.Config<IMergeConfig>();
             _logger = _api.LogManager.GetClassLogger();
 
-            if (_mergeConfig.Enabled)
+            // if (_mergeConfig.Enabled)
             {
                 if (_api.DbProvider == null) throw new ArgumentException(nameof(_api.DbProvider));
-                if (string.IsNullOrEmpty(_mergeConfig.BlockAuthorAccount))
-                {
-                    if (_logger.IsError)
-                        _logger.Error(
-                            $"{nameof(MergeConfig)}.{nameof(_mergeConfig.BlockAuthorAccount)} is not set up. Cannot create blocks. Stopping.");
-                    // TODO: where the 13 coming from?
-                    Environment.Exit(13); // ERROR_INVALID_DATA
-                }
+                if (_api.BlockTree == null) throw new ArgumentException(nameof(_api.BlockTree));
+                // if (string.IsNullOrEmpty(_mergeConfig.BlockAuthorAccount))
+                // {
+                //     if (_logger.IsError)
+                //         _logger.Error(
+                //             $"{nameof(MergeConfig)}.{nameof(_mergeConfig.BlockAuthorAccount)} is not set up. Cannot create blocks. Stopping.");
+                //     // TODO: where the 13 coming from?
+                //     Environment.Exit(13); // ERROR_INVALID_DATA
+                // }
 
-                _poSSwitcher = new PoSSwitcher(_api.LogManager, _mergeConfig, _api.DbProvider.GetDb<IDb>(DbNames.Metadata));
-                _api.EngineSigner = new Eth2Signer(new Address(_mergeConfig.BlockAuthorAccount));
+                _poSSwitcher = new PoSSwitcher(_api.LogManager, _mergeConfig, _api.DbProvider.GetDb<IDb>(DbNames.Metadata), _api.BlockTree);
+
+                //_api.EngineSigner
+                Address address;
+                if (string.IsNullOrWhiteSpace(_mergeConfig.BlockAuthorAccount))
+                {
+                    address = Address.Zero;
+                }
+                else
+                {
+                    address = new Address(_mergeConfig.BlockAuthorAccount);
+                }
+                
+                ISigner signer = new Eth2Signer(address);
+
                 _api.RewardCalculatorSource =
-                    new MergeRewardCalculatorSource(_poSSwitcher, _api.RewardCalculatorSource);
+                    new MergeRewardCalculatorSource(_poSSwitcher,
+                        _api.RewardCalculatorSource ?? NoBlockRewards.Instance);
+                _api.SealEngine = new MergeSealEngine(_api.SealEngine, _poSSwitcher, signer);
+                _api.GossipPolicy = new MergeGossipPolicy(_api.GossipPolicy, _poSSwitcher);
             }
 
             return Task.CompletedTask;
@@ -72,6 +91,9 @@ namespace Nethermind.Merge.Plugin
 
         public Task InitNetworkProtocol()
         {
+            _api.HealthHintService =
+                new MergeHealthHintService(_api.HealthHintService, _poSSwitcher);
+            
             if (_mergeConfig.Enabled)
             {
                 ISyncConfig syncConfig = _api.Config<ISyncConfig>();
@@ -80,10 +102,10 @@ namespace Nethermind.Merge.Plugin
                 _blockFinalizationManager = new ManualBlockFinalizationManager();
                 _api.FinalizationManager = _blockFinalizationManager;
             }
-
+            
             return Task.CompletedTask;
         }
-
+        
         public async Task InitRpcModules()
         {
             if (_mergeConfig.Enabled)
@@ -94,22 +116,18 @@ namespace Nethermind.Merge.Plugin
                 if (_api.StateProvider is null) throw new ArgumentNullException(nameof(_api.StateProvider));
                 if (_api.StateProvider is null) throw new ArgumentNullException(nameof(_api.StateProvider));
 
-                await _api.BlockchainProcessor.StopAsync(true);
+                IInitConfig? initConfig = _api.Config<IInitConfig>();
+                _api.Config<IJsonRpcConfig>().EnableModules(ModuleType.Engine);
 
-                _api.Config<IJsonRpcConfig>().EnableModules(ModuleType.Consensus);
-
-                PayloadStorage payloadStorage = new(_defaultBlockProductionTrigger, _emptyBlockProductionTrigger);
-                PayloadManager payloadManager = new(_api.BlockTree);
+                PayloadStorage payloadStorage = new(_idealBlockProductionTrigger, _emptyBlockProductionTrigger, _api.StateProvider, _api.BlockchainProcessor, initConfig, _api.LogManager);
 
                 IEngineRpcModule engineRpcModule = new EngineRpcModule(
-                    new PreparePayloadHandler(_api.BlockTree, payloadStorage, _defaultBlockProductionTrigger,
-                        _emptyBlockProductionTrigger, _manualTimestamper, _api.Sealer, _api.LogManager),
+                    new PreparePayloadHandler(_api.BlockTree, payloadStorage, _manualTimestamper, _api.Sealer, _api.LogManager),
                     new GetPayloadHandler(payloadStorage, _api.LogManager),
-                    new ExecutePayloadHandler(_api.BlockTree, _api.BlockPreprocessor, _api.BlockchainProcessor,
-                        payloadManager, _api.EthSyncingInfo, _api.StateProvider, _api.Config<IInitConfig>(),
+                    new ExecutePayloadHandler(_api.BlockTree, _api.BlockchainProcessor,
+                        _api.EthSyncingInfo, _api.StateProvider, _api.Config<IInitConfig>(),
                         _api.LogManager),
-                    new ConsensusValidatedHandler(payloadManager),
-                    _poSSwitcher,
+                    _transitionProcessHandler,
                     new ForkChoiceUpdatedHandler(_api.BlockTree, _api.StateProvider, _blockFinalizationManager,
                         _poSSwitcher, _api.BlockConfirmationManager, _api.LogManager),
                     new ExecutionStatusHandler(_api.BlockTree, _api.BlockConfirmationManager,
@@ -119,6 +137,16 @@ namespace Nethermind.Merge.Plugin
                 _api.RpcModuleProvider.RegisterSingle(engineRpcModule);
                 if (_logger.IsInfo) _logger.Info("Consensus Module has been enabled");
             }
+        }
+
+        public void AfterHeaderValidator()
+        {
+            _api.HeaderValidator = new MergeHeaderValidator(
+                _api.HeaderValidator,
+                _api.BlockTree,
+                _api.SpecProvider,
+                _poSSwitcher,
+                _api.LogManager);
         }
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;

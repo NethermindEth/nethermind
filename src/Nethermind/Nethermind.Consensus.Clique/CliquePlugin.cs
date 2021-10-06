@@ -21,19 +21,15 @@ using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Services;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
-using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Db;
-using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Consensus.Clique
 {
@@ -48,7 +44,7 @@ namespace Nethermind.Consensus.Clique
         public Task Init(INethermindApi nethermindApi)
         {
             _nethermindApi = nethermindApi;
-            if (_nethermindApi!.SealEngineType != Nethermind.Core.SealEngineType.Clique)
+            if (_nethermindApi!.SealEngineType != Core.SealEngineType.Clique)
             {
                 return Task.CompletedTask;
             }
@@ -70,14 +66,14 @@ namespace Nethermind.Consensus.Clique
             
             setInApi.HealthHintService = new CliqueHealthHintService(_snapshotManager, getFromApi.ChainSpec);
 
-            setInApi.SealValidator = new CliqueSealValidator(
+            setInApi.SealValidator = new CliqueSealValidator( 
                 _cliqueConfig,
                 _snapshotManager,
                 getFromApi.LogManager);
             
             // both Clique and the merge provide no block rewards 
             setInApi.RewardCalculatorSource = NoBlockRewards.Instance;
-            setInApi.BlockPreprocessor.AddLast(new AuthorRecoveryStep(_snapshotManager!));
+       //    setInApi.BlockPreprocessor.AddLast(new AuthorRecoveryStep(_snapshotManager!));
 
             return Task.CompletedTask;
         }
@@ -190,6 +186,11 @@ namespace Nethermind.Consensus.Clique
             getFromApi.RpcModuleProvider!.Register(modulePool);
 
             return Task.CompletedTask;
+        }
+
+        public void AfterHeaderValidator()
+        {
+            
         }
 
         public string SealEngineType => Nethermind.Core.SealEngineType.Clique;

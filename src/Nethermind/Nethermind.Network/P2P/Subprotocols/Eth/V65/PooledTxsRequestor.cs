@@ -54,7 +54,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             {
                 GetPooledTransactionsMessage msg65 = new GetPooledTransactionsMessage(discoveredTxHashes.ToArray());
                 send(new V66.GetPooledTransactionsMessage() {EthMessage = msg65});
-                Metrics.Eth65GetPooledTransactionsRequested++;
+                Metrics.Eth66GetPooledTransactionsRequested++;
             }
         }
         

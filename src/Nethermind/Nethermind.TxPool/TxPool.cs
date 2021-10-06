@@ -110,7 +110,7 @@ namespace Nethermind.TxPool
             _filterPipeline.Add(new GasLimitTxFilter(_headInfo, txPoolConfig, _logger));
             _filterPipeline.Add(new UnknownSenderFilter(ecdsa, _logger));
             _filterPipeline.Add(new LowNonceFilter(_accounts, _logger));
-            _filterPipeline.Add(new TooFarNonceFilter(txPoolConfig, _accounts, _transactions, _logger));
+            _filterPipeline.Add(new GapNonceFilter(_accounts, _transactions, _logger));
             _filterPipeline.Add(new TooExpensiveTxFilter(_headInfo, _accounts, _transactions, _logger));
             _filterPipeline.Add(new FeeToLowFilter(_headInfo, _accounts, _transactions, _logger));
             _filterPipeline.Add(new ReusedOwnNonceTxFilter(_accounts, _nonces, _logger));
@@ -150,6 +150,7 @@ namespace Nethermind.TxPool
             ReAddReorganisedTransactions(previousBlock);
             RemoveProcessedTransactions(block.Transactions);
             UpdateBuckets();
+            Metrics.TransactionCount = _transactions.Count;
         }
 
         private void ReAddReorganisedTransactions(Block? previousBlock)
@@ -206,23 +207,18 @@ namespace Nethermind.TxPool
             PeerInfo peerInfo = new(peer);
             if (_broadcaster.AddPeer(peerInfo))
             {
-                foreach (Transaction transaction in _transactions.GetSnapshot())
-                {
-                    _broadcaster.BroadcastOnce(peerInfo, transaction);
-                }
-
+                _broadcaster.BroadcastOnce(peerInfo, _transactions.GetSnapshot());
+                
                 if (_logger.IsTrace) _logger.Trace($"Added a peer to TX pool: {peer}");
             }
         }
 
         public void RemovePeer(PublicKey nodeId)
         {
-            if (!_broadcaster.RemovePeer(nodeId))
+            if (_broadcaster.RemovePeer(nodeId))
             {
-                return;
+                if (_logger.IsTrace) _logger.Trace($"Removed a peer from TX pool: {nodeId}");
             }
-
-            if (_logger.IsTrace) _logger.Trace($"Removed a peer from TX pool: {nodeId}");
         }
 
         public AddTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions)
@@ -282,6 +278,7 @@ namespace Nethermind.TxPool
                 }
                 else
                 {
+                    Metrics.PendingTransactionsTooLowFee++;
                     return AddTxResult.FeeTooLowToCompete;
                 }
             }
@@ -291,6 +288,7 @@ namespace Nethermind.TxPool
 
             _hashCache.SetLongTerm(tx.Hash!);
             NewPending?.Invoke(this, new TxEventArgs(tx));
+            Metrics.TransactionCount = _transactions.Count;
             return AddTxResult.Added;
         }
 

@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
@@ -33,7 +34,7 @@ namespace Nethermind.Merge.Plugin.Handlers
     /// a payload has been cancelled due to the timeout then execution client must respond with error message.
     /// Execution client may stop the building process with the corresponding payload_id value after serving this call.
     /// </summary>
-    public class GetPayloadHandler : IHandler<ulong, BlockRequestResult?>
+    public class GetPayloadHandler : IAsyncHandler<ulong, BlockRequestResult?>
     {
         private readonly PayloadStorage _payloadStorage;
         private readonly ILogger _logger;
@@ -44,15 +45,23 @@ namespace Nethermind.Merge.Plugin.Handlers
             _logger = logManager.GetClassLogger();
         }
 
-        public ResultWrapper<BlockRequestResult?> Handle(ulong payloadId)
+        public async Task<ResultWrapper<BlockRequestResult?>> HandleAsync(ulong payloadId)
         {
             BlockTaskAndRandom? blockAndRandom = _payloadStorage.GetPayload(payloadId);
-
-            Block? block = blockAndRandom?.BlockTask.Result;
+            
+            if (blockAndRandom == null)
+            {
+                if (_logger.IsWarn) _logger.Warn($"No payload with id={payloadId} found");
+                return ResultWrapper<BlockRequestResult?>.Fail(
+                    $"No payload with id={payloadId} can be found.",
+                    MergeErrorCodes.UnavailablePayload);
+            }
+            
+            Block? block = await blockAndRandom.BlockTask;
 
             if (block == null)
             {
-                if (_logger.IsWarn) _logger.Warn($"Block production failed");
+                if (_logger.IsWarn) _logger.Warn($"Block production for payload with id={payloadId} failed");
                 return ResultWrapper<BlockRequestResult?>.Fail(
                     $"Execution payload requested with id={payloadId} cannot be found.",
                     MergeErrorCodes.UnavailablePayload);

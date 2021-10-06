@@ -36,7 +36,7 @@ namespace Nethermind.Consensus.Validators
         private readonly ISealValidator _sealValidator;
         private readonly ISpecProvider _specProvider;
         private readonly long? _daoBlockNumber;
-        private readonly ILogger _logger;
+        protected readonly ILogger _logger;
         private readonly IBlockTree _blockTree;
 
         public HeaderValidator(
@@ -160,13 +160,7 @@ namespace Nethermind.Consensus.Validators
 
         protected virtual bool ValidateTotalDifficulty(BlockHeader header, BlockHeader parent, bool totalDifficultyCorrect)
         {
-            if (parent.TotalDifficulty + header.Difficulty != header.TotalDifficulty)
-            {
-                if (_logger.IsDebug) _logger.Debug($"Invalid total difficulty");
-                totalDifficultyCorrect = false;
-            }
-
-            return totalDifficultyCorrect;
+            return true;
         }
 
         protected virtual bool ValidateGasLimitRange(BlockHeader header, BlockHeader parent, IReleaseSpec spec)

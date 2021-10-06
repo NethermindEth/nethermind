@@ -108,5 +108,10 @@ namespace Nethermind.Analytics
             getFromAPi.RpcModuleProvider.Register(new SingletonModulePool<IAnalyticsRpcModule>(analyticsRpcModule));
             return Task.CompletedTask;
         }
+
+        public void AfterHeaderValidator()
+        {
+            
+        }
     }
 }

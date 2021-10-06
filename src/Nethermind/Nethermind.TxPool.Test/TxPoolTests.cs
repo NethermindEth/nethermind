@@ -233,18 +233,6 @@ namespace Nethermind.TxPool.Test
             _txPool.GetPendingTransactions().Length.Should().Be(0);
             result.Should().Be(AddTxResult.OldNonce);
         }
-        
-        [Test]
-        public void should_ignore_transactions_too_far_into_future()
-        {
-            TxPoolConfig txPoolConfig = new TxPoolConfig{GasLimit = _txGasLimit, FutureNonceRetention = 256};
-            _txPool = CreatePool(txPoolConfig);
-            Transaction tx = Build.A.Transaction.WithNonce(txPoolConfig.FutureNonceRetention + 1).SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
-            EnsureSenderBalance(tx);
-            AddTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
-            _txPool.GetPendingTransactions().Length.Should().Be(0);
-            result.Should().Be(AddTxResult.NonceTooFarInTheFuture);
-        }
 
         [Test]
         public void should_ignore_overflow_transactions()
@@ -828,7 +816,7 @@ namespace Nethermind.TxPool.Test
             ITxPoolPeer txPoolPeer = Substitute.For<ITxPoolPeer>();
             txPoolPeer.Id.Returns(TestItem.PublicKeyA);
             _txPool.AddPeer(txPoolPeer);
-            txPoolPeer.Received().SendNewTransaction(tx, false);
+            txPoolPeer.Received().SendNewTransactions(Arg.Any<IEnumerable<Transaction>>());
         }
         
         [Test]
@@ -839,8 +827,8 @@ namespace Nethermind.TxPool.Test
             txPoolPeer.Id.Returns(TestItem.PublicKeyA);
             _txPool.AddPeer(txPoolPeer);
             Transaction tx = AddOwnTransactionToPool();
-            await Task.Delay(1000);
-            txPoolPeer.Received(1).SendNewTransaction(tx, true);
+            await Task.Delay(500);
+            txPoolPeer.Received(1).SendNewTransactions(Arg.Any<IEnumerable<Transaction>>());
         }
 
         [Test]

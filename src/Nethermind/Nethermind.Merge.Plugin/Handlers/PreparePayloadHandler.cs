@@ -17,13 +17,18 @@
 
 using System;
 using System.Threading.Tasks;
+using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Evm.Tracing;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.State;
 
 namespace Nethermind.Merge.Plugin.Handlers
 {
@@ -57,8 +62,6 @@ namespace Nethermind.Merge.Plugin.Handlers
     {
         private readonly IBlockTree _blockTree;
         private readonly PayloadStorage _payloadStorage;
-        private readonly IManualBlockProductionTrigger _blockProductionTrigger;
-        private readonly IManualBlockProductionTrigger _emptyBlockProductionTrigger;
         private readonly ManualTimestamper _timestamper;
         private readonly ISealer _sealer;
         private readonly ILogger _logger;
@@ -66,17 +69,12 @@ namespace Nethermind.Merge.Plugin.Handlers
         public PreparePayloadHandler(
             IBlockTree blockTree, 
             PayloadStorage payloadStorage,
-            // TODO: hide this complexity -> prepare payload should not really implement the logic of delivering empty vs meaningful block
-            IManualBlockProductionTrigger blockProductionTrigger, 
-            IManualBlockProductionTrigger emptyBlockProductionTrigger, 
             ManualTimestamper timestamper, 
             ISealer sealer,
             ILogManager logManager)
         {
             _blockTree = blockTree;
             _payloadStorage = payloadStorage;
-            _blockProductionTrigger = blockProductionTrigger;
-            _emptyBlockProductionTrigger = emptyBlockProductionTrigger;
             _timestamper = timestamper;
             _sealer = sealer;
             _logger = logManager.GetClassLogger();
@@ -100,14 +98,20 @@ namespace Nethermind.Merge.Plugin.Handlers
                     MergeErrorCodes.UnknownHeader);
             }
 
-            _timestamper.Set(DateTimeOffset.FromUnixTimeSeconds((long) request.Timestamp).UtcDateTime);
-
             uint payloadId = _payloadStorage.RentNextPayloadId();
             
             
             Address blockAuthor = request.FeeRecipient == Address.Zero ? _sealer.Address : request.FeeRecipient;
             Task generatePayloadTask =
-                _payloadStorage.GeneratePayload(payloadId, request.Random, parentHeader, blockAuthor, request.Timestamp); // not awaiting on purpose
+                _payloadStorage.GeneratePayload(payloadId, request.Random, parentHeader, blockAuthor, request.Timestamp)
+                    .ContinueWith(
+                        (x) =>
+                        {
+                            if (!x.IsCompletedSuccessfully)
+                            {
+                                _logger.Error($"Payload with ID {payloadId} was not generated successfully");
+                            }
+                        });
             
             return ResultWrapper<PreparePayloadResult>.Success(new PreparePayloadResult(payloadId));
         }

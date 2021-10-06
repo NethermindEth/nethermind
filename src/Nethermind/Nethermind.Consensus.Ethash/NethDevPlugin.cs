@@ -132,5 +132,10 @@ namespace Nethermind.Consensus.Ethash
         {
             return Task.CompletedTask;
         }
+
+        public void AfterHeaderValidator()
+        {
+            
+        }
     }
 }

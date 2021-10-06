@@ -77,7 +77,7 @@ namespace Nethermind.Sockets.Test
 
             public override WebSocketCloseStatus? CloseStatus { get; }
             public override string CloseStatusDescription { get; }
-            public override WebSocketState State { get; }
+            public override WebSocketState State { get; } = WebSocketState.Open;
             public override string SubProtocol { get; }
             public bool ReturnTaskWithFaultOnEmptyQueue { get; set; }
         }

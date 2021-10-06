@@ -46,7 +46,7 @@ namespace Nethermind.Consensus.Producers
             _logger = logManager.GetClassLogger();
         }
 
-        public void Start()
+        public Task Start()
         {
             for (int index = 0; index < _blockProducers.Length; index++)
             {
@@ -55,6 +55,7 @@ namespace Nethermind.Consensus.Producers
             }
             
             _blockProductionTrigger.TriggerBlockProduction += OnBlockProduction;
+            return Task.CompletedTask;
         }
 
         public Task StopAsync()
@@ -85,6 +86,7 @@ namespace Nethermind.Consensus.Producers
             return false;
         }
 
+        // TODO: bad
         public ITimestamper Timestamper => _blockProducers[0].BlockProducer.Timestamper;
         
         public event EventHandler<BlockEventArgs>? BlockProduced;

@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
+using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Services;
@@ -185,16 +186,14 @@ namespace Nethermind.Init.Steps
                 getApi.BlockTree, getApi.LogManager);
 
             VirtualMachine virtualMachine = new (
-                stateProvider,
-                storageProvider,
+                getApi.SpecProvider.ChainId,
                 blockhashProvider,
-                getApi.SpecProvider,
                 getApi.LogManager);
 
+            WorldState worldState = new (stateProvider, storageProvider);
             _api.TransactionProcessor = new TransactionProcessor(
                 getApi.SpecProvider,
-                stateProvider,
-                storageProvider,
+                worldState,
                 virtualMachine,
                 getApi.LogManager);
 
@@ -202,8 +201,18 @@ namespace Nethermind.Init.Steps
             if (_api.SealValidator == null) throw new StepDependencyException(nameof(_api.SealValidator));
 
             /* validation */
-            IHeaderValidator? headerValidator = setApi.HeaderValidator = CreateHeaderValidator();
+            setApi.HeaderValidator = new HeaderValidator(
+                _api.BlockTree,
+                _api.SealValidator,
+                _api.SpecProvider,
+                _api.LogManager);
+            setApi.HeaderValidator = CreateHeaderValidator();
+            foreach (INethermindPlugin apiPlugin in _api.Plugins)
+            {
+                apiPlugin.AfterHeaderValidator();
+            }
 
+            IHeaderValidator? headerValidator = setApi.HeaderValidator;
             UnclesValidator unclesValidator = new(
                 getApi.BlockTree,
                 headerValidator,
@@ -297,11 +306,13 @@ namespace Nethermind.Init.Steps
 
         protected IComparer<Transaction> CreateTxPoolTxComparer() => _api.TransactionComparerProvider.GetDefaultComparer();
 
-        protected virtual HeaderValidator CreateHeaderValidator() => new (
-                _api.BlockTree,
-                _api.SealValidator,
-                _api.SpecProvider,
-                _api.LogManager);
+        // TODO: we should not have the create header -> we should have a header that also can use the information about the transitions
+         protected virtual IHeaderValidator CreateHeaderValidator() => _api.HeaderValidator;
+        // new (
+        //         _api.BlockTree,
+        //         _api.SealValidator,
+        //         _api.SpecProvider,
+        //         _api.LogManager);
 
         // TODO: remove from here - move to consensus?
         protected virtual BlockProcessor CreateBlockProcessor()

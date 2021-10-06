@@ -16,21 +16,33 @@
 // 
 
 using System;
+using System.Threading.Channels;
+using System.Threading.Tasks;
+using Nethermind.Logging;
 
 namespace Nethermind.JsonRpc.Modules.Subscribe
 {
     public abstract class Subscription : IDisposable
     {
+        protected ILogger _logger;
+        
         protected Subscription(IJsonRpcDuplexClient jsonRpcDuplexClient)
         {
             Id = string.Concat("0x", Guid.NewGuid().ToString("N"));
             JsonRpcDuplexClient = jsonRpcDuplexClient;
+            ProcessMessages();
         }
 
         public string Id { get; }
         public abstract SubscriptionType Type { get; }
         public IJsonRpcDuplexClient JsonRpcDuplexClient { get; }
-        public abstract void Dispose();
+
+        private Channel<Action> SendChannel { get; } = Channel.CreateUnbounded<Action>();
+
+        public virtual void Dispose()
+        {
+            SendChannel.Writer.Complete();
+        }
         
         protected JsonRpcResult CreateSubscriptionMessage(object result)
         {
@@ -43,6 +55,41 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                         Subscription = Id
                     }
                 }, default);
+        }
+
+        protected void ScheduleAction(Action action)
+        {
+            SendChannel.Writer.TryWrite(action);
+        }
+
+        protected virtual string GetErrorMsg()
+        {
+            return $"Subscription {Id} failed.";
+        }
+
+        private void ProcessMessages()
+        {
+            Task.Factory.StartNew(async () =>
+            {
+                while (await SendChannel.Reader.WaitToReadAsync())
+                {
+                    try
+                    {
+                        Action action = await SendChannel.Reader.ReadAsync();
+                        action();
+                    }
+                    catch (Exception e)
+                    {
+                        if (_logger.IsDebug) _logger.Debug(GetErrorMsg());
+                    }
+                }
+            }, TaskCreationOptions.LongRunning).ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                {
+                    if (_logger.IsError) _logger.Error($"{nameof(ProcessMessages)} encountered an exception.", t.Exception);
+                }
+            });
         }
     }
 }

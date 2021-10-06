@@ -50,7 +50,7 @@ namespace Nethermind.Init.Steps
                 if (logger.IsWarn) logger.Warn($"Starting {_api.SealEngineType} block producer & sealer");
                 ProducedBlockSuggester suggester = new(_api.BlockTree, _api.BlockProducer);
                 _api.DisposeStack.Push(suggester);
-                _api.BlockProducer.Start();
+                await _api.BlockProducer.Start();
             }
         }
 

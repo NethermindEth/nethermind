@@ -15,15 +15,16 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-namespace Nethermind.Db
+namespace Nethermind.State
 {
-    public class MetadataStore
+    /// <summary>
+    /// Represents state that can be anchored at specific state root, snapshot, committed, reverted.
+    /// Current format is an intermittent form on the way to a better state management.
+    /// </summary>
+    public interface IWorldState
     {
-        private readonly IDb _db;
+        public IStorageProvider StorageProvider { get; }
 
-        public MetadataStore(IDb db)
-        {
-            _db = db;
-        }
+        public IStateProvider StateProvider { get; }
     }
 }

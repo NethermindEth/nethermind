@@ -25,6 +25,8 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 
+// ReSharper disable MemberCanBePrivate.Global
+// ReSharper disable UnusedAutoPropertyAccessor.Global
 namespace Nethermind.Consensus.Processing
 {
     public class ReadOnlyTxProcessingEnv : IReadOnlyTxProcessorSource
@@ -56,18 +58,21 @@ namespace Nethermind.Consensus.Processing
             ISpecProvider? specProvider,
             ILogManager? logManager)
         {
+            if (specProvider == null) throw new ArgumentNullException(nameof(specProvider));
+            
             DbProvider = readOnlyDbProvider ?? throw new ArgumentNullException(nameof(readOnlyDbProvider));
             _codeDb = readOnlyDbProvider.CodeDb.AsReadOnly(true);
 
             StateReader = new StateReader(readOnlyTrieStore, _codeDb, logManager);
             StateProvider = new StateProvider(readOnlyTrieStore, _codeDb, logManager);
             StorageProvider = new StorageProvider(readOnlyTrieStore, StateProvider, logManager);
-
+            IWorldState worldState = new WorldState(StateProvider, StorageProvider);
+            
             BlockTree = readOnlyBlockTree ?? throw new ArgumentNullException(nameof(readOnlyBlockTree));
             BlockhashProvider = new BlockhashProvider(BlockTree, logManager);
 
-            Machine = new VirtualMachine(StateProvider, StorageProvider, BlockhashProvider, specProvider, logManager);
-            TransactionProcessor = new TransactionProcessor(specProvider, StateProvider, StorageProvider, Machine, logManager);
+            Machine = new VirtualMachine(specProvider.ChainId, BlockhashProvider, logManager);
+            TransactionProcessor = new TransactionProcessor(specProvider, worldState, Machine, logManager);
         }
 
         public void Reset()
