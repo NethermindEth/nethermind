@@ -86,7 +86,7 @@ namespace Nethermind.Store.Test
 
             WorldState worldState = new WorldState(stateProvider, storageProvider);
             worldState.Restore(new Snapshot(1, 2));
-            storageProvider.Received().Restore(1);
+            stateProvider.Received().Restore(1);
             storageProvider.Received().Restore(2);
         }
     }
