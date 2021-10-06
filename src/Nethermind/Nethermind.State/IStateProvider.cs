@@ -61,7 +61,7 @@ namespace Nethermind.State
 
         void CommitTree(long blockNumber);
 
-        internal int TakeSnapshot();
+        int TakeSnapshot();
 
         /// <summary>
         /// For witness
