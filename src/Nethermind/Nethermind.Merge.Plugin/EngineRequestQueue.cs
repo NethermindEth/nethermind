@@ -15,10 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-namespace Nethermind.Db
+namespace Nethermind.Merge.Plugin
 {
-    public interface IMetadataStore
+    public class EngineRequestQueue
     {
-        
+        // ToDo
     }
 }

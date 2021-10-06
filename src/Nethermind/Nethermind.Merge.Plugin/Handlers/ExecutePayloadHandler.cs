@@ -43,9 +43,7 @@ namespace Nethermind.Merge.Plugin.Handlers
     {
         private const string AndWontBeAcceptedToTheTree = "and wont be accepted to the tree";
         private readonly IBlockTree _blockTree;
-        private readonly IBlockPreprocessorStep _preprocessor;
         private readonly IBlockchainProcessor _processor;
-        private readonly PayloadManager _payloadManager;
         private readonly IEthSyncingInfo _ethSyncingInfo;
         private readonly IStateProvider _stateProvider;
         private readonly IInitConfig _initConfig;
@@ -54,18 +52,14 @@ namespace Nethermind.Merge.Plugin.Handlers
         
         public ExecutePayloadHandler(
             IBlockTree blockTree,
-            IBlockPreprocessorStep preprocessor,
             IBlockchainProcessor processor,
-            PayloadManager payloadManager,
             IEthSyncingInfo ethSyncingInfo,
             IStateProvider stateProvider,
             IInitConfig initConfig,
             ILogManager logManager)
         {
             _blockTree = blockTree;
-            _preprocessor = preprocessor;
             _processor = processor;
-            _payloadManager = payloadManager;
             _ethSyncingInfo = ethSyncingInfo;
             _stateProvider = stateProvider;
             _initConfig = initConfig;
@@ -74,7 +68,6 @@ namespace Nethermind.Merge.Plugin.Handlers
 
         public ResultWrapper<ExecutePayloadResult> Handle(BlockRequestResult request)
         {
-            _payloadManager.TryAddPayloadBlockHash(request.BlockHash);
             ExecutePayloadResult executePayloadResult = new() {BlockHash = request.BlockHash};
             
             // uncomment when Syncing implementation will be ready
@@ -87,28 +80,17 @@ namespace Nethermind.Merge.Plugin.Handlers
             ValidationResult result = ValidateRequestAndProcess(request, out Block? processedBlock);
             if ((result & ValidationResult.AlreadyKnown) != 0 || result == ValidationResult.Invalid)
             {
-                _payloadManager.MarkPayloadValidationAsFinished(request.BlockHash);
                 bool isValid = (result & ValidationResult.Valid) != 0;
                 executePayloadResult.EnumStatus = isValid ? VerificationStatus.Valid : VerificationStatus.Invalid;
                 return ResultWrapper<ExecutePayloadResult>.Success(executePayloadResult);
             }
             else if (processedBlock == null)
             {
-                _payloadManager.MarkPayloadValidationAsFinished(request.BlockHash);
                 executePayloadResult.EnumStatus = VerificationStatus.Invalid;
                 return ResultWrapper<ExecutePayloadResult>.Success(executePayloadResult);
             }
-            
-            if (!_payloadManager.CheckConsensusValidatedResult(request.BlockHash, out bool isResultValid))
-            {
-                _payloadManager.MarkPayloadValidationAsFinished(request.BlockHash);
-                _payloadManager.TryAddValidPayload(request.BlockHash, processedBlock);
-            }
-            else if (isResultValid)
-            {
-                _payloadManager.ProcessValidatedPayload(processedBlock);
-            }
-            
+
+            _blockTree.SuggestBlock(processedBlock, true, null, true);
             executePayloadResult.EnumStatus = VerificationStatus.Valid;
             return ResultWrapper<ExecutePayloadResult>.Success(executePayloadResult);
         }

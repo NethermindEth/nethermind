@@ -81,7 +81,12 @@ namespace Nethermind.Merge.Plugin.Handlers
 
             Task<Block?> emptyBlock =
                 _emptyBlockProductionTrigger.BuildBlock(parentHeader, cts.Token, null, blockAuthor, timestamp)
-                   .ContinueWith((x) => Process(x.Result, parentHeader), cts.Token); // commit when mergemock will be fixed
+                    .ContinueWith((x) =>
+                    {
+                        x.Result.Header.StateRoot = parentHeader.StateRoot;
+                        x.Result.Header.Hash = x.Result.CalculateHash();
+                        return x.Result;
+                    }); // commit when mergemock will be fixed
             //  .ContinueWith(LogProductionResult, cts.Token);
             //   .ContinueWith((x) => Process(x.Result, parentHeader), cts.Token); // commit when mergemock will be fixed
             Task<Block?> idealBlock =
