@@ -90,7 +90,7 @@ namespace Nethermind.Merge.Plugin.Handlers
                 return ResultWrapper<ExecutePayloadResult>.Success(executePayloadResult);
             }
 
-            _blockTree.SuggestBlock(processedBlock, true, null, true);
+            _blockTree.SuggestBlock(processedBlock, SuggestionOptions.ShouldProcess | SuggestionOptions.PoSEnabled);
             executePayloadResult.EnumStatus = VerificationStatus.Valid;
             return ResultWrapper<ExecutePayloadResult>.Success(executePayloadResult);
         }
