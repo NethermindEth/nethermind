@@ -159,7 +159,7 @@ namespace Nethermind.JsonRpc
                 catch (Exception ex)
                 {
                     Metrics.JsonRpcRequestDeserializationFailures++;
-                    if (_logger.IsError) _logger.Error($"Error during parsing/validation, request: {request}", ex);
+                    if (_logger.IsError) _logger.Error($"Error during parsing/validation.", ex);
                     JsonRpcResponse response = _jsonRpcService.GetErrorResponse(ErrorCodes.ParseError, "Incorrect message");
                     TraceResult(response);
                     stopwatch.Stop();
