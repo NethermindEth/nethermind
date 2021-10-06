@@ -22,6 +22,7 @@ using System.IO.Abstractions;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc.Utils;
@@ -148,6 +149,12 @@ namespace Nethermind.JsonRpc
                 try
                 {
                     moveNext = enumerator.MoveNext();
+                }
+                catch (BadHttpRequestException e)
+                {
+                    Metrics.JsonRpcRequestDeserializationFailures++;
+                    if (_logger.IsDebug) _logger.Debug($"Couldn't read request.{Environment.NewLine}{e}");
+                    yield break;
                 }
                 catch (Exception ex)
                 {
