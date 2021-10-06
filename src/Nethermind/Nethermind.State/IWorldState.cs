@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,19 +13,18 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using Nethermind.Core;
-using Nethermind.Core.Specs;
-using Nethermind.Evm.CodeAnalysis;
-using Nethermind.Evm.Tracing;
-using Nethermind.State;
-
-namespace Nethermind.Evm
+namespace Nethermind.State
 {
-    public interface IVirtualMachine
+    /// <summary>
+    /// Represents state that can be anchored at specific state root, snapshot, committed, reverted.
+    /// Current format is an intermittent form on the way to a better state management.
+    /// </summary>
+    public interface IWorldState
     {
-        TransactionSubstate Run(EvmState state, IWorldState worldState, IReleaseSpec releaseSpec, ITxTracer tracer);
-        
-        CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec spec);
+        public IStorageProvider StorageProvider { get; }
+
+        public IStateProvider StateProvider { get; }
     }
 }

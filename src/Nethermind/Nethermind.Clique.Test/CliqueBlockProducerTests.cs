@@ -20,15 +20,12 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
-using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
-using Nethermind.Blockchain.Spec;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Clique;
@@ -138,7 +135,7 @@ namespace Nethermind.Clique.Test
                 _genesis3Validators.Header.Hash = _genesis3Validators.Header.CalculateHash();
                 
                 StorageProvider storageProvider = new StorageProvider(trieStore, stateProvider, nodeLogManager);
-                TransactionProcessor transactionProcessor = new TransactionProcessor(goerliSpecProvider, stateProvider, storageProvider, new VirtualMachine(stateProvider, storageProvider, blockhashProvider, specProvider, nodeLogManager), nodeLogManager);
+                TransactionProcessor transactionProcessor = new TransactionProcessor(goerliSpecProvider, stateProvider, storageProvider, new VirtualMachine(specProvider.ChainId, blockhashProvider, nodeLogManager), nodeLogManager);
                 BlockProcessor blockProcessor = new BlockProcessor(
                     goerliSpecProvider,
                     Always.Valid,
@@ -157,7 +154,7 @@ namespace Nethermind.Clique.Test
               
                 StateProvider minerStateProvider = new StateProvider(minerTrieStore, codeDb, nodeLogManager);
                 StorageProvider minerStorageProvider = new StorageProvider(minerTrieStore, minerStateProvider, nodeLogManager);
-                VirtualMachine minerVirtualMachine = new VirtualMachine(minerStateProvider, minerStorageProvider, blockhashProvider, specProvider, nodeLogManager);
+                VirtualMachine minerVirtualMachine = new VirtualMachine(specProvider.ChainId, blockhashProvider, nodeLogManager);
                 TransactionProcessor minerTransactionProcessor = new TransactionProcessor(goerliSpecProvider, minerStateProvider, minerStorageProvider, minerVirtualMachine, nodeLogManager);
                 
                 BlockProcessor minerBlockProcessor = new BlockProcessor(
