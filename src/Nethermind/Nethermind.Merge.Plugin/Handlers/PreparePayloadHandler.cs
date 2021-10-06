@@ -62,8 +62,6 @@ namespace Nethermind.Merge.Plugin.Handlers
     {
         private readonly IBlockTree _blockTree;
         private readonly PayloadStorage _payloadStorage;
-        private readonly IManualBlockProductionTrigger _blockProductionTrigger;
-        private readonly IManualBlockProductionTrigger _emptyBlockProductionTrigger;
         private readonly ManualTimestamper _timestamper;
         private readonly ISealer _sealer;
         private readonly ILogger _logger;
@@ -71,17 +69,12 @@ namespace Nethermind.Merge.Plugin.Handlers
         public PreparePayloadHandler(
             IBlockTree blockTree, 
             PayloadStorage payloadStorage,
-            // TODO: hide this complexity -> prepare payload should not really implement the logic of delivering empty vs meaningful block
-            IManualBlockProductionTrigger blockProductionTrigger, 
-            IManualBlockProductionTrigger emptyBlockProductionTrigger, 
             ManualTimestamper timestamper, 
             ISealer sealer,
             ILogManager logManager)
         {
             _blockTree = blockTree;
             _payloadStorage = payloadStorage;
-            _blockProductionTrigger = blockProductionTrigger;
-            _emptyBlockProductionTrigger = emptyBlockProductionTrigger;
             _timestamper = timestamper;
             _sealer = sealer;
             _logger = logManager.GetClassLogger();
@@ -110,7 +103,15 @@ namespace Nethermind.Merge.Plugin.Handlers
             
             Address blockAuthor = request.FeeRecipient == Address.Zero ? _sealer.Address : request.FeeRecipient;
             Task generatePayloadTask =
-                _payloadStorage.GeneratePayload(payloadId, request.Random, parentHeader, blockAuthor, request.Timestamp); // not awaiting on purpose
+                _payloadStorage.GeneratePayload(payloadId, request.Random, parentHeader, blockAuthor, request.Timestamp)
+                    .ContinueWith(
+                        (x) =>
+                        {
+                            if (!x.IsCompletedSuccessfully)
+                            {
+                                _logger.Error($"Payload with ID {payloadId} was not generated successfully");
+                            }
+                        });
             
             return ResultWrapper<PreparePayloadResult>.Success(new PreparePayloadResult(payloadId));
         }

@@ -321,7 +321,7 @@ namespace Nethermind.AuRa.Test.Contract
                 EthereumEcdsa ecdsa = new(ChainSpec.ChainId, LimboLogs.Instance);
 
                 await AddBlock(
-                    SignTransactions(ecdsa, TestItem.PrivateKeyA, 1,
+                    SignTransactions(ecdsa, TestItem.PrivateKeyA, 0,
                         TxPriorityContract.SetPriority(TestItem.AddressA, FnSignature2, UInt256.One),
                         TxPriorityContract.SetPriority(TestItem.AddressB, FnSignature, 10),
                         TxPriorityContract.SetPriority(TestItem.AddressB, FnSignature2, 4),

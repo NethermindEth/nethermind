@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Buffers;
 using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.CompilerServices;
@@ -69,39 +68,37 @@ namespace Nethermind.Evm
         private readonly byte[] _chainId;
 
         private readonly IBlockhashProvider _blockhashProvider;
-        private readonly ISpecProvider _specProvider;
         private static readonly ICache<Keccak, CodeInfo> _codeCache = new LruCache<Keccak, CodeInfo>(MemoryAllowance.CodeCacheSize, MemoryAllowance.CodeCacheSize, "VM bytecodes");
         private readonly ILogger _logger;
-        private readonly IStateProvider _state;
+        private IWorldState _worldState;
+        private IStateProvider _state;
         private readonly Stack<EvmState> _stateStack = new();
-        private readonly IStorageProvider _storage;
+        private IStorageProvider _storage;
         private Address? _parityTouchBugAccount;
         private Dictionary<Address, CodeInfo>? _precompiles;
         private byte[] _returnDataBuffer = Array.Empty<byte>();
         private ITxTracer _txTracer = NullTxTracer.Instance;
 
         public VirtualMachine(
-            IStateProvider? stateProvider,
-            IStorageProvider? storageProvider,
+            ulong chainId,
             IBlockhashProvider? blockhashProvider,
-            ISpecProvider? specProvider,
             ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _state = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
-            _storage = storageProvider ?? throw new ArgumentNullException(nameof(storageProvider));
             _blockhashProvider = blockhashProvider ?? throw new ArgumentNullException(nameof(blockhashProvider));
-            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _chainId = ((UInt256)specProvider.ChainId).ToBigEndian();
+            _chainId = ((UInt256)chainId).ToBigEndian();
             InitializePrecompiledContracts();
         }
 
-        // can refactor and integrate the other call
-        public TransactionSubstate Run(EvmState state, ITxTracer txTracer)
+        public TransactionSubstate Run(EvmState state, IWorldState worldState, IReleaseSpec releaseSpec, ITxTracer txTracer)
         {
             _txTracer = txTracer;
 
-            IReleaseSpec spec = _specProvider.GetSpec(state.Env.TxExecutionContext.Header.Number);
+            _state = worldState.StateProvider;
+            _storage = worldState.StorageProvider;
+            _worldState = worldState;
+            
+            IReleaseSpec spec = releaseSpec;
             EvmState currentState = state;
             byte[] previousCallResult = null;
             ZeroPaddedSpan previousCallOutput = ZeroPaddedSpan.Empty;
@@ -376,8 +373,9 @@ namespace Nethermind.Evm
             }
         }
 
-        public CodeInfo GetCachedCodeInfo(Address codeSource, IReleaseSpec vmSpec)
+        public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec)
         {
+            IStateProvider state = worldState.StateProvider;
             if (codeSource.IsPrecompile(vmSpec))
             {
                 if (_precompiles is null)
@@ -388,11 +386,11 @@ namespace Nethermind.Evm
                 return _precompiles[codeSource];
             }
 
-            Keccak codeHash = _state.GetCodeHash(codeSource);
+            Keccak codeHash = state.GetCodeHash(codeSource);
             CodeInfo cachedCodeInfo = _codeCache.Get(codeHash);
             if (cachedCodeInfo == null)
             {
-                byte[] code = _state.GetCode(codeHash);
+                byte[] code = state.GetCode(codeHash);
                 
                 if (code == null)
                 {
@@ -404,8 +402,8 @@ namespace Nethermind.Evm
             }
             else
             {
-                // for witness collection
-                _state.TouchCode(codeHash);
+                // need to touch code so that any collectors that track database access are informed
+                state.TouchCode(codeHash);
             }
 
             return cachedCodeInfo;
@@ -1500,7 +1498,7 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        byte[] accountCode = GetCachedCodeInfo(address, spec).MachineCode;
+                        byte[] accountCode = GetCachedCodeInfo(_worldState, address, spec).MachineCode;
                         UInt256 codeSize = (UInt256) accountCode.Length;
                         stack.PushUInt256(in codeSize);
                         break;
@@ -1530,7 +1528,7 @@ namespace Nethermind.Evm
                         {
                             UpdateMemoryCost(in dest, length);
                             
-                            byte[] externalCode = GetCachedCodeInfo(address, spec).MachineCode;
+                            byte[] externalCode = GetCachedCodeInfo(_worldState, address, spec).MachineCode;
                             ZeroPaddedSpan callDataSlice = externalCode.SliceWithZeroPadding(src, (int) length);
                             vmState.Memory.Save(in dest, callDataSlice);
                             if (_txTracer.IsTracingInstructions)
@@ -2320,7 +2318,7 @@ namespace Nethermind.Evm
                         int storageSnapshot = _storage.TakeSnapshot();
 
                         bool accountExists = _state.AccountExists(contractAddress);
-                        if (accountExists && (GetCachedCodeInfo(contractAddress, spec).MachineCode.Length != 0 || _state.GetNonce(contractAddress) != 0))
+                        if (accountExists && (GetCachedCodeInfo(_worldState, contractAddress, spec).MachineCode.Length != 0 || _state.GetNonce(contractAddress) != 0))
                         {
                             /* we get the snapshot before this as there is a possibility with that we will touch an empty account and remove it even if the REVERT operation follows */
                             if (isTrace) _logger.Trace($"Contract collision at {contractAddress}");
@@ -2497,7 +2495,7 @@ namespace Nethermind.Evm
                             if (_txTracer.IsTracingInstructions)
                             {
                                 // very specific for Parity trace, need to find generalization - very peculiar 32 length...
-                                ReadOnlyMemory<byte> memoryTrace = vmState.Memory.Load(in dataOffset, 32);
+                                ReadOnlyMemory<byte> memoryTrace = vmState.Memory.Inspect(in dataOffset, 32);
                                 _txTracer.ReportMemoryChange(dataOffset, memoryTrace.Span);
                             }
 
@@ -2525,7 +2523,7 @@ namespace Nethermind.Evm
                         callEnv.TransferValue = transferValue;
                         callEnv.Value = callValue;
                         callEnv.InputData = callData;
-                        callEnv.CodeInfo = GetCachedCodeInfo(codeSource, spec);
+                        callEnv.CodeInfo = GetCachedCodeInfo(_worldState, codeSource, spec);
 
                         if (isTrace) _logger.Trace($"Tx call gas {gasLimitUl}");
                         if (outputLength == 0)

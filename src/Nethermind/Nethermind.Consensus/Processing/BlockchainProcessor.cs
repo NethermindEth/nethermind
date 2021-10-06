@@ -438,8 +438,6 @@ namespace Nethermind.Consensus.Processing
 
                     blocksToProcess.Add(block);
                 }
-
-                blocksToProcess.Reverse();
             }
 
             if (_logger.IsTrace) _logger.Trace($"Processing {blocksToProcess.Count} blocks from state root {processingBranch.Root}");
@@ -517,6 +515,7 @@ namespace Nethermind.Consensus.Processing
 
             Keccak stateRoot = branchingPoint?.StateRoot;
             if (_logger.IsTrace) _logger.Trace($"State root lookup: {stateRoot}");
+            blocksToBeAddedToMain.Reverse();
             return new ProcessingBranch(stateRoot, blocksToBeAddedToMain);
         }
 

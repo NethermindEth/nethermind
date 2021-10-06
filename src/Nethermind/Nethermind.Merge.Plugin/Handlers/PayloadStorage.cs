@@ -102,9 +102,12 @@ namespace Nethermind.Merge.Plugin.Handlers
             bool __ = _payloadStorage.TryUpdate(payloadId, idealBlockTaskTuple, emptyBlockTaskTuple);
 
             // remove after 12 seconds, it will not be needed
-            await Task.Delay(TimeSpan.FromSeconds(12), cts.Token)
-                .ContinueWith(_ => _logger.Info($"Cleaning up payload {payloadId}"), cts.Token);
-            //  CleanupOldPayload(payloadId);
+            await Task.Delay(TimeSpan.FromSeconds(_cleanupDelay), CancellationToken.None)
+                .ContinueWith(_ =>
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Cleaning up payload {payloadId}");
+                });
+            CleanupOldPayload(payloadId);
         }
 
 

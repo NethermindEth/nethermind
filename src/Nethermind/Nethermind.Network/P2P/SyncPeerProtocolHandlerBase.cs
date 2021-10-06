@@ -19,7 +19,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
-using DotNetty.Buffers;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
@@ -30,7 +29,6 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
-using Nethermind.Network.P2P.Subprotocols.Wit;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -217,16 +215,36 @@ namespace Nethermind.Network.P2P
 
         public abstract void NotifyOfNewBlock(Block block, SendBlockPriority priority);
 
-        public virtual bool SendNewTransaction(Transaction transaction, bool isPriority)
+        public virtual void SendNewTransactions(IEnumerable<Transaction> txs)
         {
-            if (transaction.Hash == null)
-            {
-                throw new InvalidOperationException("Trying to send a transaction with null hash");
-            }
+            const int maxCapacity = 256;
+            List<Transaction> txsToSend = new(maxCapacity);
 
-            TransactionsMessage msg = new(new[] {transaction});
+            foreach (Transaction tx in txs)
+            {
+                if (txsToSend.Count == maxCapacity)
+                {
+                    SendMessage(txsToSend);
+                    txsToSend.Clear();
+                }
+                
+                if (tx.Hash is not null)
+                {
+                    txsToSend.Add(tx);
+                    TxPool.Metrics.PendingTransactionsSent++;
+                }
+            }
+            
+            if (txsToSend.Count > 0)
+            {
+                SendMessage(txsToSend);
+            }
+        }
+        
+        private void SendMessage(IList<Transaction> txsToSend)
+        {
+            TransactionsMessage msg = new(txsToSend);
             Send(msg);
-            return true;
         }
 
         public override void HandleMessage(Packet message)
