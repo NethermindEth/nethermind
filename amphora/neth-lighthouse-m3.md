@@ -21,7 +21,7 @@ dotnet build Nethermind.sln -c Release
 cd Nethermind.Runner
 # if src/Nethermind/Nethermind.Runner/bin/Release/net5.0/plugins has no Nethermind.Merge.Plugin.dll plugin then you may need to run the build again
 dotnet build Nethermind.sln -c Release
-dotnet run -c Release -- --config themerge_devnet_m3
+dotnet run -c Release -- --config themerge_devnet_m3 --config --Merge.TerminalTotalDifficulty 22
 ```
 
 ### Terminal 2: Lighthouse Beacon Node
