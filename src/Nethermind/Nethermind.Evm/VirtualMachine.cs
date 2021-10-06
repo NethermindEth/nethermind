@@ -157,8 +157,7 @@ namespace Nethermind.Evm
                         if (callResult.IsException)
                         {
                             if (_txTracer.IsTracingActions) _txTracer.ReportActionError(callResult.ExceptionType);
-                            _state.Restore(currentState.StateSnapshot);
-                            _storage.Restore(currentState.StorageSnapshot);
+                            _worldState.Restore(currentState.Snapshot);
 
                             if (_parityTouchBugAccount != null)
                             {
@@ -267,8 +266,7 @@ namespace Nethermind.Evm
                                 if (spec.FailOnOutOfGasCodeDeposit || invalidCode)
                                 {
                                     currentState.GasAvailable -= gasAvailableForCodeDeposit;
-                                    _state.Restore(previousState.StateSnapshot);
-                                    _storage.Restore(previousState.StorageSnapshot);
+                                    worldState.Restore(previousState.Snapshot);
                                     if (!previousState.IsCreateOnPreExistingAccount)
                                     {
                                         _state.DeleteAccount(callCodeOwner);
@@ -315,8 +313,7 @@ namespace Nethermind.Evm
                     }
                     else
                     {
-                        _state.Restore(previousState.StateSnapshot);
-                        _storage.Restore(previousState.StorageSnapshot);
+                        worldState.Restore(previousState.Snapshot);
                         _returnDataBuffer = callResult.Output;
                         previousCallResult = StatusCode.FailureBytes;
                         previousCallOutput = callResult.Output.AsSpan().SliceWithZeroPadding(0, Math.Min(callResult.Output.Length, (int) previousState.OutputLength));
@@ -335,8 +332,7 @@ namespace Nethermind.Evm
                 {
                     if (_logger.IsTrace) _logger.Trace($"exception ({ex.GetType().Name}) in {currentState.ExecutionType} at depth {currentState.Env.CallDepth} - restoring snapshot");
 
-                    _state.Restore(currentState.StateSnapshot);
-                    _storage.Restore(currentState.StorageSnapshot);
+                    _worldState.Restore(currentState.Snapshot);
 
                     if (_parityTouchBugAccount != null)
                     {
@@ -2314,8 +2310,7 @@ namespace Nethermind.Evm
 
                         _state.IncrementNonce(env.ExecutingAccount);
 
-                        int stateSnapshot = _state.TakeSnapshot();
-                        int storageSnapshot = _storage.TakeSnapshot();
+                        Snapshot snapshot = _worldState.TakeSnapshot();
 
                         bool accountExists = _state.AccountExists(contractAddress);
                         if (accountExists && (GetCachedCodeInfo(_worldState, contractAddress, spec).MachineCode.Length != 0 || _state.GetNonce(contractAddress) != 0))
@@ -2353,8 +2348,7 @@ namespace Nethermind.Evm
                             callEnv,
                             instruction == Instruction.CREATE2 ? ExecutionType.Create2 : ExecutionType.Create,
                             false,
-                            stateSnapshot,
-                            storageSnapshot,
+                            snapshot,
                             0L,
                             0L,
                             vmState.IsStatic,
@@ -2510,8 +2504,7 @@ namespace Nethermind.Evm
 
                         ReadOnlyMemory<byte> callData = vmState.Memory.Load(in dataOffset, dataLength);
 
-                        int stateSnapshot = _state.TakeSnapshot();
-                        int storageSnapshot = _storage.TakeSnapshot();
+                        Snapshot snapshot = _worldState.TakeSnapshot();
                         _state.SubtractFromBalance(caller, transferValue, spec);
 
                         ExecutionEnvironment callEnv = new();
@@ -2539,8 +2532,7 @@ namespace Nethermind.Evm
                             callEnv,
                             executionType,
                             false,
-                            stateSnapshot,
-                            storageSnapshot,
+                            snapshot,
                             (long) outputOffset,
                             (long) outputLength,
                             instruction == Instruction.STATICCALL || vmState.IsStatic,

@@ -27,7 +27,7 @@ namespace Nethermind.State
     {
         void RecalculateStateRoot();
 
-        new Keccak StateRoot { get; set; }
+        Keccak StateRoot { get; set; }
 
         void DeleteAccount(Address address);
 
@@ -61,7 +61,7 @@ namespace Nethermind.State
 
         void CommitTree(long blockNumber);
 
-        int TakeSnapshot();
+        internal int TakeSnapshot();
 
         /// <summary>
         /// For witness

@@ -45,7 +45,7 @@ namespace Nethermind.State
         /// If <see cref="newTransactionStart"/> is true and there are already changes in <see cref="IStorageProvider"/> then next call to
         /// <see cref="GetOriginal"/> will use changes before this snapshot as original values for this new transaction.
         /// </remarks>
-        int TakeSnapshot(bool newTransactionStart = false);
+        internal int TakeSnapshot(bool newTransactionStart = false);
 
         void ClearStorage(Address address);
     }
