@@ -17,9 +17,9 @@
 
 using System;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Processing;
-using Nethermind.Blockchain.Producers;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -32,7 +32,8 @@ namespace Nethermind.Merge.Plugin.Handlers
 {
     public class Eth2BlockProducer : BlockProducerBase
     {
-        public Eth2BlockProducer(ITxSource txSource,
+        public Eth2BlockProducer(
+            ITxSource txSource,
             IBlockchainProcessor processor,
             IBlockTree blockTree,
             IBlockProductionTrigger blockProductionTrigger,
@@ -53,13 +54,15 @@ namespace Nethermind.Merge.Plugin.Handlers
                 timestamper, 
                 specProvider, 
                 logManager,
-                ConstantDifficultyCalculator.Zero)
+                ConstantDifficulty.Zero)
         {
         }
 
         protected override Block PrepareBlock(BlockHeader parent, Address? blockAuthor, UInt256? timestamp)
         {
             Block block = base.PrepareBlock(parent, blockAuthor, timestamp);
+            
+            // TODO: this seems to me that it should be done in the Eth2 seal engine?
             block.Header.MixHash = Keccak.Zero;
             block.Header.ExtraData = Array.Empty<byte>();
             return block;

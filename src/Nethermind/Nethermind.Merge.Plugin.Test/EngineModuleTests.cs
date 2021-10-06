@@ -96,7 +96,7 @@ namespace Nethermind.Merge.Plugin.Test
             Keccak random = Keccak.Zero;
             Address feeRecipient = Address.Zero;
             ulong payloadId =
-                (await rpc.engine_preparePayload(new PreparePayloadRequest(startingHead, timestamp, random,
+                (rpc.engine_preparePayload(new PreparePayloadRequest(startingHead, timestamp, random,
                     feeRecipient))).Data.PayloadId;
 
             ulong requestedPayloadId = payloadId + 1;
@@ -119,7 +119,7 @@ namespace Nethermind.Merge.Plugin.Test
             Address feeRecipient = Address.Zero;
 
             ulong payloadId =
-                (await rpc.engine_preparePayload(new PreparePayloadRequest(startingHead, timestamp, random,
+                (rpc.engine_preparePayload(new PreparePayloadRequest(startingHead, timestamp, random,
                     feeRecipient))).Data.PayloadId;
 
             Thread.Sleep(timeout);
@@ -140,7 +140,7 @@ namespace Nethermind.Merge.Plugin.Test
             Address feeRecipient = Address.Zero;
 
             ResultWrapper<PreparePayloadResult> prepareResponse =
-                await rpc.engine_preparePayload(new PreparePayloadRequest(notExistingHash, timestamp, random,
+                rpc.engine_preparePayload(new PreparePayloadRequest(notExistingHash, timestamp, random,
                     feeRecipient));
 
             prepareResponse.ErrorCode.Should().Be(MergeErrorCodes.UnknownHeader);
@@ -711,7 +711,7 @@ namespace Nethermind.Merge.Plugin.Test
             {
                 semaphoreSlim.Release(1);
             };
-            ulong payloadId = (await rpc.engine_preparePayload(new PreparePayloadRequest(startingHead,
+            ulong payloadId = (rpc.engine_preparePayload(new PreparePayloadRequest(startingHead,
                 ((ITimestamper)timestamper).UnixTime.Seconds,
                 TestItem.KeccakA, Address.Zero))).Data.PayloadId;
             await semaphoreSlim.WaitAsync(-1);
@@ -877,7 +877,7 @@ namespace Nethermind.Merge.Plugin.Test
             IEngineRpcModule rpc, Keccak parentHash, UInt256 timestamp, Keccak random, Address feeRecipient)
         {
             ulong payloadId =
-                (await rpc.engine_preparePayload(new PreparePayloadRequest(parentHash, timestamp, random, feeRecipient))
+                (rpc.engine_preparePayload(new PreparePayloadRequest(parentHash, timestamp, random, feeRecipient))
                 ).Data.PayloadId;
             ResultWrapper<BlockRequestResult?> getPayloadResult = await rpc.engine_getPayload(payloadId);
             return getPayloadResult.Data!;

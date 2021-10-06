@@ -41,7 +41,7 @@ namespace Nethermind.Db.Test
         {
             using IDbProvider dbProvider = new DbProvider(DbModeHint.Mem);
             RocksDbFactory rocksDbFactory = new(new DbConfig(), LimboLogs.Instance, Path.Combine(_folderWithDbs, "mem"));
-            StandardDbInitializer initializer = new(dbProvider, rocksDbFactory, new MemDbFactory());
+            StandardDbInitializer initializer = new(dbProvider, rocksDbFactory, new MemDbFactory(), LimboLogs.Instance);
             await initializer.InitStandardDbsAsync(useReceipts);
             Type receiptsType = useReceipts ? typeof(MemColumnsDb<ReceiptsColumns>) : typeof(ReadOnlyColumnsDb<ReceiptsColumns>);
             AssertStandardDbs(dbProvider, typeof(MemDb), receiptsType);
@@ -54,7 +54,7 @@ namespace Nethermind.Db.Test
             using (IDbProvider dbProvider = new DbProvider(DbModeHint.Persisted))
             {
                 RocksDbFactory rocksDbFactory = new(new DbConfig(), LimboLogs.Instance, Path.Combine(_folderWithDbs, $"rocks_{useReceipts}"));
-                StandardDbInitializer initializer = new(dbProvider, rocksDbFactory, new MemDbFactory());
+                StandardDbInitializer initializer = new(dbProvider, rocksDbFactory, new MemDbFactory(), LimboLogs.Instance);
                 await initializer.InitStandardDbsAsync(useReceipts);
                 Type receiptsType = useReceipts ? typeof(ColumnsDb<ReceiptsColumns>) : typeof(ReadOnlyColumnsDb<ReceiptsColumns>);
                 AssertStandardDbs(dbProvider, typeof(DbOnTheRocks), receiptsType);
@@ -68,7 +68,7 @@ namespace Nethermind.Db.Test
             using (IDbProvider dbProvider = new DbProvider(DbModeHint.Persisted))
             {
                 RocksDbFactory rocksDbFactory = new(new DbConfig(), LimboLogs.Instance, Path.Combine(_folderWithDbs, $"readonly_{useReceipts}"));
-                StandardDbInitializer initializer = new(dbProvider, rocksDbFactory, new MemDbFactory());
+                StandardDbInitializer initializer = new(dbProvider, rocksDbFactory, new MemDbFactory(), LimboLogs.Instance);
                 await initializer.InitStandardDbsAsync(useReceipts);
                 using (ReadOnlyDbProvider readonlyDbProvider = new(dbProvider, true))
                 {

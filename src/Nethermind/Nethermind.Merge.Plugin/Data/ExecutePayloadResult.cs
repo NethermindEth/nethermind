@@ -23,6 +23,7 @@ namespace Nethermind.Merge.Plugin.Data
 {
     public class ExecutePayloadResult
     {
+        // TODO: if it is ignored in serialization and we never read it then can we remove this property? 
         [JsonIgnore]
         public Keccak BlockHash { get; set; }
 

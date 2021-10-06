@@ -18,7 +18,7 @@ using System;
 
 namespace Nethermind.Consensus.Ethash
 {
-    public interface IEthashDataSet : IDisposable
+    internal interface IEthashDataSet : IDisposable
     {
         uint Size { get; }
         uint[] CalcDataSetItem(uint i);

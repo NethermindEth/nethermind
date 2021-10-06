@@ -20,13 +20,13 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Filters;
-using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Services;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Comparers;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
@@ -191,7 +191,7 @@ namespace Nethermind.Init.Steps
                 getApi.SpecProvider,
                 getApi.LogManager);
 
-            ITransactionProcessor transactionProcessor = _api.TransactionProcessor = new TransactionProcessor(
+            _api.TransactionProcessor = new TransactionProcessor(
                 getApi.SpecProvider,
                 stateProvider,
                 storageProvider,
@@ -297,12 +297,10 @@ namespace Nethermind.Init.Steps
 
         protected IComparer<Transaction> CreateTxPoolTxComparer() => _api.TransactionComparerProvider.GetDefaultComparer();
 
-        protected virtual HeaderValidator CreateHeaderValidator() =>
-            new HeaderValidator(
+        protected virtual HeaderValidator CreateHeaderValidator() => new (
                 _api.BlockTree,
                 _api.SealValidator,
                 _api.SpecProvider,
-                _api.PoSSwitcher,
                 _api.LogManager);
 
         // TODO: remove from here - move to consensus?

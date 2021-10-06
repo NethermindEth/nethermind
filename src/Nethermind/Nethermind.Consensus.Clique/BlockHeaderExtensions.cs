@@ -14,7 +14,6 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
 using Nethermind.Core;
 
 namespace Nethermind.Consensus.Clique
@@ -24,24 +23,6 @@ namespace Nethermind.Consensus.Clique
         public static bool IsInTurn(this BlockHeader header)
         {
             return header.Difficulty == Clique.DifficultyInTurn;
-        }
-
-        internal static Address[] ExtractSigners(BlockHeader blockHeader)
-        {
-            if (blockHeader.ExtraData == null)
-            {
-                throw new Exception("");
-            }
-            
-            Span<byte> signersData = blockHeader.ExtraData.AsSpan()
-                .Slice(Clique.ExtraVanityLength, blockHeader.ExtraData.Length - Clique.ExtraSealLength - Clique.ExtraVanityLength);
-            Address[] signers = new Address[signersData.Length / Address.ByteLength];
-            for (int i = 0; i < signers.Length; i++)
-            {
-                signers[i] = new Address(signersData.Slice(i * 20, 20).ToArray());
-            }
-
-            return signers;
         }
     }
 

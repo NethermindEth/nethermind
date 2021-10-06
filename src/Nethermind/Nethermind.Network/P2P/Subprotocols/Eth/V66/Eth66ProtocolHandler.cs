@@ -49,10 +49,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             ISyncServer syncServer,
             ITxPool txPool,
             IPooledTxsRequestor pooledTxsRequestor,
-            IPoSSwitcher poSSwitcher,
+            IGossipPolicy gossipPolicy,
             ISpecProvider specProvider,
             ILogManager logManager)
-            : base(session, serializer, nodeStatsManager, syncServer, txPool, pooledTxsRequestor, poSSwitcher, specProvider, logManager)
+            : base(session, serializer, nodeStatsManager, syncServer, txPool, pooledTxsRequestor, gossipPolicy, specProvider, logManager)
         {
             _headersRequests66 = new MessageQueue<GetBlockHeadersMessage, BlockHeader[]>(Send);
             _bodiesRequests66 = new MessageQueue<GetBlockBodiesMessage, BlockBody[]>(Send);

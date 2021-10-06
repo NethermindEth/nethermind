@@ -20,13 +20,13 @@ using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Comparers;
-using Nethermind.Blockchain.Processing;
-using Nethermind.Blockchain.Producers;
-using Nethermind.Blockchain.Rewards;
-using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Comparers;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -120,12 +120,14 @@ namespace Nethermind.Mev.Test
 
                 MevBlockProducer.MevBlockProducerInfo CreateProducer(int bundleLimit = 0, ITxSource? additionalTxSource = null)
                 {
+                    // TODO: this could be simplified a lot of the parent was not retrieved, not sure why do we need the parent here
                     bool BundleLimitTriggerCondition(BlockProductionEventArgs e)
                     {
+                        // TODO: why do we need this parent? later we use only the current block number
                         BlockHeader? parent = BlockTree.GetProducedBlockParent(e.ParentHeader);
                         if (parent is not null)
                         {
-                            IEnumerable<MevBundle> bundles = BundlePool.GetBundles(parent, Timestamper);
+                            IEnumerable<MevBundle> bundles = BundlePool.GetBundles(parent.Number + 1, Timestamper);
                             return bundles.Count() >= bundleLimit;
                         }
 
@@ -191,7 +193,7 @@ namespace Nethermind.Mev.Test
                 return blockProcessor;
             }
 
-            protected override async Task<TestBlockchain> Build(ISpecProvider specProvider = null, UInt256? initialValues = null)
+            protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null)
             {
                 TestBlockchain chain = await base.Build(specProvider, initialValues);
                 MevRpcModule = new MevRpcModule(new JsonRpcConfig(),
@@ -207,7 +209,7 @@ namespace Nethermind.Mev.Test
             
             private IBlockValidator CreateBlockValidator()
             {
-                HeaderValidator headerValidator = new(BlockTree, new Eth2SealEngine(Signer), SpecProvider, PoSSwitcher, LogManager);
+                HeaderValidator headerValidator = new(BlockTree, new Eth2SealEngine(Signer), SpecProvider, LogManager);
                 
                 return new BlockValidator(
                     new TxValidator(SpecProvider.ChainId),

@@ -57,7 +57,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
                 Substitute.For<INodeStatsManager>(),
                 Substitute.For<ISyncServer>(),
                 Substitute.For<ITxPool>(),
-                Substitute.For<IPoSSwitcher>(),
+                Substitute.For<IGossipPolicy>(),
                 LimboLogs.Instance);
 
             var receipts = Enumerable.Repeat(
@@ -104,7 +104,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
                 Substitute.For<INodeStatsManager>(),
                 syncServer,
                 Substitute.For<ITxPool>(),
-                Substitute.For<IPoSSwitcher>(),
+                Substitute.For<IGossipPolicy>(),
                 LimboLogs.Instance);
 
             StatusMessage statusMessage = new StatusMessage();
@@ -141,7 +141,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
                 Substitute.For<INodeStatsManager>(),
                 syncServer,
                 Substitute.For<ITxPool>(),
-                Substitute.For<IPoSSwitcher>(),
+                Substitute.For<IGossipPolicy>(),
                 LimboLogs.Instance);
 
             syncServer.GetReceipts(Arg.Any<Keccak>()).Returns(

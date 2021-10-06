@@ -15,7 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Blockchain.Tracing;
+using Nethermind.Consensus.Tracing;
 
 namespace Nethermind.Mev.Execution
 {

@@ -20,17 +20,18 @@ using System.Threading;
 using Nethermind.Abi;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.Processing;
-using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Rewards;
+using Nethermind.Blockchain.Services;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Blockchain.Validators;
 using Nethermind.Config;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Comparers;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.PubSub;
 using Nethermind.Core.Specs;
@@ -143,6 +144,7 @@ namespace Nethermind.Api
         public ILogManager LogManager { get; set; }
         public IKeyValueStoreWithBatching? MainStateDbWithCache { get; set; }
         public IMessageSerializationService MessageSerializationService { get; } = new MessageSerializationService();
+        public IGossipPolicy GossipPolicy { get; } = Policy.FullGossip;
         public IMonitoringService MonitoringService { get; set; } = NullMonitoringService.Instance;
         public INodeStatsManager? NodeStatsManager { get; set; }
         public IPeerManager? PeerManager { get; set; }
@@ -152,7 +154,7 @@ namespace Nethermind.Api
         public IWitnessCollector? WitnessCollector { get; set; }
         public IWitnessRepository? WitnessRepository { get; set; }
         public IReceiptFinder? ReceiptFinder { get; set; }
-        public IRewardCalculatorSource? RewardCalculatorSource { get; set; } = NoBlockRewards.Instance;
+        public IRewardCalculatorSource? RewardCalculatorSource { get; set; }
         public IRlpxPeer? RlpxPeer { get; set; }
         public IRpcModuleProvider RpcModuleProvider { get; set; } = NullModuleProvider.Instance;
         public ISealer? Sealer { get; set; } = NullSealEngine.Instance;
@@ -186,7 +188,6 @@ namespace Nethermind.Api
         public IGasPriceOracle? GasPriceOracle { get; set; }
         
         public IEthSyncingInfo EthSyncingInfo { get; set; }
-        public IPoSSwitcher PoSSwitcher { get; set; } = NoPoS.Instance;
         public IBlockConfirmationManager BlockConfirmationManager { get; set; } = NoBlockConfirmation.Instance;
         public IWallet? Wallet { get; set; }
         public ITransactionComparerProvider TransactionComparerProvider { get; set; }

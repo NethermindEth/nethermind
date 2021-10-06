@@ -15,10 +15,13 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Merge.Plugin.Data
 {
+    [SuppressMessage("ReSharper", "MemberCanBePrivate.Global")]
+    [SuppressMessage("ReSharper", "AutoPropertyCanBeMadeGetOnly.Global")]
     public class ExecutionStatusResult
     {
         public ExecutionStatusResult(Keccak headBlockHash, Keccak finalizedBlockHash, Keccak confirmedBlockHash)

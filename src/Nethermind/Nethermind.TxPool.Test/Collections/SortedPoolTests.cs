@@ -17,7 +17,7 @@
 using System;
 using FluentAssertions;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Comparers;
+using Nethermind.Consensus.Comparers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;

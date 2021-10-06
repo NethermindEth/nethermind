@@ -18,8 +18,9 @@
 using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.Processing;
+using Nethermind.Blockchain.Services;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Processing;
 using Nethermind.Facade.Eth;
 using Nethermind.Synchronization;
 

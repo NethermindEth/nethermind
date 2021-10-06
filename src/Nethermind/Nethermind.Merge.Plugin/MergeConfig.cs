@@ -15,6 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using Nethermind.Int256;
+
 namespace Nethermind.Merge.Plugin
 {
     public class MergeConfig : IMergeConfig
@@ -22,5 +24,7 @@ namespace Nethermind.Merge.Plugin
         public bool Enabled { get; set; }
 
         public string BlockAuthorAccount { get; set; } = string.Empty;
+
+        public UInt256? TerminalTotalDifficulty { get; set; }
     }
 }

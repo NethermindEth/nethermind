@@ -24,7 +24,9 @@ namespace Nethermind.Consensus
     public interface ISealer
     {
         Task<Block> SealBlock(Block block, CancellationToken cancellationToken);
+        
         bool CanSeal(long blockNumber, Keccak parentHash);
+        
         Address Address { get; }
     }
 }

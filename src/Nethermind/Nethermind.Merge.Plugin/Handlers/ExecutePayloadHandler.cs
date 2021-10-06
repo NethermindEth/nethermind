@@ -20,7 +20,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Api;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Processing;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -35,6 +35,10 @@ using Nethermind.State;
 
 namespace Nethermind.Merge.Plugin.Handlers
 {
+    /// <summary>
+    /// https://hackmd.io/@n0ble/consensus_api_design_space
+    /// Verifies the payload according to the execution environment rule set (EIP-3675) and returns the status of the verification
+    /// </summary>
     public class ExecutePayloadHandler: IHandler<BlockRequestResult, ExecutePayloadResult>
     {
         private const string AndWontBeAcceptedToTheTree = "and wont be accepted to the tree";

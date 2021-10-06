@@ -132,7 +132,7 @@ namespace Nethermind.Runner.Test
             var tempPath = TempPath.GetTempDirectory();
             Directory.CreateDirectory(tempPath.Path);
 
-            Exception exception = null;
+            Exception? exception = null;
             try
             {
                 IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();

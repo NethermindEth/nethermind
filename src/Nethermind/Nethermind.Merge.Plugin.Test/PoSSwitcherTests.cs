@@ -15,10 +15,15 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.IO;
+using Nethermind.Db;
+using Nethermind.Int256;
+using Nethermind.Logging;
 using NUnit.Framework;
 
 namespace Nethermind.Merge.Plugin.Test
@@ -28,8 +33,10 @@ namespace Nethermind.Merge.Plugin.Test
         [Test]
         public void Is_pos_with_total_difficulty()
         {
-            PoSSwitcher poSSwitcher = new(NUnitLogManager.Instance);
-            poSSwitcher.SetTerminalTotalDifficulty(200);
+            PoSSwitcher poSSwitcher = new(NUnitLogManager.Instance, new MergeConfig(), new MemDb())
+            {
+                TerminalTotalDifficulty = 200
+            };
 
             BlockHeader blockHeader = Build.A.BlockHeader.WithTotalDifficulty(100L).TestObject;
             BlockHeader blockHeader2 = Build.A.BlockHeader.WithTotalDifficulty(200L).TestObject;
@@ -39,7 +46,7 @@ namespace Nethermind.Merge.Plugin.Test
             Assert.AreEqual(true, poSSwitcher.IsPos(blockHeader2));
             Assert.AreEqual(true, poSSwitcher.IsPos(blockHeader3));
 
-            poSSwitcher.SetTerminalTotalDifficulty(500);
+            poSSwitcher.TerminalTotalDifficulty = 500;
 
             Assert.AreEqual(false, poSSwitcher.IsPos(blockHeader));
             Assert.AreEqual(false, poSSwitcher.IsPos(blockHeader2));
@@ -49,7 +56,7 @@ namespace Nethermind.Merge.Plugin.Test
         [Test]
         public void Is_pos_with_terminal_hash()
         {
-            PoSSwitcher poSSwitcher = new(NUnitLogManager.Instance);
+            PoSSwitcher poSSwitcher = new(NUnitLogManager.Instance, new MergeConfig(), new MemDb());
             poSSwitcher.SetTerminalPoWHash(Keccak.Compute("test1"));
 
             BlockHeader blockHeader = Build.A.BlockHeader.WithParentHash(Keccak.Compute("test2")).TestObject;
@@ -67,14 +74,16 @@ namespace Nethermind.Merge.Plugin.Test
         [Test]
         public void Is_pos_try_switch_to_PoS()
         {
-            PoSSwitcher poSSwitcher = new(NUnitLogManager.Instance);
-            poSSwitcher.SetTerminalTotalDifficulty(200);
+            PoSSwitcher poSSwitcher = new(NUnitLogManager.Instance, new MergeConfig(), new MemDb())
+            {
+                TerminalTotalDifficulty = 200
+            };
 
             BlockHeader blockHeader = Build.A.BlockHeader.WithTotalDifficulty(200L).TestObject;
             BlockHeader blockHeader2 = Build.A.BlockHeader.WithTotalDifficulty(400L).TestObject;
 
             Assert.AreEqual(true, poSSwitcher.TrySwitchToPos(blockHeader));
-            poSSwitcher.SetTerminalTotalDifficulty(500);
+            poSSwitcher.TerminalTotalDifficulty = 500;
 
             Assert.AreEqual(true, poSSwitcher.IsPos(blockHeader));
             Assert.AreEqual(true, poSSwitcher.IsPos(blockHeader2));
@@ -83,14 +92,16 @@ namespace Nethermind.Merge.Plugin.Test
         [Test]
         public void Is_pos_sets_first_PoS_header_once()
         {
-            PoSSwitcher poSSwitcher = new(NUnitLogManager.Instance);
-            poSSwitcher.SetTerminalTotalDifficulty(200);
+            PoSSwitcher poSSwitcher = new(NUnitLogManager.Instance, new MergeConfig(), new MemDb())
+            {
+                TerminalTotalDifficulty = 200
+            };
 
             BlockHeader blockHeader = Build.A.BlockHeader.WithTotalDifficulty(200L).TestObject;
             BlockHeader blockHeader2 = Build.A.BlockHeader.WithTotalDifficulty(400L).TestObject;
 
             poSSwitcher.TrySwitchToPos(blockHeader);
-            poSSwitcher.SetTerminalTotalDifficulty(400);
+            poSSwitcher.TerminalTotalDifficulty = 400;
 
             Assert.AreEqual(true, poSSwitcher.IsPos(blockHeader));
             Assert.AreEqual(true, poSSwitcher.IsPos(blockHeader2));
@@ -102,10 +113,12 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         [Test]
-        public void Was_ever_in_pos()
+        public void Has_ever_been_in_pos()
         {
-            PoSSwitcher poSSwitcher = new(NUnitLogManager.Instance);
-            poSSwitcher.SetTerminalTotalDifficulty(200L);
+            PoSSwitcher poSSwitcher = new(NUnitLogManager.Instance, new MergeConfig(), new MemDb())
+            {
+                TerminalTotalDifficulty = 200L
+            };
 
             Assert.AreEqual(false, poSSwitcher.HasEverBeenInPos());
 
@@ -113,6 +126,24 @@ namespace Nethermind.Merge.Plugin.Test
             poSSwitcher.TrySwitchToPos(blockHeader);
 
             Assert.AreEqual(true, poSSwitcher.HasEverBeenInPos());
+        }
+        
+        [Test]
+        public void Can_load_parameters_after_the_restart()
+        {
+            using TempPath tempPath = TempPath.GetTempFile(SimpleFilePublicKeyDb.DbFileName);
+
+            SimpleFilePublicKeyDb filePublicKeyDb = new("PoSSwitcherTests", Path.GetTempPath(), LimboLogs.Instance);
+            UInt256 expectedTotalTerminalDifficulty = 200L;
+            PoSSwitcher poSSwitcher = new(NUnitLogManager.Instance, new MergeConfig(), filePublicKeyDb)
+            {
+                TerminalTotalDifficulty = expectedTotalTerminalDifficulty
+            };
+
+            PoSSwitcher newPoSSwitcher = new PoSSwitcher(LimboLogs.Instance, new MergeConfig(), filePublicKeyDb);
+            
+            tempPath.Dispose();
+            Assert.AreEqual(expectedTotalTerminalDifficulty, newPoSSwitcher.TerminalTotalDifficulty);
         }
     }
 }

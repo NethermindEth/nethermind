@@ -36,9 +36,9 @@ using NSubstitute;
 using NUnit.Framework;
 using System.Threading;
 using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.Processing;
 using Nethermind.Trie.Pruning;
 using System.Threading.Tasks;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.TransactionProcessing;
 

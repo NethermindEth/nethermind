@@ -23,18 +23,24 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Merge.Plugin.Data
 {
+    // TODO: how is this class never interacting with payload storage?
     public class PayloadManager
     {
         private readonly IBlockTree _blockTree;
         private readonly LruCache<Keccak, bool> _executePayloadHashes;
         private readonly LruCache<Keccak, bool> _consensusValidatedResults;
         private readonly ConcurrentDictionary<Keccak, Block> _pendingValidPayloads;
+        
+        /// <summary>
+        /// Number of executePayload hashes and consensusValidated hashes stored in cache.
+        /// </summary>
+        private const int CacheSize = 300;
 
         public PayloadManager(IBlockTree blockTree)
         {
             _blockTree = blockTree;
-            _executePayloadHashes = new LruCache<Keccak, bool>(300, "Recent Execute Payload Hashes");
-            _consensusValidatedResults = new LruCache<Keccak, bool>(300, "Recent Consensus Validated Results");
+            _executePayloadHashes = new LruCache<Keccak, bool>(CacheSize, "Recent Execute Payload Hashes");
+            _consensusValidatedResults = new LruCache<Keccak, bool>(CacheSize, "Recent Consensus Validated Results");
             _pendingValidPayloads = new ConcurrentDictionary<Keccak, Block>();
         }
 

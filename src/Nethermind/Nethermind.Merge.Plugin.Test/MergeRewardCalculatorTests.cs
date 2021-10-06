@@ -15,10 +15,11 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Blockchain.Rewards;
+using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
 using Nethermind.Specs;
 using NUnit.Framework;
 
@@ -34,9 +35,11 @@ namespace Nethermind.Merge.Plugin.Test
             Block block = Build.A.Block.WithNumber(3).WithUncles(uncle, uncle2).WithTotalDifficulty(1L).TestObject;
             Block block2 = Build.A.Block.WithNumber(3).WithUncles(uncle, uncle2).WithTotalDifficulty(2L).TestObject;
 
-            PoSSwitcher poSSwitcher = new(NUnitLogManager.Instance);
-            poSSwitcher.SetTerminalTotalDifficulty(2);
-            
+            PoSSwitcher poSSwitcher = new(NUnitLogManager.Instance, new MergeConfig(), new MemDb())
+            {
+                TerminalTotalDifficulty = 2
+            };
+
             MergeRewardCalculator calculator = new(new RewardCalculator(RopstenSpecProvider.Instance), poSSwitcher);
             BlockReward[] rewards = calculator.CalculateRewards(block);
             
@@ -56,10 +59,12 @@ namespace Nethermind.Merge.Plugin.Test
             Block uncle = Build.A.Block.WithNumber(1).TestObject;
             Block block = Build.A.Block.WithNumber(3).WithUncles(uncle).WithTotalDifficulty(1L).TestObject;
             Block block2 = Build.A.Block.WithNumber(3).WithUncles(uncle).WithTotalDifficulty(3L).TestObject;
-            
-            PoSSwitcher poSSwitcher = new(NUnitLogManager.Instance);
-            poSSwitcher.SetTerminalTotalDifficulty(2);
-            
+
+            PoSSwitcher poSSwitcher = new(NUnitLogManager.Instance, new MergeConfig(), new MemDb())
+            {
+                TerminalTotalDifficulty = 2
+            };
+
             MergeRewardCalculator calculator = new(new RewardCalculator(RopstenSpecProvider.Instance), poSSwitcher);
             BlockReward[] rewards = calculator.CalculateRewards(block);
             
@@ -76,10 +81,12 @@ namespace Nethermind.Merge.Plugin.Test
         {
             Block block = Build.A.Block.WithNumber(3).WithTotalDifficulty(1L).TestObject;
             Block block2 = Build.A.Block.WithNumber(3).WithTotalDifficulty(3L).TestObject;
-            
-            PoSSwitcher poSSwitcher = new(NUnitLogManager.Instance);
-            poSSwitcher.SetTerminalTotalDifficulty(2);
-            
+
+            PoSSwitcher poSSwitcher = new(NUnitLogManager.Instance, new MergeConfig(), new MemDb())
+            {
+                TerminalTotalDifficulty = 2
+            };
+
             MergeRewardCalculator calculator = new(new RewardCalculator(RopstenSpecProvider.Instance), poSSwitcher);
             BlockReward[] rewards = calculator.CalculateRewards(block);
             
@@ -99,8 +106,8 @@ namespace Nethermind.Merge.Plugin.Test
             Block block = Build.A.Block.WithNumber(blockNumber).WithUncles(uncle, uncle2).WithTotalDifficulty(1L).TestObject;
             Block block2 = Build.A.Block.WithNumber(blockNumber).WithUncles(uncle, uncle2).WithTotalDifficulty(3L).TestObject;
             
-            PoSSwitcher poSSwitcher = new(NUnitLogManager.Instance);
-            poSSwitcher.SetTerminalTotalDifficulty(2);
+            PoSSwitcher poSSwitcher = new(NUnitLogManager.Instance, new MergeConfig(), new MemDb());
+            poSSwitcher.TerminalTotalDifficulty = 2;
             
             MergeRewardCalculator calculator = new(new RewardCalculator(RopstenSpecProvider.Instance), poSSwitcher);
             BlockReward[] rewards = calculator.CalculateRewards(block);
@@ -123,10 +130,12 @@ namespace Nethermind.Merge.Plugin.Test
             Block uncle2 = Build.A.Block.WithNumber(blockNumber - 2).TestObject;
             Block block = Build.A.Block.WithNumber(blockNumber).WithUncles(uncle, uncle2).WithTotalDifficulty(1L).TestObject;
             Block block2 = Build.A.Block.WithNumber(blockNumber).WithUncles(uncle, uncle2).WithTotalDifficulty(3L).TestObject;
-            
-            PoSSwitcher poSSwitcher = new(NUnitLogManager.Instance);
-            poSSwitcher.SetTerminalTotalDifficulty(2);
-            
+
+            PoSSwitcher poSSwitcher = new(NUnitLogManager.Instance, new MergeConfig(), new MemDb())
+            {
+                TerminalTotalDifficulty = 2
+            };
+
             MergeRewardCalculator calculator = new(new RewardCalculator(RopstenSpecProvider.Instance), poSSwitcher);
             BlockReward[] rewards = calculator.CalculateRewards(block);
             
@@ -144,9 +153,11 @@ namespace Nethermind.Merge.Plugin.Test
         {
             Block block = Build.A.Block.WithTotalDifficulty(1L).TestObject;
             Block block2 = Build.A.Block.WithTotalDifficulty(3L).TestObject;
-            
-            PoSSwitcher poSSwitcher = new(NUnitLogManager.Instance);
-            poSSwitcher.SetTerminalTotalDifficulty(2);
+
+            PoSSwitcher poSSwitcher = new(NUnitLogManager.Instance, new MergeConfig(), new MemDb())
+            {
+                TerminalTotalDifficulty = 2
+            };
             MergeRewardCalculator calculator = new(NoBlockRewards.Instance, poSSwitcher);
             
             BlockReward[] rewards = calculator.CalculateRewards(block);

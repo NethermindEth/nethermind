@@ -30,7 +30,7 @@ namespace Nethermind.Merge.Plugin
 {
     public class EngineRpcModule : IEngineRpcModule
     {
-        private readonly IHandlerAsync<PreparePayloadRequest, PreparePayloadResult> _preparePayloadHandler;
+        private readonly IHandler<PreparePayloadRequest, PreparePayloadResult> _preparePayloadHandler;
         private readonly IHandler<ulong, BlockRequestResult?> _getPayloadHandler;
         private readonly IHandler<BlockRequestResult, ExecutePayloadResult> _executePayloadHandler;
         private readonly IHandler<ConsensusValidatedRequest, string> _consensusValidatedHandler;
@@ -61,9 +61,9 @@ namespace Nethermind.Merge.Plugin
             _logger = logManager.GetClassLogger();
         }
 
-        public Task<ResultWrapper<PreparePayloadResult>> engine_preparePayload(PreparePayloadRequest preparePayloadRequest)
+        public ResultWrapper<PreparePayloadResult> engine_preparePayload(PreparePayloadRequest preparePayloadRequest)
         {
-            return _preparePayloadHandler.HandleAsync(preparePayloadRequest);
+            return _preparePayloadHandler.Handle(preparePayloadRequest);
         }
 
         public Task<ResultWrapper<BlockRequestResult?>> engine_getPayload(ulong payloadId)
@@ -133,7 +133,7 @@ namespace Nethermind.Merge.Plugin
 
         public ResultWrapper<string> engine_terminalTotalDifficultyUpdated(UInt256 terminalTotalDifficulty)
         {
-            _transitionProcessHandler.SetTerminalTotalDifficulty(terminalTotalDifficulty);
+            _transitionProcessHandler.TerminalTotalDifficulty = terminalTotalDifficulty;
             return ResultWrapper<string>.Success(null);
         }
 

@@ -24,6 +24,7 @@ namespace Nethermind.Consensus
     public interface IPoSSwitcher
     {
         bool TrySwitchToPos(BlockHeader header);
+        
         bool IsPos(BlockHeader header);
 
         bool HasEverBeenInPos();

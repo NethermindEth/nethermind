@@ -27,11 +27,13 @@ using Newtonsoft.Json;
 
 namespace Nethermind.Merge.Plugin.Data
 {
+    /// <summary>
+    /// A data object representing a block as being sent from the execution layer to the consensus layer.
+    /// </summary>
     public class BlockRequestResult
     {
         public BlockRequestResult() : this(true)
         {
-            
         }
         
         public BlockRequestResult(bool setDefaults = false)
@@ -47,21 +49,21 @@ namespace Nethermind.Merge.Plugin.Data
         
         public BlockRequestResult(Block block, Keccak random)
         {
-            BlockHash = block.Hash;
-            ParentHash = block.ParentHash;
+            BlockHash = block.Hash!;
+            ParentHash = block.ParentHash!;
             Coinbase = block.Beneficiary;
-            StateRoot = block.StateRoot;
+            StateRoot = block.StateRoot!;
             BlockNumber = block.Number;
             GasLimit = block.GasLimit;
             GasUsed = block.GasUsed;
-            ReceiptRoot = block.ReceiptsRoot;
-            LogsBloom = block.Bloom;
+            ReceiptRoot = block.ReceiptsRoot!;
+            LogsBloom = block.Bloom!;
             Random = random;
             SetTransactions(block.Transactions);
             Difficulty = block.Difficulty;
             Nonce = block.Nonce;
-            ExtraData = block.ExtraData;
-            MixHash = block.MixHash;
+            ExtraData = block.ExtraData!;
+            MixHash = block.MixHash!;
             Uncles = block.Uncles.Select(o => o.Hash!);
             Timestamp = block.Timestamp;
             BaseFeePerGas = block.BaseFeePerGas;
@@ -103,7 +105,7 @@ namespace Nethermind.Merge.Plugin.Data
         public Keccak BlockHash { get; set; } = null!;
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public Bloom LogsBloom { get; set; } = Bloom.Empty;
-        public Keccak Random { get; set; }
+        public Keccak Random { get; set; } = Keccak.Zero;
         public Address? Coinbase { get; set; }
         public Keccak MixHash { get; set; } = null!;
         public bool ShouldSerializeMixHash() => false;
@@ -140,6 +142,7 @@ namespace Nethermind.Merge.Plugin.Data
             {
                 transactions[i] = Rlp.Decode<Transaction>(Transactions[i], RlpBehaviors.SkipTypedWrapping);
             }
+            
             return transactions;
         }
     }

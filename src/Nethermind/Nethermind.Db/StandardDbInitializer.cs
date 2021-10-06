@@ -16,17 +16,22 @@
 
 using System;
 using System.Threading.Tasks;
+using Nethermind.Logging;
 
 namespace Nethermind.Db
 {
     public class StandardDbInitializer : RocksDbInitializer
     {
+        private readonly ILogManager _logManager;
+
         public StandardDbInitializer(
             IDbProvider? dbProvider, 
             IRocksDbFactory? rocksDbFactory, 
-            IMemDbFactory? memDbFactory)
+            IMemDbFactory? memDbFactory,
+            ILogManager logManager)
             : base(dbProvider, rocksDbFactory, memDbFactory)
         {
+            _logManager = logManager;
         }
 
         public void InitStandardDbs(bool useReceiptsDb)
@@ -59,6 +64,7 @@ namespace Nethermind.Db
             {
                 RegisterCustomDb(DbNames.Receipts, () => new ReadOnlyColumnsDb<ReceiptsColumns>(new MemColumnsDb<ReceiptsColumns>(), false));
             }
+            RegisterCustomDb(DbNames.Metadata, () => new SimpleFilePublicKeyDb(GetTitleDbName(DbNames.Metadata), DbNames.Metadata, _logManager));
         }
 
         private RocksDbSettings BuildRocksDbSettings(string dbName, Action updateReadsMetrics, Action updateWriteMetrics)

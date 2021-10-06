@@ -16,8 +16,8 @@
 // 
 
 using System.Collections.Generic;
-using Nethermind.Blockchain.Producers;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
@@ -27,7 +27,10 @@ namespace Nethermind.Mev
 {
     public class MevBlockProducer : MultipleBlockProducer<MevBlockProducer.MevBlockProducerInfo>
     {
-        public MevBlockProducer(IBlockProductionTrigger blockProductionTrigger, ILogManager logManager, params MevBlockProducerInfo[] blockProducers) 
+        public MevBlockProducer(
+            IBlockProductionTrigger blockProductionTrigger,
+            ILogManager logManager,
+            params MevBlockProducerInfo[] blockProducers) 
             : base(blockProductionTrigger, new MevBestBlockPicker(), logManager, blockProducers)
         {
         }

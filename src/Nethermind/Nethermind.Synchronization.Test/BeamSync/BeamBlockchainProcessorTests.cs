@@ -18,11 +18,11 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Processing;
-using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Test;
-using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -56,7 +56,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
             _blockchainProcessingQueue = Substitute.For<IBlockProcessingQueue>();
             _blockchainProcessor = Substitute.For<IBlockchainProcessor>();
             _blockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
-            HeaderValidator headerValidator = new HeaderValidator(_blockTree, NullSealEngine.Instance, MainnetSpecProvider.Instance, NoPoS.Instance, LimboLogs.Instance);
+            HeaderValidator headerValidator = new HeaderValidator(_blockTree, NullSealEngine.Instance, MainnetSpecProvider.Instance, LimboLogs.Instance);
             _validator = new BlockValidator(Always.Valid, headerValidator, Always.Valid, MainnetSpecProvider.Instance, LimboLogs.Instance);
         }
         

@@ -18,17 +18,18 @@
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Comparers;
-using Nethermind.Blockchain.Processing;
-using Nethermind.Blockchain.Producers;
-using Nethermind.Blockchain.Rewards;
-using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Comparers;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
 using Nethermind.Facade.Eth;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -46,7 +47,7 @@ namespace Nethermind.Merge.Plugin.Test
 
         private IEngineRpcModule CreateEngineModule(MergeTestBlockchain chain)
         {
-            PayloadStorage? payloadStorage = new();
+            PayloadStorage? payloadStorage = new(chain.BlockProductionTrigger, chain.EmptyBlockProducerTrigger);
             PayloadManager payloadManager = new(chain.BlockTree);
             return new EngineRpcModule(
                 new PreparePayloadHandler(chain.BlockTree, payloadStorage, chain.BlockProductionTrigger, chain.EmptyBlockProducerTrigger, chain.Timestamper, new Eth2SealEngine(new Eth2Signer(chain.MinerAddress)), chain.LogManager),
@@ -62,14 +63,14 @@ namespace Nethermind.Merge.Plugin.Test
         private class MergeTestBlockchain : TestBlockchain
         {
             public IBlockProducer EmptyBlockProducer { get; private set; }
-            public BuildBlocksWhenRequested EmptyBlockProducerTrigger { get; private set; } = new BuildBlocksWhenRequested();
+            public BuildBlocksWhenRequested EmptyBlockProducerTrigger { get; private set; } = new ();
             public MergeTestBlockchain(ManualTimestamper timestamper)
             {
                 Timestamper = timestamper;
                 GenesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.Genesis
                     .WithTimestamp(UInt256.One);
                 Signer = new Eth2Signer(MinerAddress);
-                PoSSwitcher = new PoSSwitcher(LogManager);
+                PoSSwitcher = new PoSSwitcher(LogManager, new MergeConfig() { Enabled = true }, new MemDb());
                 BlockConfirmationManager = new BlockConfirmationManager();
             }
             
@@ -80,6 +81,8 @@ namespace Nethermind.Merge.Plugin.Test
             private IBlockValidator BlockValidator { get; set; } = null!;
 
             private ISigner Signer { get; }
+            
+            public IPoSSwitcher PoSSwitcher { get; }
 
             protected override IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
             {
@@ -141,11 +144,14 @@ namespace Nethermind.Merge.Plugin.Test
 
             private IBlockValidator CreateBlockValidator()
             {
-                HeaderValidator headerValidator = new(BlockTree, new Eth2SealEngine(Signer), SpecProvider, PoSSwitcher, LogManager);
+                HeaderValidator headerValidator =
+                    new HeaderValidator(BlockTree, Always.Valid, SpecProvider, LogManager);
+                HeaderValidator mergeHeaderValidator =
+                new MergeHeaderValidator(headerValidator, BlockTree, SpecProvider, PoSSwitcher, LogManager);
                 
                 return new BlockValidator(
                     new TxValidator(SpecProvider.ChainId),
-                    headerValidator,
+                    mergeHeaderValidator,
                     Always.Valid,
                     SpecProvider,
                     LogManager);

@@ -16,7 +16,7 @@
 
 using System;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Processing;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;

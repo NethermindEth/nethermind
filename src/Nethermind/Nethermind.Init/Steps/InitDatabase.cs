@@ -59,7 +59,7 @@ namespace Nethermind.Init.Steps
             {
                 bool useReceiptsDb = initConfig.StoreReceipts || syncConfig.DownloadReceiptsInFastSync;
                 InitDbApi(initConfig, dbConfig, initConfig.StoreReceipts || syncConfig.DownloadReceiptsInFastSync);
-                StandardDbInitializer dbInitializer = new(_api.DbProvider, _api.RocksDbFactory, _api.MemDbFactory);
+                StandardDbInitializer dbInitializer = new(_api.DbProvider, _api.RocksDbFactory, _api.MemDbFactory, _api.LogManager);
                 await dbInitializer.InitStandardDbsAsync(useReceiptsDb);
                 if (syncConfig.BeamSync)
                 {

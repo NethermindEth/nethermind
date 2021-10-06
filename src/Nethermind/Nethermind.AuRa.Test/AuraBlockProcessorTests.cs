@@ -17,11 +17,11 @@
 
 using System.Collections.Generic;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Test.Validators;
 using Nethermind.Consensus.AuRa;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;

@@ -14,24 +14,18 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
-using System.IO;
-using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Processing;
-using Nethermind.Blockchain.Producers;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 
 namespace Nethermind.Consensus.Ethash
 {
-    public class MinedBlockProducer : BlockProducerBase
+    internal class MinedBlockProducer : BlockProducerBase
     {
         public MinedBlockProducer(ITxSource txSource,
             IBlockchainProcessor processor,
