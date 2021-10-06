@@ -25,7 +25,6 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
     public class NewPendingTransactionsSubscription : Subscription
     {
         private readonly ITxPool _txPool;
-        private readonly ILogger _logger;
 
         public NewPendingTransactionsSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, ITxPool? txPool, ILogManager? logManager) 
             : base(jsonRpcDuplexClient)
@@ -39,26 +38,24 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         private void OnNewPending(object? sender, TxEventArgs e)
         {
-            Task.Run(() =>
+            ScheduleAction(() =>
             {
                 JsonRpcResult result = CreateSubscriptionMessage(e.Transaction.Hash);
                 JsonRpcDuplexClient.SendJsonRpcResult(result);
                 if(_logger.IsTrace) _logger.Trace($"NewPendingTransactions subscription {Id} printed hash of NewPendingTransaction.");
-            }).ContinueWith(
-                t =>
-                    t.Exception?.Handle(ex =>
-                    {
-                        if (_logger.IsDebug) _logger.Debug($"NewPendingTransactions subscription {Id}: Failed Task.Run after NewPending event.");
-                        return true;
-                    })
-                , TaskContinuationOptions.OnlyOnFaulted
-            );
+            });
         }
 
+        protected override string GetErrorMsg()
+        {
+            return $"NewPendingTransactions subscription {Id}: Failed Task.Run after NewPending event.";
+        }
+        
         public override SubscriptionType Type => SubscriptionType.NewPendingTransactions;
 
         public override void Dispose()
         {
+            base.Dispose();
             _txPool.NewPending -= OnNewPending;
             if(_logger.IsTrace) _logger.Trace($"NewPendingTransactions subscription {Id} will no longer track NewPendingTransactions");
         }

@@ -13,14 +13,21 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-namespace Nethermind.TxPool
+using System;
+
+namespace Nethermind.State
 {
-    public class TxPoolConfig : ITxPoolConfig
+    public class WorldState : IWorldState
     {
-        public int PeerNotificationThreshold { get; set; } = 5;
-        public int Size { get; set; } = 2048;
-        public int HashCacheSize { get; set; } = 512 * 1024;
-        public long? GasLimit { get; set; } = null;
+        public IStateProvider StateProvider { get; }
+        public IStorageProvider StorageProvider { get; }
+
+        public WorldState(IStateProvider stateProvider, IStorageProvider storageProvider)
+        {
+            StateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
+            StorageProvider = storageProvider ?? throw new ArgumentNullException(nameof(storageProvider));
+        }
     }
 }

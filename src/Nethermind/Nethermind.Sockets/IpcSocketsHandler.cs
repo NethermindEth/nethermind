@@ -23,14 +23,20 @@ namespace Nethermind.Sockets
 
         public async Task<ReceiveResult?> GetReceiveResult(ArraySegment<byte> buffer)
         {
-            int read = await _socket.ReceiveAsync(buffer, SocketFlags.None);
-            return new ReceiveResult()
+            ReceiveResult? result = null;
+            if (_socket.Connected)
             {
-                Closed = read == 0,
-                Read = read,
-                EndOfMessage = read < buffer.Count || _socket.Available == 0,
-                CloseStatusDescription = null
-            };
+                int read = await _socket.ReceiveAsync(buffer, SocketFlags.None);
+                result = new ReceiveResult()
+                {
+                    Closed = read == 0,
+                    Read = read,
+                    EndOfMessage = read < buffer.Count || _socket.Available == 0,
+                    CloseStatusDescription = null
+                };
+            }
+
+            return result;
         }
 
         public Task CloseAsync(ReceiveResult? result)

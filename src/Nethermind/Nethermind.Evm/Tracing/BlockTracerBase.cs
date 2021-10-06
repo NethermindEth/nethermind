@@ -32,7 +32,7 @@ namespace Nethermind.Evm.Tracing
             TxTraces = new List<TTrace>();
         }
 
-        protected BlockTracerBase(Keccak txHash)
+        protected BlockTracerBase(Keccak? txHash)
         {
             _txHash = txHash;
             TxTraces = new List<TTrace>();

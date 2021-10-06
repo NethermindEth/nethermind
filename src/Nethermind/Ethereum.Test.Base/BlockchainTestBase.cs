@@ -141,10 +141,8 @@ namespace Ethereum.Test.Base
             IBlockValidator blockValidator = new BlockValidator(txValidator, headerValidator, unclesValidator, specProvider, _logManager);
             IStorageProvider storageProvider = new StorageProvider(trieStore, stateProvider, _logManager);
             IVirtualMachine virtualMachine = new VirtualMachine(
-                stateProvider,
-                storageProvider,
+                specProvider.ChainId,
                 blockhashProvider,
-                specProvider,
                 _logManager);
 
             IBlockProcessor blockProcessor = new BlockProcessor(
