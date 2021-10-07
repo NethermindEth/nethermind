@@ -489,7 +489,8 @@ namespace Nethermind.Synchronization.ParallelSync
         {
             UInt256 localChainDifficulty = _syncProgressResolver.ChainDifficulty;
             bool anyDesiredPeerKnown = best.PeerDifficulty > localChainDifficulty
-                                       || best.PeerDifficulty == localChainDifficulty && best.PeerBlock > best.Header;
+                                       || best.PeerDifficulty == localChainDifficulty && best.PeerBlock > best.Header
+                                       || best.PeerBlock > best.Block; // TODO: this should be only if we are in the post merge world 
             if (anyDesiredPeerKnown)
             {
                 if (_logger.IsTrace)

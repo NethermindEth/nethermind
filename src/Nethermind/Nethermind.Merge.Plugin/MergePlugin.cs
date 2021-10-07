@@ -19,15 +19,14 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
-using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
 
 namespace Nethermind.Merge.Plugin
@@ -79,10 +78,11 @@ namespace Nethermind.Merge.Plugin
                 
                 ISigner signer = new Eth2Signer(address);
 
-                _api.RewardCalculatorSource =
-                    new MergeRewardCalculatorSource(_poSSwitcher,
-                        _api.RewardCalculatorSource ?? NoBlockRewards.Instance);
-                _api.SealEngine = new MergeSealEngine(_api.SealEngine, _poSSwitcher, signer);
+                _api.RewardCalculatorSource = new MergeRewardCalculatorSource(
+                    _mergeConfig, _api.RewardCalculatorSource ?? NoBlockRewards.Instance);
+                _api.SealEngine = new MergeSealEngine(_api.SealEngine, _poSSwitcher, signer, _api.LogManager);
+                _api.SealValidator = _api.SealEngine;
+                _api.Sealer = _api.SealEngine;
                 _api.GossipPolicy = new MergeGossipPolicy(_api.GossipPolicy, _poSSwitcher);
             }
 
@@ -118,11 +118,20 @@ namespace Nethermind.Merge.Plugin
 
                 PayloadStorage payloadStorage = new(_idealBlockProductionTrigger, _emptyBlockProductionTrigger, _api.StateProvider, _api.BlockchainProcessor, initConfig, _api.LogManager);
 
+                PostMergeHeaderValidator postPostMergeHeaderValidator = new(
+                    _api.BlockTree,
+                    _api.SpecProvider,
+                    _api.LogManager);
                 IEngineRpcModule engineRpcModule = new EngineRpcModule(
                     new PreparePayloadHandler(_api.BlockTree, payloadStorage, _manualTimestamper, _api.Sealer, _api.LogManager),
                     new GetPayloadHandler(payloadStorage, _api.LogManager),
-                    new ExecutePayloadHandler(_api.BlockTree, _api.BlockchainProcessor,
-                        _api.EthSyncingInfo, _api.StateProvider, _api.Config<IInitConfig>(),
+                    new ExecutePayloadHandler(
+                        postPostMergeHeaderValidator,
+                        _api.BlockTree,
+                        _api.BlockchainProcessor,
+                        _api.EthSyncingInfo,
+                        _api.StateProvider,
+                        _api.Config<IInitConfig>(),
                         _api.LogManager),
                     _transitionProcessHandler,
                     new ForkChoiceUpdatedHandler(_api.BlockTree, _api.StateProvider, _blockFinalizationManager,
@@ -138,12 +147,7 @@ namespace Nethermind.Merge.Plugin
 
         public void AfterHeaderValidator()
         {
-            _api.HeaderValidator = new MergeHeaderValidator(
-                _api.HeaderValidator,
-                _api.BlockTree,
-                _api.SpecProvider,
-                _poSSwitcher,
-                _api.LogManager);
+            _api.HeaderValidator = Always.Valid;
         }
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;

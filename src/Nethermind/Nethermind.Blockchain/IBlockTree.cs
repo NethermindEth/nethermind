@@ -86,7 +86,7 @@ namespace Nethermind.Blockchain
         /// <param name="block">Block to be included</param>
         /// <param name="shouldProcess">Whether a block should be processed or just added to the store</param>
         /// <returns>Result of the operation, eg. Added, AlreadyKnown, etc.</returns>
-        AddBlockResult SuggestBlock(Block block, bool shouldProcess = true, bool? setAsMain = null, bool poSEnabled = false);
+        AddBlockResult SuggestBlock(Block block, bool shouldProcess = true, bool? setAsMain = null);
 
         /// <summary>
         /// Suggests a block header (without body)
@@ -140,7 +140,7 @@ namespace Nethermind.Blockchain
         event EventHandler<BlockEventArgs> NewSuggestedBlock;
         event EventHandler<BlockReplacementEventArgs> BlockAddedToMain;
         event EventHandler<BlockEventArgs> NewHeadBlock;
-        
+
         int DeleteChainSlice(in long startNumber, long? endNumber = null);
 
         bool IsBetterThanHead(BlockHeader? header)
@@ -163,7 +163,8 @@ namespace Nethermind.Blockchain
                              || (header.TotalDifficulty == Head?.TotalDifficulty &&
                                  ((Head?.Hash ?? Keccak.Zero).CompareTo(header.Hash) > 0))
                              || (header.TotalDifficulty == Head?.TotalDifficulty &&
-                                 ((Head?.Number ?? 0L).CompareTo(header.Number) > 0));
+                                 ((Head?.Number ?? 0L).CompareTo(header.Number) > 0))
+                             || (header.TotalDifficulty == Head?.TotalDifficulty && header.IsPostMerge);
                 }
             }
 

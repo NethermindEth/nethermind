@@ -47,14 +47,6 @@ namespace Nethermind.Consensus.Ethash
             ResetValidationInterval();
         }
 
-        public EthashSealValidator(
-            ILogManager logManager,
-            IDifficultyCalculator difficultyCalculator,
-            ICryptoRandom cryptoRandom)
-            : this(logManager, difficultyCalculator, cryptoRandom, new Ethash(logManager))
-        {
-        }
-
         private void ResetValidationInterval()
         {
             // more or less at the constant component

@@ -32,7 +32,8 @@ namespace Nethermind.Synchronization.Blocks
             }
             
             IPeerAllocationStrategy baseStrategy = new BlocksSyncPeerAllocationStrategy(request.NumberOfLatestBlocksToBeIgnored);
-            TotalDiffStrategy totalDiffStrategy = new(baseStrategy);
+            // TODO: changed from Better to AtLeastTheSame for the peer allocation strategy
+            TotalDiffStrategy totalDiffStrategy = new(baseStrategy, TotalDiffStrategy.TotalDiffSelectionType.AtLeastTheSame);
             return totalDiffStrategy;
         }
     }

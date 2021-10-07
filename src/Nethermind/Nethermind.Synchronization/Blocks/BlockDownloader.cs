@@ -260,7 +260,15 @@ namespace Nethermind.Synchronization.Blocks
             // pivot number - 6 for uncle validation
             // long currentNumber = Math.Max(Math.Max(0, pivotNumber - 6), Math.Min(_blockTree.BestKnownNumber, bestPeer.HeadNumber - 1));
 
-            while (bestPeer.TotalDifficulty > (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0) && currentNumber <= bestPeer.HeadNumber)
+            bool PreMergeDifficultyRequirementSatisfied()
+                => bestPeer!.TotalDifficulty > (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0);
+            bool PostMergeRequirementSatisfied()
+                => bestPeer!.HeadNumber > (_blockTree.BestSuggestedHeader?.Number ?? 0);
+            bool ImprovementRequirementSatisfied()
+                => PreMergeDifficultyRequirementSatisfied() || PostMergeRequirementSatisfied();
+            bool HasMoreToSync()
+                => currentNumber <= bestPeer!.HeadNumber;
+            while(ImprovementRequirementSatisfied() && HasMoreToSync())
             {
                 if (_logger.IsDebug) _logger.Debug($"Continue full sync with {bestPeer} (our best {_blockTree.BestKnownNumber})");
 

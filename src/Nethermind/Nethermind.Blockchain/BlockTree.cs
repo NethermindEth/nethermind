@@ -511,7 +511,7 @@ namespace Nethermind.Blockchain
             }
         }
 
-        private AddBlockResult Suggest(Block? block, BlockHeader header, bool shouldProcess = true, bool? setAsMain = null, bool poSEnabled = false)
+        private AddBlockResult Suggest(Block? block, BlockHeader header, bool shouldProcess = true, bool? setAsMain = null)
         {
 #if DEBUG
             /* this is just to make sure that we do not fall into this trap when creating tests */
@@ -574,7 +574,7 @@ namespace Nethermind.Blockchain
                 NewSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
             }
 
-            if (poSEnabled || header.IsGenesis || header.TotalDifficulty > (BestSuggestedHeader?.TotalDifficulty ?? 0))
+            // if (header.IsGenesis || header.TotalDifficulty > (BestSuggestedHeader?.TotalDifficulty ?? 0))
             {
                 if (header.IsGenesis)
                 {
@@ -597,14 +597,14 @@ namespace Nethermind.Blockchain
             return Suggest(null, header);
         }
 
-        public AddBlockResult SuggestBlock(Block block, bool shouldProcess = true, bool? setAsMain = null, bool poSEnabled = false)
+        public AddBlockResult SuggestBlock(Block block, bool shouldProcess = true, bool? setAsMain = null)
         {
             if (Genesis is null && !block.IsGenesis)
             {
                 throw new InvalidOperationException("Block tree should be initialized with genesis before suggesting other blocks.");
             }
 
-            return Suggest(block, block.Header, shouldProcess, setAsMain, poSEnabled);
+            return Suggest(block, block.Header, shouldProcess, setAsMain);
         }
 
         public BlockHeader? FindHeader(long number, BlockTreeLookupOptions options)
@@ -1096,6 +1096,7 @@ namespace Nethermind.Blockchain
         [Todo(Improve.MissingFunctionality, "Recalculate bloom storage on reorg.")]
         private void MoveToMain(Block block, BatchWrite batch, bool wasProcessed, bool forceUpdateHeadBlock)
         {
+            _logger.Error($"Moving {block.ToString(Block.Format.Short)} to main");
             if (block.Hash is null)
             {
                 throw new InvalidOperationException("An attempt to move to main a block with hash not set.");
@@ -1107,6 +1108,10 @@ namespace Nethermind.Blockchain
             }
             
             ChainLevelInfo? level = LoadLevel(block.Number);
+            if (level.BlockInfos.Length > 1)
+            {
+                
+            }
             int? index = level is null ? null : FindIndex(block.Hash, level);
             if (index is null)
             {
@@ -1130,9 +1135,16 @@ namespace Nethermind.Blockchain
                 ? FindBlock(hashOfThePreviousMainBlock, BlockTreeLookupOptions.TotalDifficultyNotNeeded)
                 : null;
 
+            _logger.Warn($"Block added to main {block}");
             BlockAddedToMain?.Invoke(this, new BlockReplacementEventArgs(block, previous));
 
-            if (forceUpdateHeadBlock || block.IsGenesis || block.TotalDifficulty > (Head?.TotalDifficulty ?? 0))
+            
+            bool preMergeImprovementRequirementSatisfied = block.TotalDifficulty > (Head?.TotalDifficulty ?? 0);
+            bool postMergeImprovementRequirementSatisfied =
+                block.TotalDifficulty >= (Head?.TotalDifficulty ?? 0)
+                && block.Number > (Head?.Number ?? 0);
+            if (forceUpdateHeadBlock || block.IsGenesis || postMergeImprovementRequirementSatisfied)
+            // if (forceUpdateHeadBlock || block.IsGenesis || block.TotalDifficulty > (Head?.TotalDifficulty ?? 0))
             {
                 if (block.Number == 0)
                 {
