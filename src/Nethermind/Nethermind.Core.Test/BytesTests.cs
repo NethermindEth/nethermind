@@ -38,7 +38,7 @@ namespace Nethermind.Core.Test
         [TestCase("0x0102", "0x01", -1)]
         public void Compares_bytes_properly(string hexString1, string hexString2, int expectedResult)
         {
-            IComparer<byte[]> comparer = Bytes.Comparer;
+            IComparer<Memory<byte>> comparer = Bytes.Comparer;
             byte[] x = hexString1 == null ? null : Bytes.FromHexString(hexString1);
             byte[] y = hexString2 == null ? null : Bytes.FromHexString(hexString2);
             Assert.AreEqual(expectedResult, comparer.Compare(x, y));
@@ -85,7 +85,7 @@ namespace Nethermind.Core.Test
         public void Compares_bytes_equality_properly(string hexString1, string hexString2, bool expectedResult)
         {
             // interestingly, sequence equals that we have been using for some time returns 0x == null, null == 0x
-            IEqualityComparer<byte[]> comparer = Bytes.EqualityComparer;
+            IEqualityComparer<Memory<byte>> comparer = Bytes.EqualityComparer;
             byte[] x = hexString1 == null ? null : Bytes.FromHexString(hexString1);
             byte[] y = hexString2 == null ? null : Bytes.FromHexString(hexString2);
             Assert.AreEqual(expectedResult, comparer.Equals(x, y));
@@ -266,7 +266,7 @@ namespace Nethermind.Core.Test
         [TestCase("0x000100", 32, "256")]
         public void To_signed_big_int(string hex, int length, string expectedResult)
         {
-            Assert.AreEqual(BigInteger.Parse(expectedResult), Bytes.FromHexString(hex).ToSignedBigInteger(length));
+            Assert.AreEqual(BigInteger.Parse(expectedResult), Bytes.FromHexString(hex).AsMemory().ToSignedBigInteger(length));
         }
         
         [TestCase("0x0123456789abcdef0123456789abcdef", "0xefcdab8967452301efcdab8967452301")]

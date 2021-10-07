@@ -73,7 +73,7 @@ namespace Nethermind.Abi
         public int Length { get; }
         public int Precision { get; }
 
-        public override (object, int) Decode(byte[] data, int position, bool packed)
+        public override (object, int) Decode(Memory<byte> data, int position, bool packed)
         {
             (BigInteger nominator, int newPosition) = Int256.DecodeInt(data, position, packed);
             BigRational rational = BigRational.FromBigInt(nominator) * BigRational.Reciprocal(BigRational.Pow(BigRational.FromInt(10), Precision));

@@ -242,7 +242,7 @@ namespace Nethermind.Blockchain.Test
             tree.SuggestBlock(block2);
             tree.SuggestBlock(block3);
 
-            blockInfosDb.Set(BlockTree.DeletePointerAddressInDb, block1.Hash.Bytes);
+            blockInfosDb.Set(BlockTree.DeletePointerAddressInDb, block1.Hash.Bytes.ToArray());
             BlockTree tree2 = new(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
 
             Assert.AreEqual(0L, tree2.BestKnownNumber, "best known");
@@ -283,7 +283,7 @@ namespace Nethermind.Blockchain.Test
             tree.SuggestBlock(block2B);
             tree.SuggestBlock(block3B);
 
-            blockInfosDb.Set(BlockTree.DeletePointerAddressInDb, block1.Hash.Bytes);
+            blockInfosDb.Set(BlockTree.DeletePointerAddressInDb, block1.Hash.Bytes.ToArray());
             BlockTree tree2 = new(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
 
             Assert.AreEqual(3L, tree2.BestKnownNumber, "best known");
@@ -307,8 +307,8 @@ namespace Nethermind.Blockchain.Test
             IDb blocksInfosDb = Substitute.For<IDb>();
 
             Rlp chainLevel = Rlp.Encode(new ChainLevelInfo(true, new BlockInfo(TestItem.KeccakA, 1)));
-            blocksInfosDb[BlockTree.DeletePointerAddressInDb.Bytes].Returns((byte[]) null);
-            blocksInfosDb[Arg.Is<byte[]>(b => !Bytes.AreEqual(b, BlockTree.DeletePointerAddressInDb.Bytes))].Returns(chainLevel.Bytes);
+            blocksInfosDb[BlockTree.DeletePointerAddressInDb.Bytes.ToArray()].Returns((byte[]) null);
+            blocksInfosDb[Arg.Is<byte[]>(b => !Bytes.AreEqual(b, BlockTree.DeletePointerAddressInDb.Bytes.ToArray()))].Returns(chainLevel.Bytes);
 
             BlockTree blockTree = new(_blocksDb, _headersDb, blocksInfosDb, new ChainLevelInfoRepository(blocksInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
 
@@ -758,7 +758,7 @@ namespace Nethermind.Blockchain.Test
             headersDb.Set(genesisBlock.Hash, Rlp.Encode(genesisBlock.Header).Bytes);
 
             MemDb blockInfosDb = new();
-            blockInfosDb.Set(Keccak.Zero, genesisBlock.Hash.Bytes);
+            blockInfosDb.Set(Keccak.Zero, genesisBlock.Hash.Bytes.ToArray());
             ChainLevelInfo level = new(true, new BlockInfo(headBlock.Hash, headBlock.Difficulty));
             level.BlockInfos[0].WasProcessed = true;
 

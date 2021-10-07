@@ -47,7 +47,7 @@ namespace Nethermind.Db
         {
             _writeDelay = writeDelay;
             _readDelay = readDelay;
-            _db = new ConcurrentDictionary<byte[], byte[]>(Bytes.EqualityComparer);
+            _db = new ConcurrentDictionary<byte[], byte[]>(Bytes.ArrayEqualityComparer);
         }
 
         public string Name { get; }

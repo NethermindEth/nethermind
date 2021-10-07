@@ -103,7 +103,7 @@ namespace Nethermind.Evm
 
             IReleaseSpec spec = _specProvider.GetSpec(state.Env.TxExecutionContext.Header.Number);
             EvmState currentState = state;
-            byte[] previousCallResult = null;
+            Memory<byte> previousCallResult = null;
             ZeroPaddedSpan previousCallOutput = ZeroPaddedSpan.Empty;
             UInt256 previousCallOutputDestination = UInt256.Zero;
             while (true)
@@ -594,7 +594,7 @@ namespace Nethermind.Evm
             }
         }
 
-        private CallResult ExecuteCall(EvmState vmState, byte[]? previousCallResult, ZeroPaddedSpan previousCallOutput, in UInt256 previousCallOutputDestination, IReleaseSpec spec)
+        private CallResult ExecuteCall(EvmState vmState, Memory<byte>? previousCallResult, ZeroPaddedSpan previousCallOutput, in UInt256 previousCallOutputDestination, IReleaseSpec spec)
         {
             bool isTrace = _logger.IsTrace;
             bool traceOpcodes = _txTracer.IsTracingInstructions;
@@ -718,7 +718,7 @@ namespace Nethermind.Evm
 
             if (previousCallResult != null)
             {
-                stack.PushBytes(previousCallResult);
+                stack.PushBytes(previousCallResult.Value.Span);
                 if (_txTracer.IsTracingInstructions) _txTracer.ReportOperationRemainingGas(vmState.GasAvailable);
             }
 
@@ -1331,7 +1331,7 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        stack.PushBytes(env.ExecutingAccount.Bytes);
+                        stack.PushBytes(env.ExecutingAccount.Bytes.Span);
                         break;
                     }
                     case Instruction.BALANCE:
@@ -1362,7 +1362,7 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        stack.PushBytes(env.Caller.Bytes);
+                        stack.PushBytes(env.Caller.Bytes.Span);
                         break;
                     }
                     case Instruction.CALLVALUE:
@@ -1385,7 +1385,7 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        stack.PushBytes(txCtx.Origin.Bytes);
+                        stack.PushBytes(txCtx.Origin.Bytes.Span);
                         break;
                     }
                     case Instruction.CALLDATALOAD:
@@ -1608,7 +1608,7 @@ namespace Nethermind.Evm
                         stack.PopUInt256(out UInt256 a);
                         long number = a > long.MaxValue ? long.MaxValue : (long) a;
                         Keccak blockHash = _blockhashProvider.GetBlockhash(txCtx.Header, number);
-                        stack.PushBytes(blockHash?.Bytes ?? BytesZero32);
+                        stack.PushBytes(blockHash is not null ? blockHash.Bytes.Span : BytesZero32);
 
                         if (isTrace)
                         {
@@ -1628,7 +1628,7 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        stack.PushBytes(txCtx.Header.GasBeneficiary.Bytes);
+                        stack.PushBytes(txCtx.Header.GasBeneficiary.Bytes.Span);
                         break;
                     }
                     case Instruction.DIFFICULTY:
@@ -2766,7 +2766,7 @@ namespace Nethermind.Evm
                         }
                         else
                         {
-                            stack.PushBytes(_state.GetCodeHash(address).Bytes);
+                            stack.PushBytes(_state.GetCodeHash(address).Bytes.Span);
                         }
 
                         break;

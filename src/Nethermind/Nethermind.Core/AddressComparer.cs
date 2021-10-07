@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
 
 namespace Nethermind.Core
@@ -37,15 +38,18 @@ namespace Nethermind.Core
             {
                 return 1;
             }
-                
+
+            Span<byte> xBytes = x.Bytes.Span;
+            Span<byte> yBytes = y.Bytes.Span;
+
             for (int i = 0; i < Address.ByteLength; i++)
             {
-                if (x.Bytes[i] < y.Bytes[i])
+                if (xBytes[i] < yBytes[i])
                 {
                     return -1;
                 }
 
-                if (x.Bytes[i] > y.Bytes[i])
+                if (xBytes[i] > yBytes[i])
                 {
                     return 1;
                 }

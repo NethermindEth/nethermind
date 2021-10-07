@@ -41,7 +41,7 @@ namespace Nethermind.Abi
 
         public override Type CSharpType { get; } = typeof(byte[]);
 
-        public override (object, int) Decode(byte[] data, int position, bool packed)
+        public override (object, int) Decode(Memory<byte> data, int position, bool packed)
         {
             (UInt256 length, int currentPosition) = UInt256.DecodeUInt(data, position, packed);
             int paddingSize = packed ? (int)length : GetPaddingSize((int)length);

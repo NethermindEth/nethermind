@@ -261,7 +261,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 {
                     if (i >= MaxResponseLength) break;
 
-                    if (_filter == null || _filter.Contains(item)) responses[i] = _stateDb[item.Bytes] ?? _codeDb[item.Bytes];
+                    if (_filter == null || _filter.Contains(item)) responses[i] = _stateDb[item.Bytes.ToArray()] ?? _codeDb[item.Bytes.ToArray()];
 
                     i++;
                 }
@@ -313,10 +313,10 @@ namespace Nethermind.Synchronization.Test.FastSync
         public async Task Big_test((string Name, Action<StateTree, ITrieStore, IDb> SetupTree) testCase)
         {
             DbContext dbContext = new DbContext(_logger, _logManager);
-            dbContext.RemoteCodeDb[Keccak.Compute(TrieScenarios.Code0).Bytes] = TrieScenarios.Code0;
-            dbContext.RemoteCodeDb[Keccak.Compute(TrieScenarios.Code1).Bytes] = TrieScenarios.Code1;
-            dbContext.RemoteCodeDb[Keccak.Compute(TrieScenarios.Code2).Bytes] = TrieScenarios.Code2;
-            dbContext.RemoteCodeDb[Keccak.Compute(TrieScenarios.Code3).Bytes] = TrieScenarios.Code3;
+            dbContext.RemoteCodeDb[Keccak.Compute(TrieScenarios.Code0).Bytes.ToArray()] = TrieScenarios.Code0;
+            dbContext.RemoteCodeDb[Keccak.Compute(TrieScenarios.Code1).Bytes.ToArray()] = TrieScenarios.Code1;
+            dbContext.RemoteCodeDb[Keccak.Compute(TrieScenarios.Code2).Bytes.ToArray()] = TrieScenarios.Code2;
+            dbContext.RemoteCodeDb[Keccak.Compute(TrieScenarios.Code3).Bytes.ToArray()] = TrieScenarios.Code3;
             testCase.SetupTree(dbContext.RemoteStateTree, dbContext.RemoteTrieStore, dbContext.RemoteCodeDb);
 
             SyncPeerMock mock = new SyncPeerMock(dbContext.RemoteStateDb, dbContext.RemoteCodeDb);

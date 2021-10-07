@@ -14,6 +14,8 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+
 namespace Nethermind.Abi
 {
     public interface IAbiEncoder
@@ -34,6 +36,6 @@ namespace Nethermind.Abi
         /// <param name="signature">Signature of the Solidity method for which the arguments were passed.</param>
         /// <param name="data">ABI encoded data.</param>
         /// <returns></returns>
-        object[] Decode(AbiEncodingStyle encodingStyle, AbiSignature signature, byte[] data);
+        object[] Decode(AbiEncodingStyle encodingStyle, AbiSignature signature, Memory<byte> data);
     }
 }

@@ -229,7 +229,7 @@ namespace Nethermind.AuRa.Test.Reward
 
         private byte[] SetupAbiAddresses(params BlockReward[] rewards)
         {
-            byte[] data = rewards.Select(r => r.Address).SelectMany(a => a.Bytes).ToArray();
+            byte[] data = rewards.Select(r => r.Address).SelectMany(a => a.Bytes.ToArray()).ToArray();
 
             _abiEncoder.Decode(
                 AbiEncodingStyle.None,

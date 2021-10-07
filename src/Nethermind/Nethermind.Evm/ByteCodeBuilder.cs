@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
@@ -181,7 +182,7 @@ namespace Nethermind.Evm
 
         public Prepare PushData(Address address)
         {
-            PushData(address.Bytes);
+            PushData(address.Bytes.Span);
             return this;
         }
         
@@ -211,6 +212,13 @@ namespace Nethermind.Evm
         }
 
         public Prepare PushData(byte[] data)
+        {
+            _byteCode.Add((byte) (Instruction.PUSH1 + (byte) data.Length - 1));
+            _byteCode.AddRange(data);
+            return this;
+        }
+        
+        public Prepare PushData(Span<byte> data)
         {
             _byteCode.Add((byte) (Instruction.PUSH1 + (byte) data.Length - 1));
             _byteCode.AddRange(data);

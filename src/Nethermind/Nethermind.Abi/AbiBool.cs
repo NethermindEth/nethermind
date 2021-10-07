@@ -45,10 +45,10 @@ namespace Nethermind.Abi
             throw new AbiException(AbiEncodingExceptionMessage);
         }
 
-        public override (object, int) Decode(byte[] data, int position, bool packed)
+        public override (object, int) Decode(Memory<byte> data, int position, bool packed)
         {
             int length = packed ? LengthInBytes : UInt256.LengthInBytes;
-            return (data[position + length - 1] == 1, position + length);
+            return (data.Span[position + length - 1] == 1, position + length);
         }
 
         public override Type CSharpType { get; } = typeof(bool);

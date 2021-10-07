@@ -219,7 +219,7 @@ namespace Nethermind.Evm.Test
 
         protected void AssertStorage(UInt256 address, Address value)
         {
-            Assert.AreEqual(value.Bytes.PadLeft(32), Storage.Get(new StorageCell(Recipient, address)).PadLeft(32), "storage");
+            Assert.AreEqual(value.Bytes.Span.PadLeft(32), Storage.Get(new StorageCell(Recipient, address)).PadLeft(32), "storage");
         }
 
         protected void AssertStorage(UInt256 address, Keccak value)
@@ -231,6 +231,12 @@ namespace Nethermind.Evm.Test
         {
             Assert.AreEqual(new ZeroPaddedSpan(value, 32 - value.Length, PadDirection.Left).ToArray(), Storage.Get(new StorageCell(Recipient, address)).PadLeft(32), "storage");
         }
+        
+        protected void AssertStorage(UInt256 address, Memory<byte> value)
+        {
+            AssertStorage(address, value.Span);
+        }
+
 
         protected void AssertStorage(UInt256 address, BigInteger expectedValue)
         {

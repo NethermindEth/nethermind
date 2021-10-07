@@ -36,6 +36,16 @@ namespace Nethermind.Core.Extensions
         {
             return ToHexViaLookup(span, withZeroX, noLeadingZeros, withEip55Checksum);
         }
+        public static string ToHexString(this in Memory<byte> memory)
+        {
+            return ToHexString(memory.Span, false, false, false);
+        }
+        
+        public static string ToHexString(this in Memory<byte> memory, bool withZeroX)
+        {
+            return ToHexString(memory.Span, withZeroX, false, false);
+        }
+        
         
         [DebuggerStepThrough]
         private static string ToHexViaLookup(in Span<byte> span, bool withZeroX, bool skipLeadingZeros, bool withEip55Checksum)

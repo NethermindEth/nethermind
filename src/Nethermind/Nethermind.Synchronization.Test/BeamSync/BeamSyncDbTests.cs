@@ -321,15 +321,15 @@ namespace Nethermind.Synchronization.Test.BeamSync
             ISyncModeSelector syncModeSelector = Substitute.For<ISyncModeSelector>();
             BeamSyncDb beamSyncDb = new BeamSyncDb(stateDB, beamDb, syncModeSelector, LimboLogs.Instance);
             syncModeSelector.Current.Returns(SyncMode.Beam);
-            beamSyncDb[TestItem.KeccakA.Bytes] = new byte[] {1};
+            beamSyncDb[TestItem.KeccakA.Bytes.ToArray()] = new byte[] {1};
             syncModeSelector.Current.Returns(SyncMode.None);
-            beamSyncDb[TestItem.KeccakB.Bytes] = new byte[] {1, 2};
+            beamSyncDb[TestItem.KeccakB.Bytes.ToArray()] = new byte[] {1, 2};
 
-            stateDB[TestItem.KeccakA.Bytes].Should().BeNull();
-            stateDB[TestItem.KeccakB.Bytes].Should().BeNull();
+            stateDB[TestItem.KeccakA.Bytes.ToArray()].Should().BeNull();
+            stateDB[TestItem.KeccakB.Bytes.ToArray()].Should().BeNull();
 
-            beamDb[TestItem.KeccakA.Bytes].Should().NotBeNull();
-            beamDb[TestItem.KeccakB.Bytes].Should().NotBeNull();
+            beamDb[TestItem.KeccakA.Bytes.ToArray()].Should().NotBeNull();
+            beamDb[TestItem.KeccakB.Bytes.ToArray()].Should().NotBeNull();
         }
     }
 }

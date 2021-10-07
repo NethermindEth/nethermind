@@ -158,8 +158,8 @@ namespace Nethermind.KeyStore
                     return (null, Result.Fail($"Unsupported algoritm: {kdf}"));
             }
 
-            var restoredMac = Keccak.Compute(derivedKey.Slice(kdfParams.DkLen - 16, 16).Concat(cipher).ToArray()).Bytes;
-            if (!Bytes.AreEqual(mac, restoredMac))
+            Memory<byte> restoredMac = Keccak.Compute(derivedKey.Slice(kdfParams.DkLen - 16, 16).Concat(cipher).ToArray()).Bytes;
+            if (!Bytes.AreEqual(mac, restoredMac.Span))
             {
                 return (null, Result.Fail("Incorrect MAC"));
             }
@@ -168,7 +168,7 @@ namespace Nethermind.KeyStore
             byte[] decryptKey;
             if (kdf == "scrypt" && cipherType == "aes-128-cbc")
             {
-                decryptKey = Keccak.Compute(derivedKey.Slice(0, 16)).Bytes.Slice(0, 16);
+                decryptKey = Keccak.Compute(derivedKey.Slice(0, 16)).Bytes.Slice(0, 16).ToArray();
             }
             else
             {
@@ -249,7 +249,7 @@ namespace Nethermind.KeyStore
             var cipherType = _config.Cipher;
             if (kdf == "scrypt" && cipherType == "aes-128-cbc")
             {
-                encryptKey = Keccak.Compute(derivedKey.Slice(0, 16)).Bytes.Slice(0, 16);
+                encryptKey = Keccak.Compute(derivedKey.Slice(0, 16)).Bytes.Slice(0, 16).ToArray();
             }
             else
             {

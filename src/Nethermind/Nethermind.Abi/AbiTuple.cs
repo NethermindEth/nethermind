@@ -53,7 +53,7 @@ namespace Nethermind.Abi
 
         public override bool IsDynamic { get; }
 
-        public override (object, int) Decode(byte[] data, int position, bool packed)
+        public override (object, int) Decode(Memory<byte> data, int position, bool packed)
         {
             (object[] arguments, int movedPosition) = DecodeSequence(_elements.Length, _elements, data, packed, position);
             return (Activator.CreateInstance(CSharpType, arguments), movedPosition)!;
@@ -103,7 +103,7 @@ namespace Nethermind.Abi
             IsDynamic = _elements.Any(p => p.IsDynamic);
         }
         
-        public override (object, int) Decode(byte[] data, int position, bool packed)
+        public override (object, int) Decode(Memory<byte> data, int position, bool packed)
         {
             (object[] arguments, int movedPosition) = DecodeSequence(_elements.Length, _elements, data, packed, position);
 

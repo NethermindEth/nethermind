@@ -32,10 +32,25 @@ namespace Nethermind.Core.Extensions
 {
     public static unsafe partial class Bytes
     {
-        public static readonly IEqualityComparer<byte[]> EqualityComparer = new BytesEqualityComparer();
+        public static readonly IEqualityComparer<Memory<byte>> EqualityComparer = new BytesMemoryEqualityComparer();
+        
+        public static readonly IEqualityComparer<byte[]> ArrayEqualityComparer = new BytesEqualityComparer();
 
-        public static readonly IComparer<byte[]> Comparer = new BytesComparer();
+        public static readonly IComparer<Memory<byte>> Comparer = new BytesComparer();
 
+        private class BytesMemoryEqualityComparer : EqualityComparer<Memory<byte>>
+        {
+            public override bool Equals(Memory<byte> x, Memory<byte> y)
+            {
+                return AreEqual(x.Span, y.Span);
+            }
+
+            public override int GetHashCode(Memory<byte> obj)
+            {
+                return obj.GetHashCode();
+            }
+        }
+        
         private class BytesEqualityComparer : EqualityComparer<byte[]>
         {
             public override bool Equals(byte[]? x, byte[]? y)
@@ -49,33 +64,27 @@ namespace Nethermind.Core.Extensions
             }
         }
 
-        private class BytesComparer : Comparer<byte[]>
+        private class BytesComparer : Comparer<Memory<byte>>
         {
-            public override int Compare(byte[]? x, byte[]? y)
+            public override int Compare(Memory<byte> x, Memory<byte> y)
             {
-                if (x is null)
-                {
-                    return y is null ? 0 : 1;
-                }
-
-                if (y is null)
-                {
-                    return -1;
-                }
-
                 if (x.Length == 0)
                 {
                     return y.Length == 0 ? 0 : 1;
                 }
 
-                for (int i = 0; i < x.Length; i++)
+                Span<byte> xSpan = x.Span;
+                Span<byte> ySpan = y.Span;
+
+                for (int i = 0; i < xSpan.Length; i++)
                 {
                     if (y.Length <= i)
                     {
                         return -1;
                     }
-
-                    int result = x[i].CompareTo(y[i]);
+                    
+                    
+                    int result = xSpan[i].CompareTo(ySpan[i]);
                     if (result != 0)
                     {
                         return result;
@@ -239,18 +248,23 @@ namespace Nethermind.Core.Extensions
 
         public static byte[] PadRight(this byte[] bytes, int length)
         {
+            return PadRight(bytes.AsSpan(), length);
+        }
+        
+        public static byte[] PadRight(this Span<byte> bytes, int length)
+        {
             if (bytes.Length == length)
             {
-                return (byte[]) bytes.Clone();
+                return bytes.ToArray();
             }
 
             if (bytes.Length > length)
             {
-                return bytes.Slice(0, length);
+                return bytes.Slice(0, length).ToArray();
             }
 
             byte[] result = new byte[length];
-            Buffer.BlockCopy(bytes, 0, result, 0, bytes.Length);
+            bytes.CopyTo(result.AsSpan(0, bytes.Length));
             return result;
         }
 
@@ -270,6 +284,22 @@ namespace Nethermind.Core.Extensions
                 position += parts[i].Length;
             }
 
+            return result;
+        }
+        
+        public static byte[] Concat(byte[] first, byte[] second)
+        {
+            byte[] result = new byte[first.Length + second.Length];
+            Buffer.BlockCopy(first, 0, result, 0, first.Length);
+            Buffer.BlockCopy(second, 0, result, first.Length, second.Length);
+            return result;
+        }
+        
+        public static byte[] Concat(Span<byte> first, Span<byte> second)
+        {
+            byte[] result = new byte[first.Length + second.Length];
+            first.CopyTo(result);
+            second.CopyTo(result.Slice(first.Length));
             return result;
         }
 
@@ -398,20 +428,20 @@ namespace Nethermind.Core.Extensions
             return BinaryPrimitives.ReadUInt64BigEndian(eightBytes);
         }
 
-        public static BigInteger ToSignedBigInteger(this byte[] bytes, int byteLength)
+        public static BigInteger ToSignedBigInteger(this Memory<byte> bytes, int byteLength)
         {
             if (bytes.Length == byteLength)
             {
-                return new BigInteger(bytes.AsSpan(), false, true);
+                return new BigInteger(bytes.Span, false, true);
             }
 
             Debug.Assert(bytes.Length <= byteLength,
                 $"{nameof(ToSignedBigInteger)} expects {nameof(byteLength)} parameter to be less than length of the {bytes}");
             bool needToExpand = bytes.Length != byteLength;
-            byte[] bytesToUse = needToExpand ? new byte[byteLength] : bytes;
+            Span<byte> bytesToUse = needToExpand ? stackalloc byte[byteLength] : bytes.Span;
             if (needToExpand)
             {
-                Buffer.BlockCopy(bytes, 0, bytesToUse, byteLength - bytes.Length, bytes.Length);
+                bytes.Span.CopyTo(bytesToUse.Slice(byteLength - bytes.Length, bytes.Length));
             }
 
             byte[] signedResult = new byte[byteLength];
@@ -510,13 +540,13 @@ namespace Nethermind.Core.Extensions
 
         private struct StateSmall
         {
-            public StateSmall(byte[] bytes, bool withZeroX)
+            public StateSmall(Memory<byte> bytes, bool withZeroX)
             {
                 Bytes = bytes;
                 WithZeroX = withZeroX;
             }
 
-            public byte[] Bytes;
+            public Memory<byte> Bytes;
             public bool WithZeroX;
         }
 
@@ -537,7 +567,7 @@ namespace Nethermind.Core.Extensions
         }
 
         [DebuggerStepThrough]
-        public static string ByteArrayToHexViaLookup32Safe(byte[] bytes, bool withZeroX)
+        public static string ByteArrayToHexViaLookup32Safe(Memory<byte> bytes, bool withZeroX)
         {
             if (bytes.Length == 0)
             {
@@ -558,7 +588,7 @@ namespace Nethermind.Core.Extensions
                     charsRef = ref Unsafe.Add(ref charsRef, 2);
                 }
 
-                ref var input = ref state.Bytes[0];
+                ref var input = ref state.Bytes.Span[0];
                 ref var output = ref Unsafe.As<char, uint>(ref charsRef);
 
                 int toProcess = state.Bytes.Length;

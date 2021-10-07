@@ -33,7 +33,7 @@ namespace Nethermind.State
 
         private static readonly int CacheSizeInt = (int) CacheSize;
 
-        private static readonly Dictionary<UInt256, byte[]> Cache = new(CacheSizeInt);
+        private static readonly Dictionary<UInt256, Memory<byte>> Cache = new(CacheSizeInt);
 
         static StorageTree()
         {
@@ -56,7 +56,7 @@ namespace Nethermind.State
         {
             if (index < CacheSize)
             {
-                return Cache[index];
+                return Cache[index].Span;
             }
 
             Span<byte> span = stackalloc byte[32];

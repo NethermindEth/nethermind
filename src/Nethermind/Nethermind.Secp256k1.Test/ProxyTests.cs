@@ -151,7 +151,7 @@ namespace Nethermind.Secp256k1.Test
             var signatureObject = new Signature(signatureSlice, recoveryId);
             var keccak = Keccak.Compute(Bytes.Concat(messageType, data));
             Span<byte> publicKey = stackalloc byte[65];
-            bool result = Proxy.RecoverKeyFromCompact(publicKey, keccak.Bytes, signatureObject.Bytes, signatureObject.RecoveryId, false);
+            bool result = Proxy.RecoverKeyFromCompact(publicKey, keccak.Bytes.ToArray(), signatureObject.Bytes, signatureObject.RecoveryId, false);
             result.Should().BeTrue();
         }
     }

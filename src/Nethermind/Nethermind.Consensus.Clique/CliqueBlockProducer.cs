@@ -424,7 +424,7 @@ namespace Nethermind.Consensus.Clique
                 {
                     Address signer = snapshot.Signers.Keys[i];
                     int index = Clique.ExtraVanityLength + 20 * i;
-                    Array.Copy(signer.Bytes, 0, header.ExtraData, index, signer.Bytes.Length);
+                    signer.Bytes.CopyTo(header.ExtraData.AsMemory(index, signer.Bytes.Length));
                 }
             }
 

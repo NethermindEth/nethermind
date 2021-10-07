@@ -40,7 +40,7 @@ namespace Nethermind.Abi
 
         public override Type CSharpType { get; }
 
-        public override (object, int) Decode(byte[] data, int position, bool packed)
+        public override (object, int) Decode(Memory<byte> data, int position, bool packed)
         {
             UInt256 length;
             (length, position) = UInt256.DecodeUInt(data, position, packed);

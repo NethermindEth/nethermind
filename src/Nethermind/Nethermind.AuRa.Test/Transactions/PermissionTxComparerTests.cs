@@ -303,7 +303,7 @@ namespace Nethermind.AuRa.Test.Transactions
             UInt256 value)
         {
             priorities.TryGetValue(blockHeader,
-                    Arg.Is<TxPriorityContract.Destination>(d => d.Target == target && Bytes.AreEqual(d.FnSignature, prioritizedFnSignature)),
+                    Arg.Is<TxPriorityContract.Destination>(d => d.Target == target && Bytes.AreEqual(d.FnSignature.ToArray(), prioritizedFnSignature)),
                     out Arg.Any<TxPriorityContract.Destination>())
                 .Returns(x =>
                 {

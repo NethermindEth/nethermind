@@ -231,7 +231,7 @@ namespace Nethermind.Blockchain.Receipts
                 for (int i = 0; i < txReceiptsLength; i++)
                 {
                     var txHash = block.Transactions[i].Hash;
-                    _transactionDb.Set(txHash, block.Hash.Bytes);
+                    _transactionDb.Set(txHash, block.Hash.Bytes.ToArray());
                 }
             }
 

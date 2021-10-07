@@ -185,7 +185,7 @@ namespace Nethermind.Serialization.Rlp
             else
             {
                 WriteByte(160);
-                Write(keccak.Bytes);
+                Write(keccak.Bytes.Span);
             }
         }
 
@@ -198,7 +198,7 @@ namespace Nethermind.Serialization.Rlp
             else
             {
                 WriteByte(148);
-                Write(address.Bytes);
+                Write(address.Bytes.Span);
             }
         }
 
@@ -677,12 +677,12 @@ namespace Nethermind.Serialization.Rlp
             }
 
             Span<byte> keccakSpan = Read(32);
-            if (keccakSpan.SequenceEqual(Keccak.OfAnEmptyString.Bytes))
+            if (keccakSpan.SequenceEqual(Keccak.OfAnEmptyString.Bytes.Span))
             {
                 return Keccak.OfAnEmptyString;
             }
 
-            if (keccakSpan.SequenceEqual(Keccak.EmptyTreeHash.Bytes))
+            if (keccakSpan.SequenceEqual(Keccak.EmptyTreeHash.Bytes.Span))
             {
                 return Keccak.EmptyTreeHash;
             }

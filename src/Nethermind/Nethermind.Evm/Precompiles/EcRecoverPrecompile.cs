@@ -81,10 +81,10 @@ namespace Nethermind.Evm.Precompiles
                 return (Array.Empty<byte>(), true);
             }
 
-            byte[] result = recovered.Bytes;
+            Memory<byte> result = recovered.Bytes;
             if (result.Length != 32)
             {
-                result = result.PadLeft(32);
+                result = result.Span.PadLeft(32);
             }
             
             // TODO: change recovery code to return bytes

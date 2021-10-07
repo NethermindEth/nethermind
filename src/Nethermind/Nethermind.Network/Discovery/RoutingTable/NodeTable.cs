@@ -57,7 +57,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
             CheckInitialization();
             
             if (_logger.IsTrace) _logger.Trace($"Adding node to NodeTable: {node}");
-            int distanceFromMaster = _nodeDistanceCalculator.CalculateDistance(MasterNode.IdHash.Bytes, node.IdHash.Bytes);
+            int distanceFromMaster = _nodeDistanceCalculator.CalculateDistance(MasterNode.IdHash.Bytes.Span, node.IdHash.Bytes.Span);
             NodeBucket bucket = Buckets[distanceFromMaster > 0 ? distanceFromMaster - 1 : 0];
             return bucket.AddNode(node);
         }
@@ -66,7 +66,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
         {
             CheckInitialization();
             
-            int distanceFromMaster = _nodeDistanceCalculator.CalculateDistance(MasterNode.IdHash.Bytes, nodeToAdd.IdHash.Bytes);
+            int distanceFromMaster = _nodeDistanceCalculator.CalculateDistance(MasterNode.IdHash.Bytes.Span, nodeToAdd.IdHash.Bytes.Span);
             NodeBucket bucket = Buckets[distanceFromMaster > 0 ? distanceFromMaster - 1 : 0];
             bucket.ReplaceNode(nodeToRemove, nodeToAdd);
         }
@@ -83,7 +83,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
         {
             CheckInitialization();
             
-            int distanceFromMaster = _nodeDistanceCalculator.CalculateDistance(MasterNode.IdHash.Bytes, node.IdHash.Bytes);
+            int distanceFromMaster = _nodeDistanceCalculator.CalculateDistance(MasterNode.IdHash.Bytes.Span, node.IdHash.Bytes.Span);
             NodeBucket bucket = Buckets[distanceFromMaster > 0 ? distanceFromMaster - 1 : 0];
             bucket.RefreshNode(node);
         }

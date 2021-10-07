@@ -188,7 +188,7 @@ namespace Nethermind.Network
 
         private void LoadData()
         {
-            _cache = new ConcurrentDictionary<byte[], byte[]>(Bytes.EqualityComparer);
+            _cache = new ConcurrentDictionary<byte[], byte[]>(Bytes.ArrayEqualityComparer);
 
             if (!File.Exists(DbPath))
             {

@@ -60,6 +60,11 @@ namespace Nethermind.Core.Crypto
             V = v;
         }
 
+        public Signature(Memory<byte> r, Memory<byte> s, ulong v) : this(r.Span, s.Span, v)
+        {
+            
+        }
+
         public Signature(UInt256 r, UInt256 s, ulong v)
         {
             if (v < VOffset)

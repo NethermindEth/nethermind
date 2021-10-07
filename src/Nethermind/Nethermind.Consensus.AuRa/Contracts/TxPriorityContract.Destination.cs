@@ -22,7 +22,7 @@ using Nethermind.Consensus.AuRa.Contracts.DataStore;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
-using DestinationTuple = System.ValueTuple<Nethermind.Core.Address, byte[], Nethermind.Int256.UInt256>;
+using DestinationTuple = System.ValueTuple<Nethermind.Core.Address, System.Memory<byte>, Nethermind.Int256.UInt256>;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
@@ -40,7 +40,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
             public Destination(
                 Address target, 
-                byte[] fnSignature, 
+                Memory<byte> fnSignature, 
                 UInt256 value, 
                 DestinationSource source = DestinationSource.Contract, 
                 long blockNumber = 0)
@@ -53,7 +53,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             }
 
             public Address Target { get; set; }
-            public byte[] FnSignature { get; set; }
+            public Memory<byte> FnSignature { get; set; }
             public UInt256 Value { get; set; }
             public long BlockNumber { get; set; }
             public DestinationSource Source { get; set; }
@@ -68,7 +68,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
             public static Destination GetTransactionKey(Transaction tx)
             {
-                byte[] fnSignature = tx.Data?.Length >= 4 ? AbiSignature.GetAddress(tx.Data) : FnSignatureEmpty;
+                Memory<byte> fnSignature = tx.Data?.Length >= 4 ? AbiSignature.GetAddress(tx.Data) : FnSignatureEmpty;
                 return new Destination(tx.To, fnSignature,UInt256.Zero);
             }
 

@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using DotNetty.Common.Utilities;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
@@ -164,9 +165,12 @@ namespace Nethermind.Consensus.Clique
             // If the block is a checkpoint block, validate the signer list
             if (IsEpochTransition(number))
             {
-                var signersBytes = new byte[snapshot.Signers.Count * Address.ByteLength];
+                byte[] signersBytes = new byte[snapshot.Signers.Count * Address.ByteLength];
                 int signerIndex = 0;
-                foreach (Address signer in snapshot.Signers.Keys) Array.Copy(signer.Bytes, 0, signersBytes, signerIndex++ * Address.ByteLength, Address.ByteLength);
+                foreach (Address signer in snapshot.Signers.Keys)
+                {
+                    signer.Bytes.CopyTo(signersBytes.Slice(signerIndex++ * Address.ByteLength, Address.ByteLength));
+                }
 
                 int extraSuffix = header.ExtraData.Length - Clique.ExtraSealLength - Clique.ExtraVanityLength;
                 if (!header.ExtraData.AsSpan(Clique.ExtraVanityLength, extraSuffix).SequenceEqual(signersBytes))

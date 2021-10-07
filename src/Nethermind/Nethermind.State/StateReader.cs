@@ -69,7 +69,7 @@ namespace Nethermind.State
                 return Array.Empty<byte>();
             }
 
-            return _codeDb[codeHash.Bytes];
+            return _codeDb[codeHash.Bytes.ToArray()];
         }
 
         public void RunTreeVisitor(ITreeVisitor treeVisitor, Keccak rootHash)

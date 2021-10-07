@@ -222,7 +222,7 @@ namespace Nethermind.Synchronization.FastSync
                 if (_tempDb != null)
                 {
                     // item is no longer needed in the temp DB since it can be retrieved from the persisted DB
-                    _tempDb.Remove(dependentItem.SyncItem.Hash.Bytes);
+                    _tempDb.Remove(dependentItem.SyncItem.Hash.Bytes.ToArray());
                 }
             }
         }
@@ -398,7 +398,7 @@ namespace Nethermind.Synchronization.FastSync
                         }
 
                         /* node sent data that is not consistent with its hash - it happens surprisingly often */
-                        if (!ValueKeccak.Compute(currentResponseItem).BytesAsSpan.SequenceEqual(currentStateSyncItem.Hash.Bytes))
+                        if (!ValueKeccak.Compute(currentResponseItem).BytesAsSpan.SequenceEqual(currentStateSyncItem.Hash.Bytes.Span))
                         {
                             AddNodeToPending(currentStateSyncItem, null, "missing", true);
                             if (_logger.IsTrace) _logger.Trace($"Peer sent invalid data (batch {requestLength}->{responseLength}) of length {batch.Responses[i]?.Length} of type {batch.RequestedNodes[i].NodeDataType} at level {batch.RequestedNodes[i].Level} of type {batch.RequestedNodes[i].NodeDataType} Keccak({batch.Responses[i].ToHexString()}) != {batch.RequestedNodes[i].Hash}");
@@ -494,7 +494,7 @@ namespace Nethermind.Synchronization.FastSync
             {
                 lock (_codeDbLock)
                 {
-                    _codeDb[_fastSyncProgressKey.Bytes] = serializedData;
+                    _codeDb[_fastSyncProgressKey.Bytes.ToArray()] = serializedData;
                 }
             }
         }
@@ -666,7 +666,7 @@ namespace Nethermind.Synchronization.FastSync
                 {
                     // item is already retrieved but cannot yet be persisted
                     // we keep it in temp so the beam sync can use it if needed
-                    _tempDb[dependentItem.SyncItem.Hash.Bytes] = dependentItem.Value;
+                    _tempDb[dependentItem.SyncItem.Hash.Bytes.ToArray()] = dependentItem.Value;
                 }
             }
         }

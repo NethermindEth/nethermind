@@ -30,7 +30,7 @@ namespace Nethermind.Network
             uint crc = 0;
             long[] transitionBlocks = specProvider.TransitionBlocks;
             byte[] blockNumberBytes = new byte[8];
-            crc = Crc32Algorithm.Append(crc, genesisHash.Bytes);
+            crc = Crc32Algorithm.Append(crc, genesisHash.Bytes.ToArray());
             for (int i = 0; i < transitionBlocks.Length; i++)
             {
                 if (transitionBlocks[i] > headNumber)

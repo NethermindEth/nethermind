@@ -22,7 +22,7 @@ namespace Nethermind.Trie
     [DebuggerStepThrough]
     public static class Nibbles
     {
-        public static Nibble[] FromBytes(params byte[] bytes)
+        public static Nibble[] FromBytes(Span<byte> bytes)
         {
             Nibble[] nibbles = new Nibble[2 * bytes.Length];
             for (int i = 0; i < bytes.Length; i++)

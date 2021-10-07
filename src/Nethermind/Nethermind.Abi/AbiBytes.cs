@@ -48,13 +48,24 @@ namespace Nethermind.Abi
 
         public override string Name { get; } 
 
-        public override (object, int) Decode(byte[] data, int position, bool packed)
+        public override (object, int) Decode(Memory<byte> data, int position, bool packed)
         {
             return (data.Slice(position, Length), position + (packed ? Length : MaxLength));
         }
 
         public override byte[] Encode(object? arg, bool packed)
         {
+            if (arg is Memory<byte> memory)
+            {
+                Span<byte> span = memory.Span;
+                if (span.Length != Length)
+                {
+                    throw new AbiException(AbiEncodingExceptionMessage);
+                }
+
+                return span.PadRight(packed ? Length : MaxLength);
+            }
+            
             if (arg is byte[] input)
             {
                 if (input.Length != Length)

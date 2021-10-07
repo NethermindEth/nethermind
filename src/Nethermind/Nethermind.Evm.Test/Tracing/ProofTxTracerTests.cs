@@ -68,7 +68,7 @@ namespace Nethermind.Evm.Test.Tracing
         {
             byte[] code = Prepare.EvmCode
                 .PushData(SampleHexData1)
-                .PushData(TestItem.AddressC.Bytes)
+                .PushData(TestItem.AddressC.Bytes.Span)
                 .Op(Instruction.BALANCE)
                 .Done;
             
@@ -85,7 +85,7 @@ namespace Nethermind.Evm.Test.Tracing
             
             byte[] code = Prepare.EvmCode
                 .PushData(SampleHexData1)
-                .PushData(TestItem.AddressC.Bytes)
+                .PushData(TestItem.AddressC.Bytes.Span)
                 .Op(Instruction.BALANCE)
                 .Done;
             
@@ -99,7 +99,7 @@ namespace Nethermind.Evm.Test.Tracing
         {
             byte[] code = Prepare.EvmCode
                 .PushData(SampleHexData1)
-                .PushData(SenderRecipientAndMiner.Default.Miner.Bytes)
+                .PushData(SenderRecipientAndMiner.Default.Miner.Bytes.Span)
                 .Op(Instruction.BALANCE)
                 .Done;
             

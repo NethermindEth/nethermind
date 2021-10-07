@@ -30,7 +30,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
             _bitsPerHoop = discoveryConfig.BitsPerHop;
         }
 
-        public int CalculateDistance(byte[] sourceId, byte[] destinationId)
+        public int CalculateDistance(Span<byte> sourceId, Span<byte> destinationId)
         {
             int lowerLength = Math.Min(sourceId.Length, destinationId.Length);
             int distance = _maxDistance;

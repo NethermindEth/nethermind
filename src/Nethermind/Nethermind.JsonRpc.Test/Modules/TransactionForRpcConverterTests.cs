@@ -38,7 +38,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             s[2] = 2;
             
             Transaction tx = new();
-            tx.Signature = new Signature(r, s, 27);
+            tx.Signature = new Signature(r.AsSpan(), s.AsSpan(), 27);
             
             TransactionForRpc txForRpc = new(tx);
 

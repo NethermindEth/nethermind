@@ -941,7 +941,7 @@ namespace Nethermind.Trie.Test
 
                 HeavyLeaf = new TrieNode(NodeType.Leaf);
                 HeavyLeaf.Key = new HexPrefix(true, new byte[20]);
-                HeavyLeaf.Value = Keccak.EmptyTreeHash.Bytes.Concat(Keccak.EmptyTreeHash.Bytes).ToArray();
+                HeavyLeaf.Value = Keccak.EmptyTreeHash.Bytes.ToArray().Concat(Keccak.EmptyTreeHash.Bytes.ToArray()).ToArray();
 
                 Account account = new(100);
                 AccountDecoder decoder = new();

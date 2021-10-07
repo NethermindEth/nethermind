@@ -79,7 +79,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             
             ManualResetEvent guard = new ManualResetEvent(false);
             Keccak lastTransaction = TestItem.Keccaks[txIndex - 1];
-            context.DbProvider.ReceiptsDb.When(x => x.Remove(lastTransaction.Bytes)).Do(c => guard.Set());
+            context.DbProvider.ReceiptsDb.When(x => x.Remove(lastTransaction.Bytes.ToArray())).Do(c => guard.Set());
             var migration = new ReceiptMigration(context);
             if (migratedBlockNumber.HasValue)
             {

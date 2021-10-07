@@ -473,9 +473,9 @@ namespace Nethermind.Serialization.Rlp
             return Encode(Encoding.ASCII.GetBytes(s));
         }
 
-        public static int Encode(Span<byte> buffer, int position, byte[]? input)
+        public static int Encode(Span<byte> buffer, int position, Span<byte> input)
         {
-            if (input is null || input.Length == 0)
+            if (input.Length == 0)
             {
                 buffer[position++] = OfEmptyByteArray.Bytes[0];
                 return position;
@@ -500,7 +500,7 @@ namespace Nethermind.Serialization.Rlp
                 SerializeLength(buffer, position, input.Length);
             }
 
-            input.AsSpan().CopyTo(buffer.Slice(position, input.Length));
+            input.CopyTo(buffer.Slice(position, input.Length));
             position += input.Length;
 
             return position;
@@ -541,6 +541,11 @@ namespace Nethermind.Serialization.Rlp
         public static Rlp Encode(byte[]? input)
         {
             return input is null ? OfEmptyByteArray : Encode(input.AsSpan());
+        }
+
+        public static Rlp Encode(in Memory<byte> input)
+        {
+            return Encode(input.Span);
         }
 
         public static int SerializeLength(Span<byte> buffer, int position, int value)
@@ -667,7 +672,7 @@ namespace Nethermind.Serialization.Rlp
 
             byte[] result = new byte[LengthOfKeccakRlp];
             result[0] = 160;
-            Buffer.BlockCopy(keccak.Bytes, 0, result, 1, 32);
+            keccak.Bytes.CopyTo(result.AsMemory(1, 32));
             return new Rlp(result);
         }
 
@@ -680,7 +685,7 @@ namespace Nethermind.Serialization.Rlp
 
             byte[] result = new byte[21];
             result[0] = 148;
-            Buffer.BlockCopy(address.Bytes, 0, result, 1, 20);
+            address.Bytes.CopyTo(result.AsMemory(1, 20));
             return new Rlp(result);
         }
 
@@ -1046,12 +1051,12 @@ namespace Nethermind.Serialization.Rlp
                 }
 
                 Span<byte> keccakSpan = Read(32);
-                if (keccakSpan.SequenceEqual(Keccak.OfAnEmptyString.Bytes))
+                if (keccakSpan.SequenceEqual(Keccak.OfAnEmptyString.Bytes.Span))
                 {
                     return Keccak.OfAnEmptyString;
                 }
 
-                if (keccakSpan.SequenceEqual(Keccak.EmptyTreeHash.Bytes))
+                if (keccakSpan.SequenceEqual(Keccak.EmptyTreeHash.Bytes.Span))
                 {
                     return Keccak.EmptyTreeHash;
                 }
@@ -1064,7 +1069,7 @@ namespace Nethermind.Serialization.Rlp
                 int prefix = ReadByte();
                 if (prefix == 128)
                 {
-                    keccak = new KeccakStructRef(Keccak.Zero.Bytes);
+                    keccak = new KeccakStructRef(Keccak.Zero.Bytes.Span);
                 }
                 else if (prefix != 128 + 32)
                 {
@@ -1073,13 +1078,13 @@ namespace Nethermind.Serialization.Rlp
                 else
                 {
                     Span<byte> keccakSpan = Read(32);
-                    if (keccakSpan.SequenceEqual(Keccak.OfAnEmptyString.Bytes))
+                    if (keccakSpan.SequenceEqual(Keccak.OfAnEmptyString.Bytes.Span))
                     {
-                        keccak = new KeccakStructRef(Keccak.OfAnEmptyString.Bytes);
+                        keccak = new KeccakStructRef(Keccak.OfAnEmptyString.Bytes.Span);
                     }
-                    else if (keccakSpan.SequenceEqual(Keccak.EmptyTreeHash.Bytes))
+                    else if (keccakSpan.SequenceEqual(Keccak.EmptyTreeHash.Bytes.Span))
                     {
-                        keccak = new KeccakStructRef(Keccak.EmptyTreeHash.Bytes);
+                        keccak = new KeccakStructRef(Keccak.EmptyTreeHash.Bytes.Span);
                     }
 
                     keccak = new KeccakStructRef(keccakSpan);
@@ -1109,7 +1114,7 @@ namespace Nethermind.Serialization.Rlp
                 int prefix = ReadByte();
                 if (prefix == 128)
                 {
-                    address = new AddressStructRef(Address.Zero.Bytes);
+                    address = new AddressStructRef(Address.Zero.Bytes.Span);
                 }
                 else if (prefix != 128 + 20)
                 {

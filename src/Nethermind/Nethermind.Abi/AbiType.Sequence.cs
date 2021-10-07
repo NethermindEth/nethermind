@@ -90,13 +90,13 @@ namespace Nethermind.Abi
             return encodedParts;
         }
         
-        internal static (object[], int) DecodeSequence(int length, IEnumerable<AbiType> types, byte[] data, bool packed, int startPosition)
+        internal static (object[], int) DecodeSequence(int length, IEnumerable<AbiType> types, Memory<byte> data, bool packed, int startPosition)
         {
             (Array array, int position) = DecodeSequence(typeof(object), length, types, data, packed, startPosition);
             return ((object[])array, position);
         }
 
-        internal static (Array, int) DecodeSequence(Type elementType, int length, IEnumerable<AbiType> types, byte[] data, bool packed, int startPosition)
+        internal static (Array, int) DecodeSequence(Type elementType, int length, IEnumerable<AbiType> types, Memory<byte> data, bool packed, int startPosition)
         {
             Array sequence = Array.CreateInstance(elementType, length);
             int position = startPosition;

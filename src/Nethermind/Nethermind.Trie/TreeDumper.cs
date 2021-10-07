@@ -60,12 +60,12 @@ namespace Nethermind.Trie
 
         public void VisitBranch(TrieNode node, TrieVisitContext trieVisitContext)
         {
-            _builder.AppendLine($"{GetPrefix(trieVisitContext)}BRANCH | -> {(node.Keccak?.Bytes ?? node.FullRlp)?.ToHexString()}");
+            _builder.AppendLine($"{GetPrefix(trieVisitContext)}BRANCH | -> {(node.Keccak?.Bytes ?? node.FullRlp).ToHexString()}");
         }
 
         public void VisitExtension(TrieNode node, TrieVisitContext trieVisitContext)
         {
-            _builder.AppendLine($"{GetPrefix(trieVisitContext)}EXTENSION {Nibbles.FromBytes(node.Path).ToPackedByteArray().ToHexString(false)} -> {(node.Keccak?.Bytes ?? node.FullRlp)?.ToHexString()}");
+            _builder.AppendLine($"{GetPrefix(trieVisitContext)}EXTENSION {Nibbles.FromBytes(node.Path).ToPackedByteArray().ToHexString(false)} -> {(node.Keccak?.Bytes ?? node.FullRlp).ToHexString()}");
         }
 
         private AccountDecoder decoder = new();
@@ -73,7 +73,7 @@ namespace Nethermind.Trie
         public void VisitLeaf(TrieNode node, TrieVisitContext trieVisitContext, byte[] value = null)
         {
             string leafDescription = trieVisitContext.IsStorage ? "LEAF " : "ACCOUNT ";
-            _builder.AppendLine($"{GetPrefix(trieVisitContext)}{leafDescription} {Nibbles.FromBytes(node.Path).ToPackedByteArray().ToHexString(false)} -> {(node.Keccak?.Bytes ?? node.FullRlp)?.ToHexString()}");
+            _builder.AppendLine($"{GetPrefix(trieVisitContext)}{leafDescription} {Nibbles.FromBytes(node.Path).ToPackedByteArray().ToHexString(false)} -> {(node.Keccak?.Bytes ?? node.FullRlp).ToHexString()}");
             if (!trieVisitContext.IsStorage)
             {
                 Account account = decoder.Decode(new RlpStream(value));

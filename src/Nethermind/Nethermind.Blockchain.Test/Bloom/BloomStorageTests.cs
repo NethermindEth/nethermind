@@ -138,7 +138,7 @@ namespace Nethermind.Blockchain.Test.Bloom
             var storage = CreateBloomStorage(new BloomConfig() {IndexLevelBucketSizes = levels});
             var bloom = new Core.Bloom();
             byte[] bytes = {1, 2, 3};
-            bloom.Set(bytes);
+            bloom.Set(bytes.AsSpan());
             foreach (var blockNumber in blocksSet)
             {
                 if (blockNumber > storage.MaxBlockNumber + 1)

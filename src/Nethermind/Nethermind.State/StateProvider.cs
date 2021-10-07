@@ -315,7 +315,7 @@ namespace Nethermind.State
 
             Keccak codeHash = Keccak.Compute(code.Span);
             
-            _codeDb[codeHash.Bytes] = code.ToArray();
+            _codeDb[codeHash.Bytes.ToArray()] = code.ToArray();
 
             return codeHash;
         }
@@ -328,7 +328,7 @@ namespace Nethermind.State
 
         public byte[] GetCode(Keccak codeHash)
         {
-            byte[]? code = codeHash == Keccak.OfAnEmptyString ? Array.Empty<byte>() : _codeDb[codeHash.Bytes];
+            byte[]? code = codeHash == Keccak.OfAnEmptyString ? Array.Empty<byte>() : _codeDb[codeHash.Bytes.ToArray()];
             if (code is null)
             {
                 throw new InvalidOperationException($"Code {codeHash} is missing from the database.");
@@ -633,12 +633,12 @@ namespace Nethermind.State
                         ? null
                         : beforeCodeHash == Keccak.OfAnEmptyString
                             ? Array.Empty<byte>()
-                            : _codeDb[beforeCodeHash.Bytes];
+                            : _codeDb[beforeCodeHash.Bytes.ToArray()];
                     byte[]? afterCode = afterCodeHash is null
                         ? null
                         : afterCodeHash == Keccak.OfAnEmptyString
                             ? Array.Empty<byte>()
-                            : _codeDb[afterCodeHash.Bytes];
+                            : _codeDb[afterCodeHash.Bytes.ToArray()];
 
                     if (!((beforeCode?.Length ?? 0) == 0 && (afterCode?.Length ?? 0) == 0))
                     {

@@ -120,7 +120,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Addresses_are_trimmed_properly()
         {
-            byte[] addressWithGarbage = TestItem.AddressC.Bytes.PadLeft(32);
+            byte[] addressWithGarbage = TestItem.AddressC.Bytes.Span.PadLeft(32);
             addressWithGarbage[11] = 88;
 
             TestState.CreateAccount(TestItem.AddressC, 1.Ether());

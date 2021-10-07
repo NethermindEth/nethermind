@@ -131,7 +131,7 @@ namespace Nethermind.Wallet
 
         public Signature Sign(Keccak message, Address address)
         {
-            var rs = Proxy.SignCompact(message.Bytes, _keys[address].KeyBytes, out int v);
+            var rs = Proxy.SignCompact(message.Bytes.ToArray(), _keys[address].KeyBytes, out int v);
             return new Signature(rs, v);
         }
     }

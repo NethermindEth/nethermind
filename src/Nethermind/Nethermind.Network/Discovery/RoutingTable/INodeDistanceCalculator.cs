@@ -14,10 +14,12 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+
 namespace Nethermind.Network.Discovery.RoutingTable
 {
     public interface INodeDistanceCalculator
     {
-        int CalculateDistance(byte[] sourceId, byte[] destinationId);
+        int CalculateDistance(Span<byte> sourceId, Span<byte> destinationId);
     }
 }

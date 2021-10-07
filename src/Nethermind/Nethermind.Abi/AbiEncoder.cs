@@ -49,20 +49,20 @@ namespace Nethermind.Abi
             
             if (includeSig)
             {
-                encodedArguments[0] = signature.Address;
+                encodedArguments[0] = signature.Address.ToArray();
             }
             
             return Bytes.Concat(encodedArguments);
         }
 
-        public object[] Decode(AbiEncodingStyle encodingStyle, AbiSignature signature, byte[] data)
+        public object[] Decode(AbiEncodingStyle encodingStyle, AbiSignature signature, Memory<byte> data)
         {
             bool packed = (encodingStyle & AbiEncodingStyle.Packed) == AbiEncodingStyle.Packed; 
             bool includeSig = encodingStyle == AbiEncodingStyle.IncludeSignature;
             int sigOffset = includeSig ? 4 : 0;
             if (includeSig)
             {
-                if (!Bytes.AreEqual(AbiSignature.GetAddress(data), signature.Address))
+                if (!Bytes.AreEqual(AbiSignature.GetAddress(data).Span, signature.Address.Span))
                 {
                     throw new AbiException($"Signature in encoded ABI data is not consistent with {signature}");
                 }

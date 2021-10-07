@@ -182,7 +182,7 @@ namespace Nethermind.Synchronization.BeamSync
                             throw new BeamCanceledException("Beam cancellation requested");
                         }
 
-                        if (Bytes.AreEqual(key, Keccak.Zero.Bytes))
+                        if (Bytes.AreEqual(key, Keccak.Zero.Bytes.Span))
                         {
                             // we store sync progress data at Keccak.Zero;
                             return null;
@@ -227,7 +227,7 @@ namespace Nethermind.Synchronization.BeamSync
                         else
                         {
                             if (VerifiedModeEnabled
-                                && !Bytes.AreEqual(Keccak.Compute(fromMem).Bytes, key))
+                                && !Bytes.AreEqual(Keccak.Compute(fromMem).Bytes.Span, key))
                             {
                                 if (_logger.IsWarn) _logger.Warn($"DB had an entry with a hash mismatch {key.ToHexString()} vs {Keccak.Compute(fromMem).Bytes.ToHexString()}");
                                 _tempDb[key] = null;
@@ -361,7 +361,7 @@ namespace Nethermind.Synchronization.BeamSync
                     {
                         if (Keccak.Compute(data[i]) == key)
                         {
-                            _targetDbForSaves[key.Bytes] = data[i];
+                            _targetDbForSaves[key.Bytes.ToArray()] = data[i];
                             // _requestedNodes.Remove(hashes[i], out _);
                             consumed++;
                         }
@@ -373,7 +373,7 @@ namespace Nethermind.Synchronization.BeamSync
                     }
                     else
                     {
-                        if (_targetDbForSaves[key.Bytes] == null)
+                        if (_targetDbForSaves[key.Bytes.ToArray()] == null)
                         {
                             lock (_requestedNodes)
                             {

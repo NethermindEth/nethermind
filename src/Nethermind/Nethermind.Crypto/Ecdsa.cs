@@ -33,7 +33,7 @@ namespace Nethermind.Crypto
                 throw new ArgumentException("Invalid private key", nameof(privateKey));
             }
 
-            byte[] signatureBytes = Proxy.SignCompact(message.Bytes, privateKey.KeyBytes, out int recoveryId);
+            byte[] signatureBytes = Proxy.SignCompact(message.Bytes.ToArray(), privateKey.KeyBytes, out int recoveryId);
 
             //// https://bitcoin.stackexchange.com/questions/59820/sign-a-tx-with-low-s-value-using-openssl
 
@@ -65,7 +65,7 @@ namespace Nethermind.Crypto
         public PublicKey? RecoverPublicKey(Signature signature, Keccak message)
         {
             Span<byte> publicKey = stackalloc byte[65];
-            bool success = Proxy.RecoverKeyFromCompact(publicKey, message.Bytes, signature.Bytes, signature.RecoveryId, false);
+            bool success = Proxy.RecoverKeyFromCompact(publicKey, message.Bytes.ToArray(), signature.Bytes, signature.RecoveryId, false);
             if (!success)
             {
                 return null;

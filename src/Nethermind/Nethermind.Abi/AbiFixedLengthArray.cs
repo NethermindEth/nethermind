@@ -46,7 +46,7 @@ namespace Nethermind.Abi
 
         public override string Name { get; }
 
-        public override (object, int) Decode(byte[] data, int position, bool packed) => 
+        public override (object, int) Decode(Memory<byte> data, int position, bool packed) => 
             DecodeSequence(ElementType.CSharpType, Length, ElementTypes, data, packed, position);
 
         public override byte[] Encode(object? arg, bool packed)

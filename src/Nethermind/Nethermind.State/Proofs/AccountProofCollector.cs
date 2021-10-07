@@ -66,7 +66,7 @@ namespace Nethermind.State.Proofs
             return bytes;
         }
 
-        internal AccountProofCollector(byte[] hashedAddress, params byte[][] storageKeys)
+        internal AccountProofCollector(Span<byte> hashedAddress, params byte[][] storageKeys)
         {
             storageKeys ??= Array.Empty<byte[]>();
             _fullAccountPath = Nibbles.FromBytes(hashedAddress);
@@ -86,7 +86,7 @@ namespace Nethermind.State.Proofs
 
             for (int i = 0; i < localStorageKeys.Length; i++)
             {
-                _fullStoragePaths[i] = Nibbles.FromBytes(localStorageKeys[i].Bytes);
+                _fullStoragePaths[i] = Nibbles.FromBytes(localStorageKeys[i].Bytes.Span);
 
                 _accountProof.StorageProofs[i] = new StorageProof();
                 _accountProof.StorageProofs[i].Key = storageKeys[i];
@@ -95,7 +95,7 @@ namespace Nethermind.State.Proofs
         }
 
         public AccountProofCollector(Address address, params byte[][] storageKeys)
-            : this(Keccak.Compute(address?.Bytes ?? Address.Zero.Bytes).Bytes, storageKeys)
+            : this(Keccak.Compute((address?.Bytes ?? Address.Zero.Bytes).Span).Bytes.Span, storageKeys)
         {
             _accountProof.Address = _address = address ?? throw new ArgumentNullException(nameof(address));
         }

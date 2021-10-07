@@ -131,7 +131,7 @@ namespace Nethermind.Consensus.Ethash
 
         public static Keccak GetSeedHash(uint epoch)
         {
-            byte[] seed = new byte[32];
+            Memory<byte> seed = new byte[32];
             for (uint i = 0; i < epoch; i++)
             {
                 seed = Keccak.Compute(seed).Bytes; // TODO: optimize
@@ -254,7 +254,7 @@ namespace Nethermind.Consensus.Ethash
             Keccak seed = GetSeedHash(epoch);
             if (_logger.IsInfo) _logger.Info($"Building ethash cache for epoch {epoch}");
             _cacheStopwatch.Restart();
-            IEthashDataSet dataSet = new EthashCache(cacheSize, seed.Bytes);
+            IEthashDataSet dataSet = new EthashCache(cacheSize, seed.Bytes.ToArray());
             _cacheStopwatch.Stop();
             if (_logger.IsInfo) _logger.Info($"Cache for epoch {epoch} with size {cacheSize} and seed {seed.Bytes.ToHexString()} built in {_cacheStopwatch.ElapsedMilliseconds}ms");
             return dataSet;
@@ -278,7 +278,7 @@ namespace Nethermind.Consensus.Ethash
             byte[] nonceBytes = new byte[8];
             BinaryPrimitives.WriteUInt64LittleEndian(nonceBytes, nonce);
 
-            byte[] headerAndNonceHashed = Keccak512.Compute(Bytes.Concat(headerHash.Bytes, nonceBytes)).Bytes; // this tests fine
+            byte[] headerAndNonceHashed = Keccak512.Compute(Bytes.Concat(headerHash.Bytes.Span, nonceBytes)).Bytes; // this tests fine
             uint[] mixInts = new uint[MixBytes / WordBytes];
 
             for (int i = 0; i < hashesInMix; i++)
@@ -309,12 +309,12 @@ namespace Nethermind.Consensus.Ethash
             byte[] cmix = new byte[MixBytes / WordBytes];
             Buffer.BlockCopy(cmixInts, 0, cmix, 0, cmix.Length);
 
-            if (expectedMixHash != null && !Bytes.AreEqual(cmix, expectedMixHash.Bytes))
+            if (expectedMixHash != null && !Bytes.AreEqual(cmix, expectedMixHash.Bytes.Span))
             {
                 return (null, null, false);
             }
 
-            return (cmix, Keccak.Compute(Bytes.Concat(headerAndNonceHashed, cmix)).Bytes, true); // this tests fine
+            return (cmix, Keccak.Compute(Bytes.Concat(headerAndNonceHashed, cmix)).Bytes.ToArray(), true); // this tests fine
         }
     }
 }

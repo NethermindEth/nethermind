@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 
@@ -32,7 +33,7 @@ namespace Nethermind.Abi
 
         public string Name { get; }
         public AbiType[] Types { get; }
-        public byte[] Address => GetAddress(Hash.Bytes);
+        public Memory<byte> Address => GetAddress(Hash.Bytes);
         public Keccak Hash => _hash ??= Keccak.Compute(ToString());
 
         public override string ToString()
@@ -53,6 +54,6 @@ namespace Nethermind.Abi
             return _toString ??= ComputeString();
         }
 
-        public static byte[] GetAddress(byte[] bytes) => bytes.Slice(0, 4);
+        public static Memory<byte> GetAddress(Memory<byte> bytes) => bytes.Slice(0, 4);
     }
 }

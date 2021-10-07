@@ -266,7 +266,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             // todo - enum?
             if (request.AuxiliaryData == 1)
             {
-                auxData.Add(cht.RootHash.Bytes);
+                auxData.Add(cht.RootHash.Bytes.ToArray());
                 return;
             }
             else if (request.AuxiliaryData == 2)

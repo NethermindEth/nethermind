@@ -64,7 +64,7 @@ namespace Nethermind.State.Witnesses
             return _wrapped.StartBatch();
         }
 
-        public void Touch(byte[] key)
+        public void Touch(Memory<byte> key)
         {
             _witnessCollector.Add(new Keccak(key));
         }

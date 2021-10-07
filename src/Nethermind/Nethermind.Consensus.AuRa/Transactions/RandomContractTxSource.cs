@@ -132,7 +132,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
                         }
 
                         var computedHash = ValueKeccak.Compute(bytes);
-                        if (!Bytes.AreEqual(hash.Bytes, computedHash.BytesAsSpan))
+                        if (!Bytes.AreEqual(hash.Bytes.Span, computedHash.BytesAsSpan))
                         {
                             throw new AuRaException("Decrypted random number doesn't agree with the hash.");
                         }

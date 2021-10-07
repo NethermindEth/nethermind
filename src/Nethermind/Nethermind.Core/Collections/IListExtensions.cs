@@ -116,5 +116,13 @@ namespace Nethermind.Core.Collections
                 }
             }
         }
+
+        public static void AddRange<T>(this IList<T> list, Span<T> items)
+        {
+            for (int i = 0; i < items.Length; i++)
+            {
+                list.Add(items[i]);
+            }
+        }
     }
 }
