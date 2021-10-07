@@ -269,6 +269,7 @@ namespace Nethermind.TxPool
 
                     if (removed != null)
                     {
+                        EvictedPending?.Invoke(this, new TxEventArgs(removed));
                         // transaction which was on last position in sorted TxPool and was deleted to give
                         // a place for a newly added tx (with higher priority) is now removed from hashCache
                         // to give it opportunity to come back to TxPool in the future, when fees drops
@@ -485,6 +486,7 @@ namespace Nethermind.TxPool
         public event EventHandler<TxEventArgs>? NewDiscovered;
         public event EventHandler<TxEventArgs>? NewPending;
         public event EventHandler<TxEventArgs>? RemovedPending;
+        public event EventHandler<TxEventArgs>? EvictedPending;
 
         public void Dispose()
         {
