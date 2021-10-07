@@ -84,7 +84,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             {
                 _poSSwitcher.TrySwitchToPos(newHeadBlock!.Header);
                 _stateProvider.ResetStateTo(newHeadBlock.StateRoot!);
-                if (_logger.IsInfo) _logger.Info($"Block {request.FinalizedBlockHash} was set as head.");
+                if (_logger.IsInfo) _logger.Info($"Block {request.HeadBlockHash} was set as head");
             }
             else
             {
