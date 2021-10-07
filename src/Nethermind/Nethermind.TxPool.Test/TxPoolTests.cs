@@ -397,6 +397,48 @@ namespace Nethermind.TxPool.Test
 
             _txPool.GetPendingTransactionsCount().Should().Be(numberOfTxsPossibleToExecuteBeforeGasExhaustion);
         }
+        
+        [TestCase(1, 0)]
+        [TestCase(2, 1)]
+        [TestCase(5, 5)]
+        [TestCase(10, 3)]
+        public void should_not_count_stale_nonces_when_calculating_cumulative_cost(int numberOfTxsPossibleToExecuteBeforeGasExhaustion, int numberOfStaleTxsInBucket)
+        {
+            const int gasPrice = 10;
+            const int value = 1;
+            int oneTxPrice = _txGasLimit * gasPrice + value;
+            _txPool = CreatePool();
+
+            EnsureSenderBalance(TestItem.AddressA, (UInt256)(oneTxPrice * numberOfTxsPossibleToExecuteBeforeGasExhaustion));
+
+            for (int i = 0; i < numberOfStaleTxsInBucket; i++)
+            {
+                AddTransactionToTxPool(i);
+                _stateProvider.IncrementNonce(TestItem.AddressA);
+            }
+            
+            for (int i = 0; i < numberOfTxsPossibleToExecuteBeforeGasExhaustion * 2; i++)
+            {
+                AddTransactionToTxPool(i);
+            }
+
+            int numberOfTxsInTxPool = _txPool.GetPendingTransactionsCount();
+            numberOfTxsInTxPool.Should().Be(numberOfTxsPossibleToExecuteBeforeGasExhaustion + numberOfStaleTxsInBucket);
+            _txPool.GetPendingTransactions()[numberOfTxsInTxPool - 1].Nonce.Should().Be((UInt256)(numberOfTxsInTxPool - 1));
+            
+            
+            void AddTransactionToTxPool(int i)
+            {
+                Transaction tx = Build.A.Transaction
+                    .WithSenderAddress(TestItem.AddressA)
+                    .WithNonce((UInt256)i)
+                    .WithGasPrice((UInt256)gasPrice)
+                    .WithGasLimit(_txGasLimit)
+                    .WithValue(value)
+                    .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+                _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+            }
+        }
 
         [Test]
         public void
