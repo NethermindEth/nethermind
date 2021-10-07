@@ -185,16 +185,14 @@ namespace Nethermind.Init.Steps
                 getApi.BlockTree, getApi.LogManager);
 
             VirtualMachine virtualMachine = new (
-                stateProvider,
-                storageProvider,
+                getApi.SpecProvider.ChainId,
                 blockhashProvider,
-                getApi.SpecProvider,
                 getApi.LogManager);
 
-            ITransactionProcessor transactionProcessor = _api.TransactionProcessor = new TransactionProcessor(
+            WorldState worldState = new (stateProvider, storageProvider);
+            _api.TransactionProcessor = new TransactionProcessor(
                 getApi.SpecProvider,
-                stateProvider,
-                storageProvider,
+                worldState,
                 virtualMachine,
                 getApi.LogManager);
 

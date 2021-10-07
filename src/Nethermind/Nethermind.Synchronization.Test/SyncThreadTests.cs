@@ -24,7 +24,6 @@ using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
-using Nethermind.Blockchain.Spec;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
@@ -286,8 +285,7 @@ namespace Nethermind.Synchronization.Test
             TxPool.TxPool txPool = new(ecdsa, new ChainHeadInfoProvider(specProvider, tree, stateReader), 
                 new TxPoolConfig(), new TxValidator(specProvider.ChainId), logManager, transactionComparerProvider.GetDefaultComparer());
             BlockhashProvider blockhashProvider = new(tree, LimboLogs.Instance);
-            VirtualMachine virtualMachine =
-                new(stateProvider, storageProvider, blockhashProvider, specProvider, logManager);
+            VirtualMachine virtualMachine = new(specProvider.ChainId, blockhashProvider, logManager);
 
             Always sealValidator = Always.Valid;
             HeaderValidator headerValidator = new(tree, sealValidator, specProvider, logManager);
@@ -325,7 +323,7 @@ namespace Nethermind.Synchronization.Test
 
             StateProvider devState = new(trieStore, codeDb, logManager);
             StorageProvider devStorage = new(trieStore, devState, logManager);
-            VirtualMachine devEvm = new(devState, devStorage, blockhashProvider, specProvider, logManager);
+            VirtualMachine devEvm = new(specProvider.ChainId, blockhashProvider, logManager);
             TransactionProcessor devTxProcessor = new(specProvider, devState, devStorage, devEvm, logManager);
 
             BlockProcessor devBlockProcessor = new(

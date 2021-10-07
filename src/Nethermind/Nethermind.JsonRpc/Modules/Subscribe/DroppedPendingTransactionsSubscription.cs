@@ -16,48 +16,46 @@
 // 
 
 using System;
-using System.Threading.Tasks;
 using Nethermind.Logging;
 using Nethermind.TxPool;
 
 namespace Nethermind.JsonRpc.Modules.Subscribe
 {
-    public class NewPendingTransactionsSubscription : Subscription
+    public class DroppedPendingTransactionsSubscription : Subscription
     {
         private readonly ITxPool _txPool;
 
-        public NewPendingTransactionsSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, ITxPool? txPool, ILogManager? logManager) 
-            : base(jsonRpcDuplexClient)
+        public DroppedPendingTransactionsSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, ITxPool? txPool, ILogManager? logManager) : base(jsonRpcDuplexClient)
         {
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            
-            _txPool.NewPending += OnNewPending;
-            if(_logger.IsTrace) _logger.Trace($"NewPendingTransactions subscription {Id} will track NewPendingTransactions");
+
+            _txPool.EvictedPending += OnEvicted;
+            if(_logger.IsTrace) _logger.Trace($"DroppedPendingTransactions subscription {Id} will track DroppedPendingTransactions");
         }
 
-        private void OnNewPending(object? sender, TxEventArgs e)
+        private void OnEvicted(object? sender, TxEventArgs e)
         {
             ScheduleAction(() =>
             {
                 JsonRpcResult result = CreateSubscriptionMessage(e.Transaction.Hash);
                 JsonRpcDuplexClient.SendJsonRpcResult(result);
-                if(_logger.IsTrace) _logger.Trace($"NewPendingTransactions subscription {Id} printed hash of NewPendingTransaction.");
+                if(_logger.IsTrace) _logger.Trace($"DroppedPendingTransactions subscription {Id} printed hash of DroppedPendingTransaction.");
             });
         }
-
+        
         protected override string GetErrorMsg()
         {
-            return $"NewPendingTransactions subscription {Id}: Failed Task.Run after NewPending event.";
+            return $"DroppedPendingTransactions subscription {Id}: Failed Task.Run after EvictedPending event.";
         }
         
-        public override SubscriptionType Type => SubscriptionType.NewPendingTransactions;
+        public override SubscriptionType Type => SubscriptionType.DroppedPendingTransactions;
 
         public override void Dispose()
         {
             base.Dispose();
-            _txPool.NewPending -= OnNewPending;
-            if(_logger.IsTrace) _logger.Trace($"NewPendingTransactions subscription {Id} will no longer track NewPendingTransactions");
+            _txPool.EvictedPending -= OnEvicted;
+            if(_logger.IsTrace) _logger.Trace($"DroppedPendingTransactions subscription {Id} will no longer track DroppedPendingTransactions");
         }
     }
 }

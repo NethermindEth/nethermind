@@ -22,6 +22,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         NewHeads,
         Logs,
         NewPendingTransactions,
+        DroppedPendingTransactions,
         Syncing
     }
 }

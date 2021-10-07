@@ -437,8 +437,6 @@ namespace Nethermind.Blockchain.Processing
 
                     blocksToProcess.Add(block);
                 }
-
-                blocksToProcess.Reverse();
             }
 
             if (_logger.IsTrace) _logger.Trace($"Processing {blocksToProcess.Count} blocks from state root {processingBranch.Root}");
@@ -516,6 +514,7 @@ namespace Nethermind.Blockchain.Processing
 
             Keccak stateRoot = branchingPoint?.StateRoot;
             if (_logger.IsTrace) _logger.Trace($"State root lookup: {stateRoot}");
+            blocksToBeAddedToMain.Reverse();
             return new ProcessingBranch(stateRoot, blocksToBeAddedToMain);
         }
 

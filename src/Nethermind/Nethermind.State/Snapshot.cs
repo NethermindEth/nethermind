@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,19 +13,29 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using Nethermind.Core;
-using Nethermind.Core.Specs;
-using Nethermind.Evm.CodeAnalysis;
-using Nethermind.Evm.Tracing;
-using Nethermind.State;
+using System.Runtime.CompilerServices;
 
-namespace Nethermind.Evm
+[assembly:InternalsVisibleTo("Nethermind.Evm.Test")]
+namespace Nethermind.State
 {
-    public interface IVirtualMachine
+    /// <summary>
+    /// Stores state and storage snapshots (as the change index that we can revert to)
+    /// At the beginning and after each commit the snapshot is set to the value of EmptyPosition
+    /// </summary>
+    public readonly struct Snapshot
     {
-        TransactionSubstate Run(EvmState state, IWorldState worldState, IReleaseSpec releaseSpec, ITxTracer tracer);
+        public Snapshot(int stateSnapshot, int storageSnapshot)
+        {
+            StateSnapshot = stateSnapshot;
+            StorageSnapshot = storageSnapshot;
+        }
         
-        CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec spec);
+        public int StateSnapshot { get; }
+        
+        public int StorageSnapshot { get; }
+        
+        public const int EmptyPosition = -1;
     }
 }

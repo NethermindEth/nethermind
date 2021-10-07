@@ -84,10 +84,8 @@ namespace Ethereum.Test.Base
             IBlockhashProvider blockhashProvider = new TestBlockhashProvider();
             IStorageProvider storageProvider = new StorageProvider(trieStore, stateProvider, _logManager);
             IVirtualMachine virtualMachine = new VirtualMachine(
-                stateProvider,
-                storageProvider,
+                specProvider.ChainId,
                 blockhashProvider,
-                specProvider,
                 _logManager);
 
             TransactionProcessor transactionProcessor = new(
