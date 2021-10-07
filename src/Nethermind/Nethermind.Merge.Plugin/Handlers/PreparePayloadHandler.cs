@@ -58,7 +58,7 @@ namespace Nethermind.Merge.Plugin.Handlers
     /// A pair of engine_preparePayload and engine_getPayload related to each other are identified by the payload_id
     /// parameter. Consensus client implementations are free to use whatever value of the identifier they find reasonable.
     /// </summary>
-    public class PreparePayloadHandler: IHandler<PreparePayloadRequest, PreparePayloadResult>
+    public class PreparePayloadHandler: IAsyncHandler<PreparePayloadRequest, PreparePayloadResult>
     {
         private readonly IBlockTree _blockTree;
         private readonly PayloadStorage _payloadStorage;
@@ -80,7 +80,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             _logger = logManager.GetClassLogger();
         }
 
-        public ResultWrapper<PreparePayloadResult> Handle(PreparePayloadRequest request)
+        public async Task<ResultWrapper<PreparePayloadResult>> HandleAsync(PreparePayloadRequest request)
         {
             // add syncing check when implementation will be ready
             // if (_ethSyncingInfo.IsSyncing())
@@ -112,7 +112,7 @@ namespace Nethermind.Merge.Plugin.Handlers
                                 _logger.Error($"Payload with ID {payloadId} was not generated successfully");
                             }
                         });
-            
+            await generatePayloadTask;
             return ResultWrapper<PreparePayloadResult>.Success(new PreparePayloadResult(payloadId));
         }
     }

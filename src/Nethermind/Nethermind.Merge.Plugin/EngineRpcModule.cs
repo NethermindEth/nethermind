@@ -30,7 +30,7 @@ namespace Nethermind.Merge.Plugin
 {
     public class EngineRpcModule : IEngineRpcModule
     {
-        private readonly IHandler<PreparePayloadRequest, PreparePayloadResult> _preparePayloadHandler;
+        private readonly IAsyncHandler<PreparePayloadRequest, PreparePayloadResult> _preparePayloadHandler;
         private readonly IAsyncHandler<ulong, BlockRequestResult?> _getPayloadHandler;
         private readonly IHandler<BlockRequestResult, ExecutePayloadResult> _executePayloadHandler;
         private readonly IHandler<ForkChoiceUpdatedRequest, string> _forkChoiceUpdateHandler;
@@ -41,7 +41,7 @@ namespace Nethermind.Merge.Plugin
         private readonly ILogger _logger;
 
         public EngineRpcModule(
-            PreparePayloadHandler preparePayloadHandler,
+            IAsyncHandler<PreparePayloadRequest, PreparePayloadResult> preparePayloadHandler,
             IAsyncHandler<ulong, BlockRequestResult?> getPayloadHandler,
             IHandler<BlockRequestResult, ExecutePayloadResult> executePayloadHandler,
             ITransitionProcessHandler transitionProcessHandler,
@@ -58,9 +58,24 @@ namespace Nethermind.Merge.Plugin
             _logger = logManager.GetClassLogger();
         }
 
-        public ResultWrapper<PreparePayloadResult> engine_preparePayload(PreparePayloadRequest preparePayloadRequest)
+        public async Task<ResultWrapper<PreparePayloadResult>?> engine_preparePayload(PreparePayloadRequest preparePayloadRequest)
         {
-            return _preparePayloadHandler.Handle(preparePayloadRequest);
+            if (await _locker.WaitAsync(Timeout))
+            {
+                try
+                {
+                    return await _preparePayloadHandler.HandleAsync(preparePayloadRequest);
+                }
+                finally
+                {
+                    _locker.Release();
+                }
+            }
+            else
+            {
+                if (_logger.IsWarn) _logger.Warn($"{nameof(engine_executePayload)} timeout.");
+                return ResultWrapper<PreparePayloadResult>.Success(null);
+            }
         }
 
         public async Task<ResultWrapper<BlockRequestResult?>> engine_getPayload(ulong payloadId)
