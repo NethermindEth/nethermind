@@ -402,7 +402,7 @@ namespace Nethermind.TxPool.Test
         [TestCase(2, 1)]
         [TestCase(5, 5)]
         [TestCase(10, 3)]
-        public void should_not_count_stale_nonces_when_calculating_cumulative_cost(int numberOfTxsPossibleToExecuteBeforeGasExhaustion, int numberOfStaleTxsInBucket)
+        public void should_not_count_txs_with_stale_nonces_when_calculating_cumulative_cost(int numberOfTxsPossibleToExecuteBeforeGasExhaustion, int numberOfStaleTxsInBucket)
         {
             const int gasPrice = 10;
             const int value = 1;
