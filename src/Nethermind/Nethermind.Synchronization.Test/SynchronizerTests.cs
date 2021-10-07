@@ -23,6 +23,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -327,6 +328,7 @@ namespace Nethermind.Synchronization.Test
                     syncModeSelector,
                     syncConfig,
                     new WitnessCollector(new MemDb(), LimboLogs.Instance), 
+                    Policy.FullGossip,
                     _logManager);
                 
                 SyncPeerPool.Start();

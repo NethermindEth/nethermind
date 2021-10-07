@@ -56,6 +56,7 @@ namespace Nethermind.Synchronization
         private readonly IDb _codeDb;
         private readonly ISyncConfig _syncConfig;
         private readonly IWitnessRepository _witnessRepository;
+        private readonly IGossipPolicy _gossipPolicy;
         private readonly CanonicalHashTrie? _cht;
         private readonly object _dummyValue = new();
 
@@ -77,11 +78,13 @@ namespace Nethermind.Synchronization
             ISyncModeSelector syncModeSelector,
             ISyncConfig syncConfig,
             IWitnessRepository? witnessRepository,
+            IGossipPolicy gossipPolicy,
             ILogManager logManager,
             CanonicalHashTrie? cht = null)
         {
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _witnessRepository = witnessRepository ?? throw new ArgumentNullException(nameof(witnessRepository));
+            _gossipPolicy = gossipPolicy ?? throw new ArgumentNullException(nameof(gossipPolicy));
             _pool = pool ?? throw new ArgumentNullException(nameof(pool));
             _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
             _sealValidator = sealValidator ?? throw new ArgumentNullException(nameof(sealValidator));
@@ -137,7 +140,7 @@ namespace Nethermind.Synchronization
 
         public void AddNewBlock(Block block, ISyncPeer nodeWhoSentTheBlock)
         {
-            if (!_syncConfig.BlockGossipEnabled) return;
+            if (!_gossipPolicy.ShouldGossipBlocks) return;
             
             if (block.TotalDifficulty == null)
             {
@@ -308,7 +311,7 @@ namespace Nethermind.Synchronization
 
         public void HintBlock(Keccak hash, long number, ISyncPeer syncPeer)
         {
-            if (!_syncConfig.BlockGossipEnabled) return;
+            if (!_gossipPolicy.ShouldGossipBlocks) return;
             
             if (number > syncPeer.HeadNumber)
             {
@@ -490,7 +493,7 @@ namespace Nethermind.Synchronization
 
         private void NotifyOfNewBlock(PeerInfo? peerInfo, ISyncPeer syncPeer, Block broadcastedBlock, SendBlockPriority priority)
         {
-            if (!_syncConfig.BlockGossipEnabled) return;
+            if (!_gossipPolicy.ShouldGossipBlocks) return;
             
             try
             {

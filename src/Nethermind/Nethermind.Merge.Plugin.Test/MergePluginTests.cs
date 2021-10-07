@@ -81,7 +81,7 @@ namespace Nethermind.Merge.Plugin.Test
             ISyncConfig syncConfig = _context.Config<ISyncConfig>();
             Assert.IsFalse(syncConfig.SynchronizationEnabled);
             Assert.IsTrue(syncConfig.NetworkingEnabled);
-            Assert.IsFalse(syncConfig.BlockGossipEnabled);
+            Assert.IsTrue(_context.GossipPolicy.ShouldGossipBlocks);
             await _plugin.InitBlockProducer(new CliquePlugin());
             Assert.IsInstanceOf<Eth2BlockProducer>(_context.BlockProducer);
             await _plugin.InitRpcModules();

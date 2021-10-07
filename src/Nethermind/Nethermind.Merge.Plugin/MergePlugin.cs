@@ -37,7 +37,7 @@ namespace Nethermind.Merge.Plugin
         private INethermindApi _api = null!;
         private ILogger _logger = null!;
         private IMergeConfig _mergeConfig = null!;
-        private IPoSSwitcher _poSSwitcher = null!;
+        private IPoSSwitcher _poSSwitcher = NoPoS.Instance;
         private ITransitionProcessHandler _transitionProcessHandler => (ITransitionProcessHandler)_poSSwitcher;
         private ManualBlockFinalizationManager _blockFinalizationManager = null!;
 
@@ -51,7 +51,7 @@ namespace Nethermind.Merge.Plugin
             _mergeConfig = nethermindApi.Config<IMergeConfig>();
             _logger = _api.LogManager.GetClassLogger();
 
-            // if (_mergeConfig.Enabled)
+            if (_mergeConfig.Enabled)
             {
                 if (_api.DbProvider == null) throw new ArgumentException(nameof(_api.DbProvider));
                 if (_api.BlockTree == null) throw new ArgumentException(nameof(_api.BlockTree));
@@ -96,9 +96,6 @@ namespace Nethermind.Merge.Plugin
             
             if (_mergeConfig.Enabled)
             {
-                ISyncConfig syncConfig = _api.Config<ISyncConfig>();
-                syncConfig.SynchronizationEnabled = false;
-                syncConfig.BlockGossipEnabled = false;
                 _blockFinalizationManager = new ManualBlockFinalizationManager();
                 _api.FinalizationManager = _blockFinalizationManager;
             }
