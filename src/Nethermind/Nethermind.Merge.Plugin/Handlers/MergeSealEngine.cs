@@ -62,7 +62,7 @@ namespace Nethermind.Merge.Plugin.Handlers
 
         public bool ValidateParams(BlockHeader parent, BlockHeader header)
         {
-            if (_poSSwitcher.HasEverBeenInPos())
+            if (_poSSwitcher.IsPos(header))
             {
                 return true;
             }
@@ -72,7 +72,7 @@ namespace Nethermind.Merge.Plugin.Handlers
 
         public bool ValidateSeal(BlockHeader header, bool force)
         {
-            if (_poSSwitcher.HasEverBeenInPos())
+            if (_poSSwitcher.IsPos(header))
             {
                 return true;
             }
