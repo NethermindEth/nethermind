@@ -29,20 +29,20 @@ namespace Nethermind.AccountAbstraction.Data
 {
     public partial class UserOperation
     {
-        public UserOperation(Address target, UInt256 nonce, byte[] callData, byte[] initCode, UInt256 callGas, UInt256 verificationGas, UInt256 preVerificationGas, UInt256 maxFeePerGas, UInt256 maxPriorityFeePerGas, Address paymaster, Signature signature, byte[] paymasterData)
+        public UserOperation(UserOperationRpc userOperationRpc)
         {
-            Target = target;
-            Nonce = nonce;
-            CallData = callData;
-            InitCode = initCode;
-            CallGas = callGas;
-            VerificationGas = verificationGas;
-            PreVerificationGas = preVerificationGas;
-            MaxFeePerGas = maxFeePerGas;
-            MaxPriorityFeePerGas = maxPriorityFeePerGas;
-            Paymaster = paymaster;
-            Signature = signature;
-            PaymasterData = paymasterData;
+            Target = userOperationRpc.Target;
+            Nonce = userOperationRpc.Nonce;
+            CallData = userOperationRpc.CallData;
+            InitCode = userOperationRpc.InitCode;
+            CallGas = userOperationRpc.CallGas;
+            VerificationGas = userOperationRpc.VerificationGas;
+            PreVerificationGas = userOperationRpc.PreVerificationGas;
+            MaxFeePerGas = userOperationRpc.MaxFeePerGas;
+            MaxPriorityFeePerGas = userOperationRpc.MaxPriorityFeePerGas;
+            Paymaster = userOperationRpc.Paymaster;
+            Signature = userOperationRpc.Signature;
+            PaymasterData = userOperationRpc.PaymasterData;
 
             AccessList = UserOperationAccessList.Empty;
             
@@ -78,7 +78,7 @@ namespace Nethermind.AccountAbstraction.Data
         public UInt256 MaxFeePerGas { get; set; }
         public UInt256 MaxPriorityFeePerGas { get; set; }
         public Address? Paymaster { get; set; }
-        public Signature? Signature { get; set; }
+        public byte[]? Signature { get; set; }
         public byte[]? PaymasterData { get; set; }
         public UserOperationAccessList AccessList { get; set; }
         public int ResimulationCounter { get; set; }

@@ -27,13 +27,15 @@ namespace Nethermind.AccountAbstraction.Data
     {
         public Address Target { get; set; }
         public UInt256 Nonce { get; set; }
-        public byte[] CallData { get; set; }
-        public UInt64 CallGas { get; set; }
+        public byte[]? CallData { get; set; }
+        public byte[]? InitCode { get; set; }
+        public UInt256 CallGas { get; set; }
+        public UInt256 VerificationGas { get; set; }
+        public UInt256 PreVerificationGas { get; set; }
         public UInt256 MaxFeePerGas { get; set; }
         public UInt256 MaxPriorityFeePerGas { get; set; }
         public Address Paymaster { get; set; }
-        public Address Signer { get; set; }
-        public Signature Signature { get; set; }
-        public AccessList AccessList { get; set; }
+        public byte[]? Signature { get; set; }
+        public byte[]? PaymasterData { get; set; }
     }
 }

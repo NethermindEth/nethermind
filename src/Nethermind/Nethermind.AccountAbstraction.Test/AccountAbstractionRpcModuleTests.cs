@@ -383,7 +383,7 @@ namespace Nethermind.AccountAbstraction.Test
                     )
                 );
 
-            op.Signature = signature;
+            op.Signature = signature.Bytes;
             op.Hash = UserOperation.CalculateHash(op);
         }
     }
