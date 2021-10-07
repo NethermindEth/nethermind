@@ -23,6 +23,7 @@ using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -48,12 +49,12 @@ namespace Nethermind.Merge.Plugin.Test
 
         private IEngineRpcModule CreateEngineModule(MergeTestBlockchain chain)
         {
-            PayloadStorage? payloadStorage = new(chain.BlockProductionTrigger, chain.EmptyBlockProducerTrigger, chain.State, chain.BlockchainProcessor, new InitConfig(), chain.LogManager);
+            PayloadStorage? payloadStorage = new(chain.IdealBlockProductionContext, chain.EmptyBlockProductionContext, chain.State, chain.BlockchainProcessor, new InitConfig(), chain.LogManager);
 
             return new EngineRpcModule(
                 new PreparePayloadHandler(chain.BlockTree, payloadStorage, chain.Timestamper, chain.SealEngine, chain.LogManager),
                 new GetPayloadHandler(payloadStorage,  chain.LogManager),
-                new ExecutePayloadHandler(chain.BlockTree, chain.BlockchainProcessor, new EthSyncingInfo(chain.BlockFinder), chain.State, new InitConfig(), chain.LogManager),
+                new ExecutePayloadHandler(chain.BlockTree, chain.BlockchainProcessor, new EthSyncingInfo(chain.BlockFinder), chain.State, new InitConfig(), null, chain.LogManager), // ToDo fix null here - just to check sth
                 (PoSSwitcher)chain.PoSSwitcher,
                 new ForkChoiceUpdatedHandler(chain.BlockTree, chain.State, chain.BlockFinalizationManager, chain.PoSSwitcher, chain.BlockConfirmationManager, chain.LogManager),
                 new ExecutionStatusHandler(chain.BlockTree, chain.BlockConfirmationManager, chain.BlockFinalizationManager),
@@ -63,7 +64,10 @@ namespace Nethermind.Merge.Plugin.Test
         private class MergeTestBlockchain : TestBlockchain
         {
             public IBlockProducer EmptyBlockProducer { get; private set; }
-            public BuildBlocksWhenRequested EmptyBlockProducerTrigger { get; private set; } = new ();
+            
+            public Eth2BlockProductionContext IdealBlockProductionContext { get; set; }
+
+            public Eth2BlockProductionContext EmptyBlockProductionContext { get; set; } = new();
             public MergeTestBlockchain(ManualTimestamper timestamper)
             {
                 Timestamper = timestamper;
@@ -71,7 +75,7 @@ namespace Nethermind.Merge.Plugin.Test
                     .WithTimestamp(UInt256.One);
                 Signer = new Eth2Signer(MinerAddress);
                 PoSSwitcher = new PoSSwitcher(LogManager, new MergeConfig() { Enabled = true }, new MemDb(), BlockTree);
-                SealEngine = new MergeSealEngine(Substitute.For<ISealEngine>(), PoSSwitcher, Signer);
+                SealEngine = new MergeSealEngine(SealEngine, PoSSwitcher, Signer);
                 BlockConfirmationManager = new BlockConfirmationManager();
             }
             
@@ -84,14 +88,20 @@ namespace Nethermind.Merge.Plugin.Test
             private ISigner Signer { get; }
             
             public IPoSSwitcher PoSSwitcher { get; }
-            
-            public ISealEngine SealEngine { get; }
 
             protected override IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
             {
-                MiningConfig miningConfig = new();
+                MiningConfig miningConfig = new() { Enabled = true };
                 TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator = new(SpecProvider, miningConfig);
-                
+                Eth2BlockProducerFactory? blockProducerFactory = new Eth2BlockProducerFactory(
+                    BlockTree,
+                    SpecProvider,
+                    SealEngine,
+                    Timestamper,
+                    miningConfig,
+                    LogManager,
+                    targetAdjustedGasLimitCalculator);
+
                 BlockProducerEnvFactory blockProducerEnvFactory = new(
                     DbProvider, 
                     BlockTree, 
@@ -106,28 +116,16 @@ namespace Nethermind.Merge.Plugin.Test
                     miningConfig,
                     LogManager);
                 
-                EmptyBlockProducer = new Eth2EmptyBlockProducerFactory().Create(
-                    blockProducerEnvFactory,
-                    BlockTree,
-                    EmptyBlockProducerTrigger,
-                    SpecProvider,
-                    SealEngine,
-                    Timestamper,
-                    miningConfig,
-                    LogManager
+                EmptyBlockProductionContext.Init(blockProducerEnvFactory);
+                EmptyBlockProducer = blockProducerFactory.Create(
+                    EmptyBlockProductionContext,
+                    EmptyTxSource.Instance
                 );
                 
                 EmptyBlockProducer.Start();
-                
-                return new Eth2TestBlockProducerFactory(targetAdjustedGasLimitCalculator).Create(
-                    blockProducerEnvFactory,
-                    BlockTree,
-                    BlockProductionTrigger,
-                    SpecProvider,
-                    SealEngine,
-                    Timestamper,
-                    miningConfig,
-                    LogManager);
+                IdealBlockProductionContext.Init(blockProducerEnvFactory);
+                return blockProducerFactory.Create(
+                    IdealBlockProductionContext);
             }
             
             protected override BlockProcessor CreateBlockProcessor()

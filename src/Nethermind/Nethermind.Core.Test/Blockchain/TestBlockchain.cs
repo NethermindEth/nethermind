@@ -84,6 +84,8 @@ namespace Nethermind.Core.Test.Blockchain
         public IDbProvider DbProvider { get; set; }
         public ISpecProvider SpecProvider { get; set; }
         
+        public ISealEngine SealEngine { get; set; }
+        
         public ITransactionComparerProvider TransactionComparerProvider { get; set; }
         
         public IBlockConfirmationManager BlockConfirmationManager { get; set; } = NoBlockConfirmation.Instance;
@@ -171,6 +173,7 @@ namespace Nethermind.Core.Test.Blockchain
             
             TxPoolTxSource txPoolTxSource = CreateTxPoolTxSource();
             ISealer sealer = new NethDevSealEngine(TestItem.AddressD);
+            SealEngine = new SealEngine(sealer, Always.Valid);
             ITransactionComparerProvider transactionComparerProvider = new TransactionComparerProvider(SpecProvider, BlockFinder);
             BlockProducer = CreateTestBlockProducer(txPoolTxSource, sealer, transactionComparerProvider);
             Suggester = new ProducedBlockSuggester(BlockTree, BlockProducer);
@@ -187,7 +190,7 @@ namespace Nethermind.Core.Test.Blockchain
                 _suggestedBlockResetEvent.Set();
             };
 
-            var genesis = GetGenesisBlock();
+            Block? genesis = GetGenesisBlock();
             BlockTree.SuggestBlock(genesis);
             await WaitAsync(_resetEvent, "Failed to process genesis in time.");
             await AddBlocksOnStart();

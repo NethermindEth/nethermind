@@ -20,8 +20,10 @@ using System.Threading.Tasks;
 using Nethermind.Api.Extensions;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
 
 namespace Nethermind.Merge.Plugin
@@ -31,22 +33,15 @@ namespace Nethermind.Merge.Plugin
         private IMiningConfig _miningConfig = null!;
         private IBlockProducer _blockProducer = null!;
         private IBlockProducer _emptyBlockProducer = null!;
-        public IManualBlockProductionTrigger _emptyBlockProductionTrigger = new BuildBlocksWhenRequested()!;
-        private readonly IManualBlockProductionTrigger _idealBlockProductionTrigger = new BuildBlocksWhenRequested();
+        private readonly Eth2BlockProductionContext _emptyBlockProductionContext = new();
+        private readonly Eth2BlockProductionContext _idealBlockProductionContext = new();
         private ManualTimestamper? _manualTimestamper;
 
         public async Task<IBlockProducer> InitBlockProducer(IConsensusPlugin consensusPlugin)
         {
-            _api.HeaderValidator = new MergeHeaderValidator(
-                _api.HeaderValidator,
-                _api.BlockTree,
-                _api.SpecProvider,
-                _poSSwitcher,
-                _api.LogManager);
-            
             if (_mergeConfig.Enabled)
             {
-                var blockProducer = await consensusPlugin.InitBlockProducer();
+                IBlockProducer blockProducer = await consensusPlugin.InitBlockProducer();
                 _miningConfig = _api.Config<IMiningConfig>();
                 if (_api.EngineSigner == null) throw new ArgumentNullException(nameof(_api.EngineSigner));
                 if (_api.ChainSpec == null) throw new ArgumentNullException(nameof(_api.ChainSpec));
@@ -61,35 +56,28 @@ namespace Nethermind.Merge.Plugin
                 if (_api.DbProvider == null) throw new ArgumentNullException(nameof(_api.DbProvider));
                 if (_api.ReadOnlyTrieStore == null) throw new ArgumentNullException(nameof(_api.ReadOnlyTrieStore));
                 if (_api.BlockchainProcessor == null) throw new ArgumentNullException(nameof(_api.BlockchainProcessor));
+                
+                _api.HeaderValidator = new MergeHeaderValidator(
+                    _api.HeaderValidator,
+                    _api.BlockTree,
+                    _api.SpecProvider,
+                    _poSSwitcher,
+                    _api.LogManager);
 
                 ILogger logger = _api.LogManager.GetClassLogger();
                 if (logger.IsWarn) logger.Warn("Starting ETH2 block producer & sealer");
 
                 _manualTimestamper ??= new ManualTimestamper();
-                IBlockProducer idealBlockProducer = new Eth2BlockProducerFactory().Create(
-                    _api.BlockProducerEnvFactory,
-                    _api.BlockTree,
-                    _idealBlockProductionTrigger,
-                    _api.SpecProvider,
-                    _api.SealEngine,
-                    _manualTimestamper,
-                    _miningConfig,
-                    _api.LogManager
-                );
+                _idealBlockProductionContext.Init(_api.BlockProducerEnvFactory);
+                _emptyBlockProductionContext.Init(_api.BlockProducerEnvFactory);
+                
+                Eth2BlockProducerFactory blockProducerFactory = new(_api.BlockTree, _api.SpecProvider, _api.SealEngine, _manualTimestamper, _miningConfig, _api.LogManager);
+                IBlockProducer idealBlockProducer = blockProducerFactory.Create(_idealBlockProductionContext);
                 
                 _api.BlockProducer = _blockProducer
                     = new MergeBlockProducer(blockProducer, idealBlockProducer, _poSSwitcher, _api.BlockchainProcessor);
                 
-                _emptyBlockProducer = new Eth2EmptyBlockProducerFactory().Create(
-                    _api.BlockProducerEnvFactory,
-                    _api.BlockTree,
-                    _emptyBlockProductionTrigger,
-                    _api.SpecProvider,
-                    _api.SealEngine,
-                    _manualTimestamper,
-                    _miningConfig,
-                    _api.LogManager
-                );
+                _emptyBlockProducer = blockProducerFactory.Create(_emptyBlockProductionContext, EmptyTxSource.Instance);
                 
                 await _emptyBlockProducer.Start();
                 await idealBlockProducer.Start();

@@ -21,6 +21,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
@@ -29,6 +30,7 @@ using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.Data;
 using Nethermind.State;
 
 namespace Nethermind.Merge.Plugin.Handlers
@@ -41,8 +43,8 @@ namespace Nethermind.Merge.Plugin.Handlers
     /// </summary>
     public class PayloadStorage
     {
-        private readonly IManualBlockProductionTrigger _blockProductionTrigger;
-        private readonly IManualBlockProductionTrigger _emptyBlockProductionTrigger;
+        private readonly Eth2BlockProductionContext _idealBlockContext;
+        private readonly Eth2BlockProductionContext _emptyBlockContext;
         private readonly IStateProvider _stateProvider;
         private readonly IBlockchainProcessor _processor;
         private readonly IInitConfig _initConfig;
@@ -58,15 +60,15 @@ namespace Nethermind.Merge.Plugin.Handlers
             new();
 
         public PayloadStorage(
-            IManualBlockProductionTrigger blockProductionTrigger,
-            IManualBlockProductionTrigger emptyBlockProductionTrigger,
+            Eth2BlockProductionContext idealBlockContext,
+            Eth2BlockProductionContext emptyBlockContext,
             IStateProvider stateProvider,
             IBlockchainProcessor processor,
             IInitConfig initConfig,
             ILogManager logManager)
         {
-            _blockProductionTrigger = blockProductionTrigger;
-            _emptyBlockProductionTrigger = emptyBlockProductionTrigger;
+            _idealBlockContext = idealBlockContext;
+            _emptyBlockContext = emptyBlockContext;
             _stateProvider = stateProvider;
             _processor = processor;
             _initConfig = initConfig;
@@ -80,7 +82,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             using CancellationTokenSource cts = new(_timeout);
 
             Task<Block?> emptyBlock =
-                _emptyBlockProductionTrigger.BuildBlock(parentHeader, cts.Token, null, blockAuthor, timestamp)
+                _emptyBlockContext.BlockProductionTrigger.BuildBlock(parentHeader, cts.Token, null, blockAuthor, timestamp)
                     .ContinueWith((x) =>
                     {
                         x.Result.Header.StateRoot = parentHeader.StateRoot;
@@ -90,9 +92,9 @@ namespace Nethermind.Merge.Plugin.Handlers
             //  .ContinueWith(LogProductionResult, cts.Token);
             //   .ContinueWith((x) => Process(x.Result, parentHeader), cts.Token); // commit when mergemock will be fixed
             Task<Block?> idealBlock =
-                _blockProductionTrigger.BuildBlock(parentHeader, cts.Token, null, blockAuthor, timestamp)
+                _idealBlockContext.BlockProductionTrigger.BuildBlock(parentHeader, cts.Token, null, blockAuthor, timestamp)
                //     .ContinueWith(LogProductionResult, cts.Token);
-                    .ContinueWith((x) => Process(x.Result, parentHeader), cts.Token); // commit when mergemock will be fixed
+                    .ContinueWith((x) => Process(x.Result, parentHeader, _idealBlockContext.BlockProducerEnv), cts.Token); // commit when mergemock will be fixed
 
             BlockTaskAndRandom emptyBlockTaskTuple = new(emptyBlock, random);
             bool _ = _payloadStorage.TryAdd(payloadId, emptyBlockTaskTuple);
@@ -177,21 +179,23 @@ namespace Nethermind.Merge.Plugin.Handlers
             }
         }
 
-        private Block? Process(Block block, BlockHeader parent)
+        private Block? Process(Block block, BlockHeader parent, BlockProducerEnv blockProducerEnv)
         {
             if (block == null)
                 return null;
+            var stateProvider = blockProducerEnv.ReadOnlyStateProvider;
+            var processor = blockProducerEnv.ChainProcessor;
             Block? processedBlock = null;
             block.Header.TotalDifficulty = parent.TotalDifficulty + block.Difficulty;
 
-            Keccak currentStateRoot = _stateProvider.ResetStateTo(parent.StateRoot!);
+            Keccak currentStateRoot = stateProvider.ResetStateTo(parent.StateRoot!);
             try
             {
-                processedBlock = _processor.Process(block, GetProcessingOptions(), NullBlockTracer.Instance);
+                processedBlock = processor.Process(block, GetProcessingOptions(), NullBlockTracer.Instance);
             }
             finally
             {
-                _stateProvider.ResetStateTo(currentStateRoot);
+                stateProvider.ResetStateTo(currentStateRoot);
             }
 
             return processedBlock;

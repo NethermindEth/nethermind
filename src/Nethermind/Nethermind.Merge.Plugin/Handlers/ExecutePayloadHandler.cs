@@ -18,9 +18,12 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -48,6 +51,8 @@ namespace Nethermind.Merge.Plugin.Handlers
         private readonly IStateProvider _stateProvider;
         private readonly IInitConfig _initConfig;
         private readonly ILogger _logger;
+        private readonly BlockProducerEnv _blockProducerEnv;
+        private SemaphoreSlim _blockValidationSemaphore;
         private readonly LruCache<Keccak, bool> _latestBlocks = new(50, "LatestBlocks");
         
         public ExecutePayloadHandler(
@@ -56,6 +61,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             IEthSyncingInfo ethSyncingInfo,
             IStateProvider stateProvider,
             IInitConfig initConfig,
+            IBlockProducerEnvFactory blockProducerEnvFactory,
             ILogManager logManager)
         {
             _blockTree = blockTree;
@@ -64,6 +70,16 @@ namespace Nethermind.Merge.Plugin.Handlers
             _stateProvider = stateProvider;
             _initConfig = initConfig;
             _logger = logManager.GetClassLogger();
+            _blockProducerEnv = blockProducerEnvFactory.Create();
+            _blockValidationSemaphore = new SemaphoreSlim(0);
+            _processor.BlockProcessed += (s, e) =>
+            {
+                _blockValidationSemaphore.Release(1);
+            };
+            _processor.BlockInvalid += (s, e) =>
+            {
+                _blockValidationSemaphore.Release(1);
+            };
         }
 
         public ResultWrapper<ExecutePayloadResult> Handle(BlockRequestResult request)
@@ -92,6 +108,7 @@ namespace Nethermind.Merge.Plugin.Handlers
 
             _blockTree.SuggestBlock(processedBlock, true, null, true);
             executePayloadResult.EnumStatus = VerificationStatus.Valid;
+           // _blockValidationSemaphore.Wait();
             return ResultWrapper<ExecutePayloadResult>.Success(executePayloadResult);
         }
 
@@ -122,10 +139,10 @@ namespace Nethermind.Merge.Plugin.Handlers
                         bool validAndProcessed =
                             CheckInput(request)
                             && CheckParent(request.ParentHash, out BlockHeader? parent)
-                            && Process(block, parent!, out processedBlock);
+                             && Process(block, parent!, out processedBlock);
+ 
 
                         _latestBlocks.Set(request.BlockHash, validAndProcessed);
-
                         return validAndProcessed ? ValidationResult.Valid : ValidationResult.Invalid;
                     }
                 }
@@ -134,7 +151,6 @@ namespace Nethermind.Merge.Plugin.Handlers
             {
                 if (_logger.IsWarn) _logger.Warn($"Block {request} could not be parsed as block {AndWontBeAcceptedToTheTree}.");
             }
-
             return ValidationResult.Invalid;
         }
 
@@ -156,7 +172,7 @@ namespace Nethermind.Merge.Plugin.Handlers
         {
             block.Header.TotalDifficulty = parent.TotalDifficulty + block.Difficulty;
             
-            Keccak currentStateRoot = _stateProvider.ResetStateTo(parent.StateRoot!);
+         //   Keccak currentStateRoot = _stateProvider.ResetStateTo(parent.StateRoot!);
             try
             {
                 processedBlock = _processor.Process(block, GetProcessingOptions(), NullBlockTracer.Instance);
@@ -172,7 +188,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             }
             finally
             {
-                _stateProvider.ResetStateTo(currentStateRoot);
+       //         _stateProvider.ResetStateTo(currentStateRoot);
             }
 
             return true;

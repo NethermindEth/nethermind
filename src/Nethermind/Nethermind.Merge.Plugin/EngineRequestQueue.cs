@@ -19,6 +19,5 @@ namespace Nethermind.Merge.Plugin
 {
     public class EngineRequestQueue
     {
-        // ToDo
     }
 }

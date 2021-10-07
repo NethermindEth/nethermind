@@ -69,6 +69,11 @@ namespace Nethermind.Consensus.Processing
         {
             return _processor.IsProcessingBlocks(maxProcessingInterval);
         }
+        
+#pragma warning disable 67
+        public event EventHandler<BlockProcessedEventArgs> BlockProcessed;
+        public event EventHandler<BlockProcessedEventArgs> BlockInvalid;
+#pragma warning restore 67
 
         public void Dispose()
         {

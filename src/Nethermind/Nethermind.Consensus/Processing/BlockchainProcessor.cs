@@ -296,7 +296,7 @@ namespace Nethermind.Consensus.Processing
             PrepareBlocksToProcess(suggestedBlock, options, processingBranch);
 
             Stopwatch stopwatch = Stopwatch.StartNew();
-            Block[]? processedBlocks = ProcessBranch(processingBranch, options, tracer);
+            Block[]? processedBlocks = ProcessBranch(processingBranch, suggestedBlock, options, tracer);
             stopwatch.Stop();
             if (processedBlocks == null)
             {
@@ -340,6 +340,9 @@ namespace Nethermind.Consensus.Processing
                 return true;
         }
 
+        public event EventHandler<BlockProcessedEventArgs> BlockProcessed;
+        public event EventHandler<BlockProcessedEventArgs> BlockInvalid;
+
         private void TraceFailingBranch(ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer blockTracer, DumpOptions dumpType)
         {
             if ((_options.DumpOptions & dumpType) != 0)
@@ -364,6 +367,7 @@ namespace Nethermind.Consensus.Processing
         }
 
         private Block[]? ProcessBranch(ProcessingBranch processingBranch,
+            Block suggestedBlock,
             ProcessingOptions options,
             IBlockTracer tracer)
         {
@@ -391,6 +395,7 @@ namespace Nethermind.Consensus.Processing
             }
             catch (InvalidBlockException ex)
             {
+                BlockInvalid?.Invoke(this, new BlockProcessedEventArgs(suggestedBlock, Array.Empty<TxReceipt>()));
                 DeleteInvalidBlocks(ex.InvalidBlockHash);
                 
                 TraceFailingBranch(
@@ -413,6 +418,8 @@ namespace Nethermind.Consensus.Processing
 
                 processedBlocks = null;
             }
+            
+            BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(suggestedBlock, Array.Empty<TxReceipt>()));
 
             return processedBlocks;
         }

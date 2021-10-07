@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,25 +15,22 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
-using Nethermind.Core;
-using Nethermind.Core.Specs;
-using Nethermind.Db;
-using Nethermind.Logging;
-using Nethermind.Merge.Plugin.Handlers;
-using Nethermind.State;
-using Nethermind.Trie.Pruning;
-using Nethermind.TxPool;
 
-namespace Nethermind.Merge.Plugin.Test
+namespace Nethermind.Merge.Plugin.Data
 {
-    public class Eth2TestBlockProducerFactory : Eth2BlockProducerFactory
+    public class Eth2BlockProductionContext
     {
-        public Eth2TestBlockProducerFactory(IGasLimitCalculator gasLimitCalculator, ITxSource? txSource = null) : base(txSource, gasLimitCalculator)
+        public void Init(IBlockProducerEnvFactory blockProducerEnvFactory, ITxSource? additionalTxSource = null)
         {
+            BlockProductionTrigger = new BuildBlocksWhenRequested();
+            BlockProducerEnv = blockProducerEnvFactory.Create(additionalTxSource);
         }
+        
+        public IManualBlockProductionTrigger BlockProductionTrigger { get; set; }
+        
+        public BlockProducerEnv BlockProducerEnv { get; set; }
     }
 }

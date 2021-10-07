@@ -37,6 +37,7 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Test;
 using Nethermind.Mev.Data;
@@ -107,16 +108,15 @@ namespace Nethermind.Mev.Test
                     TransactionsExecutorFactory = new MevBlockProducerTransactionsExecutorFactory(SpecProvider, LogManager)
                 };
 
-                Eth2BlockProducer CreateEth2BlockProducer(IBlockProductionTrigger blockProductionTrigger, ITxSource? txSource = null) =>
-                    new Eth2TestBlockProducerFactory(GasLimitCalculator, txSource).Create(
-                        blockProducerEnvFactory,
-                        BlockTree,
-                        blockProductionTrigger,
-                        SpecProvider,
-                        Substitute.For<ISealEngine>(),
-                        Timestamper,
-                        miningConfig,
-                        LogManager);
+                Eth2BlockProducer CreateEth2BlockProducer(IBlockProductionTrigger blockProductionTrigger,
+                    ITxSource? txSource = null)
+                {
+                    Eth2BlockProductionContext? blockProductionContext = new Eth2BlockProductionContext();
+                    blockProductionContext.Init(blockProducerEnvFactory, txSource);
+                    return new Eth2BlockProducerFactory(BlockTree, SpecProvider, SealEngine, Timestamper, miningConfig,
+                        LogManager).Create(
+                        blockProductionContext, null, blockProductionTrigger);
+                }
 
                 MevBlockProducer.MevBlockProducerInfo CreateProducer(int bundleLimit = 0, ITxSource? additionalTxSource = null)
                 {

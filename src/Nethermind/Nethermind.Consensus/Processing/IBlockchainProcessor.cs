@@ -32,5 +32,9 @@ namespace Nethermind.Consensus.Processing
         Block? Process(Block block, ProcessingOptions options, IBlockTracer tracer);
 
         bool IsProcessingBlocks(ulong? maxProcessingInterval);
+        
+        event EventHandler<BlockProcessedEventArgs> BlockProcessed;
+        
+        event EventHandler<BlockProcessedEventArgs> BlockInvalid;
     }
 }

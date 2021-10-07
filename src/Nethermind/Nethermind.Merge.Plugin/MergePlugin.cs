@@ -51,22 +51,14 @@ namespace Nethermind.Merge.Plugin
             _mergeConfig = nethermindApi.Config<IMergeConfig>();
             _logger = _api.LogManager.GetClassLogger();
 
-            // if (_mergeConfig.Enabled)
+            if (_mergeConfig.Enabled)
             {
                 if (_api.DbProvider == null) throw new ArgumentException(nameof(_api.DbProvider));
                 if (_api.BlockTree == null) throw new ArgumentException(nameof(_api.BlockTree));
-                // if (string.IsNullOrEmpty(_mergeConfig.BlockAuthorAccount))
-                // {
-                //     if (_logger.IsError)
-                //         _logger.Error(
-                //             $"{nameof(MergeConfig)}.{nameof(_mergeConfig.BlockAuthorAccount)} is not set up. Cannot create blocks. Stopping.");
-                //     // TODO: where the 13 coming from?
-                //     Environment.Exit(13); // ERROR_INVALID_DATA
-                // }
+                
 
                 _poSSwitcher = new PoSSwitcher(_api.LogManager, _mergeConfig, _api.DbProvider.GetDb<IDb>(DbNames.Metadata), _api.BlockTree);
 
-                //_api.EngineSigner
                 Address address;
                 if (string.IsNullOrWhiteSpace(_mergeConfig.BlockAuthorAccount))
                 {
@@ -119,14 +111,14 @@ namespace Nethermind.Merge.Plugin
                 IInitConfig? initConfig = _api.Config<IInitConfig>();
                 _api.Config<IJsonRpcConfig>().EnableModules(ModuleType.Engine);
 
-                PayloadStorage payloadStorage = new(_idealBlockProductionTrigger, _emptyBlockProductionTrigger, _api.StateProvider, _api.BlockchainProcessor, initConfig, _api.LogManager);
+                PayloadStorage payloadStorage = new(_idealBlockProductionContext, _emptyBlockProductionContext, _api.StateProvider, _api.BlockchainProcessor, initConfig, _api.LogManager);
 
                 IEngineRpcModule engineRpcModule = new EngineRpcModule(
                     new PreparePayloadHandler(_api.BlockTree, payloadStorage, _manualTimestamper, _api.Sealer, _api.LogManager),
                     new GetPayloadHandler(payloadStorage, _api.LogManager),
                     new ExecutePayloadHandler(_api.BlockTree, _api.BlockchainProcessor,
                         _api.EthSyncingInfo, _api.StateProvider, _api.Config<IInitConfig>(),
-                        _api.LogManager),
+                        _api.BlockProducerEnvFactory, _api.LogManager),
                     _transitionProcessHandler,
                     new ForkChoiceUpdatedHandler(_api.BlockTree, _api.StateProvider, _blockFinalizationManager,
                         _poSSwitcher, _api.BlockConfirmationManager, _api.LogManager),

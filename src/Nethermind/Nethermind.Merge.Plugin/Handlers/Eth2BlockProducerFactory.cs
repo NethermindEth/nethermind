@@ -22,51 +22,56 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.Merge.Plugin.Handlers
 {
     public class Eth2BlockProducerFactory
     {
-        private readonly ITxSource? _additionalTxSource;
+        private readonly IBlockTree _blockTree;
+        private readonly ISpecProvider _specProvider;
+        private readonly ISealEngine _sealEngine;
+        private readonly ITimestamper _timestamper;
+        private readonly IMiningConfig _miningConfig;
+        private readonly ILogManager _logManager;
         private readonly IGasLimitCalculator? _gasLimitCalculator;
 
-        public Eth2BlockProducerFactory(ITxSource? additionalTxSource = null) : this(additionalTxSource, null)
-        {
-            _additionalTxSource = additionalTxSource;
-        }
-
-        protected Eth2BlockProducerFactory(ITxSource? additionalTxSource, IGasLimitCalculator? gasLimitCalculator)
-        {
-            _additionalTxSource = additionalTxSource;
-            _gasLimitCalculator = gasLimitCalculator;
-        }
-
-        public Eth2BlockProducer Create(
-            IBlockProducerEnvFactory blockProducerEnvFactory,
+        public Eth2BlockProducerFactory(
             IBlockTree blockTree,
-            IBlockProductionTrigger blockProductionTrigger,
             ISpecProvider specProvider,
             ISealEngine sealEngine,
             ITimestamper timestamper,
             IMiningConfig miningConfig,
-            ILogManager logManager)
+            ILogManager logManager,
+            IGasLimitCalculator? gasLimitCalculator = null)
         {
-            BlockProducerEnv producerEnv = GetProducerEnv(blockProducerEnvFactory);
-                
-            return new Eth2BlockProducer(
-                producerEnv.TxSource,
-                producerEnv.ChainProcessor,
-                blockTree,
-                blockProductionTrigger,
-                producerEnv.ReadOnlyStateProvider,
-                _gasLimitCalculator ?? new TargetAdjustedGasLimitCalculator(specProvider, miningConfig),
-                sealEngine,
-                timestamper,
-                specProvider,
-                logManager);
+            _blockTree = blockTree;
+            _specProvider = specProvider;
+            _sealEngine = sealEngine;
+            _timestamper = timestamper;
+            _miningConfig = miningConfig;
+            _logManager = logManager;
+            _gasLimitCalculator = gasLimitCalculator;
         }
 
-        protected BlockProducerEnv GetProducerEnv(IBlockProducerEnvFactory blockProducerEnvFactory) => 
-            blockProducerEnvFactory.Create(_additionalTxSource);
+        public Eth2BlockProducer Create(
+            Eth2BlockProductionContext eth2BlockProductionContext,
+            ITxSource? txSource = null,
+            IBlockProductionTrigger blockProductionTrigger = null) // ToDo temp hack with passing block production trigger for MEV & ETH2 
+        {
+            BlockProducerEnv producerEnv = eth2BlockProductionContext.BlockProducerEnv;
+                
+            return new Eth2BlockProducer(
+                txSource ?? producerEnv.TxSource,
+                producerEnv.ChainProcessor,
+                _blockTree,
+                blockProductionTrigger ?? eth2BlockProductionContext.BlockProductionTrigger,
+                producerEnv.ReadOnlyStateProvider,
+                _gasLimitCalculator ?? new TargetAdjustedGasLimitCalculator(_specProvider, _miningConfig),
+                _sealEngine,
+                _timestamper,
+                _specProvider,
+                _logManager);
+        }
     }
 }
