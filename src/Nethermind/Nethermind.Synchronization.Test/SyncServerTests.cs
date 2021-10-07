@@ -100,6 +100,7 @@ namespace Nethermind.Synchronization.Test
                 StaticSelector.Full,
                 new SyncConfig(),
                 NullWitnessCollector.Instance,
+                Policy.FullGossip,
                 LimboLogs.Instance);
 
             Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
@@ -141,6 +142,7 @@ namespace Nethermind.Synchronization.Test
                 StaticSelector.Full,
                 new SyncConfig(),
                 NullWitnessCollector.Instance,
+                Policy.FullGossip,
                 LimboLogs.Instance);
 
             Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
@@ -181,6 +183,7 @@ namespace Nethermind.Synchronization.Test
                 StaticSelector.Full,
                 new SyncConfig(),
                 NullWitnessCollector.Instance,
+                Policy.FullGossip,
                 LimboLogs.Instance);
 
             Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
@@ -212,6 +215,7 @@ namespace Nethermind.Synchronization.Test
                 StaticSelector.Full,
                 new SyncConfig(),
                 NullWitnessCollector.Instance,
+                Policy.FullGossip,
                 LimboLogs.Instance);
 
             Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
@@ -242,6 +246,7 @@ namespace Nethermind.Synchronization.Test
                     selector,
                     new SyncConfig(),
                     NullWitnessCollector.Instance,
+                    Policy.FullGossip,
                     LimboLogs.Instance);
             }
 

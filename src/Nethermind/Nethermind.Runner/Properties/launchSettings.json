@@ -36,6 +36,10 @@
       "commandName": "Project",
       "commandLineArgs": "--config configs\\goerli_archive.cfg --baseDbPath C:\\goerli_archive --JsonRpc.Enabled true"
     },
+    "Hacknet_v2": {
+      "commandName": "Project",
+      "commandLineArgs": "--config configs\\hacknet_v2.cfg --baseDbPath C:\\hacknet --JsonRpc.Enabled true"
+    },
     "Sokol": {
       "commandName": "Project",
       "commandLineArgs": "--JsonRpc.Enabled true --config configs\\sokol.cfg --baseDbPath C:\\nethermind_db"
