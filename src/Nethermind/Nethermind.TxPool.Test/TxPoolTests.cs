@@ -411,23 +411,7 @@ namespace Nethermind.TxPool.Test
 
             EnsureSenderBalance(TestItem.AddressA, (UInt256)(oneTxPrice * numberOfTxsPossibleToExecuteBeforeGasExhaustion));
 
-            for (int i = 0; i < numberOfStaleTxsInBucket; i++)
-            {
-                AddTransactionToTxPool(i);
-                _stateProvider.IncrementNonce(TestItem.AddressA);
-            }
-            
             for (int i = 0; i < numberOfTxsPossibleToExecuteBeforeGasExhaustion * 2; i++)
-            {
-                AddTransactionToTxPool(i);
-            }
-
-            int numberOfTxsInTxPool = _txPool.GetPendingTransactionsCount();
-            numberOfTxsInTxPool.Should().Be(numberOfTxsPossibleToExecuteBeforeGasExhaustion + numberOfStaleTxsInBucket);
-            _txPool.GetPendingTransactions()[numberOfTxsInTxPool - 1].Nonce.Should().Be((UInt256)(numberOfTxsInTxPool - 1));
-            
-            
-            void AddTransactionToTxPool(int i)
             {
                 Transaction tx = Build.A.Transaction
                     .WithSenderAddress(TestItem.AddressA)
@@ -437,7 +421,16 @@ namespace Nethermind.TxPool.Test
                     .WithValue(value)
                     .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
                 _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+
+                if (i < numberOfStaleTxsInBucket)
+                {
+                    _stateProvider.IncrementNonce(TestItem.AddressA);
+                }
             }
+
+            int numberOfTxsInTxPool = _txPool.GetPendingTransactionsCount();
+            numberOfTxsInTxPool.Should().Be(numberOfTxsPossibleToExecuteBeforeGasExhaustion + numberOfStaleTxsInBucket);
+            _txPool.GetPendingTransactions()[numberOfTxsInTxPool - 1].Nonce.Should().Be((UInt256)(numberOfTxsInTxPool - 1));
         }
 
         [Test]
