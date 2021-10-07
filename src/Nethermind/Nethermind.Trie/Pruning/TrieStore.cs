@@ -324,7 +324,7 @@ namespace Nethermind.Trie.Pruning
         internal byte[] LoadRlp(Keccak keccak, IKeyValueStore? keyValueStore)
         {
             keyValueStore ??= _keyValueStore;
-            byte[]? rlp = _currentBatch.Value?[keccak.Bytes.ToArray()] ?? keyValueStore[keccak.Bytes.ToArray()];
+            byte[]? rlp = _currentBatch?[keccak.Bytes.ToArray()] ?? keyValueStore[keccak.Bytes.ToArray()];
 
             if (rlp is null)
             {
@@ -649,7 +649,7 @@ namespace Nethermind.Trie.Pruning
 
                 if (_logger.IsTrace)
                     _logger.Trace($"Persisting {nameof(TrieNode)} {currentNode} in snapshot {blockNumber}.");
-                _currentBatch.Value[currentNode.Keccak.Bytes] = currentNode.FullRlp;
+                _currentBatch[currentNode.Keccak.Bytes.ToArray()] = currentNode.FullRlp;
                 currentNode.IsPersisted = true;
                 currentNode.LastSeen = blockNumber;
                 PersistedNodesCount++;
