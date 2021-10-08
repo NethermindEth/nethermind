@@ -28,7 +28,7 @@ namespace Nethermind.Facade
 {
     public interface IBlockchainBridge : ILogFinder
     {
-        Block BeamHead { get; }
+        Block HeadBlock { get; }
         bool IsMining { get; }
         void RecoverTxSenders(Block block);
         void RecoverTxSender(Transaction tx);

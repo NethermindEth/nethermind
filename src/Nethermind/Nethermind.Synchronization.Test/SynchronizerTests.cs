@@ -298,7 +298,6 @@ namespace Nethermind.Synchronization.Test
                     BlockTree,
                     NullReceiptStorage.Instance,
                     stateDb,
-                    new MemDb(),
                     new TrieStore(stateDb, LimboLogs.Instance),
                     syncConfig,
                     _logManager);

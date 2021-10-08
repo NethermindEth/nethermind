@@ -20,14 +20,10 @@ using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Baseline.Config;
 using Nethermind.Baseline.Database;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Db;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
-using Nethermind.Synchronization.BeamSync;
-using Nethermind.Synchronization.ParallelSync;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Baseline.Test
@@ -84,21 +80,6 @@ namespace Nethermind.Baseline.Test
             Assert.AreEqual(2, readonlyDbProvider.RegisteredDbs.Count());
             Assert.IsTrue(readonlyDbProvider.GetDb<IDb>(BaselineDbNames.BaselineTree) is ReadOnlyDb);
             Assert.IsTrue(readonlyDbProvider.GetDb<IDb>(BaselineDbNames.BaselineTreeMetadata) is ReadOnlyDb);
-        }
-
-        [Test]
-        public async Task ProviderInitTests_BeamSyncDbProvider()
-        {
-            var syncModeSelector = Substitute.For<ISyncModeSelector>();
-            var dbProvider = TestMemDbProvider.Init();
-            var rocksDbFactory = new RocksDbFactory(new DbConfig(), LimboLogs.Instance, Path.Combine(_folderWithDbs, "beam"));
-            IDbProvider beamSyncDbProvider = new BeamSyncDbProvider(syncModeSelector, dbProvider, new SyncConfig(), LimboLogs.Instance);
-            var initializer = new BaselineDbInitializer(beamSyncDbProvider, new BaselineConfig(), rocksDbFactory, new MemDbFactory());
-            await initializer.Init();
-            Assert.NotNull(beamSyncDbProvider.GetDb<IDb>(BaselineDbNames.BaselineTree));
-            Assert.NotNull(beamSyncDbProvider.GetDb<IDb>(BaselineDbNames.BaselineTreeMetadata));
-            Assert.IsTrue(beamSyncDbProvider.GetDb<IDb>(BaselineDbNames.BaselineTree) is MemDb);
-            Assert.IsTrue(beamSyncDbProvider.GetDb<IDb>(BaselineDbNames.BaselineTreeMetadata) is MemDb);
         }
 
         [OneTimeTearDown]

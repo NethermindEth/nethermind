@@ -77,11 +77,8 @@ namespace Nethermind.Blockchain.Processing
             _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
             _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
             _options = options;
-
-            if (_options.AutoProcess)
-            {
-                _blockTree.NewBestSuggestedBlock += OnNewBestBlock;
-            }
+            
+            _blockTree.NewBestSuggestedBlock += OnNewBestBlock;
             _blockTree.NewHeadBlock += OnNewHeadBlock;
 
             _stats = new ProcessingStats(_logger);
@@ -469,8 +466,11 @@ namespace Nethermind.Blockchain.Processing
                     break;
                 }
 
+                // !!!
                 // for beam sync we do not expect previous blocks to necessarily be there and we
                 // do not need them since we can requests state from outside
+                // TODO: remove this and verify the current usage scenarios - seems wrong
+                // !!!
                 if ((options & ProcessingOptions.IgnoreParentNotOnMainChain) != 0)
                 {
                     break;
@@ -583,11 +583,6 @@ namespace Nethermind.Blockchain.Processing
             public static Options Default = new();
 
             public bool StoreReceiptsByDefault { get; set; } = true;
-
-            /// <summary>
-            /// Registers for OnNewHeadBlock events at block tree. 
-            /// </summary>
-            public bool AutoProcess { get; set; } = true;
 
             public DumpOptions DumpOptions { get; set; } = DumpOptions.None;
         }
