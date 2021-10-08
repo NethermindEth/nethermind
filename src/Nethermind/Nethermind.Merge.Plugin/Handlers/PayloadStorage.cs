@@ -104,6 +104,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             // bool __ = _payloadStorage.TryUpdate(payloadId, idealBlockTaskTuple, emptyBlockTaskTuple);
 
             // remove after 12 seconds, it will not be needed
+<<<<<<< HEAD
             // ToDo uncomment
             // await Task.Delay(TimeSpan.FromSeconds(_cleanupDelay), CancellationToken.None)
             //     .ContinueWith(_ =>
@@ -111,6 +112,9 @@ namespace Nethermind.Merge.Plugin.Handlers
             //         if (_logger.IsDebug) _logger.Debug($"Cleaning up payload {payloadId}");
             //     });
             // CleanupOldPayload(payloadId);
+=======
+            await CleanupOldPayloadWithDelay(payloadId, TimeSpan.FromSeconds(_cleanupDelay));
+>>>>>>> themerge
         }
 
 
@@ -172,11 +176,18 @@ namespace Nethermind.Merge.Plugin.Handlers
             }
         }
 
-        public void CleanupOldPayload(ulong payloadId)
+        private async Task CleanupOldPayloadWithDelay(ulong payloadId, TimeSpan delay)
+        {
+            await Task.Delay(delay, CancellationToken.None);
+            CleanupOldPayload(payloadId);
+        }
+
+        private void CleanupOldPayload(ulong payloadId)
         {
             if (_payloadStorage.ContainsKey(payloadId))
             {
                 _payloadStorage.Remove(payloadId, out _);
+                if (_logger.IsInfo) _logger.Info($"Cleaned up payload with id={payloadId} as it was not requested");
             }
         }
 

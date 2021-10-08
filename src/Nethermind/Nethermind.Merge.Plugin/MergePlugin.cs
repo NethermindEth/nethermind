@@ -37,7 +37,7 @@ namespace Nethermind.Merge.Plugin
         private INethermindApi _api = null!;
         private ILogger _logger = null!;
         private IMergeConfig _mergeConfig = null!;
-        private IPoSSwitcher _poSSwitcher = null!;
+        private IPoSSwitcher _poSSwitcher = NoPoS.Instance;
         private ITransitionProcessHandler _transitionProcessHandler => (ITransitionProcessHandler)_poSSwitcher;
         private ManualBlockFinalizationManager _blockFinalizationManager = null!;
 
@@ -88,9 +88,6 @@ namespace Nethermind.Merge.Plugin
             
             if (_mergeConfig.Enabled)
             {
-                ISyncConfig syncConfig = _api.Config<ISyncConfig>();
-                syncConfig.SynchronizationEnabled = false;
-                syncConfig.BlockGossipEnabled = false;
                 _blockFinalizationManager = new ManualBlockFinalizationManager();
                 _api.FinalizationManager = _blockFinalizationManager;
             }
@@ -109,7 +106,6 @@ namespace Nethermind.Merge.Plugin
                 if (_api.StateProvider is null) throw new ArgumentNullException(nameof(_api.StateProvider));
 
                 IInitConfig? initConfig = _api.Config<IInitConfig>();
-                _api.Config<IJsonRpcConfig>().EnableModules(ModuleType.Engine);
 
                 PayloadStorage payloadStorage = new(_idealBlockProductionContext, _emptyBlockProductionContext, _api.StateProvider, _api.BlockchainProcessor, initConfig, _api.LogManager);
 

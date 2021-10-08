@@ -547,7 +547,7 @@ namespace Nethermind.State
                     }
                     case ChangeType.New:
                     {
-                        if (!releaseSpec.IsEip158Enabled || !change.Account.IsEmpty || isGenesis)
+                        if (!releaseSpec.IsEip158Enabled || !change.Account.IsEmpty)
                         {
                             if (_logger.IsTrace) _logger.Trace($"  Commit create {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
                             SetState(change.Address, change.Account);

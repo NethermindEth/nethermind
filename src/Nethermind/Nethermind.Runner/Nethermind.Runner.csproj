@@ -89,6 +89,9 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>
+    <Content Update="..\Chains\themerge_devnet_m4.json">
+      <Link>chainspec\themerge_devnet_m4.json</Link>
+    </Content>
   </ItemGroup>
   <ItemGroup>
     <Content Update="NLog.config">
@@ -108,9 +111,8 @@
     <None Remove="keystore\**" />
   </ItemGroup>
   <ItemGroup>
-    <PluginsForBuild Include="$(OutputPath)\Nethermind.Merge.Plugin.*;&#xA;                              $(OutputPath)\Nethermind.Mev.*;&#xA;                              $(OutputPath)\Nethermind.HealthChecks.*;&#xA;                              $(OutputPath)\Nethermind.Consensus.*.*" />
-    
-    <PluginsForPublish Include="$(OutputPath)\Nethermind.Merge.Plugin.dll;&#xA;                                $(OutputPath)\Nethermind.Mev.dll;&#xA;                                $(OutputPath)\Nethermind.HealthChecks.dll;&#xA;                                $(OutputPath)\Nethermind.Consensus.*.dll" />
+    <PluginsForBuild Include="&#xA;    $(OutputPath)\Nethermind.Merge.Plugin.*;&#xA;    $(OutputPath)\Nethermind.Mev.*;&#xA;    $(OutputPath)\Nethermind.HealthChecks.*;&#xA;    $(OutputPath)\Nethermind.Consensus.*.*" />
+    <PluginsForPublish Include="&#xA;    $(OutputPath)\Nethermind.Merge.Plugin.dll;&#xA;    $(OutputPath)\Nethermind.Mev.dll;&#xA;    $(OutputPath)\Nethermind.HealthChecks.dll;&#xA;    $(OutputPath)\Nethermind.Consensus.*.dll" />
   </ItemGroup>
   <ItemGroup>
     <GitHash Include="git-hash" />

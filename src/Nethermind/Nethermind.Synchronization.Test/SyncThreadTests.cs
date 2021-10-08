@@ -378,6 +378,7 @@ namespace Nethermind.Synchronization.Test
                 selector,
                 syncConfig,
                 NullWitnessCollector.Instance,
+                Policy.FullGossip,
                 logManager);
 
             ManualResetEventSlim waitEvent = new();
