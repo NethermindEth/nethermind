@@ -63,7 +63,9 @@ namespace Nethermind.Merge.Plugin
                 //     Environment.Exit(13); // ERROR_INVALID_DATA
                 // }
 
-                _poSSwitcher = new PoSSwitcher(_api.LogManager, _mergeConfig, _api.DbProvider.GetDb<IDb>(DbNames.Metadata), _api.BlockTree);
+                _poSSwitcher = new PoSSwitcher(_api.LogManager, _mergeConfig,
+                    _api.DbProvider.GetDb<IDb>(DbNames.Metadata), _api.BlockTree);
+                _blockFinalizationManager = new ManualBlockFinalizationManager();
 
                 //_api.EngineSigner
                 Address address;
@@ -75,7 +77,7 @@ namespace Nethermind.Merge.Plugin
                 {
                     address = new Address(_mergeConfig.BlockAuthorAccount);
                 }
-                
+
                 ISigner signer = new Eth2Signer(address);
 
                 _api.RewardCalculatorSource = new MergeRewardCalculatorSource(
@@ -83,7 +85,7 @@ namespace Nethermind.Merge.Plugin
                 _api.SealEngine = new MergeSealEngine(_api.SealEngine, _poSSwitcher, signer, _api.LogManager);
                 _api.SealValidator = _api.SealEngine;
                 _api.Sealer = _api.SealEngine;
-                _api.GossipPolicy = new MergeGossipPolicy(_api.GossipPolicy, _poSSwitcher);
+                _api.GossipPolicy = new MergeGossipPolicy(_api.GossipPolicy, _poSSwitcher, _blockFinalizationManager);
             }
 
             return Task.CompletedTask;
@@ -91,18 +93,17 @@ namespace Nethermind.Merge.Plugin
 
         public Task InitNetworkProtocol()
         {
-            _api.HealthHintService =
-                new MergeHealthHintService(_api.HealthHintService, _poSSwitcher);
-            
             if (_mergeConfig.Enabled)
             {
-                _blockFinalizationManager = new ManualBlockFinalizationManager();
+                _api.HealthHintService =
+                    new MergeHealthHintService(_api.HealthHintService, _poSSwitcher);
+
                 _api.FinalizationManager = _blockFinalizationManager;
             }
-            
+
             return Task.CompletedTask;
         }
-        
+
         public async Task InitRpcModules()
         {
             if (_mergeConfig.Enabled)
@@ -115,14 +116,16 @@ namespace Nethermind.Merge.Plugin
 
                 IInitConfig? initConfig = _api.Config<IInitConfig>();
 
-                PayloadStorage payloadStorage = new(_idealBlockProductionTrigger, _emptyBlockProductionTrigger, _api.StateProvider, _api.BlockchainProcessor, initConfig, _api.LogManager);
+                PayloadStorage payloadStorage = new(_idealBlockProductionTrigger, _emptyBlockProductionTrigger,
+                    _api.StateProvider, _api.BlockchainProcessor, initConfig, _api.LogManager);
 
                 PostMergeHeaderValidator postPostMergeHeaderValidator = new(
                     _api.BlockTree,
                     _api.SpecProvider,
                     _api.LogManager);
                 IEngineRpcModule engineRpcModule = new EngineRpcModule(
-                    new PreparePayloadHandler(_api.BlockTree, payloadStorage, _manualTimestamper, _api.Sealer, _api.LogManager),
+                    new PreparePayloadHandler(_api.BlockTree, payloadStorage, _manualTimestamper, _api.Sealer,
+                        _api.LogManager),
                     new GetPayloadHandler(payloadStorage, _api.LogManager),
                     new ExecutePayloadHandler(
                         postPostMergeHeaderValidator,
