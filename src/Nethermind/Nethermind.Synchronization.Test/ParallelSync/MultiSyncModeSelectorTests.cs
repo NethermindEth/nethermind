@@ -1116,6 +1116,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
         {
             Scenario.GoesLikeThis()
                 .IfThisNodeJustFinishedFastBlocksAndFastSync(FastBlocksState.FinishedHeaders)
+                .WhenFastSyncWithFastBlocksIsConfigured()
                 .AndPeersMovedSlightlyForward()
                 .TheSyncModeShouldBe(SyncMode.StateNodes | SyncMode.FastSync);
         }
