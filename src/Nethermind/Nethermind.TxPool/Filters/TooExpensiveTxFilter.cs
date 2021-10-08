@@ -55,7 +55,12 @@ namespace Nethermind.TxPool.Filters
 
             for (int i = 0; i < transactions.Length; i++)
             {
-                if (transactions[i].Nonce < tx.Nonce && transactions[i].Nonce >= account.Nonce)
+                if (transactions[i].Nonce < account.Nonce)
+                {
+                    continue;
+                }
+
+                if (transactions[i].Nonce < tx.Nonce)
                 {
                     overflow |= UInt256.MultiplyOverflow(
                         transactions[i].CalculateEffectiveGasPrice(spec.IsEip1559Enabled, _headInfo.CurrentBaseFee),
@@ -64,6 +69,10 @@ namespace Nethermind.TxPool.Filters
 
                     overflow |= UInt256.AddOverflow(cumulativeCost, txCost, out cumulativeCost);
                     overflow |= UInt256.AddOverflow(cumulativeCost, tx.Value, out cumulativeCost);
+                }
+                else
+                {
+                    break;
                 }
             }
 
