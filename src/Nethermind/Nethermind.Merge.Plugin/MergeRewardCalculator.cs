@@ -34,12 +34,9 @@ namespace Nethermind.Merge.Plugin
 
         public BlockReward[] CalculateRewards(Block block)
         {
-            if (block.TotalDifficulty - block.Difficulty <= _mergeConfig.TerminalTotalDifficulty)
+            if (block.TotalDifficulty - block.Difficulty < _mergeConfig.TerminalTotalDifficulty)
             {
-                if (block.TotalDifficulty > _mergeConfig.TerminalTotalDifficulty)
-                {
-                    return _beforeTheMerge.CalculateRewards(block);
-                }
+                return _beforeTheMerge.CalculateRewards(block);
             }
 
             block.Header.IsPostMerge = true;
