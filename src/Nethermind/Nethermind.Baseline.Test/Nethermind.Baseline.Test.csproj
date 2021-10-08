@@ -63,10 +63,6 @@
         <Link>configs\goerli_archive.cfg</Link>
 		<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       </Content>
-      <Content Include="..\Nethermind.Runner\configs\goerli_beam.cfg">
-        <Link>configs\goerli_beam.cfg</Link>
-		<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      </Content>
       <Content Include="..\Nethermind.Runner\configs\goerli_nchain.cfg">
         <Link>configs\goerli_nchain.cfg</Link>
 		<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
@@ -89,10 +85,6 @@
       </Content>
       <Content Include="..\Nethermind.Runner\configs\mainnet_archive.cfg">
         <Link>configs\mainnet_archive.cfg</Link>
-		<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      </Content>
-      <Content Include="..\Nethermind.Runner\configs\mainnet_beam.cfg">
-        <Link>configs\mainnet_beam.cfg</Link>
 		<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       </Content>
       <Content Include="..\Nethermind.Runner\configs\ndm_consumer_goerli.cfg">
@@ -123,10 +115,6 @@
         <Link>configs\poacore_archive.cfg</Link>
 		<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       </Content>
-      <Content Include="..\Nethermind.Runner\configs\poacore_beam.cfg">
-        <Link>configs\poacore_beam.cfg</Link>
-		<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      </Content>
       <Content Include="..\Nethermind.Runner\configs\poacore_validator.cfg">
         <Link>configs\poacore_validator.cfg</Link>
 		<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
@@ -139,20 +127,12 @@
         <Link>configs\rinkeby_archive.cfg</Link>
 		<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       </Content>
-      <Content Include="..\Nethermind.Runner\configs\rinkeby_beam.cfg">
-        <Link>configs\rinkeby_beam.cfg</Link>
-		<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      </Content>
       <Content Include="..\Nethermind.Runner\configs\ropsten.cfg">
         <Link>configs\ropsten.cfg</Link>
 		<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       </Content>
       <Content Include="..\Nethermind.Runner\configs\ropsten_archive.cfg">
         <Link>configs\ropsten_archive.cfg</Link>
-		<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      </Content>
-      <Content Include="..\Nethermind.Runner\configs\ropsten_beam.cfg">
-        <Link>configs\ropsten_beam.cfg</Link>
 		<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       </Content>
       <Content Include="..\Nethermind.Runner\configs\sokol.cfg">
