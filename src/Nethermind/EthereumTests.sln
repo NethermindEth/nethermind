@@ -1,31 +1,31 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 #
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.Blockchain.Block.Test", "Ethereum.Blockchain.Block.Test\Ethereum.Blockchain.Block.Test.csproj", "{D841A8D7-BF03-4481-9CCB-014F67318DCA}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.Blockchain.Block.Test", "_ethereumTests\Ethereum.Blockchain.Block.Test\Ethereum.Blockchain.Block.Test.csproj", "{D841A8D7-BF03-4481-9CCB-014F67318DCA}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.Blockchain.Test", "Ethereum.Blockchain.Test\Ethereum.Blockchain.Test.csproj", "{1717CD2A-1B8A-4F0E-A930-C6DA62AD19C7}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.Blockchain.Test", "_ethereumTests\Ethereum.Blockchain.Test\Ethereum.Blockchain.Test.csproj", "{1717CD2A-1B8A-4F0E-A930-C6DA62AD19C7}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.Basic.Test", "Ethereum.Basic.Test\Ethereum.Basic.Test.csproj", "{75966133-1F56-439C-A038-5921FA3AD2B2}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.Basic.Test", "_ethereumTests\Ethereum.Basic.Test\Ethereum.Basic.Test.csproj", "{75966133-1F56-439C-A038-5921FA3AD2B2}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.HexPrefix.Test", "Ethereum.HexPrefix.Test\Ethereum.HexPrefix.Test.csproj", "{FDCE3436-C141-4CFE-8341-FB4ED70C7872}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.HexPrefix.Test", "_ethereumTests\Ethereum.HexPrefix.Test\Ethereum.HexPrefix.Test.csproj", "{FDCE3436-C141-4CFE-8341-FB4ED70C7872}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.KeyAddress.Test", "Ethereum.KeyAddress.Test\Ethereum.KeyAddress.Test.csproj", "{BAF266CC-AA84-455A-BD5C-2F25EFAD571E}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.KeyAddress.Test", "_ethereumTests\Ethereum.KeyAddress.Test\Ethereum.KeyAddress.Test.csproj", "{BAF266CC-AA84-455A-BD5C-2F25EFAD571E}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.PoW.Test", "Ethereum.PoW.Test\Ethereum.PoW.Test.csproj", "{6E3A227E-D8C5-4CF9-BE8D-6970355D1BD1}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.PoW.Test", "_ethereumTests\Ethereum.PoW.Test\Ethereum.PoW.Test.csproj", "{6E3A227E-D8C5-4CF9-BE8D-6970355D1BD1}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.Rlp.Test", "Ethereum.Rlp.Test\Ethereum.Rlp.Test.csproj", "{A750010A-2CE2-4607-A156-3B1B5EEB50DA}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.Rlp.Test", "_ethereumTests\Ethereum.Rlp.Test\Ethereum.Rlp.Test.csproj", "{A750010A-2CE2-4607-A156-3B1B5EEB50DA}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.Test.Base", "Ethereum.Test.Base\Ethereum.Test.Base.csproj", "{FCF42F2D-7059-4261-A94B-6634E787C3DF}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.Test.Base", "_ethereumTests\Ethereum.Test.Base\Ethereum.Test.Base.csproj", "{FCF42F2D-7059-4261-A94B-6634E787C3DF}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.Transaction.Test", "Ethereum.Transaction.Test\Ethereum.Transaction.Test.csproj", "{2CA23542-9162-4F26-9637-0316AEC32D49}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.Transaction.Test", "_ethereumTests\Ethereum.Transaction.Test\Ethereum.Transaction.Test.csproj", "{2CA23542-9162-4F26-9637-0316AEC32D49}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.Transition.Test", "Ethereum.Transition.Test\Ethereum.Transition.Test.csproj", "{3F9CCB9E-BCEB-4C51-843F-F55EB5F30B60}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.Transition.Test", "_ethereumTests\Ethereum.Transition.Test\Ethereum.Transition.Test.csproj", "{3F9CCB9E-BCEB-4C51-843F-F55EB5F30B60}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.Trie.Test", "Ethereum.Trie.Test\Ethereum.Trie.Test.csproj", "{A7DF8515-E661-4648-AE00-20E1DAE280A2}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.Trie.Test", "_ethereumTests\Ethereum.Trie.Test\Ethereum.Trie.Test.csproj", "{A7DF8515-E661-4648-AE00-20E1DAE280A2}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.VM.Test", "Ethereum.VM.Test\Ethereum.VM.Test.csproj", "{5C6CB70E-5C95-4FE6-B39A-7D247FDCD013}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.VM.Test", "_ethereumTests\Ethereum.VM.Test\Ethereum.VM.Test.csproj", "{5C6CB70E-5C95-4FE6-B39A-7D247FDCD013}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.Difficulty.Test", "Ethereum.Difficulty.Test\Ethereum.Difficulty.Test.csproj", "{F3A44614-28F1-4A62-9C5B-CD4474CB300F}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.Difficulty.Test", "_ethereumTests\Ethereum.Difficulty.Test\Ethereum.Difficulty.Test.csproj", "{F3A44614-28F1-4A62-9C5B-CD4474CB300F}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Blockchain.Test.Runner", "Nethermind.Blockchain.Test.Runner\Nethermind.Blockchain.Test.Runner.csproj", "{3FB32DB0-2271-47BC-9DC6-27108F5DEF16}"
 EndProject
@@ -69,9 +69,9 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Trie", "Nethermi
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Consensus", "Nethermind.Consensus\Nethermind.Consensus.csproj", "{38AF1B0B-E647-4A29-AEF1-D3EF2CCD1DD2}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.Blockchain.Legacy.Test", "Ethereum.Blockchain.Legacy.Test\Ethereum.Blockchain.Legacy.Test.csproj", "{9EF378E6-8676-4CC9-9678-95CB389C6CD8}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.Blockchain.Legacy.Test", "_ethereumTests\Ethereum.Blockchain.Legacy.Test\Ethereum.Blockchain.Legacy.Test.csproj", "{9EF378E6-8676-4CC9-9678-95CB389C6CD8}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.Blockchain.Block.Legacy.Test", "Ethereum.Blockchain.Block.Legacy.Test\Ethereum.Blockchain.Block.Legacy.Test.csproj", "{14DC2EEE-9E39-47B9-9E3D-C75D6CFA2DF5}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.Blockchain.Block.Legacy.Test", "_ethereumTests\Ethereum.Blockchain.Block.Legacy.Test\Ethereum.Blockchain.Block.Legacy.Test.csproj", "{14DC2EEE-9E39-47B9-9E3D-C75D6CFA2DF5}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Specs", "Nethermind.Specs\Nethermind.Specs.csproj", "{E8099D67-83AD-4F8A-9BAD-209753EC2E33}"
 EndProject
@@ -81,7 +81,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Serialization.Js
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Int256", "..\int256\src\Nethermind.Int256\Nethermind.Int256.csproj", "{5F580B6C-8770-4DC6-B9CE-35F6151A183B}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.Abi.Test", "Ethereum.Abi.Test\Ethereum.Abi.Test.csproj", "{E0EAF613-4BC5-4728-B422-F0BE1BC3683E}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.Abi.Test", "_ethereumTests\Ethereum.Abi.Test\Ethereum.Abi.Test.csproj", "{E0EAF613-4BC5-4728-B422-F0BE1BC3683E}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Evm.Test", "Nethermind.Evm.Test\Nethermind.Evm.Test.csproj", "{3E068BF0-5D69-4A82-840F-DD9961EF38A3}"
 EndProject
