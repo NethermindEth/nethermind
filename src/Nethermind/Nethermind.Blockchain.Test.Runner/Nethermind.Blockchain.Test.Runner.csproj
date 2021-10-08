@@ -37,6 +37,7 @@
     <ProjectReference Include="..\Nethermind.Evm\Nethermind.Evm.csproj" />
     <ProjectReference Include="..\Nethermind.Logging.NLog\Nethermind.Logging.NLog.csproj" />
     <ProjectReference Include="..\Nethermind.Logging\Nethermind.Logging.csproj" />
+    <ProjectReference Include="..\_ethereumTests\Ethereum.Test.Base\Ethereum.Test.Base.csproj" />
   </ItemGroup>
   <ItemGroup>
     <None Remove="NLog.config" />
