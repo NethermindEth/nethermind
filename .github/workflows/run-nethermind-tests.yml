@@ -78,7 +78,7 @@ jobs:
         dotnet test -c Release src/Nethermind/_beaconNode/Nethermind.Core2.Test
     - name: Nethermind.Cryptography.Bls.Test
       run: |
-        dotnet test -c Release src/Nethermind/Nethermind.Cryptography.Bls.Test
+        dotnet test -c Release src/Nethermind/_beaconNode/Nethermind.Cryptography.Bls.Test
     - name: Nethermind.Network.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Network.Test
