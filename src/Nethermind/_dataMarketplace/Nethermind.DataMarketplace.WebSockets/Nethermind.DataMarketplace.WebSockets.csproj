@@ -11,11 +11,11 @@
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
+      <ProjectReference Include="..\..\Nethermind.Core\Nethermind.Core.csproj" />
       <ProjectReference Include="..\Nethermind.DataMarketplace.Channels\Nethermind.DataMarketplace.Channels.csproj" />
       <ProjectReference Include="..\Nethermind.DataMarketplace.Core\Nethermind.DataMarketplace.Core.csproj" />
       <ProjectReference Include="..\Nethermind.DataMarketplace.Infrastructure\Nethermind.DataMarketplace.Infrastructure.csproj" />
-      <ProjectReference Include="..\Nethermind.Sockets\Nethermind.Sockets.csproj" />
+      <ProjectReference Include="..\..\Nethermind.Sockets\Nethermind.Sockets.csproj" />
     </ItemGroup>
 
 </Project>

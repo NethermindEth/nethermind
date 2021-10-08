@@ -8,14 +8,14 @@
     <ItemGroup>
       <ProjectReference Include="..\Nethermind.DataMarketplace.Providers.Plugins\Nethermind.DataMarketplace.Providers.Plugins.csproj" />
       <ProjectReference Include="..\Nethermind.DataMarketplace.Providers\Nethermind.DataMarketplace.Providers.csproj" />
-      <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />
+      <ProjectReference Include="..\..\Nethermind.Api\Nethermind.Api.csproj" />
       <ProjectReference Include="..\Nethermind.DataMarketplace.Core\Nethermind.DataMarketplace.Core.csproj" />
       <ProjectReference Include="..\Nethermind.DataMarketplace.Infrastructure\Nethermind.DataMarketplace.Infrastructure.csproj" />
       <ProjectReference Include="..\Nethermind.DataMarketplace.Initializers\Nethermind.DataMarketplace.Initializers.csproj" />
       <ProjectReference Include="..\Nethermind.DataMarketplace.Subprotocols\Nethermind.DataMarketplace.Subprotocols.csproj" />
-      <ProjectReference Include="..\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj" />
-      <ProjectReference Include="..\Nethermind.Config\Nethermind.Config.csproj" />
-      <ProjectReference Include="..\Nethermind.Sockets\Nethermind.Sockets.csproj" />
+      <ProjectReference Include="..\..\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj" />
+      <ProjectReference Include="..\..\Nethermind.Config\Nethermind.Config.csproj" />
+      <ProjectReference Include="..\..\Nethermind.Sockets\Nethermind.Sockets.csproj" />
     </ItemGroup>
 
     <ItemGroup>

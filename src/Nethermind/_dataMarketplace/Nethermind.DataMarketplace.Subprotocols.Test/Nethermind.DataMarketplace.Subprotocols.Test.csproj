@@ -20,9 +20,9 @@
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\Nethermind.Core.Test\Nethermind.Core.Test.csproj" />
+      <ProjectReference Include="..\..\Nethermind.Core.Test\Nethermind.Core.Test.csproj" />
       <ProjectReference Include="..\Nethermind.DataMarketplace.Subprotocols\Nethermind.DataMarketplace.Subprotocols.csproj" />
-      <ProjectReference Include="..\Nethermind.Network\Nethermind.Network.csproj" />
+      <ProjectReference Include="..\..\Nethermind.Network\Nethermind.Network.csproj" />
     </ItemGroup>
 
 </Project>

@@ -6,10 +6,10 @@
       <RootNamespace>Nethermind.Vault</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\Nethermind.Cli\Nethermind.Cli.csproj" />
-    <ProjectReference Include="..\Nethermind.Logging\Nethermind.Logging.csproj" />
-    <ProjectReference Include="..\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj" />
-    <ProjectReference Include="..\Nethermind.Config\Nethermind.Config.csproj" />
+    <ProjectReference Include="..\..\Nethermind.Cli\Nethermind.Cli.csproj" />
+    <ProjectReference Include="..\..\Nethermind.Logging\Nethermind.Logging.csproj" />
+    <ProjectReference Include="..\..\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj" />
+    <ProjectReference Include="..\..\Nethermind.Config\Nethermind.Config.csproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Google.Protobuf" Version="3.14.0" />

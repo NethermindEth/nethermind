@@ -10,7 +10,7 @@
       <ProjectReference Include="..\Nethermind.DataMarketplace.Consumers.Infrastructure\Nethermind.DataMarketplace.Consumers.Infrastructure.csproj" />
       <ProjectReference Include="..\Nethermind.DataMarketplace.Core\Nethermind.DataMarketplace.Core.csproj" />
       <ProjectReference Include="..\Nethermind.DataMarketplace.Infrastructure\Nethermind.DataMarketplace.Infrastructure.csproj" />
-      <ProjectReference Include="..\Nethermind.Network\Nethermind.Network.csproj" />
+      <ProjectReference Include="..\..\Nethermind.Network\Nethermind.Network.csproj" />
     </ItemGroup>
 
 </Project>

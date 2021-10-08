@@ -17,7 +17,7 @@
     <ItemGroup>
       <ProjectReference Include="..\Nethermind.DataMarketplace.Providers.Infrastructure\Nethermind.DataMarketplace.Providers.Infrastructure.csproj" />
       <ProjectReference Include="..\Nethermind.DataMarketplace.Providers\Nethermind.DataMarketplace.Providers.csproj" />
-      <ProjectReference Include="..\Nethermind.Core.Test\Nethermind.Core.Test.csproj" />
+      <ProjectReference Include="..\..\Nethermind.Core.Test\Nethermind.Core.Test.csproj" />
       <ProjectReference Include="..\Nethermind.DataMarketplace.Test\Nethermind.DataMarketplace.Test.csproj" />
     </ItemGroup>
 

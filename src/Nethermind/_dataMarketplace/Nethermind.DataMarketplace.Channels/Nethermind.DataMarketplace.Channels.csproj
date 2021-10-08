@@ -12,7 +12,7 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
+      <ProjectReference Include="..\..\Nethermind.Core\Nethermind.Core.csproj" />
     </ItemGroup>
 
 </Project>

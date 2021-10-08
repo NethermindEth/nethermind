@@ -22,7 +22,7 @@
 
     <ItemGroup>
       <ProjectReference Include="..\Nethermind.DataMarketplace.WebSockets\Nethermind.DataMarketplace.WebSockets.csproj" />
-      <ProjectReference Include="..\Nethermind.Sockets\Nethermind.Sockets.csproj" />
+      <ProjectReference Include="..\..\Nethermind.Sockets\Nethermind.Sockets.csproj" />
     </ItemGroup>
 
 </Project>

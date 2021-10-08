@@ -24,7 +24,7 @@
       <ProjectReference Include="..\Nethermind.DataMarketplace.Channels.Grpc\Nethermind.DataMarketplace.Channels.Grpc.csproj" />
       <ProjectReference Include="..\Nethermind.DataMarketplace.Channels\Nethermind.DataMarketplace.Channels.csproj" />
       <ProjectReference Include="..\Nethermind.DataMarketplace.WebSockets\Nethermind.DataMarketplace.WebSockets.csproj" />
-      <ProjectReference Include="..\Nethermind.Sockets\Nethermind.Sockets.csproj" />
+      <ProjectReference Include="..\..\Nethermind.Sockets\Nethermind.Sockets.csproj" />
     </ItemGroup>
 
 </Project>

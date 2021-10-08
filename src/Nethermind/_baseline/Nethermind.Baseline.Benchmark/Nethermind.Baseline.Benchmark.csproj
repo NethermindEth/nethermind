@@ -17,8 +17,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Baseline\Nethermind.Baseline.csproj" />
-    <ProjectReference Include="..\Nethermind.Blockchain\Nethermind.Blockchain.csproj" />
-    <ProjectReference Include="..\Nethermind.Core.Test\Nethermind.Core.Test.csproj" />
+    <ProjectReference Include="..\..\Nethermind.Blockchain\Nethermind.Blockchain.csproj" />
+    <ProjectReference Include="..\..\Nethermind.Core.Test\Nethermind.Core.Test.csproj" />
   </ItemGroup>
 
 </Project>

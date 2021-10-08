@@ -26,14 +26,14 @@
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\Nethermind.Blockchain.Test\Nethermind.Blockchain.Test.csproj" />
+      <ProjectReference Include="..\..\Nethermind.Blockchain.Test\Nethermind.Blockchain.Test.csproj" />
       <ProjectReference Include="..\Nethermind.DataMarketplace.Consumers\Nethermind.DataMarketplace.Consumers.csproj" />
       <ProjectReference Include="..\Nethermind.DataMarketplace.Core\Nethermind.DataMarketplace.Core.csproj" />
       <ProjectReference Include="..\Nethermind.DataMarketplace.Initializers\Nethermind.DataMarketplace.Initializers.csproj" />
-      <ProjectReference Include="..\Nethermind.Db.Rpc\Nethermind.Db.Rpc.csproj" />
-      <ProjectReference Include="..\Nethermind.Evm\Nethermind.Evm.csproj" />
-      <ProjectReference Include="..\Nethermind.Facade\Nethermind.Facade.csproj" />
-      <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />
+      <ProjectReference Include="..\..\Nethermind.Db.Rpc\Nethermind.Db.Rpc.csproj" />
+      <ProjectReference Include="..\..\Nethermind.Evm\Nethermind.Evm.csproj" />
+      <ProjectReference Include="..\..\Nethermind.Facade\Nethermind.Facade.csproj" />
+      <ProjectReference Include="..\..\Nethermind.Api\Nethermind.Api.csproj" />
     </ItemGroup>
 
     <ItemGroup>

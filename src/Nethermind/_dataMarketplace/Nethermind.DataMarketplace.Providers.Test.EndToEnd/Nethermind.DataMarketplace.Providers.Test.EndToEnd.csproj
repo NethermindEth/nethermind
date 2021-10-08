@@ -16,7 +16,7 @@
 
     <ItemGroup>
       <ProjectReference Include="..\Nethermind.DataMarketplace.Providers.Infrastructure\Nethermind.DataMarketplace.Providers.Infrastructure.csproj" />
-      <ProjectReference Include="..\Nethermind.Facade\Nethermind.Facade.csproj" />
+      <ProjectReference Include="..\..\Nethermind.Facade\Nethermind.Facade.csproj" />
     </ItemGroup>
 
 </Project>

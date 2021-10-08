@@ -8,8 +8,8 @@
 
     <ItemGroup>
       <ProjectReference Include="..\Nethermind.DataMarketplace.Core\Nethermind.DataMarketplace.Core.csproj" />
-      <ProjectReference Include="..\Nethermind.Network\Nethermind.Network.csproj" />
-      <ProjectReference Include="..\Nethermind.State\Nethermind.State.csproj" />
+      <ProjectReference Include="..\..\Nethermind.Network\Nethermind.Network.csproj" />
+      <ProjectReference Include="..\..\Nethermind.State\Nethermind.State.csproj" />
     </ItemGroup>
 
 </Project>
