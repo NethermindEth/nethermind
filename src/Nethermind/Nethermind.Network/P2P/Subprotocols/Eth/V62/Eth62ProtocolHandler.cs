@@ -126,17 +126,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                     break;
                 case Eth62MessageCode.NewBlockHashes:
                     Metrics.Eth62NewBlockHashesReceived++;
-                    if (ShouldNotGossip)
-                    {
-                        Disconnect(DisconnectReason.BreachOfProtocol,
-                            "NewBlockHashes message received while PoS protocol activated.");
-                    }
-                    else
+                    if (ShouldGossip)
                     {
                         NewBlockHashesMessage newBlockHashesMessage =
                             Deserialize<NewBlockHashesMessage>(message.Content);
                         ReportIn(newBlockHashesMessage);
                         Handle(newBlockHashesMessage);
+                    }
+                    else
+                    {
+                        Disconnect(DisconnectReason.BreachOfProtocol,
+                            "NewBlockHashes message received while PoS protocol activated.");
                     }
 
                     break;
@@ -173,23 +173,23 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                     break;
                 case Eth62MessageCode.NewBlock:
                     Metrics.Eth62NewBlockReceived++;
-                    if (ShouldNotGossip)
-                    {
-                        Disconnect(DisconnectReason.BreachOfProtocol,
-                            "NewBlock message received while PoS protocol activated.");
-                    }
-                    else
+                    if (ShouldGossip)
                     {
                         NewBlockMessage newBlockMsg = Deserialize<NewBlockMessage>(message.Content);
                         ReportIn(newBlockMsg);
                         Handle(newBlockMsg);
+                    }
+                    else
+                    {
+                        Disconnect(DisconnectReason.BreachOfProtocol,
+                            "NewBlock message received while PoS protocol activated.");
                     }
 
                     break;
             }
         }
 
-        private bool ShouldNotGossip
+        private bool ShouldGossip
         {
             get
             {
@@ -275,7 +275,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         public override void NotifyOfNewBlock(Block block, SendBlockPriority priority)
         {
-            if (ShouldNotGossip)
+            if (!ShouldGossip)
             {
                 return;
             }

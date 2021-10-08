@@ -40,6 +40,10 @@
       "commandName": "Project",
       "commandLineArgs": "--config configs\\hacknet_v2.cfg --baseDbPath C:\\hacknet --JsonRpc.Enabled true"
     },
+    "Hacknet_v3": {
+      "commandName": "Project",
+      "commandLineArgs": "--config configs\\hacknet_v3.cfg --baseDbPath C:\\hacknet --JsonRpc.Enabled true"
+    },
     "Sokol": {
       "commandName": "Project",
       "commandLineArgs": "--JsonRpc.Enabled true --config configs\\sokol.cfg --baseDbPath C:\\nethermind_db"
