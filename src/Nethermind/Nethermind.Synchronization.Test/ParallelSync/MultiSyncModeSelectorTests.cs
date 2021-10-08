@@ -918,6 +918,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
         {
             Scenario.GoesLikeThis()
                 .ThisNodeFinishedFastSyncButNotFastBlocks()
+                .WhenFastSyncWithFastBlocksIsConfigured()
                 .AndGoodPeersAreKnown()
                 .TheSyncModeShouldBe(SyncMode.StateNodes | SyncMode.FastHeaders);
         }
@@ -929,6 +930,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
         {
             Scenario.GoesLikeThis()
                 .IfThisNodeJustFinishedStateSyncAndFastBlocks(fastBlocksState)
+                .WhenFastSyncWithFastBlocksIsConfigured()
                 .AndGoodPeersAreKnown()
                 .TheSyncModeShouldBe(SyncMode.Full | fastBlocksState.GetSyncMode(true));
         }
@@ -940,6 +942,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
         {
             Scenario.GoesLikeThis()
                 .IfThisNodeFinishedStateSyncButNotFastBlocks(fastBlocksState)
+                .WhenFastSyncWithFastBlocksIsConfigured()
                 .AndGoodPeersAreKnown()
                 .TheSyncModeShouldBe(SyncMode.Full | fastBlocksState.GetSyncMode(true));
         }
@@ -949,6 +952,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
         {
             Scenario.GoesLikeThis()
                 .IfThisNodeIsFullySynced()
+                .WhenFastSyncWithFastBlocksIsConfigured()
                 .AndDesirablePrePivotPeerIsKnown()
                 .TheSyncModeShouldBe(SyncMode.None);
         }
@@ -1032,6 +1036,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
         {
             Scenario.GoesLikeThis()
                 .IfTheSyncProgressIsCorrupted()
+                .WhenFastSyncWithFastBlocksIsConfigured()
                 .AndGoodPeersAreKnown()
                 .TheSyncModeShouldBe(SyncMode.WaitingForBlock);
         }
@@ -1041,6 +1046,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
         {
             Scenario.GoesLikeThis()
                 .IfThisNodeIsProcessingAlreadyDownloadedBlocksInFullSync()
+                .WhenFastSyncWithFastBlocksIsConfigured()
                 .AndGoodPeersAreKnown()
                 .TheSyncModeShouldBe(SyncMode.WaitingForBlock);
         }
@@ -1050,6 +1056,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
         {
             Scenario.GoesLikeThis()
                 .IfThisNodeIsProcessingAlreadyDownloadedBlocksInFullSync()
+                .WhenFastSyncWithFastBlocksIsConfigured()
                 .PeersFromDesirableBranchAreKnown()
                 .TheSyncModeShouldBe(SyncMode.Full);
         }
@@ -1099,6 +1106,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
         {
             Scenario.GoesLikeThis()
                 .IfThisNodeHasStateThatIsFarInThePast()
+                .WhenFastSyncWithFastBlocksIsConfigured()
                 .AndGoodPeersAreKnown()
                 .TheSyncModeShouldBe(SyncMode.StateNodes);
         }
@@ -1128,6 +1136,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
         {
             Scenario.GoesLikeThis()
                 .IfThisNodeJustFinishedStateSyncButNeedsToCatchUpToHeaders()
+                .WhenFastSyncWithFastBlocksIsConfigured()
                 .AndGoodPeersAreKnown()
                 .TheSyncModeShouldBe(SyncMode.StateNodes);
         }
@@ -1157,6 +1166,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
         {
             Scenario.GoesLikeThis()
                 .IfThisNodeJustCameBackFromBeingOfflineForLongTimeAndFinishedFastSyncCatchUp()
+                .WhenFastSyncWithFastBlocksIsConfigured()
                 .AndGoodPeersAreKnown()
                 .TheSyncModeShouldBe(SyncMode.StateNodes);
         }
