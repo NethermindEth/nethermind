@@ -27,7 +27,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
-using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Specs;
@@ -74,7 +73,7 @@ namespace Nethermind.Facade.Test
 
             ReadOnlyTxProcessingEnv processingEnv = new(
                 new ReadOnlyDbProvider(_dbProvider, false),
-                new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly(), 
+                new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
                 new ReadOnlyBlockTree(_blockTree),
                 _specProvider,
                 LimboLogs.Instance);
@@ -117,7 +116,7 @@ namespace Nethermind.Facade.Test
                 .WithIndex(index)
                 .TestObject;
             IEnumerable<Transaction> transactions = Enumerable.Range(0, 10)
-                .Select(i => Build.A.Transaction.WithNonce((UInt256) i).TestObject);
+                .Select(i => Build.A.Transaction.WithNonce((UInt256)i).TestObject);
             var block = Build.A.Block
                 .WithTransactions(transactions.ToArray())
                 .TestObject;
@@ -125,7 +124,7 @@ namespace Nethermind.Facade.Test
             _receiptStorage.FindBlockHash(TestItem.KeccakA).Returns(TestItem.KeccakB);
             _receiptStorage.Get(block).Returns(new[] {receipt});
             _blockchainBridge.GetTransaction(TestItem.KeccakA).Should()
-                .BeEquivalentTo((receipt, Build.A.Transaction.WithNonce((UInt256) index).TestObject));
+                .BeEquivalentTo((receipt, Build.A.Transaction.WithNonce((UInt256)index).TestObject));
         }
 
         [Test]
@@ -143,7 +142,8 @@ namespace Nethermind.Facade.Test
 
             _transactionProcessor.Received().CallAndRestore(
                 tx,
-                Arg.Is<BlockHeader>(bh => bh.Number == 11 && bh.Timestamp == ((ITimestamper) _timestamper).UnixTime.Seconds),
+                Arg.Is<BlockHeader>(bh =>
+                    bh.Number == 11 && bh.Timestamp == ((ITimestamper)_timestamper).UnixTime.Seconds),
                 Arg.Is<CancellationTxTracer>(t => t.InnerTracer is EstimateGasTracer));
         }
 
@@ -163,15 +163,13 @@ namespace Nethermind.Facade.Test
                 Arg.Any<ITxTracer>());
         }
 
-        [TestCase(0, 8)]
-        [TestCase(7, 7)]
-        [TestCase( 0, 0)]
-        [TestCase( 7, 7)]
-        public void Bridge_head_is_correct(long headNumber, long? expectedNumber)
+        [TestCase(7)]
+        [TestCase(0)]
+        public void Bridge_head_is_correct(long headNumber)
         {
             ReadOnlyTxProcessingEnv processingEnv = new(
                 new ReadOnlyDbProvider(_dbProvider, false),
-                new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly(), 
+                new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
                 new ReadOnlyBlockTree(_blockTree),
                 _specProvider,
                 LimboLogs.Instance);
@@ -194,14 +192,7 @@ namespace Nethermind.Facade.Test
                 _specProvider,
                 false);
 
-            if (expectedNumber.HasValue)
-            {
-                (_blockchainBridge.HeadBlock?.Number).Should().Be(expectedNumber);
-            }
-            else
-            {
-                _blockchainBridge.HeadBlock.Should().BeNull();
-            }
+            _blockchainBridge.HeadBlock.Should().BeNull();
         }
     }
 }
