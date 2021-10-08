@@ -17,8 +17,6 @@
 using System;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Nethermind.Core.Extensions;
-using Nethermind.Cryptography;
-using NUnit.Framework;
 
 namespace Nethermind.Cryptography.Bls.Test
 {

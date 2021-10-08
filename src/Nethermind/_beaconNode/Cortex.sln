@@ -80,6 +80,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Core2.Cryptograp
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Logging.Microsoft", "..\Nethermind.Logging.Microsoft\Nethermind.Logging.Microsoft.csproj", "{277F5AB5-0E95-4991-A06B-B633B4BD1754}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Core", "..\Nethermind.Core\Nethermind.Core.csproj", "{018861A4-0B37-4E80-964F-82FFE7067D1D}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -236,6 +238,10 @@ Global
 		{277F5AB5-0E95-4991-A06B-B633B4BD1754}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{277F5AB5-0E95-4991-A06B-B633B4BD1754}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{277F5AB5-0E95-4991-A06B-B633B4BD1754}.Release|Any CPU.Build.0 = Release|Any CPU
+		{018861A4-0B37-4E80-964F-82FFE7067D1D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{018861A4-0B37-4E80-964F-82FFE7067D1D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{018861A4-0B37-4E80-964F-82FFE7067D1D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{018861A4-0B37-4E80-964F-82FFE7067D1D}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{4FFCC84D-DC26-4429-84D4-8809DD52B851} = {0F737A2F-A2C5-4A7E-A225-27F093A4C105}
