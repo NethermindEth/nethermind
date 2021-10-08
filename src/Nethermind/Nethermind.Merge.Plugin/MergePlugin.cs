@@ -114,7 +114,6 @@ namespace Nethermind.Merge.Plugin
                 if (_api.StateProvider is null) throw new ArgumentNullException(nameof(_api.StateProvider));
 
                 IInitConfig? initConfig = _api.Config<IInitConfig>();
-                _api.Config<IJsonRpcConfig>().EnableModules(ModuleType.Engine);
 
                 PayloadStorage payloadStorage = new(_idealBlockProductionTrigger, _emptyBlockProductionTrigger, _api.StateProvider, _api.BlockchainProcessor, initConfig, _api.LogManager);
 
