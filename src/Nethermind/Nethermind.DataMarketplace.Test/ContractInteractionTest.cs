@@ -179,7 +179,7 @@ namespace Nethermind.DataMarketplace.Test
                 return 99;
             }
 
-            public Block BeamHead => _headBlock;
+            public Block HeadBlock => _headBlock;
 
             public GethLikeBlockTracer GethTracer { get; set; } = new GethLikeBlockTracer(GethTraceOptions.Default);
 
