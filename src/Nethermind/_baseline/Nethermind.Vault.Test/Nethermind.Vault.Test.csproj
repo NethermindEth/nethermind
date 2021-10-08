@@ -20,11 +20,11 @@
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
-      <ProjectReference Include="..\Nethermind.JsonRpc.Test\Nethermind.JsonRpc.Test.csproj" />
+      <ProjectReference Include="..\..\Nethermind.Core\Nethermind.Core.csproj" />
+      <ProjectReference Include="..\..\Nethermind.JsonRpc.Test\Nethermind.JsonRpc.Test.csproj" />
       <ProjectReference Include="..\Nethermind.Provide.Vault\Nethermind.Provide.Vault.csproj" />
-      <ProjectReference Include="..\Nethermind.Runner.Test\Nethermind.Runner.Test.csproj" />
-      <ProjectReference Include="..\Nethermind.Runner\Nethermind.Runner.csproj" />
+      <ProjectReference Include="..\..\Nethermind.Runner.Test\Nethermind.Runner.Test.csproj" />
+      <ProjectReference Include="..\..\Nethermind.Runner\Nethermind.Runner.csproj" />
       <ProjectReference Include="..\Nethermind.Baseline.Plugin\Nethermind.Baseline.Plugin.csproj" />
     </ItemGroup>
 
