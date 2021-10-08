@@ -137,7 +137,6 @@ namespace Nethermind.Synchronization.Test.ParallelSync
 
                     SyncConfig.FastSync = false;
                     SyncConfig.FastBlocks = false;
-                    SyncConfig.BeamSync = false;
                     SyncConfig.PivotNumber = Pivot.Number.ToString();
                     SyncConfig.PivotHash = Keccak.Zero.ToString();
                     SyncConfig.SynchronizationEnabled = true;
@@ -614,7 +613,6 @@ namespace Nethermind.Synchronization.Test.ParallelSync
 
                 public ScenarioBuilder ThenInAnySyncConfiguration()
                 {
-                    WhenBeamSyncIsConfigured();
                     WhenFullArchiveSyncIsConfigured();
                     WhenFastSyncWithFastBlocksIsConfigured();
                     WhenFastSyncWithoutFastBlocksIsConfigured();
@@ -623,7 +621,6 @@ namespace Nethermind.Synchronization.Test.ParallelSync
 
                 public ScenarioBuilder ThenInAnyFastSyncConfiguration()
                 {
-                    WhenBeamSyncIsConfigured();
                     WhenFastSyncWithFastBlocksIsConfigured();
                     WhenFastSyncWithoutFastBlocksIsConfigured();
                     return this;
@@ -667,26 +664,12 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     return this;
                 }
 
-                public ScenarioBuilder WhenBeamSyncIsConfigured()
-                {
-                    _configActions.Add(() =>
-                    {
-                        SyncConfig.FastSync = true;
-                        SyncConfig.FastBlocks = true;
-                        SyncConfig.BeamSync = true;
-                        return "beam sync";
-                    });
-
-                    return this;
-                }
-
                 public ScenarioBuilder WhenFastSyncWithFastBlocksIsConfigured()
                 {
                     _configActions.Add(() =>
                     {
                         SyncConfig.FastSync = true;
                         SyncConfig.FastBlocks = true;
-                        SyncConfig.BeamSync = false;
                         return "fast sync with fast blocks";
                     });
 
@@ -699,7 +682,6 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     {
                         SyncConfig.FastSync = true;
                         SyncConfig.FastBlocks = false;
-                        SyncConfig.BeamSync = false;
                         return "fast sync without fast blocks";
                     });
 
@@ -712,7 +694,6 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     {
                         SyncConfig.FastSync = false;
                         SyncConfig.FastBlocks = false;
-                        SyncConfig.BeamSync = false;
                         return "full archive";
                     });
 
@@ -851,17 +832,6 @@ namespace Nethermind.Synchronization.Test.ParallelSync
         }
 
         [Test]
-        public void Sync_start_in_beam_sync()
-        {
-            // note that before we download at least one header we cannot start fast sync
-            Scenario.GoesLikeThis()
-                .IfThisNodeHasNeverSyncedBefore()
-                .AndGoodPeersAreKnown()
-                .WhenBeamSyncIsConfigured()
-                .TheSyncModeShouldBe(SyncMode.FastHeaders);
-        }
-
-        [Test]
         public void In_the_middle_of_fast_sync_with_fast_blocks()
         {
             Scenario.GoesLikeThis()
@@ -944,33 +914,12 @@ namespace Nethermind.Synchronization.Test.ParallelSync
         }
 
         [Test]
-        public void Finished_fast_sync_but_not_state_sync_and_fast_blocks_in_progress_and_beam_sync_enabled()
-        {
-            Scenario.GoesLikeThis()
-                .ThisNodeFinishedFastSyncButNotFastBlocks()
-                .AndGoodPeersAreKnown()
-                .WhenBeamSyncIsConfigured()
-                .TheSyncModeShouldBe(SyncMode.StateNodes | SyncMode.FastHeaders | SyncMode.Beam);
-        }
-
-        [Test]
         public void Finished_state_node_but_not_fast_blocks()
         {
             Scenario.GoesLikeThis()
                 .ThisNodeFinishedFastSyncButNotFastBlocks()
                 .AndGoodPeersAreKnown()
-                .WhenBeamSyncIsConfigured()
-                .TheSyncModeShouldBe(SyncMode.StateNodes | SyncMode.FastHeaders | SyncMode.Beam);
-        }
-
-        [Test]
-        public void Beam_sync_before_fast_sync_is_finished_will_not_start()
-        {
-            Scenario.GoesLikeThis()
-                .IfThisNodeFinishedFastBlocksButNotFastSync()
-                .AndGoodPeersAreKnown()
-                .WhenBeamSyncIsConfigured()
-                .TheSyncModeShouldBe(SyncMode.FastSync);
+                .TheSyncModeShouldBe(SyncMode.StateNodes | SyncMode.FastHeaders);
         }
 
         [TestCase(FastBlocksState.FinishedHeaders)]
@@ -981,7 +930,6 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             Scenario.GoesLikeThis()
                 .IfThisNodeJustFinishedStateSyncAndFastBlocks(fastBlocksState)
                 .AndGoodPeersAreKnown()
-                .WhenBeamSyncIsConfigured()
                 .TheSyncModeShouldBe(SyncMode.Full | fastBlocksState.GetSyncMode(true));
         }
         
@@ -993,7 +941,6 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             Scenario.GoesLikeThis()
                 .IfThisNodeFinishedStateSyncButNotFastBlocks(fastBlocksState)
                 .AndGoodPeersAreKnown()
-                .WhenBeamSyncIsConfigured()
                 .TheSyncModeShouldBe(SyncMode.Full | fastBlocksState.GetSyncMode(true));
         }
 
@@ -1003,7 +950,6 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             Scenario.GoesLikeThis()
                 .IfThisNodeIsFullySynced()
                 .AndDesirablePrePivotPeerIsKnown()
-                .WhenBeamSyncIsConfigured()
                 .TheSyncModeShouldBe(SyncMode.None);
         }
 
@@ -1050,7 +996,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .TheSyncModeShouldBe(SyncMode.Full);
         }
 
-        [Description("Fixes this scenario: // 2020-04-23 19:46:46.0143|INFO|180|Changing state to Full at processed:0|beam state:9930654|state:9930654|block:0|header:9930654|peer block:9930686 // 2020-04-23 19:46:47.0361|INFO|68|Changing state to StateNodes at processed:0|beam state:9930654|state:9930654|block:9930686|header:9930686|peer block:9930686")]
+        [Description("Fixes this scenario: // 2020-04-23 19:46:46.0143|INFO|180|Changing state to Full at processed:0|state:9930654|block:0|header:9930654|peer block:9930686 // 2020-04-23 19:46:47.0361|INFO|68|Changing state to StateNodes at processed:0|state:9930654|block:9930686|header:9930686|peer block:9930686")]
         [Test]
         public void When_just_started_full_sync_and_peers_moved_slightly_forward()
         {
@@ -1087,7 +1033,6 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             Scenario.GoesLikeThis()
                 .IfTheSyncProgressIsCorrupted()
                 .AndGoodPeersAreKnown()
-                .WhenBeamSyncIsConfigured()
                 .TheSyncModeShouldBe(SyncMode.WaitingForBlock);
         }
 
@@ -1097,7 +1042,6 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             Scenario.GoesLikeThis()
                 .IfThisNodeIsProcessingAlreadyDownloadedBlocksInFullSync()
                 .AndGoodPeersAreKnown()
-                .WhenBeamSyncIsConfigured()
                 .TheSyncModeShouldBe(SyncMode.WaitingForBlock);
         }
 
@@ -1107,7 +1051,6 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             Scenario.GoesLikeThis()
                 .IfThisNodeIsProcessingAlreadyDownloadedBlocksInFullSync()
                 .PeersFromDesirableBranchAreKnown()
-                .WhenBeamSyncIsConfigured()
                 .TheSyncModeShouldBe(SyncMode.Full);
         }
 
@@ -1157,8 +1100,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             Scenario.GoesLikeThis()
                 .IfThisNodeHasStateThatIsFarInThePast()
                 .AndGoodPeersAreKnown()
-                .WhenBeamSyncIsConfigured()
-                .TheSyncModeShouldBe(SyncMode.StateNodes | SyncMode.Beam);
+                .TheSyncModeShouldBe(SyncMode.StateNodes);
         }
 
         [Test]
@@ -1167,13 +1109,12 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             Scenario.GoesLikeThis()
                 .IfThisNodeJustFinishedFastBlocksAndFastSync(FastBlocksState.FinishedHeaders)
                 .AndPeersMovedSlightlyForward()
-                .WhenBeamSyncIsConfigured()
-                .TheSyncModeShouldBe(SyncMode.StateNodes | SyncMode.FastSync | SyncMode.Beam);
+                .TheSyncModeShouldBe(SyncMode.StateNodes | SyncMode.FastSync);
         }
 
         [TestCase(FastBlocksState.None)]
         [TestCase(FastBlocksState.FinishedHeaders)]
-        public void When_peers_move_slightly_forward_when_state_syncing_without_beam(FastBlocksState fastBlocksState)
+        public void When_peers_move_slightly_forward_when_state_syncing(FastBlocksState fastBlocksState)
         {
             Scenario.GoesLikeThis()
                 .IfThisNodeJustFinishedFastBlocksAndFastSync(fastBlocksState)
@@ -1188,15 +1129,14 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             Scenario.GoesLikeThis()
                 .IfThisNodeJustFinishedStateSyncButNeedsToCatchUpToHeaders()
                 .AndGoodPeersAreKnown()
-                .WhenBeamSyncIsConfigured()
-                .TheSyncModeShouldBe(SyncMode.StateNodes | SyncMode.Beam);
+                .TheSyncModeShouldBe(SyncMode.StateNodes);
         }
 
         /// <summary>
         /// we DO NOT want the thing like below to happen (incorrectly go back to StateNodes from Full)
-        /// 2020-04-25 19:58:32.1466|INFO|254|Changing state to Full at processed:0|beam state:9943624|state:9943624|block:0|header:9943624|peer block:9943656
+        /// 2020-04-25 19:58:32.1466|INFO|254|Changing state to Full at processed:0|state:9943624|block:0|header:9943624|peer block:9943656
         /// 2020-04-25 19:58:32.1466|INFO|254|Sync mode changed from StateNodes to Full
-        /// 2020-04-25 19:58:33.1652|INFO|266|Changing state to StateNodes at processed:0|beam state:9943624|state:9943624|block:9943656|header:9943656|peer block:9943656
+        /// 2020-04-25 19:58:33.1652|INFO|266|Changing state to StateNodes at processed:0|state:9943624|block:9943656|header:9943656|peer block:9943656
         /// </summary>
         [Test]
         public void When_state_sync_just_caught_up()
@@ -1210,7 +1150,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
 
         /// <summary>
         /// We should switch to State Sync in a case like below
-        /// 2020-04-27 11:48:30.6691|Changing state to StateNodes at processed:2594949|beam state:2594949|state:2594949|block:2596807|header:2596807|peer block:2596807
+        /// 2020-04-27 11:48:30.6691|Changing state to StateNodes at processed:2594949|state:2594949|block:2596807|header:2596807|peer block:2596807
         /// </summary>
         [Test]
         public void When_long_range_state_catch_up_is_needed()
@@ -1218,8 +1158,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             Scenario.GoesLikeThis()
                 .IfThisNodeJustCameBackFromBeingOfflineForLongTimeAndFinishedFastSyncCatchUp()
                 .AndGoodPeersAreKnown()
-                .WhenBeamSyncIsConfigured()
-                .TheSyncModeShouldBe(SyncMode.StateNodes | SyncMode.Beam);
+                .TheSyncModeShouldBe(SyncMode.StateNodes);
         }
 
         [Test]

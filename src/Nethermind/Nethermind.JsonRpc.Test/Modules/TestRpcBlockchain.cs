@@ -134,7 +134,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 SpecProvider,
                 LimboLogs.Instance);
             
-            Bridge ??= new BlockchainBridge(processingEnv, TxPool, ReceiptStorage, filterStore, filterManager, EthereumEcdsa, Timestamper, LogFinder, SpecProvider, false, false);
+            Bridge ??= new BlockchainBridge(processingEnv, TxPool, ReceiptStorage, filterStore, filterManager, EthereumEcdsa, Timestamper, LogFinder, SpecProvider, false);
             BlockFinder ??= BlockTree;
             GasPriceOracle ??= new GasPriceOracle(BlockFinder, SpecProvider);
             ReceiptFinder ??= ReceiptStorage;

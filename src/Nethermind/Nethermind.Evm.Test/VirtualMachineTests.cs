@@ -30,11 +30,6 @@ namespace Nethermind.Evm.Test
     [Parallelizable(ParallelScope.Self)]
     public class VirtualMachineTests : VirtualMachineTestsBase
     {
-        public VirtualMachineTests(bool useBeamSync)
-        {
-            UseBeamSync = useBeamSync;
-        }
-        
         [Test]
         public void Stop()
         {

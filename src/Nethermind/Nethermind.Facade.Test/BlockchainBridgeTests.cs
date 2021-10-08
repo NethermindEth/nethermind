@@ -91,7 +91,6 @@ namespace Nethermind.Facade.Test
                 _timestamper,
                 Substitute.For<ILogFinder>(),
                 _specProvider,
-                false,
                 false);
         }
 
@@ -164,11 +163,11 @@ namespace Nethermind.Facade.Test
                 Arg.Any<ITxTracer>());
         }
 
-        [TestCase(true, 0, 8)]
-        [TestCase(true, 7, 7)]
-        [TestCase(false, 0, 0)]
-        [TestCase(false, 7, 7)]
-        public void Bridge_beam_head_is_correct(bool isBeam, long headNumber, long? expectedNumber)
+        [TestCase(0, 8)]
+        [TestCase(7, 7)]
+        [TestCase( 0, 0)]
+        [TestCase( 7, 7)]
+        public void Bridge_head_is_correct(long headNumber, long? expectedNumber)
         {
             ReadOnlyTxProcessingEnv processingEnv = new(
                 new ReadOnlyDbProvider(_dbProvider, false),
@@ -193,47 +192,16 @@ namespace Nethermind.Facade.Test
                 _timestamper,
                 Substitute.For<ILogFinder>(),
                 _specProvider,
-                false,
-                isBeam);
+                false);
 
             if (expectedNumber.HasValue)
             {
-                _blockchainBridge.BeamHead.Number.Should().Be(expectedNumber);
+                (_blockchainBridge.HeadBlock?.Number).Should().Be(expectedNumber);
             }
             else
             {
-                _blockchainBridge.BeamHead.Should().BeNull();
+                _blockchainBridge.HeadBlock.Should().BeNull();
             }
         }
-
-        [Test]
-        public void Bridge_beam_head_is_correct_in_beam()
-        {
-            ReadOnlyTxProcessingEnv processingEnv = new(
-                new ReadOnlyDbProvider(_dbProvider, false),
-                new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly(), 
-                new ReadOnlyBlockTree(_blockTree),
-                _specProvider,
-                LimboLogs.Instance);
-
-            Block block = Build.A.Block.WithNumber(7).TestObject;
-            _blockTree.Head.Returns(block);
-
-            _blockchainBridge = new BlockchainBridge(
-                processingEnv,
-                _txPool,
-                _receiptStorage,
-                _filterStore,
-                _filterManager,
-                _ethereumEcdsa,
-                _timestamper,
-                Substitute.For<ILogFinder>(),
-                _specProvider,
-                false,
-                false);
-
-            _blockchainBridge.BeamHead.Number.Should().Be(7);
-        }
-        
     }
 }
