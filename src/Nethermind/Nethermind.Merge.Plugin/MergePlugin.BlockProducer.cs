@@ -20,6 +20,7 @@ using System.Threading.Tasks;
 using Nethermind.Api.Extensions;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
@@ -37,16 +38,9 @@ namespace Nethermind.Merge.Plugin
 
         public async Task<IBlockProducer> InitBlockProducer(IConsensusPlugin consensusPlugin)
         {
-            _api.HeaderValidator = new MergeHeaderValidator(
-                _api.HeaderValidator,
-                _api.BlockTree,
-                _api.SpecProvider,
-                _poSSwitcher,
-                _api.LogManager);
-            
             if (_mergeConfig.Enabled)
             {
-                var blockProducer = await consensusPlugin.InitBlockProducer();
+                IBlockProducer blockProducer = await consensusPlugin.InitBlockProducer();
                 _miningConfig = _api.Config<IMiningConfig>();
                 if (_api.EngineSigner == null) throw new ArgumentNullException(nameof(_api.EngineSigner));
                 if (_api.ChainSpec == null) throw new ArgumentNullException(nameof(_api.ChainSpec));

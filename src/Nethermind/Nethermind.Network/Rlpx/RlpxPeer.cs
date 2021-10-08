@@ -54,7 +54,8 @@ namespace Nethermind.Network.Rlpx
         private readonly IDisconnectsAnalyzer _disconnectsAnalyzer;
         private IEventExecutorGroup _group;
 
-        public RlpxPeer(IMessageSerializationService serializationService,
+        public RlpxPeer(
+            IMessageSerializationService serializationService,
             PublicKey localNodeId,
             int localPort,
             IHandshakeService handshakeService,

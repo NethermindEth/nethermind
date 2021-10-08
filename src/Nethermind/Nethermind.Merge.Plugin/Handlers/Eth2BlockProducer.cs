@@ -68,7 +68,6 @@ namespace Nethermind.Merge.Plugin.Handlers
         {
             if (_poSSwitcher.HasEverBeenInPos() || _preMergeProducer == null)
             {
-                await _blockchainProcessor.StopAsync(true);
                 await _eth2BlockProducer.Start();
             }
             else

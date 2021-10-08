@@ -84,7 +84,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
             BlockHeader head = SyncServer.Head;
             StatusMessage statusMessage = new();
-            statusMessage.ChainId = (UInt256)SyncServer.ChainId;
+            statusMessage.ChainId = SyncServer.ChainId;
             statusMessage.ProtocolVersion = ProtocolVersion;
             statusMessage.TotalDifficulty = head.TotalDifficulty ?? head.Difficulty;
             statusMessage.BestHash = head.Hash!;
@@ -226,6 +226,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 TotalDifficulty = status.TotalDifficulty
             };
 
+            Session.IsNetworkIdMatched = SyncServer.ChainId == (ulong)status.ChainId;
             HeadHash = status.BestHash;
             TotalDifficulty = status.TotalDifficulty;
             ProtocolInitialized?.Invoke(this, eventArgs);

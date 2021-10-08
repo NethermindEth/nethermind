@@ -81,6 +81,7 @@ namespace Nethermind.Network.P2P
         }
 
         public bool IsClosing => State > SessionState.Initialized;
+        public bool IsNetworkIdMatched { get; set; }
         public int LocalPort { get; set; }
         public PublicKey RemoteNodeId { get; set; }
         public PublicKey ObsoleteRemoteNodeId { get; set; }
@@ -454,8 +455,12 @@ namespace Nethermind.Network.P2P
             {
                 // TooManyPeers is a benign disconnect that we should not be worried about - many peers are running at their limit
                 // also any disconnects before the handshake and init do not have to be logged as they are most likely just rejecting any connections
-                if (_logger.IsTrace)
-                    _logger.Trace($"{this} invoking 'Disconnecting' event {disconnectReason} {disconnectType} {details}");
+                if (this.HasAgreedCapability(new Capability("eth", 66)) && IsNetworkIdMatched)
+                {
+                    if (_logger.IsError)
+                        _logger.Error(
+                            $"{this} invoking 'Disconnecting' event {disconnectReason} {disconnectType} {details}");
+                }
             }
             else
             {
