@@ -113,6 +113,14 @@
     "TheMergeDevnet M4": {
       "commandName": "Project",
       "commandLineArgs": "--config themerge_devnet_m4.cfg --Init.DiagnosticMode MemDb"
+    },
+    "Hacknet V2": {
+      "commandName": "Project",
+      "commandLineArgs": "--config hacknet_v2.cfg --Init.DiagnosticMode MemDb"
+    },
+    "Hacknet V3": {
+      "commandName": "Project",
+      "commandLineArgs": "--config hacknet_v3.cfg --Init.DiagnosticMode MemDb"
     }
   }
 }
