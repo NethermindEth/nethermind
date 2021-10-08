@@ -55,6 +55,11 @@ namespace Nethermind.TxPool.Filters
 
             for (int i = 0; i < transactions.Length; i++)
             {
+                if (transactions[i].Nonce < account.Nonce)
+                {
+                    continue;
+                }
+
                 if (transactions[i].Nonce < tx.Nonce)
                 {
                     overflow |= UInt256.MultiplyOverflow(
