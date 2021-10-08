@@ -58,8 +58,8 @@ namespace Nethermind.Runner.Test
         [TestCase("poacore_validator.cfg", true, true)]
         [TestCase("xdai_validator.cfg", true, true)]
         [TestCase("spaceneth", false, false)]
-        [TestCase("archive", false, false, false)]
-        [TestCase("baseline", false, false, false)]
+        [TestCase("archive", false, false)]
+        [TestCase("baseline", false, false)]
         [TestCase("fast", true, true)]
         public void Sync_defaults_are_correct(string configWildcard, bool fastSyncEnabled, bool fastBlocksEnabled)
         {

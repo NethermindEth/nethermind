@@ -25,8 +25,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
 {
-    [TestFixture(true)]
-    [TestFixture(false)]
+    [TestFixture]
     [Parallelizable(ParallelScope.Self)]
     public class VirtualMachineTests : VirtualMachineTestsBase
     {
