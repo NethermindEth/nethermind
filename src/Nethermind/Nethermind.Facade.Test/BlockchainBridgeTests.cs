@@ -192,7 +192,7 @@ namespace Nethermind.Facade.Test
                 _specProvider,
                 false);
 
-            _blockchainBridge.HeadBlock.Should().BeNull();
+            _blockchainBridge.HeadBlock.Should().Be(head);
         }
     }
 }
