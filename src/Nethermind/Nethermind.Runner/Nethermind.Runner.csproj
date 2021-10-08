@@ -89,6 +89,9 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>
+    <Content Update="..\Chains\themerge_devnet_m4.json">
+      <Link>chainspec\themerge_devnet_m4.json</Link>
+    </Content>
   </ItemGroup>
   <ItemGroup>
     <Content Update="NLog.config">
