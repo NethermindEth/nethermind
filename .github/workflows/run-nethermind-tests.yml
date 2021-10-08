@@ -31,16 +31,16 @@ jobs:
         dotnet test -c Release src/Nethermind/Nethermind.AuRa.Test
     - name: Nethermind.Baseline.Test
       run: |
-        dotnet test -c Release src/Nethermind/Nethermind.Baseline.Test
+        dotnet test -c Release src/Nethermind/_baselina/Nethermind.Baseline.Test
     - name: Nethermind.BeaconNode.Eth1Bridge.Test
       run: |
-        dotnet test -c Release src/Nethermind/Nethermind.BeaconNode.Eth1Bridge.Test
+        dotnet test -c Release src/Nethermind/_beaconNode/Nethermind.BeaconNode.Eth1Bridge.Test
     - name: Nethermind.BeaconNode.Peering.Test
       run: |
-        dotnet test -c Release src/Nethermind/Nethermind.BeaconNode.Peering.Test
+        dotnet test -c Release src/Nethermind/_beaconNode/Nethermind.BeaconNode.Peering.Test
     - name: Nethermind.BeaconNode.Test
       run: |
-        dotnet test -c Release src/Nethermind/Nethermind.BeaconNode.Test
+        dotnet test -c Release src/Nethermind/_beaconNode/Nethermind.BeaconNode.Test
     - name: Nethermind.Blockchain.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Blockchain.Test
@@ -72,10 +72,10 @@ jobs:
         dotnet test -c Release src/Nethermind/Nethermind.Core.Test
     - name: Nethermind.Core2.Configuration.Test
       run: |
-        dotnet test -c Release src/Nethermind/Nethermind.Core2.Configuration.Test
+        dotnet test -c Release src/Nethermind/_beaconNode/Nethermind.Core2.Configuration.Test
     - name: Nethermind.Core2.Test
       run: |
-        dotnet test -c Release src/Nethermind/Nethermind.Core2.Test
+        dotnet test -c Release src/Nethermind/_beaconNode/Nethermind.Core2.Test
     - name: Nethermind.Cryptography.Bls.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Cryptography.Bls.Test
@@ -107,7 +107,7 @@ jobs:
         dotnet test -c Release src/Nethermind/Nethermind.HealthChecks.Test
     - name: Nethermind.HonestValidator.Test
       run: |
-        dotnet test -c Release src/Nethermind/Nethermind.HonestValidator.Test
+        dotnet test -c Release src/Nethermind/_beaconNode/Nethermind.HonestValidator.Test
     - name: Nethermind.Evm.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Evm.Test
@@ -174,7 +174,7 @@ jobs:
         sudo apt-get install libsnappy-dev libc6-dev libc6
     - name: Nethermind.Ssz.Test
       run: |
-        dotnet test -c Release src/Nethermind/Nethermind.Ssz.Test
+        dotnet test -c Release src/Nethermind/_beaconNode/Nethermind.Ssz.Test
     - name: Nethermind.Wallet.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Wallet.Test
@@ -183,28 +183,28 @@ jobs:
         dotnet test -c Release src/Nethermind/Nethermind.Sockets.Test
     - name: Nethermind.DataMarketplace.Test
       run: |
-        dotnet test -c Release src/Nethermind/Nethermind.DataMarketplace.Test
+        dotnet test -c Release src/Nethermind/_dataMarketplace/Nethermind.DataMarketplace.Test
     - name: Nethermind.DataMarketplace.Channels.Test
       run: |
-        dotnet test -c Release src/Nethermind/Nethermind.DataMarketplace.Channels.Test
+        dotnet test -c Release src/Nethermind/_dataMarketplace/Nethermind.DataMarketplace.Channels.Test
     - name: Nethermind.DataMarketplace.Consumers.Test
       run: |
-        dotnet test -c Release src/Nethermind/Nethermind.DataMarketplace.Consumers.Test
+        dotnet test -c Release src/Nethermind/_dataMarketplace/Nethermind.DataMarketplace.Consumers.Test
     - name: Nethermind.DataMarketplace.Providers.Infrastructure.Tests
       run: |
-        dotnet test -c Release src/Nethermind/Nethermind.DataMarketplace.Providers.Infrastructure.Tests
+        dotnet test -c Release src/Nethermind/_dataMarketplace/Nethermind.DataMarketplace.Providers.Infrastructure.Tests
     - name: Nethermind.DataMarketplace.Providers.Test
       run: |
-        dotnet test -c Release src/Nethermind/Nethermind.DataMarketplace.Providers.Test
+        dotnet test -c Release src/Nethermind/_dataMarketplace/Nethermind.DataMarketplace.Providers.Test
     - name: Nethermind.DataMarketplace.Infrastructure.Test
       run: |
-        dotnet test -c Release src/Nethermind/Nethermind.DataMarketplace.Infrastructure.Test
+        dotnet test -c Release src/Nethermind/_dataMarketplace/Nethermind.DataMarketplace.Infrastructure.Test
     - name: Nethermind.DataMarketplace.Subprotocols.Test
       run: |
-        dotnet test -c Release src/Nethermind/Nethermind.DataMarketplace.Subprotocols.Test
+        dotnet test -c Release src/Nethermind/_dataMarketplace/Nethermind.DataMarketplace.Subprotocols.Test
     - name: Nethermind.DataMarketplace.WebSockets.Test
       run: |
-        dotnet test -c Release src/Nethermind/Nethermind.DataMarketplace.WebSockets.Test
+        dotnet test -c Release src/Nethermind/_dataMarketplace/Nethermind.DataMarketplace.WebSockets.Test
   neth-runner:
     name: Nethermind Runner Tests
     runs-on: ubuntu-latest
@@ -233,37 +233,37 @@ jobs:
       run: git -c submodule."src/eth2.0-spec-tests".update=none submodule update --init
     - name: Ethereum.Abi.Test
       run: |
-        dotnet test -c Release src/Nethermind/Ethereum.Abi.Test
+        dotnet test -c Release src/Nethermind/_ethereumTests/Ethereum.Abi.Test
     - name: Ethereum.Basic.Test
       run: |
-        dotnet test -c Release src/Nethermind/Ethereum.Basic.Test
+        dotnet test -c Release src/Nethermind/_ethereumTests/Ethereum.Basic.Test
     - name: Ethereum.Blockchain.Block.Test
       run: |
-        dotnet test -c Release src/Nethermind/Ethereum.Blockchain.Block.Test
+        dotnet test -c Release src/Nethermind/_ethereumTests/Ethereum.Blockchain.Block.Test
     - name: Ethereum.Blockchain.Test
       run: |
-        dotnet test -c Release src/Nethermind/Ethereum.Blockchain.Test
+        dotnet test -c Release src/Nethermind/_ethereumTests/Ethereum.Blockchain.Test
     - name: Ethereum.Difficulty.Test
       run: |
-        dotnet test -c Release src/Nethermind/Ethereum.Difficulty.Test
+        dotnet test -c Release src/Nethermind/_ethereumTests/Ethereum.Difficulty.Test
     - name: Ethereum.HexPrefix.Test
       run: |
-        dotnet test -c Release src/Nethermind/Ethereum.HexPrefix.Test
+        dotnet test -c Release src/Nethermind/_ethereumTests/Ethereum.HexPrefix.Test
     - name: Ethereum.KeyAddress.Test
       run: |
-        dotnet test -c Release src/Nethermind/Ethereum.KeyAddress.Test
+        dotnet test -c Release src/Nethermind/_ethereumTests/Ethereum.KeyAddress.Test
     - name: Ethereum.PoW.Test
       run: |
-        dotnet test -c Release src/Nethermind/Ethereum.Rlp.Test
+        dotnet test -c Release src/Nethermind/_ethereumTests/Ethereum.Rlp.Test
     - name: Ethereum.Rlp.Test
       run: |
-        dotnet test -c Release src/Nethermind/Ethereum.Basic.Test
+        dotnet test -c Release src/Nethermind/_ethereumTests/Ethereum.Basic.Test
     - name: Ethereum.Transaction.Test
       run: |
-        dotnet test -c Release src/Nethermind/Ethereum.Transaction.Test
+        dotnet test -c Release src/Nethermind/_ethereumTests/Ethereum.Transaction.Test
     - name: Ethereum.Transition.Test
       run: |
-        dotnet test -c Release src/Nethermind/Ethereum.Transition.Test
+        dotnet test -c Release src/Nethermind/_ethereumTests/Ethereum.Transition.Test
     - name: Ethereum.Trie.Test
       run: |
-        dotnet test -c Release src/Nethermind/Ethereum.Trie.Test
+        dotnet test -c Release src/Nethermind/_ethereumTests/Ethereum.Trie.Test
