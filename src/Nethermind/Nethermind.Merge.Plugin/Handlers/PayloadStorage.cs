@@ -94,14 +94,14 @@ namespace Nethermind.Merge.Plugin.Handlers
             BlockTaskAndRandom emptyBlockTaskTuple = new(emptyBlock, random);
             bool _ = _payloadStorage.TryAdd(payloadId, emptyBlockTaskTuple);
        //     await emptyBlock;
-            Task<Block?> idealBlock =
-                _idealBlockContext.BlockProductionTrigger.BuildBlock(parentHeader, cts.Token, null, blockAuthor, timestamp)
-               //     .ContinueWith(LogProductionResult, cts.Token);
-                    .ContinueWith((x) => Process(x.Result, parentHeader, _idealBlockContext.BlockProducerEnv), cts.Token); // commit when mergemock will be fixed
-
-            BlockTaskAndRandom idealBlockTaskTuple = new(idealBlock, random);
-            await idealBlock;
-            bool __ = _payloadStorage.TryUpdate(payloadId, idealBlockTaskTuple, emptyBlockTaskTuple);
+            // Task<Block?> idealBlock =
+            //     _idealBlockContext.BlockProductionTrigger.BuildBlock(parentHeader, cts.Token, null, blockAuthor, timestamp)
+            //    //     .ContinueWith(LogProductionResult, cts.Token);
+            //         .ContinueWith((x) => Process(x.Result, parentHeader, _idealBlockContext.BlockProducerEnv), cts.Token); // commit when mergemock will be fixed
+            //
+            // BlockTaskAndRandom idealBlockTaskTuple = new(idealBlock, random);
+            // await idealBlock;
+            // bool __ = _payloadStorage.TryUpdate(payloadId, idealBlockTaskTuple, emptyBlockTaskTuple);
 
             // remove after 12 seconds, it will not be needed
             // ToDo uncomment
