@@ -19,6 +19,7 @@
 
     <ItemGroup>
       <ProjectReference Include="..\Ethereum.Test.Base\Ethereum.Test.Base.csproj" />
+      <ProjectReference Include="..\_ethereumTests\Ethereum.Test.Base\Ethereum.Test.Base.csproj" />
     </ItemGroup>
 
     <ItemGroup>

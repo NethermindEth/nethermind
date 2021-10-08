@@ -23,14 +23,14 @@
     </ItemGroup>
 
     <ItemGroup>
-      <Content Include="..\..\tests\ABITests\basic_abi_tests.json">
+      <Content Include="..\..\..\tests\ABITests\basic_abi_tests.json">
         <Link>basic_abi_tests.json</Link>
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       </Content>
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\Nethermind.Abi\Nethermind.Abi.csproj" />
+      <ProjectReference Include="..\..\Nethermind.Abi\Nethermind.Abi.csproj" />
     </ItemGroup>
 
 </Project>
