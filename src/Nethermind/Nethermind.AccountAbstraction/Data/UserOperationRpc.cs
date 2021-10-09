@@ -25,7 +25,7 @@ namespace Nethermind.AccountAbstraction.Data
 {
     public class UserOperationRpc
     {
-        public Address Target { get; set; }
+        public Address Sender { get; set; }
         public UInt256 Nonce { get; set; }
         public byte[]? CallData { get; set; }
         public byte[]? InitCode { get; set; }

@@ -361,7 +361,7 @@ namespace Nethermind.AccountAbstraction.Test
                 AbiType.Bytes32);
 
             byte[] bytes = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, abiSignature,
-                op.Target!,
+                op.Sender!,
                 op.Nonce,
                 Keccak.Compute(op.InitCode!),
                 Keccak.Compute(op.CallData!),

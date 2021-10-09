@@ -39,6 +39,6 @@ namespace Nethermind.AccountAbstraction.Source
         protected override IComparer<UserOperation> GetReplacementComparer(IComparer<UserOperation> comparer) =>
             comparer.ThenBy(CompareUserOperationsByDecreasingGasPrice.Default);
 
-        protected override Address MapToGroup(UserOperation value) => value.Target;
+        protected override Address MapToGroup(UserOperation value) => value.Sender;
     }
 }

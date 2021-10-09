@@ -123,8 +123,8 @@ namespace Nethermind.AccountAbstraction.Source
 
             // make sure target account exists
             if (
-                userOperation.Target == Address.Zero
-                || !(_stateProvider.AccountExists(userOperation.Target) || userOperation.InitCode != Bytes.Empty))
+                userOperation.Sender == Address.Zero
+                || !(_stateProvider.AccountExists(userOperation.Sender) || userOperation.InitCode != Bytes.Empty))
             {
                 return false;
             }

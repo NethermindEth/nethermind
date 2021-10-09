@@ -36,7 +36,7 @@ namespace Nethermind.AccountAbstraction.Data
             RlpStream stream = new(sequenceLength);
             stream.StartSequence(contentLength);
             
-            stream.Encode(op.Target);
+            stream.Encode(op.Sender);
             stream.Encode(op.Nonce);
             stream.Encode(op.CallData);
             stream.Encode(op.CallGas);
@@ -52,7 +52,7 @@ namespace Nethermind.AccountAbstraction.Data
         
         private static int GetContentLength(UserOperation op, AccessListDecoder accessListDecoder)
         {
-            return Rlp.LengthOf(op.Target)
+            return Rlp.LengthOf(op.Sender)
                    + Rlp.LengthOf(op.Nonce)
                    + Rlp.LengthOf(op.CallData)
                    + Rlp.LengthOf(op.CallGas)

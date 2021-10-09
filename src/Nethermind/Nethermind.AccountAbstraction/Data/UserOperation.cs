@@ -31,7 +31,7 @@ namespace Nethermind.AccountAbstraction.Data
     {
         public UserOperation(UserOperationRpc userOperationRpc)
         {
-            Target = userOperationRpc.Target;
+            Sender = userOperationRpc.Sender;
             Nonce = userOperationRpc.Nonce;
             CallData = userOperationRpc.CallData;
             InitCode = userOperationRpc.InitCode;
@@ -53,7 +53,7 @@ namespace Nethermind.AccountAbstraction.Data
 
         public UserOperationAbi Abi => new UserOperationAbi
         {
-            Target = Target!,
+            Sender = Sender!,
             Nonce = Nonce,
             InitCode = InitCode ?? Bytes.Empty,
             CallData = CallData ?? Bytes.Empty,
@@ -64,11 +64,11 @@ namespace Nethermind.AccountAbstraction.Data
             MaxPriorityFeePerGas = MaxPriorityFeePerGas,
             Paymaster = Paymaster!,
             PaymasterData = PaymasterData ?? Bytes.Empty,
-            Signature = Bytes.FromHexString(Signature!.ToString())
+            Signature = Signature!
         };
 
         public Keccak? Hash { get; set; }
-        public Address? Target { get; set; }
+        public Address? Sender { get; set; }
         public UInt256 Nonce { get; set; }
         public byte[]? CallData { get; set; }
         public byte[]? InitCode { get; set; }
@@ -87,7 +87,7 @@ namespace Nethermind.AccountAbstraction.Data
 
     public struct UserOperationAbi
     {
-        public Address Target { get; set; }
+        public Address Sender { get; set; }
         public UInt256 Nonce { get; set; }
         public byte[] InitCode { get; set; }
         public byte[] CallData { get; set; }
