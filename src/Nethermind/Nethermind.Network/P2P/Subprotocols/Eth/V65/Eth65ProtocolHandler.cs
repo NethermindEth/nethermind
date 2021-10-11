@@ -125,12 +125,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
         
         public override void SendNewTransactions(IEnumerable<Transaction> txs)
         {
-            const int maxCapacity = 2048;
-            IList<Keccak> hashes = new ArrayPoolList<Keccak>(maxCapacity);
+            IList<Keccak> hashes = new ArrayPoolList<Keccak>(NewPooledTransactionHashesMessage.MaxCount);
 
             foreach (Transaction tx in txs)
             {
-                if (hashes.Count == maxCapacity)
+                if (hashes.Count == NewPooledTransactionHashesMessage.MaxCount)
                 {
                     SendMessage(hashes);
                     hashes.Clear();
