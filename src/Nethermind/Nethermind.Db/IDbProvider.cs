@@ -41,8 +41,6 @@ namespace Nethermind.Db
         // LES (ignore)
         public IDb ChtDb => GetDb<IDb>(DbNames.CHT);
         
-        // Beam Sync (StateDB like)
-        IDb? BeamTempDb { get; }
         IDb WitnessDb => GetDb<IDb>(DbNames.Witness);
 
         T GetDb<T>(string dbName) where T : class, IDb;

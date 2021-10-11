@@ -637,7 +637,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Op(Instruction.DELEGATECALL)
                 .Done;
             CallResultWithProof result = TestCallWithCode(code);
-            Assert.AreEqual(3, result.Accounts.Length);
+            
+            // change in test after the modification to how the ReleaseSpec is delivered to the virtual machine
+            Assert.AreEqual(2 + (_useNonZeroGasPrice ? 1 : 0), result.Accounts.Length);
         }
 
         [Test]

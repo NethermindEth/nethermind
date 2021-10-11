@@ -81,7 +81,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                 _api.LogManager, 
                 !_auraConfig.AllowAuRaPrivateChains);
             
-            _api.DisposeStack.Push(onlyWhenNotProcessing);
+            _api.DisposeStack.Push((IAsyncDisposable) onlyWhenNotProcessing);
 
             return onlyWhenNotProcessing;
         }

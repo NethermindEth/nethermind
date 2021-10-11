@@ -207,11 +207,6 @@ namespace Nethermind.Synchronization.Reporting
             {
                 WriteFullSyncReport();
             }
-            
-            if ((currentSyncMode & SyncMode.Beam) == SyncMode.Beam)
-            {
-                _logger.Info("Beam Sync is ON - you can query the latest state");
-            }
         }
 
         private void UpdateMetrics()

@@ -17,7 +17,6 @@
 using System;
 using System.Threading.Tasks;
 using Nethermind.Synchronization.Peers;
-using Nethermind.Synchronization.Witness;
 
 namespace Nethermind.Synchronization.ParallelSync
 {

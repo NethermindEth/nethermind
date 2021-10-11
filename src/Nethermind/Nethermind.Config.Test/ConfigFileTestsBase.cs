@@ -58,10 +58,6 @@ namespace Nethermind.Config.Test
         [ConfigFileGroup("*")]
         protected abstract IEnumerable<string> Configs { get; }
         
-        [ConfigFileGroup("beam")]
-        protected IEnumerable<string> BeamConfigs
-            => Configs.Where(config => config.Contains("_beam"));
-
         [ConfigFileGroup("fast")]
         protected IEnumerable<string> FastSyncConfigs
             => Configs.Where(config => !config.Contains("_") && !config.Contains("spaceneth"));

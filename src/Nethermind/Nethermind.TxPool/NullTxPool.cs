@@ -71,5 +71,11 @@ namespace Nethermind.TxPool
             add { }
             remove { }
         }
+
+        public event EventHandler<TxEventArgs>? EvictedPending
+        {
+            add { }
+            remove { }
+        }
     }
 }

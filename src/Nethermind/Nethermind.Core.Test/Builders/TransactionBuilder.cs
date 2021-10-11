@@ -52,7 +52,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
         
-        public TransactionBuilder<T> WithTo(Address address)
+        public TransactionBuilder<T> WithTo(Address? address)
         {
             TestObjectInternal.To = address;
             return this;

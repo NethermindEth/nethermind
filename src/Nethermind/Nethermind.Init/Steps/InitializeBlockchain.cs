@@ -44,7 +44,6 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.State;
 using Nethermind.State.Witnesses;
-using Nethermind.Synchronization.BeamSync;
 using Nethermind.Synchronization.Witness;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -185,16 +184,14 @@ namespace Nethermind.Init.Steps
                 getApi.BlockTree, getApi.LogManager);
 
             VirtualMachine virtualMachine = new (
-                stateProvider,
-                storageProvider,
+                getApi.SpecProvider.ChainId,
                 blockhashProvider,
-                getApi.SpecProvider,
                 getApi.LogManager);
 
-            ITransactionProcessor transactionProcessor = _api.TransactionProcessor = new TransactionProcessor(
+            WorldState worldState = new (stateProvider, storageProvider);
+            _api.TransactionProcessor = new TransactionProcessor(
                 getApi.SpecProvider,
-                stateProvider,
-                storageProvider,
+                worldState,
                 virtualMachine,
                 getApi.LogManager);
 
@@ -228,7 +225,6 @@ namespace Nethermind.Init.Steps
                 getApi.LogManager,
                 new BlockchainProcessor.Options
                 {
-                    AutoProcess = !syncConfig.BeamSync,
                     StoreReceiptsByDefault = initConfig.StoreReceipts,
                     DumpOptions = initConfig.AutoDump
                 });
@@ -237,22 +233,6 @@ namespace Nethermind.Init.Steps
             setApi.BlockchainProcessor = blockchainProcessor;
             setApi.GasPriceOracle = new GasPriceOracle(_api.BlockTree, _api.SpecProvider, miningConfig.MinGasPrice);
             setApi.EthSyncingInfo = new EthSyncingInfo(_api.BlockTree);
-
-            if (syncConfig.BeamSync)
-            {
-                BeamBlockchainProcessor beamBlockchainProcessor = new(
-                    new ReadOnlyDbProvider(_api.DbProvider, false),
-                    getApi.BlockTree,
-                    getApi.SpecProvider,
-                    getApi.LogManager,
-                    blockValidator,
-                    _api.BlockPreprocessor,
-                    _api.RewardCalculatorSource!, // TODO: does it work with AuRa?
-                    blockchainProcessor,
-                    getApi.SyncModeSelector!);
-
-                _api.DisposeStack.Push(beamBlockchainProcessor);
-            }
 
             // TODO: can take the tx sender from plugin here maybe
             ITxSigner txSigner = new WalletTxSigner(getApi.Wallet, getApi.SpecProvider.ChainId);

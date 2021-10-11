@@ -25,6 +25,11 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Blockchain.Synchronization
 {
+    public interface IWitnessPeer
+    {
+        Task<Keccak[]> GetBlockWitnessHashes(Keccak blockHash, CancellationToken token);
+    }
+    
     public interface ISyncPeer : ITxPoolPeer, IPeerWithSatelliteProtocol
     {
         Node Node { get; }

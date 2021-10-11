@@ -236,5 +236,25 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                 "{\"jsonrpc\":\"2.0\",\"result\":\"0xe891\",\"id\":67}",
                 serialized);
         }
+        
+        [Test]
+        public async Task Estimate_gas_with_revert()
+        {
+            using Context ctx = await Context.CreateWithLondonEnabled();
+
+            byte[] code = Prepare.EvmCode
+                .PushData(0)
+                .PushData(0)
+                .Op(Instruction.REVERT)
+                .Done;
+
+            string dataStr = code.ToHexString();
+            TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>(
+                $"{{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"type\": \"0x2\", \"data\": \"{dataStr}\"}}");
+            string serialized = ctx._test.TestEthRpc("eth_estimateGas", ctx._test.JsonSerializer.Serialize(transaction));
+            Assert.AreEqual(
+                "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32015,\"message\":\"revert\"},\"id\":67}",
+                serialized);
+        }
     }
 }

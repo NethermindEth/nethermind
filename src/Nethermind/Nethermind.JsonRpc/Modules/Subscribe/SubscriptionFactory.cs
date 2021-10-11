@@ -60,6 +60,8 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                     return new LogsSubscription(jsonRpcDuplexClient, _receiptStorage, _filterStore, _blockTree, _logManager, filter);
                 case SubscriptionType.NewPendingTransactions:
                     return new NewPendingTransactionsSubscription(jsonRpcDuplexClient, _txPool, _logManager);
+                case SubscriptionType.DroppedPendingTransactions:
+                    return new DroppedPendingTransactionsSubscription(jsonRpcDuplexClient, _txPool, _logManager);
                 case SubscriptionType.Syncing:
                     return new SyncingSubscription(jsonRpcDuplexClient, _blockTree, _ethSyncingInfo, _logManager);
                 default: throw new Exception("Unexpected SubscriptionType.");

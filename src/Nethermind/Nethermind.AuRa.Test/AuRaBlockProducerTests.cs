@@ -135,7 +135,7 @@ namespace Nethermind.AuRa.Test
             (await StartStop(new Context())).ShouldProduceBlocks(Quantity.AtLeastOne());
         }
         
-        [Test, Retry(3)]
+        [Test, Retry(6)]
         public async Task Can_produce_first_block_when_private_chains_allowed()
         {
             Context context = new();
@@ -222,7 +222,7 @@ namespace Nethermind.AuRa.Test
             (await StartStop(context)).ShouldProduceBlocks(Quantity.None());
         }
         
-        [Test, Retry(3)]
+        [Test, Retry(6)]
         public async Task Does_not_produce_block_when_there_is_new_best_suggested_block_not_yet_processed()
         {
             (await StartStop(new Context(), true, true)).ShouldProduceBlocks(Quantity.None());

@@ -16,31 +16,32 @@ namespace Nethermind.Sockets
             _socket = socket;
         }
 
-        public Task SendRawAsync(string data)
+        public Task SendRawAsync(ArraySegment<byte> data) =>
+            !_socket.Connected
+                ? Task.CompletedTask
+                : _socket.SendAsync(data, SocketFlags.None);
+
+        public async Task<ReceiveResult?> GetReceiveResult(ArraySegment<byte> buffer)
         {
-            if (!_socket.Connected)
+            ReceiveResult? result = null;
+            if (_socket.Connected)
             {
-                return Task.CompletedTask;
+                int read = await _socket.ReceiveAsync(buffer, SocketFlags.None);
+                result = new ReceiveResult()
+                {
+                    Closed = read == 0,
+                    Read = read,
+                    EndOfMessage = read < buffer.Count || _socket.Available == 0,
+                    CloseStatusDescription = null
+                };
             }
-            var bytes = Encoding.UTF8.GetBytes(data);
-            return _socket.SendAsync(new ArraySegment<byte>(bytes), SocketFlags.None);
+
+            return result;
         }
 
-        public async Task<ReceiveResult> GetReceiveResult(byte[] buffer)
+        public Task CloseAsync(ReceiveResult? result)
         {
-            int read = await _socket.ReceiveAsync(new ArraySegment<byte>(buffer), SocketFlags.None);
-            return new ReceiveResult()
-            {
-                Closed = read == 0,
-                Read = read,
-                EndOfMessage = read < buffer.Length || _socket.Available == 0,
-                CloseStatusDescription = null
-            };
-        }
-
-        public async Task CloseAsync(ReceiveResult result)
-        {
-            await Task.Factory.StartNew(_socket.Close);
+            return Task.Factory.StartNew(_socket.Close);
         }
 
         public void Dispose()

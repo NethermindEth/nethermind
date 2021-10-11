@@ -285,7 +285,6 @@ namespace Nethermind.Network.Discovery
                     }
 
                     continue;
-                    ;
                 }
 
                 manager.NodeStats.CurrentPersistedNodeReputation = networkNode.Reputation;
