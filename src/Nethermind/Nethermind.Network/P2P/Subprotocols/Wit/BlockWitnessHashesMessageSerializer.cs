@@ -48,8 +48,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Wit
 
         public int GetLength(BlockWitnessHashesMessage message, out int contentLength)
         {
-            int hashesContentLength = message.Hashes?.Length * Rlp.LengthOfKeccakRlp ?? 0;
-            contentLength = Rlp.LengthOfSequence(hashesContentLength) + Rlp.LengthOf(message.RequestId);
+            if (message.Hashes is null)
+            {
+                contentLength = Rlp.OfEmptySequence.Length;
+            }
+            else
+            {
+                int hashesContentLength = message.Hashes?.Length * Rlp.LengthOfKeccakRlp ?? 0;
+                contentLength = Rlp.LengthOfSequence(hashesContentLength) + Rlp.LengthOf(message.RequestId);
+                
+            }
             return Rlp.LengthOfSequence(contentLength);
         }
 
