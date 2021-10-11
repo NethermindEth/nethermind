@@ -75,17 +75,9 @@ namespace Nethermind.Network.Rlpx
 
                 if (_logger.IsTrace) _logger.Trace($"Sending AUTH to {RemoteId} @ {context.Channel.RemoteAddress}");
                 IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer();
-                try
-                {
-                    buffer.WriteBytes(auth.Data);
-                    context.WriteAndFlushAsync(buffer);
-                    Interlocked.Add(ref Metrics.P2PBytesSent, auth.Data.Length);
-                }
-                finally
-                {
-                    buffer.SafeRelease();
-                }
-            }
+                buffer.WriteBytes(auth.Data);
+                context.WriteAndFlushAsync(buffer).ContinueWith(t => buffer.SafeRelease());
+                Interlocked.Add(ref Metrics.P2PBytesSent, auth.Data.Length);            }
             else
             {
                 _session.RemoteHost = ((IPEndPoint) context.Channel.RemoteAddress).Address.ToString();
@@ -162,16 +154,9 @@ namespace Nethermind.Network.Rlpx
                 //_p2PSession.RemoteNodeId = _remoteId;
                 if (_logger.IsTrace) _logger.Trace($"Sending ACK to {RemoteId} @ {context.Channel.RemoteAddress}");
                 IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer();
-                try
-                {
-                    buffer.WriteBytes(ack.Data);
-                    context.WriteAndFlushAsync(buffer);
-                    Interlocked.Add(ref Metrics.P2PBytesSent, ack.Data.Length);
-                }
-                finally
-                {
-                    buffer.SafeRelease();
-                }
+                buffer.WriteBytes(ack.Data);
+                context.WriteAndFlushAsync(buffer).ContinueWith(t => buffer.SafeRelease());
+                Interlocked.Add(ref Metrics.P2PBytesSent, ack.Data.Length);
             }
             else
             {
