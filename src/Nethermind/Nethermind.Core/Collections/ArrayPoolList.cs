@@ -19,6 +19,7 @@ using System;
 using System.Buffers;
 using System.Collections;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -30,6 +31,7 @@ namespace Nethermind.Core.Collections
         private T[] _array;
         private int _count = 0;
         private int _capacity;
+        private bool _disposed;
 
         public ArrayPoolList(int capacity) : this(ArrayPool<T>.Shared, capacity)
         {
@@ -45,9 +47,16 @@ namespace Nethermind.Core.Collections
 
         public IEnumerator<T> GetEnumerator()
         {
+            GuardDispose();
             return new ArrayPoolListEnumerator(_array, _count);
         }
-        
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void GuardDispose()
+        {
+            if (_disposed) throw new ObjectDisposedException();
+        }
+
         IEnumerator IEnumerable.GetEnumerator()
         {
             return GetEnumerator();
@@ -66,12 +75,14 @@ namespace Nethermind.Core.Collections
 
         public bool Contains(T item)
         {
+            GuardDispose();
             int indexOf = Array.IndexOf(_array, item);
             return indexOf >= 0 && indexOf < _count;
         }
 
         public void CopyTo(T[] array, int arrayIndex)
         {
+            GuardDispose();
             _array.AsMemory(0, _count).CopyTo(array.AsMemory(arrayIndex));
         }
 
@@ -83,6 +94,7 @@ namespace Nethermind.Core.Collections
 
         public int IndexOf(T item)
         {
+            GuardDispose();
             int indexOf = Array.IndexOf(_array, item);
             return indexOf < _count ? indexOf : -1;
         }
@@ -98,6 +110,7 @@ namespace Nethermind.Core.Collections
 
         private void GuardResize()
         {
+            GuardDispose();
             if (_count == _capacity)
             {
                 int newCapacity = _capacity * 2;
@@ -144,6 +157,7 @@ namespace Nethermind.Core.Collections
 
         private bool GuardIndex(int index, bool shouldThrow = true, bool allowEqualToCount = false)
         {
+            GuardDispose();
             if (index < 0)
             {
                 return shouldThrow
@@ -186,7 +200,11 @@ namespace Nethermind.Core.Collections
 
         public void Dispose()
         {
-            _arrayPool.Return(_array);
+            if (!_disposed)
+            {
+                _arrayPool.Return(_array);
+                _disposed = true;
+            }
         }
     }
 }
