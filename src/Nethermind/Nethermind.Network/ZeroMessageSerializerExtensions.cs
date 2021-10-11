@@ -14,7 +14,9 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using DotNetty.Buffers;
+using DotNetty.Common.Utilities;
 
 namespace Nethermind.Network
 {
@@ -26,16 +28,30 @@ namespace Nethermind.Network
                 serializer is IZeroInnerMessageSerializer<T> zeroInnerMessageSerializer 
                     ? zeroInnerMessageSerializer.GetLength(message, out _)
                     : 64);
-           
-            serializer.Serialize(byteBuffer, message);
-            return byteBuffer.ReadAllBytes();
+            try
+            {
+                serializer.Serialize(byteBuffer, message);
+                return byteBuffer.ReadAllBytes();
+
+            }
+            finally
+            {
+                byteBuffer.SafeRelease();
+            }
         }
         
         public static T Deserialize<T>(this IZeroMessageSerializer<T> serializer, byte[] message) where T : MessageBase
         {
-            var buffer = UnpooledByteBufferAllocator.Default.Buffer(message.Length);
-            buffer.WriteBytes(message);
-            return serializer.Deserialize(buffer);
+            IByteBuffer buffer = UnpooledByteBufferAllocator.Default.Buffer(message.Length);
+            try
+            {
+                buffer.WriteBytes(message);
+                return serializer.Deserialize(buffer);
+            }
+            finally
+            {
+                buffer.SafeRelease();
+            }
         }
     }
 }
