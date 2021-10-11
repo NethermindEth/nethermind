@@ -289,6 +289,7 @@ namespace Nethermind.Evm
         {
             if (addresses is not null)
             {
+                AccessedAddresses.EnsureCapacity(AccessedAddresses.Count + addresses.Count);
                 foreach (Address address in addresses)
                 {
                     AccessedAddresses.Add(address);
@@ -297,6 +298,7 @@ namespace Nethermind.Evm
 
             if (storage is not null)
             {
+                AccessedStorageCells.EnsureCapacity(AccessedStorageCells.Count + storage.Count);
                 foreach (StorageCell storageCell in storage)
                 {
                     AccessedStorageCells.Add(storageCell);
