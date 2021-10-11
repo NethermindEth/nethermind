@@ -33,7 +33,7 @@ namespace Nethermind.Evm.Test
         public void Top_level_continuations_are_not_valid()
         {
             Assert.Throws<InvalidOperationException>(
-                () => _ = CreateEvmState(true));
+                () => _ = CreateEvmState(isContinuation: true));
         }
 
         [Test]
@@ -87,64 +87,120 @@ namespace Nethermind.Evm.Test
         public void Nothing_to_commit()
         {
             EvmState parentEvmState = CreateEvmState();
-            EvmState evmState = CreateEvmState();
-            
+            EvmState evmState = CreateEvmState(parentEvmState);
             evmState.CommitToParent(parentEvmState);
+        }
+        
+        [Test]
+        public void Nothing_to_restore()
+        {
+            EvmState parentEvmState = CreateEvmState();
+            EvmState evmState = CreateEvmState(parentEvmState);
+            evmState.Restore();
         }
         
         [Test]
         public void Address_to_commit_keeps_it_warm()
         {
             EvmState parentEvmState = CreateEvmState();
-            EvmState evmState = CreateEvmState();
+            EvmState evmState = CreateEvmState(parentEvmState);
             evmState.WarmUp(TestItem.AddressA);
-            
             evmState.CommitToParent(parentEvmState);
             parentEvmState.IsCold(TestItem.AddressA).Should().BeFalse();
+        }
+        
+        [Test]
+        public void Address_to_restore_keeps_it_cold()
+        {
+            EvmState parentEvmState = CreateEvmState();
+            EvmState evmState = CreateEvmState(parentEvmState);
+            evmState.WarmUp(TestItem.AddressA);
+            evmState.Restore();
+            parentEvmState.IsCold(TestItem.AddressA).Should().BeTrue();
         }
         
         [Test]
         public void Storage_to_commit_keeps_it_warm()
         {
             EvmState parentEvmState = CreateEvmState();
-            EvmState evmState = CreateEvmState();
+            EvmState evmState = CreateEvmState(parentEvmState);
             StorageCell storageCell = new(TestItem.AddressA, 1);
             evmState.WarmUp(storageCell);
-            
             evmState.CommitToParent(parentEvmState);
             parentEvmState.IsCold(storageCell).Should().BeFalse();
+        }
+        
+        [Test]
+        public void Storage_to_restore_keeps_it_cold()
+        {
+            EvmState parentEvmState = CreateEvmState();
+            EvmState evmState = CreateEvmState(parentEvmState);
+            StorageCell storageCell = new(TestItem.AddressA, 1);
+            evmState.WarmUp(storageCell);
+            evmState.Restore();
+            parentEvmState.IsCold(storageCell).Should().BeTrue();
         }
         
         [Test]
         public void Logs_are_committed()
         {
             EvmState parentEvmState = CreateEvmState();
-            EvmState evmState = CreateEvmState();
+            EvmState evmState = CreateEvmState(parentEvmState);
             LogEntry logEntry = new(Address.Zero, Bytes.Empty, Array.Empty<Keccak>());
             evmState.Logs.Add(logEntry);
-
             evmState.CommitToParent(parentEvmState);
             parentEvmState.Logs.Contains(logEntry).Should().BeTrue();
+        }
+        
+        [Test]
+        public void Logs_are_restored()
+        {
+            EvmState parentEvmState = CreateEvmState();
+            EvmState evmState = CreateEvmState(parentEvmState);
+            LogEntry logEntry = new(Address.Zero, Bytes.Empty, Array.Empty<Keccak>());
+            evmState.Logs.Add(logEntry);
+            evmState.Restore();
+            parentEvmState.Logs.Contains(logEntry).Should().BeFalse();
         }
         
         [Test]
         public void Destroy_list_is_committed()
         {
             EvmState parentEvmState = CreateEvmState();
-            EvmState evmState = CreateEvmState();
+            EvmState evmState = CreateEvmState(parentEvmState);
             evmState.DestroyList.Add(Address.Zero);
-
             evmState.CommitToParent(parentEvmState);
             parentEvmState.DestroyList.Contains(Address.Zero).Should().BeTrue();
+        }
+        
+        [Test]
+        public void Destroy_list_is_restored()
+        {
+            EvmState parentEvmState = CreateEvmState();
+            EvmState evmState = CreateEvmState(parentEvmState);
+            evmState.DestroyList.Add(Address.Zero);
+            evmState.Restore();
+            parentEvmState.DestroyList.Contains(Address.Zero).Should().BeFalse();
         }
         
         [Test]
         public void Commit_adds_refunds()
         {
             EvmState parentEvmState = CreateEvmState();
-            EvmState evmState = CreateEvmState();
+            EvmState evmState = CreateEvmState(parentEvmState);
+            evmState.Refund = 333;
             evmState.CommitToParent(parentEvmState);
-            parentEvmState.Refund.Should().Be(evmState.Refund);
+            parentEvmState.Refund.Should().Be(333);
+        }
+        
+        [Test]
+        public void Restore_doesnt_add_refunds()
+        {
+            EvmState parentEvmState = CreateEvmState();
+            EvmState evmState = CreateEvmState(parentEvmState);
+            evmState.Refund = 333;
+            evmState.Restore();
+            parentEvmState.Refund.Should().Be(0);
         }
         
         [Test]
@@ -162,13 +218,25 @@ namespace Nethermind.Evm.Test
             evmState.Dispose();
         }
 
-        private static EvmState CreateEvmState(bool isContinuation = false) => 
-            new(10000, 
-                new ExecutionEnvironment(), 
-                ExecutionType.Call, 
-                true, 
-                new Snapshot(Snapshot.EmptyPosition, Snapshot.EmptyPosition),
-                isContinuation);
+        private static EvmState CreateEvmState(EvmState parentEvmState = null, bool isContinuation = false) =>
+            parentEvmState is null
+                ? new EvmState(10000,
+                    new ExecutionEnvironment(),
+                    ExecutionType.Call,
+                    true,
+                    new Snapshot(Snapshot.EmptyPosition, Snapshot.EmptyPosition),
+                    isContinuation)
+                : new EvmState(10000,
+                    new ExecutionEnvironment(),
+                    ExecutionType.Call,
+                    false,
+                    new Snapshot(Snapshot.EmptyPosition, Snapshot.EmptyPosition),
+                    0,
+                    0,
+                    false,
+                    parentEvmState,
+                    isContinuation,
+                    false);
 
         public class Context { }
     }

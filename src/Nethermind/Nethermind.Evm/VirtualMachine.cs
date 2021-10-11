@@ -228,7 +228,13 @@ namespace Nethermind.Evm
                             }
                         }
 
-                        return new TransactionSubstate(callResult.Output, currentState.Refund, currentState.DestroyList, currentState.Logs, callResult.ShouldRevert, _txTracer != NullTxTracer.Instance);
+                        return new TransactionSubstate(
+                            callResult.Output, 
+                            currentState.Refund, 
+                            (IReadOnlyCollection<Address>)currentState.DestroyList, 
+                            (IReadOnlyCollection<LogEntry>)currentState.Logs, 
+                            callResult.ShouldRevert, 
+                            _txTracer != NullTxTracer.Instance);
                     }
 
                     Address callCodeOwner = currentState.Env.ExecutingAccount;
@@ -309,6 +315,10 @@ namespace Nethermind.Evm
                         if (previousStateSucceeded)
                         {
                             previousState.CommitToParent(currentState);
+                        }
+                        else
+                        {
+                            previousState.Restore();
                         }
                     }
                     else
