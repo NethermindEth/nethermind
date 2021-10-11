@@ -54,7 +54,7 @@ namespace Nethermind.Core.Collections
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void GuardDispose()
         {
-            if (_disposed) throw new ObjectDisposedException();
+            if (_disposed) throw new ObjectDisposedException(nameof(ArrayPoolList<T>));
         }
 
         IEnumerator IEnumerable.GetEnumerator()
