@@ -15,7 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.IO;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 using DotNetty.Buffers;
+using DotNetty.Common;
 using DotNetty.Common.Utilities;
 using DotNetty.Transport.Channels;
 using Nethermind.Logging;
@@ -45,7 +50,11 @@ namespace Nethermind.Network.P2P
             int length = buffer.ReadableBytes;
             _context.WriteAndFlushAsync(buffer).ContinueWith(t =>
             {
-                buffer.SafeRelease();
+                if (buffer.ReferenceCount != 0)
+                {
+                    buffer.SafeRelease();
+                }
+
                 if (t.IsFaulted)
                 {
                     if (_context.Channel is { Active: false })
