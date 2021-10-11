@@ -20,17 +20,14 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Wit
 {
-    public class BlockWitnessHashesMessageSerializer : IZeroMessageSerializer<BlockWitnessHashesMessage>
+    public class BlockWitnessHashesMessageSerializer : IZeroInnerMessageSerializer<BlockWitnessHashesMessage>
     {
         public void Serialize(IByteBuffer byteBuffer, BlockWitnessHashesMessage message)
         {
             NettyRlpStream nettyRlpStream = new NettyRlpStream(byteBuffer);
 
-            int hashesContentLength = message.Hashes?.Length * Rlp.LengthOfKeccakRlp ?? 0;
-            int contentLength = Rlp.LengthOfSequence(hashesContentLength);
-            contentLength += Rlp.LengthOf(message.RequestId);
-            int totalLength = Rlp.LengthOfSequence(contentLength);
-            
+            int contentLength = GetLength(message, out int totalLength);
+
             byteBuffer.EnsureWritable(totalLength, true);
             nettyRlpStream.StartSequence(contentLength);
             nettyRlpStream.Encode(message.RequestId);
@@ -40,12 +37,28 @@ namespace Nethermind.Network.P2P.Subprotocols.Wit
             }
             else
             {
+                int hashesContentLength = message.Hashes?.Length * Rlp.LengthOfKeccakRlp ?? 0;
                 nettyRlpStream.StartSequence(hashesContentLength);
                 foreach (Keccak keccak in message.Hashes)
                 {
                     nettyRlpStream.Encode(keccak);
                 }   
             }
+        }
+
+        public int GetLength(BlockWitnessHashesMessage message, out int contentLength)
+        {
+            if (message.Hashes is null)
+            {
+                contentLength = Rlp.OfEmptySequence.Length;
+            }
+            else
+            {
+                int hashesContentLength = message.Hashes?.Length * Rlp.LengthOfKeccakRlp ?? 0;
+                contentLength = Rlp.LengthOfSequence(hashesContentLength) + Rlp.LengthOf(message.RequestId);
+                
+            }
+            return Rlp.LengthOfSequence(contentLength);
         }
 
         public BlockWitnessHashesMessage Deserialize(IByteBuffer byteBuffer)
