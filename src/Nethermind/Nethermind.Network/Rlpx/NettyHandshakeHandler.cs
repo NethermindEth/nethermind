@@ -76,7 +76,14 @@ namespace Nethermind.Network.Rlpx
                 if (_logger.IsTrace) _logger.Trace($"Sending AUTH to {RemoteId} @ {context.Channel.RemoteAddress}");
                 IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(auth.Data.Length);
                 buffer.WriteBytes(auth.Data);
-                context.WriteAndFlushAsync(buffer).ContinueWith(t => buffer.SafeRelease());
+                context.WriteAndFlushAsync(buffer).ContinueWith(t =>
+                {
+                    if (buffer.ReferenceCount > 0)
+                    {
+                        _logger.Warn($"Buffer not released for AUTH message, still has reference count: {buffer.ReferenceCount}.");
+                        buffer.SafeRelease();
+                    }
+                });
                 Interlocked.Add(ref Metrics.P2PBytesSent, auth.Data.Length);            }
             else
             {
@@ -155,7 +162,14 @@ namespace Nethermind.Network.Rlpx
                 if (_logger.IsTrace) _logger.Trace($"Sending ACK to {RemoteId} @ {context.Channel.RemoteAddress}");
                 IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(ack.Data.Length);
                 buffer.WriteBytes(ack.Data);
-                context.WriteAndFlushAsync(buffer).ContinueWith(t => buffer.SafeRelease());
+                context.WriteAndFlushAsync(buffer).ContinueWith(t =>
+                {
+                    if (buffer.ReferenceCount > 0)
+                    {
+                        _logger.Warn($"Buffer not released for ACK message, still has reference count: {buffer.ReferenceCount}.");
+                        buffer.SafeRelease();
+                    }
+                });
                 Interlocked.Add(ref Metrics.P2PBytesSent, ack.Data.Length);
             }
             else

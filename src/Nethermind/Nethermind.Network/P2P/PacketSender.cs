@@ -50,8 +50,9 @@ namespace Nethermind.Network.P2P
             int length = buffer.ReadableBytes;
             _context.WriteAndFlushAsync(buffer).ContinueWith(t =>
             {
-                if (buffer.ReferenceCount != 0)
+                if (buffer.ReferenceCount > 0)
                 {
+                    _logger.Warn($"Buffer not released for {message.GetType()} message, still has reference count: {buffer.ReferenceCount}.");
                     buffer.SafeRelease();
                 }
 
