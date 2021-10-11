@@ -96,9 +96,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         }
         
         [TestCase(1)]
-        [TestCase(3199)]
-        [TestCase(3200)]
-        public void should_send_up_to_3200_hashes_in_one_NewPooledTransactionHashesMessage(int txCount)
+        [TestCase(NewPooledTransactionHashesMessage.MaxCount - 1)]
+        [TestCase(NewPooledTransactionHashesMessage.MaxCount)]
+        public void should_send_up_to_MaxCount_hashes_in_one_NewPooledTransactionHashesMessage(int txCount)
         {
             Transaction[] txs = new Transaction[txCount];
 
@@ -115,11 +115,10 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         [TestCase(3201)]
         [TestCase(10000)]
         [TestCase(20000)]
-        public void should_send_more_than_3200_hashes_in_more_than_one_NewPooledTransactionHashesMessage(int txCount)
+        public void should_send_more_than_MaxCount_hashes_in_more_than_one_NewPooledTransactionHashesMessage(int txCount)
         {
-            const int maxHashesCount = 3200;
-            int messagesCount = txCount / maxHashesCount + 1;
-            int nonFullMsgTxsCount = txCount % maxHashesCount;
+            int messagesCount = txCount / NewPooledTransactionHashesMessage.MaxCount + 1;
+            int nonFullMsgTxsCount = txCount % NewPooledTransactionHashesMessage.MaxCount;
             Transaction[] txs = new Transaction[txCount];
 
             for (int i = 0; i < txCount; i++)
@@ -129,7 +128,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
 
             _handler.SendNewTransactions(txs);
             
-            _session.Received(messagesCount).DeliverMessage(Arg.Is<NewPooledTransactionHashesMessage>(m => m.Hashes.Count == maxHashesCount || m.Hashes.Count == nonFullMsgTxsCount));
+            _session.Received(messagesCount).DeliverMessage(Arg.Is<NewPooledTransactionHashesMessage>(m => m.Hashes.Count == NewPooledTransactionHashesMessage.MaxCount || m.Hashes.Count == nonFullMsgTxsCount));
         }
     }
 }
