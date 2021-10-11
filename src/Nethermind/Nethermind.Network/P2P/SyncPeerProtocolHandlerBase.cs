@@ -249,9 +249,8 @@ namespace Nethermind.Network.P2P
 
         public override void HandleMessage(Packet message)
         {
-            ZeroPacket zeroPacket = new(message);
+            using ZeroPacket zeroPacket = new(message);
             HandleMessage(zeroPacket);
-            zeroPacket.Release();
         }
 
         public abstract void HandleMessage(ZeroPacket message);
