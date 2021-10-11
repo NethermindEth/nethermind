@@ -19,6 +19,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using DotNetty.Buffers;
+using DotNetty.Common.Utilities;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Core;
@@ -89,7 +90,8 @@ namespace Nethermind.Network.Discovery
                 return;
             }
 
-            IAddressedEnvelope<IByteBuffer> packet = new DatagramPacket(Unpooled.CopiedBuffer(message), discoveryMessage.FarAddress);
+            IByteBuffer copiedBuffer = Unpooled.CopiedBuffer(message);
+            IAddressedEnvelope<IByteBuffer> packet = new DatagramPacket(copiedBuffer, discoveryMessage.FarAddress);
             // _logger.Info($"The message {discoveryMessage} will be sent to {_channel.RemoteAddress}");
             await _channel.WriteAndFlushAsync(packet).ContinueWith(t =>
             {

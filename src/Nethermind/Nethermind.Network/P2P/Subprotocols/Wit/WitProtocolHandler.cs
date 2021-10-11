@@ -17,6 +17,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using DotNetty.Common.Utilities;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
@@ -70,8 +71,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Wit
         public override void HandleMessage(Packet message)
         {
             ZeroPacket zeroPacket = new ZeroPacket(message);
-            HandleMessage(zeroPacket);
-            zeroPacket.Release();
+            try
+            {
+                HandleMessage(zeroPacket);
+            }
+            finally
+            {
+                zeroPacket.SafeRelease();
+            }
         }
 
         public void HandleMessage(ZeroPacket message)

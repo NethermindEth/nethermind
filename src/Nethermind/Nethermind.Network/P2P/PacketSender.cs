@@ -15,7 +15,13 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.IO;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 using DotNetty.Buffers;
+using DotNetty.Common;
+using DotNetty.Common.Utilities;
 using DotNetty.Transport.Channels;
 using Nethermind.Logging;
 
@@ -41,20 +47,16 @@ namespace Nethermind.Network.P2P
             }
             
             IByteBuffer buffer = _messageSerializationService.ZeroSerialize(message);
-            var length = buffer.ReadableBytes;
+            int length = buffer.ReadableBytes;
             _context.WriteAndFlushAsync(buffer).ContinueWith(t =>
             {
                 if (t.IsFaulted)
                 {
-                    if (_context.Channel != null && !_context.Channel.Active)
+                    if (_context.Channel is { Active: false })
                     {
                         if (_logger.IsTrace) _logger.Trace($"Channel is not active - {t.Exception.Message}");
                     }
                     else if (_logger.IsError) _logger.Error("Channel is active", t.Exception);
-                }
-                else if (t.IsCompleted)
-                {
-//                    if (_logger.IsTrace) _logger.Trace($"Packet ({packet.Protocol}.{packet.PacketType}) pushed");
                 }
             });
             
