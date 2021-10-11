@@ -69,41 +69,37 @@ namespace Nethermind.Network.P2P
 
 
                 IByteBuffer output = PooledByteBufferAllocator.Default.Buffer(uncompressedLength);
+
                 try
                 {
-                    try
+                    int length = SnappyCodec.Uncompress(content.Array, content.ArrayOffset + content.ReaderIndex, content.ReadableBytes, output.Array, output.ArrayOffset);
+                    output.SetWriterIndex(output.WriterIndex + length);
+                }
+                catch (Exception)
+                {
+                    if (content.ReadableBytes == 2 && content.ReadByte() == 193)
                     {
-                        int length = SnappyCodec.Uncompress(content.Array, content.ArrayOffset + content.ReaderIndex, content.ReadableBytes, output.Array, output.ArrayOffset);
-                        output.SetWriterIndex(output.WriterIndex + length);
+                        // this is a Parity disconnect sent as a non-snappy-encoded message
+                        // e.g. 0xc103
                     }
-                    catch (Exception)
+                    else
                     {
-                        if (content.ReadableBytes == 2 && content.ReadByte() == 193)
-                        {
-                            // this is a Parity disconnect sent as a non-snappy-encoded message
-                            // e.g. 0xc103
-                        }
-                        else
-                        {
-                            content.SkipBytes(content.ReadableBytes);
-                            throw;
-                        }
+                        content.SkipBytes(content.ReadableBytes);
+                        output.SafeRelease();
+                        throw;
                     }
+                }
 
-                    content.SkipBytes(content.ReadableBytes);
-                    ZeroPacket outputPacket = new ZeroPacket(output);
-                    try
-                    {
-                        outputPacket.PacketType = input.PacketType;
-                        _session.ReceiveMessage(outputPacket);
-                    }
-                    finally
-                    {
-                        outputPacket.SafeRelease(); }
+                content.SkipBytes(content.ReadableBytes);
+                ZeroPacket outputPacket = new ZeroPacket(output);
+                try
+                {
+                    outputPacket.PacketType = input.PacketType;
+                    _session.ReceiveMessage(outputPacket);
                 }
                 finally
                 {
-                    output.SafeRelease();
+                    outputPacket.SafeRelease();
                 }
             }
             else

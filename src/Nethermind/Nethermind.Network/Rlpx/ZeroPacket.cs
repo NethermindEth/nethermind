@@ -20,7 +20,7 @@ using DotNetty.Common.Utilities;
 
 namespace Nethermind.Network.Rlpx
 {
-    public class ZeroPacket : DefaultByteBufferHolder, IDisposable
+    public class ZeroPacket : DefaultByteBufferHolder
     {
         public ZeroPacket(Packet packet) : base(Unpooled.CopiedBuffer(packet.Data))
         {
@@ -33,11 +33,6 @@ namespace Nethermind.Network.Rlpx
 
         public ZeroPacket(IByteBuffer data) : base(data)
         {
-        }
-
-        public void Dispose()
-        {
-            this.SafeRelease();
         }
     }
 }

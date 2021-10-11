@@ -95,8 +95,6 @@ namespace Nethermind.Network.Discovery
             // _logger.Info($"The message {discoveryMessage} will be sent to {_channel.RemoteAddress}");
             await _channel.WriteAndFlushAsync(packet).ContinueWith(t =>
             {
-                packet.SafeRelease();
-                copiedBuffer.SafeRelease();
                 if (t.IsFaulted)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Error when sending a discovery message Msg: {discoveryMessage.ToString()} ,Exp: {t.Exception}");
