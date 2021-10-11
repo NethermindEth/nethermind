@@ -22,6 +22,7 @@ using System.Threading.Tasks;
 using DotNetty.Buffers;
 using DotNetty.Codecs;
 using DotNetty.Common.Concurrency;
+using DotNetty.Common.Utilities;
 using DotNetty.Handlers.Timeout;
 using DotNetty.Transport.Channels;
 using Nethermind.Core.Crypto;
@@ -74,9 +75,16 @@ namespace Nethermind.Network.Rlpx
 
                 if (_logger.IsTrace) _logger.Trace($"Sending AUTH to {RemoteId} @ {context.Channel.RemoteAddress}");
                 IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer();
-                buffer.WriteBytes(auth.Data);
-                context.WriteAndFlushAsync(buffer);
-                Interlocked.Add(ref Metrics.P2PBytesSent, auth.Data.Length);
+                try
+                {
+                    buffer.WriteBytes(auth.Data);
+                    context.WriteAndFlushAsync(buffer);
+                    Interlocked.Add(ref Metrics.P2PBytesSent, auth.Data.Length);
+                }
+                finally
+                {
+                    buffer.SafeRelease();
+                }
             }
             else
             {
@@ -154,9 +162,16 @@ namespace Nethermind.Network.Rlpx
                 //_p2PSession.RemoteNodeId = _remoteId;
                 if (_logger.IsTrace) _logger.Trace($"Sending ACK to {RemoteId} @ {context.Channel.RemoteAddress}");
                 IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer();
-                buffer.WriteBytes(ack.Data);
-                context.WriteAndFlushAsync(buffer);
-                Interlocked.Add(ref Metrics.P2PBytesSent, ack.Data.Length);
+                try
+                {
+                    buffer.WriteBytes(ack.Data);
+                    context.WriteAndFlushAsync(buffer);
+                    Interlocked.Add(ref Metrics.P2PBytesSent, ack.Data.Length);
+                }
+                finally
+                {
+                    buffer.SafeRelease();
+                }
             }
             else
             {

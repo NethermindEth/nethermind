@@ -17,6 +17,7 @@
 using System;
 using System.Net.Sockets;
 using DotNetty.Buffers;
+using DotNetty.Common.Utilities;
 using DotNetty.Transport.Channels;
 using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
@@ -89,9 +90,16 @@ namespace Nethermind.Network.P2P
 
                 content.SkipBytes(content.ReadableBytes);
                 ZeroPacket outputPacket = new ZeroPacket(output);
-                outputPacket.PacketType = input.PacketType;
-                _session.ReceiveMessage(outputPacket);
-                outputPacket.Release();
+                try
+                {
+                    outputPacket.PacketType = input.PacketType;
+                    _session.ReceiveMessage(outputPacket);
+                }
+                finally
+                {
+                    outputPacket.SafeRelease();
+                    output.SafeRelease();
+                }
             }
             else
             {

@@ -69,9 +69,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Wit
 
         public override void HandleMessage(Packet message)
         {
-            ZeroPacket zeroPacket = new ZeroPacket(message);
+            using ZeroPacket zeroPacket = new ZeroPacket(message);
             HandleMessage(zeroPacket);
-            zeroPacket.Release();
         }
 
         public void HandleMessage(ZeroPacket message)
