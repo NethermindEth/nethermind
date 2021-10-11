@@ -111,7 +111,7 @@ namespace Nethermind.Mev.Test
             params BundleTransaction[] txs) =>
             SendMegabundle(chain, blockNumber, privateKey, txs, true);
         
-        public static MevMegabundle UnuccessfullySendMegabundle(TestMevRpcBlockchain chain, int blockNumber, PrivateKey privateKey,
+        public static MevMegabundle UnsuccessfullySendMegabundle(TestMevRpcBlockchain chain, int blockNumber, PrivateKey privateKey,
             params BundleTransaction[] txs) =>
             SendMegabundle(chain, blockNumber, privateKey, txs, false);
 
@@ -719,6 +719,38 @@ namespace Nethermind.Mev.Test
         }
         
         [Test]
+        public async Task Should_accept_and_simulate_megabundle_with_future_blockNumber_given()
+        {
+            var chain = await CreateChain(1, relayAddresses: new []{ TestItem.AddressA });
+            chain.GasLimitCalculator.GasLimit = 10_000_000;
+
+            BundleTransaction bundleTx = Build.A.TypedTransaction<BundleTransaction>()
+                .WithGasLimit(GasCostOf.Transaction)
+                .WithGasPrice(150ul)
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            
+            Transaction poolTx1 = Build.A.Transaction
+                .WithGasLimit(GasCostOf.Transaction)
+                .WithGasPrice(100ul)
+                .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+            
+            Transaction poolTx2 = Build.A.Transaction
+                .WithGasLimit(GasCostOf.Transaction)
+                .WithGasPrice(50ul)
+                .SignedAndResolved(TestItem.PrivateKeyC).TestObject;
+
+            MevMegabundle megabundle = SuccessfullySendMegabundle(chain, 2, TestItem.PrivateKeyA, bundleTx);
+            await SendSignedTransaction(chain, poolTx1);
+            await chain.AddBlock(true);
+            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { poolTx1 }));
+
+            await chain.BundlePool.WaitForSimulationToStart(megabundle, CancellationToken.None);
+            await SendSignedTransaction(chain, poolTx2);
+            await chain.AddBlock(true);
+            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { bundleTx, poolTx2 }));
+        }
+        
+        [Test]
         public async Task Should_accept_and_simulate_bundle_with_future_blockNumber_if_baseFee_decreases_until_then_in_London()
         {
             var chain = await CreateChain(3, London.Instance, 140);
@@ -751,9 +783,41 @@ namespace Nethermind.Mev.Test
         }
         
         [Test]
+        public async Task Should_accept_and_simulate_megabundle_with_future_blockNumber_if_baseFee_decreases_until_then_in_London()
+        {
+            var chain = await CreateChain(1, London.Instance, 140, new []{ TestItem.AddressA });
+            chain.GasLimitCalculator.GasLimit = 10_000_000;
+
+            BundleTransaction bundleTx = Build.A.TypedTransaction<BundleTransaction>()
+                .WithType(TxType.EIP1559)
+                .WithGasLimit(GasCostOf.Transaction)
+                .WithMaxFeePerGas(120ul)
+                .WithMaxPriorityFeePerGas(30)
+                .WithChainId(chain.BlockTree.ChainId)
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            
+            Transaction poolTx1 = Build.A.Transaction
+                .WithType(TxType.EIP1559)
+                .WithGasLimit(GasCostOf.Transaction)
+                .WithMaxFeePerGas(130ul)
+                .WithMaxPriorityFeePerGas(10)
+                .WithChainId(chain.BlockTree.ChainId)
+                .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+
+            MevMegabundle megabundle = SuccessfullySendMegabundle(chain, 2, TestItem.PrivateKeyA, bundleTx);
+            await SendSignedTransaction(chain, poolTx1);
+            await chain.AddBlock(true);
+            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { poolTx1 }));
+
+            await chain.BundlePool.WaitForSimulationToStart(megabundle, CancellationToken.None);
+            await chain.AddBlock(true);
+            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { bundleTx }));
+        }
+        
+        [Test]
         public async Task Should_reject_bundle_with_past_blockNumber_given()
         {
-            var chain = await CreateChain(3);
+            var chain = await CreateChain(3, relayAddresses: new []{ TestItem.AddressA });
             chain.GasLimitCalculator.GasLimit = 10_000_000;
 
             BundleTransaction bundleTx = Build.A.TypedTransaction<BundleTransaction>()
@@ -777,6 +841,7 @@ namespace Nethermind.Mev.Test
             
             // sending bundleTx for blockNumber 1 which has already been mined
             UnSuccessfullySendBundle(chain, 1, bundleTx);
+            UnsuccessfullySendMegabundle(chain, 1, TestItem.PrivateKeyA, bundleTx);
 
             await SendSignedTransaction(chain, poolTx2);
             await chain.AddBlock(true);
@@ -1078,6 +1143,54 @@ namespace Nethermind.Mev.Test
         }
         
         [Test]
+        public async Task Should_choose_first_megabundle_that_was_sent_to_include_if_bundles_have_same_gas_price()
+        {
+            var chain = await CreateChain(1, relayAddresses: new []{ TestItem.AddressA, TestItem.AddressB });
+            chain.GasLimitCalculator.GasLimit = 21000;
+            
+            BundleTransaction bundleTx1 = Build.A.TypedTransaction<BundleTransaction>()
+                .WithGasLimit(GasCostOf.Transaction)
+                .WithGasPrice(150ul)
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            
+            BundleTransaction bundleTx2 = Build.A.TypedTransaction<BundleTransaction>()
+                .WithGasLimit(GasCostOf.Transaction)
+                .WithGasPrice(150ul)
+                .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+
+            SuccessfullySendMegabundle(chain, 1, TestItem.PrivateKeyA, bundleTx1);
+            SuccessfullySendMegabundle(chain, 1, TestItem.PrivateKeyB, bundleTx2);
+
+            await chain.AddBlock(true);
+
+            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { bundleTx1 }));
+        }
+        
+        [Test]
+        public async Task Should_choose_latest_megabundle_sent_by_the_same_relay()
+        {
+            var chain = await CreateChain(1, relayAddresses: new []{ TestItem.AddressA });
+            chain.GasLimitCalculator.GasLimit = 21000;
+            
+            BundleTransaction bundleTx1 = Build.A.TypedTransaction<BundleTransaction>()
+                .WithGasLimit(GasCostOf.Transaction)
+                .WithGasPrice(150ul)
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            
+            BundleTransaction bundleTx2 = Build.A.TypedTransaction<BundleTransaction>()
+                .WithGasLimit(GasCostOf.Transaction)
+                .WithGasPrice(100ul)
+                .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+
+            SuccessfullySendMegabundle(chain, 1, TestItem.PrivateKeyA, bundleTx1);
+            SuccessfullySendMegabundle(chain, 1, TestItem.PrivateKeyA, bundleTx2);
+
+            await chain.AddBlock(true);
+
+            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { bundleTx2 }));
+        }
+        
+        [Test]
         public async Task Should_not_include_same_transaction_in_different_bundles_twice()
         {
             var chain = await CreateChain(3);
@@ -1106,7 +1219,7 @@ namespace Nethermind.Mev.Test
 
             GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { bundleTx1, bundleTx2 }));
         }
-        
+
         [Test]
         public async Task Should_include_identical_bundles_only_once()
         {
@@ -1132,6 +1245,31 @@ namespace Nethermind.Mev.Test
             GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { bundleTx1, bundleTx2 }));
         }
         
+        [Test]
+        public async Task Should_include_identical_megabundles_from_different_relays_only_once()
+        {
+            var chain = await CreateChain(1, relayAddresses: new []{ TestItem.AddressA, TestItem.AddressB });
+            chain.GasLimitCalculator.GasLimit = 10_000_000;
+            
+            // ordered by gas
+            BundleTransaction bundleTx1 = Build.A.TypedTransaction<BundleTransaction>()
+                .WithGasLimit(GasCostOf.Transaction)
+                .WithGasPrice(150ul)
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            
+            BundleTransaction bundleTx2 = Build.A.TypedTransaction<BundleTransaction>()
+                .WithGasLimit(GasCostOf.Transaction)
+                .WithGasPrice(130ul)
+                .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+
+            SuccessfullySendMegabundle(chain, 1, TestItem.PrivateKeyA, bundleTx1, bundleTx2);
+            SuccessfullySendMegabundle(chain, 1, TestItem.PrivateKeyB, bundleTx1, bundleTx2);
+
+            await chain.AddBlock(true);
+
+            GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(GetHashes(new[] { bundleTx1, bundleTx2 }));
+        }
+
         [Test]
         public async Task Should_reject_second_bundle_where_they_succeed_individually_but_fail_if_in_the_same_block()
         {
@@ -1327,9 +1465,9 @@ namespace Nethermind.Mev.Test
                 bundleTxs.Add(tx3);
             }
 
-            MevBundle? bunlde = SuccessfullySendBundle(chain, 1, bundleTxs.ToArray());
+            MevBundle? bundle = SuccessfullySendBundle(chain, 1, bundleTxs.ToArray());
             CancellationTokenSource cts = new CancellationTokenSource(TimeSpan.FromSeconds(4));
-            Task simulationTask = chain.BundlePool.WaitForSimulationToFinish(bunlde, cts.Token);
+            Task simulationTask = chain.BundlePool.WaitForSimulationToFinish(bundle, cts.Token);
             await simulationTask;
             simulationTask.IsCompletedSuccessfully.Should().BeTrue();
             
