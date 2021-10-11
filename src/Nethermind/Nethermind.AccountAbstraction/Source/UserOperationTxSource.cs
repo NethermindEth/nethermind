@@ -25,6 +25,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 
@@ -34,13 +35,16 @@ namespace Nethermind.AccountAbstraction.Source
     {
         private readonly IUserOperationPool _userOperationPool;
         private readonly IUserOperationSimulator _userOperationSimulator;
+        private readonly ILogger _logger;
 
         public UserOperationTxSource(
             IUserOperationPool userOperationPool, 
-            IUserOperationSimulator userOperationSimulator)
+            IUserOperationSimulator userOperationSimulator,
+            ILogger logger)
         {
             _userOperationPool = userOperationPool;
             _userOperationSimulator = userOperationSimulator;
+            _logger = logger;
         }
 
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
@@ -94,7 +98,9 @@ namespace Nethermind.AccountAbstraction.Source
                 return new List<Transaction>();
             }
             
+            
             Transaction userOperationTransaction = _userOperationSimulator.BuildTransactionFromUserOperations(userOperationsToInclude, parent, London.Instance);
+            _logger.Info($"Constructed tx from UserOps for miner {userOperationTransaction.SenderAddress}");
             return new List<Transaction>(){userOperationTransaction};
         }
 

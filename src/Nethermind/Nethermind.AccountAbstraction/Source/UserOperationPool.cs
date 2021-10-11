@@ -147,10 +147,14 @@ namespace Nethermind.AccountAbstraction.Source
             }
 
             // simulate
+            /*
+             removing just for testing
             Task<bool> successfulSimulationTask = Simulate(userOperation, _blockTree.Head!.Header);
             bool successfulSimulation = successfulSimulationTask.Result;
 
             return successfulSimulation;
+            */
+            return true;
         }
 
         private async Task<bool> Simulate(UserOperation userOperation, BlockHeader parent)

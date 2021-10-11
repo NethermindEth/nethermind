@@ -101,7 +101,7 @@ namespace Nethermind.AccountAbstraction.Test
             {
                 MiningConfig miningConfig = new() {MinGasPrice = UInt256.One};
 
-                UserOperationTxSource userOperationTxSource = new(UserOperationPool, UserOperationSimulator);
+                UserOperationTxSource userOperationTxSource = new(UserOperationPool, UserOperationSimulator, LogManager.GetClassLogger());
 
                 BlockProducerEnvFactory blockProducerEnvFactory = new BlockProducerEnvFactory(
                     DbProvider,
