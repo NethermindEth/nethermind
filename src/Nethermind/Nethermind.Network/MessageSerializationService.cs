@@ -40,14 +40,15 @@ namespace Nethermind.Network
 
         public T Deserialize<T>(IByteBuffer buffer) where T : MessageBase
         {
-            if (!TryGetZeroSerializer(out IZeroMessageSerializer<T> zeroMessageSerializer))
+            if (TryGetZeroSerializer(out IZeroMessageSerializer<T> zeroMessageSerializer))
             {
-                // 3% allocation of a sample run of Goerli 3 million blocks fast sync on buffer.ReadAllBytes
-                // this can be improved by adding ZeroMessageSerializer for a new message type
-                return Deserialize<T>(buffer.ReadAllBytes());
+                return zeroMessageSerializer.Deserialize(buffer);
             }
+            
+            // 3% allocation of a sample run of Goerli 3 million blocks fast sync on buffer.ReadAllBytes
+            // this can be improved by adding ZeroMessageSerializer for a new message type
+            return Deserialize<T>(buffer.ReadAllBytes());
 
-            return zeroMessageSerializer.Deserialize(buffer);
         }
 
         public void Register(Assembly assembly)
@@ -116,9 +117,10 @@ namespace Nethermind.Network
             int p2pMessageLength = (message is P2PMessage ? sizeof(int) : 0);
             if (TryGetZeroSerializer(out IZeroMessageSerializer<T> zeroMessageSerializer))
             {
-                IByteBuffer byteBuffer = zeroMessageSerializer is IZeroInnerMessageSerializer<T> zeroInnerMessageSerializer
-                    ? PooledByteBufferAllocator.Default.Buffer(zeroInnerMessageSerializer.GetLength(message, out _) + p2pMessageLength)
-                    : PooledByteBufferAllocator.Default.Buffer(64);
+                IByteBuffer byteBuffer = PooledByteBufferAllocator.Default.Buffer(
+                    zeroMessageSerializer is IZeroInnerMessageSerializer<T> zeroInnerMessageSerializer
+                        ? zeroInnerMessageSerializer.GetLength(message, out _) + p2pMessageLength
+                        : 64);
                 WriteAdaptivePacketType(byteBuffer);
                 zeroMessageSerializer.Serialize(byteBuffer, message);
                 return byteBuffer;
@@ -148,13 +150,13 @@ namespace Nethermind.Network
                 return false;
             }
 
-            if (!(serializerObject is IZeroMessageSerializer<T> messageSerializer))
+            if (serializerObject is IZeroMessageSerializer<T> messageSerializer)
             {
-                throw new InvalidOperationException($"Zero serializer for {nameof(T)} (registered: {serializerObject?.GetType().Name}) does not implement required interfaces");
+                serializer = messageSerializer;
+                return true;
             }
 
-            serializer = messageSerializer;
-            return true;
+            throw new InvalidOperationException($"Zero serializer for {nameof(T)} (registered: {serializerObject?.GetType().Name}) does not implement required interfaces");
         }
 
         private bool TryGetSerializer<T>(out IMessageSerializer<T> serializer) where T : MessageBase
