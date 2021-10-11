@@ -21,7 +21,7 @@ using System.Collections.Generic;
 
 namespace Nethermind.Core.Collections
 {
-    public class JournalSet<T> : IReadOnlySet<T>, ICollection<T>
+    public class JournalSet<T> : IReadOnlySet<T>, ICollection<T>, IJournal<int>
     {
         private readonly Dictionary<int, T> _dictionary = new();
         private readonly HashSet<T> _set = new();

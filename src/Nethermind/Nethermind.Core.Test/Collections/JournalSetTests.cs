@@ -28,33 +28,33 @@ namespace Nethermind.Core.Test.Collections
         [Test]
         public void Can_restore_snapshot()
         {
-            JournalSet<int> journal = new();
-            journal.AddRange(Enumerable.Range(0, 10));
-            int snapshot = journal.TakeSnapshot();
-            journal.AddRange(Enumerable.Range(10, 10));
-            journal.Restore(snapshot);
-            journal.Should().BeEquivalentTo(Enumerable.Range(0, 10));
+            JournalSet<int> journalSet = new();
+            journalSet.AddRange(Enumerable.Range(0, 10));
+            int snapshot = journalSet.TakeSnapshot();
+            journalSet.AddRange(Enumerable.Range(10, 10));
+            journalSet.Restore(snapshot);
+            journalSet.Should().BeEquivalentTo(Enumerable.Range(0, 10));
         }
         
         [Test]
         public void Can_restore_empty_snapshot()
         {
-            JournalSet<int> journal = new() {};
-            int snapshot = journal.TakeSnapshot();
-            journal.Restore(snapshot);
-            journal.Restore(snapshot);
-            journal.Should().BeEquivalentTo(Enumerable.Empty<int>());
+            JournalSet<int> journalSet = new() {};
+            int snapshot = journalSet.TakeSnapshot();
+            journalSet.Restore(snapshot);
+            journalSet.Restore(snapshot);
+            journalSet.Should().BeEquivalentTo(Enumerable.Empty<int>());
         }
         
         [Test]
         public void Snapshots_behave_as_sets()
         {
-            JournalSet<int> journal = new();
-            journal.AddRange(Enumerable.Range(0, 10));
-            int snapshot = journal.TakeSnapshot();
-            journal.AddRange(Enumerable.Range(0, 20));
-            journal.Restore(snapshot);
-            journal.Should().BeEquivalentTo(Enumerable.Range(0, 10));
+            JournalSet<int> journalSet = new();
+            journalSet.AddRange(Enumerable.Range(0, 10));
+            int snapshot = journalSet.TakeSnapshot();
+            journalSet.AddRange(Enumerable.Range(0, 20));
+            journalSet.Restore(snapshot);
+            journalSet.Should().BeEquivalentTo(Enumerable.Range(0, 10));
         }
     }
 }

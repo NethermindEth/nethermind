@@ -22,7 +22,7 @@ using System.Threading;
 
 namespace Nethermind.Core.Collections
 {
-    public class JournalCollection<T> : ICollection<T>, IReadOnlyCollection<T>
+    public class JournalCollection<T> : ICollection<T>, IReadOnlyCollection<T>, IJournal<int>
     {
         private readonly List<T> _list = new();
         public int TakeSnapshot() => Count - 1;
