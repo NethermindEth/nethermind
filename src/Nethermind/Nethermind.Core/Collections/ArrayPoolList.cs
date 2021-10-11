@@ -24,7 +24,7 @@ using System.Threading.Tasks;
 
 namespace Nethermind.Core.Collections
 {
-    public class ArrayPoolList<T> : IList<T>
+    public class ArrayPoolList<T> : IList<T>, IDisposable
     {
         private readonly ArrayPool<T> _arrayPool;
         private T[] _array;
@@ -182,6 +182,11 @@ namespace Nethermind.Core.Collections
             object IEnumerator.Current => Current;
 
             public void Dispose() { }
+        }
+
+        public void Dispose()
+        {
+            _arrayPool.Return(_array);
         }
     }
 }

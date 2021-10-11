@@ -125,7 +125,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
         
         public override void SendNewTransactions(IEnumerable<Transaction> txs)
         {
-            IList<Keccak> hashes = new ArrayPoolList<Keccak>(NewPooledTransactionHashesMessage.MaxCount);
+            using ArrayPoolList<Keccak> hashes = new(NewPooledTransactionHashesMessage.MaxCount);
 
             foreach (Transaction tx in txs)
             {
