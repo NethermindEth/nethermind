@@ -19,30 +19,20 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 {
-    public class StatusMessageSerializer : IZeroMessageSerializer<StatusMessage>
+    public class StatusMessageSerializer : IZeroInnerMessageSerializer<StatusMessage>
     {
         public void Serialize(IByteBuffer byteBuffer, StatusMessage message)
         {
             int forkIdContentLength = 0;
-            int forkIdSequenceLength = 0;
 
             if (message.ForkId.HasValue)
             {
                 ForkId forkId = message.ForkId.Value;
                 forkIdContentLength = Rlp.LengthOf(forkId.ForkHash) + Rlp.LengthOf(forkId.Next);
-                forkIdSequenceLength = Rlp.LengthOfSequence(forkIdContentLength);
             }
 
             NettyRlpStream rlpStream = new(byteBuffer);
-            int contentLength =
-                Rlp.LengthOf(message.ProtocolVersion) +
-                Rlp.LengthOf(message.ChainId) +
-                Rlp.LengthOf(message.TotalDifficulty) +
-                Rlp.LengthOf(message.BestHash) +
-                Rlp.LengthOf(message.GenesisHash) +
-                forkIdSequenceLength;
-
-            int totalLength = Rlp.LengthOfSequence(contentLength);
+            int totalLength = GetLength(message, out int contentLength);
             byteBuffer.EnsureWritable(totalLength);
             rlpStream.StartSequence(contentLength);
             rlpStream.Encode(message.ProtocolVersion);
@@ -57,6 +47,28 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 rlpStream.Encode(forkId.ForkHash);
                 rlpStream.Encode(forkId.Next);
             }
+        }
+
+        public int GetLength(StatusMessage message, out int contentLength)
+        {
+            
+            int forkIdSequenceLength = 0;
+            if (message.ForkId.HasValue)
+            {
+                ForkId forkId = message.ForkId.Value;
+                int forkIdContentLength = Rlp.LengthOf(forkId.ForkHash) + Rlp.LengthOf(forkId.Next);
+                forkIdSequenceLength = Rlp.LengthOfSequence(forkIdContentLength);
+            }
+            
+            contentLength =
+                Rlp.LengthOf(message.ProtocolVersion) +
+                Rlp.LengthOf(message.ChainId) +
+                Rlp.LengthOf(message.TotalDifficulty) +
+                Rlp.LengthOf(message.BestHash) +
+                Rlp.LengthOf(message.GenesisHash) +
+                forkIdSequenceLength;
+            
+            return Rlp.LengthOfSequence(contentLength);
         }
 
         public StatusMessage Deserialize(IByteBuffer byteBuffer)

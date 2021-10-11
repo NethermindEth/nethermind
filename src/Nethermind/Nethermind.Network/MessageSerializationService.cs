@@ -105,33 +105,38 @@ namespace Nethermind.Network
 
         public IByteBuffer ZeroSerialize<T>(T message) where T : MessageBase
         {
-            IByteBuffer byteBuffer = PooledByteBufferAllocator.Default.Buffer(64);
-            if (message is P2PMessage p2PMessage)
+            void WriteAdaptivePacketType(in IByteBuffer buffer)
             {
-                byteBuffer.WriteByte(p2PMessage.AdaptivePacketType);
+                if (message is P2PMessage p2PMessage)
+                {
+                    buffer.WriteByte(p2PMessage.AdaptivePacketType);
+                }
             }
 
-            if (!TryGetZeroSerializer(out IZeroMessageSerializer<T> zeroMessageSerializer))
+            int p2pMessageLength = (message is P2PMessage ? sizeof(int) : 0);
+            if (TryGetZeroSerializer(out IZeroMessageSerializer<T> zeroMessageSerializer))
             {
-                byte[] serialized = Serialize(message);
-                byteBuffer.EnsureWritable(serialized.Length, true);
-                byteBuffer.WriteBytes(serialized);
+                IByteBuffer byteBuffer = zeroMessageSerializer is IZeroInnerMessageSerializer<T> zeroInnerMessageSerializer
+                    ? PooledByteBufferAllocator.Default.Buffer(zeroInnerMessageSerializer.GetLength(message, out _) + p2pMessageLength)
+                    : PooledByteBufferAllocator.Default.Buffer(64);
+                WriteAdaptivePacketType(byteBuffer);
+                zeroMessageSerializer.Serialize(byteBuffer, message);
+                return byteBuffer;
             }
             else
             {
-                zeroMessageSerializer.Serialize(byteBuffer, message);
+                byte[] serialized = Serialize(message);
+                IByteBuffer byteBuffer = PooledByteBufferAllocator.Default.Buffer(serialized.Length + p2pMessageLength);
+                WriteAdaptivePacketType(byteBuffer);
+                byteBuffer.WriteBytes(serialized);
+                return byteBuffer;
             }
-            
-            return byteBuffer;
         }
         public byte[] Serialize<T>(T messageBase) where T : MessageBase
         {
-            if (!TryGetSerializer(out IMessageSerializer<T> messageSerializer))
-            {
-                throw new InvalidOperationException($"No {nameof(IMessageSerializer<T>)} registered for {typeof(T).Name}.");
-            }
-
-            return messageSerializer.Serialize(messageBase);
+            return TryGetSerializer(out IMessageSerializer<T> messageSerializer) 
+                ? messageSerializer.Serialize(messageBase) 
+                : throw new InvalidOperationException($"No {nameof(IMessageSerializer<T>)} registered for {typeof(T).Name}.");
         }
 
         private bool TryGetZeroSerializer<T>(out IZeroMessageSerializer<T> serializer) where T : MessageBase
