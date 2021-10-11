@@ -14,13 +14,11 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
 using DotNetty.Buffers;
-using DotNetty.Common.Utilities;
 
 namespace Nethermind.Network.Rlpx
 {
-    public class ZeroPacket : DefaultByteBufferHolder, IDisposable
+    public class ZeroPacket : DefaultByteBufferHolder
     {
         public ZeroPacket(Packet packet) : base(Unpooled.CopiedBuffer(packet.Data))
         {
@@ -33,11 +31,6 @@ namespace Nethermind.Network.Rlpx
 
         public ZeroPacket(IByteBuffer data) : base(data)
         {
-        }
-
-        public void Dispose()
-        {
-            this.SafeRelease();
         }
     }
 }

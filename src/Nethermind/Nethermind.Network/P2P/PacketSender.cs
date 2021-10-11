@@ -16,7 +16,6 @@
 
 using System;
 using DotNetty.Buffers;
-using DotNetty.Common.Utilities;
 using DotNetty.Transport.Channels;
 using Nethermind.Logging;
 
@@ -42,17 +41,20 @@ namespace Nethermind.Network.P2P
             }
             
             IByteBuffer buffer = _messageSerializationService.ZeroSerialize(message);
-            int length = buffer.ReadableBytes;
+            var length = buffer.ReadableBytes;
             _context.WriteAndFlushAsync(buffer).ContinueWith(t =>
             {
-                buffer.SafeRelease();
                 if (t.IsFaulted)
                 {
-                    if (_context.Channel is { Active: false })
+                    if (_context.Channel != null && !_context.Channel.Active)
                     {
                         if (_logger.IsTrace) _logger.Trace($"Channel is not active - {t.Exception.Message}");
                     }
                     else if (_logger.IsError) _logger.Error("Channel is active", t.Exception);
+                }
+                else if (t.IsCompleted)
+                {
+//                    if (_logger.IsTrace) _logger.Trace($"Packet ({packet.Protocol}.{packet.PacketType}) pushed");
                 }
             });
             

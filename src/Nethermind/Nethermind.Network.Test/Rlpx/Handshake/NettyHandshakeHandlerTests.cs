@@ -20,7 +20,6 @@ using DotNetty.Buffers;
 using DotNetty.Codecs;
 using DotNetty.Common.Concurrency;
 using DotNetty.Transport.Channels;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -134,17 +133,13 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         }
 
         [Test]
-        public void Initiator_sends_auth_on_channel_activation()
+        public async Task Initiator_sends_auth_on_channel_activation()
         {
             NettyHandshakeHandler handler = new NettyHandshakeHandler(_serializationService, _handshakeService, _session, HandshakeRole.Initiator, _logger, _group);
-            bool received = false;
-            _channelHandlerContext.When(x => x.WriteAndFlushAsync(Arg.Is<IByteBuffer>(b => Bytes.AreEqual(b.Array.Slice(b.ArrayOffset, NetTestVectors.AuthEip8.Length), NetTestVectors.AuthEip8))))
-                .Do(c => received = true);
             handler.ChannelActive(_channelHandlerContext);
 
-            received.Should().BeTrue();
             _handshakeService.Received(1).Auth(_session.RemoteNodeId, Arg.Any<EncryptionHandshake>());
-            
+            await _channelHandlerContext.Received(1).WriteAndFlushAsync(Arg.Is<IByteBuffer>(b => Bytes.AreEqual(b.Array.Slice(b.ArrayOffset, NetTestVectors.AuthEip8.Length), NetTestVectors.AuthEip8)));
         }
 
         [Test]
@@ -206,16 +201,13 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         }
 
         [Test]
-        public void Recipient_sends_ack_on_receiving_auth()
+        public async Task Recipient_sends_ack_on_receiving_auth()
         {
-            bool received = false;
             NettyHandshakeHandler handler = new NettyHandshakeHandler(_serializationService, _handshakeService, _session, HandshakeRole.Recipient, _logger, _group);
-            _channelHandlerContext.When(x => x.WriteAndFlushAsync(Arg.Is<IByteBuffer>(b => Bytes.AreEqual(b.Array.Slice(b.ArrayOffset, NetTestVectors.AckEip8.Length), NetTestVectors.AckEip8))))
-                .Do(_ => received = true);
             handler.ChannelRead(_channelHandlerContext, Unpooled.Buffer(0, 0));
 
-            received.Should().BeTrue();
             _handshakeService.Received(1).Ack(Arg.Any<EncryptionHandshake>(), Arg.Any<Packet>());
+            await _channelHandlerContext.Received(1).WriteAndFlushAsync(Arg.Is<IByteBuffer>(b => Bytes.AreEqual(b.Array.Slice(b.ArrayOffset, NetTestVectors.AckEip8.Length), NetTestVectors.AckEip8)));
         }
     }
 }

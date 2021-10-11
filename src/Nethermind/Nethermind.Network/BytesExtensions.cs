@@ -22,7 +22,7 @@ namespace Nethermind.Network
     {
         public static IByteBuffer ToUnpooledByteBuffer(this byte[] bytes)
         {
-            IByteBuffer buffer = UnpooledByteBufferAllocator.Default.Buffer(bytes.Length);
+            IByteBuffer buffer =UnpooledByteBufferAllocator.Default.Buffer(bytes.Length);
             buffer.WriteBytes(bytes);
             return buffer;
         }
