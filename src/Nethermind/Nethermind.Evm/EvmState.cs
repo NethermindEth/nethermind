@@ -284,7 +284,6 @@ namespace Nethermind.Evm
 
         public void Restore()
         {
-            Refund = 0;
             _logs.Restore(_logsSnapshot);
             _destroyList.Restore(_destroyListSnapshot);
             _accessedAddresses.Restore(_accessedAddressesSnapshot);
