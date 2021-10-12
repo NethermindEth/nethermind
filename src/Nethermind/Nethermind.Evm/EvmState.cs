@@ -126,9 +126,7 @@ namespace Nethermind.Evm
         public int DataStackHead = 0;
         
         public int ReturnStackHead = 0;
-        private State _state = State.New;
-        
-        private enum State { New, Commited, Restored }
+        private bool _canRestore = true;
 
         public EvmState(
             long gasAvailable, 
@@ -174,6 +172,7 @@ namespace Nethermind.Evm
             GasAvailable = gasAvailable;
             ExecutionType = executionType;
             IsTopLevel = isTopLevel;
+            _canRestore = !isTopLevel;
             Snapshot = snapshot;
             Env = env;
             OutputDestination = outputDestination;
@@ -284,14 +283,13 @@ namespace Nethermind.Evm
         public void CommitToParent(EvmState parentState)
         {
             parentState.Refund += Refund;
-            _state = State.Commited;
+            _canRestore = false;
         }
 
         public void Restore()
         {
-            if (_state == State.New && !IsTopLevel)
+            if (_canRestore)
             {
-                _state = State.Restored;
                 _logs.Restore(_logsSnapshot);
                 _destroyList.Restore(_destroyListSnapshot);
                 _accessedAddresses.Restore(_accessedAddressesSnapshot);
