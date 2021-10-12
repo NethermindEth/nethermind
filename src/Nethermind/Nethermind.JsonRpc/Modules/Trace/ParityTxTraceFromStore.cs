@@ -87,10 +87,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         public Keccak TransactionHash { get; set; }
 
         public int? TransactionPosition { get; set; }
-
-        [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public string Type { get; set; }
-
         public string? Error { get; set; }
     }
 }
