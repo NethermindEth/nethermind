@@ -111,17 +111,17 @@ namespace Nethermind.Evm
         /// </summary>
         public IReadOnlySet<StorageCell> AccessedStorageCells => _accessedStorageCells;
         
-        public ICollection<Address> DestroyList => _destroyList;
+        public ICollection<Address> DestroyList { get; }
         public ICollection<LogEntry> Logs => _logs;
 
         private readonly JournalSet<Address> _accessedAddresses;
         private readonly JournalSet<StorageCell> _accessedStorageCells;
         private readonly JournalCollection<LogEntry> _logs;
         private readonly JournalSet<Address> _destroyList;
-        private readonly int _accessedAddressesSnapshot;
-        private readonly int _accessedStorageKeysSnapshot;
-        private readonly int _destroyListSnapshot;
-        private readonly int _logsSnapshot;
+        private readonly int _accessedAddressesSnapshot = -1;
+        private readonly int _accessedStorageKeysSnapshot = -1;
+        private readonly int _destroyListSnapshot = -1;
+        private readonly int _logsSnapshot = -1;
 
         public int DataStackHead = 0;
         
@@ -184,20 +184,18 @@ namespace Nethermind.Evm
                 _accessedStorageCells = stateForAccessLists._accessedStorageCells;
                 _destroyList = stateForAccessLists._destroyList;
                 _logs = stateForAccessLists._logs;
+                _accessedAddressesSnapshot = _accessedAddresses.TakeSnapshot();
+                _accessedStorageKeysSnapshot = _accessedStorageCells.TakeSnapshot();
+                (_destroyListSnapshot, DestroyList) = _destroyList.TakeSnapshotWithCollection();
+                _logsSnapshot = _logs.TakeSnapshot();
             }
             else
             {
                 _accessedAddresses = new JournalSet<Address>();
                 _accessedStorageCells = new JournalSet<StorageCell>();
-                _destroyList = new JournalSet<Address>();
+                DestroyList = _destroyList = new JournalSet<Address>();
                 _logs = new JournalCollection<LogEntry>();
             }
-
-            _accessedAddressesSnapshot = _accessedAddresses.TakeSnapshot();
-            _accessedStorageKeysSnapshot = _accessedStorageCells.TakeSnapshot();
-            _destroyListSnapshot = _destroyList.TakeSnapshot();
-            _logsSnapshot = _logs.TakeSnapshot();
-
         }
 
         public Address From
@@ -280,6 +278,7 @@ namespace Nethermind.Evm
         public void CommitToParent(EvmState parentState)
         {
             parentState.Refund += Refund;
+            _destroyList.DropSnapshot(_destroyListSnapshot);
         }
 
         public void Restore()

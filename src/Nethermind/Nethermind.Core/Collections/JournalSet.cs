@@ -18,6 +18,8 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
 
 namespace Nethermind.Core.Collections
 {
@@ -25,7 +27,27 @@ namespace Nethermind.Core.Collections
     {
         private readonly Dictionary<int, T> _dictionary = new();
         private readonly HashSet<T> _set = new();
+        private SortedRealList<int, SnapshotCollection>? _snapshotCollections;
+        private SortedRealList<int, SnapshotCollection> SnapshotCollections => 
+            LazyInitializer.EnsureInitialized(ref _snapshotCollections, () => new SortedRealList<int, SnapshotCollection>());
+        
         public int TakeSnapshot() => Position;
+        public (int, ICollection<T>) TakeSnapshotWithCollection()
+        {
+            int snapshot = Position;
+            KeyValuePair<int, SnapshotCollection>? lastCollection = SnapshotCollections.Count > 0 ? SnapshotCollections[^1] : null;
+            
+            if (lastCollection?.Key != snapshot)
+            {
+                SnapshotCollection collection = new(this);
+                SnapshotCollections.Add(snapshot, collection);
+                return (snapshot, collection);
+            }
+
+            return (snapshot, lastCollection.Value.Value);
+        }
+        
+        public void DropSnapshot(int snapshot) => SnapshotCollections.Remove(snapshot);
 
         private int Position => Count - 1;
 
@@ -43,6 +65,17 @@ namespace Nethermind.Core.Collections
                 _dictionary.Remove(i);
                 _set.Remove(item);
             }
+
+            if (_snapshotCollections is not null)
+            {
+                foreach (int snapshotTaken in _snapshotCollections.Keys.ToArray())
+                {
+                    if (snapshotTaken >= snapshot)
+                    {
+                        _snapshotCollections.Remove(snapshotTaken);
+                    }
+                }
+            }
         }
 
         public bool Add(T item)
@@ -51,6 +84,12 @@ namespace Nethermind.Core.Collections
             {
                 _dictionary.Add(Position, item);
                 return true;
+            }
+            
+            if (_snapshotCollections is not null)
+            {
+                SnapshotCollection snapshotCollection = _snapshotCollections[^1].Value;
+                snapshotCollection.AddInSnapshot(item);
             }
 
             return false;
@@ -76,5 +115,27 @@ namespace Nethermind.Core.Collections
         public bool IsSupersetOf(IEnumerable<T> other) => _set.IsSupersetOf(other);
         public bool Overlaps(IEnumerable<T> other) => _set.Overlaps(other);
         public bool SetEquals(IEnumerable<T> other) => _set.SetEquals(other);
+
+        private class SnapshotCollection : ICollection<T>, IReadOnlyCollection<T>
+        {
+            private readonly JournalSet<T> _journalSet;
+            private readonly HashSet<T> _snapshotCollection = new();
+
+            public SnapshotCollection(JournalSet<T> journalSet)
+            {
+                _journalSet = journalSet;
+            }
+
+            public IEnumerator<T> GetEnumerator() => _snapshotCollection.GetEnumerator();
+            IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+            public void Add(T item) => _journalSet.Add(item);
+            public void AddInSnapshot(T item) => _snapshotCollection.Add(item);
+            public void Clear() { }
+            public bool Contains(T item) => _snapshotCollection.Contains(item);
+            public void CopyTo(T[] array, int arrayIndex) => _snapshotCollection.CopyTo(array, arrayIndex);
+            public bool Remove(T item) => throw new NotSupportedException("Cannot remove from Journal, use Restore(int snapshot) instead.");
+            public int Count => _snapshotCollection.Count;
+            public bool IsReadOnly => false;
+        }
     }
 }
