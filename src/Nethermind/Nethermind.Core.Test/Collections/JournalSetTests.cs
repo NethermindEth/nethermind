@@ -37,10 +37,21 @@ namespace Nethermind.Core.Test.Collections
         }
         
         [Test]
+        public void Can_restore_empty_snapshot_on_empty()
+        {
+            JournalSet<int> journalSet = new() {};
+            int snapshot = journalSet.TakeSnapshot();
+            journalSet.Restore(snapshot);
+            journalSet.Restore(snapshot);
+            journalSet.Should().BeEquivalentTo(Enumerable.Empty<int>());
+        }
+        
+        [Test]
         public void Can_restore_empty_snapshot()
         {
             JournalSet<int> journalSet = new() {};
             int snapshot = journalSet.TakeSnapshot();
+            journalSet.AddRange(Enumerable.Range(0, 10));
             journalSet.Restore(snapshot);
             journalSet.Restore(snapshot);
             journalSet.Should().BeEquivalentTo(Enumerable.Empty<int>());

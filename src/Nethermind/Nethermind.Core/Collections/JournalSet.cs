@@ -25,7 +25,9 @@ namespace Nethermind.Core.Collections
     {
         private readonly Dictionary<int, T> _dictionary = new();
         private readonly HashSet<T> _set = new();
-        public int TakeSnapshot() => Count - 1;
+        public int TakeSnapshot() => Position;
+
+        private int Position => Count - 1;
 
         public void Restore(int snapshot)
         {
@@ -35,7 +37,7 @@ namespace Nethermind.Core.Collections
             }
 
             int index = snapshot + 1;
-            for (int i = Count; i > index; i--)
+            for (int i = Position; i >= index; i--)
             {
                 T item = _dictionary[i];
                 _dictionary.Remove(i);
@@ -47,7 +49,7 @@ namespace Nethermind.Core.Collections
         {
             if (_set.Add(item))
             {
-                _dictionary.Add(Count, item);
+                _dictionary.Add(Position, item);
                 return true;
             }
 
