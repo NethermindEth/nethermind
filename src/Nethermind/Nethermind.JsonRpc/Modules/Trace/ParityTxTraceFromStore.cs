@@ -55,7 +55,8 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 BlockNumber = txTrace.BlockNumber,
                 TransactionHash = txTrace.TransactionHash,
                 TransactionPosition = txTrace.TransactionPosition,
-                TraceAddress = txTraceAction.TraceAddress
+                TraceAddress = txTraceAction.TraceAddress,
+                Error = txTraceAction.Error
             };
             results.Add(result);
             
@@ -76,6 +77,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         [JsonConverter(typeof(LongConverter), NumberConversion.Raw)] 
         public long BlockNumber { get; set; }
 
+        [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public ParityTraceResult Result { get; set; }
 
         public int Subtraces { get; set; }
@@ -88,5 +90,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public string Type { get; set; }
+
+        public string? Error { get; set; }
     }
 }
