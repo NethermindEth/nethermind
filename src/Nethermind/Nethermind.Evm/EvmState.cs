@@ -126,6 +126,9 @@ namespace Nethermind.Evm
         public int DataStackHead = 0;
         
         public int ReturnStackHead = 0;
+        private State _state = State.New;
+        
+        private enum State { New, Commited, Restored }
 
         public EvmState(
             long gasAvailable, 
@@ -240,6 +243,7 @@ namespace Nethermind.Evm
         public void Dispose()
         {
             if (DataStack != null) _stackPool.Value.ReturnStacks(DataStack, ReturnStack!);
+            Restore();
             Memory?.Dispose();
         }
 
@@ -278,15 +282,20 @@ namespace Nethermind.Evm
         public void CommitToParent(EvmState parentState)
         {
             parentState.Refund += Refund;
+            _state = State.Commited;
             _destroyList.DropSnapshot(_destroyListSnapshot);
         }
 
         public void Restore()
         {
-            _logs.Restore(_logsSnapshot);
-            _destroyList.Restore(_destroyListSnapshot);
-            _accessedAddresses.Restore(_accessedAddressesSnapshot);
-            _accessedStorageCells.Restore(_accessedStorageKeysSnapshot);
+            if (_state == State.New)
+            {
+                _state = State.Restored;
+                _logs.Restore(_logsSnapshot);
+                _destroyList.Restore(_destroyListSnapshot);
+                _accessedAddresses.Restore(_accessedAddressesSnapshot);
+                _accessedStorageCells.Restore(_accessedStorageKeysSnapshot);
+            }
         }
     }
 }
