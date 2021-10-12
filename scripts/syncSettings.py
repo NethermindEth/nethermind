@@ -93,32 +93,6 @@ configs = {
         "blockReduced": 8192,
         "multiplierRequirement": 10000
     },
-    # beam section
-    "mainnet_beam": {
-        "url": "api.etherscan.io",
-        "blockReduced": 2000,
-        "multiplierRequirement": 2000 
-    },
-    "goerli_beam": {
-        "url": "api-goerli.etherscan.io",
-        "blockReduced": 8192,
-        "multiplierRequirement": 30000 
-    },
-    "ropsten_beam": {
-        "url": "api-ropsten.etherscan.io",
-        "blockReduced": 8192,
-        "multiplierRequirement": 10000
-    },
-    "rinkeby_beam": {
-        "url": "api-rinkeby.etherscan.io",
-        "blockReduced": 8192,
-        "multiplierRequirement": 30000
-    },
-    "poacore_beam": {
-        "url": "https://core.poa.network",
-        "blockReduced": 8192,
-        "multiplierRequirement": 10000
-    },
     # pruning section
     "mainnet_pruned": {
         "url": "api.etherscan.io",
@@ -162,27 +136,6 @@ configs = {
     },
     "volta_pruned": {
         "url": "https://volta-rpc.energyweb.org",
-        "blockReduced": 8192,
-        "multiplierRequirement": 10000
-    },
-    # ndm section
-    "ndm_consumer_mainnet": {
-        "url": "api.etherscan.io",
-        "blockReduced": 2000,
-        "multiplierRequirement": 2000 
-    },
-    "ndm_consumer_xdai": {
-        "url": "https://dai.poa.network",
-        "blockReduced": 8192,
-        "multiplierRequirement": 10000
-    },
-    "ndm_consumer_goerli": {
-        "url": "api-goerli.etherscan.io",
-        "blockReduced": 8192,
-        "multiplierRequirement": 30000 
-    },
-    "ndm_consumer_ropsten": {
-        "url": "api-ropsten.etherscan.io",
         "blockReduced": 8192,
         "multiplierRequirement": 10000
     }
