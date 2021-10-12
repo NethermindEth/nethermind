@@ -73,9 +73,6 @@
     </Content>
     <Content Remove="out\**" />
     <Content Remove="keystore\**" />
-    <Content Include="DSL\**">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
     <Content Include="git-hash">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
@@ -129,8 +126,6 @@
   <Target Name="CopyPluginsAfterBuild" AfterTargets="AfterBuild">
     <Message Text="---&gt; Copying Plugins After Build" Importance="High" />
     <Copy SourceFiles="@(PluginsForBuild)" DestinationFolder="$(OutDir)\plugins" />
-    <Copy SourceFiles="$(SolutionDir)Nethermind.Dsl\bin\$(Configuration)\$(TargetFramework)\Nethermind.Dsl.dll" DestinationFolder="$(OutDir)plugins" Condition="Exists('$(SolutionDir)Nethermind.Dsl\bin\$(Configuration)\$(TargetFramework)\Nethermind.Dsl.dll')" SkipUnchangedFiles="true" />
-    <Copy SourceFiles="$(SolutionDir)Nethermind.Dsl\bin\$(Configuration)\$(TargetFramework)\Nethermind.Dsl.pdb" DestinationFolder="$(OutDir)plugins" Condition="Exists('$(SolutionDir)Nethermind.Dsl\bin\$(Configuration)\$(TargetFramework)\Nethermind.Dsl.pdb')" SkipUnchangedFiles="true" />
   </Target>
 
     <Target Name="CopyPluginsAfterPublish" AfterTargets="AfterPublish">
