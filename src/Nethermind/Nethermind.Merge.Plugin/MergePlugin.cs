@@ -107,7 +107,7 @@ namespace Nethermind.Merge.Plugin
 
                 IInitConfig? initConfig = _api.Config<IInitConfig>();
 
-                PayloadStorage payloadStorage = new(_idealBlockProductionContext, _emptyBlockProductionContext, _api.StateProvider, _api.BlockchainProcessor, initConfig, _api.LogManager);
+                PayloadStorage payloadStorage = new(_idealBlockProductionContext, _emptyBlockProductionContext, initConfig, _api.LogManager);
 
                 IEngineRpcModule engineRpcModule = new EngineRpcModule(
                     new PreparePayloadHandler(_api.BlockTree, payloadStorage, _manualTimestamper, _api.Sealer, _api.LogManager),
