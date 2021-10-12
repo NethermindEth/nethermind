@@ -289,7 +289,7 @@ namespace Nethermind.Evm
 
         public void Restore()
         {
-            if (_state == State.New)
+            if (_state == State.New && !IsTopLevel)
             {
                 _state = State.Restored;
                 _logs.Restore(_logsSnapshot);
