@@ -25,8 +25,8 @@ namespace Nethermind.Mev.Data
 {
     public partial class MevMegabundle : MevBundle, IEquatable<MevMegabundle>
     {
-        public MevMegabundle(Signature relaySignature, long blockNumber, IReadOnlyList<BundleTransaction> transactions,
-            UInt256? minTimestamp = null, UInt256? maxTimestamp = null, Keccak[]? revertingTxHashes = null)
+        public MevMegabundle(long blockNumber, IReadOnlyList<BundleTransaction> transactions, Keccak[]? revertingTxHashes = null,
+            Signature? relaySignature = null, UInt256? minTimestamp = null, UInt256? maxTimestamp = null)
             : base(blockNumber, transactions, minTimestamp, maxTimestamp)
         {
             RelaySignature = relaySignature;
@@ -38,16 +38,8 @@ namespace Nethermind.Mev.Data
             }
         }
 
-        public MevMegabundle(long blockNumber, IReadOnlyList<BundleTransaction> transactions,
-            UInt256? minTimestamp = null, UInt256? maxTimestamp = null, Keccak[]? revertingTxHashes = null)
-            : base(blockNumber, transactions, minTimestamp, maxTimestamp)
-        {
-            RevertingTxHashes = revertingTxHashes ?? Array.Empty<Keccak>();
-            Hash = GetHash(this);
-        }
-
         public override Keccak Hash { get; }
-        public Signature? RelaySignature { get; }
+        public Signature? RelaySignature { get; set; }
 
         public Address? RelayAddress { get; internal set; }
 

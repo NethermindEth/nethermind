@@ -90,8 +90,8 @@ namespace Nethermind.Mev
             {
                 BundleTransaction[] txs = Decode(mevMegabundleRpc.Txs, mevMegabundleRpc.RevertingTxHashes?.ToHashSet());
                 Signature relaySignature = new(mevMegabundleRpc.RelaySignature);
-                MevMegabundle megabundle = new(relaySignature, mevMegabundleRpc.BlockNumber, txs,
-                    mevMegabundleRpc.MinTimestamp, mevMegabundleRpc.MaxTimestamp);
+                MevMegabundle megabundle = new(mevMegabundleRpc.BlockNumber, txs, mevMegabundleRpc.RevertingTxHashes,
+                    relaySignature, mevMegabundleRpc.MinTimestamp, mevMegabundleRpc.MaxTimestamp);
                 bool result = _bundlePool.AddMegabundle(megabundle);
                 return ResultWrapper<bool>.Success(result);
             }

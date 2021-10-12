@@ -59,7 +59,7 @@ namespace Nethermind.Mev.Test
             bundlePool.AddBundle(new MevBundle(1, new []{Build.A.TypedTransaction<BundleTransaction>().SignedAndResolved(TestItem.PrivateKeyA).TestObject}, 0, 0));
             bundlePool.AddBundle(new MevBundle(3, new []{Build.A.TypedTransaction<BundleTransaction>().SignedAndResolved(TestItem.PrivateKeyA).TestObject}, 0, 0));
             bundlePool.AddBundle(new MevBundle(4, new []{Build.A.TypedTransaction<BundleTransaction>().SignedAndResolved(TestItem.PrivateKeyA).TestObject}, 0, 0));
-            
+
             int deltaBundlesReceived = Metrics.BundlesReceived - beforeBundlesReceived;
             int deltaValidBundlesReceived = Metrics.ValidBundlesReceived - beforeValidBundlesReceived;
             int deltaBundlesSimulated = Metrics.BundlesSimulated - beforeBundlesSimulated;
@@ -69,6 +69,32 @@ namespace Nethermind.Mev.Test
             deltaBundlesSimulated.Should().Be(2); // only first two bundles are at current head
         }
         
+        [Test]
+        public void Should_count_valid_megabundles()
+        {
+            var ecdsa = Substitute.For<IEthereumEcdsa>();
+            ecdsa.RecoverAddress(Arg.Any<Signature>(), Arg.Any<Keccak>()).Returns(TestItem.AddressB);
+            
+            TestBundlePool bundlePool = CreateTestBundlePool(ecdsa);
+
+            int beforeMegabundlesReceived = Metrics.MegabundlesReceived;
+            int beforeValidMegabundlesReceived = Metrics.ValidMegabundlesReceived;
+            int beforeBundlesSimulated = Metrics.BundlesSimulated;
+
+            bundlePool.AddMegabundle(new MevMegabundle(1, new []{Build.A.TypedTransaction<BundleTransaction>().SignedAndResolved(TestItem.PrivateKeyA).TestObject}));
+            bundlePool.AddMegabundle(new MevMegabundle(1, new []{Build.A.TypedTransaction<BundleTransaction>().SignedAndResolved(TestItem.PrivateKeyA).TestObject}));
+            bundlePool.AddMegabundle(new MevMegabundle(3, new []{Build.A.TypedTransaction<BundleTransaction>().SignedAndResolved(TestItem.PrivateKeyA).TestObject}));
+            bundlePool.AddMegabundle(new MevMegabundle(4, new []{Build.A.TypedTransaction<BundleTransaction>().SignedAndResolved(TestItem.PrivateKeyA).TestObject}));
+
+            int deltaMegabundlesReceived = Metrics.MegabundlesReceived - beforeMegabundlesReceived;
+            int deltaValidMegabundlesReceived = Metrics.ValidMegabundlesReceived - beforeValidMegabundlesReceived;
+            int deltaMegabundlesSimulated = Metrics.BundlesSimulated - beforeBundlesSimulated;
+
+            deltaMegabundlesReceived.Should().Be(4);
+            deltaValidMegabundlesReceived.Should().Be(4);
+            deltaMegabundlesSimulated.Should().Be(2); // first two megeabundles are at current head
+        }
+
         [Test]
         [Explicit("Fails on CI")]
         public void Should_count_invalid_bundles()
@@ -99,6 +125,73 @@ namespace Nethermind.Mev.Test
             deltaBundlesReceived.Should().Be(4);
             deltaValidBundlesReceived.Should().Be(2);
             deltaBundlesSimulated.Should().Be(0); // should not simulate invalid bundle 
+        }
+        
+        [Test]
+        public void Should_count_invalid_megabundles()
+        {
+            var ecdsa = Substitute.For<IEthereumEcdsa>();
+            
+            MevMegabundle[] bundles = new[]
+            {
+                new MevMegabundle(1, new []{Build.A.TypedTransaction<BundleTransaction>().SignedAndResolved(TestItem.PrivateKeyA).TestObject}, minTimestamp: 5, maxTimestamp: 0), // invalid
+                new MevMegabundle(2, new []{Build.A.TypedTransaction<BundleTransaction>().SignedAndResolved(TestItem.PrivateKeyA).TestObject}, minTimestamp: 0, maxTimestamp: 0), // invalid relay address
+                new MevMegabundle(3, new []{Build.A.TypedTransaction<BundleTransaction>().SignedAndResolved(TestItem.PrivateKeyA).TestObject}, minTimestamp: 0, maxTimestamp: long.MaxValue), // invalid
+                new MevMegabundle(4, new []{Build.A.TypedTransaction<BundleTransaction>().SignedAndResolved(TestItem.PrivateKeyA).TestObject}, minTimestamp: 0, maxTimestamp: 0)
+            };
+            
+            ecdsa.RecoverAddress(Arg.Any<Signature>(), bundles[2].Hash).Returns(TestItem.AddressC); // not in list of trusted relay addresses
+            ecdsa.RecoverAddress(Arg.Any<Signature>(), bundles[3].Hash).Returns(TestItem.AddressB); // trusted relay address
+            
+            TestBundlePool bundlePool = CreateTestBundlePool(ecdsa);
+
+            int beforeMegabundlesReceived = Metrics.MegabundlesReceived;
+            int beforeValidMegabundlesReceived = Metrics.ValidMegabundlesReceived;
+            int beforeMegabundlesSimulated = Metrics.BundlesSimulated;
+
+            foreach (MevMegabundle mevMegabundle in bundles)
+            {
+                bundlePool.AddMegabundle(mevMegabundle);
+            }
+
+            int deltaBundlesReceived = Metrics.MegabundlesReceived - beforeMegabundlesReceived;
+            int deltaValidBundlesReceived = Metrics.ValidMegabundlesReceived - beforeValidMegabundlesReceived;
+            int deltaBundlesSimulated = Metrics.BundlesSimulated - beforeMegabundlesSimulated;
+
+            deltaBundlesReceived.Should().Be(4);
+            deltaValidBundlesReceived.Should().Be(1);
+            deltaBundlesSimulated.Should().Be(0); // should not simulate invalid bundle 
+        }
+        
+        [Test]
+        public void Should_count_valid_bundles_and_megabundles()
+        {
+            TestBundlePool bundlePool = CreateTestBundlePool();
+
+            int beforeBundlesReceived = Metrics.BundlesReceived;
+            int beforeValidBundlesReceived = Metrics.ValidBundlesReceived;
+            int beforeMegabundlesReceived = Metrics.MegabundlesReceived;
+            int beforeValidMegabundlesReceived = Metrics.ValidMegabundlesReceived;
+            int beforeBundlesSimulated = Metrics.BundlesSimulated;
+            
+            bundlePool.AddBundle(new MevBundle(1, new []{Build.A.TypedTransaction<BundleTransaction>().SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+                Build.A.TypedTransaction<BundleTransaction>().SignedAndResolved(TestItem.PrivateKeyA).WithNonce(1).TestObject}));
+            bundlePool.AddBundle(new MevBundle(1, new []{Build.A.TypedTransaction<BundleTransaction>().SignedAndResolved(TestItem.PrivateKeyA).TestObject}));
+            bundlePool.AddMegabundle(new MevMegabundle(1, new []{Build.A.TypedTransaction<BundleTransaction>().SignedAndResolved(TestItem.PrivateKeyA).TestObject}));
+            bundlePool.AddMegabundle(new MevMegabundle(3, new []{Build.A.TypedTransaction<BundleTransaction>().SignedAndResolved(TestItem.PrivateKeyA).TestObject}));
+            bundlePool.AddBundle(new MevBundle(4, new []{Build.A.TypedTransaction<BundleTransaction>().SignedAndResolved(TestItem.PrivateKeyA).TestObject}));
+
+            int deltaBundlesReceived = Metrics.BundlesReceived - beforeBundlesReceived;
+            int deltaValidBundlesReceived = Metrics.ValidBundlesReceived - beforeValidBundlesReceived;
+            int deltaMegabundlesReceived = Metrics.MegabundlesReceived - beforeMegabundlesReceived;
+            int deltaValidMegabundlesReceived = Metrics.ValidMegabundlesReceived - beforeValidMegabundlesReceived;
+            int deltaBundlesSimulated = Metrics.BundlesSimulated - beforeBundlesSimulated;
+
+            deltaBundlesReceived.Should().Be(3);
+            deltaValidBundlesReceived.Should().Be(3);
+            deltaMegabundlesReceived.Should().Be(2);
+            deltaValidMegabundlesReceived.Should().Be(2);
+            deltaBundlesSimulated.Should().Be(3); // two bundles are at current head + one megeabundle at current head
         }
         
         [Test]
@@ -141,7 +234,7 @@ namespace Nethermind.Mev.Test
             deltaCoinbasePayments.Should().Be(100000000000);
         }
 
-        private static TestBundlePool CreateTestBundlePool()
+        private static TestBundlePool CreateTestBundlePool(IEthereumEcdsa? ecdsa = null)
         {
             var blockTree = Substitute.For<IBlockTree>();
             blockTree.ChainId.Returns((ulong)ChainId.Mainnet);
@@ -160,15 +253,16 @@ namespace Nethermind.Mev.Test
             blockTree.Head.Returns(head);
             //blockTree.FindLevel(0).ReturnsForAnyArgs(info);
 
+            MevConfig config = new MevConfig() { TrustedRelays = $"{TestItem.AddressA},{TestItem.AddressB}" };
             TestBundlePool bundlePool = new(
                 blockTree,
                 Substitute.For<IBundleSimulator>(),
                 new ManualTimestamper(DateTimeOffset.UnixEpoch.DateTime),
                 new TxValidator(blockTree.ChainId),
                 new TestSpecProvider(London.Instance),
-                new MevConfig(),
+                config,
                 LimboLogs.Instance,
-                Substitute.For<IEthereumEcdsa>());
+                ecdsa ?? Substitute.For<IEthereumEcdsa>());
             return bundlePool;
         }
     }
