@@ -286,7 +286,7 @@ namespace Nethermind.Evm
             _canRestore = false;
         }
 
-        public void Restore()
+        private void Restore()
         {
             if (_canRestore)
             {

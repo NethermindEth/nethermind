@@ -316,10 +316,6 @@ namespace Nethermind.Evm
                         {
                             previousState.CommitToParent(currentState);
                         }
-                        else
-                        {
-                            previousState.Restore();
-                        }
                     }
                     else
                     {
