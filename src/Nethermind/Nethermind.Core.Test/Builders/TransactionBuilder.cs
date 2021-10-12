@@ -194,5 +194,11 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.Type = txType;
             return this;
         }
+
+        public TransactionBuilder<T> WithIsServiceTransaction(bool isServiceTransaction)
+        {
+            TestObjectInternal.IsServiceTransaction = isServiceTransaction;
+            return this;
+        }
     }
 }

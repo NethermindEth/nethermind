@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -375,7 +376,6 @@ namespace Nethermind.JsonRpc.Test.Modules
             Transaction transaction = Build.A.Transaction.WithNonce(currentNonceAddressA++).WithTo(TestItem.AddressC)
                 .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
             await blockchain.AddBlock(transaction);
-
             ResultWrapper<ParityTxTraceFromStore[]> traces = context.TraceRpcModule.trace_transaction(transaction.Hash!);
             Assert.AreEqual(1, traces.Data.Length);
             Assert.AreEqual(transaction.Hash!, traces.Data[0].TransactionHash);
@@ -521,6 +521,25 @@ namespace Nethermind.JsonRpc.Test.Modules
             Assert.AreEqual("reward", traces.Data.Action.CallType);
             Assert.AreEqual(UInt256.Parse("2000000000000000000"), traces.Data.Action.Value);
             Assert.IsTrue(traces.GetResult().ResultType == ResultType.Success);
+        }
+
+        [Test]
+        public async Task trace_replayBlockTransactions_zeroGasUsed_test()
+        {
+            Context context = new();
+            await context.Build();
+            TestRpcBlockchain blockchain = context.Blockchain;
+            UInt256 currentNonceAddressA = blockchain.State.GetAccount(TestItem.AddressA).Nonce;
+
+            Transaction serviceTransaction = Build.A.Transaction.WithNonce(currentNonceAddressA++)
+                .WithTo(TestItem.AddressC)
+                .SignedAndResolved(TestItem.PrivateKeyA)
+                .WithIsServiceTransaction(true).TestObject;
+            await blockchain.AddBlock(serviceTransaction);
+            BlockParameter blockParameter = new BlockParameter(BlockParameterType.Latest);
+            string[] traceTypes = {"trace"};
+            ResultWrapper<ParityTxTraceFromReplay[]> traces = context.TraceRpcModule.trace_replayBlockTransactions(blockParameter, traceTypes);
+            Assert.AreEqual(0, traces.Data[0].Action.Gas);
         }
     }
 }
