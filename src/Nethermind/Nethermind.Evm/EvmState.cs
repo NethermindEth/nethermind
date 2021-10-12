@@ -254,9 +254,9 @@ namespace Nethermind.Evm
             }
         }
 
-        public bool IsCold(Address? address) => !AccessedAddresses.Contains(address);
+        public bool IsCold(Address? address) => !_accessedAddresses.Contains(address);
         
-        public bool IsCold(StorageCell storageCell) => !AccessedStorageCells.Contains(storageCell);
+        public bool IsCold(StorageCell storageCell) => !_accessedStorageCells.Contains(storageCell);
 
         public void WarmUp(AccessList? accessList)
         {
