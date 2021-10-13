@@ -95,8 +95,6 @@ namespace Nethermind.TxPool
             _accounts = _headInfo.AccountStateProvider;
             _specProvider = _headInfo.SpecProvider;
 
-
-            MemoryAllowance.MemPoolSize = txPoolConfig.Size;
             AddNodeInfoEntryForTxPool();
 
             _transactions = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, comparer, logManager);
