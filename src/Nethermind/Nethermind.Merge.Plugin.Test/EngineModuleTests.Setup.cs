@@ -54,7 +54,7 @@ namespace Nethermind.Merge.Plugin.Test
             return new EngineRpcModule(
                 new PreparePayloadHandler(chain.BlockTree, payloadStorage, chain.Timestamper, chain.SealEngine, chain.LogManager),
                 new GetPayloadHandler(payloadStorage,  chain.LogManager),
-                new ExecutePayloadHandler(chain.BlockTree, chain.BlockchainProcessor, new EthSyncingInfo(chain.BlockFinder), chain.State, new InitConfig(), null, chain.LogManager), // ToDo fix null here - just to check sth
+                new ExecutePayloadHandler(chain.HeaderValidator, chain.BlockTree, chain.BlockchainProcessor, new EthSyncingInfo(chain.BlockFinder), new InitConfig(), chain.LogManager),
                 (PoSSwitcher)chain.PoSSwitcher,
                 new ForkChoiceUpdatedHandler(chain.BlockTree, chain.State, chain.BlockFinalizationManager, chain.PoSSwitcher, chain.BlockConfirmationManager, chain.LogManager),
                 new ExecutionStatusHandler(chain.BlockTree, chain.BlockConfirmationManager, chain.BlockFinalizationManager),
@@ -75,7 +75,7 @@ namespace Nethermind.Merge.Plugin.Test
                     .WithTimestamp(UInt256.One);
                 Signer = new Eth2Signer(MinerAddress);
                 PoSSwitcher = new PoSSwitcher(LogManager, new MergeConfig() { Enabled = true }, new MemDb(), BlockTree);
-                SealEngine = new MergeSealEngine(SealEngine, PoSSwitcher, Signer);
+                SealEngine = new MergeSealEngine(SealEngine, PoSSwitcher, Signer, LogManager);
                 BlockConfirmationManager = new BlockConfirmationManager();
             }
             
@@ -145,10 +145,8 @@ namespace Nethermind.Merge.Plugin.Test
 
             private IBlockValidator CreateBlockValidator()
             {
-                HeaderValidator headerValidator =
-                    new (BlockTree, Always.Valid, SpecProvider, LogManager);
                 HeaderValidator mergeHeaderValidator =
-                new MergeHeaderValidator(headerValidator, BlockTree, SpecProvider, PoSSwitcher, LogManager);
+                new PostMergeHeaderValidator(BlockTree, SpecProvider, LogManager);
                 
                 return new BlockValidator(
                     new TxValidator(SpecProvider.ChainId),

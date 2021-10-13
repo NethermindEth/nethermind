@@ -460,6 +460,8 @@ namespace Nethermind.Consensus.Processing
             BlockHeader branchingPoint = null;
             List<Block> blocksToBeAddedToMain = new();
 
+            bool notFoundTheBranchingPointYet;
+            bool notReachedTheReorgBoundary;
             Block toBeProcessed = suggestedBlock;
             do
             {
@@ -508,7 +510,9 @@ namespace Nethermind.Consensus.Processing
                 // then on restart we would find 14 as the branch head (since 14 is on the main chain)
                 // we need to dig deeper to go all the way to the false (reorg boundary) head
                 // otherwise some nodes would be missing
-            } while (!_blockTree.IsMainChain(branchingPoint.Hash) || branchingPoint.Number > (_blockTree.Head?.Header.Number ?? 0));
+                notFoundTheBranchingPointYet = !_blockTree.IsMainChain(branchingPoint.Hash);
+                notReachedTheReorgBoundary = branchingPoint.Number > (_blockTree.Head?.Header.Number ?? 0);
+            } while (notFoundTheBranchingPointYet || notReachedTheReorgBoundary);
 
             if (branchingPoint != null && branchingPoint.Hash != _blockTree.Head?.Hash)
             {
@@ -571,6 +575,7 @@ namespace Nethermind.Consensus.Processing
             _blockTree.NewHeadBlock -= OnNewHeadBlock;
         }
 
+        [DebuggerDisplay("Root: {Root}, Length: {BlocksToProcess.Count}")]
         private readonly struct ProcessingBranch
         {
             public ProcessingBranch(Keccak root, List<Block> blocks)

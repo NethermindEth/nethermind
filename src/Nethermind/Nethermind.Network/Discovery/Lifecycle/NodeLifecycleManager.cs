@@ -89,7 +89,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
                 if (IsBonded)
                 {
                     UpdateState(NodeLifecycleState.Active);
-                    if(_logger.IsDebug) _logger.Debug($"Bonded with {ManagedNode.Host}");
+                    if(_logger.IsTrace) _logger.Trace($"Bonded with {ManagedNode.Host}");
                 }
                 else
                 {

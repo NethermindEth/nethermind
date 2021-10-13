@@ -43,7 +43,6 @@ using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NUnit.Framework;
@@ -106,6 +105,7 @@ namespace Nethermind.Core.Test.Blockchain
 
         public static readonly UInt256 InitialValue = 1000.Ether();
         private BlockValidator _blockValidator;
+        public HeaderValidator HeaderValidator { get; set; }
         public BuildBlocksWhenRequested BlockProductionTrigger { get; } = new();
 
         public IReadOnlyTrieStore ReadOnlyTrieStore { get; private set; }
@@ -155,11 +155,11 @@ namespace Nethermind.Core.Test.Blockchain
             VirtualMachine virtualMachine = new(SpecProvider.ChainId, new BlockhashProvider(BlockTree, LogManager), LogManager);
             TxProcessor = new TransactionProcessor(SpecProvider, State, Storage, virtualMachine, LogManager);
             BlockPreprocessorStep = new RecoverSignatures(EthereumEcdsa, TxPool, SpecProvider, LogManager);
-            HeaderValidator headerValidator = new(BlockTree, Always.Valid, SpecProvider, LogManager);
+            HeaderValidator = new(BlockTree, Always.Valid, SpecProvider, LogManager);
                 
             _blockValidator = new BlockValidator(
                 new TxValidator(SpecProvider.ChainId),
-                headerValidator,
+                HeaderValidator,
                 Always.Valid,
                 SpecProvider,
                 LogManager);

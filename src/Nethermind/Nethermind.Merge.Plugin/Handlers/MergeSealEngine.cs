@@ -21,6 +21,7 @@ using System.Threading.Tasks;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Logging;
 
 namespace Nethermind.Merge.Plugin.Handlers
 {
@@ -29,13 +30,20 @@ namespace Nethermind.Merge.Plugin.Handlers
         private readonly ISealEngine _preMergeSealValidator;
         private readonly IPoSSwitcher _poSSwitcher;
         private readonly ISigner _signer;
+        private readonly ILogger _logger;
 
-        public MergeSealEngine(ISealEngine preMergeSealEngine, IPoSSwitcher? poSSwitcher, ISigner? signer)
+        public MergeSealEngine(
+            ISealEngine preMergeSealEngine,
+            IPoSSwitcher? poSSwitcher,
+            ISigner? signer,
+            ILogManager? logManager)
         {
             _preMergeSealValidator =
                 preMergeSealEngine ?? throw new ArgumentNullException(nameof(preMergeSealEngine));
             _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
             _signer = signer ?? throw new ArgumentNullException(nameof(signer));
+            _logger = logManager?.GetClassLogger<MergeSealEngine>() ??
+                      throw new ArgumentNullException(nameof(logManager));
         }
 
         public Task<Block> SealBlock(Block block, CancellationToken cancellationToken)
@@ -62,7 +70,7 @@ namespace Nethermind.Merge.Plugin.Handlers
 
         public bool ValidateParams(BlockHeader parent, BlockHeader header)
         {
-            if (_poSSwitcher.HasEverBeenInPos())
+            if (_poSSwitcher.IsPos(header))
             {
                 return true;
             }
@@ -72,12 +80,7 @@ namespace Nethermind.Merge.Plugin.Handlers
 
         public bool ValidateSeal(BlockHeader header, bool force)
         {
-            if (_poSSwitcher.HasEverBeenInPos())
-            {
-                return true;
-            }
-
-            return _preMergeSealValidator.ValidateSeal(header, force);
+            return true;
         }
     }
 }

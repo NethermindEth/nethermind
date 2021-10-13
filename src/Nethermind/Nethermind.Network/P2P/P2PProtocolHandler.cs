@@ -223,7 +223,7 @@ namespace Nethermind.Network.P2P
 
             ReceivedProtocolInitMsg(hello);
 
-            P2PProtocolInitializedEventArgs eventArgs = new P2PProtocolInitializedEventArgs(this)
+            P2PProtocolInitializedEventArgs eventArgs = new(this)
             {
                 P2PVersion = ProtocolVersion,
                 ClientId = RemoteClientId,
@@ -254,7 +254,7 @@ namespace Nethermind.Network.P2P
             _nodeStatsManager.ReportEvent(Session.Node, NodeStatsEventType.P2PPingOut);
             Stopwatch stopwatch = Stopwatch.StartNew();
 
-            CancellationTokenSource delayCancellation = new CancellationTokenSource();
+            CancellationTokenSource delayCancellation = new();
             try
             {
                 Task firstTask = await Task.WhenAny(pongTask, Task.Delay(Timeouts.P2PPing, delayCancellation.Token));
@@ -282,7 +282,7 @@ namespace Nethermind.Network.P2P
         {
             if (Logger.IsTrace)
                 Logger.Trace($"Sending disconnect {disconnectReason} ({details}) to {Session.Node:s}");
-            DisconnectMessage message = new DisconnectMessage(disconnectReason);
+            DisconnectMessage message = new(disconnectReason);
             Send(message);
             if(NetworkDiagTracer.IsEnabled)
                 NetworkDiagTracer.ReportDisconnect(Session.Node.Address, $"Local {disconnectReason} {details}");
@@ -292,12 +292,7 @@ namespace Nethermind.Network.P2P
 
         public static readonly IEnumerable<Capability> DefaultCapabilities = new Capability[]
         {
-            new Capability(Protocol.Eth, 62),
-            new Capability(Protocol.Eth, 63),
-            new Capability(Protocol.Eth, 64),
-            new Capability(Protocol.Eth, 65),
-            new Capability(Protocol.Eth, 66),
-            // new Capability(Protocol.Les, 3)
+            new(Protocol.Eth, 66),
         };
 
         private readonly List<Capability> SupportedCapabilities = DefaultCapabilities.ToList();
@@ -310,7 +305,7 @@ namespace Nethermind.Network.P2P
                              $"protocol {Name}, listen port {ListenPort}");
             }
 
-            HelloMessage helloMessage = new HelloMessage
+            HelloMessage helloMessage = new()
             {
                 Capabilities = SupportedCapabilities,
                 ClientId = ClientVersion.Description,

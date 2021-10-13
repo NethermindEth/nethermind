@@ -16,7 +16,9 @@
 // 
 
 using System;
+using Nethermind.Blockchain;
 using Nethermind.Consensus;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Merge.Plugin
 {
@@ -24,13 +26,17 @@ namespace Nethermind.Merge.Plugin
     {
         private readonly IGossipPolicy preMergeGossipPolicy;
         private readonly IPoSSwitcher _poSSwitcher;
+        private readonly IManualBlockFinalizationManager _blockFinalizationManager;
 
-        public MergeGossipPolicy(IGossipPolicy? apiGossipPolicy, IPoSSwitcher? poSSwitcher)
+        public MergeGossipPolicy(IGossipPolicy? apiGossipPolicy, IPoSSwitcher? poSSwitcher, IManualBlockFinalizationManager blockFinalizationManager)
         {
             preMergeGossipPolicy = apiGossipPolicy ?? throw new ArgumentNullException(nameof(apiGossipPolicy));
             _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
+            _blockFinalizationManager = blockFinalizationManager;
         }
 
-        public bool ShouldGossipBlocks => _poSSwitcher.HasEverBeenInPos() ? false : preMergeGossipPolicy.ShouldGossipBlocks;
+        public bool ShouldGossipBlocks => (!_poSSwitcher.HasEverBeenInPos() ||
+                                           _blockFinalizationManager.LastFinalizedHash == Keccak.Zero) && preMergeGossipPolicy.ShouldGossipBlocks;
+
     }
 }

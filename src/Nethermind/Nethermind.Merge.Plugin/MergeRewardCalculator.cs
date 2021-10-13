@@ -15,7 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Consensus;
+using System;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
 
@@ -23,22 +23,23 @@ namespace Nethermind.Merge.Plugin
 {
     public class MergeRewardCalculator : IRewardCalculator
     {
-        private readonly IPoSSwitcher _poSSwitcher;
         private readonly IRewardCalculator _beforeTheMerge;
+        private readonly IMergeConfig _mergeConfig;
 
-        public MergeRewardCalculator(IRewardCalculator beforeTheMerge, IPoSSwitcher poSSwitcher)
+        public MergeRewardCalculator(IRewardCalculator? beforeTheMerge, IMergeConfig? mergeConfig)
         {
-            _poSSwitcher = poSSwitcher;
-            _beforeTheMerge = beforeTheMerge;
+            _beforeTheMerge = beforeTheMerge ?? throw new ArgumentNullException(nameof(beforeTheMerge));
+            _mergeConfig = mergeConfig ?? throw new ArgumentNullException(nameof(mergeConfig));
         }
 
         public BlockReward[] CalculateRewards(Block block)
         {
-            if (_poSSwitcher.IsPos(block.Header))
+            if (block.TotalDifficulty - block.Difficulty < _mergeConfig.TerminalTotalDifficulty)
             {
                 return _beforeTheMerge.CalculateRewards(block);
             }
 
+            block.Header.IsPostMerge = true;
             return NoBlockRewards.Instance.CalculateRewards(block);
         }
     }

@@ -81,11 +81,12 @@ namespace Nethermind.Synchronization.Blocks
                     }
                 }
 
-                if (info.TotalDifficulty <= localTotalDiff)
-                {
-                    // if we require higher difficulty then we need to discard peers with same diff as ours
-                    continue;
-                }
+                // TODO: this is not needed -> always wtapped
+                // if (info.TotalDifficulty <= localTotalDiff)
+                // {
+                //     // if we require higher difficulty then we need to discard peers with same diff as ours
+                //     continue;
+                // }
 
                 if (info.TotalDifficulty - localTotalDiff <= 2 && (info.PeerClientType == NodeClientType.Parity || info.PeerClientType == NodeClientType.OpenEthereum))
                 {

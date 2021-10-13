@@ -99,6 +99,11 @@ namespace Nethermind.Merge.Plugin
 
         private bool VerifyPoS(BlockHeader header, bool withSwitchToPoS)
         {
+            if (header.Number == 0)
+            {
+                return false;
+            }
+            
             if (_firstPoSBlockHeader != null && _firstPoSBlockHeader.TotalDifficulty <= header.TotalDifficulty)
             {
                 return true;

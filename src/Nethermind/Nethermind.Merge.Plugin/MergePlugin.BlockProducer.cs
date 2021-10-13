@@ -21,6 +21,7 @@ using Nethermind.Api.Extensions;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
@@ -56,11 +57,9 @@ namespace Nethermind.Merge.Plugin
                 if (_api.ReadOnlyTrieStore == null) throw new ArgumentNullException(nameof(_api.ReadOnlyTrieStore));
                 if (_api.BlockchainProcessor == null) throw new ArgumentNullException(nameof(_api.BlockchainProcessor));
                 
-                _api.HeaderValidator = new MergeHeaderValidator(
-                    _api.HeaderValidator,
+                _api.HeaderValidator = new PostMergeHeaderValidator(
                     _api.BlockTree,
                     _api.SpecProvider,
-                    _poSSwitcher,
                     _api.LogManager);
 
                 ILogger logger = _api.LogManager.GetClassLogger();
