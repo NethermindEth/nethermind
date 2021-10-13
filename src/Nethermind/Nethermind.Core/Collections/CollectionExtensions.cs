@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,22 +15,26 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Core;
+using System.Collections.Generic;
 
-namespace Nethermind.State
+namespace Nethermind.Core.Collections
 {
-    /// <summary>
-    /// Represents state that can be anchored at specific state root, snapshot, committed, reverted.
-    /// Current format is an intermittent form on the way to a better state management.
-    /// </summary>
-    public interface IWorldState : IJournal<Snapshot>
+    public static class CollectionExtensions
     {
-        IStorageProvider StorageProvider { get; }
-
-        IStateProvider StateProvider { get; }
-
-        Snapshot TakeSnapshot(bool newTransactionStart = false);
-
-        Snapshot IJournal<Snapshot>.TakeSnapshot() => TakeSnapshot();
+        public static void AddRange<T>(this ICollection<T> list, IEnumerable<T> items)
+        {
+            foreach (T item in items)
+            {
+                list.Add(item);
+            }
+        }
+        
+        public static void AddRange<T>(this ICollection<T> list, params T[] items)
+        {
+            for (int index = 0; index < items.Length; index++)
+            {
+                list.Add(items[index]);
+            }
+        }
     }
 }

@@ -191,7 +191,7 @@ namespace Nethermind.Mev
             else
             {
                 _worldState.Restore(snapshot);
-                receiptsTracer.RestoreSnapshot(receiptSnapshot);
+                receiptsTracer.Restore(receiptSnapshot);
                 for (int index = 0; index < bundleTransactions.Count; index++)
                 {
                     transactionsInBlock.Remove(bundleTransactions[index]);
