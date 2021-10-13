@@ -104,13 +104,13 @@ namespace Nethermind.JsonRpc.Test.Modules
                 return this;
             }
 
-            public async Task<T> Build(ISpecProvider specProvider = null, UInt256? initialValues = null)
+            public async Task<T> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null)
             {
                 return (T)(await _blockchain.Build(specProvider, initialValues));
             }
         }
 
-        protected override async Task<TestBlockchain> Build(ISpecProvider specProvider = null, UInt256? initialValues = null)
+        protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null)
         {
             BloomStorage bloomStorage = new(new BloomConfig(), new MemDb(), new InMemoryDictionaryFileStoreFactory());
             specProvider ??= new TestSpecProvider(Berlin.Instance) {ChainId = ChainId.Mainnet};

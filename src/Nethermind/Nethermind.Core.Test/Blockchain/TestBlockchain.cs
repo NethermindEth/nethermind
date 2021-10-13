@@ -43,6 +43,7 @@ using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Specs.Test;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
@@ -112,11 +113,11 @@ namespace Nethermind.Core.Test.Blockchain
 
         public static TransactionBuilder<Transaction> BuildSimpleTransaction => Builders.Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).To(AccountB);
 
-        protected virtual async Task<TestBlockchain> Build(ISpecProvider specProvider = null, UInt256? initialValues = null)
+        protected virtual async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null)
         {
             Timestamper = new ManualTimestamper(new DateTime(2020, 2, 15, 12, 50, 30, DateTimeKind.Utc));
             JsonSerializer = new EthereumJsonSerializer();
-            SpecProvider = specProvider ?? MainnetSpecProvider.Instance;
+            SpecProvider = new OverridableSpecProvider(specProvider ?? MainnetSpecProvider.Instance, s => new OverridableReleaseSpec(s) { IsEip3607Enabled = false });
             EthereumEcdsa = new EthereumEcdsa(ChainId.Mainnet, LogManager);
             DbProvider = await TestMemDbProvider.InitAsync();
             TrieStore = new TrieStore(StateDb.Innermost, LogManager);

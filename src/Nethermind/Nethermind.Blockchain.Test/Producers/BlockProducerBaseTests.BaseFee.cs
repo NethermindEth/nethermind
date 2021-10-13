@@ -302,7 +302,6 @@ namespace Nethermind.Blockchain.Test.Producers
         public async Task BaseFee_should_not_change_when_we_send_transactions_equal_gas_target()
         {
             long gasTarget = 3000000;
-            long gasLimit = Eip1559Constants.ElasticityMultiplier * gasTarget;
             BaseFeeTestScenario.ScenarioBuilder scenario = BaseFeeTestScenario.GoesLikeThis()
                 .WithEip1559TransitionBlock(6)
                 .CreateTestBlockchain(gasTarget)

@@ -36,6 +36,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
@@ -218,8 +219,8 @@ namespace Nethermind.TxPool.Test
         [TestCase(true, true, ExpectedResult = AddTxResult.SenderIsContract)]
         public AddTxResult should_reject_transactions_with_deployed_code_when_eip3607_enabled(bool eip3607Enabled, bool hasCode)
         {
-            ISpecProvider specProvider = new TestSpecProvider(London.Instance);
-            TxPool txPool = CreatePool(null, eip3607Enabled ? specProvider : _specProvider);
+            ISpecProvider specProvider = new OverridableSpecProvider(new TestSpecProvider(London.Instance), r => new OverridableReleaseSpec(r) {IsEip3607Enabled = eip3607Enabled});
+            TxPool txPool = CreatePool(null, specProvider);
 
             Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(tx);

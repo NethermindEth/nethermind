@@ -186,7 +186,7 @@ namespace Nethermind.Mev.Test
                     ProcessingOptions.ProducingBlock);
                 
                 TxBundleSimulator txBundleSimulator = new(_tracerFactory, GasLimitCalculator, Timestamper, TxPool, SpecProvider, Signer);
-                BundlePool = new TestBundlePool(BlockTree, txBundleSimulator, Timestamper, new TxValidator(BlockTree.ChainId), SpecProvider, _mevConfig, Substitute.For<IAccountStateProvider>(), LogManager);
+                BundlePool = new TestBundlePool(BlockTree, txBundleSimulator, Timestamper, new TxValidator(BlockTree.ChainId), SpecProvider, _mevConfig, LogManager);
 
                 return blockProcessor;
             }
