@@ -35,18 +35,9 @@ namespace Nethermind.TxPool.Filters
             _specProvider = specProvider;
             _stateProvider = stateProvider;
         }
-        public (bool Accepted, AddTxResult? Reason) Accept(Transaction tx, TxHandlingOptions txHandlingOptions)
-        {
-            Address caller = tx.SenderAddress;
-            IReleaseSpec spec = _specProvider.GetSpec();
-
-            if (spec.IsEip3607Enabled && _stateProvider.HasCode(caller))
-            {
-                return (false, AddTxResult.SenderIsContract);
-            }
-            
-            return (true, null);
-        }
-        
+        public (bool Accepted, AddTxResult? Reason) Accept(Transaction tx, TxHandlingOptions txHandlingOptions) => 
+            _stateProvider.InvalidContractSender(_specProvider.GetSpec(), tx.SenderAddress!) 
+                ? (false, AddTxResult.SenderIsContract) 
+                : (true, null);
     }
 }

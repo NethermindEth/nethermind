@@ -39,8 +39,9 @@ namespace Nethermind.Mev.Test
             ITxValidator txValidator, 
             ISpecProvider specProvider,
             IMevConfig mevConfig,
+            IAccountStateProvider stateProvider,
             ILogManager logManager)
-            : base(blockTree, simulator, timestamper, txValidator, specProvider, mevConfig, logManager)
+            : base(blockTree, simulator, timestamper, txValidator, specProvider, mevConfig, stateProvider, logManager)
         {
         }
 

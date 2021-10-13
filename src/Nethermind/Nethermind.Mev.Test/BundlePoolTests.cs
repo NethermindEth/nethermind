@@ -343,6 +343,7 @@ namespace Nethermind.Mev.Test
                     new TxValidator(BlockTree.ChainId),
                     new TestSpecProvider(London.Instance),
                     config ?? new MevConfig(),
+                    Substitute.For<IAccountStateProvider>(),
                     LimboLogs.Instance);
 
                 if (!addTestBundles) return;
