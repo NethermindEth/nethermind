@@ -45,13 +45,12 @@ namespace Nethermind.Merge.Plugin.Handlers
     {
         private readonly Eth2BlockProductionContext _idealBlockContext;
         private readonly Eth2BlockProductionContext _emptyBlockContext;
-        private readonly IStateProvider _stateProvider;
-        private readonly IBlockchainProcessor _processor;
         private readonly IInitConfig _initConfig;
         private readonly ILogger _logger;
         private readonly object _locker = new();
         private uint _currentPayloadId;
         private ulong _cleanupDelay = 12; // in seconds
+        private TaskQueue _taskQueue = new TaskQueue();
 
         private static readonly TimeSpan _timeout = TimeSpan.FromSeconds(12);
 
@@ -62,15 +61,11 @@ namespace Nethermind.Merge.Plugin.Handlers
         public PayloadStorage(
             Eth2BlockProductionContext idealBlockContext,
             Eth2BlockProductionContext emptyBlockContext,
-            IStateProvider stateProvider,
-            IBlockchainProcessor processor,
             IInitConfig initConfig,
             ILogManager logManager)
         {
             _idealBlockContext = idealBlockContext;
             _emptyBlockContext = emptyBlockContext;
-            _stateProvider = stateProvider;
-            _processor = processor;
             _initConfig = initConfig;
             _logger = logManager.GetClassLogger();
         }
@@ -80,39 +75,57 @@ namespace Nethermind.Merge.Plugin.Handlers
             UInt256 timestamp)
         {
             using CancellationTokenSource cts = new(_timeout);
+            
+            await ProduceEmptyBlock(payloadId, random, parentHeader, blockAuthor, timestamp, cts);
+            await ProduceIdealBlock(payloadId, random, parentHeader, blockAuthor, timestamp, cts);
+            
+            await Task.Delay(TimeSpan.FromSeconds(_cleanupDelay), CancellationToken.None)
+                .ContinueWith(_ =>
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Cleaning up payload {payloadId}");
+                });
+            await CleanupOldPayloadWithDelay(payloadId, TimeSpan.FromSeconds(_cleanupDelay));
+        }
 
+        private async Task ProduceEmptyBlock(ulong payloadId, Keccak random, BlockHeader parentHeader, Address blockAuthor,
+            UInt256 timestamp, CancellationTokenSource cts)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Preparing empty block from payload {payloadId} with parent {parentHeader}");
             Task<Block?> emptyBlock =
-                _emptyBlockContext.BlockProductionTrigger.BuildBlock(parentHeader, cts.Token, null, blockAuthor, timestamp)
+                _emptyBlockContext.BlockProductionTrigger
+                    .BuildBlock(parentHeader, cts.Token, null, blockAuthor, timestamp)
                     .ContinueWith((x) =>
                     {
                         x.Result.Header.StateRoot = parentHeader.StateRoot;
                         x.Result.Header.Hash = x.Result.CalculateHash();
                         return x.Result;
-                    }); // commit when mergemock will be fixed
-            //  .ContinueWith(LogProductionResult, cts.Token);
-            //   .ContinueWith((x) => Process(x.Result, parentHeader), cts.Token); // commit when mergemock will be fixed
+                    })
+                    .ContinueWith(LogProductionResult, cts.Token);
+            
             BlockTaskAndRandom emptyBlockTaskTuple = new(emptyBlock, random);
             bool _ = _payloadStorage.TryAdd(payloadId, emptyBlockTaskTuple);
-           await emptyBlock;
+            await emptyBlock;
+            if (_logger.IsTrace) _logger.Trace($"Prepared empty block from payload {payloadId} block result: {emptyBlock.Result}");
+        }
+        
+        private async Task ProduceIdealBlock(ulong payloadId, Keccak random, BlockHeader parentHeader, Address blockAuthor,
+            UInt256 timestamp, CancellationTokenSource cts)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Preparing ideal block from payload {payloadId} with parent {parentHeader}");
             Task<Block?> idealBlock =
                 _idealBlockContext.BlockProductionTrigger.BuildBlock(parentHeader, cts.Token, null, blockAuthor, timestamp)
-               //     .ContinueWith(LogProductionResult, cts.Token);
-                    .ContinueWith((x) => Process(x.Result, parentHeader, _idealBlockContext.BlockProducerEnv), cts.Token); // commit when mergemock will be fixed
+                    // ToDo investigate why it is needed, because we should have processing blocks in BlockProducerBase
+                    .ContinueWith((x) => Process(x.Result, parentHeader, _idealBlockContext.BlockProducerEnv), cts.Token) 
+                    .ContinueWith(LogProductionResult, cts.Token);
             
             BlockTaskAndRandom idealBlockTaskTuple = new(idealBlock, random);
+            
+            _payloadStorage[payloadId] = idealBlockTaskTuple;
             await idealBlock;
-            bool __ = _payloadStorage.TryUpdate(payloadId, idealBlockTaskTuple, emptyBlockTaskTuple);
-
-            // remove after 12 seconds, it will not be needed
-            // ToDo uncomment
-            // await Task.Delay(TimeSpan.FromSeconds(_cleanupDelay), CancellationToken.None)
-            //     .ContinueWith(_ =>
-            //     {
-            //         if (_logger.IsDebug) _logger.Debug($"Cleaning up payload {payloadId}");
-            //     });
-            // await CleanupOldPayloadWithDelay(payloadId, TimeSpan.FromSeconds(_cleanupDelay));
+            if (_logger.IsTrace) _logger.Trace($"Prepared ideal block from payload {payloadId} block result: {idealBlock.Result}");
         }
-
+        
+        
 
         private Block? LogProductionResult(Task<Block?> t)
         {

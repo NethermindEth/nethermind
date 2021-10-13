@@ -30,7 +30,7 @@ namespace Nethermind.Merge.Plugin
 {
     public class EngineRpcModule : IEngineRpcModule
     {
-        private readonly IAsyncHandler<PreparePayloadRequest, PreparePayloadResult> _preparePayloadHandler;
+        private readonly IHandler<PreparePayloadRequest, PreparePayloadResult> _preparePayloadHandler;
         private readonly IAsyncHandler<ulong, BlockRequestResult?> _getPayloadHandler;
         private readonly IHandler<BlockRequestResult, ExecutePayloadResult> _executePayloadHandler;
         private readonly IHandler<ForkChoiceUpdatedRequest, string> _forkChoiceUpdateHandler;
@@ -41,7 +41,7 @@ namespace Nethermind.Merge.Plugin
         private readonly ILogger _logger;
 
         public EngineRpcModule(
-            IAsyncHandler<PreparePayloadRequest, PreparePayloadResult> preparePayloadHandler,
+            IHandler<PreparePayloadRequest, PreparePayloadResult> preparePayloadHandler,
             IAsyncHandler<ulong, BlockRequestResult?> getPayloadHandler,
             IHandler<BlockRequestResult, ExecutePayloadResult> executePayloadHandler,
             ITransitionProcessHandler transitionProcessHandler,
@@ -58,24 +58,10 @@ namespace Nethermind.Merge.Plugin
             _logger = logManager.GetClassLogger();
         }
 
-        public async Task<ResultWrapper<PreparePayloadResult>?> engine_preparePayload(PreparePayloadRequest preparePayloadRequest)
+        public ResultWrapper<PreparePayloadResult> engine_preparePayload(
+            PreparePayloadRequest preparePayloadRequest)
         {
-            if (await _locker.WaitAsync(Timeout))
-            {
-                try
-                {
-                    return await _preparePayloadHandler.HandleAsync(preparePayloadRequest);
-                }
-                finally
-                {
-                    _locker.Release();
-                }
-            }
-            else
-            {
-                if (_logger.IsWarn) _logger.Warn($"{nameof(engine_executePayload)} timeout.");
-                return ResultWrapper<PreparePayloadResult>.Success(null);
-            }
+                return _preparePayloadHandler.Handle(preparePayloadRequest);
         }
 
         public async Task<ResultWrapper<BlockRequestResult?>> engine_getPayload(ulong payloadId)
@@ -83,7 +69,8 @@ namespace Nethermind.Merge.Plugin
             return await (_getPayloadHandler.HandleAsync(payloadId));
         }
 
-        public async Task<ResultWrapper<ExecutePayloadResult>> engine_executePayload(BlockRequestResult executionPayload)
+        public async Task<ResultWrapper<ExecutePayloadResult>> engine_executePayload(
+            BlockRequestResult executionPayload)
         {
             if (await _locker.WaitAsync(Timeout))
             {
@@ -99,16 +86,21 @@ namespace Nethermind.Merge.Plugin
             else
             {
                 if (_logger.IsWarn) _logger.Warn($"{nameof(engine_executePayload)} timeout.");
-                return ResultWrapper<ExecutePayloadResult>.Success(new ExecutePayloadResult() {BlockHash = executionPayload.BlockHash, EnumStatus = VerificationStatus.Invalid});
+                return ResultWrapper<ExecutePayloadResult>.Success(new ExecutePayloadResult()
+                {
+                    BlockHash = executionPayload.BlockHash, EnumStatus = VerificationStatus.Invalid
+                });
             }
         }
 
-        public async Task<ResultWrapper<string>> engine_consensusValidated(ConsensusValidatedRequest consensusValidatedRequest)
+        public async Task<ResultWrapper<string>> engine_consensusValidated(
+            ConsensusValidatedRequest consensusValidatedRequest)
         {
             return ResultWrapper<string>.Success(null);
         }
 
-        public async Task<ResultWrapper<string>> engine_forkchoiceUpdated(ForkChoiceUpdatedRequest forkChoiceUpdatedRequest)
+        public async Task<ResultWrapper<string>> engine_forkchoiceUpdated(
+            ForkChoiceUpdatedRequest forkChoiceUpdatedRequest)
         {
             if (await _locker.WaitAsync(Timeout))
             {
@@ -156,7 +148,8 @@ namespace Nethermind.Merge.Plugin
             return ResultWrapper<string>.Success(null);
         }
 
-        public ResultWrapper<string> engine_consensusStatus(UInt256 transitionTotalDifficulty, Keccak terminalPowBlockHash,
+        public ResultWrapper<string> engine_consensusStatus(UInt256 transitionTotalDifficulty,
+            Keccak terminalPowBlockHash,
             Keccak finalizedBlockHash,
             Keccak confirmedBlockHash, Keccak headBlockHash)
         {

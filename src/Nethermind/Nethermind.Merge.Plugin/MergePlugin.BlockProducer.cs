@@ -47,7 +47,6 @@ namespace Nethermind.Merge.Plugin
                 if (_api.ChainSpec == null) throw new ArgumentNullException(nameof(_api.ChainSpec));
                 if (_api.BlockTree == null) throw new ArgumentNullException(nameof(_api.BlockTree));
                 if (_api.BlockProcessingQueue == null) throw new ArgumentNullException(nameof(_api.BlockProcessingQueue));
-                if (_api.StateProvider == null) throw new ArgumentNullException(nameof(_api.StateProvider));
                 if (_api.SpecProvider == null) throw new ArgumentNullException(nameof(_api.SpecProvider));
                 if (_api.BlockValidator == null) throw new ArgumentNullException(nameof(_api.BlockValidator));
                 if (_api.RewardCalculatorSource == null) throw new ArgumentNullException(nameof(_api.RewardCalculatorSource));
@@ -75,12 +74,11 @@ namespace Nethermind.Merge.Plugin
                 IBlockProducer idealBlockProducer = blockProducerFactory.Create(_idealBlockProductionContext);
                 
                 _api.BlockProducer = _blockProducer
-                    = new MergeBlockProducer(blockProducer, idealBlockProducer, _poSSwitcher, _api.BlockchainProcessor);
+                    = new MergeBlockProducer(blockProducer, idealBlockProducer, _poSSwitcher);
                 
                 _emptyBlockProducer = blockProducerFactory.Create(_emptyBlockProductionContext, EmptyTxSource.Instance);
                 
                 await _emptyBlockProducer.Start();
-                await idealBlockProducer.Start();
             }
 
             return _blockProducer;
