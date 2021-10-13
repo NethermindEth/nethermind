@@ -58,6 +58,7 @@ namespace Nethermind.TxPool.Test
         [SetUp]
         public void Setup()
         {
+            MemoryAllowance.MemPoolSize = MemoryAllowance.DefaultMemPoolSize;
             _logManager = LimboLogs.Instance;
             _specProvider = RopstenSpecProvider.Instance;
             _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId, _logManager);

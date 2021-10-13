@@ -45,6 +45,7 @@ namespace Nethermind.Runner.Test
         [SetUp]
         public void Setup()
         {
+            MemoryAllowance.MemPoolSize = MemoryAllowance.DefaultMemPoolSize;
             _dbConfig = new DbConfig();
             _syncConfig = new SyncConfig();
             _initConfig = new InitConfig();

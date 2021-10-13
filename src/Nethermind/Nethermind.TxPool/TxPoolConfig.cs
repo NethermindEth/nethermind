@@ -18,12 +18,13 @@ namespace Nethermind.TxPool
 {
     public class TxPoolConfig : ITxPoolConfig
     {
+        private int? _size; // to support parallel config tests
         public int PeerNotificationThreshold { get; set; } = 5;
 
         public int Size
         {
-            get => MemoryAllowance.MemPoolSize;
-            set => MemoryAllowance.MemPoolSize = value;
+            get => _size ?? MemoryAllowance.MemPoolSize;
+            set => _size = MemoryAllowance.MemPoolSize = value;
         }
 
         public int HashCacheSize { get; set; } = 512 * 1024;
