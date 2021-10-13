@@ -54,7 +54,7 @@ namespace Nethermind.Mev.Data
             stream.Encode(bundle.MinTimestamp);
             stream.Encode(bundle.MaxTimestamp);
 
-            stream.Encode(revertingTxLength);
+            stream.StartSequence(revertingTxLength);
             for (int i = 0; i < bundle.RevertingTxHashes.Length; i++)
             {
                 stream.Encode(bundle.RevertingTxHashes[i]);

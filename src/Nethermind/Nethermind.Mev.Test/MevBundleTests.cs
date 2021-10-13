@@ -18,12 +18,9 @@
 using System.Collections;
 using System.Collections.Generic;
 using FluentAssertions;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
-using Nethermind.Logging;
 using Nethermind.Mev.Data;
 using NUnit.Framework;
 
@@ -77,70 +74,6 @@ namespace Nethermind.Mev.Test
         [TestCaseSource(nameof(BundleTests))]
         public bool bundles_are_identified_by_block_number_and_transactions(MevBundle bundle1, MevBundle bundle2) =>
             bundle1.Equals(bundle2);
-
-        public static IEnumerable MegabundleTests
-        {
-            get
-            {
-                BundleTransaction BuildTransaction(PrivateKey sender, bool canRevert = false)
-                {
-                    BundleTransaction tx = Build.A.TypedTransaction<BundleTransaction>().SignedAndResolved(sender)
-                        .TestObject;
-                    tx.CanRevert = canRevert;
-                    return tx;
-                }
-
-                EthereumEcdsa ecdsa = new(ChainId.Mainnet, LimboLogs.Instance);
-
-                BundleTransaction tx = BuildTransaction(TestItem.PrivateKeyB);
-                BundleTransaction revertingTx = BuildTransaction(TestItem.PrivateKeyA, true);
-                Keccak[] revertingTxHashes = {revertingTx.Hash!};
-                MevMegabundle megabundle = new(1, new[] {revertingTx, tx}, revertingTxHashes, null, UInt256.One,
-                    UInt256.One);
-                Signature relaySignature = ecdsa.Sign(TestItem.PrivateKeyA, megabundle.Hash);
-                megabundle.RelaySignature = relaySignature;
-
-                yield return new TestCaseData(megabundle,
-                    new MevMegabundle(1, new[] {revertingTx, tx}, new[] {revertingTx.Hash!}, relaySignature))
-                {
-                    ExpectedResult = true, TestName = "timestamps don't matter"
-                };
-                yield return new TestCaseData(megabundle,
-                    new MevMegabundle(1, new[] {BuildTransaction(TestItem.PrivateKeyA), tx}, new[] {revertingTx.Hash!},
-                        relaySignature)) {ExpectedResult = true, TestName = "reverting tx don't matter"};
-                yield return new TestCaseData(megabundle,
-                    new MevMegabundle(1, new[] {revertingTx, tx}, relaySignature: relaySignature))
-                {
-                    ExpectedResult = false, TestName = "reverting tx hashes matters"
-                };
-                yield return new TestCaseData(megabundle,
-                    new MevMegabundle(1, new[] {revertingTx, tx}, new[] {revertingTx.Hash!}))
-                {
-                    ExpectedResult = false, TestName = "relay signature matters"
-                };
-                yield return new TestCaseData(megabundle,
-                    new MevMegabundle(1, new[] {tx, revertingTx}, new[] {revertingTx.Hash!}, relaySignature))
-                {
-                    ExpectedResult = false, TestName = "transaction order matters"
-                };
-                yield return new TestCaseData(megabundle,
-                    new MevMegabundle(2, new[] {revertingTx, tx}, new[] {revertingTx.Hash!}, relaySignature))
-                {
-                    ExpectedResult = false, TestName = "block number matters"
-                };
-
-                BundleTransaction tx3 = BuildTransaction(TestItem.PrivateKeyC);
-                BundleTransaction tx4 = BuildTransaction(TestItem.PrivateKeyD);
-                yield return new TestCaseData(megabundle, new MevBundle(2, new[] {tx3, tx4}))
-                {
-                    ExpectedResult = false, TestName = "transactions matter"
-                };
-            }
-        }
-
-        [TestCaseSource(nameof(MegabundleTests))]
-        public bool megabundles_are_identified_by_block_number_and_transactions(MevMegabundle bundle1,
-            MevMegabundle bundle2) => bundle1.Equals(bundle2);
 
         [Test]
         public void bundles_are_sequenced()
