@@ -15,11 +15,27 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
+
 namespace Nethermind.Core
 {
-    public interface IJournal<T>
+    /// <summary>
+    /// Journal is a collection-like type that allows saving and restoring a state through snapshots.
+    /// </summary>
+    /// <typeparam name="TSnapshot">Type representing state snapshot.</typeparam>
+    public interface IJournal<TSnapshot>
     {
-        T TakeSnapshot();
-        void Restore(T snapshot);
+        /// <summary>
+        /// Saves state to potentially restore later.
+        /// </summary>
+        /// <returns>State to potentially restore later.</returns>
+        TSnapshot TakeSnapshot();
+        
+        /// <summary>
+        /// Restores previously saved state.
+        /// </summary>
+        /// <param name="snapshot">Previously saved state.</param>
+        /// <exception cref="InvalidOperationException">Thrown when snapshot cannot be restored. For example previous snapshot was already restored.</exception>
+        void Restore(TSnapshot snapshot);
     }
 }

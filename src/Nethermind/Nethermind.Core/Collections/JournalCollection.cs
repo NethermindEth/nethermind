@@ -22,6 +22,11 @@ using System.Threading;
 
 namespace Nethermind.Core.Collections
 {
+    /// <summary>
+    /// <see cref="ICollection{T}"/> of items <see cref="T"/> with ability to store and restore state snapshots.
+    /// </summary>
+    /// <typeparam name="T">Item type.</typeparam>
+    /// <remarks>Due to snapshots <see cref="Remove"/> is not supported.</remarks>
     public class JournalCollection<T> : ICollection<T>, IReadOnlyCollection<T>, IJournal<int>
     {
         private readonly List<T> _list = new();
@@ -34,6 +39,7 @@ namespace Nethermind.Core.Collections
                 throw new InvalidOperationException($"{nameof(JournalCollection<T>)} tried to restore snapshot {snapshot} beyond current position {Count}");
             }
 
+            // Just remove excessive items after snapshot
             int index = snapshot + 1;
             _list.RemoveRange(index, Count - index);
         }

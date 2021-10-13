@@ -27,6 +27,9 @@ using Nethermind.State;
 
 namespace Nethermind.Evm
 {
+    /// <summary>
+    /// State for EVM Calls
+    /// </summary>
     [DebuggerDisplay("{ExecutionType} to {Env.ExecutingAccount}, G {GasAvailable} R {Refund} PC {ProgramCounter} OUT {OutputDestination}:{OutputLength}")]
     public class EvmState : IDisposable // TODO: rename to CallState
     {
@@ -111,7 +114,9 @@ namespace Nethermind.Evm
         /// </summary>
         public IReadOnlySet<StorageCell> AccessedStorageCells => _accessedStorageCells;
         
+        // As we can add here from VM, we need it as ICollection
         public ICollection<Address> DestroyList => _destroyList;
+        // As we can add here from VM, we need it as ICollection
         public ICollection<LogEntry> Logs => _logs;
 
         private readonly JournalSet<Address> _accessedAddresses;
@@ -182,6 +187,7 @@ namespace Nethermind.Evm
             IsCreateOnPreExistingAccount = isCreateOnPreExistingAccount;
             if (stateForAccessLists is not null)
             {
+                // if we are sub-call, then we use the main collection for this transaction
                 _accessedAddresses = stateForAccessLists._accessedAddresses;
                 _accessedStorageCells = stateForAccessLists._accessedStorageCells;
                 _destroyList = stateForAccessLists._destroyList;
@@ -189,6 +195,7 @@ namespace Nethermind.Evm
             }
             else
             {
+                // if we are top level, then we need to create the collections
                 _accessedAddresses = new JournalSet<Address>();
                 _accessedStorageCells = new JournalSet<StorageCell>();
                 _destroyList = new JournalSet<Address>();
@@ -244,7 +251,7 @@ namespace Nethermind.Evm
         public void Dispose()
         {
             if (DataStack != null) _stackPool.Value.ReturnStacks(DataStack, ReturnStack!);
-            Restore();
+            Restore(); // we are trying to restore when disposing
             Memory?.Dispose();
         }
 
@@ -283,12 +290,12 @@ namespace Nethermind.Evm
         public void CommitToParent(EvmState parentState)
         {
             parentState.Refund += Refund;
-            _canRestore = false;
+            _canRestore = false; // we can't restore if we commited
         }
 
         private void Restore()
         {
-            if (_canRestore)
+            if (_canRestore) // if we didn't commit and we are not top level, then we need to restore and drop the changes done in this call
             {
                 _logs.Restore(_logsSnapshot);
                 _destroyList.Restore(_destroyListSnapshot);

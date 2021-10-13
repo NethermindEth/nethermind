@@ -21,6 +21,11 @@ using System.Collections.Generic;
 
 namespace Nethermind.Core.Collections
 {
+    /// <summary>
+    /// <see cref="ISet{T}"/> of items <see cref="T"/> with ability to store and restore state snapshots.
+    /// </summary>
+    /// <typeparam name="T">Item type.</typeparam>
+    /// <remarks>Due to snapshots <see cref="Remove"/> is not supported.</remarks>
     public class JournalSet<T> : IReadOnlySet<T>, ICollection<T>, IJournal<int>
     {
         private readonly Dictionary<int, T> _dictionary = new();
@@ -37,6 +42,8 @@ namespace Nethermind.Core.Collections
             }
 
             int index = snapshot + 1;
+            
+            // we use dictionary to remove items added after snapshot
             for (int i = Position; i >= index; i--)
             {
                 T item = _dictionary[i];
@@ -49,6 +56,7 @@ namespace Nethermind.Core.Collections
         {
             if (_set.Add(item))
             {
+                // we use dictionary in order to track item positions
                 _dictionary.Add(Position, item);
                 return true;
             }
