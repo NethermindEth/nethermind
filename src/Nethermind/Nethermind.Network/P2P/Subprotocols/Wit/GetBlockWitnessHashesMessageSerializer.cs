@@ -14,23 +14,30 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Linq.Expressions;
 using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Wit
 {
-    public class GetBlockWitnessHashesMessageSerializer : IZeroMessageSerializer<GetBlockWitnessHashesMessage>
+    public class GetBlockWitnessHashesMessageSerializer : IZeroInnerMessageSerializer<GetBlockWitnessHashesMessage>
     {
         public void Serialize(IByteBuffer byteBuffer, GetBlockWitnessHashesMessage message)
         {
             NettyRlpStream nettyRlpStream = new NettyRlpStream(byteBuffer);
-            int contentLength =
-                Rlp.LengthOf(message.RequestId)
-                + (message.BlockHash == null ? 1 : Rlp.LengthOfKeccakRlp);
+            int totalLength = GetLength(message, out int contentLength);
+            byteBuffer.EnsureWritable(totalLength, true);
             nettyRlpStream.StartSequence(contentLength);
             nettyRlpStream.Encode(message.RequestId);
             nettyRlpStream.Encode(message.BlockHash);
+        }
+
+        public int GetLength(GetBlockWitnessHashesMessage message, out int contentLength)
+        {
+            contentLength = Rlp.LengthOf(message.RequestId)
+                            + (message.BlockHash is null ? 1 : Rlp.LengthOfKeccakRlp);
+            return Rlp.LengthOfSequence(contentLength) + Rlp.LengthOf(message.RequestId) + Rlp.LengthOf(message.BlockHash);
         }
 
         public GetBlockWitnessHashesMessage Deserialize(IByteBuffer byteBuffer)

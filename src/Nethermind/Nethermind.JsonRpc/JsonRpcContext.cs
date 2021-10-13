@@ -22,7 +22,6 @@ namespace Nethermind.JsonRpc
     public class JsonRpcContext
     {
         public static readonly JsonRpcContext Http = new(RpcEndpoint.Http);
-        public static readonly JsonRpcContext IPC = new(RpcEndpoint.IPC);
 
         public RpcEndpoint RpcEndpoint { get; }
         public IJsonRpcDuplexClient? DuplexClient { get; }

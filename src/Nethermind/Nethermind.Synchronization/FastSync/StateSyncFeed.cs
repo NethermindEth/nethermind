@@ -66,7 +66,6 @@ namespace Nethermind.Synchronization.FastSync
         private readonly ILogger _logger;
         private readonly IDb _codeDb;
         private readonly IDb _stateDb;
-        private readonly IDb? _tempDb;
         private readonly ISyncModeSelector _syncModeSelector;
         private readonly IBlockTree _blockTree;
 
@@ -79,17 +78,14 @@ namespace Nethermind.Synchronization.FastSync
         private int _hintsToResetRoot;
         private long _blockNumber;
 
-        public StateSyncFeed(
-            IDb codeDb,
+        public StateSyncFeed(IDb codeDb,
             IDb stateDb,
-            IDb? tempDb,
             ISyncModeSelector syncModeSelector,
             IBlockTree blockTree,
             ILogManager logManager)
         {
             _codeDb = codeDb.Innermost ?? throw new ArgumentNullException(nameof(codeDb));
             _stateDb = stateDb.Innermost ?? throw new ArgumentNullException(nameof(stateDb));
-            _tempDb = tempDb;
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
             _syncModeSelector.Changed += SyncModeSelectorOnChanged;
@@ -219,11 +215,6 @@ namespace Nethermind.Synchronization.FastSync
             {
                 if (dependentItem.IsAccount) Interlocked.Increment(ref _data.SavedAccounts);
                 SaveNode(dependentItem.SyncItem, dependentItem.Value);
-                if (_tempDb != null)
-                {
-                    // item is no longer needed in the temp DB since it can be retrieved from the persisted DB
-                    _tempDb.Remove(dependentItem.SyncItem.Hash.Bytes);
-                }
             }
         }
 
@@ -662,12 +653,6 @@ namespace Nethermind.Synchronization.FastSync
                 }
 
                 _dependencies[dependency].Add(dependentItem);
-                if (_tempDb != null)
-                {
-                    // item is already retrieved but cannot yet be persisted
-                    // we keep it in temp so the beam sync can use it if needed
-                    _tempDb[dependentItem.SyncItem.Hash.Bytes] = dependentItem.Value;
-                }
             }
         }
 
@@ -739,15 +724,6 @@ namespace Nethermind.Synchronization.FastSync
                 }
 
                 List<StateSyncItem> requestHashes = _pendingItems.TakeBatch(MaxRequestSize);
-                // foreach (StateSyncItem stateSyncItem in requestHashes)
-                // {
-                //     if (_tempDb.Get(stateSyncItem.Hash) != null)
-                //     {
-                //         Interlocked.Increment(ref _beamSyncedUsable);
-                //         _logger.Error($"Could have used the beam synced item {_beamSyncedUsable}");
-                //     }
-                // }
-                
                 LogRequestInfo(requestHashes);
                 
                 long secondsInCurrentSync = (long)(DateTime.UtcNow - _currentSyncStart).TotalSeconds;

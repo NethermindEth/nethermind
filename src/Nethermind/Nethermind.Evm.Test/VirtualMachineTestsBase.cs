@@ -30,8 +30,6 @@ using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.Synchronization.BeamSync;
-using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
@@ -46,7 +44,6 @@ namespace Nethermind.Evm.Test
         private IEthereumEcdsa _ethereumEcdsa;
         protected ITransactionProcessor _processor;
         private IDb _stateDb;
-        protected bool UseBeamSync { get; set; }
 
         protected VirtualMachine Machine { get; private set; }
         protected IStateProvider TestState { get; private set; }
@@ -75,17 +72,14 @@ namespace Nethermind.Evm.Test
         {
             ILogManager logManager = GetLogManager();
 
-            MemDb beamStateDb = new();
-            IDb beamSyncDb = new BeamSyncDb(new MemDb(), beamStateDb, StaticSelector.Full, logManager);
-            IDb beamSyncCodeDb = new BeamSyncDb(new MemDb(), beamStateDb, StaticSelector.Full, logManager);
-            IDb codeDb = UseBeamSync ? beamSyncCodeDb : new MemDb();
-            _stateDb = UseBeamSync ? beamSyncDb : new MemDb();
+            IDb codeDb = new MemDb();
+            _stateDb = new MemDb();
             ITrieStore trieStore = new TrieStore(_stateDb, logManager);
             TestState = new StateProvider(trieStore, codeDb, logManager);
             Storage = new StorageProvider(trieStore, TestState, logManager);
             _ethereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId, logManager);
             IBlockhashProvider blockhashProvider = TestBlockhashProvider.Instance;
-            Machine = new VirtualMachine(TestState, Storage, blockhashProvider, SpecProvider, logManager);
+            Machine = new VirtualMachine(SpecProvider.ChainId, blockhashProvider, logManager);
             _processor = new TransactionProcessor(SpecProvider, TestState, Storage, Machine, logManager);
         }
 

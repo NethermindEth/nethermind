@@ -31,8 +31,6 @@ namespace Nethermind.Db
             DbMode = dbMode;
         }
 
-        public IDb? BeamTempDb { get; } = null;
-
         public DbModeHint DbMode { get; }
 
         public IDictionary<string, IDb> RegisteredDbs => _registeredDbs;

@@ -20,7 +20,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 {
-    public class NewBlockHashesMessageSerializer : IZeroMessageSerializer<NewBlockHashesMessage>
+    public class NewBlockHashesMessageSerializer : IZeroInnerMessageSerializer<NewBlockHashesMessage>
     {
         public void Serialize(IByteBuffer byteBuffer, NewBlockHashesMessage message)
         {
@@ -45,7 +45,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             return Deserialize(rlpStream);
         }
 
-        private int GetLength(NewBlockHashesMessage message, out int contentLength)
+        public int GetLength(NewBlockHashesMessage message, out int contentLength)
         {
             contentLength = 0;
             for (int i = 0; i < message.BlockHashes.Length; i++)

@@ -34,10 +34,24 @@ namespace Nethermind.Consensus.AuRa
 
         protected override async Task ProducerLoopStep(CancellationToken token)
         {
-            await base.ProducerLoopStep(token);
+            // be able to cancel current step block production if needed
+            using CancellationTokenSource stepTokenSource = CancellationTokenSource.CreateLinkedTokenSource(token);
+
             TimeSpan timeToNextStep = _auRaStepCalculator.TimeToNextStep;
+            Task delayToNextStep = TaskExt.DelayAtLeast(timeToNextStep, token);
+
+            // try produce a block
+            Task produceBlockInCurrentStep = base.ProducerLoopStep(stepTokenSource.Token);
+
+            // wait for next step
             if (Logger.IsDebug) Logger.Debug($"Waiting {timeToNextStep} for next AuRa step.");
-            await TaskExt.DelayAtLeast(timeToNextStep, token);
+            await delayToNextStep;
+
+            // if block production of now previous step wasn't completed, lets cancel it 
+            if (!produceBlockInCurrentStep.IsCompleted)
+            {
+                stepTokenSource.Cancel();
+            }
         }
     }
 }

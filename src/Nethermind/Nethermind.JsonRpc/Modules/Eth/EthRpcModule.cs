@@ -23,6 +23,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -55,6 +56,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly IJsonRpcConfig _rpcConfig;
         private readonly IBlockchainBridge _blockchainBridge;
         private readonly IBlockFinder _blockFinder;
+        private readonly IReceiptFinder _receiptFinder;
         private readonly IStateReader _stateReader;
         private readonly ITxPool _txPoolBridge;
         private readonly ITxSender _txSender;
@@ -80,6 +82,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             ITxPool txPool,
             ITxSender txSender,
             IWallet wallet,
+            IReceiptFinder receiptFinder,
             ILogManager logManager,
             ISpecProvider specProvider,
             IGasPriceOracle gasPriceOracle,
@@ -94,6 +97,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _txPoolBridge = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
+            _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));;
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _gasPriceOracle = gasPriceOracle ?? throw new ArgumentNullException(nameof(gasPriceOracle));
             _ethSyncingInfo = ethSyncingInfo ?? throw new ArgumentNullException(nameof(ethSyncingInfo));
@@ -157,7 +161,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public Task<ResultWrapper<long?>> eth_blockNumber()
         {
-            long number = _blockchainBridge.BeamHead?.Number ?? 0;
+            long number = _blockchainBridge.HeadBlock?.Number ?? 0;
             return Task.FromResult(ResultWrapper<long?>.Success(number));
         }
 
@@ -494,7 +498,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return Task.FromResult(ResultWrapper<ReceiptForRpc>.Success(null));
             }
 
-            ReceiptForRpc receiptModel = new(txHash, result.Receipt, result.EffectiveGasPrice);
+            Keccak blockHash = result.Receipt.BlockHash;
+            TxReceipt[] receipts = _receiptFinder.Get(blockHash!);
+            int logIndexStart = receipts.GetBlockLogFirstIndex(result.Receipt.Index);
+            ReceiptForRpc receiptModel = new(txHash, result.Receipt, result.EffectiveGasPrice, logIndexStart);
+
             if (_logger.IsTrace) _logger.Trace($"eth_getTransactionReceipt request {txHash}, result: {txHash}");
             return Task.FromResult(ResultWrapper<ReceiptForRpc>.Success(receiptModel));
         }
@@ -614,25 +622,36 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 }
             }
 
-            BlockParameter fromBlock = filter.FromBlock;
-            BlockParameter toBlock = filter.ToBlock;
+            // because of lazy evaluation of enumerable, we need to do the validation here first
+            CancellationTokenSource cancellationTokenSource = new(_rpcConfig.Timeout);
+            CancellationToken cancellationToken = cancellationTokenSource.Token;
 
-            try
+            SearchResult<BlockHeader> toBlockResult = _blockFinder.SearchForHeader(filter.ToBlock);
+            if (toBlockResult.IsError)
             {
-                CancellationTokenSource cancellationTokenSource = new(_rpcConfig.Timeout);
-                return ResultWrapper<IEnumerable<FilterLog>>.Success(GetLogs(fromBlock, toBlock,
-                    cancellationTokenSource, cancellationTokenSource.Token));
+                cancellationTokenSource.Dispose();
+                return ResultWrapper<IEnumerable<FilterLog>>.Fail(toBlockResult);
             }
-            catch (ArgumentException e)
+            cancellationToken.ThrowIfCancellationRequested();
+            
+            SearchResult<BlockHeader> fromBlockResult = _blockFinder.SearchForHeader(filter.FromBlock);
+            if (fromBlockResult.IsError)
             {
-                switch (e.Message)
-                {
-                    case ILogFinder.NotFoundError:
-                        return ResultWrapper<IEnumerable<FilterLog>>.Fail(e.Message, ErrorCodes.ResourceNotFound);
-                    default:
-                        return ResultWrapper<IEnumerable<FilterLog>>.Fail(e.Message, ErrorCodes.InvalidParams);
-                }
+                cancellationTokenSource.Dispose();
+                return ResultWrapper<IEnumerable<FilterLog>>.Fail(fromBlockResult);
             }
+            cancellationToken.ThrowIfCancellationRequested();
+
+            long fromBlockNumber = fromBlockResult.Object!.Number;
+            long toBlockNumber = toBlockResult.Object!.Number;
+            if (fromBlockNumber > toBlockNumber && toBlockNumber != 0)
+            {
+                cancellationTokenSource.Dispose();
+                return ResultWrapper<IEnumerable<FilterLog>>.Fail($"'From' block '{fromBlockNumber}' is later than 'to' block '{toBlockNumber}'.", ErrorCodes.InvalidParams);
+            }
+
+            return ResultWrapper<IEnumerable<FilterLog>>.Success(GetLogs(filter.FromBlock, filter.ToBlock,
+                cancellationTokenSource, cancellationToken));
         }
 
         public ResultWrapper<IEnumerable<byte[]>> eth_getWork()

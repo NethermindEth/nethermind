@@ -19,18 +19,18 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
-using DotNetty.Buffers;
+using DotNetty.Common.Utilities;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
-using Nethermind.Network.P2P.Subprotocols.Wit;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -217,23 +217,49 @@ namespace Nethermind.Network.P2P
 
         public abstract void NotifyOfNewBlock(Block block, SendBlockPriority priority);
 
-        public virtual bool SendNewTransaction(Transaction transaction, bool isPriority)
+        public virtual void SendNewTransactions(IEnumerable<Transaction> txs)
         {
-            if (transaction.Hash == null)
-            {
-                throw new InvalidOperationException("Trying to send a transaction with null hash");
-            }
+            const int maxCapacity = 256;
+            using ArrayPoolList<Transaction> txsToSend = new(maxCapacity);
 
-            TransactionsMessage msg = new(new[] {transaction});
+            foreach (Transaction tx in txs)
+            {
+                if (txsToSend.Count == maxCapacity)
+                {
+                    SendMessage(txsToSend);
+                    txsToSend.Clear();
+                }
+                
+                if (tx.Hash is not null)
+                {
+                    txsToSend.Add(tx);
+                    TxPool.Metrics.PendingTransactionsSent++;
+                }
+            }
+            
+            if (txsToSend.Count > 0)
+            {
+                SendMessage(txsToSend);
+            }
+        }
+        
+        private void SendMessage(IList<Transaction> txsToSend)
+        {
+            TransactionsMessage msg = new(txsToSend);
             Send(msg);
-            return true;
         }
 
         public override void HandleMessage(Packet message)
         {
             ZeroPacket zeroPacket = new(message);
-            HandleMessage(zeroPacket);
-            zeroPacket.Release();
+            try
+            {
+                HandleMessage(zeroPacket);
+            }
+            finally
+            {
+                zeroPacket.SafeRelease();
+            }
         }
 
         public abstract void HandleMessage(ZeroPacket message);

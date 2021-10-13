@@ -22,7 +22,6 @@ using System.Net;
 using System.Security.Authentication;
 using System.Text;
 using System.Threading;
-using System.Threading.Tasks;
 using HealthChecks.UI.Client;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
@@ -30,6 +29,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Nethermind.Api;
@@ -150,73 +150,80 @@ namespace Nethermind.Runner.JsonRpc
                 {
                     await ctx.Response.WriteAsync("Nethermind JSON RPC");
                 }
+
                 if (ctx.Connection.LocalPort == jsonRpcConfig.Port && ctx.Request.Method == "POST")
                 {
                     Stopwatch stopwatch = Stopwatch.StartNew();
-                    string request;
+                    using CountingTextReader request = new(new StreamReader(ctx.Request.Body, Encoding.UTF8));
                     try
-                    {                    
-                        using StreamReader reader = new(ctx.Request.Body, Encoding.UTF8);
-                        request = await reader.ReadToEndAsync();
+                    {
+                        await foreach (JsonRpcResult result in jsonRpcProcessor.ProcessAsync(request, JsonRpcContext.Http))
+                        {
+                            using (result)
+                            {
+                                Stream resultStream = jsonRpcConfig.BufferResponses ? new MemoryStream() : ctx.Response.Body;
+
+                                long responseSize;
+                                try
+                                {
+                                    ctx.Response.ContentType = "application/json";
+                                    ctx.Response.StatusCode = GetStatusCode(result);
+
+                                    responseSize = result.IsCollection
+                                        ? _jsonSerializer.Serialize(resultStream, result.Responses)
+                                        : _jsonSerializer.Serialize(resultStream, result.Response);
+
+                                    if (jsonRpcConfig.BufferResponses)
+                                    {
+                                        ctx.Response.ContentLength = responseSize = resultStream.Length;
+                                        resultStream.Seek(0, SeekOrigin.Begin);
+                                        await resultStream.CopyToAsync(ctx.Response.Body);
+                                    }
+                                }
+                                catch (Exception e) when (e.InnerException is OperationCanceledException)
+                                {
+                                    responseSize = SerializeTimeoutException(jsonRpcService, resultStream);
+                                }
+                                catch (OperationCanceledException)
+                                {
+                                    responseSize = SerializeTimeoutException(jsonRpcService, resultStream);
+                                }
+                                finally
+                                {
+                                    await ctx.Response.CompleteAsync();
+
+                                    if (jsonRpcConfig.BufferResponses)
+                                    {
+                                        await resultStream.DisposeAsync();
+                                    }
+                                }
+
+                                long handlingTimeMicroseconds = stopwatch.ElapsedMicroseconds();
+                                if (result.IsCollection)
+                                {
+                                    jsonRpcLocalStats.ReportCalls(result.Reports);
+                                    jsonRpcLocalStats.ReportCall(new RpcReport("# collection serialization #", handlingTimeMicroseconds, true), handlingTimeMicroseconds, responseSize);
+                                }
+                                else
+                                {
+                                    jsonRpcLocalStats.ReportCall(result.Report, handlingTimeMicroseconds, responseSize);
+                                }
+
+                                Interlocked.Add(ref Metrics.JsonRpcBytesSentHttp, responseSize);
+                            }
+
+                            // There should be only one response because we don't expect multiple JSON tokens in the request
+                            break;
+                        }
                     }
                     catch (Microsoft.AspNetCore.Http.BadHttpRequestException e)
                     {
                         if (logger.IsDebug) logger.Debug($"Couldn't read request.{Environment.NewLine}{e}");
-                        return;
-                    }
-
-                    Interlocked.Add(ref Nethermind.JsonRpc.Metrics.JsonRpcBytesReceivedHttp, ctx.Request.ContentLength ?? request.Length);
-                    using JsonRpcResult result = await jsonRpcProcessor.ProcessAsync(request, JsonRpcContext.Http);
-
-                    Stream resultStream = jsonRpcConfig.BufferResponses ? new MemoryStream() : ctx.Response.Body;
-
-                    long responseSize = 0;
-                    try
-                    {
-                        ctx.Response.ContentType = "application/json";
-                        ctx.Response.StatusCode = GetStatusCode(result);
-                        
-                        responseSize = result.IsCollection 
-                            ? _jsonSerializer.Serialize(resultStream, result.Responses) 
-                            : _jsonSerializer.Serialize(resultStream, result.Response);
-
-                        if (jsonRpcConfig.BufferResponses)
-                        {
-                            ctx.Response.ContentLength = responseSize = resultStream.Length;
-                            resultStream.Seek(0, SeekOrigin.Begin);
-                            await resultStream.CopyToAsync(ctx.Response.Body);
-                        }
-                    }
-                    catch (Exception e) when (e.InnerException is OperationCanceledException)
-                    {
-                        responseSize = SerializeTimeoutException(jsonRpcService, resultStream);
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        responseSize = SerializeTimeoutException(jsonRpcService, resultStream);
                     }
                     finally
                     {
-                        await ctx.Response.CompleteAsync();
-
-                        if (jsonRpcConfig.BufferResponses)
-                        {
-                            await resultStream.DisposeAsync();
-                        }
+                        Interlocked.Add(ref Metrics.JsonRpcBytesReceivedHttp, ctx.Request.ContentLength ?? request.Length);
                     }
-
-                    long handlingTimeMicroseconds = stopwatch.ElapsedMicroseconds();
-                    if (result.IsCollection)
-                    {
-                        jsonRpcLocalStats.ReportCalls(result.Reports);
-                        jsonRpcLocalStats.ReportCall(new RpcReport("# collection serialization #", handlingTimeMicroseconds, true), handlingTimeMicroseconds, responseSize);
-                    }
-                    else
-                    {
-                        jsonRpcLocalStats.ReportCall(result.Report, handlingTimeMicroseconds, responseSize);
-                    }
-                    
-                    Interlocked.Add(ref Nethermind.JsonRpc.Metrics.JsonRpcBytesSentHttp, responseSize);
                 }
             });
         }

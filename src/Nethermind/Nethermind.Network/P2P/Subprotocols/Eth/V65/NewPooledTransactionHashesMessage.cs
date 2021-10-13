@@ -14,16 +14,19 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Collections.Generic;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 {
     public class NewPooledTransactionHashesMessage : HashesMessage
     {
+        public const int MaxCount = 2048; 
+        
         public override int PacketType { get; } = Eth65MessageCode.NewPooledTransactionHashes;
         public override string Protocol { get; } = "eth";
 
-        public NewPooledTransactionHashesMessage(Keccak[] hashes)
+        public NewPooledTransactionHashesMessage(IList<Keccak> hashes)
             : base(hashes)
         {
         }

@@ -102,8 +102,7 @@ namespace Nethermind.Api
                 Timestamper,
                 LogFinder,
                 SpecProvider!,
-                miningConfig.Enabled,
-                syncConfig.BeamSync && syncConfig.FastSync
+                miningConfig.Enabled
             );
         }
 

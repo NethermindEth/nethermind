@@ -72,9 +72,9 @@ namespace Nethermind.TxPool
         Invalid,
         
         /// <summary>
-        /// The nonce is too far in the future for this sender account.
+        /// The nonce is not the next nonce after the last nonce of this sender present in TxPool.
         /// </summary>
-        NonceTooFarInTheFuture,
+        NonceGap,
 
         /// <summary>
         /// The EOA (externally owned account) that signed this transaction (sender) has already signed and executed a transaction with the same nonce.

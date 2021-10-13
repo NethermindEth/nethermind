@@ -25,16 +25,10 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
 {
-    [TestFixture(true)]
-    [TestFixture(false)]
+    [TestFixture]
     [Parallelizable(ParallelScope.Self)]
     public class VirtualMachineTests : VirtualMachineTestsBase
     {
-        public VirtualMachineTests(bool useBeamSync)
-        {
-            UseBeamSync = useBeamSync;
-        }
-        
         [Test]
         public void Stop()
         {

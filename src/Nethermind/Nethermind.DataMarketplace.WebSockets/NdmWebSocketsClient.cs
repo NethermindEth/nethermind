@@ -37,14 +37,14 @@ namespace Nethermind.DataMarketplace.WebSockets
             _dataPublisher = dataPublisher;
         }
 
-        public override Task ProcessAsync(Memory<byte> data)
+        public override Task ProcessAsync(ArraySegment<byte> data)
         {
-            if (data.Length == 0)
+            if (data.Count == 0)
             {
                 return Task.CompletedTask;
             }
 
-            (Keccak? dataAssetId, string? headerData) = GetDataInfo(data.ToArray());
+            (Keccak? dataAssetId, string? headerData) = GetDataInfo(data);
             if (dataAssetId is null || string.IsNullOrWhiteSpace(headerData))
             {
                 return Task.CompletedTask;
@@ -55,9 +55,9 @@ namespace Nethermind.DataMarketplace.WebSockets
             return Task.CompletedTask;
         }
 
-        private static (Keccak? dataAssetId, string? data) GetDataInfo(byte[] bytes)
+        private static (Keccak? dataAssetId, string? data) GetDataInfo(ArraySegment<byte> bytes)
         {
-            var request = Encoding.UTF8.GetString(bytes);
+            var request = Encoding.UTF8.GetString(bytes.Array!, bytes.Offset, bytes.Count);
             var parts = request.Split('|');
 
             if (!parts.Any() || parts.Length != 3)

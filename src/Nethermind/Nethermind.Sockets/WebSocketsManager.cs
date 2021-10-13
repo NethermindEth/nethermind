@@ -22,7 +22,7 @@ namespace Nethermind.Sockets
     {
         private readonly ConcurrentDictionary<string, IWebSocketsModule> _modules = new();
 
-        private IWebSocketsModule _defaultModule = null;
+        private IWebSocketsModule _defaultModule = null!;
 
         public void AddModule(IWebSocketsModule module, bool isDefault = false)
         {

@@ -38,6 +38,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
         public UInt256 IgnoreUnder { get; set; } = EthGasPriceConstants.DefaultIgnoreUnder;
         public int BlockLimit { get; set; } = EthGasPriceConstants.DefaultBlocksLimit;
         private int SoftTxThreshold => BlockLimit * 2;
+        private readonly UInt256 _defaultMinGasPriceMultiplier = 110;
 
         public GasPriceOracle(
             IBlockFinder blockFinder,
@@ -45,7 +46,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
             UInt256? minGasPrice = null)
         {
             _blockFinder = blockFinder;
-            _minGasPrice = minGasPrice ?? new MiningConfig().MinGasPrice;
+            _minGasPrice = _defaultMinGasPriceMultiplier * (minGasPrice ?? new MiningConfig().MinGasPrice) / 100;
             SpecProvider = specProvider;
         }
 

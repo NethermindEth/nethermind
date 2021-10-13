@@ -27,7 +27,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
-using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Specs;
@@ -39,6 +38,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Trie.Pruning;
 using System.Threading.Tasks;
+using Nethermind.Core.Crypto;
 using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Facade.Test
@@ -71,9 +71,9 @@ namespace Nethermind.Facade.Test
             _ethereumEcdsa = Substitute.For<IEthereumEcdsa>();
             _specProvider = MainnetSpecProvider.Instance;
 
-            ReadOnlyTxProcessingEnv processingEnv = new ReadOnlyTxProcessingEnv(
+            ReadOnlyTxProcessingEnv processingEnv = new(
                 new ReadOnlyDbProvider(_dbProvider, false),
-                new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly(), 
+                new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
                 new ReadOnlyBlockTree(_blockTree),
                 _specProvider,
                 LimboLogs.Instance);
@@ -90,7 +90,6 @@ namespace Nethermind.Facade.Test
                 _timestamper,
                 Substitute.For<ILogFinder>(),
                 _specProvider,
-                false,
                 false);
         }
 
@@ -117,7 +116,7 @@ namespace Nethermind.Facade.Test
                 .WithIndex(index)
                 .TestObject;
             IEnumerable<Transaction> transactions = Enumerable.Range(0, 10)
-                .Select(i => Build.A.Transaction.WithNonce((UInt256) i).TestObject);
+                .Select(i => Build.A.Transaction.WithNonce((UInt256)i).TestObject);
             var block = Build.A.Block
                 .WithTransactions(transactions.ToArray())
                 .TestObject;
@@ -125,7 +124,7 @@ namespace Nethermind.Facade.Test
             _receiptStorage.FindBlockHash(TestItem.KeccakA).Returns(TestItem.KeccakB);
             _receiptStorage.Get(block).Returns(new[] {receipt});
             _blockchainBridge.GetTransaction(TestItem.KeccakA).Should()
-                .BeEquivalentTo((receipt, Build.A.Transaction.WithNonce((UInt256) index).TestObject));
+                .BeEquivalentTo((receipt, Build.A.Transaction.WithNonce((UInt256)index).TestObject));
         }
 
         [Test]
@@ -134,7 +133,7 @@ namespace Nethermind.Facade.Test
             _timestamper.UtcNow = DateTime.MinValue;
             _timestamper.Add(TimeSpan.FromDays(123));
             BlockHeader header = Build.A.BlockHeader.WithNumber(10).TestObject;
-            Transaction tx = new Transaction();
+            Transaction tx = new();
             tx.Data = new byte[0];
             tx.GasLimit = Transaction.BaseTxGasCost;
 
@@ -143,7 +142,8 @@ namespace Nethermind.Facade.Test
 
             _transactionProcessor.Received().CallAndRestore(
                 tx,
-                Arg.Is<BlockHeader>(bh => bh.Number == 11 && bh.Timestamp == ((ITimestamper) _timestamper).UnixTime.Seconds),
+                Arg.Is<BlockHeader>(bh =>
+                    bh.Number == 11 && bh.Timestamp == ((ITimestamper)_timestamper).UnixTime.Seconds),
                 Arg.Is<CancellationTxTracer>(t => t.InnerTracer is EstimateGasTracer));
         }
 
@@ -153,7 +153,7 @@ namespace Nethermind.Facade.Test
             _timestamper.UtcNow = DateTime.MinValue;
             _timestamper.Add(TimeSpan.FromDays(123));
             BlockHeader header = Build.A.BlockHeader.WithNumber(10).TestObject;
-            Transaction tx = new Transaction();
+            Transaction tx = new();
             tx.GasLimit = Transaction.BaseTxGasCost;
 
             _blockchainBridge.Call(header, tx, CancellationToken.None);
@@ -163,15 +163,13 @@ namespace Nethermind.Facade.Test
                 Arg.Any<ITxTracer>());
         }
 
-        [TestCase(true, 0, 8)]
-        [TestCase(true, 7, 7)]
-        [TestCase(false, 0, 0)]
-        [TestCase(false, 7, 7)]
-        public void Bridge_beam_head_is_correct(bool isBeam, long headNumber, long? expectedNumber)
+        [TestCase(7)]
+        [TestCase(0)]
+        public void Bridge_head_is_correct(long headNumber)
         {
-            ReadOnlyTxProcessingEnv processingEnv = new ReadOnlyTxProcessingEnv(
+            ReadOnlyTxProcessingEnv processingEnv = new(
                 new ReadOnlyDbProvider(_dbProvider, false),
-                new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly(), 
+                new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
                 new ReadOnlyBlockTree(_blockTree),
                 _specProvider,
                 LimboLogs.Instance);
@@ -192,46 +190,9 @@ namespace Nethermind.Facade.Test
                 _timestamper,
                 Substitute.For<ILogFinder>(),
                 _specProvider,
-                false,
-                isBeam);
-
-            if (expectedNumber.HasValue)
-            {
-                _blockchainBridge.BeamHead.Number.Should().Be(expectedNumber);
-            }
-            else
-            {
-                _blockchainBridge.BeamHead.Should().BeNull();
-            }
-        }
-
-        [Test]
-        public void Bridge_beam_head_is_correct_in_beam()
-        {
-            ReadOnlyTxProcessingEnv processingEnv = new ReadOnlyTxProcessingEnv(
-                new ReadOnlyDbProvider(_dbProvider, false),
-                new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly(), 
-                new ReadOnlyBlockTree(_blockTree),
-                _specProvider,
-                LimboLogs.Instance);
-
-            Block block = Build.A.Block.WithNumber(7).TestObject;
-            _blockTree.Head.Returns(block);
-
-            _blockchainBridge = new BlockchainBridge(
-                processingEnv,
-                _txPool,
-                _receiptStorage,
-                _filterStore,
-                _filterManager,
-                _ethereumEcdsa,
-                _timestamper,
-                Substitute.For<ILogFinder>(),
-                _specProvider,
-                false,
                 false);
 
-            _blockchainBridge.BeamHead.Number.Should().Be(7);
+            _blockchainBridge.HeadBlock.Should().Be(head);
         }
     }
 }

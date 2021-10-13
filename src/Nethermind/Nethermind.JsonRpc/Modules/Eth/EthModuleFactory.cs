@@ -86,6 +86,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 _txPool,
                 _txSender,
                 _wallet,
+                _receiptStorage,
                 _logManager,
                 _specProvider,
                 _gasPriceOracle,

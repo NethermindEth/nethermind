@@ -6,6 +6,11 @@
         <Nullable>annotations</Nullable>
     </PropertyGroup>
 
+    <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+      <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+      <WarningsAsErrors />
+    </PropertyGroup>
+
     <ItemGroup>
       <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />
       <ProjectReference Include="..\Nethermind.Blockchain\Nethermind.Blockchain.csproj" />

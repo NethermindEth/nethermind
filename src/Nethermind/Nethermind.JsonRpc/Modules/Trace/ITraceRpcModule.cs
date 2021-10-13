@@ -54,7 +54,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         ResultWrapper<ParityTxTraceFromStore[]> trace_block([JsonRpcParameter(ExampleValue = "latest")] BlockParameter numberOrTag);
         
         [JsonRpcMethod(Description = "", IsImplemented = false, IsSharable = false)]
-        ResultWrapper<ParityTxTraceFromStore[]> trace_get(Keccak txHash, int[] positions);
+        ResultWrapper<ParityTxTraceFromStore[]> trace_get(Keccak txHash, long[] positions);
         
         [JsonRpcMethod(Description = "", IsImplemented = true, 
             IsSharable = false,
