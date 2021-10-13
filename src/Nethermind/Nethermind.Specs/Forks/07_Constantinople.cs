@@ -79,7 +79,7 @@ namespace Nethermind.Specs.Forks
         public bool IsEip3198Enabled => false;
         public bool IsEip3529Enabled  => false;
         public bool IsEip3541Enabled => false;
-        public bool IsEip3607Enabled => false;
+        public bool IsEip3607Enabled => true;
         public long Eip1559TransitionBlock => long.MaxValue;
     }
 }
