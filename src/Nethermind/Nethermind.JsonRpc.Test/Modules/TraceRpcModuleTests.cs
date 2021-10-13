@@ -18,7 +18,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using MathNet.Numerics.Optimization.TrustRegion;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Tracing;
@@ -36,13 +35,11 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Validators;
-using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm;
-using Nethermind.Evm.Tracing.ParityStyle;
-using Nethermind.Evm.TransactionProcessing;
-using Nethermind.JsonRpc.Data;
 using Nethermind.Serialization.Json;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
@@ -52,10 +49,10 @@ namespace Nethermind.JsonRpc.Test.Modules
     {
         private class Context
         {
-            public async Task Build(ISpecProvider specProvider = null)
+            public async Task Build(ISpecProvider specProvider = null, Boolean isAura = false)
             {
                 JsonRpcConfig = new JsonRpcConfig();
-                Blockchain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(specProvider);
+                Blockchain = await TestRpcBlockchain.ForTest(isAura ? SealEngineType.AuRa : SealEngineType.NethDev).Build(specProvider);
                 await Blockchain.AddFunds(TestItem.AddressA, 1000.Ether());
                 await Blockchain.AddFunds(TestItem.AddressB, 1000.Ether());
                 await Blockchain.AddFunds(TestItem.AddressC, 1000.Ether());
@@ -575,7 +572,10 @@ namespace Nethermind.JsonRpc.Test.Modules
         public async Task trace_replayBlockTransactions_zeroGasUsed_test()
         {
             Context context = new();
-            await context.Build();
+            OverridableReleaseSpec releaseSpec = new(London.Instance);
+            releaseSpec.Eip1559TransitionBlock = 1;
+            TestSpecProvider specProvider = new(releaseSpec) {ChainId = ChainId.Mainnet};
+            await context.Build(specProvider, isAura: true);
             TestRpcBlockchain blockchain = context.Blockchain;
             UInt256 currentNonceAddressA = blockchain.State.GetAccount(TestItem.AddressA).Nonce;
 
