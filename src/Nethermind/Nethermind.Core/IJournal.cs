@@ -15,22 +15,27 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Core;
+using System;
 
-namespace Nethermind.State
+namespace Nethermind.Core
 {
     /// <summary>
-    /// Represents state that can be anchored at specific state root, snapshot, committed, reverted.
-    /// Current format is an intermittent form on the way to a better state management.
+    /// Journal is a collection-like type that allows saving and restoring a state through snapshots.
     /// </summary>
-    public interface IWorldState : IJournal<Snapshot>
+    /// <typeparam name="TSnapshot">Type representing state snapshot.</typeparam>
+    public interface IJournal<TSnapshot>
     {
-        IStorageProvider StorageProvider { get; }
-
-        IStateProvider StateProvider { get; }
-
-        Snapshot TakeSnapshot(bool newTransactionStart = false);
-
-        Snapshot IJournal<Snapshot>.TakeSnapshot() => TakeSnapshot();
+        /// <summary>
+        /// Saves state to potentially restore later.
+        /// </summary>
+        /// <returns>State to potentially restore later.</returns>
+        TSnapshot TakeSnapshot();
+        
+        /// <summary>
+        /// Restores previously saved state.
+        /// </summary>
+        /// <param name="snapshot">Previously saved state.</param>
+        /// <exception cref="InvalidOperationException">Thrown when snapshot cannot be restored. For example previous snapshot was already restored.</exception>
+        void Restore(TSnapshot snapshot);
     }
 }
