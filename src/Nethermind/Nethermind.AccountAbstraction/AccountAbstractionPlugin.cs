@@ -124,6 +124,15 @@ namespace Nethermind.AccountAbstraction
                 if (!parsed) _logger.Error("Account Abstraction Plugin: Singleton contract address could not be parsed");
             }
 
+            if (Enabled)
+            {
+                if (_logger.IsInfo) _logger.Info("Account Abstraction Plugin: User Operation Mining Enabled");
+            }
+            else
+            {
+                if (_logger.IsInfo) _logger.Info("Account Abstraction Plugin: User Operation Mining Disabled");
+            }
+
             return Task.CompletedTask;
         }
 
@@ -169,11 +178,11 @@ namespace Nethermind.AccountAbstraction
             UInt256 minerBalance = _nethermindApi.StateProvider!.GetBalance(_nethermindApi.EngineSigner!.Address);
             if (minerBalance < 1.Ether())
             {
-                _logger.Warn($"Miner ({_nethermindApi.EngineSigner!.Address}) Ether balance low - {minerBalance/1.Ether()} Ether < 1 Ether. Increasing balance is recommended");
+                _logger.Warn($"Account Abstraction Plugin: Miner ({_nethermindApi.EngineSigner!.Address}) Ether balance low - {minerBalance/1.Ether()} Ether < 1 Ether. Increasing balance is recommended");
             }
             else
             {
-                if (_logger.IsInfo) _logger.Info($"Miner ({_nethermindApi.EngineSigner!.Address}) Ether balance adequate - {minerBalance/1.Ether()} Ether");
+                if (_logger.IsInfo) _logger.Info($"Account Abstraction Plugin: Miner ({_nethermindApi.EngineSigner!.Address}) Ether balance adequate - {minerBalance/1.Ether()} Ether");
             }
 
             IManualBlockProductionTrigger trigger = new BuildBlocksWhenRequested();
