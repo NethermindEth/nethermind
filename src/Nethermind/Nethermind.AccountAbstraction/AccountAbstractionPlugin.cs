@@ -171,6 +171,10 @@ namespace Nethermind.AccountAbstraction
             {
                 _logger.Warn($"Miner ({_nethermindApi.EngineSigner!.Address}) Ether balance low - {minerBalance/1.Ether()} Ether < 1 Ether. Increasing balance is recommended");
             }
+            else
+            {
+                if (_logger.IsInfo) _logger.Info($"Miner ({_nethermindApi.EngineSigner!.Address}) Ether balance adequate - {minerBalance/1.Ether()} Ether");
+            }
 
             IManualBlockProductionTrigger trigger = new BuildBlocksWhenRequested();
             UserOperationTxSource userOperationTxSource = new(UserOperationPool, UserOperationSimulator, _logger);
