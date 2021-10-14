@@ -51,6 +51,7 @@ namespace Nethermind.Consensus.Clique
 
             (IApiWithStores getFromApi, IApiWithBlockchain setInApi) = _nethermindApi.ForInit;
 
+
             _cliqueConfig = new CliqueConfig
             {
                 BlockPeriod = getFromApi!.ChainSpec!.Clique.Period,
