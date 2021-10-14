@@ -50,11 +50,11 @@ namespace Nethermind.Merge.Plugin.Handlers
             IBlockConfirmationManager blockConfirmationManager,
             ILogManager logManager)
         {
-            _blockTree = blockTree;
-            _stateProvider = stateProvider;
-            _manualBlockFinalizationManager = manualBlockFinalizationManager;
-            _poSSwitcher = poSSwitcher;
-            _blockConfirmationManager = blockConfirmationManager;
+            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
+            _manualBlockFinalizationManager = manualBlockFinalizationManager ?? throw new ArgumentNullException(nameof(manualBlockFinalizationManager));
+            _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
+            _blockConfirmationManager = blockConfirmationManager ?? throw new ArgumentNullException(nameof(blockConfirmationManager));
             _logger = logManager.GetClassLogger();
         }
 

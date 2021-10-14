@@ -33,7 +33,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Facade.Eth;
 using Nethermind.Int256;
-using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
@@ -61,7 +60,7 @@ namespace Nethermind.Merge.Plugin.Test
                 chain.LogManager);
         }
 
-        private class MergeTestBlockchain : TestRpcBlockchain
+        private class MergeTestBlockchain : TestBlockchain
         {
             public IBlockProducer EmptyBlockProducer { get; private set; }
 
@@ -84,8 +83,6 @@ namespace Nethermind.Merge.Plugin.Test
             private IBlockValidator BlockValidator { get; set; } = null!;
 
             private ISigner Signer { get; }
-            
-            public IPoSSwitcher PoSSwitcher { get; }
 
             protected override IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
             {
