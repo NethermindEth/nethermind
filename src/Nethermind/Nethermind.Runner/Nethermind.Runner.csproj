@@ -28,6 +28,7 @@
     <PackageReference Include="YamlDotNet" Version="9.1.4" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\Nethermind.AccountAbstraction\Nethermind.AccountAbstraction.csproj" />
     <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />
     <ProjectReference Include="..\Nethermind.Consensus.AuRa\Nethermind.Consensus.AuRa.csproj" />
     <ProjectReference Include="..\Nethermind.Consensus.Clique\Nethermind.Consensus.Clique.csproj" />
@@ -110,11 +111,13 @@
   <ItemGroup>
     <PluginsForBuild Include="$(OutputPath)\Nethermind.Merge.Plugin.*;
                               $(OutputPath)\Nethermind.Mev.*;
+                              $(OutputPath)\Nethermind.AccountAbstraction.*;
                               $(OutputPath)\Nethermind.HealthChecks.*;
                               $(OutputPath)\Nethermind.Consensus.*.*" />
     
     <PluginsForPublish Include="$(OutputPath)\Nethermind.Merge.Plugin.dll;
                                 $(OutputPath)\Nethermind.Mev.dll;
+                                $(OutputPath)\Nethermind.AccountAbstraction.*;
                                 $(OutputPath)\Nethermind.HealthChecks.dll;
                                 $(OutputPath)\Nethermind.Consensus.*.dll" />
   </ItemGroup>

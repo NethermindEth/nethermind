@@ -126,11 +126,11 @@ namespace Nethermind.AccountAbstraction
 
             if (Enabled)
             {
-                if (_logger.IsInfo) _logger.Info("Account Abstraction Plugin: User Operation Mining Enabled");
+                if (_logger.IsInfo) _logger.Info("  Account Abstraction Plugin: User Operation Mining Enabled");
             }
             else
             {
-                if (_logger.IsInfo) _logger.Info("Account Abstraction Plugin: User Operation Mining Disabled");
+                if (_logger.IsInfo) _logger.Info("  Account Abstraction Plugin: User Operation Mining Disabled");
             }
 
             return Task.CompletedTask;
