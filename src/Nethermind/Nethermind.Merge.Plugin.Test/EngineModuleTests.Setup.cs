@@ -139,11 +139,11 @@ namespace Nethermind.Merge.Plugin.Test
             }
 
             
-            protected override IPoSSwitcher CreatePoSSwitcher()
+            protected override void PostBuildAction()
             {
-                var posSwitcher = new PoSSwitcher(LogManager, new MergeConfig() {Enabled = true}, new MemDb(), BlockTree);
-                SealEngine = new MergeSealEngine(SealEngine, posSwitcher, Signer, LogManager);
-                return posSwitcher;
+                PoSSwitcher = new PoSSwitcher(LogManager, new MergeConfig() {Enabled = true}, new MemDb(), BlockTree);
+                SealEngine = new MergeSealEngine(SealEngine, PoSSwitcher, Signer, LogManager);
+                HeaderValidator = new PostMergeHeaderValidator(BlockTree, SpecProvider, LogManager);
             }
 
             private IBlockValidator CreateBlockValidator()

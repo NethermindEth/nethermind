@@ -97,7 +97,7 @@ namespace Nethermind.Merge.Plugin.Data
         
         public UInt256 Difficulty { get; set; }
         public bool ShouldSerializeDifficulty() => false;
-        public byte[] ExtraData { get; set; } = null!;
+        public byte[] ExtraData { get; set; } = Array.Empty<byte>();
         public long GasLimit { get; set; }
         public long GasUsed { get; set; }
        

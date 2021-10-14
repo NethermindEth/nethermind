@@ -196,7 +196,8 @@ namespace Nethermind.Core.Test.Blockchain
 
             Block? genesis = GetGenesisBlock();
             BlockTree.SuggestBlock(genesis);
-            PoSSwitcher = CreatePoSSwitcher();
+            PoSSwitcher = NoPoS.Instance;
+            PostBuildAction();
             await WaitAsync(_resetEvent, "Failed to process genesis in time.");
             await AddBlocksOnStart();
             return this;
@@ -218,10 +219,7 @@ namespace Nethermind.Core.Test.Blockchain
             }
         }
         
-        protected virtual IPoSSwitcher CreatePoSSwitcher()
-        {
-            return NoPoS.Instance;
-        }
+        protected virtual void PostBuildAction() { }
 
 
         protected virtual IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
