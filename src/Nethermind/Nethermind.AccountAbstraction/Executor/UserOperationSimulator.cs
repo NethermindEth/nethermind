@@ -102,17 +102,35 @@ namespace Nethermind.AccountAbstraction.Executor
 
         public Transaction BuildTransactionFromUserOperations(IEnumerable<UserOperation> userOperations, BlockHeader parent, IReleaseSpec spec)
         {
-            AbiSignature abiSignature = _contract.Functions["handleOps"].GetCallInfo().Signature;
+            byte[] computedCallData;
+            long gasLimit;
             
-            byte[] computedCallData = _abiEncoder.Encode(
-                AbiEncodingStyle.IncludeSignature,
-                abiSignature,
-                userOperations.Select(op => op.Abi).ToArray(), _signer.Address);
-            
-            long gaslimit = userOperations.Aggregate((long)0,
-                (sum, operation) => sum + (long)operation.VerificationGas + (long)operation.CallGas + 100000); // TODO WHAT CONSTANT
+            UserOperation[] userOperationArray = userOperations.ToArray();
+            if (userOperationArray.Length == 1)
+            {
+                UserOperation userOperation = userOperationArray[0];
+                
+                AbiSignature abiSignature = _contract.Functions["handleOp"].GetCallInfo().Signature;
+                computedCallData = _abiEncoder.Encode(
+                    AbiEncodingStyle.IncludeSignature,
+                    abiSignature,
+                    userOperation.Abi, _signer.Address);
 
-            Transaction transaction = BuildTransaction(gaslimit, computedCallData, _signer.Address, parent, spec, false);
+                gasLimit = (long)userOperation.VerificationGas + (long)userOperation.CallGas + 100000; // TODO WHAT CONSTANT
+            }
+            else
+            {
+                AbiSignature abiSignature = _contract.Functions["handleOps"].GetCallInfo().Signature;
+                computedCallData = _abiEncoder.Encode(
+                    AbiEncodingStyle.IncludeSignature,
+                    abiSignature,
+                    userOperationArray.Select(op => op.Abi).ToArray(), _signer.Address);
+            
+                gasLimit = userOperationArray.Aggregate((long)0,
+                    (sum, operation) => sum + (long)operation.VerificationGas + (long)operation.CallGas + 100000); // TODO WHAT CONSTANT
+            }
+            
+            Transaction transaction = BuildTransaction(gasLimit, computedCallData, _signer.Address, parent, spec, false);
             
             return transaction;
         }

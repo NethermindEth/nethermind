@@ -357,6 +357,7 @@ namespace Nethermind.AccountAbstraction.Test
                 AbiType.UInt256,
                 AbiType.UInt256,
                 AbiType.UInt256,
+                AbiType.UInt256,
                 AbiType.Address,
                 AbiType.Bytes32);
 
@@ -367,6 +368,7 @@ namespace Nethermind.AccountAbstraction.Test
                 Keccak.Compute(op.CallData!),
                 op.CallGas,
                 op.VerificationGas,
+                op.PreVerificationGas,
                 op.MaxFeePerGas,
                 op.MaxPriorityFeePerGas,
                 op.Paymaster!,
@@ -383,7 +385,7 @@ namespace Nethermind.AccountAbstraction.Test
                     )
                 );
 
-            op.Signature = signature.Bytes;
+            op.Signature = Bytes.FromHexString(signature.ToString());
             op.Hash = UserOperation.CalculateHash(op);
         }
     }

@@ -11,8 +11,10 @@ using Nethermind.Blockchain.Producers;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Timers;
 using Nethermind.Evm.Tracing.Access;
+using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
@@ -36,7 +38,7 @@ namespace Nethermind.AccountAbstraction
 
         public string Name => "Account Abstraction";
 
-        public string Description => "Implements account abstraction via alternative mempool";
+        public string Description => "Implements account abstraction via alternative mempool (ERC-4337)";
 
         public string Author => "Nethermind";
 
@@ -161,7 +163,13 @@ namespace Nethermind.AccountAbstraction
         {
             if (!Enabled)
             {
-                throw new InvalidOperationException("Plugin is disabled");
+                throw new InvalidOperationException("Account Abstraction plugin is disabled");
+            }
+
+            UInt256 minerBalance = _nethermindApi.StateProvider!.GetBalance(_nethermindApi.EngineSigner!.Address);
+            if (minerBalance < 1.Ether())
+            {
+                _logger.Warn($"Miner ({_nethermindApi.EngineSigner!.Address}) Ether balance low - {minerBalance/1.Ether()} Ether < 1 Ether. Increasing balance is recommended");
             }
 
             IManualBlockProductionTrigger trigger = new BuildBlocksWhenRequested();

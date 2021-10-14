@@ -97,10 +97,8 @@ namespace Nethermind.AccountAbstraction.Source
             {
                 return new List<Transaction>();
             }
-            
-            
             Transaction userOperationTransaction = _userOperationSimulator.BuildTransactionFromUserOperations(userOperationsToInclude, parent, London.Instance);
-            _logger.Info($"Constructed tx from UserOps for miner {userOperationTransaction.SenderAddress}");
+            _logger.Info($"Constructed tx from {userOperationsToInclude.Count} userOps with sender address {userOperationTransaction.SenderAddress}");
             return new List<Transaction>(){userOperationTransaction};
         }
 
