@@ -43,6 +43,8 @@ using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Merge.Plugin;
+using Nethermind.Synchronization.FastSync;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NUnit.Framework;
@@ -88,6 +90,8 @@ namespace Nethermind.Core.Test.Blockchain
         public ITransactionComparerProvider TransactionComparerProvider { get; set; }
         
         public IBlockConfirmationManager BlockConfirmationManager { get; set; } = NoBlockConfirmation.Instance;
+        
+        public IPoSSwitcher PoSSwitcher { get; set; }
 
         protected TestBlockchain()
         {
@@ -192,6 +196,7 @@ namespace Nethermind.Core.Test.Blockchain
 
             Block? genesis = GetGenesisBlock();
             BlockTree.SuggestBlock(genesis);
+            PoSSwitcher = CreatePoSSwitcher();
             await WaitAsync(_resetEvent, "Failed to process genesis in time.");
             await AddBlocksOnStart();
             return this;
@@ -212,6 +217,12 @@ namespace Nethermind.Core.Test.Blockchain
                 throw new InvalidOperationException(error);
             }
         }
+        
+        protected virtual IPoSSwitcher CreatePoSSwitcher()
+        {
+            return NoPoS.Instance;
+        }
+
 
         protected virtual IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
         {

@@ -1096,7 +1096,7 @@ namespace Nethermind.Blockchain
         [Todo(Improve.MissingFunctionality, "Recalculate bloom storage on reorg.")]
         private void MoveToMain(Block block, BatchWrite batch, bool wasProcessed, bool forceUpdateHeadBlock)
         {
-            _logger.Error($"Moving {block.ToString(Block.Format.Short)} to main");
+            if (_logger.IsTrace) _logger.Trace($"Moving {block.ToString(Block.Format.Short)} to main");
             if (block.Hash is null)
             {
                 throw new InvalidOperationException("An attempt to move to main a block with hash not set.");
@@ -1135,7 +1135,7 @@ namespace Nethermind.Blockchain
                 ? FindBlock(hashOfThePreviousMainBlock, BlockTreeLookupOptions.TotalDifficultyNotNeeded)
                 : null;
 
-            _logger.Warn($"Block added to main {block}");
+            if (_logger.IsTrace) _logger.Trace($"Block added to main {block}");
             BlockAddedToMain?.Invoke(this, new BlockReplacementEventArgs(block, previous));
 
             

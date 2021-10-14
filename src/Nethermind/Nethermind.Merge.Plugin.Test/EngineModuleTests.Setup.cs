@@ -33,13 +33,13 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Facade.Eth;
 using Nethermind.Int256;
+using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
-using NSubstitute;
 
 namespace Nethermind.Merge.Plugin.Test
 {
@@ -61,11 +61,11 @@ namespace Nethermind.Merge.Plugin.Test
                 chain.LogManager);
         }
 
-        private class MergeTestBlockchain : TestBlockchain
+        private class MergeTestBlockchain : TestRpcBlockchain
         {
             public IBlockProducer EmptyBlockProducer { get; private set; }
-            
-            public Eth2BlockProductionContext IdealBlockProductionContext { get; set; }
+
+            public Eth2BlockProductionContext IdealBlockProductionContext { get; set; } = new();
 
             public Eth2BlockProductionContext EmptyBlockProductionContext { get; set; } = new();
             public MergeTestBlockchain(ManualTimestamper timestamper)
@@ -74,8 +74,6 @@ namespace Nethermind.Merge.Plugin.Test
                 GenesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.Genesis
                     .WithTimestamp(UInt256.One);
                 Signer = new Eth2Signer(MinerAddress);
-                PoSSwitcher = new PoSSwitcher(LogManager, new MergeConfig() { Enabled = true }, new MemDb(), BlockTree);
-                SealEngine = new MergeSealEngine(SealEngine, PoSSwitcher, Signer, LogManager);
                 BlockConfirmationManager = new BlockConfirmationManager();
             }
             
@@ -141,6 +139,14 @@ namespace Nethermind.Merge.Plugin.Test
                     ReceiptStorage,
                     NullWitnessCollector.Instance,
                     LogManager);
+            }
+
+            
+            protected override IPoSSwitcher CreatePoSSwitcher()
+            {
+                var posSwitcher = new PoSSwitcher(LogManager, new MergeConfig() {Enabled = true}, new MemDb(), BlockTree);
+                SealEngine = new MergeSealEngine(SealEngine, posSwitcher, Signer, LogManager);
+                return posSwitcher;
             }
 
             private IBlockValidator CreateBlockValidator()
