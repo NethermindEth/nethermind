@@ -559,9 +559,9 @@ namespace Nethermind.JsonRpc.Test.Modules
                 .WithTo(TestItem.AddressC)
                 .WithGasLimit(93548).TestObject;
             await blockchain.AddBlock(transaction);
-
+            
             string[] traceTypes = {"rewards"};
-
+            
             ResultWrapper<ParityTxTraceFromReplay> traces = context.TraceRpcModule.trace_replayTransaction(transaction.Hash!, traceTypes);
             Assert.AreEqual("reward", traces.Data.Action.CallType);
             Assert.AreEqual(UInt256.Parse("2000000000000000000"), traces.Data.Action.Value);
@@ -587,7 +587,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             BlockParameter blockParameter = new BlockParameter(BlockParameterType.Latest);
             string[] traceTypes = {"trace"};
             ResultWrapper<ParityTxTraceFromReplay[]> traces = context.TraceRpcModule.trace_replayBlockTransactions(blockParameter, traceTypes);
-            Assert.AreEqual(0, traces.Data[0].Action.Gas);
+            Assert.AreNotEqual(0, traces.Data[0].Action.Result.GasUsed);
         }
     }
 }
