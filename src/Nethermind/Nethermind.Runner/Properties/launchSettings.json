@@ -35,7 +35,7 @@
     },
     "xDai": {
       "commandName": "Project",
-      "commandLineArgs": "--JsonRpc.Enabled true --config configs\\xDai.cfg --baseDbPath d:\\nethermind_db"
+      "commandLineArgs": "--JsonRpc.Enabled true --config configs\\xDai.cfg --baseDbPath C:\\nethermind_db"
     },
     "AuRaTestMiner": {
       "commandName": "Project",
