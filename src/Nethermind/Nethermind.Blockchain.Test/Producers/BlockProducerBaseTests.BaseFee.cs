@@ -22,6 +22,7 @@ using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Int256;
@@ -40,9 +41,9 @@ namespace Nethermind.Blockchain.Test.Producers
             public static readonly AbiSignature Divide = new("divide"); // divide
         }
         
-        public static class BaseFeeTestScenario
+        public static partial class BaseFeeTestScenario
         {
-            public class ScenarioBuilder
+            public partial class ScenarioBuilder
             {
                 private Address _address = TestItem.Addresses[0];
                 private Address _contractAddress;
@@ -66,7 +67,9 @@ namespace Nethermind.Blockchain.Test.Producers
                     SingleReleaseSpecProvider spec = new(
                         new ReleaseSpec()
                         {
-                            IsEip1559Enabled = _eip1559Enabled, Eip1559TransitionBlock = _eip1559TransitionBlock
+                            IsEip1559Enabled = _eip1559Enabled, 
+                            Eip1559TransitionBlock = _eip1559TransitionBlock, 
+                            Eip1559FeeCollector = _eip1559FeeCollector
                         }, 1);
                     BlockBuilder blockBuilder = Core.Test.Builders.Build.A.Block.Genesis.WithGasLimit(gasLimit);
                     _testRpcBlockchain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
