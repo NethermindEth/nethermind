@@ -33,21 +33,23 @@ namespace Nethermind.Merge.Plugin.Handlers
 {
     public class MergeBlockProducer : IBlockProducer
     {
-        private readonly IBlockProducer _preMergeProducer;
+        private readonly IBlockProducer? _preMergeProducer;
         private readonly IBlockProducer _eth2BlockProducer;
         private readonly IPoSSwitcher _poSSwitcher;
+        private bool HasPreMergeProducer => _preMergeProducer != null;
 
         // TODO: remove this
         public ITimestamper Timestamper => _preMergeProducer?.Timestamper;
 
-        public MergeBlockProducer(IBlockProducer preMergeProducer, IBlockProducer? postMergeBlockProducer, IPoSSwitcher? poSSwitcher)
+        public MergeBlockProducer(IBlockProducer? preMergeProducer, IBlockProducer? postMergeBlockProducer, IPoSSwitcher? poSSwitcher)
         {
-            _preMergeProducer = preMergeProducer ?? throw new ArgumentNullException(nameof(preMergeProducer));
+            _preMergeProducer = preMergeProducer;
             _eth2BlockProducer = postMergeBlockProducer ?? throw new ArgumentNullException(nameof(postMergeBlockProducer));
             _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
             _poSSwitcher.SwitchHappened += OnSwitchHappened;
+            if (HasPreMergeProducer)
+                _preMergeProducer!.BlockProduced += OnBlockProduced;
             
-            _preMergeProducer.BlockProduced += OnBlockProduced;
             postMergeBlockProducer.BlockProduced += OnBlockProduced;
         }
 
@@ -64,24 +66,24 @@ namespace Nethermind.Merge.Plugin.Handlers
         public async Task Start()
         {
             await _eth2BlockProducer.Start();
-            if (_poSSwitcher.HasEverBeenInPos() == false)
+            if (_poSSwitcher.HasEverBeenInPos() == false && HasPreMergeProducer)
             {
-                await _preMergeProducer.Start();
+                await _preMergeProducer!.Start();
             }
         }
 
         public async Task StopAsync()
         {
             await _eth2BlockProducer.StopAsync();
-            if (_poSSwitcher.HasEverBeenInPos())
-                await _preMergeProducer.StopAsync();
+            if (_poSSwitcher.HasEverBeenInPos() && HasPreMergeProducer)
+                await _preMergeProducer!.StopAsync();
         }
 
         public bool IsProducingBlocks(ulong? maxProducingInterval)
         {
-            return _poSSwitcher.HasEverBeenInPos() || _preMergeProducer == null
+            return _poSSwitcher.HasEverBeenInPos() || HasPreMergeProducer == false
                 ? _eth2BlockProducer.IsProducingBlocks(maxProducingInterval)
-                : _preMergeProducer.IsProducingBlocks(maxProducingInterval);
+                : _preMergeProducer!.IsProducingBlocks(maxProducingInterval);
         }
 
         public event EventHandler<BlockEventArgs>? BlockProduced;
