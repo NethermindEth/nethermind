@@ -376,22 +376,6 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         [Test]
-        public async Task forkchoiceUpdated_not_switch_to_pos_where_no_terminal_values()
-        {
-            using MergeTestBlockchain chain = await CreateBlockChain();
-            IEngineRpcModule rpc = CreateEngineModule(chain);
-            BlockRequestResult blockRequestResult = await SendNewBlock(rpc, chain);
-            Assert.False(chain.PoSSwitcher.HasEverBeenInPos());
-            Keccak newHeadHash = blockRequestResult.BlockHash;
-            ForkChoiceUpdatedRequest forkChoiceUpdatedRequest = new(newHeadHash, newHeadHash /*, newHeadHash*/);
-            ResultWrapper<string> resultWrapper =
-                await rpc.engine_forkchoiceUpdated(forkChoiceUpdatedRequest);
-            resultWrapper.Data.Should().Be(null);
-            AssertExecutionStatusChanged(rpc, newHeadHash, newHeadHash /*, newHeadHash*/);
-            Assert.False(chain.PoSSwitcher.HasEverBeenInPos());
-        }
-
-        [Test]
         public async Task forkchoiceUpdated_switch_to_pos_by_terminal_block_hash()
         {
             using MergeTestBlockchain chain = await CreateBlockChain();

@@ -65,6 +65,8 @@ namespace Nethermind.Merge.Plugin.Test
         {
             public IBlockProducer EmptyBlockProducer { get; private set; }
 
+            public IMergeConfig MergeConfig { get; set; } = new MergeConfig() {Enabled = true};
+
             public Eth2BlockProductionContext IdealBlockProductionContext { get; set; } = new();
 
             public Eth2BlockProductionContext EmptyBlockProductionContext { get; set; } = new();
@@ -142,7 +144,7 @@ namespace Nethermind.Merge.Plugin.Test
             
             protected override void PostBuildAction()
             {
-                PoSSwitcher = new PoSSwitcher(LogManager, new MergeConfig() {Enabled = true}, new MemDb(), BlockTree);
+                PoSSwitcher = new PoSSwitcher(LogManager, MergeConfig, new MemDb(), BlockTree);
                 SealEngine = new MergeSealEngine(SealEngine, PoSSwitcher, Signer, LogManager);
                 HeaderValidator = new PostMergeHeaderValidator(BlockTree, SpecProvider, LogManager);
             }

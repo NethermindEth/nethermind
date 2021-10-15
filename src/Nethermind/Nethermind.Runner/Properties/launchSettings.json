@@ -125,6 +125,10 @@
     "Hacknet V3": {
       "commandName": "Project",
       "commandLineArgs": "--config hacknet_v3.cfg --Init.DiagnosticMode MemDb"
+    },
+    "Pithos": {
+      "commandName": "Project",
+      "commandLineArgs": "--config pithos.cfg --Init.DiagnosticMode MemDb"
     }
   }
 }
