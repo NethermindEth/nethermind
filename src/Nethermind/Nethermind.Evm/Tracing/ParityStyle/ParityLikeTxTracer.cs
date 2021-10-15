@@ -469,7 +469,6 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             }
 
             _currentAction.Result.Output = output.ToArray();
-            _currentAction.Result.GasUsed = _currentAction.Gas - gas;
             PopAction();
         }
 

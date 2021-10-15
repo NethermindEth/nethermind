@@ -212,7 +212,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .Done;
 
             (ParityLikeTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
-            Assert.AreEqual(3, trace.Action.Result.GasUsed);
+            Assert.AreEqual(21003, trace.Action.Result.GasUsed);
         }
 
         [Test]
