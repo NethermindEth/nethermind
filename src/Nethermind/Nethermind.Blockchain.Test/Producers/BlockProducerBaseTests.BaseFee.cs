@@ -66,9 +66,11 @@ namespace Nethermind.Blockchain.Test.Producers
                     SingleReleaseSpecProvider spec = new(
                         new ReleaseSpec()
                         {
-                            IsEip1559Enabled = _eip1559Enabled, Eip1559TransitionBlock = _eip1559TransitionBlock
+                            IsEip1559Enabled = _eip1559Enabled, 
+                            Eip1559TransitionBlock = _eip1559TransitionBlock,
+                            IsEip155Enabled = true
                         }, 1);
-                    BlockBuilder blockBuilder = Core.Test.Builders.Build.A.Block.Genesis.WithGasLimit(gasLimit);
+                    BlockBuilder blockBuilder = Build.A.Block.Genesis.WithGasLimit(gasLimit);
                     _testRpcBlockchain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
                         .WithGenesisBlockBuilder(blockBuilder)
                         .Build(spec);
@@ -132,7 +134,8 @@ namespace Nethermind.Blockchain.Test.Producers
                     tx.Nonce = _currentNonce;
                     ++_currentNonce;
                     
-                    await _testRpcBlockchain.TxSender.SendTransaction(tx, TxHandlingOptions.None);
+                    var (_, result) = await _testRpcBlockchain.TxSender.SendTransaction(tx, TxHandlingOptions.None);
+                    Assert.AreEqual(AddTxResult.Added, result);
                     return this;
                 }
 
