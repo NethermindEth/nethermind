@@ -117,6 +117,11 @@ namespace Nethermind.AccountAbstraction.Source
             return result;
         }
 
+        public bool RemoveUserOperation(UserOperation userOperation)
+        {
+            return _userOperationSortedPool.TryRemove(userOperation);
+        }
+
         public AddUserOperationResult SubmitUserOperation(UserOperation userOperation, UserOperationHandlingOptions handlingOptions)
         {
             throw new NotImplementedException();

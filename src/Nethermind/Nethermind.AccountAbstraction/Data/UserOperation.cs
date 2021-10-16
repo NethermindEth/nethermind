@@ -82,7 +82,7 @@ namespace Nethermind.AccountAbstraction.Data
         public byte[]? PaymasterData { get; set; }
         public UserOperationAccessList AccessList { get; set; }
         public int ResimulationCounter { get; set; }
-        public bool AccessListTouched { get; set; }
+        public bool AlreadySimulated { get; set; }
     }
 
     public struct UserOperationAbi

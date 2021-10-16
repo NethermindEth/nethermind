@@ -72,13 +72,18 @@ namespace Nethermind.AccountAbstraction.Source
                     continue;
                 }
 
-                if (userOperation.AccessListTouched)
+                // simulate again
+                Task<ResultWrapper<bool>> successTask = _userOperationSimulator.Simulate(userOperation, parent);
+                ResultWrapper<bool> success = successTask.Result;
+                if (success.Result != Result.Success)
                 {
-                    Task<ResultWrapper<bool>> successTask = _userOperationSimulator.Simulate(userOperation, parent);
-                    ResultWrapper<bool> success = successTask.Result;
-                    if (success.Result != Result.Success)
+                    if (_userOperationPool.RemoveUserOperation(userOperation))
                     {
-                        // implement flow here
+                        _logger.Info("AA: Removed userOperation from Pool");
+                    }
+                    else
+                    {
+                        _logger.Info($"AA: Failed to remove userOperation from Pool");
                     }
                 }
                 
@@ -104,7 +109,7 @@ namespace Nethermind.AccountAbstraction.Source
                 return new List<Transaction>();
             }
             Transaction userOperationTransaction = _userOperationSimulator.BuildTransactionFromUserOperations(userOperationsToInclude, parent, _specProvider.GetSpec(parent.Number + 1));
-            _logger.Info($"Constructed tx from {userOperationsToInclude.Count} userOps: {userOperationTransaction}");
+            _logger.Info($"Constructed tx from {userOperationsToInclude.Count} userOps: {userOperationTransaction.Hash}");
             return new List<Transaction>(){userOperationTransaction};
         }
 

@@ -171,7 +171,7 @@ namespace Nethermind.AccountAbstraction.Executor
             
             if (userOperation.Paymaster == Address.Zero)
             {
-                if (userOperation.AccessListTouched)
+                if (userOperation.AlreadySimulated)
                 {
                     if (!UserOperationAccessList.AccessListContains(userOperation.AccessList.Data,
                         walletValidationAccessList.Data))
@@ -183,6 +183,8 @@ namespace Nethermind.AccountAbstraction.Executor
                 {
                     userOperation.AccessList = walletValidationAccessList;
                 }
+
+                userOperation.AlreadySimulated = true;
                 return Task.FromResult(ResultWrapper<bool>.Success(true));
             }
             
@@ -200,7 +202,7 @@ namespace Nethermind.AccountAbstraction.Executor
                 return Task.FromResult(ResultWrapper<bool>.Fail("paymaster simulation verificationGas too low"));
             }
             
-            if (userOperation.AccessListTouched)
+            if (userOperation.AlreadySimulated)
             {
                 if (!UserOperationAccessList.AccessListContains(userOperation.AccessList.Data,
                     paymasterValidationAccessList.Data))
@@ -213,6 +215,7 @@ namespace Nethermind.AccountAbstraction.Executor
                 UserOperationAccessList.CombineAccessLists(userOperation.AccessList.Data, walletValidationAccessList.Data);
             }
 
+            userOperation.AlreadySimulated = true;
             return Task.FromResult(ResultWrapper<bool>.Success(true));
         }
         

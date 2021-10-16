@@ -26,6 +26,7 @@ namespace Nethermind.AccountAbstraction.Source
     public interface IUserOperationPool : IUserOperationSource
     {
         ResultWrapper<bool> AddUserOperation(UserOperation userOperation);
+        bool RemoveUserOperation(UserOperation userOperation);
         
         AddUserOperationResult SubmitUserOperation(UserOperation userOperation, UserOperationHandlingOptions handlingOptions);
     }
