@@ -104,7 +104,7 @@ namespace Nethermind.AccountAbstraction.Source
                 return new List<Transaction>();
             }
             Transaction userOperationTransaction = _userOperationSimulator.BuildTransactionFromUserOperations(userOperationsToInclude, parent, _specProvider.GetSpec(parent.Number + 1));
-            _logger.Info($"Constructed tx from {userOperationsToInclude.Count} userOps with sender address {userOperationTransaction.SenderAddress}");
+            _logger.Info($"Constructed tx from {userOperationsToInclude.Count} userOps: {userOperationTransaction}");
             return new List<Transaction>(){userOperationTransaction};
         }
 
