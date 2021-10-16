@@ -331,7 +331,9 @@ namespace Nethermind.AccountAbstraction.Executor
         {
             Transaction transaction = systemTransaction ? new SystemTransaction() : new Transaction();
 
-            transaction.GasPrice = 1.GWei();
+            UInt256 fee = BaseFeeCalculator.Calculate(parent, spec);
+            
+            transaction.GasPrice = fee;
             transaction.GasLimit = gaslimit;
             transaction.To = _singletonAddress;
             transaction.ChainId = _specProvider.ChainId;
@@ -339,7 +341,7 @@ namespace Nethermind.AccountAbstraction.Executor
             transaction.Value = 0;
             transaction.Data = callData;
             transaction.Type = TxType.EIP1559;
-            transaction.DecodedMaxFeePerGas = BaseFeeCalculator.Calculate(parent, spec);
+            transaction.DecodedMaxFeePerGas = fee;
             transaction.SenderAddress = sender;
             transaction.Hash = transaction.CalculateHash();
 
