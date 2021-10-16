@@ -114,7 +114,6 @@ namespace Nethermind.Network.Discovery
         {
             _appShutdownSource.Cancel();
             StopDiscoveryTimer();
-            //StopRefreshTimer();
             StopDiscoveryPersistenceTimer();
 
             if (_storageCommitTask != null)
@@ -333,6 +332,7 @@ namespace Nethermind.Network.Discovery
             {
                 if (_logger.IsDebug) _logger.Debug("Stopping discovery timer");
                 _discoveryTimer?.Stop();
+                _discoveryTimer?.Dispose();
             }
             catch (Exception e)
             {
@@ -369,6 +369,7 @@ namespace Nethermind.Network.Discovery
             {
                 if (_logger.IsDebug) _logger.Debug("Stopping discovery persistence timer");
                 _discoveryPersistenceTimer?.Stop();
+                _discoveryPersistenceTimer?.Dispose();
             }
             catch (Exception e)
             {
