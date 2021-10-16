@@ -228,8 +228,6 @@ namespace Nethermind.AccountAbstraction.Executor
 
         public void StartOperation(int depth, long gas, Instruction opcode, int pc)
         {
-            if (opcode == Instruction.BASEFEE) _logger.Info($"AA: Encountered BASEFEE at depth {depth} pc {pc}");
-            
             if (depth > 1 && _bannedOpcodes.Contains(opcode))
             {
                 _logger.Info($"AA: Encountered banned opcode {opcode} during simulation at depth {depth} pc {pc}");
@@ -411,9 +409,6 @@ namespace Nethermind.AccountAbstraction.Executor
                     Success = false;
                 }
             }
-            
-            
-            
         }
     }
 }

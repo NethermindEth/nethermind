@@ -85,31 +85,33 @@ namespace Nethermind.AccountAbstraction.Source
                     {
                         _logger.Info($"AA: Failed to remove userOperation from Pool");
                     }
+                    
                 }
-                
-                userOperationsToInclude.Add(userOperation);
-                gasUsed += (ulong) userOperation.CallGas; // TODO FIX THIS AFTER WE FIGURE OUT HOW CONTRACT WORKS
-                
-                foreach (var kv in userOperation.AccessList.Data)
+                else
                 {
-                    if (usedAccessList.ContainsKey(kv.Key))
+                    userOperationsToInclude.Add(userOperation);
+                    gasUsed += (ulong) userOperation.CallGas; // TODO FIX THIS AFTER WE FIGURE OUT HOW CONTRACT WORKS
+                
+                    foreach (var kv in userOperation.AccessList.Data)
                     {
-                        usedAccessList[kv.Key].UnionWith(kv.Value);
-                    }
-                    else
-                    {
-                        usedAccessList[kv.Key] = (HashSet<UInt256>) kv.Value;
+                        if (usedAccessList.ContainsKey(kv.Key))
+                        {
+                            usedAccessList[kv.Key].UnionWith(kv.Value);
+                        }
+                        else
+                        {
+                            usedAccessList[kv.Key] = (HashSet<UInt256>) kv.Value;
+                        }
                     }
                 }
             }
 
             if (userOperationsToInclude.Count == 0)
             {
-                _logger.Info("AA: No userOps found");
                 return new List<Transaction>();
             }
             Transaction userOperationTransaction = _userOperationSimulator.BuildTransactionFromUserOperations(userOperationsToInclude, parent, _specProvider.GetSpec(parent.Number + 1));
-            _logger.Info($"Constructed tx from {userOperationsToInclude.Count} userOps: {userOperationTransaction.Hash}");
+            _logger.Info($"Constructed tx from {userOperationsToInclude.Count} userOperations: {userOperationTransaction.Hash}");
             return new List<Transaction>(){userOperationTransaction};
         }
 
