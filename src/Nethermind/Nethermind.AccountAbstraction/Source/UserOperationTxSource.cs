@@ -24,6 +24,7 @@ using Nethermind.AccountAbstraction.Executor;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
@@ -36,15 +37,18 @@ namespace Nethermind.AccountAbstraction.Source
     {
         private readonly IUserOperationPool _userOperationPool;
         private readonly IUserOperationSimulator _userOperationSimulator;
+        private readonly ISpecProvider _specProvider;
         private readonly ILogger _logger;
 
         public UserOperationTxSource(
             IUserOperationPool userOperationPool, 
             IUserOperationSimulator userOperationSimulator,
+            ISpecProvider specProvider,
             ILogger logger)
         {
             _userOperationPool = userOperationPool;
             _userOperationSimulator = userOperationSimulator;
+            _specProvider = specProvider;
             _logger = logger;
         }
 
@@ -96,9 +100,10 @@ namespace Nethermind.AccountAbstraction.Source
 
             if (userOperationsToInclude.Count == 0)
             {
+                _logger.Info("AA: No userOps found");
                 return new List<Transaction>();
             }
-            Transaction userOperationTransaction = _userOperationSimulator.BuildTransactionFromUserOperations(userOperationsToInclude, parent, London.Instance);
+            Transaction userOperationTransaction = _userOperationSimulator.BuildTransactionFromUserOperations(userOperationsToInclude, parent, _specProvider.GetSpec(parent.Number + 1));
             _logger.Info($"Constructed tx from {userOperationsToInclude.Count} userOps with sender address {userOperationTransaction.SenderAddress}");
             return new List<Transaction>(){userOperationTransaction};
         }

@@ -25,6 +25,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Evm.Test;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using NUnit.Framework;
 
 namespace Nethermind.AccountAbstraction.Test
@@ -111,7 +112,7 @@ namespace Nethermind.AccountAbstraction.Test
         private (UserOperationTxTracer trace, Block block, Transaction transaction) ExecuteAndTraceAccessCall(SenderRecipientAndMiner addresses, params byte[] code)
         {
             (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code, addresses);
-            UserOperationTxTracer tracer = new(SenderRecipientAndMiner.Default.Miner, transaction, TestState);
+            UserOperationTxTracer tracer = new(SenderRecipientAndMiner.Default.Miner, transaction, TestState, NullLogger.Instance);
             _processor.Execute(transaction, block.Header, tracer);
             return (tracer, block, transaction);
         }

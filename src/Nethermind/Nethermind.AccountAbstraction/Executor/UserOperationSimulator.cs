@@ -145,8 +145,15 @@ namespace Nethermind.AccountAbstraction.Executor
             IReleaseSpec currentSpec = _specProvider.GetSpec(parent.Number + 1);
             ReadOnlyTxProcessingEnv txProcessingEnv = new(_dbProvider, _trieStore, _blockTree, _specProvider, _logManager);
             ITransactionProcessor transactionProcessor = txProcessingEnv.Build(_stateProvider.StateRoot);
+
+            ILogger logger = _logManager.GetClassLogger();
+            logger.Info($"AA: contract code: {_stateProvider.GetCode(_singletonAddress)}");
+            logger.Info($"AA: simulating userOp with spec {currentSpec}");
             
             Transaction simulateWalletValidationTransaction = BuildSimulateWalletValidationTransaction(userOperation, parent, currentSpec);
+            
+            logger.Info($"AA: simulate transaction created {simulateWalletValidationTransaction}");
+            
             (bool walletValidationSuccess, UInt256 gasUsedByPayForSelfOp, UserOperationAccessList walletValidationAccessList, string error) =
                 SimulateWalletValidation(simulateWalletValidationTransaction, parent, transactionProcessor);
 
@@ -338,7 +345,7 @@ namespace Nethermind.AccountAbstraction.Executor
         }
 
         private UserOperationBlockTracer CreateBlockTracer(BlockHeader parent) =>
-            new(parent.GasLimit, _signer.Address, _stateProvider, _contract);
+            new(parent.GasLimit, _signer.Address, _stateProvider, _contract, _logManager.GetClassLogger());
         
         private AbiDefinition LoadContract(JObject obj)
         {

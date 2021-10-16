@@ -25,6 +25,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.State;
 
 namespace Nethermind.AccountAbstraction.Executor
@@ -35,6 +36,7 @@ namespace Nethermind.AccountAbstraction.Executor
         private readonly Address _beneficiary;
         private readonly IStateProvider _stateProvider;
         private readonly AbiDefinition _abi;
+        private readonly ILogger _logger;
         private readonly AbiEncoder _abiEncoder = new();
 
 
@@ -43,12 +45,13 @@ namespace Nethermind.AccountAbstraction.Executor
         private UInt256? _beneficiaryBalanceBefore;
         private UInt256? _beneficiaryBalanceAfter;
         
-        public UserOperationBlockTracer(long gasLimit, Address beneficiary, IStateProvider stateProvider, AbiDefinition abi)
+        public UserOperationBlockTracer(long gasLimit, Address beneficiary, IStateProvider stateProvider, AbiDefinition abi, ILogger logger)
         {
             _gasLimit = gasLimit;
             _beneficiary = beneficiary;
             _stateProvider = stateProvider;
             _abi = abi;
+            _logger = logger;
             AccessedStorage = new Dictionary<Address, HashSet<UInt256>>();
         }
 
@@ -92,8 +95,8 @@ namespace Nethermind.AccountAbstraction.Executor
         public ITxTracer StartNewTxTrace(Transaction? tx)
         {
             return tx is null
-                ? new UserOperationTxTracer(_beneficiary, null, _stateProvider)
-                : _tracer = new UserOperationTxTracer(_beneficiary, tx, _stateProvider);
+                ? new UserOperationTxTracer(_beneficiary, null, _stateProvider, _logger)
+                : _tracer = new UserOperationTxTracer(_beneficiary, tx, _stateProvider, _logger);
         }
 
         public void EndTxTrace()
@@ -125,13 +128,14 @@ namespace Nethermind.AccountAbstraction.Executor
 
     public class UserOperationTxTracer : ITxTracer
     {
-        public UserOperationTxTracer(Address beneficiary, Transaction? transaction, IStateProvider stateProvider)
+        public UserOperationTxTracer(Address beneficiary, Transaction? transaction, IStateProvider stateProvider, ILogger logger)
         {
             _beneficiary = beneficiary;
             Transaction = transaction;
             Success = true;
             AccessedStorage = new Dictionary<Address, HashSet<UInt256>>();
             _stateProvider = stateProvider;
+            _logger = logger;
         }
 
         public Transaction? Transaction { get; }
@@ -159,7 +163,7 @@ namespace Nethermind.AccountAbstraction.Executor
         private readonly Address _beneficiary;
         private List<int> _codeAccessedAtDepth = new();
         private IStateProvider _stateProvider;
-        
+        private readonly ILogger _logger;
 
 
         public bool IsTracingReceipt => true;
@@ -224,8 +228,11 @@ namespace Nethermind.AccountAbstraction.Executor
 
         public void StartOperation(int depth, long gas, Instruction opcode, int pc)
         {
+            if (opcode == Instruction.BASEFEE) _logger.Info($"AA: Encountered BASEFEE at depth {depth} pc {pc}");
+            
             if (depth > 1 && _bannedOpcodes.Contains(opcode))
             {
+                _logger.Info($"AA: Encountered banned opcode {opcode} during simulation at depth {depth} pc {pc}");
                 Success = false;
             }
 
