@@ -82,6 +82,12 @@ namespace Nethermind.Blockchain.Contracts.Json
                     serializer.Populate(definitionToken.CreateReader(), abiEvent);
                     existingValue.Add(abiEvent);
                 }
+                else if (type == AbiDescriptionType.Error)
+                {
+                    AbiErrorDescription abiError = new();
+                    serializer.Populate(definitionToken.CreateReader(), abiError);
+                    existingValue.Add(abiError);
+                }
                 else
                 {
                     AbiFunctionDescription abiFunction = new();

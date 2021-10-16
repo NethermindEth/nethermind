@@ -197,9 +197,8 @@ namespace Nethermind.AccountAbstraction.Test
             
             public void SendUserOperation(UserOperation userOperation)
             {
-                bool result = UserOperationPool.AddUserOperation(userOperation);
-                ResultWrapper<bool> resultOfUserOperation =  ResultWrapper<bool>.Success(result);
-                resultOfUserOperation.GetResult().ResultType.Should().NotBe(ResultType.Failure);
+                ResultWrapper<bool> resultOfUserOperation = UserOperationPool.AddUserOperation(userOperation);
+                resultOfUserOperation.GetResult().ResultType.Should().NotBe(ResultType.Failure, resultOfUserOperation.Result.Error);
                 resultOfUserOperation.GetData().Should().Be(true);
             }
         }

@@ -32,8 +32,7 @@ namespace Nethermind.AccountAbstraction
 
         public ResultWrapper<bool> eth_sendUserOperation(UserOperationRpc userOperationRpc)
         {
-            bool result = _userOperationPool.AddUserOperation(new UserOperation(userOperationRpc));
-            return ResultWrapper<bool>.Success(result);
+            return _userOperationPool.AddUserOperation(new UserOperation(userOperationRpc));
         }
     }
 }

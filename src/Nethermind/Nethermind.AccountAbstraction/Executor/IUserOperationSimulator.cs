@@ -22,12 +22,13 @@ using Nethermind.AccountAbstraction.Data;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
+using Nethermind.JsonRpc;
 
 namespace Nethermind.AccountAbstraction.Executor
 {
     public interface IUserOperationSimulator
     {
-        Task<bool> Simulate(
+        Task<ResultWrapper<bool>> Simulate(
             UserOperation userOperation, 
             BlockHeader parent,
             CancellationToken cancellationToken = default, 

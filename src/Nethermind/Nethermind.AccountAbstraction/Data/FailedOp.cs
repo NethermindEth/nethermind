@@ -15,18 +15,22 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Collections.Generic;
-using Nethermind.AccountAbstraction.Broadcaster;
-using Nethermind.AccountAbstraction.Data;
+using System;
 using Nethermind.Core;
-using Nethermind.JsonRpc;
+using Nethermind.Int256;
 
-namespace Nethermind.AccountAbstraction.Source
+namespace Nethermind.AccountAbstraction.Data
 {
-    public interface IUserOperationPool : IUserOperationSource
+    public struct FailedOp
     {
-        ResultWrapper<bool> AddUserOperation(UserOperation userOperation);
-        
-        AddUserOperationResult SubmitUserOperation(UserOperation userOperation, UserOperationHandlingOptions handlingOptions);
+        public UInt256 OpIndex;
+        public Address Paymaster;
+        public string Reason;
+
+        public override string ToString()
+        {
+            string type = Paymaster == Address.Zero ? "wallet" : "paymaster";
+            return $"{type} simulation failed with reason '{Reason}'";
+        }
     }
 }

@@ -22,6 +22,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.Access;
 using Nethermind.Int256;
+using Nethermind.JsonRpc;
 using Nethermind.Network;
 using Nethermind.Network.P2P;
 using Nethermind.Stats.Model;
@@ -202,7 +203,7 @@ namespace Nethermind.AccountAbstraction.Test
 
             IUserOperationSimulator simulator = Substitute.For<IUserOperationSimulator>();
             simulator.Simulate(Arg.Any<UserOperation>(), Arg.Any<BlockHeader>())
-                .ReturnsForAnyArgs(x => Task.FromResult(true));
+                .ReturnsForAnyArgs(x => Task.FromResult(ResultWrapper<bool>.Success(true)));
 
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             blockTree.Head.Returns(Core.Test.Builders.Build.A.Block.TestObject);

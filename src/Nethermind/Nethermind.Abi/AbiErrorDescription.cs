@@ -15,18 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Collections.Generic;
-using Nethermind.AccountAbstraction.Broadcaster;
-using Nethermind.AccountAbstraction.Data;
-using Nethermind.Core;
-using Nethermind.JsonRpc;
-
-namespace Nethermind.AccountAbstraction.Source
+namespace Nethermind.Abi
 {
-    public interface IUserOperationPool : IUserOperationSource
+    public class AbiErrorDescription : AbiBaseDescription<AbiParameter>
     {
-        ResultWrapper<bool> AddUserOperation(UserOperation userOperation);
         
-        AddUserOperationResult SubmitUserOperation(UserOperation userOperation, UserOperationHandlingOptions handlingOptions);
     }
 }

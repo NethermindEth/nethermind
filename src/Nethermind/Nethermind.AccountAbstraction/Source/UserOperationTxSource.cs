@@ -25,6 +25,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Int256;
+using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -69,9 +70,9 @@ namespace Nethermind.AccountAbstraction.Source
 
                 if (userOperation.AccessListTouched)
                 {
-                    Task<bool> successTask = _userOperationSimulator.Simulate(userOperation, parent);
-                    bool success = successTask.Result;
-                    if (!success)
+                    Task<ResultWrapper<bool>> successTask = _userOperationSimulator.Simulate(userOperation, parent);
+                    ResultWrapper<bool> success = successTask.Result;
+                    if (success.Result != Result.Success)
                     {
                         // implement flow here
                     }

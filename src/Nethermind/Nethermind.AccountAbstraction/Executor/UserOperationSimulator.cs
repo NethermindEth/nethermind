@@ -42,6 +42,7 @@ using Nethermind.Db;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
@@ -135,7 +136,7 @@ namespace Nethermind.AccountAbstraction.Executor
             return transaction;
         }
 
-        public Task<bool> Simulate(
+        public Task<ResultWrapper<bool>> Simulate(
             UserOperation userOperation, 
             BlockHeader parent,
             CancellationToken cancellationToken = default, 
@@ -146,13 +147,17 @@ namespace Nethermind.AccountAbstraction.Executor
             ITransactionProcessor transactionProcessor = txProcessingEnv.Build(_stateProvider.StateRoot);
             
             Transaction simulateWalletValidationTransaction = BuildSimulateWalletValidationTransaction(userOperation, parent, currentSpec);
-            (bool walletValidationSuccess, UInt256 gasUsedByPayForSelfOp, UserOperationAccessList walletValidationAccessList) =
+            (bool walletValidationSuccess, UInt256 gasUsedByPayForSelfOp, UserOperationAccessList walletValidationAccessList, FailedOp? failedOp) =
                 SimulateWalletValidation(simulateWalletValidationTransaction, parent, transactionProcessor);
 
-            if (!walletValidationSuccess
-                || userOperation.VerificationGas < gasUsedByPayForSelfOp)
+            if (!walletValidationSuccess)
             {
-                return Task.FromResult(false);
+                return Task.FromResult(ResultWrapper<bool>.Fail(failedOp is not null ? failedOp.ToString() : "unknown wallet simulation failure"));
+            }
+
+            if (userOperation.VerificationGas < gasUsedByPayForSelfOp)
+            {
+                return Task.FromResult(ResultWrapper<bool>.Fail("wallet simulation verificationGas too low"));
             }
             
             if (userOperation.Paymaster == Address.Zero)
@@ -162,24 +167,28 @@ namespace Nethermind.AccountAbstraction.Executor
                     if (!UserOperationAccessList.AccessListContains(userOperation.AccessList.Data,
                         walletValidationAccessList.Data))
                     {
-                        return Task.FromResult(false);
+                        return Task.FromResult(ResultWrapper<bool>.Fail("access list exceeded"));
                     }
                 }
                 else
                 {
                     userOperation.AccessList = walletValidationAccessList;
                 }
-                return Task.FromResult(true);
+                return Task.FromResult(ResultWrapper<bool>.Success(true));
             }
             
             Transaction simulatePaymasterValidationTransaction = BuildSimulatePaymasterValidationTransaction(userOperation, gasUsedByPayForSelfOp, parent, currentSpec);
-            (bool paymasterValidationSuccess, UInt256 gasUsedByPayForOp, UserOperationAccessList paymasterValidationAccessList) = 
+            (bool paymasterValidationSuccess, UInt256 gasUsedByPayForOp, UserOperationAccessList paymasterValidationAccessList, FailedOp? paymasterFailedOp) = 
                 SimulatePaymasterValidation(simulatePaymasterValidationTransaction, parent, transactionProcessor);
 
-            if (!paymasterValidationSuccess
-                || userOperation.VerificationGas < gasUsedByPayForSelfOp + gasUsedByPayForOp)
+            if (!paymasterValidationSuccess)
             {
-                return Task.FromResult(false);
+                return Task.FromResult(ResultWrapper<bool>.Fail(paymasterFailedOp is not null ? paymasterFailedOp.ToString() : "unknown paymaster simulation failure"));
+            }
+
+            if (userOperation.VerificationGas < gasUsedByPayForSelfOp + gasUsedByPayForOp)
+            {
+                return Task.FromResult(ResultWrapper<bool>.Fail("paymaster simulation verificationGas too low"));
             }
             
             if (userOperation.AccessListTouched)
@@ -187,7 +196,7 @@ namespace Nethermind.AccountAbstraction.Executor
                 if (!UserOperationAccessList.AccessListContains(userOperation.AccessList.Data,
                     paymasterValidationAccessList.Data))
                 {
-                    return Task.FromResult(false);
+                    return Task.FromResult(ResultWrapper<bool>.Fail("access list exceeded"));
                 }
             }
             else
@@ -195,14 +204,14 @@ namespace Nethermind.AccountAbstraction.Executor
                 UserOperationAccessList.CombineAccessLists(userOperation.AccessList.Data, walletValidationAccessList.Data);
             }
 
-            return Task.FromResult(true);
+            return Task.FromResult(ResultWrapper<bool>.Success(true));
         }
         
-        private (bool success, UInt256 gasUsed, UserOperationAccessList accessList) SimulateWalletValidation(Transaction transaction, BlockHeader parent, ITransactionProcessor transactionProcessor)
+        private (bool success, UInt256 gasUsed, UserOperationAccessList accessList, FailedOp? failedOp) SimulateWalletValidation(Transaction transaction, BlockHeader parent, ITransactionProcessor transactionProcessor)
         {
             UserOperationBlockTracer blockTracer = SimulateValidation(transaction, parent, transactionProcessor);
 
-            if (!blockTracer.Success) return (false, UInt256.Zero, UserOperationAccessList.Empty);
+            if (!blockTracer.Success) return (false, UInt256.Zero, UserOperationAccessList.Empty, blockTracer.Error);
             
             // uint gasUsedByPayForSelfOp
             object[] result = _abiEncoder.Decode(
@@ -214,14 +223,14 @@ namespace Nethermind.AccountAbstraction.Executor
             UInt256 gasUsed = (UInt256) result[0];
             UserOperationAccessList userOperationAccessList = new UserOperationAccessList(blockTracer.AccessedStorage);
 
-            return (success, gasUsed, userOperationAccessList);
+            return (success, gasUsed, userOperationAccessList, null);
         }
 
-        private (bool success, UInt256 gasUsed, UserOperationAccessList accessList) SimulatePaymasterValidation(Transaction transaction, BlockHeader parent, ITransactionProcessor transactionProcessor)
+        private (bool success, UInt256 gasUsed, UserOperationAccessList accessList, FailedOp? failedOp) SimulatePaymasterValidation(Transaction transaction, BlockHeader parent, ITransactionProcessor transactionProcessor)
         {
             UserOperationBlockTracer blockTracer = SimulateValidation(transaction, parent, transactionProcessor);
 
-            if (!blockTracer.Success) return (false, UInt256.Zero, UserOperationAccessList.Empty);
+            if (!blockTracer.Success) return (false, UInt256.Zero, UserOperationAccessList.Empty, blockTracer.Error);
 
             // bytes context, uint gasUsedByPayForOp
             object[] result = _abiEncoder.Decode(
@@ -233,7 +242,7 @@ namespace Nethermind.AccountAbstraction.Executor
             UInt256 gasUsed = (UInt256) result[1];
             UserOperationAccessList userOperationAccessList = new UserOperationAccessList(blockTracer.AccessedStorage);
 
-            return (success, gasUsed, userOperationAccessList);
+            return (success, gasUsed, userOperationAccessList, null);
         }
 
         private UserOperationBlockTracer SimulateValidation(Transaction transaction, BlockHeader parent, ITransactionProcessor transactionProcessor)
@@ -287,7 +296,7 @@ namespace Nethermind.AccountAbstraction.Executor
         {
             Transaction transaction = systemTransaction ? new SystemTransaction() : new Transaction();
 
-            transaction.GasPrice = 0;
+            transaction.GasPrice = 1.GWei();
             transaction.GasLimit = gaslimit;
             transaction.To = _singletonAddress;
             transaction.ChainId = _specProvider.ChainId;
@@ -303,7 +312,7 @@ namespace Nethermind.AccountAbstraction.Executor
         }
 
         private UserOperationBlockTracer CreateBlockTracer(BlockHeader parent) =>
-            new(parent.GasLimit, _signer.Address, _stateProvider);
+            new(parent.GasLimit, _signer.Address, _stateProvider, _contract);
         
         private AbiDefinition LoadContract(JObject obj)
         {

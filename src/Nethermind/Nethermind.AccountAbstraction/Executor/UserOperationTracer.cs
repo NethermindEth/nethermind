@@ -18,6 +18,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Abi;
+using Nethermind.AccountAbstraction.Data;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
@@ -32,23 +34,49 @@ namespace Nethermind.AccountAbstraction.Executor
         private readonly long _gasLimit;
         private readonly Address _beneficiary;
         private readonly IStateProvider _stateProvider;
+        private readonly AbiDefinition _abi;
+        private readonly AbiEncoder _abiEncoder = new();
+
 
         private UserOperationTxTracer? _tracer;
 
         private UInt256? _beneficiaryBalanceBefore;
         private UInt256? _beneficiaryBalanceAfter;
         
-        public UserOperationBlockTracer(long gasLimit, Address beneficiary, IStateProvider stateProvider)
+        public UserOperationBlockTracer(long gasLimit, Address beneficiary, IStateProvider stateProvider, AbiDefinition abi)
         {
             _gasLimit = gasLimit;
             _beneficiary = beneficiary;
             _stateProvider = stateProvider;
+            _abi = abi;
             AccessedStorage = new Dictionary<Address, HashSet<UInt256>>();
         }
 
         public bool Success { get; private set; } = true;
         public long GasUsed { get; private set; }
         public byte[] Output { get; private set; }
+        public FailedOp? Error
+        {
+            get
+            {
+                try
+                {
+                    object[] decoded = _abiEncoder.Decode(AbiEncodingStyle.IncludeSignature,
+                        _abi.Errors["FailedOp"].GetCallInfo().Signature, Output);
+                    return new FailedOp()
+                    {
+                        OpIndex = (UInt256)decoded[0],
+                        Paymaster = (Address)decoded[1],
+                        Reason = (string)decoded[2]
+                    };
+                }
+                catch (Exception e)
+                {
+                    return null;
+                }
+            }
+        }
+
         public IDictionary<Address, HashSet<UInt256>> AccessedStorage { get; private set; }
         public bool IsTracingRewards => true;
 
@@ -69,6 +97,8 @@ namespace Nethermind.AccountAbstraction.Executor
 
         public void EndTxTrace()
         {
+            Output = _tracer.Output;
+
             if (!_tracer!.Success)
             {
                 Success = false;
@@ -83,7 +113,6 @@ namespace Nethermind.AccountAbstraction.Executor
                 return;
             }
 
-            Output = _tracer.Output;
             AccessedStorage = _tracer.AccessedStorage;
         }
 

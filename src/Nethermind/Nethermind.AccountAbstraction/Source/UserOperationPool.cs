@@ -33,6 +33,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Tracing.Access;
 using Nethermind.Int256;
+using Nethermind.JsonRpc;
 using Nethermind.Network;
 using Nethermind.Network.P2P;
 using Nethermind.State;
@@ -98,14 +99,22 @@ namespace Nethermind.AccountAbstraction.Source
 
         public IEnumerable<UserOperation> GetUserOperations() => _userOperationSortedPool.GetSnapshot();
 
-        public bool AddUserOperation(UserOperation userOperation)
+        public ResultWrapper<bool> AddUserOperation(UserOperation userOperation)
         {
-            if (ValidateUserOperation(userOperation))
+            ResultWrapper<bool> result = ValidateUserOperation(userOperation);
+            if (result.Result == Result.Success)
             {
-                return _userOperationSortedPool.TryInsert(userOperation, userOperation);
+                if (_userOperationSortedPool.TryInsert(userOperation, userOperation))
+                {
+                    return ResultWrapper<bool>.Success(true);
+                }
+                else
+                {
+                    return ResultWrapper<bool>.Fail("failed to insert userOp into pool");
+                }
             }
-
-            return false;
+            
+            return result;
         }
 
         public AddUserOperationResult SubmitUserOperation(UserOperation userOperation, UserOperationHandlingOptions handlingOptions)
@@ -113,12 +122,16 @@ namespace Nethermind.AccountAbstraction.Source
             throw new NotImplementedException();
         }
 
-        private bool ValidateUserOperation(UserOperation userOperation)
+        private ResultWrapper<bool> ValidateUserOperation(UserOperation userOperation)
         {
-            if (userOperation.MaxFeePerGas < _accountAbstractionConfig.MinimumGasPrice 
-                || userOperation.CallGas < Transaction.BaseTxGasCost)
+            if (userOperation.MaxFeePerGas < _accountAbstractionConfig.MinimumGasPrice)
             {
-                return false;
+                return ResultWrapper<bool>.Fail("maxFeePerGas below minimum gas price");
+            }
+
+            if (userOperation.CallGas < Transaction.BaseTxGasCost)
+            {
+                return ResultWrapper<bool>.Fail($"callGas too low, must be at least {Transaction.BaseTxGasCost}");
             }
 
             // make sure target account exists
@@ -126,7 +139,7 @@ namespace Nethermind.AccountAbstraction.Source
                 userOperation.Sender == Address.Zero
                 || !(_stateProvider.AccountExists(userOperation.Sender) || userOperation.InitCode != Bytes.Empty))
             {
-                return false;
+                return ResultWrapper<bool>.Fail("sender doesn't exist");
             }
 
             // make sure paymaster is a contract (if paymaster is used) and is not on banned list
@@ -136,25 +149,25 @@ namespace Nethermind.AccountAbstraction.Source
                     || !_stateProvider.IsContract(userOperation.Paymaster)
                     || _bannedPaymasters.Contains(userOperation.Paymaster))
                 {
-                    return false;
+                    return ResultWrapper<bool>.Fail("paymaster is used but is not a contract or is banned");
                 }
             }
 
             // make sure op not already in pool
             if (_userOperationSortedPool.GetSnapshot().Contains(userOperation))
             {
-                return false;
+                return ResultWrapper<bool>.Fail("userOp is already present in the pool");
             }
             
-            Task<bool> successfulSimulationTask = Simulate(userOperation, _blockTree.Head!.Header);
-            bool successfulSimulation = successfulSimulationTask.Result;
+            Task<ResultWrapper<bool>> successfulSimulationTask = Simulate(userOperation, _blockTree.Head!.Header);
+            ResultWrapper<bool> successfulSimulation = successfulSimulationTask.Result;
 
             return successfulSimulation;
         }
 
-        private async Task<bool> Simulate(UserOperation userOperation, BlockHeader parent)
+        private async Task<ResultWrapper<bool>> Simulate(UserOperation userOperation, BlockHeader parent)
         {
-            bool success = await _userOperationSimulator.Simulate(
+            ResultWrapper<bool> success = await _userOperationSimulator.Simulate(
                 userOperation, 
                 parent, 
                 CancellationToken.None, 
