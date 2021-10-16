@@ -343,6 +343,8 @@ namespace Nethermind.AccountAbstraction.Executor
             transaction.Type = TxType.EIP1559;
             transaction.DecodedMaxFeePerGas = fee;
             transaction.SenderAddress = sender;
+            
+            _signer.Sign(transaction);
             transaction.Hash = transaction.CalculateHash();
 
             return transaction;
