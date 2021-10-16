@@ -55,7 +55,7 @@ namespace Nethermind.AccountAbstraction.Executor
         public bool Success { get; private set; } = true;
         public long GasUsed { get; private set; }
         public byte[] Output { get; private set; }
-        public FailedOp? Error
+        public FailedOp? FailedOp
         {
             get
             {
@@ -76,6 +76,7 @@ namespace Nethermind.AccountAbstraction.Executor
                 }
             }
         }
+        public string Error { get; private set; }
 
         public IDictionary<Address, HashSet<UInt256>> AccessedStorage { get; private set; }
         public bool IsTracingRewards => true;
@@ -98,6 +99,7 @@ namespace Nethermind.AccountAbstraction.Executor
         public void EndTxTrace()
         {
             Output = _tracer.Output;
+            Error = _tracer.Error;
 
             if (!_tracer!.Success)
             {
