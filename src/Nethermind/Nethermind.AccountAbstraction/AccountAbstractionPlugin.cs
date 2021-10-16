@@ -120,8 +120,13 @@ namespace Nethermind.AccountAbstraction
 
             if (_accountAbstractionConfig.Enabled)
             {
-                bool parsed = Address.TryParse(_accountAbstractionConfig.SingletonContractAddress, out Address _singletonContractAddress);
+                bool parsed = Address.TryParse(_accountAbstractionConfig.SingletonContractAddress, out Address? singletonContractAddress);
                 if (!parsed) _logger.Error("Account Abstraction Plugin: Singleton contract address could not be parsed");
+                else
+                {
+                    _logger.Info($"Parsed Singleton Address: {singletonContractAddress}");
+                    _singletonContractAddress = singletonContractAddress!;
+                }
             }
 
             if (Enabled)

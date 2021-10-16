@@ -147,6 +147,8 @@ namespace Nethermind.AccountAbstraction.Executor
             ITransactionProcessor transactionProcessor = txProcessingEnv.Build(_stateProvider.StateRoot);
 
             ILogger logger = _logManager.GetClassLogger();
+            logger.Info($"AA: contract address: {_singletonAddress}");
+            logger.Info($"AA: is empty account?: {_stateProvider.IsEmptyAccount(_singletonAddress)}");
             logger.Info($"AA: contract code: {_stateProvider.GetCode(_singletonAddress)}");
             logger.Info($"AA: simulating userOp with spec {currentSpec}");
             
