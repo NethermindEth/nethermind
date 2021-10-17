@@ -19,6 +19,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.Versioning;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -44,6 +45,7 @@ namespace Nethermind.Wallet.Test
 
             public IWallet Wallet { get; }
 
+            [SupportedOSPlatform("windows")]
             public Context(WalletType walletType)
             {
                 switch (walletType)
@@ -93,6 +95,7 @@ namespace Nethermind.Wallet.Test
         private readonly ConcurrentBag<Context> _wallets = new ConcurrentBag<Context>();
 
         [OneTimeSetUp]
+        [SupportedOSPlatform("windows")]
         public void Setup()
         {
             // by pre-caching wallets we make the tests do lot less work

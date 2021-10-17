@@ -17,6 +17,7 @@
 using System;
 using System.Linq;
 using System.Runtime.Caching;
+using System.Runtime.Versioning;
 using System.Security;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -27,6 +28,7 @@ using Nethermind.Secp256k1;
 
 namespace Nethermind.Wallet
 {
+    [SupportedOSPlatform("windows")]
     public class ProtectedKeyStoreWallet : IWallet
     {
         private static readonly TimeSpan DefaultExpirationTime = TimeSpan.FromMinutes(5);

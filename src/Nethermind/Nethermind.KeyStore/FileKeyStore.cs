@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Runtime.Versioning;
 using System.Security;
 using System.Security.Cryptography;
 using System.Text;
@@ -195,6 +196,7 @@ namespace Nethermind.KeyStore
             return (new PrivateKey(geyKeyResult.Key), geyKeyResult.Result);
         }
 
+        [SupportedOSPlatform("windows")]
         public (ProtectedPrivateKey PrivateKey, Result Result) GetProtectedKey(Address address, SecureString password)
         {
             (PrivateKey privateKey, Result result) = GetKey(address, password);
@@ -220,6 +222,7 @@ namespace Nethermind.KeyStore
             return result.ResultType == ResultType.Success ? (privateKey, result) : (null, result);
         }
 
+        [SupportedOSPlatform("windows")]
         public (ProtectedPrivateKey PrivateKey, Result Result) GenerateProtectedKey(SecureString password)
         {
             (PrivateKey privateKey, Result result) = GenerateKey(password);

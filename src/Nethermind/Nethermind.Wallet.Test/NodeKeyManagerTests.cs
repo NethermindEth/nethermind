@@ -17,6 +17,7 @@
 
 using System.IO.Abstractions;
 using System.Linq;
+using System.Runtime.Versioning;
 using System.Security;
 using FluentAssertions;
 using Nethermind.Core;
@@ -34,6 +35,7 @@ namespace Nethermind.Wallet.Test
     public class NodeKeyManagerTests
     {
         [Test]
+        [SupportedOSPlatform("windows")]
         public void LoadNodeKey_loads_TestNodeKey()
         {
             var test = CreateTest();
@@ -42,6 +44,7 @@ namespace Nethermind.Wallet.Test
         }
         
         [Test]
+        [SupportedOSPlatform("windows")]
         public void LoadNodeKey_loads_key_for_EnodeAccount()
         {
             var test = CreateTest();
@@ -56,6 +59,7 @@ namespace Nethermind.Wallet.Test
         
         [TestCase(null)]
         [TestCase("testFile")]
+        [SupportedOSPlatform("windows")]
         public void LoadNodeKey_creates_file(string filePath)
         {
             var test = CreateTest();
@@ -71,6 +75,7 @@ namespace Nethermind.Wallet.Test
         
         [TestCase(null)]
         [TestCase("testFile")]
+        [SupportedOSPlatform("windows")]
         public void LoadNodeKey_loads_file(string filePath)
         {
             var test = CreateTest();
@@ -85,6 +90,7 @@ namespace Nethermind.Wallet.Test
         }
         
         [Test]
+        [SupportedOSPlatform("windows")]
         public void LoadSignerKey_defaults_to_LoadNodeKey()
         {
             var test = CreateTest();
@@ -93,6 +99,7 @@ namespace Nethermind.Wallet.Test
         }
         
         [Test]
+        [SupportedOSPlatform("windows")]
         public void LoadSignerKey_loads_key_for_BlockAuthorAccount()
         {
             var test = CreateTest();

@@ -16,6 +16,7 @@
 // 
 
 using System;
+using System.Runtime.Versioning;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -43,6 +44,7 @@ namespace Nethermind.Consensus
             SetSigner(key);
         }
         
+        [SupportedOSPlatform("windows")]
         public Signer(ulong chainId, ProtectedPrivateKey key, ILogManager logManager)
         {
             _chainId = chainId;
@@ -74,6 +76,7 @@ namespace Nethermind.Consensus
                 _key != null ? $"Address {Address} is configured for signing blocks." : "No address is configured for signing blocks.");
         }
 
+        [SupportedOSPlatform("windows")]
         public void SetSigner(ProtectedPrivateKey? key)
         {
             PrivateKey? pk = null; 

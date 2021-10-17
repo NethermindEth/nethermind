@@ -17,6 +17,7 @@
 using System;
 using System.IO;
 using System.IO.Abstractions;
+using System.Runtime.Versioning;
 using System.Security;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
@@ -77,6 +78,7 @@ namespace Nethermind.Wallet
         }
         
         [DoNotUseInSecuredContext("This stored the node key in plaintext - it is just one step further to the full node key protection")]
+        [SupportedOSPlatform("windows")]
         public ProtectedPrivateKey LoadNodeKey()
         {
             ProtectedPrivateKey LoadKeyFromFile()
@@ -110,6 +112,7 @@ namespace Nethermind.Wallet
             return key ?? LoadKeyFromFile();
         }
 
+        [SupportedOSPlatform("windows")]
         public ProtectedPrivateKey LoadSignerKey() => LoadKeyForAccount(_config.BlockAuthorAccount) ?? LoadNodeKey();
 
         private ProtectedPrivateKey LoadKeyForAccount(string account)

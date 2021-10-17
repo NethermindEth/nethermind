@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Runtime.Versioning;
 using Nethermind.Core;
 
 namespace Nethermind.Crypto
@@ -30,6 +31,7 @@ namespace Nethermind.Crypto
             _timestamper = timestamper;
         }
 
+        [SupportedOSPlatform("windows")]
         public ProtectedPrivateKey Create(PrivateKey privateKey) => new(privateKey, _random, _timestamper);
     }
 }

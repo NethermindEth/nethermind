@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Runtime.Versioning;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -22,6 +23,7 @@ namespace Nethermind.Crypto
 {
     public class ProtectedPrivateKey : ProtectedData<PrivateKey>
     {
+        [SupportedOSPlatform("windows")]
         public ProtectedPrivateKey(PrivateKey privateKey, ICryptoRandom random = null, ITimestamper timestamper = null) : base(privateKey.KeyBytes, random, timestamper)
         {
             PublicKey = privateKey.PublicKey;

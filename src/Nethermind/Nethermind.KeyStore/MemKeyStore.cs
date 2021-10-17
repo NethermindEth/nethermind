@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Runtime.Versioning;
 using System.Security;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
@@ -51,6 +52,7 @@ namespace Nethermind.KeyStore
             return _privateKeys.ContainsKey(address) ? (_privateKeys[address], Result.Success) : (null, Result.Fail("Can't unlock key."));
         }
 
+        [SupportedOSPlatform("windows")]
         public (ProtectedPrivateKey PrivateKey, Result Result) GetProtectedKey(Address address, SecureString password)
         {
             return _privateKeys.ContainsKey(address) ? (new ProtectedPrivateKey(_privateKeys[address]), Result.Success) : (null, Result.Fail("Can't unlock key."));

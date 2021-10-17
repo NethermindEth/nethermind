@@ -16,6 +16,7 @@
 // 
 
 using System;
+using System.Runtime.Versioning;
 using System.Security.Cryptography;
 using Nethermind.Core;
 
@@ -33,6 +34,7 @@ namespace Nethermind.Crypto
         private DateTime _timestamp;
         private byte[] _encryptedData;
 
+        [SupportedOSPlatform("windows")]
         public ProtectedData(byte[] data, ICryptoRandom? random = null, ITimestamper? timestamper = null)
         {
             _random = random ?? new CryptoRandom();
@@ -40,6 +42,7 @@ namespace Nethermind.Crypto
             Protect(data);
         }
 
+        [SupportedOSPlatform("windows")]
         private void Protect(byte[] data)
         {
             _entropy = _random.GenerateRandomBytes(_random.NextInt(EntropyMaxLength - EntropyMinLength) + EntropyMinLength);
@@ -47,15 +50,17 @@ namespace Nethermind.Crypto
             _timestamp = _timestamper.UtcNow;
         }
 
+        [SupportedOSPlatform("windows")]
         public T Unprotect()
         {
             var data = Unprotect(_encryptedData, _entropy, DataProtectionScope.CurrentUser);
             CheckReProtect(data);
             return CreateUnprotected(data);
         }
-
+        
         protected abstract T CreateUnprotected(byte[] data);
 
+        [SupportedOSPlatform("windows")]
         private void CheckReProtect(byte[] data)
         {
             if (_timestamper.UtcNow - _timestamp > MaxSecureTimeSpan)

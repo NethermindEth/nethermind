@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Runtime.Versioning;
 using System.Security.Cryptography;
 
 namespace Nethermind.Crypto
@@ -23,11 +24,13 @@ namespace Nethermind.Crypto
     {
         private sealed class DpapiWrapper : IProtector
         {
+            [SupportedOSPlatform("windows")]
             public byte[] Protect(byte[] userData, byte[] optionalEntropy, DataProtectionScope scope)
             {
                 return  System.Security.Cryptography.ProtectedData.Protect(userData, optionalEntropy, scope);
             }
 
+            [SupportedOSPlatform("windows")]
             public byte[] Unprotect(byte[] encryptedData, byte[] optionalEntropy, DataProtectionScope scope)
             {
                 return  System.Security.Cryptography.ProtectedData.Unprotect(encryptedData, optionalEntropy, scope);
