@@ -23,10 +23,9 @@ namespace Nethermind.AccountAbstraction
     public class AccountAbstractionConfig : IAccountAbstractionConfig
     {
         public bool Enabled { get; set; }
-        public int UserOperationPoolSize { get; set; }
-        public string SingletonContractAddress { get; set; }
-        public UInt256 MinimumGasPrice { get; set; }
-        public int MaxResimulations { get; set; }
-        public string FlashbotsEndpoint { get; set; }
+        public int UserOperationPoolSize { get; set; } = 200;
+        public string SingletonContractAddress { get; set; } = "";
+        public UInt256 MinimumGasPrice { get; set; } = 0;
+        public string FlashbotsEndpoint { get; set; } = "https://relay.flashbots.net/";
     }
 }

@@ -79,11 +79,11 @@ namespace Nethermind.AccountAbstraction.Source
                 {
                     if (_userOperationPool.RemoveUserOperation(userOperation))
                     {
-                        _logger.Info("AA: Removed userOperation from Pool");
+                        _logger.Info($"AA: Removed userOperation {userOperation.Hash} from Pool");
                     }
                     else
                     {
-                        _logger.Info($"AA: Failed to remove userOperation from Pool");
+                        _logger.Info($"AA: Failed to remove userOperation {userOperation.Hash} from Pool");
                     }
                     
                 }

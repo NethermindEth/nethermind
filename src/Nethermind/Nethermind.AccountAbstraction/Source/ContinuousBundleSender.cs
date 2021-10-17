@@ -23,6 +23,7 @@ using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Flashbots;
 using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Timers;
@@ -35,6 +36,8 @@ namespace Nethermind.AccountAbstraction.Source
         private readonly IBlockTree _blockTree;
         private readonly UserOperationTxSource _userOperationTxSource;
         private readonly IAccountAbstractionConfig _accountAbstractionConfig;
+        private readonly ISigner _signer;
+        private readonly ILogger _logger;
         private readonly ITimer _timer;
         
         public ContinuousBundleSender
@@ -42,32 +45,34 @@ namespace Nethermind.AccountAbstraction.Source
             IBlockTree blockTree, 
             UserOperationTxSource userOperationTxSource, 
             IAccountAbstractionConfig accountAbstractionConfig, 
-            ITimerFactory timerFactory
+            ITimerFactory timerFactory,
+            ISigner signer,
+            ILogger logger
         )
         {
             _blockTree = blockTree;
             _accountAbstractionConfig = accountAbstractionConfig;
+            _signer = signer;
+            _logger = logger;
             _userOperationTxSource = userOperationTxSource;
             _timer = timerFactory.CreateTimer(TimeSpan.FromMilliseconds(5000));
-            _timer.Elapsed += TimerOnElapsed;
+            _timer.Elapsed += TimerOnElapsed!;
             _timer.AutoReset = false;
             _timer.Start(); 
         }
         
         private void TimerOnElapsed(object sender, EventArgs args)
         {
-            INethermindApi _nethermindApi = null!;
-            ILogger _logger = null!;
-            FlashbotsSender flashbotsSender = new FlashbotsSender(new HttpClient(), _nethermindApi.EngineSigner, _logger);
+            FlashbotsSender flashbotsSender = new FlashbotsSender(new HttpClient(), _signer, _logger);
             
             // turn ops into txs
-            IEnumerable<Transaction> transaction = _userOperationTxSource.GetTransactions(_blockTree.Head.Header, _blockTree.Head.GasLimit);
+            IEnumerable<Transaction> transaction = _userOperationTxSource.GetTransactions(_blockTree.Head!.Header, _blockTree.Head.GasLimit);
             string[] transactionArray = transaction.Select(pkg => pkg.ToString()).ToArray();
             // turn txs into MevBundle
             FlashbotsSender.MevBundle bundle = new FlashbotsSender.MevBundle(_blockTree.Head.Header.Number + 1, transactionArray);
             
             // send MevBundle using SendBundle()
-            flashbotsSender.SendBundle(bundle, _accountAbstractionConfig.FlashbotsEndpoint);
+            flashbotsSender.SendBundle(bundle, _accountAbstractionConfig.FlashbotsEndpoint).ContinueWith(_ => _);
 
             _timer.Enabled = true;
         }

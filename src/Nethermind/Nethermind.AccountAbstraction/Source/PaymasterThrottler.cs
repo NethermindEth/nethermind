@@ -171,7 +171,7 @@ namespace Nethermind.AccountAbstraction.Source
 
         private void SetupAndStartTimer()
         {
-            _timer.Elapsed += UpdateUserOperationMaps;
+            _timer.Elapsed += UpdateUserOperationMaps!;
             _timer.AutoReset = true;
             _timer.Start();
         }

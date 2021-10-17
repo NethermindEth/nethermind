@@ -42,9 +42,6 @@ namespace Nethermind.AccountAbstraction.Executor
 
         private UserOperationTxTracer? _tracer;
 
-        private UInt256? _beneficiaryBalanceBefore;
-        private UInt256? _beneficiaryBalanceAfter;
-        
         public UserOperationBlockTracer(long gasLimit, Address beneficiary, IStateProvider stateProvider, AbiDefinition abi, ILogger logger)
         {
             _gasLimit = gasLimit;
@@ -52,6 +49,8 @@ namespace Nethermind.AccountAbstraction.Executor
             _stateProvider = stateProvider;
             _abi = abi;
             _logger = logger;
+            
+            Output = Array.Empty<byte>();
             AccessedStorage = new Dictionary<Address, HashSet<UInt256>>();
         }
 
@@ -73,13 +72,13 @@ namespace Nethermind.AccountAbstraction.Executor
                         Reason = (string)decoded[2]
                     };
                 }
-                catch (Exception e)
+                catch (Exception)
                 {
                     return null;
                 }
             }
         }
-        public string Error { get; private set; }
+        public string? Error { get; private set; }
 
         public IDictionary<Address, HashSet<UInt256>> AccessedStorage { get; private set; }
         public bool IsTracingRewards => true;
@@ -95,12 +94,14 @@ namespace Nethermind.AccountAbstraction.Executor
         public ITxTracer StartNewTxTrace(Transaction? tx)
         {
             return tx is null
-                ? new UserOperationTxTracer(_beneficiary, null, _stateProvider, _logger)
-                : _tracer = new UserOperationTxTracer(_beneficiary, tx, _stateProvider, _logger);
+                ? new UserOperationTxTracer(null, _stateProvider, _logger)
+                : _tracer = new UserOperationTxTracer(tx, _stateProvider, _logger);
         }
 
         public void EndTxTrace()
         {
+            if (_tracer is null) throw new ArgumentNullException(nameof(_tracer));
+            
             Output = _tracer.Output;
             Error = _tracer.Error;
 
@@ -128,14 +129,14 @@ namespace Nethermind.AccountAbstraction.Executor
 
     public class UserOperationTxTracer : ITxTracer
     {
-        public UserOperationTxTracer(Address beneficiary, Transaction? transaction, IStateProvider stateProvider, ILogger logger)
+        public UserOperationTxTracer(Transaction? transaction, IStateProvider stateProvider, ILogger logger)
         {
-            _beneficiary = beneficiary;
             Transaction = transaction;
             Success = true;
             AccessedStorage = new Dictionary<Address, HashSet<UInt256>>();
             _stateProvider = stateProvider;
             _logger = logger;
+            Output = Array.Empty<byte>();
         }
 
         public Transaction? Transaction { get; }
@@ -144,8 +145,6 @@ namespace Nethermind.AccountAbstraction.Executor
         public string? Error { get; private set; }
         public long GasSpent { get; set; }
         public byte[] Output { get; private set; }
-        public UInt256? BeneficiaryBalanceBefore { get; private set; }
-        public UInt256? BeneficiaryBalanceAfter { get; private set; }
 
         private static readonly Instruction[] _bannedOpcodes = 
         {
@@ -160,7 +159,7 @@ namespace Nethermind.AccountAbstraction.Executor
             Instruction.BALANCE,
             Instruction.ORIGIN,
         };
-        private readonly Address _beneficiary;
+        
         private List<int> _codeAccessedAtDepth = new();
         private IStateProvider _stateProvider;
         private readonly ILogger _logger;
@@ -197,11 +196,6 @@ namespace Nethermind.AccountAbstraction.Executor
 
         public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
         {
-            if (address == _beneficiary)
-            {
-                BeneficiaryBalanceBefore ??= before;
-                BeneficiaryBalanceAfter = after;
-            }
         }
 
         public void ReportCodeChange(Address address, byte[]? before, byte[]? after)

@@ -112,7 +112,7 @@ namespace Nethermind.AccountAbstraction.Test
         private (UserOperationTxTracer trace, Block block, Transaction transaction) ExecuteAndTraceAccessCall(SenderRecipientAndMiner addresses, params byte[] code)
         {
             (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code, addresses);
-            UserOperationTxTracer tracer = new(SenderRecipientAndMiner.Default.Miner, transaction, TestState, NullLogger.Instance);
+            UserOperationTxTracer tracer = new(transaction, TestState, NullLogger.Instance);
             _processor.Execute(transaction, block.Header, tracer);
             return (tracer, block, transaction);
         }

@@ -32,7 +32,7 @@ namespace Nethermind.AccountAbstraction
         private Address _singletonContractAddress = null!;
         
         private INethermindApi _nethermindApi = null!;
-        private ILogger _logger;
+        private ILogger _logger = null!;
 
         private TimerFactory _timerFactory = new TimerFactory();
 
@@ -55,14 +55,14 @@ namespace Nethermind.AccountAbstraction
                         getFromApi.LogManager);
 
                     _userOperationPool = new UserOperationPool(
-                        _nethermindApi.BlockTree,
-                        _nethermindApi.StateProvider,
+                        _nethermindApi.BlockTree!,
+                        _nethermindApi.StateProvider!,
                         _nethermindApi.Timestamper,
                         AccessBlockTracer,
                         _accountAbstractionConfig,
                         _paymasterOffenseCounter,
                         _bannedPaymasters,
-                        _nethermindApi.PeerManager,
+                        _nethermindApi.PeerManager!,
                         userOperationSortedPool,
                         UserOperationSimulator
                     );
@@ -81,14 +81,14 @@ namespace Nethermind.AccountAbstraction
                     var (getFromApi, _) = _nethermindApi!.ForProducer;
 
                     _userOperationSimulator = new(
-                        getFromApi.StateProvider,
-                        getFromApi.EngineSigner,
+                        getFromApi.StateProvider!,
+                        getFromApi.EngineSigner!,
                         _accountAbstractionConfig,
                         _singletonContractAddress,
-                        getFromApi.SpecProvider,
-                        getFromApi.BlockTree,
-                        getFromApi.DbProvider,
-                        getFromApi.ReadOnlyTrieStore,
+                        getFromApi.SpecProvider!,
+                        getFromApi.BlockTree!,
+                        getFromApi.DbProvider!,
+                        getFromApi.ReadOnlyTrieStore!,
                         getFromApi.LogManager,
                         getFromApi.BlockPreprocessor);
                 }
@@ -192,7 +192,7 @@ namespace Nethermind.AccountAbstraction
 
             IManualBlockProductionTrigger trigger = new BuildBlocksWhenRequested();
             UserOperationTxSource userOperationTxSource = new(UserOperationPool, UserOperationSimulator, _nethermindApi.SpecProvider!, _logger);
-            ContinuousBundleSender continuousBundleSender = new ContinuousBundleSender(_nethermindApi.BlockTree!, userOperationTxSource, _accountAbstractionConfig, _timerFactory);
+            ContinuousBundleSender continuousBundleSender = new ContinuousBundleSender(_nethermindApi.BlockTree!, userOperationTxSource, _accountAbstractionConfig, _timerFactory, _nethermindApi.EngineSigner, _logger);
             return consensusPlugin.InitBlockProducer(trigger, userOperationTxSource);
         }
 

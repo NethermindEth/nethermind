@@ -147,12 +147,12 @@ namespace Nethermind.AccountAbstraction.Executor
             ITransactionProcessor transactionProcessor = txProcessingEnv.Build(_stateProvider.StateRoot);
             
             Transaction simulateWalletValidationTransaction = BuildSimulateWalletValidationTransaction(userOperation, parent, currentSpec);
-            (bool walletValidationSuccess, UInt256 gasUsedByPayForSelfOp, UserOperationAccessList walletValidationAccessList, string error) =
+            (bool walletValidationSuccess, UInt256 gasUsedByPayForSelfOp, UserOperationAccessList walletValidationAccessList, string? error) =
                 SimulateWalletValidation(simulateWalletValidationTransaction, parent, transactionProcessor);
 
             if (!walletValidationSuccess)
             {
-                return Task.FromResult(ResultWrapper<bool>.Fail(error != "" ? error : "unknown wallet simulation failure"));
+                return Task.FromResult(ResultWrapper<bool>.Fail(error ?? "unknown wallet simulation failure"));
             }
 
             if (userOperation.VerificationGas < gasUsedByPayForSelfOp)
@@ -180,12 +180,12 @@ namespace Nethermind.AccountAbstraction.Executor
             }
             
             Transaction simulatePaymasterValidationTransaction = BuildSimulatePaymasterValidationTransaction(userOperation, gasUsedByPayForSelfOp, parent, currentSpec);
-            (bool paymasterValidationSuccess, UInt256 gasUsedByPayForOp, UserOperationAccessList paymasterValidationAccessList, string paymasterError) = 
+            (bool paymasterValidationSuccess, UInt256 gasUsedByPayForOp, UserOperationAccessList paymasterValidationAccessList, string? paymasterError) = 
                 SimulatePaymasterValidation(simulatePaymasterValidationTransaction, parent, transactionProcessor);
 
             if (!paymasterValidationSuccess)
             {
-                return Task.FromResult(ResultWrapper<bool>.Fail(paymasterError != "" ? paymasterError : "unknown wallet simulation failure"));
+                return Task.FromResult(ResultWrapper<bool>.Fail(paymasterError ?? "unknown wallet simulation failure"));
             }
 
             if (userOperation.VerificationGas < gasUsedByPayForSelfOp + gasUsedByPayForOp)
@@ -210,11 +210,11 @@ namespace Nethermind.AccountAbstraction.Executor
             return Task.FromResult(ResultWrapper<bool>.Success(true));
         }
         
-        private (bool success, UInt256 gasUsed, UserOperationAccessList accessList, string error) SimulateWalletValidation(Transaction transaction, BlockHeader parent, ITransactionProcessor transactionProcessor)
+        private (bool success, UInt256 gasUsed, UserOperationAccessList accessList, string? error) SimulateWalletValidation(Transaction transaction, BlockHeader parent, ITransactionProcessor transactionProcessor)
         {
             UserOperationBlockTracer blockTracer = SimulateValidation(transaction, parent, transactionProcessor);
 
-            string error = "";
+            string? error = null;
             
             if (!blockTracer.Success)
             {
@@ -242,11 +242,11 @@ namespace Nethermind.AccountAbstraction.Executor
             return (success, gasUsed, userOperationAccessList, error);
         }
 
-        private (bool success, UInt256 gasUsed, UserOperationAccessList accessList, string error) SimulatePaymasterValidation(Transaction transaction, BlockHeader parent, ITransactionProcessor transactionProcessor)
+        private (bool success, UInt256 gasUsed, UserOperationAccessList accessList, string? error) SimulatePaymasterValidation(Transaction transaction, BlockHeader parent, ITransactionProcessor transactionProcessor)
         {
             UserOperationBlockTracer blockTracer = SimulateValidation(transaction, parent, transactionProcessor);
 
-            string error = "";
+            string? error = null;
 
             if (!blockTracer.Success)
             {

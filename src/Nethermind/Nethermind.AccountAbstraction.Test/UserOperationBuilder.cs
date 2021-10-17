@@ -30,7 +30,7 @@ namespace Nethermind.AccountAbstraction.Test
     {
         public UserOperationBuilder()
         {
-            TestObjectInternal = new UserOperation
+            UserOperationRpc rpcOp = new UserOperationRpc()
             {
                 Sender = Address.Zero,
                 Nonce = 0,
@@ -43,8 +43,8 @@ namespace Nethermind.AccountAbstraction.Test
                 VerificationGas = 1_000_000,
                 PreVerificationGas = 210000,
                 PaymasterData = Bytes.Empty,
-                AccessList = UserOperationAccessList.Empty
             };
+            TestObjectInternal = new UserOperation(rpcOp);
         }
 
         public UserOperationBuilder WithTarget(Address target)

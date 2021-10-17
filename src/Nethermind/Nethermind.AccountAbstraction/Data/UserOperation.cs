@@ -48,9 +48,7 @@ namespace Nethermind.AccountAbstraction.Data
             
             Hash = CalculateHash(this);
         }
-
-        public UserOperation() {}
-
+        
         public UserOperationAbi Abi => new UserOperationAbi
         {
             Sender = Sender!,
@@ -67,19 +65,19 @@ namespace Nethermind.AccountAbstraction.Data
             Signature = Signature!
         };
 
-        public Keccak? Hash { get; set; }
-        public Address? Sender { get; set; }
+        public Keccak Hash { get; set; }
+        public Address Sender { get; set; }
         public UInt256 Nonce { get; set; }
-        public byte[]? CallData { get; set; }
-        public byte[]? InitCode { get; set; }
+        public byte[] CallData { get; set; }
+        public byte[] InitCode { get; set; }
         public UInt256 CallGas { get; set; }
         public UInt256 VerificationGas { get; set; }
         public UInt256 PreVerificationGas { get; set; }
         public UInt256 MaxFeePerGas { get; set; }
         public UInt256 MaxPriorityFeePerGas { get; set; }
-        public Address? Paymaster { get; set; }
-        public byte[]? Signature { get; set; }
-        public byte[]? PaymasterData { get; set; }
+        public Address Paymaster { get; set; }
+        public byte[] Signature { get; set; }
+        public byte[] PaymasterData { get; set; }
         public UserOperationAccessList AccessList { get; set; }
         public int ResimulationCounter { get; set; }
         public bool AlreadySimulated { get; set; }

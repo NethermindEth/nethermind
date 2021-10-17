@@ -210,7 +210,6 @@ namespace Nethermind.AccountAbstraction.Test
 
             IAccountAbstractionConfig config = Substitute.For<IAccountAbstractionConfig>();
             config.SingletonContractAddress.Returns("0x8595dd9e0438640b5e1254f9df579ac12a86865f");
-            config.MaxResimulations.Returns(5);
 
             IAccessListSource accessListSource = Substitute.For<IAccessListSource>();
 

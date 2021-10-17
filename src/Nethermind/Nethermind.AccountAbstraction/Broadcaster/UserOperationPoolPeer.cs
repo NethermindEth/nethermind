@@ -22,6 +22,11 @@ namespace Nethermind.AccountAbstraction.Broadcaster
 {
     public class UserOperationPoolPeer : IUserOperationPoolPeer
     {
+        public UserOperationPoolPeer(PublicKey id)
+        {
+            Id = id;
+        }
+
         public PublicKey Id { get; }
         public bool SendNewUserOperation(UserOperation op)
         {

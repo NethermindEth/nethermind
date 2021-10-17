@@ -48,7 +48,7 @@ namespace Nethermind.AccountAbstraction.Flashbots
         
         public class MevBundle
         {   
-            public MevBundle(long blockNumber, Transaction[] transactions, Keccak[] revertingTxHashes = null, UInt256? minTimestamp = null, UInt256? maxTimestamp = null)
+            public MevBundle(long blockNumber, Transaction[] transactions, Keccak[] revertingTxHashes, UInt256? minTimestamp = null, UInt256? maxTimestamp = null)
             {
                 BlockNumber = $"0x{blockNumber:X}";
                 Transactions = transactions.Select(tx => Rlp.Encode(tx).ToString());
@@ -62,6 +62,7 @@ namespace Nethermind.AccountAbstraction.Flashbots
             {
                 BlockNumber = $"0x{blockNumber:X}";
                 Transactions = transactions;
+                RevertingTxHashes = Array.Empty<Keccak>();
             }
             
             [JsonProperty("txs")]

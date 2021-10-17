@@ -54,7 +54,7 @@ namespace Nethermind.AccountAbstraction.Source
         private readonly UserOperationSortedPool _userOperationSortedPool;
         private readonly IUserOperationSimulator _userOperationSimulator;
         private readonly IPeerManager _peerManager;
-        private readonly UserOperationBroadcaster _broadcaster;
+        //private readonly UserOperationBroadcaster _broadcaster;
 
         public UserOperationPool(IBlockTree blockTree,
             IStateProvider stateProvider,
@@ -90,10 +90,10 @@ namespace Nethermind.AccountAbstraction.Source
         private void BroadcastToCompatiblePeers(UserOperation userOperation, IReadOnlyCollection<Peer> peers)
         {
             Capability? aaCapability = new Capability(Protocol.AA, 0);
-            IEnumerable<Peer> compatiblePeers = peers.Where(peer => peer.OutSession.HasAgreedCapability(aaCapability));
+            IEnumerable<Peer> compatiblePeers = peers.Where(peer => peer.OutSession!.HasAgreedCapability(aaCapability));
             Task.Run(() =>
             {
-                _broadcaster.BroadcastOnce(userOperation);
+                //_broadcaster.BroadcastOnce(userOperation);
             });
         }
 

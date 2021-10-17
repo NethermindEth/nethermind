@@ -23,19 +23,19 @@ using Nethermind.Int256;
 
 namespace Nethermind.AccountAbstraction.Data
 {
-    public class UserOperationRpc
+    public struct UserOperationRpc
     {
         public Address Sender { get; set; }
         public UInt256 Nonce { get; set; }
-        public byte[]? CallData { get; set; }
-        public byte[]? InitCode { get; set; }
+        public byte[] CallData { get; set; }
+        public byte[] InitCode { get; set; }
         public UInt256 CallGas { get; set; }
         public UInt256 VerificationGas { get; set; }
         public UInt256 PreVerificationGas { get; set; }
         public UInt256 MaxFeePerGas { get; set; }
         public UInt256 MaxPriorityFeePerGas { get; set; }
         public Address Paymaster { get; set; }
-        public byte[]? Signature { get; set; }
-        public byte[]? PaymasterData { get; set; }
+        public byte[] Signature { get; set; }
+        public byte[] PaymasterData { get; set; }
     }
 }

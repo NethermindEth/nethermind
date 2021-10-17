@@ -42,12 +42,7 @@ namespace Nethermind.AccountAbstraction
             Description = "Defines the minimum gas price for a user operation to be accepted",
             DefaultValue = "200")]
         UInt256 MinimumGasPrice { get; set; }
-        
-        [ConfigItem(
-            Description = "Defines the maximum amount of times a user operation can be resimulated before it is dropped",
-            DefaultValue = "5")]
-        int MaxResimulations { get; set; }
-        
+
         [ConfigItem(
             Description = "Defines the string URL for the flashbots bundle reception endpoint",
             DefaultValue = "https://relay.flashbots.net/")]
