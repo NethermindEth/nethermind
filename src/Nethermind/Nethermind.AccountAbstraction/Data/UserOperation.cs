@@ -33,16 +33,16 @@ namespace Nethermind.AccountAbstraction.Data
         {
             Sender = userOperationRpc.Sender;
             Nonce = userOperationRpc.Nonce;
-            CallData = userOperationRpc.CallData;
             InitCode = userOperationRpc.InitCode;
+            CallData = userOperationRpc.CallData;
             CallGas = userOperationRpc.CallGas;
             VerificationGas = userOperationRpc.VerificationGas;
             PreVerificationGas = userOperationRpc.PreVerificationGas;
             MaxFeePerGas = userOperationRpc.MaxFeePerGas;
             MaxPriorityFeePerGas = userOperationRpc.MaxPriorityFeePerGas;
             Paymaster = userOperationRpc.Paymaster;
-            Signature = userOperationRpc.Signature;
             PaymasterData = userOperationRpc.PaymasterData;
+            Signature = userOperationRpc.Signature;
 
             AccessList = UserOperationAccessList.Empty;
             
@@ -53,23 +53,23 @@ namespace Nethermind.AccountAbstraction.Data
         {
             Sender = Sender!,
             Nonce = Nonce,
-            InitCode = InitCode ?? Bytes.Empty,
-            CallData = CallData ?? Bytes.Empty,
+            InitCode = InitCode,
+            CallData = CallData,
             CallGas = CallGas,
             VerificationGas = VerificationGas,
             PreVerificationGas = PreVerificationGas,
             MaxFeePerGas = MaxFeePerGas,
             MaxPriorityFeePerGas = MaxPriorityFeePerGas,
             Paymaster = Paymaster!,
-            PaymasterData = PaymasterData ?? Bytes.Empty,
+            PaymasterData = PaymasterData,
             Signature = Signature!
         };
 
         public Keccak Hash { get; set; }
         public Address Sender { get; set; }
         public UInt256 Nonce { get; set; }
-        public byte[] CallData { get; set; }
         public byte[] InitCode { get; set; }
+        public byte[] CallData { get; set; }
         public UInt256 CallGas { get; set; }
         public UInt256 VerificationGas { get; set; }
         public UInt256 PreVerificationGas { get; set; }
@@ -79,7 +79,6 @@ namespace Nethermind.AccountAbstraction.Data
         public byte[] Signature { get; set; }
         public byte[] PaymasterData { get; set; }
         public UserOperationAccessList AccessList { get; set; }
-        public int ResimulationCounter { get; set; }
         public bool AlreadySimulated { get; set; }
     }
 
