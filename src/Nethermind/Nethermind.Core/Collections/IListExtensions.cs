@@ -83,7 +83,7 @@ namespace Nethermind.Core.Collections
         public static int BinarySearch<TItem>(this IList<TItem> list, TItem value,  IComparer<TItem> comparer) => list.BinarySearch(value, comparer.Compare);
         
         public static bool TryGetSearchedItem<TComparable>(this IList<TComparable> list, in TComparable activation, out TComparable item) where TComparable : IComparable<TComparable> => 
-            list.TryGetSearchedItem(activation, (b, c) => b.CompareTo(c), out item);
+            list.TryGetSearchedItem(activation, (b, c) => b.CompareTo(c), out item!);
 
         public static bool TryGetForBlock(this IList<long> list, in long blockNumber, out long item) =>
             list.TryGetSearchedItem(blockNumber, (b, c) => b.CompareTo(c), out item);
