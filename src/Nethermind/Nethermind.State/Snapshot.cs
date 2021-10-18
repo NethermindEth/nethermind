@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,23 +15,27 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Core;
-using Nethermind.Int256;
-using Terminal.Gui;
+using System.Runtime.CompilerServices;
 
-namespace Nethermind.BeamWallet.Modules.Balance
+[assembly:InternalsVisibleTo("Nethermind.Evm.Test")]
+namespace Nethermind.State
 {
-    public class Token
+    /// <summary>
+    /// Stores state and storage snapshots (as the change index that we can revert to)
+    /// At the beginning and after each commit the snapshot is set to the value of EmptyPosition
+    /// </summary>
+    public readonly struct Snapshot
     {
-        public string Name { get; }
-        public Address Address { get; }
-        public UInt256 Balance { get; set; }
-        public Label Label { get; set; }
-
-        public Token(string name, Address address)
+        public Snapshot(int stateSnapshot, int storageSnapshot)
         {
-            Name = name;
-            Address = address;
+            StateSnapshot = stateSnapshot;
+            StorageSnapshot = storageSnapshot;
         }
+        
+        public int StateSnapshot { get; }
+        
+        public int StorageSnapshot { get; }
+        
+        public const int EmptyPosition = -1;
     }
 }

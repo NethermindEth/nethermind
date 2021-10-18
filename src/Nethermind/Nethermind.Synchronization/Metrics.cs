@@ -32,12 +32,6 @@ namespace Nethermind.Synchronization
         [Description("State synced in bytes")]
         public static long StateSynced;
 
-        [Description("Transactions processed by the beam processor")]
-        public static long BeamedTransactions;
-
-        [Description("Full blocks processed by the beam processor")]
-        public static long BeamedBlocks;
-
         [Description("Requests sent for state nodes sync")]
         public static long StateSyncRequests;
         
@@ -49,12 +43,6 @@ namespace Nethermind.Synchronization
         
         [Description("Synced bytecodes")]
         public static long SyncedCodes;
-        
-        [Description("Requests sent for processing by the beam sync DB")]
-        public static long BeamedRequests;
-
-        [Description("Trie nodes retrieved via beam sync DB")]
-        public static long BeamedTrieNodes;
 
         [Description("Number of sync peers.")]
         public static long SyncPeers;

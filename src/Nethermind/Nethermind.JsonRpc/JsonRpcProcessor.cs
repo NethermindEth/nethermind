@@ -22,6 +22,7 @@ using System.IO.Abstractions;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc.Utils;
@@ -149,10 +150,16 @@ namespace Nethermind.JsonRpc
                 {
                     moveNext = enumerator.MoveNext();
                 }
+                catch (BadHttpRequestException e)
+                {
+                    Metrics.JsonRpcRequestDeserializationFailures++;
+                    if (_logger.IsDebug) _logger.Debug($"Couldn't read request.{Environment.NewLine}{e}");
+                    yield break;
+                }
                 catch (Exception ex)
                 {
                     Metrics.JsonRpcRequestDeserializationFailures++;
-                    if (_logger.IsError) _logger.Error($"Error during parsing/validation, request: {request}", ex);
+                    if (_logger.IsError) _logger.Error($"Error during parsing/validation.", ex);
                     JsonRpcResponse response = _jsonRpcService.GetErrorResponse(ErrorCodes.ParseError, "Incorrect message");
                     TraceResult(response);
                     stopwatch.Stop();

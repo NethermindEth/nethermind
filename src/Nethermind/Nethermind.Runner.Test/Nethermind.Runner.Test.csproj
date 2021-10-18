@@ -72,21 +72,6 @@
         <Content Include="testspec.json">
           <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </Content>
-
-        <Content Update="..\Nethermind.Runner\configs\ropsten_beam.cfg">
-          <Link>configs\ropsten_beam.cfg</Link>
-          <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-        </Content>
-
-        <Content Update="..\Nethermind.Runner\configs\rinkeby_beam.cfg">
-          <Link>configs\rinkeby_beam.cfg</Link>
-          <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-        </Content>
-
-        <Content Update="..\Nethermind.Runner\configs\poacore_beam.cfg">
-          <Link>configs\poacore_beam.cfg</Link>
-          <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-        </Content>
     </ItemGroup>
     <ItemGroup>
       <ProjectReference Include="..\Nethermind.Seq\Nethermind.Seq.csproj" />

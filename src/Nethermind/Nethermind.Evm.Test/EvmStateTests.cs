@@ -167,8 +167,7 @@ namespace Nethermind.Evm.Test
                 new ExecutionEnvironment(), 
                 ExecutionType.Call, 
                 true, 
-                Resettable.EmptyPosition, 
-                Resettable.EmptyPosition,
+                new Snapshot(Snapshot.EmptyPosition, Snapshot.EmptyPosition),
                 isContinuation);
 
         public class Context { }

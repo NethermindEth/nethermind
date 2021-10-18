@@ -874,7 +874,6 @@ namespace Nethermind.Synchronization.Test
                     BlockTree,
                     NullReceiptStorage.Instance,
                     stateDb,
-                    stateDb,
                     new TrieStore(stateDb, LimboLogs.Instance),
                     syncConfig,
                     LimboLogs.Instance);

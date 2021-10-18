@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,16 +15,20 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Threading.Tasks;
-using Nethermind.Core;
-using Nethermind.Facade.Proxy;
-
-namespace Nethermind.BeamWallet.Clients
+namespace Nethermind.State
 {
-    public interface IJsonRpcWalletClientProxy
+    /// <summary>
+    /// Represents state that can be anchored at specific state root, snapshot, committed, reverted.
+    /// Current format is an intermittent form on the way to a better state management.
+    /// </summary>
+    public interface IWorldState
     {
-        Task<RpcResult<bool>> personal_unlockAccount(Address address, string passphrase);
-        Task<RpcResult<bool>> personal_lockAccount(Address address);
-        Task<RpcResult<Address>> personal_newAccount(string passphrase);
+        IStorageProvider StorageProvider { get; }
+
+        IStateProvider StateProvider { get; }
+
+        Snapshot TakeSnapshot(bool newTransactionStart = false);
+        
+        void Restore(Snapshot snapshot);
     }
 }

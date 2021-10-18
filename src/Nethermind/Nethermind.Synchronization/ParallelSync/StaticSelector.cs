@@ -25,8 +25,6 @@ namespace Nethermind.Synchronization.ParallelSync
             Current = syncMode;
         }
 
-        public static StaticSelector Beam { get; } = new(SyncMode.Beam);
-        
         public static StaticSelector Full { get; } = new(SyncMode.Full);
 
         public static StaticSelector FastSync { get; } = new(SyncMode.FastSync);
