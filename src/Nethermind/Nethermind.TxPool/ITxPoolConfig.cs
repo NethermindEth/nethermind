@@ -20,7 +20,7 @@ namespace Nethermind.TxPool
 {
     public interface ITxPoolConfig : IConfig
     {
-        [ConfigItem(DefaultValue = "5", Description = "Defines percentage of peers receiving the tx gossips.")]
+        [ConfigItem(DefaultValue = "1", Description = "Defines percentage of peers receiving the tx gossips.")]
         int PeerNotificationThreshold { get; set; }
         
         [ConfigItem(DefaultValue = "2048", Description = "Max number of transactions held in mempool (more transactions in mempool mean more memory used")]

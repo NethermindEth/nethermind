@@ -141,11 +141,14 @@ namespace Nethermind.TxPool
             _timer.Enabled = true;
         }
 
-        private static IEnumerable<Transaction> GetTxsToSend(ITxPoolPeer peer, IReadOnlyList<Transaction> persistentTxs, IEnumerable<Transaction> txsToSend)
+        private IEnumerable<Transaction> GetTxsToSend(ITxPoolPeer peer, IReadOnlyList<Transaction> persistentTxs, IEnumerable<Transaction> txsToSend)
         {
             for (int i = 0; i < persistentTxs.Count; i++)
             {
-                yield return persistentTxs[i];
+                if (_txPoolConfig.PeerNotificationThreshold < Random.Value.Next(1, 100))
+                {
+                    yield return persistentTxs[i];
+                }
             }
 
             foreach (Transaction tx in txsToSend)
