@@ -18,6 +18,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -142,6 +143,9 @@ namespace Nethermind.AccountAbstraction.Executor
             CancellationToken cancellationToken = default, 
             UInt256? timestamp = null)
         {
+            Stopwatch stopwatch = new();
+            stopwatch.Start();
+            
             IReleaseSpec currentSpec = _specProvider.GetSpec(parent.Number + 1);
             ReadOnlyTxProcessingEnv txProcessingEnv = new(_dbProvider, _trieStore, _blockTree, _specProvider, _logManager);
             ITransactionProcessor transactionProcessor = txProcessingEnv.Build(_stateProvider.StateRoot);
@@ -150,6 +154,9 @@ namespace Nethermind.AccountAbstraction.Executor
             (bool walletValidationSuccess, UInt256 gasUsedByPayForSelfOp, UserOperationAccessList walletValidationAccessList, string? error) =
                 SimulateWalletValidation(simulateWalletValidationTransaction, parent, transactionProcessor);
 
+            stopwatch.Stop();
+            _logManager.GetClassLogger().Info($"AA: wallet validation for op {userOperation.Hash} completed in {stopwatch.ElapsedMilliseconds}ms");
+            
             if (!walletValidationSuccess)
             {
                 return Task.FromResult(ResultWrapper<Keccak>.Fail(error ?? "unknown wallet simulation failure"));
