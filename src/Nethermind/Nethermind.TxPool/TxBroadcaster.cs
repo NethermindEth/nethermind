@@ -145,15 +145,10 @@ namespace Nethermind.TxPool
         {
             for (int i = 0; i < persistentTxs.Count; i++)
             {
-                if (_txPoolConfig.PeerNotificationThreshold < Random.Value.Next(1, 100))
+                if (_txPoolConfig.PeerNotificationThreshold >= Random.Value.Next(1, 100))
                 {
-                    continue;
+                    yield return persistentTxs[i];
                 }
-                if (persistentTxs[i].DeliveredBy is not null && persistentTxs[i].DeliveredBy.Equals(peer.Id))
-                {
-                    continue;
-                }
-                yield return persistentTxs[i];
             }
 
             foreach (Transaction tx in txsToSend)
