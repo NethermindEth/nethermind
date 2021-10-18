@@ -24,7 +24,7 @@ namespace Nethermind.Core
         public static bool IsSystem(this Transaction tx) => 
             tx is SystemTransaction || tx.SenderAddress == Address.SystemUser;
 
-        private static bool IsFree(this Transaction tx) => tx.IsSystem() || tx.IsServiceTransaction;
+        public static bool IsFree(this Transaction tx) => tx.IsSystem() || tx.IsServiceTransaction;
 
         public static bool TryCalculatePremiumPerGas(this Transaction tx, UInt256 baseFeePerGas, out UInt256 premiumPerGas)
         {
