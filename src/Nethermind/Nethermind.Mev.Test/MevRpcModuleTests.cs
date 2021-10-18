@@ -128,7 +128,7 @@ namespace Nethermind.Mev.Test
 
         private static MevMegabundle SendMegabundle(TestMevRpcBlockchain chain, int blockNumber, PrivateKey privateKey, BundleTransaction[] txs, bool success)
         {
-            byte[][] bundleBytes = txs.Select(t => Rlp.Encode(t).Bytes).ToArray();
+            byte[][] bundleBytes = txs.Select(t => EncodeTx(t).Bytes).ToArray();
             List<Keccak> revertingTxHashes = txs.Where(tx => tx.CanRevert).Select(tx => tx.Hash!).ToList();
             MevMegabundle mevMegabundle = new (blockNumber, txs, revertingTxHashes.ToArray());
             Signature relaySignature = chain.EthereumEcdsa.Sign(privateKey, mevMegabundle.Hash);
