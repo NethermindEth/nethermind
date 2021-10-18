@@ -185,10 +185,16 @@ namespace Nethermind.AccountAbstraction.Executor
                 userOperation.AlreadySimulated = true;
                 return Task.FromResult(ResultWrapper<Keccak>.Success(userOperation.Hash));
             }
+
+            Stopwatch stopwatch2 = new();
+            stopwatch2.Start();
             
             Transaction simulatePaymasterValidationTransaction = BuildSimulatePaymasterValidationTransaction(userOperation, gasUsedByPayForSelfOp, parent, currentSpec);
             (bool paymasterValidationSuccess, UInt256 gasUsedByPayForOp, UserOperationAccessList paymasterValidationAccessList, string? paymasterError) = 
                 SimulatePaymasterValidation(simulatePaymasterValidationTransaction, parent, transactionProcessor);
+
+            stopwatch.Stop();
+            _logManager.GetClassLogger().Info($"AA: paymaster validation for op {userOperation.Hash} completed in {stopwatch.ElapsedMilliseconds}ms");
 
             if (!paymasterValidationSuccess)
             {
