@@ -179,7 +179,9 @@ namespace Nethermind.Mev.Source
                 {
                     Metrics.ValidMegabundlesReceived++;
                     NewPending?.Invoke(this, bundleEventArgs);
-
+                    
+                    // add megabundle from trusted relay into dictionary
+                    // stop and remove simulation if relay has previously sent a megabundle
                     _megabundles.AddOrUpdate(relayAddress,
                         _ => megabundle,
                         (_, previousBundle) =>
