@@ -94,5 +94,22 @@ namespace Nethermind.Blockchain.Test.Producers
                 .AssertNewBlockFeeCollected(0);
             await scenario.Finish();
         }
+        
+        [Test]
+        public async Task FeeCollector_should_not_collect_burned_fees_when_transaction_is_free()
+        {
+            long gasTarget = 3000000;
+            BaseFeeTestScenario.ScenarioBuilder scenario = BaseFeeTestScenario.GoesLikeThis()
+                .WithEip1559TransitionBlock(6)
+                .WithEip1559FeeCollector(TestItem.AddressE)
+                .CreateTestBlockchain(gasTarget)
+                .DeployContract()
+                .BlocksBeforeTransitionShouldHaveZeroBaseFee()
+                .SendLegacyTransaction(gasTarget / 2, 20.GWei(), true)
+                .SendEip1559Transaction(gasTarget / 2, 1.GWei(), 20.GWei(), true)
+                .SendLegacyTransaction(gasTarget / 2, 20.GWei(), true)
+                .AssertNewBlockFeeCollected(0);
+            await scenario.Finish();
+        }
     }
 }
