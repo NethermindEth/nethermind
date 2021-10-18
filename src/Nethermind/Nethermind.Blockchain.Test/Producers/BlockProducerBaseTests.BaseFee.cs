@@ -22,6 +22,7 @@ using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Int256;
@@ -40,9 +41,9 @@ namespace Nethermind.Blockchain.Test.Producers
             public static readonly AbiSignature Divide = new("divide"); // divide
         }
         
-        public static class BaseFeeTestScenario
+        public static partial class BaseFeeTestScenario
         {
-            public class ScenarioBuilder
+            public partial class ScenarioBuilder
             {
                 private Address _address = TestItem.Addresses[0];
                 private Address _contractAddress;
@@ -68,6 +69,7 @@ namespace Nethermind.Blockchain.Test.Producers
                         {
                             IsEip1559Enabled = _eip1559Enabled, 
                             Eip1559TransitionBlock = _eip1559TransitionBlock,
+                            Eip1559FeeCollector = _eip1559FeeCollector
                             IsEip155Enabled = true
                         }, 1);
                     BlockBuilder blockBuilder = Build.A.Block.Genesis.WithGasLimit(gasLimit);
@@ -106,33 +108,30 @@ namespace Nethermind.Blockchain.Test.Producers
                     return this;
                 }
                 
-                public ScenarioBuilder SendEip1559Transaction(long gasLimit = 1000000, UInt256? gasPremium = null, UInt256? feeCap = null)
+                public ScenarioBuilder SendEip1559Transaction(long gasLimit = 1000000, UInt256? gasPremium = null, UInt256? feeCap = null, bool serviceTransaction = false)
                 {
-                    _antecedent = SendTransactionAsync(gasLimit, gasPremium ?? 20.GWei(), feeCap ?? UInt256.Zero);
+                    _antecedent = SendTransactionAsync(gasLimit, gasPremium ?? 20.GWei(), feeCap ?? UInt256.Zero, serviceTransaction);
                     return this;
                 }
                 
-                public ScenarioBuilder SendLegacyTransaction(long gasLimit = 1000000, UInt256? gasPremium = null)
+                public ScenarioBuilder SendLegacyTransaction(long gasLimit = 1000000, UInt256? gasPremium = null, bool serviceTransaction = false)
                 {
-                    _antecedent = SendTransactionAsync(gasLimit, gasPremium ?? 20.GWei(), UInt256.Zero);
+                    _antecedent = SendTransactionAsync(gasLimit, gasPremium ?? 20.GWei(), UInt256.Zero, serviceTransaction);
                     return this;
                 }
-                private async Task<ScenarioBuilder> SendTransactionAsync(long gasLimit, UInt256 gasPrice, UInt256 feeCap)
+                private async Task<ScenarioBuilder> SendTransactionAsync(long gasLimit, UInt256 gasPrice, UInt256 feeCap, bool serviceTransaction)
                 {
                     await ExecuteAntecedentIfNeeded();
                     byte[] txData = _abiEncoder.Encode(
                         AbiEncodingStyle.IncludeSignature,
                         BadContract.Divide);
-                    Transaction tx = new();
-                    tx.Value = 0;
-                    tx.Data = txData;
-                    tx.To = _contractAddress;
-                    tx.SenderAddress = _address;
-                    tx.GasLimit = gasLimit;
-                    tx.GasPrice = gasPrice;
-                    tx.DecodedMaxFeePerGas = feeCap;
-                    tx.Nonce = _currentNonce;
-                    ++_currentNonce;
+                    Transaction tx = new() { Value = 0, Data = txData, To = _contractAddress, SenderAddress = _address,
+                        GasLimit = gasLimit,
+                        GasPrice = gasPrice,
+                        DecodedMaxFeePerGas = feeCap,
+                        Nonce = _currentNonce++,
+                        IsServiceTransaction = serviceTransaction
+                    };
                     
                     var (_, result) = await _testRpcBlockchain.TxSender.SendTransaction(tx, TxHandlingOptions.None);
                     Assert.AreEqual(AddTxResult.Added, result);

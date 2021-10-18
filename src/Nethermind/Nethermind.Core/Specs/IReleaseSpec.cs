@@ -328,5 +328,7 @@ namespace Nethermind.Core.Specs
         public bool Use63Over64Rule => UseShanghaiDDosProtection;
         
         public bool BaseFeeEnabled => IsEip3198Enabled;
+        
+        public Address? Eip1559FeeCollector => null;
     }
 }

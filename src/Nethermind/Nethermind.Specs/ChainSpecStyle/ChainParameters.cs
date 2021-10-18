@@ -94,5 +94,15 @@ namespace Nethermind.Specs.ChainSpecStyle
         /// </summary>
         /// <returns></returns>
         public long? ValidateReceiptsTransition { get; set; }
+        
+        /// <summary>
+        /// Block from which burnt EIP-1559 fees will go to <see cref="Eip1559FeeCollector"/>
+        /// </summary>
+        public long? Eip1559FeeCollectorTransition { get; set; }
+        
+        /// <summary>
+        /// Optional, address where burnt EIP-1559 fees will go
+        /// </summary>
+        public Address Eip1559FeeCollector { get; set; } 
     }
 }

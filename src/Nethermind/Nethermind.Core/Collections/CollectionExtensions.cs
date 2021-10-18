@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,14 +13,28 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-namespace Nethermind.TxPool
+using System.Collections.Generic;
+
+namespace Nethermind.Core.Collections
 {
-    public class TxPoolConfig : ITxPoolConfig
+    public static class CollectionExtensions
     {
-        public int PeerNotificationThreshold { get; set; } = 1;
-        public int Size { get; set; } = 2048;
-        public int HashCacheSize { get; set; } = 512 * 1024;
-        public long? GasLimit { get; set; } = null;
+        public static void AddRange<T>(this ICollection<T> list, IEnumerable<T> items)
+        {
+            foreach (T item in items)
+            {
+                list.Add(item);
+            }
+        }
+        
+        public static void AddRange<T>(this ICollection<T> list, params T[] items)
+        {
+            for (int index = 0; index < items.Length; index++)
+            {
+                list.Add(items[index]);
+            }
+        }
     }
 }

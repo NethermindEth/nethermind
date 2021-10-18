@@ -153,7 +153,10 @@ namespace Nethermind.Specs.ChainSpecStyle
                 Eip1559ElasticityMultiplier = chainSpecJson.Params.Eip1559ElasticityMultiplier ?? Eip1559Constants.ElasticityMultiplier,
                 Eip1559BaseFeeInitialValue = chainSpecJson.Params.Eip1559BaseFeeInitialValue ?? Eip1559Constants.ForkBaseFee,
                 Eip1559BaseFeeMaxChangeDenominator = chainSpecJson.Params.Eip1559BaseFeeMaxChangeDenominator ??
-                                                     Eip1559Constants.BaseFeeMaxChangeDenominator
+                                                     Eip1559Constants.BaseFeeMaxChangeDenominator,
+                Eip1559FeeCollector = chainSpecJson.Params.Eip1559FeeCollector,
+                Eip1559FeeCollectorTransition = chainSpecJson.Params.Eip1559FeeCollectorTransition
+                
             };
 
             chainSpec.Parameters.Eip152Transition ??= GetTransitionForExpectedPricing("blake2_f", "price.blake2_f.gas_per_round", 1);

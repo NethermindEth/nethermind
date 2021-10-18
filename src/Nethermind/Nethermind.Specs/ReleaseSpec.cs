@@ -75,5 +75,7 @@ namespace Nethermind.Specs
         public bool ValidateChainId { get; set; }
         public bool ValidateReceipts { get; set; }
         public long Eip1559TransitionBlock { get; set; }
+
+        public Address Eip1559FeeCollector { get; set; }
     }
 }

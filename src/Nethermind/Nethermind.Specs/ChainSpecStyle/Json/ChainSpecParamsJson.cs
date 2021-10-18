@@ -128,5 +128,9 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
         public long? ValidateChainIdTransition { get; set; }
         
         public long? ValidateReceiptsTransition { get; set; }
+        
+        public long? Eip1559FeeCollectorTransition { get; set; }
+        
+        public Address Eip1559FeeCollector { get; set; } 
     }
 }
