@@ -192,7 +192,7 @@ namespace Nethermind.AccountAbstraction
 
             IManualBlockProductionTrigger trigger = new BuildBlocksWhenRequested();
             UserOperationTxSource userOperationTxSource = new(UserOperationPool, UserOperationSimulator, _nethermindApi.SpecProvider!, _logger);
-            ContinuousBundleSender continuousBundleSender = new ContinuousBundleSender(_nethermindApi.BlockTree!, userOperationTxSource, _accountAbstractionConfig, _timerFactory, _nethermindApi.EngineSigner, _logger);
+            //ContinuousBundleSender continuousBundleSender = new ContinuousBundleSender(_nethermindApi.BlockTree!, userOperationTxSource, _accountAbstractionConfig, _timerFactory, _nethermindApi.EngineSigner, _logger);
             return consensusPlugin.InitBlockProducer(trigger, userOperationTxSource);
         }
 
