@@ -57,27 +57,7 @@ namespace Nethermind.AccountAbstraction.Executor
         public bool Success { get; private set; } = true;
         public long GasUsed { get; private set; }
         public byte[] Output { get; private set; }
-        public FailedOp? FailedOp
-        {
-            get
-            {
-                try
-                {
-                    object[] decoded = _abiEncoder.Decode(AbiEncodingStyle.IncludeSignature,
-                        _abi.Errors["FailedOp"].GetCallInfo().Signature, Output);
-                    return new FailedOp()
-                    {
-                        OpIndex = (UInt256)decoded[0],
-                        Paymaster = (Address)decoded[1],
-                        Reason = (string)decoded[2]
-                    };
-                }
-                catch (Exception)
-                {
-                    return null;
-                }
-            }
-        }
+        public FailedOp? FailedOp { get; private set; }
         public string? Error { get; private set; }
 
         public IDictionary<Address, HashSet<UInt256>> AccessedStorage { get; private set; }
@@ -104,6 +84,22 @@ namespace Nethermind.AccountAbstraction.Executor
             
             Output = _tracer.Output;
             Error = _tracer.Error;
+            
+            try
+            {
+                object[] decoded = _abiEncoder.Decode(AbiEncodingStyle.IncludeSignature,
+                    _abi.Errors["FailedOp"].GetCallInfo().Signature, Output);
+                FailedOp = new FailedOp()
+                {
+                    OpIndex = (UInt256)decoded[0],
+                    Paymaster = (Address)decoded[1],
+                    Reason = (string)decoded[2]
+                };
+            }
+            catch (Exception)
+            {
+                FailedOp = null;
+            }
 
             if (!_tracer!.Success)
             {
@@ -226,6 +222,7 @@ namespace Nethermind.AccountAbstraction.Executor
             {
                 _logger.Info($"AA: Encountered banned opcode {opcode} during simulation at depth {depth} pc {pc}");
                 Success = false;
+                Error ??= $"simulation: encountered banned opcode {opcode} at depth {depth} pc {pc}";
             }
 
             if (depth > 2 && opcode == Instruction.CODECOPY)

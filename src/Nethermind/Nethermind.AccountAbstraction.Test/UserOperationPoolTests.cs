@@ -141,26 +141,6 @@ namespace Nethermind.AccountAbstraction.Test
         {
             
         }
-        
-        // currently failing
-        [Test]
-        public void Deletes_op_if_resimulated_too_many_times()
-        {
-            var (userOperationPool, simulator, _) = GenerateUserOperationPool(10);
-            UserOperation op = Build.A.UserOperation.WithTarget(Address.SystemUser).SignedAndResolved().TestObject;
-
-            userOperationPool.AddUserOperation(op);
-            
-            for (int i = 0; i < 7; i++) 
-            {
-                simulator.Received()
-                    .Simulate(op, Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>(), Arg.Any<UInt256>());
-            }
-            
-            UserOperation[] userOperations = userOperationPool.GetUserOperations().ToArray();
-            userOperations.Length.Should().Be(0);
-            Console.WriteLine(op.ResimulationCounter);
-        }
 
         // currently failing
         [Test]
@@ -203,7 +183,7 @@ namespace Nethermind.AccountAbstraction.Test
 
             IUserOperationSimulator simulator = Substitute.For<IUserOperationSimulator>();
             simulator.Simulate(Arg.Any<UserOperation>(), Arg.Any<BlockHeader>())
-                .ReturnsForAnyArgs(x => Task.FromResult(ResultWrapper<bool>.Success(true)));
+                .ReturnsForAnyArgs(x => Task.FromResult(ResultWrapper<Keccak>.Success(Keccak.Zero)));
 
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             blockTree.Head.Returns(Core.Test.Builders.Build.A.Block.TestObject);

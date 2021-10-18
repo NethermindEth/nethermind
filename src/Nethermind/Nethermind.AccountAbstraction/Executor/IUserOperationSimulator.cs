@@ -20,6 +20,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
@@ -28,7 +29,7 @@ namespace Nethermind.AccountAbstraction.Executor
 {
     public interface IUserOperationSimulator
     {
-        Task<ResultWrapper<bool>> Simulate(
+        Task<ResultWrapper<Keccak>> Simulate(
             UserOperation userOperation, 
             BlockHeader parent,
             CancellationToken cancellationToken = default, 

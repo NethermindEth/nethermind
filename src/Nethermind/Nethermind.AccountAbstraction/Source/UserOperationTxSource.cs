@@ -24,6 +24,7 @@ using Nethermind.AccountAbstraction.Executor;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
@@ -73,8 +74,8 @@ namespace Nethermind.AccountAbstraction.Source
                 }
 
                 // simulate again
-                Task<ResultWrapper<bool>> successTask = _userOperationSimulator.Simulate(userOperation, parent);
-                ResultWrapper<bool> success = successTask.Result;
+                Task<ResultWrapper<Keccak>> successTask = _userOperationSimulator.Simulate(userOperation, parent);
+                ResultWrapper<Keccak> success = successTask.Result;
                 if (success.Result != Result.Success)
                 {
                     if (_userOperationPool.RemoveUserOperation(userOperation))

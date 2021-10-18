@@ -17,6 +17,7 @@
 
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Source;
+using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 
 namespace Nethermind.AccountAbstraction
@@ -30,7 +31,7 @@ namespace Nethermind.AccountAbstraction
             _userOperationPool = userOperationPool;
         }
 
-        public ResultWrapper<bool> eth_sendUserOperation(UserOperationRpc userOperationRpc)
+        public ResultWrapper<Keccak> eth_sendUserOperation(UserOperationRpc userOperationRpc)
         {
             return _userOperationPool.AddUserOperation(new UserOperation(userOperationRpc));
         }

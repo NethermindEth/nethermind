@@ -16,6 +16,7 @@
 
 using System.Reflection;
 using Nethermind.AccountAbstraction.Data;
+using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Data;
@@ -26,6 +27,6 @@ namespace Nethermind.AccountAbstraction
     public interface IAccountAbstractionRpcModule : IRpcModule
     {
         [JsonRpcMethod(Description = "Adds user operation to the user operation pool.", IsImplemented = true)]
-        ResultWrapper<bool> eth_sendUserOperation(UserOperationRpc userOperationRpc);
+        ResultWrapper<Keccak> eth_sendUserOperation(UserOperationRpc userOperationRpc);
     }
 }

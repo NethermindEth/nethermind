@@ -19,13 +19,14 @@ using System.Collections.Generic;
 using Nethermind.AccountAbstraction.Broadcaster;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 
 namespace Nethermind.AccountAbstraction.Source
 {
     public interface IUserOperationPool : IUserOperationSource
     {
-        ResultWrapper<bool> AddUserOperation(UserOperation userOperation);
+        ResultWrapper<Keccak> AddUserOperation(UserOperation userOperation);
         bool RemoveUserOperation(UserOperation userOperation);
         
         AddUserOperationResult SubmitUserOperation(UserOperation userOperation, UserOperationHandlingOptions handlingOptions);

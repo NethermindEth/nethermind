@@ -99,18 +99,18 @@ namespace Nethermind.AccountAbstraction.Source
 
         public IEnumerable<UserOperation> GetUserOperations() => _userOperationSortedPool.GetSnapshot();
 
-        public ResultWrapper<bool> AddUserOperation(UserOperation userOperation)
+        public ResultWrapper<Keccak> AddUserOperation(UserOperation userOperation)
         {
-            ResultWrapper<bool> result = ValidateUserOperation(userOperation);
+            ResultWrapper<Keccak> result = ValidateUserOperation(userOperation);
             if (result.Result == Result.Success)
             {
                 if (_userOperationSortedPool.TryInsert(userOperation, userOperation))
                 {
-                    return ResultWrapper<bool>.Success(true);
+                    return ResultWrapper<Keccak>.Success(userOperation.Hash);
                 }
                 else
                 {
-                    return ResultWrapper<bool>.Fail("failed to insert userOp into pool");
+                    return ResultWrapper<Keccak>.Fail("failed to insert userOp into pool");
                 }
             }
             
@@ -127,16 +127,16 @@ namespace Nethermind.AccountAbstraction.Source
             throw new NotImplementedException();
         }
 
-        private ResultWrapper<bool> ValidateUserOperation(UserOperation userOperation)
+        private ResultWrapper<Keccak> ValidateUserOperation(UserOperation userOperation)
         {
             if (userOperation.MaxFeePerGas < _accountAbstractionConfig.MinimumGasPrice)
             {
-                return ResultWrapper<bool>.Fail("maxFeePerGas below minimum gas price");
+                return ResultWrapper<Keccak>.Fail("maxFeePerGas below minimum gas price");
             }
 
             if (userOperation.CallGas < Transaction.BaseTxGasCost)
             {
-                return ResultWrapper<bool>.Fail($"callGas too low, must be at least {Transaction.BaseTxGasCost}");
+                return ResultWrapper<Keccak>.Fail($"callGas too low, must be at least {Transaction.BaseTxGasCost}");
             }
 
             // make sure target account exists
@@ -144,7 +144,7 @@ namespace Nethermind.AccountAbstraction.Source
                 userOperation.Sender == Address.Zero
                 || !(_stateProvider.AccountExists(userOperation.Sender) || userOperation.InitCode != Bytes.Empty))
             {
-                return ResultWrapper<bool>.Fail("sender doesn't exist");
+                return ResultWrapper<Keccak>.Fail("sender doesn't exist");
             }
 
             // make sure paymaster is a contract (if paymaster is used) and is not on banned list
@@ -154,25 +154,25 @@ namespace Nethermind.AccountAbstraction.Source
                     || !_stateProvider.IsContract(userOperation.Paymaster)
                     || _bannedPaymasters.Contains(userOperation.Paymaster))
                 {
-                    return ResultWrapper<bool>.Fail("paymaster is used but is not a contract or is banned");
+                    return ResultWrapper<Keccak>.Fail("paymaster is used but is not a contract or is banned");
                 }
             }
 
             // make sure op not already in pool
             if (_userOperationSortedPool.GetSnapshot().Contains(userOperation))
             {
-                return ResultWrapper<bool>.Fail("userOp is already present in the pool");
+                return ResultWrapper<Keccak>.Fail("userOp is already present in the pool");
             }
             
-            Task<ResultWrapper<bool>> successfulSimulationTask = Simulate(userOperation, _blockTree.Head!.Header);
-            ResultWrapper<bool> successfulSimulation = successfulSimulationTask.Result;
+            Task<ResultWrapper<Keccak>> successfulSimulationTask = Simulate(userOperation, _blockTree.Head!.Header);
+            ResultWrapper<Keccak> successfulSimulation = successfulSimulationTask.Result;
 
             return successfulSimulation;
         }
 
-        private async Task<ResultWrapper<bool>> Simulate(UserOperation userOperation, BlockHeader parent)
+        private async Task<ResultWrapper<Keccak>> Simulate(UserOperation userOperation, BlockHeader parent)
         {
-            ResultWrapper<bool> success = await _userOperationSimulator.Simulate(
+            ResultWrapper<Keccak> success = await _userOperationSimulator.Simulate(
                 userOperation, 
                 parent, 
                 CancellationToken.None, 

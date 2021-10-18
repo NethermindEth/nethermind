@@ -197,9 +197,9 @@ namespace Nethermind.AccountAbstraction.Test
             
             public void SendUserOperation(UserOperation userOperation)
             {
-                ResultWrapper<bool> resultOfUserOperation = UserOperationPool.AddUserOperation(userOperation);
+                ResultWrapper<Keccak> resultOfUserOperation = UserOperationPool.AddUserOperation(userOperation);
                 resultOfUserOperation.GetResult().ResultType.Should().NotBe(ResultType.Failure, resultOfUserOperation.Result.Error);
-                resultOfUserOperation.GetData().Should().Be(true);
+                resultOfUserOperation.GetData().Should().Be(userOperation.Hash);
             }
         }
     }

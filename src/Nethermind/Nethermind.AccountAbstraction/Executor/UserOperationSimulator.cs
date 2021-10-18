@@ -136,7 +136,7 @@ namespace Nethermind.AccountAbstraction.Executor
             return transaction;
         }
 
-        public Task<ResultWrapper<bool>> Simulate(
+        public Task<ResultWrapper<Keccak>> Simulate(
             UserOperation userOperation, 
             BlockHeader parent,
             CancellationToken cancellationToken = default, 
@@ -152,12 +152,12 @@ namespace Nethermind.AccountAbstraction.Executor
 
             if (!walletValidationSuccess)
             {
-                return Task.FromResult(ResultWrapper<bool>.Fail(error ?? "unknown wallet simulation failure"));
+                return Task.FromResult(ResultWrapper<Keccak>.Fail(error ?? "unknown wallet simulation failure"));
             }
 
             if (userOperation.VerificationGas < gasUsedByPayForSelfOp)
             {
-                return Task.FromResult(ResultWrapper<bool>.Fail("wallet simulation verificationGas too low"));
+                return Task.FromResult(ResultWrapper<Keccak>.Fail("wallet simulation verificationGas too low"));
             }
             
             if (userOperation.Paymaster == Address.Zero)
@@ -167,7 +167,7 @@ namespace Nethermind.AccountAbstraction.Executor
                     if (!UserOperationAccessList.AccessListContains(userOperation.AccessList.Data,
                         walletValidationAccessList.Data))
                     {
-                        return Task.FromResult(ResultWrapper<bool>.Fail("access list exceeded"));
+                        return Task.FromResult(ResultWrapper<Keccak>.Fail("access list exceeded"));
                     }
                 }
                 else
@@ -176,7 +176,7 @@ namespace Nethermind.AccountAbstraction.Executor
                 }
 
                 userOperation.AlreadySimulated = true;
-                return Task.FromResult(ResultWrapper<bool>.Success(true));
+                return Task.FromResult(ResultWrapper<Keccak>.Success(userOperation.Hash));
             }
             
             Transaction simulatePaymasterValidationTransaction = BuildSimulatePaymasterValidationTransaction(userOperation, gasUsedByPayForSelfOp, parent, currentSpec);
@@ -185,12 +185,12 @@ namespace Nethermind.AccountAbstraction.Executor
 
             if (!paymasterValidationSuccess)
             {
-                return Task.FromResult(ResultWrapper<bool>.Fail(paymasterError ?? "unknown wallet simulation failure"));
+                return Task.FromResult(ResultWrapper<Keccak>.Fail(paymasterError ?? "unknown wallet simulation failure"));
             }
 
             if (userOperation.VerificationGas < gasUsedByPayForSelfOp + gasUsedByPayForOp)
             {
-                return Task.FromResult(ResultWrapper<bool>.Fail("paymaster simulation verificationGas too low"));
+                return Task.FromResult(ResultWrapper<Keccak>.Fail("paymaster simulation verificationGas too low"));
             }
             
             if (userOperation.AlreadySimulated)
@@ -198,7 +198,7 @@ namespace Nethermind.AccountAbstraction.Executor
                 if (!UserOperationAccessList.AccessListContains(userOperation.AccessList.Data,
                     paymasterValidationAccessList.Data))
                 {
-                    return Task.FromResult(ResultWrapper<bool>.Fail("access list exceeded"));
+                    return Task.FromResult(ResultWrapper<Keccak>.Fail("access list exceeded"));
                 }
             }
             else
@@ -207,7 +207,7 @@ namespace Nethermind.AccountAbstraction.Executor
             }
 
             userOperation.AlreadySimulated = true;
-            return Task.FromResult(ResultWrapper<bool>.Success(true));
+            return Task.FromResult(ResultWrapper<Keccak>.Success(userOperation.Hash));
         }
         
         private (bool success, UInt256 gasUsed, UserOperationAccessList accessList, string? error) SimulateWalletValidation(Transaction transaction, BlockHeader parent, ITransactionProcessor transactionProcessor)
