@@ -321,6 +321,7 @@ namespace Nethermind.TxPool
 
                 if (tx.Nonce < currentNonce)
                 {
+                    _broadcaster.StopBroadcast(tx.Hash!);
                     if (tx.GasBottleneck != gasBottleneck)
                     {
                         yield return (tx, SetGasBottleneckChange(gasBottleneck));
