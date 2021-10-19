@@ -47,7 +47,7 @@ namespace Nethermind.Merge.Plugin.Handlers
 
         public async Task<ResultWrapper<BlockRequestResult?>> HandleAsync(AssembleBlockRequest request)
         {
-            BlockHeader? parentHeader = _blockTree.FindHeader(request.ParentHash);
+            BlockHeader? parentHeader = _blockTree.FindHeader(request.ParentHash!);
             if (parentHeader is null)
             {
                 if (_logger.IsWarn) _logger.Warn($"Parent block {request.ParentHash} cannot be found. New block will not be produced.");

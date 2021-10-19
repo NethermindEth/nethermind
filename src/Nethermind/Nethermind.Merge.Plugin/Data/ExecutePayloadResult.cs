@@ -21,7 +21,7 @@ namespace Nethermind.Merge.Plugin.Data
 {
     public class ExecutePayloadResult
     {
-        public Keccak BlockHash { get; set; }
+        public Keccak? BlockHash { get; set; }
 
         public VerificationStatus Status { get; set; } 
     }

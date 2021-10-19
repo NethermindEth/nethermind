@@ -54,20 +54,20 @@ namespace Nethermind.Merge.Plugin.Data
         
         public BlockRequestResult(Block block)
         {
-            BlockHash = block.Hash;
-            ParentHash = block.ParentHash;
+            BlockHash = block.Hash!;
+            ParentHash = block.ParentHash!;
             Miner = block.Beneficiary;
-            StateRoot = block.StateRoot;
+            StateRoot = block.StateRoot!;
             Number = block.Number;
             GasLimit = block.GasLimit;
             GasUsed = block.GasUsed;
-            ReceiptsRoot = block.ReceiptsRoot;
-            LogsBloom = block.Bloom;
+            ReceiptsRoot = block.ReceiptsRoot!;
+            LogsBloom = block.Bloom!;
             SetTransactions(block.Transactions);
             Difficulty = block.Difficulty;
             Nonce = block.Nonce;
-            ExtraData = block.ExtraData;
-            MixHash = block.MixHash;
+            ExtraData = block.ExtraData!;
+            MixHash = block.MixHash!;
             Uncles = block.Uncles.Select(o => o.Hash!);
             Timestamp = block.Timestamp;
         }
@@ -76,7 +76,7 @@ namespace Nethermind.Merge.Plugin.Data
         {
             try
             {
-                BlockHeader header = new(ParentHash, Keccak.OfAnEmptySequenceRlp, Miner, Difficulty, Number, GasLimit, Timestamp, ExtraData)
+                BlockHeader header = new(ParentHash, Keccak.OfAnEmptySequenceRlp, Miner!, Difficulty, Number, GasLimit, Timestamp, ExtraData)
                 {
                     Hash = BlockHash,
                     ReceiptsRoot = ReceiptsRoot,

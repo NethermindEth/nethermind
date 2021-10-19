@@ -78,7 +78,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                         Action action = await SendChannel.Reader.ReadAsync();
                         action();
                     }
-                    catch (Exception e)
+                    catch (Exception)
                     {
                         if (_logger.IsDebug) _logger.Debug(GetErrorMsg());
                     }

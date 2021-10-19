@@ -22,8 +22,8 @@ namespace Nethermind.Merge.Plugin.Data
 {
     public class AssembleBlockRequest
     {
-        public Keccak ParentHash { get; set; }
+        public Keccak? ParentHash { get; init; }
 
-        public UInt256 Timestamp { get; set; }
+        public UInt256 Timestamp { get; init; }
     }
 }

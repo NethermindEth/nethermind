@@ -193,7 +193,7 @@ namespace Nethermind.Core.Collections
 
             public T Current => _array[_index];
 
-            object IEnumerator.Current => Current!;
+            object? IEnumerator.Current => Current;
 
             public void Dispose() { }
         }
