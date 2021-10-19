@@ -68,10 +68,11 @@ namespace Nethermind.Blockchain.Test.Producers
                         new ReleaseSpec()
                         {
                             IsEip1559Enabled = _eip1559Enabled, 
-                            Eip1559TransitionBlock = _eip1559TransitionBlock, 
-                            Eip1559FeeCollector = _eip1559FeeCollector
+                            Eip1559TransitionBlock = _eip1559TransitionBlock,
+                            Eip1559FeeCollector = _eip1559FeeCollector,
+                            IsEip155Enabled = true
                         }, 1);
-                    BlockBuilder blockBuilder = Core.Test.Builders.Build.A.Block.Genesis.WithGasLimit(gasLimit);
+                    BlockBuilder blockBuilder = Build.A.Block.Genesis.WithGasLimit(gasLimit);
                     _testRpcBlockchain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
                         .WithGenesisBlockBuilder(blockBuilder)
                         .Build(spec);
@@ -132,7 +133,8 @@ namespace Nethermind.Blockchain.Test.Producers
                         IsServiceTransaction = serviceTransaction
                     };
                     
-                    await _testRpcBlockchain.TxSender.SendTransaction(tx, TxHandlingOptions.None);
+                    var (_, result) = await _testRpcBlockchain.TxSender.SendTransaction(tx, TxHandlingOptions.None);
+                    Assert.AreEqual(AddTxResult.Added, result);
                     return this;
                 }
 
@@ -302,7 +304,6 @@ namespace Nethermind.Blockchain.Test.Producers
         public async Task BaseFee_should_not_change_when_we_send_transactions_equal_gas_target()
         {
             long gasTarget = 3000000;
-            long gasLimit = Eip1559Constants.ElasticityMultiplier * gasTarget;
             BaseFeeTestScenario.ScenarioBuilder scenario = BaseFeeTestScenario.GoesLikeThis()
                 .WithEip1559TransitionBlock(6)
                 .CreateTestBlockchain(gasTarget)

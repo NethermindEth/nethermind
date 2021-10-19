@@ -244,12 +244,17 @@ namespace Nethermind.Core.Specs
         /// Reject new contracts starting with the 0xEF byte 
         /// </summary>
         bool IsEip3541Enabled { get; }
-        
+
+        /// <summary>
+        /// Reject transactions where senders have non-empty code hash
+        /// </summary>
+        bool IsEip3607Enabled { get; }
+		
         /// <summary>
         /// Upgrade consensus to Proof-of-Stake
         /// </summary>
         bool IsEip3675Enabled { get; }
-        
+
         /// <summary>
         /// Should transactions be validated against chainId.
         /// </summary>

@@ -16,11 +16,16 @@
 // 
 
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Core
 {
-    public interface IAccountStateProvider
+    public static class AccountStateProviderExtensions
     {
-        Account GetAccount(Address address);
+        public static bool HasCode(this IAccountStateProvider stateProvider, Address address) =>
+            stateProvider.GetAccount(address).HasCode;
+        
+        public static bool IsInvalidContractSender(this IAccountStateProvider stateProvider, IReleaseSpec spec, Address address) =>
+            spec.IsEip3607Enabled && stateProvider.HasCode(address);
     }
 }

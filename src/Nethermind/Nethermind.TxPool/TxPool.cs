@@ -67,6 +67,7 @@ namespace Nethermind.TxPool
         /// Indexes transactions
         /// </summary>
         private ulong _txIndex;
+        
 
         /// <summary>
         /// This class stores all known pending transactions that can be used for block production
@@ -107,6 +108,7 @@ namespace Nethermind.TxPool
             _filterPipeline.Add(new NullHashTxFilter());
             _filterPipeline.Add(new AlreadyKnownTxFilter(_hashCache));
             _filterPipeline.Add(new MalformedTxFilter(_specProvider, validator, _logger));
+            _filterPipeline.Add(new DeployedCodeFilter(_specProvider, _accounts));
             _filterPipeline.Add(new GasLimitTxFilter(_headInfo, txPoolConfig, _logger));
             _filterPipeline.Add(new UnknownSenderFilter(ecdsa, _logger));
             _filterPipeline.Add(new LowNonceFilter(_accounts, _logger));

@@ -174,6 +174,13 @@ namespace Nethermind.Evm.TransactionProcessing
                 return;
             }
 
+            if (_stateProvider.IsInvalidContractSender(spec, caller))
+            {
+                TraceLogInvalidTx(transaction, "SENDER_IS_CONTRACT");
+                QuickFail(transaction, block, txTracer, eip658NotEnabled, "sender has deployed code");
+                return;
+            }
+
             long intrinsicGas = IntrinsicGasCalculator.Calculate(transaction, spec);
             if (_logger.IsTrace) _logger.Trace($"Intrinsic gas calculated for {transaction.Hash}: " + intrinsicGas);
 
