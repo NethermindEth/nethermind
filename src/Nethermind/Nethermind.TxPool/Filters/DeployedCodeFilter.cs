@@ -23,7 +23,7 @@ using Nethermind.Core.Specs;
 namespace Nethermind.TxPool.Filters
 {
     /// <summary>
-    /// Filters out transactions that sender has any code deployed.
+    /// Filters out transactions that sender has any code deployed. If <see cref="IReleaseSpec.IsEip3607Enabled"/> is enabled.
     /// </summary>
     internal class DeployedCodeFilter : IIncomingTxFilter
     {
@@ -36,7 +36,7 @@ namespace Nethermind.TxPool.Filters
             _stateProvider = stateProvider;
         }
         public (bool Accepted, AddTxResult? Reason) Accept(Transaction tx, TxHandlingOptions txHandlingOptions) => 
-            _stateProvider.InvalidContractSender(_specProvider.GetSpec(), tx.SenderAddress!) 
+            _stateProvider.IsInvalidContractSender(_specProvider.GetSpec(), tx.SenderAddress!) 
                 ? (false, AddTxResult.SenderIsContract) 
                 : (true, null);
     }

@@ -69,7 +69,7 @@ namespace Nethermind.Blockchain.Processing
                 }
 
                 IReleaseSpec spec = _specProvider.GetSpec(block.Number);
-                if (stateProvider.InvalidContractSender(spec, currentTx.SenderAddress))
+                if (stateProvider.IsInvalidContractSender(spec, currentTx.SenderAddress))
                 {
                     return args.Set(TxAction.Skip, $"Sender is contract");
                 }
