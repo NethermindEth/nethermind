@@ -157,17 +157,32 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public void should_add_valid_transactions()
+        public void should_add_valid_transactions_recovering_its_address()
         {
             _txPool = CreatePool();
             Transaction tx = Build.A.Transaction
                 .WithGasLimit(_txGasLimit)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(tx);
+            tx.SenderAddress = null;
             AddTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
             _txPool.GetPendingTransactions().Length.Should().Be(1);
             result.Should().Be(AddTxResult.Added);
         }
+        
+        [Test]
+        public void should_reject_transactions_from_contract_address()
+        {
+            _txPool = CreatePool();
+            Transaction tx = Build.A.Transaction
+                .WithGasLimit(_txGasLimit)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(tx);
+            _stateProvider.UpdateCodeHash(TestItem.AddressA, TestItem.KeccakA, _specProvider.GetSpec(1));
+            AddTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+            result.Should().Be(AddTxResult.SenderIsContract);
+        }
+        
         
         [Test]
         public void should_accept_1559_transactions_only_when_eip1559_enabled([Values(false, true)] bool eip1559Enabled)
