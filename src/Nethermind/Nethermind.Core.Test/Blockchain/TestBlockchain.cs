@@ -109,7 +109,7 @@ namespace Nethermind.Core.Test.Blockchain
 
         public static readonly UInt256 InitialValue = 1000.Ether();
         private BlockValidator _blockValidator;
-        public HeaderValidator HeaderValidator { get; set; }
+        public IHeaderValidator HeaderValidator { get; set; }
         public BuildBlocksWhenRequested BlockProductionTrigger { get; } = new();
 
         public IReadOnlyTrieStore ReadOnlyTrieStore { get; private set; }
@@ -159,7 +159,7 @@ namespace Nethermind.Core.Test.Blockchain
             VirtualMachine virtualMachine = new(SpecProvider.ChainId, new BlockhashProvider(BlockTree, LogManager), LogManager);
             TxProcessor = new TransactionProcessor(SpecProvider, State, Storage, virtualMachine, LogManager);
             BlockPreprocessorStep = new RecoverSignatures(EthereumEcdsa, TxPool, SpecProvider, LogManager);
-            HeaderValidator = new(BlockTree, Always.Valid, SpecProvider, LogManager);
+            HeaderValidator = new HeaderValidator(BlockTree, Always.Valid, SpecProvider, LogManager);
                 
             _blockValidator = new BlockValidator(
                 new TxValidator(SpecProvider.ChainId),
@@ -168,6 +168,9 @@ namespace Nethermind.Core.Test.Blockchain
                 SpecProvider,
                 LogManager);
             
+            PoSSwitcher = NoPoS.Instance;
+            ISealer sealer = new NethDevSealEngine(TestItem.AddressD);
+            SealEngine = new SealEngine(sealer, Always.Valid);
             BlockProcessor = CreateBlockProcessor();
             
             BlockchainProcessor chainProcessor = new(BlockTree, BlockProcessor, BlockPreprocessorStep, LogManager, Consensus.Processing.BlockchainProcessor.Options.Default);
@@ -176,8 +179,6 @@ namespace Nethermind.Core.Test.Blockchain
             chainProcessor.Start();
             
             TxPoolTxSource txPoolTxSource = CreateTxPoolTxSource();
-            ISealer sealer = new NethDevSealEngine(TestItem.AddressD);
-            SealEngine = new SealEngine(sealer, Always.Valid);
             ITransactionComparerProvider transactionComparerProvider = new TransactionComparerProvider(SpecProvider, BlockFinder);
             BlockProducer = CreateTestBlockProducer(txPoolTxSource, sealer, transactionComparerProvider);
             Suggester = new ProducedBlockSuggester(BlockTree, BlockProducer);
@@ -196,7 +197,7 @@ namespace Nethermind.Core.Test.Blockchain
 
             Block? genesis = GetGenesisBlock();
             BlockTree.SuggestBlock(genesis);
-            PoSSwitcher = NoPoS.Instance;
+
             PostBuildAction();
             await WaitAsync(_resetEvent, "Failed to process genesis in time.");
             await AddBlocksOnStart();

@@ -15,33 +15,52 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Blockchain;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
 
 namespace Nethermind.Merge.Plugin
 {
-    public class PostMergeHeaderValidator : HeaderValidator
+    public class PostMergeHeaderValidator : IHeaderValidator
     {
+        private readonly IPoSSwitcher _poSSwitcher;
+        private readonly IHeaderValidator _headerValidator;
+        private readonly ILogger _logger;
+
         public PostMergeHeaderValidator(
-            IBlockTree? blockTree,
-            ISpecProvider? specProvider,
+            IPoSSwitcher poSSwitcher,
+            IHeaderValidator headerValidator,
             ILogManager logManager)
-            : base(blockTree, Always.Valid, specProvider, logManager)
-        { }
-        
-        public override bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle = false)
+        {
+            _poSSwitcher = poSSwitcher;
+            _headerValidator = headerValidator;
+            _logger = logManager.GetClassLogger();
+        }
+
+        public bool ValidateHash(BlockHeader header)
+        {
+            return _headerValidator.ValidateHash(header);
+        }
+
+        public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle = false)
         {
             bool theMergeValid = ValidateTheMergeChecks(header);
-            return base.Validate(header, parent, isUncle) && theMergeValid;
+            return _headerValidator.Validate(header, parent, isUncle) && theMergeValid;
+        }
+
+        public bool Validate(BlockHeader header, bool isUncle = false)
+        {
+            bool theMergeValid = ValidateTheMergeChecks(header);
+            return _headerValidator.Validate(header, isUncle)  && theMergeValid;
         }
 
         private bool ValidateTheMergeChecks(BlockHeader header)
         {
+            if (_poSSwitcher.IsPos(header) == false)
+                return true;
             bool validDifficulty =
                 ValidateHeaderField(header, header.Difficulty, UInt256.Zero, nameof(header.Difficulty));
             bool validNonce = ValidateHeaderField(header, header.Nonce, 0ul, nameof(header.Nonce));
@@ -58,16 +77,13 @@ namespace Nethermind.Merge.Plugin
                    && validUncles;
         }
         
-        protected override bool ValidateTotalDifficulty(BlockHeader header, BlockHeader parent,
-            bool totalDifficultyCorrect)
+        private bool ValidateHeaderField<T>(BlockHeader header, T value, T expected, string name)
         {
-            if (parent.TotalDifficulty + header.Difficulty != header.TotalDifficulty)
-            {
-                if (_logger.IsDebug) _logger.Debug($"Invalid total difficulty");
-                totalDifficultyCorrect = false;
-            }
-
-            return totalDifficultyCorrect;
+            if (Equals(value, expected)) return true;
+            if (_logger.IsWarn)
+                _logger.Warn(
+                    $"Invalid block header {header.ToString(BlockHeader.Format.Short)} - the {name} is incorrect expected {expected}, got {value} .");
+            return false;
         }
     }
 }

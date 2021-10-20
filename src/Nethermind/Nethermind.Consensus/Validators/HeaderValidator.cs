@@ -103,10 +103,16 @@ namespace Nethermind.Consensus.Validators
                     _logger.Debug($"Orphan block, could not find parent ({header.ParentHash}) of ({header.Hash})");
                 return false;
             }
-
-            // TODO: difficulty check should be moved to seal params validator
+            
             bool totalDifficultyCorrect = true;
-            totalDifficultyCorrect = ValidateTotalDifficulty(header, parent, totalDifficultyCorrect);
+            if (header.TotalDifficulty != null)
+            {
+                if (parent.TotalDifficulty + header.Difficulty != header.TotalDifficulty)
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Invalid total difficulty");
+                    totalDifficultyCorrect = false;
+                }
+            }
 
             // seal is validated when synchronizing so we can remove it from here - review and test
             bool sealParamsCorrect = _sealValidator.ValidateParams(parent, header);
@@ -143,7 +149,19 @@ namespace Nethermind.Consensus.Validators
                 _logger.Trace(
                     $"Validating block {header.ToString(BlockHeader.Format.Short)}, extraData {header.ExtraData.ToHexString(true)}");
 
-            bool eip1559Valid = Validate1559Checks(header, parent, spec);
+            bool eip1559Valid = true;
+            bool isEip1559Enabled = spec.IsEip1559Enabled;
+            if (isEip1559Enabled)
+            {
+                UInt256? expectedBaseFee = BaseFeeCalculator.Calculate(parent, spec);
+                eip1559Valid = expectedBaseFee == header.BaseFeePerGas;
+                
+                if (expectedBaseFee != header.BaseFeePerGas)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.ToString(BlockHeader.Format.Short)}) incorrect base fee. Expected base fee: {expectedBaseFee}, Current base fee: {header.BaseFeePerGas} ");
+                    eip1559Valid = false;
+                }
+            }
 
             return
                 totalDifficultyCorrect &&
@@ -156,11 +174,6 @@ namespace Nethermind.Consensus.Validators
                 hashAsExpected &&
                 extraDataValid &&
                 eip1559Valid;
-        }
-
-        protected virtual bool ValidateTotalDifficulty(BlockHeader header, BlockHeader parent, bool totalDifficultyCorrect)
-        {
-            return true;
         }
 
         protected virtual bool ValidateGasLimitRange(BlockHeader header, BlockHeader parent, IReleaseSpec spec)
@@ -222,26 +235,6 @@ namespace Nethermind.Consensus.Validators
                 header.Number == 0 &&
                 header.Bloom is not null &&
                 header.ExtraData.Length <= _specProvider.GenesisSpec.MaximumExtraDataSize;
-        }
-
-        private bool Validate1559Checks(BlockHeader header, BlockHeader parent, IReleaseSpec spec)
-        {
-            if (spec.IsEip1559Enabled == false)
-                return true;
-
-            UInt256? expectedBaseFee = BaseFeeCalculator.Calculate(parent, spec);
-            bool isBaseFeeCorrect = ValidateHeaderField(header, header.BaseFeePerGas, expectedBaseFee,
-                nameof(header.BaseFeePerGas));
-            return isBaseFeeCorrect;
-        }
-
-        protected bool ValidateHeaderField<T>(BlockHeader header, T value, T expected, string name)
-        {
-            if (Equals(value, expected)) return true;
-            if (_logger.IsWarn)
-                _logger.Warn(
-                    $"Invalid block header {header.ToString(BlockHeader.Format.Short)} - the {name} is incorrect expected {expected}, got {value} .");
-            return false;
         }
     }
 }

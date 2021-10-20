@@ -762,7 +762,7 @@ namespace Nethermind.Merge.Plugin.Test
             if (head == null) throw new NotSupportedException();
             return new BlockRequestResult(true)
             {
-                BlockNumber = 0, BlockHash = head.Hash!, StateRoot = head.StateRoot!, ReceiptRoot = head.ReceiptsRoot!
+                BlockNumber = 0, BlockHash = head.Hash!, StateRoot = head.StateRoot!, ReceiptRoot = head.ReceiptsRoot!, GasLimit = head.GasLimit
             };
         }
 
@@ -774,7 +774,7 @@ namespace Nethermind.Merge.Plugin.Test
                 Coinbase = miner,
                 StateRoot = parent.StateRoot,
                 BlockNumber = parent.BlockNumber + 1,
-                GasLimit = 1_000_000,
+                GasLimit = parent.GasLimit,
                 GasUsed = 0,
                 ReceiptRoot = Keccak.EmptyTreeHash,
                 LogsBloom = Bloom.Empty

@@ -30,7 +30,7 @@ namespace Nethermind.Merge.Plugin
         [ConfigItem(Description = "Account to be used by the block author / coinbase.", DefaultValue = "")]
         public string BlockAuthorAccount { get; set; }
         
-        [ConfigItem(Description = "Terminal total difficulty used for transition process.", DefaultValue = "")]
+        [ConfigItem(Description = "Terminal total difficulty used for transition process.", DefaultValue = "0")]
         public UInt256 TerminalTotalDifficulty { get; set; }
     }
 }

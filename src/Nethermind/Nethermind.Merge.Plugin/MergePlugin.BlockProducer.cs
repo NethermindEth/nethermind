@@ -56,11 +56,11 @@ namespace Nethermind.Merge.Plugin
                 if (_api.DbProvider == null) throw new ArgumentNullException(nameof(_api.DbProvider));
                 if (_api.ReadOnlyTrieStore == null) throw new ArgumentNullException(nameof(_api.ReadOnlyTrieStore));
                 if (_api.BlockchainProcessor == null) throw new ArgumentNullException(nameof(_api.BlockchainProcessor));
+                if (_api.HeaderValidator == null) throw new ArgumentNullException(nameof(_api.HeaderValidator));
                 
-                _api.HeaderValidator = new PostMergeHeaderValidator(
-                    _api.BlockTree,
-                    _api.SpecProvider,
-                    _api.LogManager);
+                _api.HeaderValidator = new PostMergeHeaderValidator(_poSSwitcher, _api.HeaderValidator, _api.LogManager);
+                _api.BlockValidator = new BlockValidator(_api.TxValidator, _api.HeaderValidator, Always.Valid,
+                    _api.SpecProvider, _api.LogManager);
 
                 ILogger logger = _api.LogManager.GetClassLogger();
                 if (logger.IsWarn) logger.Warn("Starting ETH2 block producer & sealer");

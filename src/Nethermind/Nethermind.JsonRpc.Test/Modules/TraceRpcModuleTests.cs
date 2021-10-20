@@ -34,7 +34,6 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
-using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Serialization.Json;

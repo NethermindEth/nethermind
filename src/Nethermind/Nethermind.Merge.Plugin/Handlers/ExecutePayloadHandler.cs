@@ -166,8 +166,11 @@ namespace Nethermind.Merge.Plugin.Handlers
         private bool ValidateAndProcess(Block block, BlockHeader parent, out Block? processedBlock)
         {
             block.Header.TotalDifficulty = parent.TotalDifficulty + block.Difficulty;
-            _headerValidator.Validate(block.Header);
-
+            processedBlock = null;
+            if (_headerValidator.Validate(block.Header) == false)
+            {
+                return false;
+            }
 
             processedBlock = _processor.Process(block, GetProcessingOptions(), NullBlockTracer.Instance);
             if (processedBlock == null)

@@ -104,22 +104,20 @@ namespace Nethermind.Merge.Plugin
                 if (_api.BlockTree is null) throw new ArgumentNullException(nameof(_api.BlockTree));
                 if (_api.BlockchainProcessor is null) throw new ArgumentNullException(nameof(_api.BlockchainProcessor));
                 if (_api.StateProvider is null) throw new ArgumentNullException(nameof(_api.StateProvider));
-                if (_api.StateProvider is null) throw new ArgumentNullException(nameof(_api.StateProvider));
+                if (_api.HeaderValidator is null) throw new ArgumentNullException(nameof(_api.HeaderValidator));
+                if (_api.EthSyncingInfo is null) throw new ArgumentNullException(nameof(_api.EthSyncingInfo));
+                if (_api.Sealer is null) throw new ArgumentNullException(nameof(_api.Sealer));
 
                 IInitConfig? initConfig = _api.Config<IInitConfig>();
 
                 PayloadStorage payloadStorage = new(_idealBlockProductionContext, _emptyBlockProductionContext, initConfig, _api.LogManager);
-
-                PostMergeHeaderValidator postPostMergeHeaderValidator = new(
-                    _api.BlockTree,
-                    _api.SpecProvider,
-                    _api.LogManager);
+                
                 IEngineRpcModule engineRpcModule = new EngineRpcModule(
                     new PreparePayloadHandler(_api.BlockTree, payloadStorage, _manualTimestamper, _api.Sealer,
                         _api.LogManager),
                     new GetPayloadHandler(payloadStorage, _api.LogManager),
                     new ExecutePayloadHandler(
-                        postPostMergeHeaderValidator,
+                        _api.HeaderValidator,
                         _api.BlockTree,
                         _api.BlockchainProcessor,
                         _api.EthSyncingInfo,

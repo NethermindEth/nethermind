@@ -141,22 +141,15 @@ namespace Nethermind.Merge.Plugin.Test
                     LogManager);
             }
 
-            
-            protected override void PostBuildAction()
+            private IBlockValidator CreateBlockValidator()
             {
                 PoSSwitcher = new PoSSwitcher(LogManager, MergeConfig, new MemDb(), BlockTree);
                 SealEngine = new MergeSealEngine(SealEngine, PoSSwitcher, Signer, LogManager);
-                HeaderValidator = new PostMergeHeaderValidator(BlockTree, SpecProvider, LogManager);
-            }
-
-            private IBlockValidator CreateBlockValidator()
-            {
-                HeaderValidator mergeHeaderValidator =
-                new PostMergeHeaderValidator(BlockTree, SpecProvider, LogManager);
+                HeaderValidator = new PostMergeHeaderValidator(PoSSwitcher, HeaderValidator, LogManager);
                 
                 return new BlockValidator(
                     new TxValidator(SpecProvider.ChainId),
-                    mergeHeaderValidator,
+                    HeaderValidator,
                     Always.Valid,
                     SpecProvider,
                     LogManager);
