@@ -51,7 +51,7 @@ namespace Nethermind.Merge.Plugin
 
         private void TrySwitchToPos(object? sender, BlockEventArgs e)
         {
-                VerifyPoS(e.Block.Header, true);
+            VerifyPoS(e.Block.Header, true);
         }
 
         public UInt256? TerminalTotalDifficulty

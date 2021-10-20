@@ -16,6 +16,7 @@
 // 
 
 using System.IO;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
@@ -33,10 +34,9 @@ namespace Nethermind.Merge.Plugin.Test
         [Test]
         public void Is_pos_with_total_difficulty()
         {
-            PoSSwitcher poSSwitcher = new(NUnitLogManager.Instance, new MergeConfig(), new MemDb(), null)
-            {
-                TerminalTotalDifficulty = 200
-            };
+            BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree().OfChainLength(1);
+            BlockTree blockTree = blockTreeBuilder.TestObject;
+            PoSSwitcher poSSwitcher = CreatePosSwitcher(200);
 
             BlockHeader blockHeader = Build.A.BlockHeader.WithTotalDifficulty(100L).TestObject;
             BlockHeader blockHeader2 = Build.A.BlockHeader.WithTotalDifficulty(200L).TestObject;
@@ -56,7 +56,7 @@ namespace Nethermind.Merge.Plugin.Test
         [Test]
         public void Is_pos_with_terminal_hash()
         {
-            PoSSwitcher poSSwitcher = new(NUnitLogManager.Instance, new MergeConfig(), new MemDb(), null);
+            PoSSwitcher poSSwitcher = CreatePosSwitcher(1000000000000000);
             poSSwitcher.SetTerminalPoWHash(Keccak.Compute("test1"));
 
             BlockHeader blockHeader = Build.A.BlockHeader.WithParentHash(Keccak.Compute("test2")).TestObject;
@@ -74,10 +74,7 @@ namespace Nethermind.Merge.Plugin.Test
         [Test]
         public void Is_pos_try_switch_to_PoS()
         {
-            PoSSwitcher poSSwitcher = new(NUnitLogManager.Instance, new MergeConfig(), new MemDb(), null)
-            {
-                TerminalTotalDifficulty = 200
-            };
+            PoSSwitcher poSSwitcher = CreatePosSwitcher(200);
 
             BlockHeader blockHeader = Build.A.BlockHeader.WithTotalDifficulty(200L).TestObject;
             BlockHeader blockHeader2 = Build.A.BlockHeader.WithTotalDifficulty(400L).TestObject;
@@ -92,10 +89,7 @@ namespace Nethermind.Merge.Plugin.Test
         [Test]
         public void Is_pos_sets_first_PoS_header_once()
         {
-            PoSSwitcher poSSwitcher = new(NUnitLogManager.Instance, new MergeConfig(), new MemDb(), null)
-            {
-                TerminalTotalDifficulty = 200
-            };
+            PoSSwitcher poSSwitcher = CreatePosSwitcher(200);
 
             BlockHeader blockHeader = Build.A.BlockHeader.WithTotalDifficulty(200L).TestObject;
             BlockHeader blockHeader2 = Build.A.BlockHeader.WithTotalDifficulty(400L).TestObject;
@@ -115,10 +109,7 @@ namespace Nethermind.Merge.Plugin.Test
         [Test]
         public void Has_ever_been_in_pos()
         {
-            PoSSwitcher poSSwitcher = new(NUnitLogManager.Instance, new MergeConfig(), new MemDb(), null)
-            {
-                TerminalTotalDifficulty = 200L
-            };
+            PoSSwitcher poSSwitcher = CreatePosSwitcher(200);
 
             Assert.AreEqual(false, poSSwitcher.HasEverBeenInPos());
 
@@ -129,21 +120,31 @@ namespace Nethermind.Merge.Plugin.Test
         }
         
         [Test]
+        [Ignore("I'm waiting for the spec to be confirmed. For now, we're setting TTD only in config. " +
+                "If a consensus client can override TTD, we need to add persistence of this parameter.")]
         public void Can_load_parameters_after_the_restart()
         {
             using TempPath tempPath = TempPath.GetTempFile(SimpleFilePublicKeyDb.DbFileName);
 
             SimpleFilePublicKeyDb filePublicKeyDb = new("PoSSwitcherTests", Path.GetTempPath(), LimboLogs.Instance);
+            UInt256 configTerminalTotalDifficulty = 10L;
             UInt256 expectedTotalTerminalDifficulty = 200L;
-            PoSSwitcher poSSwitcher = new(NUnitLogManager.Instance, new MergeConfig(), filePublicKeyDb, null)
-            {
-                TerminalTotalDifficulty = expectedTotalTerminalDifficulty
-            };
+            PoSSwitcher poSSwitcher = CreatePosSwitcher(configTerminalTotalDifficulty, filePublicKeyDb);
+            poSSwitcher.TerminalTotalDifficulty = expectedTotalTerminalDifficulty;
 
-            PoSSwitcher newPoSSwitcher = new PoSSwitcher(LimboLogs.Instance, new MergeConfig(), filePublicKeyDb, null);
+            PoSSwitcher newPoSSwitcher = CreatePosSwitcher(configTerminalTotalDifficulty, filePublicKeyDb);
             
             tempPath.Dispose();
             Assert.AreEqual(expectedTotalTerminalDifficulty, newPoSSwitcher.TerminalTotalDifficulty);
+        }
+
+        private static PoSSwitcher CreatePosSwitcher(UInt256 terminalTotalDifficulty, IDb? db = null)
+        {
+            db ??= new MemDb();
+            MergeConfig? mergeConfig = new() {Enabled = true, TerminalTotalDifficulty = terminalTotalDifficulty};
+            BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree().OfChainLength(1);
+            BlockTree blockTree = blockTreeBuilder.TestObject;
+            return new PoSSwitcher(LimboLogs.Instance, mergeConfig, db, blockTree);
         }
     }
 }

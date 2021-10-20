@@ -75,7 +75,7 @@ namespace Nethermind.Blockchain.Test
             blockTree.NewSuggestedBlock += (sender, args) => { hasNotifiedNewSuggested = true; };
 
             Block block = Build.A.Block.WithNumber(0).TestObject;
-            var result = blockTree.SuggestBlock(block);
+            AddBlockResult result = blockTree.SuggestBlock(block);
             blockTree.UpdateMainChain(block);
 
             Assert.True(hasNotified, "notification");
@@ -94,7 +94,7 @@ namespace Nethermind.Blockchain.Test
             blockTree.NewSuggestedBlock += (sender, args) => { hasNotifiedNewSuggested = true; };
 
             Block block = Build.A.Block.WithNumber(0).WithDifficulty(0).TestObject;
-            var result = blockTree.SuggestBlock(block);
+            AddBlockResult result = blockTree.SuggestBlock(block);
 
             Assert.True(hasNotified, "notification");
             Assert.AreEqual(AddBlockResult.Added, result, "result");
@@ -124,7 +124,7 @@ namespace Nethermind.Blockchain.Test
             bool hasNotifiedNewSuggested = false;
             blockTree.NewSuggestedBlock += (sender, args) => { hasNotifiedNewSuggested = true; };
             
-            var result = blockTree.SuggestBlock(block1);
+            AddBlockResult result = blockTree.SuggestBlock(block1);
             blockTree.UpdateMainChain(block1);
 
             Assert.True(hasNotified, "notification");
@@ -170,7 +170,7 @@ namespace Nethermind.Blockchain.Test
             bool hasNotifiedNewSuggested = false;
             blockTree.NewSuggestedBlock += (sender, args) => { hasNotifiedNewSuggested = true; };
             
-            var result = blockTree.SuggestBlock(block1);
+            AddBlockResult result = blockTree.SuggestBlock(block1);
 
             Assert.True(hasNotified, "notification");
             Assert.AreEqual(AddBlockResult.Added, result, "result");
@@ -194,7 +194,7 @@ namespace Nethermind.Blockchain.Test
             bool hasNotifiedNewSuggested = false;
             blockTree.NewSuggestedBlock += (sender, args) => { hasNotifiedNewSuggested = true; };
             
-            var result = blockTree.SuggestBlock(block2);
+            AddBlockResult result = blockTree.SuggestBlock(block2);
 
             Assert.False(hasNotifiedBest, "notification best");
             Assert.False(hasNotifiedHead, "notification head");
@@ -209,7 +209,7 @@ namespace Nethermind.Blockchain.Test
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             Block block2 = Build.A.Block.WithNumber(2).WithDifficulty(3).TestObject;
             blockTree.SuggestBlock(block0);
-            var result = blockTree.SuggestBlock(block2);
+            AddBlockResult result = blockTree.SuggestBlock(block2);
             Assert.AreEqual(AddBlockResult.UnknownParent, result);
         }
 
@@ -221,7 +221,7 @@ namespace Nethermind.Blockchain.Test
             Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
             blockTree.SuggestBlock(block0);
             blockTree.SuggestBlock(block1);
-            var result = blockTree.SuggestBlock(block1);
+            AddBlockResult result = blockTree.SuggestBlock(block1);
             Assert.AreEqual(AddBlockResult.AlreadyKnown, result);
         }
 
@@ -791,7 +791,7 @@ namespace Nethermind.Blockchain.Test
             AddToMain(blockTree, block0);
             AddToMain(blockTree, block1);
 
-            var dec = new Keccak(blockInfosDb.Get(Keccak.Zero));
+            Keccak dec = new Keccak(blockInfosDb.Get(Keccak.Zero));
             Assert.AreEqual(block1.Hash, dec);
         }
 
@@ -1132,7 +1132,7 @@ namespace Nethermind.Blockchain.Test
             SyncConfig syncConfig = new();
             syncConfig.PivotNumber = beginIndex.ToString();
 
-            var repo = new ChainLevelInfoRepository(blockInfosDb);
+            ChainLevelInfoRepository repo = new ChainLevelInfoRepository(blockInfosDb);
             BlockTree tree = new(blocksDb, headersDb, blockInfosDb, repo, MainnetSpecProvider.Instance, NullBloomStorage.Instance, syncConfig, LimboLogs.Instance);
             tree.SuggestBlock(Build.A.Block.Genesis.TestObject);
 
@@ -1143,7 +1143,7 @@ namespace Nethermind.Blockchain.Test
                 tree.Insert(block);
             }
 
-            var loadedRepo = new ChainLevelInfoRepository(blockInfosDb);
+            ChainLevelInfoRepository loadedRepo = new ChainLevelInfoRepository(blockInfosDb);
             BlockTree loadedTree = new(blocksDb, headersDb, blockInfosDb, loadedRepo, MainnetSpecProvider.Instance, NullBloomStorage.Instance, syncConfig, LimboLogs.Instance);
 
             Assert.AreEqual(null, tree.LowestInsertedBodyNumber, "tree");
@@ -1251,11 +1251,11 @@ namespace Nethermind.Blockchain.Test
         [Test]
         public void Loads_best_known_correctly_when_head_before_pivot()
         {
-            var pivotNumber = 1000;
-            var head = 10;
+            int pivotNumber = 1000;
+            int head = 10;
             SyncConfig syncConfig = new() {PivotNumber = pivotNumber.ToString()};
 
-            var treeBuilder = Build.A.BlockTree().OfChainLength(head + 1);
+            BlockTreeBuilder treeBuilder = Build.A.BlockTree().OfChainLength(head + 1);
             
             BlockTree loadedTree = new(
                 treeBuilder.BlocksDb,
@@ -1328,7 +1328,7 @@ namespace Nethermind.Blockchain.Test
             SyncConfig syncConfig = new();
             syncConfig.PivotNumber = pivotNumber.ToString();
 
-            var bloomStorage = Substitute.For<IBloomStorage>();
+            IBloomStorage bloomStorage = Substitute.For<IBloomStorage>();
             BlockTree tree = new(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, bloomStorage, syncConfig, LimboLogs.Instance);
             tree.SuggestBlock(Build.A.Block.Genesis.TestObject);
 
@@ -1378,7 +1378,7 @@ namespace Nethermind.Blockchain.Test
             Transaction t1 = Build.A.Transaction.TestObject;
             Transaction t2 = Build.A.Transaction.TestObject;
 
-            var bloomStorage = Substitute.For<IBloomStorage>();
+            IBloomStorage bloomStorage = Substitute.For<IBloomStorage>();
             BlockTree blockTree = new(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), OlympicSpecProvider.Instance, bloomStorage, LimboLogs.Instance);
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             Block block1A = Build.A.Block.WithNumber(1).WithDifficulty(2).WithTransactions(t1).WithParent(block0).TestObject;
@@ -1532,11 +1532,11 @@ namespace Nethermind.Blockchain.Test
             int chainLeft = expectedTotalDifficulty.HasValue ? 1 : 0;
             for (int i = chainLength - 1; i >= chainLeft; i--)
             {
-                var level = blockTreeBuilder.ChainLevelInfoRepository.LoadLevel(i);
+                ChainLevelInfo? level = blockTreeBuilder.ChainLevelInfoRepository.LoadLevel(i);
                 for (int j = 0; j < level.BlockInfos.Length; j++)
                 {
                     Keccak blockHash = level.BlockInfos[j].BlockHash;
-                    var header = blockTree.FindHeader(blockHash, BlockTreeLookupOptions.None);
+                    BlockHeader? header = blockTree.FindHeader(blockHash, BlockTreeLookupOptions.None);
                     header.TotalDifficulty = null;
                 }
                 blockTreeBuilder.ChainLevelInfoRepository.Delete(i);
@@ -1547,7 +1547,7 @@ namespace Nethermind.Blockchain.Test
                 blockTree.FindBlock(blockTree.Head.Hash, BlockTreeLookupOptions.None).TotalDifficulty.Should().Be(new UInt256(expectedTotalDifficulty.Value));
                 for (int i = chainLength - 1; i >= chainLeft; i--)
                 {
-                    var level = blockTreeBuilder.ChainLevelInfoRepository.LoadLevel(i);
+                    ChainLevelInfo? level = blockTreeBuilder.ChainLevelInfoRepository.LoadLevel(i);
                     level.Should().NotBeNull();
                     level.BlockInfos.Should().HaveCount(1);
                 }
@@ -1563,8 +1563,8 @@ namespace Nethermind.Blockchain.Test
         public async Task Visitor_can_block_adding_blocks()
         {
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
-            var manualResetEvent = new ManualResetEvent(false);
-            var acceptTask = blockTree.Accept(new TestBlockTreeVisitor(manualResetEvent), CancellationToken.None);
+            ManualResetEvent manualResetEvent = new ManualResetEvent(false);
+            Task acceptTask = blockTree.Accept(new TestBlockTreeVisitor(manualResetEvent), CancellationToken.None);
             blockTree.CanAcceptNewBlocks.Should().BeFalse();
             manualResetEvent.Set();
             await acceptTask;
