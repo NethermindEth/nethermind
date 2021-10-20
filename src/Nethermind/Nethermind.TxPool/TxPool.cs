@@ -108,9 +108,9 @@ namespace Nethermind.TxPool
             _filterPipeline.Add(new NullHashTxFilter());
             _filterPipeline.Add(new AlreadyKnownTxFilter(_hashCache));
             _filterPipeline.Add(new MalformedTxFilter(_specProvider, validator, _logger));
-            _filterPipeline.Add(new DeployedCodeFilter(_specProvider, _accounts));
             _filterPipeline.Add(new GasLimitTxFilter(_headInfo, txPoolConfig, _logger));
             _filterPipeline.Add(new UnknownSenderFilter(ecdsa, _logger));
+            _filterPipeline.Add(new DeployedCodeFilter(_specProvider, _accounts)); // has to be after UnknownSenderFilter as it uses sender
             _filterPipeline.Add(new LowNonceFilter(_accounts, _logger));
             _filterPipeline.Add(new GapNonceFilter(_accounts, _transactions, _logger));
             _filterPipeline.Add(new TooExpensiveTxFilter(_headInfo, _accounts, _transactions, _logger));
