@@ -81,7 +81,8 @@ namespace Nethermind.Merge.Plugin.Data
                     MixHash = MixHash,
                     Bloom = LogsBloom,
                     GasUsed = GasUsed,
-                    BaseFeePerGas = BaseFeePerGas
+                    BaseFeePerGas = BaseFeePerGas,
+                    Nonce = Nonce
                 };
                 Transaction[] transactions = GetTransactions();
                 header.TxRoot = new TxTrie(transactions).RootHash;

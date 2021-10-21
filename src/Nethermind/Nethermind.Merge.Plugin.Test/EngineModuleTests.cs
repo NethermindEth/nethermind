@@ -565,7 +565,6 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         [Test]
-        // [Repeat(1000)] // to test multi-thread issue, warning - long and eliminated in test already
         public async Task executePayload_processes_passed_transactions([Values(false, true)] bool moveHead)
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
