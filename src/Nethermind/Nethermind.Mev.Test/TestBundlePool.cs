@@ -40,7 +40,8 @@ namespace Nethermind.Mev.Test
             ITxValidator txValidator, 
             ISpecProvider specProvider,
             IMevConfig mevConfig,
-            ILogManager logManager)
+            ILogManager logManager,
+            IEthereumEcdsa ecdsa)
             : base(blockTree, simulator, timestamper, txValidator, specProvider, mevConfig, new MockProvider(), logManager, ecdsa)
         {
         }

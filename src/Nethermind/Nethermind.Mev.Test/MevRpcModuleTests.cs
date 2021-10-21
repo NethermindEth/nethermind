@@ -220,7 +220,7 @@ namespace Nethermind.Mev.Test
             MevMegabundle bundle = new (4, txs);
             Signature relaySignature = chain.EthereumEcdsa.Sign(TestItem.PrivateKeyC, bundle.Hash);
             
-            string parameters = $"{{\"txs\":[\"{Rlp.Encode(setTx).Bytes.ToHexString()}\",\"{Rlp.Encode(getTx).Bytes.ToHexString()}\"]," +
+            string parameters = $"{{\"txs\":[\"{EncodeTx(setTx).Bytes.ToHexString()}\",\"{EncodeTx(getTx).Bytes.ToHexString()}\"]," +
                                 $"\"blockNumber\":\"0x4\",\"relaySignature\":\"{relaySignature}\"}}";
             string result = chain.TestSerializedRequest(chain.MevRpcModule, "eth_sendMegabundle", parameters);
             result.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}}");
