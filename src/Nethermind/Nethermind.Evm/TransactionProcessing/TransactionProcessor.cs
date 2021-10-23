@@ -448,8 +448,16 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
                 else
                 {
-                    txTracer.MarkAsSuccess(recipientOrNull, spentGas, substate.Output.ToArray(),
-                        substate.Logs.Any() ? substate.Logs.ToArray() : Array.Empty<LogEntry>(), stateRoot);
+                    if (intrinsicGas == spentGas)
+                    {
+                        txTracer.MarkAsSuccess(recipientOrNull, spentGas, substate.Output.ToArray(),
+                            substate.Logs.Any() ? substate.Logs.ToArray() : Array.Empty<LogEntry>(), stateRoot);
+                    }
+                    else
+                    {
+                        txTracer.MarkAsSuccess(recipientOrNull, spentGas - intrinsicGas, substate.Output.ToArray(),
+                            substate.Logs.Any() ? substate.Logs.ToArray() : Array.Empty<LogEntry>(), stateRoot);
+                    }
                 }
             }
         }

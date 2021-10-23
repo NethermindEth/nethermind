@@ -423,6 +423,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             ResultWrapper<ParityTxTraceFromStore[]> traces = context.TraceRpcModule.trace_transaction(transaction2.Hash!);
             Assert.AreEqual(3, traces.Data.Length);
+            Assert.AreEqual(2742, traces.Data[0].Action.Result.GasUsed);
             Assert.AreEqual(transaction2.Hash!, traces.Data[0].TransactionHash);
             
             long[] positions = {0};
@@ -588,7 +589,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             BlockParameter blockParameter = new BlockParameter(BlockParameterType.Latest);
             string[] traceTypes = {"trace"};
             ResultWrapper<ParityTxTraceFromReplay[]> traces = context.TraceRpcModule.trace_replayBlockTransactions(blockParameter, traceTypes);
-            Assert.AreNotEqual(0, traces.Data[0].Action.Result.GasUsed);
+            Assert.AreEqual(21000, traces.Data[0].Action.Result.GasUsed);
         }
     }
 }
