@@ -23,7 +23,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Int256;
 
-namespace Nethermind.Evm.Tracing.Access
+namespace Nethermind.Evm.Tracing
 {
     public class AccessTxTracer : ITxTracer
     {

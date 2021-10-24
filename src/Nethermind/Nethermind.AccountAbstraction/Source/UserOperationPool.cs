@@ -31,8 +31,6 @@ using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Evm.Tracing.Access;
-using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Network;
 using Nethermind.Network.P2P;
@@ -47,9 +45,7 @@ namespace Nethermind.AccountAbstraction.Source
         private readonly IBlockTree _blockTree;
         private readonly IStateProvider _stateProvider;
         private readonly ITimestamper _timestamper;
-        private readonly IAccessListSource _accessListSource;
         private readonly IAccountAbstractionConfig _accountAbstractionConfig;
-        private readonly IDictionary<Address, int> _paymasterOffenseCounter;
         private readonly ISet<Address> _bannedPaymasters;
         private readonly UserOperationSortedPool _userOperationSortedPool;
         private readonly IUserOperationSimulator _userOperationSimulator;
@@ -59,9 +55,7 @@ namespace Nethermind.AccountAbstraction.Source
         public UserOperationPool(IBlockTree blockTree,
             IStateProvider stateProvider,
             ITimestamper timestamper,
-            IAccessListSource accessListSource,
             IAccountAbstractionConfig accountAbstractionConfig,
-            IDictionary<Address, int> paymasterOffenseCounter,
             ISet<Address> bannedPaymasters,
             IPeerManager peerManager,
             UserOperationSortedPool userOperationSortedPool,
@@ -70,9 +64,7 @@ namespace Nethermind.AccountAbstraction.Source
             _blockTree = blockTree;
             _stateProvider = stateProvider;
             _timestamper = timestamper;
-            _accessListSource = accessListSource;
             _accountAbstractionConfig = accountAbstractionConfig;
-            _paymasterOffenseCounter = paymasterOffenseCounter;
             _bannedPaymasters = bannedPaymasters;
             _peerManager = peerManager;
             _userOperationSortedPool = userOperationSortedPool;

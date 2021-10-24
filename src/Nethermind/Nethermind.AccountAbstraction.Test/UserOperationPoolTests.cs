@@ -19,8 +19,6 @@ using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm.Tracing;
-using Nethermind.Evm.Tracing.Access;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Network;
@@ -190,11 +188,6 @@ namespace Nethermind.AccountAbstraction.Test
 
             IAccountAbstractionConfig config = Substitute.For<IAccountAbstractionConfig>();
             config.SingletonContractAddress.Returns("0x8595dd9e0438640b5e1254f9df579ac12a86865f");
-
-            IAccessListSource accessListSource = Substitute.For<IAccessListSource>();
-
-            accessListSource.CombinedAccessList.Returns(
-                new Dictionary<Address, HashSet<UInt256>> {{new("0x0000000000000000000000000000000000000001"), new HashSet<UInt256> {0}}});
             
             IPeerManager peerManager = Substitute.For<IPeerManager>();
 
@@ -202,9 +195,7 @@ namespace Nethermind.AccountAbstraction.Test
                 blockTree,
                 stateProvider,
                 Substitute.For<ITimestamper>(),
-                accessListSource,
                 config,
-                new Dictionary<Address, int>(),
                 new HashSet<Address>(), 
                 peerManager,
                 userOperationSortedPool,

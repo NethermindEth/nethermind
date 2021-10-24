@@ -35,7 +35,7 @@ using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
-using Nethermind.Evm.Tracing.Access;
+using Nethermind.Evm.Tracing;
 using Nethermind.Facade;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;

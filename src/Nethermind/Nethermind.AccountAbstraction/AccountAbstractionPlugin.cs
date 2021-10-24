@@ -13,7 +13,6 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Timers;
-using Nethermind.Evm.Tracing.Access;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -26,7 +25,6 @@ namespace Nethermind.AccountAbstraction
         private IAccountAbstractionConfig _accountAbstractionConfig = null!;
         private UserOperationPool? _userOperationPool;
         private UserOperationSimulator? _userOperationSimulator;
-        private AccessBlockTracer _accessBlockTracer = null!;
         private IDictionary<Address, int> _paymasterOffenseCounter = new Dictionary<Address, int>();
         private ISet<Address> _bannedPaymasters = new HashSet<Address>();
         private Address _singletonContractAddress = null!;
@@ -58,9 +56,7 @@ namespace Nethermind.AccountAbstraction
                         _nethermindApi.BlockTree!,
                         _nethermindApi.StateProvider!,
                         _nethermindApi.Timestamper,
-                        AccessBlockTracer,
                         _accountAbstractionConfig,
-                        _paymasterOffenseCounter,
                         _bannedPaymasters,
                         _nethermindApi.PeerManager!,
                         userOperationSortedPool,
@@ -94,21 +90,6 @@ namespace Nethermind.AccountAbstraction
                 }
 
                 return _userOperationSimulator;
-            }
-        }
-        
-        private AccessBlockTracer AccessBlockTracer
-        {
-            get
-            {
-                if (_accessBlockTracer is null)
-                {
-                    var (getFromApi, _) = _nethermindApi!.ForProducer;
-
-                    _accessBlockTracer = new AccessBlockTracer(Array.Empty<Address>());
-                }
-
-                return _accessBlockTracer;
             }
         }
 
