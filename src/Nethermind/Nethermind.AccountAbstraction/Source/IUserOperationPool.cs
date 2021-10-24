@@ -16,7 +16,6 @@
 // 
 
 using System.Collections.Generic;
-using Nethermind.AccountAbstraction.Broadcaster;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -28,7 +27,5 @@ namespace Nethermind.AccountAbstraction.Source
     {
         ResultWrapper<Keccak> AddUserOperation(UserOperation userOperation);
         bool RemoveUserOperation(UserOperation userOperation);
-        
-        AddUserOperationResult SubmitUserOperation(UserOperation userOperation, UserOperationHandlingOptions handlingOptions);
     }
 }

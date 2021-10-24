@@ -18,7 +18,6 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Abi;
-using Nethermind.AccountAbstraction.Broadcaster;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;

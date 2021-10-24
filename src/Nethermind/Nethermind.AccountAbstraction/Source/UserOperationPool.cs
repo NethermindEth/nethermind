@@ -24,7 +24,6 @@ using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
-using Nethermind.AccountAbstraction.Broadcaster;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Executor;
 using Nethermind.Blockchain;
@@ -127,11 +126,6 @@ namespace Nethermind.AccountAbstraction.Source
         public bool RemoveUserOperation(UserOperation userOperation)
         {
             return _userOperationSortedPool.TryRemove(userOperation);
-        }
-
-        public AddUserOperationResult SubmitUserOperation(UserOperation userOperation, UserOperationHandlingOptions handlingOptions)
-        {
-            throw new NotImplementedException();
         }
 
         private ResultWrapper<Keccak> ValidateUserOperation(UserOperation userOperation)
