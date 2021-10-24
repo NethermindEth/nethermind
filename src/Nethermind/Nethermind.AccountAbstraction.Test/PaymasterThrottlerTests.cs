@@ -29,7 +29,7 @@ namespace Nethermind.AccountAbstraction.Test
     {
         private Random rand;
         
-        private PaymasterThrottler _paymasterThrottler;
+        private TestPaymasterThrottler _paymasterThrottler;
 
         private Address[] _addresses =
         {
@@ -45,7 +45,7 @@ namespace Nethermind.AccountAbstraction.Test
         public void SetUp()
         {
             // Modifying internal timer interval so that internal maps are updated every 2 secs
-            _paymasterThrottler = new PaymasterThrottler(0, 0 ,2);
+            _paymasterThrottler = new TestPaymasterThrottler();
             rand = new Random();
         }
 
@@ -97,7 +97,7 @@ namespace Nethermind.AccountAbstraction.Test
                  opsSeenBeforeUpdate = _paymasterThrottler.GetPaymasterOpsSeen(_addresses[0]);
                  opsIncludedBeforeUpdate = _paymasterThrottler.GetPaymasterOpsIncluded(_addresses[1]);
 
-                 Thread.Sleep(2050);
+                 _paymasterThrottler.UpdateUserOperationMaps(null!, EventArgs.Empty);
 
                  _paymasterThrottler.GetPaymasterOpsSeen(_addresses[0])
                      .Should().Be(opsSeenBeforeUpdate - FloorDivision(opsSeenBeforeUpdate, HourSpan));
@@ -129,7 +129,7 @@ namespace Nethermind.AccountAbstraction.Test
                 opsSeenBeforeUpdate = _paymasterThrottler.GetPaymasterOpsSeen(addr);
                 opsIncludedBeforeUpdate = _paymasterThrottler.GetPaymasterOpsIncluded(addr);
 
-                Thread.Sleep(2050);
+                _paymasterThrottler.UpdateUserOperationMaps(null!, EventArgs.Empty);
 
                 _paymasterThrottler.GetPaymasterOpsSeen(addr)
                     .Should().Be(opsSeenBeforeUpdate - FloorDivision(opsSeenBeforeUpdate, HourSpan));

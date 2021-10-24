@@ -44,35 +44,50 @@ namespace Nethermind.AccountAbstraction.Source
     {
         private readonly IBlockTree _blockTree;
         private readonly IStateProvider _stateProvider;
+        private readonly IPaymasterThrottler _paymasterThrottler;
         private readonly ITimestamper _timestamper;
         private readonly IAccountAbstractionConfig _accountAbstractionConfig;
-        private readonly ISet<Address> _bannedPaymasters;
         private readonly UserOperationSortedPool _userOperationSortedPool;
         private readonly IUserOperationSimulator _userOperationSimulator;
         private readonly IPeerManager _peerManager;
         //private readonly UserOperationBroadcaster _broadcaster;
 
+        private readonly Dictionary<long, List<UserOperation>> _userOperationsToDelete = new();
+
         public UserOperationPool(IBlockTree blockTree,
             IStateProvider stateProvider,
+            IPaymasterThrottler paymasterThrottler,
             ITimestamper timestamper,
             IAccountAbstractionConfig accountAbstractionConfig,
-            ISet<Address> bannedPaymasters,
             IPeerManager peerManager,
             UserOperationSortedPool userOperationSortedPool,
             IUserOperationSimulator userOperationSimulator)
         {
             _blockTree = blockTree;
             _stateProvider = stateProvider;
+            _paymasterThrottler = paymasterThrottler;
             _timestamper = timestamper;
             _accountAbstractionConfig = accountAbstractionConfig;
-            _bannedPaymasters = bannedPaymasters;
             _peerManager = peerManager;
             _userOperationSortedPool = userOperationSortedPool;
             _userOperationSimulator = userOperationSimulator;
 
             _userOperationSortedPool.Inserted += UserOperationInserted;
+            _blockTree.NewHeadBlock += NewHead;
         }
-        
+
+        private void NewHead(object? sender, BlockEventArgs e)
+        {
+            Block block = e.Block;
+            if (_userOperationsToDelete.ContainsKey(block.Number))
+            {
+                foreach (var userOperation in _userOperationsToDelete[block.Number])
+                {
+                    RemoveUserOperation(userOperation);
+                }
+            }
+        }
+
         private void UserOperationInserted(object? sender, SortedPool<UserOperation, UserOperation, Address>.SortedPoolEventArgs e)
         {
             UserOperation userOperation = e.Key;
@@ -121,6 +136,24 @@ namespace Nethermind.AccountAbstraction.Source
 
         private ResultWrapper<Keccak> ValidateUserOperation(UserOperation userOperation)
         {
+            PaymasterStatus paymasterStatus =
+                _paymasterThrottler.GetPaymasterStatus(userOperation.Paymaster);
+
+            switch (paymasterStatus)
+            {
+                case PaymasterStatus.Ok: break;
+                case PaymasterStatus.Banned: return ResultWrapper<Keccak>.Fail("paymaster banned");
+                case PaymasterStatus.Throttled:
+                {
+                    IEnumerable<UserOperation> poolUserOperations = GetUserOperations();
+                    if (poolUserOperations.Any(poolOp => poolOp.Paymaster == userOperation.Paymaster))
+                    {
+                        return ResultWrapper<Keccak>.Fail($"paymaster throttled: userOp with paymaster {userOperation.Paymaster} is already present in the pool");
+                    }
+                    break;
+                }
+            }
+
             if (userOperation.MaxFeePerGas < _accountAbstractionConfig.MinimumGasPrice)
             {
                 return ResultWrapper<Keccak>.Fail("maxFeePerGas below minimum gas price");
@@ -143,8 +176,7 @@ namespace Nethermind.AccountAbstraction.Source
             if (userOperation.Paymaster != Address.Zero)
             {
                 if (!_stateProvider.AccountExists(userOperation.Paymaster) 
-                    || !_stateProvider.IsContract(userOperation.Paymaster)
-                    || _bannedPaymasters.Contains(userOperation.Paymaster))
+                    || !_stateProvider.IsContract(userOperation.Paymaster))
                 {
                     return ResultWrapper<Keccak>.Fail("paymaster is used but is not a contract or is banned");
                 }
@@ -158,7 +190,21 @@ namespace Nethermind.AccountAbstraction.Source
             
             Task<ResultWrapper<Keccak>> successfulSimulationTask = Simulate(userOperation, _blockTree.Head!.Header);
             ResultWrapper<Keccak> successfulSimulation = successfulSimulationTask.Result;
-
+            
+            // throttled userOp can only stay for 10 blocks
+            if (paymasterStatus == PaymasterStatus.Throttled && successfulSimulation.Result == Result.Success)
+            {
+                long blockNumberToDelete = _blockTree.Head!.Number + 10;
+                if (_userOperationsToDelete.ContainsKey(blockNumberToDelete))
+                {
+                    _userOperationsToDelete[blockNumberToDelete].Add(userOperation);
+                }
+                else
+                {
+                    _userOperationsToDelete.Add(blockNumberToDelete, new List<UserOperation>{userOperation});
+                }
+            }
+            
             return successfulSimulation;
         }
 

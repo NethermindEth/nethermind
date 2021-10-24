@@ -25,8 +25,6 @@ namespace Nethermind.AccountAbstraction
         private IAccountAbstractionConfig _accountAbstractionConfig = null!;
         private UserOperationPool? _userOperationPool;
         private UserOperationSimulator? _userOperationSimulator;
-        private IDictionary<Address, int> _paymasterOffenseCounter = new Dictionary<Address, int>();
-        private ISet<Address> _bannedPaymasters = new HashSet<Address>();
         private Address _singletonContractAddress = null!;
         
         private INethermindApi _nethermindApi = null!;
@@ -55,9 +53,9 @@ namespace Nethermind.AccountAbstraction
                     _userOperationPool = new UserOperationPool(
                         _nethermindApi.BlockTree!,
                         _nethermindApi.StateProvider!,
+                        new PaymasterThrottler(),
                         _nethermindApi.Timestamper,
                         _accountAbstractionConfig,
-                        _bannedPaymasters,
                         _nethermindApi.PeerManager!,
                         userOperationSortedPool,
                         UserOperationSimulator

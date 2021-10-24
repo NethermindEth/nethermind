@@ -191,12 +191,14 @@ namespace Nethermind.AccountAbstraction.Test
             
             IPeerManager peerManager = Substitute.For<IPeerManager>();
 
+            IPaymasterThrottler paymasterThrottler = Substitute.For<PaymasterThrottler>();
+
             UserOperationPool userOperationPool = new(
                 blockTree,
                 stateProvider,
+                paymasterThrottler,
                 Substitute.For<ITimestamper>(),
                 config,
-                new HashSet<Address>(), 
                 peerManager,
                 userOperationSortedPool,
                 simulator

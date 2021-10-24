@@ -17,15 +17,14 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.AccountAbstraction.Data;
 using Nethermind.Core;
 using Nethermind.Core.Timers;
 
 namespace Nethermind.AccountAbstraction.Source
 {
-    public class PaymasterThrottler
+    public class PaymasterThrottler : IPaymasterThrottler
     {
-        public enum PaymasterStatus { Ok, Throttled, Banned };
-
         public const int TimerHoursSpan = 24;
         
         public const int TimerMinutesSpan = 0;
@@ -58,19 +57,6 @@ namespace Nethermind.AccountAbstraction.Source
             SetupAndStartTimer();
         }
 
-        public PaymasterThrottler(int hourSpan, int minuteSpan, int secondSpan) : this()
-        {
-            _timer = (new TimerFactory())
-                .CreateTimer(new TimeSpan(
-                        hourSpan,
-                        minuteSpan,
-                        secondSpan
-                    )
-                );
-            
-            SetupAndStartTimer();
-        }
-        
         public PaymasterThrottler(
             IDictionary<Address, uint> opsSeen,
             IDictionary<Address, uint> opsIncluded
@@ -114,7 +100,7 @@ namespace Nethermind.AccountAbstraction.Source
             }
         }
         
-        internal void UpdateUserOperationMaps(Object source, EventArgs args)
+        protected void UpdateUserOperationMaps(Object source, EventArgs args)
         {
 
             lock (_opsSeen)
@@ -144,6 +130,8 @@ namespace Nethermind.AccountAbstraction.Source
 
         public PaymasterStatus GetPaymasterStatus(Address paymaster)
         {
+            if (paymaster == Address.Zero) return PaymasterStatus.Ok;
+            
             uint minExpectedIncluded;
             
             lock (_opsSeen)

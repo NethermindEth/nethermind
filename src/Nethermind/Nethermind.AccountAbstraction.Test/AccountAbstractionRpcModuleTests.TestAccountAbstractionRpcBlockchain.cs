@@ -158,9 +158,9 @@ namespace Nethermind.AccountAbstraction.Test
                 UserOperationPool = new UserOperationPool(
                     BlockTree, 
                     State, 
+                    new PaymasterThrottler(),
                     Timestamper, 
                     _accountAbstractionConfig, 
-                    new HashSet<Address>(),
                     peerManager,
                     new UserOperationSortedPool(_accountAbstractionConfig.UserOperationPoolSize, new CompareUserOperationsByDecreasingGasPrice(), LogManager),
                     UserOperationSimulator);
