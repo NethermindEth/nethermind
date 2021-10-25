@@ -270,6 +270,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             long unspentGas = gasLimit - intrinsicGas;
             long spentGas = gasLimit;
+            bool gasLeftForTxExecution = !(unspentGas == 0);
 
             Snapshot snapshot = _worldState.TakeSnapshot();
             _stateProvider.SubtractFromBalance(caller, value, spec);
@@ -324,7 +325,7 @@ namespace Nethermind.Evm.TransactionProcessing
                         state.WarmUp(recipient); // eip-2929
                     }
 
-                    substate = _virtualMachine.Run(state, _worldState, spec, txTracer);
+                    substate = _virtualMachine.Run(state, _worldState, spec, txTracer, intrinsicGas);
                     unspentGas = state.GasAvailable;
 
                     if (txTracer.IsTracingAccess)
@@ -448,16 +449,8 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
                 else
                 {
-                    if (intrinsicGas == spentGas)
-                    {
-                        txTracer.MarkAsSuccess(recipientOrNull, spentGas, substate.Output.ToArray(),
-                            substate.Logs.Any() ? substate.Logs.ToArray() : Array.Empty<LogEntry>(), stateRoot);
-                    }
-                    else
-                    {
-                        txTracer.MarkAsSuccess(recipientOrNull, spentGas - intrinsicGas, substate.Output.ToArray(),
-                            substate.Logs.Any() ? substate.Logs.ToArray() : Array.Empty<LogEntry>(), stateRoot);
-                    }
+                    txTracer.MarkAsSuccess(recipientOrNull, spentGas, substate.Output.ToArray(),
+                        substate.Logs.Any() ? substate.Logs.ToArray() : Array.Empty<LogEntry>(), stateRoot);
                 }
             }
         }
