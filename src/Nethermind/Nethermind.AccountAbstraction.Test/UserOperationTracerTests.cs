@@ -33,6 +33,7 @@ namespace Nethermind.AccountAbstraction.Test
     [TestFixture]
     public class UserOperationTracerTests : VirtualMachineTestsBase
     {
+        /*
         [Test]
         public void Can_trace_accessed_storage_correctly()
         {
@@ -116,5 +117,6 @@ namespace Nethermind.AccountAbstraction.Test
             _processor.Execute(transaction, block.Header, tracer);
             return (tracer, block, transaction);
         }
+        */
     }
 }

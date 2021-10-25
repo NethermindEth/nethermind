@@ -57,6 +57,7 @@ namespace Nethermind.AccountAbstraction.Executor
         private readonly IStateProvider _stateProvider;
         private readonly ISigner _signer;
         private readonly IAccountAbstractionConfig _config;
+        private readonly Address _create2FactoryAddress;
         private readonly Address _singletonAddress;
         private readonly ISpecProvider _specProvider;
         private readonly IBlockTree _blockTree;
@@ -72,6 +73,7 @@ namespace Nethermind.AccountAbstraction.Executor
             IStateProvider stateProvider,
             ISigner signer,
             IAccountAbstractionConfig config,
+            Address create2FactoryAddress,
             Address singletonAddress,
             ISpecProvider specProvider,
             IBlockTree blockTree,
@@ -83,6 +85,7 @@ namespace Nethermind.AccountAbstraction.Executor
             _stateProvider = stateProvider;
             _signer = signer;
             _config = config;
+            _create2FactoryAddress = create2FactoryAddress;
             _singletonAddress = singletonAddress;
             _specProvider = specProvider;
             _blockTree = blockTree;
@@ -152,7 +155,7 @@ namespace Nethermind.AccountAbstraction.Executor
             
             Transaction simulateWalletValidationTransaction = BuildSimulateWalletValidationTransaction(userOperation, parent, currentSpec);
             (bool walletValidationSuccess, UInt256 gasUsedByPayForSelfOp, UserOperationAccessList walletValidationAccessList, string? error) =
-                SimulateWalletValidation(simulateWalletValidationTransaction, parent, transactionProcessor);
+                SimulateWalletValidation(simulateWalletValidationTransaction, userOperation, parent, transactionProcessor);
 
             stopwatch.Stop();
             _logManager.GetClassLogger().Info($"AA: wallet validation for op {userOperation.Hash} completed in {stopwatch.ElapsedMilliseconds}ms");
@@ -167,31 +170,31 @@ namespace Nethermind.AccountAbstraction.Executor
                 return Task.FromResult(ResultWrapper<Keccak>.Fail("wallet simulation verificationGas too low"));
             }
             
+            if (userOperation.AlreadySimulated)
+            {
+                if (!UserOperationAccessList.AccessListContains(userOperation.AccessList.Data,
+                    walletValidationAccessList.Data))
+                {
+                    return Task.FromResult(ResultWrapper<Keccak>.Fail("access list exceeded"));
+                }
+            }
+            else
+            {
+                userOperation.AccessList = walletValidationAccessList;
+            }
+            
             if (userOperation.Paymaster == Address.Zero)
             {
-                if (userOperation.AlreadySimulated)
-                {
-                    if (!UserOperationAccessList.AccessListContains(userOperation.AccessList.Data,
-                        walletValidationAccessList.Data))
-                    {
-                        return Task.FromResult(ResultWrapper<Keccak>.Fail("access list exceeded"));
-                    }
-                }
-                else
-                {
-                    userOperation.AccessList = walletValidationAccessList;
-                }
-
                 userOperation.AlreadySimulated = true;
                 return Task.FromResult(ResultWrapper<Keccak>.Success(userOperation.Hash));
             }
-
+            
             Stopwatch stopwatch2 = new();
             stopwatch2.Start();
             
             Transaction simulatePaymasterValidationTransaction = BuildSimulatePaymasterValidationTransaction(userOperation, gasUsedByPayForSelfOp, parent, currentSpec);
             (bool paymasterValidationSuccess, UInt256 gasUsedByPayForOp, UserOperationAccessList paymasterValidationAccessList, string? paymasterError) = 
-                SimulatePaymasterValidation(simulatePaymasterValidationTransaction, parent, transactionProcessor);
+                SimulatePaymasterValidation(simulatePaymasterValidationTransaction, userOperation, parent, transactionProcessor);
 
             stopwatch.Stop();
             _logManager.GetClassLogger().Info($"AA: paymaster validation for op {userOperation.Hash} completed in {stopwatch.ElapsedMilliseconds}ms");
@@ -216,16 +219,16 @@ namespace Nethermind.AccountAbstraction.Executor
             }
             else
             {
-                UserOperationAccessList.CombineAccessLists(userOperation.AccessList.Data, walletValidationAccessList.Data);
+                UserOperationAccessList.CombineAccessLists(userOperation.AccessList.Data, paymasterValidationAccessList.Data);
             }
 
             userOperation.AlreadySimulated = true;
             return Task.FromResult(ResultWrapper<Keccak>.Success(userOperation.Hash));
         }
         
-        private (bool success, UInt256 gasUsed, UserOperationAccessList accessList, string? error) SimulateWalletValidation(Transaction transaction, BlockHeader parent, ITransactionProcessor transactionProcessor)
+        private (bool success, UInt256 gasUsed, UserOperationAccessList accessList, string? error) SimulateWalletValidation(Transaction transaction, UserOperation userOperation, BlockHeader parent, ITransactionProcessor transactionProcessor)
         {
-            UserOperationBlockTracer blockTracer = SimulateValidation(transaction, parent, transactionProcessor);
+            UserOperationBlockTracer blockTracer = SimulateValidation(transaction, userOperation, parent, transactionProcessor);
 
             string? error = null;
             
@@ -255,9 +258,9 @@ namespace Nethermind.AccountAbstraction.Executor
             return (success, gasUsed, userOperationAccessList, error);
         }
 
-        private (bool success, UInt256 gasUsed, UserOperationAccessList accessList, string? error) SimulatePaymasterValidation(Transaction transaction, BlockHeader parent, ITransactionProcessor transactionProcessor)
+        private (bool success, UInt256 gasUsed, UserOperationAccessList accessList, string? error) SimulatePaymasterValidation(Transaction transaction, UserOperation userOperation, BlockHeader parent, ITransactionProcessor transactionProcessor)
         {
-            UserOperationBlockTracer blockTracer = SimulateValidation(transaction, parent, transactionProcessor);
+            UserOperationBlockTracer blockTracer = SimulateValidation(transaction, userOperation, parent, transactionProcessor);
 
             string? error = null;
 
@@ -287,9 +290,9 @@ namespace Nethermind.AccountAbstraction.Executor
             return (success, gasUsed, userOperationAccessList, error);
         }
 
-        private UserOperationBlockTracer SimulateValidation(Transaction transaction, BlockHeader parent, ITransactionProcessor transactionProcessor)
+        private UserOperationBlockTracer SimulateValidation(Transaction transaction, UserOperation userOperation, BlockHeader parent, ITransactionProcessor transactionProcessor)
         {
-            UserOperationBlockTracer blockTracer = CreateBlockTracer(parent);
+            UserOperationBlockTracer blockTracer = CreateBlockTracer(parent, userOperation);
             ITxTracer txTracer = blockTracer.StartNewTxTrace(transaction);
             transactionProcessor.CallAndRestore(transaction, parent, txTracer);
             blockTracer.EndTxTrace();
@@ -351,14 +354,14 @@ namespace Nethermind.AccountAbstraction.Executor
             transaction.DecodedMaxFeePerGas = fee;
             transaction.SenderAddress = sender;
             
-            _signer.Sign(transaction);
+            if (!systemTransaction) _signer.Sign(transaction);
             transaction.Hash = transaction.CalculateHash();
 
             return transaction;
         }
 
-        private UserOperationBlockTracer CreateBlockTracer(BlockHeader parent) =>
-            new(parent.GasLimit, _signer.Address, _stateProvider, _contract, _logManager.GetClassLogger());
+        private UserOperationBlockTracer CreateBlockTracer(BlockHeader parent, UserOperation userOperation) =>
+            new(parent.GasLimit, userOperation, _stateProvider, _contract, _create2FactoryAddress, _singletonAddress, _logManager.GetClassLogger());
         
         private AbiDefinition LoadContract(JObject obj)
         {

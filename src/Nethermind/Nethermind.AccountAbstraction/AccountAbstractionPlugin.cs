@@ -26,6 +26,7 @@ namespace Nethermind.AccountAbstraction
         private UserOperationPool? _userOperationPool;
         private UserOperationSimulator? _userOperationSimulator;
         private Address _singletonContractAddress = null!;
+        private Address _create2FactoryAddress = null!;
         
         private INethermindApi _nethermindApi = null!;
         private ILogger _logger = null!;
@@ -78,6 +79,7 @@ namespace Nethermind.AccountAbstraction
                         getFromApi.StateProvider!,
                         getFromApi.EngineSigner!,
                         _accountAbstractionConfig,
+                        _create2FactoryAddress,
                         _singletonContractAddress,
                         getFromApi.SpecProvider!,
                         getFromApi.BlockTree!,
@@ -105,6 +107,13 @@ namespace Nethermind.AccountAbstraction
                 {
                     _logger.Info($"Parsed Singleton Address: {singletonContractAddress}");
                     _singletonContractAddress = singletonContractAddress!;
+                }
+                bool parsedCreate2Factory = Address.TryParse(_accountAbstractionConfig.Create2FactoryAddress, out Address? create2FactoryAddress);
+                if (!parsedCreate2Factory) _logger.Error("Account Abstraction Plugin: Singleton contract address could not be parsed");
+                else
+                {
+                    _logger.Info($"Parsed Singleton Address: {create2FactoryAddress}");
+                    _create2FactoryAddress = create2FactoryAddress!;
                 }
             }
 

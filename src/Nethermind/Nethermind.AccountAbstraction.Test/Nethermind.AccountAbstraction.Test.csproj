@@ -50,6 +50,13 @@
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       </Content>
     </ItemGroup>
+
+    <ItemGroup>
+      <None Remove="TestContracts\SingletonFactory.json" />
+      <Content Include="TestContracts\SingletonFactory.json">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </Content>
+    </ItemGroup>
   
   
     <ItemGroup>

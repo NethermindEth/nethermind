@@ -52,6 +52,7 @@ namespace Nethermind.AccountAbstraction.Test
         
         public class Contracts
         {
+            internal AbiDefinition SingletonFactory;
             internal AbiDefinition SingletonAbi;
             internal AbiDefinition SimpleWalletAbi;
             internal AbiDefinition TestCounterAbi;
@@ -61,6 +62,7 @@ namespace Nethermind.AccountAbstraction.Test
             
             public Contracts()
             {
+                SingletonFactory = LoadContract("TestContracts/SingletonFactory.json");
                 SingletonAbi = LoadContract("TestContracts/EntryPoint.json");
                 SimpleWalletAbi = LoadContract("TestContracts/SimpleWallet.json");
                 TestCounterAbi = LoadContract("TestContracts/TestCounter.json");
@@ -124,20 +126,29 @@ namespace Nethermind.AccountAbstraction.Test
 
             public async Task<(Address, Address?, Address?)> Deploy(TestAccountAbstractionRpcBlockchain chain, byte[]? miscContractCode = null)
             {
+                Transaction singletonFactoryTx = Core.Test.Builders.Build.A.Transaction.WithCode(SingletonFactory.Bytecode!).WithGasLimit(6_000_000).WithNonce(0).WithValue(0).SignedAndResolved(ContractCreatorPrivateKey).TestObject;
+                await chain.AddBlock(true, singletonFactoryTx);
+                Address singletonFactoryAddress = chain.Bridge.GetReceipt(singletonFactoryTx.Hash!).ContractAddress!;
+
+                byte[] singletonConstructorBytes = Bytes.Concat(SingletonAbi.Bytecode!, _encoder.Encode(AbiEncodingStyle.None, SingletonAbi.Constructors[0].GetCallInfo().Signature, singletonFactoryAddress, 0, 2));
+                byte[] createSingletonBytes = _encoder.Encode(AbiEncodingStyle.IncludeSignature, SingletonFactory.Functions["deploy"].GetCallInfo().Signature, singletonConstructorBytes, Bytes.Zero32);
+                
+                Transaction singletonTx = Core.Test.Builders.Build.A.Transaction.WithTo(singletonFactoryAddress).WithData(createSingletonBytes).WithGasLimit(6_000_000).WithNonce(1).WithValue(0).SignedAndResolved(ContractCreatorPrivateKey).TestObject;
+                await chain.AddBlock(true, singletonTx);
+
+                Address computedAddress = new(Keccak.Compute(Bytes.Concat(Bytes.FromHexString("0xff"), singletonFactoryAddress.Bytes, Bytes.Zero32, Keccak.Compute(singletonConstructorBytes).Bytes)).Bytes.TakeLast(20).ToArray());
+
+                TxReceipt createSingletonTxReceipt = chain.Bridge.GetReceipt(singletonTx.Hash!);
+                createSingletonTxReceipt.Error.Should().BeNullOrEmpty($"Contract transaction {computedAddress!} was not deployed.");
+                chain.State.GetCode(computedAddress).Should().NotBeNullOrEmpty();
+                
                 bool createMiscContract = miscContractCode is not null;
                 IList<Transaction> transactionsToInclude = new List<Transaction>();
-
-                byte[] singletonConstructorBytes = Bytes.Concat(SingletonAbi.Bytecode!, _encoder.Encode(AbiEncodingStyle.None, SingletonAbi.Constructors[0].GetCallInfo().Signature, Address.Zero, 0, 2));
-                Transaction singletonTx = Core.Test.Builders.Build.A.Transaction.WithCode(singletonConstructorBytes).WithGasLimit(6_000_000).WithNonce(0).WithValue(0).SignedAndResolved(ContractCreatorPrivateKey).TestObject;
-                await chain.AddBlock(true, singletonTx);
-                TxReceipt createSingletonTxReceipt = chain.Bridge.GetReceipt(singletonTx.Hash!);
-                createSingletonTxReceipt.ContractAddress.Should().NotBeNull($"Contract transaction {singletonTx.Hash!} was not deployed.");
-                chain.State.GetCode(createSingletonTxReceipt.ContractAddress!).Should().NotBeNullOrEmpty();
-
-                Transaction? walletTx = Core.Test.Builders.Build.A.Transaction.WithCode(GetWalletConstructor(createSingletonTxReceipt.ContractAddress!)).WithGasLimit(LargeGasLimit).WithNonce(1).WithValue(0).SignedAndResolved(ContractCreatorPrivateKey).TestObject;
+                
+                Transaction? walletTx = Core.Test.Builders.Build.A.Transaction.WithCode(GetWalletConstructor(computedAddress)).WithGasLimit(LargeGasLimit).WithNonce(2).WithValue(0).SignedAndResolved(ContractCreatorPrivateKey).TestObject;
                 transactionsToInclude.Add(walletTx!);
                 
-                Transaction? miscContractTx = createMiscContract ? Core.Test.Builders.Build.A.Transaction.WithCode(miscContractCode!).WithGasLimit(LargeGasLimit).WithNonce(2).WithValue(0).SignedAndResolved(ContractCreatorPrivateKey).TestObject : null;
+                Transaction? miscContractTx = createMiscContract ? Core.Test.Builders.Build.A.Transaction.WithCode(miscContractCode!).WithGasLimit(LargeGasLimit).WithNonce(3).WithValue(0).SignedAndResolved(ContractCreatorPrivateKey).TestObject : null;
                 if (createMiscContract) transactionsToInclude.Add(miscContractTx!);
                 
                 await chain.AddBlock(true, transactionsToInclude.ToArray());
@@ -150,7 +161,7 @@ namespace Nethermind.AccountAbstraction.Test
                 chain.State.GetCode(createWalletTxReceipt?.ContractAddress!).Should().NotBeNullOrEmpty();
                 if (createMiscContract) chain.State.GetCode(miscContractTxReceipt?.ContractAddress!).Should().NotBeNullOrEmpty();
                 
-                return (createSingletonTxReceipt.ContractAddress!, createWalletTxReceipt?.ContractAddress!, miscContractTxReceipt?.ContractAddress!);
+                return (computedAddress, createWalletTxReceipt?.ContractAddress!, miscContractTxReceipt?.ContractAddress!);
             }
         }
 
@@ -300,7 +311,7 @@ namespace Nethermind.AccountAbstraction.Test
                 _encoder.Encode(
                     AbiEncodingStyle.None,
                     _contracts.TokenPaymasterAbi.Constructors[0].GetCallInfo().Signature, "tst", 
-                    new Address("0xd75a3a95360e44a3874e691fb48d77855f127069")));
+                    new Address("0x10514d85e3417b8a5ba3fdf4a2065df48f849f77")));
             
             (Address singletonAddress, Address? walletAddress, Address? paymasterAddress) = await _contracts.Deploy(chain, paymasterBytecode);
 
@@ -349,30 +360,34 @@ namespace Nethermind.AccountAbstraction.Test
             AbiSignature abiSignature = new AbiSignature("userOperation", 
                 AbiType.Address, 
                 AbiType.UInt256,
-                AbiType.Bytes32,
-                AbiType.Bytes32,
+                AbiType.DynamicBytes,
+                AbiType.DynamicBytes,
                 AbiType.UInt256,
                 AbiType.UInt256,
                 AbiType.UInt256,
                 AbiType.UInt256,
                 AbiType.UInt256,
                 AbiType.Address,
-                AbiType.Bytes32);
-
+                AbiType.DynamicBytes,
+                AbiType.DynamicBytes);
+            
             byte[] bytes = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, abiSignature,
                 op.Sender!,
                 op.Nonce,
-                Keccak.Compute(op.InitCode!),
-                Keccak.Compute(op.CallData!),
+                op.InitCode!,
+                op.CallData!,
                 op.CallGas,
                 op.VerificationGas,
                 op.PreVerificationGas,
                 op.MaxFeePerGas,
                 op.MaxPriorityFeePerGas,
                 op.Paymaster!,
-                Keccak.Compute(op.PaymasterData!));
+                op.PaymasterData!,
+                op.Signature);
 
-            Keccak abiMessage = Keccak.Compute(bytes);
+            byte[] encoded = bytes.Slice(0, bytes.Length - 32);
+
+            Keccak abiMessage = Keccak.Compute(encoded);
 
             Signer signer = new(1, privateKey, NullLogManager.Instance);
             Signature signature = signer.Sign(Keccak.Compute(

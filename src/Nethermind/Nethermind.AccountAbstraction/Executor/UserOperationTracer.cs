@@ -33,21 +33,24 @@ namespace Nethermind.AccountAbstraction.Executor
     public class UserOperationBlockTracer : IBlockTracer
     {
         private readonly long _gasLimit;
-        private readonly Address _beneficiary;
+        private readonly UserOperation _userOperation;
         private readonly IStateProvider _stateProvider;
         private readonly AbiDefinition _abi;
+        private readonly Address _create2FactoryAddress;
+        private readonly Address _entryPointAddress;
         private readonly ILogger _logger;
         private readonly AbiEncoder _abiEncoder = new();
-
-
+        
         private UserOperationTxTracer? _tracer;
 
-        public UserOperationBlockTracer(long gasLimit, Address beneficiary, IStateProvider stateProvider, AbiDefinition abi, ILogger logger)
+        public UserOperationBlockTracer(long gasLimit, UserOperation userOperation, IStateProvider stateProvider, AbiDefinition abi, Address create2FactoryAddress, Address entryPointAddress, ILogger logger)
         {
             _gasLimit = gasLimit;
-            _beneficiary = beneficiary;
+            _userOperation = userOperation;
             _stateProvider = stateProvider;
             _abi = abi;
+            _create2FactoryAddress = create2FactoryAddress;
+            _entryPointAddress = entryPointAddress;
             _logger = logger;
             
             Output = Array.Empty<byte>();
@@ -74,8 +77,8 @@ namespace Nethermind.AccountAbstraction.Executor
         public ITxTracer StartNewTxTrace(Transaction? tx)
         {
             return tx is null
-                ? new UserOperationTxTracer(null, _stateProvider, _logger)
-                : _tracer = new UserOperationTxTracer(tx, _stateProvider, _logger);
+                ? new UserOperationTxTracer(null, _userOperation, _stateProvider, _create2FactoryAddress, _entryPointAddress, _logger)
+                : _tracer = new UserOperationTxTracer(tx, _userOperation, _stateProvider, _create2FactoryAddress, _entryPointAddress, _logger);
         }
 
         public void EndTxTrace()
@@ -125,12 +128,15 @@ namespace Nethermind.AccountAbstraction.Executor
 
     public class UserOperationTxTracer : ITxTracer
     {
-        public UserOperationTxTracer(Transaction? transaction, IStateProvider stateProvider, ILogger logger)
+        public UserOperationTxTracer(Transaction? transaction, UserOperation userOperation, IStateProvider stateProvider, Address create2FactoryAddress, Address entryPointAddress, ILogger logger)
         {
             Transaction = transaction;
             Success = true;
             AccessedStorage = new Dictionary<Address, HashSet<UInt256>>();
+            _userOperation = userOperation;
             _stateProvider = stateProvider;
+            _create2FactoryAddress = create2FactoryAddress;
+            _entryPointAddress = entryPointAddress;
             _logger = logger;
             Output = Array.Empty<byte>();
         }
@@ -154,15 +160,20 @@ namespace Nethermind.AccountAbstraction.Executor
             Instruction.SELFBALANCE,
             Instruction.BALANCE,
             Instruction.ORIGIN,
+            Instruction.COINBASE
         };
         
-        private List<int> _codeAccessedAtDepth = new();
+        private readonly UserOperation _userOperation;
         private IStateProvider _stateProvider;
+        private readonly Address _create2FactoryAddress;
+        private readonly Address _entryPointAddress;
         private readonly ILogger _logger;
+
+        private bool paymasterValidationMode = true;
 
 
         public bool IsTracingReceipt => true;
-        public bool IsTracingActions => false;
+        public bool IsTracingActions => true;
         public bool IsTracingOpLevelStorage => false;
         public bool IsTracingMemory => false;
         public bool IsTracingInstructions => true;
@@ -223,11 +234,9 @@ namespace Nethermind.AccountAbstraction.Executor
                 _logger.Info($"AA: Encountered banned opcode {opcode} during simulation at depth {depth} pc {pc}");
                 Success = false;
                 Error ??= $"simulation: encountered banned opcode {opcode} at depth {depth} pc {pc}";
-            }
-
-            if (depth > 2 && opcode == Instruction.CODECOPY)
+            } else if (depth == 1 && opcode == Instruction.SELFBALANCE)
             {
-                _codeAccessedAtDepth.Add(depth);
+                // TODO: IMPLEMENT PAYMASTER MODE WITCHING
             }
         }
 
@@ -281,22 +290,35 @@ namespace Nethermind.AccountAbstraction.Executor
             ExecutionType callType,
             bool isPrecompileCall = false)
         {
-            throw new NotImplementedException();
+            if (paymasterValidationMode)
+            {
+                if (to is not null)
+                {
+                    if (ContainsSelfDestructOrDelegateCall(to))
+                    {
+                        Success = false;
+                    }
+                }
+            }
         }
 
         public void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
         {
-            throw new NotImplementedException();
         }
 
         public void ReportActionError(EvmExceptionType evmExceptionType)
         {
-            throw new NotImplementedException();
         }
 
         public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
         {
-            throw new NotImplementedException();
+            if (paymasterValidationMode)
+            {
+                if (ContainsSelfDestructOrDelegateCall(deploymentAddress))
+                {
+                    Success = false;
+                }
+            }
         }
 
         public void ReportBlockHash(Keccak blockHash)
@@ -335,71 +357,51 @@ namespace Nethermind.AccountAbstraction.Executor
                 }
                 AccessedStorage.Add(storageCell.Address, new HashSet<UInt256>{storageCell.Index});
             }
-
-            bool ContainsSelfDestructOrDelegateCall(Address address)
-            {
-                // simple static analysis
-                byte[] code = _stateProvider.GetCode(address);
-                
-                int i = 0;
-                while (i < code.Length)
-                {
-                    byte currentInstruction = code[i];
-                    
-                    if (currentInstruction == (byte)Instruction.SELFDESTRUCT
-                        || currentInstruction == (byte)Instruction.DELEGATECALL)
-                    {
-                        return true;
-                    }
-
-                    // push opcodes
-                    else if (currentInstruction >= 0x60 || currentInstruction <= 0x7f)
-                    {
-                        i += currentInstruction - 0x5f;
-                    }
-
-                    i++;
-                }
-
-                return false;
-            }
-
-            Address[] accessedAddressesArray = accessedAddresses.ToArray();
-            Address? walletOrPaymasterAddress = accessedAddressesArray.Length > 2 ? accessedAddressesArray[2] : null;
-            if (walletOrPaymasterAddress is null)
-            {
-                Success = false;
-                return;
-            }
-
-            List<Address>? furtherAddresses = accessedAddressesArray.Length > 3 ? accessedAddressesArray.Skip(3).ToList() : null;
             
+            Address walletAddress = _userOperation.Sender;
+            Address? paymasterAddress = _userOperation.Paymaster == Address.Zero ? null : _userOperation.Paymaster;
+            Address[] furtherAddresses = accessedAddresses.Except(new []{_create2FactoryAddress, Address.Zero, _entryPointAddress, _userOperation.Paymaster, _userOperation.Sender}).ToArray();
+
             foreach (StorageCell accessedStorageCell in accessedStorageCells)
             {
-                if (accessedStorageCell.Address == walletOrPaymasterAddress)
+                if (accessedStorageCell.Address == paymasterAddress || accessedStorageCell.Address == walletAddress)
                 {
                     AddToAccessedStorage(accessedStorageCell);
                 }
-
-                if (furtherAddresses is not null)
-                {
-                    if (furtherAddresses.Contains(accessedStorageCell.Address))
-                    {
-                        Success = false;
-                    }
-                }
-            }
-
-
-            foreach (int depth in _codeAccessedAtDepth)
-            {
-                Address codeAccessedAddress = accessedAddressesArray[depth];
-                if (!_stateProvider.HasCode(codeAccessedAddress)
-                    || ContainsSelfDestructOrDelegateCall(codeAccessedAddress))
+                
+                if (furtherAddresses.Contains(accessedStorageCell.Address))
                 {
                     Success = false;
                 }
             }
+        }
+        
+        private bool ContainsSelfDestructOrDelegateCall(Address address)
+        {
+            // simple static analysis
+            byte[] code = _stateProvider.GetCode(address);
+                
+            int i = 0;
+            while (i < code.Length)
+            {
+                byte currentInstruction = code[i];
+                    
+                if (currentInstruction == (byte)Instruction.SELFDESTRUCT
+                    || currentInstruction == (byte)Instruction.DELEGATECALL)
+                {
+                    return true;
+                }
+
+                // push opcodes
+                else if (currentInstruction >= 0x60 && currentInstruction <= 0x7f)
+                {
+                    i += currentInstruction - 0x5f;
+                }
+
+                i++;
+            }
+
+            return false;
         }
     }
 }

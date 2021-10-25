@@ -37,6 +37,12 @@ namespace Nethermind.AccountAbstraction
                 "Defines the hex string representation of the address of the singleton contract to which transactions will be made",
             DefaultValue = "")]
         string SingletonContractAddress { get; set; }
+        
+        [ConfigItem(
+            Description =
+                "Defines the hex string representation of the address of the create2Factory contract which was used to create the entryPoint",
+            DefaultValue = "")]
+        string Create2FactoryAddress { get; set; }
 
         [ConfigItem(
             Description = "Defines the minimum gas price for a user operation to be accepted",
