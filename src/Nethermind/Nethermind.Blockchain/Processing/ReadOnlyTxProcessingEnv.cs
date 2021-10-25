@@ -70,7 +70,7 @@ namespace Nethermind.Blockchain.Processing
             BlockTree = readOnlyBlockTree ?? throw new ArgumentNullException(nameof(readOnlyBlockTree));
             BlockhashProvider = new BlockhashProvider(BlockTree, logManager);
 
-            Machine = new VirtualMachine(specProvider.ChainId, BlockhashProvider, logManager);
+            Machine = new VirtualMachine(BlockhashProvider, specProvider, logManager);
             TransactionProcessor = new TransactionProcessor(specProvider, worldState, Machine, logManager);
         }
 

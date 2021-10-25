@@ -80,9 +80,9 @@ namespace Nethermind.Blockchain.Test
                 LimboLogs.Instance, 
                 transactionComparerProvider.GetDefaultComparer());
             BlockhashProvider blockhashProvider = new (_blockTree, LimboLogs.Instance);
-            VirtualMachine virtualMachine = new (
-                specProvider.ChainId,
+            VirtualMachine virtualMachine = new(
                 blockhashProvider,
+                specProvider,
                 LimboLogs.Instance);
             TransactionProcessor transactionProcessor = new (
                 specProvider,
@@ -126,7 +126,7 @@ namespace Nethermind.Blockchain.Test
             Block block1B = Build.A.Block.WithParent(block0).WithDifficulty(5).WithTotalDifficulty(5L).TestObject;
             Block block2B = Build.A.Block.WithParent(block1B).WithDifficulty(6).WithTotalDifficulty(11L).TestObject;
 
-            _blockTree.BlockAddedToMain += (_, args) =>
+            _blockTree.BlockAddedToMain += (sender, args) =>
             {
                 events.Add(args.Block);
 

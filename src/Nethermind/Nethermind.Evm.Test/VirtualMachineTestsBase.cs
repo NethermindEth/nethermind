@@ -79,7 +79,7 @@ namespace Nethermind.Evm.Test
             Storage = new StorageProvider(trieStore, TestState, logManager);
             _ethereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId, logManager);
             IBlockhashProvider blockhashProvider = TestBlockhashProvider.Instance;
-            Machine = new VirtualMachine(SpecProvider.ChainId, blockhashProvider, logManager);
+            Machine = new VirtualMachine(blockhashProvider, SpecProvider, logManager);
             _processor = new TransactionProcessor(SpecProvider, TestState, Storage, Machine, logManager);
         }
 
