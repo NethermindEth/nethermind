@@ -77,7 +77,7 @@ namespace Nethermind.JsonRpc.Benchmark
             ChainLevelInfoRepository chainLevelInfoRepository = new (blockInfoDb);
             BlockTree blockTree = new(dbProvider, chainLevelInfoRepository, specProvider, NullBloomStorage.Instance, LimboLogs.Instance);
             _blockhashProvider = new BlockhashProvider(blockTree, LimboLogs.Instance);
-            _virtualMachine = new VirtualMachine(stateProvider, storageProvider, _blockhashProvider, specProvider, LimboLogs.Instance);
+            _virtualMachine = new VirtualMachine(_blockhashProvider, specProvider, LimboLogs.Instance);
 
             Block genesisBlock = Build.A.Block.Genesis.TestObject;
             blockTree.SuggestBlock(genesisBlock);
