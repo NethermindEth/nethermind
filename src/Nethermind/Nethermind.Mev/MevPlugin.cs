@@ -91,6 +91,7 @@ namespace Nethermind.Mev
                         getFromApi.TxValidator!,
                         getFromApi.SpecProvider!,
                         _mevConfig,
+                        getFromApi.ChainHeadStateProvider!,
                         getFromApi.LogManager);
                 }
 

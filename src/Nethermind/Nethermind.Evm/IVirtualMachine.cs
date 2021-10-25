@@ -24,7 +24,7 @@ namespace Nethermind.Evm
 {
     public interface IVirtualMachine
     {
-        TransactionSubstate Run(EvmState state, IWorldState worldState, IReleaseSpec releaseSpec, ITxTracer tracer, long intrinsicGas);
+        TransactionSubstate Run(EvmState state, IWorldState worldState, ITxTracer tracer);
         
         CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec spec);
     }

@@ -47,7 +47,7 @@ namespace Nethermind.Serialization.Json
 
         public override UInt256? ReadJson(JsonReader reader, Type objectType, UInt256? existingValue, bool hasExistingValue, JsonSerializer serializer)
         {
-            if (reader.TokenType == JsonToken.Null)
+            if (reader.TokenType == JsonToken.Null || reader.Value is null)
             {
                 return null;
             }

@@ -68,6 +68,7 @@ namespace Nethermind.Evm
         private readonly byte[] _chainId;
 
         private readonly IBlockhashProvider _blockhashProvider;
+        private readonly ISpecProvider _specProvider;
         private static readonly ICache<Keccak, CodeInfo> _codeCache = new LruCache<Keccak, CodeInfo>(MemoryAllowance.CodeCacheSize, MemoryAllowance.CodeCacheSize, "VM bytecodes");
         private readonly ILogger _logger;
         private IWorldState _worldState;
@@ -80,17 +81,18 @@ namespace Nethermind.Evm
         private ITxTracer _txTracer = NullTxTracer.Instance;
 
         public VirtualMachine(
-            ulong chainId,
             IBlockhashProvider? blockhashProvider,
+            ISpecProvider? specProvider,
             ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockhashProvider = blockhashProvider ?? throw new ArgumentNullException(nameof(blockhashProvider));
-            _chainId = ((UInt256)chainId).ToBigEndian();
+            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+            _chainId = ((UInt256)specProvider.ChainId).ToBigEndian();
             InitializePrecompiledContracts();
         }
 
-        public TransactionSubstate Run(EvmState state, IWorldState worldState, IReleaseSpec releaseSpec, ITxTracer txTracer, long intrinsicGas)
+        public TransactionSubstate Run(EvmState state, IWorldState worldState, ITxTracer txTracer)
         {
             _txTracer = txTracer;
 
@@ -98,7 +100,7 @@ namespace Nethermind.Evm
             _storage = worldState.StorageProvider;
             _worldState = worldState;
             
-            IReleaseSpec spec = releaseSpec;
+            IReleaseSpec spec = _specProvider.GetSpec(state.Env.TxExecutionContext.Header.Number);
             EvmState currentState = state;
             byte[] previousCallResult = null;
             ZeroPaddedSpan previousCallOutput = ZeroPaddedSpan.Empty;
@@ -222,7 +224,7 @@ namespace Nethermind.Evm
                                     }
                                     else
                                     {
-                                        _txTracer.ReportActionEnd(currentState.GasAvailable - intrinsicGas, _returnDataBuffer);
+                                        _txTracer.ReportActionEnd(currentState.GasAvailable, _returnDataBuffer);
                                     }
                                 }
                             }

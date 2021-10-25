@@ -145,6 +145,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                 Eip3198Transition = chainSpecJson.Params.Eip3198Transition,
                 Eip3541Transition = chainSpecJson.Params.Eip3541Transition,
                 Eip3529Transition = chainSpecJson.Params.Eip3529Transition,
+                Eip3607Transition = chainSpecJson.Params.Eip3607Transition,
                 TransactionPermissionContract = chainSpecJson.Params.TransactionPermissionContract,
                 TransactionPermissionContractTransition = chainSpecJson.Params.TransactionPermissionContractTransition,
                 ValidateChainIdTransition = chainSpecJson.Params.ValidateChainIdTransition,
@@ -152,7 +153,10 @@ namespace Nethermind.Specs.ChainSpecStyle
                 Eip1559ElasticityMultiplier = chainSpecJson.Params.Eip1559ElasticityMultiplier ?? Eip1559Constants.ElasticityMultiplier,
                 Eip1559BaseFeeInitialValue = chainSpecJson.Params.Eip1559BaseFeeInitialValue ?? Eip1559Constants.ForkBaseFee,
                 Eip1559BaseFeeMaxChangeDenominator = chainSpecJson.Params.Eip1559BaseFeeMaxChangeDenominator ??
-                                                     Eip1559Constants.BaseFeeMaxChangeDenominator
+                                                     Eip1559Constants.BaseFeeMaxChangeDenominator,
+                Eip1559FeeCollector = chainSpecJson.Params.Eip1559FeeCollector,
+                Eip1559FeeCollectorTransition = chainSpecJson.Params.Eip1559FeeCollectorTransition
+                
             };
 
             chainSpec.Parameters.Eip152Transition ??= GetTransitionForExpectedPricing("blake2_f", "price.blake2_f.gas_per_round", 1);

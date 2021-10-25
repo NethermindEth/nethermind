@@ -40,7 +40,7 @@ namespace Nethermind.Mev.Test
             ISpecProvider specProvider,
             IMevConfig mevConfig,
             ILogManager logManager)
-            : base(blockTree, simulator, timestamper, txValidator, specProvider, mevConfig, logManager)
+            : base(blockTree, simulator, timestamper, txValidator, specProvider, mevConfig, new MockProvider(), logManager)
         {
         }
 
@@ -82,5 +82,10 @@ namespace Nethermind.Mev.Test
 
             return null;
         }
+    }
+
+    public class MockProvider : IAccountStateProvider
+    {
+        public Account GetAccount(Address address) => new Account(0);
     }
 }
