@@ -423,7 +423,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             ResultWrapper<ParityTxTraceFromStore[]> traces = context.TraceRpcModule.trace_transaction(transaction2.Hash!);
             Assert.AreEqual(3, traces.Data.Length);
-            Assert.AreEqual(2742, traces.Data[0].Action.Result.GasUsed);
+            Assert.AreEqual(27742, traces.Data[0].Action.Result.GasUsed);
             Assert.AreEqual(transaction2.Hash!, traces.Data[0].TransactionHash);
             
             long[] positions = {0};

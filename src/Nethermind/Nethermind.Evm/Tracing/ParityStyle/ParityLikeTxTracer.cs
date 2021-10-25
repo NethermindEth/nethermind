@@ -247,7 +247,6 @@ namespace Nethermind.Evm.Tracing.ParityStyle
                 _trace.Output = output;
             }
 
-            // _trace.Action.Result.GasUsed += gasSpent;
             _trace.Action.Result.Output = output;
         }
 

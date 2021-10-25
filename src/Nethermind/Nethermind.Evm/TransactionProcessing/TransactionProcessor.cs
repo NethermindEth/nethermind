@@ -277,7 +277,6 @@ namespace Nethermind.Evm.TransactionProcessing
 
             long unspentGas = gasLimit - intrinsicGas;
             long spentGas = gasLimit;
-            bool gasLeftForTxExecution = !(unspentGas == 0);
 
             Snapshot snapshot = _worldState.TakeSnapshot();
             _stateProvider.SubtractFromBalance(caller, value, spec);
@@ -332,7 +331,7 @@ namespace Nethermind.Evm.TransactionProcessing
                         state.WarmUp(recipient); // eip-2929
                     }
 
-                    substate = _virtualMachine.Run(state, _worldState, txTracer);
+                    substate = _virtualMachine.Run(state, _worldState, txTracer, intrinsicGas);
                     unspentGas = state.GasAvailable;
 
                     if (txTracer.IsTracingAccess)
