@@ -82,7 +82,7 @@ namespace Nethermind.AccountAbstraction.Test
             private AccountAbstractionConfig _accountAbstractionConfig = new AccountAbstractionConfig() 
                 {
                     Enabled = true, 
-                    SingletonContractAddress = "0x10514d85e3417b8a5ba3fdf4a2065df48f849f77",
+                    SingletonContractAddress = "0xdb8b5f6080a8e466b64a8d7458326cb650b3353f",
                     Create2FactoryAddress = "0xd75a3a95360e44a3874e691fb48d77855f127069",
                     UserOperationPoolSize = 200
                 };

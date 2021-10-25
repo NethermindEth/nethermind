@@ -169,7 +169,8 @@ namespace Nethermind.AccountAbstraction.Executor
         private readonly Address _entryPointAddress;
         private readonly ILogger _logger;
 
-        private bool paymasterValidationMode = true;
+        private bool paymasterValidationMode = false;
+        private int selfBalanceCounter = 0;
 
 
         public bool IsTracingReceipt => true;
@@ -236,7 +237,8 @@ namespace Nethermind.AccountAbstraction.Executor
                 Error ??= $"simulation: encountered banned opcode {opcode} at depth {depth} pc {pc}";
             } else if (depth == 1 && opcode == Instruction.SELFBALANCE)
             {
-                // TODO: IMPLEMENT PAYMASTER MODE WITCHING
+                selfBalanceCounter++;
+                if (selfBalanceCounter == 2) paymasterValidationMode = true;
             }
         }
 

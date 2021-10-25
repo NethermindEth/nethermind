@@ -153,184 +153,74 @@ namespace Nethermind.AccountAbstraction.Executor
             ReadOnlyTxProcessingEnv txProcessingEnv = new(_dbProvider, _trieStore, _blockTree, _specProvider, _logManager);
             ITransactionProcessor transactionProcessor = txProcessingEnv.Build(_stateProvider.StateRoot);
             
-            Transaction simulateWalletValidationTransaction = BuildSimulateWalletValidationTransaction(userOperation, parent, currentSpec);
-            (bool walletValidationSuccess, UInt256 gasUsedByPayForSelfOp, UserOperationAccessList walletValidationAccessList, string? error) =
-                SimulateWalletValidation(simulateWalletValidationTransaction, userOperation, parent, transactionProcessor);
+            Transaction simulateValidationTransaction = BuildSimulateValidationTransaction(userOperation, parent, currentSpec);
+            (bool validationSuccess, UserOperationAccessList validationAccessList, string? error) =
+                SimulateValidation(simulateValidationTransaction, userOperation, parent, transactionProcessor);
 
             stopwatch.Stop();
-            _logManager.GetClassLogger().Info($"AA: wallet validation for op {userOperation.Hash} completed in {stopwatch.ElapsedMilliseconds}ms");
+            _logManager.GetClassLogger().Info($"AA: validation for op {userOperation.Hash} completed in {stopwatch.ElapsedMilliseconds}ms");
             
-            if (!walletValidationSuccess)
+            if (!validationSuccess)
             {
-                return Task.FromResult(ResultWrapper<Keccak>.Fail(error ?? "unknown wallet simulation failure"));
+                return Task.FromResult(ResultWrapper<Keccak>.Fail(error ?? "unknown simulation failure"));
             }
 
-            if (userOperation.VerificationGas < gasUsedByPayForSelfOp)
-            {
-                return Task.FromResult(ResultWrapper<Keccak>.Fail("wallet simulation verificationGas too low"));
-            }
-            
             if (userOperation.AlreadySimulated)
             {
                 if (!UserOperationAccessList.AccessListContains(userOperation.AccessList.Data,
-                    walletValidationAccessList.Data))
+                    validationAccessList.Data))
                 {
                     return Task.FromResult(ResultWrapper<Keccak>.Fail("access list exceeded"));
                 }
             }
             else
             {
-                userOperation.AccessList = walletValidationAccessList;
-            }
-            
-            if (userOperation.Paymaster == Address.Zero)
-            {
+                userOperation.AccessList = validationAccessList;
                 userOperation.AlreadySimulated = true;
-                return Task.FromResult(ResultWrapper<Keccak>.Success(userOperation.Hash));
             }
             
-            Stopwatch stopwatch2 = new();
-            stopwatch2.Start();
-            
-            Transaction simulatePaymasterValidationTransaction = BuildSimulatePaymasterValidationTransaction(userOperation, gasUsedByPayForSelfOp, parent, currentSpec);
-            (bool paymasterValidationSuccess, UInt256 gasUsedByPayForOp, UserOperationAccessList paymasterValidationAccessList, string? paymasterError) = 
-                SimulatePaymasterValidation(simulatePaymasterValidationTransaction, userOperation, parent, transactionProcessor);
-
-            stopwatch.Stop();
-            _logManager.GetClassLogger().Info($"AA: paymaster validation for op {userOperation.Hash} completed in {stopwatch.ElapsedMilliseconds}ms");
-
-            if (!paymasterValidationSuccess)
-            {
-                return Task.FromResult(ResultWrapper<Keccak>.Fail(paymasterError ?? "unknown wallet simulation failure"));
-            }
-
-            if (userOperation.VerificationGas < gasUsedByPayForSelfOp + gasUsedByPayForOp)
-            {
-                return Task.FromResult(ResultWrapper<Keccak>.Fail("paymaster simulation verificationGas too low"));
-            }
-            
-            if (userOperation.AlreadySimulated)
-            {
-                if (!UserOperationAccessList.AccessListContains(userOperation.AccessList.Data,
-                    paymasterValidationAccessList.Data))
-                {
-                    return Task.FromResult(ResultWrapper<Keccak>.Fail("access list exceeded"));
-                }
-            }
-            else
-            {
-                UserOperationAccessList.CombineAccessLists(userOperation.AccessList.Data, paymasterValidationAccessList.Data);
-            }
-
-            userOperation.AlreadySimulated = true;
             return Task.FromResult(ResultWrapper<Keccak>.Success(userOperation.Hash));
         }
         
-        private (bool success, UInt256 gasUsed, UserOperationAccessList accessList, string? error) SimulateWalletValidation(Transaction transaction, UserOperation userOperation, BlockHeader parent, ITransactionProcessor transactionProcessor)
-        {
-            UserOperationBlockTracer blockTracer = SimulateValidation(transaction, userOperation, parent, transactionProcessor);
-
-            string? error = null;
-            
-            if (!blockTracer.Success)
-            {
-                if (blockTracer.FailedOp is not null)
-                {
-                    error = blockTracer.FailedOp.ToString()!;
-                }
-                else
-                {
-                    error = blockTracer.Error;
-                }
-                return (false, UInt256.Zero, UserOperationAccessList.Empty, error);
-            }
-            
-            // uint gasUsedByPayForSelfOp
-            object[] result = _abiEncoder.Decode(
-                AbiEncodingStyle.None,
-                _contract.Functions["simulateWalletValidation"].GetReturnInfo().Signature, 
-                blockTracer.Output);
-
-            bool success = blockTracer.Success;
-            UInt256 gasUsed = (UInt256) result[0];
-            UserOperationAccessList userOperationAccessList = new UserOperationAccessList(blockTracer.AccessedStorage);
-
-            return (success, gasUsed, userOperationAccessList, error);
-        }
-
-        private (bool success, UInt256 gasUsed, UserOperationAccessList accessList, string? error) SimulatePaymasterValidation(Transaction transaction, UserOperation userOperation, BlockHeader parent, ITransactionProcessor transactionProcessor)
-        {
-            UserOperationBlockTracer blockTracer = SimulateValidation(transaction, userOperation, parent, transactionProcessor);
-
-            string? error = null;
-
-            if (!blockTracer.Success)
-            {
-                if (blockTracer.FailedOp is not null)
-                {
-                    error = blockTracer.FailedOp.ToString()!;
-                }
-                else
-                {
-                    error = blockTracer.Error;
-                }
-                return (false, UInt256.Zero, UserOperationAccessList.Empty, error);
-            }
-
-            // bytes context, uint gasUsedByPayForOp
-            object[] result = _abiEncoder.Decode(
-                AbiEncodingStyle.None,
-                _contract.Functions["simulatePaymasterValidation"].GetReturnInfo().Signature, 
-                blockTracer.Output);
-
-            bool success = blockTracer.Success;
-            UInt256 gasUsed = (UInt256) result[1];
-            UserOperationAccessList userOperationAccessList = new UserOperationAccessList(blockTracer.AccessedStorage);
-
-            return (success, gasUsed, userOperationAccessList, error);
-        }
-
-        private UserOperationBlockTracer SimulateValidation(Transaction transaction, UserOperation userOperation, BlockHeader parent, ITransactionProcessor transactionProcessor)
+        private (bool success, UserOperationAccessList accessList, string? error) SimulateValidation(Transaction transaction, UserOperation userOperation, BlockHeader parent, ITransactionProcessor transactionProcessor)
         {
             UserOperationBlockTracer blockTracer = CreateBlockTracer(parent, userOperation);
             ITxTracer txTracer = blockTracer.StartNewTxTrace(transaction);
             transactionProcessor.CallAndRestore(transaction, parent, txTracer);
             blockTracer.EndTxTrace();
 
-            return blockTracer;
+            string? error = null;
+            
+            if (!blockTracer.Success)
+            {
+                if (blockTracer.FailedOp is not null)
+                {
+                    error = blockTracer.FailedOp.ToString()!;
+                }
+                else
+                {
+                    error = blockTracer.Error;
+                }
+                return (false, UserOperationAccessList.Empty, error);
+            }
+            
+            UserOperationAccessList userOperationAccessList = new UserOperationAccessList(blockTracer.AccessedStorage);
+
+            return (true, userOperationAccessList, error);
         }
 
-        private Transaction BuildSimulateWalletValidationTransaction(
+        private Transaction BuildSimulateValidationTransaction(
             UserOperation userOperation, 
             BlockHeader parent,
             IReleaseSpec spec)
         {
-            AbiSignature abiSignature = _contract.Functions["simulateWalletValidation"].GetCallInfo().Signature;
+            AbiSignature abiSignature = _contract.Functions["simulateValidation"].GetCallInfo().Signature;
             UserOperationAbi userOperationAbi = userOperation.Abi;
             
             byte[] computedCallData = _abiEncoder.Encode(
                 AbiEncodingStyle.IncludeSignature,
                 abiSignature,
                 userOperationAbi);
-
-            Transaction transaction = BuildTransaction((long)userOperation.VerificationGas, computedCallData, Address.Zero, parent, spec, true);
-            
-            return transaction;
-        }
-        
-        private Transaction BuildSimulatePaymasterValidationTransaction(
-            UserOperation userOperation,
-            UInt256 gasUsedByPayForSelfOp,
-            BlockHeader parent,
-            IReleaseSpec spec)
-        {
-            AbiSignature abiSignature = _contract.Functions["simulatePaymasterValidation"].GetCallInfo().Signature;
-            UserOperationAbi userOperationAbi = userOperation.Abi;
-            
-            byte[] computedCallData = _abiEncoder.Encode(
-                AbiEncodingStyle.IncludeSignature,
-                abiSignature,
-                userOperationAbi, gasUsedByPayForSelfOp);
 
             Transaction transaction = BuildTransaction((long)userOperation.VerificationGas, computedCallData, Address.Zero, parent, spec, true);
             

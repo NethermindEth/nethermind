@@ -311,7 +311,7 @@ namespace Nethermind.AccountAbstraction.Test
                 _encoder.Encode(
                     AbiEncodingStyle.None,
                     _contracts.TokenPaymasterAbi.Constructors[0].GetCallInfo().Signature, "tst", 
-                    new Address("0x10514d85e3417b8a5ba3fdf4a2065df48f849f77")));
+                    new Address("0xdb8b5f6080a8e466b64a8d7458326cb650b3353f")));
             
             (Address singletonAddress, Address? walletAddress, Address? paymasterAddress) = await _contracts.Deploy(chain, paymasterBytecode);
 
