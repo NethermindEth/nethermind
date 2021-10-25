@@ -149,7 +149,7 @@ namespace Nethermind.Core.Test.Blockchain
             TxPool = CreateTxPool();
 
             ReceiptStorage = new InMemoryReceiptStorage();
-            VirtualMachine virtualMachine = new(SpecProvider.ChainId, new BlockhashProvider(BlockTree, LogManager), LogManager);
+            VirtualMachine virtualMachine = new(new BlockhashProvider(BlockTree, LogManager), SpecProvider, LogManager);
             TxProcessor = new TransactionProcessor(SpecProvider, State, Storage, virtualMachine, LogManager);
             BlockPreprocessorStep = new RecoverSignatures(EthereumEcdsa, TxPool, SpecProvider, LogManager);
             HeaderValidator headerValidator = new(BlockTree, Always.Valid, SpecProvider, LogManager);
