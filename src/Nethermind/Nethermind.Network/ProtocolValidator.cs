@@ -112,7 +112,8 @@ namespace Nethermind.Network
                     x.Version == 62 || 
                     x.Version == 63 || 
                     x.Version == 64 || 
-                    x.Version == 65));
+                    x.Version == 65 ||
+                    x.Version == 66));
         }
 
         private bool ValidateChainId(ulong chainId)
