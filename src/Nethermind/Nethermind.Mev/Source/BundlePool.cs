@@ -252,16 +252,28 @@ namespace Nethermind.Mev.Source
             for (int i = 0; i < bundle.Transactions.Count; i++)
             {
                 BundleTransaction tx = bundle.Transactions[i];
-                
-                if (!_txValidator.IsWellFormed(tx, spec))
+                if (!tx.CanRevert)
                 {
-                    return false;
-                }
+                    if (!_txValidator.IsWellFormed(tx, spec))
+                    {
+                        return false;
+                    }
 
-                if (_stateProvider.IsInvalidContractSender(spec, tx.SenderAddress!))
-                {
-                    if (_logger.IsDebug) _logger.Debug($"Bundle rejected, because transaction {tx.Hash} sender {tx.SenderAddress} is contract.");
-                    return false;
+                    if (tx.SenderAddress is null)
+                    {
+                        tx.SenderAddress = _ecdsa.RecoverAddress(tx);
+                        if (tx.SenderAddress is null)
+                        {
+                            if (_logger.IsTrace) _logger.Trace($"Bundle rejected, because transaction {tx.Hash} has no sender.");
+                            return false;
+                        }
+                    }
+
+                    if (_stateProvider.IsInvalidContractSender(spec, tx.SenderAddress!))
+                    {
+                        if (_logger.IsDebug) _logger.Debug($"Bundle rejected, because transaction {tx.Hash} sender {tx.SenderAddress} is contract.");
+                        return false;
+                    }
                 }
             }
 
