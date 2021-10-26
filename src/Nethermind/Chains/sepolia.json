@@ -21,7 +21,7 @@
 		"accountStartNonce": "0x0",
 		"maximumExtraDataSize": "0x20",
 		"minGasLimit": "0x1388",
-		"networkID": "0x0A36A7",
+		"networkID": "0xAA36A7",
 		"forkBlock": "0x0",
 		"maxCodeSize": "0x6000",
 		"maxCodeSizeTransition": "0x0",
@@ -67,8 +67,8 @@
 		"extraData": "0x5365706f6c69612c20417468656e732c204174746963612c2047726565636521",
 		"gasLimit": "0x1c9c380"
 	},
-	"nodes": [			
-		"enode://94c15d1b9e2fe7ce56e458b9a3b672ef11894ddedd0c6f247e0f1d3487f52b66208fb4aeb8179fce6e3a749ea93ed147c37976d67af557508d199d9594c35f09@192.81.208.223:30303"
+	"nodes": [
+        "enode://7c9740e4d64674801fe62b76798d46778a038c49caebb15843d8c0f2b2f80d7ceba2585b4be366e6161988f81ddcfcd6fca98b5da52ae9a6f22c1b2a84b24a04@18.130.169.73:30303"
 	],
 	"accounts": {
       "0xa2A6d93439144FFE4D27c9E088dCD8b783946263": {"balance": "0xD3C21BCECCEDA1000000"},
