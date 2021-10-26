@@ -184,12 +184,6 @@ namespace Nethermind.Mev.Source
                 {
                     return false;
                 }
-
-                if (_stateProvider.IsInvalidContractSender(spec, tx.SenderAddress!))
-                {
-                    if (_logger.IsDebug) _logger.Debug($"Bundle rejected, because transaction {tx.Hash} sender {tx.SenderAddress} is contract.");
-                    return false;
-                }
             }
 
             return true;
