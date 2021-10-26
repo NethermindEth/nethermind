@@ -6,10 +6,13 @@ using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
+using Nethermind.Abi;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Executor;
 using Nethermind.AccountAbstraction.Source;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Receipts;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
@@ -19,6 +22,7 @@ using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Network;
@@ -193,16 +197,20 @@ namespace Nethermind.AccountAbstraction.Test
 
             IPaymasterThrottler paymasterThrottler = Substitute.For<PaymasterThrottler>();
 
+            IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
+
             UserOperationPool userOperationPool = new(
-                blockTree,
-                stateProvider,
-                paymasterThrottler,
-                Substitute.For<ITimestamper>(),
                 config,
-                peerManager,
-                userOperationSortedPool,
-                simulator
-            );
+                blockTree,
+                new Address(config.SingletonContractAddress),
+                paymasterThrottler, 
+                receiptFinder, 
+                peerManager, 
+                Substitute.For<ISigner>(), 
+                stateProvider, 
+                Substitute.For<ITimestamper>(), 
+                simulator, 
+                userOperationSortedPool);
             return (userOperationPool, simulator, blockTree);
         }
     }

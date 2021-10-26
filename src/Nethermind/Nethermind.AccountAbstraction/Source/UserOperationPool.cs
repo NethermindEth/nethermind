@@ -24,12 +24,16 @@ using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
+using Nethermind.Abi;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Executor;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Receipts;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Network;
 using Nethermind.Network.P2P;
@@ -44,7 +48,10 @@ namespace Nethermind.AccountAbstraction.Source
         private readonly IBlockTree _blockTree;
         private readonly IStateProvider _stateProvider;
         private readonly IPaymasterThrottler _paymasterThrottler;
+        private readonly IReceiptFinder _receiptFinder;
+        private readonly ISigner _signer;
         private readonly ITimestamper _timestamper;
+        private readonly Address _entryPointAddress;
         private readonly IAccountAbstractionConfig _accountAbstractionConfig;
         private readonly UserOperationSortedPool _userOperationSortedPool;
         private readonly IUserOperationSimulator _userOperationSimulator;
@@ -52,24 +59,34 @@ namespace Nethermind.AccountAbstraction.Source
         //private readonly UserOperationBroadcaster _broadcaster;
 
         private readonly Dictionary<long, List<UserOperation>> _userOperationsToDelete = new();
+        private readonly Keccak _userOperationEventTopic;
 
-        public UserOperationPool(IBlockTree blockTree,
-            IStateProvider stateProvider,
-            IPaymasterThrottler paymasterThrottler,
-            ITimestamper timestamper,
+        public UserOperationPool(
             IAccountAbstractionConfig accountAbstractionConfig,
+            IBlockTree blockTree,
+            Address entryPointAddress,
+            IPaymasterThrottler paymasterThrottler,
+            IReceiptFinder receiptFinder,
             IPeerManager peerManager,
-            UserOperationSortedPool userOperationSortedPool,
-            IUserOperationSimulator userOperationSimulator)
+            ISigner signer,
+            IStateProvider stateProvider,
+            ITimestamper timestamper,
+            IUserOperationSimulator userOperationSimulator,
+            UserOperationSortedPool userOperationSortedPool)
         {
             _blockTree = blockTree;
             _stateProvider = stateProvider;
             _paymasterThrottler = paymasterThrottler;
+            _receiptFinder = receiptFinder;
+            _signer = signer;
             _timestamper = timestamper;
+            _entryPointAddress = entryPointAddress;
             _accountAbstractionConfig = accountAbstractionConfig;
             _peerManager = peerManager;
             _userOperationSortedPool = userOperationSortedPool;
             _userOperationSimulator = userOperationSimulator;
+            
+            _userOperationEventTopic = new Keccak("0xc27a60e61c14607957b41fa2dad696de47b2d80e390d0eaaf1514c0cd2034293");
 
             _userOperationSortedPool.Inserted += UserOperationInserted;
             _blockTree.NewHeadBlock += NewHead;
@@ -85,6 +102,36 @@ namespace Nethermind.AccountAbstraction.Source
                     RemoveUserOperation(userOperation);
                 }
             }
+
+            TxReceipt[] receipts = _receiptFinder.Get(block);
+            TxReceipt[] entryPointReceipts = receipts
+                .Where(r => r.Recipient is not null && r.Recipient == _entryPointAddress).ToArray();
+            
+            LogEntry[] logs = entryPointReceipts
+                .Where(r => r.Sender is not null && r.Sender == _signer.Address)
+                .SelectMany(r => r.Logs ?? Array.Empty<LogEntry>())
+                .Where(l => l.Topics[0] == _userOperationEventTopic)
+                .ToArray();
+
+            foreach (var log in logs)
+            {
+                Address senderAddress = new Address(log.Topics[1]);
+                Address paymasterAddress = new Address(log.Topics[2]);
+                UInt256 nonce = new UInt256(log.Data.Slice(0, 32), true);
+                IDictionary<Address, UserOperation[]> bucketSnapshot = _userOperationSortedPool.GetBucketSnapshot();
+                if (bucketSnapshot.ContainsKey(senderAddress))
+                {
+                    UserOperation[] userOperationsWithSender = bucketSnapshot[senderAddress];
+                    IEnumerable<UserOperation> userOperationsToRemove = userOperationsWithSender.Where(op => op.Nonce == nonce && op.Paymaster == paymasterAddress);
+                    foreach (var userOperation in userOperationsToRemove)
+                    {
+                        _paymasterThrottler.IncrementOpsIncluded(paymasterAddress);
+                        RemoveUserOperation(userOperation);
+                    }
+                }
+            }
+
+            
         }
 
         private void UserOperationInserted(object? sender, SortedPool<UserOperation, UserOperation, Address>.SortedPoolEventArgs e)
@@ -112,6 +159,7 @@ namespace Nethermind.AccountAbstraction.Source
             {
                 if (_userOperationSortedPool.TryInsert(userOperation, userOperation))
                 {
+                    _paymasterThrottler.IncrementOpsSeen(userOperation.Paymaster);
                     return ResultWrapper<Keccak>.Success(userOperation.Hash);
                 }
                 else
@@ -142,7 +190,7 @@ namespace Nethermind.AccountAbstraction.Source
                     IEnumerable<UserOperation> poolUserOperations = GetUserOperations();
                     if (poolUserOperations.Any(poolOp => poolOp.Paymaster == userOperation.Paymaster))
                     {
-                        return ResultWrapper<Keccak>.Fail($"paymaster throttled: userOp with paymaster {userOperation.Paymaster} is already present in the pool");
+                        return ResultWrapper<Keccak>.Fail($"paymaster throttled and userOp with paymaster {userOperation.Paymaster} is already present in the pool");
                     }
                     break;
                 }

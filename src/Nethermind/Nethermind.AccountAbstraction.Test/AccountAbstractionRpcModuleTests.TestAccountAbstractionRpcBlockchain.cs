@@ -18,14 +18,17 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Abi;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Executor;
 using Nethermind.AccountAbstraction.Source;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Comparers;
+using Nethermind.Blockchain.Contracts.Json;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Rewards;
@@ -48,6 +51,7 @@ using Nethermind.Network;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
+using Newtonsoft.Json.Linq;
 using NSubstitute;
 
 namespace Nethermind.AccountAbstraction.Test
@@ -66,6 +70,7 @@ namespace Nethermind.AccountAbstraction.Test
         {
             public UserOperationPool UserOperationPool { get; private set; } = null!;
             public UserOperationSimulator UserOperationSimulator { get; private set; } = null!;
+            public AbiDefinition EntryPointContractAbi { get; private set; } = null!;
 
             public TestAccountAbstractionRpcBlockchain(UInt256? initialBaseFeePerGas)
             {
@@ -143,8 +148,17 @@ namespace Nethermind.AccountAbstraction.Test
                     NullWitnessCollector.Instance,
                     LogManager);
 
+                using (StreamReader r = new StreamReader("Contracts/EntryPoint.json"))
+                {
+                    string json = r.ReadToEnd();
+                    JObject obj = JObject.Parse(json);
+                
+                    EntryPointContractAbi = LoadContract(obj);
+                }
+                
                 UserOperationSimulator = new(
                     State, 
+                    EntryPointContractAbi,
                     Signer, 
                     _accountAbstractionConfig, 
                     _create2FactoryAddress!,
@@ -159,14 +173,20 @@ namespace Nethermind.AccountAbstraction.Test
                 IPeerManager peerManager = Substitute.For<IPeerManager>();
                 
                 UserOperationPool = new UserOperationPool(
-                    BlockTree, 
-                    State, 
-                    new PaymasterThrottler(),
-                    Timestamper, 
                     _accountAbstractionConfig, 
-                    peerManager,
-                    new UserOperationSortedPool(_accountAbstractionConfig.UserOperationPoolSize, new CompareUserOperationsByDecreasingGasPrice(), LogManager),
-                    UserOperationSimulator);
+                    BlockTree,
+                    _singletonContractAddress!,
+                    new PaymasterThrottler(), 
+                    ReceiptStorage, 
+                    peerManager, 
+                    Signer, 
+                    State, 
+                    Timestamper, 
+                    UserOperationSimulator, 
+                    new UserOperationSortedPool(
+                        _accountAbstractionConfig.UserOperationPoolSize, 
+                        new CompareUserOperationsByDecreasingGasPrice(), 
+                        LogManager));
                 
                 return blockProcessor;
             }
@@ -198,6 +218,15 @@ namespace Nethermind.AccountAbstraction.Test
                 ResultWrapper<Keccak> resultOfUserOperation = UserOperationPool.AddUserOperation(userOperation);
                 resultOfUserOperation.GetResult().ResultType.Should().NotBe(ResultType.Failure, resultOfUserOperation.Result.Error);
                 resultOfUserOperation.GetData().Should().Be(userOperation.Hash);
+            }
+            
+            private AbiDefinition LoadContract(JObject obj)
+            {
+                AbiDefinitionParser parser = new();
+                parser.RegisterAbiTypeFactory(new AbiTuple<UserOperationAbi>());
+                AbiDefinition contract = parser.Parse(obj["abi"]!.ToString());
+                AbiTuple<UserOperationAbi> userOperationAbi = new();
+                return contract;
             }
         }
     }

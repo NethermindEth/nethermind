@@ -1,12 +1,15 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Threading.Tasks;
+using Nethermind.Abi;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Executor;
 using Nethermind.AccountAbstraction.Source;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Blockchain.Contracts.Json;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
@@ -17,6 +20,7 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
+using Newtonsoft.Json.Linq;
 
 namespace Nethermind.AccountAbstraction
 {
@@ -27,6 +31,7 @@ namespace Nethermind.AccountAbstraction
         private UserOperationSimulator? _userOperationSimulator;
         private Address _singletonContractAddress = null!;
         private Address _create2FactoryAddress = null!;
+        private AbiDefinition _entryPointContractAbi = null!;
         
         private INethermindApi _nethermindApi = null!;
         private ILogger _logger = null!;
@@ -52,15 +57,17 @@ namespace Nethermind.AccountAbstraction
                         getFromApi.LogManager);
 
                     _userOperationPool = new UserOperationPool(
-                        _nethermindApi.BlockTree!,
-                        _nethermindApi.StateProvider!,
-                        new PaymasterThrottler(),
-                        _nethermindApi.Timestamper,
                         _accountAbstractionConfig,
-                        _nethermindApi.PeerManager!,
-                        userOperationSortedPool,
-                        UserOperationSimulator
-                    );
+                        _nethermindApi.BlockTree!,
+                        _singletonContractAddress,
+                        new PaymasterThrottler(), 
+                        _nethermindApi.ReceiptFinder!, 
+                        _nethermindApi.PeerManager!, 
+                        _nethermindApi.EngineSigner!, 
+                        _nethermindApi.StateProvider!, 
+                        _nethermindApi.Timestamper, 
+                        UserOperationSimulator, 
+                        userOperationSortedPool);
                 }
 
                 return _userOperationPool;
@@ -77,6 +84,7 @@ namespace Nethermind.AccountAbstraction
 
                     _userOperationSimulator = new(
                         getFromApi.StateProvider!,
+                        _entryPointContractAbi,
                         getFromApi.EngineSigner!,
                         _accountAbstractionConfig,
                         _create2FactoryAddress,
@@ -114,6 +122,14 @@ namespace Nethermind.AccountAbstraction
                 {
                     _logger.Info($"Parsed Singleton Address: {create2FactoryAddress}");
                     _create2FactoryAddress = create2FactoryAddress!;
+                }
+                
+                using (StreamReader r = new StreamReader("Contracts/EntryPoint.json"))
+                {
+                    string json = r.ReadToEnd();
+                    JObject obj = JObject.Parse(json);
+                
+                    _entryPointContractAbi = LoadContract(obj);
                 }
             }
 
@@ -185,5 +201,14 @@ namespace Nethermind.AccountAbstraction
         }
 
         public bool Enabled => _nethermindApi.Config<IInitConfig>().IsMining && _accountAbstractionConfig.Enabled;
+        
+        private AbiDefinition LoadContract(JObject obj)
+        {
+            AbiDefinitionParser parser = new();
+            parser.RegisterAbiTypeFactory(new AbiTuple<UserOperationAbi>());
+            AbiDefinition contract = parser.Parse(obj["abi"]!.ToString());
+            AbiTuple<UserOperationAbi> userOperationAbi = new();
+            return contract;
+        }
     }
 }

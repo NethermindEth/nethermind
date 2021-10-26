@@ -55,6 +55,7 @@ namespace Nethermind.AccountAbstraction.Executor
     public class UserOperationSimulator : IUserOperationSimulator
     {
         private readonly IStateProvider _stateProvider;
+        private readonly AbiDefinition _entryPointContractAbi;
         private readonly ISigner _signer;
         private readonly IAccountAbstractionConfig _config;
         private readonly Address _create2FactoryAddress;
@@ -66,11 +67,11 @@ namespace Nethermind.AccountAbstraction.Executor
         private readonly ILogManager _logManager;
         private readonly IBlockPreprocessorStep _recoveryStep;
 
-        private AbiDefinition _contract;
         private IAbiEncoder _abiEncoder;
 
         public UserOperationSimulator(
             IStateProvider stateProvider,
+            AbiDefinition entryPointContractAbi,
             ISigner signer,
             IAccountAbstractionConfig config,
             Address create2FactoryAddress,
@@ -83,6 +84,7 @@ namespace Nethermind.AccountAbstraction.Executor
             IBlockPreprocessorStep recoveryStep)
         {
             _stateProvider = stateProvider;
+            _entryPointContractAbi = entryPointContractAbi;
             _signer = signer;
             _config = config;
             _create2FactoryAddress = create2FactoryAddress;
@@ -95,14 +97,6 @@ namespace Nethermind.AccountAbstraction.Executor
             _recoveryStep = recoveryStep;
             
             _abiEncoder = new AbiEncoder();
-
-            using (StreamReader r = new StreamReader("Contracts/EntryPoint.json"))
-            {
-                string json = r.ReadToEnd();
-                JObject obj = JObject.Parse(json);
-                
-                _contract = LoadContract(obj);
-            }
         }
 
         public Transaction BuildTransactionFromUserOperations(IEnumerable<UserOperation> userOperations, BlockHeader parent, IReleaseSpec spec)
@@ -115,7 +109,7 @@ namespace Nethermind.AccountAbstraction.Executor
             {
                 UserOperation userOperation = userOperationArray[0];
                 
-                AbiSignature abiSignature = _contract.Functions["handleOp"].GetCallInfo().Signature;
+                AbiSignature abiSignature = _entryPointContractAbi.Functions["handleOp"].GetCallInfo().Signature;
                 computedCallData = _abiEncoder.Encode(
                     AbiEncodingStyle.IncludeSignature,
                     abiSignature,
@@ -125,7 +119,7 @@ namespace Nethermind.AccountAbstraction.Executor
             }
             else
             {
-                AbiSignature abiSignature = _contract.Functions["handleOps"].GetCallInfo().Signature;
+                AbiSignature abiSignature = _entryPointContractAbi.Functions["handleOps"].GetCallInfo().Signature;
                 computedCallData = _abiEncoder.Encode(
                     AbiEncodingStyle.IncludeSignature,
                     abiSignature,
@@ -214,7 +208,7 @@ namespace Nethermind.AccountAbstraction.Executor
             BlockHeader parent,
             IReleaseSpec spec)
         {
-            AbiSignature abiSignature = _contract.Functions["simulateValidation"].GetCallInfo().Signature;
+            AbiSignature abiSignature = _entryPointContractAbi.Functions["simulateValidation"].GetCallInfo().Signature;
             UserOperationAbi userOperationAbi = userOperation.Abi;
             
             byte[] computedCallData = _abiEncoder.Encode(
@@ -251,15 +245,8 @@ namespace Nethermind.AccountAbstraction.Executor
         }
 
         private UserOperationBlockTracer CreateBlockTracer(BlockHeader parent, UserOperation userOperation) =>
-            new(parent.GasLimit, userOperation, _stateProvider, _contract, _create2FactoryAddress, _singletonAddress, _logManager.GetClassLogger());
+            new(parent.GasLimit, userOperation, _stateProvider, _entryPointContractAbi, _create2FactoryAddress, _singletonAddress, _logManager.GetClassLogger());
         
-        private AbiDefinition LoadContract(JObject obj)
-        {
-            AbiDefinitionParser parser = new();
-            parser.RegisterAbiTypeFactory(new AbiTuple<UserOperationAbi>());
-            AbiDefinition contract = parser.Parse(obj["abi"]!.ToString());
-            AbiTuple<UserOperationAbi> userOperationAbi = new();
-            return contract;
-        }
+        
     }
 }
