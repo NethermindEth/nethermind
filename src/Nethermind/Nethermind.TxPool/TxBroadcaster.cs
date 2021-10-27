@@ -178,16 +178,16 @@ namespace Nethermind.TxPool
         {
             foreach ((_, ITxPoolPeer peer) in _peers)
             {
-                if (_logger.IsDebug) _logger.Debug($"Broadcasting new local transaction to all peers");
+                if (_logger.IsDebug) _logger.Debug($"Broadcasting new local transaction {tx.Hash} to all peers");
 
                 try
                 {
                     peer.SendNewTransaction(tx);
-                    if (_logger.IsTrace) _logger.Trace($"Notified {peer} about transaction {tx}.");
+                    if (_logger.IsTrace) _logger.Trace($"Notified {peer} about transaction {tx.Hash}.");
                 }
                 catch (Exception e)
                 {
-                    if (_logger.IsError) _logger.Error($"Failed to notify {peer} about transaction {tx}.", e);
+                    if (_logger.IsError) _logger.Error($"Failed to notify {peer} about transaction {tx.Hash}.", e);
                 }
             }
         }
