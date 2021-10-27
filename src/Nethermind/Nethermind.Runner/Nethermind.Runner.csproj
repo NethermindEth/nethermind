@@ -107,20 +107,15 @@
     <None Remove="keystore\**" />
   </ItemGroup>
   <ItemGroup>
-    <PluginsForBuild Include="$(OutputPath)\Nethermind.Merge.Plugin.*;
-                              $(OutputPath)\Nethermind.Mev.*;
-                              $(OutputPath)\Nethermind.AccountAbstraction.*;
-                              $(OutputPath)\Nethermind.HealthChecks.*;
-                              $(OutputPath)\Nethermind.Consensus.*.*" />
+    <PluginsForBuild Include="$(OutputPath)\Nethermind.Merge.Plugin.*;&#xA;                              $(OutputPath)\Nethermind.Mev.*;&#xA;                              $(OutputPath)\Nethermind.AccountAbstraction.*;&#xA;                              $(OutputPath)\Nethermind.HealthChecks.*;&#xA;                              $(OutputPath)\Nethermind.Consensus.*.*" />
     
-    <PluginsForPublish Include="$(OutputPath)\Nethermind.Merge.Plugin.dll;
-                                $(OutputPath)\Nethermind.Mev.dll;
-                                $(OutputPath)\Nethermind.AccountAbstraction.*;
-                                $(OutputPath)\Nethermind.HealthChecks.dll;
-                                $(OutputPath)\Nethermind.Consensus.*.dll" />
+    <PluginsForPublish Include="$(OutputPath)\Nethermind.Merge.Plugin.dll;&#xA;                                $(OutputPath)\Nethermind.Mev.dll;&#xA;                                $(OutputPath)\Nethermind.AccountAbstraction.*;&#xA;                                $(OutputPath)\Nethermind.HealthChecks.dll;&#xA;                                $(OutputPath)\Nethermind.Consensus.*.dll" />
   </ItemGroup>
   <ItemGroup>
     <GitHash Include="git-hash" />
+  </ItemGroup>
+  <ItemGroup>
+    <_ContentIncludedByDefault Remove="Contracts\EntryPoint.json" />
   </ItemGroup>
 
   <Target Name="StoreGitHashBeforeBuild" BeforeTargets="BeforeBuild">

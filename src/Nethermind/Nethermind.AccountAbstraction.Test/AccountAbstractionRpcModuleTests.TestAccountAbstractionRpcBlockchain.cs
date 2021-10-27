@@ -23,6 +23,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Abi;
+using Nethermind.AccountAbstraction.Contracts;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Executor;
 using Nethermind.AccountAbstraction.Source;
@@ -148,13 +149,10 @@ namespace Nethermind.AccountAbstraction.Test
                     NullWitnessCollector.Instance,
                     LogManager);
 
-                using (StreamReader r = new StreamReader("Contracts/EntryPoint.json"))
-                {
-                    string json = r.ReadToEnd();
-                    JObject obj = JObject.Parse(json);
-                
-                    EntryPointContractAbi = LoadContract(obj);
-                }
+                var parser = new AbiDefinitionParser();
+                parser.RegisterAbiTypeFactory(new AbiTuple<UserOperationAbi>());
+                var json = parser.LoadContract(typeof(EntryPoint));
+                EntryPointContractAbi = parser.Parse(json);
                 
                 UserOperationSimulator = new(
                     State, 

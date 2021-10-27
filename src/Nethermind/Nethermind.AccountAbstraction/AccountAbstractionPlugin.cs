@@ -2,6 +2,7 @@
 using System.IO;
 using System.Threading.Tasks;
 using Nethermind.Abi;
+using Nethermind.AccountAbstraction.Contracts;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Executor;
 using Nethermind.AccountAbstraction.Source;
@@ -125,11 +126,7 @@ namespace Nethermind.AccountAbstraction
                     _create2FactoryAddress = create2FactoryAddress!;
                 }
 
-                using StreamReader r = new("Contracts/EntryPoint.json");
-                string json = r.ReadToEnd();
-                JObject obj = JObject.Parse(json);
-
-                _entryPointContractAbi = LoadContract(obj);
+                _entryPointContractAbi = LoadEntryPointContract();
             }
 
             if (Enabled)
@@ -203,12 +200,12 @@ namespace Nethermind.AccountAbstraction
 
         public bool Enabled => _nethermindApi.Config<IInitConfig>().IsMining && _accountAbstractionConfig.Enabled;
 
-        private AbiDefinition LoadContract(JObject obj)
+        private AbiDefinition LoadEntryPointContract()
         {
             AbiDefinitionParser parser = new();
             parser.RegisterAbiTypeFactory(new AbiTuple<UserOperationAbi>());
-            AbiDefinition contract = parser.Parse(obj["abi"]!.ToString());
-            return contract;
+            string json = parser.LoadContract(typeof(EntryPoint));
+            return parser.Parse(json);
         }
     }
 }
