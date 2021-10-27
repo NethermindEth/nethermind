@@ -137,7 +137,7 @@ namespace Nethermind.Runner.JsonRpc
                 }
             });
             
-            app.Use(async (ctx, next) =>
+            app.Run(async (ctx) =>
             {
                 if (ctx.Request.Method == "GET")
                 {

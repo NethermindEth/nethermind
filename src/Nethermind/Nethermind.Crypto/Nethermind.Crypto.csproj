@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFramework>net5.0</TargetFramework>
+        <TargetFramework>net6.0</TargetFramework>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <Deterministic>true</Deterministic>
         <ProduceReferenceAssembly>true</ProduceReferenceAssembly>
@@ -15,9 +15,9 @@
     </ItemGroup>
 
     <ItemGroup>
-      <PackageReference Include="Microsoft.AspNetCore.DataProtection" Version="5.0.2" />
-      <PackageReference Include="Microsoft.AspNetCore.DataProtection.Abstractions" Version="5.0.2" />
-      <PackageReference Include="Microsoft.AspNetCore.DataProtection.Extensions" Version="5.0.2" />
+      <PackageReference Include="Microsoft.AspNetCore.DataProtection" Version="6.0.0-rc.2.*" />
+      <PackageReference Include="Microsoft.AspNetCore.DataProtection.Abstractions" Version="6.0.0-rc.2.*" />
+      <PackageReference Include="Microsoft.AspNetCore.DataProtection.Extensions" Version="6.0.0-rc.2.*" />
       <PackageReference Include="Portable.BouncyCastle" Version="1.8.9" />
       <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="5.0.0" />
     </ItemGroup>

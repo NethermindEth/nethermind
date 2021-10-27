@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFramework>net5.0</TargetFramework>
+        <TargetFramework>net6.0</TargetFramework>
         <Product>Nethermind Eth2.0 blockchain</Product>
         <Copyright>Copyright © 2019 Demerzel Solutions Limited</Copyright>
         <Version>0.0.1</Version>
@@ -19,9 +19,9 @@
 
     <ItemGroup>
         <PackageReference Include="Cortex.SimpleSerialize" Version="0.2.0" />
-        <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="5.0.0" />
-        <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="5.0.0" />
-        <PackageReference Include="Microsoft.Extensions.Options" Version="5.0.0" />
+        <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="6.0.0-rc.2.*" />
+        <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="6.0.0-rc.2.*" />
+        <PackageReference Include="Microsoft.Extensions.Options" Version="6.0.0-rc.2.*" />
     </ItemGroup>
     
 </Project>

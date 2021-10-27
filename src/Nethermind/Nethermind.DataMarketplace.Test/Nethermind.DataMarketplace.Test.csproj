@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFramework>net5.0</TargetFramework>
+        <TargetFramework>net6.0</TargetFramework>
 
         <IsPackable>false</IsPackable>
 
@@ -16,9 +16,9 @@
           <PrivateAssets>all</PrivateAssets>
         </PackageReference>
         <PackageReference Include="FluentAssertions" Version="5.10.3" />
-        <PackageReference Include="Microsoft.AspNetCore.DataProtection" Version="5.0.2" />
-        <PackageReference Include="Microsoft.AspNetCore.DataProtection.Abstractions" Version="5.0.2" />
-        <PackageReference Include="Microsoft.AspNetCore.DataProtection.Extensions" Version="5.0.2" />
+        <PackageReference Include="Microsoft.AspNetCore.DataProtection" Version="6.0.0-rc.2.*" />
+        <PackageReference Include="Microsoft.AspNetCore.DataProtection.Abstractions" Version="6.0.0-rc.2.*" />
+        <PackageReference Include="Microsoft.AspNetCore.DataProtection.Extensions" Version="6.0.0-rc.2.*" />
         <PackageReference Include="Microsoft.NET.Test.Sdk" Version="16.10.0" />
         <PackageReference Include="NSubstitute" Version="4.2.2" />
         <PackageReference Include="nunit" Version="3.13.2" />
