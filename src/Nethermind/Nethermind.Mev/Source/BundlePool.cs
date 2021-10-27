@@ -49,6 +49,7 @@ namespace Nethermind.Mev.Source
         private readonly ITimestamper _timestamper;
         private readonly ITxValidator _txValidator;
         private readonly IMevConfig _mevConfig;
+        private readonly IAccountStateProvider _stateProvider;
         private readonly ISpecProvider _specProvider;
         private readonly IBlockTree _blockTree;
         private readonly IBundleSimulator _simulator;
@@ -68,11 +69,13 @@ namespace Nethermind.Mev.Source
             ITxValidator txValidator, 
             ISpecProvider specProvider,
             IMevConfig mevConfig,
+            IAccountStateProvider stateProvider,
             ILogManager logManager)
         {
             _timestamper = timestamper;
             _txValidator = txValidator;
             _mevConfig = mevConfig;
+            _stateProvider = stateProvider;
             _specProvider = specProvider;
             _blockTree = blockTree;
             _simulator = simulator;
@@ -175,7 +178,9 @@ namespace Nethermind.Mev.Source
             IReleaseSpec spec = _specProvider.GetSpec(bundle.BlockNumber);
             for (int i = 0; i < bundle.Transactions.Count; i++)
             {
-                if (!_txValidator.IsWellFormed(bundle.Transactions[i], spec))
+                BundleTransaction tx = bundle.Transactions[i];
+                
+                if (!_txValidator.IsWellFormed(tx, spec))
                 {
                     return false;
                 }

@@ -54,14 +54,14 @@ namespace Nethermind.Consensus.AuRa.Contracts
         }
 
         public Address[] GetSendersWhitelist(BlockHeader parentHeader) =>
-            Constant.Call<Address[]>(new CallInfo(parentHeader, nameof(GetSendersWhitelist), ContractAddress) {MissingContractResult = MissingSenderWhitelistResult});
+            Constant.Call<Address[]>(new CallInfo(parentHeader, nameof(GetSendersWhitelist), Address.SystemUser) {MissingContractResult = MissingSenderWhitelistResult});
 
         public Destination[] GetMinGasPrices(BlockHeader parentHeader) =>
-            Constant.Call<DestinationTuple[]>(new CallInfo(parentHeader, nameof(GetMinGasPrices), ContractAddress) {MissingContractResult = MissingPrioritiesResult})
+            Constant.Call<DestinationTuple[]>(new CallInfo(parentHeader, nameof(GetMinGasPrices), Address.SystemUser) {MissingContractResult = MissingPrioritiesResult})
                 .Select(x => Destination.FromAbiTuple(x, parentHeader.Number)).ToArray();
 
         public Destination[] GetPriorities(BlockHeader parentHeader) =>
-            Constant.Call<DestinationTuple[]>(new CallInfo(parentHeader, nameof(GetPriorities), ContractAddress) {MissingContractResult = MissingPrioritiesResult})
+            Constant.Call<DestinationTuple[]>(new CallInfo(parentHeader, nameof(GetPriorities), Address.SystemUser) {MissingContractResult = MissingPrioritiesResult})
                 .Select(x => Destination.FromAbiTuple(x, parentHeader.Number)).ToArray();
         
         public IEnumerable<Destination> PrioritySet(BlockHeader blockHeader, TxReceipt[] receipts)

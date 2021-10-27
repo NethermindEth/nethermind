@@ -93,6 +93,8 @@ namespace Nethermind.Core.Test.Builders
         public static Address AddressB = PublicKeyB.Address;
         public static Address AddressC = PublicKeyC.Address;
         public static Address AddressD = PublicKeyD.Address;
+        public static Address AddressE = PublicKeyE.Address;
+        public static Address AddressF = PublicKeyF.Address;
 
         public static Bloom NonZeroBloom;
         

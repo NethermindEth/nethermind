@@ -36,6 +36,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
@@ -156,17 +157,32 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public void should_add_valid_transactions()
+        public void should_add_valid_transactions_recovering_its_address()
         {
             _txPool = CreatePool();
             Transaction tx = Build.A.Transaction
                 .WithGasLimit(_txGasLimit)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(tx);
+            tx.SenderAddress = null;
             AddTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
             _txPool.GetPendingTransactions().Length.Should().Be(1);
             result.Should().Be(AddTxResult.Added);
         }
+        
+        [Test]
+        public void should_reject_transactions_from_contract_address()
+        {
+            _txPool = CreatePool();
+            Transaction tx = Build.A.Transaction
+                .WithGasLimit(_txGasLimit)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(tx);
+            _stateProvider.UpdateCodeHash(TestItem.AddressA, TestItem.KeccakA, _specProvider.GetSpec(1));
+            AddTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+            result.Should().Be(AddTxResult.SenderIsContract);
+        }
+        
         
         [Test]
         public void should_accept_1559_transactions_only_when_eip1559_enabled([Values(false, true)] bool eip1559Enabled)
@@ -190,7 +206,7 @@ namespace Nethermind.TxPool.Test
             txPool.GetPendingTransactions().Length.Should().Be(eip1559Enabled ? 1 : 0);
             result.Should().Be(eip1559Enabled ? AddTxResult.Added : AddTxResult.Invalid);
         }
-        
+
         [Test]
         public void should_ignore_insufficient_funds_for_eip1559_transactions()
         {
@@ -212,6 +228,22 @@ namespace Nethermind.TxPool.Test
             txPool.GetPendingTransactions().Length.Should().Be(1);
         }
         
+        [TestCase(false, false, ExpectedResult = AddTxResult.Added)]
+        [TestCase(false, true, ExpectedResult = AddTxResult.Added)]
+        [TestCase(true, false, ExpectedResult = AddTxResult.Added)]
+        [TestCase(true, true, ExpectedResult = AddTxResult.SenderIsContract)]
+        public AddTxResult should_reject_transactions_with_deployed_code_when_eip3607_enabled(bool eip3607Enabled, bool hasCode)
+        {
+            ISpecProvider specProvider = new OverridableSpecProvider(new TestSpecProvider(London.Instance), r => new OverridableReleaseSpec(r) {IsEip3607Enabled = eip3607Enabled});
+            TxPool txPool = CreatePool(null, specProvider);
+
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(tx);
+            _stateProvider.UpdateCodeHash(TestItem.AddressA, hasCode ? TestItem.KeccakH : Keccak.OfAnEmptyString, London.Instance);
+            
+            return txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+        }
+
         [Test]
         public void should_ignore_insufficient_funds_transactions()
         {
@@ -1009,12 +1041,18 @@ namespace Nethermind.TxPool.Test
 
         private ChainHeadInfoProvider _headInfo;
         
-        private TxPool CreatePool(ITxPoolConfig config = null, ISpecProvider specProvider = null)
+        private TxPool CreatePool(ITxPoolConfig config = null, ISpecProvider specProvider = null, ChainHeadInfoProvider chainHeadInfoProvider = null)
         {
             specProvider ??= RopstenSpecProvider.Instance;
             ITransactionComparerProvider transactionComparerProvider =
                 new TransactionComparerProvider(specProvider, _blockTree);
-            _headInfo = new ChainHeadInfoProvider(specProvider, _blockTree, _stateProvider);
+            
+            _headInfo = chainHeadInfoProvider;
+            if (_headInfo is null)
+            {
+                _headInfo = new ChainHeadInfoProvider(specProvider, _blockTree, _stateProvider);
+            }
+            
             return new TxPool(_ethereumEcdsa, _headInfo,
                 config ?? new TxPoolConfig() { GasLimit = _txGasLimit },
                 new TxValidator(_specProvider.ChainId), _logManager, transactionComparerProvider.GetDefaultComparer());

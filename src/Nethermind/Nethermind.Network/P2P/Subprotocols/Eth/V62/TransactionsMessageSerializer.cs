@@ -20,7 +20,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 {
-    public class TransactionsMessageSerializer : IZeroMessageSerializer<TransactionsMessage>
+    public class TransactionsMessageSerializer : IZeroInnerMessageSerializer<TransactionsMessage>
     {
         private TxDecoder _decoder = new TxDecoder();
         

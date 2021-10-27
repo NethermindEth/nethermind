@@ -19,10 +19,12 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
+using DotNetty.Common.Utilities;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
@@ -218,7 +220,7 @@ namespace Nethermind.Network.P2P
         public virtual void SendNewTransactions(IEnumerable<Transaction> txs)
         {
             const int maxCapacity = 256;
-            List<Transaction> txsToSend = new(maxCapacity);
+            using ArrayPoolList<Transaction> txsToSend = new(maxCapacity);
 
             foreach (Transaction tx in txs)
             {
@@ -250,8 +252,14 @@ namespace Nethermind.Network.P2P
         public override void HandleMessage(Packet message)
         {
             ZeroPacket zeroPacket = new(message);
-            HandleMessage(zeroPacket);
-            zeroPacket.Release();
+            try
+            {
+                HandleMessage(zeroPacket);
+            }
+            finally
+            {
+                zeroPacket.SafeRelease();
+            }
         }
 
         public abstract void HandleMessage(ZeroPacket message);

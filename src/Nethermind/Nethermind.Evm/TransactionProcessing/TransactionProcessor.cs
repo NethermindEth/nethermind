@@ -174,6 +174,13 @@ namespace Nethermind.Evm.TransactionProcessing
                 return;
             }
 
+            if (_stateProvider.IsInvalidContractSender(spec, caller))
+            {
+                TraceLogInvalidTx(transaction, "SENDER_IS_CONTRACT");
+                QuickFail(transaction, block, txTracer, eip658NotEnabled, "sender has deployed code");
+                return;
+            }
+
             long intrinsicGas = IntrinsicGasCalculator.Calculate(transaction, spec);
             if (_logger.IsTrace) _logger.Trace($"Intrinsic gas calculated for {transaction.Hash}: " + intrinsicGas);
 
@@ -324,7 +331,7 @@ namespace Nethermind.Evm.TransactionProcessing
                         state.WarmUp(recipient); // eip-2929
                     }
 
-                    substate = _virtualMachine.Run(state, _worldState, spec, txTracer);
+                    substate = _virtualMachine.Run(state, _worldState, txTracer);
                     unspentGas = state.GasAvailable;
 
                     if (txTracer.IsTracingAccess)
@@ -386,17 +393,35 @@ namespace Nethermind.Evm.TransactionProcessing
             if (_logger.IsTrace) _logger.Trace("Gas spent: " + spentGas);
 
             Address gasBeneficiary = block.GasBeneficiary;
-            if (statusCode == StatusCode.Failure || !(substate?.DestroyList.Contains(gasBeneficiary) ?? false))
+            bool gasBeneficiaryNotDestroyed = substate?.DestroyList.Contains(gasBeneficiary) != true;
+            if (statusCode == StatusCode.Failure || gasBeneficiaryNotDestroyed)
             {
                 if (notSystemTransaction)
                 {
-                    if (!_stateProvider.AccountExists(gasBeneficiary))
+                    UInt256 fees = (ulong)spentGas * premiumPerGas;
+                    if (_stateProvider.AccountExists(gasBeneficiary))
                     {
-                        _stateProvider.CreateAccount(gasBeneficiary, (ulong)spentGas * premiumPerGas);
+                        _stateProvider.AddToBalance(gasBeneficiary, fees, spec);
                     }
                     else
                     {
-                        _stateProvider.AddToBalance(gasBeneficiary, (ulong)spentGas * premiumPerGas, spec);
+                        _stateProvider.CreateAccount(gasBeneficiary, fees);
+                    }
+
+                    if (!transaction.IsFree() && spec.IsEip1559Enabled && spec.Eip1559FeeCollector is not null)
+                    {
+                        UInt256 burntFees = (ulong)spentGas * block.BaseFeePerGas;
+                        if (!burntFees.IsZero)
+                        {
+                            if (_stateProvider.AccountExists(spec.Eip1559FeeCollector))
+                            {
+                                _stateProvider.AddToBalance(spec.Eip1559FeeCollector, burntFees, spec);
+                            }
+                            else
+                            {
+                                _stateProvider.CreateAccount(spec.Eip1559FeeCollector, burntFees);
+                            }
+                        }
                     }
                 }
             }

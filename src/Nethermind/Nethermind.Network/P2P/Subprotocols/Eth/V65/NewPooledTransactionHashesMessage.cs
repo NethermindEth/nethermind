@@ -21,6 +21,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 {
     public class NewPooledTransactionHashesMessage : HashesMessage
     {
+        public const int MaxCount = 2048; 
+        
         public override int PacketType { get; } = Eth65MessageCode.NewPooledTransactionHashes;
         public override string Protocol { get; } = "eth";
 

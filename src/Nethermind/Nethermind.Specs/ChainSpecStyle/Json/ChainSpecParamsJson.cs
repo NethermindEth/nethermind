@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -112,6 +113,10 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
 
         public long? Eip3541Transition { get; set; }
 
+        // We explicitly want this to be enabled by default on all the networks 
+        // we can disable it if needed, but its expected not to cause issues
+        public long? Eip3607Transition { get; set; } = 0;
+
         public UInt256? Eip1559BaseFeeInitialValue { get; set; }
 
         public UInt256? Eip1559BaseFeeMaxChangeDenominator { get; set; }    
@@ -125,5 +130,9 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
         public long? ValidateChainIdTransition { get; set; }
         
         public long? ValidateReceiptsTransition { get; set; }
+        
+        public long? Eip1559FeeCollectorTransition { get; set; }
+        
+        public Address Eip1559FeeCollector { get; set; } 
     }
 }

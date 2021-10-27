@@ -64,6 +64,7 @@ namespace Nethermind.Specs.ChainSpecStyle
         public long? Eip3529Transition { get; set; }
         
         public long? Eip3541Transition { get; set; }
+        public long? Eip3607Transition { get; set; }
         public long? Eip3675Transition { get; set; }
         
         public UInt256 Eip1559BaseFeeInitialValue { get; set; }
@@ -93,5 +94,15 @@ namespace Nethermind.Specs.ChainSpecStyle
         /// </summary>
         /// <returns></returns>
         public long? ValidateReceiptsTransition { get; set; }
+        
+        /// <summary>
+        /// Block from which burnt EIP-1559 fees will go to <see cref="Eip1559FeeCollector"/>
+        /// </summary>
+        public long? Eip1559FeeCollectorTransition { get; set; }
+        
+        /// <summary>
+        /// Optional, address where burnt EIP-1559 fees will go
+        /// </summary>
+        public Address Eip1559FeeCollector { get; set; } 
     }
 }

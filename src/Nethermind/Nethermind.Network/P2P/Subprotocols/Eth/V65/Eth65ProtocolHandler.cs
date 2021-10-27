@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
@@ -124,15 +125,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
         
         public override void SendNewTransactions(IEnumerable<Transaction> txs)
         {
-            const int maxCapacity = 3200;
-            List<Keccak> hashes = new(maxCapacity);
+            using ArrayPoolList<Keccak> hashes = new(NewPooledTransactionHashesMessage.MaxCount);
 
             foreach (Transaction tx in txs)
             {
-                if (hashes.Count == maxCapacity)
+                if (hashes.Count == NewPooledTransactionHashesMessage.MaxCount)
                 {
                     SendMessage(hashes);
-                    hashes = new(maxCapacity);
+                    hashes.Clear();
                 }
                 
                 if (tx.Hash is not null)

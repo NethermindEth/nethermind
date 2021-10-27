@@ -184,8 +184,8 @@ namespace Nethermind.Init.Steps
                 getApi.BlockTree, getApi.LogManager);
 
             VirtualMachine virtualMachine = new (
-                getApi.SpecProvider.ChainId,
                 blockhashProvider,
+                getApi.SpecProvider,
                 getApi.LogManager);
 
             WorldState worldState = new (stateProvider, storageProvider);

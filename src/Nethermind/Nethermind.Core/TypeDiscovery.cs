@@ -55,7 +55,8 @@ namespace Nethermind.Core
 
             var missingRefs = loadedAssemblies
                 .SelectMany(x => x.GetReferencedAssemblies())
-                .Distinct()
+                .GroupBy(a => a.FullName)
+                .Select(g => g.First())
                 .Where(a => a.Name?.Contains("Nethermind") ?? false);
 
             foreach (AssemblyName missingRef in missingRefs)

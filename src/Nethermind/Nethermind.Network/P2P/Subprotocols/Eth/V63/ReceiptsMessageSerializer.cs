@@ -72,10 +72,27 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             
             for (int i = 0; i < message.TxReceipts.Length; i++)
             {
-                for (int j = 0; j < message.TxReceipts[i].Length; j++)
+                TxReceipt?[]? txReceipts = message.TxReceipts[i];
+                if (txReceipts is null)
                 {
-                    contentLength += Rlp.LengthOfSequence(_decoder.GetLength(message.TxReceipts[i][j], _specProvider.GetSpec(message.TxReceipts[i][j].BlockNumber).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None));
+                    contentLength += Rlp.OfEmptySequence.Length;
                 }
+                else
+                {
+                    for (int j = 0; j < txReceipts.Length; j++)
+                    {
+                        TxReceipt? txReceipt = txReceipts[j];
+                        if (txReceipt is null)
+                        {
+                            contentLength += Rlp.OfEmptySequence.Length;
+                        }
+                        else
+                        {
+                            contentLength += Rlp.LengthOfSequence(_decoder.GetLength(txReceipt, _specProvider.GetSpec(txReceipt.BlockNumber).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None));
+                        }
+                    }
+                }
+
             }
             
             return Rlp.LengthOfSequence(contentLength);

@@ -46,10 +46,6 @@ namespace Nethermind.Runner.JsonRpc
 {
     public class Startup
     {
-        private IJsonSerializer _jsonSerializer = CreateJsonSerializer();
-        
-        private static EthereumJsonSerializer CreateJsonSerializer() => new();
-
         public void ConfigureServices(IServiceCollection services)
         {
             // ReSharper disable once ASP0000
@@ -82,17 +78,14 @@ namespace Nethermind.Runner.JsonRpc
             });
         }
 
-        public void Configure(IApplicationBuilder app, IWebHostEnvironment env, IJsonRpcProcessor jsonRpcProcessor, IJsonRpcService jsonRpcService, IJsonRpcLocalStats jsonRpcLocalStats)
+        public void Configure(IApplicationBuilder app, IWebHostEnvironment env, IJsonRpcProcessor jsonRpcProcessor, IJsonRpcService jsonRpcService, IJsonRpcLocalStats jsonRpcLocalStats, IJsonSerializer jsonSerializer)
         {
             long SerializeTimeoutException(IJsonRpcService service, Stream resultStream)
             {
                 JsonRpcErrorResponse? error = service.GetErrorResponse(ErrorCodes.Timeout, "Request was canceled due to enabled timeout.");
-                return _jsonSerializer.Serialize(resultStream, error);
+                return jsonSerializer.Serialize(resultStream, error);
             }
 
-            _jsonSerializer = CreateJsonSerializer();
-            _jsonSerializer.RegisterConverters(jsonRpcService.Converters);
-            
             if (env.IsDevelopment())
             {
                 app.UseDeveloperExceptionPage();
@@ -170,8 +163,8 @@ namespace Nethermind.Runner.JsonRpc
                                     ctx.Response.StatusCode = GetStatusCode(result);
 
                                     responseSize = result.IsCollection
-                                        ? _jsonSerializer.Serialize(resultStream, result.Responses)
-                                        : _jsonSerializer.Serialize(resultStream, result.Response);
+                                        ? jsonSerializer.Serialize(resultStream, result.Responses)
+                                        : jsonSerializer.Serialize(resultStream, result.Response);
 
                                     if (jsonRpcConfig.BufferResponses)
                                     {

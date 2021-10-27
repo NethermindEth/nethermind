@@ -20,7 +20,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 {
-    public class NewBlockMessageSerializer : IZeroMessageSerializer<NewBlockMessage>
+    public class NewBlockMessageSerializer : IZeroInnerMessageSerializer<NewBlockMessage>
     {
         private BlockDecoder _blockDecoder = new BlockDecoder();
         
@@ -41,7 +41,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             return Deserialize(rlpStream);
         }
 
-        private int GetLength(NewBlockMessage message, out int contentLength)
+        public int GetLength(NewBlockMessage message, out int contentLength)
         {
             contentLength = _blockDecoder.GetLength(message.Block, RlpBehaviors.None) +
                             Rlp.LengthOf(message.TotalDifficulty);
