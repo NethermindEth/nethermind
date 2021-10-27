@@ -1,90 +1,93 @@
 {
-	"name": "Sepolia Testnet",
-	"dataDir": "sepolia",
-	"engine": {
-		"Ethash": {
-			"params": {
-				"minimumDifficulty": "0x20000",
-				"difficultyBoundDivisor": "0x800",
-				"durationLimit": "0xd",
-				"homesteadTransition": "0x0",
-				"eip100bTransition": "0x0",
-				"difficultyBombDelays": {
-					"0x6C993D": "0x3D0900",
-					"0x003549": "0x0AE60"
-				}
-			}
-		}
-	},
-	"params": {
-		"gasLimitBoundDivisor": "0x400",
-		"accountStartNonce": "0x0",
-		"maximumExtraDataSize": "0x20",
-		"minGasLimit": "0x1388",
-		"networkID": "0xAA36A7",
-		"forkBlock": "0x0",
-		"maxCodeSize": "0x6000",
-		"maxCodeSizeTransition": "0x0",
-		"eip150Transition": "0x0",
-		"eip160Transition": "0x0",
-		"eip161abcTransition": "0x0",
-		"eip161dTransition": "0x0",
-		"eip155Transition": "0x0",
-		"eip140Transition": "0x0",
-		"eip211Transition": "0x0",
-		"eip214Transition": "0x0",
-		"eip658Transition": "0x0",
-		"eip145Transition": "0x0",
-		"eip1014Transition": "0x0",
-		"eip1052Transition": "0x0",
-		"eip1283Transition": "0x0",
-		"eip1283DisableTransition": "0x0",
-		"eip152Transition": "0x0",
-		"eip1108Transition": "0x0",
-		"eip1344Transition": "0x0",
-		"eip1884Transition": "0x0",
-		"eip2028Transition": "0x0",
-		"eip2200Transition": "0x0",
-        "eip2565Transition": "0x0",
-        "eip2929Transition": "0x0",
-        "eip2930Transition": "0x0",
-        "eip1559Transition": "0x0",
-        "eip3198Transition": "0x0",
-        "eip3529Transition": "0x0",
-        "eip3541Transition": "0x0"
+  "name": "Sepolia Testnet",
+  "dataDir": "sepolia",
+  "engine": {
+    "Ethash": {
+      "params": {
+        "minimumDifficulty": "0x20000",
+        "difficultyBoundDivisor": "0x800",
+        "durationLimit": "0xd",
+        "blockReward": {
+          "0x0": "0x1bc16d674ec80000"
+        },
+        "homesteadTransition": "0x0",
+        "eip100bTransition": "0x0",
+        "difficultyBombDelays": {
+          "0xFFFFFFFF": "0x3D0900"
+        }
+      }
+    }
+  },
+  "params": {
+    "gasLimitBoundDivisor": "0x400",
+    "accountStartNonce": "0x0",
+    "maximumExtraDataSize": "0x20",
+    "minGasLimit": "0x1388",
+    "networkID": "0xAA36A7",
+    "forkBlock": "0x0",
+    "maxCodeSize": "0x6000",
+    "maxCodeSizeTransition": "0x0",
+    "eip150Transition": "0x0",
+    "eip160Transition": "0x0",
+    "eip161abcTransition": "0x0",
+    "eip161dTransition": "0x0",
+    "eip155Transition": "0x0",
+    "eip140Transition": "0x0",
+    "eip211Transition": "0x0",
+    "eip214Transition": "0x0",
+    "eip658Transition": "0x0",
+    "eip145Transition": "0x0",
+    "eip1014Transition": "0x0",
+    "eip1052Transition": "0x0",
+    "eip1283Transition": "0x0",
+    "eip1283DisableTransition": "0x0",
+    "eip152Transition": "0x0",
+    "eip1108Transition": "0x0",
+    "eip1344Transition": "0x0",
+    "eip1884Transition": "0x0",
+    "eip2028Transition": "0x0",
+    "eip2200Transition": "0x0",
+    "eip2565Transition": "0x0",
+    "eip2929Transition": "0x0",
+    "eip2930Transition": "0x0",
+    "eip1559Transition": "0x0",
+    "eip3198Transition": "0x0",
+    "eip3529Transition": "0x0",
+    "eip3541Transition": "0x0"
+  },
+  "genesis": {
+    "seal": {
+      "ethereum": {
+        "nonce": "0x000000000000000",
+        "mixHash": "0x0000000000000000000000000000000000000000000000000000000000000000"
+      }
     },
-	"genesis": {
-		"seal": {
-			"ethereum": {
-				"nonce": "0x000000000000000",
-				"mixHash": "0x0000000000000000000000000000000000000000000000000000000000000000"
-			}
-		},
-		"difficulty": "0x20000",
-		"author": "0x0000000000000000000000000000000000000000",
-		"timestamp": "0x6159af19",
-		"parentHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
-		"extraData": "0x5365706f6c69612c20417468656e732c204174746963612c2047726565636521",
-		"gasLimit": "0x1c9c380"
-	},
-	"nodes": [
-        "enode://7c9740e4d64674801fe62b76798d46778a038c49caebb15843d8c0f2b2f80d7ceba2585b4be366e6161988f81ddcfcd6fca98b5da52ae9a6f22c1b2a84b24a04@18.130.169.73:30303"
-	],
-	"accounts": {
-      "0xa2A6d93439144FFE4D27c9E088dCD8b783946263": {"balance": "0xD3C21BCECCEDA1000000"},
-      "0xBc11295936Aa79d594139de1B2e12629414F3BDB": {"balance": "0xD3C21BCECCEDA1000000"},
-      "0x7cF5b79bfe291A67AB02b393E456cCc4c266F753": {"balance": "0xD3C21BCECCEDA1000000"},
-      "0xaaec86394441f915bce3e6ab399977e9906f3b69": {"balance": "0xD3C21BCECCEDA1000000"},
-      "0xF47CaE1CF79ca6758Bfc787dbD21E6bdBe7112B8": {"balance": "0xD3C21BCECCEDA1000000"},
-      "0xd7eDDB78ED295B3C9629240E8924fb8D8874ddD8": {"balance": "0xD3C21BCECCEDA1000000"},
-      "0x8b7F0977Bb4f0fBE7076FA22bC24acA043583F5e": {"balance": "0xD3C21BCECCEDA1000000"},
-      "0xe2e2659028143784d557bcec6ff3a0721048880a": {"balance": "0xD3C21BCECCEDA1000000"},
-      "0xd9a5179f091d85051d3c982785efd1455cec8699": {"balance": "0xD3C21BCECCEDA1000000"},
-      "0xbeef32ca5b9a198d27B4e02F4c70439fE60356Cf": {"balance": "0xD3C21BCECCEDA1000000"},
-      "0x0000006916a87b82333f4245046623b23794c65c": {"balance": "0x84595161401484A000000"},
-      "0xb21c33de1fab3fa15499c62b59fe0cc3250020d1": {"balance": "0x52B7D2DCC80CD2E4000000"},
-      "0x10F5d45854e038071485AC9e402308cF80D2d2fE": {"balance": "0x52B7D2DCC80CD2E4000000"},
-      "0xd7d76c58b3a519e9fA6Cc4D22dC017259BC49F1E": {"balance": "0x52B7D2DCC80CD2E4000000"},
-      "0x799D329e5f583419167cD722962485926E338F4a": {"balance": "0xDE0B6B3A7640000"}
-	}
+    "difficulty": "0x20000",
+    "author": "0x0000000000000000000000000000000000000000",
+    "timestamp": "0x6159af19",
+    "parentHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "extraData": "0x5365706f6c69612c20417468656e732c204174746963612c2047726565636521",
+    "gasLimit": "0x1c9c380"
+  },
+  "nodes": [
+    "enode://7c9740e4d64674801fe62b76798d46778a038c49caebb15843d8c0f2b2f80d7ceba2585b4be366e6161988f81ddcfcd6fca98b5da52ae9a6f22c1b2a84b24a04@18.130.169.73:30303",
+    "enode://ec66ddcf1a974950bd4c782789a7e04f8aa7110a72569b6e65fcd51e937e74eed303b1ea734e4d19cfaec9fbff9b6ee65bf31dcb50ba79acce9dd63a6aca61c7@52.14.151.177:30303"
+  ],
+  "accounts": {
+    "0xa2A6d93439144FFE4D27c9E088dCD8b783946263": {"balance": "0xD3C21BCECCEDA1000000"},
+    "0xBc11295936Aa79d594139de1B2e12629414F3BDB": {"balance": "0xD3C21BCECCEDA1000000"},
+    "0x7cF5b79bfe291A67AB02b393E456cCc4c266F753": {"balance": "0xD3C21BCECCEDA1000000"},
+    "0xaaec86394441f915bce3e6ab399977e9906f3b69": {"balance": "0xD3C21BCECCEDA1000000"},
+    "0xF47CaE1CF79ca6758Bfc787dbD21E6bdBe7112B8": {"balance": "0xD3C21BCECCEDA1000000"},
+    "0xd7eDDB78ED295B3C9629240E8924fb8D8874ddD8": {"balance": "0xD3C21BCECCEDA1000000"},
+    "0x8b7F0977Bb4f0fBE7076FA22bC24acA043583F5e": {"balance": "0xD3C21BCECCEDA1000000"},
+    "0xe2e2659028143784d557bcec6ff3a0721048880a": {"balance": "0xD3C21BCECCEDA1000000"},
+    "0xd9a5179f091d85051d3c982785efd1455cec8699": {"balance": "0xD3C21BCECCEDA1000000"},
+    "0xbeef32ca5b9a198d27B4e02F4c70439fE60356Cf": {"balance": "0xD3C21BCECCEDA1000000"},
+    "0x0000006916a87b82333f4245046623b23794c65c": {"balance": "0x84595161401484A000000"},
+    "0xb21c33de1fab3fa15499c62b59fe0cc3250020d1": {"balance": "0x52B7D2DCC80CD2E4000000"},
+    "0x10F5d45854e038071485AC9e402308cF80D2d2fE": {"balance": "0x52B7D2DCC80CD2E4000000"},
+    "0xd7d76c58b3a519e9fA6Cc4D22dC017259BC49F1E": {"balance": "0x52B7D2DCC80CD2E4000000"},
+    "0x799D329e5f583419167cD722962485926E338F4a": {"balance": "0xDE0B6B3A7640000"}
+  }
 }
