@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Config;
 using Nethermind.Int256;
 
 namespace Nethermind.AccountAbstraction
@@ -24,7 +23,7 @@ namespace Nethermind.AccountAbstraction
     {
         public bool Enabled { get; set; }
         public int UserOperationPoolSize { get; set; } = 200;
-        public string SingletonContractAddress { get; set; } = "";
+        public string EntryPointContractAddress { get; set; } = "";
         public string Create2FactoryAddress { get; set; } = "";
         public UInt256 MinimumGasPrice { get; set; } = 0;
         public string FlashbotsEndpoint { get; set; } = "https://relay.flashbots.net/";

@@ -20,7 +20,7 @@ namespace Nethermind.AccountAbstraction.Data
     public enum PaymasterStatus
     {
         Ok = 0,
-        Throttled = 1, 
+        Throttled = 1,
         Banned = 2
     }
 }

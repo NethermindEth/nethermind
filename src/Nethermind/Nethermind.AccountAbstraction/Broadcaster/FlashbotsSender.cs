@@ -22,7 +22,6 @@ using System.Linq;
 using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
-using Nethermind.Api;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -36,8 +35,8 @@ namespace Nethermind.AccountAbstraction.Flashbots
     public class FlashbotsSender
     {
         private readonly HttpClient _client;
-        private readonly ISigner _signer;
         private readonly ILogger _logger;
+        private readonly ISigner _signer;
 
         public FlashbotsSender(HttpClient client, ISigner signer, ILogger logger)
         {
@@ -45,55 +44,7 @@ namespace Nethermind.AccountAbstraction.Flashbots
             _signer = signer;
             _logger = logger;
         }
-        
-        public class MevBundle
-        {   
-            public MevBundle(long blockNumber, Transaction[] transactions, Keccak[] revertingTxHashes, UInt256? minTimestamp = null, UInt256? maxTimestamp = null)
-            {
-                BlockNumber = $"0x{blockNumber:X}";
-                Transactions = transactions.Select(tx => Rlp.Encode(tx).ToString());
-                RevertingTxHashes = revertingTxHashes;
 
-                MinTimestamp = minTimestamp;
-                MaxTimestamp = maxTimestamp;
-            }
-
-            public MevBundle(long blockNumber, string[] transactions)
-            {
-                BlockNumber = $"0x{blockNumber:X}";
-                Transactions = transactions;
-                RevertingTxHashes = Array.Empty<Keccak>();
-            }
-            
-            [JsonProperty("txs")]
-            public IEnumerable<string> Transactions { get; }
-            
-            [JsonProperty("revertingTxHashes", NullValueHandling = NullValueHandling.Ignore)]
-            public Keccak[] RevertingTxHashes { get; }
-
-            [JsonProperty("blockNumber")]
-            public string BlockNumber { get; }
-            
-            [JsonProperty("maxTimestamp", NullValueHandling = NullValueHandling.Ignore)]
-            public UInt256? MaxTimestamp { get; }
-            
-            [JsonProperty("minTimestamp", NullValueHandling = NullValueHandling.Ignore)]
-            public UInt256? MinTimestamp { get; }
-
-            public string GenerateSerializedSendBundleRequest(int id = 67)
-            {
-                var request = new
-                {
-                    jsonrpc = "2.0",
-                    method = "eth_sendBundle",
-                    @params = new List<MevBundle>{this},
-                    id = id
-                };
-
-                return JsonConvert.SerializeObject(request);
-            }
-        }
-        
         public async Task SendBundle(MevBundle bundle, string endpoint)
         {
             Address address = _signer.Address;
@@ -101,29 +52,27 @@ namespace Nethermind.AccountAbstraction.Flashbots
             string serializedRequest = bundle.GenerateSerializedSendBundleRequest();
             Signature signature = SignMessage(serializedRequest, _signer);
 
-            HttpRequestMessage request = new HttpRequestMessage
+            HttpRequestMessage request = new()
             {
-                RequestUri = new Uri(endpoint), 
+                RequestUri = new Uri(endpoint),
                 Method = HttpMethod.Post,
-                Headers = {
-                    {
-                        "X-Flashbots-Signature", $"{address}:{signature}"
-                    }
-                },
+                Headers = {{"X-Flashbots-Signature", $"{address}:{signature}"}},
                 Content = new StringContent(serializedRequest, Encoding.UTF8, "application/json")
-
             };
             HttpResponseMessage response = await _client.SendAsync(request);
             if (response.IsSuccessStatusCode)
             {
-                if (_logger!.IsInfo) _logger.Info($"Bundle with {bundle.Transactions.Count()} transactions sent successfully");
+                if (_logger!.IsInfo)
+                    _logger.Info($"Bundle with {bundle.Transactions.Count()} transactions sent successfully");
             }
             else
             {
-                if (_logger!.IsWarn) _logger.Warn($"eth_sendBundle failed with status code {response.StatusCode} with message {await new StreamReader(await response.Content.ReadAsStreamAsync()).ReadToEndAsync()}");
+                if (_logger!.IsWarn)
+                    _logger.Warn(
+                        $"eth_sendBundle failed with status code {response.StatusCode} with message {await new StreamReader(await response.Content.ReadAsStreamAsync()).ReadToEndAsync()}");
             }
         }
-        
+
         public static Signature SignMessage(string messageToSign, ISigner signer)
         {
             Keccak hashedRequest = Keccak.Compute(messageToSign);
@@ -139,6 +88,50 @@ namespace Nethermind.AccountAbstraction.Flashbots
 
             Signature signature = signer.Sign(Keccak.Compute(byteList.ToArray()));
             return signature;
+        }
+
+        public class MevBundle
+        {
+            public MevBundle(long blockNumber, Transaction[] transactions, Keccak[] revertingTxHashes,
+                UInt256? minTimestamp = null, UInt256? maxTimestamp = null)
+            {
+                BlockNumber = $"0x{blockNumber:X}";
+                Transactions = transactions.Select(tx => Rlp.Encode(tx).ToString());
+                RevertingTxHashes = revertingTxHashes;
+
+                MinTimestamp = minTimestamp;
+                MaxTimestamp = maxTimestamp;
+            }
+
+            public MevBundle(long blockNumber, string[] transactions)
+            {
+                BlockNumber = $"0x{blockNumber:X}";
+                Transactions = transactions;
+                RevertingTxHashes = Array.Empty<Keccak>();
+            }
+
+            [JsonProperty("txs")] public IEnumerable<string> Transactions { get; }
+
+            [JsonProperty("revertingTxHashes", NullValueHandling = NullValueHandling.Ignore)]
+            public Keccak[] RevertingTxHashes { get; }
+
+            [JsonProperty("blockNumber")] public string BlockNumber { get; }
+
+            [JsonProperty("maxTimestamp", NullValueHandling = NullValueHandling.Ignore)]
+            public UInt256? MaxTimestamp { get; }
+
+            [JsonProperty("minTimestamp", NullValueHandling = NullValueHandling.Ignore)]
+            public UInt256? MinTimestamp { get; }
+
+            public string GenerateSerializedSendBundleRequest(int id = 67)
+            {
+                var request = new
+                {
+                    jsonrpc = "2.0", method = "eth_sendBundle", @params = new List<MevBundle> {this}, id
+                };
+
+                return JsonConvert.SerializeObject(request);
+            }
         }
     }
 }

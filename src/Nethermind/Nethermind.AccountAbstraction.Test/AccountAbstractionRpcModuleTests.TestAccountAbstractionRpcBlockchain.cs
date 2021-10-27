@@ -87,7 +87,7 @@ namespace Nethermind.AccountAbstraction.Test
             private AccountAbstractionConfig _accountAbstractionConfig = new AccountAbstractionConfig() 
                 {
                     Enabled = true, 
-                    SingletonContractAddress = "0xdb8b5f6080a8e466b64a8d7458326cb650b3353f",
+                    EntryPointContractAddress = "0xdb8b5f6080a8e466b64a8d7458326cb650b3353f",
                     Create2FactoryAddress = "0xd75a3a95360e44a3874e691fb48d77855f127069",
                     UserOperationPoolSize = 200
                 };
@@ -133,7 +133,7 @@ namespace Nethermind.AccountAbstraction.Test
 
             protected override BlockProcessor CreateBlockProcessor()
             {
-                Address.TryParse(_accountAbstractionConfig.SingletonContractAddress, out Address _singletonContractAddress);
+                Address.TryParse(_accountAbstractionConfig.EntryPointContractAddress, out Address _entryPointContractAddress);
                 Address.TryParse(_accountAbstractionConfig.Create2FactoryAddress, out Address _create2FactoryAddress);
                 
                 BlockValidator = CreateBlockValidator();
@@ -162,7 +162,7 @@ namespace Nethermind.AccountAbstraction.Test
                     Signer, 
                     _accountAbstractionConfig, 
                     _create2FactoryAddress!,
-                    _singletonContractAddress!,
+                    _entryPointContractAddress!,
                     SpecProvider, 
                     BlockTree, 
                     DbProvider, 
@@ -173,7 +173,8 @@ namespace Nethermind.AccountAbstraction.Test
                 UserOperationPool = new UserOperationPool(
                     _accountAbstractionConfig, 
                     BlockTree,
-                    _singletonContractAddress!,
+                    _entryPointContractAddress!, 
+                    LogManager.GetClassLogger(),
                     new PaymasterThrottler(), 
                     ReceiptStorage, 
                     Signer, 

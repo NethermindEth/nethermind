@@ -29,7 +29,7 @@ namespace Nethermind.AccountAbstraction.Source
             if (ReferenceEquals(x, y)) return 0;
             if (ReferenceEquals(null, y)) return 1;
             if (ReferenceEquals(null, x)) return -1;
-            
+
             //TODO Implement effective gas price sorting
             return y.MaxPriorityFeePerGas.CompareTo(x.MaxPriorityFeePerGas);
         }

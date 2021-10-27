@@ -1,6 +1,4 @@
 ﻿using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
 using Nethermind.Abi;
@@ -12,10 +10,8 @@ using Nethermind.Api.Extensions;
 using Nethermind.Blockchain.Contracts.Json;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Timers;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -27,20 +23,14 @@ namespace Nethermind.AccountAbstraction
     public class AccountAbstractionPlugin : IConsensusWrapperPlugin
     {
         private IAccountAbstractionConfig _accountAbstractionConfig = null!;
-        private UserOperationPool? _userOperationPool;
-        private UserOperationSimulator? _userOperationSimulator;
-        private Address _singletonContractAddress = null!;
         private Address _create2FactoryAddress = null!;
         private AbiDefinition _entryPointContractAbi = null!;
-        
-        private INethermindApi _nethermindApi = null!;
         private ILogger _logger = null!;
-        
-        public string Name => "Account Abstraction";
 
-        public string Description => "Implements account abstraction via alternative mempool (ERC-4337)";
-
-        public string Author => "Nethermind";
+        private INethermindApi _nethermindApi = null!;
+        private Address _entryPointContractAddress = null!;
+        private UserOperationPool? _userOperationPool;
+        private UserOperationSimulator? _userOperationSimulator;
 
         private UserOperationPool UserOperationPool
         {
@@ -57,13 +47,14 @@ namespace Nethermind.AccountAbstraction
                     _userOperationPool = new UserOperationPool(
                         _accountAbstractionConfig,
                         _nethermindApi.BlockTree!,
-                        _singletonContractAddress,
-                        new PaymasterThrottler(), 
-                        _nethermindApi.ReceiptStorage!, 
-                        _nethermindApi.EngineSigner!, 
-                        _nethermindApi.StateProvider!, 
-                        _nethermindApi.Timestamper, 
-                        UserOperationSimulator, 
+                        _entryPointContractAddress, 
+                        _logger,
+                        new PaymasterThrottler(),
+                        _nethermindApi.ReceiptStorage!,
+                        _nethermindApi.EngineSigner!,
+                        _nethermindApi.StateProvider!,
+                        _nethermindApi.Timestamper,
+                        UserOperationSimulator,
                         userOperationSortedPool);
                 }
 
@@ -79,13 +70,13 @@ namespace Nethermind.AccountAbstraction
                 {
                     var (getFromApi, _) = _nethermindApi!.ForProducer;
 
-                    _userOperationSimulator = new(
+                    _userOperationSimulator = new UserOperationSimulator(
                         getFromApi.StateProvider!,
                         _entryPointContractAbi,
                         getFromApi.EngineSigner!,
                         _accountAbstractionConfig,
                         _create2FactoryAddress,
-                        _singletonContractAddress,
+                        _entryPointContractAddress,
                         getFromApi.SpecProvider!,
                         getFromApi.BlockTree!,
                         getFromApi.DbProvider!,
@@ -98,6 +89,12 @@ namespace Nethermind.AccountAbstraction
             }
         }
 
+        public string Name => "Account Abstraction";
+
+        public string Description => "Implements account abstraction via alternative mempool (ERC-4337)";
+
+        public string Author => "Nethermind";
+
         public Task Init(INethermindApi nethermindApi)
         {
             _nethermindApi = nethermindApi ?? throw new ArgumentNullException(nameof(nethermindApi));
@@ -106,28 +103,33 @@ namespace Nethermind.AccountAbstraction
 
             if (_accountAbstractionConfig.Enabled)
             {
-                bool parsed = Address.TryParse(_accountAbstractionConfig.SingletonContractAddress, out Address? singletonContractAddress);
-                if (!parsed) _logger.Error("Account Abstraction Plugin: Singleton contract address could not be parsed");
+                bool parsed = Address.TryParse(
+                    _accountAbstractionConfig.EntryPointContractAddress,
+                    out Address? entryPointContractAddress);
+                if (!parsed)
+                    _logger.Error("Account Abstraction Plugin: EntryPoint contract address could not be parsed");
                 else
                 {
-                    _logger.Info($"Parsed Singleton Address: {singletonContractAddress}");
-                    _singletonContractAddress = singletonContractAddress!;
+                    _logger.Info($"Parsed EntryPoint Address: {entryPointContractAddress}");
+                    _entryPointContractAddress = entryPointContractAddress!;
                 }
-                bool parsedCreate2Factory = Address.TryParse(_accountAbstractionConfig.Create2FactoryAddress, out Address? create2FactoryAddress);
-                if (!parsedCreate2Factory) _logger.Error("Account Abstraction Plugin: Singleton contract address could not be parsed");
+
+                bool parsedCreate2Factory = Address.TryParse(
+                    _accountAbstractionConfig.Create2FactoryAddress,
+                    out Address? create2FactoryAddress);
+                if (!parsedCreate2Factory)
+                    _logger.Error("Account Abstraction Plugin: Create2Factory contract address could not be parsed");
                 else
                 {
-                    _logger.Info($"Parsed Singleton Address: {create2FactoryAddress}");
+                    _logger.Info($"Parsed Create2Factory Address: {create2FactoryAddress}");
                     _create2FactoryAddress = create2FactoryAddress!;
                 }
-                
-                using (StreamReader r = new StreamReader("Contracts/EntryPoint.json"))
-                {
-                    string json = r.ReadToEnd();
-                    JObject obj = JObject.Parse(json);
-                
-                    _entryPointContractAbi = LoadContract(obj);
-                }
+
+                using StreamReader r = new("Contracts/EntryPoint.json");
+                string json = r.ReadToEnd();
+                JObject obj = JObject.Parse(json);
+
+                _entryPointContractAbi = LoadContract(obj);
             }
 
             if (Enabled)
@@ -142,7 +144,10 @@ namespace Nethermind.AccountAbstraction
             return Task.CompletedTask;
         }
 
-        public Task InitNetworkProtocol() => Task.CompletedTask;
+        public Task InitNetworkProtocol()
+        {
+            return Task.CompletedTask;
+        }
 
         public Task InitRpcModules()
         {
@@ -176,35 +181,33 @@ namespace Nethermind.AccountAbstraction
 
         public Task<IBlockProducer> InitBlockProducer(IConsensusPlugin consensusPlugin)
         {
-            if (!Enabled)
-            {
-                throw new InvalidOperationException("Account Abstraction plugin is disabled");
-            }
+            if (!Enabled) throw new InvalidOperationException("Account Abstraction plugin is disabled");
 
             UInt256 minerBalance = _nethermindApi.StateProvider!.GetBalance(_nethermindApi.EngineSigner!.Address);
             if (minerBalance < 1.Ether())
-            {
-                _logger.Warn($"Account Abstraction Plugin: Miner ({_nethermindApi.EngineSigner!.Address}) Ether balance low - {minerBalance/1.Ether()} Ether < 1 Ether. Increasing balance is recommended");
-            }
+                _logger.Warn(
+                    $"Account Abstraction Plugin: Miner ({_nethermindApi.EngineSigner!.Address}) Ether balance low - {minerBalance / 1.Ether()} Ether < 1 Ether. Increasing balance is recommended");
             else
             {
-                if (_logger.IsInfo) _logger.Info($"Account Abstraction Plugin: Miner ({_nethermindApi.EngineSigner!.Address}) Ether balance adequate - {minerBalance/1.Ether()} Ether");
+                if (_logger.IsInfo)
+                    _logger.Info(
+                        $"Account Abstraction Plugin: Miner ({_nethermindApi.EngineSigner!.Address}) Ether balance adequate - {minerBalance / 1.Ether()} Ether");
             }
 
             IManualBlockProductionTrigger trigger = new BuildBlocksWhenRequested();
-            UserOperationTxSource userOperationTxSource = new(UserOperationPool, UserOperationSimulator, _nethermindApi.SpecProvider!, _logger);
+            UserOperationTxSource userOperationTxSource =
+                new(UserOperationPool, UserOperationSimulator, _nethermindApi.SpecProvider!, _logger);
             //ContinuousBundleSender continuousBundleSender = new ContinuousBundleSender(_nethermindApi.BlockTree!, userOperationTxSource, _accountAbstractionConfig, _timerFactory, _nethermindApi.EngineSigner, _logger);
             return consensusPlugin.InitBlockProducer(trigger, userOperationTxSource);
         }
 
         public bool Enabled => _nethermindApi.Config<IInitConfig>().IsMining && _accountAbstractionConfig.Enabled;
-        
+
         private AbiDefinition LoadContract(JObject obj)
         {
             AbiDefinitionParser parser = new();
             parser.RegisterAbiTypeFactory(new AbiTuple<UserOperationAbi>());
             AbiDefinition contract = parser.Parse(obj["abi"]!.ToString());
-            AbiTuple<UserOperationAbi> userOperationAbi = new();
             return contract;
         }
     }

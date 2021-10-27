@@ -32,18 +32,19 @@ namespace Nethermind.AccountAbstraction.Executor
 {
     public class UserOperationBlockTracer : IBlockTracer
     {
-        private readonly long _gasLimit;
-        private readonly UserOperation _userOperation;
-        private readonly IStateProvider _stateProvider;
         private readonly AbiDefinition _abi;
+        private readonly AbiEncoder _abiEncoder = new();
         private readonly Address _create2FactoryAddress;
         private readonly Address _entryPointAddress;
+        private readonly long _gasLimit;
         private readonly ILogger _logger;
-        private readonly AbiEncoder _abiEncoder = new();
-        
+        private readonly IStateProvider _stateProvider;
+        private readonly UserOperation _userOperation;
+
         private UserOperationTxTracer? _tracer;
 
-        public UserOperationBlockTracer(long gasLimit, UserOperation userOperation, IStateProvider stateProvider, AbiDefinition abi, Address create2FactoryAddress, Address entryPointAddress, ILogger logger)
+        public UserOperationBlockTracer(long gasLimit, UserOperation userOperation, IStateProvider stateProvider,
+            AbiDefinition abi, Address create2FactoryAddress, Address entryPointAddress, ILogger logger)
         {
             _gasLimit = gasLimit;
             _userOperation = userOperation;
@@ -52,7 +53,7 @@ namespace Nethermind.AccountAbstraction.Executor
             _create2FactoryAddress = create2FactoryAddress;
             _entryPointAddress = entryPointAddress;
             _logger = logger;
-            
+
             Output = Array.Empty<byte>();
             AccessedStorage = new Dictionary<Address, HashSet<UInt256>>();
         }
@@ -77,27 +78,27 @@ namespace Nethermind.AccountAbstraction.Executor
         public ITxTracer StartNewTxTrace(Transaction? tx)
         {
             return tx is null
-                ? new UserOperationTxTracer(null, _stateProvider, _userOperation.Sender, _userOperation.Paymaster, _create2FactoryAddress, _entryPointAddress, _logger)
-                : _tracer = new UserOperationTxTracer(tx, _stateProvider, _userOperation.Sender, _userOperation.Paymaster, _create2FactoryAddress, _entryPointAddress, _logger);
+                ? new UserOperationTxTracer(null, _stateProvider, _userOperation.Sender, _userOperation.Paymaster,
+                    _create2FactoryAddress, _entryPointAddress, _logger)
+                : _tracer = new UserOperationTxTracer(tx, _stateProvider, _userOperation.Sender,
+                    _userOperation.Paymaster, _create2FactoryAddress, _entryPointAddress, _logger);
         }
 
         public void EndTxTrace()
         {
             if (_tracer is null) throw new ArgumentNullException(nameof(_tracer));
-            
+
             Output = _tracer.Output;
             Error = _tracer.Error;
-            
+
             try
             {
                 // the failedOp error in the entrypoint provides useful error messages, use if possible
                 object[] decoded = _abiEncoder.Decode(AbiEncodingStyle.IncludeSignature,
                     _abi.Errors["FailedOp"].GetCallInfo().Signature, Output);
-                FailedOp = new FailedOp()
+                FailedOp = new FailedOp
                 {
-                    OpIndex = (UInt256)decoded[0],
-                    Paymaster = (Address)decoded[1],
-                    Reason = (string)decoded[2]
+                    OpIndex = (UInt256)decoded[0], Paymaster = (Address)decoded[1], Reason = (string)decoded[2]
                 };
             }
             catch (Exception)
@@ -110,7 +111,7 @@ namespace Nethermind.AccountAbstraction.Executor
                 Success = false;
                 return;
             }
-            
+
             GasUsed += _tracer!.GasSpent;
 
             if (GasUsed > _gasLimit)
@@ -129,13 +130,31 @@ namespace Nethermind.AccountAbstraction.Executor
 
     public class UserOperationTxTracer : ITxTracer
     {
+        private static readonly Instruction[] _bannedOpcodes =
+        {
+            Instruction.GASPRICE, Instruction.GASLIMIT, Instruction.DIFFICULTY, Instruction.TIMESTAMP,
+            Instruction.BASEFEE, Instruction.BLOCKHASH, Instruction.NUMBER, Instruction.SELFBALANCE,
+            Instruction.BALANCE, Instruction.ORIGIN, Instruction.COINBASE
+        };
+
+        private readonly Address _create2FactoryAddress;
+        private readonly Address _entryPointAddress;
+        private readonly ILogger _logger;
+        private readonly Address _paymaster;
+        private readonly Address _sender;
+
+        private readonly IStateProvider _stateProvider;
+
+        private bool _paymasterValidationMode;
+        private int _selfBalanceCounter;
+
         public UserOperationTxTracer(
             Transaction? transaction,
-            IStateProvider stateProvider, 
+            IStateProvider stateProvider,
             Address sender,
             Address paymaster,
-            Address create2FactoryAddress, 
-            Address entryPointAddress, 
+            Address create2FactoryAddress,
+            Address entryPointAddress,
             ILogger logger)
         {
             Transaction = transaction;
@@ -151,36 +170,11 @@ namespace Nethermind.AccountAbstraction.Executor
         }
 
         public Transaction? Transaction { get; }
-        public IDictionary<Address, HashSet<UInt256>> AccessedStorage { get; private set; }
+        public IDictionary<Address, HashSet<UInt256>> AccessedStorage { get; }
         public bool Success { get; private set; }
         public string? Error { get; private set; }
         public long GasSpent { get; set; }
         public byte[] Output { get; private set; }
-
-        private static readonly Instruction[] _bannedOpcodes = 
-        {
-            Instruction.GASPRICE,
-            Instruction.GASLIMIT,
-            Instruction.DIFFICULTY,
-            Instruction.TIMESTAMP,
-            Instruction.BASEFEE,
-            Instruction.BLOCKHASH,
-            Instruction.NUMBER,
-            Instruction.SELFBALANCE,
-            Instruction.BALANCE,
-            Instruction.ORIGIN,
-            Instruction.COINBASE
-        };
-        
-        private readonly IStateProvider _stateProvider;
-        private readonly Address _sender;
-        private readonly Address _paymaster;
-        private readonly Address _create2FactoryAddress;
-        private readonly Address _entryPointAddress;
-        private readonly ILogger _logger;
-
-        private bool _paymasterValidationMode = false;
-        private int _selfBalanceCounter = 0;
 
 
         public bool IsTracingReceipt => true;
@@ -247,7 +241,7 @@ namespace Nethermind.AccountAbstraction.Executor
                 _logger.Info($"AA: Encountered banned opcode {opcode} during simulation at depth {depth} pc {pc}");
                 Success = false;
                 Error ??= $"simulation: encountered banned opcode {opcode} at depth {depth} pc {pc}";
-            } 
+            }
             // in the simulateWallet function of the entryPoint, selfbalance is called twice
             // signalling that validation is switching from the wallet to the paymaster
             else if (depth == 1 && opcode == Instruction.SELFBALANCE)
@@ -303,7 +297,7 @@ namespace Nethermind.AccountAbstraction.Executor
             //TODO: would this ever be allowed?
         }
 
-        public void ReportAction(long gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input,
+        public void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input,
             ExecutionType callType,
             bool isPrecompileCall = false)
         {
@@ -312,10 +306,7 @@ namespace Nethermind.AccountAbstraction.Executor
             {
                 if (to is not null)
                 {
-                    if (ContainsSelfDestructOrDelegateCall(to))
-                    {
-                        Success = false;
-                    }
+                    if (ContainsSelfDestructOrDelegateCall(to)) Success = false;
                 }
             }
         }
@@ -333,10 +324,7 @@ namespace Nethermind.AccountAbstraction.Executor
             // the paymaster can never even access any contract which either selfdestruct or delegatecall
             if (_paymasterValidationMode)
             {
-                if (ContainsSelfDestructOrDelegateCall(deploymentAddress))
-                {
-                    Success = false;
-                }
+                if (ContainsSelfDestructOrDelegateCall(deploymentAddress)) Success = false;
             }
         }
 
@@ -374,49 +362,42 @@ namespace Nethermind.AccountAbstraction.Executor
                     AccessedStorage[storageCell.Address].Add(storageCell.Index);
                     return;
                 }
-                AccessedStorage.Add(storageCell.Address, new HashSet<UInt256>{storageCell.Index});
+
+                AccessedStorage.Add(storageCell.Address, new HashSet<UInt256> {storageCell.Index});
             }
-            
+
             Address walletAddress = _sender;
             Address? paymasterAddress = _paymaster == Address.Zero ? null : _paymaster;
-            Address[] furtherAddresses = accessedAddresses.Except(new []{_create2FactoryAddress, Address.Zero, _entryPointAddress, _paymaster, _sender}).ToArray();
+            Address[] furtherAddresses = accessedAddresses
+                .Except(new[] {_create2FactoryAddress, Address.Zero, _entryPointAddress, _paymaster, _sender})
+                .ToArray();
 
             // spec: The call does not access mutable state of any contract except the wallet/paymaster itself
             foreach (StorageCell accessedStorageCell in accessedStorageCells)
             {
                 if (accessedStorageCell.Address == paymasterAddress || accessedStorageCell.Address == walletAddress)
-                {
                     AddToAccessedStorage(accessedStorageCell);
-                }
-                
-                if (furtherAddresses.Contains(accessedStorageCell.Address))
-                {
-                    Success = false;
-                }
+
+                if (furtherAddresses.Contains(accessedStorageCell.Address)) Success = false;
             }
         }
-        
+
         private bool ContainsSelfDestructOrDelegateCall(Address address)
         {
             // simple static analysis
             byte[] code = _stateProvider.GetCode(address);
-                
+
             int i = 0;
             while (i < code.Length)
             {
                 byte currentInstruction = code[i];
-                    
+
                 if (currentInstruction == (byte)Instruction.SELFDESTRUCT
                     || currentInstruction == (byte)Instruction.DELEGATECALL)
-                {
                     return true;
-                }
 
                 // push opcodes
-                else if (currentInstruction >= 0x60 && currentInstruction <= 0x7f)
-                {
-                    i += currentInstruction - 0x5f;
-                }
+                if (currentInstruction >= 0x60 && currentInstruction <= 0x7f) i += currentInstruction - 0x5f;
 
                 i++;
             }

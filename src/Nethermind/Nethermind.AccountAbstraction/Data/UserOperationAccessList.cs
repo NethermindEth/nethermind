@@ -23,64 +23,48 @@ namespace Nethermind.AccountAbstraction.Data
 {
     public class UserOperationAccessList
     {
+        public static UserOperationAccessList Empty = new(new Dictionary<Address, HashSet<UInt256>>());
+
         public UserOperationAccessList(IDictionary<Address, HashSet<UInt256>> data)
         {
             Data = data;
         }
 
-        public static UserOperationAccessList Empty = new UserOperationAccessList(new Dictionary<Address, HashSet<UInt256>>());
-
         public IDictionary<Address, HashSet<UInt256>> Data { get; set; }
-        
-        public static IDictionary<Address, HashSet<UInt256>> CombineAccessLists(IDictionary<Address, HashSet<UInt256>> accessList1, IDictionary<Address, HashSet<UInt256>> accessList2)
+
+        public static IDictionary<Address, HashSet<UInt256>> CombineAccessLists(
+            IDictionary<Address, HashSet<UInt256>> accessList1, IDictionary<Address, HashSet<UInt256>> accessList2)
         {
-            foreach (var kv in accessList2)
-            {
+            foreach (KeyValuePair<Address, HashSet<UInt256>> kv in accessList2)
                 if (accessList1.ContainsKey(kv.Key))
-                {
                     accessList1[kv.Key].UnionWith(kv.Value);
-                }
                 else
-                {
-                    accessList1[kv.Key] = (HashSet<UInt256>) kv.Value;
-                }
-            }
+                    accessList1[kv.Key] = kv.Value;
 
             return accessList1;
         }
-        
-        public static bool AccessListContains(IDictionary<Address, HashSet<UInt256>> accessList1, IDictionary<Address, HashSet<UInt256>> accessList2)
+
+        public static bool AccessListContains(IDictionary<Address, HashSet<UInt256>> accessList1,
+            IDictionary<Address, HashSet<UInt256>> accessList2)
         {
-            foreach (var kv in accessList2)
-            {
+            foreach (KeyValuePair<Address, HashSet<UInt256>> kv in accessList2)
                 if (accessList1.ContainsKey(kv.Key))
                 {
-                    if (!accessList1[kv.Key].IsSupersetOf(kv.Value))
-                    {
-                        return false;
-                    }
+                    if (!accessList1[kv.Key].IsSupersetOf(kv.Value)) return false;
                 }
                 else
-                {
                     return false;
-                }
-            }
 
             return true;
         }
-        
-        public static bool AccessListOverlaps(IDictionary<Address, HashSet<UInt256>> accessList1, IDictionary<Address, HashSet<UInt256>> accessList2)
+
+        public static bool AccessListOverlaps(IDictionary<Address, HashSet<UInt256>> accessList1,
+            IDictionary<Address, HashSet<UInt256>> accessList2)
         {
-            foreach (var kv in accessList1)
-            {
+            foreach (KeyValuePair<Address, HashSet<UInt256>> kv in accessList1)
                 if (accessList2.ContainsKey(kv.Key))
-                {
                     if (accessList2[kv.Key].Overlaps(kv.Value))
-                    {
                         return true;
-                    }
-                }
-            }
 
             return false;
         }

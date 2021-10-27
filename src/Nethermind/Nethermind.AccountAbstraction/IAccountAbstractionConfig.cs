@@ -34,10 +34,10 @@ namespace Nethermind.AccountAbstraction
 
         [ConfigItem(
             Description =
-                "Defines the hex string representation of the address of the singleton contract to which transactions will be made",
+                "Defines the hex string representation of the address of the EntryPoint contract to which transactions will be made",
             DefaultValue = "")]
-        string SingletonContractAddress { get; set; }
-        
+        string EntryPointContractAddress { get; set; }
+
         [ConfigItem(
             Description =
                 "Defines the hex string representation of the address of the create2Factory contract which was used to create the entryPoint",

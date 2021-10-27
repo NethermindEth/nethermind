@@ -148,7 +148,7 @@ namespace Nethermind.AccountAbstraction.Test
             blockTree.Head.Returns(Core.Test.Builders.Build.A.Block.TestObject);
 
             IAccountAbstractionConfig config = Substitute.For<IAccountAbstractionConfig>();
-            config.SingletonContractAddress.Returns("0x8595dd9e0438640b5e1254f9df579ac12a86865f");
+            config.EntryPointContractAddress.Returns("0x8595dd9e0438640b5e1254f9df579ac12a86865f");
             
             IPaymasterThrottler paymasterThrottler = Substitute.For<PaymasterThrottler>();
 
@@ -157,7 +157,8 @@ namespace Nethermind.AccountAbstraction.Test
             UserOperationPool userOperationPool = new(
                 config,
                 blockTree,
-                new Address(config.SingletonContractAddress),
+                new Address(config.EntryPointContractAddress), 
+                NullLogger.Instance, 
                 paymasterThrottler, 
                 receiptFinder, 
                 Substitute.For<ISigner>(), 

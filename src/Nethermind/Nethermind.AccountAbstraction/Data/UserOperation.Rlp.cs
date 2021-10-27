@@ -16,7 +16,6 @@
 // 
 
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Serialization.Rlp.Eip2930;
 
@@ -24,18 +23,21 @@ namespace Nethermind.AccountAbstraction.Data
 {
     public partial class UserOperation
     {
-        public static Keccak CalculateHash(UserOperation userOperation) => Keccak.Compute(EncodeRlp(userOperation).Data);
-        
+        public static Keccak CalculateHash(UserOperation userOperation)
+        {
+            return Keccak.Compute(EncodeRlp(userOperation).Data);
+        }
+
         private static RlpStream EncodeRlp(UserOperation op)
         {
-            AccessListDecoder accessListDecoder = new AccessListDecoder();
+            AccessListDecoder accessListDecoder = new();
 
             int contentLength = GetContentLength(op, accessListDecoder);
             int sequenceLength = Rlp.GetSequenceRlpLength(contentLength);
 
             RlpStream stream = new(sequenceLength);
             stream.StartSequence(contentLength);
-            
+
             stream.Encode(op.Sender);
             stream.Encode(op.Nonce);
             stream.Encode(op.InitCode);
@@ -51,7 +53,7 @@ namespace Nethermind.AccountAbstraction.Data
 
             return stream;
         }
-        
+
         private static int GetContentLength(UserOperation op, AccessListDecoder accessListDecoder)
         {
             return Rlp.LengthOf(op.Sender)
@@ -64,7 +66,7 @@ namespace Nethermind.AccountAbstraction.Data
                    + Rlp.LengthOf(op.MaxFeePerGas)
                    + Rlp.LengthOf(op.MaxPriorityFeePerGas)
                    + Rlp.LengthOf(op.Paymaster)
-                   + Rlp.LengthOf(op.PaymasterData) 
+                   + Rlp.LengthOf(op.PaymasterData)
                    + Rlp.LengthOf(op.Signature);
         }
     }

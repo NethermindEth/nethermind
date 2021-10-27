@@ -16,15 +16,10 @@
 // 
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
-using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Threading.Tasks.Dataflow;
-using Nethermind.Abi;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Executor;
 using Nethermind.Blockchain;
@@ -35,34 +30,33 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
-using Nethermind.Network;
-using Nethermind.Network.P2P;
+using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.Stats.Model;
-using Nethermind.TxPool.Collections;
 
 namespace Nethermind.AccountAbstraction.Source
 {
     public class UserOperationPool : IUserOperationPool
     {
+        private readonly IAccountAbstractionConfig _accountAbstractionConfig;
         private readonly IBlockTree _blockTree;
-        private readonly IStateProvider _stateProvider;
+        private readonly Address _entryPointAddress;
+        private readonly ILogger _logger;
         private readonly IPaymasterThrottler _paymasterThrottler;
         private readonly IReceiptFinder _receiptFinder;
         private readonly ISigner _signer;
+        private readonly IStateProvider _stateProvider;
         private readonly ITimestamper _timestamper;
-        private readonly Address _entryPointAddress;
-        private readonly IAccountAbstractionConfig _accountAbstractionConfig;
-        private readonly UserOperationSortedPool _userOperationSortedPool;
+        private readonly Keccak _userOperationEventTopic;
         private readonly IUserOperationSimulator _userOperationSimulator;
+        private readonly UserOperationSortedPool _userOperationSortedPool;
 
         private readonly Dictionary<long, List<UserOperation>> _userOperationsToDelete = new();
-        private readonly Keccak _userOperationEventTopic;
 
         public UserOperationPool(
             IAccountAbstractionConfig accountAbstractionConfig,
             IBlockTree blockTree,
             Address entryPointAddress,
+            ILogger logger,
             IPaymasterThrottler paymasterThrottler,
             IReceiptFinder receiptFinder,
             ISigner signer,
@@ -78,13 +72,46 @@ namespace Nethermind.AccountAbstraction.Source
             _signer = signer;
             _timestamper = timestamper;
             _entryPointAddress = entryPointAddress;
+            _logger = logger;
             _accountAbstractionConfig = accountAbstractionConfig;
             _userOperationSortedPool = userOperationSortedPool;
             _userOperationSimulator = userOperationSimulator;
-            
+
             _userOperationEventTopic = new Keccak("0xc27a60e61c14607957b41fa2dad696de47b2d80e390d0eaaf1514c0cd2034293");
 
             _blockTree.NewHeadBlock += NewHead;
+        }
+
+        public IEnumerable<UserOperation> GetUserOperations()
+        {
+            return _userOperationSortedPool.GetSnapshot();
+        }
+
+        public ResultWrapper<Keccak> AddUserOperation(UserOperation userOperation)
+        {
+            if (_logger.IsDebug) _logger.Debug($"UserOperation {userOperation.Hash} received");
+            ResultWrapper<Keccak> result = ValidateUserOperation(userOperation);
+            if (result.Result == Result.Success)
+            {
+                if (_logger.IsDebug) _logger.Debug($"UserOperation {userOperation.Hash} validation succeeded");
+                if (_userOperationSortedPool.TryInsert(userOperation, userOperation))
+                {
+                    _paymasterThrottler.IncrementOpsSeen(userOperation.Paymaster);
+                    if (_logger.IsDebug) _logger.Debug($"UserOperation {userOperation.Hash} inserted into pool");
+                    return ResultWrapper<Keccak>.Success(userOperation.Hash);
+                }
+
+                if (_logger.IsDebug) _logger.Debug($"UserOperation {userOperation.Hash} failed to be inserted into pool");
+                return ResultWrapper<Keccak>.Fail("failed to insert userOp into pool");
+            }
+
+            if (_logger.IsDebug) _logger.Debug($"UserOperation {userOperation.Hash} validation failed because: {result.Result.Error}");
+            return result;
+        }
+
+        public bool RemoveUserOperation(UserOperation userOperation)
+        {
+            return _userOperationSortedPool.TryRemove(userOperation);
         }
 
         private void NewHead(object? sender, BlockEventArgs e)
@@ -93,17 +120,14 @@ namespace Nethermind.AccountAbstraction.Source
             Block block = e.Block;
             if (_userOperationsToDelete.ContainsKey(block.Number))
             {
-                foreach (var userOperation in _userOperationsToDelete[block.Number])
-                {
-                    RemoveUserOperation(userOperation);
-                }
+                foreach (var userOperation in _userOperationsToDelete[block.Number]) RemoveUserOperation(userOperation);
             }
 
-            // find any userops included on chain submitted by this miner, delete from the pool
+            // find any userOps included on chain submitted by this miner, delete from the pool
             TxReceipt[] receipts = _receiptFinder.Get(block);
             TxReceipt[] entryPointReceipts = receipts
                 .Where(r => r.Recipient is not null && r.Recipient == _entryPointAddress).ToArray();
-            
+
             LogEntry[] logs = entryPointReceipts
                 .Where(r => r.Sender is not null && r.Sender == _signer.Address)
                 .SelectMany(r => r.Logs ?? Array.Empty<LogEntry>())
@@ -112,47 +136,23 @@ namespace Nethermind.AccountAbstraction.Source
 
             foreach (var log in logs)
             {
-                Address senderAddress = new Address(log.Topics[1]);
-                Address paymasterAddress = new Address(log.Topics[2]);
-                UInt256 nonce = new UInt256(log.Data.Slice(0, 32), true);
+                Address senderAddress = new(log.Topics[1]);
+                Address paymasterAddress = new(log.Topics[2]);
+                UInt256 nonce = new(log.Data.Slice(0, 32), true);
                 IDictionary<Address, UserOperation[]> bucketSnapshot = _userOperationSortedPool.GetBucketSnapshot();
                 if (bucketSnapshot.ContainsKey(senderAddress))
                 {
                     UserOperation[] userOperationsWithSender = bucketSnapshot[senderAddress];
-                    IEnumerable<UserOperation> userOperationsToRemove = userOperationsWithSender.Where(op => op.Nonce == nonce && op.Paymaster == paymasterAddress);
+                    IEnumerable<UserOperation> userOperationsToRemove =
+                        userOperationsWithSender.Where(op => op.Nonce == nonce && op.Paymaster == paymasterAddress);
                     foreach (var userOperation in userOperationsToRemove)
                     {
+                        if (_logger.IsDebug) _logger.Debug($"UserOperation {userOperation.Hash} removed from pool after being included by miner");
                         _paymasterThrottler.IncrementOpsIncluded(paymasterAddress);
                         RemoveUserOperation(userOperation);
                     }
                 }
             }
-        }
-
-        public IEnumerable<UserOperation> GetUserOperations() => _userOperationSortedPool.GetSnapshot();
-
-        public ResultWrapper<Keccak> AddUserOperation(UserOperation userOperation)
-        {
-            ResultWrapper<Keccak> result = ValidateUserOperation(userOperation);
-            if (result.Result == Result.Success)
-            {
-                if (_userOperationSortedPool.TryInsert(userOperation, userOperation))
-                {
-                    _paymasterThrottler.IncrementOpsSeen(userOperation.Paymaster);
-                    return ResultWrapper<Keccak>.Success(userOperation.Hash);
-                }
-                else
-                {
-                    return ResultWrapper<Keccak>.Fail("failed to insert userOp into pool");
-                }
-            }
-            
-            return result;
-        }
-
-        public bool RemoveUserOperation(UserOperation userOperation)
-        {
-            return _userOperationSortedPool.TryRemove(userOperation);
         }
 
         private ResultWrapper<Keccak> ValidateUserOperation(UserOperation userOperation)
@@ -168,77 +168,61 @@ namespace Nethermind.AccountAbstraction.Source
                 {
                     IEnumerable<UserOperation> poolUserOperations = GetUserOperations();
                     if (poolUserOperations.Any(poolOp => poolOp.Paymaster == userOperation.Paymaster))
-                    {
-                        return ResultWrapper<Keccak>.Fail($"paymaster throttled and userOp with paymaster {userOperation.Paymaster} is already present in the pool");
-                    }
+                        return ResultWrapper<Keccak>.Fail(
+                            $"paymaster throttled and userOp with paymaster {userOperation.Paymaster} is already present in the pool");
                     break;
                 }
             }
 
             if (userOperation.MaxFeePerGas < _accountAbstractionConfig.MinimumGasPrice)
-            {
                 return ResultWrapper<Keccak>.Fail("maxFeePerGas below minimum gas price");
-            }
 
             if (userOperation.CallGas < Transaction.BaseTxGasCost)
-            {
                 return ResultWrapper<Keccak>.Fail($"callGas too low, must be at least {Transaction.BaseTxGasCost}");
-            }
 
             // make sure target account exists
             if (
                 userOperation.Sender == Address.Zero
                 || !(_stateProvider.AccountExists(userOperation.Sender) || userOperation.InitCode != Bytes.Empty))
-            {
                 return ResultWrapper<Keccak>.Fail("sender doesn't exist");
-            }
 
             // make sure paymaster is a contract (if paymaster is used) and is not on banned list
             if (userOperation.Paymaster != Address.Zero)
             {
-                if (!_stateProvider.AccountExists(userOperation.Paymaster) 
+                if (!_stateProvider.AccountExists(userOperation.Paymaster)
                     || !_stateProvider.IsContract(userOperation.Paymaster))
-                {
                     return ResultWrapper<Keccak>.Fail("paymaster is used but is not a contract or is banned");
-                }
             }
 
             // make sure op not already in pool
             if (_userOperationSortedPool.GetSnapshot().Contains(userOperation))
-            {
                 return ResultWrapper<Keccak>.Fail("userOp is already present in the pool");
-            }
-            
+
             Task<ResultWrapper<Keccak>> successfulSimulationTask = Simulate(userOperation, _blockTree.Head!.Header);
             ResultWrapper<Keccak> successfulSimulation = successfulSimulationTask.Result;
-            
+
             // throttled userOp can only stay for 10 blocks
             if (paymasterStatus == PaymasterStatus.Throttled && successfulSimulation.Result == Result.Success)
             {
                 long blockNumberToDelete = _blockTree.Head!.Number + 10;
                 if (_userOperationsToDelete.ContainsKey(blockNumberToDelete))
-                {
                     _userOperationsToDelete[blockNumberToDelete].Add(userOperation);
-                }
                 else
-                {
-                    _userOperationsToDelete.Add(blockNumberToDelete, new List<UserOperation>{userOperation});
-                }
+                    _userOperationsToDelete.Add(blockNumberToDelete, new List<UserOperation> {userOperation});
             }
-            
+
             return successfulSimulation;
         }
 
         private async Task<ResultWrapper<Keccak>> Simulate(UserOperation userOperation, BlockHeader parent)
         {
             ResultWrapper<Keccak> success = await _userOperationSimulator.Simulate(
-                userOperation, 
-                parent, 
-                CancellationToken.None, 
+                userOperation,
+                parent,
+                CancellationToken.None,
                 _timestamper.UnixTime.Seconds);
 
             return success;
         }
-        
     }
 }
