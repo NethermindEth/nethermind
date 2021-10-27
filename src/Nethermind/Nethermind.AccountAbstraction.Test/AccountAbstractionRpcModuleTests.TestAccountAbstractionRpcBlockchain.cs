@@ -134,8 +134,8 @@ namespace Nethermind.AccountAbstraction.Test
 
             protected override BlockProcessor CreateBlockProcessor()
             {
-                Address.TryParse(_accountAbstractionConfig.EntryPointContractAddress, out Address _entryPointContractAddress);
-                Address.TryParse(_accountAbstractionConfig.Create2FactoryAddress, out Address _create2FactoryAddress);
+                Address.TryParse(_accountAbstractionConfig.EntryPointContractAddress, out Address? entryPointContractAddress);
+                Address.TryParse(_accountAbstractionConfig.Create2FactoryAddress, out Address? create2FactoryAddress);
                 
                 BlockValidator = CreateBlockValidator();
                 BlockProcessor blockProcessor = new(
@@ -159,8 +159,8 @@ namespace Nethermind.AccountAbstraction.Test
                     EntryPointContractAbi,
                     Signer, 
                     _accountAbstractionConfig, 
-                    _create2FactoryAddress!,
-                    _entryPointContractAddress!,
+                    create2FactoryAddress!,
+                    entryPointContractAddress!,
                     SpecProvider, 
                     BlockTree, 
                     DbProvider, 
@@ -171,7 +171,7 @@ namespace Nethermind.AccountAbstraction.Test
                 UserOperationPool = new UserOperationPool(
                     _accountAbstractionConfig, 
                     BlockTree,
-                    _entryPointContractAddress!, 
+                    entryPointContractAddress!, 
                     LogManager.GetClassLogger(),
                     new PaymasterThrottler(), 
                     ReceiptStorage, 
@@ -187,7 +187,7 @@ namespace Nethermind.AccountAbstraction.Test
                 return blockProcessor;
             }
 
-            protected override async Task<TestBlockchain> Build(ISpecProvider specProvider = null, UInt256? initialValues = null)
+            protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null)
             {
                 TestBlockchain chain = await base.Build(specProvider, initialValues);
                 AccountAbstractionRpcModule = new AccountAbstractionRpcModule(UserOperationPool);
@@ -214,15 +214,6 @@ namespace Nethermind.AccountAbstraction.Test
                 ResultWrapper<Keccak> resultOfUserOperation = UserOperationPool.AddUserOperation(userOperation);
                 resultOfUserOperation.GetResult().ResultType.Should().NotBe(ResultType.Failure, resultOfUserOperation.Result.Error);
                 resultOfUserOperation.GetData().Should().Be(userOperation.Hash);
-            }
-            
-            private AbiDefinition LoadContract(JObject obj)
-            {
-                AbiDefinitionParser parser = new();
-                parser.RegisterAbiTypeFactory(new AbiTuple<UserOperationAbi>());
-                AbiDefinition contract = parser.Parse(obj["abi"]!.ToString());
-                AbiTuple<UserOperationAbi> userOperationAbi = new();
-                return contract;
             }
         }
     }

@@ -41,7 +41,7 @@ namespace Nethermind.AccountAbstraction.Test
         {
             var (userOperationPool, _, _) = GenerateUserOperationPool();
 
-            UserOperation op = Build.A.UserOperation.WithTarget(Address.SystemUser).SignedAndResolved().TestObject;
+            UserOperation op = Build.A.UserOperation.WithSender(Address.SystemUser).SignedAndResolved().TestObject;
 
             userOperationPool.AddUserOperation(op);
 
@@ -55,8 +55,8 @@ namespace Nethermind.AccountAbstraction.Test
         {
             var (userOperationPool, _, _) = GenerateUserOperationPool(1);
 
-            UserOperation op = Build.A.UserOperation.WithTarget(Address.SystemUser).SignedAndResolved().TestObject;
-            UserOperation op2 = Build.A.UserOperation.WithTarget(Address.SystemUser).WithMaxFeePerGas(2).WithMaxPriorityFeePerGas(2).SignedAndResolved().TestObject;
+            UserOperation op = Build.A.UserOperation.WithSender(Address.SystemUser).SignedAndResolved().TestObject;
+            UserOperation op2 = Build.A.UserOperation.WithSender(Address.SystemUser).WithMaxFeePerGas(2).WithMaxPriorityFeePerGas(2).SignedAndResolved().TestObject;
 
 
             userOperationPool.AddUserOperation(op);
@@ -72,7 +72,7 @@ namespace Nethermind.AccountAbstraction.Test
         {
             var (userOperationPool, simulator, _) = GenerateUserOperationPool();
 
-            UserOperation op = Build.A.UserOperation.WithTarget(Address.SystemUser).SignedAndResolved().TestObject;
+            UserOperation op = Build.A.UserOperation.WithSender(Address.SystemUser).SignedAndResolved().TestObject;
 
             userOperationPool.AddUserOperation(op);
 
@@ -84,8 +84,8 @@ namespace Nethermind.AccountAbstraction.Test
         {
             var (userOperationPool, simulator, _) = GenerateUserOperationPool(1);
             
-            UserOperation op = Build.A.UserOperation.WithTarget(Address.SystemUser).SignedAndResolved().TestObject;
-            UserOperation op2 = Build.A.UserOperation.WithTarget(Address.SystemUser).WithMaxFeePerGas(2).WithMaxPriorityFeePerGas(2).SignedAndResolved().TestObject;
+            UserOperation op = Build.A.UserOperation.WithSender(Address.SystemUser).SignedAndResolved().TestObject;
+            UserOperation op2 = Build.A.UserOperation.WithSender(Address.SystemUser).WithMaxFeePerGas(2).WithMaxPriorityFeePerGas(2).SignedAndResolved().TestObject;
 
 
             userOperationPool.AddUserOperation(op);
@@ -105,11 +105,11 @@ namespace Nethermind.AccountAbstraction.Test
             get
             {
                 // if callGas < Gas Cost of Transaction
-                yield return Build.A.UserOperation.WithTarget(Address.SystemUser).WithCallGas(1).SignedAndResolved().TestObject;
+                yield return Build.A.UserOperation.WithSender(Address.SystemUser).WithCallGas(1).SignedAndResolved().TestObject;
                 // if target is zero address
                 yield return Build.A.UserOperation.SignedAndResolved().TestObject;
                 // if target is not a contract
-                yield return Build.A.UserOperation.WithTarget(_notAnAddress).SignedAndResolved().TestObject;
+                yield return Build.A.UserOperation.WithSender(_notAnAddress).SignedAndResolved().TestObject;
                 // if paymaster is not a contract
                 yield return Build.A.UserOperation.WithPaymaster(_notAnAddress).SignedAndResolved().TestObject;
             }

@@ -198,7 +198,7 @@ namespace Nethermind.AccountAbstraction
             return consensusPlugin.InitBlockProducer(trigger, userOperationTxSource);
         }
 
-        public bool Enabled => _nethermindApi.Config<IInitConfig>().IsMining && _accountAbstractionConfig.Enabled;
+        public bool Enabled => (_nethermindApi.Config<IInitConfig>().IsMining || _nethermindApi.Config<IMiningConfig>().Enabled) && _accountAbstractionConfig.Enabled;
 
         private AbiDefinition LoadEntryPointContract()
         {

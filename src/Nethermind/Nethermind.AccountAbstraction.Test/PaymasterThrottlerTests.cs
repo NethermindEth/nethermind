@@ -27,11 +27,11 @@ namespace Nethermind.AccountAbstraction.Test
     [TestFixture]
     public class PaymasterThrottlerTests
     {
-        private Random rand;
+        private Random _rand = null!;
         
-        private TestPaymasterThrottler _paymasterThrottler;
+        private TestPaymasterThrottler _paymasterThrottler = null!;
 
-        private Address[] _addresses =
+        private readonly Address[] _addresses =
         {
             new("0xab07ae311586661c77f35c31a62dc05e3fd0fe18"),
             new("0xb7c255fa6f20564f2ceea12991330c0bc6f4d036"),
@@ -46,7 +46,7 @@ namespace Nethermind.AccountAbstraction.Test
         {
             // Modifying internal timer interval so that internal maps are updated every 2 secs
             _paymasterThrottler = new TestPaymasterThrottler();
-            rand = new Random();
+            _rand = new Random();
         }
 
         [Test]
@@ -56,7 +56,7 @@ namespace Nethermind.AccountAbstraction.Test
             
             for (int i = 0; i < 1000; i++)
             {
-                index = rand.Next(0, _addresses.Length);
+                index = _rand.Next(0, _addresses.Length);
                 _paymasterThrottler.IncrementOpsSeen(_addresses[index]);
                 _paymasterThrottler.IncrementOpsIncluded(_addresses[index]);
             }
@@ -116,7 +116,7 @@ namespace Nethermind.AccountAbstraction.Test
             
             for (int i = 0; i < 10000; i++)
             {
-                index = rand.Next(0, _addresses.Length - 1);
+                index = _rand.Next(0, _addresses.Length - 1);
                 if (i % 2 == 0) _paymasterThrottler.IncrementOpsSeen(_addresses[index]);
                 else _paymasterThrottler.IncrementOpsIncluded(_addresses[index]);
             }

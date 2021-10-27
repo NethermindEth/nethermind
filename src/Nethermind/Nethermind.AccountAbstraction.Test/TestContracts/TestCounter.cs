@@ -15,17 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
-using Nethermind.AccountAbstraction.Source;
+using Nethermind.Blockchain.Contracts;
 
-namespace Nethermind.AccountAbstraction.Test
+namespace Nethermind.AccountAbstraction.Test.TestContracts
 {
-    public class TestPaymasterThrottler : PaymasterThrottler
+    public class TestCounter : Contract
     {
-        public new void UpdateUserOperationMaps(Object source, EventArgs args)
-        {
-            base.UpdateUserOperationMaps(source, args);
-        }
         
     }
 }

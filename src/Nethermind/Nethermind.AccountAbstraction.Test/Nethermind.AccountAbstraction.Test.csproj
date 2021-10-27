@@ -4,6 +4,10 @@
         <TargetFramework>net5.0</TargetFramework>
         <Nullable>enable</Nullable>
     </PropertyGroup>
+    <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+      <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+      <WarningsAsErrors />
+    </PropertyGroup>
   
     <ItemGroup>
       <PackageReference Include="FluentAssertions" Version="5.10.3" />
@@ -22,42 +26,17 @@
       <ProjectReference Include="..\Nethermind.Merge.Plugin.Test\Nethermind.Merge.Plugin.Test.csproj" />
       <ProjectReference Include="..\Nethermind.Merge.Plugin\Nethermind.Merge.Plugin.csproj" />
     </ItemGroup>
-  
+
     <ItemGroup>
       <None Remove="TestContracts\SimpleWallet.json" />
-      <Content Include="TestContracts\SimpleWallet.json">
-        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      </Content>
-    </ItemGroup>
-
-    <ItemGroup>
-      <None Remove="TestContracts\TestCounter.json" />
-      <Content Include="TestContracts\TestCounter.json">
-        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      </Content>
-    </ItemGroup>
-
-    <ItemGroup>
-      <None Remove="TestContracts\TokenPaymaster.json" />
-      <Content Include="TestContracts\TokenPaymaster.json">
-        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      </Content>
-    </ItemGroup>
-
-    <ItemGroup>
-      <None Remove="TestContracts\EntryPoint.json" />
-      <Content Include="TestContracts\EntryPoint.json">
-        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      </Content>
-    </ItemGroup>
-
-    <ItemGroup>
       <None Remove="TestContracts\SingletonFactory.json" />
-      <Content Include="TestContracts\SingletonFactory.json">
-        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      </Content>
+      <None Remove="TestContracts\TestCounter.json" />
+      <None Remove="TestContracts\TokenPaymaster.json" />
+      <EmbeddedResource Include="TestContracts\SimpleWallet.json" />
+      <EmbeddedResource Include="TestContracts\SingletonFactory.json" />
+      <EmbeddedResource Include="TestContracts\TestCounter.json" />
+      <EmbeddedResource Include="TestContracts\TokenPaymaster.json" />
     </ItemGroup>
-  
   
     <ItemGroup>
       <Content Include="Tests\*.json">

@@ -48,9 +48,9 @@ namespace Nethermind.AccountAbstraction.Test
             TestObjectInternal = new UserOperation(rpcOp);
         }
 
-        public UserOperationBuilder WithTarget(Address target)
+        public UserOperationBuilder WithSender(Address sender)
         {
-            TestObjectInternal.Sender = target;
+            TestObjectInternal.Sender = sender;
             return this;
         }
         
