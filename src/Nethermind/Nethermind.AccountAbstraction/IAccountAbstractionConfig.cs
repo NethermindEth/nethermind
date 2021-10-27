@@ -46,7 +46,7 @@ namespace Nethermind.AccountAbstraction
 
         [ConfigItem(
             Description = "Defines the minimum gas price for a user operation to be accepted",
-            DefaultValue = "200")]
+            DefaultValue = "1")]
         UInt256 MinimumGasPrice { get; set; }
 
         [ConfigItem(

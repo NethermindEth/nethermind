@@ -25,7 +25,7 @@ namespace Nethermind.AccountAbstraction
         public int UserOperationPoolSize { get; set; } = 200;
         public string EntryPointContractAddress { get; set; } = "";
         public string Create2FactoryAddress { get; set; } = "";
-        public UInt256 MinimumGasPrice { get; set; } = 0;
+        public UInt256 MinimumGasPrice { get; set; } = 1;
         public string FlashbotsEndpoint { get; set; } = "https://relay.flashbots.net/";
     }
 }
