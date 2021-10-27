@@ -17,6 +17,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -99,7 +100,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         
         private void Send(GetPooledTransactionsMessage msg)
         {
-            _response = msg.Hashes;
+            _response = msg.Hashes.ToList();
         }
     }
 }
