@@ -565,6 +565,11 @@ namespace Nethermind.Synchronization.Test
 
             public PublicKey Id => Node.Id;
 
+            public void SendNewTransaction(Transaction tx)
+            {
+                throw new NotImplementedException();
+            }
+
             public void SendNewTransactions(IEnumerable<Transaction> txs)
             {
                 throw new NotImplementedException();
@@ -997,6 +1002,11 @@ namespace Nethermind.Synchronization.Test
             }
 
             public PublicKey Id => Node.Id;
+
+            public void SendNewTransaction(Transaction tx)
+            {
+                throw new NotImplementedException();
+            }
 
             public void SendNewTransactions(IEnumerable<Transaction> txs)
             {

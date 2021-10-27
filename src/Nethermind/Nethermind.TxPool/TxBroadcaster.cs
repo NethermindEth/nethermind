@@ -93,6 +93,7 @@ namespace Nethermind.TxPool
 
         public void StartBroadcast(Transaction tx)
         {
+            NotifyPeersAboutLocalTx(tx);
             _persistentTxs.TryInsert(tx.Hash, tx);
         }
       
@@ -170,6 +171,24 @@ namespace Nethermind.TxPool
             catch (Exception e)
             {
                 if (_logger.IsError) _logger.Error($"Failed to notify {peer} about transactions.", e);
+            }
+        }
+        
+        private void NotifyPeersAboutLocalTx(Transaction tx)
+        {
+            foreach ((_, ITxPoolPeer peer) in _peers)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Broadcasting new local transaction to all peers");
+
+                try
+                {
+                    peer.SendNewTransaction(tx);
+                    if (_logger.IsTrace) _logger.Trace($"Notified {peer} about transaction {tx}.");
+                }
+                catch (Exception e)
+                {
+                    if (_logger.IsError) _logger.Error($"Failed to notify {peer} about transaction {tx}.", e);
+                }
             }
         }
 

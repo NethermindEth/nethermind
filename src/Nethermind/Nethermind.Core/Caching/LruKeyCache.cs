@@ -67,12 +67,13 @@ namespace Nethermind.Core.Caching
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public void Set(TKey key)
+        public bool Set(TKey key)
         {
             if (_cacheMap.TryGetValue(key, out LinkedListNode<TKey>? node))
             {
                 _lruList.Remove(node);
                 _lruList.AddLast(node);
+                return false;
             }
             else
             {
@@ -86,6 +87,7 @@ namespace Nethermind.Core.Caching
                     _lruList.AddLast(newNode);
                     _cacheMap.Add(key, newNode);    
                 }
+                return true;
             }
         }
 

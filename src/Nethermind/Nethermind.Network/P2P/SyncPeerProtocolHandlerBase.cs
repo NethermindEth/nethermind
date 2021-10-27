@@ -217,6 +217,11 @@ namespace Nethermind.Network.P2P
 
         public abstract void NotifyOfNewBlock(Block block, SendBlockPriority priority);
 
+        public void SendNewTransaction(Transaction tx)
+        {
+            SendMessage(new[]{tx});
+        }
+
         public virtual void SendNewTransactions(IEnumerable<Transaction> txs)
         {
             const int maxCapacity = 256;
