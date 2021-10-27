@@ -661,7 +661,7 @@ namespace Nethermind.TxPool.Test
         public void should_broadcast_own_transactions()
         {
             _txPool = CreatePool();
-            AddOwnTransactionToPool();
+            AddTransactionToPool();
             Assert.AreEqual(1, _txPool.GetOwnPendingTransactions().Length);
         }
         
@@ -669,7 +669,7 @@ namespace Nethermind.TxPool.Test
         public void should_not_broadcast_own_transactions_that_faded_out_and_came_back()
         {
             _txPool = CreatePool();
-            var transaction = AddOwnTransactionToPool();
+            var transaction = AddTransactionToPool();
             _txPool.RemoveTransaction(transaction.Hash);
             _txPool.RemoveTransaction(TestItem.KeccakA);
             _txPool.SubmitTx(transaction, TxHandlingOptions.None);
@@ -879,7 +879,7 @@ namespace Nethermind.TxPool.Test
         public void should_notify_added_peer_of_own_tx()
         {
             _txPool = CreatePool();
-            Transaction tx = AddOwnTransactionToPool();
+            Transaction tx = AddTransactionToPool();
             ITxPoolPeer txPoolPeer = Substitute.For<ITxPoolPeer>();
             txPoolPeer.Id.Returns(TestItem.PublicKeyA);
             _txPool.AddPeer(txPoolPeer);
@@ -893,9 +893,29 @@ namespace Nethermind.TxPool.Test
             ITxPoolPeer txPoolPeer = Substitute.For<ITxPoolPeer>();
             txPoolPeer.Id.Returns(TestItem.PublicKeyA);
             _txPool.AddPeer(txPoolPeer);
-            Transaction tx = AddOwnTransactionToPool();
+            Transaction tx = AddTransactionToPool();
             await Task.Delay(500);
             txPoolPeer.Received(1).SendNewTransactions(Arg.Any<IEnumerable<Transaction>>());
+        }
+
+        [Test] public void should_send_to_peers_full_newly_added_local_tx()
+        {
+            _txPool = CreatePool();
+            ITxPoolPeer txPoolPeer = Substitute.For<ITxPoolPeer>();
+            txPoolPeer.Id.Returns(TestItem.PublicKeyA);
+            _txPool.AddPeer(txPoolPeer);
+            Transaction tx = AddTransactionToPool();
+            txPoolPeer.Received().SendNewTransaction(tx);
+        }
+        
+        [Test] public void should_not_send_to_peers_full_newly_added_external_tx()
+        {
+            _txPool = CreatePool();
+            ITxPoolPeer txPoolPeer = Substitute.For<ITxPoolPeer>();
+            txPoolPeer.Id.Returns(TestItem.PublicKeyA);
+            _txPool.AddPeer(txPoolPeer);
+            Transaction tx = AddTransactionToPool(false);
+            txPoolPeer.DidNotReceive().SendNewTransaction(tx);
         }
 
         [Test]
@@ -1083,10 +1103,10 @@ namespace Nethermind.TxPool.Test
             return transactions;
         }
 
-        private Transaction AddOwnTransactionToPool()
+        private Transaction AddTransactionToPool(bool isOwn = true)
         {
             var transaction = GetTransaction(TestItem.PrivateKeyA, Address.Zero);
-            _txPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast);
+            _txPool.SubmitTx(transaction, isOwn ? TxHandlingOptions.PersistentBroadcast : TxHandlingOptions.None);
             return transaction;
         }
 
