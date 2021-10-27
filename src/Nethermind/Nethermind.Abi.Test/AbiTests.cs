@@ -528,7 +528,6 @@ namespace Nethermind.Abi.Test
         }
         
         [Test]
-        [Ignore("FluentAssert error?")]
         public void Can_decode_array_of_dynamic_tuples()
         {
             AbiType type = new AbiArray(new AbiTuple<UserOperationAbi>());
@@ -557,7 +556,7 @@ namespace Nethermind.Abi.Test
             objects.Should().BeEquivalentTo(expectedObjects);
         }
         
-        public struct UserOperationAbi
+        private class UserOperationAbi
         {
             public Address Target { get; set; }
             public UInt256 Nonce { get; set; }
