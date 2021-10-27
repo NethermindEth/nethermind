@@ -128,10 +128,10 @@ namespace Nethermind.TxPool
 
                 _txsToSend = Interlocked.Exchange(ref _accumulatedTemporaryTxs, _txsToSend);
             
+                if (_logger.IsDebug) _logger.Debug($"Broadcasting transactions to all peers");
+
                 foreach ((_, ITxPoolPeer peer) in _peers)
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Broadcasting transactions to all peers");
-
                     Notify(peer, GetTxsToSend(peer, persistentTxs, _txsToSend));
                 }
 
@@ -176,10 +176,10 @@ namespace Nethermind.TxPool
         
         private void NotifyPeersAboutLocalTx(Transaction tx)
         {
+            if (_logger.IsDebug) _logger.Debug($"Broadcasting new local transaction {tx.Hash} to all peers");
+
             foreach ((_, ITxPoolPeer peer) in _peers)
             {
-                if (_logger.IsDebug) _logger.Debug($"Broadcasting new local transaction {tx.Hash} to all peers");
-
                 try
                 {
                     peer.SendNewTransaction(tx);
