@@ -170,15 +170,12 @@ namespace Nethermind.AccountAbstraction.Test
                     LogManager, 
                     BlockPreprocessorStep);
                 
-                IPeerManager peerManager = Substitute.For<IPeerManager>();
-                
                 UserOperationPool = new UserOperationPool(
                     _accountAbstractionConfig, 
                     BlockTree,
                     _singletonContractAddress!,
                     new PaymasterThrottler(), 
                     ReceiptStorage, 
-                    peerManager, 
                     Signer, 
                     State, 
                     Timestamper, 

@@ -126,49 +126,6 @@ namespace Nethermind.AccountAbstraction.Test
             userOperations.Length.Should().Be(0);
         }
 
-        [Test]
-        public void Resimulates_ops_where_new_block_touched_op_access_list()
-        {
-
-        }
-
-        [Test]
-        public void Deleted_op_if_resimulation_caused_it_to_go_outside_access_list()
-        {
-            
-        }
-
-        [Test]
-        public void Deletes_op_if_simulation_ever_fails()
-        {
-            
-        }
-
-        // currently failing
-        [Test]
-        public void Bans_paymaster_if_it_uses_too_much_gas_for_simulation_too_many_times()
-        {
-            var (userOperationPool, simulator, blockTree) = GenerateUserOperationPool(10);
-            UserOperation op = Build.A.UserOperation
-                .WithTarget(Address.SystemUser)
-                .SignedAndResolved()
-                .TestObject;
-                
-            
-            userOperationPool.AddUserOperation(op);
-            
-            for (int i = 0; i < 7; i++) 
-            {
-                blockTree.NewHeadBlock += Raise.EventWith(new object(), new BlockEventArgs(Core.Test.Builders.Build.A.Block.TestObject));
-            }
-            
-            UserOperation op2 = Build.A.UserOperation.WithTarget(Address.SystemUser).SignedAndResolved().TestObject;
-            
-            userOperationPool.AddUserOperation(op2);
-            UserOperation[] userOperations = userOperationPool.GetUserOperations().ToArray();
-            userOperations.Length.Should().Be(0);
-        }
-
         private (UserOperationPool, IUserOperationSimulator, IBlockTree) GenerateUserOperationPool(int capacity = 10)
         {
             UserOperationSortedPool userOperationSortedPool =
@@ -193,8 +150,6 @@ namespace Nethermind.AccountAbstraction.Test
             IAccountAbstractionConfig config = Substitute.For<IAccountAbstractionConfig>();
             config.SingletonContractAddress.Returns("0x8595dd9e0438640b5e1254f9df579ac12a86865f");
             
-            IPeerManager peerManager = Substitute.For<IPeerManager>();
-
             IPaymasterThrottler paymasterThrottler = Substitute.For<PaymasterThrottler>();
 
             IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
@@ -205,7 +160,6 @@ namespace Nethermind.AccountAbstraction.Test
                 new Address(config.SingletonContractAddress),
                 paymasterThrottler, 
                 receiptFinder, 
-                peerManager, 
                 Substitute.For<ISigner>(), 
                 stateProvider, 
                 Substitute.For<ITimestamper>(), 

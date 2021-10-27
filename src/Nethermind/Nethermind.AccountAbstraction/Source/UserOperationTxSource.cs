@@ -67,13 +67,13 @@ namespace Nethermind.AccountAbstraction.Source
                     continue;
                 }
                 
-                // no intersect of accessed addresses
+                // no intersect of accessed addresses between ops
                 if (UserOperationAccessList.AccessListOverlaps(usedAccessList, userOperation.AccessList.Data))
                 {
                     continue;
                 }
 
-                // simulate again
+                // simulate again to make sure the op is still valid
                 Task<ResultWrapper<Keccak>> successTask = _userOperationSimulator.Simulate(userOperation, parent);
                 ResultWrapper<Keccak> success = successTask.Result;
                 if (success.Result != Result.Success)
@@ -86,23 +86,22 @@ namespace Nethermind.AccountAbstraction.Source
                     {
                         _logger.Info($"AA: Failed to remove userOperation {userOperation.Hash} from Pool");
                     }
-                    
+
+                    continue;
                 }
-                else
-                {
-                    userOperationsToInclude.Add(userOperation);
-                    gasUsed += (ulong) userOperation.CallGas; // TODO FIX THIS AFTER WE FIGURE OUT HOW CONTRACT WORKS
+                userOperationsToInclude.Add(userOperation);
+                gasUsed += (ulong)userOperation.CallGas + (ulong)userOperation.PreVerificationGas + (ulong)userOperation.VerificationGas;
                 
-                    foreach (var kv in userOperation.AccessList.Data)
+                // add userOp accessList to combined list
+                foreach (var kv in userOperation.AccessList.Data)
+                {
+                    if (usedAccessList.ContainsKey(kv.Key))
                     {
-                        if (usedAccessList.ContainsKey(kv.Key))
-                        {
-                            usedAccessList[kv.Key].UnionWith(kv.Value);
-                        }
-                        else
-                        {
-                            usedAccessList[kv.Key] = (HashSet<UInt256>) kv.Value;
-                        }
+                        usedAccessList[kv.Key].UnionWith(kv.Value);
+                    }
+                    else
+                    {
+                        usedAccessList[kv.Key] = (HashSet<UInt256>) kv.Value;
                     }
                 }
             }
@@ -111,6 +110,7 @@ namespace Nethermind.AccountAbstraction.Source
             {
                 return new List<Transaction>();
             }
+            
             Transaction userOperationTransaction = _userOperationSimulator.BuildTransactionFromUserOperations(userOperationsToInclude, parent, _specProvider.GetSpec(parent.Number + 1));
             _logger.Info($"Constructed tx from {userOperationsToInclude.Count} userOperations: {userOperationTransaction.Hash}");
             return new List<Transaction>(){userOperationTransaction};

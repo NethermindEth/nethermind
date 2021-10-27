@@ -55,8 +55,6 @@ namespace Nethermind.AccountAbstraction.Source
         private readonly IAccountAbstractionConfig _accountAbstractionConfig;
         private readonly UserOperationSortedPool _userOperationSortedPool;
         private readonly IUserOperationSimulator _userOperationSimulator;
-        private readonly IPeerManager _peerManager;
-        //private readonly UserOperationBroadcaster _broadcaster;
 
         private readonly Dictionary<long, List<UserOperation>> _userOperationsToDelete = new();
         private readonly Keccak _userOperationEventTopic;
@@ -67,7 +65,6 @@ namespace Nethermind.AccountAbstraction.Source
             Address entryPointAddress,
             IPaymasterThrottler paymasterThrottler,
             IReceiptFinder receiptFinder,
-            IPeerManager peerManager,
             ISigner signer,
             IStateProvider stateProvider,
             ITimestamper timestamper,
@@ -82,18 +79,17 @@ namespace Nethermind.AccountAbstraction.Source
             _timestamper = timestamper;
             _entryPointAddress = entryPointAddress;
             _accountAbstractionConfig = accountAbstractionConfig;
-            _peerManager = peerManager;
             _userOperationSortedPool = userOperationSortedPool;
             _userOperationSimulator = userOperationSimulator;
             
             _userOperationEventTopic = new Keccak("0xc27a60e61c14607957b41fa2dad696de47b2d80e390d0eaaf1514c0cd2034293");
 
-            _userOperationSortedPool.Inserted += UserOperationInserted;
             _blockTree.NewHeadBlock += NewHead;
         }
 
         private void NewHead(object? sender, BlockEventArgs e)
         {
+            // remove any user operations that were only allowed to stay for 10 blocks due to throttled paymasters
             Block block = e.Block;
             if (_userOperationsToDelete.ContainsKey(block.Number))
             {
@@ -103,6 +99,7 @@ namespace Nethermind.AccountAbstraction.Source
                 }
             }
 
+            // find any userops included on chain submitted by this miner, delete from the pool
             TxReceipt[] receipts = _receiptFinder.Get(block);
             TxReceipt[] entryPointReceipts = receipts
                 .Where(r => r.Recipient is not null && r.Recipient == _entryPointAddress).ToArray();
@@ -130,24 +127,6 @@ namespace Nethermind.AccountAbstraction.Source
                     }
                 }
             }
-
-            
-        }
-
-        private void UserOperationInserted(object? sender, SortedPool<UserOperation, UserOperation, Address>.SortedPoolEventArgs e)
-        {
-            UserOperation userOperation = e.Key;
-            BroadcastToCompatiblePeers(userOperation, _peerManager.ConnectedPeers);
-        }
-
-        private void BroadcastToCompatiblePeers(UserOperation userOperation, IReadOnlyCollection<Peer> peers)
-        {
-            Capability? aaCapability = new Capability(Protocol.AA, 0);
-            IEnumerable<Peer> compatiblePeers = peers.Where(peer => peer.OutSession!.HasAgreedCapability(aaCapability));
-            Task.Run(() =>
-            {
-                //_broadcaster.BroadcastOnce(userOperation);
-            });
         }
 
         public IEnumerable<UserOperation> GetUserOperations() => _userOperationSortedPool.GetSnapshot();

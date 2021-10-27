@@ -23,9 +23,10 @@ using Nethermind.JsonRpc;
 
 namespace Nethermind.AccountAbstraction.Source
 {
-    public interface IUserOperationPool : IUserOperationSource
+    public interface IUserOperationPool
     {
         ResultWrapper<Keccak> AddUserOperation(UserOperation userOperation);
         bool RemoveUserOperation(UserOperation userOperation);
+        public IEnumerable<UserOperation> GetUserOperations();
     }
 }

@@ -26,6 +26,8 @@ using Nethermind.Evm;
 using Nethermind.Evm.Test;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.AccountAbstraction.Test
@@ -33,29 +35,39 @@ namespace Nethermind.AccountAbstraction.Test
     [TestFixture]
     public class UserOperationTracerTests : VirtualMachineTestsBase
     {
-        /*
-        [Test]
-        public void Can_trace_accessed_storage_correctly()
+        
+        [TestCase(Instruction.SELFDESTRUCT, 1, true)]
+        [TestCase(Instruction.DELEGATECALL, 1, true)]
+        [TestCase(Instruction.ADD, 1, true)]        
+        [TestCase(Instruction.SELFDESTRUCT, 2, false)]
+        [TestCase(Instruction.DELEGATECALL, 2, false)]
+        [TestCase(Instruction.ADD, 2, true)]
+        public void Bans_selfdestruct_and_delegatecall_only_when_paymaster_mode_is_active(Instruction instruction, int selfBalanceCalls, bool success)
         {
-            byte[] code = Prepare.EvmCode
+            byte[] deployedCode = Prepare.EvmCode
                 .PushData("0x01")
-                .PushData("0x69")
-                .Op(Instruction.SLOAD)
                 .PushData("0x02")
-                .PushData("0x10")
-                .Op(Instruction.SLOAD)
+                .PushData("0x03")
+                .PushData("0x04")
+                .PushData("0x05")
+                .PushData("0x69")
+                .Op(instruction)
                 .Done;
-            
+
+            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+            Keccak deployedCodeHash = TestState.UpdateCode(deployedCode);
+            TestState.UpdateCodeHash(TestItem.AddressC, deployedCodeHash, Spec);
+
+            byte[] code = Prepare.EvmCode
+                .Op(Instruction.SELFBALANCE)
+                .Op(selfBalanceCalls > 1 ? Instruction.SELFBALANCE : Instruction.DUP1)
+                .Call(TestItem.AddressC, 50000)
+                .Op(Instruction.STOP)
+                .Done;
+
             (UserOperationTxTracer tracer, _, _) = ExecuteAndTraceAccessCall(SenderRecipientAndMiner.Default, code);
-
-            var accessedData = tracer.AccessedStorage;
-            var expectedDictionary = new Dictionary<Address, HashSet<UInt256>>
-            {
-                {SenderRecipientAndMiner.Default.Recipient, new HashSet<UInt256>{105, 16}}
-            };
-            accessedData.Should().BeEquivalentTo(expectedDictionary);
-
-            tracer.Success.Should().BeTrue();
+            
+            tracer.Success.Should().Be(success);
         }
         
         [TestCase(Instruction.GASPRICE, false)]
@@ -113,10 +125,11 @@ namespace Nethermind.AccountAbstraction.Test
         private (UserOperationTxTracer trace, Block block, Transaction transaction) ExecuteAndTraceAccessCall(SenderRecipientAndMiner addresses, params byte[] code)
         {
             (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code, addresses);
-            UserOperationTxTracer tracer = new(transaction, TestState, NullLogger.Instance);
+            UserOperationTxTracer tracer = new(transaction, TestState, TestItem.AddressA, TestItem.AddressB, TestItem.AddressC, TestItem.AddressD, NullLogger.Instance);
             _processor.Execute(transaction, block.Header, tracer);
             return (tracer, block, transaction);
         }
-        */
+
+        protected override long BlockNumber { get; } = MainnetSpecProvider.LondonBlockNumber;
     }
 }

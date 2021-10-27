@@ -35,9 +35,7 @@ namespace Nethermind.AccountAbstraction
         
         private INethermindApi _nethermindApi = null!;
         private ILogger _logger = null!;
-
-        private TimerFactory _timerFactory = new TimerFactory();
-
+        
         public string Name => "Account Abstraction";
 
         public string Description => "Implements account abstraction via alternative mempool (ERC-4337)";
@@ -61,8 +59,7 @@ namespace Nethermind.AccountAbstraction
                         _nethermindApi.BlockTree!,
                         _singletonContractAddress,
                         new PaymasterThrottler(), 
-                        _nethermindApi.ReceiptFinder!, 
-                        _nethermindApi.PeerManager!, 
+                        _nethermindApi.ReceiptStorage!, 
                         _nethermindApi.EngineSigner!, 
                         _nethermindApi.StateProvider!, 
                         _nethermindApi.Timestamper, 

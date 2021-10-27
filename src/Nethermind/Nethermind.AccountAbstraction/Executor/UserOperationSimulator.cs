@@ -104,6 +104,7 @@ namespace Nethermind.AccountAbstraction.Executor
             byte[] computedCallData;
             long gasLimit;
             
+            // use handleOp is only one op is used, handleOps if multiple
             UserOperation[] userOperationArray = userOperations.ToArray();
             if (userOperationArray.Length == 1)
             {
@@ -140,20 +141,15 @@ namespace Nethermind.AccountAbstraction.Executor
             CancellationToken cancellationToken = default, 
             UInt256? timestamp = null)
         {
-            Stopwatch stopwatch = new();
-            stopwatch.Start();
-            
             IReleaseSpec currentSpec = _specProvider.GetSpec(parent.Number + 1);
             ReadOnlyTxProcessingEnv txProcessingEnv = new(_dbProvider, _trieStore, _blockTree, _specProvider, _logManager);
             ITransactionProcessor transactionProcessor = txProcessingEnv.Build(_stateProvider.StateRoot);
             
+            // wrap userOp into a tx calling the simulateWallet function off-chain from zero-address (look at EntryPoint.sol for more context)
             Transaction simulateValidationTransaction = BuildSimulateValidationTransaction(userOperation, parent, currentSpec);
             (bool validationSuccess, UserOperationAccessList validationAccessList, string? error) =
                 SimulateValidation(simulateValidationTransaction, userOperation, parent, transactionProcessor);
 
-            stopwatch.Stop();
-            _logManager.GetClassLogger().Info($"AA: validation for op {userOperation.Hash} completed in {stopwatch.ElapsedMilliseconds}ms");
-            
             if (!validationSuccess)
             {
                 return Task.FromResult(ResultWrapper<Keccak>.Fail(error ?? "unknown simulation failure"));
@@ -161,6 +157,7 @@ namespace Nethermind.AccountAbstraction.Executor
 
             if (userOperation.AlreadySimulated)
             {
+                // if previously simulated we must make sure it doesn't access any more than it did on the first round
                 if (!UserOperationAccessList.AccessListContains(userOperation.AccessList.Data,
                     validationAccessList.Data))
                 {

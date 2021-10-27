@@ -91,18 +91,7 @@ namespace Nethermind.AccountAbstraction.Flashbots
                 };
 
                 return JsonConvert.SerializeObject(request);
-            } 
-
-            /*
-            public void GetObjectData(SerializationInfo info, StreamingContext context)
-            {
-                info.AddValue("txs", Transactions.Select(tx => Rlp.Encode(tx).Bytes));
-                info.AddValue("blockNumber", BlockNumber);
-                if (MinTimestamp != null) info.AddValue("minTimestamp", MinTimestamp);
-                if (MaxTimestamp != null) info.AddValue("maxTimestamp", MaxTimestamp);
-                if (RevertingTxHashes.Length > 0) info.AddValue("revertingTxHashes", RevertingTxHashes.Select(rtx => rtx.ToString()));
             }
-            */
         }
         
         public async Task SendBundle(MevBundle bundle, string endpoint)
