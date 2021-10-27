@@ -898,7 +898,8 @@ namespace Nethermind.TxPool.Test
             txPoolPeer.Received(1).SendNewTransactions(Arg.Any<IEnumerable<Transaction>>());
         }
 
-        [Test] public void should_send_to_peers_full_newly_added_local_tx()
+        [Test]
+        public void should_send_to_peers_full_newly_added_local_tx()
         {
             _txPool = CreatePool();
             ITxPoolPeer txPoolPeer = Substitute.For<ITxPoolPeer>();
@@ -908,7 +909,8 @@ namespace Nethermind.TxPool.Test
             txPoolPeer.Received().SendNewTransaction(tx);
         }
         
-        [Test] public void should_not_send_to_peers_full_newly_added_external_tx()
+        [Test]
+        public void should_not_send_to_peers_full_newly_added_external_tx()
         {
             _txPool = CreatePool();
             ITxPoolPeer txPoolPeer = Substitute.For<ITxPoolPeer>();
