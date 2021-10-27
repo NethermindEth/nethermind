@@ -56,8 +56,8 @@ namespace Nethermind.Core.Test.Caching
         public void Can_reset()
         {
             LruKeyCache<Address> cache = new(Capacity, "test");
-            cache.Set(_addresses[0]);
-            cache.Set(_addresses[0]);
+            cache.Set(_addresses[0]).Should().BeTrue();
+            cache.Set(_addresses[0]).Should().BeFalse();
             cache.Get(_addresses[0]).Should().BeTrue();
         }
         
@@ -72,10 +72,10 @@ namespace Nethermind.Core.Test.Caching
         public void Can_clear()
         {
             LruKeyCache<Address> cache = new(Capacity, "test");
-            cache.Set(_addresses[0]);
+            cache.Set(_addresses[0]).Should().BeTrue();
             cache.Clear();
             cache.Get(_addresses[0]).Should().BeFalse();
-            cache.Set(_addresses[0]);
+            cache.Set(_addresses[0]).Should().BeTrue();
             cache.Get(_addresses[0]).Should().BeTrue();
         }
         

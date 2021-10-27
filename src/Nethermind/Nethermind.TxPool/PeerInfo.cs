@@ -44,9 +44,8 @@ namespace Nethermind.TxPool
         {
             foreach (Transaction tx in txs)
             {
-                if (!NotifiedTransactions.Get(tx.Hash))
+                if (NotifiedTransactions.Set(tx.Hash))
                 {
-                    NotifiedTransactions.Set(tx.Hash);
                     yield return tx;
                 }
             }

@@ -148,7 +148,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             }
         }
         
-        private void SendMessage(IList<Keccak> hashes)
+        private void SendMessage(IReadOnlyList<Keccak> hashes)
         {
             NewPooledTransactionHashesMessage msg = new(hashes);
             Send(msg);

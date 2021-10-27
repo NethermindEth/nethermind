@@ -83,7 +83,7 @@ namespace Nethermind.Network.P2P
             Session.InitiateDisconnect(reason, details);
         }
 
-        async Task<BlockBody[]> ISyncPeer.GetBlockBodies(IList<Keccak> blockHashes, CancellationToken token)
+        async Task<BlockBody[]> ISyncPeer.GetBlockBodies(IReadOnlyList<Keccak> blockHashes, CancellationToken token)
         {
             if (blockHashes.Count == 0)
             {
@@ -205,12 +205,12 @@ namespace Nethermind.Network.P2P
             return headers.Length > 0 ? headers[0] : null;
         }
 
-        public virtual Task<TxReceipt[][]> GetReceipts(IList<Keccak> blockHash, CancellationToken token)
+        public virtual Task<TxReceipt[][]> GetReceipts(IReadOnlyList<Keccak> blockHash, CancellationToken token)
         {
             throw new NotSupportedException("Fast sync not supported by eth62 protocol");
         }
 
-        public virtual Task<byte[][]> GetNodeData(IList<Keccak> hashes, CancellationToken token)
+        public virtual Task<byte[][]> GetNodeData(IReadOnlyList<Keccak> hashes, CancellationToken token)
         {
             throw new NotSupportedException("Fast sync not supported by eth62 protocol");
         }
@@ -338,7 +338,7 @@ namespace Nethermind.Network.P2P
 
         protected BlockBodiesMessage FulfillBlockBodiesRequest(GetBlockBodiesMessage getBlockBodiesMessage)
         {
-            IList<Keccak> hashes = getBlockBodiesMessage.BlockHashes;
+            IReadOnlyList<Keccak> hashes = getBlockBodiesMessage.BlockHashes;
             Block[] blocks = new Block[hashes.Count];
 
             ulong sizeEstimate = 0;

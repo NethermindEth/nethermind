@@ -41,11 +41,11 @@ namespace Nethermind.Blockchain.Synchronization
         UInt256 TotalDifficulty { get; set; }
         bool IsInitialized { get; set; }
         void Disconnect(DisconnectReason reason, string details);
-        Task<BlockBody[]> GetBlockBodies(IList<Keccak> blockHashes, CancellationToken token);
+        Task<BlockBody[]> GetBlockBodies(IReadOnlyList<Keccak> blockHashes, CancellationToken token);
         Task<BlockHeader[]> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token);
         Task<BlockHeader?> GetHeadBlockHeader(Keccak hash, CancellationToken token);
         void NotifyOfNewBlock(Block block, SendBlockPriority priority);
-        Task<TxReceipt[][]> GetReceipts(IList<Keccak> blockHash, CancellationToken token);
-        Task<byte[][]> GetNodeData(IList<Keccak> hashes, CancellationToken token);
+        Task<TxReceipt[][]> GetReceipts(IReadOnlyList<Keccak> blockHash, CancellationToken token);
+        Task<byte[][]> GetNodeData(IReadOnlyList<Keccak> hashes, CancellationToken token);
     }
 }
