@@ -89,6 +89,7 @@ namespace Nethermind.AccountAbstraction.Source
 
         public ResultWrapper<Keccak> AddUserOperation(UserOperation userOperation)
         {
+            Metrics.UserOperationsReceived++;
             if (_logger.IsDebug) _logger.Debug($"UserOperation {userOperation.Hash} received");
             ResultWrapper<Keccak> result = ValidateUserOperation(userOperation);
             if (result.Result == Result.Success)
@@ -96,6 +97,7 @@ namespace Nethermind.AccountAbstraction.Source
                 if (_logger.IsDebug) _logger.Debug($"UserOperation {userOperation.Hash} validation succeeded");
                 if (_userOperationSortedPool.TryInsert(userOperation, userOperation))
                 {
+                    Metrics.UserOperationsPending++;
                     _paymasterThrottler.IncrementOpsSeen(userOperation.Paymaster);
                     if (_logger.IsDebug) _logger.Debug($"UserOperation {userOperation.Hash} inserted into pool");
                     return ResultWrapper<Keccak>.Success(userOperation.Hash);
@@ -148,6 +150,7 @@ namespace Nethermind.AccountAbstraction.Source
                     foreach (var userOperation in userOperationsToRemove)
                     {
                         if (_logger.IsDebug) _logger.Debug($"UserOperation {userOperation.Hash} removed from pool after being included by miner");
+                        Metrics.UserOperationsIncluded++;
                         _paymasterThrottler.IncrementOpsIncluded(paymasterAddress);
                         RemoveUserOperation(userOperation);
                     }
@@ -216,6 +219,7 @@ namespace Nethermind.AccountAbstraction.Source
 
         private async Task<ResultWrapper<Keccak>> Simulate(UserOperation userOperation, BlockHeader parent)
         {
+            Metrics.UserOperationsSimulated++;
             ResultWrapper<Keccak> success = await _userOperationSimulator.Simulate(
                 userOperation,
                 parent,
