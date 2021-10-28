@@ -30,7 +30,7 @@ namespace Nethermind.Consensus.Transactions
         private readonly ISpecProvider _specProvider;
 
         public MinGasPriceTxFilter(
-            UInt256 minGasPrice,
+            in UInt256 minGasPrice,
             ISpecProvider specProvider)
         {
             _minGasPrice = minGasPrice;
@@ -42,7 +42,7 @@ namespace Nethermind.Consensus.Transactions
             return IsAllowed(tx, parentHeader, _minGasPrice);
         }
 
-        public (bool Allowed, string Reason) IsAllowed(Transaction tx, BlockHeader? parentHeader, UInt256 minGasPriceFloor)
+        public (bool Allowed, string Reason) IsAllowed(Transaction tx, BlockHeader? parentHeader, in UInt256 minGasPriceFloor)
         {
             UInt256 premiumPerGas = tx.GasPrice;
             UInt256 baseFeePerGas = UInt256.Zero;

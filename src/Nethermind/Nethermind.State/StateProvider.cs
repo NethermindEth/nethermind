@@ -255,20 +255,6 @@ namespace Nethermind.State
             }
         }
 
-        internal void SetNonce(Address address, UInt256 nonce)
-        {
-            _needsStateRootUpdate = true;
-            Account? account = GetThroughCache(address);
-            if (account is null)
-            {
-                throw new InvalidOperationException($"Account {address} is null when incrementing nonce");
-            }
-            
-            Account changedAccount = account.WithChangedNonce(nonce);
-            if (_logger.IsTrace) _logger.Trace($"  Update {address} N {account.Nonce} -> {changedAccount.Nonce}");
-            PushUpdate(address, changedAccount);
-        }
-
         public void IncrementNonce(Address address)
         {
             _needsStateRootUpdate = true;

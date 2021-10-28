@@ -39,7 +39,7 @@ namespace Nethermind.Evm.Precompiles.Bls.Shamatar
             return 0L;
         }
 
-        public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+        public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
             int k = inputData.Length / ItemSize;
             return 12000L * k * Discount.For(k) / 1000;
@@ -47,7 +47,7 @@ namespace Nethermind.Evm.Precompiles.Bls.Shamatar
 
         private const int ItemSize = 160;
         
-        public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+        public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
             if (inputData.Length % ItemSize > 0 || inputData.Length == 0)
             {

@@ -68,7 +68,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             return ResolveVersion(versionNumber);
         }
 
-        private T? ResolveVersion(UInt256 versionNumber) => _versions.TryGetValue(versionNumber, out var contract) ? contract : default;
+        private T? ResolveVersion(in UInt256 versionNumber) => _versions.TryGetValue(versionNumber, out var contract) ? contract : default;
 
         public long Activation { get; }
     }
