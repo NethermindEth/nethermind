@@ -582,7 +582,7 @@ namespace Nethermind.TxPool.Test
             }
             
             await RaiseBlockAddedToMainAndWaitForTransactions(3);
-            _txPool.GetPendingTransactions().Count(t => t.GasBottleneck == 0).Should().Be(3);
+            _txPool.GetPendingTransactions().Count(t => t.GasBottleneck == 0).Should().Be(0);
         }
 
         [Test]
