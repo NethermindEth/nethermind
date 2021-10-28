@@ -324,10 +324,7 @@ namespace Nethermind.TxPool
                 if (tx.Nonce < currentNonce)
                 {
                     _broadcaster.StopBroadcast(tx.Hash!);
-                    if (tx.GasBottleneck != gasBottleneck)
-                    {
-                        yield return (tx, SetGasBottleneckChange(gasBottleneck));
-                    }
+                    yield return (tx, null);
                 }
                 else
                 {
@@ -372,8 +369,7 @@ namespace Nethermind.TxPool
             }
         }
 
-        private IEnumerable<(Transaction Tx, Action<Transaction> Change)> UpdateBucket(Address address,
-            ICollection<Transaction> transactions)
+        private IEnumerable<(Transaction Tx, Action<Transaction> Change)> UpdateBucket(Address address, ICollection<Transaction> transactions)
         {
             if (transactions.Count != 0)
             {
