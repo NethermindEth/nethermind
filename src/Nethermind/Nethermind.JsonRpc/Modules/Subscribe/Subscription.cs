@@ -37,7 +37,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         public abstract SubscriptionType Type { get; }
         public IJsonRpcDuplexClient JsonRpcDuplexClient { get; }
 
-        private Channel<Action> SendChannel { get; } = Channel.CreateUnbounded<Action>();
+        private Channel<Action> SendChannel { get; } = Channel.CreateUnbounded<Action>(new UnboundedChannelOptions() { SingleReader = true });
 
         public virtual void Dispose()
         {
@@ -62,10 +62,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             SendChannel.Writer.TryWrite(action);
         }
 
-        protected virtual string GetErrorMsg()
-        {
-            return $"Subscription {Id} failed.";
-        }
+        protected virtual string GetErrorMsg() => $"Subscription {Id} failed.";
 
         private void ProcessMessages()
         {
@@ -73,21 +70,23 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             {
                 while (await SendChannel.Reader.WaitToReadAsync())
                 {
-                    try
+                    while (SendChannel.Reader.TryRead(out Action action))
                     {
-                        Action action = await SendChannel.Reader.ReadAsync();
-                        action();
-                    }
-                    catch (Exception e)
-                    {
-                        if (_logger.IsDebug) _logger.Debug(GetErrorMsg());
+                        try
+                        {
+                            action();
+                        }
+                        catch (Exception e)
+                        {
+                            if (_logger.IsDebug) _logger.Debug($"{GetErrorMsg()} With exception {e}");
+                        }
                     }
                 }
             }, TaskCreationOptions.LongRunning).ContinueWith(t =>
             {
                 if (t.IsFaulted)
                 {
-                    if (_logger.IsError) _logger.Error($"{nameof(ProcessMessages)} encountered an exception.", t.Exception);
+                    if (_logger.IsError) _logger.Error($"{GetErrorMsg()} {nameof(ProcessMessages)} encountered an exception.", t.Exception);
                 }
             });
         }
