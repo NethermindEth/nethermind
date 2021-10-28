@@ -34,7 +34,6 @@ namespace Nethermind.Blockchain.Processing
     {
         public class BlockValidationTransactionsExecutor : IBlockProcessor.IBlockTransactionsExecutor
         {
-            // private readonly ITransactionProcessorAdapter _transactionProcessor;
             private ITransactionProcessorAdapter _executeTransactionProcessor;
             private ITransactionProcessorAdapter _callAndRestoreTransactionProcessor;
             private readonly IStateProvider _stateProvider;
@@ -42,11 +41,11 @@ namespace Nethermind.Blockchain.Processing
             public BlockValidationTransactionsExecutor(ITransactionProcessor transactionProcessor, IStateProvider stateProvider)
             {
                 _executeTransactionProcessor = new ExecuteTransactionProcessorAdapter(transactionProcessor);
-                _callAndRestoreTransactionProcessor = new CallAndRestoreTransactionProcessorAdapter(transactionProcessor);
-                // _transactionProcessor = new ExecuteTransactionProcessorAdapter(transactionProcessor);
+                _callAndRestoreTransactionProcessor =
+                    new CallAndRestoreTransactionProcessorAdapter(transactionProcessor);
                 _stateProvider = stateProvider;
             }
-        
+            
             public event EventHandler<TxProcessedEventArgs>? TransactionProcessed; 
         
             public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec)
@@ -70,6 +69,7 @@ namespace Nethermind.Blockchain.Processing
                     _executeTransactionProcessor.ProcessTransaction(block, currentTx, receiptsTracer, processingOptions, _stateProvider);
                 }
                 
+                TransactionProcessed?.Invoke(this, new TxProcessedEventArgs(index, currentTx, receiptsTracer.TxReceipts[index]));
             }
         }
     }
