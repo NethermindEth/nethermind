@@ -42,7 +42,7 @@ namespace Nethermind.JsonRpc
         public string? IpcUnixDomainSocketPath { get; set; } = null;
 
         public string[] EnabledModules { get; set; } = ModuleType.DefaultModules.ToArray();
-        public long? GasCap { get; set; } = 100000000;
+        public long? GasCap { get; set; } = 50000000;
         public int ReportIntervalSeconds { get; set; } = 300;
         public bool BufferResponses { get; set; }
         public string CallsFilterFilePath { get; set; } = "Data/jsonrpc.filter";

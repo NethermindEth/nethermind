@@ -34,12 +34,16 @@ namespace Nethermind.Blockchain.Processing
     {
         public class BlockValidationTransactionsExecutor : IBlockProcessor.IBlockTransactionsExecutor
         {
-            private readonly ITransactionProcessorAdapter _transactionProcessor;
+            // private readonly ITransactionProcessorAdapter _transactionProcessor;
+            private ITransactionProcessorAdapter _executeTransactionProcessor;
+            private ITransactionProcessorAdapter _callAndRestoreTransactionProcessor;
             private readonly IStateProvider _stateProvider;
         
             public BlockValidationTransactionsExecutor(ITransactionProcessor transactionProcessor, IStateProvider stateProvider)
             {
-                _transactionProcessor = new ExecuteTransactionProcessorAdapter(transactionProcessor);
+                _executeTransactionProcessor = new ExecuteTransactionProcessorAdapter(transactionProcessor);
+                _callAndRestoreTransactionProcessor = new CallAndRestoreTransactionProcessorAdapter(transactionProcessor);
+                // _transactionProcessor = new ExecuteTransactionProcessorAdapter(transactionProcessor);
                 _stateProvider = stateProvider;
             }
         
@@ -57,8 +61,15 @@ namespace Nethermind.Blockchain.Processing
         
             private void ProcessTransaction(Block block, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
             {
-                _transactionProcessor.ProcessTransaction(block, currentTx, receiptsTracer, processingOptions, _stateProvider);
-                TransactionProcessed?.Invoke(this, new TxProcessedEventArgs(index, currentTx, receiptsTracer.TxReceipts[index]));
+                if (((processingOptions & ProcessingOptions.Trace) != ProcessingOptions.None))
+                {
+                    _callAndRestoreTransactionProcessor.ProcessTransaction(block, currentTx, receiptsTracer, processingOptions, _stateProvider);
+                }
+                else
+                {
+                    _executeTransactionProcessor.ProcessTransaction(block, currentTx, receiptsTracer, processingOptions, _stateProvider);
+                }
+                
             }
         }
     }

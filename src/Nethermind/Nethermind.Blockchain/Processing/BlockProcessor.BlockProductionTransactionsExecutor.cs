@@ -70,6 +70,7 @@ namespace Nethermind.Blockchain.Processing
             }
 
             protected EventHandler<TxProcessedEventArgs>? _transactionProcessed;
+
             event EventHandler<TxProcessedEventArgs>? IBlockProcessor.IBlockTransactionsExecutor.TransactionProcessed
             {
                 add => _transactionProcessed += value;
@@ -90,7 +91,7 @@ namespace Nethermind.Blockchain.Processing
                 LinkedHashSet<Transaction> transactionsInBlock = new(ByHashTxComparer.Instance);
                 foreach (Transaction currentTx in transactions)
                 {
-                    TxAction action = ProcessTransaction(block, currentTx, i++, receiptsTracer, processingOptions, transactionsInBlock);
+                    TxAction action = ProcessTransaction(block, currentTx, i++, receiptsTracer, processingOptions, transactionsInBlock,true);
                     if (action == TxAction.Stop) break;
                 }
 

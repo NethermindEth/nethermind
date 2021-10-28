@@ -91,8 +91,7 @@ namespace Nethermind.Blockchain.Processing
         }
 
         // TODO: move to branch processor
-        public Block[] Process(Keccak newBranchStateRoot, List<Block> suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer)
-        {
+        public Block[] Process(Keccak newBranchStateRoot, List<Block> suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer)        {
             if (suggestedBlocks.Count == 0) return Array.Empty<Block>();
             
             BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs(suggestedBlocks));

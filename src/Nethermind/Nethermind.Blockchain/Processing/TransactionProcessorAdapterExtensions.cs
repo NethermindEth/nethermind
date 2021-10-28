@@ -29,7 +29,8 @@ namespace Nethermind.Blockchain.Processing
             Transaction currentTx, 
             BlockReceiptsTracer receiptsTracer, 
             ProcessingOptions processingOptions,
-            IStateProvider stateProvider)
+            IStateProvider stateProvider,
+            bool restore = false)
         {
             if ((processingOptions & ProcessingOptions.DoNotVerifyNonce) != 0)
             {

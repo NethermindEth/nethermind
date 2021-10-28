@@ -28,7 +28,7 @@ namespace Nethermind.Blockchain.Tracing
     {
         private readonly IStateProvider _stateProvider;
         private readonly IBlockchainProcessor _blockProcessor;
-        private readonly ProcessingOptions _processingOptions;
+        public ProcessingOptions _processingOptions;
 
         public Tracer(IStateProvider stateProvider, IBlockchainProcessor blockProcessor, ProcessingOptions processingOptions = ProcessingOptions.Trace)
         {
@@ -37,7 +37,7 @@ namespace Nethermind.Blockchain.Tracing
             _processingOptions = processingOptions;
         }
 
-        public Keccak Trace(Block block, IBlockTracer blockTracer)
+        public Keccak Trace(Block block, IBlockTracer blockTracer, ProcessingOptions processingOptions = ProcessingOptions.Trace)
         {
             /* We force process since we want to process a block that has already been processed in the past and normally it would be ignored.
                We also want to make it read only so the state is not modified persistently in any way. */

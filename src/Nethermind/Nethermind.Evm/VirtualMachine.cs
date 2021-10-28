@@ -92,7 +92,7 @@ namespace Nethermind.Evm
             InitializePrecompiledContracts();
         }
 
-        public TransactionSubstate Run(EvmState state, IWorldState worldState, ITxTracer txTracer)
+        public TransactionSubstate Run(EvmState state, IWorldState worldState, ITxTracer txTracer, long intrinsicGas)
         {
             _txTracer = txTracer;
 
@@ -224,8 +224,7 @@ namespace Nethermind.Evm
                                     }
                                     else
                                     {
-                                        _txTracer.ReportActionEnd(currentState.GasAvailable, _returnDataBuffer);
-                                    }
+                                        _txTracer.ReportActionEnd(currentState.GasAvailable - intrinsicGas, _returnDataBuffer);                                    }
                                 }
                             }
                         }

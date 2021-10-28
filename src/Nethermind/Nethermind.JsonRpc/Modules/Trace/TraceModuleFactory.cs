@@ -24,6 +24,7 @@ using Nethermind.Blockchain.Tracing;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
+using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Trie.Pruning;
 using Newtonsoft.Json;
@@ -96,7 +97,8 @@ namespace Nethermind.JsonRpc.Modules.Trace
             new ParityTraceActionConverter(),
             new ParityTraceResultConverter(),
             new ParityVmOperationTraceConverter(),
-            new ParityVmTraceConverter()
+            new ParityVmTraceConverter(),
+            new TupleListConverter<TransactionForRpc, string[]>()
         };
 
         public override IReadOnlyCollection<JsonConverter> GetConverters() => Converters;
