@@ -800,5 +800,19 @@ namespace Nethermind.State
         {
             // placeholder for the three level Commit->CommitBlock->CommitBranch
         }
-    }
+
+        // used in EtheereumTests
+        internal void SetNonce(Address address, in UInt256 nonce)
+        {
+            _needsStateRootUpdate = true;
+            Account? account = GetThroughCache(address);
+            if (account is null)
+            {
+                throw new InvalidOperationException($"Account {address} is null when incrementing nonce");
+            }
+            
+            Account changedAccount = account.WithChangedNonce(nonce);
+            if (_logger.IsTrace) _logger.Trace($"  Update {address} N {account.Nonce} -> {changedAccount.Nonce}");
+            PushUpdate(address, changedAccount);
+        }    }
 }
