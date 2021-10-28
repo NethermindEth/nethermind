@@ -295,7 +295,7 @@ namespace Nethermind.TxPool
             return AddTxResult.Added;
         }
 
-        private IEnumerable<(Transaction Tx, Action<Transaction> Change)> UpdateBucketWithAddedTransaction(
+        private IEnumerable<(Transaction Tx, Action<Transaction>? Change)> UpdateBucketWithAddedTransaction(
             Address address, ICollection<Transaction> transactions)
         {
             if (transactions.Count != 0)
@@ -311,7 +311,7 @@ namespace Nethermind.TxPool
             }
         }
 
-        private IEnumerable<(Transaction Tx, Action<Transaction> Change)> UpdateGasBottleneck(
+        private IEnumerable<(Transaction Tx, Action<Transaction>? Change)> UpdateGasBottleneck(
             ICollection<Transaction> transactions, long currentNonce, UInt256 balance)
         {
             UInt256? previousTxBottleneck = null;
@@ -369,7 +369,7 @@ namespace Nethermind.TxPool
             }
         }
 
-        private IEnumerable<(Transaction Tx, Action<Transaction> Change)> UpdateBucket(Address address, ICollection<Transaction> transactions)
+        private IEnumerable<(Transaction Tx, Action<Transaction>? Change)> UpdateBucket(Address address, ICollection<Transaction> transactions)
         {
             if (transactions.Count != 0)
             {
@@ -398,7 +398,7 @@ namespace Nethermind.TxPool
                 {
                     foreach (Transaction transaction in transactions)
                     {
-                        yield return (transaction, SetGasBottleneckChange(0));
+                        yield return (transaction, null);
                     }
                 }
                 else
