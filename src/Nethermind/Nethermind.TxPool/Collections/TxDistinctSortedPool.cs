@@ -65,15 +65,20 @@ namespace Nethermind.TxPool.Collections
         {
             _transactionsToRemove.Clear();
             
-            foreach ((Transaction Tx, Action<Transaction> Change) elementChanged in changingElements(groupKey, bucket))
+            foreach ((Transaction tx, Action<Transaction> change) in changingElements(groupKey, bucket))
             {
-                if (elementChanged.Change is null)
+                if (change is null)
                 {
-                    _transactionsToRemove.Add(elementChanged.Tx);
+                    _transactionsToRemove.Add(tx);
                 }
                 else
                 {
-                    elementChanged.Change(elementChanged.Tx);
+                    bool reAdd = _sortedValues.Remove(tx);
+                    change(tx);
+                    if (reAdd)
+                    {
+                        _sortedValues.Add(tx, tx.Hash);
+                    }
                 }
             }
 
