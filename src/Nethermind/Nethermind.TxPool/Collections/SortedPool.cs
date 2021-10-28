@@ -36,7 +36,7 @@ namespace Nethermind.TxPool.Collections
         private readonly int _capacity;
         private readonly IComparer<TValue> _groupComparer;
         protected readonly IDictionary<TGroupKey, SortedSet<TValue>> _buckets;
-        private readonly DictionarySortedSet<TValue, TKey> _sortedValues;
+        protected readonly DictionarySortedSet<TValue, TKey> _sortedValues;
         private readonly IDictionary<TKey, TValue> _cacheMap;
         private readonly IComparer<TValue> _sortedComparer;
 
@@ -159,16 +159,6 @@ namespace Nethermind.TxPool.Collections
 
         private bool TryRemove(TKey key, bool evicted, out TValue value, out ICollection<TValue>? bucket)
         {
-            void UpdateSortedValues(SortedSet<TValue> b, TValue previousLast)
-            {
-                TValue? newLast = b.Max;
-                if (!Equals(previousLast, newLast))
-                {
-                    _sortedValues.Remove(previousLast);
-                    _sortedValues.Add(newLast, GetKey(newLast));
-                }
-            }
-            
             if (_cacheMap.TryGetValue(key, out value))
             {
                 if (Remove(key, value))
@@ -283,20 +273,6 @@ namespace Nethermind.TxPool.Collections
         /// </summary>
         protected virtual void InsertCore(TKey key, TValue value, TGroupKey groupKey)
         {
-            void UpdateSortedValues(TKey k, TValue v, SortedSet<TValue> b, TValue? previousLast)
-            {
-                TValue? newLast = b.Max;
-                if (!Equals(previousLast, newLast))
-                {
-                    if (previousLast is not null)
-                    {
-                        _sortedValues.Remove(previousLast);
-                    }
-
-                    _sortedValues.Add(v, k);
-                }
-            }
-            
             if (!_buckets.TryGetValue(groupKey, out SortedSet<TValue> bucket))
             {
                 _buckets[groupKey] = bucket = new SortedSet<TValue>(_groupComparer);
@@ -306,8 +282,22 @@ namespace Nethermind.TxPool.Collections
             if (bucket.Add(value))
             {
                 _cacheMap[key] = value;
-                UpdateSortedValues(key, value, bucket, last);
+                UpdateSortedValues(bucket, last);
                 Inserted?.Invoke(this, new SortedPoolEventArgs(key, value, groupKey));
+            }
+        }
+
+        private void UpdateSortedValues(SortedSet<TValue> bucket, TValue? previousLast)
+        {
+            TValue? newLast = bucket.Max;
+            if (!Equals(previousLast, newLast))
+            {
+                if (previousLast is not null)
+                {
+                    _sortedValues.Remove(previousLast);
+                }
+
+                _sortedValues.Add(newLast, GetKey(newLast));
             }
         }
 
