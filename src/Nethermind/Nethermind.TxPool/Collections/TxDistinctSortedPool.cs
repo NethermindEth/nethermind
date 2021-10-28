@@ -45,7 +45,7 @@ namespace Nethermind.TxPool.Collections
         [MethodImpl(MethodImplOptions.Synchronized)]
         public void UpdatePool(Func<Address, ICollection<Transaction>, IEnumerable<(Transaction Tx, Action<Transaction>? Change)>> changingElements)
         {
-            foreach ((Address groupKey, ICollection<Transaction> bucket) in _buckets)
+            foreach ((Address groupKey, SortedSet<Transaction> bucket) in _buckets)
             {
                 UpdateGroup(groupKey, bucket, changingElements);
             }
@@ -61,9 +61,10 @@ namespace Nethermind.TxPool.Collections
             }
         }
         
-        private void UpdateGroup(Address groupKey, ICollection<Transaction> bucket, Func<Address, ICollection<Transaction>, IEnumerable<(Transaction Tx, Action<Transaction>? Change)>> changingElements)
+        private void UpdateGroup(Address groupKey, SortedSet<Transaction> bucket, Func<Address, ICollection<Transaction>, IEnumerable<(Transaction Tx, Action<Transaction>? Change)>> changingElements)
         {
             _transactionsToRemove.Clear();
+            Transaction? lastElement = bucket.Max;
             
             foreach ((Transaction tx, Action<Transaction>? change) in changingElements(groupKey, bucket))
             {
@@ -71,14 +72,18 @@ namespace Nethermind.TxPool.Collections
                 {
                     _transactionsToRemove.Add(tx);
                 }
-                else
+                else if (Equals(lastElement, tx))
                 {
-                    bool reAdd = _sortedValues.Remove(tx);
+                    bool reAdd = _worstSortedValues.Remove(tx);
                     change(tx);
                     if (reAdd)
                     {
-                        _sortedValues.Add(tx, tx.Hash);
+                        _worstSortedValues.Add(tx, tx.Hash);
                     }
+                }
+                else
+                {
+                    change(tx);
                 }
             }
 

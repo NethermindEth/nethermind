@@ -34,11 +34,20 @@ namespace Nethermind.TxPool.Collections
         where TGroupKey : notnull
     {
         private readonly int _capacity;
+        
+        // comparer for a bucket
         private readonly IComparer<TValue> _groupComparer;
+        
+        // group buckets, keep the items grouped by group key and sorted in group
         protected readonly IDictionary<TGroupKey, SortedSet<TValue>> _buckets;
-        protected readonly DictionarySortedSet<TValue, TKey> _sortedValues;
+        
         private readonly IDictionary<TKey, TValue> _cacheMap;
+        
+        // comparer for worst elements in buckets
         private readonly IComparer<TValue> _sortedComparer;
+        
+        // worst element from every group, used to determine element that will be evicted when pool is full
+        protected readonly DictionarySortedSet<TValue, TKey> _worstSortedValues;
 
         /// <summary>
         /// Constructor
@@ -53,7 +62,7 @@ namespace Nethermind.TxPool.Collections
             _groupComparer = GetGroupComparer(comparer ?? throw new ArgumentNullException(nameof(comparer)));
             _cacheMap = new Dictionary<TKey, TValue>(); // do not initialize it at the full capacity
             _buckets = new Dictionary<TGroupKey, SortedSet<TValue>>();
-            _sortedValues = new DictionarySortedSet<TValue, TKey>(_sortedComparer);
+            _worstSortedValues = new DictionarySortedSet<TValue, TKey>(_sortedComparer);
         }
 
         /// <summary>
@@ -142,7 +151,7 @@ namespace Nethermind.TxPool.Collections
         [MethodImpl(MethodImplOptions.Synchronized)]
         public bool TryGetLast(out TValue last)
         {
-            last = _sortedValues.Max.Key;
+            last = _worstSortedValues.Max.Key;
             return last is not null;
         }
 
@@ -173,7 +182,7 @@ namespace Nethermind.TxPool.Collections
                             if (bucket.Count == 0)
                             {
                                 _buckets.Remove(groupMapping);
-                                _sortedValues.Remove(last);
+                                _worstSortedValues.Remove(last);
                             }
                             else
                             {
@@ -252,7 +261,7 @@ namespace Nethermind.TxPool.Collections
         
         private void RemoveLast(out TValue? removed)
         {
-            TryRemove(_sortedValues.Max.Value, true, out removed, out _);
+            TryRemove(_worstSortedValues.Max.Value, true, out removed, out _);
         }
 
         /// <summary>
@@ -294,10 +303,10 @@ namespace Nethermind.TxPool.Collections
             {
                 if (previousLast is not null)
                 {
-                    _sortedValues.Remove(previousLast);
+                    _worstSortedValues.Remove(previousLast);
                 }
 
-                _sortedValues.Add(newLast, GetKey(newLast));
+                _worstSortedValues.Add(newLast, GetKey(newLast));
             }
         }
 
