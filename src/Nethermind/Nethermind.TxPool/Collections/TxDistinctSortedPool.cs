@@ -65,7 +65,7 @@ namespace Nethermind.TxPool.Collections
         {
             _transactionsToRemove.Clear();
             
-            foreach ((Transaction tx, Action<Transaction> change) in changingElements(groupKey, bucket))
+            foreach ((Transaction tx, Action<Transaction>? change) in changingElements(groupKey, bucket))
             {
                 if (change is null)
                 {
