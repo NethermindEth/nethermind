@@ -34,6 +34,13 @@
         "eip2028Transition": "0x4b1bb6",
         "eip2929Transition": "0xc10499",
         "eip2930Transition": "0xc10499",
+        "eip1559Transition": "0xe0d9ac",
+        "eip3198Transition": "0xe0d9ac",
+        "eip3541Transition": "0xe0d9ac",
+        "eip3529Transition": "0xe0d9ac",
+        "eip1559BaseFeeMaxChangeDenominator": "0x8",
+        "eip1559ElasticityMultiplier": "0x2",
+        "eip1559BaseFeeInitialValue": "0x3B9ACA00",
         "registrar": "0x1204700000000000000000000000000000000006"
     },
     "genesis": {
