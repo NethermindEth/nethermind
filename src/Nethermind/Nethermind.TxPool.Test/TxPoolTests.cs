@@ -605,6 +605,8 @@ namespace Nethermind.TxPool.Test
             EnsureSenderBalance(higherPriorityTx);
             _txPool.SubmitTx(higherPriorityTx, TxHandlingOptions.PersistentBroadcast);
 
+            _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(Build.A.Block.TestObject));
+            _txPool.IsKnown(higherPriorityTx.Hash).Should().BeTrue();
             _txPool.IsKnown(transaction.Hash).Should().BeFalse();
         }
 
