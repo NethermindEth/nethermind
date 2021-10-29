@@ -183,7 +183,6 @@ namespace Nethermind.Merge.Plugin.Test
                 yield return GetNewBlockRequestBadDataTestCase(r => r.Difficulty, 2ul);
                 yield return GetNewBlockRequestBadDataTestCase(r => r.Nonce, 1ul);
                 yield return GetNewBlockRequestBadDataTestCase(r => r.MixHash, TestItem.KeccakC);
-                yield return GetNewBlockRequestBadDataTestCase(r => r.Uncles, new[] {TestItem.KeccakB});
                 yield return GetNewBlockRequestBadDataTestCase(r => r.ParentHash, TestItem.KeccakD);
                 yield return GetNewBlockRequestBadDataTestCase(r => r.ReceiptRoot, TestItem.KeccakD);
                 yield return GetNewBlockRequestBadDataTestCase(r => r.StateRoot, TestItem.KeccakD);

@@ -43,7 +43,6 @@ namespace Nethermind.Merge.Plugin.Data
                 Difficulty = UInt256.Zero;
                 Nonce = 0;
                 MixHash = Keccak.Zero;
-                Uncles = Array.Empty<Keccak>();
             }
         }
         
@@ -64,7 +63,6 @@ namespace Nethermind.Merge.Plugin.Data
             Nonce = block.Nonce;
             ExtraData = block.ExtraData!;
             MixHash = block.MixHash!;
-            Uncles = block.Uncles.Select(o => o.Hash!);
             Timestamp = block.Timestamp;
             BaseFeePerGas = block.BaseFeePerGas;
         }
@@ -119,8 +117,6 @@ namespace Nethermind.Merge.Plugin.Data
         public Keccak ReceiptRoot { get; set; } = null!;
         public Keccak StateRoot { get; set; } = null!;
         public byte[][] Transactions { get; set; } = Array.Empty<byte[]>();
-        public IEnumerable<Keccak>? Uncles { get; set; }
-        public bool ShouldSerializeUncles() => false;
         public UInt256 Timestamp { get; set; }
 
         public UInt256 BaseFeePerGas { get; set; }
