@@ -85,7 +85,7 @@ namespace Nethermind.Synchronization.Test
         {
         }
 
-        public Task<BlockBody[]> GetBlockBodies(IList<Keccak> blockHashes, CancellationToken token)
+        public Task<BlockBody[]> GetBlockBodies(IReadOnlyList<Keccak> blockHashes, CancellationToken token)
         {
             BlockBody[] result = new BlockBody[blockHashes.Count];
             for (int i = 0; i < blockHashes.Count; i++)
@@ -168,7 +168,7 @@ namespace Nethermind.Synchronization.Test
         
         public void SendNewTransactions(IEnumerable<Transaction> txs) { }
 
-        public Task<TxReceipt[][]> GetReceipts(IList<Keccak> blockHash, CancellationToken token)
+        public Task<TxReceipt[][]> GetReceipts(IReadOnlyList<Keccak> blockHash, CancellationToken token)
         {
             TxReceipt[][] result = new TxReceipt[blockHash.Count][];
             for (int i = 0; i < blockHash.Count; i++)
@@ -179,7 +179,7 @@ namespace Nethermind.Synchronization.Test
             return Task.FromResult(result);
         }
 
-        public Task<byte[][]> GetNodeData(IList<Keccak> hashes, CancellationToken token)
+        public Task<byte[][]> GetNodeData(IReadOnlyList<Keccak> hashes, CancellationToken token)
         {
             return Task.FromResult(_remoteSyncServer.GetNodeData(hashes));
         }

@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Collections.Generic;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
@@ -23,7 +24,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
         public override int PacketType { get; } = Eth65MessageCode.GetPooledTransactions;
         public override string Protocol { get; } = "eth";
 
-        public GetPooledTransactionsMessage(Keccak[] hashes)
+        public GetPooledTransactionsMessage(IReadOnlyList<Keccak> hashes)
             : base(hashes)
         {
         }

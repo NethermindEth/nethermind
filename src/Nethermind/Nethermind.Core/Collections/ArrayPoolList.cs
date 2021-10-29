@@ -22,10 +22,11 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core.Collections
 {
-    public class ArrayPoolList<T> : IList<T>, IDisposable
+    public class ArrayPoolList<T> : IList<T>, IReadOnlyList<T>, IDisposable
     {
         private readonly ArrayPool<T> _arrayPool;
         private T[] _array;
@@ -36,6 +37,11 @@ namespace Nethermind.Core.Collections
         public ArrayPoolList(int capacity) : this(ArrayPool<T>.Shared, capacity)
         {
             
+        }
+        
+        public ArrayPoolList(int capacity, IEnumerable<T> enumerable) : this(capacity)
+        {
+            this.AddRange(enumerable);
         }
         
         public ArrayPoolList(ArrayPool<T> arrayPool, int capacity)

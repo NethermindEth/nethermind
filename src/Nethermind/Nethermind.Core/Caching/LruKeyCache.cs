@@ -87,6 +87,7 @@ namespace Nethermind.Core.Caching
                     _lruList.AddLast(newNode);
                     _cacheMap.Add(key, newNode);    
                 }
+                
                 return true;
             }
         }
