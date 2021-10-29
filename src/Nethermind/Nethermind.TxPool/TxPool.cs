@@ -275,7 +275,7 @@ namespace Nethermind.TxPool
                         // transaction which was on last position in sorted TxPool and was deleted to give
                         // a place for a newly added tx (with higher priority) is now removed from hashCache
                         // to give it opportunity to come back to TxPool in the future, when fees drops
-                        _hashCache.Delete(removed.Hash!);
+                        _hashCache.DeleteFromLongTerm(removed.Hash!);
                         Metrics.PendingTransactionsEvicted++;
                     }
                 }
@@ -398,6 +398,9 @@ namespace Nethermind.TxPool
                 {
                     foreach (Transaction transaction in transactions)
                     {
+                        // transaction removed from TxPool because of insufficient balance should have opportunity
+                        // to come back in the future, so it is removed from long term cache as well.
+                        _hashCache.DeleteFromLongTerm(transaction.Hash!);
                         yield return (transaction, null);
                     }
                 }
