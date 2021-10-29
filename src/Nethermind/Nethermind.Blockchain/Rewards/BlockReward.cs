@@ -21,7 +21,7 @@ namespace Nethermind.Blockchain.Rewards
 {
     public class BlockReward
     {
-        public BlockReward(Address address, UInt256 value, BlockRewardType rewardType = BlockRewardType.Block)
+        public BlockReward(Address address, in UInt256 value, BlockRewardType rewardType = BlockRewardType.Block)
         {
             Address = address;
             Value = value;

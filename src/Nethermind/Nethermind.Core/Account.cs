@@ -59,7 +59,7 @@ namespace Nethermind.Core
             IsTotallyEmpty = true;
         }
 
-        public Account(UInt256 nonce, UInt256 balance, Keccak storageRoot, Keccak codeHash)
+        public Account(in UInt256 nonce, in UInt256 balance, Keccak storageRoot, Keccak codeHash)
         {
             Nonce = nonce;
             Balance = balance;
@@ -68,7 +68,7 @@ namespace Nethermind.Core
             IsTotallyEmpty = Balance.IsZero && Nonce == _accountStartNonce && CodeHash == Keccak.OfAnEmptyString && StorageRoot == Keccak.EmptyTreeHash;
         }
 
-        private Account(UInt256 nonce, UInt256 balance, Keccak storageRoot, Keccak codeHash, bool isTotallyEmpty)
+        private Account(in UInt256 nonce, in UInt256 balance, Keccak storageRoot, Keccak codeHash, bool isTotallyEmpty)
         {
             Nonce = nonce;
             Balance = balance;
@@ -89,12 +89,12 @@ namespace Nethermind.Core
         public bool IsEmpty => IsTotallyEmpty || (Balance.IsZero && Nonce == _accountStartNonce && CodeHash == Keccak.OfAnEmptyString);
         public bool IsContract => CodeHash != Keccak.OfAnEmptyString; 
 
-        public Account WithChangedBalance(UInt256 newBalance)
+        public Account WithChangedBalance(in UInt256 newBalance)
         {
             return new(Nonce, newBalance, StorageRoot, CodeHash, IsTotallyEmpty && newBalance.IsZero);
         }
 
-        public Account WithChangedNonce(UInt256 newNonce)
+        public Account WithChangedNonce(in UInt256 newNonce)
         {
             return new(newNonce, Balance, StorageRoot, CodeHash, IsTotallyEmpty && newNonce == _accountStartNonce);
         }

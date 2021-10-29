@@ -461,8 +461,8 @@ namespace Nethermind.TxPool.Test
             }
 
             int numberOfTxsInTxPool = _txPool.GetPendingTransactionsCount();
-            numberOfTxsInTxPool.Should().Be(numberOfTxsPossibleToExecuteBeforeGasExhaustion + numberOfStaleTxsInBucket);
-            _txPool.GetPendingTransactions()[numberOfTxsInTxPool - 1].Nonce.Should().Be((UInt256)(numberOfTxsInTxPool - 1));
+            numberOfTxsInTxPool.Should().Be(numberOfTxsPossibleToExecuteBeforeGasExhaustion);
+            _txPool.GetPendingTransactions()[numberOfTxsInTxPool - 1].Nonce.Should().Be((UInt256)(numberOfTxsInTxPool - 1 + numberOfStaleTxsInBucket));
         }
 
         [Test]
@@ -554,7 +554,7 @@ namespace Nethermind.TxPool.Test
 
             await RaiseBlockAddedToMainAndWaitForTransactions(5);
             
-            _txPool.GetPendingTransactions().Count(t => t.GasBottleneck == 0).Should().Be(3);
+            _txPool.GetPendingTransactions().Count(t => t.GasBottleneck == 0).Should().Be(0);
             _txPool.GetPendingTransactions().Max(t => t.GasBottleneck).Should().Be((UInt256)5);
         }
 
@@ -582,7 +582,7 @@ namespace Nethermind.TxPool.Test
             }
             
             await RaiseBlockAddedToMainAndWaitForTransactions(3);
-            _txPool.GetPendingTransactions().Count(t => t.GasBottleneck == 0).Should().Be(3);
+            _txPool.GetPendingTransactions().Count(t => t.GasBottleneck == 0).Should().Be(0);
         }
 
         [Test]
@@ -605,6 +605,8 @@ namespace Nethermind.TxPool.Test
             EnsureSenderBalance(higherPriorityTx);
             _txPool.SubmitTx(higherPriorityTx, TxHandlingOptions.PersistentBroadcast);
 
+            _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(Build.A.Block.TestObject));
+            _txPool.IsKnown(higherPriorityTx.Hash).Should().BeTrue();
             _txPool.IsKnown(transaction.Hash).Should().BeFalse();
         }
 
@@ -630,7 +632,7 @@ namespace Nethermind.TxPool.Test
         }
         
         [Test]
-        public async Task should_dump_GasBottleneck_of_old_nonces()
+        public async Task should_remove_GasBottleneck_of_old_nonces()
         {
             _txPool = CreatePool();
             Transaction[] transactions = new Transaction[5];
@@ -653,7 +655,7 @@ namespace Nethermind.TxPool.Test
             }
 
             await RaiseBlockAddedToMainAndWaitForTransactions(5);
-            _txPool.GetPendingTransactions().Count(t => t.GasBottleneck == 0).Should().Be(3);
+            _txPool.GetPendingTransactions().Count(t => t.GasBottleneck == 0).Should().Be(0);
             _txPool.GetPendingTransactions().Max(t => t.GasBottleneck).Should().Be((UInt256)5);
         }
 
@@ -661,7 +663,7 @@ namespace Nethermind.TxPool.Test
         public void should_broadcast_own_transactions()
         {
             _txPool = CreatePool();
-            AddOwnTransactionToPool();
+            AddTransactionToPool();
             Assert.AreEqual(1, _txPool.GetOwnPendingTransactions().Length);
         }
         
@@ -669,7 +671,7 @@ namespace Nethermind.TxPool.Test
         public void should_not_broadcast_own_transactions_that_faded_out_and_came_back()
         {
             _txPool = CreatePool();
-            var transaction = AddOwnTransactionToPool();
+            var transaction = AddTransactionToPool();
             _txPool.RemoveTransaction(transaction.Hash);
             _txPool.RemoveTransaction(TestItem.KeccakA);
             _txPool.SubmitTx(transaction, TxHandlingOptions.None);
@@ -879,7 +881,7 @@ namespace Nethermind.TxPool.Test
         public void should_notify_added_peer_of_own_tx()
         {
             _txPool = CreatePool();
-            Transaction tx = AddOwnTransactionToPool();
+            Transaction tx = AddTransactionToPool();
             ITxPoolPeer txPoolPeer = Substitute.For<ITxPoolPeer>();
             txPoolPeer.Id.Returns(TestItem.PublicKeyA);
             _txPool.AddPeer(txPoolPeer);
@@ -893,9 +895,31 @@ namespace Nethermind.TxPool.Test
             ITxPoolPeer txPoolPeer = Substitute.For<ITxPoolPeer>();
             txPoolPeer.Id.Returns(TestItem.PublicKeyA);
             _txPool.AddPeer(txPoolPeer);
-            Transaction tx = AddOwnTransactionToPool();
+            Transaction tx = AddTransactionToPool();
             await Task.Delay(500);
             txPoolPeer.Received(1).SendNewTransactions(Arg.Any<IEnumerable<Transaction>>());
+        }
+
+        [Test]
+        public void should_send_to_peers_full_newly_added_local_tx()
+        {
+            _txPool = CreatePool();
+            ITxPoolPeer txPoolPeer = Substitute.For<ITxPoolPeer>();
+            txPoolPeer.Id.Returns(TestItem.PublicKeyA);
+            _txPool.AddPeer(txPoolPeer);
+            Transaction tx = AddTransactionToPool();
+            txPoolPeer.Received().SendNewTransaction(tx);
+        }
+        
+        [Test]
+        public void should_not_send_to_peers_full_newly_added_external_tx()
+        {
+            _txPool = CreatePool();
+            ITxPoolPeer txPoolPeer = Substitute.For<ITxPoolPeer>();
+            txPoolPeer.Id.Returns(TestItem.PublicKeyA);
+            _txPool.AddPeer(txPoolPeer);
+            Transaction tx = AddTransactionToPool(false);
+            txPoolPeer.DidNotReceive().SendNewTransaction(tx);
         }
 
         [Test]
@@ -1083,10 +1107,10 @@ namespace Nethermind.TxPool.Test
             return transactions;
         }
 
-        private Transaction AddOwnTransactionToPool()
+        private Transaction AddTransactionToPool(bool isOwn = true)
         {
             var transaction = GetTransaction(TestItem.PrivateKeyA, Address.Zero);
-            _txPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast);
+            _txPool.SubmitTx(transaction, isOwn ? TxHandlingOptions.PersistentBroadcast : TxHandlingOptions.None);
             return transaction;
         }
 

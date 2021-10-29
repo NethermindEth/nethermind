@@ -1,6 +1,6 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# 
+#
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.DataMarketplace.Channels", "Nethermind.DataMarketplace.Channels\Nethermind.DataMarketplace.Channels.csproj", "{4B566FF8-5A34-4677-BB71-8D502CFD54D8}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.DataMarketplace.Channels.Grpc", "Nethermind.DataMarketplace.Channels.Grpc\Nethermind.DataMarketplace.Channels.Grpc.csproj", "{605A6E0A-01B9-42D1-8579-9B24EAC33BA6}"
@@ -118,8 +118,6 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.EthStats", "Nethermind.EthStats\Nethermind.EthStats.csproj", "{321CD766-B6E6-4E70-8A9F-4D505C5D04B7}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Seq", "Nethermind.Seq\Nethermind.Seq.csproj", "{DDF2855A-5D96-48AB-8BFE-DF792847D42C}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.PubSub.Kafka", "Nethermind.PubSub.Kafka\Nethermind.PubSub.Kafka.csproj", "{CB679CED-547E-42A8-B6F1-3D2BC2FC7D75}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.DataMarketplace.Cli", "Nethermind.DataMarketplace.Cli\Nethermind.DataMarketplace.Cli.csproj", "{BE3646E1-60F4-4F27-A3E3-4D3EB68B699B}"
 EndProject
@@ -379,10 +377,6 @@ Global
 		{DDF2855A-5D96-48AB-8BFE-DF792847D42C}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{DDF2855A-5D96-48AB-8BFE-DF792847D42C}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{DDF2855A-5D96-48AB-8BFE-DF792847D42C}.Release|Any CPU.Build.0 = Release|Any CPU
-		{CB679CED-547E-42A8-B6F1-3D2BC2FC7D75}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{CB679CED-547E-42A8-B6F1-3D2BC2FC7D75}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{CB679CED-547E-42A8-B6F1-3D2BC2FC7D75}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{CB679CED-547E-42A8-B6F1-3D2BC2FC7D75}.Release|Any CPU.Build.0 = Release|Any CPU
 		{BE3646E1-60F4-4F27-A3E3-4D3EB68B699B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{BE3646E1-60F4-4F27-A3E3-4D3EB68B699B}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{BE3646E1-60F4-4F27-A3E3-4D3EB68B699B}.Release|Any CPU.ActiveCfg = Release|Any CPU
@@ -459,7 +453,6 @@ Global
 		{CCBFE3E2-995F-4267-A7CD-BB5DFA80B5DB} = {3C490400-0577-4F8D-9C59-F4FF46D0AC1E}
 		{321CD766-B6E6-4E70-8A9F-4D505C5D04B7} = {3C490400-0577-4F8D-9C59-F4FF46D0AC1E}
 		{DDF2855A-5D96-48AB-8BFE-DF792847D42C} = {3C490400-0577-4F8D-9C59-F4FF46D0AC1E}
-		{CB679CED-547E-42A8-B6F1-3D2BC2FC7D75} = {3C490400-0577-4F8D-9C59-F4FF46D0AC1E}
 		{38D66446-4E41-4F35-953C-9FE54DE39CE7} = {3C490400-0577-4F8D-9C59-F4FF46D0AC1E}
 	EndGlobalSection
 EndGlobal

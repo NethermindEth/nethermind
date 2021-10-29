@@ -158,7 +158,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             public UInt256 BlockNumber { get; }
             public byte[] Proof { get; }
 
-            public PersistentReport(Address maliciousValidator, UInt256 blockNumber, byte[] proof)
+            public PersistentReport(Address maliciousValidator, in UInt256 blockNumber, byte[] proof)
             {
                 MaliciousValidator = maliciousValidator;
                 BlockNumber = blockNumber;

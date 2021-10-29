@@ -35,12 +35,12 @@ namespace Nethermind.Evm.Precompiles.Snarks.Shamatar
             return releaseSpec.IsEip1108Enabled ? 150L : 500L;
         }
 
-        public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+        public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
             return 0L;
         }
 
-        public unsafe (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+        public unsafe (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
             Metrics.Bn256AddPrecompile++;
             Span<byte> inputDataSpan = stackalloc byte[128];

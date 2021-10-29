@@ -52,7 +52,7 @@ namespace Nethermind.State
             TrieType = TrieType.Storage;
         }
         
-        public static Span<byte> GetKey(UInt256 index)
+        public static Span<byte> GetKey(in UInt256 index)
         {
             if (index < CacheSize)
             {
@@ -66,7 +66,7 @@ namespace Nethermind.State
             return ValueKeccak.Compute(span).BytesAsSpan.ToArray();
         }
 
-        public byte[] Get(UInt256 index, Keccak? storageRoot = null)
+        public byte[] Get(in UInt256 index, Keccak? storageRoot = null)
         {
             Span<byte> key = GetKey(index);
             byte[]? value = Get(key, storageRoot);
@@ -79,7 +79,7 @@ namespace Nethermind.State
             return rlp.DecodeByteArray();
         }
 
-        public void Set(UInt256 index, byte[] value)
+        public void Set(in UInt256 index, byte[] value)
         {
             if (value.IsZero())
             {
