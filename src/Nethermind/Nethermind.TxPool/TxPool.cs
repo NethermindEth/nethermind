@@ -20,6 +20,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -62,6 +63,8 @@ namespace Nethermind.TxPool
         private readonly ITxPoolConfig _txPoolConfig;
 
         private readonly ILogger _logger;
+
+        private readonly Channel<BlockReplacementEventArgs> _headBlocksChannel = Channel.CreateUnbounded<BlockReplacementEventArgs>(new UnboundedChannelOptions() { SingleReader = true, SingleWriter = true });
 
         /// <summary>
         /// Indexes transactions
@@ -120,6 +123,8 @@ namespace Nethermind.TxPool
             {
                 _filterPipeline.Add(incomingTxFilter);
             }
+
+            ProcessNewHeads();
         }
 
         public Transaction[] GetPendingTransactions() => _transactions.GetSnapshot();
@@ -137,7 +142,7 @@ namespace Nethermind.TxPool
             try
             {
                 _hashCache.ClearCurrentBlockCache();
-                OnHeadChange(e.Block!, e.PreviousBlock);
+                _headBlocksChannel.Writer.TryWrite(e);
             }
             catch (Exception exception)
             {
@@ -146,13 +151,35 @@ namespace Nethermind.TxPool
                         $"Couldn't correctly add or remove transactions from txpool after processing block {e.Block!.ToString(Block.Format.FullHashAndNumber)}.", exception);
             }
         }
-
-        private void OnHeadChange(Block block, Block? previousBlock)
+        
+        private void ProcessNewHeads()
         {
-            ReAddReorganisedTransactions(previousBlock);
-            RemoveProcessedTransactions(block.Transactions);
-            UpdateBuckets();
-            Metrics.TransactionCount = _transactions.Count;
+            Task.Factory.StartNew(async () =>
+            {
+                while (await _headBlocksChannel.Reader.WaitToReadAsync())
+                {
+                    while (_headBlocksChannel.Reader.TryRead(out BlockReplacementEventArgs args))
+                    {
+                        try
+                        {
+                            ReAddReorganisedTransactions(args.PreviousBlock);
+                            RemoveProcessedTransactions(args.Block.Transactions);
+                            UpdateBuckets();
+                            Metrics.TransactionCount = _transactions.Count;
+                        }
+                        catch (Exception e)
+                        {
+                            if (_logger.IsDebug) _logger.Debug($"TxPool failed to update after block {args.Block.ToString(Block.Format.FullHashAndNumber)} with exception {e}");
+                        }
+                    }
+                }
+            }, TaskCreationOptions.LongRunning).ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                {
+                    if (_logger.IsError) _logger.Error($"TxPool update after block queue failed.", t.Exception);
+                }
+            });
         }
 
         private void ReAddReorganisedTransactions(Block? previousBlock)
@@ -500,6 +527,7 @@ namespace Nethermind.TxPool
         {
             _broadcaster.Dispose();
             _headInfo.HeadChanged -= OnHeadChange;
+            _headBlocksChannel.Writer.Complete();
         }
 
         /// <summary>
