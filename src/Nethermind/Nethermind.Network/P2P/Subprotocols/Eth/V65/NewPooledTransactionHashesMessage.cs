@@ -26,7 +26,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
         public override int PacketType { get; } = Eth65MessageCode.NewPooledTransactionHashes;
         public override string Protocol { get; } = "eth";
 
-        public NewPooledTransactionHashesMessage(IList<Keccak> hashes)
+        public NewPooledTransactionHashesMessage(IReadOnlyList<Keccak> hashes)
             : base(hashes)
         {
         }

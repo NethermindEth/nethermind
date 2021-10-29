@@ -21,7 +21,7 @@ namespace Nethermind.Core
 {
     public class BlockInfo
     {
-        public BlockInfo(Keccak blockHash, UInt256 totalDifficulty)
+        public BlockInfo(Keccak blockHash, in UInt256 totalDifficulty)
         {
             BlockHash = blockHash;
             TotalDifficulty = totalDifficulty;

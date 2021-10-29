@@ -34,7 +34,7 @@ namespace Nethermind.Evm.Precompiles
 
         public long BaseGasCost(IReleaseSpec releaseSpec) => 0;
 
-        public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+        public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
             if (inputData.Length != RequiredInputLength)
             {
@@ -52,7 +52,7 @@ namespace Nethermind.Evm.Precompiles
             return rounds;
         }
 
-        public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+        public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
             if (inputData.Length != RequiredInputLength)
             {

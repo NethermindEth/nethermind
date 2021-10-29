@@ -310,7 +310,7 @@ namespace Nethermind.DataMarketplace.Test
                 throw new NotImplementedException();
             }
 
-            public byte[] GetStorage(Keccak storageRoot, UInt256 index)
+            public byte[] GetStorage(Keccak storageRoot, in UInt256 index)
             {
                 throw new NotImplementedException();
             }

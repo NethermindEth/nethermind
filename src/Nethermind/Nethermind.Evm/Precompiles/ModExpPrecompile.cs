@@ -53,7 +53,7 @@ namespace Nethermind.Evm.Precompiles
         /// <param name="inputData"></param>
         /// <param name="releaseSpec"></param>
         /// <returns>Gas cost of the MODEXP operation in the context of EIP2565</returns>
-        public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+        public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
             if (!releaseSpec.IsEip2565Enabled)
             {
@@ -101,7 +101,7 @@ namespace Nethermind.Evm.Precompiles
             return result;
         }
 
-        private static (int, int, int) GetInputLengths(ReadOnlyMemory<byte> inputData)
+        private static (int, int, int) GetInputLengths(in ReadOnlyMemory<byte> inputData)
         {
             Span<byte> extendedInput = stackalloc byte[96];
             inputData.Slice(0, Math.Min(96, inputData.Length)).Span
@@ -115,7 +115,7 @@ namespace Nethermind.Evm.Precompiles
             return (baseLength, expLength, modulusLength);
         }
 
-        public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+        public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
             Metrics.ModExpPrecompile++;
 
@@ -180,7 +180,7 @@ namespace Nethermind.Evm.Precompiles
         /// return words**2
         /// </summary>
         /// <returns></returns>
-        private static UInt256 MultComplexity(UInt256 baseLength, UInt256 modulusLength)
+        private static UInt256 MultComplexity(in UInt256 baseLength, in UInt256 modulusLength)
         {
             UInt256 maxLength = UInt256.Max(baseLength, modulusLength);
             UInt256.Mod(maxLength, 8, out UInt256 mod8);

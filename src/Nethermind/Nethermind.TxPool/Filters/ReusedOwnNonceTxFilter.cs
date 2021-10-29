@@ -62,7 +62,7 @@ namespace Nethermind.TxPool.Filters
         /// <param name="transaction"></param>
         /// <param name="currentNonce"></param>
         /// <returns></returns>
-        private bool CheckOwnTransactionAlreadyUsed(Transaction transaction, UInt256 currentNonce)
+        private bool CheckOwnTransactionAlreadyUsed(Transaction transaction, in UInt256 currentNonce)
         {
             Address address = transaction.SenderAddress;
             lock (_locker)

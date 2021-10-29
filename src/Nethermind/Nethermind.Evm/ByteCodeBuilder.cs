@@ -40,7 +40,7 @@ namespace Nethermind.Evm
             return this;
         }
 
-        public Prepare Create(byte[] code, UInt256 value)
+        public Prepare Create(byte[] code, in UInt256 value)
         {
             StoreDataInMemory(0, code);
             PushData(code.Length);
@@ -50,7 +50,7 @@ namespace Nethermind.Evm
             return this;
         }
 
-        public Prepare Create2(byte[] code, byte[] salt, UInt256 value)
+        public Prepare Create2(byte[] code, byte[] salt, in UInt256 value)
         {
             StoreDataInMemory(0, code);
             PushData(salt);
@@ -129,7 +129,7 @@ namespace Nethermind.Evm
             return this;
         }
 
-        public Prepare CallWithValue(Address address, long gasLimit, UInt256 value)
+        public Prepare CallWithValue(Address address, long gasLimit, in UInt256 value)
         {
             PushData(0);
             PushData(0);
@@ -195,7 +195,7 @@ namespace Nethermind.Evm
             return PushData((UInt256) data);
         }
         
-        public Prepare PushData(UInt256 data)
+        public Prepare PushData(in UInt256 data)
         {
             Span<byte> bytes = stackalloc byte[32];
             data.ToBigEndian(bytes);
