@@ -145,7 +145,7 @@ namespace Nethermind.Merge.Plugin.Test
             {
                 PoSSwitcher = new PoSSwitcher(LogManager, MergeConfig, new MemDb(), BlockTree);
                 SealEngine = new MergeSealEngine(SealEngine, PoSSwitcher, Signer, LogManager);
-                HeaderValidator = new PostMergeHeaderValidator(PoSSwitcher, HeaderValidator, LogManager);
+                HeaderValidator = new PostMergeHeaderValidator(PoSSwitcher, BlockTree, SpecProvider, SealEngine, LogManager);
                 
                 return new BlockValidator(
                     new TxValidator(SpecProvider.ChainId),

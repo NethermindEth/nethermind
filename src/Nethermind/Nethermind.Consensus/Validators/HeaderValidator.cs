@@ -103,16 +103,8 @@ namespace Nethermind.Consensus.Validators
                     _logger.Debug($"Orphan block, could not find parent ({header.ParentHash}) of ({header.Hash})");
                 return false;
             }
-            
-            bool totalDifficultyCorrect = true;
-            if (header.TotalDifficulty != null)
-            {
-                if (parent.TotalDifficulty + header.Difficulty != header.TotalDifficulty)
-                {
-                    if (_logger.IsDebug) _logger.Debug($"Invalid total difficulty");
-                    totalDifficultyCorrect = false;
-                }
-            }
+
+            bool totalDifficultyCorrect = ValidateTotalDifficulty(parent, header);
 
             // seal is validated when synchronizing so we can remove it from here - review and test
             bool sealParamsCorrect = _sealValidator.ValidateParams(parent, header);
@@ -213,6 +205,21 @@ namespace Nethermind.Consensus.Validators
             return gasLimitNotTooHigh && gasLimitNotTooLow;
         }
 
+        protected virtual bool ValidateTotalDifficulty(BlockHeader parent,BlockHeader header)
+        {
+            bool totalDifficultyCorrect = true;
+            if (header.TotalDifficulty != null)
+            {
+                if (parent.TotalDifficulty + header.Difficulty != header.TotalDifficulty)
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Invalid total difficulty");
+                    totalDifficultyCorrect = false;
+                }
+            }
+
+            return totalDifficultyCorrect;
+        }
+
         /// <summary>
         /// Validates all the header elements (usually in relation to parent). Difficulty calculation is validated in <see cref="ISealValidator"/>
         /// </summary>
@@ -220,7 +227,7 @@ namespace Nethermind.Consensus.Validators
         /// <param name="isUncle"><value>True</value> if the <paramref name="header"/> is an uncle, otherwise <value>False</value></param>
         /// <returns><value>True</value> if <paramref name="header"/> is valid, otherwise <value>False</value></returns>
         // TODO: this should be an extension method?
-        public bool Validate(BlockHeader header, bool isUncle = false)
+        public virtual bool Validate(BlockHeader header, bool isUncle = false)
         {
             BlockHeader parent = _blockTree.FindParentHeader(header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             return Validate(header, parent, isUncle);

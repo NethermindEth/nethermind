@@ -15,46 +15,42 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
 
 namespace Nethermind.Merge.Plugin
 {
-    public class PostMergeHeaderValidator : IHeaderValidator
+    public sealed class PostMergeHeaderValidator : HeaderValidator
     {
         private readonly IPoSSwitcher _poSSwitcher;
-        private readonly IHeaderValidator _headerValidator;
-        private readonly ILogger _logger;
 
         public PostMergeHeaderValidator(
             IPoSSwitcher poSSwitcher,
-            IHeaderValidator headerValidator,
+            IBlockTree blockTree,
+            ISpecProvider specProvider,
+            ISealValidator sealValidator,
             ILogManager logManager)
+            : base(blockTree, sealValidator, specProvider, logManager)
         {
             _poSSwitcher = poSSwitcher;
-            _headerValidator = headerValidator;
-            _logger = logManager.GetClassLogger();
         }
 
-        public bool ValidateHash(BlockHeader header)
-        {
-            return _headerValidator.ValidateHash(header);
-        }
-
-        public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle = false)
+        public override bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle = false)
         {
             bool theMergeValid = ValidateTheMergeChecks(header);
-            return _headerValidator.Validate(header, parent, isUncle) && theMergeValid;
+            return base.Validate(header, parent, isUncle) && theMergeValid;
         }
 
-        public bool Validate(BlockHeader header, bool isUncle = false)
+        public override bool Validate(BlockHeader header, bool isUncle = false)
         {
             bool theMergeValid = ValidateTheMergeChecks(header);
-            return _headerValidator.Validate(header, isUncle)  && theMergeValid;
+            return base.Validate(header, isUncle)  && theMergeValid;
         }
 
         private bool ValidateTheMergeChecks(BlockHeader header)
@@ -75,6 +71,11 @@ namespace Nethermind.Merge.Plugin
                    //&& validExtraData
                    && validMixHash
                    && validUncles;
+        }
+        
+        protected override bool ValidateTotalDifficulty(BlockHeader parent, BlockHeader header)
+        {
+            return true;
         }
         
         private bool ValidateHeaderField<T>(BlockHeader header, T value, T expected, string name)
