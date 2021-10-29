@@ -26,7 +26,7 @@ namespace Nethermind.Core
         public Address Address { get; }
         public UInt256 Index { get; }
 
-        public StorageCell(Address address, UInt256 index)
+        public StorageCell(Address address, in UInt256 index)
         {
             Address = address;
             Index = index;

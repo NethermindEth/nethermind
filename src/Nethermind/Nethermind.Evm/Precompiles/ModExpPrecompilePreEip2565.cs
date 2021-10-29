@@ -42,7 +42,7 @@ namespace Nethermind.Evm.Precompiles
             return 0L;
         }
         
-        public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+        public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
             try
             {
@@ -69,7 +69,7 @@ namespace Nethermind.Evm.Precompiles
             }
         }
 
-        public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+        public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
             Metrics.ModExpPrecompile++;
             
@@ -90,7 +90,7 @@ namespace Nethermind.Evm.Precompiles
             return (BigInteger.ModPow(baseInt, expInt, modulusInt).ToBigEndianByteArray(modulusLength), true);
         }
 
-        private UInt256 MultComplexity(UInt256 adjustedExponentLength)
+        private UInt256 MultComplexity(in UInt256 adjustedExponentLength)
         {
             if (adjustedExponentLength <= 64)
             {
@@ -105,7 +105,7 @@ namespace Nethermind.Evm.Precompiles
             return adjustedExponentLength * adjustedExponentLength / 16 + 480 * adjustedExponentLength - 199680;
         }
 
-        private static UInt256 AdjustedExponentLength(UInt256 lengthOver32, byte[] exponent)
+        private static UInt256 AdjustedExponentLength(in UInt256 lengthOver32, byte[] exponent)
         {
             int leadingZeros = exponent.AsSpan().LeadingZerosCount();
             if (leadingZeros == exponent.Length)

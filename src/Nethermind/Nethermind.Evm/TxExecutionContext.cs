@@ -26,7 +26,7 @@ namespace Nethermind.Evm
         public Address Origin { get; }
         public UInt256 GasPrice { get; }
         
-        public TxExecutionContext(BlockHeader blockHeader, Address origin, UInt256 gasPrice)
+        public TxExecutionContext(BlockHeader blockHeader, Address origin, in UInt256 gasPrice)
         {
             Header = blockHeader;
             Origin = origin;

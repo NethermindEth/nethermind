@@ -221,7 +221,7 @@ namespace Nethermind.Facade
 
         private (bool Success, string Error) TryCallAndRestore(
             BlockHeader blockHeader,
-            UInt256 timestamp,
+            in UInt256 timestamp,
             Transaction transaction,
             bool treatBlockHeaderAsParentBlock,
             ITxTracer tracer)
@@ -239,7 +239,7 @@ namespace Nethermind.Facade
 
         private void CallAndRestore(
             BlockHeader blockHeader,
-            UInt256 timestamp,
+            in UInt256 timestamp,
             Transaction transaction,
             bool treatBlockHeaderAsParentBlock,
             ITxTracer tracer)

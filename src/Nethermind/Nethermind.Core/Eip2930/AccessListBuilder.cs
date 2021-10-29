@@ -57,7 +57,7 @@ namespace Nethermind.Core.Eip2930
             }
         }
 
-        public void AddStorage(UInt256 index)
+        public void AddStorage(in UInt256 index)
         {
             if (_currentAddress == null)
             {

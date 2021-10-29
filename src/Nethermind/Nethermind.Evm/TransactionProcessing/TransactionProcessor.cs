@@ -510,7 +510,7 @@ namespace Nethermind.Evm.TransactionProcessing
         }
 
         private long Refund(long gasLimit, long unspentGas, TransactionSubstate substate, Address sender,
-            UInt256 gasPrice, IReleaseSpec spec)
+            in UInt256 gasPrice, IReleaseSpec spec)
         {
             long spentGas = gasLimit;
             if (!substate.IsError)
