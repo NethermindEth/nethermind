@@ -40,6 +40,7 @@ namespace Nethermind.Mev.Source
             => comparer.ThenBy(CompareMevBundleByHash.Default);
 
         protected override long MapToGroup(MevBundle mevBundle) => mevBundle.BlockNumber;
+        protected override MevBundle GetKey(MevBundle value) => value;
 
         protected override IComparer<MevBundle> GetReplacementComparer(IComparer<MevBundle> comparer) => 
             CompareMevBundleBySequenceNumber.Default;
