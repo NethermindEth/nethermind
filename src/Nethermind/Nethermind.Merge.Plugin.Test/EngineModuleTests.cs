@@ -179,10 +179,6 @@ namespace Nethermind.Merge.Plugin.Test
             get
             {
                 yield return GetNewBlockRequestBadDataTestCase(r => r.BlockHash, TestItem.KeccakA);
-                yield return GetNewBlockRequestBadDataTestCase(r => r.Difficulty, UInt256.One);
-                yield return GetNewBlockRequestBadDataTestCase(r => r.Difficulty, 2ul);
-                yield return GetNewBlockRequestBadDataTestCase(r => r.Nonce, 1ul);
-                yield return GetNewBlockRequestBadDataTestCase(r => r.MixHash, TestItem.KeccakC);
                 yield return GetNewBlockRequestBadDataTestCase(r => r.ParentHash, TestItem.KeccakD);
                 yield return GetNewBlockRequestBadDataTestCase(r => r.ReceiptRoot, TestItem.KeccakD);
                 yield return GetNewBlockRequestBadDataTestCase(r => r.StateRoot, TestItem.KeccakD);
@@ -496,20 +492,20 @@ namespace Nethermind.Merge.Plugin.Test
             IReadOnlyList<BlockRequestResult> branch1 =
                 await ProduceBranch(rpc, chain.BlockTree, 10, chain.BlockTree.HeadHash, false);
             IReadOnlyList<BlockRequestResult> branch2 =
-                await ProduceBranch(rpc, chain.BlockTree, 5, branch1[3].BlockHash, false, 2);
+                await ProduceBranch(rpc, chain.BlockTree, 5, branch1[3].BlockHash, false);
             branch2.Last().BlockNumber.Should().Be(1 + 3 + 5);
             IReadOnlyList<BlockRequestResult> branch3 =
-                await ProduceBranch(rpc, chain.BlockTree, 7, branch1[7].BlockHash, false, 3);
+                await ProduceBranch(rpc, chain.BlockTree, 7, branch1[7].BlockHash, false);
             branch3.Last().BlockNumber.Should().Be(1 + 7 + 7);
             IReadOnlyList<BlockRequestResult> branch4 =
-                await ProduceBranch(rpc, chain.BlockTree, 3, branch3[4].BlockHash, false, 4);
+                await ProduceBranch(rpc, chain.BlockTree, 3, branch3[4].BlockHash, false);
             branch3.Last().BlockNumber.Should().Be(1 + 7 + 4 + 3);
 
             await CanReorganizeToAnyBlock(chain, branch1, branch2, branch3, branch4);
         }
 
         [Test]
-        public async Task assembleBlock_can_build_on_any_block()
+        public async Task can_prepare_payload_on_any_block()
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
             IEngineRpcModule rpc = CreateEngineModule(chain);
@@ -551,13 +547,13 @@ namespace Nethermind.Merge.Plugin.Test
             IReadOnlyList<BlockRequestResult> branch1 =
                 await ProduceBranch(rpc, chain.BlockTree, 10, chain.BlockTree.HeadHash, false);
             IReadOnlyList<BlockRequestResult> branch2 =
-                await ProduceBranch(rpc, chain.BlockTree, 5, branch1[3].BlockHash, false, 2);
+                await ProduceBranch(rpc, chain.BlockTree, 5, branch1[3].BlockHash, false);
             branch2.Last().BlockNumber.Should().Be(1 + 3 + 5);
             IReadOnlyList<BlockRequestResult> branch3 =
-                await ProduceBranch(rpc, chain.BlockTree, 7, branch1[7].BlockHash, false, 3);
+                await ProduceBranch(rpc, chain.BlockTree, 7, branch1[7].BlockHash, false);
             branch3.Last().BlockNumber.Should().Be(1 + 7 + 7);
             IReadOnlyList<BlockRequestResult> branch4 =
-                await ProduceBranch(rpc, chain.BlockTree, 3, branch3[4].BlockHash, false, 4);
+                await ProduceBranch(rpc, chain.BlockTree, 3, branch3[4].BlockHash, false);
             branch3.Last().BlockNumber.Should().Be(1 + 7 + 4 + 3);
 
             await CanAssembleOnAnyBlock(branch1, branch2, branch3, branch4);
@@ -758,7 +754,7 @@ namespace Nethermind.Merge.Plugin.Test
         {
             Block? head = blockTree.Head;
             if (head == null) throw new NotSupportedException();
-            return new BlockRequestResult(true)
+            return new BlockRequestResult()
             {
                 BlockNumber = 0, BlockHash = head.Hash!, StateRoot = head.StateRoot!, ReceiptRoot = head.ReceiptsRoot!, GasLimit = head.GasLimit
             };
@@ -766,7 +762,7 @@ namespace Nethermind.Merge.Plugin.Test
 
         private static BlockRequestResult CreateBlockRequest(BlockRequestResult parent, Address miner)
         {
-            BlockRequestResult blockRequest = new(true)
+            BlockRequestResult blockRequest = new()
             {
                 ParentHash = parent.BlockHash,
                 Coinbase = miner,
@@ -785,7 +781,7 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         private async Task<IReadOnlyList<BlockRequestResult>> ProduceBranch(IEngineRpcModule rpc, IBlockTree blockTree,
-            int count, Keccak parentBlockHash, bool setHead, ulong payloadIdOffset = 1)
+            int count, Keccak parentBlockHash, bool setHead)
         {
             List<BlockRequestResult> blocks = new();
             ManualTimestamper timestamper = new(Timestamp);

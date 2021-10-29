@@ -18,6 +18,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -32,20 +33,10 @@ namespace Nethermind.Merge.Plugin.Data
     /// </summary>
     public class BlockRequestResult
     {
-        public BlockRequestResult() : this(true)
+        public BlockRequestResult()
         {
         }
-        
-        public BlockRequestResult(bool setDefaults = false)
-        {
-            if (setDefaults)
-            {
-                Difficulty = UInt256.Zero;
-                Nonce = 0;
-                MixHash = Keccak.Zero;
-            }
-        }
-        
+
         public BlockRequestResult(Block block, Keccak random)
         {
             BlockHash = block.Hash!;
@@ -59,10 +50,7 @@ namespace Nethermind.Merge.Plugin.Data
             LogsBloom = block.Bloom!;
             Random = random;
             SetTransactions(block.Transactions);
-            Difficulty = block.Difficulty;
-            Nonce = block.Nonce;
             ExtraData = block.ExtraData!;
-            MixHash = block.MixHash!;
             Timestamp = block.Timestamp;
             BaseFeePerGas = block.BaseFeePerGas;
         }
@@ -71,16 +59,16 @@ namespace Nethermind.Merge.Plugin.Data
         {
             try
             {
-                BlockHeader header = new(ParentHash, Keccak.OfAnEmptySequenceRlp, Coinbase, Difficulty, BlockNumber, GasLimit, Timestamp, ExtraData)
+                BlockHeader header = new(ParentHash, Keccak.OfAnEmptySequenceRlp, Coinbase, UInt256.Zero, BlockNumber, GasLimit, Timestamp, ExtraData)
                 {
                     Hash = BlockHash,
                     ReceiptsRoot = ReceiptRoot,
                     StateRoot = StateRoot,
-                    MixHash = MixHash,
                     Bloom = LogsBloom,
                     GasUsed = GasUsed,
                     BaseFeePerGas = BaseFeePerGas,
-                    Nonce = Nonce
+                    Nonce = 0,
+                    MixHash = Keccak.Zero,
                 };
                 Transaction[] transactions = GetTransactions();
                 header.TxRoot = new TxTrie(transactions).RootHash;
@@ -94,8 +82,6 @@ namespace Nethermind.Merge.Plugin.Data
             }
         }
         
-        public UInt256 Difficulty { get; set; }
-        public bool ShouldSerializeDifficulty() => false;
         public byte[] ExtraData { get; set; } = Array.Empty<byte>();
         public long GasLimit { get; set; }
         public long GasUsed { get; set; }
@@ -106,11 +92,7 @@ namespace Nethermind.Merge.Plugin.Data
         public Bloom LogsBloom { get; set; } = Bloom.Empty;
         public Keccak Random { get; set; } = Keccak.Zero;
         public Address? Coinbase { get; set; }
-        public Keccak MixHash { get; set; } = null!;
-        public bool ShouldSerializeMixHash() => false;
-        [JsonProperty(NullValueHandling = NullValueHandling.Include)]
-        public ulong Nonce { get; set; }
-        public bool ShouldSerializeNonce() => false;
+        
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public long BlockNumber { get; set; }
         public Keccak ParentHash { get; set; } = null!;
