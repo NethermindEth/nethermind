@@ -37,6 +37,7 @@ using Nethermind.Config;
 using Nethermind.Core.Extensions;
 using Nethermind.HealthChecks;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Sockets;
@@ -105,12 +106,14 @@ namespace Nethermind.Runner.JsonRpc
             ILogger logger = logManager.GetClassLogger();
             IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
             IJsonRpcConfig jsonRpcConfig = configProvider.GetConfig<IJsonRpcConfig>();
+            IJsonRpcUrlCollection jsonRpcUrlCollection = app.ApplicationServices.GetRequiredService<IJsonRpcUrlCollection>();
             IHealthChecksConfig healthChecksConfig = configProvider.GetConfig<IHealthChecksConfig>();
             if (initConfig.WebSocketsEnabled)
             {
                 app.UseWebSockets(new WebSocketOptions());
-                app.UseWhen(ctx => ctx.WebSockets.IsWebSocketRequest 
-                                   && ctx.Connection.LocalPort == jsonRpcConfig.WebSocketsPort,
+                app.UseWhen(ctx =>
+                    ctx.WebSockets.IsWebSocketRequest &&
+                    jsonRpcUrlCollection.Any(x => x.Port == ctx.Connection.LocalPort && x.RpcEndpoint.HasFlag(RpcEndpoint.WebSocket)),
                 builder => builder.UseWebSocketsModules());
             }
             
@@ -144,7 +147,8 @@ namespace Nethermind.Runner.JsonRpc
                     await ctx.Response.WriteAsync("Nethermind JSON RPC");
                 }
 
-                if (ctx.Connection.LocalPort == jsonRpcConfig.Port && ctx.Request.Method == "POST")
+                JsonRpcUrl jsonRpcUrl = jsonRpcUrlCollection.FirstOrDefault(x => x.Port == ctx.Connection.LocalPort && x.RpcEndpoint.HasFlag(RpcEndpoint.Http));
+                if (ctx.Request.Method == "POST" && jsonRpcUrl != null)
                 {
                     Stopwatch stopwatch = Stopwatch.StartNew();
                     using CountingTextReader request = new(new StreamReader(ctx.Request.Body, Encoding.UTF8));

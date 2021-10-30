@@ -43,6 +43,7 @@ namespace Nethermind.Runner.Ethereum
         private readonly IConfigProvider _configurationProvider;
         private readonly ILogManager _logManager;
         private readonly IJsonRpcProcessor _jsonRpcProcessor;
+        private readonly IJsonRpcUrlCollection _jsonRpcUrlCollection;
         private readonly IWebSocketsManager _webSocketsManager;
         private readonly IJsonRpcConfig _jsonRpcConfig;
         private IWebHost? _webHost;
@@ -51,6 +52,7 @@ namespace Nethermind.Runner.Ethereum
 
         public JsonRpcRunner(
             IJsonRpcProcessor jsonRpcProcessor,
+            IJsonRpcUrlCollection jsonRpcUrlCollection,
             IWebSocketsManager webSocketsManager,
             IConfigProvider configurationProvider,
             ILogManager logManager,
@@ -59,6 +61,7 @@ namespace Nethermind.Runner.Ethereum
             _jsonRpcConfig = configurationProvider.GetConfig<IJsonRpcConfig>();
             _initConfig = configurationProvider.GetConfig<IInitConfig>();
             _configurationProvider = configurationProvider;
+            _jsonRpcUrlCollection = jsonRpcUrlCollection;
             _logManager = logManager;
             _jsonRpcProcessor = jsonRpcProcessor;
             _webSocketsManager = webSocketsManager;
@@ -68,44 +71,14 @@ namespace Nethermind.Runner.Ethereum
 
         public Task Start(CancellationToken cancellationToken)
         {
-            IEnumerable<string> GetUrls()
-            {
-                const string nethermindUrlVariable = "NETHERMIND_URL";
-                string host = _jsonRpcConfig.Host;
-                string scheme = "http";
-                var defaultUrl = $"{scheme}://{host}:{_jsonRpcConfig.Port}";
-                string? urlVariable = Environment.GetEnvironmentVariable(nethermindUrlVariable);
-                string url = defaultUrl;
-
-                if (!string.IsNullOrWhiteSpace(urlVariable))
-                {
-                    if (Uri.TryCreate(urlVariable, UriKind.Absolute, out Uri? uri))
-                    {
-                        url = urlVariable;
-                        host = uri.Host;
-                        scheme = uri.Scheme;
-                    }
-                    else
-                    {
-                        if (_logger.IsWarn) _logger.Warn($"Environment variable '{nethermindUrlVariable}' value '{urlVariable}' is not valid JSON RPC URL, using default url : '{defaultUrl}'");
-                    }
-                }
-                
-                yield return url;
-
-                if (_initConfig.WebSocketsEnabled && _jsonRpcConfig.WebSocketsPort != _jsonRpcConfig.Port)
-                {
-                    yield return  $"{scheme}://{host}:{_jsonRpcConfig.WebSocketsPort}";
-                }
-            }
-
             if (_logger.IsDebug) _logger.Debug("Initializing JSON RPC");
-            var urls = GetUrls().ToArray();
+            string[] urls = _jsonRpcUrlCollection.UrlValues.ToArray();
             var webHost = WebHost.CreateDefaultBuilder()
                 .ConfigureServices(s =>
                 {
                     s.AddSingleton(_configurationProvider);
                     s.AddSingleton(_jsonRpcProcessor);
+                    s.AddSingleton(_jsonRpcUrlCollection);
                     s.AddSingleton(_webSocketsManager);
                     foreach(var plugin in _api.Plugins.OfType<INethermindServicesPlugin>()) 
                     {

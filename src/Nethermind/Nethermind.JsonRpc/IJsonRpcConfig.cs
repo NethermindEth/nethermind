@@ -66,6 +66,11 @@ namespace Nethermind.JsonRpc
         string[] EnabledModules { get; set; }
 
         [ConfigItem(
+            Description = "Defines additional RPC urls to listen on. Example url format: http://localhost:8550|http,wss|engine,eth,net,subscribe",
+            DefaultValue = "None")]
+        string[] AdditionalRPCUrls { get; set; }
+
+        [ConfigItem(
             Description = "Gas limit for eth_call and eth_estimateGas",
             DefaultValue = "100000000")]
         long? GasCap { get; set; }
