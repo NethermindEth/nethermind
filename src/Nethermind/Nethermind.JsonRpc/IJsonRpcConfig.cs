@@ -67,7 +67,7 @@ namespace Nethermind.JsonRpc
 
         [ConfigItem(
             Description = "Defines additional RPC urls to listen on. Example url format: http://localhost:8550|http,wss|engine,eth,net,subscribe",
-            DefaultValue = "None")]
+            DefaultValue = "[]")]
         string[] AdditionalRPCUrls { get; set; }
 
         [ConfigItem(

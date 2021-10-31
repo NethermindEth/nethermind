@@ -129,6 +129,7 @@ namespace Nethermind.Sockets.Test
                 "TestClient",
                 new WebSocketHandler(mock, Substitute.For<ILogManager>()),
                 RpcEndpoint.WebSocket,
+                null,
                 processor,
                 service,
                 localStats,

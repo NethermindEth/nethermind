@@ -33,15 +33,15 @@ namespace Nethermind.JsonRpc.Test
         {
             IJsonRpcService service = BuildRpcService(module);
             JsonRpcRequest request = GetJsonRequest(method, parameters);
-            return service.SendRequestAsync(request, JsonRpcContext.Http).Result;
+            return service.SendRequestAsync(request, new JsonRpcContext(RpcEndpoint.Http)).Result;
         }
         
         public static string TestSerializedRequest<T>(IReadOnlyCollection<JsonConverter> converters, T module, string method, params string[] parameters) where T : class, IRpcModule
         {
             IJsonRpcService service = BuildRpcService(module);
             JsonRpcRequest request = GetJsonRequest(method, parameters);
-            
-            JsonRpcContext context = JsonRpcContext.Http;
+
+            JsonRpcContext context = new JsonRpcContext(RpcEndpoint.Http);
             if (module is IContextAwareRpcModule contextAwareModule
                 && contextAwareModule.Context != null)
             {
