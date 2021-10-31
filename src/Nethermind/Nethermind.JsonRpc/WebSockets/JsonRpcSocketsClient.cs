@@ -46,6 +46,7 @@ namespace Nethermind.JsonRpc.WebSockets
             string clientName,
             ISocketHandler handler,
             RpcEndpoint endpointType,
+            JsonRpcUrl? url,
             IJsonRpcProcessor jsonRpcProcessor,
             IJsonRpcService jsonRpcService,
             IJsonRpcLocalStats jsonRpcLocalStats,
@@ -55,7 +56,7 @@ namespace Nethermind.JsonRpc.WebSockets
             _jsonRpcProcessor = jsonRpcProcessor;
             _jsonRpcService = jsonRpcService;
             _jsonRpcLocalStats = jsonRpcLocalStats;
-            _jsonRpcContext = new JsonRpcContext(endpointType, this);
+            _jsonRpcContext = new JsonRpcContext(endpointType, this, url);
         }
 
         public override void Dispose()

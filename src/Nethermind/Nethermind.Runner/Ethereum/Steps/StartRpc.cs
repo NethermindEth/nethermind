@@ -65,7 +65,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
                 if (initConfig.WebSocketsEnabled)
                 {
-                    JsonRpcWebSocketsModule webSocketsModule = new (jsonRpcProcessor, jsonRpcService, jsonRpcLocalStats, _api.LogManager, jsonSerializer);
+                    JsonRpcWebSocketsModule webSocketsModule = new (jsonRpcProcessor, jsonRpcService, jsonRpcLocalStats, _api.LogManager, jsonSerializer, jsonRpcUrlCollection);
                     _api.WebSocketsManager!.AddModule(webSocketsModule, true);
                 }
 

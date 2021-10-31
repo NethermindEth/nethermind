@@ -18,6 +18,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Net.WebSockets;
 using System.Threading.Tasks;
+using System.Linq;
 using Microsoft.AspNetCore.Http;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
@@ -35,6 +36,7 @@ namespace Nethermind.JsonRpc.WebSockets
         private readonly IJsonRpcLocalStats _jsonRpcLocalStats;
         private readonly ILogManager _logManager;
         private readonly IJsonSerializer _jsonSerializer;
+        private readonly IJsonRpcUrlCollection _jsonRpcUrlCollection;
 
         public string Name { get; } = "json-rpc";
 
@@ -43,21 +45,26 @@ namespace Nethermind.JsonRpc.WebSockets
             IJsonRpcService jsonRpcService,
             IJsonRpcLocalStats jsonRpcLocalStats,
             ILogManager logManager,
-            IJsonSerializer jsonSerializer)
+            IJsonSerializer jsonSerializer,
+            IJsonRpcUrlCollection jsonRpcUrlCollection)
         {
             _jsonRpcProcessor = jsonRpcProcessor;
             _jsonRpcService = jsonRpcService;
             _jsonRpcLocalStats = jsonRpcLocalStats;
             _logManager = logManager;
             _jsonSerializer = jsonSerializer;
+            _jsonRpcUrlCollection = jsonRpcUrlCollection;
         }
 
-        public ISocketsClient CreateClient(WebSocket webSocket, string clientName)
+        public ISocketsClient CreateClient(WebSocket webSocket, string client, int port)
         {
+            JsonRpcUrl jsonRpcUrl = _jsonRpcUrlCollection.FirstOrDefault(x => x.Port == port && x.RpcEndpoint.HasFlag(RpcEndpoint.WebSocket));
+
             var socketsClient = new JsonRpcSocketsClient(
-                clientName, 
+                client, 
                 new WebSocketHandler(webSocket, _logManager), 
-                RpcEndpoint.WebSocket, 
+                RpcEndpoint.WebSocket,
+                jsonRpcUrl,
                 _jsonRpcProcessor, 
                 _jsonRpcService,  
                 _jsonRpcLocalStats, 

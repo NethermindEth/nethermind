@@ -16,6 +16,7 @@
 //
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 
 using Nethermind.JsonRpc.Modules;
@@ -84,11 +85,11 @@ namespace Nethermind.JsonRpc
                 throw new FormatException("Third part must contain at least one valid endpoint value delimited by ','");
 
             //Ensure all enabled modules are valid
-            bool modulesValid = enabledModules.All(x => ModuleType.AllBuiltInModules.Contains(x));
+            bool modulesValid = enabledModules.All(x => ModuleType.AllBuiltInModules.Contains(x, StringComparer.InvariantCultureIgnoreCase));
             if (!modulesValid)
                 throw new FormatException($"Fourth part must contain at least one valid module: {string.Join(',', ModuleType.AllBuiltInModules)}");
 
-            //Return new jspn rpc url
+            //Return new json rpc url
             return new JsonRpcUrl(uri.Scheme, uri.Host, uri.Port, endpoint, enabledModules);
         }
 
@@ -96,10 +97,10 @@ namespace Nethermind.JsonRpc
         public string Host { get; set; }
         public int Port { get; set; }
         public RpcEndpoint RpcEndpoint { get; set; }
-        public string[] EnabledModules { get; set; }
+        public IReadOnlyCollection<string> EnabledModules { get; set; }
 
         public override string ToString() => $"{Scheme}://{Host}:{Port}";
-        public object Clone() => new JsonRpcUrl(Scheme, Host, Port, RpcEndpoint, EnabledModules);
+        public object Clone() => new JsonRpcUrl(Scheme, Host, Port, RpcEndpoint, EnabledModules as string[]);
     }
 }
 

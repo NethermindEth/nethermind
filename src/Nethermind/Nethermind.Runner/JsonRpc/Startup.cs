@@ -154,7 +154,7 @@ namespace Nethermind.Runner.JsonRpc
                     using CountingTextReader request = new(new StreamReader(ctx.Request.Body, Encoding.UTF8));
                     try
                     {
-                        await foreach (JsonRpcResult result in jsonRpcProcessor.ProcessAsync(request, JsonRpcContext.Http))
+                        await foreach (JsonRpcResult result in jsonRpcProcessor.ProcessAsync(request, JsonRpcContext.Http(jsonRpcUrl)))
                         {
                             using (result)
                             {
