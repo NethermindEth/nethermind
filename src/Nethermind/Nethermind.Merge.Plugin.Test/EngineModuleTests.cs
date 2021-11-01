@@ -584,10 +584,6 @@ namespace Nethermind.Merge.Plugin.Test
                 TryCalculateHash(newBlockRequest, out Keccak? hash);
                 newBlockRequest.BlockHash = hash;
                 ResultWrapper<ExecutePayloadResult> result = await rpc.engine_executePayload(newBlockRequest);
-                await rpc.engine_consensusValidated(new ConsensusValidatedRequest(newBlockRequest.BlockHash,
-                    ConsensusValidationStatus.Valid));
-                await Task.Delay(10);
-
                 result.Data.EnumStatus.Should().Be(VerificationStatus.Valid);
                 RootCheckVisitor rootCheckVisitor = new();
                 chain.StateReader.RunTreeVisitor(rootCheckVisitor, newBlockRequest.StateRoot);
@@ -600,7 +596,6 @@ namespace Nethermind.Merge.Plugin.Test
                         newBlockRequest.BlockHash
                         /*, newBlockRequest.BlockHash*/);
                     await rpc.engine_forkchoiceUpdated(forkChoiceUpdatedRequest);
-                    await Task.Delay(10);
                     chain.State.StateRoot.Should().Be(newBlockRequest.StateRoot);
                     chain.State.StateRoot.Should().NotBe(parentHeader.StateRoot!);
                 }

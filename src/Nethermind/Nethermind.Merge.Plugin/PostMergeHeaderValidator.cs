@@ -75,7 +75,7 @@ namespace Nethermind.Merge.Plugin
         
         protected override bool ValidateTotalDifficulty(BlockHeader parent, BlockHeader header)
         {
-            return true;
+             return _poSSwitcher.IsPos(header) || base.ValidateTotalDifficulty(parent, header);
         }
         
         private bool ValidateHeaderField<T>(BlockHeader header, T value, T expected, string name)
