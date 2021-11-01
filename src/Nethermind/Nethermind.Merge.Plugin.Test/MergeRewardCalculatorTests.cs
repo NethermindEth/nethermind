@@ -32,8 +32,8 @@ namespace Nethermind.Merge.Plugin.Test
         {
             Block uncle = Build.A.Block.WithNumber(1).TestObject;
             Block uncle2 = Build.A.Block.WithNumber(1).TestObject;
-            Block block = Build.A.Block.WithNumber(3).WithUncles(uncle, uncle2).WithTotalDifficulty(1L).TestObject;
-            Block block2 = Build.A.Block.WithNumber(3).WithUncles(uncle, uncle2).WithTotalDifficulty(2L).TestObject;
+            Block block = Build.A.Block.WithNumber(3).WithUncles(uncle, uncle2).WithTotalDifficulty(1L).WithDifficulty(0).TestObject;
+            Block block2 = Build.A.Block.WithNumber(3).WithUncles(uncle, uncle2).WithTotalDifficulty(2L).WithDifficulty(0).TestObject;
 
             MergeConfig mergeConfig = new ();
             mergeConfig.TerminalTotalDifficulty = 2;
@@ -55,8 +55,8 @@ namespace Nethermind.Merge.Plugin.Test
         public void One_uncle()
         {
             Block uncle = Build.A.Block.WithNumber(1).TestObject;
-            Block block = Build.A.Block.WithNumber(3).WithUncles(uncle).WithTotalDifficulty(1L).TestObject;
-            Block block2 = Build.A.Block.WithNumber(3).WithUncles(uncle).WithTotalDifficulty(3L).TestObject;
+            Block block = Build.A.Block.WithNumber(3).WithUncles(uncle).WithTotalDifficulty(1L).WithDifficulty(0).TestObject;
+            Block block2 = Build.A.Block.WithNumber(3).WithUncles(uncle).WithTotalDifficulty(3L).WithDifficulty(0).TestObject;
 
             MergeConfig mergeConfig = new () {TerminalTotalDifficulty = 2};
 
@@ -74,8 +74,8 @@ namespace Nethermind.Merge.Plugin.Test
         [Test]
         public void No_uncles()
         {
-            Block block = Build.A.Block.WithNumber(3).WithTotalDifficulty(1L).TestObject;
-            Block block2 = Build.A.Block.WithNumber(3).WithTotalDifficulty(3L).TestObject;
+            Block block = Build.A.Block.WithNumber(3).WithTotalDifficulty(1L).WithDifficulty(0).TestObject;
+            Block block2 = Build.A.Block.WithNumber(3).WithTotalDifficulty(3L).WithDifficulty(0).TestObject;
             
             MergeConfig mergeConfig = new MergeConfig() {TerminalTotalDifficulty = 2};
 
@@ -95,8 +95,8 @@ namespace Nethermind.Merge.Plugin.Test
             long blockNumber = RopstenSpecProvider.ByzantiumBlockNumber;
             Block uncle = Build.A.Block.WithNumber(blockNumber - 2).TestObject;
             Block uncle2 = Build.A.Block.WithNumber(blockNumber - 2).TestObject;
-            Block block = Build.A.Block.WithNumber(blockNumber).WithUncles(uncle, uncle2).WithTotalDifficulty(1L).TestObject;
-            Block block2 = Build.A.Block.WithNumber(blockNumber).WithUncles(uncle, uncle2).WithTotalDifficulty(3L).TestObject;
+            Block block = Build.A.Block.WithNumber(blockNumber).WithUncles(uncle, uncle2).WithTotalDifficulty(1L).WithDifficulty(0).TestObject;
+            Block block2 = Build.A.Block.WithNumber(blockNumber).WithUncles(uncle, uncle2).WithTotalDifficulty(3L).WithDifficulty(0).TestObject;
             
             MergeConfig mergeConfig = new MergeConfig() {TerminalTotalDifficulty = 2};
             
@@ -119,8 +119,8 @@ namespace Nethermind.Merge.Plugin.Test
             long blockNumber = RopstenSpecProvider.ConstantinopleBlockNumber;
             Block uncle = Build.A.Block.WithNumber(blockNumber - 2).TestObject;
             Block uncle2 = Build.A.Block.WithNumber(blockNumber - 2).TestObject;
-            Block block = Build.A.Block.WithNumber(blockNumber).WithUncles(uncle, uncle2).WithTotalDifficulty(1L).TestObject;
-            Block block2 = Build.A.Block.WithNumber(blockNumber).WithUncles(uncle, uncle2).WithTotalDifficulty(3L).TestObject;
+            Block block = Build.A.Block.WithNumber(blockNumber).WithUncles(uncle, uncle2).WithTotalDifficulty(1L).WithDifficulty(0).TestObject;
+            Block block2 = Build.A.Block.WithNumber(blockNumber).WithUncles(uncle, uncle2).WithTotalDifficulty(3L).WithDifficulty(0).TestObject;
 
             MergeConfig mergeConfig = new () {TerminalTotalDifficulty = 2};
 
@@ -139,8 +139,8 @@ namespace Nethermind.Merge.Plugin.Test
         [Test]
         public void No_block_rewards_calculator()
         {
-            Block block = Build.A.Block.WithTotalDifficulty(1L).TestObject;
-            Block block2 = Build.A.Block.WithTotalDifficulty(3L).TestObject;
+            Block block = Build.A.Block.WithTotalDifficulty(1L).WithDifficulty(0).TestObject;
+            Block block2 = Build.A.Block.WithTotalDifficulty(3L).WithDifficulty(0).TestObject;
 
             MergeConfig mergeConfig = new () {TerminalTotalDifficulty = 2};
             MergeRewardCalculator calculator = new(NoBlockRewards.Instance, mergeConfig);

@@ -16,6 +16,7 @@
 // 
 
 using System;
+using Nethermind.Blockchain.Visitors;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
 
@@ -34,13 +35,14 @@ namespace Nethermind.Merge.Plugin
 
         public BlockReward[] CalculateRewards(Block block)
         {
-            if (block.TotalDifficulty - block.Difficulty < _mergeConfig.TerminalTotalDifficulty)
+            // ToDo think if TotalDifficulty could be null here
+            if (block.TotalDifficulty !=null && block.TotalDifficulty >= block.Difficulty && block.TotalDifficulty - block.Difficulty >= _mergeConfig.TerminalTotalDifficulty)
             {
-                return _beforeTheMerge.CalculateRewards(block);
+                block.Header.IsPostMerge = true;
+                return NoBlockRewards.Instance.CalculateRewards(block);
             }
-
-            block.Header.IsPostMerge = true;
-            return NoBlockRewards.Instance.CalculateRewards(block);
+            
+            return _beforeTheMerge.CalculateRewards(block);
         }
     }
 }
