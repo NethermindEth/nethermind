@@ -80,6 +80,8 @@ namespace Nethermind.AccountAbstraction.Source
 
             _userOperationEventTopic = new Keccak("0xc27a60e61c14607957b41fa2dad696de47b2d80e390d0eaaf1514c0cd2034293");
 
+            MemoryAllowance.MemPoolSize = accountAbstractionConfig.UserOperationPoolSize;
+
             _blockTree.NewHeadBlock += NewHead;
         }
 
