@@ -28,7 +28,7 @@ namespace Nethermind.AccountAbstraction.Data
             return Keccak.Compute(EncodeRlp(userOperation).Data);
         }
 
-        private static RlpStream EncodeRlp(UserOperation op)
+        public static RlpStream EncodeRlp(UserOperation op)
         {
             AccessListDecoder accessListDecoder = new();
 
@@ -54,7 +54,7 @@ namespace Nethermind.AccountAbstraction.Data
             return stream;
         }
 
-        private static int GetContentLength(UserOperation op, AccessListDecoder accessListDecoder)
+        public static int GetContentLength(UserOperation op, AccessListDecoder accessListDecoder)
         {
             return Rlp.LengthOf(op.Sender)
                    + Rlp.LengthOf(op.Nonce)
