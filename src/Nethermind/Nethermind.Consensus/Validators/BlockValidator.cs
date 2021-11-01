@@ -33,10 +33,15 @@ namespace Nethermind.Consensus.Validators
         private readonly ISpecProvider _specProvider;
         private readonly ILogger _logger;
 
-        public BlockValidator(ITxValidator? txValidator, IHeaderValidator? headerValidator, IUnclesValidator? unclesValidator, ISpecProvider? specProvider, ILogManager? logManager)
+        public BlockValidator(
+            ITxValidator? txValidator,
+            IHeaderValidator? headerValidator,
+            IUnclesValidator? unclesValidator, 
+            ISpecProvider? specProvider, 
+            ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _txValidator = txValidator ?? throw new ArgumentNullException(nameof(headerValidator));
+            _txValidator = txValidator ?? throw new ArgumentNullException(nameof(txValidator));
             _unclesValidator = unclesValidator ?? throw new ArgumentNullException(nameof(unclesValidator));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _headerValidator = headerValidator ?? throw new ArgumentNullException(nameof(headerValidator));

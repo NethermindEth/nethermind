@@ -44,7 +44,6 @@ using Nethermind.KeyStore;
 using Nethermind.Monitoring;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.Rlpx;
-using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
@@ -57,6 +56,7 @@ using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Nethermind.Sockets;
+using Nethermind.Specs;
 using NSubstitute;
 
 namespace Nethermind.Runner.Test.Ethereum
@@ -126,7 +126,8 @@ namespace Nethermind.Runner.Test.Ethereum
                 TransactionComparerProvider = Substitute.For<ITransactionComparerProvider>(),
                 GasPriceOracle = Substitute.For<IGasPriceOracle>(),
                 EthSyncingInfo = Substitute.For<IEthSyncingInfo>(),
-                HealthHintService = Substitute.For<IHealthHintService>()
+                HealthHintService = Substitute.For<IHealthHintService>(),
+                TxValidator = new TxValidator(MainnetSpecProvider.Instance.ChainId)
             };
     }
 }
