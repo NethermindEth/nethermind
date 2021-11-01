@@ -20,7 +20,6 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Logging;
-using Nethermind.Config;
 using Nethermind.JsonRpc.Modules;
 
 namespace Nethermind.JsonRpc
@@ -39,7 +38,8 @@ namespace Nethermind.JsonRpc
             _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
             _urls = new List<JsonRpcUrl>();
 
-            BuildUrls(includeWebSockets);
+            if (_jsonRpcConfig.Enabled)
+                BuildUrls(includeWebSockets);
         }
 
         public JsonRpcUrl this[int index] => _urls[index];
@@ -71,7 +71,7 @@ namespace Nethermind.JsonRpc
                 if (_jsonRpcConfig.WebSocketsPort != _jsonRpcConfig.Port)
                 {
                     JsonRpcUrl defaultWebSocketUrl = defaultUrl.Clone() as JsonRpcUrl;
-                    defaultWebSocketUrl.Port = _jsonRpcConfig.Port;
+                    defaultWebSocketUrl.Port = _jsonRpcConfig.WebSocketsPort;
                     defaultWebSocketUrl.RpcEndpoint = RpcEndpoint.WebSocket;
                     _urls.Add(defaultWebSocketUrl);
                 }
@@ -85,7 +85,22 @@ namespace Nethermind.JsonRpc
                 {
                     JsonRpcUrl url = JsonRpcUrl.Parse(additionalRpcUrl);
                     if (!includeWebSockets && url.RpcEndpoint.HasFlag(RpcEndpoint.WebSocket))
+                    {
+                        url.RpcEndpoint &= ~RpcEndpoint.WebSocket;
+                        if (url.RpcEndpoint == RpcEndpoint.None)
+                        {
+                            if (_logger.IsWarn)
+                                _logger.Warn($"Additional JSON RPC URL '{url}' has web socket endpoint type and web sockets are not enabled; skipping...");
+                            continue;
+                        }
+                    }
+
+                    if (_urls.Any(x => x.Port == url.Port))
+                    {
+                        if (_logger.IsWarn)
+                        { _logger.Warn($"Additional JSON RPC URL '{url}' wants port {url.Port}, but port already in use; skipping..."); }
                         continue;
+                    }
 
                     _urls.Add(url);
                 }

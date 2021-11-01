@@ -89,5 +89,23 @@ namespace Nethermind.JsonRpc.Test.Modules
             ModuleResolution resolution = _moduleProvider.Check("unknown_method", _context);
             Assert.AreEqual(ModuleResolution.Unknown, resolution);
         }
+
+        [Test]
+        public void Method_resolution_is_scoped_to_url_enabled_modules()
+        {
+            _moduleProvider.Register(new SingletonModulePool<INetRpcModule>(Substitute.For<INetRpcModule>(), true));
+            _moduleProvider.Register(new SingletonModulePool<IProofRpcModule>(Substitute.For<IProofRpcModule>(), true));
+
+            JsonRpcUrl url = new JsonRpcUrl("http", "127.0.0.1", 8888, RpcEndpoint.Http, new[] { "net" });
+
+            ModuleResolution inScopeResolution = _moduleProvider.Check("net_version", JsonRpcContext.Http(url));
+            Assert.AreEqual(ModuleResolution.Enabled, inScopeResolution);
+
+            ModuleResolution outOfScopeResolution = _moduleProvider.Check("proof_call", JsonRpcContext.Http(url));
+            Assert.AreEqual(ModuleResolution.Disabled, outOfScopeResolution);
+
+            ModuleResolution fallbackResolution = _moduleProvider.Check("proof_call", new JsonRpcContext(RpcEndpoint.Http));
+            Assert.AreEqual(ModuleResolution.Enabled, fallbackResolution);
+        }
     }
 }
