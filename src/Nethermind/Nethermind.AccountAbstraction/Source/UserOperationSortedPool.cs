@@ -18,12 +18,13 @@
 using System.Collections.Generic;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.TxPool.Collections;
 
 namespace Nethermind.AccountAbstraction.Source
 {
-    public class UserOperationSortedPool : DistinctValueSortedPool<UserOperation, UserOperation, Address>
+    public class UserOperationSortedPool : DistinctValueSortedPool<Keccak, UserOperation, Address>
     {
         public UserOperationSortedPool(int capacity, IComparer<UserOperation> comparer, ILogManager logManager) :
             base(capacity, comparer, EqualityComparer<UserOperation>.Default, logManager)
@@ -40,5 +41,7 @@ namespace Nethermind.AccountAbstraction.Source
             comparer.ThenBy(CompareUserOperationsByDecreasingGasPrice.Default);
 
         protected override Address MapToGroup(UserOperation value) => value.Sender;
+        
+        protected override Keccak GetKey(UserOperation value) => value.Hash!;
     }
 }

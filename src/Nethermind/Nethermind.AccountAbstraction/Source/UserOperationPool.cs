@@ -20,6 +20,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.AccountAbstraction.Broadcaster;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Executor;
 using Nethermind.Blockchain;
@@ -95,7 +96,7 @@ namespace Nethermind.AccountAbstraction.Source
             if (result.Result == Result.Success)
             {
                 if (_logger.IsDebug) _logger.Debug($"UserOperation {userOperation.Hash} validation succeeded");
-                if (_userOperationSortedPool.TryInsert(userOperation, userOperation))
+                if (_userOperationSortedPool.TryInsert(userOperation.Hash, userOperation))
                 {
                     Metrics.UserOperationsPending++;
                     _paymasterThrottler.IncrementOpsSeen(userOperation.Paymaster);
@@ -113,7 +114,7 @@ namespace Nethermind.AccountAbstraction.Source
 
         public bool RemoveUserOperation(UserOperation userOperation)
         {
-            return _userOperationSortedPool.TryRemove(userOperation);
+            return _userOperationSortedPool.TryRemove(userOperation.Hash);
         }
 
         private void NewHead(object? sender, BlockEventArgs e)
