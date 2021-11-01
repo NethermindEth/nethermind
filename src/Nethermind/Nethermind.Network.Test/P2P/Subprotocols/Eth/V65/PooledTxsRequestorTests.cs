@@ -17,6 +17,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -34,7 +35,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         private IPooledTxsRequestor _requestor;
         private IReadOnlyList<Keccak> _request;
         private IList<Keccak> _expected;
-        private IList<Keccak> _response;
+        private IReadOnlyList<Keccak> _response;
         
         
         [Test]
@@ -99,7 +100,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         
         private void Send(GetPooledTransactionsMessage msg)
         {
-            _response = msg.Hashes;
+            _response = msg.Hashes.ToList();
         }
     }
 }

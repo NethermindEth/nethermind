@@ -395,7 +395,7 @@ namespace Nethermind.Serialization.Rlp
             Encode((UInt256)value);
         }
 
-        public void Encode(UInt256 value, int length = -1)
+        public void Encode(in UInt256 value, int length = -1)
         {
             if (value.IsZero && length == -1)
             {

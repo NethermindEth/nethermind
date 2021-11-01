@@ -62,6 +62,11 @@ namespace Nethermind.TxPool
             _currentBlockCache.Set(hash);
         }
         
+        public void DeleteFromLongTerm(Keccak hash)
+        {
+            _longTermCache.Delete(hash);
+        }
+        
         public void Delete(Keccak hash)
         {
             _longTermCache.Delete(hash);

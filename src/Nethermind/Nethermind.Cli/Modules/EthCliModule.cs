@@ -28,7 +28,7 @@ namespace Nethermind.Cli.Modules
     [CliModule("eth")]
     public class EthCliModule : CliModuleBase
     {
-        private string? SendEth(Address from, Address address, UInt256 amountInWei)
+        private string? SendEth(Address from, Address address, in UInt256 amountInWei)
         {
             long blockNumber = NodeManager.Post<long>("eth_blockNumber").Result;
 

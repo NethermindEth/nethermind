@@ -20,6 +20,7 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Resettables;
 using Nethermind.Logging;
 using Nethermind.TxPool.Comparison;
 
@@ -27,6 +28,8 @@ namespace Nethermind.TxPool.Collections
 {
     public class TxDistinctSortedPool : DistinctValueSortedPool<Keccak, Transaction, Address>
     {
+        private readonly List<Transaction> _transactionsToRemove = new();
+        
         public TxDistinctSortedPool(int capacity, IComparer<Transaction> comparer, ILogManager logManager) 
             : base(capacity, comparer, CompetingTransactionEqualityComparer.Instance, logManager)
         {
@@ -37,40 +40,56 @@ namespace Nethermind.TxPool.Collections
         protected override IComparer<Transaction> GetReplacementComparer(IComparer<Transaction> comparer) => comparer.GetReplacementComparer();
         
         protected override Address? MapToGroup(Transaction value) => value.MapTxToGroup();
+        protected override Keccak GetKey(Transaction value) => value.Hash!;
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public void UpdatePool(Func<Address, ICollection<Transaction>, IEnumerable<(Transaction Tx, Action<Transaction> Change)>> changingElements)
+        public void UpdatePool(Func<Address, ICollection<Transaction>, IEnumerable<(Transaction Tx, Action<Transaction>? Change)>> changingElements)
         {
-            foreach ((Address groupKey, ICollection<Transaction> bucket) in _buckets)
+            foreach ((Address groupKey, SortedSet<Transaction> bucket) in _buckets)
             {
                 UpdateGroup(groupKey, bucket, changingElements);
             }
         }
         
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public void UpdateGroup(Address groupKey, Func<Address, ICollection<Transaction>, IEnumerable<(Transaction Tx, Action<Transaction> Change)>> changingElements)
+        public void UpdateGroup(Address groupKey, Func<Address, ICollection<Transaction>, IEnumerable<(Transaction Tx, Action<Transaction>? Change)>> changingElements)
         {
             if (groupKey == null) throw new ArgumentNullException(nameof(groupKey));
-            if (_buckets.TryGetValue(groupKey, out ICollection<Transaction> bucket))
+            if (_buckets.TryGetValue(groupKey, out SortedSet<Transaction> bucket))
             {
                 UpdateGroup(groupKey, bucket, changingElements);
             }
         }
         
-        private void UpdateGroup(Address groupKey, ICollection<Transaction> bucket, Func<Address, ICollection<Transaction>, IEnumerable<(Transaction Tx, Action<Transaction> Change)>> changingElements)
+        private void UpdateGroup(Address groupKey, SortedSet<Transaction> bucket, Func<Address, ICollection<Transaction>, IEnumerable<(Transaction Tx, Action<Transaction>? Change)>> changingElements)
         {
-            foreach (var elementChanged in changingElements(groupKey, bucket))
+            _transactionsToRemove.Clear();
+            Transaction? lastElement = bucket.Max;
+            
+            foreach ((Transaction tx, Action<Transaction>? change) in changingElements(groupKey, bucket))
             {
-                UpdateElement(elementChanged.Tx, elementChanged.Change);
+                if (change is null)
+                {
+                    _transactionsToRemove.Add(tx);
+                }
+                else if (Equals(lastElement, tx))
+                {
+                    bool reAdd = _worstSortedValues.Remove(tx);
+                    change(tx);
+                    if (reAdd)
+                    {
+                        _worstSortedValues.Add(tx, tx.Hash);
+                    }
+                }
+                else
+                {
+                    change(tx);
+                }
             }
-        }
 
-        private void UpdateElement(Transaction tx, Action<Transaction> change)
-        {
-            if (_sortedValues.Remove(tx))
+            for (int i = 0; i < _transactionsToRemove.Count; i++)
             {
-                change(tx);
-                _sortedValues.Add(tx, tx.Hash);
+                TryRemove(_transactionsToRemove[i].Hash);
             }
         }
     }

@@ -41,9 +41,9 @@ namespace Nethermind.Consensus.Ethash
                 parent.UnclesHash != Keccak.OfAnEmptySequenceRlp);
 
         public UInt256 Calculate(
-            UInt256 parentDifficulty,
-            UInt256 parentTimestamp,
-            UInt256 currentTimestamp,
+            in UInt256 parentDifficulty,
+            in UInt256 parentTimestamp,
+            in UInt256 currentTimestamp,
             long blockNumber,
             bool parentHasUncles)
         {
