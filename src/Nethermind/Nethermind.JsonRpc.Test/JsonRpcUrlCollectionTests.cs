@@ -36,7 +36,7 @@ namespace Nethermind.JsonRpc.Test
         [TearDown]
         public void TearDown()
         {
-            Environment.SetEnvironmentVariable("NETHERMIND_URL", null);
+            Environment.SetEnvironmentVariable("NETHERMIND_URL", null, EnvironmentVariableTarget.Process);
         }
 
         [Test]
