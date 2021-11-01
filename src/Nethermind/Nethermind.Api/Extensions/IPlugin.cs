@@ -33,7 +33,5 @@ namespace Nethermind.Api.Extensions
         Task InitNetworkProtocol();
         
         Task InitRpcModules();
-        
-        void AfterHeaderValidator();
     }
 }

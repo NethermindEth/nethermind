@@ -207,10 +207,6 @@ namespace Nethermind.Init.Steps
                 _api.SpecProvider,
                 _api.LogManager);
             setApi.HeaderValidator = CreateHeaderValidator();
-            foreach (INethermindPlugin apiPlugin in _api.Plugins)
-            {
-                apiPlugin.AfterHeaderValidator();
-            }
 
             IHeaderValidator? headerValidator = setApi.HeaderValidator;
             UnclesValidator unclesValidator = new(

@@ -135,11 +135,6 @@ namespace Nethermind.Merge.Plugin
             }
         }
 
-        public void AfterHeaderValidator()
-        {
-            _api.HeaderValidator = Always.Valid;
-        }
-
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
         public string SealEngineType => "Eth2Merge";
