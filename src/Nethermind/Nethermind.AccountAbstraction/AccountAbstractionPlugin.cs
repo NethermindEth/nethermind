@@ -5,6 +5,7 @@ using Nethermind.Abi;
 using Nethermind.AccountAbstraction.Contracts;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Executor;
+using Nethermind.AccountAbstraction.Network;
 using Nethermind.AccountAbstraction.Source;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
@@ -17,6 +18,10 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
+using Nethermind.Network;
+using Nethermind.Network.P2P;
+using Nethermind.Stats;
+using Nethermind.Stats.Model;
 using Newtonsoft.Json.Linq;
 
 namespace Nethermind.AccountAbstraction
@@ -143,6 +148,16 @@ namespace Nethermind.AccountAbstraction
 
         public Task InitNetworkProtocol()
         {
+            if (_nethermindApi is null) throw new ArgumentNullException(nameof(_nethermindApi));
+            if (_userOperationPool is null) throw new ArgumentNullException(nameof(_userOperationPool));
+
+            IProtocolsManager protocolsManager = _nethermindApi.ProtocolsManager ?? throw new ArgumentNullException(nameof(_nethermindApi.ProtocolsManager));
+            IMessageSerializationService serializer = _nethermindApi.MessageSerializationService ?? throw new ArgumentNullException(nameof(_nethermindApi.MessageSerializationService));
+            INodeStatsManager stats = _nethermindApi.NodeStatsManager ?? throw new ArgumentNullException(nameof(_nethermindApi.NodeStatsManager));
+            ILogManager logManager = _nethermindApi.LogManager ?? throw new ArgumentNullException(nameof(_nethermindApi.LogManager));
+
+            protocolsManager.AddProtocol(Protocol.AA, session => new AaProtocolHandler(session, serializer, stats, _userOperationPool, logManager));
+            protocolsManager.AddSupportedCapability(new Capability(Protocol.AA, 0));
             return Task.CompletedTask;
         }
 
