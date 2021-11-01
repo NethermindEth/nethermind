@@ -18,8 +18,10 @@
 using System;
 using System.Collections.Generic;
 using DotNetty.Common.Utilities;
+using Nethermind.AccountAbstraction.Broadcaster;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Source;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
@@ -32,7 +34,7 @@ using Timeouts = Nethermind.Network.Timeouts;
 
 namespace Nethermind.AccountAbstraction.Network
 {
-    public class AaProtocolHandler : ProtocolHandlerBase, IZeroProtocolHandler
+    public class AaProtocolHandler : ProtocolHandlerBase, IZeroProtocolHandler, IUserOperationPoolPeer
     {
         private readonly ISession _session;
         private readonly IUserOperationPool _userOperationPool;
@@ -47,6 +49,8 @@ namespace Nethermind.AccountAbstraction.Network
             _session = session ?? throw new ArgumentNullException(nameof(session));
             _userOperationPool = userOperationPool ?? throw new ArgumentNullException(nameof(userOperationPool));
         }
+        
+        public PublicKey Id => _session.Node.Id;
         
         public override byte ProtocolVersion => 0;
         
@@ -130,6 +134,43 @@ namespace Nethermind.AccountAbstraction.Network
 
                 if (Logger.IsTrace) Logger.Trace($"{_session.Node:c} sent {uop.Hash} uop and it was {result}");
             }
+        }
+        
+        public void SendNewUserOperation(UserOperation uop)
+        {
+            SendMessage(new[]{uop});
+        }
+        
+        public void SendNewUserOperations(IEnumerable<UserOperation> uops)
+        {
+            const int maxCapacity = 256;
+            using ArrayPoolList<UserOperation> uopsToSend = new(maxCapacity);
+
+            foreach (UserOperation uop in uops)
+            {
+                if (uopsToSend.Count == maxCapacity)
+                {
+                    SendMessage(uopsToSend);
+                    uopsToSend.Clear();
+                }
+                
+                if (uop.Hash is not null)
+                {
+                    uopsToSend.Add(uop);
+                    TxPool.Metrics.PendingTransactionsSent++;
+                }
+            }
+            
+            if (uopsToSend.Count > 0)
+            {
+                SendMessage(uopsToSend);
+            }
+        }
+        
+        private void SendMessage(IList<UserOperation> uopsToSend)
+        {
+            UserOperationsMessage msg = new(uopsToSend);
+            Send(msg);
         }
 
         public override void DisconnectProtocol(DisconnectReason disconnectReason, string details)
