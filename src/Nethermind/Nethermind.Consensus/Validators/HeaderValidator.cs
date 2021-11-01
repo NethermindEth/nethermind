@@ -107,12 +107,13 @@ namespace Nethermind.Consensus.Validators
             bool totalDifficultyCorrect = ValidateTotalDifficulty(parent, header);
 
             // seal is validated when synchronizing so we can remove it from here - review and test
-            bool sealParamsCorrect = _sealValidator.ValidateParams(parent, header);
-            if (!sealParamsCorrect)
-            {
-                if (_logger.IsWarn)
-                    _logger.Warn($"Invalid block header ({header.Hash}) - seal parameters incorrect");
-            }
+            // temporary commented for merge - interop. It shouldn't be merged to master
+            // bool sealParamsCorrect = _sealValidator.ValidateParams(parent, header);
+            // if (!sealParamsCorrect)
+            // {
+            //      if (_logger.IsWarn)
+            //         _logger.Warn($"Invalid block header ({header.Hash}) - seal parameters incorrect"); 
+            // }
 
             bool gasUsedBelowLimit = header.GasUsed <= header.GasLimit;
             if (!gasUsedBelowLimit)
@@ -159,7 +160,7 @@ namespace Nethermind.Consensus.Validators
                 totalDifficultyCorrect &&
                 gasUsedBelowLimit &&
                 gasLimitInRange &&
-                sealParamsCorrect &&
+           //     sealParamsCorrect && temporary commented for merge - interop. It shouldn't be merged to master
                 // gasLimitAboveAbsoluteMinimum && // described in the YellowPaper but not followed
                 // timestampMoreThanAtParent &&  // temporary commented for merge - interop. It shouldn't be merged to master
                 numberIsParentPlusOne &&

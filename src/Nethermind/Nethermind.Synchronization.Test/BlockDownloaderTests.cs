@@ -56,7 +56,7 @@ using BlockTree = Nethermind.Blockchain.BlockTree;
 namespace Nethermind.Synchronization.Test
 {
     [TestFixture, Parallelizable(ParallelScope.All)]
-    public class BlockDownloaderTests
+    public class BlockDownloaderTestsl
     {
         [TestCase(1L, DownloaderOptions.Process, 0)]
         [TestCase(32L, DownloaderOptions.Process, 0)]
