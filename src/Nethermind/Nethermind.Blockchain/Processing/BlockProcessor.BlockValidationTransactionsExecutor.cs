@@ -60,7 +60,7 @@ namespace Nethermind.Blockchain.Processing
         
             private void ProcessTransaction(Block block, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
             {
-                if (((processingOptions & ProcessingOptions.Trace) != ProcessingOptions.None))
+                if ((processingOptions & ProcessingOptions.Trace) != ProcessingOptions.None)
                 {
                     _callAndRestoreTransactionProcessor.ProcessTransaction(block, currentTx, receiptsTracer, processingOptions, _stateProvider);
                 }
