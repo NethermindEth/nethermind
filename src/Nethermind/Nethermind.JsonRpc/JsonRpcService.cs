@@ -274,14 +274,9 @@ namespace Nethermind.JsonRpc
                         {
                             if (paramType == typeof(Tuple<TransactionForRpc, string[]>[]))
                             {
-                                //var settings = new JsonSerializerSettings();
-                                //settings.Converters.Add(new TupleListConverter<TransactionForRpc, string[]>());
-                                //executionParam = JsonConvert.SerializeObject(new JsonTextReader(new StringReader(providedParameter)),
-                                //    typeof(List<Tuple<TransactionForRpc, string[]>>), settings);
                                 TraceCallManyParametersWrapper executionParamTemp =
                                     _serializer.Deserialize<TraceCallManyParametersWrapper>(
                                         new JsonTextReader(new StringReader(providedParameter)));
-                                //.Data.ToArray();
                                 executionParam = executionParamTemp.Data.ToArray();
                             }
                             else
