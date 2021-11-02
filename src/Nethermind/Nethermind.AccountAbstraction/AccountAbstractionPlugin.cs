@@ -149,14 +149,14 @@ namespace Nethermind.AccountAbstraction
         public Task InitNetworkProtocol()
         {
             if (_nethermindApi is null) throw new ArgumentNullException(nameof(_nethermindApi));
-            if (_userOperationPool is null) throw new ArgumentNullException(nameof(_userOperationPool));
+            if (UserOperationPool is null) throw new ArgumentNullException(nameof(UserOperationPool));
 
             IProtocolsManager protocolsManager = _nethermindApi.ProtocolsManager ?? throw new ArgumentNullException(nameof(_nethermindApi.ProtocolsManager));
             IMessageSerializationService serializer = _nethermindApi.MessageSerializationService ?? throw new ArgumentNullException(nameof(_nethermindApi.MessageSerializationService));
             INodeStatsManager stats = _nethermindApi.NodeStatsManager ?? throw new ArgumentNullException(nameof(_nethermindApi.NodeStatsManager));
             ILogManager logManager = _nethermindApi.LogManager ?? throw new ArgumentNullException(nameof(_nethermindApi.LogManager));
 
-            protocolsManager.AddProtocol(Protocol.AA, session => new AaProtocolHandler(session, serializer, stats, _userOperationPool, logManager));
+            protocolsManager.AddProtocol(Protocol.AA, session => new AaProtocolHandler(session, serializer, stats, UserOperationPool, logManager));
             protocolsManager.AddSupportedCapability(new Capability(Protocol.AA, 0));
             return Task.CompletedTask;
         }
