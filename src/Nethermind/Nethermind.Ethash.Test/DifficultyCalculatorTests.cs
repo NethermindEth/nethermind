@@ -62,23 +62,25 @@ namespace Nethermind.Ethash.Test
             Assert.AreEqual((UInt256)90186982, result);
         }
         
-        [TestCase(3)]
-        [TestCase(730000)]
-        public void London_calculation_should_not_be_equal_to_Berlin_above_block_9200000(long blocksAbove)
+        [TestCase(9000000 + 200000 + 1)]
+        [TestCase(9000000 + 200000 + 3)]
+        [TestCase(9000000 + 200000 + 730000)]
+        public void London_calculation_should_not_be_equal_to_Berlin(long blocksAbove)
         {
-            Calculation_should_not_be_equal_on_different_difficulty_hard_forks_above_block_9200000(blocksAbove,
+            Calculation_should_not_be_equal_on_different_difficulty_hard_forks(blocksAbove,
                 Berlin.Instance, London.Instance);
         }
         
-        [TestCase(3)]
-        [TestCase(730000)]
-        public void ArrowGlacier_calculation_should_not_be_equal_to_London_above_block_9200000(long blocksAbove)
+        [TestCase(9700000 + 200000 + 1)]
+        [TestCase(9700000 + 200000 + 3)]
+        [TestCase(9700000 + 200000 + 730000)]
+        public void ArrowGlacier_calculation_should_not_be_equal_to_London0(long blocksAbove)
         {
-            Calculation_should_not_be_equal_on_different_difficulty_hard_forks_above_block_9200000(blocksAbove,
+            Calculation_should_not_be_equal_on_different_difficulty_hard_forks(blocksAbove,
                 London.Instance, ArrowGlacier.Instance);
         }
 
-        private void Calculation_should_not_be_equal_on_different_difficulty_hard_forks_above_block_9200000(
+        private void Calculation_should_not_be_equal_on_different_difficulty_hard_forks(
             long blocksAbove, IReleaseSpec firstHardfork, IReleaseSpec secondHardfork)
         {
             UInt256 parentDifficulty = 0x55f78f7;
@@ -87,12 +89,12 @@ namespace Nethermind.Ethash.Test
             ISpecProvider firstHardForkSpecProvider = Substitute.For<ISpecProvider>();
             firstHardForkSpecProvider.GetSpec(Arg.Any<long>()).Returns(firstHardfork);
             EthashDifficultyCalculator firstHardforkDifficultyCalculator = new(firstHardForkSpecProvider);
-            UInt256 firstHardforkResult = firstHardforkDifficultyCalculator.Calculate(parentDifficulty, parentTimestamp, currentTimestamp, 9200000L + blocksAbove, false);
+            UInt256 firstHardforkResult = firstHardforkDifficultyCalculator.Calculate(parentDifficulty, parentTimestamp, currentTimestamp, blocksAbove, false);
             
             ISpecProvider secondHardforkSpecProvider = Substitute.For<ISpecProvider>();
             secondHardforkSpecProvider.GetSpec(Arg.Any<long>()).Returns(secondHardfork);
             EthashDifficultyCalculator secondHardforkDifficultyCalculator = new(secondHardforkSpecProvider);
-            UInt256 secondHardforkResult = secondHardforkDifficultyCalculator.Calculate(parentDifficulty, parentTimestamp, currentTimestamp, 9200000L + blocksAbove, false);
+            UInt256 secondHardforkResult = secondHardforkDifficultyCalculator.Calculate(parentDifficulty, parentTimestamp, currentTimestamp, blocksAbove, false);
             
             Assert.AreNotEqual(firstHardforkResult, secondHardforkResult);
         }
