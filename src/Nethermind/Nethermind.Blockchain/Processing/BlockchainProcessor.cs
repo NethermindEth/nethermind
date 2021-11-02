@@ -375,7 +375,8 @@ namespace Nethermind.Blockchain.Processing
                     }
                 }
             }
-            
+
+            Keccak? invalidBlockHash = null;
             Block[]? processedBlocks;
             try
             {
@@ -387,20 +388,19 @@ namespace Nethermind.Blockchain.Processing
             }
             catch (InvalidBlockException ex)
             {
-                DeleteInvalidBlocks(ex.InvalidBlockHash);
-                
+                invalidBlockHash = ex.InvalidBlockHash;
                 TraceFailingBranch(
                     processingBranch,
                     options,
                     new BlockReceiptsTracer(),
                     DumpOptions.Receipts);
-                
+
                 TraceFailingBranch(
                     processingBranch,
                     options,
                     new ParityLikeBlockTracer(ParityTraceTypes.StateDiff | ParityTraceTypes.Trace),
                     DumpOptions.Parity);
-                
+
                 TraceFailingBranch(
                     processingBranch,
                     options,
@@ -408,6 +408,13 @@ namespace Nethermind.Blockchain.Processing
                     DumpOptions.Geth);
 
                 processedBlocks = null;
+            }
+            finally
+            {
+                if (invalidBlockHash is not null)
+                {
+                    DeleteInvalidBlocks(invalidBlockHash);
+                }
             }
 
             return processedBlocks;
