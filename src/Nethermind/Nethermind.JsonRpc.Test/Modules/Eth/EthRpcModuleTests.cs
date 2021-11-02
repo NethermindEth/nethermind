@@ -894,6 +894,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             {
                 OverridableReleaseSpec releaseSpec = new(London.Instance);
                 releaseSpec.Eip1559TransitionBlock = 1;
+                releaseSpec.IsEip3607Enabled = true;
                 TestSpecProvider specProvider = new(releaseSpec) {ChainId = ChainId.Mainnet};
                 return await Create(specProvider);
             }
