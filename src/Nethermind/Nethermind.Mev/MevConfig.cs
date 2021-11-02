@@ -29,6 +29,6 @@ namespace Nethermind.Mev
         public UInt256 BundleHorizon { get; set; } = 60 * 60;
         public int BundlePoolSize { get; set; } = 200;
         public int MaxMergedBundles { get; set; } = 1;
-        public string TrustedRelays { get; set; } = "";
+        public string TrustedRelays { get; set; } = string.Empty;
     }
 }

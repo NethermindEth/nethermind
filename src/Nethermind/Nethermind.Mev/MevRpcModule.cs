@@ -70,36 +70,20 @@ namespace Nethermind.Mev
 
         public ResultWrapper<bool> eth_sendBundle(MevBundleRpc mevBundleRpc)
         {
-            try
-            {
-                BundleTransaction[] txs = Decode(mevBundleRpc.Txs, mevBundleRpc.RevertingTxHashes?.ToHashSet());
-                MevBundle bundle = new(mevBundleRpc.BlockNumber, txs, mevBundleRpc.MinTimestamp,
-                    mevBundleRpc.MaxTimestamp);
-                bool result = _bundlePool.AddBundle(bundle);
-                return ResultWrapper<bool>.Success(result);
-            }
-            catch (Exception e)
-            {
-                return ResultWrapper<bool>.Fail(e);
-            }
+            BundleTransaction[] txs = Decode(mevBundleRpc.Txs, mevBundleRpc.RevertingTxHashes?.ToHashSet());
+            MevBundle bundle = new(mevBundleRpc.BlockNumber, txs, mevBundleRpc.MinTimestamp, mevBundleRpc.MaxTimestamp);
+            bool result = _bundlePool.AddBundle(bundle);
+            return ResultWrapper<bool>.Success(result);
         }
 
         public ResultWrapper<bool> eth_sendMegabundle(MevMegabundleRpc mevMegabundleRpc)
         {
-            try
-            {
-                BundleTransaction[] txs = Decode(mevMegabundleRpc.Txs, mevMegabundleRpc.RevertingTxHashes?.ToHashSet());
-                Signature relaySignature = new(mevMegabundleRpc.RelaySignature);
-                MevMegabundle megabundle = new(mevMegabundleRpc.BlockNumber, txs, mevMegabundleRpc.RevertingTxHashes,
-                    relaySignature, mevMegabundleRpc.MinTimestamp, mevMegabundleRpc.MaxTimestamp);
-                bool result = _bundlePool.AddMegabundle(megabundle);
-                return ResultWrapper<bool>.Success(result);
-            }
-            catch (Exception e)
-            {
-                return ResultWrapper<bool>.Fail(e);
-            }
-
+            BundleTransaction[] txs = Decode(mevMegabundleRpc.Txs, mevMegabundleRpc.RevertingTxHashes?.ToHashSet());
+            Signature relaySignature = new(mevMegabundleRpc.RelaySignature);
+            MevMegabundle megabundle = new(mevMegabundleRpc.BlockNumber, txs, mevMegabundleRpc.RevertingTxHashes,
+                relaySignature, mevMegabundleRpc.MinTimestamp, mevMegabundleRpc.MaxTimestamp);
+            bool result = _bundlePool.AddMegabundle(megabundle);
+            return ResultWrapper<bool>.Success(result);
         }
 
         public ResultWrapper<TxsResults> eth_callBundle(MevCallBundleRpc mevBundleRpc)
