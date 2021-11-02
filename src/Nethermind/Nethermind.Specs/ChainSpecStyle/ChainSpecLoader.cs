@@ -212,6 +212,9 @@ namespace Nethermind.Specs.ChainSpecStyle
                 : null;
             chainSpec.BerlinBlockNumber = chainSpec.Parameters.Eip2929Transition ?? (long.MaxValue - 1);
             chainSpec.LondonBlockNumber = chainSpec.Parameters.Eip1559Transition ?? (long.MaxValue - 1);
+            chainSpec.ArrowGlacierBlockNumber = chainSpec.Ethash?.DifficultyBombDelays.Count > 3 ?
+                chainSpec.Ethash?.DifficultyBombDelays.Keys.ToArray()[3]
+                : null;
         }
 
         private static void LoadEngine(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
