@@ -124,7 +124,9 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                 MainnetSpecProvider.BerlinBlockNumber,
                 MainnetSpecProvider.LondonBlockNumber - 1,
                 MainnetSpecProvider.LondonBlockNumber,
-                99000000, // far in the future
+                MainnetSpecProvider.ArrowGlacierBlockNumber - 1,
+                MainnetSpecProvider.ArrowGlacierBlockNumber,
+                99_000_000, // far in the future
             };
 
             CompareSpecProviders(mainnet, provider, blockNumbersToTest);
@@ -140,7 +142,9 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(9_000_000, provider.GetSpec(12_000_000).DifficultyBombDelay);
             Assert.AreEqual(9_000_000, provider.GetSpec(12_964_999).DifficultyBombDelay);
             Assert.AreEqual(9_700_000, provider.GetSpec(12_965_000).DifficultyBombDelay);
-            Assert.AreEqual(9_700_000, provider.GetSpec(15_000_000).DifficultyBombDelay);
+            Assert.AreEqual(9_700_000, provider.GetSpec(13_772_999).DifficultyBombDelay);
+            Assert.AreEqual(10_700_000, provider.GetSpec(13_773_000).DifficultyBombDelay);
+            Assert.AreEqual(10_700_000, provider.GetSpec(99_414_000).DifficultyBombDelay);
         }
 
         private static void CompareSpecProviders(
