@@ -62,18 +62,20 @@ namespace Nethermind.Ethash.Test
             Assert.AreEqual((UInt256)90186982, result);
         }
         
-        [TestCase(9000000 + 200000 + 1)]
-        [TestCase(9000000 + 200000 + 3)]
-        [TestCase(9000000 + 200000 + 730000)]
+        // previous difficulty bomb +  InitialDifficultyBombBlock + offset
+        [TestCase(9000000 + EthashDifficultyCalculator.InitialDifficultyBombBlock + 1)]
+        [TestCase(9000000 + EthashDifficultyCalculator.InitialDifficultyBombBlock + 3)]
+        [TestCase(9000000 + EthashDifficultyCalculator.InitialDifficultyBombBlock + 730000)]
         public void London_calculation_should_not_be_equal_to_Berlin(long blocksAbove)
         {
             Calculation_should_not_be_equal_on_different_difficulty_hard_forks(blocksAbove,
                 Berlin.Instance, London.Instance);
         }
         
-        [TestCase(9700000 + 200000 + 1)]
-        [TestCase(9700000 + 200000 + 3)]
-        [TestCase(9700000 + 200000 + 730000)]
+        // previous difficulty bomb +  InitialDifficultyBombBlock + offset
+        [TestCase(9700000 + EthashDifficultyCalculator.InitialDifficultyBombBlock + 1)]
+        [TestCase(9700000 + EthashDifficultyCalculator.InitialDifficultyBombBlock + 3)]
+        [TestCase(9700000 + EthashDifficultyCalculator.InitialDifficultyBombBlock + 730000)]
         public void ArrowGlacier_calculation_should_not_be_equal_to_London0(long blocksAbove)
         {
             Calculation_should_not_be_equal_on_different_difficulty_hard_forks(blocksAbove,

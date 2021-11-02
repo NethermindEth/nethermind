@@ -24,6 +24,8 @@ namespace Nethermind.Consensus.Ethash
 {
     public class EthashDifficultyCalculator : IDifficultyCalculator
     {
+        // Note: block 200000 is when the difficulty bomb was introduced but we did not spec it in any release info, just hardcoded it
+        public const int InitialDifficultyBombBlock = 200000;
         private readonly ISpecProvider _specProvider;
 
         public EthashDifficultyCalculator(ISpecProvider specProvider)
@@ -90,9 +92,8 @@ namespace Nethermind.Consensus.Ethash
         private BigInteger TimeBomb(IReleaseSpec spec, long blockNumber)
         {
             blockNumber = blockNumber - spec.DifficultyBombDelay;
-
-            // Note: block 200000 is when the difficulty bomb was introduced but we did not spec it in any release info, just hardcoded it
-            return blockNumber < 200000 ? BigInteger.Zero : BigInteger.Pow(2, (int)(BigInteger.Divide(blockNumber, 100000) - 2));
+            
+            return blockNumber < InitialDifficultyBombBlock ? BigInteger.Zero : BigInteger.Pow(2, (int)(BigInteger.Divide(blockNumber, 100000) - 2));
         }
     }
 }
