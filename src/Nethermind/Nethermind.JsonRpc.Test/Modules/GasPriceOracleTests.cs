@@ -81,6 +81,22 @@ namespace Nethermind.JsonRpc.Test.Modules
             
             testGasPriceOracle.FallbackGasPrice.Should().BeEquivalentTo((UInt256?) lastGasPrice);
         }
+        
+        [TestCase(null)]
+        [TestCase(100ul)]
+        public void GasPriceEstimate_EmptyChain_BaseFeeIncluded(ulong? gasPrice)
+        {
+            UInt256 baseFeePerGas = 10.GWei();
+            Block headBlock = Build.A.Block.WithBaseFeePerGas(baseFeePerGas).TestObject;
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            blockFinder.FindBlock(0).Returns(headBlock);
+            blockFinder.Head.Returns(headBlock);
+            ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+            GasPriceOracle testGasPriceOracle = new(blockFinder, specProvider, gasPrice);
+
+            UInt256 estimate = testGasPriceOracle.GetGasPriceEstimate();
+            estimate.Should().Be((baseFeePerGas + (gasPrice ?? 1.GWei())) * 110 / 100);
+        }
 
         [Test]
         public void GasPriceEstimate_IfCalculatedGasPriceGreaterThanMax_MaxGasPriceReturned()
