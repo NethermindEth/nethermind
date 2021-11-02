@@ -89,8 +89,8 @@ namespace Nethermind.JsonRpc
                         url.RpcEndpoint &= ~RpcEndpoint.WebSocket;
                         if (url.RpcEndpoint == RpcEndpoint.None)
                         {
-                            if (_logger.IsWarn)
-                                _logger.Warn($"Additional JSON RPC URL '{url}' has web socket endpoint type and web sockets are not enabled; skipping...");
+                            if (_logger.IsInfo)
+                                _logger.Info($"Additional JSON RPC URL '{url}' has web socket endpoint type and web sockets are not enabled; skipping...");
                             continue;
                         }
                     }

@@ -97,9 +97,9 @@ namespace Nethermind.JsonRpc.Modules
 
             if ((result.Availability & context.RpcEndpoint) == RpcEndpoint.None) return ModuleResolution.EndpointDisabled;
 
-            if (context.Url != null) return context.Url.EnabledModules.Contains(result.ModuleType, StringComparer.InvariantCultureIgnoreCase) ? ModuleResolution.Enabled : ModuleResolution.Disabled;
+            if (context.Url != null) return context.Url.EnabledModules.Contains(result.ModuleType, StringComparer.InvariantCultureIgnoreCase) ? ModuleResolution.Enabled : ModuleResolution.EndpointDisabled;
 
-            return _enabledModules.Contains(result.ModuleType) == true ? ModuleResolution.Enabled : ModuleResolution.Disabled;
+            return _enabledModules.Contains(result.ModuleType) ? ModuleResolution.Enabled : ModuleResolution.Disabled;
         }
 
         public (MethodInfo, bool) Resolve(string methodName)

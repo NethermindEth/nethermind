@@ -89,7 +89,7 @@ namespace Nethermind.JsonRpc
 
         public bool Equals(JsonRpcUrl other)
         {
-            if (ReferenceEquals(null, other))
+            if (other == null)
                 return false;
 
             if (ReferenceEquals(this, other))
@@ -99,18 +99,18 @@ namespace Nethermind.JsonRpc
                    string.Equals(Host, other.Host) &&
                    Port == other.Port &&
                    RpcEndpoint == other.RpcEndpoint &&
-                   Enumerable.SequenceEqual(EnabledModules, other.EnabledModules);
+                   EnabledModules.SequenceEqual(other.EnabledModules);
         }
 
-        public override bool Equals(object obj)
+        public override bool Equals(object other)
         {
-            if (ReferenceEquals(null, obj))
+            if (other == null)
                 return false;
 
-            if (ReferenceEquals(this, obj))
+            if (ReferenceEquals(this, other))
                 return true;
 
-            return obj.GetType() == GetType() && Equals((JsonRpcUrl)obj);
+            return other is JsonRpcUrl url && Equals(url);
         }
 
         public override int GetHashCode() => HashCode.Combine(Scheme, Host, Port, RpcEndpoint, EnabledModules as IStructuralEquatable);
