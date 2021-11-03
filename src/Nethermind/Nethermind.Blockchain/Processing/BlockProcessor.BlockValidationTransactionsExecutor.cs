@@ -62,7 +62,7 @@ namespace Nethermind.Blockchain.Processing
             {
                 ITransactionProcessorAdapter transactionProcessorAdapter = _executeTransactionProcessor;
                 
-                if ((processingOptions & ProcessingOptions.Trace) != ProcessingOptions.None)
+                if ((processingOptions & ProcessingOptions.TraceAndRestore) == ProcessingOptions.TraceAndRestore)
                 {
                     transactionProcessorAdapter = _callAndRestoreTransactionProcessor;
                 }

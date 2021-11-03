@@ -58,7 +58,12 @@ namespace Nethermind.Blockchain.Processing
         /// total difficulty.
         /// </summary>
         DoNotUpdateHead = 64,
-        All = 127,
+        
+        /// <summary>
+        /// Restore state after processing.
+        /// </summary>
+        Restore = 128,
+        All = 255,
         
         /// <summary>
         /// Combination of switches for block producers when they preprocess block for state root calculation.
@@ -69,6 +74,8 @@ namespace Nethermind.Blockchain.Processing
         /// EVM tracing needs to process blocks without storing the data on chain.
         /// </summary>
         Trace = ForceProcessing | ReadOnlyChain | DoNotVerifyNonce | NoValidation,
+
+        TraceAndRestore = Trace | Restore,
 
         EthereumMerge = ReadOnlyChain | ForceProcessing | DoNotUpdateHead | IgnoreParentNotOnMainChain
     }

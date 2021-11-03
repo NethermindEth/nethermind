@@ -61,7 +61,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                     dbProvider,
                     Blockchain.SpecProvider,
                     Blockchain.LogManager);
-                TraceRpcModule = new TraceRpcModule(receiptFinder, new Tracer(chainProcessingEnv.StateProvider, chainProcessingEnv.ChainProcessor),
+                TraceRpcModule = new TraceRpcModule(receiptFinder, new Tracer(chainProcessingEnv.StateProvider, chainProcessingEnv.ChainProcessor, ProcessingOptions.TraceAndRestore),
                     Blockchain.BlockFinder, JsonRpcConfig, MainnetSpecProvider.Instance, LimboLogs.Instance);
                 
                 for (int i = 1; i < 10; i++)
