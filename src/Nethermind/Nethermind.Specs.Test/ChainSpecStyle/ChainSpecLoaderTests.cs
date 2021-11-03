@@ -233,7 +233,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/xdai.json");
             ChainSpec chainSpec = LoadChainSpec(path);
             
-            Assert.AreEqual(1.GWei(), chainSpec.Parameters.Eip1559BaseFeeInitialValue, $"fork base fee");
+            Assert.AreEqual(20.GWei(), chainSpec.Parameters.Eip1559BaseFeeInitialValue, $"fork base fee");
             Assert.AreEqual(100, chainSpec.ChainId, $"{nameof(chainSpec.ChainId)}");
             Assert.AreEqual("DaiChain", chainSpec.Name, $"{nameof(chainSpec.Name)}");
             Assert.AreEqual(SealEngineType.AuRa, chainSpec.SealEngineType, "engine");
