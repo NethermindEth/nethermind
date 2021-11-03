@@ -234,6 +234,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             ChainSpec chainSpec = LoadChainSpec(path);
             
             Assert.AreEqual(20.GWei(), chainSpec.Parameters.Eip1559BaseFeeInitialValue, $"fork base fee");
+            Assert.AreEqual(20.GWei(), chainSpec.Parameters.Eip1559BaseFeeMinValue, $"min base fee");
             Assert.AreEqual(100, chainSpec.ChainId, $"{nameof(chainSpec.ChainId)}");
             Assert.AreEqual("DaiChain", chainSpec.Name, $"{nameof(chainSpec.Name)}");
             Assert.AreEqual(SealEngineType.AuRa, chainSpec.SealEngineType, "engine");
