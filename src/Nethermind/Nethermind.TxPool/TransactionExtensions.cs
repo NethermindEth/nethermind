@@ -25,7 +25,7 @@ namespace Nethermind.TxPool
 {
     internal static class TransactionExtensions
     {
-        public static UInt256 CalculateAffordableGasPrice(this Transaction tx, bool eip1559Enabled, UInt256 baseFee, UInt256 balance)
+        public static UInt256 CalculateAffordableGasPrice(this Transaction tx, bool eip1559Enabled, in UInt256 baseFee, in UInt256 balance)
         {
             if (eip1559Enabled && tx.IsEip1559)
             {

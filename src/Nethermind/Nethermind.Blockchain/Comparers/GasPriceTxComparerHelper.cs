@@ -22,7 +22,7 @@ namespace Nethermind.Blockchain.Comparers
 {
     public static class GasPriceTxComparerHelper
     {
-        public static int Compare(Transaction? x, Transaction? y, UInt256 baseFee, bool isEip1559Enabled)
+        public static int Compare(Transaction? x, Transaction? y, in UInt256 baseFee, bool isEip1559Enabled)
         {
             if (ReferenceEquals(x, y)) return 0;
             if (ReferenceEquals(null, y)) return 1;

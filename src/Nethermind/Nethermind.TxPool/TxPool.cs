@@ -20,6 +20,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -62,6 +63,8 @@ namespace Nethermind.TxPool
         private readonly ITxPoolConfig _txPoolConfig;
 
         private readonly ILogger _logger;
+
+        private readonly Channel<BlockReplacementEventArgs> _headBlocksChannel = Channel.CreateUnbounded<BlockReplacementEventArgs>(new UnboundedChannelOptions() { SingleReader = true, SingleWriter = true });
 
         /// <summary>
         /// Indexes transactions
@@ -120,6 +123,8 @@ namespace Nethermind.TxPool
             {
                 _filterPipeline.Add(incomingTxFilter);
             }
+
+            ProcessNewHeads();
         }
 
         public Transaction[] GetPendingTransactions() => _transactions.GetSnapshot();
@@ -137,7 +142,7 @@ namespace Nethermind.TxPool
             try
             {
                 _hashCache.ClearCurrentBlockCache();
-                OnHeadChange(e.Block!, e.PreviousBlock);
+                _headBlocksChannel.Writer.TryWrite(e);
             }
             catch (Exception exception)
             {
@@ -146,13 +151,35 @@ namespace Nethermind.TxPool
                         $"Couldn't correctly add or remove transactions from txpool after processing block {e.Block!.ToString(Block.Format.FullHashAndNumber)}.", exception);
             }
         }
-
-        private void OnHeadChange(Block block, Block? previousBlock)
+        
+        private void ProcessNewHeads()
         {
-            ReAddReorganisedTransactions(previousBlock);
-            RemoveProcessedTransactions(block.Transactions);
-            UpdateBuckets();
-            Metrics.TransactionCount = _transactions.Count;
+            Task.Factory.StartNew(async () =>
+            {
+                while (await _headBlocksChannel.Reader.WaitToReadAsync())
+                {
+                    while (_headBlocksChannel.Reader.TryRead(out BlockReplacementEventArgs args))
+                    {
+                        try
+                        {
+                            ReAddReorganisedTransactions(args.PreviousBlock);
+                            RemoveProcessedTransactions(args.Block.Transactions);
+                            UpdateBuckets();
+                            Metrics.TransactionCount = _transactions.Count;
+                        }
+                        catch (Exception e)
+                        {
+                            if (_logger.IsDebug) _logger.Debug($"TxPool failed to update after block {args.Block.ToString(Block.Format.FullHashAndNumber)} with exception {e}");
+                        }
+                    }
+                }
+            }, TaskCreationOptions.LongRunning).ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                {
+                    if (_logger.IsError) _logger.Error($"TxPool update after block queue failed.", t.Exception);
+                }
+            });
         }
 
         private void ReAddReorganisedTransactions(Block? previousBlock)
@@ -275,7 +302,7 @@ namespace Nethermind.TxPool
                         // transaction which was on last position in sorted TxPool and was deleted to give
                         // a place for a newly added tx (with higher priority) is now removed from hashCache
                         // to give it opportunity to come back to TxPool in the future, when fees drops
-                        _hashCache.Delete(removed.Hash!);
+                        _hashCache.DeleteFromLongTerm(removed.Hash!);
                         Metrics.PendingTransactionsEvicted++;
                     }
                 }
@@ -286,8 +313,14 @@ namespace Nethermind.TxPool
                 }
             }
 
-            _broadcaster.BroadcastOnce(tx);
-            if (isPersistentBroadcast) { _broadcaster.StartBroadcast(tx); }
+            if (isPersistentBroadcast)
+            {
+                _broadcaster.StartBroadcast(tx);
+            }
+            else
+            {
+                _broadcaster.BroadcastOnce(tx);
+            }
 
             _hashCache.SetLongTerm(tx.Hash!);
             NewPending?.Invoke(this, new TxEventArgs(tx));
@@ -295,7 +328,7 @@ namespace Nethermind.TxPool
             return AddTxResult.Added;
         }
 
-        private IEnumerable<(Transaction Tx, Action<Transaction> Change)> UpdateBucketWithAddedTransaction(
+        private IEnumerable<(Transaction Tx, Action<Transaction>? Change)> UpdateBucketWithAddedTransaction(
             Address address, ICollection<Transaction> transactions)
         {
             if (transactions.Count != 0)
@@ -311,7 +344,7 @@ namespace Nethermind.TxPool
             }
         }
 
-        private IEnumerable<(Transaction Tx, Action<Transaction> Change)> UpdateGasBottleneck(
+        private IEnumerable<(Transaction Tx, Action<Transaction>? Change)> UpdateGasBottleneck(
             ICollection<Transaction> transactions, long currentNonce, UInt256 balance)
         {
             UInt256? previousTxBottleneck = null;
@@ -324,10 +357,7 @@ namespace Nethermind.TxPool
                 if (tx.Nonce < currentNonce)
                 {
                     _broadcaster.StopBroadcast(tx.Hash!);
-                    if (tx.GasBottleneck != gasBottleneck)
-                    {
-                        yield return (tx, SetGasBottleneckChange(gasBottleneck));
-                    }
+                    yield return (tx, null);
                 }
                 else
                 {
@@ -372,8 +402,7 @@ namespace Nethermind.TxPool
             }
         }
 
-        private IEnumerable<(Transaction Tx, Action<Transaction> Change)> UpdateBucket(Address address,
-            ICollection<Transaction> transactions)
+        private IEnumerable<(Transaction Tx, Action<Transaction>? Change)> UpdateBucket(Address address, ICollection<Transaction> transactions)
         {
             if (transactions.Count != 0)
             {
@@ -402,7 +431,10 @@ namespace Nethermind.TxPool
                 {
                     foreach (Transaction transaction in transactions)
                     {
-                        yield return (transaction, SetGasBottleneckChange(0));
+                        // transaction removed from TxPool because of insufficient balance should have opportunity
+                        // to come back in the future, so it is removed from long term cache as well.
+                        _hashCache.DeleteFromLongTerm(transaction.Hash!);
+                        yield return (transaction, null);
                     }
                 }
                 else
@@ -495,6 +527,7 @@ namespace Nethermind.TxPool
         {
             _broadcaster.Dispose();
             _headInfo.HeadChanged -= OnHeadChange;
+            _headBlocksChannel.Writer.Complete();
         }
 
         /// <summary>

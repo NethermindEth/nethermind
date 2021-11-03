@@ -342,7 +342,7 @@ namespace Nethermind.Synchronization
             return _blockTree.FindHeaders(hash, numberOfBlocks, skip, reverse);
         }
 
-        public byte[]?[] GetNodeData(IList<Keccak> keys,
+        public byte[]?[] GetNodeData(IReadOnlyList<Keccak> keys,
             NodeDataType includedTypes = NodeDataType.State | NodeDataType.Code)
         {
             byte[]?[] values = new byte[keys.Count][];

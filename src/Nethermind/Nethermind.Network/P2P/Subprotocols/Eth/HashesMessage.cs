@@ -22,12 +22,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
     public abstract class HashesMessage : P2PMessage
     {
-        protected HashesMessage(IList<Keccak> hashes)
+        protected HashesMessage(IReadOnlyList<Keccak> hashes)
         {
             Hashes = hashes ?? throw new ArgumentNullException(nameof(hashes));
         }
         
-        public IList<Keccak> Hashes { get; }
+        public IReadOnlyList<Keccak> Hashes { get; }
 
         public override string ToString()
         {

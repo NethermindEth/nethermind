@@ -151,7 +151,7 @@ namespace Nethermind.Consensus.Ethash
             return BitConverter.ToUInt64(buffer, 0);
         }
 
-        private bool IsLessOrEqualThanTarget(byte[] result, UInt256 difficulty)
+        private bool IsLessOrEqualThanTarget(byte[] result, in UInt256 difficulty)
         {
             UInt256 resultAsInteger = new(result, true);
             BigInteger target = BigInteger.Divide(_2To256, (BigInteger)difficulty);
