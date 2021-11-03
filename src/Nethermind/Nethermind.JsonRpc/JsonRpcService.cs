@@ -25,6 +25,7 @@ using Nethermind.Core.Attributes;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Newtonsoft.Json;
@@ -56,6 +57,12 @@ namespace Nethermind.JsonRpc
             foreach (JsonConverter converter in EthereumJsonSerializer.CommonConverters)
             {
                 if (_logger.IsDebug) _logger.Debug($"Registering {converter.GetType().Name} (default)");
+                _serializer.Converters.Add(converter);
+                converterList.Add(converter);
+            }
+
+            foreach (JsonConverter converter in TraceModuleFactory.Converters)
+            {
                 _serializer.Converters.Add(converter);
                 converterList.Add(converter);
             }
@@ -119,19 +126,7 @@ namespace Nethermind.JsonRpc
         {
             ParameterInfo[] expectedParameters = method.Info.GetParameters();
             string[] providedParameters = request.Params ?? Array.Empty<string>();
-            if (methodName == "trace_callMany")
-            {
-                providedParameters[0] = "{\"data\":" + providedParameters[0] + "}";
-            }
 
-            if (methodName == "trace_call")
-            {
-                if (providedParameters.Length == 2)
-                {
-                    providedParameters = providedParameters.Concat(new[] {"\"\""}).ToArray(); 
-                }
-            }
-            
             if (_logger.IsInfo) _logger.Info($"Executing JSON RPC call {methodName} with params [{string.Join(',', providedParameters)}]");
 
             int missingParamsCount = expectedParameters.Length - providedParameters.Length + (providedParameters.Count(string.IsNullOrWhiteSpace));
@@ -272,17 +267,17 @@ namespace Nethermind.JsonRpc
                     {
                         if (providedParameter.StartsWith('[') || providedParameter.StartsWith('{'))
                         {
-                            if (paramType == typeof(Tuple<TransactionForRpc, string[]>[]))
-                            {
-                                TraceCallManyParametersWrapper executionParamTemp =
-                                    _serializer.Deserialize<TraceCallManyParametersWrapper>(
-                                        new JsonTextReader(new StringReader(providedParameter)));
-                                executionParam = executionParamTemp.Data.ToArray();
-                            }
-                            else
-                            {
-                                executionParam = _serializer.Deserialize(new JsonTextReader(new StringReader(providedParameter)), paramType);
-                            }
+                            // if ((paramType == typeof(Tuple<TransactionForRpc, string[]>[])) || paramType == typeof(TransactionForRpcWithTraceTypes[]))
+                            // {
+                            //     TransactionForRpcWithTraceTypes executionParamTemp = 
+                            //         _serializer.Deserialize<TransactionForRpcWithTraceTypes>(
+                            //             new JsonTextReader(new StringReader(providedParameter)));
+                            //     executionParam = executionParamTemp;
+                            // }
+                            // else
+                            // {
+                            executionParam = _serializer.Deserialize(new JsonTextReader(new StringReader(providedParameter)), paramType);
+                            // }
                         }
                         else
                         {
@@ -370,8 +365,3 @@ namespace Nethermind.JsonRpc
     
 }
 
-class TraceCallManyParametersWrapper
-{
-    [JsonConverter(typeof(TupleListConverter<TransactionForRpc, string[]>))]
-    public List<Tuple<TransactionForRpc, string[]>> Data;
-}

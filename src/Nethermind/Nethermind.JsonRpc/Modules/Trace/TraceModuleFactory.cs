@@ -98,7 +98,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             new ParityTraceResultConverter(),
             new ParityVmOperationTraceConverter(),
             new ParityVmTraceConverter(),
-            new TupleListConverter<TransactionForRpc, string[]>()
+            new TransactionForRpcWithTraceTypesConverter()
         };
 
         public override IReadOnlyCollection<JsonConverter> GetConverters() => Converters;

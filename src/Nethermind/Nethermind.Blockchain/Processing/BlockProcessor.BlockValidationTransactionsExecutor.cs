@@ -60,15 +60,14 @@ namespace Nethermind.Blockchain.Processing
         
             private void ProcessTransaction(Block block, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
             {
+                ITransactionProcessorAdapter transactionProcessorAdapter = _executeTransactionProcessor;
+                
                 if ((processingOptions & ProcessingOptions.Trace) != ProcessingOptions.None)
                 {
-                    _callAndRestoreTransactionProcessor.ProcessTransaction(block, currentTx, receiptsTracer, processingOptions, _stateProvider);
+                    transactionProcessorAdapter = _callAndRestoreTransactionProcessor;
                 }
-                else
-                {
-                    _executeTransactionProcessor.ProcessTransaction(block, currentTx, receiptsTracer, processingOptions, _stateProvider);
-                }
-                
+
+                transactionProcessorAdapter.ProcessTransaction(block, currentTx, receiptsTracer, processingOptions, _stateProvider);
                 TransactionProcessed?.Invoke(this, new TxProcessedEventArgs(index, currentTx, receiptsTracer.TxReceipts[index]));
             }
         }

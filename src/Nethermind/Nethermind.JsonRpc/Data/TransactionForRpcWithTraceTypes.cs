@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,22 +15,17 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Core;
-using Nethermind.Evm.Tracing;
+using System;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
-namespace Nethermind.Evm.TransactionProcessing
+namespace Nethermind.JsonRpc.Data
 {
-    public class BuildUpTransactionProcessorAdapter : ITransactionProcessorAdapter
+    public class TransactionForRpcWithTraceTypes
     {
-        private readonly ITransactionProcessor _transactionProcessor;
-
-        public BuildUpTransactionProcessorAdapter(ITransactionProcessor transactionProcessor)
-        {
-            _transactionProcessor = transactionProcessor;
-        }
-        
-        public void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer) =>
-            _transactionProcessor.BuildUp(transaction, block, txTracer);
-        
+        public TransactionForRpc TransactionFor { get; set; }
+        public string[] TraceTypes { get; set; }
     }
+
+    
 }
