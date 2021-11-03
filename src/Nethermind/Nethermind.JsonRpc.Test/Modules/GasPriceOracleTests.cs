@@ -63,7 +63,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             testGasPriceOracle.GetGasPriceEstimate();
             UInt256 expectedGasPrice = 110 * (gasPrice ?? 1.GWei()) / 100;
-            testGasPriceOracle.FallbackGasPrice.Should().BeEquivalentTo(expectedGasPrice);
+            testGasPriceOracle.FallbackGasPrice().Should().BeEquivalentTo(expectedGasPrice);
         }
 
         [TestCase(3)]
@@ -79,7 +79,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             
             testGasPriceOracle.GetGasPriceEstimate();
             
-            testGasPriceOracle.FallbackGasPrice.Should().BeEquivalentTo((UInt256?) lastGasPrice);
+            testGasPriceOracle.FallbackGasPrice().Should().BeEquivalentTo((UInt256?) lastGasPrice);
         }
         
         [TestCase(null)]
