@@ -33,7 +33,7 @@ namespace Nethermind.Consensus
         long? TargetBlockGasLimit { get; set; }
         
         [ConfigItem(
-            Description = "Minimum gas price for transactions accepted by the block producer.",
+            Description = "Minimum gas premium for transactions accepted by the block producer. Before EIP1559: Minimum gas price for transactions accepted by the block producer.",
             DefaultValue = "1000000000")]
         UInt256 MinGasPrice { get; set; }
         

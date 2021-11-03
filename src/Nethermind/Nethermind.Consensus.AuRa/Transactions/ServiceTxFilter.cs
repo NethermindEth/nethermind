@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -16,17 +16,29 @@
 // 
 
 using System;
-using Nethermind.Core.Crypto;
+using Nethermind.Consensus.Transactions;
+using Nethermind.Core;
+using Nethermind.Core.Specs;
 
-namespace Nethermind.Mev.Data
+namespace Nethermind.Consensus.AuRa.Transactions
 {
-    public class BundleEventArgs : EventArgs
+    public class ServiceTxFilter : ITxFilter
     {
-        public MevBundle MevBundle { get; }
+        private readonly ISpecProvider _specProvider;
 
-        public BundleEventArgs(MevBundle mevBundle)
+        public ServiceTxFilter(ISpecProvider specProvider)
         {
-            MevBundle = mevBundle;
+            _specProvider = specProvider;
+        }
+        
+        public (bool Allowed, string Reason) IsAllowed(Transaction tx, BlockHeader parentHeader)
+        {
+            if (tx.IsZeroGasPrice(parentHeader, _specProvider))
+            {
+                tx.IsServiceTransaction = true;
+            }
+            
+            return (true, string.Empty);
         }
     }
 }

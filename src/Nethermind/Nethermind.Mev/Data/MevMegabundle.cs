@@ -17,49 +17,40 @@
 
 using System;
 using System.Collections.Generic;
-using System.Threading;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
 namespace Nethermind.Mev.Data
 {
-    public partial class MevBundle : IEquatable<MevBundle>
+    public partial class MevMegabundle : MevBundle, IEquatable<MevMegabundle>
     {
-        private static int _sequenceNumber = 0;
-
-        public MevBundle(long blockNumber, IReadOnlyList<BundleTransaction> transactions, UInt256? minTimestamp = null, UInt256? maxTimestamp = null)
+        public MevMegabundle(long blockNumber, IReadOnlyList<BundleTransaction> transactions, Keccak[]? revertingTxHashes = null,
+            Signature? relaySignature = null, UInt256? minTimestamp = null, UInt256? maxTimestamp = null)
+            : base(blockNumber, transactions, minTimestamp, maxTimestamp)
         {
-            Transactions = transactions;
-            BlockNumber = blockNumber;
-
+            RelaySignature = relaySignature;
+            RevertingTxHashes = revertingTxHashes ?? Array.Empty<Keccak>();
             Hash = GetHash(this);
             for (int i = 0; i < transactions.Count; i++)
             {
                 transactions[i].BundleHash = Hash;
             }
-
-            MinTimestamp = minTimestamp ?? UInt256.Zero;
-            MaxTimestamp = maxTimestamp ?? UInt256.Zero;
-            SequenceNumber = Interlocked.Increment(ref _sequenceNumber);
         }
-        
-        public IReadOnlyList<BundleTransaction> Transactions { get; }
 
-        public long BlockNumber { get; }
-        
-        public UInt256 MaxTimestamp { get; }
-        
-        public UInt256 MinTimestamp { get; }
-        
-        public virtual Keccak Hash { get; }
+        public override Keccak Hash { get; }
+        public Signature? RelaySignature { get; set; }
 
-        public int SequenceNumber { get; }
+        public Address? RelayAddress { get; internal set; }
 
-        public bool Equals(MevBundle? other)
+        public Keccak[] RevertingTxHashes { get; }
+
+        public bool Equals(MevMegabundle? other)
         {
             if (ReferenceEquals(null, other)) return false;
             if (ReferenceEquals(this, other)) return true;
-            return Equals(Hash, other.Hash);
+            return Equals(Hash, other.Hash)
+                   && Equals(RelaySignature, other.RelaySignature);
         }
 
         public override bool Equals(object? obj)
@@ -67,11 +58,12 @@ namespace Nethermind.Mev.Data
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;
             if (obj.GetType() != GetType()) return false;
-            return Equals((MevBundle) obj);
+            return Equals((MevMegabundle)obj);
         }
 
-        public override int GetHashCode() => Hash.GetHashCode();
+        public override int GetHashCode() => HashCode.Combine(Hash, RelaySignature).GetHashCode();
 
-        public override string ToString() => $"Hash:{Hash}; Block:{BlockNumber}; Min:{MinTimestamp}; Max:{MaxTimestamp}; TxCount:{Transactions.Count};";
+        public override string ToString() =>
+            $"Hash:{Hash}; Block:{BlockNumber}; Min:{MinTimestamp}; Max:{MaxTimestamp}; TxCount:{Transactions.Count}; RelaySignature:{RelaySignature};";
     }
 }

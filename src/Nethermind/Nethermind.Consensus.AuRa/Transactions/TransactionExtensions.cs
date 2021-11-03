@@ -13,25 +13,29 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using Nethermind.JsonRpc;
-using Nethermind.JsonRpc.Modules;
-using Nethermind.Mev.Data;
+using Nethermind.Core;
+using Nethermind.Core.Specs;
 
-namespace Nethermind.Mev
+namespace Nethermind.Consensus.AuRa.Transactions
 {
-    // ReSharper disable once ClassNeverInstantiated.Global
+    public static class TransactionExtensions
+    {
+        public static bool IsZeroGasPrice(this Transaction tx, BlockHeader parentHeader, ISpecProvider specProvider)
+        {
+            bool isEip1559Enabled = specProvider.GetSpec(parentHeader.Number + 1).IsEip1559Enabled;
+            bool checkByFeeCap = isEip1559Enabled && tx.IsEip1559;
+            if (checkByFeeCap && !tx.MaxFeePerGas.IsZero) // only 0 gas price transactions are system transactions and can be whitelisted
+            {
+                return false;
+            }
+            else if (!tx.GasPrice.IsZero && !checkByFeeCap)
+            {
+                return false;
+            }
 
-    [RpcModule(ModuleType.Mev)]
-    public interface IMevRpcModule : IRpcModule
-    {        
-        [JsonRpcMethod(Description = "Adds bundle to the tx pool.", IsImplemented = true)]
-        ResultWrapper<bool> eth_sendBundle(MevBundleRpc mevBundleRpc);
-        
-        [JsonRpcMethod(Description = "Adds megabundle to the tx pool.", IsImplemented = true)]
-        ResultWrapper<bool> eth_sendMegabundle(MevMegabundleRpc mevMegabundleRpc);
-        
-        [JsonRpcMethod(Description = "Simulates the bundle behaviour.", IsImplemented = true)]
-        ResultWrapper<TxsResults> eth_callBundle(MevCallBundleRpc mevBundleRpc);
+            return true;
+        }
     }
 }

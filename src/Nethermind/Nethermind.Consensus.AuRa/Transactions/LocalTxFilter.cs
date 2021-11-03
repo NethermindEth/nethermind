@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -16,17 +16,28 @@
 // 
 
 using System;
-using Nethermind.Core.Crypto;
+using Nethermind.Consensus.Transactions;
+using Nethermind.Core;
 
-namespace Nethermind.Mev.Data
+namespace Nethermind.Consensus.AuRa.Transactions
 {
-    public class BundleEventArgs : EventArgs
+    public class LocalTxFilter : ITxFilter
     {
-        public MevBundle MevBundle { get; }
+        private readonly ISigner _signer;
 
-        public BundleEventArgs(MevBundle mevBundle)
+        public LocalTxFilter(ISigner signer)
         {
-            MevBundle = mevBundle;
+            _signer = signer;
+        }
+        
+        public (bool Allowed, string Reason) IsAllowed(Transaction tx, BlockHeader parentHeader)
+        {
+            if (tx.SenderAddress == _signer.Address)
+            {
+                tx.IsServiceTransaction = true;
+            }
+            
+            return (true, string.Empty);
         }
     }
 }
