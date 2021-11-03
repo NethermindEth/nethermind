@@ -22,6 +22,7 @@ using System.Reflection;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
@@ -394,6 +395,8 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                     Eip1559Transition = 15590L,
                     Eip1559FeeCollectorTransition = 15591L,
                     Eip1559FeeCollector = Address.SystemUser,
+                    Eip1559BaseFeeMinValueTransition = 15592L,
+                    Eip1559BaseFeeMinValue = UInt256.UInt128MaxValue,
                     Eip3198Transition = 31980L,
                     Eip3529Transition = 35290L,
                     Eip3541Transition = 35410L,
@@ -451,6 +454,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             TestTransitions(13440L, r => { r.IsEip1344Enabled = true; });
             TestTransitions(15590L, r => { r.IsEip1559Enabled = true; });
             TestTransitions(15591L, r => { r.Eip1559FeeCollector = Address.SystemUser; });
+            TestTransitions(15592L, r => { r.Eip1559BaseFeeMinValue = UInt256.UInt128MaxValue; });
             TestTransitions(18840L, r => { r.IsEip1884Enabled = true; });
             TestTransitions(20280L, r => { r.IsEip2028Enabled = true; });
             TestTransitions(22000L, r => { r.IsEip2200Enabled = true; });

@@ -103,6 +103,16 @@ namespace Nethermind.Specs.ChainSpecStyle
         /// <summary>
         /// Optional, address where burnt EIP-1559 fees will go
         /// </summary>
-        public Address Eip1559FeeCollector { get; set; } 
+        public Address Eip1559FeeCollector { get; set; }
+
+        /// <summary>
+        /// Block from which EIP1559 base fee cannot drop below <see cref="Eip1559BaseFeeMinValue"/>
+        /// </summary>
+        public long? Eip1559BaseFeeMinValueTransition { get; set; }
+        
+        /// <summary>
+        /// Optional, minimal value of EIP1559 base fee
+        /// </summary>
+        public UInt256? Eip1559BaseFeeMinValue { get; set; }
     }
 }

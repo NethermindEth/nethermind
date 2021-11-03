@@ -330,5 +330,7 @@ namespace Nethermind.Core.Specs
         public bool BaseFeeEnabled => IsEip3198Enabled;
         
         public Address? Eip1559FeeCollector => null;
+
+        public UInt256? Eip1559BaseFeeMinValue => null;
     }
 }
