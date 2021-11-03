@@ -41,7 +41,6 @@ namespace Nethermind.Blockchain.Tracing
         {
             /* We force process since we want to process a block that has already been processed in the past and normally it would be ignored.
                We also want to make it read only so the state is not modified persistently in any way. */
-            // _processingOptions = ProcessingOptions.Trace;
 
             blockTracer.StartNewBlockTrace(block);
 

@@ -267,17 +267,7 @@ namespace Nethermind.JsonRpc
                     {
                         if (providedParameter.StartsWith('[') || providedParameter.StartsWith('{'))
                         {
-                            // if ((paramType == typeof(Tuple<TransactionForRpc, string[]>[])) || paramType == typeof(TransactionForRpcWithTraceTypes[]))
-                            // {
-                            //     TransactionForRpcWithTraceTypes executionParamTemp = 
-                            //         _serializer.Deserialize<TransactionForRpcWithTraceTypes>(
-                            //             new JsonTextReader(new StringReader(providedParameter)));
-                            //     executionParam = executionParamTemp;
-                            // }
-                            // else
-                            // {
                             executionParam = _serializer.Deserialize(new JsonTextReader(new StringReader(providedParameter)), paramType);
-                            // }
                         }
                         else
                         {
