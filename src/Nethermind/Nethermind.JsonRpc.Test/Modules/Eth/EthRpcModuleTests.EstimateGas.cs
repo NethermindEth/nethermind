@@ -19,12 +19,15 @@ using System;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 
@@ -255,6 +258,23 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             Assert.AreEqual(
                 "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32015,\"message\":\"revert\"},\"id\":67}",
                 serialized);
+        }
+        
+        [Test]
+        public async Task should_estimate_transaction_with_deployed_code_when_eip3607_enabled()
+        {
+            OverridableReleaseSpec releaseSpec = new(London.Instance) { Eip1559TransitionBlock = 1, IsEip3607Enabled = true };
+            TestSpecProvider specProvider = new(releaseSpec) { ChainId = ChainId.Mainnet, AllowTestChainOverride = false };
+            using Context ctx = await Context.Create(specProvider);
+            
+            Transaction tx = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            TransactionForRpc transaction = new(Keccak.Zero, 1L, 1, tx);
+            ctx._test.State.UpdateCodeHash(TestItem.AddressA, TestItem.KeccakH, London.Instance);
+            transaction.To = TestItem.AddressB;
+
+            string serialized =
+                ctx._test.TestEthRpc("eth_estimateGas", ctx._test.JsonSerializer.Serialize(transaction), "latest");
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x5208\",\"id\":67}", serialized);
         }
     }
 }
