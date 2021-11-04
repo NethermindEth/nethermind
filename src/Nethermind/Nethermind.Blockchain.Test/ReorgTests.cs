@@ -113,6 +113,7 @@ namespace Nethermind.Blockchain.Test
         }
 
         [Test]
+        [Retry(3)]
         public void Test()
         {
             List<Block> events = new();
