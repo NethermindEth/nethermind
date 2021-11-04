@@ -19,6 +19,7 @@ using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Source;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.AccountAbstraction
 {
@@ -26,6 +27,11 @@ namespace Nethermind.AccountAbstraction
     {
         private readonly IUserOperationPool _userOperationPool;
 
+        static AccountAbstractionRpcModule()
+        {
+            Rlp.RegisterDecoders(typeof(UserOperationDecoder).Assembly);
+        }
+        
         public AccountAbstractionRpcModule(IUserOperationPool userOperationPool)
         {
             _userOperationPool = userOperationPool;
