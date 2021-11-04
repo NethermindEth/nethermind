@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using MathGmp.Native;
@@ -168,5 +169,19 @@ namespace Nethermind.JsonRpc.Data
             Type != TxType.AccessList || AccessList == null 
                 ? null 
                 : AccessListItemForRpc.ToAccessList(AccessList);
+        
+        public void EnsureDefaults(long? gasCap)
+        {
+            if (Gas == null || Gas == 0)
+            {
+                Gas = gasCap ?? long.MaxValue;
+            }
+            else
+            {
+                Gas = Math.Min(gasCap ?? long.MaxValue, Gas.Value);
+            }
+
+            From ??= Address.SystemUser;
+        }
     }
 }
