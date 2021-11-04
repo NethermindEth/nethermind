@@ -174,7 +174,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 return;
             }
 
-            if (_stateProvider.IsInvalidContractSender(spec, caller) && !restore)
+            if (!restore && _stateProvider.IsInvalidContractSender(spec, caller))
             {
                 TraceLogInvalidTx(transaction, "SENDER_IS_CONTRACT");
                 QuickFail(transaction, block, txTracer, eip658NotEnabled, "sender has deployed code");

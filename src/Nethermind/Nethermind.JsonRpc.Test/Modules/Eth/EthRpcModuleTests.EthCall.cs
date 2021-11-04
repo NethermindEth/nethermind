@@ -25,6 +25,7 @@ using Nethermind.Evm;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth
@@ -115,7 +116,10 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         [Test]
         public async Task should_not_reject_transactions_with_deployed_code_when_eip3607_enabled()
         {
-            using Context ctx = await Context.CreateWithLondonEnabled();
+            OverridableReleaseSpec releaseSpec = new(London.Instance) { Eip1559TransitionBlock = 1, IsEip3607Enabled = true };
+            TestSpecProvider specProvider = new(releaseSpec) { ChainId = ChainId.Mainnet, AllowTestChainOverride = false };
+            using Context ctx = await Context.Create(specProvider);
+            
             Transaction tx = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject;
             TransactionForRpc transaction = new(Keccak.Zero, 1L, 1, tx);
             ctx._test.State.UpdateCodeHash(TestItem.AddressA, TestItem.KeccakH, London.Instance);

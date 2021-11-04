@@ -117,7 +117,7 @@ namespace Nethermind.Core.Test.Blockchain
         {
             Timestamper = new ManualTimestamper(new DateTime(2020, 2, 15, 12, 50, 30, DateTimeKind.Utc));
             JsonSerializer = new EthereumJsonSerializer();
-            SpecProvider = new OverridableSpecProvider(specProvider ?? MainnetSpecProvider.Instance, s => new OverridableReleaseSpec(s));
+            SpecProvider = CreateSpecProvider(specProvider ?? MainnetSpecProvider.Instance);
             EthereumEcdsa = new EthereumEcdsa(ChainId.Mainnet, LogManager);
             DbProvider = await TestMemDbProvider.InitAsync();
             TrieStore = new TrieStore(StateDb.Innermost, LogManager);
@@ -191,6 +191,13 @@ namespace Nethermind.Core.Test.Blockchain
             await WaitAsync(_resetEvent, "Failed to process genesis in time.");
             await AddBlocksOnStart();
             return this;
+        }
+
+        private static ISpecProvider CreateSpecProvider(ISpecProvider specProvider)
+        {
+            return specProvider is TestSpecProvider { AllowTestChainOverride: false } 
+                ? specProvider 
+                : new OverridableSpecProvider(specProvider, s => new OverridableReleaseSpec(s) { IsEip3607Enabled = false });
         }
 
         private async Task WaitAsync(SemaphoreSlim semaphore, string error, int timeout = DefaultTimeout)
