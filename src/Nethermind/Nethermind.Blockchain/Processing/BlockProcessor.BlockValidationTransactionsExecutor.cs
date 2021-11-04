@@ -47,7 +47,7 @@ namespace Nethermind.Blockchain.Processing
                 _transactionProcessor = transactionProcessor;
                 _stateProvider = stateProvider;
             }
-            
+
             public event EventHandler<TxProcessedEventArgs>? TransactionProcessed; 
         
             public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec)

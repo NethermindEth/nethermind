@@ -58,8 +58,7 @@ namespace Nethermind.Blockchain.Processing
         /// total difficulty.
         /// </summary>
         DoNotUpdateHead = 64,
-        
-        All = 255,
+        All = 127,
         
         /// <summary>
         /// Combination of switches for block producers when they preprocess block for state root calculation.

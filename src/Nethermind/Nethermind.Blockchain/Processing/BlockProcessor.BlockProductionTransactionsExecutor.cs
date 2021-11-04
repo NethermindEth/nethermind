@@ -70,7 +70,6 @@ namespace Nethermind.Blockchain.Processing
             }
 
             protected EventHandler<TxProcessedEventArgs>? _transactionProcessed;
-
             event EventHandler<TxProcessedEventArgs>? IBlockProcessor.IBlockTransactionsExecutor.TransactionProcessed
             {
                 add => _transactionProcessed += value;
