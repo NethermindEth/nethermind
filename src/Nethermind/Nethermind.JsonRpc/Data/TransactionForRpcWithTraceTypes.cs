@@ -23,7 +23,7 @@ namespace Nethermind.JsonRpc.Data
 {
     public class TransactionForRpcWithTraceTypes
     {
-        public TransactionForRpc TransactionFor { get; set; }
+        public TransactionForRpc Transaction { get; set; }
         public string[] TraceTypes { get; set; }
     }
 

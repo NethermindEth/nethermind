@@ -20,7 +20,6 @@ using System.IO;
 using Jint.Native;
 using Nethermind.Cli.Console;
 using Nethermind.Cli.Modules;
-using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;

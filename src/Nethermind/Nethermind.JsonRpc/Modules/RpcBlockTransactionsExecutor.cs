@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,22 +14,18 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
-//
-using Nethermind.Core;
-using Nethermind.Evm.Tracing;
 
-namespace Nethermind.Evm.TransactionProcessing
+using Nethermind.Blockchain.Processing;
+using Nethermind.Evm.TransactionProcessing;
+using Nethermind.State;
+
+namespace Nethermind.JsonRpc.Modules
 {
-    public class CallAndRestoreTransactionProcessorAdapter : ITransactionProcessorAdapter
+    public class RpcBlockTransactionsExecutor : BlockProcessor.BlockValidationTransactionsExecutor
     {
-        private readonly ITransactionProcessor _transactionProcessor;
-
-        public CallAndRestoreTransactionProcessorAdapter(ITransactionProcessor transactionProcessor)
+        public RpcBlockTransactionsExecutor(ITransactionProcessor transactionProcessor, IStateProvider stateProvider) 
+            : base(new CallAndRestoreTransactionProcessorAdapter(transactionProcessor), stateProvider)
         {
-            _transactionProcessor = transactionProcessor;
         }
-
-        public void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer) =>
-            _transactionProcessor.CallAndRestore(transaction, block, txTracer);
     }
 }

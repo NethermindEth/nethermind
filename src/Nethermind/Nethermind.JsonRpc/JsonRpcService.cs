@@ -61,12 +61,6 @@ namespace Nethermind.JsonRpc
                 converterList.Add(converter);
             }
 
-            foreach (JsonConverter converter in TraceModuleFactory.Converters)
-            {
-                _serializer.Converters.Add(converter);
-                converterList.Add(converter);
-            }
-
             BlockParameterConverter blockParameterConverter = new();
             _serializer.Converters.Add(blockParameterConverter);
             converterList.Add(blockParameterConverter);
@@ -126,7 +120,6 @@ namespace Nethermind.JsonRpc
         {
             ParameterInfo[] expectedParameters = method.Info.GetParameters();
             string[] providedParameters = request.Params ?? Array.Empty<string>();
-
             if (_logger.IsInfo) _logger.Info($"Executing JSON RPC call {methodName} with params [{string.Join(',', providedParameters)}]");
 
             int missingParamsCount = expectedParameters.Length - providedParameters.Length + (providedParameters.Count(string.IsNullOrWhiteSpace));
@@ -352,6 +345,4 @@ namespace Nethermind.JsonRpc
             };
         }
     }
-    
 }
-

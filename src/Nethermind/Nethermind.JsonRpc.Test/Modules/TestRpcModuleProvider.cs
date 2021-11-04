@@ -37,7 +37,6 @@ namespace Nethermind.JsonRpc.Test.Modules
     {
         private readonly JsonRpcConfig _jsonRpcConfig;
         private readonly RpcModuleProvider _provider;
-        
 
         public TestRpcModuleProvider(T module)
         {

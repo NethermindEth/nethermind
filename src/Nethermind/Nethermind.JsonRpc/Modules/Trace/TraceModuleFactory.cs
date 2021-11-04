@@ -24,6 +24,7 @@ using Nethermind.Blockchain.Tracing;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Trie.Pruning;
@@ -74,6 +75,8 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 new(_dbProvider, _trieNodeResolver, _blockTree, _specProvider, _logManager);
             
             IRewardCalculator rewardCalculator = _rewardCalculatorSource.Get(txProcessingEnv.TransactionProcessor);
+
+            RpcBlockTransactionsExecutor rpcBlockTransactionsExecutor = new(txProcessingEnv.TransactionProcessor, txProcessingEnv.StateProvider);
             
             ReadOnlyChainProcessingEnv chainProcessingEnv = new(
                 txProcessingEnv,
@@ -83,9 +86,10 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 _receiptStorage,
                 _dbProvider,
                 _specProvider,
-                _logManager);
+                _logManager,
+                rpcBlockTransactionsExecutor);
             
-            Tracer tracer = new(chainProcessingEnv.StateProvider, chainProcessingEnv.ChainProcessor, ProcessingOptions.TraceAndRestore);
+            Tracer tracer = new(chainProcessingEnv.StateProvider, chainProcessingEnv.ChainProcessor);
 
             return new TraceRpcModule(_receiptStorage, tracer, _blockTree, _jsonRpcConfig, _specProvider, _logManager);
         }

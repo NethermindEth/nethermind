@@ -224,7 +224,8 @@ namespace Nethermind.Evm
                                     }
                                     else
                                     {
-                                        _txTracer.ReportActionEnd(currentState.GasAvailable, _returnDataBuffer);                                    }
+                                        _txTracer.ReportActionEnd(currentState.GasAvailable, _returnDataBuffer);
+                                    }
                                 }
                             }
                         }

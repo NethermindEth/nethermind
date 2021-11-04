@@ -34,7 +34,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         {
             existingValue ??= new();
             JArray jArray = JArray.Load(reader);
-            existingValue.TransactionFor = serializer.Deserialize<TransactionForRpc>(jArray[0].CreateReader()) ?? throw new InvalidOperationException();
+            existingValue.Transaction = serializer.Deserialize<TransactionForRpc>(jArray[0].CreateReader()) ?? throw new InvalidOperationException();
             existingValue.TraceTypes = serializer.Deserialize<string[]>(jArray[1].CreateReader()) ?? throw new InvalidOperationException();
 
             return existingValue;

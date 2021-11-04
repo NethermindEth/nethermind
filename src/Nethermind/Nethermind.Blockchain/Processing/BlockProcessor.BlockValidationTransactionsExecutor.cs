@@ -34,15 +34,17 @@ namespace Nethermind.Blockchain.Processing
     {
         public class BlockValidationTransactionsExecutor : IBlockProcessor.IBlockTransactionsExecutor
         {
-            private ITransactionProcessorAdapter _executeTransactionProcessor;
-            private ITransactionProcessorAdapter _callAndRestoreTransactionProcessor;
+            private readonly ITransactionProcessorAdapter _transactionProcessor;
             private readonly IStateProvider _stateProvider;
-        
+
             public BlockValidationTransactionsExecutor(ITransactionProcessor transactionProcessor, IStateProvider stateProvider)
+                : this(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider)
             {
-                _executeTransactionProcessor = new ExecuteTransactionProcessorAdapter(transactionProcessor);
-                _callAndRestoreTransactionProcessor =
-                    new CallAndRestoreTransactionProcessorAdapter(transactionProcessor);
+            }
+
+            protected BlockValidationTransactionsExecutor(ITransactionProcessorAdapter transactionProcessor, IStateProvider stateProvider)
+            {
+                _transactionProcessor = transactionProcessor;
                 _stateProvider = stateProvider;
             }
             
@@ -60,14 +62,7 @@ namespace Nethermind.Blockchain.Processing
         
             private void ProcessTransaction(Block block, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
             {
-                ITransactionProcessorAdapter transactionProcessorAdapter = _executeTransactionProcessor;
-                
-                if ((processingOptions & ProcessingOptions.TraceAndRestore) == ProcessingOptions.TraceAndRestore)
-                {
-                    transactionProcessorAdapter = _callAndRestoreTransactionProcessor;
-                }
-
-                transactionProcessorAdapter.ProcessTransaction(block, currentTx, receiptsTracer, processingOptions, _stateProvider);
+                _transactionProcessor.ProcessTransaction(block, currentTx, receiptsTracer, processingOptions, _stateProvider);
                 TransactionProcessed?.Invoke(this, new TxProcessedEventArgs(index, currentTx, receiptsTracer.TxReceipts[index]));
             }
         }

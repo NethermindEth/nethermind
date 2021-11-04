@@ -59,10 +59,6 @@ namespace Nethermind.Blockchain.Processing
         /// </summary>
         DoNotUpdateHead = 64,
         
-        /// <summary>
-        /// Restore state after processing.
-        /// </summary>
-        Restore = 128,
         All = 255,
         
         /// <summary>
@@ -74,8 +70,6 @@ namespace Nethermind.Blockchain.Processing
         /// EVM tracing needs to process blocks without storing the data on chain.
         /// </summary>
         Trace = ForceProcessing | ReadOnlyChain | DoNotVerifyNonce | NoValidation,
-
-        TraceAndRestore = Trace | Restore,
 
         EthereumMerge = ReadOnlyChain | ForceProcessing | DoNotUpdateHead | IgnoreParentNotOnMainChain
     }

@@ -31,6 +31,5 @@ namespace Nethermind.Evm.TransactionProcessing
         
         public void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer) =>
             _transactionProcessor.BuildUp(transaction, block, txTracer);
-        
     }
 }
