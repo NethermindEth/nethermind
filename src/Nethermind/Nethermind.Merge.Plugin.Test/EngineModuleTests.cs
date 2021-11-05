@@ -23,7 +23,6 @@ using System.Linq.Expressions;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
-using Humanizer;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
@@ -49,87 +48,6 @@ namespace Nethermind.Merge.Plugin.Test
         private static readonly DateTime Timestamp = DateTimeOffset.FromUnixTimeSeconds(1000).UtcDateTime;
         private ITimestamper Timestamper { get; } = new ManualTimestamper(Timestamp);
 
-        [Test]
-        public async Task processing_block_should_serialize_valid_response()
-        {
-            using MergeTestBlockchain chain = await CreateBlockChain();
-            IEngineRpcModule rpc = CreateEngineModule(chain);
-            Keccak startingHead = chain.BlockTree.HeadHash;
-            Keccak random = Keccak.Zero;
-            Address feeRecipient = Address.Zero;
-            UInt256 timestamp = Timestamper.UnixTime.Seconds;
-            
-            UInt256 expectedPayloadId = 0;
-           
-            var forkChoiceUpdatedParams = new
-            {
-                headBlockHash = startingHead.ToString(true),
-                safeBlockHash = startingHead.ToString(true),
-                finalizedBlockHash = Keccak.Zero.ToString(true),
-            };
-            var preparePayloadParams = new
-            {
-                parentHash = startingHead.ToString(true),
-                timestamp = timestamp.ToHexString(true),
-                random = random.ToString(true),
-                feeRecipient = feeRecipient.ToString(true),
-            };
-            string parameters = $"{JsonConvert.SerializeObject(forkChoiceUpdatedParams)},{JsonConvert.SerializeObject(preparePayloadParams)}";
-            // prepare a payload
-            string result = RpcTest.TestSerializedRequest(rpc,"engine_forkchoiceUpdatedV1", parameters);
-            result.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":{{\"status\":\"VALID\",\"payloadId\":\"{expectedPayloadId.ToHexString(true)}\"}},\"id\":67}}");
-            
-            Keccak blockHash = new Keccak("0x33228284b2c8d36e3fd34c31de3ab0604412bf9ab71725307d13daa2c4f44348");
-            var expectedPayload = new
-            {
-                parentHash = startingHead,
-                coinbase = feeRecipient,
-                stateRoot = chain.BlockTree.Head!.StateRoot!.ToString(true),
-                receiptRoot = chain.BlockTree.Head!.ReceiptsRoot!.ToString(true),
-                logsBloom = Bloom.Empty.ToString(),
-                random = random.ToString(true),
-                blockNumber = "0x1",
-                gasLimit = chain.BlockTree.Head!.GasLimit.ToHexString(true),
-                gasUsed = "0x0",
-                timestamp = "0x5",
-                extraData = "0x",
-                baseFeePerGas = chain.BlockTree.Head!.BaseFeePerGas.ToHexString(false),
-                blockHash = blockHash.ToString(true),
-                transaction = new List<object>(),
-            };
-            string expectedPayloadString = JsonConvert.SerializeObject(expectedPayload);
-            // get the payload
-            result = RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV1", expectedPayloadId.ToHexString(true));
-            result.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":{expectedPayload},\"id\":67}}");
-            // execute the payload
-            result = RpcTest.TestSerializedRequest(rpc, "engine_executePayloadV1", expectedPayloadString);
-            result.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":{{\"status\":\"VALID\",\"latestValidHash\":\"{blockHash}\"}},\"id\":67}}");
-            
-            forkChoiceUpdatedParams = new
-            {
-                headBlockHash = blockHash.ToString(true),
-                safeBlockHash = blockHash.ToString(true),
-                finalizedBlockHash = startingHead.ToString(true),
-            };
-            preparePayloadParams = null;
-            parameters = $"{forkChoiceUpdatedParams},{preparePayloadParams}";
-            // update the fork choice
-            result = RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV1", parameters);
-            result.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":{{\"status\":\"VALID\",\"payloadId\":\"0x\"}},\"id\":67}}");
-        }
-    
-        [Test]
-        public async Task getPayload_should_serialize_unknown_payload_response_properly()
-        {
-            using MergeTestBlockchain chain = await CreateBlockChain();
-            IEngineRpcModule rpc = CreateEngineModule(chain);
-            UInt256 payloadId = 111;
-
-            string parameters = payloadId.ToHexString(true);
-            string result = RpcTest.TestSerializedRequest(rpc,"engine_getPayload", parameters);
-            result.Should().Be("{{\"jsonrpc\":\"2.0\",\"error\":{\"code\":5,\"message\":\"unknown payload\"},\"id\":67}}");
-        }
-        
         [Test]
         public async Task rpcModule_should_serialize_unknown_header_response_properly()
         {
