@@ -23,6 +23,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
@@ -67,7 +68,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             _logger = logManager.GetClassLogger();
         }
 
-        public ResultWrapper<ForkchoiceUpdatedV1Result> Handle(ForkchoiceStateV1 forkchoiceState, PayloadAttributes payloadAttributes)
+        public ResultWrapper<ForkchoiceUpdatedV1Result> Handle(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes)
         {
             if (_ethSyncingInfo.IsSyncing())
             {
@@ -92,7 +93,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 if (_logger.IsWarn) _logger.Warn($"Cannot finalize block. The current finalized block is: {_manualBlockFinalizationManager.LastFinalizedHash}, the requested hash: {forkchoiceState.FinalizedBlockHash}");
             
             // _blockConfirmationManager.Confirm(confirmedHeader);
-            ulong? payloadId = null;
+            ulong payloadId = 0;
             _blockTree.UpdateMainChain(blocks!, true, true);
             bool success = _blockTree.Head == newHeadBlock;
             if (success)
@@ -113,7 +114,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
 
 
-            return ResultWrapper<ForkchoiceUpdatedV1Result>.Success(new ForkchoiceUpdatedV1Result() { PayloadId = payloadId, Status = EngineStatus.Success});
+            return ResultWrapper<ForkchoiceUpdatedV1Result>.Success(new ForkchoiceUpdatedV1Result() { PayloadId = payloadId.ToHexString(false), Status = EngineStatus.Success});
         }
 
         private (BlockHeader? BlockHeader, string? ErrorMsg) EnsureHeaderForConfirmation(Keccak confirmedBlockHash)

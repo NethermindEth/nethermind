@@ -21,6 +21,6 @@ namespace Nethermind.Merge.Plugin.Data.V1
     {
         public string Status { get; set; }
         
-        public ulong? PayloadId { get; set; }
+        public string PayloadId { get; set; }
     }
 }
