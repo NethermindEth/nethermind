@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,28 +15,18 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
-using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Core;
-using Nethermind.Evm.Tracing;
+using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
 namespace Nethermind.Consensus.Producers
 {
-    public class BuildBlocksWhenRequested : IManualBlockProductionTrigger
+    public class PayloadAttributes
     {
-        public event EventHandler<BlockProductionEventArgs>? TriggerBlockProduction;
+        public UInt256 Timestamp { get; set; }
         
-        public Task<Block?> BuildBlock(
-            BlockHeader? parentHeader = null,
-            CancellationToken? cancellationToken = null, 
-            IBlockTracer? blockTracer = null,
-            PayloadAttributes payloadAttributes = null)
-        {
-            BlockProductionEventArgs args = new(parentHeader, cancellationToken, blockTracer, payloadAttributes);
-            TriggerBlockProduction?.Invoke(this, args);
-            return args.BlockProductionTask;
-        }
+        public Keccak Random { get; set; }
+        
+        public Address FeeRecipient { get; set; }
     }
 }

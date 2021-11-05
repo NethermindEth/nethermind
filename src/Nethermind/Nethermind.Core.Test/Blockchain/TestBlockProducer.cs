@@ -73,10 +73,10 @@ namespace Nethermind.Core.Test.Blockchain
             }
         }
 
-        protected override Task<Block?> TryProduceNewBlock(CancellationToken token, BlockHeader? parentHeader, IBlockTracer? blockTracer = null, Address? blockAuthor = null, UInt256? timestamp = null)
+        protected override Task<Block?> TryProduceNewBlock(CancellationToken token, BlockHeader? parentHeader, IBlockTracer? blockTracer = null, PayloadAttributes? payloadAttributes = null)
         {
             parentHeader ??= BlockParent;
-            return base.TryProduceNewBlock(token, parentHeader, blockTracer, blockAuthor);
+            return base.TryProduceNewBlock(token, parentHeader, blockTracer, payloadAttributes);
         }
     }
 }

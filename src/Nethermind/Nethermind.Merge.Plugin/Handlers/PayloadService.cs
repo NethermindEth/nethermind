@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -31,6 +31,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Merge.Plugin.Data.V1;
 using Nethermind.State;
 
 namespace Nethermind.Merge.Plugin.Handlers
@@ -41,14 +42,15 @@ namespace Nethermind.Merge.Plugin.Handlers
     /// by calling a GetPayload method.
     /// https://hackmd.io/@n0ble/consensus_api_design_space 
     /// </summary>
-    public class PayloadStorage
+    public class PayloadService : IPayloadService
     {
         private readonly Eth2BlockProductionContext _idealBlockContext;
         private readonly Eth2BlockProductionContext _emptyBlockContext;
         private readonly IInitConfig _initConfig;
+        private readonly ISealer _sealer;
         private readonly ILogger _logger;
         private readonly object _locker = new();
-        private uint _currentPayloadId;
+        private uint _currentPayloadId = 1;
         private ulong _cleanupDelay = 12; // in seconds
         private TaskQueue _taskQueue = new TaskQueue();
 
@@ -58,26 +60,35 @@ namespace Nethermind.Merge.Plugin.Handlers
         private readonly ConcurrentDictionary<ulong, BlockTaskAndRandom> _payloadStorage =
             new();
 
-        public PayloadStorage(
+        public PayloadService(
             Eth2BlockProductionContext idealBlockContext,
             Eth2BlockProductionContext emptyBlockContext,
             IInitConfig initConfig,
+            ISealer sealer,
             ILogManager logManager)
         {
             _idealBlockContext = idealBlockContext;
             _emptyBlockContext = emptyBlockContext;
             _initConfig = initConfig;
+            _sealer = sealer;
             _logger = logManager.GetClassLogger();
         }
 
+        public ulong StartPreparingPayload(BlockHeader parentHeader, PayloadAttributes payloadAttributes)
+        {
+            ulong payloadId = RentNextPayloadId();
+            payloadAttributes.FeeRecipient = payloadAttributes.FeeRecipient == Address.Zero ? _sealer.Address : payloadAttributes.FeeRecipient;
+            GeneratePayload(payloadId, parentHeader, payloadAttributes);
+            return payloadId;
+        }
 
-        public async Task GeneratePayload(ulong payloadId, Keccak random, BlockHeader parentHeader, Address blockAuthor,
-            UInt256 timestamp)
+
+        private async Task GeneratePayload(ulong payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes)
         {
             using CancellationTokenSource cts = new(_timeout);
             
-            await ProduceEmptyBlock(payloadId, random, parentHeader, blockAuthor, timestamp, cts);
-            await ProduceIdealBlock(payloadId, random, parentHeader, blockAuthor, timestamp, cts);
+            await ProduceEmptyBlock(payloadId, parentHeader, payloadAttributes, cts);
+            await ProduceIdealBlock(payloadId, parentHeader, payloadAttributes, cts);
             
             await Task.Delay(TimeSpan.FromSeconds(_cleanupDelay), CancellationToken.None)
                 .ContinueWith(_ =>
@@ -87,13 +98,12 @@ namespace Nethermind.Merge.Plugin.Handlers
             await CleanupOldPayloadWithDelay(payloadId, TimeSpan.FromSeconds(_cleanupDelay));
         }
 
-        private async Task ProduceEmptyBlock(ulong payloadId, Keccak random, BlockHeader parentHeader, Address blockAuthor,
-            UInt256 timestamp, CancellationTokenSource cts)
+        private async Task ProduceEmptyBlock(ulong payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, CancellationTokenSource cts)
         {
             if (_logger.IsTrace) _logger.Trace($"Preparing empty block from payload {payloadId} with parent {parentHeader}");
             Task<Block?> emptyBlock =
                 _emptyBlockContext.BlockProductionTrigger
-                    .BuildBlock(parentHeader, cts.Token, null, new PayloadAttributes() { FeeRecipient = blockAuthor, Timestamp = timestamp })
+                    .BuildBlock(parentHeader, cts.Token, null, payloadAttributes)
                     .ContinueWith((x) =>
                     {
                         x.Result.Header.StateRoot = parentHeader.StateRoot;
@@ -102,31 +112,28 @@ namespace Nethermind.Merge.Plugin.Handlers
                     })
                     .ContinueWith(LogProductionResult, cts.Token);
             
-            BlockTaskAndRandom emptyBlockTaskTuple = new(emptyBlock, random);
+            BlockTaskAndRandom emptyBlockTaskTuple = new(emptyBlock, payloadAttributes.Random);
             bool _ = _payloadStorage.TryAdd(payloadId, emptyBlockTaskTuple);
             await emptyBlock;
             if (_logger.IsTrace) _logger.Trace($"Prepared empty block from payload {payloadId} block result: {emptyBlock.Result}");
         }
         
-        private async Task ProduceIdealBlock(ulong payloadId, Keccak random, BlockHeader parentHeader, Address blockAuthor,
-            UInt256 timestamp, CancellationTokenSource cts)
+        private async Task ProduceIdealBlock(ulong payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, CancellationTokenSource cts)
         {
             if (_logger.IsTrace) _logger.Trace($"Preparing ideal block from payload {payloadId} with parent {parentHeader}");
             Task<Block?> idealBlock =
-                _idealBlockContext.BlockProductionTrigger.BuildBlock(parentHeader, cts.Token, null, new PayloadAttributes() { FeeRecipient = blockAuthor, Timestamp = timestamp })
+                _idealBlockContext.BlockProductionTrigger.BuildBlock(parentHeader, cts.Token, null, payloadAttributes)
                     // ToDo investigate why it is needed, because we should have processing blocks in BlockProducerBase
                     .ContinueWith((x) => Process(x.Result, parentHeader, _idealBlockContext.BlockProducerEnv), cts.Token) 
                     .ContinueWith(LogProductionResult, cts.Token);
             
-            BlockTaskAndRandom idealBlockTaskTuple = new(idealBlock, random);
+            BlockTaskAndRandom idealBlockTaskTuple = new(idealBlock, payloadAttributes.Random);
             
             _payloadStorage[payloadId] = idealBlockTaskTuple;
             await idealBlock;
             if (_logger.IsTrace) _logger.Trace($"Prepared ideal block from payload {payloadId} block result: {idealBlock.Result}");
         }
         
-        
-
         private Block? LogProductionResult(Task<Block?> t)
         {
             if (t.IsCompletedSuccessfully)
@@ -167,19 +174,19 @@ namespace Nethermind.Merge.Plugin.Handlers
             return null;
         }
 
-        public uint RentNextPayloadId()
+        private ulong RentNextPayloadId()
         {
             lock (_locker)
             {
                 while (_payloadStorage.ContainsKey(_currentPayloadId))
                 {
-                    if (_currentPayloadId == uint.MaxValue)
-                        _currentPayloadId = 0;
+                    if (_currentPayloadId == ulong.MaxValue)
+                        _currentPayloadId = 1;
                     else
                         ++_currentPayloadId;
                 }
 
-                uint rentedPayloadId = _currentPayloadId;
+                ulong rentedPayloadId = _currentPayloadId;
                 ++_currentPayloadId;
                 return rentedPayloadId;
             }

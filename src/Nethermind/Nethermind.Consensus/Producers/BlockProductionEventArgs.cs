@@ -29,9 +29,8 @@ namespace Nethermind.Consensus.Producers
     {
         public BlockHeader? ParentHeader { get; }
         public IBlockTracer? BlockTracer { get; }
-        public Address? BlockAuthor { get; }
         
-        public UInt256? Timestamp { get; }
+        public PayloadAttributes? PayloadAttributes { get; }
         public CancellationToken CancellationToken { get; }
         public Task<Block?> BlockProductionTask { get; set; } = Task.FromResult<Block?>(null);
 
@@ -39,13 +38,11 @@ namespace Nethermind.Consensus.Producers
             BlockHeader? parentHeader = null, 
             CancellationToken? cancellationToken = null,
             IBlockTracer? blockTracer = null,
-            Address? blockAuthor = null,
-            UInt256? timestamp = null)
+            PayloadAttributes? payloadAttributes = null)
         {
             ParentHeader = parentHeader;
             BlockTracer = blockTracer;
-            BlockAuthor = blockAuthor;
-            Timestamp = timestamp;
+            PayloadAttributes = payloadAttributes;
             CancellationToken = cancellationToken ?? CancellationToken.None;
         }
 

@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using Nethermind.Consensus.Producers;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data.V1;
 
@@ -22,6 +23,6 @@ namespace Nethermind.Merge.Plugin.Handlers
 {
     public interface IForkchoiceUpdatedV1Handler
     {
-        ResultWrapper<ForkchoiceUpdatedV1Result> Handle(ForkchoiceStateV1 forkchoiceState, PayloadAttributesV1 payloadAttributes);
+        ResultWrapper<ForkchoiceUpdatedV1Result> Handle(ForkchoiceStateV1 forkchoiceState, PayloadAttributes payloadAttributes);
     }
 }

@@ -20,8 +20,10 @@ using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
@@ -31,7 +33,7 @@ using Nethermind.State;
 namespace Nethermind.Merge.Plugin.Handlers.V1
 {
     /// <summary>
-    /// https://hackmd.io/@n0ble/consensus_api_design_space
+    /// https://github.com/ethereum/execution-apis/blob/main/src/engine/specification.md
     /// Propagates the change in the fork choice to the execution client
     /// </summary>
     public class ForkchoiceUpdatedV1Handler : IForkchoiceUpdatedV1Handler
@@ -40,7 +42,9 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         private readonly IStateProvider _stateProvider;
         private readonly IManualBlockFinalizationManager _manualBlockFinalizationManager;
         private readonly IPoSSwitcher _poSSwitcher;
+        private readonly IEthSyncingInfo _ethSyncingInfo;
         private readonly IBlockConfirmationManager _blockConfirmationManager;
+        private readonly IPayloadService _payloadService;
         private readonly ILogger _logger;
 
         public ForkchoiceUpdatedV1Handler(
@@ -48,19 +52,28 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             IStateProvider stateProvider,
             IManualBlockFinalizationManager manualBlockFinalizationManager, 
             IPoSSwitcher poSSwitcher,
+            IEthSyncingInfo ethSyncingInfo,
             IBlockConfirmationManager blockConfirmationManager,
+            IPayloadService payloadService,
             ILogManager logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _manualBlockFinalizationManager = manualBlockFinalizationManager ?? throw new ArgumentNullException(nameof(manualBlockFinalizationManager));
             _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
+            _ethSyncingInfo = ethSyncingInfo ?? throw new ArgumentNullException(nameof(ethSyncingInfo));
             _blockConfirmationManager = blockConfirmationManager ?? throw new ArgumentNullException(nameof(blockConfirmationManager));
+            _payloadService = payloadService;
             _logger = logManager.GetClassLogger();
         }
 
-        public ResultWrapper<ForkchoiceUpdatedV1Result> Handle(ForkchoiceStateV1 forkchoiceState, PayloadAttributesV1 payloadAttributes)
+        public ResultWrapper<ForkchoiceUpdatedV1Result> Handle(ForkchoiceStateV1 forkchoiceState, PayloadAttributes payloadAttributes)
         {
+            if (_ethSyncingInfo.IsSyncing())
+            {
+                return ResultWrapper<ForkchoiceUpdatedV1Result>.Success(new ForkchoiceUpdatedV1Result() { Status = EngineStatus.Syncing});
+            }
+            
             (BlockHeader? finalizedHeader, string? finalizationErrorMsg) = EnsureHeaderForFinalization(forkchoiceState.FinalizedBlockHash);
             if (finalizationErrorMsg != null)
                 return ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(finalizationErrorMsg, MergeErrorCodes.UnknownHeader);
@@ -79,6 +92,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 if (_logger.IsWarn) _logger.Warn($"Cannot finalize block. The current finalized block is: {_manualBlockFinalizationManager.LastFinalizedHash}, the requested hash: {forkchoiceState.FinalizedBlockHash}");
             
             // _blockConfirmationManager.Confirm(confirmedHeader);
+            ulong? payloadId = null;
             _blockTree.UpdateMainChain(blocks!, true, true);
             bool success = _blockTree.Head == newHeadBlock;
             if (success)
@@ -86,13 +100,20 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 _poSSwitcher.TrySwitchToPos(newHeadBlock!.Header);
                 _stateProvider.ResetStateTo(newHeadBlock.StateRoot!);
                 if (_logger.IsInfo) _logger.Info($"Block {forkchoiceState.HeadBlockHash} was set as head");
+
+                if (payloadAttributes != null)
+                {
+                    payloadId = _payloadService.StartPreparingPayload(newHeadBlock!.Header, payloadAttributes);
+                }
             }
             else
             {
                 if (_logger.IsWarn) _logger.Warn($"Block {forkchoiceState.FinalizedBlockHash} was not set as head.");
             }
 
-            return ResultWrapper<ForkchoiceUpdatedV1Result>.Success(new ForkchoiceUpdatedV1Result() { PayloadId = null, Status = EngineStatus.Success});
+
+
+            return ResultWrapper<ForkchoiceUpdatedV1Result>.Success(new ForkchoiceUpdatedV1Result() { PayloadId = payloadId, Status = EngineStatus.Success});
         }
 
         private (BlockHeader? BlockHeader, string? ErrorMsg) EnsureHeaderForConfirmation(Keccak confirmedBlockHash)

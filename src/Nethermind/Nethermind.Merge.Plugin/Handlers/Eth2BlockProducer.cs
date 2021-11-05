@@ -117,9 +117,9 @@ namespace Nethermind.Merge.Plugin.Handlers
         {
         }
 
-        protected override Block PrepareBlock(BlockHeader parent, Address? blockAuthor, UInt256? timestamp)
+        protected override Block PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
         {
-            Block block = base.PrepareBlock(parent, blockAuthor, timestamp);
+            Block block = base.PrepareBlock(parent, payloadAttributes);
             
             // TODO: this seems to me that it should be done in the Eth2 seal engine?
             block.Header.MixHash = Keccak.Zero;

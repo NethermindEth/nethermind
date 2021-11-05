@@ -96,7 +96,7 @@ namespace Nethermind.Consensus.Producers
         private void OnTriggerBlockProduction(object? sender, BlockProductionEventArgs e)
         {
             BlockHeader? parent = BlockTree.GetProducedBlockParent(e.ParentHeader);
-            e.BlockProductionTask = TryProduceAndAnnounceNewBlock(e.CancellationToken, parent, e.BlockTracer, e.BlockAuthor, e.Timestamp);
+            e.BlockProductionTask = TryProduceAndAnnounceNewBlock(e.CancellationToken, parent, e.BlockTracer, e.PayloadAttributes);
         }
 
         public virtual Task Start()
@@ -125,7 +125,7 @@ namespace Nethermind.Consensus.Producers
             return IsRunning() && (maxProducingInterval == null || _lastProducedBlockDateTime.AddSeconds(maxProducingInterval.Value) > DateTime.UtcNow);
         }
 
-        private async Task<Block?> TryProduceAndAnnounceNewBlock(CancellationToken token, BlockHeader? parentHeader, IBlockTracer? blockTracer = null, Address? blockAuthor = null, UInt256? timestamp = null)
+        private async Task<Block?> TryProduceAndAnnounceNewBlock(CancellationToken token, BlockHeader? parentHeader, IBlockTracer? blockTracer = null, PayloadAttributes? payloadAttributes = null)
         {
             using CancellationTokenSource tokenSource = CancellationTokenSource.CreateLinkedTokenSource(token, _producerCancellationToken!.Token);
             token = tokenSource.Token;
@@ -135,7 +135,7 @@ namespace Nethermind.Consensus.Producers
             {
                 try
                 {
-                    block = await TryProduceNewBlock(token, parentHeader, blockTracer, blockAuthor, timestamp);
+                    block = await TryProduceNewBlock(token, parentHeader, blockTracer, payloadAttributes);
                     if (block is not null)
                     {
                         BlockProduced?.Invoke(this, new BlockEventArgs(block));
@@ -160,7 +160,7 @@ namespace Nethermind.Consensus.Producers
             return block;
         }
 
-        protected virtual Task<Block?> TryProduceNewBlock(CancellationToken token, BlockHeader? parentHeader, IBlockTracer? blockTracer = null, Address? blockAuthor = null, UInt256? timestamp = null)
+        protected virtual Task<Block?> TryProduceNewBlock(CancellationToken token, BlockHeader? parentHeader, IBlockTracer? blockTracer = null, PayloadAttributes? payloadAttributes = null)
         {
             if (parentHeader == null)
             {
@@ -171,7 +171,7 @@ namespace Nethermind.Consensus.Producers
                 if (Sealer.CanSeal(parentHeader.Number + 1, parentHeader.Hash))
                 {
                     Interlocked.Exchange(ref Metrics.CanProduceBlocks, 1);
-                    return ProduceNewBlock(parentHeader, token, blockTracer, blockAuthor, timestamp);
+                    return ProduceNewBlock(parentHeader, token, blockTracer, payloadAttributes);
                 }
                 else
                 {
@@ -183,11 +183,11 @@ namespace Nethermind.Consensus.Producers
             return Task.FromResult((Block?)null);
         }
 
-        private Task<Block?> ProduceNewBlock(BlockHeader parent, CancellationToken token, IBlockTracer? blockTracer, Address? blockAuthor, UInt256? timestamp)
+        private Task<Block?> ProduceNewBlock(BlockHeader parent, CancellationToken token, IBlockTracer? blockTracer, PayloadAttributes? payloadAttributes = null)
         {
             if (TrySetState(parent.StateRoot))
             {
-                Block block = PrepareBlock(parent, blockAuthor, timestamp);
+                Block block = PrepareBlock(parent, payloadAttributes);
                 if (PreparedBlockCanBeMined(block))
                 {
                     Block? processedBlock = ProcessPreparedBlock(block, blockTracer);
@@ -279,20 +279,21 @@ namespace Nethermind.Consensus.Producers
             return _txSource.GetTransactions(parent, gasLimit);
         }
 
-        protected virtual Block PrepareBlock(BlockHeader parent, Address? blockAuthor = null, UInt256? manualTimestamp = null)
+        protected virtual Block PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
         {
             UInt256 timestamp = UInt256.Max(parent.Timestamp + 1, Timestamper.UnixTime.Seconds);
+            Address blockAuthor = payloadAttributes?.FeeRecipient ?? Sealer.Address;
             BlockHeader header = new(
                 parent.Hash!,
                 Keccak.OfAnEmptySequenceRlp,
-                blockAuthor ?? Sealer.Address,
+                payloadAttributes?.FeeRecipient ?? Sealer.Address,
                 UInt256.Zero, 
                 parent.Number + 1,
                 _gasLimitCalculator.GetGasLimit(parent),
-                manualTimestamp ?? timestamp,
+                payloadAttributes?.Timestamp ?? timestamp,
                 GetExtraData())
             {
-                Author = blockAuthor ?? Sealer.Address
+                Author = blockAuthor
             };
             
             UInt256 difficulty = _difficultyCalculator.Calculate(header, parent);

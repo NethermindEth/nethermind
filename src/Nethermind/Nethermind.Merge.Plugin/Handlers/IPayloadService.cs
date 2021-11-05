@@ -15,18 +15,13 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using Nethermind.Consensus.Producers;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Int256;
 
-namespace Nethermind.Merge.Plugin.Data.V1
+namespace Nethermind.Merge.Plugin.Handlers
 {
-    public class PayloadAttributesV1
+    public interface IPayloadService
     {
-        public UInt256 Timestamp { get; set; }
-        
-        public Keccak Random { get; set; }
-        
-        public Address FeeRecipient { get; set; }
+        ulong StartPreparingPayload(BlockHeader parentHeader, PayloadAttributes payloadAttributes);
     }
 }
