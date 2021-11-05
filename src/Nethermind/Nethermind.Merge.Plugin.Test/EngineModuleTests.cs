@@ -35,8 +35,10 @@ using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
 using NUnit.Framework;
 using Nethermind.Int256;
+using Nethermind.JsonRpc.Test;
 using Nethermind.State;
 using Nethermind.Trie;
+using Newtonsoft.Json;
 
 namespace Nethermind.Merge.Plugin.Test
 {
@@ -45,6 +47,17 @@ namespace Nethermind.Merge.Plugin.Test
     {
         private static readonly DateTime Timestamp = DateTimeOffset.FromUnixTimeSeconds(1000).UtcDateTime;
         private ITimestamper Timestamper { get; } = new ManualTimestamper(Timestamp);
+
+        [Test]
+        public async Task rpcModule_should_serialize_unknown_header_response_properly()
+        {
+            using MergeTestBlockchain chain = await CreateBlockChain();
+            IEngineRpcModule rpc = CreateEngineModule(chain);
+
+            string parameters = "{{\"blockHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"status\":\"VALID\"}}";
+            string result = RpcTest.TestSerializedRequest(rpc,"engine_consensusValidated", parameters);
+            result.Should().Be("{{\"jsonrpc\":\"2.0\",\"error\":{\"code\":4,\"message\":\"unknown header\"},\"id\":67}}");
+        }
 
         [Test, Retry(3)]
         public async Task preparePayload_should_create_block_on_top_of_genesis()
@@ -711,6 +724,8 @@ namespace Nethermind.Merge.Plugin.Test
                 .Excluding(t => t.Timestamp)
             );
         }
+        
+        
 
         private (UInt256, UInt256) AddTransactions(MergeTestBlockchain chain, BlockRequestResult newBlockRequest,
             PrivateKey from, Address to, uint count, int value, out BlockHeader parentHeader)
@@ -872,4 +887,4 @@ namespace Nethermind.Merge.Plugin.Test
             }
         }
     }
-}
+}      
