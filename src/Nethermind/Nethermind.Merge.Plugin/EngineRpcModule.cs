@@ -18,6 +18,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -33,29 +34,35 @@ namespace Nethermind.Merge.Plugin
         private readonly IHandler<PreparePayloadRequest, PreparePayloadResult> _preparePayloadHandler;
         private readonly IAsyncHandler<ulong, BlockRequestResult?> _getPayloadHandler;
         private readonly IHandler<BlockRequestResult, ExecutePayloadResult> _executePayloadHandler;
+        private readonly IHandler<BlockRequestResult, ExecutePayloadV1Result> _executePayloadV1Handler;
         private readonly IHandler<ForkChoiceUpdatedRequest, string> _forkChoiceUpdateHandler;
         private readonly IHandler<ExecutionStatusResult> _executionStatusHandler;
         private readonly ITransitionProcessHandler _transitionProcessHandler;
         private readonly SemaphoreSlim _locker = new(1, 1);
         private readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
         private readonly ILogger _logger;
+        private readonly IBlockTree _blockTree;
 
         public EngineRpcModule(
             IHandler<PreparePayloadRequest, PreparePayloadResult> preparePayloadHandler,
             IAsyncHandler<ulong, BlockRequestResult?> getPayloadHandler,
             IHandler<BlockRequestResult, ExecutePayloadResult> executePayloadHandler,
+            IHandler<BlockRequestResult, ExecutePayloadV1Result> executePayloadV1Handler,
             ITransitionProcessHandler transitionProcessHandler,
             IHandler<ForkChoiceUpdatedRequest, string> forkChoiceUpdateHandler,
             IHandler<ExecutionStatusResult> executionStatusHandler,
-            ILogManager logManager)
+            ILogManager logManager,
+            IBlockTree blockTree)
         {
             _preparePayloadHandler = preparePayloadHandler;
             _getPayloadHandler = getPayloadHandler;
             _executePayloadHandler = executePayloadHandler;
+            _executePayloadV1Handler = executePayloadV1Handler;
             _transitionProcessHandler = transitionProcessHandler;
             _forkChoiceUpdateHandler = forkChoiceUpdateHandler;
             _executionStatusHandler = executionStatusHandler;
             _logger = logManager.GetClassLogger();
+            _blockTree = blockTree;
         }
 
         public ResultWrapper<PreparePayloadResult> engine_preparePayload(
@@ -89,6 +96,30 @@ namespace Nethermind.Merge.Plugin
                 return ResultWrapper<ExecutePayloadResult>.Success(new ExecutePayloadResult()
                 {
                     BlockHash = executionPayload.BlockHash, EnumStatus = VerificationStatus.Invalid
+                });
+            }
+        }
+        
+        public async Task<ResultWrapper<ExecutePayloadV1Result>> engine_executePayloadV1(
+            BlockRequestResult executionPayload)
+        {
+            if (await _locker.WaitAsync(Timeout))
+            {
+                try
+                {
+                    return _executePayloadV1Handler.Handle(executionPayload);
+                }
+                finally
+                {
+                    _locker.Release();
+                }
+            }
+            else
+            {
+                if (_logger.IsWarn) _logger.Warn($"{nameof(engine_executePayload)} timeout.");
+                return ResultWrapper<ExecutePayloadV1Result>.Success(new ExecutePayloadV1Result()
+                {
+                    LatestValidHash = _blockTree.HeadHash, EnumStatus = VerificationStatus.Invalid
                 });
             }
         }

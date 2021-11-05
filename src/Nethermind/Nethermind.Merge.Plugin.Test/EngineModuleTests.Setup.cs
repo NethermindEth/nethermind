@@ -18,7 +18,6 @@
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Services;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
@@ -55,10 +54,12 @@ namespace Nethermind.Merge.Plugin.Test
                 new PreparePayloadHandler(chain.BlockTree, payloadStorage, chain.Timestamper, chain.SealEngine, chain.LogManager),
                 new GetPayloadHandler(payloadStorage,  chain.LogManager),
                 new ExecutePayloadHandler(chain.HeaderValidator, chain.BlockTree, chain.BlockchainProcessor, new EthSyncingInfo(chain.BlockFinder), new InitConfig(), chain.LogManager),
+                new ExecutePayloadV1Handler(chain.HeaderValidator, chain.BlockTree, chain.BlockchainProcessor, new EthSyncingInfo(chain.BlockFinder), new InitConfig(), chain.LogManager),
                 (PoSSwitcher)chain.PoSSwitcher,
                 new ForkChoiceUpdatedHandler(chain.BlockTree, chain.State, chain.BlockFinalizationManager, chain.PoSSwitcher, chain.BlockConfirmationManager, chain.LogManager),
                 new ExecutionStatusHandler(chain.BlockTree, chain.BlockConfirmationManager, chain.BlockFinalizationManager),
-                chain.LogManager);
+                chain.LogManager,
+                chain.BlockTree);
         }
 
         private class MergeTestBlockchain : TestBlockchain

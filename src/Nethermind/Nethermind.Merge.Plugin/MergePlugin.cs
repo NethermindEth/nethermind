@@ -21,10 +21,8 @@ using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Rewards;
-using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Db;
-using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
@@ -123,12 +121,20 @@ namespace Nethermind.Merge.Plugin
                         _api.EthSyncingInfo,
                         _api.Config<IInitConfig>(),
                         _api.LogManager),
+                    new ExecutePayloadV1Handler(
+                        _api.HeaderValidator,
+                        _api.BlockTree,
+                        _api.BlockchainProcessor,
+                        _api.EthSyncingInfo,
+                        _api.Config<IInitConfig>(),
+                        _api.LogManager),
                     _transitionProcessHandler,
                     new ForkChoiceUpdatedHandler(_api.BlockTree, _api.StateProvider, _blockFinalizationManager,
                         _poSSwitcher, _api.BlockConfirmationManager, _api.LogManager),
                     new ExecutionStatusHandler(_api.BlockTree, _api.BlockConfirmationManager,
                         _blockFinalizationManager),
-                    _api.LogManager);
+                    _api.LogManager,
+                    _api.BlockTree);
 
                 _api.RpcModuleProvider.RegisterSingle(engineRpcModule);
                 if (_logger.IsInfo) _logger.Info("Consensus Module has been enabled");
