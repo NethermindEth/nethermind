@@ -48,7 +48,14 @@ namespace Nethermind.Merge.Plugin
             IsSharable = true,
             IsImplemented = true)]
         Task<ResultWrapper<ExecutePayloadResult>> engine_executePayload(BlockRequestResult executionPayload);
-        
+
+        [JsonRpcMethod(
+            Description =
+                "Verifies the payload according to the execution environment rules and returns the verification status and hash of the last valid block.",
+            IsSharable = true,
+            IsImplemented = true)]
+        Task<ResultWrapper<ExecutePayloadV1Result>> engine_executePayloadV1(BlockRequestResult executionPayload);
+
         [JsonRpcMethod(
             Description =
                 "Communicates that full consensus validation of an execution payload is complete along with its corresponding status.",
