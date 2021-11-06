@@ -64,7 +64,7 @@ namespace Nethermind.Config
                 throw GetDnsException(host, e);
             }
         }
-
+#nullable enable
         public static IPAddress? GetHostIpFromDnsAddresses(params IPAddress[] hostAddresses)
         {
             for (var index = 0; index < hostAddresses.Length; index++)
@@ -78,6 +78,7 @@ namespace Nethermind.Config
 
             return hostAddresses.FirstOrDefault()?.MapToIPv4();
         }
+#nullable disable
 
         public PublicKey PublicKey => _nodeKey;
         public Address Address => _nodeKey.Address;
