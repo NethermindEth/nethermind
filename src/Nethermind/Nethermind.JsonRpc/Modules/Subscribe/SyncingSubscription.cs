@@ -29,7 +29,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
     {
         private readonly IBlockTree _blockTree;
         private readonly IEthSyncingInfo _ethSyncingInfo;
-        private readonly ILogger _logger;
+        private new readonly ILogger _logger;
         private bool _lastIsSyncing;
         
         public SyncingSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, IBlockTree? blockTree, IEthSyncingInfo ethSyncingInfo, ILogManager? logManager) 
