@@ -58,17 +58,19 @@ namespace Nethermind.JsonRpc.WebSockets
 
         public ISocketsClient CreateClient(WebSocket webSocket, string clientName, int port)
         {
-            JsonRpcUrl jsonRpcUrl = _jsonRpcUrlCollection.FirstOrDefault(x => x.Port == port && x.RpcEndpoint.HasFlag(RpcEndpoint.WebSocket));
+            if (!_jsonRpcUrlCollection.TryGetValue(port, out JsonRpcUrl jsonRpcUrl) ||
+                !jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Ws))
+                throw new InvalidOperationException($"WebSocket-enabled url not defined for port {port}");
 
             var socketsClient = new JsonRpcSocketsClient(
                 clientName, 
                 new WebSocketHandler(webSocket, _logManager), 
-                RpcEndpoint.WebSocket,
-                jsonRpcUrl,
+                RpcEndpoint.Ws,
                 _jsonRpcProcessor, 
                 _jsonRpcService,  
                 _jsonRpcLocalStats, 
-                _jsonSerializer);
+                _jsonSerializer,
+                jsonRpcUrl);
 
             _clients.TryAdd(socketsClient.Id, socketsClient);
 

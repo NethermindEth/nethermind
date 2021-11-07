@@ -337,7 +337,7 @@ namespace Nethermind.JsonRpc
             return result switch
             {
                 ModuleResolution.Unknown => ((int?) ErrorCodes.MethodNotFound, $"Method {methodName} is not supported"),
-                ModuleResolution.Disabled => (ErrorCodes.InvalidRequest, $"{methodName} found but the containing module is disabled, consider adding module to JsonRpcConfig.EnabledModule"),
+                ModuleResolution.Disabled => (ErrorCodes.InvalidRequest, $"{methodName} found but the containing module is disabled for the url, consider adding module for additional url in JsonRpcConfig.AdditionalRpcUrls or to JsonRpcConfig.EnabledModules"),
                 ModuleResolution.EndpointDisabled => (ErrorCodes.InvalidRequest, $"{methodName} found but disabled for {context.RpcEndpoint}"),
                 _ => (null, null)
             };

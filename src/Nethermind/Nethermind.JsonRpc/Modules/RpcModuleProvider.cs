@@ -93,11 +93,14 @@ namespace Nethermind.JsonRpc.Modules
 
         public ModuleResolution Check(string methodName, JsonRpcContext context)
         {
-            if (!_methods.TryGetValue(methodName, out ResolvedMethodInfo result)) return ModuleResolution.Unknown;
+            if (!_methods.TryGetValue(methodName, out ResolvedMethodInfo result))
+                return ModuleResolution.Unknown;
 
-            if ((result.Availability & context.RpcEndpoint) == RpcEndpoint.None) return ModuleResolution.EndpointDisabled;
+            if ((result.Availability & context.RpcEndpoint) == RpcEndpoint.None)
+                return ModuleResolution.EndpointDisabled;
 
-            if (context.Url != null) return context.Url.EnabledModules.Contains(result.ModuleType, StringComparer.InvariantCultureIgnoreCase) ? ModuleResolution.Enabled : ModuleResolution.EndpointDisabled;
+            if (context.Url != null)
+                return context.Url.EnabledModules.Contains(result.ModuleType, StringComparer.InvariantCultureIgnoreCase) ? ModuleResolution.Enabled : ModuleResolution.Disabled;
 
             return _enabledModules.Contains(result.ModuleType) ? ModuleResolution.Enabled : ModuleResolution.Disabled;
         }

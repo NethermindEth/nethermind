@@ -20,9 +20,8 @@ using System.Collections.Generic;
 
 namespace Nethermind.JsonRpc
 {
-    public interface IJsonRpcUrlCollection : IReadOnlyCollection<JsonRpcUrl>
+    public interface IJsonRpcUrlCollection : IReadOnlyDictionary<int, JsonRpcUrl>
     {
-        IEnumerable<string> UrlValues { get; }
     }
 }
 

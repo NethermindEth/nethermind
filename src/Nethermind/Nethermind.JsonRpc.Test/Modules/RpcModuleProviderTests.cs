@@ -102,7 +102,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             Assert.AreEqual(ModuleResolution.Enabled, inScopeResolution);
 
             ModuleResolution outOfScopeResolution = _moduleProvider.Check("proof_call", JsonRpcContext.Http(url));
-            Assert.AreEqual(ModuleResolution.EndpointDisabled, outOfScopeResolution);
+            Assert.AreEqual(ModuleResolution.Disabled, outOfScopeResolution);
 
             ModuleResolution fallbackResolution = _moduleProvider.Check("proof_call", new JsonRpcContext(RpcEndpoint.Http));
             Assert.AreEqual(ModuleResolution.Enabled, fallbackResolution);

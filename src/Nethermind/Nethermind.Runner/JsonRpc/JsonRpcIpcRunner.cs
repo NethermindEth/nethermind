@@ -124,7 +124,6 @@ namespace Nethermind.Runner.JsonRpc
                     string.Empty,
                     new IpcSocketsHandler(socket),
                     RpcEndpoint.IPC,
-                    null,
                     _jsonRpcProcessor,
                     _jsonRpcService,
                     _jsonRpcLocalStats,

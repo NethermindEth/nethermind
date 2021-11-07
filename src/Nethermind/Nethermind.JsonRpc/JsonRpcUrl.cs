@@ -26,9 +26,6 @@ namespace Nethermind.JsonRpc
 {
     public class JsonRpcUrl : IEquatable<JsonRpcUrl>, ICloneable
     {
-        private const string HttpEndpointValue = "http";
-        private const string WebSocketEndpointValue = "ws";
-
         public JsonRpcUrl(string scheme, string host, int port, RpcEndpoint rpcEndpoint, string[] enabledModules)
         {
             Scheme = scheme;
@@ -49,10 +46,10 @@ namespace Nethermind.JsonRpc
 
             string url = parts[0];
             if (!Uri.TryCreate(url, UriKind.Absolute, out Uri? uri) ||
-                uri.Scheme != "http" ||
+                (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps) ||
                 uri.Segments.Count() > 1 ||
-                uri.Port <= 0)
-                throw new UriFormatException("First part must be a valid url with the format: http://host:port");
+                uri.Port == 0)
+                throw new UriFormatException("First part must be a valid url with the format: scheme://host:port");
 
             string[] endpointValues = parts[1].Split(',');
             if (endpointValues.Length == 0)
@@ -61,22 +58,17 @@ namespace Nethermind.JsonRpc
             RpcEndpoint endpoint = RpcEndpoint.None;
             foreach (string endpointValue in endpointValues)
             {
-                if (endpointValue.Equals(HttpEndpointValue, StringComparison.InvariantCultureIgnoreCase))
-                    endpoint |= RpcEndpoint.Http;
-                else if (endpointValue.Equals(WebSocketEndpointValue, StringComparison.InvariantCultureIgnoreCase))
-                    endpoint |= RpcEndpoint.WebSocket;
+                RpcEndpoint parsedEndpoint = Enum.Parse<RpcEndpoint>(endpointValue, ignoreCase: true);
+                if (parsedEndpoint == RpcEndpoint.Http || parsedEndpoint == RpcEndpoint.Ws)
+                    endpoint |= parsedEndpoint;
             }
 
             if (endpoint == RpcEndpoint.None)
-                throw new FormatException($"Second part must contain at least one valid endpoint value: {HttpEndpointValue}, {WebSocketEndpointValue}");
+                throw new FormatException($"Second part must contain at least one valid endpoint value (http, https, ws, wss)");
 
             string[] enabledModules = parts[2].Split(',');
             if (enabledModules.Length == 0)
                 throw new FormatException("Third part must contain at least one valid endpoint value delimited by ','");
-
-            bool modulesValid = enabledModules.All(x => ModuleType.AllBuiltInModules.Contains(x, StringComparer.InvariantCultureIgnoreCase));
-            if (!modulesValid)
-                throw new FormatException($"Fourth part must contain at least one valid module: {string.Join(',', ModuleType.AllBuiltInModules)}");
 
             return new JsonRpcUrl(uri.Scheme, uri.Host, uri.Port, endpoint, enabledModules);
         }

@@ -113,7 +113,8 @@ namespace Nethermind.Runner.JsonRpc
                 app.UseWebSockets(new WebSocketOptions());
                 app.UseWhen(ctx =>
                     ctx.WebSockets.IsWebSocketRequest &&
-                    jsonRpcUrlCollection.Any(x => x.Port == ctx.Connection.LocalPort && x.RpcEndpoint.HasFlag(RpcEndpoint.WebSocket)),
+                    jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl jsonRpcUrl) &&
+                    jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Ws),
                 builder => builder.UseWebSocketsModules());
             }
             
@@ -147,8 +148,9 @@ namespace Nethermind.Runner.JsonRpc
                     await ctx.Response.WriteAsync("Nethermind JSON RPC");
                 }
 
-                JsonRpcUrl jsonRpcUrl = jsonRpcUrlCollection.FirstOrDefault(x => x.Port == ctx.Connection.LocalPort && x.RpcEndpoint.HasFlag(RpcEndpoint.Http));
-                if (ctx.Request.Method == "POST" && jsonRpcUrl != null)
+                if (ctx.Request.Method == "POST" &&
+                    jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl jsonRpcUrl) &&
+                    jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Http))
                 {
                     Stopwatch stopwatch = Stopwatch.StartNew();
                     using CountingTextReader request = new(new StreamReader(ctx.Request.Body, Encoding.UTF8));

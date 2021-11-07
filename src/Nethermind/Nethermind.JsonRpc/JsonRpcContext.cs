@@ -22,7 +22,7 @@ namespace Nethermind.JsonRpc
     public class JsonRpcContext
     {
         public static JsonRpcContext Http(JsonRpcUrl url) => new(RpcEndpoint.Http, url: url);
-        public static JsonRpcContext WebSocket(JsonRpcUrl url) => new(RpcEndpoint.WebSocket, url: url);
+        public static JsonRpcContext WebSocket(JsonRpcUrl url) => new(RpcEndpoint.Ws, url: url);
 
         public JsonRpcContext(RpcEndpoint rpcEndpoint, IJsonRpcDuplexClient? duplexClient = null, JsonRpcUrl? url = null)
         {

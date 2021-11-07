@@ -16,42 +16,31 @@
 //
 
 using System;
-using System.Collections;
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Logging;
 using Nethermind.JsonRpc.Modules;
 
 namespace Nethermind.JsonRpc
 {
-    public class JsonRpcUrlCollection : IJsonRpcUrlCollection
+    public class JsonRpcUrlCollection : Dictionary<int, JsonRpcUrl>, IJsonRpcUrlCollection
     {
         private const string NethermindUrlVariable = "NETHERMIND_URL";
 
         private readonly ILogger _logger;
         private readonly IJsonRpcConfig _jsonRpcConfig;
-        private readonly List<JsonRpcUrl> _urls;
 
         public JsonRpcUrlCollection(ILogManager logManager, IJsonRpcConfig jsonRpcConfig, bool includeWebSockets)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
-            _urls = new List<JsonRpcUrl>();
 
             if (_jsonRpcConfig.Enabled)
                 BuildUrls(includeWebSockets);
         }
 
-        public JsonRpcUrl this[int index] => _urls[index];
-        public int Count => _urls.Count;
-        public IEnumerator<JsonRpcUrl> GetEnumerator() => _urls.GetEnumerator();
-        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
-
-        public IEnumerable<string> UrlValues => this.Select(x => x.ToString());
-
         private void BuildUrls(bool includeWebSockets)
         {
-            JsonRpcUrl defaultUrl = new JsonRpcUrl("http", _jsonRpcConfig.Host, _jsonRpcConfig.Port, RpcEndpoint.Http, _jsonRpcConfig.EnabledModules);
+            JsonRpcUrl defaultUrl = new JsonRpcUrl(Uri.UriSchemeHttp, _jsonRpcConfig.Host, _jsonRpcConfig.Port, RpcEndpoint.Http, _jsonRpcConfig.EnabledModules);
             string environmentVariableUrl = Environment.GetEnvironmentVariable(NethermindUrlVariable);
             if (!string.IsNullOrWhiteSpace(environmentVariableUrl))
             {
@@ -64,7 +53,7 @@ namespace Nethermind.JsonRpc
                 else if (_logger.IsWarn)
                     _logger.Warn($"Environment variable '{NethermindUrlVariable}' value '{environmentVariableUrl}' is not valid JSON RPC URL, using default url : '{defaultUrl}'");
             }
-            _urls.Add(defaultUrl);
+            Add(defaultUrl.Port, defaultUrl);
 
             if (includeWebSockets)
             {
@@ -72,11 +61,11 @@ namespace Nethermind.JsonRpc
                 {
                     JsonRpcUrl defaultWebSocketUrl = defaultUrl.Clone() as JsonRpcUrl;
                     defaultWebSocketUrl.Port = _jsonRpcConfig.WebSocketsPort;
-                    defaultWebSocketUrl.RpcEndpoint = RpcEndpoint.WebSocket;
-                    _urls.Add(defaultWebSocketUrl);
+                    defaultWebSocketUrl.RpcEndpoint = RpcEndpoint.Ws;
+                    Add(defaultWebSocketUrl.Port, defaultWebSocketUrl);
                 }
                 else
-                    defaultUrl.RpcEndpoint |= RpcEndpoint.WebSocket;
+                    defaultUrl.RpcEndpoint |= RpcEndpoint.Ws;
             }
 
             foreach (string additionalRpcUrl in _jsonRpcConfig.AdditionalRPCUrls)
@@ -84,9 +73,9 @@ namespace Nethermind.JsonRpc
                 try
                 {
                     JsonRpcUrl url = JsonRpcUrl.Parse(additionalRpcUrl);
-                    if (!includeWebSockets && url.RpcEndpoint.HasFlag(RpcEndpoint.WebSocket))
+                    if (!includeWebSockets && url.RpcEndpoint.HasFlag(RpcEndpoint.Ws))
                     {
-                        url.RpcEndpoint &= ~RpcEndpoint.WebSocket;
+                        url.RpcEndpoint &= ~RpcEndpoint.Ws;
                         if (url.RpcEndpoint == RpcEndpoint.None)
                         {
                             if (_logger.IsInfo)
@@ -95,14 +84,14 @@ namespace Nethermind.JsonRpc
                         }
                     }
 
-                    if (_urls.Any(x => x.Port == url.Port))
+                    if (ContainsKey(url.Port))
                     {
                         if (_logger.IsWarn)
                         { _logger.Warn($"Additional JSON RPC URL '{url}' wants port {url.Port}, but port already in use; skipping..."); }
                         continue;
                     }
 
-                    _urls.Add(url);
+                    Add(url.Port, url);
                 }
                 catch (Exception)
                 {

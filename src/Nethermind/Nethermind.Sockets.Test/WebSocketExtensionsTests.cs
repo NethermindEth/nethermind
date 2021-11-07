@@ -128,7 +128,7 @@ namespace Nethermind.Sockets.Test
             var webSocketsClient = Substitute.ForPartsOf< JsonRpcSocketsClient>(
                 "TestClient",
                 new WebSocketHandler(mock, Substitute.For<ILogManager>()),
-                RpcEndpoint.WebSocket,
+                RpcEndpoint.Ws,
                 null,
                 processor,
                 service,
