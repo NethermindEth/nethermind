@@ -129,11 +129,11 @@ namespace Nethermind.Sockets.Test
                 "TestClient",
                 new WebSocketHandler(mock, Substitute.For<ILogManager>()),
                 RpcEndpoint.Ws,
-                null,
                 processor,
                 service,
                 localStats,
-                Substitute.For<IJsonSerializer>());
+                Substitute.For<IJsonSerializer>(),
+                null);
 
             webSocketsClient.Configure().SendJsonRpcResult(default).ReturnsForAnyArgs((x) =>
             {
