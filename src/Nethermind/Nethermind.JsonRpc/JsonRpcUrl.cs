@@ -49,26 +49,26 @@ namespace Nethermind.JsonRpc
                 (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps) ||
                 uri.Segments.Count() > 1 ||
                 uri.Port == 0)
-                throw new UriFormatException("First part must be a valid url with the format: scheme://host:port");
+                throw new FormatException("First part must be a valid url with the format: scheme://host:port");
 
-            string[] endpointValues = parts[1].Split(',');
+            string[] endpointValues = parts[1].Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
             if (endpointValues.Length == 0)
-                throw new FormatException("Second part must contain at least one valid endpoint value delimited by ','");
+                throw new FormatException("Second part must contain at least one valid endpoint value delimited by ';'");
 
             RpcEndpoint endpoint = RpcEndpoint.None;
             foreach (string endpointValue in endpointValues)
             {
-                RpcEndpoint parsedEndpoint = Enum.Parse<RpcEndpoint>(endpointValue, ignoreCase: true);
-                if (parsedEndpoint == RpcEndpoint.Http || parsedEndpoint == RpcEndpoint.Ws)
+                if (Enum.TryParse(endpointValue, ignoreCase: true, out RpcEndpoint parsedEndpoint) &&
+                    (parsedEndpoint == RpcEndpoint.Http || parsedEndpoint == RpcEndpoint.Ws))
                     endpoint |= parsedEndpoint;
             }
 
             if (endpoint == RpcEndpoint.None)
                 throw new FormatException($"Second part must contain at least one valid endpoint value (http, https, ws, wss)");
 
-            string[] enabledModules = parts[2].Split(',');
+            string[] enabledModules = parts[2].Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
             if (enabledModules.Length == 0)
-                throw new FormatException("Third part must contain at least one valid endpoint value delimited by ','");
+                throw new FormatException("Third part must contain at least one module delimited by ';'");
 
             return new JsonRpcUrl(uri.Scheme, uri.Host, uri.Port, endpoint, enabledModules);
         }

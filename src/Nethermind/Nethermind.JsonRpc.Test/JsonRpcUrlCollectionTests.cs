@@ -124,7 +124,7 @@ namespace Nethermind.JsonRpc.Test
             {
                 Enabled = true,
                 EnabledModules = _enabledModules,
-                AdditionalRPCUrls = new [] { "https://localhost:1234|https,wss|admin,debug" }
+                AdditionalRPCUrls = new [] { "https://localhost:1234|https;wss|admin;debug" }
             };
 
             JsonRpcUrlCollection urlCollection = new JsonRpcUrlCollection(Substitute.For<ILogManager>(), jsonRpcConfig, true);
@@ -142,7 +142,7 @@ namespace Nethermind.JsonRpc.Test
             {
                 Enabled = true,
                 EnabledModules = _enabledModules,
-                AdditionalRPCUrls = new [] { "http://localhost:1234|ws|admin,debug" }
+                AdditionalRPCUrls = new [] { "http://localhost:1234|ws|admin;debug" }
             };
 
             JsonRpcUrlCollection urlCollection = new JsonRpcUrlCollection(Substitute.For<ILogManager>(), jsonRpcConfig, false);
@@ -159,7 +159,7 @@ namespace Nethermind.JsonRpc.Test
             {
                 Enabled = true,
                 EnabledModules = _enabledModules,
-                AdditionalRPCUrls = new [] { "http://localhost:1234|http,ws|admin,debug" }
+                AdditionalRPCUrls = new [] { "http://localhost:1234|http;ws|admin;debug" }
             };
 
             JsonRpcUrlCollection urlCollection = new JsonRpcUrlCollection(Substitute.For<ILogManager>(), jsonRpcConfig, false);
@@ -180,10 +180,10 @@ namespace Nethermind.JsonRpc.Test
                 WebSocketsPort = 9876,
                 AdditionalRPCUrls = new []
                 {
-                    "http://localhost:8545|http,ws|admin,debug",
-                    "https://127.0.0.1:1234|https,wss|eth,web3",
-                    "https://127.0.0.1:9876|https,wss|net,proof",
-                    "http://localhost:1234|http,ws|db,erc20"
+                    "http://localhost:8545|http;ws|admin;debug",
+                    "https://127.0.0.1:1234|https;wss|eth;web3",
+                    "https://127.0.0.1:9876|https;wss|net;proof",
+                    "http://localhost:1234|http;ws|db;erc20"
                 }
             };
 
@@ -207,7 +207,7 @@ namespace Nethermind.JsonRpc.Test
                 {
                     string.Empty,
                     "test",
-                    "http://localhost:1234|http|db,erc20,web3"
+                    "http://localhost:1234|http|db;erc20;web3"
                 }
             };
 

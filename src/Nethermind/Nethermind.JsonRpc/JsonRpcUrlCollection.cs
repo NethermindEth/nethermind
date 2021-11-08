@@ -89,17 +89,23 @@ namespace Nethermind.JsonRpc
 
                     if (ContainsKey(url.Port))
                     {
-                        if (_logger.IsWarn)
-                        { _logger.Warn($"Additional JSON RPC URL '{url}' wants port {url.Port}, but port already in use; skipping..."); }
+                        if (_logger.IsInfo)
+                            _logger.Info($"Additional JSON RPC URL '{url}' wants port {url.Port}, but port already in use; skipping...");
                         continue;
                     }
 
                     Add(url.Port, url);
                 }
-                catch (Exception)
+                catch (FormatException fe)
+                {
+                    if (_logger.IsInfo)
+                        _logger.Info($"Additional JSON RPC URL packed value '{additionalRpcUrl}' format error: {fe.Message}; skipping...");
+                    continue;
+                }
+                catch (Exception e)
                 {
                     if (_logger.IsWarn)
-                        _logger.Warn($"Additional JSON RPC URL packed value '{additionalRpcUrl}' is not formatted correctly, skipping...");
+                        _logger.Warn($"Additional JSON RPC URL packed value '{additionalRpcUrl}' failed to parse: {e.Message}; skipping...");
                     continue;
                 }
             }
