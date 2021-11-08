@@ -73,6 +73,15 @@ namespace Nethermind.AccountAbstraction.Network
         public override void Init()
         {
             ProtocolInitialized?.Invoke(this, new ProtocolInitializedEventArgs(this));
+            
+            _userOperationPool.AddPeer(this);
+            _session.Disconnected += SessionDisconnected;
+        }
+
+        private void SessionDisconnected(object? sender, DisconnectEventArgs e)
+        {
+            _userOperationPool.RemovePeer(Id);
+            _session.Disconnected -= SessionDisconnected;
         }
 
         public override void HandleMessage(Packet message)

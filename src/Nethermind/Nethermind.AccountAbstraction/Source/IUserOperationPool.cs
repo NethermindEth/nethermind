@@ -16,6 +16,7 @@
 // 
 
 using System.Collections.Generic;
+using Nethermind.AccountAbstraction.Broadcaster;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
@@ -27,5 +28,7 @@ namespace Nethermind.AccountAbstraction.Source
         ResultWrapper<Keccak> AddUserOperation(UserOperation userOperation);
         bool RemoveUserOperation(UserOperation userOperation);
         public IEnumerable<UserOperation> GetUserOperations();
+        void AddPeer(IUserOperationPoolPeer peer);
+        void RemovePeer(PublicKey nodeId);
     }
 }

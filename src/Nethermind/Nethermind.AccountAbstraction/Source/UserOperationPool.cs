@@ -52,6 +52,7 @@ namespace Nethermind.AccountAbstraction.Source
         private readonly UserOperationSortedPool _userOperationSortedPool;
 
         private readonly Dictionary<long, List<UserOperation>> _userOperationsToDelete = new();
+        private readonly UserOperationBroadcaster _broadcaster;
 
         public UserOperationPool(
             IAccountAbstractionConfig accountAbstractionConfig,
@@ -82,6 +83,8 @@ namespace Nethermind.AccountAbstraction.Source
 
             MemoryAllowance.MemPoolSize = accountAbstractionConfig.UserOperationPoolSize;
 
+            _broadcaster = new UserOperationBroadcaster(logger);
+
             _blockTree.NewHeadBlock += NewHead;
         }
 
@@ -103,6 +106,7 @@ namespace Nethermind.AccountAbstraction.Source
                     Metrics.UserOperationsPending++;
                     _paymasterThrottler.IncrementOpsSeen(userOperation.Paymaster);
                     if (_logger.IsDebug) _logger.Debug($"UserOperation {userOperation.Hash} inserted into pool");
+                    _broadcaster.BroadcastOnce(userOperation);
                     return ResultWrapper<Keccak>.Success(userOperation.Hash);
                 }
 
@@ -230,6 +234,25 @@ namespace Nethermind.AccountAbstraction.Source
                 _timestamper.UnixTime.Seconds);
 
             return success;
+        }
+        
+        public void AddPeer(IUserOperationPoolPeer peer)
+        {
+            PeerInfo peerInfo = new(peer);
+            if (_broadcaster.AddPeer(peerInfo))
+            {
+                _broadcaster.BroadcastOnce(peerInfo, _userOperationSortedPool.GetSnapshot());
+                
+                if (_logger.IsTrace) _logger.Trace($"Added a peer to User Operation pool: {peer}");
+            }
+        }
+
+        public void RemovePeer(PublicKey nodeId)
+        {
+            if (_broadcaster.RemovePeer(nodeId))
+            {
+                if (_logger.IsTrace) _logger.Trace($"Removed a peer from User Operation pool: {nodeId}");
+            }
         }
     }
 }
