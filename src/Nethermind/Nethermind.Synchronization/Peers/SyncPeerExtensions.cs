@@ -48,8 +48,7 @@ namespace Nethermind.Synchronization.Peers
                                 case <= 3:
                                 case >= 8 and <= 10:
                                     return false;
-                                case > 10
-                                    return is aura
+                                // > 10, we should support only for AuRa, but we can ignore it for now
                                 default:
                                     return true;
                             }
