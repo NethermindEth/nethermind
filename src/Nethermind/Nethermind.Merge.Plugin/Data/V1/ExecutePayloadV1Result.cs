@@ -23,10 +23,8 @@ namespace Nethermind.Merge.Plugin.Data
 {
     public class ExecutePayloadV1Result
     {
-        [JsonProperty("status")]
         public string? Status => Enum.GetName(typeof(VerificationStatus), EnumStatus)?.ToUpper();
-
-        [JsonProperty("latestValidHash")]
+        
         public Keccak? LatestValidHash { get; set; }
 
         [JsonIgnore]

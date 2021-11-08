@@ -27,5 +27,7 @@ namespace Nethermind.Merge.Plugin
         public const int UnknownHeader = 4;
         
         public const int UnavailablePayload = 5;
+
+        public const int UnavailablePayloadV1 = -32001;
     }
 }

@@ -33,6 +33,7 @@ namespace Nethermind.Merge.Plugin
     {
         private readonly IHandler<PreparePayloadRequest, PreparePayloadResult> _preparePayloadHandler;
         private readonly IAsyncHandler<ulong, BlockRequestResult?> _getPayloadHandler;
+        private readonly IAsyncHandler<byte[], BlockRequestResult?> _getPayloadHandlerV1;
         private readonly IHandler<BlockRequestResult, ExecutePayloadResult> _executePayloadHandler;
         private readonly IHandler<BlockRequestResult, ExecutePayloadV1Result> _executePayloadV1Handler;
         private readonly IHandler<ForkChoiceUpdatedRequest, string> _forkChoiceUpdateHandler;
@@ -46,6 +47,7 @@ namespace Nethermind.Merge.Plugin
         public EngineRpcModule(
             IHandler<PreparePayloadRequest, PreparePayloadResult> preparePayloadHandler,
             IAsyncHandler<ulong, BlockRequestResult?> getPayloadHandler,
+            IAsyncHandler<byte[], BlockRequestResult?> getPayloadHandlerV1,
             IHandler<BlockRequestResult, ExecutePayloadResult> executePayloadHandler,
             IHandler<BlockRequestResult, ExecutePayloadV1Result> executePayloadV1Handler,
             ITransitionProcessHandler transitionProcessHandler,
@@ -56,6 +58,7 @@ namespace Nethermind.Merge.Plugin
         {
             _preparePayloadHandler = preparePayloadHandler;
             _getPayloadHandler = getPayloadHandler;
+            _getPayloadHandlerV1 = getPayloadHandlerV1;
             _executePayloadHandler = executePayloadHandler;
             _executePayloadV1Handler = executePayloadV1Handler;
             _transitionProcessHandler = transitionProcessHandler;
@@ -74,6 +77,11 @@ namespace Nethermind.Merge.Plugin
         public async Task<ResultWrapper<BlockRequestResult?>> engine_getPayload(ulong payloadId)
         {
             return await (_getPayloadHandler.HandleAsync(payloadId));
+        }
+        
+        public async Task<ResultWrapper<BlockRequestResult?>> engine_getPayloadV1(byte[] payloadId)
+        {
+            return await (_getPayloadHandlerV1.HandleAsync(payloadId));
         }
 
         public async Task<ResultWrapper<ExecutePayloadResult>> engine_executePayload(

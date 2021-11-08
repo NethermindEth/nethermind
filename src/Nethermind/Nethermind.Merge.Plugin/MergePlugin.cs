@@ -26,6 +26,7 @@ using Nethermind.Db;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Merge.Plugin.Handlers.V1;
 
 namespace Nethermind.Merge.Plugin
 {
@@ -109,11 +110,14 @@ namespace Nethermind.Merge.Plugin
                 IInitConfig? initConfig = _api.Config<IInitConfig>();
 
                 PayloadStorage payloadStorage = new(_idealBlockProductionContext, _emptyBlockProductionContext, initConfig, _api.LogManager);
+                PayloadService payloadService = new (_idealBlockProductionContext,
+                    _emptyBlockProductionContext, initConfig, _api.Sealer, _api.LogManager);
                 
                 IEngineRpcModule engineRpcModule = new EngineRpcModule(
                     new PreparePayloadHandler(_api.BlockTree, payloadStorage, _manualTimestamper, _api.Sealer,
                         _api.LogManager),
                     new GetPayloadHandler(payloadStorage, _api.LogManager),
+                    new GetPayloadHandlerV1(payloadService, _api.LogManager),
                     new ExecutePayloadHandler(
                         _api.HeaderValidator,
                         _api.BlockTree,

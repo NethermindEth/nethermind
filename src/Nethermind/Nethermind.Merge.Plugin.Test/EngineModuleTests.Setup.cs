@@ -36,6 +36,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Merge.Plugin.Handlers.V1;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
@@ -49,10 +50,12 @@ namespace Nethermind.Merge.Plugin.Test
         private IEngineRpcModule CreateEngineModule(MergeTestBlockchain chain)
         {
             PayloadStorage? payloadStorage = new(chain.IdealBlockProductionContext, chain.EmptyBlockProductionContext, new InitConfig(), chain.LogManager);
+            PayloadService payloadService = new(chain.IdealBlockProductionContext, chain.EmptyBlockProductionContext, new InitConfig(), chain.SealEngine, chain.LogManager);
 
             return new EngineRpcModule(
                 new PreparePayloadHandler(chain.BlockTree, payloadStorage, chain.Timestamper, chain.SealEngine, chain.LogManager),
-                new GetPayloadHandler(payloadStorage,  chain.LogManager),
+                new GetPayloadHandler(payloadStorage, chain.LogManager),
+                new GetPayloadHandlerV1(payloadService, chain.LogManager),
                 new ExecutePayloadHandler(chain.HeaderValidator, chain.BlockTree, chain.BlockchainProcessor, new EthSyncingInfo(chain.BlockFinder), new InitConfig(), chain.LogManager),
                 new ExecutePayloadV1Handler(chain.HeaderValidator, chain.BlockTree, chain.BlockchainProcessor, new EthSyncingInfo(chain.BlockFinder), new InitConfig(), chain.LogManager),
                 (PoSSwitcher)chain.PoSSwitcher,
