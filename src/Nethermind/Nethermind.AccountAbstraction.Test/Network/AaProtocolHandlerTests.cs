@@ -62,6 +62,7 @@ namespace Nethermind.AccountAbstraction.Test.Network
                 _userOperationPool,
                 LimboLogs.Instance);
             _handler.Init();
+            AccountAbstractionRpcModule aaRpcModule = new(_userOperationPool);
         }
 
         [TearDown]
@@ -88,9 +89,9 @@ namespace Nethermind.AccountAbstraction.Test.Network
         
         private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase
         {
-            IByteBuffer getBlockHeadersPacket = _svc!.ZeroSerialize(msg);
-            getBlockHeadersPacket.ReadByte();
-            _handler!.HandleMessage(new ZeroPacket(getBlockHeadersPacket) {PacketType = (byte) messageCode});
+            IByteBuffer uOpsPacket = _svc!.ZeroSerialize(msg);
+            uOpsPacket.ReadByte();
+            _handler!.HandleMessage(new ZeroPacket(uOpsPacket) {PacketType = (byte) messageCode});
         }
     }
 }
