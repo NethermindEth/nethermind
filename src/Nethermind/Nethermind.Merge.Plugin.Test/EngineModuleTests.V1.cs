@@ -45,15 +45,15 @@ namespace Nethermind.Merge.Plugin.Test
 
             var forkChoiceUpdatedParams = new
             {
-                headBlockHash = startingHead.ToString(true),
-                safeBlockHash = startingHead.ToString(true),
-                finalizedBlockHash = Keccak.Zero.ToString(true),
+                headBlockHash = startingHead.ToString(),
+                safeBlockHash = startingHead.ToString(),
+                finalizedBlockHash = Keccak.Zero.ToString(),
             };
             var preparePayloadParams = new
             {
                 timestamp = timestamp.ToHexString(true),
-                random = random.ToString(true),
-                feeRecipient = feeRecipient.ToString(true),
+                random = random.ToString(),
+                feeRecipient = feeRecipient.ToString(),
             };
             string[] parameters =
             {
@@ -62,24 +62,24 @@ namespace Nethermind.Merge.Plugin.Test
             };
             // prepare a payload
             string result = RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV1", parameters);
-            result.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":{{\"status\":\"VALID\",\"payloadId\":\"{expectedPayloadId.ToHexString(true)}\"}},\"id\":67}}");
+            result.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":{{\"status\":\"SUCCESS\",\"payloadId\":\"{expectedPayloadId.ToHexString(true)}\"}},\"id\":67}}");
 
             Keccak blockHash = new Keccak("0x33228284b2c8d36e3fd34c31de3ab0604412bf9ab71725307d13daa2c4f44348");
             var expectedPayload = new
             {
                 parentHash = startingHead,
                 coinbase = feeRecipient,
-                stateRoot = chain.BlockTree.Head!.StateRoot!.ToString(true),
-                receiptRoot = chain.BlockTree.Head!.ReceiptsRoot!.ToString(true),
+                stateRoot = chain.BlockTree.Head!.StateRoot!.ToString(),
+                receiptRoot = chain.BlockTree.Head!.ReceiptsRoot!.ToString(),
                 logsBloom = Bloom.Empty.ToString(),
-                random = random.ToString(true),
+                random = random.ToString(),
                 blockNumber = "0x1",
-                gasLimit = chain.BlockTree.Head!.GasLimit.ToHexString(true),
+                gasLimit = chain.BlockTree.Head!.GasLimit.ToHexString(false),
                 gasUsed = "0x0",
                 timestamp = "0x5",
                 extraData = "0x",
                 baseFeePerGas = chain.BlockTree.Head!.BaseFeePerGas.ToHexString(false),
-                blockHash = blockHash.ToString(true),
+                blockHash = blockHash.ToString(),
                 transaction = new List<object>(),
             };
             string expectedPayloadString = JsonConvert.SerializeObject(expectedPayload);
