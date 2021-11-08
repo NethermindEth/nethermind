@@ -43,28 +43,14 @@ namespace Nethermind.Merge.Plugin
             IsSharable = true,
             IsImplemented = true)]
         Task<ResultWrapper<BlockRequestResult?>> engine_getPayload(ulong payloadId);
-        
-        [JsonRpcMethod(
-            Description =
-                "Returns the most recent version of an execution payload with respect to the transaction set contained by the mempool.",
-            IsSharable = true,
-            IsImplemented = true)]
-        Task<ResultWrapper<BlockRequestResult?>> engine_getPayloadV1(byte[] payloadId);
-        
+
         [JsonRpcMethod(
             Description =
                 "Verifies the payload according to the execution environment rule set and returns the status of the verification.",
             IsSharable = true,
             IsImplemented = true)]
         Task<ResultWrapper<ExecutePayloadResult>> engine_executePayload(BlockRequestResult executionPayload);
-
-        [JsonRpcMethod(
-            Description =
-                "Verifies the payload according to the execution environment rules and returns the verification status and hash of the last valid block.",
-            IsSharable = true,
-            IsImplemented = true)]
-        Task<ResultWrapper<ExecutePayloadV1Result>> engine_executePayloadV1(BlockRequestResult executionPayload);
-
+        
         [JsonRpcMethod(
             Description =
                 "Communicates that full consensus validation of an execution payload is complete along with its corresponding status.",
@@ -130,5 +116,26 @@ namespace Nethermind.Merge.Plugin
             IsSharable = true,
             IsImplemented = true)]
         ResultWrapper<ExecutionStatusResult> engine_executionStatus();
+        
+        [JsonRpcMethod(
+            Description =
+                "Returns the most recent version of an execution payload with respect to the transaction set contained by the mempool.",
+            IsSharable = true,
+            IsImplemented = true)]
+        Task<ResultWrapper<BlockRequestResult?>> engine_getPayloadV1(byte[] payloadId);
+        
+        [JsonRpcMethod(
+            Description =
+                "Verifies the payload according to the execution environment rules and returns the verification status and hash of the last valid block.",
+            IsSharable = true,
+            IsImplemented = true)]
+        Task<ResultWrapper<ExecutePayloadV1Result>> engine_executePayloadV1(BlockRequestResult executionPayload);
+        
+        [JsonRpcMethod(
+            Description =
+                "Verifies the payload according to the execution environment rules and returns the verification status and hash of the last valid block.",
+            IsSharable = true,
+            IsImplemented = true)]
+        Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV1(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes);
     }
 }
