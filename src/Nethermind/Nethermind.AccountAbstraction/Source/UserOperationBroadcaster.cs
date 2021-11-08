@@ -31,7 +31,7 @@ namespace Nethermind.AccountAbstraction.Source
     public class UserOperationBroadcaster
     {
         /// <summary>
-        /// Connected peers that can be notified about transactions.
+        /// Connected peers that can be notified about user operations.
         /// </summary>
         private readonly ConcurrentDictionary<PublicKey, IUserOperationPoolPeer> _peers = new();
 
@@ -91,10 +91,6 @@ namespace Nethermind.AccountAbstraction.Source
         public bool RemovePeer(PublicKey nodeId)
         {
             return _peers.TryRemove(nodeId, out _);
-        }
-
-        public void Dispose()
-        {
         }
     }
 }
