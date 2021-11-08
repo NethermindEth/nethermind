@@ -22,6 +22,7 @@ namespace Nethermind.JsonRpc
 {
     public interface IJsonRpcUrlCollection : IReadOnlyDictionary<int, JsonRpcUrl>
     {
+        string[] Urls { get; }
     }
 }
 

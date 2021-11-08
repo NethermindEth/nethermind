@@ -17,6 +17,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Logging;
 using Nethermind.JsonRpc.Modules;
 
@@ -37,6 +38,8 @@ namespace Nethermind.JsonRpc
             if (_jsonRpcConfig.Enabled)
                 BuildUrls(includeWebSockets);
         }
+
+        public string[] Urls => Values.Select(x => x.ToString()).ToArray();
 
         private void BuildUrls(bool includeWebSockets)
         {

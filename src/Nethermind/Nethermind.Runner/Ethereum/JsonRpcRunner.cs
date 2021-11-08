@@ -72,7 +72,7 @@ namespace Nethermind.Runner.Ethereum
         public Task Start(CancellationToken cancellationToken)
         {
             if (_logger.IsDebug) _logger.Debug("Initializing JSON RPC");
-            string[] urls = _jsonRpcUrlCollection.Select(x => x.ToString()).ToArray();
+            string[] urls = _jsonRpcUrlCollection.Urls;
             var webHost = WebHost.CreateDefaultBuilder()
                 .ConfigureServices(s =>
                 {
