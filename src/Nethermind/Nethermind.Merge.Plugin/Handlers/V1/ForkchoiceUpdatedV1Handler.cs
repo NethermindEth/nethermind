@@ -94,8 +94,13 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             
             // _blockConfirmationManager.Confirm(confirmedHeader);
             byte[] payloadId = Array.Empty<byte>();
-            _blockTree.UpdateMainChain(blocks!, true, true);
             bool success = _blockTree.Head == newHeadBlock;
+            if (_blockTree.HeadHash != forkchoiceState.HeadBlockHash)
+            {
+                _blockTree.UpdateMainChain(blocks!, true, true);
+                success = _blockTree.Head == newHeadBlock;
+            }
+
             if (success)
             {
                 _poSSwitcher.TrySwitchToPos(newHeadBlock!.Header);
@@ -138,6 +143,11 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             {
                 errorMsg = $"Block {headBlockHash} cannot be found and it will not be set as head.";
                 if (_logger.IsWarn) _logger.Warn(errorMsg);
+                return (headBlock, null, errorMsg);
+            }
+
+            if (_blockTree.Head!.Hash == headBlockHash)
+            {
                 return (headBlock, null, errorMsg);
             }
 
