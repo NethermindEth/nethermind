@@ -129,6 +129,10 @@
     "Pithos": {
       "commandName": "Project",
       "commandLineArgs": "--config pithos.cfg --Init.DiagnosticMode MemDb"
+    },
+    "TheMerge_Kinstugi_TestVectors": {
+      "commandName": "Project",
+      "commandLineArgs": "--config themerge_kintsugi_testvectors.cfg --Init.DiagnosticMode MemDb"
     }
   }
 }
