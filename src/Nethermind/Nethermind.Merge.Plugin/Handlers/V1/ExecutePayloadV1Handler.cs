@@ -89,6 +89,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             {
                 bool isValid = (result & ValidationResult.Valid) != 0;
                 executePayloadResult.EnumStatus = isValid ? VerificationStatus.Valid : VerificationStatus.Invalid;
+                // TODO: determine whether _blockTree.HeadHash is the hash of the latest valid block
                 executePayloadResult.LatestValidHash = isValid ? request.BlockHash : _blockTree.HeadHash;
                 return ResultWrapper<ExecutePayloadV1Result>.Success(executePayloadResult);
             }

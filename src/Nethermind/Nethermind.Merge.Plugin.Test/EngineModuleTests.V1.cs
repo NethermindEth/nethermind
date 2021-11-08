@@ -23,6 +23,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Test;
+using Nethermind.Merge.Plugin.Data;
 using Newtonsoft.Json;
 using NUnit.Framework;
 
@@ -31,7 +32,7 @@ namespace Nethermind.Merge.Plugin.Test
     public partial class EngineModuleTests
     {
         [Test]
-        public async Task processing_block_should_serialize_valid_response()
+        public async Task processing_block_should_serialize_valid_responses()
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
             IEngineRpcModule rpc = CreateEngineModule(chain);
@@ -39,9 +40,9 @@ namespace Nethermind.Merge.Plugin.Test
             Keccak random = Keccak.Zero;
             Address feeRecipient = Address.Zero;
             UInt256 timestamp = Timestamper.UnixTime.Seconds;
-            
+
             UInt256 expectedPayloadId = 0;
-           
+
             var forkChoiceUpdatedParams = new
             {
                 headBlockHash = startingHead.ToString(true),
@@ -50,16 +51,19 @@ namespace Nethermind.Merge.Plugin.Test
             };
             var preparePayloadParams = new
             {
-                parentHash = startingHead.ToString(true),
                 timestamp = timestamp.ToHexString(true),
                 random = random.ToString(true),
                 feeRecipient = feeRecipient.ToString(true),
             };
-            string parameters = $"{JsonConvert.SerializeObject(forkChoiceUpdatedParams)},{JsonConvert.SerializeObject(preparePayloadParams)}";
+            string[] parameters =
+            {
+                JsonConvert.SerializeObject(forkChoiceUpdatedParams),
+                JsonConvert.SerializeObject(preparePayloadParams)
+            };
             // prepare a payload
-            string result = RpcTest.TestSerializedRequest(rpc,"engine_forkchoiceUpdatedV1", parameters);
+            string result = RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV1", parameters);
             result.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":{{\"status\":\"VALID\",\"payloadId\":\"{expectedPayloadId.ToHexString(true)}\"}},\"id\":67}}");
-            
+
             Keccak blockHash = new Keccak("0x33228284b2c8d36e3fd34c31de3ab0604412bf9ab71725307d13daa2c4f44348");
             var expectedPayload = new
             {
@@ -85,7 +89,7 @@ namespace Nethermind.Merge.Plugin.Test
             // execute the payload
             result = RpcTest.TestSerializedRequest(rpc, "engine_executePayloadV1", expectedPayloadString);
             result.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":{{\"status\":\"VALID\",\"latestValidHash\":\"{blockHash}\"}},\"id\":67}}");
-            
+
             forkChoiceUpdatedParams = new
             {
                 headBlockHash = blockHash.ToString(true),
@@ -93,12 +97,16 @@ namespace Nethermind.Merge.Plugin.Test
                 finalizedBlockHash = startingHead.ToString(true),
             };
             preparePayloadParams = null;
-            parameters = $"{forkChoiceUpdatedParams},{preparePayloadParams}";
+            parameters = new[]
+            {
+                JsonConvert.SerializeObject(forkChoiceUpdatedParams),
+                JsonConvert.SerializeObject(preparePayloadParams)
+            };
             // update the fork choice
             result = RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV1", parameters);
             result.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":{{\"status\":\"VALID\",\"payloadId\":\"0x\"}},\"id\":67}}");
         }
-    
+
         [Test]
         public async Task getPayload_should_serialize_unknown_payload_response_properly()
         {
@@ -107,8 +115,9 @@ namespace Nethermind.Merge.Plugin.Test
             UInt256 payloadId = 111;
 
             string parameters = payloadId.ToHexString(true);
-            string result = RpcTest.TestSerializedRequest(rpc,"engine_getPayload", parameters);
-            result.Should().Be("{{\"jsonrpc\":\"2.0\",\"error\":{\"code\":5,\"message\":\"unknown payload\"},\"id\":67}}");
+            string result = RpcTest.TestSerializedRequest(rpc, "engine_getPayload", parameters);
+            result.Should()
+                .Be("{{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32001,\"message\":\"unknown payload\"},\"id\":67}}");
         }
     }
 }

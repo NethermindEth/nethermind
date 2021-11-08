@@ -16,12 +16,14 @@
 // 
 
 using System.Threading.Tasks;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Merge.Plugin.Data.V1;
 
 namespace Nethermind.Merge.Plugin
 {
@@ -75,6 +77,12 @@ namespace Nethermind.Merge.Plugin
             IsSharable = true,
             IsImplemented = true)]
         Task<ResultWrapper<string>> engine_forkchoiceUpdated(ForkChoiceUpdatedRequest forkChoiceUpdatedRequest);
+
+        [JsonRpcMethod(
+            Description = "Propagates the change in the fork choice to the execution client.",
+            IsSharable = true,
+            IsImplemented = true)]
+        Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV1(ForkchoiceStateV1 forkChoiceUpdatedRequest, PayloadAttributes payloadAttributes);
 
         [JsonRpcMethod(
             Description = "Propagates an override of the TERMINAL_TOTAL_DIFFICULTY to the execution client.",
