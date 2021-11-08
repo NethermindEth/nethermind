@@ -56,12 +56,12 @@ namespace Nethermind.Merge.Plugin.Test
             return new EngineRpcModule(
                 new PreparePayloadHandler(chain.BlockTree, payloadStorage, chain.Timestamper, chain.SealEngine, chain.LogManager),
                 new GetPayloadHandler(payloadStorage, chain.LogManager),
-                new GetPayloadHandlerV1(payloadService, chain.LogManager),
-                new ExecutePayloadHandler(chain.HeaderValidator, chain.BlockTree, chain.BlockchainProcessor, ethSyncingInfo, new InitConfig(), chain.LogManager),
-                new ExecutePayloadV1Handler(chain.HeaderValidator, chain.BlockTree, chain.BlockchainProcessor, ethSyncingInfo, new InitConfig(), chain.LogManager),
+                new GetPayloadV1Handler(payloadService, chain.LogManager),
+                new ExecutePayloadHandler(chain.HeaderValidator, chain.BlockTree, chain.BlockchainProcessor, new EthSyncingInfo(chain.BlockFinder), new InitConfig(), chain.LogManager),
+                new ExecutePayloadV1Handler(chain.HeaderValidator, chain.BlockTree, chain.BlockchainProcessor, new EthSyncingInfo(chain.BlockFinder), new InitConfig(), chain.LogManager),
                 (PoSSwitcher)chain.PoSSwitcher,
                 new ForkChoiceUpdatedHandler(chain.BlockTree, chain.State, chain.BlockFinalizationManager, chain.PoSSwitcher, chain.BlockConfirmationManager, chain.LogManager),
-                new ForkchoiceUpdatedV1Handler(chain.BlockTree, chain.State, chain.BlockFinalizationManager, chain.PoSSwitcher, ethSyncingInfo, chain.BlockConfirmationManager, payloadService, chain.LogManager),
+                new ForkchoiceUpdatedV1Handler(chain.BlockTree, chain.State, chain.BlockFinalizationManager, chain.PoSSwitcher, chain.EthSyncingInfo, chain.BlockConfirmationManager, payloadService, chain.LogManager),
                 new ExecutionStatusHandler(chain.BlockTree, chain.BlockConfirmationManager, chain.BlockFinalizationManager),
                 chain.LogManager,
                 chain.BlockTree);
