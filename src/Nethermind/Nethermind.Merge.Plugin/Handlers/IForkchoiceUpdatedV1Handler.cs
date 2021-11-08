@@ -23,6 +23,6 @@ namespace Nethermind.Merge.Plugin.Handlers
 {
     public interface IForkchoiceUpdatedV1Handler
     {
-        ResultWrapper<ForkchoiceUpdatedV1Result> Handle(ForkchoiceStateV1 forkchoiceState, PayloadAttributes payloadAttributes);
+        ResultWrapper<ForkchoiceUpdatedV1Result> Handle(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes);
     }
 }

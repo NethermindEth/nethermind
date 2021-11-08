@@ -135,6 +135,8 @@ namespace Nethermind.Merge.Plugin
                     _transitionProcessHandler,
                     new ForkChoiceUpdatedHandler(_api.BlockTree, _api.StateProvider, _blockFinalizationManager,
                         _poSSwitcher, _api.BlockConfirmationManager, _api.LogManager),
+                    new ForkchoiceUpdatedV1Handler(_api.BlockTree, _api.StateProvider, _blockFinalizationManager,
+                        _poSSwitcher, _api.EthSyncingInfo, _api.BlockConfirmationManager, payloadService, _api.LogManager),
                     new ExecutionStatusHandler(_api.BlockTree, _api.BlockConfirmationManager,
                         _blockFinalizationManager),
                     _api.LogManager,
