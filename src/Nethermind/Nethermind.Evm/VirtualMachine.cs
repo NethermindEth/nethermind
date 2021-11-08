@@ -1639,7 +1639,7 @@ namespace Nethermind.Evm
 
                         if (txCtx.Header.IsPostMerge)
                         {
-                            byte[] random = txCtx.Header.MixHash.Bytes;
+                            byte[] random = txCtx.Header.Random.Bytes;
                             stack.PushBytes(random);
                         }
                         else

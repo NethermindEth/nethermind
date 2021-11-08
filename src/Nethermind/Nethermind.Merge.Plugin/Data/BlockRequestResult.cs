@@ -68,10 +68,11 @@ namespace Nethermind.Merge.Plugin.Data
                     GasUsed = GasUsed,
                     BaseFeePerGas = BaseFeePerGas,
                     Nonce = 0,
-                    MixHash = Keccak.Zero,
+                    MixHash = Random,
                 };
                 Transaction[] transactions = GetTransactions();
                 header.TxRoot = new TxTrie(transactions).RootHash;
+                header.IsPostMerge = true;
                 block = new Block(header, transactions, Array.Empty<BlockHeader>());
                 return true;
             }
