@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Nethermind.Abi;
+using Nethermind.AccountAbstraction.Broadcaster;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Executor;
 using Nethermind.AccountAbstraction.Source;
@@ -99,6 +100,78 @@ namespace Nethermind.AccountAbstraction.Test
             userOperationPool.GetUserOperations().Count().Should().Be(1);
             userOperationPool.GetUserOperations().Should().BeEquivalentTo(op2);
         }
+        
+        [Test]
+        public void should_add_peers()
+        {
+            var (userOperationPool, _, _) = GenerateUserOperationPool(100);
+            IList<IUserOperationPoolPeer> peers = GetPeers();
+
+            foreach (IUserOperationPoolPeer peer in peers)
+            {
+                userOperationPool.AddPeer(peer);
+            }
+        }
+
+        [Test]
+        public void should_delete_peers()
+        {
+            var (userOperationPool, _, _) = GenerateUserOperationPool(100);
+            IList<IUserOperationPoolPeer> peers = GetPeers();
+
+            foreach (IUserOperationPoolPeer peer in peers)
+            {
+                userOperationPool.AddPeer(peer);
+            }
+
+            foreach (IUserOperationPoolPeer peer in peers)
+            {
+                userOperationPool.RemovePeer(peer.Id);
+            }
+        }
+        
+        [Test]
+        public void should_notify_added_peer_about_ops_in_UOpPool()
+        {
+            var (userOperationPool, _, _) = GenerateUserOperationPool();
+            UserOperation op = Build.A.UserOperation.SignedAndResolved().TestObject;
+            userOperationPool.AddUserOperation(op);
+            IUserOperationPoolPeer uopPoolPeer = Substitute.For<IUserOperationPoolPeer>();
+            uopPoolPeer.Id.Returns(TestItem.PublicKeyA);
+            userOperationPool.AddPeer(uopPoolPeer);
+            uopPoolPeer.Received().SendNewUserOperations(Arg.Any<IEnumerable<UserOperation>>());
+        }
+        
+        [Test]
+        public void should_send_to_peers_newly_added_uop()
+        {
+            var (userOperationPool, _, _) = GenerateUserOperationPool();
+            IUserOperationPoolPeer uopPoolPeer = Substitute.For<IUserOperationPoolPeer>();
+            uopPoolPeer.Id.Returns(TestItem.PublicKeyA);
+            userOperationPool.AddPeer(uopPoolPeer);
+            UserOperation op = Build.A.UserOperation.WithSender(TestItem.AddressA).SignedAndResolved().TestObject;
+            userOperationPool.AddUserOperation(op);
+            uopPoolPeer.Received().SendNewUserOperation(op);
+        }
+
+        private IList<IUserOperationPoolPeer> GetPeers(int limit = 100)
+        {
+            IList<IUserOperationPoolPeer> peers = new List<IUserOperationPoolPeer>();
+            for (int i = 0; i < limit; i++)
+            {
+                PrivateKey privateKey = new((i + 1).ToString("x64"));
+                peers.Add(GetPeer(privateKey.PublicKey));
+            }
+
+            return peers;
+        }
+        private IUserOperationPoolPeer GetPeer(PublicKey publicKey)
+        {
+            IUserOperationPoolPeer peer = Substitute.For<IUserOperationPoolPeer>();
+            peer.Id.Returns(publicKey);
+            
+            return peer;
+        }
 
         private static IEnumerable<UserOperation> BadOperations
         {
@@ -149,6 +222,7 @@ namespace Nethermind.AccountAbstraction.Test
 
             IAccountAbstractionConfig config = Substitute.For<IAccountAbstractionConfig>();
             config.EntryPointContractAddress.Returns("0x8595dd9e0438640b5e1254f9df579ac12a86865f");
+            config.UserOperationPoolSize.Returns(capacity);
             
             IPaymasterThrottler paymasterThrottler = Substitute.For<PaymasterThrottler>();
 
