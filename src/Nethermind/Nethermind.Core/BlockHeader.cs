@@ -69,6 +69,7 @@ namespace Nethermind.Core
         public DateTime TimestampDate => DateTimeOffset.FromUnixTimeSeconds((long)Timestamp).LocalDateTime;
         public byte[] ExtraData { get; set; } = Array.Empty<byte>();
         public Keccak? MixHash { get; set; }
+        public Keccak? Random => MixHash;
         public ulong Nonce { get; set; }
         public Keccak? Hash { get; set; }
         public UInt256? TotalDifficulty { get; set; }
