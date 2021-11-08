@@ -205,7 +205,7 @@ namespace Nethermind.AccountAbstraction.Source
             }
 
             // make sure op not already in pool
-            if (_userOperationSortedPool.GetSnapshot().Contains(userOperation))
+            if (_userOperationSortedPool.TryGetValue(userOperation.Hash, out _))
                 return ResultWrapper<Keccak>.Fail("userOp is already present in the pool");
 
             Task<ResultWrapper<Keccak>> successfulSimulationTask = Simulate(userOperation, _blockTree.Head!.Header);
