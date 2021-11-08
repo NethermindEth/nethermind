@@ -72,7 +72,7 @@ namespace Nethermind.Evm
         COINBASE = 0x41,
         TIMESTAMP = 0x42,
         NUMBER = 0x43,
-        DIFFICULTY = 0x44,
+        RANDOM = 0x44,
         GASLIMIT = 0x45,
         CHAINID = 0x46,
         SELFBALANCE = 0x47,
