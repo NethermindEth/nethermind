@@ -93,7 +93,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 if (_logger.IsWarn) _logger.Warn($"Cannot finalize block. The current finalized block is: {_manualBlockFinalizationManager.LastFinalizedHash}, the requested hash: {forkchoiceState.FinalizedBlockHash}");
             
             // _blockConfirmationManager.Confirm(confirmedHeader);
-            ulong payloadId = 0;
+            byte[] payloadId = Array.Empty<byte>();
             _blockTree.UpdateMainChain(blocks!, true, true);
             bool success = _blockTree.Head == newHeadBlock;
             if (success)

@@ -18,6 +18,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
@@ -26,6 +27,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
@@ -33,6 +35,7 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Data.V1;
 using Nethermind.State;
+using Result = Nethermind.Core.Result;
 
 namespace Nethermind.Merge.Plugin.Handlers
 {
@@ -40,7 +43,7 @@ namespace Nethermind.Merge.Plugin.Handlers
     /// A cache of pending payloads. A payload is created whenever a consensus client requests a payload creation.
     /// Each payload is assigned a payload ID which can be used by the consensus client to retrieve payload later
     /// by calling a GetPayload method.
-    /// https://hackmd.io/@n0ble/consensus_api_design_space 
+    /// https://hackmd.io/@n0ble/kintsugi-spec
     /// </summary>
     public class PayloadService : IPayloadService
     {
@@ -49,15 +52,13 @@ namespace Nethermind.Merge.Plugin.Handlers
         private readonly IInitConfig _initConfig;
         private readonly ISealer _sealer;
         private readonly ILogger _logger;
-        private readonly object _locker = new();
-        private uint _currentPayloadId = 1;
         private ulong _cleanupDelay = 12; // in seconds
         private TaskQueue _taskQueue = new TaskQueue();
 
         private static readonly TimeSpan _timeout = TimeSpan.FromSeconds(12);
 
         // first BlockRequestResult is empty (without txs), second one is the ideal one
-        private readonly ConcurrentDictionary<ulong, BlockTaskAndRandom> _payloadStorage =
+        private readonly ConcurrentDictionary<byte[], BlockTaskAndRandom> _payloadStorage =
             new();
 
         public PayloadService(
@@ -74,16 +75,16 @@ namespace Nethermind.Merge.Plugin.Handlers
             _logger = logManager.GetClassLogger();
         }
 
-        public ulong StartPreparingPayload(BlockHeader parentHeader, PayloadAttributes payloadAttributes)
+        public byte[] StartPreparingPayload(BlockHeader parentHeader, PayloadAttributes payloadAttributes)
         {
-            ulong payloadId = RentNextPayloadId();
+            byte[] payloadId = ComputeNextPayloadId(parentHeader, payloadAttributes);
             payloadAttributes.FeeRecipient = payloadAttributes.FeeRecipient == Address.Zero ? _sealer.Address : payloadAttributes.FeeRecipient;
             GeneratePayload(payloadId, parentHeader, payloadAttributes);
             return payloadId;
         }
 
 
-        private async Task GeneratePayload(ulong payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes)
+        private async Task GeneratePayload(byte[] payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes)
         {
             using CancellationTokenSource cts = new(_timeout);
             
@@ -98,7 +99,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             await CleanupOldPayloadWithDelay(payloadId, TimeSpan.FromSeconds(_cleanupDelay));
         }
 
-        private async Task ProduceEmptyBlock(ulong payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, CancellationTokenSource cts)
+        private async Task ProduceEmptyBlock(byte[] payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, CancellationTokenSource cts)
         {
             if (_logger.IsTrace) _logger.Trace($"Preparing empty block from payload {payloadId} with parent {parentHeader}");
             Task<Block?> emptyBlock =
@@ -118,7 +119,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             if (_logger.IsTrace) _logger.Trace($"Prepared empty block from payload {payloadId} block result: {emptyBlock.Result}");
         }
         
-        private async Task ProduceIdealBlock(ulong payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, CancellationTokenSource cts)
+        private async Task ProduceIdealBlock(byte[] payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, CancellationTokenSource cts)
         {
             if (_logger.IsTrace) _logger.Trace($"Preparing ideal block from payload {payloadId} with parent {parentHeader}");
             Task<Block?> idealBlock =
@@ -163,7 +164,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             return t.Result;
         }
 
-        public BlockTaskAndRandom? GetPayload(ulong payloadId)
+        public BlockTaskAndRandom? GetPayload(byte[] payloadId)
         {
             if (_payloadStorage.ContainsKey(payloadId))
             {
@@ -174,31 +175,25 @@ namespace Nethermind.Merge.Plugin.Handlers
             return null;
         }
 
-        private ulong RentNextPayloadId()
+        private byte[] ComputeNextPayloadId(BlockHeader parentHeader, PayloadAttributes payloadAttributes)
         {
-            lock (_locker)
-            {
-                while (_payloadStorage.ContainsKey(_currentPayloadId))
-                {
-                    if (_currentPayloadId == ulong.MaxValue)
-                        _currentPayloadId = 1;
-                    else
-                        ++_currentPayloadId;
-                }
-
-                ulong rentedPayloadId = _currentPayloadId;
-                ++_currentPayloadId;
-                return rentedPayloadId;
-            }
+            byte[] input = new byte[32 + 32 + 32 + 20];
+            Span<byte> inputSpan = input.AsSpan();
+            parentHeader.Hash!.Bytes.CopyTo(inputSpan.Slice(0, 32));
+            payloadAttributes.Timestamp.ToBigEndian(inputSpan.Slice(32, 32));
+            payloadAttributes.Random.Bytes.CopyTo(inputSpan.Slice(64, 32));
+            payloadAttributes.FeeRecipient.Bytes.CopyTo(inputSpan.Slice(96, 20));
+            Keccak inputHash = Keccak.Compute(input);
+            return inputHash.Bytes.Slice(0, 8);
         }
 
-        private async Task CleanupOldPayloadWithDelay(ulong payloadId, TimeSpan delay)
+        private async Task CleanupOldPayloadWithDelay(byte[] payloadId, TimeSpan delay)
         {
             await Task.Delay(delay, CancellationToken.None);
             CleanupOldPayload(payloadId);
         }
 
-        private void CleanupOldPayload(ulong payloadId)
+        private void CleanupOldPayload(byte[] payloadId)
         {
             if (_payloadStorage.ContainsKey(payloadId))
             {
