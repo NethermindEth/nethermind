@@ -1629,7 +1629,7 @@ namespace Nethermind.Evm
                         stack.PushBytes(txCtx.Header.GasBeneficiary.Bytes);
                         break;
                     }
-                    case Instruction.DIFFICULTY:
+                    case Instruction.RANDOM:
                     {
                         if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
                         {
@@ -1637,8 +1637,16 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        UInt256 diff = txCtx.Header.Difficulty;
-                        stack.PushUInt256(in diff);
+                        if (txCtx.Header.IsPostMerge)
+                        {
+                            byte[] random = txCtx.Header.MixHash.Bytes;
+                            stack.PushBytes(random);
+                        }
+                        else
+                        {
+                            UInt256 diff = txCtx.Header.Difficulty;
+                            stack.PushUInt256(in diff);
+                        }
                         break;
                     }
                     case Instruction.TIMESTAMP:

@@ -99,6 +99,7 @@ namespace Nethermind.Merge.Plugin
 
         private bool VerifyPoS(BlockHeader header, bool withSwitchToPoS)
         {
+            // ToDo added during amphora, not sure if it is needed
             if (header.Number == 0)
             {
                 return false;

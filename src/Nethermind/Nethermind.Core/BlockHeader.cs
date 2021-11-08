@@ -78,6 +78,8 @@ namespace Nethermind.Core
 
         public bool HasBody => UnclesHash != Keccak.OfAnEmptySequenceRlp || TxRoot != Keccak.EmptyTreeHash;
         public string SealEngineType { get; set; } = Nethermind.Core.SealEngineType.Ethash;
+        
+        // ToDo we need to set this flag after reading block from db
         public bool IsPostMerge { get; set; }
 
         public string ToString(string indent)
