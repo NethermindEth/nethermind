@@ -102,12 +102,6 @@ namespace Nethermind.JsonRpc
                         _logger.Info($"Additional JSON RPC URL packed value '{additionalRpcUrl}' format error: {fe.Message}; skipping...");
                     continue;
                 }
-                catch (Exception e)
-                {
-                    if (_logger.IsWarn)
-                        _logger.Warn($"Additional JSON RPC URL packed value '{additionalRpcUrl}' failed to parse: {e.Message}; skipping...");
-                    continue;
-                }
             }
         }
     }
