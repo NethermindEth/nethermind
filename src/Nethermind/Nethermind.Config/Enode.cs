@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+#nullable enable
 using System;
 using System.Linq;
 using System.Net;
@@ -36,7 +37,7 @@ namespace Nethermind.Config
 
         public Enode(string enodeString)
         {
-            ArgumentException GetDnsException(string hostName, Exception innerException = null) =>
+            ArgumentException GetDnsException(string hostName, Exception? innerException = null) =>
                 new($"{hostName} is not a proper IP address nor it can be resolved by DNS.", innerException);
 
             ArgumentException GetPortException(string hostName) =>
@@ -55,7 +56,7 @@ namespace Nethermind.Config
 
             try
             {
-                HostIp = IPAddress.TryParse(host, out IPAddress ip)
+                HostIp = IPAddress.TryParse(host, out IPAddress? ip)
                     ? ip
                     : GetHostIpFromDnsAddresses(Dns.GetHostAddresses(host)) ?? throw GetDnsException(host);
             }
@@ -64,7 +65,7 @@ namespace Nethermind.Config
                 throw GetDnsException(host, e);
             }
         }
-#nullable enable
+
         public static IPAddress? GetHostIpFromDnsAddresses(params IPAddress[] hostAddresses)
         {
             for (var index = 0; index < hostAddresses.Length; index++)
@@ -78,7 +79,6 @@ namespace Nethermind.Config
 
             return hostAddresses.FirstOrDefault()?.MapToIPv4();
         }
-#nullable disable
 
         public PublicKey PublicKey => _nodeKey;
         public Address Address => _nodeKey.Address;
