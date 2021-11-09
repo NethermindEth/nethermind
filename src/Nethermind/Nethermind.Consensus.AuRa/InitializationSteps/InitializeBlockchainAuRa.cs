@@ -74,7 +74,8 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             ITxFilter auRaTxFilter = TxAuRaFilterBuilders.CreateAuRaTxFilter(
                 _api,
                 txPermissionFilterOnlyTxProcessorSource,
-                _api.SpecProvider);
+                _api.SpecProvider, 
+                new ServiceTxFilter(_api.SpecProvider));
             
             var processor = new AuRaBlockProcessor(
                 _api.SpecProvider,

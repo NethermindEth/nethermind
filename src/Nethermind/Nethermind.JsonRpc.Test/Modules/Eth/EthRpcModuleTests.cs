@@ -893,8 +893,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             
             public static async Task<Context> CreateWithLondonEnabled()
             {
-                OverridableReleaseSpec releaseSpec = new(London.Instance);
-                releaseSpec.Eip1559TransitionBlock = 1;
+                OverridableReleaseSpec releaseSpec = new(London.Instance) { Eip1559TransitionBlock = 1 };
                 TestSpecProvider specProvider = new(releaseSpec) {ChainId = ChainId.Mainnet};
                 return await Create(specProvider);
             }

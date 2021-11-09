@@ -55,20 +55,20 @@ namespace Nethermind.JsonRpc.Test.Modules
 
         [TestCase(null)]
         [TestCase(100ul)]
-        public void GasPriceEstimate_IfPreviousGasPriceDoesNotExist_FallbackGasPriceSetToDefaultGasPrice(ulong? gasPrice)
+        public void GasPriceEstimate_IfPreviousGasPriceDoesNotExist_ShouldBeEmptyPrice(ulong? gasPrice)
         {
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
             GasPriceOracle testGasPriceOracle = new(blockFinder, specProvider, gasPrice);
 
-            testGasPriceOracle.GetGasPriceEstimate();
+            UInt256 estimate = testGasPriceOracle.GetGasPriceEstimate();
             UInt256 expectedGasPrice = 110 * (gasPrice ?? 1.GWei()) / 100;
-            testGasPriceOracle.FallbackGasPrice.Should().BeEquivalentTo(expectedGasPrice);
+            estimate.Should().BeEquivalentTo(expectedGasPrice);
         }
 
         [TestCase(3)]
         [TestCase(10)]
-        public void GasPriceEstimate_IfPreviousGasPriceExists_FallbackGasPriceIsSetToPreviousGasPrice(int lastGasPrice)
+        public void GasPriceEstimate_IfPreviousGasPriceExists_ShouldEqualLastGasPrice(int lastGasPrice)
         {
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
@@ -77,9 +77,25 @@ namespace Nethermind.JsonRpc.Test.Modules
                 LastGasPrice = (UInt256) lastGasPrice
             };
             
-            testGasPriceOracle.GetGasPriceEstimate();
+            UInt256 estimate = testGasPriceOracle.GetGasPriceEstimate();
             
-            testGasPriceOracle.FallbackGasPrice.Should().BeEquivalentTo((UInt256?) lastGasPrice);
+            estimate.Should().BeEquivalentTo((UInt256?) lastGasPrice);
+        }
+        
+        [TestCase(null)]
+        [TestCase(100ul)]
+        public void GasPriceEstimate_EmptyChain_BaseFeeIncluded(ulong? gasPrice)
+        {
+            UInt256 baseFeePerGas = 10.GWei();
+            Block headBlock = Build.A.Block.WithBaseFeePerGas(baseFeePerGas).TestObject;
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            blockFinder.FindBlock(0).Returns(headBlock);
+            blockFinder.Head.Returns(headBlock);
+            ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+            GasPriceOracle testGasPriceOracle = new(blockFinder, specProvider, gasPrice);
+
+            UInt256 estimate = testGasPriceOracle.GetGasPriceEstimate();
+            estimate.Should().Be((baseFeePerGas + (gasPrice ?? 1.GWei())) * 110 / 100);
         }
 
         [Test]

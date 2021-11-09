@@ -195,6 +195,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             chainSpec.IstanbulBlockNumber.Should().Be(RopstenSpecProvider.IstanbulBlockNumber);
             chainSpec.MuirGlacierNumber.Should().Be(RopstenSpecProvider.MuirGlacierBlockNumber);
             chainSpec.BerlinBlockNumber.Should().Be(RopstenSpecProvider.BerlinBlockNumber);
+            chainSpec.LondonBlockNumber.Should().Be(RopstenSpecProvider.LondonBlockNumber);
         }
         
         [Test]
@@ -223,6 +224,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             chainSpec.IstanbulBlockNumber.Should().Be(GoerliSpecProvider.IstanbulBlockNumber);
             chainSpec.MuirGlacierNumber.Should().Be(null);
             chainSpec.BerlinBlockNumber.Should().Be(GoerliSpecProvider.BerlinBlockNumber);
+            chainSpec.LondonBlockNumber.Should().Be(GoerliSpecProvider.LondonBlockNumber);
         }
         
         [Test]
@@ -263,6 +265,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             chainSpec.ConstantinopleFixBlockNumber.Should().Be(RinkebySpecProvider.ConstantinopleFixBlockNumber);
             chainSpec.IstanbulBlockNumber.Should().Be(RinkebySpecProvider.IstanbulBlockNumber);
             chainSpec.BerlinBlockNumber.Should().Be(RinkebySpecProvider.BerlinBlockNumber);
+            chainSpec.LondonBlockNumber.Should().Be(RinkebySpecProvider.LondonBlockNumber);
         }
         
         [Test]
@@ -287,6 +290,8 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             chainSpec.IstanbulBlockNumber.Should().Be(MainnetSpecProvider.IstanbulBlockNumber);
             chainSpec.MuirGlacierNumber.Should().Be(MainnetSpecProvider.MuirGlacierBlockNumber);
             chainSpec.BerlinBlockNumber.Should().Be(MainnetSpecProvider.BerlinBlockNumber);
+            chainSpec.LondonBlockNumber.Should().Be(MainnetSpecProvider.LondonBlockNumber);
+            chainSpec.ArrowGlacierBlockNumber.Should().Be(MainnetSpecProvider.ArrowGlacierBlockNumber);
         }
         
         [Test]
@@ -355,6 +360,8 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             chainSpec.IstanbulBlockNumber.Should().Be(0L);
             chainSpec.MuirGlacierNumber.Should().Be(null);
             chainSpec.BerlinBlockNumber.Should().Be(0L);
+            chainSpec.LondonBlockNumber.Should().Be(0L);
+            chainSpec.ArrowGlacierBlockNumber.Should().Be(null);
         }
         
         [Test]

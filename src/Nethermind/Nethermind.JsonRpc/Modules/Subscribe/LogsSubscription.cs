@@ -34,7 +34,6 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         private readonly IReceiptStorage _receiptStorage;
         private readonly IBlockTree _blockTree;
         private readonly LogFilter _filter;
-        private readonly ILogger _logger;
 
         public LogsSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, IReceiptStorage? receiptStorage, IFilterStore? store, IBlockTree? blockTree, ILogManager? logManager, Filter? filter = null) 
             : base(jsonRpcDuplexClient)

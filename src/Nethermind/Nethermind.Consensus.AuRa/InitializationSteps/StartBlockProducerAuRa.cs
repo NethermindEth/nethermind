@@ -130,7 +130,8 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             ITxFilter auRaTxFilter = TxAuRaFilterBuilders.CreateAuRaTxFilter(
                 _api,
                 constantContractTxProcessingEnv,
-                _api.SpecProvider);
+                _api.SpecProvider, 
+                new LocalTxFilter(_api.EngineSigner));
 
             _validator = new AuRaValidatorFactory(_api.AbiEncoder,
                     changeableTxProcessingEnv.StateProvider,
