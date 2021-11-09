@@ -18,7 +18,7 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <PackageReference Include="FluentAssertions" Version="5.10.3" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="16.10.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.0.0" />
     <PackageReference Include="NUnit" Version="3.13.2" />
     <PackageReference Include="NUnit3TestAdapter" Version="4.0.0" />
   </ItemGroup>
@@ -31,6 +31,5 @@
       <Project>{233F90B7-8850-4E62-93F2-32E4676E8D22}</Project>
       <Name>Nethermind.Secp256k1</Name>
     </ProjectReference>
-    <ProjectReference Include="..\Nethermind.Secp256k1\Nethermind.Secp256k1.csproj" />
   </ItemGroup>
 </Project>

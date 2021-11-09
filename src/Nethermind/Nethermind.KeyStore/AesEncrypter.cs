@@ -42,14 +42,13 @@ namespace Nethermind.KeyStore
                 {
                     case "aes-128-cbc":
                     {
-                        using var aes = new AesCryptoServiceProvider
-                        {
-                            BlockSize = _config.SymmetricEncrypterBlockSize,
-                            KeySize = _config.SymmetricEncrypterKeySize,
-                            Padding = PaddingMode.PKCS7,
-                            Key = key,
-                            IV = iv
-                        };
+                        using var aes = Aes.Create();
+                        aes.BlockSize = _config.SymmetricEncrypterBlockSize;
+                        aes.KeySize = _config.SymmetricEncrypterKeySize;
+                        aes.Padding = PaddingMode.PKCS7;
+                        aes.Key = key;
+                        aes.IV = iv;
+                        
                         var encryptor = aes.CreateEncryptor(aes.Key, aes.IV);
                         return Execute(encryptor, content);
                     }
@@ -80,14 +79,12 @@ namespace Nethermind.KeyStore
                 {
                     case "aes-128-cbc":
                     {
-                        using var aes = new AesCryptoServiceProvider
-                        {
-                            BlockSize = _config.SymmetricEncrypterBlockSize,
-                            KeySize = _config.SymmetricEncrypterKeySize,
-                            Padding = PaddingMode.PKCS7,
-                            Key = key,
-                            IV = iv
-                        };
+                        using var aes = Aes.Create();
+                        aes.BlockSize = _config.SymmetricEncrypterBlockSize;
+                        aes.KeySize = _config.SymmetricEncrypterKeySize;
+                        aes.Padding = PaddingMode.PKCS7;
+                        aes.Key = key;
+                        aes.IV = iv;
                         var decryptor = aes.CreateDecryptor(key, aes.IV);
                         return Execute(decryptor, cipher);
                     }
@@ -125,7 +122,9 @@ namespace Nethermind.KeyStore
 
         private static void AesCtr(byte[] key, byte[] salt, Stream inputStream, Stream outputStream)
         {
-            using var aes = new AesManaged {Mode = CipherMode.ECB, Padding = PaddingMode.None};
+            using var aes = Aes.Create();
+            aes.Mode = CipherMode.ECB;
+            aes.Padding = PaddingMode.None;
             var blockSize = aes.BlockSize / 8;
             if (salt.Length != blockSize)
             {

@@ -17,10 +17,10 @@
     <PackageReference Include="AspNetCore.HealthChecks.UI" Version="5.0.1" />
     <PackageReference Include="AspNetCore.HealthChecks.UI.Client" Version="5.0.1" />
     <PackageReference Include="AspNetCore.HealthChecks.UI.InMemory.Storage" Version="5.0.1" />
-    <PackageReference Include="Microsoft.AspNetCore.DataProtection.Abstractions" Version="6.0.0-rc.2.*" />
-    <PackageReference Include="Microsoft.AspNetCore.DataProtection.Extensions" Version="6.0.0-rc.2.*" />
+    <PackageReference Include="Microsoft.AspNetCore.DataProtection.Abstractions" Version="6.0.0" />
+    <PackageReference Include="Microsoft.AspNetCore.DataProtection.Extensions" Version="6.0.0" />
     <PackageReference Include="Microsoft.Extensions.CommandLineUtils" Version="1.1.1" />
-    <PackageReference Include="Microsoft.Extensions.Logging" Version="6.0.0-rc.2.*" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="6.0.0" />
     <PackageReference Include="NLog.Targets.Seq" Version="1.2.0" />
     <PackageReference Include="NLog" Version="4.7.7" />
     <PackageReference Include="Seq.Api" Version="2020.5.0" />
@@ -50,7 +50,6 @@
     <ProjectReference Include="..\Nethermind.Sockets\Nethermind.Sockets.csproj" />
     <ProjectReference Include="..\Nethermind.Seq\Nethermind.Seq.csproj" />
     <ProjectReference Include="..\Nethermind.HealthChecks\Nethermind.HealthChecks.csproj" />
-	  <ProjectReference Include="..\Nethermind.Merge.Plugin\Nethermind.Merge.Plugin.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="..\..\..\Nethermind Data Marketplace - Terms and Conditions 20190831.pdf">
