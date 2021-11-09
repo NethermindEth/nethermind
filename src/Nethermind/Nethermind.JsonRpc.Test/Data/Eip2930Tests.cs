@@ -94,7 +94,7 @@ namespace Nethermind.JsonRpc.Test.Data
         {
             _transactionForRpc = _serializer.Deserialize<TransactionForRpc>("{\"nonce\":\"0x0\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null,\"to\":null,\"value\":\"0x0\",\"gasPrice\":\"0x0\",\"gas\":\"0x0\",\"input\":null,\"type\":\"0x01\"}");
 
-            _transactionForRpc.Type.Should().Be(1);
+            _transactionForRpc.Type.Should().Be(TxType.AccessList);
             _transactionForRpc.AccessList.Should().BeNull();
         }
 
@@ -117,7 +117,7 @@ namespace Nethermind.JsonRpc.Test.Data
         {
             _transactionForRpc = _serializer.Deserialize<TransactionForRpc>("{\"nonce\":\"0x0\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null,\"to\":null,\"value\":\"0x0\",\"gasPrice\":\"0x0\",\"gas\":\"0x0\",\"input\":null,\"type\":\"0x01\",\"accessList\":[]}");
 
-            _transactionForRpc.Type.Should().Be(1);
+            _transactionForRpc.Type.Should().Be(TxType.AccessList);
             _transactionForRpc.AccessList.Length.Should().Be(0);
         }
 
@@ -144,7 +144,7 @@ namespace Nethermind.JsonRpc.Test.Data
             _transactionForRpc = _serializer.Deserialize<TransactionForRpc>("{\"nonce\":\"0x0\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null,\"to\":null,\"value\":\"0x0\",\"gasPrice\":\"0x0\",\"gas\":\"0x0\",\"input\":null,\"type\":\"0x01\",\"accessList\":[{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"storageKeys\":[]}]}");
 
             object[] accessList = {new AccessListItemForRpc(TestItem.AddressA, new HashSet<UInt256>{})};
-            _transactionForRpc.Type.Should().Be(1);
+            _transactionForRpc.Type.Should().Be(TxType.AccessList);
             _transactionForRpc.AccessList.Should().BeEquivalentTo(accessList);
         }
         
@@ -170,7 +170,7 @@ namespace Nethermind.JsonRpc.Test.Data
             _transactionForRpc = _serializer.Deserialize<TransactionForRpc>("{\"nonce\":\"0x0\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null,\"to\":null,\"value\":\"0x0\",\"gasPrice\":\"0x0\",\"gas\":\"0x0\",\"input\":null,\"type\":\"0x01\",\"accessList\":[{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\"}]}");
             
             object[] accessList = {new AccessListItemForRpc(TestItem.AddressA, null)};
-            _transactionForRpc.Type.Should().Be(1);
+            _transactionForRpc.Type.Should().Be(TxType.AccessList);
             _transactionForRpc.AccessList.Length.Should().Be(1);
             _transactionForRpc.AccessList.Should().BeEquivalentTo(accessList);
         }

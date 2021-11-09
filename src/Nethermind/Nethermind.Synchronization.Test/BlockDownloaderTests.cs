@@ -630,7 +630,7 @@ namespace Nethermind.Synchronization.Test
             syncPeer.HeadNumber.Returns(2);
 
             Func<Task> action = async () => await downloader.DownloadBlocks(peerInfo, new BlocksRequest(), CancellationToken.None);
-            action.Should().Throw<AggregateException>().WithInnerException<TimeoutException>();
+            await action.Should().ThrowAsync<AggregateException>().WithInnerException<AggregateException, TimeoutException>();
         }
 
         [TestCase(DownloaderOptions.WithReceipts, true)]
@@ -667,11 +667,11 @@ namespace Nethermind.Synchronization.Test
             Func<Task> action = async () => await downloader.DownloadBlocks(peerInfo, new BlocksRequest(downloaderOptions), CancellationToken.None);
             if (shouldThrow)
             {
-                action.Should().Throw<AggregateException>().WithInnerException<TimeoutException>();
+                await action.Should().ThrowAsync<AggregateException>().WithInnerException<AggregateException, TimeoutException>();
             }
             else
             {
-                action.Should().NotThrow();
+                await action.Should().NotThrowAsync();
             }
         }
 
@@ -725,13 +725,14 @@ namespace Nethermind.Synchronization.Test
 
             syncPeerInternal.ExtendTree(chainLength * 2);
             Func<Task> action = async () => await downloader.DownloadBlocks(peerInfo, new BlocksRequest(downloaderOptions), CancellationToken.None);
+            
             if (shouldThrow)
             {
-                action.Should().Throw<EthSyncException>();
+                await action.Should().ThrowAsync<EthSyncException>();
             }
             else
             {
-                action.Should().NotThrow();
+                await action.Should().NotThrowAsync();
             }
         }
 
@@ -765,7 +766,7 @@ namespace Nethermind.Synchronization.Test
             syncPeer.HeadNumber.Returns(2);
 
             Func<Task> action = async () => await downloader.DownloadBlocks(peerInfo, new BlocksRequest(DownloaderOptions.WithBodies | DownloaderOptions.WithReceipts), CancellationToken.None);
-            action.Should().Throw<EthSyncException>();
+            await action.Should().ThrowAsync<EthSyncException>();
         }
 
         [TestCase(32)]
@@ -797,7 +798,7 @@ namespace Nethermind.Synchronization.Test
             syncPeer.HeadNumber.Returns(2);
 
             Func<Task> action = async () => await downloader.DownloadBlocks(peerInfo, new BlocksRequest(DownloaderOptions.WithReceipts), CancellationToken.None);
-            action.Should().Throw<EthSyncException>();
+            await action.Should().ThrowAsync<EthSyncException>();
         }
 
         [TestCase(32)]
@@ -829,7 +830,7 @@ namespace Nethermind.Synchronization.Test
             syncPeer.HeadNumber.Returns(2);
 
             Func<Task> action = async () => await downloader.DownloadBlocks(peerInfo, new BlocksRequest(DownloaderOptions.WithReceipts), CancellationToken.None);
-            action.Should().Throw<EthSyncException>();
+            await action.Should().ThrowAsync<EthSyncException>();
         }
 
         [Flags]
