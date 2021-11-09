@@ -80,7 +80,7 @@ namespace Nethermind.Synchronization.Test
                 DisconnectRequested = true;
             }
 
-            public Task<BlockBody[]> GetBlockBodies(IList<Keccak> blockHashes, CancellationToken token)
+            public Task<BlockBody[]> GetBlockBodies(IReadOnlyList<Keccak> blockHashes, CancellationToken token)
             {
                 return Task.FromResult(Array.Empty<BlockBody>());
             }
@@ -119,12 +119,12 @@ namespace Nethermind.Synchronization.Test
             
             public void SendNewTransactions(IEnumerable<Transaction> txs) { }
 
-            public Task<TxReceipt[][]> GetReceipts(IList<Keccak> blockHash, CancellationToken token)
+            public Task<TxReceipt[][]> GetReceipts(IReadOnlyList<Keccak> blockHash, CancellationToken token)
             {
                 return Task.FromResult(Array.Empty<TxReceipt[]>());
             }
 
-            public Task<byte[][]> GetNodeData(IList<Keccak> hashes, CancellationToken token)
+            public Task<byte[][]> GetNodeData(IReadOnlyList<Keccak> hashes, CancellationToken token)
             {
                 return Task.FromResult(Array.Empty<byte[]>());
             }

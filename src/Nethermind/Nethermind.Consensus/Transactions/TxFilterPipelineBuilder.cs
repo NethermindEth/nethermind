@@ -41,7 +41,7 @@ namespace Nethermind.Consensus.Transactions
             _filterPipeline = new TxFilterPipeline(logManager);
         }
         
-        public TxFilterPipelineBuilder WithMinGasPriceFilter(UInt256 minGasPrice, ISpecProvider specProvider)
+        public TxFilterPipelineBuilder WithMinGasPriceFilter(in UInt256 minGasPrice, ISpecProvider specProvider)
         {
             _filterPipeline.AddTxFilter(new MinGasPriceTxFilter(minGasPrice, specProvider));
             return this;

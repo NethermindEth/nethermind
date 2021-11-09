@@ -39,7 +39,8 @@ namespace Nethermind.Crypto
             _timestamper = timestamper ?? Timestamper.Default;
             Protect(data);
         }
-
+        
+#pragma warning disable CA1416
         private void Protect(byte[] data)
         {
             _entropy = _random.GenerateRandomBytes(_random.NextInt(EntropyMaxLength - EntropyMinLength) + EntropyMinLength);
@@ -53,7 +54,8 @@ namespace Nethermind.Crypto
             CheckReProtect(data);
             return CreateUnprotected(data);
         }
-
+#pragma warning restore CA1416
+        
         protected abstract T CreateUnprotected(byte[] data);
 
         private void CheckReProtect(byte[] data)

@@ -19,6 +19,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core.Caching;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.TxPool;
 
@@ -37,45 +38,37 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
         
         public void RequestTransactions(Action<GetPooledTransactionsMessage> send, IReadOnlyList<Keccak> hashes)
         {
-            IList<Keccak> discoveredTxHashes = GetAndMarkUnknownHashes(hashes);
+            using ArrayPoolList<Keccak> discoveredTxHashes = new(hashes.Count, GetAndMarkUnknownHashes(hashes));
             
             if (discoveredTxHashes.Count != 0)
             {
-                send(new GetPooledTransactionsMessage(discoveredTxHashes.ToArray()));
+                send(new GetPooledTransactionsMessage(discoveredTxHashes));
                 Metrics.Eth65GetPooledTransactionsRequested++;
             }
         }
 
         public void RequestTransactionsEth66(Action<Eth.V66.GetPooledTransactionsMessage> send, IReadOnlyList<Keccak> hashes)
         {
-            IList<Keccak> discoveredTxHashes = GetAndMarkUnknownHashes(hashes);
-            
+            using ArrayPoolList<Keccak> discoveredTxHashes = new(hashes.Count, GetAndMarkUnknownHashes(hashes)); 
+
             if (discoveredTxHashes.Count != 0)
             {
-                GetPooledTransactionsMessage msg65 = new GetPooledTransactionsMessage(discoveredTxHashes.ToArray());
+                GetPooledTransactionsMessage msg65 = new(discoveredTxHashes);
                 send(new V66.GetPooledTransactionsMessage() {EthMessage = msg65});
                 Metrics.Eth66GetPooledTransactionsRequested++;
             }
         }
         
-        private IList<Keccak> GetAndMarkUnknownHashes(IReadOnlyList<Keccak> hashes)
+        private IEnumerable<Keccak> GetAndMarkUnknownHashes(IReadOnlyList<Keccak> hashes)
         {
-            List<Keccak> discoveredTxHashes = new();
-            
             for (int i = 0; i < hashes.Count; i++)
             {
                 Keccak hash = hashes[i];
-                if (!_txPool.IsKnown(hash))
+                if (!_txPool.IsKnown(hash) && _pendingHashes.Set(hash))
                 {
-                    if (!_pendingHashes.Get(hash))
-                    {
-                        discoveredTxHashes.Add(hash);
-                        _pendingHashes.Set(hash);
-                    }
+                    yield return hash;
                 }
             }
-
-            return discoveredTxHashes;
         }
     }
 }

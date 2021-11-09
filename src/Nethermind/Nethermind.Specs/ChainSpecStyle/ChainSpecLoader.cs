@@ -155,8 +155,9 @@ namespace Nethermind.Specs.ChainSpecStyle
                 Eip1559BaseFeeMaxChangeDenominator = chainSpecJson.Params.Eip1559BaseFeeMaxChangeDenominator ??
                                                      Eip1559Constants.BaseFeeMaxChangeDenominator,
                 Eip1559FeeCollector = chainSpecJson.Params.Eip1559FeeCollector,
-                Eip1559FeeCollectorTransition = chainSpecJson.Params.Eip1559FeeCollectorTransition
-                
+                Eip1559FeeCollectorTransition = chainSpecJson.Params.Eip1559FeeCollectorTransition,
+                Eip1559BaseFeeMinValueTransition = chainSpecJson.Params.Eip1559BaseFeeMinValueTransition,
+                Eip1559BaseFeeMinValue = chainSpecJson.Params.Eip1559BaseFeeMinValue,
             };
 
             chainSpec.Parameters.Eip152Transition ??= GetTransitionForExpectedPricing("blake2_f", "price.blake2_f.gas_per_round", 1);
@@ -212,6 +213,9 @@ namespace Nethermind.Specs.ChainSpecStyle
                 : null;
             chainSpec.BerlinBlockNumber = chainSpec.Parameters.Eip2929Transition ?? (long.MaxValue - 1);
             chainSpec.LondonBlockNumber = chainSpec.Parameters.Eip1559Transition ?? (long.MaxValue - 1);
+            chainSpec.ArrowGlacierBlockNumber = chainSpec.Ethash?.DifficultyBombDelays.Count > 4 ?
+                chainSpec.Ethash?.DifficultyBombDelays.Keys.ToArray()[4]
+                : null;
         }
 
         private static void LoadEngine(ChainSpecJson chainSpecJson, ChainSpec chainSpec)

@@ -74,8 +74,13 @@ namespace Nethermind.Specs
             {
                 return Berlin.Instance;
             }
+            
+            if (blockNumber < ArrowGlacierBlockNumber)
+            {
+                return London.Instance;
+            }
 
-            return London.Instance;
+            return ArrowGlacier.Instance;
         }
 
         public const long HomesteadBlockNumber = 1_150_000;
@@ -89,6 +94,7 @@ namespace Nethermind.Specs
         public const long MuirGlacierBlockNumber = 9_200_000;
         public const long BerlinBlockNumber = 12_244_000;
         public const long LondonBlockNumber = 12_965_000;
+        public const long ArrowGlacierBlockNumber = 13_773_000;
         public const long ShanghaiBlockNumber = long.MaxValue -4;
         public const long CancunBlockNumber = long.MaxValue -3;
         public const long PragueBlockNumber = long.MaxValue -2;
@@ -107,7 +113,8 @@ namespace Nethermind.Specs
             IstanbulBlockNumber,
             MuirGlacierBlockNumber,
             BerlinBlockNumber,
-            LondonBlockNumber
+            LondonBlockNumber,
+            ArrowGlacierBlockNumber
         };
 
         private MainnetSpecProvider() { }

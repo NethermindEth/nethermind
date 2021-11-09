@@ -502,7 +502,7 @@ namespace Nethermind.Synchronization.ParallelSync
             _timer.Dispose();
         }
 
-        private Snapshot TakeSnapshot(UInt256 peerDifficulty, long peerBlock)
+        private Snapshot TakeSnapshot(in UInt256 peerDifficulty, long peerBlock)
         {
             // need to find them in the reversed order otherwise we may fall behind the processing
             // and think that we have an invalid snapshot
@@ -570,7 +570,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         protected ref struct Snapshot
         {
-            public Snapshot(long processed, long state, long block, long header, long peerBlock, UInt256 peerDifficulty)
+            public Snapshot(long processed, long state, long block, long header, long peerBlock, in UInt256 peerDifficulty)
             {
                 Processed = processed;
                 State = state;

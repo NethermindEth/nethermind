@@ -30,7 +30,6 @@ namespace Nethermind.Abi
         {
             List<byte[]> dynamicParts = new(length);
             List<byte[]?> headerParts = new(length);
-            int index = 0;
             using IEnumerator<object?> sequenceEnumerator = sequence.GetEnumerator();
             using IEnumerator<AbiType> typesEnumerator = types.GetEnumerator();
             for (int i = 0; i < length; i++)
@@ -119,14 +118,7 @@ namespace Nethermind.Abi
                     (item, position) = type.Decode(data, position, packed);
                 }
 
-                try
-                {
-                    sequence.SetValue(item, i);
-                }
-                catch (InvalidCastException e)
-                {
-                    throw;
-                }
+                sequence.SetValue(item, i);
             }
 
             return (sequence, Math.Max(position, dynamicPosition));

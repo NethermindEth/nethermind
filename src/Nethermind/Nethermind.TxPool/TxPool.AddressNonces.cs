@@ -29,7 +29,7 @@ namespace Nethermind.TxPool
 
             public ConcurrentDictionary<UInt256, NonceInfo> Nonces { get; } = new();
 
-            public AddressNonces(UInt256 startNonce)
+            public AddressNonces(in UInt256 startNonce)
             {
                 _currentNonceInfo = new NonceInfo(startNonce);
                 Nonces.TryAdd(_currentNonceInfo.Value, _currentNonceInfo);

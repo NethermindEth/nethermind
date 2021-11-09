@@ -114,10 +114,14 @@ namespace Nethermind.Core.Test
         [TestCase(500, 0, 0, 200)]
         [TestCase(21, 23, 23, 21)]
         [TestCase(21, 23, 61, 300)]
-        public void Eip_1559_CalculateBaseFee(long gasTarget, long baseFee, long expectedBaseFee, long gasUsed)
+        [TestCase(500, 0, 10, 200, 10)]
+        [TestCase(100, 100, 88, 0, 80)]
+        [TestCase(100, 100, 110, 0, 110)]
+        public void Eip_1559_CalculateBaseFee(long gasTarget, long baseFee, long expectedBaseFee, long gasUsed, long? minimalBaseFee = null)
         {
             IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
             releaseSpec.IsEip1559Enabled.Returns(true);
+            releaseSpec.Eip1559BaseFeeMinValue.Returns((UInt256?)minimalBaseFee);
             
             BlockHeader blockHeader = Build.A.BlockHeader.TestObject;
             blockHeader.Number = 2001;
