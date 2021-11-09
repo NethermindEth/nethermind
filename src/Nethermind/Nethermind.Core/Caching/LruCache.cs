@@ -142,7 +142,7 @@ namespace Nethermind.Core.Caching
         {
             LinkedListNode<LruCacheItem>? node = _lruList.First;
             _lruList.RemoveFirst();
-            _cacheMap.Remove(node.Value.Key);
+            _cacheMap.Remove(node!.Value.Key);
 
             node.Value.Value = value;
             node.Value.Key = key;
