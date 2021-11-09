@@ -20,12 +20,13 @@ using Nethermind.AccountAbstraction.Data;
 using Nethermind.Network;
 using Nethermind.Network.P2P;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Serialization.Rlp.Eip2930;
 
 namespace Nethermind.AccountAbstraction.Network
 {
     public class UserOperationsMessageSerializer : IZeroInnerMessageSerializer<UserOperationsMessage>
     {
+        private UserOperationDecoder _decoder = new();
+        
         public void Serialize(IByteBuffer byteBuffer, UserOperationsMessage message)
         {
             int length = GetLength(message, out int contentLength);
@@ -35,8 +36,7 @@ namespace Nethermind.AccountAbstraction.Network
             nettyRlpStream.StartSequence(contentLength);
             for (int i = 0; i < message.UserOperations.Count; i++)
             {
-                RlpStream rlp = UserOperation.EncodeRlp(message.UserOperations[i]);
-                nettyRlpStream.Write(rlp.Data);
+                nettyRlpStream.Encode(message.UserOperations[i]);
             }
         }
 
@@ -49,12 +49,10 @@ namespace Nethermind.AccountAbstraction.Network
 
         public int GetLength(UserOperationsMessage message, out int contentLength)
         {
-            AccessListDecoder accessListDecoder = new();
-
             contentLength = 0;
             for (int i = 0; i < message.UserOperations.Count; i++)
             {
-                contentLength += UserOperation.GetContentLength(message.UserOperations[i], accessListDecoder);
+                contentLength += _decoder.GetLength(message.UserOperations[i], RlpBehaviors.None);
             }
 
             return Rlp.LengthOfSequence(contentLength);
