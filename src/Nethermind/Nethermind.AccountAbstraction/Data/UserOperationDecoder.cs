@@ -68,6 +68,8 @@ namespace Nethermind.AccountAbstraction.Data
 
         public UserOperation Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
+            rlpStream.SkipLength();
+            
             UserOperationRpc userOperationRpc = new UserOperationRpc
                 {
                     Sender = rlpStream.DecodeAddress() ?? Address.Zero,
@@ -80,10 +82,10 @@ namespace Nethermind.AccountAbstraction.Data
                     MaxFeePerGas = rlpStream.DecodeUInt256(),
                     MaxPriorityFeePerGas = rlpStream.DecodeUInt256(),
                     Paymaster = rlpStream.DecodeAddress() ?? Address.Zero,
-                    PaymasterData = rlpStream.DecodeByteArray()
+                    PaymasterData = rlpStream.DecodeByteArray(),
+                    Signature = rlpStream.DecodeByteArray()
                 };
             
-          //  DecodeSignature(); ???
             return new UserOperation(userOperationRpc);
         }
 

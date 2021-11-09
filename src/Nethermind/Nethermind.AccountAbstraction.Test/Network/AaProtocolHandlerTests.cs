@@ -15,9 +15,11 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Collections.Generic;
 using System.Net;
 using DotNetty.Buffers;
 using FluentAssertions;
+using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Network;
 using Nethermind.AccountAbstraction.Source;
 using Nethermind.Core;
@@ -80,12 +82,12 @@ namespace Nethermind.AccountAbstraction.Test.Network
             _handler.MessageIdSpaceSize.Should().Be(4);
         }
         
-        // [Test]
-        // public void Can_handle_user_operations_message()
-        // {
-        //     UserOperationsMessage msg = new(new List<UserOperation>(Build.A.UserOperation.SignedAndResolved().TestObjectNTimes(3)));
-        //     HandleZeroMessage(msg, AaMessageCode.UserOperations);
-        // }
+        [Test]
+        public void Can_handle_user_operations_message()
+        {
+            UserOperationsMessage msg = new(new List<UserOperation>(Build.A.UserOperation.SignedAndResolved().TestObjectNTimes(3)));
+            HandleZeroMessage(msg, AaMessageCode.UserOperations);
+        }
         
         private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase
         {
