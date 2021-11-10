@@ -198,7 +198,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             if (_payloadStorage.ContainsKey(payloadId))
             {
                 _payloadStorage.Remove(payloadId, out _);
-                if (_logger.IsInfo) _logger.Info($"Cleaned up payload with id={payloadId} as it was not requested");
+                if (_logger.IsInfo) _logger.Info($"Cleaned up payload with id={payloadId.ToHexString()} as it was not requested");
             }
         }
 

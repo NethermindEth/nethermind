@@ -97,8 +97,7 @@ namespace Nethermind.Merge.Plugin.Test
             {
                 MiningConfig miningConfig = new() { Enabled = true };
                 TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator = new(SpecProvider, miningConfig);
-                Eth2BlockProducerFactory? blockProducerFactory = new Eth2BlockProducerFactory(
-                    BlockTree,
+                Eth2BlockProducerFactory? blockProducerFactory = new(
                     SpecProvider,
                     SealEngine,
                     Timestamper,
@@ -168,7 +167,6 @@ namespace Nethermind.Merge.Plugin.Test
             {
                 TestBlockchain chain = await base.Build(specProvider, initialValues);
                 await chain.BlockchainProcessor.StopAsync(true);
-                Suggester.Dispose();
                 return chain;
             }
 

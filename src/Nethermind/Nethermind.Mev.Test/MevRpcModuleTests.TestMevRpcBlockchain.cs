@@ -113,7 +113,7 @@ namespace Nethermind.Mev.Test
                 {
                     Eth2BlockProductionContext? blockProductionContext = new Eth2BlockProductionContext();
                     blockProductionContext.Init(blockProducerEnvFactory, txSource);
-                    return new Eth2BlockProducerFactory(BlockTree, SpecProvider, SealEngine, Timestamper, miningConfig,
+                    return new Eth2BlockProducerFactory(SpecProvider, SealEngine, Timestamper, miningConfig,
                         LogManager).Create(
                         blockProductionContext, null, blockProductionTrigger);
                 }

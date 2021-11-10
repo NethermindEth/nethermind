@@ -109,6 +109,7 @@ namespace Nethermind.Consensus.Producers
 
             return new BlockProducerEnv
             {
+                BlockTree = readOnlyBlockTree,
                 ChainProcessor = chainProcessor,
                 ReadOnlyStateProvider = txProcessingEnv.StateProvider,
                 TxSource = CreateTxSourceForProducer(additionalTxSource, txProcessingEnv, _txPool, _miningConfig, _transactionComparerProvider, _logManager),

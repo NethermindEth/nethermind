@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.Blockchain;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Transactions;
 using Nethermind.State;
@@ -22,6 +23,7 @@ namespace Nethermind.Consensus
 {
     public class BlockProducerEnv
     {
+        public IBlockTree BlockTree { get; set; }
         public IBlockchainProcessor ChainProcessor { get; set; }
         public IStateProvider ReadOnlyStateProvider { get; set; }
         public ITxSource TxSource { get; set; }

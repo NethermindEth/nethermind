@@ -240,15 +240,15 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             BlockProducerEnv Create()
             {
                 ReadOnlyDbProvider dbProvider = _api.DbProvider.AsReadOnly(false);
-                ReadOnlyBlockTree blockTree = _api.BlockTree.AsReadOnly();
+                ReadOnlyBlockTree readOnlyBlockTree = _api.BlockTree.AsReadOnly();
 
-                ReadOnlyTxProcessingEnv txProcessingEnv = CreateReadonlyTxProcessingEnv(dbProvider, blockTree);
-                ReadOnlyTxProcessingEnv constantContractsProcessingEnv = CreateReadonlyTxProcessingEnv(dbProvider, blockTree);
+                ReadOnlyTxProcessingEnv txProcessingEnv = CreateReadonlyTxProcessingEnv(dbProvider, readOnlyBlockTree);
+                ReadOnlyTxProcessingEnv constantContractsProcessingEnv = CreateReadonlyTxProcessingEnv(dbProvider, readOnlyBlockTree);
                 BlockProcessor blockProcessor = CreateBlockProcessor(txProcessingEnv, constantContractsProcessingEnv);
 
                 IBlockchainProcessor blockchainProcessor =
                     new BlockchainProcessor(
-                        blockTree,
+                        readOnlyBlockTree,
                         blockProcessor,
                         _api.BlockPreprocessor,
                         _api.LogManager,
@@ -260,6 +260,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
 
                 return new BlockProducerEnv()
                 {
+                    BlockTree = readOnlyBlockTree,
                     ChainProcessor = chainProcessor,
                     ReadOnlyStateProvider = txProcessingEnv.StateProvider,
                     TxSource = CreateTxSourceForProducer(txProcessingEnv, constantContractsProcessingEnv, additionalTxSource),

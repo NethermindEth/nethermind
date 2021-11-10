@@ -190,8 +190,6 @@ namespace Nethermind.Clique.Test
                     MainnetSpecProvider.Instance, 
                     _cliqueConfig,
                     nodeLogManager);
-
-                var suggester = new ProducedBlockSuggester(blockTree, blockProducer);
                 blockProducer.Start();
 
                 _producers.Add(privateKey, blockProducer);

@@ -28,7 +28,6 @@ namespace Nethermind.Merge.Plugin.Handlers
 {
     public class Eth2BlockProducerFactory
     {
-        private readonly IBlockTree _blockTree;
         private readonly ISpecProvider _specProvider;
         private readonly ISealEngine _sealEngine;
         private readonly ITimestamper _timestamper;
@@ -37,7 +36,6 @@ namespace Nethermind.Merge.Plugin.Handlers
         private readonly IGasLimitCalculator? _gasLimitCalculator;
 
         public Eth2BlockProducerFactory(
-            IBlockTree blockTree,
             ISpecProvider specProvider,
             ISealEngine sealEngine,
             ITimestamper timestamper,
@@ -45,7 +43,6 @@ namespace Nethermind.Merge.Plugin.Handlers
             ILogManager logManager,
             IGasLimitCalculator? gasLimitCalculator = null)
         {
-            _blockTree = blockTree;
             _specProvider = specProvider;
             _sealEngine = sealEngine;
             _timestamper = timestamper;
@@ -64,7 +61,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             return new Eth2BlockProducer(
                 txSource ?? producerEnv.TxSource,
                 producerEnv.ChainProcessor,
-                _blockTree,
+                producerEnv.BlockTree,
                 blockProductionTrigger ?? eth2BlockProductionContext.BlockProductionTrigger,
                 producerEnv.ReadOnlyStateProvider,
                 _gasLimitCalculator ?? new TargetAdjustedGasLimitCalculator(_specProvider, _miningConfig),

@@ -48,8 +48,6 @@ namespace Nethermind.Init.Steps
 
                 ILogger logger = _api.LogManager.GetClassLogger();
                 if (logger.IsWarn) logger.Warn($"Starting {_api.SealEngineType} block producer & sealer");
-                ProducedBlockSuggester suggester = new(_api.BlockTree, _api.BlockProducer);
-                _api.DisposeStack.Push(suggester);
                 await _api.BlockProducer.Start();
             }
         }

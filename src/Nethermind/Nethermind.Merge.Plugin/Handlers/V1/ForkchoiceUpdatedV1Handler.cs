@@ -94,32 +94,35 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             
             // _blockConfirmationManager.Confirm(confirmedHeader);
             byte[] payloadId = Array.Empty<byte>();
-            bool success = _blockTree.Head == newHeadBlock;
-            if (_blockTree.HeadHash != forkchoiceState.HeadBlockHash)
+
+            bool headUpdated = false;
+            bool shouldUpdateHead = _blockTree.Head != newHeadBlock;
+            if (shouldUpdateHead)
             {
                 _blockTree.UpdateMainChain(blocks!, true, true);
-                success = _blockTree.Head == newHeadBlock;
+                headUpdated = _blockTree.Head == newHeadBlock;
             }
-
-            if (success)
+            
+            if (headUpdated && shouldUpdateHead)
             {
                 _poSSwitcher.TrySwitchToPos(newHeadBlock!.Header);
                 _stateProvider.ResetStateTo(newHeadBlock.StateRoot!);
                 if (_logger.IsInfo) _logger.Info($"Block {forkchoiceState.HeadBlockHash} was set as head");
-
-                if (payloadAttributes != null)
-                {
-                    payloadId = _payloadService.StartPreparingPayload(newHeadBlock!.Header, payloadAttributes);
-                }
             }
-            else
+            else if (headUpdated == false && shouldUpdateHead)
             {
+                // ToDo we should never have this case. Consult it with LR
                 if (_logger.IsWarn) _logger.Warn($"Block {forkchoiceState.FinalizedBlockHash} was not set as head.");
             }
+            
+            bool shouldStartPreparingPayload = payloadAttributes != null && (headUpdated || shouldUpdateHead == false);
+            if (shouldStartPreparingPayload)
+            {
+                payloadId = _payloadService.StartPreparingPayload(newHeadBlock!.Header, payloadAttributes);
+            }
 
 
-
-            return ResultWrapper<ForkchoiceUpdatedV1Result>.Success(new ForkchoiceUpdatedV1Result() { PayloadId = payloadId.ToHexString(false), Status = EngineStatus.Success});
+            return ResultWrapper<ForkchoiceUpdatedV1Result>.Success(new ForkchoiceUpdatedV1Result() { PayloadId = payloadId.ToHexString(true), Status = EngineStatus.Success});
         }
 
         private (BlockHeader? BlockHeader, string? ErrorMsg) EnsureHeaderForConfirmation(Keccak confirmedBlockHash)
