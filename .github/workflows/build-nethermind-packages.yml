@@ -35,6 +35,10 @@ jobs:
     - name: Setting up Build Environment
       run: |
         npm i pkg @vercel/ncc -g
+    - name: Setting up dotnet
+      uses: actions/setup-dotnet@v1
+      with:
+        dotnet-version: '6.0.x'
     - name: Setting up QEMU
       uses: docker/setup-qemu-action@v1
     - name: Setting up Docker Buildx

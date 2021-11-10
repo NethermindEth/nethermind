@@ -19,6 +19,10 @@ jobs:
       with: 
         submodules: true
         fetch-depth: 0
+    - name: Setting up dotnet
+      uses: actions/setup-dotnet@v1
+      with:
+        dotnet-version: '6.0.x'
     - name: Installing Linux packages
       if: matrix.os == 'ubuntu-latest'
       run: |

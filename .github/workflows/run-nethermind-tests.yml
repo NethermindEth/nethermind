@@ -20,6 +20,10 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install libsnappy-dev libc6-dev libc6
+    - name: Setting up dotnet
+      uses: actions/setup-dotnet@v1
+      with:
+        dotnet-version: '6.0.x'
     - name: Nethermind.Abi.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Abi.Test;
@@ -54,6 +58,10 @@ jobs:
     - uses: actions/checkout@v2
       with:
         submodules: true
+    - name: Setting up dotnet
+      uses: actions/setup-dotnet@v1
+      with:
+        dotnet-version: '6.0.x'
     - name: Installing Linux packages
       run: |
         sudo apt-get update
@@ -98,6 +106,10 @@ jobs:
     - uses: actions/checkout@v2
       with:
         submodules: true
+    - name: Setting up dotnet
+      uses: actions/setup-dotnet@v1
+      with:
+        dotnet-version: '6.0.x'
     - name: Installing Linux packages
       run: |
         sudo apt-get update
@@ -139,6 +151,10 @@ jobs:
     - uses: actions/checkout@v2
       with:
         submodules: true
+    - name: Setting up dotnet
+      uses: actions/setup-dotnet@v1
+      with:
+        dotnet-version: '6.0.x'
     - name: Installing Linux packages
       run: |
         sudo apt-get update
@@ -168,6 +184,10 @@ jobs:
     - uses: actions/checkout@v2
       with:
         submodules: true
+    - name: Setting up dotnet
+      uses: actions/setup-dotnet@v1
+      with:
+        dotnet-version: '6.0.x'
     - name: Installing Linux packages
       run: |
         sudo apt-get update
@@ -212,6 +232,10 @@ jobs:
     - uses: actions/checkout@v2
       with:
         submodules: true
+    - name: Setting up dotnet
+      uses: actions/setup-dotnet@v1
+      with:
+        dotnet-version: '6.0.x'
     - name: Installing Linux packages
       run: |
         sudo apt-get update
@@ -227,6 +251,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
+    - name: Setting up dotnet
+      uses: actions/setup-dotnet@v1
+      with:
+        dotnet-version: '6.0.x'
     - name: Unshallow fetching
       run: git fetch --unshallow
     - name: Updating submodules
