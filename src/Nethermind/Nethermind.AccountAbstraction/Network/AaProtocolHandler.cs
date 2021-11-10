@@ -56,7 +56,7 @@ namespace Nethermind.AccountAbstraction.Network
         
         public override string ProtocolCode => Protocol.AA;
         
-        public override int MessageIdSpaceSize => 4;
+        public override int MessageIdSpaceSize => 1;
 
         public override string Name => "aa";
         
@@ -99,8 +99,6 @@ namespace Nethermind.AccountAbstraction.Network
         
         public void HandleMessage(ZeroPacket message)
         {
-            // int size = message.Content.ReadableBytes;
-
             switch (message.PacketType)
             {
                 case AaMessageCode.UserOperations:
@@ -109,27 +107,6 @@ namespace Nethermind.AccountAbstraction.Network
                     ReportIn(uopMsg);
                     Handle(uopMsg);
                     break;
-                // case AaMessageCode.NewPooledUserOperationsHashes:
-                //     NewPooledUserOperationsHashesMessage newPooledUopMsg =
-                //         Deserialize<NewPooledUserOperationsHashesMessage>(message.Content);
-                //     Metrics.NewPooledUserOperationsHashesMessagesReceived++;
-                //     ReportIn(newPooledUopMsg);
-                //     Handle(newPooledUopMsg);
-                //     break;
-                // case AaMessageCode.GetPooledUserOperations:
-                //     GetPooledUserOperationsMessage getPooledUopMsg
-                //         = Deserialize<GetPooledUserOperationsMessage>(message.Content);
-                //     Metrics.GetPooledUserOperationsMessagesReceived++;
-                //     ReportIn(getPooledUopMsg);
-                //     Handle(getPooledUopMsg);
-                //     break;
-                // case AaMessageCode.PooledUserOperations:
-                //     PooledUserOperationsMessage pooledUopMsg
-                //         = Deserialize<PooledUserOperationsMessage>(message.Content);
-                //     Metrics.PooledUserOperationsMessagesReceived++;
-                //     ReportIn(pooledUopMsg);
-                //     Handle(pooledUopMsg.EthMessage);
-                //     break;
             }
         }
 

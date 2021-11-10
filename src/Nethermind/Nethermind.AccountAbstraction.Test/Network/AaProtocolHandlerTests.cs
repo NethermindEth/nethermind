@@ -79,7 +79,7 @@ namespace Nethermind.AccountAbstraction.Test.Network
             _handler!.ProtocolCode.Should().Be("aa");
             _handler.Name.Should().Be("aa");
             _handler.ProtocolVersion.Should().Be(0);
-            _handler.MessageIdSpaceSize.Should().Be(4);
+            _handler.MessageIdSpaceSize.Should().Be(1);
         }
         
         [Test]
