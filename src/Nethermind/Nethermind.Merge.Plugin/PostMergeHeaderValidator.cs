@@ -62,14 +62,12 @@ namespace Nethermind.Merge.Plugin
             bool validNonce = ValidateHeaderField(header, header.Nonce, 0u, nameof(header.Nonce));
             // validExtraData needed in previous version of EIP-3675 specification
             //bool validExtraData = ValidateHeaderField<byte>(header, header.ExtraData, Array.Empty<byte>(), nameof(header.ExtraData));
-            bool validMixHash = ValidateHeaderField(header, header.MixHash, Keccak.Zero, nameof(header.MixHash));
             bool validUncles = ValidateHeaderField(header, header.UnclesHash, Keccak.OfAnEmptySequenceRlp,
                 nameof(header.UnclesHash));
 
             return validDifficulty
                    && validNonce
                    //&& validExtraData
-                   && validMixHash
                    && validUncles;
         }
         
