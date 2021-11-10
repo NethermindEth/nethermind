@@ -15,15 +15,18 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Collections.Generic;
+using System;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
+using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Merge.Plugin.Data.V1;
 using Newtonsoft.Json;
 using NUnit.Framework;
 
@@ -41,7 +44,7 @@ namespace Nethermind.Merge.Plugin.Test
             Address feeRecipient = Address.Zero;
             UInt256 timestamp = Timestamper.UnixTime.Seconds;
 
-            UInt256 expectedPayloadId = 0;
+            byte[] expectedPayloadId = Bytes.FromHexString("0x45bd36a8143d860c");
 
             var forkChoiceUpdatedParams = new
             {
@@ -55,40 +58,44 @@ namespace Nethermind.Merge.Plugin.Test
                 random = random.ToString(),
                 feeRecipient = feeRecipient.ToString(),
             };
-            string[] parameters =
+            string?[] parameters =
             {
                 JsonConvert.SerializeObject(forkChoiceUpdatedParams),
                 JsonConvert.SerializeObject(preparePayloadParams)
             };
             // prepare a payload
             string result = RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV1", parameters);
-            result.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":{{\"status\":\"SUCCESS\",\"payloadId\":\"{expectedPayloadId.ToHexString(true)}\"}},\"id\":67}}");
+            result.Should()
+                .Be(
+                    $"{{\"jsonrpc\":\"2.0\",\"result\":{{\"status\":\"SUCCESS\",\"payloadId\":\"{expectedPayloadId.ToHexString(true)}\"}},\"id\":67}}");
 
-            Keccak blockHash = new Keccak("0x33228284b2c8d36e3fd34c31de3ab0604412bf9ab71725307d13daa2c4f44348");
+            Keccak blockHash = new Keccak("0xdc4e882186c2723e6ed279634d6b7f502bf2712dc3113c743903786b61c55c87");
             var expectedPayload = new
             {
-                parentHash = startingHead,
-                coinbase = feeRecipient,
+                parentHash = startingHead.ToString(),
+                coinbase = chain.MinerAddress.ToString(),
                 stateRoot = chain.BlockTree.Head!.StateRoot!.ToString(),
                 receiptRoot = chain.BlockTree.Head!.ReceiptsRoot!.ToString(),
-                logsBloom = Bloom.Empty.ToString(),
+                logsBloom = Bloom.Empty.Bytes.ToHexString(true),
                 random = random.ToString(),
                 blockNumber = "0x1",
-                gasLimit = chain.BlockTree.Head!.GasLimit.ToHexString(false),
+                gasLimit = chain.BlockTree.Head!.GasLimit.ToHexString(true),
                 gasUsed = "0x0",
-                timestamp = "0x5",
+                timestamp = timestamp.ToHexString(true),
                 extraData = "0x",
-                baseFeePerGas = chain.BlockTree.Head!.BaseFeePerGas.ToHexString(false),
+                baseFeePerGas = "0x0",
                 blockHash = blockHash.ToString(),
-                transaction = new List<object>(),
+                transactions = Array.Empty<object>(),
             };
             string expectedPayloadString = JsonConvert.SerializeObject(expectedPayload);
             // get the payload
             result = RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV1", expectedPayloadId.ToHexString(true));
-            result.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":{expectedPayload},\"id\":67}}");
+            result.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":{expectedPayloadString},\"id\":67}}");
             // execute the payload
             result = RpcTest.TestSerializedRequest(rpc, "engine_executePayloadV1", expectedPayloadString);
-            result.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":{{\"status\":\"VALID\",\"latestValidHash\":\"{blockHash}\"}},\"id\":67}}");
+            result.Should()
+                .Be(
+                    $"{{\"jsonrpc\":\"2.0\",\"result\":{{\"status\":\"VALID\",\"latestValidHash\":\"{blockHash}\"}},\"id\":67}}");
 
             forkChoiceUpdatedParams = new
             {
@@ -96,15 +103,11 @@ namespace Nethermind.Merge.Plugin.Test
                 safeBlockHash = blockHash.ToString(true),
                 finalizedBlockHash = startingHead.ToString(true),
             };
-            preparePayloadParams = null;
-            parameters = new[]
-            {
-                JsonConvert.SerializeObject(forkChoiceUpdatedParams),
-                JsonConvert.SerializeObject(preparePayloadParams)
-            };
+            parameters = new[] {JsonConvert.SerializeObject(forkChoiceUpdatedParams), null};
             // update the fork choice
             result = RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV1", parameters);
-            result.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":{{\"status\":\"VALID\",\"payloadId\":\"0x\"}},\"id\":67}}");
+            result.Should()
+                .Be("{\"jsonrpc\":\"2.0\",\"result\":{\"status\":\"SUCCESS\",\"payloadId\":\"0x\"},\"id\":67}");
         }
 
         [Test]
@@ -112,12 +115,88 @@ namespace Nethermind.Merge.Plugin.Test
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
             IEngineRpcModule rpc = CreateEngineModule(chain);
-            UInt256 payloadId = 111;
+            byte[] payloadId = Bytes.FromHexString("0x1111111111111111");
+            ;
 
             string parameters = payloadId.ToHexString(true);
-            string result = RpcTest.TestSerializedRequest(rpc, "engine_getPayload", parameters);
+            string result = RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV1", parameters);
             result.Should()
-                .Be("{{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32001,\"message\":\"unknown payload\"},\"id\":67}}");
+                .Be("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32001,\"message\":\"unknown payload\"},\"id\":67}");
+        }
+
+        [Test, Retry(3)]
+        public async Task engine_forkchoiceUpdatedV1_should_create_block_on_top_of_genesis()
+        {
+            using MergeTestBlockchain chain = await CreateBlockChain();
+            IEngineRpcModule rpc = CreateEngineModule(chain);
+            Keccak startingHead = chain.BlockTree.HeadHash;
+            UInt256 timestamp = 30;
+            Keccak random = Keccak.Zero;
+            Address feeRecipient = Address.Zero;
+
+            BlockRequestResult? blockRequestResult = await BuildAndGetPayloadResult(rpc, startingHead,
+                Keccak.Zero, startingHead, timestamp, random, feeRecipient);
+
+            BlockRequestResult expected = CreateParentBlockRequestOnHead(chain.BlockTree);
+            expected.GasLimit = 4000000L;
+            expected.BlockHash = new Keccak("0x33228284b2c8d36e3fd34c31de3ab0604412bf9ab71725307d13daa2c4f44348");
+            expected.LogsBloom = Bloom.Empty;
+            expected.Coinbase = chain.MinerAddress;
+            expected.BlockNumber = 1;
+            expected.Random = random;
+            expected.ParentHash = startingHead;
+            expected.SetTransactions(Array.Empty<Transaction>());
+            expected.Timestamp = timestamp;
+            expected.Random = random;
+            expected.ExtraData = Array.Empty<byte>();
+
+            blockRequestResult.Should().BeEquivalentTo(expected);
+        }
+
+        [Test]
+        public async Task getPayloadV1_should_return_error_if_there_was_no_corresponding_preparePayloadV1()
+        {
+            using MergeTestBlockchain chain = await CreateBlockChain();
+            IEngineRpcModule rpc = CreateEngineModule(chain);
+            Keccak startingHead = chain.BlockTree.HeadHash;
+            UInt256 timestamp = Timestamper.UnixTime.Seconds;
+            Keccak random = Keccak.Zero;
+            Address feeRecipient = Address.Zero;
+            string payloadId = rpc.engine_forkchoiceUpdatedV1(new (startingHead, Keccak.Zero, startingHead),
+                new () { Timestamp = timestamp, FeeRecipient = feeRecipient, Random = random}).Result.Data.PayloadId;
+        
+            byte[] requestedPayloadId = (Convert.ToInt32(payloadId, 16) + 1).ToByteArray();
+            ResultWrapper<BlockRequestResult?> response = await rpc.engine_getPayloadV1(requestedPayloadId);
+        
+            response.ErrorCode.Should().Be(MergeErrorCodes.UnavailablePayload);
+        }
+        
+        private async Task<BlockRequestResult> BuildAndGetPayloadResult(
+            IEngineRpcModule rpc, Keccak headBlockHash, Keccak finalizedBlockHash, Keccak safeBlockHash,
+            UInt256 timestamp, Keccak random, Address feeRecipient)
+        {
+            ForkchoiceStateV1 forkchoiceState = new(headBlockHash, finalizedBlockHash, safeBlockHash);
+            PayloadAttributes payloadAttributes =
+                new() {Timestamp = timestamp, Random = random, FeeRecipient = feeRecipient};
+            string payloadId =
+                rpc.engine_forkchoiceUpdatedV1(forkchoiceState, payloadAttributes).Result.Data.PayloadId;
+            ResultWrapper<BlockRequestResult?> getPayloadResult =
+                await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
+            return getPayloadResult.Data!;
+        }
+
+        private async Task<BlockRequestResult> BuildAndGetPayloadResult(MergeTestBlockchain chain,
+            IEngineRpcModule rpc)
+        {
+            Keccak startingHead = chain.BlockTree.HeadHash;
+            Keccak parentHead = chain.BlockTree.Head!.ParentHash!;
+
+            UInt256 timestamp = Timestamper.UnixTime.Seconds;
+            Keccak random = Keccak.Zero;
+            Address feeRecipient = Address.Zero;
+
+            return await BuildAndGetPayloadResult(rpc, startingHead, parentHead, startingHead,
+                timestamp, random, feeRecipient);
         }
     }
 }

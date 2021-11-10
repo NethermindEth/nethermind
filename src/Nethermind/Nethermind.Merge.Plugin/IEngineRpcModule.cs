@@ -65,12 +65,6 @@ namespace Nethermind.Merge.Plugin
         Task<ResultWrapper<string>> engine_forkchoiceUpdated(ForkChoiceUpdatedRequest forkChoiceUpdatedRequest);
 
         [JsonRpcMethod(
-            Description = "Propagates the change in the fork choice to the execution client.",
-            IsSharable = true,
-            IsImplemented = true)]
-        Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV1(ForkchoiceStateV1 forkChoiceUpdatedRequest, PayloadAttributes payloadAttributes);
-
-        [JsonRpcMethod(
             Description = "Propagates an override of the TERMINAL_TOTAL_DIFFICULTY to the execution client.",
             IsSharable = true,
             IsImplemented = true)]

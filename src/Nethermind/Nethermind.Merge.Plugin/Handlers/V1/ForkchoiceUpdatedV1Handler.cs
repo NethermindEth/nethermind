@@ -119,7 +119,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
 
 
-            return ResultWrapper<ForkchoiceUpdatedV1Result>.Success(new ForkchoiceUpdatedV1Result() { PayloadId = payloadId.ToHexString(), Status = EngineStatus.Success});
+            return ResultWrapper<ForkchoiceUpdatedV1Result>.Success(new ForkchoiceUpdatedV1Result() { PayloadId = payloadId.ToHexString(true), Status = EngineStatus.Success});
         }
 
         private (BlockHeader? BlockHeader, string? ErrorMsg) EnsureHeaderForConfirmation(Keccak confirmedBlockHash)
