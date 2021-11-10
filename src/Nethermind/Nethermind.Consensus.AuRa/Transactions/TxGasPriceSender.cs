@@ -16,43 +16,38 @@
 // 
 
 using System;
-using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa.Transactions
 {
+    // Class is used only for nonposdao AuRa chains. These transactions will be paid by the validator.
     public class TxGasPriceSender : ITxSender
     {
         private readonly ITxSender _txSender;
-        private readonly ITxPool _txPool;
-        private readonly IMiningConfig _miningConfig;
+        private readonly IGasPriceOracle _gasPriceOracle;
         private readonly uint _percentDelta;
 
-        public TxGasPriceSender(ITxSender txSender, ITxPool txPool, IMiningConfig miningConfig, uint percentDelta = TxGasPriceSenderConstants.DefaultPercentMultiplier)
+        public TxGasPriceSender(
+            ITxSender txSender,
+            IGasPriceOracle gasPriceOracle,
+            uint percentDelta = TxGasPriceSenderConstants.DefaultPercentMultiplier)
         {
             _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
-            _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
-            _miningConfig = miningConfig ?? throw new ArgumentNullException(nameof(miningConfig));
+            _gasPriceOracle = gasPriceOracle ?? throw new ArgumentNullException(nameof(gasPriceOracle));
             _percentDelta = percentDelta;
         }
 
         public ValueTask<(Keccak, AddTxResult?)> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
-            UInt256 minGasPrice =  CurrentMinGasPrice();
-            UInt256 txGasPrice = minGasPrice * _percentDelta / 100;
-            tx.GasPrice = UInt256.Max(txGasPrice, _miningConfig.MinGasPrice);
+            UInt256 gasPriceEstimated = _gasPriceOracle.GetGasPriceEstimate() * _percentDelta / 100;
+            tx.DecodedMaxFeePerGas = gasPriceEstimated;
+            tx.GasPrice = gasPriceEstimated;
             return _txSender.SendTransaction(tx, txHandlingOptions);
         }
-
-        private UInt256 CurrentMinGasPrice() =>
-            _txPool.GetPendingTransactions()
-                .Select(t => t.GasPrice)
-                .Where(g => g > UInt256.Zero)
-                .DefaultIfEmpty(TxGasPriceSenderConstants.DefaultGasPrice)
-                .Min();
     }
 }
