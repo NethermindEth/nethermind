@@ -23,5 +23,8 @@ namespace Nethermind.AccountAbstraction.Network
     {
         [Description("Number of UserOperations messages received")]
         public static long UserOperationsMessagesReceived { get; set; }
+        
+        [Description("Number of UserOperations messages sent")]
+        public static long UserOperationsMessagesSent { get; set; }
     }
 }

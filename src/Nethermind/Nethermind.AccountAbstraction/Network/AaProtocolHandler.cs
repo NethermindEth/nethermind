@@ -157,6 +157,7 @@ namespace Nethermind.AccountAbstraction.Network
         {
             UserOperationsMessage msg = new(uopsToSend);
             Send(msg);
+            Metrics.UserOperationsMessagesSent++;
         }
 
         public override void DisconnectProtocol(DisconnectReason disconnectReason, string details)
