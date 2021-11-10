@@ -20,13 +20,9 @@ echo =======================================================
 
 mkdir -p plugins
 mkdir -p $LIN_RELEASE/plugins
-rm -rf $LIN_RELEASE/ndm-plugins
 mkdir -p $OSX_RELEASE/plugins
-rm -rf $OSX_RELEASE/ndm-plugins
 mkdir -p $WIN_RELEASE/plugins
-rm -rf $WIN_RELEASE/ndm-plugins
 mkdir -p $LIN_ARM64_RELEASE/plugins
-rm -rf $LIN_ARM64_RELEASE/ndm-plugins
 
 cd nethermind/src/Nethermind/
 dotnet build -c Release Nethermind.sln
@@ -35,14 +31,14 @@ dotnet build -c Release
 
 cd $RELEASE_DIRECTORY/plugins
 
-cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.Analytics/bin/Release/net5.0/Nethermind.Analytics.dll .
-cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.Baseline/bin/Release/net5.0/Nethermind.Baseline.dll .
-cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.Api/bin/Release/net5.0/Nethermind.Api.dll .
-cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.HealthChecks/bin/Release/net5.0/Nethermind.HealthChecks.dll .
-cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.Runner/bin/Release/net5.0/Microsoft.Extensions.Diagnostics.HealthChecks.Abstractions.dll .
-cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.Runner/bin/Release/net5.0/Microsoft.Extensions.Diagnostics.HealthChecks.dll .
-cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.Merge.Plugin/bin/Release/net5.0/Nethermind.Merge.Plugin.dll .
-cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.Mev/bin/Release/net5.0/Nethermind.Mev.dll .
+cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.Analytics/bin/Release/net6.0/Nethermind.Analytics.dll .
+cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.Baseline/bin/Release/net6.0/Nethermind.Baseline.dll .
+cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.Api/bin/Release/net6.0/Nethermind.Api.dll .
+cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.HealthChecks/bin/Release/net6.0/Nethermind.HealthChecks.dll .
+cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.Runner/bin/Release/net6.0/Microsoft.Extensions.Diagnostics.HealthChecks.Abstractions.dll .
+cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.Runner/bin/Release/net6.0/Microsoft.Extensions.Diagnostics.HealthChecks.dll .
+cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.Merge.Plugin/bin/Release/net6.0/Nethermind.Merge.Plugin.dll .
+cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.Mev/bin/Release/net6.0/Nethermind.Mev.dll .
 
 zip -r plugins-$GIT_SHORT_TAG-$GIT_HASH.zip . && cd ..
 
