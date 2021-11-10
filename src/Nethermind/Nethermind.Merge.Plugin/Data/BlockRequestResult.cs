@@ -83,27 +83,24 @@ namespace Nethermind.Merge.Plugin.Data
             }
         }
         
-        public byte[] ExtraData { get; set; } = Array.Empty<byte>();
-        public long GasLimit { get; set; }
-        public long GasUsed { get; set; }
-       
-        [JsonProperty(NullValueHandling = NullValueHandling.Include)]
-        public Keccak BlockHash { get; set; } = null!;
+        public Keccak ParentHash { get; set; } = null!;
+        public Address? Coinbase { get; set; }
+        public Keccak StateRoot { get; set; } = null!;
+        public Keccak ReceiptRoot { get; set; } = null!;
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public Bloom LogsBloom { get; set; } = Bloom.Empty;
         public Keccak Random { get; set; } = Keccak.Zero;
-        public Address? Coinbase { get; set; }
-        
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public long BlockNumber { get; set; }
-        public Keccak ParentHash { get; set; } = null!;
-        public Keccak ReceiptRoot { get; set; } = null!;
-        public Keccak StateRoot { get; set; } = null!;
-        public byte[][] Transactions { get; set; } = Array.Empty<byte[]>();
+        public long GasLimit { get; set; }
+        public long GasUsed { get; set; }
         public UInt256 Timestamp { get; set; }
-
+        public byte[] ExtraData { get; set; } = Array.Empty<byte>();
         public UInt256 BaseFeePerGas { get; set; }
-        
+        [JsonProperty(NullValueHandling = NullValueHandling.Include)]
+        public Keccak BlockHash { get; set; } = null!;
+        public byte[][] Transactions { get; set; } = Array.Empty<byte[]>();
+
         public override string ToString() => BlockHash == null ? $"{BlockNumber} null" : $"{BlockNumber} ({BlockHash})";
 
         public void SetTransactions(params Transaction[] transactions)

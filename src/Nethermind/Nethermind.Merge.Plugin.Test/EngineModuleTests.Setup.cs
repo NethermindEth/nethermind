@@ -51,17 +51,16 @@ namespace Nethermind.Merge.Plugin.Test
         {
             PayloadStorage? payloadStorage = new(chain.IdealBlockProductionContext, chain.EmptyBlockProductionContext, new InitConfig(), chain.LogManager);
             PayloadService payloadService = new(chain.IdealBlockProductionContext, chain.EmptyBlockProductionContext, new InitConfig(), chain.SealEngine, chain.LogManager);
-            var ethSyncingInfo = new EthSyncingInfo(chain.BlockFinder);
 
             return new EngineRpcModule(
                 new PreparePayloadHandler(chain.BlockTree, payloadStorage, chain.Timestamper, chain.SealEngine, chain.LogManager),
                 new GetPayloadHandler(payloadStorage, chain.LogManager),
-                new GetPayloadHandlerV1(payloadService, chain.LogManager),
-                new ExecutePayloadHandler(chain.HeaderValidator, chain.BlockTree, chain.BlockchainProcessor, ethSyncingInfo, new InitConfig(), chain.LogManager),
-                new ExecutePayloadV1Handler(chain.HeaderValidator, chain.BlockTree, chain.BlockchainProcessor, ethSyncingInfo, new InitConfig(), chain.LogManager),
+                new GetPayloadV1Handler(payloadService, chain.LogManager),
+                new ExecutePayloadHandler(chain.HeaderValidator, chain.BlockTree, chain.BlockchainProcessor, chain.EthSyncingInfo, new InitConfig(), chain.LogManager),
+                new ExecutePayloadV1Handler(chain.HeaderValidator, chain.BlockTree, chain.BlockchainProcessor, chain.EthSyncingInfo, new InitConfig(), chain.LogManager),
                 (PoSSwitcher)chain.PoSSwitcher,
                 new ForkChoiceUpdatedHandler(chain.BlockTree, chain.State, chain.BlockFinalizationManager, chain.PoSSwitcher, chain.BlockConfirmationManager, chain.LogManager),
-                new ForkchoiceUpdatedV1Handler(chain.BlockTree, chain.State, chain.BlockFinalizationManager, chain.PoSSwitcher, ethSyncingInfo, chain.BlockConfirmationManager, payloadService, chain.LogManager),
+                new ForkchoiceUpdatedV1Handler(chain.BlockTree, chain.State, chain.BlockFinalizationManager, chain.PoSSwitcher, chain.EthSyncingInfo, chain.BlockConfirmationManager, payloadService, chain.LogManager),
                 new ExecutionStatusHandler(chain.BlockTree, chain.BlockConfirmationManager, chain.BlockFinalizationManager),
                 chain.LogManager,
                 chain.BlockTree);
@@ -89,6 +88,8 @@ namespace Nethermind.Merge.Plugin.Test
 
             public sealed override ILogManager LogManager { get; } = new NUnitLogManager();
             
+            public IEthSyncingInfo EthSyncingInfo { get; private set; }
+            
             private IBlockValidator BlockValidator { get; set; } = null!;
 
             private ISigner Signer { get; }
@@ -97,7 +98,8 @@ namespace Nethermind.Merge.Plugin.Test
             {
                 MiningConfig miningConfig = new() { Enabled = true };
                 TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator = new(SpecProvider, miningConfig);
-                Eth2BlockProducerFactory? blockProducerFactory = new(
+                EthSyncingInfo = new EthSyncingInfo(BlockTree);
+                Eth2BlockProducerFactory? blockProducerFactory = new Eth2BlockProducerFactory(
                     SpecProvider,
                     SealEngine,
                     Timestamper,

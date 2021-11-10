@@ -106,7 +106,7 @@ namespace Nethermind.Merge.Plugin
                 if (_api.HeaderValidator is null) throw new ArgumentNullException(nameof(_api.HeaderValidator));
                 if (_api.EthSyncingInfo is null) throw new ArgumentNullException(nameof(_api.EthSyncingInfo));
                 if (_api.Sealer is null) throw new ArgumentNullException(nameof(_api.Sealer));
-
+                
                 IInitConfig? initConfig = _api.Config<IInitConfig>();
 
                 PayloadStorage payloadStorage = new(_idealBlockProductionContext, _emptyBlockProductionContext, initConfig, _api.LogManager);
@@ -117,7 +117,7 @@ namespace Nethermind.Merge.Plugin
                     new PreparePayloadHandler(_api.BlockTree, payloadStorage, _manualTimestamper, _api.Sealer,
                         _api.LogManager),
                     new GetPayloadHandler(payloadStorage, _api.LogManager),
-                    new GetPayloadHandlerV1(payloadService, _api.LogManager),
+                    new GetPayloadV1Handler(payloadService, _api.LogManager),
                     new ExecutePayloadHandler(
                         _api.HeaderValidator,
                         _api.BlockTree,

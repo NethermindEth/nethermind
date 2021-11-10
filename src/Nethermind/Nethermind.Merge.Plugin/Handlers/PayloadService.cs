@@ -58,8 +58,7 @@ namespace Nethermind.Merge.Plugin.Handlers
         private static readonly TimeSpan _timeout = TimeSpan.FromSeconds(12);
 
         // first BlockRequestResult is empty (without txs), second one is the ideal one
-        private readonly ConcurrentDictionary<byte[], BlockTaskAndRandom> _payloadStorage =
-            new();
+        private readonly ConcurrentDictionary<string, BlockTaskAndRandom> _payloadStorage = new();
 
         public PayloadService(
             Eth2BlockProductionContext idealBlockContext,
@@ -114,7 +113,7 @@ namespace Nethermind.Merge.Plugin.Handlers
                     .ContinueWith(LogProductionResult, cts.Token);
             
             BlockTaskAndRandom emptyBlockTaskTuple = new(emptyBlock, payloadAttributes.Random);
-            bool _ = _payloadStorage.TryAdd(payloadId, emptyBlockTaskTuple);
+            bool _ = _payloadStorage.TryAdd(payloadId.ToHexString(), emptyBlockTaskTuple);
             await emptyBlock;
             if (_logger.IsTrace) _logger.Trace($"Prepared empty block from payload {payloadId} block result: {emptyBlock.Result}");
         }
@@ -130,7 +129,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             
             BlockTaskAndRandom idealBlockTaskTuple = new(idealBlock, payloadAttributes.Random);
             
-            _payloadStorage[payloadId] = idealBlockTaskTuple;
+            _payloadStorage[payloadId.ToHexString()] = idealBlockTaskTuple;
             await idealBlock;
             if (_logger.IsTrace) _logger.Trace($"Prepared ideal block from payload {payloadId} block result: {idealBlock.Result}");
         }
@@ -166,9 +165,9 @@ namespace Nethermind.Merge.Plugin.Handlers
 
         public BlockTaskAndRandom? GetPayload(byte[] payloadId)
         {
-            if (_payloadStorage.ContainsKey(payloadId))
+            if (_payloadStorage.ContainsKey(payloadId.ToHexString()))
             {
-                _payloadStorage.TryRemove(payloadId, out BlockTaskAndRandom? payload);
+                _payloadStorage.TryRemove(payloadId.ToHexString(), out BlockTaskAndRandom? payload);
                 return payload;
             }
 
@@ -195,9 +194,9 @@ namespace Nethermind.Merge.Plugin.Handlers
 
         private void CleanupOldPayload(byte[] payloadId)
         {
-            if (_payloadStorage.ContainsKey(payloadId))
+            if (_payloadStorage.ContainsKey(payloadId.ToHexString()))
             {
-                _payloadStorage.Remove(payloadId, out _);
+                _payloadStorage.Remove(payloadId.ToHexString(), out _);
                 if (_logger.IsInfo) _logger.Info($"Cleaned up payload with id={payloadId.ToHexString()} as it was not requested");
             }
         }

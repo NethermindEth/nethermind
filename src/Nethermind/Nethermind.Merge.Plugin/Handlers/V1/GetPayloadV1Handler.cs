@@ -35,12 +35,12 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
     /// a payload has been cancelled due to the timeout then execution client must respond with error message.
     /// Execution client may stop the building process with the corresponding payload_id value after serving this call.
     /// </summary>
-    public class GetPayloadHandlerV1: IAsyncHandler<byte[], BlockRequestResult?>
+    public class GetPayloadV1Handler: IAsyncHandler<byte[], BlockRequestResult?>
     {
         private readonly PayloadService _payloadService;
         private readonly ILogger _logger;
 
-        public GetPayloadHandlerV1(PayloadService payloadService, ILogManager logManager)
+        public GetPayloadV1Handler(PayloadService payloadService, ILogManager logManager)
         {
             _payloadService = payloadService;
             _logger = logManager.GetClassLogger();
@@ -54,7 +54,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             {
                 if (_logger.IsWarn) _logger.Warn($"No payload with id={payloadId} found");
                 return ResultWrapper<BlockRequestResult?>.Fail(
-                    $"No payload with id={payloadId.ToHexString()} can be found.",
+                    "unknown payload",
                     MergeErrorCodes.UnavailablePayloadV1);
             }
             
@@ -64,7 +64,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             {
                 if (_logger.IsWarn) _logger.Warn($"Block production for payload with id={payloadId} failed");
                 return ResultWrapper<BlockRequestResult?>.Fail(
-                    $"Execution payload requested with id={payloadId} cannot be found.",
+                    "unknown payload",
                     MergeErrorCodes.UnavailablePayloadV1);
             }
 

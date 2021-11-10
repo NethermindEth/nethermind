@@ -188,7 +188,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             List<Block> blocksList = new() {block};
             Block? predecessor = block;
             
-            do
+            while (!_blockTree.IsMainChain(predecessor.Header))
             {
                 predecessor = _blockTree.FindParent(predecessor, BlockTreeLookupOptions.None);
                 if (predecessor == null)
@@ -198,7 +198,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 }
                 blocksList.Add(predecessor);
                 
-            } while (!_blockTree.IsMainChain(predecessor.Header));
+            };
             
             blocksList.Reverse();
             blocks = blocksList.ToArray();
