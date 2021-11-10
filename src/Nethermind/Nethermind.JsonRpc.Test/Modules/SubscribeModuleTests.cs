@@ -82,7 +82,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 _logManager);
             
             _subscribeRpcModule = new SubscribeRpcModule(_subscriptionManager);
-            _subscribeRpcModule.Context = new JsonRpcContext(RpcEndpoint.WebSocket, _jsonRpcDuplexClient);
+            _subscribeRpcModule.Context = new JsonRpcContext(RpcEndpoint.Ws, _jsonRpcDuplexClient);
             
             // block numbers matching filters in LogsSubscriptions with null arguments will be 33333-77777
             BlockHeader fromBlock = Build.A.BlockHeader.WithNumber(33333).TestObject;
