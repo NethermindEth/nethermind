@@ -10,9 +10,9 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.WebUtilities" Version="2.2.0" />
-    <PackageReference Include="Microsoft.Extensions.Http" Version="6.0.0-rc.2.*" />
-    <PackageReference Include="Microsoft.Extensions.Http.Polly" Version="6.0.0-rc.2.*" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="6.0.0-rc.2.*" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="6.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Http.Polly" Version="6.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="6.0.0" />
     <PackageReference Include="Newtonsoft.Json" Version="12.0.3" />
     <PackageReference Include="System.ComponentModel.Annotations" Version="4.7.0" />
     <PackageReference Include="System.Text.Json" Version="4.7.1" />
