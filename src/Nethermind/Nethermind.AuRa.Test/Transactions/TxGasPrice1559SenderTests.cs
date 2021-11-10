@@ -22,6 +22,7 @@ using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
+using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -78,12 +79,14 @@ namespace Nethermind.AuRa.Test.Transactions
         [TestCaseSource(nameof(TestCases))]
         public (UInt256 FeeCap, UInt256 GasPremium) SendTransaction_sets_correct_gas_price(UInt256 minMiningGasPrice, (UInt256 FeeCap, UInt256 GasPremium)[] txPoolGasPrices, uint percentDelta)
         {
+            IGasPriceOracle gasPriceOracle = Substitute.For<IGasPriceOracle>();
+            gasPriceOracle.GetGasPriceEstimate().Returns(UInt256.Zero);
             ITxSender txSender = Substitute.For<ITxSender>();
             ITxPool txPool = Substitute.For<ITxPool>();
             txPool.GetPendingTransactions().Returns(
                 txPoolGasPrices.Select(g => Build.A.Transaction.WithGasPrice(0).WithMaxPriorityFeePerGas(g.GasPremium).WithType(TxType.EIP1559).WithMaxFeePerGas(g.FeeCap).TestObject).ToArray());
             MiningConfig miningConfig = new() {MinGasPrice = minMiningGasPrice};
-            TxGasPrice1559Sender txGasPriceSender = new(txSender, txPool, miningConfig, percentDelta);
+            TxGasPrice1559Sender txGasPriceSender = new(txSender, txPool, miningConfig, gasPriceOracle, percentDelta);
 
             Transaction transaction = Build.A.Transaction.WithGasPrice(0).TestObject;
 

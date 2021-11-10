@@ -216,6 +216,7 @@ namespace Nethermind.Init.Steps
             IChainHeadInfoProvider chainHeadInfoProvider =
                 new ChainHeadInfoProvider(getApi.SpecProvider, getApi.BlockTree, stateReader);
             setApi.TxPoolInfoProvider = new TxPoolInfoProvider(chainHeadInfoProvider.AccountStateProvider, txPool);
+            setApi.GasPriceOracle = new GasPriceOracle(_api.BlockTree, _api.SpecProvider, miningConfig.MinGasPrice);
             IBlockProcessor? mainBlockProcessor = setApi.MainBlockProcessor = CreateBlockProcessor();
 
             BlockchainProcessor blockchainProcessor = new(
@@ -231,7 +232,6 @@ namespace Nethermind.Init.Steps
 
             setApi.BlockProcessingQueue = blockchainProcessor;
             setApi.BlockchainProcessor = blockchainProcessor;
-            setApi.GasPriceOracle = new GasPriceOracle(_api.BlockTree, _api.SpecProvider, miningConfig.MinGasPrice);
             setApi.EthSyncingInfo = new EthSyncingInfo(_api.BlockTree);
 
             // TODO: can take the tx sender from plugin here maybe

@@ -21,65 +21,39 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa.Transactions
 {
+    // Class is used only for nonposdao AuRa chains. These transactions will be paid by the validator.
     public class TxGasPrice1559Sender : ITxSender
     {
         private readonly ITxSender _txSender;
-        private readonly ITxPool _txPool;
         private readonly IMiningConfig _miningConfig;
+        private readonly IGasPriceOracle _gasPriceOracle;
         private readonly uint _percentDelta;
 
-        public TxGasPrice1559Sender(ITxSender txSender, ITxPool txPool, IMiningConfig miningConfig, uint percentDelta = TxGasPriceSenderConstants.DefaultPercentMultiplier)
+        public TxGasPrice1559Sender(
+            ITxSender txSender,
+            ITxPool txPool, 
+            IMiningConfig miningConfig,
+            IGasPriceOracle gasPriceOracle,
+            uint percentDelta = TxGasPriceSenderConstants.DefaultPercentMultiplier)
         {
             _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
-            _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _miningConfig = miningConfig ?? throw new ArgumentNullException(nameof(miningConfig));
+            _gasPriceOracle = gasPriceOracle ?? throw new ArgumentNullException(nameof(gasPriceOracle));
             _percentDelta = percentDelta;
         }
 
         public ValueTask<(Keccak, AddTxResult?)> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
-            (UInt256 minFeeCap, UInt256 minGasPremium) = CurrentMinGas();
-            UInt256 txFeeCap = minFeeCap * _percentDelta / 100;
-            UInt256 txGasPremium = minGasPremium * _percentDelta / 100;
-            tx.DecodedMaxFeePerGas = UInt256.Max(txFeeCap, _miningConfig.MinGasPrice);
-            tx.GasPrice = txGasPremium;
-            tx.Type = TxType.EIP1559;
+            UInt256 gasPriceEstimated = _gasPriceOracle.GetGasPriceEstimate() * _percentDelta / 100;
+            tx.DecodedMaxFeePerGas = gasPriceEstimated;
+            tx.GasPrice = gasPriceEstimated; // the gasPremium will went to the validator, so we don't need to bother about it
+            tx.Type = TxType.EIP1559; 
             return _txSender.SendTransaction(tx, txHandlingOptions);
-        }
-
-        private (UInt256 FeeCap, UInt256 GasPremimum) CurrentMinGas()
-        {
-            UInt256 minFeeCap = UInt256.Zero;
-            UInt256 minGasPremium = UInt256.Zero;
-            Transaction[] transactions = _txPool.GetPendingTransactions();
-            if (transactions.Length == 0)
-            {
-                return (TxGasPriceSenderConstants.DefaultGasPrice, UInt256.Zero);
-            }
-            
-            for (int i = 0; i < transactions.Length; ++i)
-            {
-                Transaction transaction = transactions[i];
-                UInt256 currentFeeCap = transaction.MaxFeePerGas;
-                UInt256 currentGasPremium = transaction.MaxPriorityFeePerGas;
-                if (currentFeeCap != UInt256.Zero)
-                {
-                    if (minFeeCap == UInt256.Zero || (currentFeeCap != UInt256.Zero && minFeeCap > currentFeeCap))
-                        minFeeCap = currentFeeCap;
-                }
-                
-                if (currentGasPremium != UInt256.Zero)
-                {
-                    if (minGasPremium == UInt256.Zero || (minGasPremium != UInt256.Zero && minGasPremium > currentGasPremium))
-                        minGasPremium = currentGasPremium;
-                }
-            }
-
-            return (minFeeCap, minGasPremium);
         }
     }
 }

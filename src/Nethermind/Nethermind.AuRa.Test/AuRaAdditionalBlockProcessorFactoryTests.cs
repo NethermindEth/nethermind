@@ -29,6 +29,7 @@ using Nethermind.Db;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.TxPool;
@@ -61,7 +62,10 @@ namespace Nethermind.AuRa.Test
                 new MiningConfig(),
                 LimboLogs.Instance,
                 Substitute.For<ISigner>(),
-                Substitute.For<ISpecProvider>(), new ReportingContractBasedValidator.Cache(), long.MaxValue);
+                Substitute.For<ISpecProvider>(), 
+                
+                Substitute.For<IGasPriceOracle>(),
+                new ReportingContractBasedValidator.Cache(), long.MaxValue);
 
             AuRaParameters.Validator validator = new()
             {
