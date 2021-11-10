@@ -54,14 +54,14 @@ namespace Nethermind.DataMarketplace.WebSockets.Test
         [Test]
         public void Can_create_client()
         {
-            ISocketsClient client = _module.CreateClient(WebSocket.CreateFromStream(Stream.Null, false, "subprotocol", TimeSpan.FromMinutes(1)), "test");
+            ISocketsClient client = _module.CreateClient(WebSocket.CreateFromStream(Stream.Null, false, "subprotocol", TimeSpan.FromMinutes(1)), "test", 1);
             client.Should().NotBeNull();
         }
 
         [Test]
         public void Can_remove_client()
         {
-            ISocketsClient client = _module.CreateClient(WebSocket.CreateFromStream(Stream.Null, false, "subprotocol", TimeSpan.FromMinutes(1)), "test");
+            ISocketsClient client = _module.CreateClient(WebSocket.CreateFromStream(Stream.Null, false, "subprotocol", TimeSpan.FromMinutes(1)), "test", 1);
             client.Should().NotBeNull();
             _module.RemoveClient(client.Id);
         }
@@ -69,7 +69,7 @@ namespace Nethermind.DataMarketplace.WebSockets.Test
         [Test]
         public void Can_send_message()
         {
-            ISocketsClient client = _module.CreateClient(WebSocket.CreateFromStream(Stream.Null, false, "subprotocol", TimeSpan.FromMinutes(1)), "test");
+            ISocketsClient client = _module.CreateClient(WebSocket.CreateFromStream(Stream.Null, false, "subprotocol", TimeSpan.FromMinutes(1)), "test", 1);
             client.Should().NotBeNull();
             _module.SendAsync(new SocketsMessage("test", "client", "data"));
         }
