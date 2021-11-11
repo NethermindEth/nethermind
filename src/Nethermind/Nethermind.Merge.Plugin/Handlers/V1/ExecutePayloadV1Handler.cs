@@ -81,11 +81,11 @@ namespace Nethermind.Merge.Plugin.Handlers
         {
             ExecutePayloadV1Result executePayloadResult = new();
 
-            if (_ethSyncingInfo.IsSyncing())
-            {
-                executePayloadResult.EnumStatus = VerificationStatus.Syncing;
-                return ResultWrapper<ExecutePayloadV1Result>.Success(executePayloadResult);
-            }
+            // if (_ethSyncingInfo.IsSyncing())
+            // {
+            //     executePayloadResult.EnumStatus = VerificationStatus.Syncing;
+            //     return ResultWrapper<ExecutePayloadV1Result>.Success(executePayloadResult);
+            // }
 
             ValidationResult result = ValidateRequestAndProcess(request, out Block? processedBlock);
             if ((result & ValidationResult.AlreadyKnown) != 0 || result == ValidationResult.Invalid)
