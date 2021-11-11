@@ -16,6 +16,8 @@
 // 
 
 using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Api;
 using Nethermind.Blockchain;
@@ -48,6 +50,7 @@ namespace Nethermind.Merge.Plugin.Handlers
         private readonly ILogger _logger;
         private SemaphoreSlim _blockValidationSemaphore;
         private readonly LruCache<Keccak, bool> _latestBlocks = new(50, "LatestBlocks");
+        private readonly ConcurrentDictionary<Keccak, Keccak> _lastValidHashes = new ();
 
         public ExecutePayloadV1Handler(
             IHeaderValidator headerValidator,
@@ -88,17 +91,12 @@ namespace Nethermind.Merge.Plugin.Handlers
             if ((result & ValidationResult.AlreadyKnown) != 0 || result == ValidationResult.Invalid)
             {
                 bool isValid = (result & ValidationResult.Valid) != 0;
-                executePayloadResult.EnumStatus = isValid ? VerificationStatus.Valid : VerificationStatus.Invalid;
-                // TODO: determine whether _blockTree.HeadHash is the hash of the latest valid block
-                executePayloadResult.LatestValidHash = isValid ? request.BlockHash : _blockTree.HeadHash;
-                return ResultWrapper<ExecutePayloadV1Result>.Success(executePayloadResult);
+                return ResultWrapper<ExecutePayloadV1Result>.Success(BuildExecutePayloadResult(request, isValid));
             }
 
             if (processedBlock == null)
             {
-                executePayloadResult.EnumStatus = VerificationStatus.Invalid;
-                executePayloadResult.LatestValidHash = _blockTree.HeadHash;
-                return ResultWrapper<ExecutePayloadV1Result>.Success(executePayloadResult);
+                return ResultWrapper<ExecutePayloadV1Result>.Success(BuildExecutePayloadResult(request, false));
             }
 
             _blockTree.SuggestBlock(processedBlock);
@@ -194,6 +192,44 @@ namespace Nethermind.Merge.Plugin.Handlers
             }
 
             return options;
+        }
+
+        private ExecutePayloadV1Result BuildExecutePayloadResult(BlockRequestResult request, bool isValid)
+        {
+            ExecutePayloadV1Result executePayloadResult = new();
+            if (isValid)
+            {
+                executePayloadResult.EnumStatus = VerificationStatus.Valid;
+                executePayloadResult.LatestValidHash = request.BlockHash;
+            }
+            else
+            {
+                executePayloadResult.EnumStatus = VerificationStatus.Invalid;
+                if (_lastValidHashes.ContainsKey(request.ParentHash))
+                {
+                    if (_lastValidHashes.TryRemove(request.ParentHash, out Keccak? lastValidHash))
+                    {
+                        _lastValidHashes.TryAdd(request.BlockHash, lastValidHash);   
+                    }
+
+                    executePayloadResult.LatestValidHash = lastValidHash;
+                }
+                else
+                {
+                    if (TryGetParent(request.ParentHash, out _))
+                    {
+                        _lastValidHashes.TryAdd(request.BlockHash, request.ParentHash);
+                        executePayloadResult.LatestValidHash = request.ParentHash;
+                    }
+                    else
+                    {
+                        executePayloadResult.LatestValidHash = _blockTree.HeadHash;
+                    }
+                }
+
+            }
+
+            return executePayloadResult;
         }
 
         [Flags]

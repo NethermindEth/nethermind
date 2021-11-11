@@ -198,11 +198,8 @@ namespace Nethermind.Merge.Plugin
             }
             else
             {
-                if (_logger.IsWarn) _logger.Warn($"{nameof(engine_executePayload)} timeout.");
-                return ResultWrapper<ExecutePayloadV1Result>.Success(new ExecutePayloadV1Result()
-                {
-                    LatestValidHash = _blockTree.HeadHash, EnumStatus = VerificationStatus.Invalid
-                });
+                if (_logger.IsWarn) _logger.Warn($"{nameof(engine_executePayloadV1)} timeout.");
+                return ResultWrapper<ExecutePayloadV1Result>.Fail($"{nameof(engine_executePayloadV1)} timeout.", ErrorCodes.Timeout);
             }
         }
 
