@@ -361,7 +361,7 @@ namespace Nethermind.Merge.Plugin.Test
             using MergeTestBlockchain chain = await CreateBlockChain();
             IEngineRpcModule rpc = CreateEngineModule(chain);
             BlockRequestResult blockRequestResult = await SendNewBlock(rpc, chain);
-            Assert.False(chain.PoSSwitcher.HasEverBeenInPos());
+            Assert.False(chain.PoSSwitcher.HasEverReachedTerminalTotalDifficulty());
 
             rpc.engine_terminalTotalDifficultyUpdated((UInt256)1000000);
             Keccak newHeadHash = blockRequestResult.BlockHash;
@@ -370,7 +370,7 @@ namespace Nethermind.Merge.Plugin.Test
                 await rpc.engine_forkchoiceUpdated(forkChoiceUpdatedRequest);
             resultWrapper.Data.Should().Be(null);
             AssertExecutionStatusChanged(rpc, newHeadHash, newHeadHash /*, newHeadHash*/);
-            Assert.True(chain.PoSSwitcher.HasEverBeenInPos());
+            Assert.True(chain.PoSSwitcher.HasEverReachedTerminalTotalDifficulty());
         }
 
         [Test]
@@ -387,7 +387,7 @@ namespace Nethermind.Merge.Plugin.Test
                 await rpc.engine_forkchoiceUpdated(forkChoiceUpdatedRequest);
             resultWrapper.Data.Should().Be(null);
             AssertExecutionStatusChanged(rpc, newHeadHash, newHeadHash /*, newHeadHash*/);
-            Assert.True(chain.PoSSwitcher.HasEverBeenInPos());
+            Assert.True(chain.PoSSwitcher.HasEverReachedTerminalTotalDifficulty());
         }
 
         [Test]

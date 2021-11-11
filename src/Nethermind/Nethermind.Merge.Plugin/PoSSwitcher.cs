@@ -37,6 +37,7 @@ namespace Nethermind.Merge.Plugin
         private UInt256? _terminalTotalDifficulty;
         private Keccak? _terminalBlockHash;
         private BlockHeader? _firstPoSBlockHeader;
+        private long? _terminalPoWBlock;
 
         public PoSSwitcher(ILogManager logManager, IMergeConfig mergeConfig, IDb db, IBlockTree blockTree)
         {
@@ -90,12 +91,12 @@ namespace Nethermind.Merge.Plugin
             return VerifyPoS(header, false);
         }
 
-        public bool HasEverBeenInPos()
+        public bool HasEverReachedTerminalTotalDifficulty()
         {
-            return _firstPoSBlockHeader != null;
+            return _terminalPoWBlock != null;
         }
 
-        public event EventHandler? SwitchHappened;
+        public event EventHandler? TerminalTotalDifficultyReached;
 
         private bool VerifyPoS(BlockHeader header, bool withSwitchToPoS)
         {
@@ -120,7 +121,7 @@ namespace Nethermind.Merge.Plugin
                 if (withSwitchToPoS)
                 {
                     if (_logger.IsInfo) _logger.Info($"Switched to Proof of Stake at block {header}");
-                    SwitchHappened?.Invoke(this, EventArgs.Empty);
+                    TerminalTotalDifficultyReached?.Invoke(this, EventArgs.Empty);
                     _firstPoSBlockHeader = header;
                 }
 

@@ -26,8 +26,8 @@ namespace Nethermind.Consensus
         
         bool IsPos(BlockHeader header);
 
-        bool HasEverBeenInPos();
+        bool HasEverReachedTerminalTotalDifficulty();
 
-        event EventHandler SwitchHappened;
+        event EventHandler TerminalTotalDifficultyReached;
     }
 }

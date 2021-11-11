@@ -409,7 +409,7 @@ namespace Nethermind.Merge.Plugin.Test
             using MergeTestBlockchain chain = await CreateBlockChain();
             IEngineRpcModule rpc = CreateEngineModule(chain);
             BlockRequestResult blockRequestResult = await SendNewBlockV1(rpc, chain);
-            Assert.False(chain.PoSSwitcher.HasEverBeenInPos());
+            Assert.False(chain.PoSSwitcher.HasEverReachedTerminalTotalDifficulty());
 
             rpc.engine_terminalTotalDifficultyUpdated((UInt256)1000000);
             Keccak newHeadHash = blockRequestResult.BlockHash;
@@ -419,7 +419,7 @@ namespace Nethermind.Merge.Plugin.Test
             forkchoiceUpdatedResult.Data.Status.Should().Be(EngineStatus.Success);
             forkchoiceUpdatedResult.Data.PayloadId.Should().Be("0x");
             AssertExecutionStatusChanged(rpc, newHeadHash, newHeadHash /*, newHeadHash*/);
-            Assert.True(chain.PoSSwitcher.HasEverBeenInPos());
+            Assert.True(chain.PoSSwitcher.HasEverReachedTerminalTotalDifficulty());
         }
 
         [Test]
@@ -437,7 +437,7 @@ namespace Nethermind.Merge.Plugin.Test
             forkchoiceUpdatedResult.Data.Status.Should().Be(EngineStatus.Success);
             forkchoiceUpdatedResult.Data.PayloadId.Should().Be("0x");
             AssertExecutionStatusChanged(rpc, newHeadHash, newHeadHash /*, newHeadHash*/);
-            Assert.True(chain.PoSSwitcher.HasEverBeenInPos());
+            Assert.True(chain.PoSSwitcher.HasEverReachedTerminalTotalDifficulty());
         }
 
         [Test]

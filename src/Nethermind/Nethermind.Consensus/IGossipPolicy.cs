@@ -20,6 +20,8 @@ namespace Nethermind.Consensus
     public interface IGossipPolicy
     {
         public bool ShouldGossipBlocks { get; }
+
+        public bool ShouldDisconnectGossipingNodes { get; }
     }
 
     internal class ShouldNotGossip : IGossipPolicy
@@ -29,6 +31,7 @@ namespace Nethermind.Consensus
         public static ShouldNotGossip Instance { get; } = new ();
         
         public bool ShouldGossipBlocks => false;
+        public bool ShouldDisconnectGossipingNodes => false;
     }
     
     internal class ShouldGossip : IGossipPolicy
@@ -38,6 +41,7 @@ namespace Nethermind.Consensus
         public static IGossipPolicy Instance { get; } = new ShouldGossip();
         
         public bool ShouldGossipBlocks => true;
+        public bool ShouldDisconnectGossipingNodes => true;
     }
     
     public static class Policy

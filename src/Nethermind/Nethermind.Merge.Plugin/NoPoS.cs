@@ -34,9 +34,9 @@ namespace Nethermind.Merge.Plugin
 
         public bool IsPos(BlockHeader header) => false;
 
-        public bool HasEverBeenInPos() => false;
+        public bool HasEverReachedTerminalTotalDifficulty() => false;
 
-        public event EventHandler? SwitchHappened;
+        public event EventHandler? TerminalTotalDifficultyReached;
 
         public UInt256? TerminalTotalDifficulty
         {

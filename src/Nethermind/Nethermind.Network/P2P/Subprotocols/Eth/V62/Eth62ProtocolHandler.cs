@@ -43,12 +43,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             INodeStatsManager statsManager,
             ISyncServer syncServer,
             ITxPool txPool,
-            IGossipPolicy poSSwitcher,
+            IGossipPolicy gossipPolicy,
             ILogManager logManager) : base(session, serializer, statsManager, syncServer, logManager)
         {
             _floodController = new TxFloodController(this, Timestamper.Default, Logger);
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
-            _gossipPolicy = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
+            _gossipPolicy = gossipPolicy ?? throw new ArgumentNullException(nameof(gossipPolicy));
         }
 
         public void DisableTxFiltering()
@@ -61,7 +61,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         public override int MessageIdSpaceSize => 8;
         public override string Name => "eth62";
         protected override TimeSpan InitTimeout => Timeouts.Eth62Status;
-        private bool HasEverBeenInPos { get; set; }
 
         public override event EventHandler<ProtocolInitializedEventArgs>? ProtocolInitialized;
 
@@ -173,16 +172,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                     break;
                 case Eth62MessageCode.NewBlock:
                     Metrics.Eth62NewBlockReceived++;
-                    if (ShouldGossip)
+                    if (_gossipPolicy.ShouldDisconnectGossipingNodes)
+                    {
+                        Disconnect(DisconnectReason.BreachOfProtocol,
+                            "NewBlock message received after FIRST_FINALIZED_BLOCK PoS block.");
+                    }
+                    else
                     {
                         NewBlockMessage newBlockMsg = Deserialize<NewBlockMessage>(message.Content);
                         ReportIn(newBlockMsg);
                         Handle(newBlockMsg);
-                    }
-                    else
-                    {
-                        Disconnect(DisconnectReason.BreachOfProtocol,
-                            "NewBlock message received while PoS protocol activated.");
                     }
 
                     break;

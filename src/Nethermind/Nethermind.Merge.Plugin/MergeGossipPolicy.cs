@@ -24,19 +24,23 @@ namespace Nethermind.Merge.Plugin
 {
     public class MergeGossipPolicy : IGossipPolicy
     {
-        private readonly IGossipPolicy preMergeGossipPolicy;
+        private readonly IGossipPolicy _preMergeGossipPolicy;
         private readonly IPoSSwitcher _poSSwitcher;
         private readonly IManualBlockFinalizationManager _blockFinalizationManager;
 
-        public MergeGossipPolicy(IGossipPolicy? apiGossipPolicy, IPoSSwitcher? poSSwitcher, IManualBlockFinalizationManager blockFinalizationManager)
+        public MergeGossipPolicy(
+            IGossipPolicy? apiGossipPolicy, 
+            IPoSSwitcher? poSSwitcher, 
+            IManualBlockFinalizationManager blockFinalizationManager)
         {
-            preMergeGossipPolicy = apiGossipPolicy ?? throw new ArgumentNullException(nameof(apiGossipPolicy));
+            _preMergeGossipPolicy = apiGossipPolicy ?? throw new ArgumentNullException(nameof(apiGossipPolicy));
             _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
             _blockFinalizationManager = blockFinalizationManager;
         }
 
-        public bool ShouldGossipBlocks => (!_poSSwitcher.HasEverBeenInPos() ||
-                                           _blockFinalizationManager.LastFinalizedHash == Keccak.Zero) && preMergeGossipPolicy.ShouldGossipBlocks;
+        public bool ShouldGossipBlocks => !_poSSwitcher.HasEverReachedTerminalTotalDifficulty() && _preMergeGossipPolicy.ShouldGossipBlocks;
+
+        public bool ShouldDisconnectGossipingNodes => _blockFinalizationManager.LastFinalizedHash != Keccak.Zero && _preMergeGossipPolicy.ShouldDisconnectGossipingNodes;
 
     }
 }

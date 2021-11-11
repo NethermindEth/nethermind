@@ -34,7 +34,7 @@ namespace Nethermind.Merge.Plugin
 
         public ulong? MaxSecondsIntervalForProcessingBlocksHint()
         {
-            if (_poSSwitcher.HasEverBeenInPos())
+            if (_poSSwitcher.HasEverReachedTerminalTotalDifficulty())
             {
                 return 12 + 3;
             }
@@ -44,7 +44,7 @@ namespace Nethermind.Merge.Plugin
 
         public ulong? MaxSecondsIntervalForProducingBlocksHint()
         {
-            if (_poSSwitcher.HasEverBeenInPos())
+            if (_poSSwitcher.HasEverReachedTerminalTotalDifficulty())
             {
                 return long.MaxValue;
             }
