@@ -72,7 +72,7 @@ namespace Nethermind.Merge.Plugin
                 ISigner signer = new Eth2Signer(address);
 
                 _api.RewardCalculatorSource = new MergeRewardCalculatorSource(
-                    _mergeConfig, _api.RewardCalculatorSource ?? NoBlockRewards.Instance);
+                   _api.RewardCalculatorSource ?? NoBlockRewards.Instance,  _poSSwitcher);
                 _api.SealEngine = new MergeSealEngine(_api.SealEngine, _poSSwitcher, signer, _api.LogManager);
                 _api.SealValidator = _api.SealEngine;
                 _api.Sealer = _api.SealEngine;

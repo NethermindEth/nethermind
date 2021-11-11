@@ -51,10 +51,10 @@ namespace Nethermind.Merge.Plugin.Test
             IEngineRpcModule rpc = CreateEngineModule(chain);
             Keccak startingHead = chain.BlockTree.HeadHash;
             Keccak random = Keccak.Zero;
-            Address feeRecipient = Address.Zero;
+            Address feeRecipient = TestItem.AddressC;
             UInt256 timestamp = Timestamper.UnixTime.Seconds;
 
-            byte[] expectedPayloadId = Bytes.FromHexString("0x45bd36a8143d860c");
+            byte[] expectedPayloadId = Bytes.FromHexString("0x6454408c425ddd96");
 
             var forkChoiceUpdatedParams = new
             {
@@ -79,11 +79,11 @@ namespace Nethermind.Merge.Plugin.Test
                 .Be(
                     $"{{\"jsonrpc\":\"2.0\",\"result\":{{\"status\":\"SUCCESS\",\"payloadId\":\"{expectedPayloadId.ToHexString(true)}\"}},\"id\":67}}");
 
-            Keccak blockHash = new Keccak("0xdc4e882186c2723e6ed279634d6b7f502bf2712dc3113c743903786b61c55c87");
+            Keccak blockHash = new Keccak("0x2de2042d5ab1cf7c89d97f93b1572ddac3c6f77d84b6d44d1d9cec42f76505a7");
             var expectedPayload = new
             {
                 parentHash = startingHead.ToString(),
-                coinbase = chain.MinerAddress.ToString(),
+                coinbase = feeRecipient.ToString(),
                 stateRoot = chain.BlockTree.Head!.StateRoot!.ToString(),
                 receiptRoot = chain.BlockTree.Head!.ReceiptsRoot!.ToString(),
                 logsBloom = Bloom.Empty.Bytes.ToHexString(true),
@@ -131,7 +131,7 @@ namespace Nethermind.Merge.Plugin.Test
             string parameters = payloadId.ToHexString(true);
             string result = RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV1", parameters);
             result.Should()
-                .Be("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32001,\"message\":\"unknown payload\"},\"id\":67}");
+                .Be("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":4,\"message\":\"unknown payload\"},\"id\":67}");
         }
 
         [Test, Retry(3)]
@@ -143,16 +143,16 @@ namespace Nethermind.Merge.Plugin.Test
             Keccak startingHead = chain.BlockTree.HeadHash;
             UInt256 timestamp = 30;
             Keccak random = Keccak.Zero;
-            Address feeRecipient = Address.Zero;
+            Address feeRecipient = TestItem.AddressD;
 
             BlockRequestResult? blockRequestResult = await BuildAndGetPayloadResult(rpc, startingHead,
                 Keccak.Zero, startingHead, timestamp, random, feeRecipient);
 
             BlockRequestResult expected = CreateParentBlockRequestOnHead(chain.BlockTree);
             expected.GasLimit = 4000000L;
-            expected.BlockHash = new Keccak("0x33228284b2c8d36e3fd34c31de3ab0604412bf9ab71725307d13daa2c4f44348");
+            expected.BlockHash = new Keccak("0x3ee80ba456bac700bfaf5b2827270406134e2392eb03ec50f6c23de28dd08811");
             expected.LogsBloom = Bloom.Empty;
-            expected.Coinbase = chain.MinerAddress;
+            expected.Coinbase = feeRecipient;
             expected.BlockNumber = 1;
             expected.Random = random;
             expected.ParentHash = startingHead;
@@ -409,7 +409,7 @@ namespace Nethermind.Merge.Plugin.Test
             using MergeTestBlockchain chain = await CreateBlockChain();
             IEngineRpcModule rpc = CreateEngineModule(chain);
             BlockRequestResult blockRequestResult = await SendNewBlockV1(rpc, chain);
-            Assert.False(chain.PoSSwitcher.HasEverReachedTerminalTotalDifficulty());
+            Assert.False(chain.PoSSwitcher.HasEverReachedTerminalPoWBlock());
 
             rpc.engine_terminalTotalDifficultyUpdated((UInt256)1000000);
             Keccak newHeadHash = blockRequestResult.BlockHash;
@@ -419,7 +419,7 @@ namespace Nethermind.Merge.Plugin.Test
             forkchoiceUpdatedResult.Data.Status.Should().Be(EngineStatus.Success);
             forkchoiceUpdatedResult.Data.PayloadId.Should().Be("0x");
             AssertExecutionStatusChanged(rpc, newHeadHash, newHeadHash /*, newHeadHash*/);
-            Assert.True(chain.PoSSwitcher.HasEverReachedTerminalTotalDifficulty());
+            Assert.True(chain.PoSSwitcher.HasEverReachedTerminalPoWBlock());
         }
 
         [Test]
@@ -437,7 +437,7 @@ namespace Nethermind.Merge.Plugin.Test
             forkchoiceUpdatedResult.Data.Status.Should().Be(EngineStatus.Success);
             forkchoiceUpdatedResult.Data.PayloadId.Should().Be("0x");
             AssertExecutionStatusChanged(rpc, newHeadHash, newHeadHash /*, newHeadHash*/);
-            Assert.True(chain.PoSSwitcher.HasEverReachedTerminalTotalDifficulty());
+            Assert.True(chain.PoSSwitcher.HasEverReachedTerminalPoWBlock());
         }
 
         [Test]

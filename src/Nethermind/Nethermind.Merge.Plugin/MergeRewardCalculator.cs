@@ -17,6 +17,7 @@
 
 using System;
 using Nethermind.Blockchain.Visitors;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
 
@@ -25,20 +26,18 @@ namespace Nethermind.Merge.Plugin
     public class MergeRewardCalculator : IRewardCalculator
     {
         private readonly IRewardCalculator _beforeTheMerge;
-        private readonly IMergeConfig _mergeConfig;
+        private readonly IPoSSwitcher _poSSwitcher;
 
-        public MergeRewardCalculator(IRewardCalculator? beforeTheMerge, IMergeConfig? mergeConfig)
+        public MergeRewardCalculator(IRewardCalculator? beforeTheMerge, IPoSSwitcher poSSwitcher)
         {
             _beforeTheMerge = beforeTheMerge ?? throw new ArgumentNullException(nameof(beforeTheMerge));
-            _mergeConfig = mergeConfig ?? throw new ArgumentNullException(nameof(mergeConfig));
+            _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
         }
 
         public BlockReward[] CalculateRewards(Block block)
         {
-            // ToDo think if TotalDifficulty could be null here
-            if (block.TotalDifficulty !=null && block.TotalDifficulty >= block.Difficulty && block.TotalDifficulty - block.Difficulty >= _mergeConfig.TerminalTotalDifficulty)
+            if (_poSSwitcher.IsPos(block.Header))
             {
-                block.Header.IsPostMerge = true;
                 return NoBlockRewards.Instance.CalculateRewards(block);
             }
             

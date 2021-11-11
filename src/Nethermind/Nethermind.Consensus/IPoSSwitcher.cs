@@ -22,12 +22,12 @@ namespace Nethermind.Consensus
 {
     public interface IPoSSwitcher
     {
-        bool TrySwitchToPos(BlockHeader header);
+        void ForkchoiceUpdated(BlockHeader header);
         
         bool IsPos(BlockHeader header);
 
-        bool HasEverReachedTerminalTotalDifficulty();
+        bool HasEverReachedTerminalPoWBlock();
 
-        event EventHandler TerminalTotalDifficultyReached;
+        event EventHandler TerminalPoWBlockReached;
     }
 }

@@ -38,7 +38,7 @@ namespace Nethermind.Merge.Plugin
             _blockFinalizationManager = blockFinalizationManager;
         }
 
-        public bool ShouldGossipBlocks => !_poSSwitcher.HasEverReachedTerminalTotalDifficulty() && _preMergeGossipPolicy.ShouldGossipBlocks;
+        public bool ShouldGossipBlocks => !_poSSwitcher.HasEverReachedTerminalPoWBlock() && _preMergeGossipPolicy.ShouldGossipBlocks;
 
         public bool ShouldDisconnectGossipingNodes => _blockFinalizationManager.LastFinalizedHash != Keccak.Zero && _preMergeGossipPolicy.ShouldDisconnectGossipingNodes;
 

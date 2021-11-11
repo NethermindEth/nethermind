@@ -100,11 +100,11 @@ namespace Nethermind.Merge.Plugin.Test
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             PoSSwitcher poSSwitcher = CreatePosSwitcher(200, blockTree);
 
-            Assert.AreEqual(false, poSSwitcher.HasEverReachedTerminalTotalDifficulty());
+            Assert.AreEqual(false, poSSwitcher.HasEverReachedTerminalPoWBlock());
             Block block = Build.A.Block.WithTotalDifficulty(300L).WithNumber(1).TestObject;
             blockTree.NewHeadBlock += Raise.Event<EventHandler<BlockEventArgs>>(new BlockEventArgs(block));
 
-            Assert.AreEqual(true, poSSwitcher.HasEverReachedTerminalTotalDifficulty());
+            Assert.AreEqual(true, poSSwitcher.HasEverReachedTerminalPoWBlock());
         }
         
         [Test]

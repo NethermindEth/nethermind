@@ -77,15 +77,15 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             
             (BlockHeader? finalizedHeader, string? finalizationErrorMsg) = EnsureHeaderForFinalization(forkchoiceState.FinalizedBlockHash);
             if (finalizationErrorMsg != null)
-                return ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(finalizationErrorMsg, ErrorCodes.InvalidParams);
+                return ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(finalizationErrorMsg, MergeErrorCodes.UnknownHeader);
             
             (BlockHeader? confirmedHeader, string? confirmationErrorMsg) = EnsureHeaderForConfirmation(forkchoiceState.SafeBlockHash);
             if (confirmationErrorMsg != null)
-                return ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(confirmationErrorMsg, ErrorCodes.InvalidParams);
+                return ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(confirmationErrorMsg, MergeErrorCodes.UnknownHeader);
             
             (Block? newHeadBlock, Block[]? blocks, string? setHeadErrorMsg) = EnsureBlocksForSetHead(forkchoiceState.HeadBlockHash);
             if (setHeadErrorMsg != null)
-                return ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(setHeadErrorMsg, ErrorCodes.InvalidParams);
+                return ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(setHeadErrorMsg, MergeErrorCodes.UnknownHeader);
  
             if (ShouldFinalize(forkchoiceState.FinalizedBlockHash))
                 _manualBlockFinalizationManager.MarkFinalized(newHeadBlock!.Header, finalizedHeader!);
@@ -105,7 +105,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             
             if (headUpdated && shouldUpdateHead)
             {
-                _poSSwitcher.TrySwitchToPos(newHeadBlock!.Header);
+                _poSSwitcher.ForkchoiceUpdated(newHeadBlock!.Header);
                 _stateProvider.ResetStateTo(newHeadBlock.StateRoot!);
                 if (_logger.IsInfo) _logger.Info($"Block {forkchoiceState.HeadBlockHash} was set as head");
             }

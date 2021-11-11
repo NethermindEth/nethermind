@@ -62,7 +62,7 @@ namespace Nethermind.Blockchain.Test.Validators
             
             PoSSwitcher poSSwitcher = new(NullLogManager.Instance, new MergeConfig(), new MemDb(), _blockTree);
             poSSwitcher.TerminalTotalDifficulty = 0;
-            poSSwitcher.TrySwitchToPos(Build.A.BlockHeader.WithTotalDifficulty(0).TestObject);
+            poSSwitcher.ForkchoiceUpdated(Build.A.BlockHeader.WithTotalDifficulty(0).TestObject);
             _poSSwitcher = poSSwitcher;
             
             _validator = new HeaderValidator(_blockTree, _ethash, _specProvider, new OneLoggerLogManager(_testLogger));

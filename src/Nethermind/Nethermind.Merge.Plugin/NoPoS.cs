@@ -30,13 +30,13 @@ namespace Nethermind.Merge.Plugin
 
         public static NoPoS Instance { get; } = new();
 
-        public bool TrySwitchToPos(BlockHeader header) => false;
+        public void ForkchoiceUpdated(BlockHeader header) { }
 
         public bool IsPos(BlockHeader header) => false;
 
-        public bool HasEverReachedTerminalTotalDifficulty() => false;
+        public bool HasEverReachedTerminalPoWBlock() => false;
 
-        public event EventHandler? TerminalTotalDifficultyReached;
+        public event EventHandler? TerminalPoWBlockReached;
 
         public UInt256? TerminalTotalDifficulty
         {

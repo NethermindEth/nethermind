@@ -27,7 +27,7 @@ using Nethermind.Merge.Plugin.Handlers;
 
 namespace Nethermind.Merge.Plugin
 {
-    // ToDo think about reorgs in this class & maybe we should persist data (_terminalTotalDifficulty, _terminalBlockHash, _firstPoSBlockHeader)  to db
+    // ToDo maybe we should persist data (_terminalTotalDifficulty, _terminalBlockHash, _firstPoSBlockHeader, _terminalPoWBlockNumber)
     public class PoSSwitcher : IPoSSwitcher, ITransitionProcessHandler
     {
         private readonly IMergeConfig _mergeConfig;
@@ -37,7 +37,7 @@ namespace Nethermind.Merge.Plugin
         private UInt256? _terminalTotalDifficulty;
         private Keccak? _terminalBlockHash;
         private BlockHeader? _firstPoSBlockHeader;
-        private long? _terminalPoWBlock;
+        private long? _terminalPoWBlockNumber;
 
         public PoSSwitcher(ILogManager logManager, IMergeConfig mergeConfig, IDb db, IBlockTree blockTree)
         {
@@ -47,12 +47,20 @@ namespace Nethermind.Merge.Plugin
             _terminalTotalDifficulty = LoadTerminalTotalDifficulty();
             _logger = logManager.GetClassLogger();
 
-            _blockTree.NewHeadBlock += TrySwitchToPos;
+            if (_terminalPoWBlockNumber == null)
+            {
+                _blockTree.NewHeadBlock += CheckIfTerminalPoWBlockReached;
+            }
         }
 
-        private void TrySwitchToPos(object? sender, BlockEventArgs e)
+        private void CheckIfTerminalPoWBlockReached(object? sender, BlockEventArgs e)
         {
-            VerifyPoS(e.Block.Header, true);
+            if (_terminalBlockHash == e.Block.Hash || e.Block.TotalDifficulty >= _terminalTotalDifficulty)
+            {
+                _terminalPoWBlockNumber = e.Block.Number;
+                _blockTree.NewHeadBlock -= CheckIfTerminalPoWBlockReached;
+                if (_logger.IsInfo) _logger.Info($"Reached terminal PoW block {e.Block}");
+            }
         }
 
         public UInt256? TerminalTotalDifficulty
@@ -79,56 +87,27 @@ namespace Nethermind.Merge.Plugin
         {
             _terminalBlockHash = blockHash;
         }
-
-        // ToDo remove it
-        public bool TrySwitchToPos(BlockHeader header)
+        
+        public void ForkchoiceUpdated(BlockHeader header)
         {
-            return VerifyPoS(header, true);
+            if (_firstPoSBlockHeader == null)
+            {
+                if (_logger.IsInfo) _logger.Info($"Received the first forkchoiceUpdated at block {header}");
+                _firstPoSBlockHeader = header;
+            }
         }
 
         public bool IsPos(BlockHeader header)
         {
-            return VerifyPoS(header, false);
+            return header.IsPostMerge ||
+                   (_firstPoSBlockHeader != null && header.Number >= _firstPoSBlockHeader.Number);
         }
 
-        public bool HasEverReachedTerminalTotalDifficulty()
+        public bool HasEverReachedTerminalPoWBlock()
         {
-            return _terminalPoWBlock != null;
+            return _terminalPoWBlockNumber != null;
         }
 
-        public event EventHandler? TerminalTotalDifficultyReached;
-
-        private bool VerifyPoS(BlockHeader header, bool withSwitchToPoS)
-        {
-            // ToDo added during amphora, not sure if it is needed
-            if (header.Number == 0)
-            {
-                return false;
-            }
-            
-            if (_firstPoSBlockHeader != null && _firstPoSBlockHeader.TotalDifficulty <= header.TotalDifficulty)
-            {
-                return true;
-            }
-
-            if (_terminalBlockHash == null && _terminalTotalDifficulty == null)
-            {
-                return false;
-            }
-
-            if (_firstPoSBlockHeader == null && (_terminalBlockHash == header.ParentHash || header.TotalDifficulty >= _terminalTotalDifficulty))
-            {
-                if (withSwitchToPoS)
-                {
-                    if (_logger.IsInfo) _logger.Info($"Switched to Proof of Stake at block {header}");
-                    TerminalTotalDifficultyReached?.Invoke(this, EventArgs.Empty);
-                    _firstPoSBlockHeader = header;
-                }
-
-                return true;
-            }
-
-            return false;
-        }
+        public event EventHandler? TerminalPoWBlockReached;
     }
 }

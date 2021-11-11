@@ -64,9 +64,9 @@ namespace Nethermind.Merge.Plugin.Test
 
             BlockRequestResult expected = CreateParentBlockRequestOnHead(chain.BlockTree);
             expected.GasLimit = 4000000L;
-            expected.BlockHash = new Keccak("0x33228284b2c8d36e3fd34c31de3ab0604412bf9ab71725307d13daa2c4f44348");
+            expected.BlockHash = new Keccak("0x3ee80ba456bac700bfaf5b2827270406134e2392eb03ec50f6c23de28dd08811");
             expected.LogsBloom = Bloom.Empty;
-            expected.Coinbase = chain.MinerAddress;
+            expected.Coinbase = chain.SealEngine.Address;
             expected.BlockNumber = 1;
             expected.Random = random;
             expected.ParentHash = startingHead;
@@ -361,7 +361,7 @@ namespace Nethermind.Merge.Plugin.Test
             using MergeTestBlockchain chain = await CreateBlockChain();
             IEngineRpcModule rpc = CreateEngineModule(chain);
             BlockRequestResult blockRequestResult = await SendNewBlock(rpc, chain);
-            Assert.False(chain.PoSSwitcher.HasEverReachedTerminalTotalDifficulty());
+            Assert.False(chain.PoSSwitcher.HasEverReachedTerminalPoWBlock());
 
             rpc.engine_terminalTotalDifficultyUpdated((UInt256)1000000);
             Keccak newHeadHash = blockRequestResult.BlockHash;
@@ -370,7 +370,7 @@ namespace Nethermind.Merge.Plugin.Test
                 await rpc.engine_forkchoiceUpdated(forkChoiceUpdatedRequest);
             resultWrapper.Data.Should().Be(null);
             AssertExecutionStatusChanged(rpc, newHeadHash, newHeadHash /*, newHeadHash*/);
-            Assert.True(chain.PoSSwitcher.HasEverReachedTerminalTotalDifficulty());
+            Assert.True(chain.PoSSwitcher.HasEverReachedTerminalPoWBlock());
         }
 
         [Test]
@@ -387,7 +387,7 @@ namespace Nethermind.Merge.Plugin.Test
                 await rpc.engine_forkchoiceUpdated(forkChoiceUpdatedRequest);
             resultWrapper.Data.Should().Be(null);
             AssertExecutionStatusChanged(rpc, newHeadHash, newHeadHash /*, newHeadHash*/);
-            Assert.True(chain.PoSSwitcher.HasEverReachedTerminalTotalDifficulty());
+            Assert.True(chain.PoSSwitcher.HasEverReachedTerminalPoWBlock());
         }
 
         [Test]
