@@ -347,7 +347,7 @@ namespace Nethermind.Merge.Plugin.Test
                 new(TestItem.KeccakF, TestItem.KeccakF, TestItem.KeccakF);
             ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
                 await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1, null);
-            forkchoiceUpdatedResult.ErrorCode.Should().Be(MergeErrorCodes.UnknownHeader);
+            forkchoiceUpdatedResult.ErrorCode.Should().Be(ErrorCodes.InvalidParams);
             AssertExecutionStatusNotChanged(rpc, TestItem.KeccakF, TestItem.KeccakF /*, TestItem.KeccakF*/);
         }
 

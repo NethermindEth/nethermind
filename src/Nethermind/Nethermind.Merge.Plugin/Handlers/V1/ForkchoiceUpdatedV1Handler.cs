@@ -77,22 +77,22 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             
             (BlockHeader? finalizedHeader, string? finalizationErrorMsg) = EnsureHeaderForFinalization(forkchoiceState.FinalizedBlockHash);
             if (finalizationErrorMsg != null)
-                return ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(finalizationErrorMsg, MergeErrorCodes.UnknownHeader);
+                return ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(finalizationErrorMsg, ErrorCodes.InvalidParams);
             
             (BlockHeader? confirmedHeader, string? confirmationErrorMsg) = EnsureHeaderForConfirmation(forkchoiceState.SafeBlockHash);
             if (confirmationErrorMsg != null)
-                return ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(confirmationErrorMsg, MergeErrorCodes.UnknownHeader);
+                return ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(confirmationErrorMsg, ErrorCodes.InvalidParams);
             
             (Block? newHeadBlock, Block[]? blocks, string? setHeadErrorMsg) = EnsureBlocksForSetHead(forkchoiceState.HeadBlockHash);
             if (setHeadErrorMsg != null)
-                return ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(setHeadErrorMsg, MergeErrorCodes.UnknownHeader);
+                return ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(setHeadErrorMsg, ErrorCodes.InvalidParams);
  
             if (ShouldFinalize(forkchoiceState.FinalizedBlockHash))
                 _manualBlockFinalizationManager.MarkFinalized(newHeadBlock!.Header, finalizedHeader!);
             else if (_manualBlockFinalizationManager.LastFinalizedHash != Keccak.Zero)
                 if (_logger.IsWarn) _logger.Warn($"Cannot finalize block. The current finalized block is: {_manualBlockFinalizationManager.LastFinalizedHash}, the requested hash: {forkchoiceState.FinalizedBlockHash}");
             
-            // _blockConfirmationManager.Confirm(confirmedHeader);
+            _blockConfirmationManager.Confirm(confirmedHeader!.Hash!);
             byte[] payloadId = Array.Empty<byte>();
 
             bool headUpdated = false;
