@@ -130,6 +130,6 @@ namespace Nethermind.Merge.Plugin
                 "Verifies the payload according to the execution environment rules and returns the verification status and hash of the last valid block.",
             IsSharable = true,
             IsImplemented = true)]
-        Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV1(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes);
+        Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV1(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null);
     }
 }

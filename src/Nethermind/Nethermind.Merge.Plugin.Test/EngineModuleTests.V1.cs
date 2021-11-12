@@ -117,7 +117,7 @@ namespace Nethermind.Merge.Plugin.Test
             // update the fork choice
             result = RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV1", parameters);
             result.Should()
-                .Be("{\"jsonrpc\":\"2.0\",\"result\":{\"status\":\"SUCCESS\",\"payloadId\":\"0x\"},\"id\":67}");
+                .Be("{\"jsonrpc\":\"2.0\",\"result\":{\"status\":\"SUCCESS\"},\"id\":67}");
         }
 
         [Test]
