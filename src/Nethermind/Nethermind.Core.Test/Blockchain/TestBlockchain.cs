@@ -145,7 +145,7 @@ namespace Nethermind.Core.Test.Blockchain
             IDb blockInfoDb = new MemDb();
             BlockTree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), SpecProvider, NullBloomStorage.Instance, LimboLogs.Instance);
             ReadOnlyState = new ChainHeadReadOnlyStateProvider(BlockTree, StateReader);
-            TransactionComparerProvider = new TransactionComparerProvider(specProvider, BlockTree);
+            TransactionComparerProvider = new TransactionComparerProvider(SpecProvider, BlockTree);
             TxPool = CreateTxPool();
 
             ReceiptStorage = new InMemoryReceiptStorage();

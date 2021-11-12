@@ -45,7 +45,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
 {
     public class StartBlockProducerAuRa
     {
-        private new readonly AuRaNethermindApi _api;
+        private readonly AuRaNethermindApi _api;
         
         private BlockProducerEnv? _blockProducerContext;
         private INethermindApi NethermindApi => _api;

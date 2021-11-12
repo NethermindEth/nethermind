@@ -22,7 +22,7 @@ using System.IO.Abstractions;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.Server.Kestrel.Core;
+using Microsoft.AspNetCore.Http;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc.Utils;

@@ -68,7 +68,7 @@ namespace Nethermind.Cli.Modules
         [CliProperty("node", "address")]
         public string Address()
         {
-            return new Enode(Enode()).Address.ToString();
+            return new Enode(Enode() ?? string.Empty).Address.ToString();
         }
         
         [CliProperty("node", "enode")]

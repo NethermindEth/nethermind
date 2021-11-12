@@ -426,7 +426,7 @@ namespace Nethermind.Mev.Test
         }
 
         [Test]
-        public async Task should_evict_megabundle_when_relay_sends_new_bundle()
+        public void should_evict_megabundle_when_relay_sends_new_bundle()
         {
             var ecdsa = Substitute.For<IEthereumEcdsa>();
             ecdsa.RecoverAddress(Arg.Any<Signature>(), Arg.Any<Keccak>()).Returns(

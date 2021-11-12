@@ -40,7 +40,10 @@ namespace Nethermind.Core.Test.Builders
     public class BlockTreeBuilder : BuilderBase<BlockTree>
     {
         private readonly Block _genesisBlock;
-        private IReceiptStorage _receiptStorage;
+        private IReceiptStorage? _receiptStorage;
+        private ISpecProvider? _specProvider;
+        private IEthereumEcdsa? _ecdsa;
+        private Func<Block, Transaction, IEnumerable<LogEntry>>? _logCreationFunction;        
 
         private bool _onlyHeaders;
 
@@ -84,10 +87,6 @@ namespace Nethermind.Core.Test.Builders
             OfChainLength(out _, chainLength, splitVariant, splitFrom, blockBeneficiaries);
             return this;
         }
-
-        private ISpecProvider _specProvider;
-        private IEthereumEcdsa _ecdsa;
-        private Func<Block, Transaction, IEnumerable<LogEntry>> _logCreationFunction;
 
         public BlockTreeBuilder OfChainLength(out Block headBlock, int chainLength, int splitVariant = 0, int splitFrom = 0, params Address[] blockBeneficiaries)
         {
@@ -252,7 +251,7 @@ namespace Nethermind.Core.Test.Builders
             }
         }
 
-        public BlockTreeBuilder WithTransactions(IReceiptStorage receiptStorage, ISpecProvider specProvider, Func<Block, Transaction, IEnumerable<LogEntry>> logsForBlockBuilder = null)
+        public BlockTreeBuilder WithTransactions(IReceiptStorage receiptStorage, ISpecProvider specProvider, Func<Block, Transaction, IEnumerable<LogEntry>>? logsForBlockBuilder = null)
         {
             _specProvider = specProvider;
             _ecdsa = new EthereumEcdsa(specProvider.ChainId, LimboLogs.Instance);

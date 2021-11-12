@@ -29,7 +29,7 @@ namespace Nethermind.Core.Test.Caching
     {
         private static ICache<Address, Account> Create()
         {
-            return (ICache<Address, Account>) Activator.CreateInstance(typeof(TCache), Capacity, "test");
+            return (ICache<Address, Account>) Activator.CreateInstance(typeof(TCache), Capacity, "test")!;
         }
         
         private const int Capacity = 16;
@@ -56,7 +56,7 @@ namespace Nethermind.Core.Test.Caching
                 cache.Set(_addresses[i], _accounts[i]);
             }
 
-            Account account = cache.Get(_addresses[Capacity - 1]);
+            Account? account = cache.Get(_addresses[Capacity - 1]);
             Assert.AreEqual(_accounts[Capacity - 1], account);
         }
         
@@ -96,7 +96,7 @@ namespace Nethermind.Core.Test.Caching
                 cache.Set(_addresses[i], _accounts[i]);
             }
 
-            Account account = cache.Get(_addresses[Capacity]);
+            Account? account = cache.Get(_addresses[Capacity]);
             account.Should().Be(_accounts[Capacity]);
         }
         
