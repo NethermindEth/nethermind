@@ -117,13 +117,6 @@ namespace Nethermind.Init.Steps
                 _api.LogManager);
             
             MultiSyncModeSelector syncModeSelector = CreateMultiSyncModeSelector(syncProgressResolver);
-            if (_api.SyncModeSelector != null)
-            {
-                // this is really bad and is a result of lack of proper dependency management
-                PendingSyncModeSelector pendingOne = (PendingSyncModeSelector) _api.SyncModeSelector;
-                pendingOne.SetActual(syncModeSelector);
-            }
-
             _api.SyncModeSelector = syncModeSelector;
             _api.DisposeStack.Push(syncModeSelector);
 

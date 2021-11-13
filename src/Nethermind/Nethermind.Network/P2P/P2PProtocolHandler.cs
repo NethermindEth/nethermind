@@ -214,7 +214,7 @@ namespace Nethermind.Network.P2P
                 }
             }
 
-            if (!capabilities.Any(c => SupportedCapabilities.Contains(c)))
+            if (_agreedCapabilities.Count == 0)
             {
                 Session.InitiateDisconnect(
                     DisconnectReason.UselessPeer,
