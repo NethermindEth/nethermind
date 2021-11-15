@@ -18,6 +18,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Net.WebSockets;
 using System.Threading.Tasks;
+using System.Linq;
 using Microsoft.AspNetCore.Http;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
@@ -35,6 +36,7 @@ namespace Nethermind.JsonRpc.WebSockets
         private readonly IJsonRpcLocalStats _jsonRpcLocalStats;
         private readonly ILogManager _logManager;
         private readonly IJsonSerializer _jsonSerializer;
+        private readonly IJsonRpcUrlCollection _jsonRpcUrlCollection;
 
         public string Name { get; } = "json-rpc";
 
@@ -43,25 +45,32 @@ namespace Nethermind.JsonRpc.WebSockets
             IJsonRpcService jsonRpcService,
             IJsonRpcLocalStats jsonRpcLocalStats,
             ILogManager logManager,
-            IJsonSerializer jsonSerializer)
+            IJsonSerializer jsonSerializer,
+            IJsonRpcUrlCollection jsonRpcUrlCollection)
         {
             _jsonRpcProcessor = jsonRpcProcessor;
             _jsonRpcService = jsonRpcService;
             _jsonRpcLocalStats = jsonRpcLocalStats;
             _logManager = logManager;
             _jsonSerializer = jsonSerializer;
+            _jsonRpcUrlCollection = jsonRpcUrlCollection;
         }
 
-        public ISocketsClient CreateClient(WebSocket webSocket, string clientName)
+        public ISocketsClient CreateClient(WebSocket webSocket, string clientName, int port)
         {
+            if (!_jsonRpcUrlCollection.TryGetValue(port, out JsonRpcUrl jsonRpcUrl) ||
+                !jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Ws))
+                throw new InvalidOperationException($"WebSocket-enabled url not defined for port {port}");
+
             var socketsClient = new JsonRpcSocketsClient(
                 clientName, 
                 new WebSocketHandler(webSocket, _logManager), 
-                RpcEndpoint.WebSocket, 
+                RpcEndpoint.Ws,
                 _jsonRpcProcessor, 
                 _jsonRpcService,  
                 _jsonRpcLocalStats, 
-                _jsonSerializer);
+                _jsonSerializer,
+                jsonRpcUrl);
 
             _clients.TryAdd(socketsClient.Id, socketsClient);
 

@@ -33,7 +33,7 @@ namespace Nethermind.JsonRpc.Modules
         
         private List<string> _modules = new();
         private List<string> _enabledModules = new();
-        
+
         private Dictionary<string, ResolvedMethodInfo> _methods
             = new(StringComparer.InvariantCulture);
         
@@ -74,7 +74,8 @@ namespace Nethermind.JsonRpc.Modules
             _pools[moduleType] = (async canBeShared => await pool.GetModule(canBeShared), m => pool.ReturnModule((T) m));
             _modules.Add(moduleType);
 
-            ((List<JsonConverter>) Converters).AddRange(pool.Factory.GetConverters());
+            IReadOnlyCollection<JsonConverter> poolConverters = pool.Factory.GetConverters();
+            ((List<JsonConverter>) Converters).AddRange(poolConverters);
 
             foreach ((string name, (MethodInfo info, bool readOnly, RpcEndpoint availability)) in GetMethodDict(typeof(T)))
             {
@@ -91,12 +92,17 @@ namespace Nethermind.JsonRpc.Modules
             }
         }
 
-        public ModuleResolution Check(string methodName, RpcEndpoint rpcEndpoint)
+        public ModuleResolution Check(string methodName, JsonRpcContext context)
         {
-            if (!_methods.TryGetValue(methodName, out ResolvedMethodInfo result)) return ModuleResolution.Unknown;
+            if (!_methods.TryGetValue(methodName, out ResolvedMethodInfo result))
+                return ModuleResolution.Unknown;
 
-            if ((result.Availability & rpcEndpoint) == RpcEndpoint.None) return ModuleResolution.EndpointDisabled;
-            
+            if ((result.Availability & context.RpcEndpoint) == RpcEndpoint.None)
+                return ModuleResolution.EndpointDisabled;
+
+            if (context.Url != null)
+                return context.Url.EnabledModules.Contains(result.ModuleType, StringComparer.InvariantCultureIgnoreCase) ? ModuleResolution.Enabled : ModuleResolution.Disabled;
+
             return _enabledModules.Contains(result.ModuleType) ? ModuleResolution.Enabled : ModuleResolution.Disabled;
         }
 

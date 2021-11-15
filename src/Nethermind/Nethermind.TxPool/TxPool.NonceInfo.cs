@@ -28,7 +28,7 @@ namespace Nethermind.TxPool
             
             public Keccak? TransactionHash { get; private set; }
 
-            public NonceInfo(UInt256 value)
+            public NonceInfo(in UInt256 value)
             {
                 Value = value;
             }

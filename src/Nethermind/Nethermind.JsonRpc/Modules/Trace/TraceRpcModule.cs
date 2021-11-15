@@ -63,15 +63,28 @@ namespace Nethermind.JsonRpc.Modules.Trace
             return types.Select(s => (ParityTraceTypes) Enum.Parse(typeof(ParityTraceTypes), s, true)).Aggregate((t1, t2) => t1 | t2);
         }
 
-        public ResultWrapper<ParityTxTraceFromReplay> trace_call(TransactionForRpc message, string[] traceTypes, BlockParameter blockParameter)
+        public ResultWrapper<ParityTxTraceFromReplay> trace_call(TransactionForRpc call, string[] traceTypes, BlockParameter? blockParameter = null)
         {
-            Transaction tx = message.ToTransaction();
+            blockParameter ??= BlockParameter.Latest;
+            call.EnsureDefaults(_jsonRpcConfig.GasCap);
+
+            Transaction tx = call.ToTransaction();
+
             return TraceTx(tx, traceTypes, blockParameter);
         }
 
-        public ResultWrapper<ParityTxTraceFromReplay[]> trace_callMany((TransactionForRpc message, string[] traceTypes, BlockParameter numberOrTag)[] a)
+        public ResultWrapper<ParityTxTraceFromReplay[]> trace_callMany(TransactionForRpcWithTraceTypes[] calls, BlockParameter? blockParameter = null)
         {
-            throw new NotImplementedException();
+            blockParameter ??= BlockParameter.Latest;
+            List<ParityTxTraceFromReplay> traces = new();
+            for (var index = 0; index < calls.Length; index++)
+            {
+                TransactionForRpcWithTraceTypes call = calls[index];
+                ResultWrapper<ParityTxTraceFromReplay> trace = trace_call(call.Transaction, call.TraceTypes, blockParameter);
+                traces.Add(trace.Data);
+            }
+
+            return ResultWrapper<ParityTxTraceFromReplay[]>.Success(traces.ToArray());
         }
 
         public ResultWrapper<ParityTxTraceFromReplay> trace_rawTransaction(byte[] data, string[] traceTypes)
@@ -226,7 +239,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             return ResultWrapper<ParityTxTraceFromStore[]>.Success(ParityTxTraceFromStore.FromTxTrace(txTrace));
         }
 
-        private IReadOnlyCollection<ParityLikeTxTrace> TraceBlock(Block block, ParityTraceTypes traceTypes, TxTraceFilter txTraceFilter = null)
+        private IReadOnlyCollection<ParityLikeTxTrace> TraceBlock(Block block, ParityTraceTypes traceTypes, TxTraceFilter? txTraceFilter = null)
         {
             using CancellationTokenSource cancellationTokenSource = new(_cancellationTokenTimeout);
             CancellationToken cancellationToken = cancellationTokenSource.Token;

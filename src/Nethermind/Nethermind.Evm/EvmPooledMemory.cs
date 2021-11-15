@@ -241,7 +241,7 @@ namespace Nethermind.Evm
 
         private static UInt256 MaxInt32 = (UInt256)int.MaxValue;
         
-        public static long Div32Ceiling(UInt256 length)
+        public static long Div32Ceiling(in UInt256 length)
         {
             UInt256 rem = length & 31;
             UInt256 result = length >> 5;

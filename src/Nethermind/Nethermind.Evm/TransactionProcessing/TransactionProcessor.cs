@@ -174,7 +174,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 return;
             }
 
-            if (_stateProvider.IsInvalidContractSender(spec, caller))
+            if (!restore && _stateProvider.IsInvalidContractSender(spec, caller))
             {
                 TraceLogInvalidTx(transaction, "SENDER_IS_CONTRACT");
                 QuickFail(transaction, block, txTracer, eip658NotEnabled, "sender has deployed code");
@@ -510,7 +510,7 @@ namespace Nethermind.Evm.TransactionProcessing
         }
 
         private long Refund(long gasLimit, long unspentGas, TransactionSubstate substate, Address sender,
-            UInt256 gasPrice, IReleaseSpec spec)
+            in UInt256 gasPrice, IReleaseSpec spec)
         {
             long spentGas = gasLimit;
             if (!substate.IsError)

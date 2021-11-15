@@ -24,8 +24,10 @@ namespace Nethermind.JsonRpc.Modules
     {
         None = 0,
         Http = 1,
-        WebSocket = 2,
+        Ws = 2,
         IPC = 4,
-        All = Http | WebSocket | IPC
+        Https = Http,
+        Wss = Ws,
+        All = Http | Ws | IPC
     }
 }
