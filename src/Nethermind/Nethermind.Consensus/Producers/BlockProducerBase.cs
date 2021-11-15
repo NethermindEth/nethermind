@@ -293,7 +293,8 @@ namespace Nethermind.Consensus.Producers
                 payloadAttributes?.Timestamp ?? timestamp,
                 GetExtraData())
             {
-                Author = blockAuthor
+                Author = blockAuthor,
+                MixHash = payloadAttributes?.Random
             };
             
             UInt256 difficulty = _difficultyCalculator.Calculate(header, parent);

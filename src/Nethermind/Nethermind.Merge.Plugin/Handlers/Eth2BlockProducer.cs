@@ -122,7 +122,6 @@ namespace Nethermind.Merge.Plugin.Handlers
             Block block = base.PrepareBlock(parent, payloadAttributes);
             
             // TODO: this seems to me that it should be done in the Eth2 seal engine?
-            block.Header.MixHash = Keccak.Zero;
             block.Header.ExtraData = Array.Empty<byte>();
             return block;
         }
