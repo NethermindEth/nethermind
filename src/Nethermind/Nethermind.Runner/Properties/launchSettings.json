@@ -132,7 +132,7 @@
     },
     "TheMerge_Kinstugi_TestVectors": {
       "commandName": "Project",
-      "commandLineArgs": "--config themerge_kintsugi_testvectors.cfg --Init.DiagnosticMode MemDb"
+        "commandLineArgs": "--config themerge_kintsugi_testvectors.cfg --Init.DiagnosticMode MemDb --Merge.TerminalTotalDifficulty 17179869214"
     }
   }
 }

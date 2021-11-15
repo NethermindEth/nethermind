@@ -59,6 +59,7 @@ namespace Nethermind.Merge.Plugin
             {
                 _terminalPoWBlockNumber = e.Block.Number;
                 _blockTree.NewHeadBlock -= CheckIfTerminalPoWBlockReached;
+                TerminalPoWBlockReached?.Invoke(this, EventArgs.Empty);
                 if (_logger.IsInfo) _logger.Info($"Reached terminal PoW block {e.Block}");
             }
         }
