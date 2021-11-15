@@ -74,7 +74,7 @@ namespace Nethermind.Merge.Plugin.Test
                 JsonConvert.SerializeObject(preparePayloadParams)
             };
             // prepare a payload
-            string result = RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV1", parameters);
+            string result = RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV1", 67, parameters);
             result.Should()
                 .Be(
                     $"{{\"jsonrpc\":\"2.0\",\"result\":{{\"status\":\"SUCCESS\",\"payloadId\":\"{expectedPayloadId.ToHexString(true)}\"}},\"id\":67}}");

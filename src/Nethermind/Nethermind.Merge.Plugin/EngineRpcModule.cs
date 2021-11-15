@@ -19,7 +19,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -46,7 +45,6 @@ namespace Nethermind.Merge.Plugin
         private readonly SemaphoreSlim _locker = new(1, 1);
         private readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
         private readonly ILogger _logger;
-        private readonly IBlockTree _blockTree;
 
         public EngineRpcModule(
             IHandler<PreparePayloadRequest, PreparePayloadResult> preparePayloadHandler,
@@ -58,8 +56,7 @@ namespace Nethermind.Merge.Plugin
             IHandler<ForkChoiceUpdatedRequest, string> forkChoiceUpdateHandler,
             IForkchoiceUpdatedV1Handler forkchoiceUpdatedV1Handler,
             IHandler<ExecutionStatusResult> executionStatusHandler,
-            ILogManager logManager,
-            IBlockTree blockTree)
+            ILogManager logManager)
         {
             _preparePayloadHandler = preparePayloadHandler;
             _getPayloadHandler = getPayloadHandler;
@@ -71,7 +68,6 @@ namespace Nethermind.Merge.Plugin
             _forkchoiceUpdatedV1Handler = forkchoiceUpdatedV1Handler;
             _executionStatusHandler = executionStatusHandler;
             _logger = logManager.GetClassLogger();
-            _blockTree = blockTree;
         }
 
         public ResultWrapper<PreparePayloadResult> engine_preparePayload(
@@ -177,14 +173,13 @@ namespace Nethermind.Merge.Plugin
             return _executionStatusHandler.Handle();
         }
         
-        public async Task<ResultWrapper<BlockRequestResult?>> engine_getPayloadV1(byte[] payloadId)
+        public async Task<ResultWrapper<BlockRequestResult?>> engine_getPayloadV1(byte[] payloadId, int? id = null)
         {
             return await (_getPayloadHandlerV1.HandleAsync(payloadId));
         }
         
                 
-        public async Task<ResultWrapper<ExecutePayloadV1Result>> engine_executePayloadV1(
-            BlockRequestResult executionPayload)
+        public async Task<ResultWrapper<ExecutePayloadV1Result>> engine_executePayloadV1(BlockRequestResult executionPayload, int? id = null)
         {
             if (await _locker.WaitAsync(Timeout))
             {
@@ -206,7 +201,7 @@ namespace Nethermind.Merge.Plugin
         
         
 
-        public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV1(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null)
+        public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV1(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null, int? id = null)
         {
             if (await _locker.WaitAsync(Timeout))
             {

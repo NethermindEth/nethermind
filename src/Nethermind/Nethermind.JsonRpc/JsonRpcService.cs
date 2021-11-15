@@ -118,7 +118,14 @@ namespace Nethermind.JsonRpc
             (MethodInfo Info, bool ReadOnly) method, JsonRpcContext context)
         {
             ParameterInfo[] expectedParameters = method.Info.GetParameters();
-            string?[] providedParameters = request.Params ?? Array.Empty<string>();
+            List<string?> providedParameters = request.Params is not null ? request.Params.ToList() : new List<string?>();
+            // whether method contains a param for the id of the json rpc request
+            int pos = expectedParameters.ToList().FindIndex(IsRequestIdParameter);
+            if (pos >= 0 && pos <= providedParameters.Count)
+            {
+                providedParameters.Insert(pos, request.Id.ToString());
+            }
+            
             if (_logger.IsInfo) _logger.Info($"Executing JSON RPC call {methodName} with params [{string.Join(',', providedParameters)}]");
 
             int missingParamsCount = expectedParameters.Length - providedParameters.Length + (providedParameters.Count(string.IsNullOrWhiteSpace));
@@ -144,11 +151,12 @@ namespace Nethermind.JsonRpc
                         {
                             explicitNullableParamsCount += 1;
                         }
-                        if (!expectedParameters[expectedParameters.Length - missingParamsCount + i].IsOptional && !nullable)
+                        if (!expectedParameters[parameterIndex].IsOptional && !nullable)
                         {
                             hasIncorrectParameters = true;
                             break;
                         }
+                        
                     }
                 }
 
@@ -164,7 +172,7 @@ namespace Nethermind.JsonRpc
             object[]? parameters = null;
             if (expectedParameters.Length > 0)
             {
-                parameters = DeserializeParameters(expectedParameters, providedParameters, missingParamsCount);
+                parameters = DeserializeParameters(expectedParameters, providedParameters.ToArray(), missingParamsCount);
                 if (parameters == null)
                 {
                     if (_logger.IsWarn) _logger.Warn($"Incorrect JSON RPC parameters when calling {methodName} with params [{string.Join(", ", providedParameters)}]");
@@ -260,6 +268,7 @@ namespace Nethermind.JsonRpc
                         if (providedParameter == null && IsNullableParameter(expectedParameter))
                         {
                             executionParameters.Add(null);
+                            missingParamsCount -= 1;
                         }
                         else
                         {
@@ -324,12 +333,26 @@ namespace Nethermind.JsonRpc
                 .FirstOrDefault(x => x.AttributeType.FullName == "System.Runtime.CompilerServices.NullableAttribute");
             if (nullableAttribute != null)
             {
-                CustomAttributeTypedArgument attributeArgument = nullableAttribute.ConstructorArguments.FirstOrDefault();
+                CustomAttributeTypedArgument attributeArgument =
+                    nullableAttribute.ConstructorArguments.FirstOrDefault();
                 if (attributeArgument.ArgumentType == typeof(byte))
                 {
                     return (byte)attributeArgument.Value! == 2;
                 }
             }
+
+            return false;
+        }
+
+        private bool IsRequestIdParameter(ParameterInfo parameterInfo)
+        {
+            Attribute attribute = parameterInfo.GetCustomAttributes()
+                .FirstOrDefault(a => a.TypeId.Equals(typeof(JsonRpcAttribute)));
+            if (attribute != null)
+            {
+                return ((JsonRpcAttribute)attribute).Type == JsonRpcAttributeType.Id;
+            }
+
             return false;
         }
 

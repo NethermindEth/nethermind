@@ -116,20 +116,20 @@ namespace Nethermind.Merge.Plugin
                 "Returns the most recent version of an execution payload with respect to the transaction set contained by the mempool.",
             IsSharable = true,
             IsImplemented = true)]
-        Task<ResultWrapper<BlockRequestResult?>> engine_getPayloadV1(byte[] payloadId);
+        Task<ResultWrapper<BlockRequestResult?>> engine_getPayloadV1(byte[] payloadId, [JsonRpcAttribute(JsonRpcAttributeType.Id)] int? id = null);
         
         [JsonRpcMethod(
             Description =
                 "Verifies the payload according to the execution environment rules and returns the verification status and hash of the last valid block.",
             IsSharable = true,
             IsImplemented = true)]
-        Task<ResultWrapper<ExecutePayloadV1Result>> engine_executePayloadV1(BlockRequestResult executionPayload);
+        Task<ResultWrapper<ExecutePayloadV1Result>> engine_executePayloadV1(BlockRequestResult executionPayload, [JsonRpcAttribute(JsonRpcAttributeType.Id)] int? id = null);
         
         [JsonRpcMethod(
             Description =
                 "Verifies the payload according to the execution environment rules and returns the verification status and hash of the last valid block.",
             IsSharable = true,
             IsImplemented = true)]
-        Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV1(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null);
+        Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV1(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null, [JsonRpcAttribute(JsonRpcAttributeType.Id)] int? id = null);
     }
 }

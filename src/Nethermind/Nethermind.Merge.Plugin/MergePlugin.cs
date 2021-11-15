@@ -142,8 +142,7 @@ namespace Nethermind.Merge.Plugin
                         _poSSwitcher, _api.EthSyncingInfo, _api.BlockConfirmationManager, payloadService, _api.LogManager),
                     new ExecutionStatusHandler(_api.BlockTree, _api.BlockConfirmationManager,
                         _blockFinalizationManager),
-                    _api.LogManager,
-                    _api.BlockTree);
+                    _api.LogManager);
 
                 _api.RpcModuleProvider.RegisterSingle(engineRpcModule);
                 if (_logger.IsInfo) _logger.Info("Consensus Module has been enabled");
