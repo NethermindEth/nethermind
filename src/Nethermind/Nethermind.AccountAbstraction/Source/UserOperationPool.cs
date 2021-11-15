@@ -19,6 +19,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.AccountAbstraction.Broadcaster;
 using Nethermind.AccountAbstraction.Data;
@@ -36,7 +37,7 @@ using Nethermind.State;
 
 namespace Nethermind.AccountAbstraction.Source
 {
-    public class UserOperationPool : IUserOperationPool
+    public class UserOperationPool : IUserOperationPool, IDisposable
     {
         private readonly IAccountAbstractionConfig _accountAbstractionConfig;
         private readonly IBlockTree _blockTree;
@@ -53,6 +54,8 @@ namespace Nethermind.AccountAbstraction.Source
 
         private readonly Dictionary<long, List<UserOperation>> _userOperationsToDelete = new();
         private readonly UserOperationBroadcaster _broadcaster;
+        
+        private readonly Channel<BlockReplacementEventArgs> _headBlocksChannel = Channel.CreateUnbounded<BlockReplacementEventArgs>(new UnboundedChannelOptions() { SingleReader = true, SingleWriter = true });
 
         public UserOperationPool(
             IAccountAbstractionConfig accountAbstractionConfig,
@@ -86,6 +89,58 @@ namespace Nethermind.AccountAbstraction.Source
             _broadcaster = new UserOperationBroadcaster(logger);
 
             _blockTree.BlockAddedToMain += OnBlockAdded;
+            
+            ProcessNewBlocks();
+        }
+        
+        private void OnBlockAdded(object? sender, BlockReplacementEventArgs e)
+        {
+            try
+            {
+                _headBlocksChannel.Writer.TryWrite(e);
+            }
+            catch (Exception exception)
+            {
+                if (_logger.IsError)
+                    _logger.Error(
+                        $"Couldn't correctly add or remove user operations from UserOperationPool after processing block {e.Block!.ToString(Block.Format.FullHashAndNumber)}.", exception);
+            }
+        }
+
+        private void ProcessNewBlocks()
+        {
+            Task.Factory.StartNew(async () =>
+            {
+                while (await _headBlocksChannel.Reader.WaitToReadAsync())
+                {
+                    while (_headBlocksChannel.Reader.TryRead(out BlockReplacementEventArgs? args))
+                    {
+                        try
+                        {
+                            ReAddReorganisedUserOperations(args.PreviousBlock);
+                            RemoveProcessedUserOperations(args.Block);
+                        }
+                        catch (Exception e)
+                        {
+                            if (_logger.IsDebug) _logger.Debug($"UserOperationPool failed to update after block {args.Block.ToString(Block.Format.FullHashAndNumber)} with exception {e}");
+                        }
+                    }
+                }
+            }, TaskCreationOptions.LongRunning).ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                {
+                    if (_logger.IsError) _logger.Error($"UserOperationPool update after block queue failed.", t.Exception);
+                }
+            });
+        }
+
+        private void ReAddReorganisedUserOperations(Block? previousBlock)
+        {
+            if (previousBlock is not null)
+            {
+                // ToDo: re-add user operations from reorganized block
+            }
         }
 
         public IEnumerable<UserOperation> GetUserOperations()
@@ -123,10 +178,9 @@ namespace Nethermind.AccountAbstraction.Source
             return _userOperationSortedPool.TryRemove(userOperation.Hash);
         }
 
-        private void OnBlockAdded(object? sender, BlockEventArgs e)
+        private void RemoveProcessedUserOperations(Block block)
         {
             // remove any user operations that were only allowed to stay for 10 blocks due to throttled paymasters
-            Block block = e.Block;
             if (_userOperationsToDelete.ContainsKey(block.Number))
             {
                 foreach (var userOperation in _userOperationsToDelete[block.Number]) RemoveUserOperation(userOperation);
@@ -253,6 +307,12 @@ namespace Nethermind.AccountAbstraction.Source
             {
                 if (_logger.IsTrace) _logger.Trace($"Removed a peer from User Operation pool: {nodeId}");
             }
+        }
+
+        public void Dispose()
+        {
+            _blockTree.BlockAddedToMain -= OnBlockAdded;
+            _headBlocksChannel.Writer.Complete();
         }
     }
 }
