@@ -85,7 +85,7 @@ namespace Nethermind.AccountAbstraction.Source
 
             _broadcaster = new UserOperationBroadcaster(logger);
 
-            _blockTree.NewHeadBlock += NewHead;
+            _blockTree.BlockAddedToMain += OnBlockAdded;
         }
 
         public IEnumerable<UserOperation> GetUserOperations()
@@ -123,7 +123,7 @@ namespace Nethermind.AccountAbstraction.Source
             return _userOperationSortedPool.TryRemove(userOperation.Hash);
         }
 
-        private void NewHead(object? sender, BlockEventArgs e)
+        private void OnBlockAdded(object? sender, BlockEventArgs e)
         {
             // remove any user operations that were only allowed to stay for 10 blocks due to throttled paymasters
             Block block = e.Block;
