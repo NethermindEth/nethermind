@@ -132,9 +132,10 @@ namespace Nethermind.JsonRpc
                     hasIncorrectParameters = false;
                     for (int i = 0; i < missingParamsCount; i++)
                     {
+                        int parameterIndex = expectedParameters.Length - missingParamsCount + i;
                         bool nullable =
-                            IsNullableParameter(expectedParameters[expectedParameters.Length - missingParamsCount + i]);
-                        if (nullable)
+                            IsNullableParameter(expectedParameters[parameterIndex]);
+                        if (nullable && providedParameters.Length >= parameterIndex + 1)
                         {
                             nullableParamsCount += 1;
                         }
@@ -239,7 +240,7 @@ namespace Nethermind.JsonRpc
         {
             try
             {
-                var executionParameters = new List<object>();
+                List<object> executionParameters = new List<object>();
                 for (int i = 0; i < providedParameters.Length; i++)
                 {
                     string providedParameter = providedParameters[i];

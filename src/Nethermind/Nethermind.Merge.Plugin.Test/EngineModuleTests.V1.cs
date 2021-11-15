@@ -119,6 +119,42 @@ namespace Nethermind.Merge.Plugin.Test
             result.Should()
                 .Be("{\"jsonrpc\":\"2.0\",\"result\":{\"status\":\"SUCCESS\"},\"id\":67}");
         }
+        
+        [Test]
+        public async Task can_parse_forkchoiceUpdated()
+        {
+            using MergeTestBlockchain chain = await CreateBlockChain();
+            IEngineRpcModule rpc = CreateEngineModule(chain);
+            var forkChoiceUpdatedParams = new
+            {
+                headBlockHash = Keccak.Zero.ToString(),
+                safeBlockHash = Keccak.Zero.ToString(),
+                finalizedBlockHash = Keccak.Zero.ToString(),
+            };
+            string[] parameters = new[] {JsonConvert.SerializeObject(forkChoiceUpdatedParams)};
+            // update the fork choice
+            var result = RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV1", parameters);
+            result.Should()
+                .Be("{\"jsonrpc\":\"2.0\",\"result\":{\"status\":\"SUCCESS\"},\"id\":67}");
+        }
+        
+        [Test]
+        public async Task can_parse_eth_forkchoiceUpdated()
+        {
+            using MergeTestBlockchain chain = await CreateBlockChain();
+            IEngineRpcModule rpc = CreateEngineModule(chain);
+            var forkChoiceUpdatedParams = new
+            {
+                headBlockHash = Keccak.Zero.ToString(),
+                safeBlockHash = Keccak.Zero.ToString(),
+                finalizedBlockHash = Keccak.Zero.ToString(),
+            };
+            string[] parameters = new[] {0.ToHexString()};
+            // update the fork choice
+            var result = RpcTest.TestSerializedRequest(rpc, "eth_getBlockByNumber", parameters);
+            result.Should()
+                .Be("{\"jsonrpc\":\"2.0\",\"result\":{\"status\":\"SUCCESS\"},\"id\":67}");
+        }
 
         [Test]
         public async Task getPayload_should_serialize_unknown_payload_response_properly()
