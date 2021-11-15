@@ -52,7 +52,7 @@ namespace Nethermind.AccountAbstraction.Source
         private readonly UserOperationSortedPool _userOperationSortedPool;
 
         private readonly Dictionary<long, List<UserOperation>> _userOperationsToDelete = new();
-        private readonly UserOperationBroadcaster _broadcaster;
+        //private readonly UserOperationBroadcaster _broadcaster;
 
         public UserOperationPool(
             IAccountAbstractionConfig accountAbstractionConfig,
@@ -83,9 +83,7 @@ namespace Nethermind.AccountAbstraction.Source
 
             MemoryAllowance.MemPoolSize = accountAbstractionConfig.UserOperationPoolSize;
 
-            _broadcaster = new UserOperationBroadcaster(logger);
-
-            _blockTree.NewHeadBlock += NewHead;
+            //_blockTree.NewHeadBlock += NewHead;
         }
 
         public IEnumerable<UserOperation> GetUserOperations()
@@ -123,6 +121,7 @@ namespace Nethermind.AccountAbstraction.Source
             return _userOperationSortedPool.TryRemove(userOperation.Hash);
         }
 
+        /*
         private void NewHead(object? sender, BlockEventArgs e)
         {
             // remove any user operations that were only allowed to stay for 10 blocks due to throttled paymasters
@@ -164,6 +163,7 @@ namespace Nethermind.AccountAbstraction.Source
                 }
             }
         }
+        */
 
         private ResultWrapper<Keccak> ValidateUserOperation(UserOperation userOperation)
         {

@@ -72,7 +72,7 @@ namespace Nethermind.AccountAbstraction.Source
                 ResultWrapper<Keccak> result = resultTask.Result;
                 if (result.Result != Result.Success)
                 {
-                    if (_logger.IsDebug)
+                    //if (_logger.IsDebug) commented out for testing
                     {
                         _logger.Debug($"UserOperation {userOperation.Hash} resimulation unsuccessful: {result.Result.Error}");
                         _logger.Debug(_userOperationPool.RemoveUserOperation(userOperation)
