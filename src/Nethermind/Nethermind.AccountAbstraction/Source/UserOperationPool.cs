@@ -52,7 +52,7 @@ namespace Nethermind.AccountAbstraction.Source
         private readonly UserOperationSortedPool _userOperationSortedPool;
 
         private readonly Dictionary<long, List<UserOperation>> _userOperationsToDelete = new();
-        //private readonly UserOperationBroadcaster _broadcaster;
+        private readonly UserOperationBroadcaster _broadcaster;
 
         public UserOperationPool(
             IAccountAbstractionConfig accountAbstractionConfig,
@@ -80,6 +80,7 @@ namespace Nethermind.AccountAbstraction.Source
             _userOperationSimulator = userOperationSimulator;
 
             _userOperationEventTopic = new Keccak("0xc27a60e61c14607957b41fa2dad696de47b2d80e390d0eaaf1514c0cd2034293");
+            _broadcaster = new UserOperationBroadcaster(logger);
 
             MemoryAllowance.MemPoolSize = accountAbstractionConfig.UserOperationPoolSize;
 
