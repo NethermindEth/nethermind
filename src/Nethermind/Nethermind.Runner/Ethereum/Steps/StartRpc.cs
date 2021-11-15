@@ -46,6 +46,8 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (jsonRpcConfig.Enabled)
             {
                 IInitConfig initConfig = _api.Config<IInitConfig>();
+                IJsonRpcUrlCollection jsonRpcUrlCollection = new JsonRpcUrlCollection(_api.LogManager, jsonRpcConfig, initConfig.WebSocketsEnabled);
+
                 JsonRpcLocalStats jsonRpcLocalStats = new(
                     _api.Timestamper,
                     jsonRpcConfig,
@@ -63,7 +65,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
                 if (initConfig.WebSocketsEnabled)
                 {
-                    JsonRpcWebSocketsModule webSocketsModule = new (jsonRpcProcessor, jsonRpcService, jsonRpcLocalStats, _api.LogManager, jsonSerializer);
+                    JsonRpcWebSocketsModule webSocketsModule = new (jsonRpcProcessor, jsonRpcService, jsonRpcLocalStats, _api.LogManager, jsonSerializer, jsonRpcUrlCollection);
                     _api.WebSocketsManager!.AddModule(webSocketsModule, true);
                 }
 
@@ -73,6 +75,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 Bootstrap.Instance.JsonRpcLocalStats = jsonRpcLocalStats;
                 JsonRpcRunner? jsonRpcRunner = new(
                     jsonRpcProcessor,
+                    jsonRpcUrlCollection,
                     _api.WebSocketsManager!,
                     _api.ConfigProvider,
                     _api.LogManager,
