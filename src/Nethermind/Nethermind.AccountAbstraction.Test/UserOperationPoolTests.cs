@@ -158,6 +158,49 @@ namespace Nethermind.AccountAbstraction.Test
                 }
             }
         }
+        
+        [Test]
+        public void should_remove_user_operations_from_pool_when_included_in_block()
+        {
+            int capacity = 256;
+            int expectedTransactions = 100;
+            _userOperationPool = GenerateUserOperationPool(capacity);
+            _signer.Address.Returns(Address.SystemUser);
+            Address senderAddress = _signer.Address;
+            
+            for (int i = 0; i < expectedTransactions; i++)
+            {
+                UserOperation op = Build.A.UserOperation.WithSender(Address.SystemUser).WithNonce((UInt256)i).SignedAndResolved().TestObject;
+                _userOperationPool.AddUserOperation(op);
+            }
+            _userOperationPool.GetUserOperations().Should().HaveCount(expectedTransactions);
+
+            UserOperation[] uops = _userOperationPool.GetUserOperations().ToArray();
+            LogEntry[] logs = new LogEntry[uops.Length];
+            for (int i = 0; i < uops.Length; i++)
+            {
+                Keccak[] topics = new[] {_userOperationEventTopic, new Keccak(string.Concat("0x000000000000000000000000", senderAddress.ToString(false, false))), new Keccak(string.Concat("0x000000000000000000000000", uops[i].Paymaster.Bytes.ToHexString()))};
+                UInt256 nonce = (UInt256)i;
+                logs[i] = new LogEntry(senderAddress, nonce.ToBigEndian(), topics);
+            }
+            TxReceipt receipt = new()
+            {
+                Recipient = new Address(_entryPointContractAddress),
+                Sender = senderAddress,
+                Logs = logs
+            };
+
+            Block block = Nethermind.Core.Test.Builders.Build.A.Block.TestObject;
+            _receiptFinder.Get(block).Returns(new[]{receipt});
+            BlockReplacementEventArgs blockReplacementEventArgs = new(block, null);
+            
+            ManualResetEvent manualResetEvent = new(false);
+            _userOperationPool.RemoveUserOperation(Arg.Do<UserOperation>(o => manualResetEvent.Set()));
+            _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockReplacementEventArgs);
+            manualResetEvent.WaitOne(500);
+            
+            _userOperationPool.GetUserOperations().Should().HaveCount(0);
+        }
 
         [Test]
         public void should_add_peers()
