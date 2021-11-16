@@ -115,6 +115,8 @@ namespace Nethermind.Core.Test.Blockchain
         public IReadOnlyTrieStore ReadOnlyTrieStore { get; private set; }
 
         public ManualTimestamper Timestamper { get; protected set; }
+        
+        public ProducedBlockSuggester Suggester { get; private set; }
 
         public static TransactionBuilder<Transaction> BuildSimpleTransaction => Builders.Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).To(AccountB);
 
@@ -180,6 +182,7 @@ namespace Nethermind.Core.Test.Blockchain
             ITransactionComparerProvider transactionComparerProvider = new TransactionComparerProvider(SpecProvider, BlockFinder);
             BlockProducer = CreateTestBlockProducer(txPoolTxSource, sealer, transactionComparerProvider);
             BlockProducer.Start();
+            Suggester = new ProducedBlockSuggester(BlockTree, BlockProducer);
 
             _resetEvent = new SemaphoreSlim(0);
             _suggestedBlockResetEvent = new ManualResetEvent(true);
