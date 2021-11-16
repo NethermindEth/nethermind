@@ -58,7 +58,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                 Rlp.LengthOf(message.RequestId) +
                 innerMessageLength;
 
-            return Rlp.GetSequenceRlpLength(contentLength);
+            return Rlp.LengthOfSequence(contentLength);
         }
     }
 }

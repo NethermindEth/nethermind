@@ -27,7 +27,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             Rlp ethMessage = new Rlp(ethSerializer.Serialize(message.EthMessage));
             int contentLength = Rlp.LengthOf(message.RequestId) + ethMessage.Length;
 
-            int totalLength = Rlp.GetSequenceRlpLength(contentLength);
+            int totalLength = Rlp.LengthOfSequence(contentLength);
 
             RlpStream rlpStream = new NettyRlpStream(byteBuffer);
             byteBuffer.EnsureWritable(totalLength, true);

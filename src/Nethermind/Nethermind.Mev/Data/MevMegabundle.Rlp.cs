@@ -34,9 +34,9 @@ namespace Nethermind.Mev.Data
             {
                 int txHashes = Rlp.LengthOfKeccakRlp * bundle.Transactions.Count;
                 int revertingTxHashes = Rlp.LengthOfKeccakRlp * bundle.RevertingTxHashes.Length;
-                int content = Rlp.GetSequenceRlpLength(txHashes) + Rlp.LengthOf(bundle.BlockNumber) +
+                int content = Rlp.LengthOfSequence(txHashes) + Rlp.LengthOf(bundle.BlockNumber) +
                               Rlp.LengthOf(bundle.MinTimestamp) + Rlp.LengthOf(bundle.MaxTimestamp) +
-                              Rlp.GetSequenceRlpLength(revertingTxHashes);
+                              Rlp.LengthOfSequence(revertingTxHashes);
                 return (Rlp.LengthOfSequence(content), txHashes, revertingTxHashes);
             }
 

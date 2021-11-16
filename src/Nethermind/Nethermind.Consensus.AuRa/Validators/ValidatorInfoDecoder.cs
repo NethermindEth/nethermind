@@ -84,7 +84,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         private static (int Total, int Validators) GetContentLength(ValidatorInfo item, RlpBehaviors rlpBehaviors)
         {
             int validatorsLength = Rlp.LengthOfAddressRlp * item.Validators.Length;
-            return (Rlp.LengthOf(item.FinalizingBlockNumber) + Rlp.LengthOf(item.PreviousFinalizingBlockNumber) + Rlp.GetSequenceRlpLength(validatorsLength), validatorsLength);
+            return (Rlp.LengthOf(item.FinalizingBlockNumber) + Rlp.LengthOf(item.PreviousFinalizingBlockNumber) + Rlp.LengthOfSequence(validatorsLength), validatorsLength);
         }
     }
 } 
