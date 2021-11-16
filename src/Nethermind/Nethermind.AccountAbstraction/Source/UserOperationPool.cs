@@ -173,9 +173,9 @@ namespace Nethermind.AccountAbstraction.Source
             return result;
         }
 
-        public bool RemoveUserOperation(UserOperation userOperation)
+        public bool RemoveUserOperation(UserOperation? userOperation)
         {
-            return _userOperationSortedPool.TryRemove(userOperation.Hash);
+            return userOperation is not null && _userOperationSortedPool.TryRemove(userOperation.Hash);
         }
 
         private void RemoveProcessedUserOperations(Block block)
@@ -185,35 +185,35 @@ namespace Nethermind.AccountAbstraction.Source
             {
                 foreach (var userOperation in _userOperationsToDelete[block.Number]) RemoveUserOperation(userOperation);
             }
-
+            
             // find any userOps included on chain submitted by this miner, delete from the pool
-            TxReceipt[] receipts = _receiptFinder.Get(block);
-            TxReceipt[] entryPointReceipts = receipts
-                .Where(r => r.Recipient is not null && r.Recipient == _entryPointAddress).ToArray();
-
-            LogEntry[] logs = entryPointReceipts
-                .Where(r => r.Sender is not null && r.Sender == _signer.Address)
-                .SelectMany(r => r.Logs ?? Array.Empty<LogEntry>())
-                .Where(l => l.Topics[0] == _userOperationEventTopic)
-                .ToArray();
-
-            foreach (var log in logs)
+            foreach (TxReceipt receipt in _receiptFinder.Get(block))
             {
-                Address senderAddress = new(log.Topics[1]);
-                Address paymasterAddress = new(log.Topics[2]);
-                UInt256 nonce = new(log.Data.Slice(0, 32), true);
-                IDictionary<Address, UserOperation[]> bucketSnapshot = _userOperationSortedPool.GetBucketSnapshot();
-                if (bucketSnapshot.ContainsKey(senderAddress))
+                if (receipt?.Recipient == _entryPointAddress
+                    && receipt?.Sender == _signer.Address
+                    && receipt.Logs is not null)
                 {
-                    UserOperation[] userOperationsWithSender = bucketSnapshot[senderAddress];
-                    IEnumerable<UserOperation> userOperationsToRemove =
-                        userOperationsWithSender.Where(op => op.Nonce == nonce && op.Paymaster == paymasterAddress);
-                    foreach (var userOperation in userOperationsToRemove)
+                    foreach (LogEntry log in receipt.Logs)
                     {
-                        if (_logger.IsDebug) _logger.Debug($"UserOperation {userOperation.Hash} removed from pool after being included by miner");
-                        Metrics.UserOperationsIncluded++;
-                        _paymasterThrottler.IncrementOpsIncluded(paymasterAddress);
-                        RemoveUserOperation(userOperation);
+                        if (log?.Topics[0] == _userOperationEventTopic)
+                        {
+                            Address senderAddress = new(log.Topics[1]);
+                            Address paymasterAddress = new(log.Topics[2]);
+                            UInt256 nonce = new(log.Data.Slice(0, 32), true);
+                            if (_userOperationSortedPool.TryGetBucket(senderAddress, out UserOperation[] opsOfSender))
+                            {
+                                foreach (UserOperation op in opsOfSender)
+                                {
+                                    if (op.Nonce == nonce && op.Paymaster == paymasterAddress)
+                                    {
+                                        if (_logger.IsDebug) _logger.Debug($"UserOperation {op.Hash} removed from pool after being included by miner");
+                                        Metrics.UserOperationsIncluded++;
+                                        _paymasterThrottler.IncrementOpsIncluded(paymasterAddress);
+                                        RemoveUserOperation(op);
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
