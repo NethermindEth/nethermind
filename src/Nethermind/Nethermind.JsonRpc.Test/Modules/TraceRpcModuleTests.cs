@@ -1,8 +1,23 @@
+//  Copyright (c) 2021 Demerzel Solutions Limited
+//  This file is part of the Nethermind library.
+// 
+//  The Nethermind library is free software: you can redistribute it and/or modify
+//  it under the terms of the GNU Lesser General Public License as published by
+//  the Free Software Foundation, either version 3 of the License, or
+//  (at your option) any later version.
+// 
+//  The Nethermind library is distributed in the hope that it will be useful,
+//  but WITHOUT ANY WARRANTY; without even the implied warranty of
+//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+//  GNU Lesser General Public License for more details.
+// 
+//  You should have received a copy of the GNU Lesser General Public License
+//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using MathNet.Numerics.Optimization.TrustRegion;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Tracing;
@@ -20,14 +35,16 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Validators;
-using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm;
-using Nethermind.Evm.Tracing.ParityStyle;
+using Nethermind.Serialization.Json;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Serialization.Json;
+
 namespace Nethermind.JsonRpc.Test.Modules
 {
     [Parallelizable(ParallelScope.All)]
@@ -36,10 +53,10 @@ namespace Nethermind.JsonRpc.Test.Modules
     {
         private class Context
         {
-            public async Task Build(ISpecProvider specProvider = null)
+            public async Task Build(ISpecProvider specProvider = null, Boolean isAura = false)
             {
                 JsonRpcConfig = new JsonRpcConfig();
-                Blockchain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(specProvider);
+                Blockchain = await TestRpcBlockchain.ForTest(isAura ? SealEngineType.AuRa : SealEngineType.NethDev).Build(specProvider);
                 await Blockchain.AddFunds(TestItem.AddressA, 1000.Ether());
                 await Blockchain.AddFunds(TestItem.AddressB, 1000.Ether());
                 await Blockchain.AddFunds(TestItem.AddressC, 1000.Ether());
@@ -534,6 +551,27 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
+        public async Task trace_replayBlockTransactions_zeroGasUsed_test()
+        {
+            Context context = new();
+            OverridableReleaseSpec releaseSpec = new(London.Instance);
+            releaseSpec.Eip1559TransitionBlock = 1;
+            TestSpecProvider specProvider = new(releaseSpec) {ChainId = ChainId.Mainnet};
+            await context.Build(specProvider, isAura: true);
+            TestRpcBlockchain blockchain = context.Blockchain;
+            UInt256 currentNonceAddressA = blockchain.State.GetAccount(TestItem.AddressA).Nonce;
+
+            Transaction serviceTransaction = Build.A.Transaction.WithNonce(currentNonceAddressA++)
+                .WithTo(TestItem.AddressC)
+                .SignedAndResolved(TestItem.PrivateKeyA)
+                .WithIsServiceTransaction(true).TestObject;
+            await blockchain.AddBlock(serviceTransaction);
+            BlockParameter blockParameter = new BlockParameter(BlockParameterType.Latest);
+            string[] traceTypes = {"trace"};
+            ResultWrapper<ParityTxTraceFromReplay[]> traces = context.TraceRpcModule.trace_replayBlockTransactions(blockParameter, traceTypes);
+            Assert.AreEqual(0, traces.Data[0].Action.Result.GasUsed);
+        }
+
         public async Task Trace_call_without_blockParameter_provided_test()
         {
             Context context = new();
