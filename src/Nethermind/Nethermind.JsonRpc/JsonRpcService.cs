@@ -122,7 +122,7 @@ namespace Nethermind.JsonRpc
             if (_logger.IsInfo) _logger.Info($"Executing JSON RPC call {methodName} with params [{string.Join(',', providedParameters)}]");
 
             int missingParamsCount = expectedParameters.Length - providedParameters.Length + (providedParameters.Count(string.IsNullOrWhiteSpace));
-            int nullableParamsCount = 0;
+            int explicitNullableParamsCount = 0;
 
             if (missingParamsCount != 0)
             {
@@ -135,9 +135,14 @@ namespace Nethermind.JsonRpc
                         int parameterIndex = expectedParameters.Length - missingParamsCount + i;
                         bool nullable =
                             IsNullableParameter(expectedParameters[parameterIndex]);
-                        if (nullable && providedParameters.Length >= parameterIndex + 1)
+                        
+                        // if the null is the default parameter it could be passed in an explicit way as "" or null
+                        // or we can treat null as a missing parameter. Two tests for this cases:
+                        // Eth_call_is_working_with_implicit_null_as_the_last_argument and Eth_call_is_working_with_explicit_null_as_the_last_argument
+                        bool isExplicit = providedParameters.Length >= parameterIndex + 1;
+                        if (nullable && isExplicit)
                         {
-                            nullableParamsCount += 1;
+                            explicitNullableParamsCount += 1;
                         }
                         if (!expectedParameters[expectedParameters.Length - missingParamsCount + i].IsOptional && !nullable)
                         {
@@ -153,7 +158,7 @@ namespace Nethermind.JsonRpc
                 }
             }
 
-            missingParamsCount -= nullableParamsCount;
+            missingParamsCount -= explicitNullableParamsCount;
 
             //prepare parameters
             object[]? parameters = null;

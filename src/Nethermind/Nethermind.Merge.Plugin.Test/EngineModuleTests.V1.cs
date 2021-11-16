@@ -132,10 +132,9 @@ namespace Nethermind.Merge.Plugin.Test
                 finalizedBlockHash = Keccak.Zero.ToString(),
             };
             string[] parameters = new[] {JsonConvert.SerializeObject(forkChoiceUpdatedParams)};
-            // update the fork choice
-            var result = RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV1", parameters);
+            string? result = RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV1", parameters);
             result.Should()
-                .Be("{\"jsonrpc\":\"2.0\",\"result\":{\"status\":\"SUCCESS\"},\"id\":67}");
+                .Be("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":4,\"message\":\"Block 0x0000000000000000000000000000000000000000000000000000000000000000 not found for confirmation.\"},\"id\":67}");
         }
 
         [Test]

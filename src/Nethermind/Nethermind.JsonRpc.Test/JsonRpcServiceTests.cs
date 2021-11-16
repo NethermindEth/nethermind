@@ -131,6 +131,33 @@ namespace Nethermind.JsonRpc.Test
             JsonRpcSuccessResponse response = TestRequest(ethRpcModule, "eth_newFilter", JsonConvert.SerializeObject(parameters)) as JsonRpcSuccessResponse;
             Assert.AreEqual(UInt256.One, response?.Result);
         }
+        
+        [Test]
+        public void Eth_call_is_working_with_implicit_null_as_the_last_argument()
+        {
+            EthereumJsonSerializer serializer = new();
+            IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+            ethRpcModule.eth_call(Arg.Any<TransactionForRpc>(), Arg.Any<BlockParameter?>()).ReturnsForAnyArgs(x => ResultWrapper<string>.Success("0x"));
+
+            string serialized = serializer.Serialize(new TransactionForRpc());
+
+            JsonRpcSuccessResponse response = TestRequest(ethRpcModule, "eth_call", serialized) as JsonRpcSuccessResponse;
+            Assert.AreEqual("0x", response?.Result);
+        }
+        
+        [TestCase("")]
+        [TestCase(null)]
+        public void Eth_call_is_working_with_explicit_null_as_the_last_argument(string nullValue)
+        {
+            EthereumJsonSerializer serializer = new();
+            IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+            ethRpcModule.eth_call(Arg.Any<TransactionForRpc>(), Arg.Any<BlockParameter?>()).ReturnsForAnyArgs(x => ResultWrapper<string>.Success("0x"));
+
+            string serialized = serializer.Serialize(new TransactionForRpc());
+
+            JsonRpcSuccessResponse response = TestRequest(ethRpcModule, "eth_call", serialized, nullValue) as JsonRpcSuccessResponse;
+            Assert.AreEqual("0x", response?.Result);
+        }
 
         [Test]
         public void GetWorkTest()
