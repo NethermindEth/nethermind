@@ -94,6 +94,65 @@ namespace Nethermind.AccountAbstraction.Test
         }
         
         [Test]
+        public void should_add_user_operations_concurrently()
+        {
+            int capacity = 2048;
+            var (userOperationPool, _, _) = GenerateUserOperationPool(capacity);
+
+            Parallel.ForEach(TestItem.PrivateKeys, k =>
+            {
+                for (int i = 0; i < 100; i++)
+                {
+                    UserOperation op = Build.A.UserOperation.WithSender(Address.SystemUser).WithNonce((UInt256)i).SignedAndResolved(k).TestObject;
+                    userOperationPool.AddUserOperation(op);
+                }
+            });
+
+            userOperationPool.GetUserOperations().Count().Should().Be(capacity);
+        }
+        
+        [Test]
+        public async Task should_remove_user_operations_concurrently()
+        {
+            int capacity = 4096;
+            var (userOperationPool, _, _) = GenerateUserOperationPool(capacity);
+            
+            int maxTryCount = 5;
+            for (int i = 0; i < maxTryCount; ++i)
+            {
+                Parallel.ForEach(TestItem.PrivateKeys, k =>
+                {
+                    for (int j = 0; j < 10; j++)
+                    {
+                        UserOperation op = Build.A.UserOperation.WithSender(Address.SystemUser).WithNonce((UInt256)j)
+                            .SignedAndResolved(k).TestObject;
+                        userOperationPool.AddUserOperation(op);
+                    }
+                });
+
+                userOperationPool.GetUserOperations().Should().HaveCount(TestItem.PrivateKeys.Length * 10);
+                UserOperation[] opsForFirstTask = userOperationPool.GetUserOperations().Where(o => o.Nonce == 8).ToArray();
+                UserOperation[] opsForSecondTask = userOperationPool.GetUserOperations().Where(o => o.Nonce == 6).ToArray();
+                UserOperation[] opsForThirdTask = userOperationPool.GetUserOperations().Where(o => o.Nonce == 7).ToArray();
+                opsForFirstTask.Should().HaveCount(TestItem.PrivateKeys.Length);
+                Task firstTask = Task.Run(() => DeleteOpsFromPool(opsForFirstTask));
+                Task secondTask = Task.Run(() => DeleteOpsFromPool(opsForSecondTask));
+                Task thirdTask = Task.Run(() => DeleteOpsFromPool(opsForThirdTask));
+                await Task.WhenAll(firstTask, secondTask, thirdTask);
+                userOperationPool.GetUserOperations().Should().HaveCount(TestItem.PrivateKeys.Length * 7);
+            }
+            
+
+            void DeleteOpsFromPool(UserOperation[] ops)
+            {
+                foreach (UserOperation op in ops)
+                {
+                    userOperationPool.RemoveUserOperation(op);
+                }
+            }
+        }
+
+        [Test]
         public void should_add_peers()
         {
             var (userOperationPool, _, _) = GenerateUserOperationPool(100);
