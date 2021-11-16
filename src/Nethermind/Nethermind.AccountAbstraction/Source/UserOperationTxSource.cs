@@ -75,9 +75,11 @@ namespace Nethermind.AccountAbstraction.Source
                     //if (_logger.IsDebug) commented out for testing
                     {
                         _logger.Debug($"UserOperation {userOperation.Hash} resimulation unsuccessful: {result.Result.Error}");
-                        _logger.Debug(_userOperationPool.RemoveUserOperation(userOperation)
-                            ? $"Removed UserOperation {userOperation.Hash} from Pool"
-                            : $"Failed to remove UserOperation {userOperation.Hash} from Pool");
+                        
+                        // ToDo: RemoveUserOperation shouldn't be dependent of logger's state, like below. Commented it out for now
+                        // _logger.Debug(_userOperationPool.RemoveUserOperation(userOperation.Hash)
+                        //     ? $"Removed UserOperation {userOperation.Hash} from Pool"
+                        //     : $"Failed to remove UserOperation {userOperation} from Pool");
                     }
                     
                     continue;

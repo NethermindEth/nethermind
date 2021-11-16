@@ -26,7 +26,7 @@ namespace Nethermind.AccountAbstraction.Source
     public interface IUserOperationPool
     {
         ResultWrapper<Keccak> AddUserOperation(UserOperation userOperation);
-        bool RemoveUserOperation(UserOperation userOperation);
+        bool RemoveUserOperation(Keccak? userOperationHash);
         public IEnumerable<UserOperation> GetUserOperations();
         void AddPeer(IUserOperationPoolPeer peer);
         void RemovePeer(PublicKey nodeId);

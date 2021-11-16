@@ -22,7 +22,7 @@ namespace Nethermind.Sockets
     public interface IWebSocketsModule
     {
         string Name { get; }
-        ISocketsClient CreateClient(WebSocket webSocket, string client);
+        ISocketsClient CreateClient(WebSocket webSocket, string client, int port);
         void RemoveClient(string clientId);
         Task SendAsync(SocketsMessage message);
     }

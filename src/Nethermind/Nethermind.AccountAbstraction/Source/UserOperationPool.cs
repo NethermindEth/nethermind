@@ -16,9 +16,11 @@
 // 
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.AccountAbstraction.Broadcaster;
 using Nethermind.AccountAbstraction.Data;
@@ -36,7 +38,7 @@ using Nethermind.State;
 
 namespace Nethermind.AccountAbstraction.Source
 {
-    public class UserOperationPool : IUserOperationPool
+    public class UserOperationPool : IUserOperationPool, IDisposable
     {
         private readonly IAccountAbstractionConfig _accountAbstractionConfig;
         private readonly IBlockTree _blockTree;
@@ -51,8 +53,13 @@ namespace Nethermind.AccountAbstraction.Source
         private readonly IUserOperationSimulator _userOperationSimulator;
         private readonly UserOperationSortedPool _userOperationSortedPool;
 
-        private readonly Dictionary<long, List<UserOperation>> _userOperationsToDelete = new();
+        private readonly ConcurrentDictionary<long, HashSet<Keccak>> _userOperationsToDelete = new();
+        private readonly ConcurrentDictionary<long, HashSet<UserOperation>> _removedUserOperations = new();
         private readonly UserOperationBroadcaster _broadcaster;
+        
+        private readonly Channel<BlockReplacementEventArgs> _headBlocksChannel = Channel.CreateUnbounded<BlockReplacementEventArgs>(new UnboundedChannelOptions() { SingleReader = true, SingleWriter = true });
+
+        private const int MaxReorgBlocksSupported = 64;
 
         public UserOperationPool(
             IAccountAbstractionConfig accountAbstractionConfig,
@@ -80,11 +87,67 @@ namespace Nethermind.AccountAbstraction.Source
             _userOperationSimulator = userOperationSimulator;
 
             _userOperationEventTopic = new Keccak("0xc27a60e61c14607957b41fa2dad696de47b2d80e390d0eaaf1514c0cd2034293");
-            _broadcaster = new UserOperationBroadcaster(logger);
 
             MemoryAllowance.MemPoolSize = accountAbstractionConfig.UserOperationPoolSize;
 
-            //_blockTree.NewHeadBlock += NewHead;
+            _broadcaster = new UserOperationBroadcaster(logger);
+
+            _blockTree.BlockAddedToMain += OnBlockAdded;
+            
+            ProcessNewBlocks();
+        }
+        
+        private void OnBlockAdded(object? sender, BlockReplacementEventArgs e)
+        {
+            try
+            {
+                _headBlocksChannel.Writer.TryWrite(e);
+            }
+            catch (Exception exception)
+            {
+                if (_logger.IsError)
+                    _logger.Error(
+                        $"Couldn't correctly add or remove user operations from UserOperationPool after processing block {e.Block!.ToString(Block.Format.FullHashAndNumber)}.", exception);
+            }
+        }
+
+        private void ProcessNewBlocks()
+        {
+            Task.Factory.StartNew(async () =>
+            {
+                while (await _headBlocksChannel.Reader.WaitToReadAsync())
+                {
+                    while (_headBlocksChannel.Reader.TryRead(out BlockReplacementEventArgs? args))
+                    {
+                        try
+                        {
+                            ReAddReorganizedUserOperations(args.PreviousBlock);
+                            RemoveProcessedUserOperations(args.Block);
+                        }
+                        catch (Exception e)
+                        {
+                            if (_logger.IsDebug) _logger.Debug($"UserOperationPool failed to update after block {args.Block.ToString(Block.Format.FullHashAndNumber)} with exception {e}");
+                        }
+                    }
+                }
+            }, TaskCreationOptions.LongRunning).ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                {
+                    if (_logger.IsError) _logger.Error($"UserOperationPool update after block queue failed.", t.Exception);
+                }
+            });
+        }
+
+        private void ReAddReorganizedUserOperations(Block? previousBlock)
+        {
+            if (previousBlock is not null && _removedUserOperations.ContainsKey(previousBlock.Number))
+            {
+                foreach (UserOperation op in _removedUserOperations[previousBlock.Number])
+                {
+                    AddUserOperation(op);
+                }
+            }
         }
 
         public IEnumerable<UserOperation> GetUserOperations()
@@ -117,54 +180,61 @@ namespace Nethermind.AccountAbstraction.Source
             return result;
         }
 
-        public bool RemoveUserOperation(UserOperation userOperation)
+        public bool RemoveUserOperation(Keccak? userOperationHash)
         {
-            return _userOperationSortedPool.TryRemove(userOperation.Hash);
+            return userOperationHash is not null && _userOperationSortedPool.TryRemove(userOperationHash);
         }
 
-        /*
-        private void NewHead(object? sender, BlockEventArgs e)
+        private void RemoveProcessedUserOperations(Block block)
         {
+            // clean storage of user operations included in past blocks beyond supported number of reorganized blocks
+            _removedUserOperations.TryRemove(block.Number - MaxReorgBlocksSupported, out _);
+            
             // remove any user operations that were only allowed to stay for 10 blocks due to throttled paymasters
-            Block block = e.Block;
             if (_userOperationsToDelete.ContainsKey(block.Number))
             {
-                foreach (var userOperation in _userOperationsToDelete[block.Number]) RemoveUserOperation(userOperation);
+                foreach (var userOperationHash in _userOperationsToDelete[block.Number]) RemoveUserOperation(userOperationHash);
             }
-
+            
             // find any userOps included on chain submitted by this miner, delete from the pool
-            TxReceipt[] receipts = _receiptFinder.Get(block);
-            TxReceipt[] entryPointReceipts = receipts
-                .Where(r => r.Recipient is not null && r.Recipient == _entryPointAddress).ToArray();
-
-            LogEntry[] logs = entryPointReceipts
-                .Where(r => r.Sender is not null && r.Sender == _signer.Address)
-                .SelectMany(r => r.Logs ?? Array.Empty<LogEntry>())
-                .Where(l => l.Topics[0] == _userOperationEventTopic)
-                .ToArray();
-
-            foreach (var log in logs)
+            foreach (TxReceipt receipt in _receiptFinder.Get(block))
             {
-                Address senderAddress = new(log.Topics[1]);
-                Address paymasterAddress = new(log.Topics[2]);
-                UInt256 nonce = new(log.Data.Slice(0, 32), true);
-                IDictionary<Address, UserOperation[]> bucketSnapshot = _userOperationSortedPool.GetBucketSnapshot();
-                if (bucketSnapshot.ContainsKey(senderAddress))
+                if (receipt?.Recipient == _entryPointAddress
+                    && receipt?.Sender == _signer.Address
+                    && receipt.Logs is not null)
                 {
-                    UserOperation[] userOperationsWithSender = bucketSnapshot[senderAddress];
-                    IEnumerable<UserOperation> userOperationsToRemove =
-                        userOperationsWithSender.Where(op => op.Nonce == nonce && op.Paymaster == paymasterAddress);
-                    foreach (var userOperation in userOperationsToRemove)
+                    foreach (LogEntry log in receipt.Logs)
                     {
-                        if (_logger.IsDebug) _logger.Debug($"UserOperation {userOperation.Hash} removed from pool after being included by miner");
-                        Metrics.UserOperationsIncluded++;
-                        _paymasterThrottler.IncrementOpsIncluded(paymasterAddress);
-                        RemoveUserOperation(userOperation);
+                        if (log?.Topics[0] == _userOperationEventTopic)
+                        {
+                            Address senderAddress = new(log.Topics[1]);
+                            Address paymasterAddress = new(log.Topics[2]);
+                            UInt256 nonce = new(log.Data.Slice(0, 32), true);
+                            if (_userOperationSortedPool.TryGetBucket(senderAddress, out UserOperation[] opsOfSender))
+                            {
+                                foreach (UserOperation op in opsOfSender)
+                                {
+                                    if (op.Nonce == nonce && op.Paymaster == paymasterAddress)
+                                    {
+                                        if (_logger.IsDebug) _logger.Debug($"UserOperation {op.Hash} removed from pool after being included by miner");
+                                        Metrics.UserOperationsIncluded++;
+                                        _paymasterThrottler.IncrementOpsIncluded(paymasterAddress);
+                                        RemoveUserOperation(op.Hash);
+                                        _removedUserOperations.AddOrUpdate(block.Number,
+                                            k => new HashSet<UserOperation>() {op},
+                                            (k, v) =>
+                                            {
+                                                v.Add(op);
+                                                return v;
+                                            });
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
-        */
 
         private ResultWrapper<Keccak> ValidateUserOperation(UserOperation userOperation)
         {
@@ -216,10 +286,13 @@ namespace Nethermind.AccountAbstraction.Source
             if (paymasterStatus == PaymasterStatus.Throttled && successfulSimulation.Result == Result.Success)
             {
                 long blockNumberToDelete = _blockTree.Head!.Number + 10;
-                if (_userOperationsToDelete.ContainsKey(blockNumberToDelete))
-                    _userOperationsToDelete[blockNumberToDelete].Add(userOperation);
-                else
-                    _userOperationsToDelete.Add(blockNumberToDelete, new List<UserOperation> {userOperation});
+                _userOperationsToDelete.AddOrUpdate(blockNumberToDelete,
+                    k => new HashSet<Keccak>() {userOperation.Hash},
+                    (k, v) =>
+                    {
+                        v.Add(userOperation.Hash);
+                        return v;
+                    });
             }
 
             return successfulSimulation;
@@ -254,6 +327,12 @@ namespace Nethermind.AccountAbstraction.Source
             {
                 if (_logger.IsTrace) _logger.Trace($"Removed a peer from User Operation pool: {nodeId}");
             }
+        }
+
+        public void Dispose()
+        {
+            _blockTree.BlockAddedToMain -= OnBlockAdded;
+            _headBlocksChannel.Writer.Complete();
         }
     }
 }

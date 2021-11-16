@@ -54,7 +54,7 @@ namespace Nethermind.DataMarketplace.WebSockets
             return true;
         }
 
-        public ISocketsClient CreateClient(WebSocket webSocket, string clientName)
+        public ISocketsClient CreateClient(WebSocket webSocket, string clientName, int port)
         {
             NdmWebSocketsClient socketsClient = new NdmWebSocketsClient(clientName, new WebSocketHandler(webSocket, _logManager), _dataPublisher, _jsonSerializer);
             _channel = new NdmWebSocketsConsumerChannel(socketsClient);

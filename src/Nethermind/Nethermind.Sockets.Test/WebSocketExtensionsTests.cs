@@ -128,11 +128,12 @@ namespace Nethermind.Sockets.Test
             var webSocketsClient = Substitute.ForPartsOf< JsonRpcSocketsClient>(
                 "TestClient",
                 new WebSocketHandler(mock, Substitute.For<ILogManager>()),
-                RpcEndpoint.WebSocket,
+                RpcEndpoint.Ws,
                 processor,
                 service,
                 localStats,
-                Substitute.For<IJsonSerializer>());
+                Substitute.For<IJsonSerializer>(),
+                null);
 
             webSocketsClient.Configure().SendJsonRpcResult(default).ReturnsForAnyArgs((x) =>
             {
