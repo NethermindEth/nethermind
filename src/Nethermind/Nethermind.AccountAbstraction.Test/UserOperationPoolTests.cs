@@ -154,7 +154,7 @@ namespace Nethermind.AccountAbstraction.Test
             {
                 foreach (UserOperation op in ops)
                 {
-                    _userOperationPool.RemoveUserOperation(op);
+                    _userOperationPool.RemoveUserOperation(op.Hash);
                 }
             }
         }
@@ -195,7 +195,7 @@ namespace Nethermind.AccountAbstraction.Test
             BlockReplacementEventArgs blockReplacementEventArgs = new(block, null);
             
             ManualResetEvent manualResetEvent = new(false);
-            _userOperationPool.RemoveUserOperation(Arg.Do<UserOperation>(o => manualResetEvent.Set()));
+            _userOperationPool.RemoveUserOperation(Arg.Do<Keccak>(o => manualResetEvent.Set()));
             _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockReplacementEventArgs);
             manualResetEvent.WaitOne(500);
             

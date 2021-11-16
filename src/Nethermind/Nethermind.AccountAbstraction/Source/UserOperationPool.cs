@@ -53,7 +53,7 @@ namespace Nethermind.AccountAbstraction.Source
         private readonly IUserOperationSimulator _userOperationSimulator;
         private readonly UserOperationSortedPool _userOperationSortedPool;
 
-        private readonly ConcurrentDictionary<long, HashSet<UserOperation>> _userOperationsToDelete = new();
+        private readonly ConcurrentDictionary<long, HashSet<Keccak>> _userOperationsToDelete = new();
         private readonly ConcurrentDictionary<long, HashSet<UserOperation>> _removedUserOperations = new();
         private readonly UserOperationBroadcaster _broadcaster;
         
@@ -180,9 +180,9 @@ namespace Nethermind.AccountAbstraction.Source
             return result;
         }
 
-        public bool RemoveUserOperation(UserOperation? userOperation)
+        public bool RemoveUserOperation(Keccak? userOperationHash)
         {
-            return userOperation is not null && _userOperationSortedPool.TryRemove(userOperation.Hash);
+            return userOperationHash is not null && _userOperationSortedPool.TryRemove(userOperationHash);
         }
 
         private void RemoveProcessedUserOperations(Block block)
@@ -193,7 +193,7 @@ namespace Nethermind.AccountAbstraction.Source
             // remove any user operations that were only allowed to stay for 10 blocks due to throttled paymasters
             if (_userOperationsToDelete.ContainsKey(block.Number))
             {
-                foreach (var userOperation in _userOperationsToDelete[block.Number]) RemoveUserOperation(userOperation);
+                foreach (var userOperationHash in _userOperationsToDelete[block.Number]) RemoveUserOperation(userOperationHash);
             }
             
             // find any userOps included on chain submitted by this miner, delete from the pool
@@ -219,7 +219,7 @@ namespace Nethermind.AccountAbstraction.Source
                                         if (_logger.IsDebug) _logger.Debug($"UserOperation {op.Hash} removed from pool after being included by miner");
                                         Metrics.UserOperationsIncluded++;
                                         _paymasterThrottler.IncrementOpsIncluded(paymasterAddress);
-                                        RemoveUserOperation(op);
+                                        RemoveUserOperation(op.Hash);
                                         _removedUserOperations.AddOrUpdate(block.Number,
                                             k => new HashSet<UserOperation>() {op},
                                             (k, v) =>
@@ -287,10 +287,10 @@ namespace Nethermind.AccountAbstraction.Source
             {
                 long blockNumberToDelete = _blockTree.Head!.Number + 10;
                 _userOperationsToDelete.AddOrUpdate(blockNumberToDelete,
-                    k => new HashSet<UserOperation>() {userOperation},
+                    k => new HashSet<Keccak>() {userOperation.Hash},
                     (k, v) =>
                     {
-                        v.Add(userOperation);
+                        v.Add(userOperation.Hash);
                         return v;
                     });
             }
