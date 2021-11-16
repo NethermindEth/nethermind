@@ -27,18 +27,26 @@ namespace Nethermind.AccountAbstraction.Test
     [TestFixture]
     public class UserOperationPoolTests
     {
+        private IUserOperationPool _userOperationPool = Substitute.For<IUserOperationPool>();
+        private IUserOperationSimulator _simulator = Substitute.For<IUserOperationSimulator>();
+        private IBlockTree _blockTree = Substitute.For<IBlockTree>();
+        private IReceiptFinder _receiptFinder = Substitute.For<IReceiptFinder>();
+        private IStateProvider _stateProvider = Substitute.For<IStateProvider>();
+        private readonly ISigner _signer = Substitute.For<ISigner>();
+        private readonly Keccak _userOperationEventTopic = new("0xc27a60e61c14607957b41fa2dad696de47b2d80e390d0eaaf1514c0cd2034293");
+        private readonly string _entryPointContractAddress = "0x8595dd9e0438640b5e1254f9df579ac12a86865f";
         private static Address _notAnAddress = new("0x373f2D08b1C195fF08B9AbEdE3C78575FAAC2aCf");
         
         [Test]
         public void Can_add_user_operation_correctly()
         {
-            var (userOperationPool, _, _) = GenerateUserOperationPool();
+            _userOperationPool = GenerateUserOperationPool();
 
             UserOperation op = Build.A.UserOperation.WithSender(Address.SystemUser).SignedAndResolved().TestObject;
 
-            userOperationPool.AddUserOperation(op);
+            _userOperationPool.AddUserOperation(op);
 
-            UserOperation[] userOperations = userOperationPool.GetUserOperations().ToArray();
+            UserOperation[] userOperations = _userOperationPool.GetUserOperations().ToArray();
             userOperations.Length.Should().Be(1);
             userOperations[0].Should().BeEquivalentTo(op);
         }
@@ -46,16 +54,16 @@ namespace Nethermind.AccountAbstraction.Test
         [Test]
         public void Can_evict_lower_gas_price_user_operation_if_full()
         {
-            var (userOperationPool, _, _) = GenerateUserOperationPool(1);
+            _userOperationPool = GenerateUserOperationPool(1);
 
             UserOperation op = Build.A.UserOperation.WithSender(Address.SystemUser).SignedAndResolved().TestObject;
             UserOperation op2 = Build.A.UserOperation.WithSender(Address.SystemUser).WithMaxFeePerGas(2).WithMaxPriorityFeePerGas(2).SignedAndResolved().TestObject;
 
 
-            userOperationPool.AddUserOperation(op);
-            userOperationPool.AddUserOperation(op2);
+            _userOperationPool.AddUserOperation(op);
+            _userOperationPool.AddUserOperation(op2);
 
-            UserOperation[] userOperations = userOperationPool.GetUserOperations().ToArray();
+            UserOperation[] userOperations = _userOperationPool.GetUserOperations().ToArray();
             userOperations.Length.Should().Be(1);
             userOperations[0].Should().BeEquivalentTo(op2);
         }
@@ -63,59 +71,59 @@ namespace Nethermind.AccountAbstraction.Test
         [Test]
         public void Added_user_operation_gets_simulated()
         {
-            var (userOperationPool, simulator, _) = GenerateUserOperationPool();
+            _userOperationPool = GenerateUserOperationPool();
 
             UserOperation op = Build.A.UserOperation.WithSender(Address.SystemUser).SignedAndResolved().TestObject;
 
-            userOperationPool.AddUserOperation(op);
+            _userOperationPool.AddUserOperation(op);
 
-            simulator.Received().Simulate(op, Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>(), Arg.Any<UInt256>());
+            _simulator.Received().Simulate(op, Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>(), Arg.Any<UInt256>());
         }
 
         [Test]
         public void Evicted_user_operation_has_its_simulated_removed_automatically()
         {
-            var (userOperationPool, simulator, _) = GenerateUserOperationPool(1);
+            _userOperationPool = GenerateUserOperationPool(1);
             
             UserOperation op = Build.A.UserOperation.WithSender(Address.SystemUser).SignedAndResolved().TestObject;
             UserOperation op2 = Build.A.UserOperation.WithSender(Address.SystemUser).WithMaxFeePerGas(2).WithMaxPriorityFeePerGas(2).SignedAndResolved().TestObject;
 
 
-            userOperationPool.AddUserOperation(op);
-            simulator.Received().Simulate(op, Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>(), Arg.Any<UInt256>());
-            userOperationPool.GetUserOperations().Count().Should().Be(1);
-            userOperationPool.GetUserOperations().Should().BeEquivalentTo(op);
+            _userOperationPool.AddUserOperation(op);
+            _simulator.Received().Simulate(op, Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>(), Arg.Any<UInt256>());
+            _userOperationPool.GetUserOperations().Count().Should().Be(1);
+            _userOperationPool.GetUserOperations().Should().BeEquivalentTo(op);
 
-            userOperationPool.AddUserOperation(op2);
-            simulator.Received()
+            _userOperationPool.AddUserOperation(op2);
+            _simulator.Received()
                 .Simulate(op2, Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>(), Arg.Any<UInt256>());
-            userOperationPool.GetUserOperations().Count().Should().Be(1);
-            userOperationPool.GetUserOperations().Should().BeEquivalentTo(op2);
+            _userOperationPool.GetUserOperations().Count().Should().Be(1);
+            _userOperationPool.GetUserOperations().Should().BeEquivalentTo(op2);
         }
         
         [Test]
         public void should_add_user_operations_concurrently()
         {
             int capacity = 2048;
-            var (userOperationPool, _, _) = GenerateUserOperationPool(capacity);
+            _userOperationPool = GenerateUserOperationPool(capacity);
 
             Parallel.ForEach(TestItem.PrivateKeys, k =>
             {
                 for (int i = 0; i < 100; i++)
                 {
                     UserOperation op = Build.A.UserOperation.WithSender(Address.SystemUser).WithNonce((UInt256)i).SignedAndResolved(k).TestObject;
-                    userOperationPool.AddUserOperation(op);
+                    _userOperationPool.AddUserOperation(op);
                 }
             });
 
-            userOperationPool.GetUserOperations().Count().Should().Be(capacity);
+            _userOperationPool.GetUserOperations().Count().Should().Be(capacity);
         }
         
         [Test]
         public async Task should_remove_user_operations_concurrently()
         {
             int capacity = 4096;
-            var (userOperationPool, _, _) = GenerateUserOperationPool(capacity);
+            _userOperationPool = GenerateUserOperationPool(capacity);
             
             int maxTryCount = 5;
             for (int i = 0; i < maxTryCount; ++i)
@@ -124,22 +132,21 @@ namespace Nethermind.AccountAbstraction.Test
                 {
                     for (int j = 0; j < 10; j++)
                     {
-                        UserOperation op = Build.A.UserOperation.WithSender(Address.SystemUser).WithNonce((UInt256)j)
-                            .SignedAndResolved(k).TestObject;
-                        userOperationPool.AddUserOperation(op);
+                        UserOperation op = Build.A.UserOperation.WithSender(Address.SystemUser).WithNonce((UInt256)j).SignedAndResolved(k).TestObject;
+                        _userOperationPool.AddUserOperation(op);
                     }
                 });
 
-                userOperationPool.GetUserOperations().Should().HaveCount(TestItem.PrivateKeys.Length * 10);
-                UserOperation[] opsForFirstTask = userOperationPool.GetUserOperations().Where(o => o.Nonce == 8).ToArray();
-                UserOperation[] opsForSecondTask = userOperationPool.GetUserOperations().Where(o => o.Nonce == 6).ToArray();
-                UserOperation[] opsForThirdTask = userOperationPool.GetUserOperations().Where(o => o.Nonce == 7).ToArray();
+                _userOperationPool.GetUserOperations().Should().HaveCount(TestItem.PrivateKeys.Length * 10);
+                UserOperation[] opsForFirstTask = _userOperationPool.GetUserOperations().Where(o => o.Nonce == 8).ToArray();
+                UserOperation[] opsForSecondTask = _userOperationPool.GetUserOperations().Where(o => o.Nonce == 6).ToArray();
+                UserOperation[] opsForThirdTask = _userOperationPool.GetUserOperations().Where(o => o.Nonce == 7).ToArray();
                 opsForFirstTask.Should().HaveCount(TestItem.PrivateKeys.Length);
                 Task firstTask = Task.Run(() => DeleteOpsFromPool(opsForFirstTask));
                 Task secondTask = Task.Run(() => DeleteOpsFromPool(opsForSecondTask));
                 Task thirdTask = Task.Run(() => DeleteOpsFromPool(opsForThirdTask));
                 await Task.WhenAll(firstTask, secondTask, thirdTask);
-                userOperationPool.GetUserOperations().Should().HaveCount(TestItem.PrivateKeys.Length * 7);
+                _userOperationPool.GetUserOperations().Should().HaveCount(TestItem.PrivateKeys.Length * 7);
             }
             
 
@@ -147,7 +154,7 @@ namespace Nethermind.AccountAbstraction.Test
             {
                 foreach (UserOperation op in ops)
                 {
-                    userOperationPool.RemoveUserOperation(op);
+                    _userOperationPool.RemoveUserOperation(op);
                 }
             }
         }
@@ -155,53 +162,53 @@ namespace Nethermind.AccountAbstraction.Test
         [Test]
         public void should_add_peers()
         {
-            var (userOperationPool, _, _) = GenerateUserOperationPool(100);
+            _userOperationPool = GenerateUserOperationPool(100);
             IList<IUserOperationPoolPeer> peers = GetPeers();
 
             foreach (IUserOperationPoolPeer peer in peers)
             {
-                userOperationPool.AddPeer(peer);
+                _userOperationPool.AddPeer(peer);
             }
         }
 
         [Test]
         public void should_delete_peers()
         {
-            var (userOperationPool, _, _) = GenerateUserOperationPool(100);
+            _userOperationPool = GenerateUserOperationPool(100);
             IList<IUserOperationPoolPeer> peers = GetPeers();
 
             foreach (IUserOperationPoolPeer peer in peers)
             {
-                userOperationPool.AddPeer(peer);
+                _userOperationPool.AddPeer(peer);
             }
 
             foreach (IUserOperationPoolPeer peer in peers)
             {
-                userOperationPool.RemovePeer(peer.Id);
+                _userOperationPool.RemovePeer(peer.Id);
             }
         }
         
         [Test]
         public void should_notify_added_peer_about_ops_in_UOpPool()
         {
-            var (userOperationPool, _, _) = GenerateUserOperationPool();
+            _userOperationPool = GenerateUserOperationPool();
             UserOperation op = Build.A.UserOperation.SignedAndResolved().TestObject;
-            userOperationPool.AddUserOperation(op);
+            _userOperationPool.AddUserOperation(op);
             IUserOperationPoolPeer uopPoolPeer = Substitute.For<IUserOperationPoolPeer>();
             uopPoolPeer.Id.Returns(TestItem.PublicKeyA);
-            userOperationPool.AddPeer(uopPoolPeer);
+            _userOperationPool.AddPeer(uopPoolPeer);
             uopPoolPeer.Received().SendNewUserOperations(Arg.Any<IEnumerable<UserOperation>>());
         }
         
         [Test]
         public void should_send_to_peers_newly_added_uop()
         {
-            var (userOperationPool, _, _) = GenerateUserOperationPool();
+            _userOperationPool = GenerateUserOperationPool();
             IUserOperationPoolPeer uopPoolPeer = Substitute.For<IUserOperationPoolPeer>();
             uopPoolPeer.Id.Returns(TestItem.PublicKeyA);
-            userOperationPool.AddPeer(uopPoolPeer);
+            _userOperationPool.AddPeer(uopPoolPeer);
             UserOperation op = Build.A.UserOperation.WithSender(TestItem.AddressA).SignedAndResolved().TestObject;
-            userOperationPool.AddUserOperation(op);
+            _userOperationPool.AddUserOperation(op);
             uopPoolPeer.Received().SendNewUserOperation(op);
         }
 
@@ -243,55 +250,49 @@ namespace Nethermind.AccountAbstraction.Test
         [TestCaseSource(nameof(BadOperations))]
         public void Does_not_accept_obviously_bad_user_operations_into_pool(UserOperation userOperation)
         {
-            var (userOperationPool, _, _) = GenerateUserOperationPool(1);
+            _userOperationPool = GenerateUserOperationPool(1);
 
-            userOperationPool.AddUserOperation(userOperation);
-            UserOperation[] userOperations = userOperationPool.GetUserOperations().ToArray();
+            _userOperationPool.AddUserOperation(userOperation);
+            UserOperation[] userOperations = _userOperationPool.GetUserOperations().ToArray();
             userOperations.Length.Should().Be(0);
         }
 
-        private (UserOperationPool, IUserOperationSimulator, IBlockTree) GenerateUserOperationPool(int capacity = 10)
+        private UserOperationPool GenerateUserOperationPool(int capacity = 10)
         {
             UserOperationSortedPool userOperationSortedPool =
-                new UserOperationSortedPool(capacity, CompareUserOperationsByDecreasingGasPrice.Default, LimboLogs.Instance);
+                new(capacity, CompareUserOperationsByDecreasingGasPrice.Default, LimboLogs.Instance);
 
-            IStateProvider stateProvider = Substitute.For<IStateProvider>();
-            stateProvider.GetBalance(Arg.Any<Address>()).Returns(1.Ether());
-            stateProvider.AccountExists(Arg.Any<Address>()).Returns(true);
-            stateProvider.IsContract(Arg.Any<Address>()).Returns(true);
+            _stateProvider.GetBalance(Arg.Any<Address>()).Returns(1.Ether());
+            _stateProvider.AccountExists(Arg.Any<Address>()).Returns(true);
+            _stateProvider.IsContract(Arg.Any<Address>()).Returns(true);
 
-            stateProvider.GetBalance(_notAnAddress).Returns(0.Ether());
-            stateProvider.AccountExists(_notAnAddress).Returns(false);
-            stateProvider.IsContract(_notAnAddress).Returns(false);
+            _stateProvider.GetBalance(_notAnAddress).Returns(0.Ether());
+            _stateProvider.AccountExists(_notAnAddress).Returns(false);
+            _stateProvider.IsContract(_notAnAddress).Returns(false);
 
-            IUserOperationSimulator simulator = Substitute.For<IUserOperationSimulator>();
-            simulator.Simulate(Arg.Any<UserOperation>(), Arg.Any<BlockHeader>())
+            _simulator.Simulate(Arg.Any<UserOperation>(), Arg.Any<BlockHeader>())
                 .ReturnsForAnyArgs(x => Task.FromResult(ResultWrapper<Keccak>.Success(Keccak.Zero)));
 
-            IBlockTree blockTree = Substitute.For<IBlockTree>();
-            blockTree.Head.Returns(Core.Test.Builders.Build.A.Block.TestObject);
+            _blockTree.Head.Returns(Core.Test.Builders.Build.A.Block.TestObject);
 
             IAccountAbstractionConfig config = Substitute.For<IAccountAbstractionConfig>();
-            config.EntryPointContractAddress.Returns("0x8595dd9e0438640b5e1254f9df579ac12a86865f");
+            config.EntryPointContractAddress.Returns(_entryPointContractAddress);
             config.UserOperationPoolSize.Returns(capacity);
             
             IPaymasterThrottler paymasterThrottler = Substitute.For<PaymasterThrottler>();
-
-            IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
-
-            UserOperationPool userOperationPool = new(
+            
+            return new UserOperationPool(
                 config,
-                blockTree,
-                new Address(config.EntryPointContractAddress), 
+                _blockTree,
+                new Address(_entryPointContractAddress), 
                 NullLogger.Instance, 
                 paymasterThrottler, 
-                receiptFinder, 
-                Substitute.For<ISigner>(), 
-                stateProvider, 
+                _receiptFinder, 
+                _signer, 
+                _stateProvider, 
                 Substitute.For<ITimestamper>(), 
-                simulator, 
+                _simulator, 
                 userOperationSortedPool);
-            return (userOperationPool, simulator, blockTree);
         }
     }
 }
