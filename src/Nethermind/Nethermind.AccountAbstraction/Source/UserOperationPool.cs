@@ -16,6 +16,7 @@
 // 
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -53,9 +54,12 @@ namespace Nethermind.AccountAbstraction.Source
         private readonly UserOperationSortedPool _userOperationSortedPool;
 
         private readonly Dictionary<long, List<UserOperation>> _userOperationsToDelete = new();
+        private readonly ConcurrentDictionary<long, HashSet<UserOperation>> _removedUserOperations = new();
         private readonly UserOperationBroadcaster _broadcaster;
         
         private readonly Channel<BlockReplacementEventArgs> _headBlocksChannel = Channel.CreateUnbounded<BlockReplacementEventArgs>(new UnboundedChannelOptions() { SingleReader = true, SingleWriter = true });
+
+        private const int MaxReorgBlocksSupported = 64;
 
         public UserOperationPool(
             IAccountAbstractionConfig accountAbstractionConfig,
@@ -117,7 +121,7 @@ namespace Nethermind.AccountAbstraction.Source
                     {
                         try
                         {
-                            ReAddReorganisedUserOperations(args.PreviousBlock);
+                            ReAddReorganizedUserOperations(args.PreviousBlock);
                             RemoveProcessedUserOperations(args.Block);
                         }
                         catch (Exception e)
@@ -135,11 +139,14 @@ namespace Nethermind.AccountAbstraction.Source
             });
         }
 
-        private void ReAddReorganisedUserOperations(Block? previousBlock)
+        private void ReAddReorganizedUserOperations(Block? previousBlock)
         {
-            if (previousBlock is not null)
+            if (previousBlock is not null && _removedUserOperations.ContainsKey(previousBlock.Number))
             {
-                // ToDo: re-add user operations from reorganized block
+                foreach (UserOperation op in _removedUserOperations[previousBlock.Number])
+                {
+                    AddUserOperation(op);
+                }
             }
         }
 
@@ -180,6 +187,9 @@ namespace Nethermind.AccountAbstraction.Source
 
         private void RemoveProcessedUserOperations(Block block)
         {
+            // clean storage of user operations included in past blocks beyond supported number of reorganized blocks
+            _removedUserOperations.TryRemove(block.Number - MaxReorgBlocksSupported, out _);
+            
             // remove any user operations that were only allowed to stay for 10 blocks due to throttled paymasters
             if (_userOperationsToDelete.ContainsKey(block.Number))
             {
@@ -210,6 +220,13 @@ namespace Nethermind.AccountAbstraction.Source
                                         Metrics.UserOperationsIncluded++;
                                         _paymasterThrottler.IncrementOpsIncluded(paymasterAddress);
                                         RemoveUserOperation(op);
+                                        _removedUserOperations.AddOrUpdate(block.Number,
+                                            k => new HashSet<UserOperation>() {op},
+                                            (k, v) =>
+                                            {
+                                                v.Add(op);
+                                                return v;
+                                            });
                                     }
                                 }
                             }
