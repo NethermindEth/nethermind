@@ -238,6 +238,10 @@ namespace Nethermind.AccountAbstraction.Source
 
         private ResultWrapper<Keccak> ValidateUserOperation(UserOperation userOperation)
         {
+            // make sure op not already in pool
+            if (_userOperationSortedPool.TryGetValue(userOperation.Hash, out _))
+                return ResultWrapper<Keccak>.Fail("userOp is already present in the pool");
+            
             PaymasterStatus paymasterStatus =
                 _paymasterThrottler.GetPaymasterStatus(userOperation.Paymaster);
 
@@ -274,10 +278,6 @@ namespace Nethermind.AccountAbstraction.Source
                     || !_stateProvider.IsContract(userOperation.Paymaster))
                     return ResultWrapper<Keccak>.Fail("paymaster is used but is not a contract or is banned");
             }
-
-            // make sure op not already in pool
-            if (_userOperationSortedPool.TryGetValue(userOperation.Hash, out _))
-                return ResultWrapper<Keccak>.Fail("userOp is already present in the pool");
 
             Task<ResultWrapper<Keccak>> successfulSimulationTask = Simulate(userOperation, _blockTree.Head!.Header);
             ResultWrapper<Keccak> successfulSimulation = successfulSimulationTask.Result;
