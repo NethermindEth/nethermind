@@ -53,7 +53,7 @@ namespace Nethermind.AccountAbstraction.Source
         private readonly IUserOperationSimulator _userOperationSimulator;
         private readonly UserOperationSortedPool _userOperationSortedPool;
 
-        private readonly Dictionary<long, List<UserOperation>> _userOperationsToDelete = new();
+        private readonly ConcurrentDictionary<long, HashSet<UserOperation>> _userOperationsToDelete = new();
         private readonly ConcurrentDictionary<long, HashSet<UserOperation>> _removedUserOperations = new();
         private readonly UserOperationBroadcaster _broadcaster;
         
@@ -286,10 +286,13 @@ namespace Nethermind.AccountAbstraction.Source
             if (paymasterStatus == PaymasterStatus.Throttled && successfulSimulation.Result == Result.Success)
             {
                 long blockNumberToDelete = _blockTree.Head!.Number + 10;
-                if (_userOperationsToDelete.ContainsKey(blockNumberToDelete))
-                    _userOperationsToDelete[blockNumberToDelete].Add(userOperation);
-                else
-                    _userOperationsToDelete.Add(blockNumberToDelete, new List<UserOperation> {userOperation});
+                _userOperationsToDelete.AddOrUpdate(blockNumberToDelete,
+                    k => new HashSet<UserOperation>() {userOperation},
+                    (k, v) =>
+                    {
+                        v.Add(userOperation);
+                        return v;
+                    });
             }
 
             return successfulSimulation;
