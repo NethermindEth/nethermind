@@ -48,9 +48,9 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
         public async Task<ResultWrapper<BlockRequestResult?>> HandleAsync(byte[] payloadId)
         {
-            BlockTaskAndRandom? blockAndRandom = _payloadService.GetPayload(payloadId);
+            Task<Block?>? blockProductionTask = _payloadService.GetPayload(payloadId);
             
-            if (blockAndRandom == null)
+            if (blockProductionTask == null)
             {
                 if (_logger.IsWarn) _logger.Warn($"No payload with id={payloadId} found");
                 return ResultWrapper<BlockRequestResult?>.Fail(
@@ -58,7 +58,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     MergeErrorCodes.UnavailablePayloadV1);
             }
             
-            Block? block = await blockAndRandom.BlockTask;
+            Block? block = await blockProductionTask;
 
             if (block == null)
             {
@@ -73,7 +73,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 _logger.Info(block.Header.ToString(BlockHeader.Format.Full));
             }
 
-            BlockRequestResult result = new(block, blockAndRandom.Random);
+            BlockRequestResult result = new(block);
             return ResultWrapper<BlockRequestResult?>.Success(result);
         }
     }

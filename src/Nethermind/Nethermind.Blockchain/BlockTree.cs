@@ -574,7 +574,7 @@ namespace Nethermind.Blockchain
                 NewSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
             }
 
-            // if (header.IsGenesis || header.TotalDifficulty > (BestSuggestedHeader?.TotalDifficulty ?? 0))
+            if (header.IsGenesis || header.TotalDifficulty > (BestSuggestedHeader?.TotalDifficulty ?? 0))
             {
                 if (header.IsGenesis)
                 {

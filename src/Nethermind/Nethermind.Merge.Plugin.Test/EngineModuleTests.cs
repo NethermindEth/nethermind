@@ -225,7 +225,7 @@ namespace Nethermind.Merge.Plugin.Test
             chain.BlockTree.SuggestBlock(block);
 
             ResultWrapper<ExecutePayloadResult> executePayloadResult =
-                await rpc.engine_executePayload(new BlockRequestResult(block, Keccak.Zero));
+                await rpc.engine_executePayload(new BlockRequestResult(block));
             executePayloadResult.Data.EnumStatus.Should().Be(VerificationStatus.Valid);
         }
 
@@ -402,7 +402,7 @@ namespace Nethermind.Merge.Plugin.Test
             await rpc.engine_consensusValidated(new ConsensusValidatedRequest(blockRequestResult.BlockHash,
                 ConsensusValidationStatus.Valid));
             resultWrapper.Data.EnumStatus.Should().Be(VerificationStatus.Valid);
-            new BlockRequestResult(chain.BlockTree.BestSuggestedBody, blockRequestResult.Random).Should()
+            new BlockRequestResult(chain.BlockTree.BestSuggestedBody).Should()
                 .BeEquivalentTo(blockRequestResult);
         }
 

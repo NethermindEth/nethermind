@@ -469,7 +469,7 @@ namespace Nethermind.Merge.Plugin.Test
             await rpc.engine_consensusValidated(new ConsensusValidatedRequest(blockRequestResult.BlockHash,
                 ConsensusValidationStatus.Valid));
             resultWrapper.Data.EnumStatus.Should().Be(VerificationStatus.Valid);
-            new BlockRequestResult(chain.BlockTree.BestSuggestedBody, blockRequestResult.Random).Should()
+            new BlockRequestResult(chain.BlockTree.BestSuggestedBody).Should()
                 .BeEquivalentTo(blockRequestResult);
         }
 

@@ -72,7 +72,7 @@ namespace Nethermind.Merge.Plugin.Handlers
                 _logger.Info(block.Header.ToString(BlockHeader.Format.Full));
             }
 
-            BlockRequestResult result = new(block, blockAndRandom.Random);
+            BlockRequestResult result = new(block);
             return ResultWrapper<BlockRequestResult?>.Success(result);
         }
     }
