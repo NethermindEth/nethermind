@@ -33,7 +33,7 @@ namespace Nethermind.AccountAbstraction.Data
             AccessListDecoder accessListDecoder = new();
 
             int contentLength = GetContentLength(op, accessListDecoder);
-            int sequenceLength = Rlp.GetSequenceRlpLength(contentLength);
+            int sequenceLength = Rlp.LengthOfSequence(contentLength);
 
             RlpStream stream = new(sequenceLength);
             stream.StartSequence(contentLength);

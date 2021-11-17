@@ -91,7 +91,7 @@ namespace Nethermind.AccountAbstraction.Data
 
         public int GetLength(UserOperation item, RlpBehaviors rlpBehaviors)
         {
-            return Rlp.GetSequenceRlpLength(GetContentLength(item));
+            return Rlp.LengthOfSequence(GetContentLength(item));
         }
         
         private static int GetContentLength(UserOperation op)
