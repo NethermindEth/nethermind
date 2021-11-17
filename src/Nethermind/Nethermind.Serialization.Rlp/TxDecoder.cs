@@ -357,7 +357,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             int contentLength = GetContentLength(item, false);
-            int sequenceLength = Rlp.GetSequenceRlpLength(contentLength);
+            int sequenceLength = Rlp.LengthOfSequence(contentLength);
 
             if (item.Type != TxType.Legacy)
             {
@@ -476,13 +476,13 @@ namespace Nethermind.Serialization.Rlp
         public int GetLength(T tx, RlpBehaviors rlpBehaviors)
         {
             int txContentLength = GetContentLength(tx, false);
-            int txPayloadLength = Rlp.GetSequenceRlpLength(txContentLength);
+            int txPayloadLength = Rlp.LengthOfSequence(txContentLength);
 
             bool isForTxRoot = (rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.SkipTypedWrapping;
             int result = tx.Type != TxType.Legacy
                 ? isForTxRoot
                     ? (1 + txPayloadLength)
-                    : Rlp.GetSequenceRlpLength(1 + txPayloadLength) // Rlp(TransactionType || TransactionPayload)
+                    : Rlp.LengthOfSequence(1 + txPayloadLength) // Rlp(TransactionType || TransactionPayload)
                 : txPayloadLength;
             return result;
         }

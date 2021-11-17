@@ -298,7 +298,7 @@ namespace Nethermind.Serialization.Rlp.Eip2930
             }
 
             int contentLength = GetContentLength(accessList);
-            return Rlp.GetSequenceRlpLength(contentLength);
+            return Rlp.LengthOfSequence(contentLength);
         }
 
         public Rlp Encode(AccessList? accessList, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

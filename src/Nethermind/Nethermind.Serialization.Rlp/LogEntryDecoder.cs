@@ -122,7 +122,7 @@ namespace Nethermind.Serialization.Rlp
             contentLength += Rlp.LengthOf(item.LoggersAddress);
             
             int topicsLength = GetTopicsLength(item);
-            contentLength += Rlp.GetSequenceRlpLength(topicsLength);
+            contentLength += Rlp.LengthOfSequence(topicsLength);
             contentLength += Rlp.LengthOf(item.Data);
             
             return (contentLength, topicsLength);

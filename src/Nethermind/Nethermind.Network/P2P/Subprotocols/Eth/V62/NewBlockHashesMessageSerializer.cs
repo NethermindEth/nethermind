@@ -52,7 +52,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             {
                 int miniContentLength = Rlp.LengthOf(message.BlockHashes[i].Item1);
                 miniContentLength += Rlp.LengthOf(message.BlockHashes[i].Item2);
-                contentLength += Rlp.GetSequenceRlpLength(miniContentLength);
+                contentLength += Rlp.LengthOfSequence(miniContentLength);
             }
 
             return Rlp.LengthOfSequence(contentLength);
