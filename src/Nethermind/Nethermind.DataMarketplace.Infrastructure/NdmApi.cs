@@ -58,6 +58,7 @@ using Nethermind.Monitoring;
 using Nethermind.Network;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;

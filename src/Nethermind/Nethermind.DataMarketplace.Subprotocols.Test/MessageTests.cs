@@ -26,6 +26,7 @@ using Nethermind.DataMarketplace.Subprotocols.Messages;
 using Nethermind.Int256;
 using Nethermind.Network;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.Messages;
 using NUnit.Framework;
 using Session = Nethermind.DataMarketplace.Core.Domain.Session;
 using SessionState = Nethermind.DataMarketplace.Core.Domain.SessionState;

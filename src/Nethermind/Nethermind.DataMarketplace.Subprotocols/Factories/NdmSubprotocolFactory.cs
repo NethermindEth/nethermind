@@ -24,6 +24,7 @@ using Nethermind.DataMarketplace.Consumers.Shared;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.Network;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Stats;
 using Nethermind.Wallet;
 
