@@ -59,8 +59,6 @@ namespace Nethermind.AccountAbstraction.Source
         
         private readonly Channel<BlockReplacementEventArgs> _headBlocksChannel = Channel.CreateUnbounded<BlockReplacementEventArgs>(new UnboundedChannelOptions() { SingleReader = true, SingleWriter = true });
 
-        private const int MaxReorgBlocksSupported = 64;
-
         public UserOperationPool(
             IAccountAbstractionConfig accountAbstractionConfig,
             IBlockTree blockTree,
@@ -188,7 +186,7 @@ namespace Nethermind.AccountAbstraction.Source
         private void RemoveProcessedUserOperations(Block block)
         {
             // clean storage of user operations included in past blocks beyond supported number of reorganized blocks
-            _removedUserOperations.TryRemove(block.Number - MaxReorgBlocksSupported, out _);
+            _removedUserOperations.TryRemove(block.Number - Reorganization.MaxDepth, out _);
             
             // remove any user operations that were only allowed to stay for 10 blocks due to throttled paymasters
             if (_userOperationsToDelete.ContainsKey(block.Number))
