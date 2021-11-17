@@ -17,6 +17,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
+using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
 

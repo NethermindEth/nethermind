@@ -24,6 +24,7 @@ using Nethermind.Core.Timers;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
+using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
 using Nethermind.Network.Test.Builders;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;

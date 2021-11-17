@@ -20,6 +20,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66;
+using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using Nethermind.Network.Test.P2P.Subprotocols.Eth.V62;
 using Nethermind.Specs;
 using NUnit.Framework;
@@ -35,13 +36,13 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         {
             string rlp = "f90172820457f9016cf90169f901668001b9010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000f85ff85d940000000000000000000000000000000000000011f842a0000000000000000000000000000000000000000000000000000000000000deada0000000000000000000000000000000000000000000000000000000000000beef830100ff";
             byte[] bytes = Bytes.FromHexString(rlp);
-            var serializer63 = new Network.P2P.Subprotocols.Eth.V63.ReceiptsMessageSerializer(MainnetSpecProvider.Instance);
+            var serializer63 = new Network.P2P.Subprotocols.Eth.V63.Messages.ReceiptsMessageSerializer(MainnetSpecProvider.Instance);
             ReceiptsMessageSerializer serializer = new ReceiptsMessageSerializer(serializer63);
             ReceiptsMessage deserializedMessage = serializer.Deserialize(bytes);
             byte[] serialized = serializer.Serialize(deserializedMessage);
             
             Assert.AreEqual(bytes,  serialized);
-            Network.P2P.Subprotocols.Eth.V63.ReceiptsMessage ethMessage = deserializedMessage.EthMessage;
+            Network.P2P.Subprotocols.Eth.V63.Messages.ReceiptsMessage ethMessage = deserializedMessage.EthMessage;
             
             TxReceipt txReceipt = ethMessage.TxReceipts[0][0];
             

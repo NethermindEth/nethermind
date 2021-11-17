@@ -41,6 +41,8 @@ using Nethermind.State.Proofs;
 using Nethermind.State.Repositories;
 using Nethermind.Stats.Model;
 using Nethermind.Db.Blooms;
+using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Specs.Forks;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.ParallelSync;

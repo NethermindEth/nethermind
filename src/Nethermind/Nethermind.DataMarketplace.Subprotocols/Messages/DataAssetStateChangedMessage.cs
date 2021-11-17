@@ -17,6 +17,7 @@
 using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.Messages;
 
 namespace Nethermind.DataMarketplace.Subprotocols.Messages
 {
