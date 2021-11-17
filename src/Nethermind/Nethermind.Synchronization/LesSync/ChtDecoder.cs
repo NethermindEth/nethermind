@@ -52,7 +52,7 @@ namespace Nethermind.Synchronization.LesSync
         public int GetLength((Keccak?, UInt256) item, RlpBehaviors rlpBehaviors)
         {
             (Keccak? hash, UInt256 totalDifficulty) = item;
-            return Rlp.GetSequenceRlpLength(
+            return Rlp.LengthOfSequence(
                 Rlp.LengthOf(hash) + Rlp.LengthOf(totalDifficulty));
         }
     }

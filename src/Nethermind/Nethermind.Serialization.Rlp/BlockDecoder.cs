@@ -75,10 +75,10 @@ namespace Nethermind.Serialization.Rlp
             int contentLength = _headerDecoder.GetLength(item.Header, rlpBehaviors);
             
             int txLength = GetTxLength(item, rlpBehaviors);
-            contentLength += Rlp.GetSequenceRlpLength(txLength);
+            contentLength += Rlp.LengthOfSequence(txLength);
 
             int unclesLength = GetUnclesLength(item, rlpBehaviors);
-            contentLength += Rlp.GetSequenceRlpLength(unclesLength);
+            contentLength += Rlp.LengthOfSequence(unclesLength);
 
             return (contentLength, txLength, unclesLength);
         }

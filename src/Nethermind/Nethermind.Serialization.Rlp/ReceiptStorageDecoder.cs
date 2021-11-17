@@ -200,7 +200,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             (int totalContentLength, int logsLength) = GetContentLength(item, rlpBehaviors);
-            int sequenceLength = Rlp.GetSequenceRlpLength(totalContentLength);
+            int sequenceLength = Rlp.LengthOfSequence(totalContentLength);
 
             bool isStorage = (rlpBehaviors & RlpBehaviors.Storage) != 0;
             bool isEip658receipts = (rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts;
@@ -295,7 +295,7 @@ namespace Nethermind.Serialization.Rlp
             contentLength += Rlp.LengthOf(item.Bloom);
 
             logsLength = GetLogsLength(item);
-            contentLength += Rlp.GetSequenceRlpLength(logsLength);
+            contentLength += Rlp.LengthOfSequence(logsLength);
 
             bool isEip658Receipts = (rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts;
 
@@ -330,13 +330,13 @@ namespace Nethermind.Serialization.Rlp
         public int GetLength(TxReceipt item, RlpBehaviors rlpBehaviors)
         {
             (int Total, int Logs) length = GetContentLength(item, rlpBehaviors);
-            int receiptPayloadLength = Rlp.GetSequenceRlpLength(length.Total);
+            int receiptPayloadLength = Rlp.LengthOfSequence(length.Total);
 
             bool isForTxRoot = (rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.SkipTypedWrapping;
             int result = item.TxType != TxType.Legacy
                 ? isForTxRoot
                     ? (1 + receiptPayloadLength)
-                    : Rlp.GetSequenceRlpLength(1 + receiptPayloadLength) // Rlp(TransactionType || ReceiptPayload)
+                    : Rlp.LengthOfSequence(1 + receiptPayloadLength) // Rlp(TransactionType || ReceiptPayload)
                 : receiptPayloadLength;
             return result;
         }
