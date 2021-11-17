@@ -19,6 +19,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66;
+using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using Nethermind.Network.Test.P2P.Subprotocols.Eth.V62;
 using NUnit.Framework;
 
@@ -79,7 +80,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
                 Hash = new Keccak("0xf39c7dac06a9f3abf09faf5e30439a349d3717611b3ed337cd52b0d192bc72da")
             };
 
-            var ethMessage = new Network.P2P.Subprotocols.Eth.V62.BlockBodiesMessage
+            var ethMessage = new Network.P2P.Subprotocols.Eth.V62.Messages.BlockBodiesMessage
             {
                 Bodies = new[] {new BlockBody(new[] {tx1, tx2}, new[] {header})}
             };

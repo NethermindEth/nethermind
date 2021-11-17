@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core.Crypto;
+using Nethermind.Network.P2P.Messages;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth
 {

@@ -17,6 +17,7 @@
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Network.P2P.Subprotocols.Les;
+using Nethermind.Network.P2P.Subprotocols.Les.Messages;
 using Nethermind.Network.Test.P2P.Subprotocols.Eth.V62;
 using NUnit.Framework;
 
@@ -28,7 +29,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Les
         [Test]
         public void RoundTripWithHash()
         {
-            var ethMessage = new Network.P2P.Subprotocols.Eth.V62.GetBlockHeadersMessage();
+            var ethMessage = new Network.P2P.Subprotocols.Eth.V62.Messages.GetBlockHeadersMessage();
             ethMessage.StartBlockHash = Keccak.Compute("1");
             ethMessage.MaxHeaders = 10;
             ethMessage.Skip = 2;
@@ -44,7 +45,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Les
         [Test]
         public void RoundTripWithNumber()
         {
-            var ethMessage = new Network.P2P.Subprotocols.Eth.V62.GetBlockHeadersMessage();
+            var ethMessage = new Network.P2P.Subprotocols.Eth.V62.Messages.GetBlockHeadersMessage();
             ethMessage.StartBlockNumber = 1;
             ethMessage.MaxHeaders = 10;
             ethMessage.Skip = 2;

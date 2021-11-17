@@ -32,7 +32,10 @@ using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Network.Discovery.Serializers;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.Analyzers;
+using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
+using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
@@ -389,7 +392,7 @@ namespace Nethermind.Init.Steps
             _api.MessageSerializationService.Register(Assembly.GetAssembly(typeof(HelloMessageSerializer)));
             ReceiptsMessageSerializer receiptsMessageSerializer = new(_api.SpecProvider);
             _api.MessageSerializationService.Register(receiptsMessageSerializer);
-            _api.MessageSerializationService.Register(new Nethermind.Network.P2P.Subprotocols.Eth.V66.ReceiptsMessageSerializer(receiptsMessageSerializer));
+            _api.MessageSerializationService.Register(new Network.P2P.Subprotocols.Eth.V66.Messages.ReceiptsMessageSerializer(receiptsMessageSerializer));
             
             HandshakeService encryptionHandshakeServiceA = new(
                 _api.MessageSerializationService,

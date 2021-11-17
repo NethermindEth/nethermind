@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.EventArg;
 
 namespace Nethermind.Network
 {

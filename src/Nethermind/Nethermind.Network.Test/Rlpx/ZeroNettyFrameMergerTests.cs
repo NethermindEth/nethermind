@@ -20,6 +20,7 @@ using DotNetty.Transport.Channels;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Rlpx.TestWrappers;
 using NSubstitute;
