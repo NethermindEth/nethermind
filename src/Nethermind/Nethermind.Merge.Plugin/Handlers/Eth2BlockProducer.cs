@@ -123,6 +123,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             
             // TODO: this seems to me that it should be done in the Eth2 seal engine?
             block.Header.ExtraData = Array.Empty<byte>();
+            block.Header.IsPostMerge = true;
             return block;
         }
     }
