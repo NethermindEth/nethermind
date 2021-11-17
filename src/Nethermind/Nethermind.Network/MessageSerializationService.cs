@@ -19,6 +19,7 @@ using System.Collections.Concurrent;
 using System.Reflection;
 using DotNetty.Buffers;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols.Les;
 
 namespace Nethermind.Network

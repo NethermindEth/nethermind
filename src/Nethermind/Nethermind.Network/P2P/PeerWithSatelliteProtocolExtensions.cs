@@ -16,6 +16,7 @@
 // 
 
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Network.P2P.ProtocolHandlers;
 
 namespace Nethermind.Network.P2P
 {

@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Network;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Stats.Model;
 using Newtonsoft.Json;
 

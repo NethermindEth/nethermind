@@ -30,6 +30,7 @@ using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
+using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66;
 using Nethermind.Network.Rlpx;
@@ -40,6 +41,16 @@ using Nethermind.Synchronization;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
+using BlockBodiesMessage = Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages.BlockBodiesMessage;
+using BlockHeadersMessage = Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages.BlockHeadersMessage;
+using GetBlockBodiesMessage = Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages.GetBlockBodiesMessage;
+using GetBlockHeadersMessage = Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages.GetBlockHeadersMessage;
+using GetNodeDataMessage = Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages.GetNodeDataMessage;
+using GetPooledTransactionsMessage = Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages.GetPooledTransactionsMessage;
+using GetReceiptsMessage = Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages.GetReceiptsMessage;
+using NodeDataMessage = Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages.NodeDataMessage;
+using PooledTransactionsMessage = Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages.PooledTransactionsMessage;
+using ReceiptsMessage = Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages.ReceiptsMessage;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
 {
@@ -107,8 +118,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         [Test]
         public void Can_handle_get_block_headers()
         {
-            var msg62 = new Nethermind.Network.P2P.Subprotocols.Eth.V62.GetBlockHeadersMessage();
-            var msg66 = new Nethermind.Network.P2P.Subprotocols.Eth.V66.GetBlockHeadersMessage(1111, msg62);
+            var msg62 = new GetBlockHeadersMessage();
+            var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.GetBlockHeadersMessage(1111, msg62);
 
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg66, Eth66MessageCode.GetBlockHeaders);
@@ -117,8 +128,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         [Test]
         public void Can_handle_block_headers()
         {
-            var msg62 = new Nethermind.Network.P2P.Subprotocols.Eth.V62.BlockHeadersMessage(Build.A.BlockHeader.TestObjectNTimes(3));
-            var msg66 = new Nethermind.Network.P2P.Subprotocols.Eth.V66.BlockHeadersMessage(1111, msg62);
+            var msg62 = new BlockHeadersMessage(Build.A.BlockHeader.TestObjectNTimes(3));
+            var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.BlockHeadersMessage(1111, msg62);
         
             ((ISyncPeer) _handler).GetBlockHeaders(1, 1, 1, CancellationToken.None);
             HandleIncomingStatusMessage();
@@ -128,8 +139,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         [Test]
         public void Can_handle_get_block_bodies()
         {
-            var msg62 = new Nethermind.Network.P2P.Subprotocols.Eth.V62.GetBlockBodiesMessage(new[] {Keccak.Zero, TestItem.KeccakA});
-            var msg66 = new Nethermind.Network.P2P.Subprotocols.Eth.V66.GetBlockBodiesMessage(1111, msg62);
+            var msg62 = new GetBlockBodiesMessage(new[] {Keccak.Zero, TestItem.KeccakA});
+            var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.GetBlockBodiesMessage(1111, msg62);
 
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg66, Eth66MessageCode.GetBlockBodies);
@@ -138,8 +149,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         [Test]
         public void Can_handle_block_bodies()
         {
-            var msg62 = new Nethermind.Network.P2P.Subprotocols.Eth.V62.BlockBodiesMessage(Build.A.Block.TestObjectNTimes(3));
-            var msg66 = new Nethermind.Network.P2P.Subprotocols.Eth.V66.BlockBodiesMessage(1111, msg62);
+            var msg62 = new BlockBodiesMessage(Build.A.Block.TestObjectNTimes(3));
+            var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.BlockBodiesMessage(1111, msg62);
 
             HandleIncomingStatusMessage();
             ((ISyncPeer) _handler).GetBlockBodies(new List<Keccak>(new[] {Keccak.Zero}), CancellationToken.None);
@@ -149,8 +160,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         [Test]
         public void Can_handle_get_pooled_transactions()
         {
-            var msg65 = new Nethermind.Network.P2P.Subprotocols.Eth.V65.GetPooledTransactionsMessage(new[] {Keccak.Zero, TestItem.KeccakA});
-            var msg66 = new Nethermind.Network.P2P.Subprotocols.Eth.V66.GetPooledTransactionsMessage(1111, msg65);
+            var msg65 = new GetPooledTransactionsMessage(new[] {Keccak.Zero, TestItem.KeccakA});
+            var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage(1111, msg65);
 
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg66, Eth66MessageCode.GetPooledTransactions);
@@ -160,8 +171,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         public void Can_handle_pooled_transactions()
         {
             Transaction tx = Build.A.Transaction.Signed(new EthereumEcdsa(1, LimboLogs.Instance), TestItem.PrivateKeyA).TestObject;
-            var msg65 = new Nethermind.Network.P2P.Subprotocols.Eth.V65.PooledTransactionsMessage(new[] {tx});
-            var msg66 = new Nethermind.Network.P2P.Subprotocols.Eth.V66.PooledTransactionsMessage(1111, msg65);
+            var msg65 = new PooledTransactionsMessage(new[] {tx});
+            var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage(1111, msg65);
 
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg66, Eth66MessageCode.PooledTransactions);
@@ -170,8 +181,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         [Test]
         public void Can_handle_get_node_data()
         {
-            var msg63 = new Nethermind.Network.P2P.Subprotocols.Eth.V63.GetNodeDataMessage(new[] {Keccak.Zero, TestItem.KeccakA});
-            var msg66 = new Nethermind.Network.P2P.Subprotocols.Eth.V66.GetNodeDataMessage(1111, msg63);
+            var msg63 = new GetNodeDataMessage(new[] {Keccak.Zero, TestItem.KeccakA});
+            var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.GetNodeDataMessage(1111, msg63);
 
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg66, Eth66MessageCode.GetNodeData);
@@ -180,8 +191,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         [Test]
         public void Can_handle_node_data()
         {
-            var msg63 = new Nethermind.Network.P2P.Subprotocols.Eth.V63.NodeDataMessage(System.Array.Empty<byte[]>());
-            var msg66 = new Nethermind.Network.P2P.Subprotocols.Eth.V66.NodeDataMessage(1111, msg63);
+            var msg63 = new NodeDataMessage(System.Array.Empty<byte[]>());
+            var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.NodeDataMessage(1111, msg63);
 
             HandleIncomingStatusMessage();
             ((ISyncPeer)_handler).GetNodeData(new List<Keccak>(new[] {Keccak.Zero}), CancellationToken.None);
@@ -191,8 +202,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         [Test]
         public void Can_handle_get_receipts()
         {
-            var msg63 = new Nethermind.Network.P2P.Subprotocols.Eth.V63.GetReceiptsMessage(new[] {Keccak.Zero, TestItem.KeccakA});
-            var msg66 = new Nethermind.Network.P2P.Subprotocols.Eth.V66.GetReceiptsMessage(1111, msg63);
+            var msg63 = new GetReceiptsMessage(new[] {Keccak.Zero, TestItem.KeccakA});
+            var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.GetReceiptsMessage(1111, msg63);
 
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg66, Eth66MessageCode.GetReceipts);
@@ -201,8 +212,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         [Test]
         public void Can_handle_receipts()
         {
-            var msg63 = new Nethermind.Network.P2P.Subprotocols.Eth.V63.ReceiptsMessage(System.Array.Empty<TxReceipt[]>());
-            var msg66 = new Nethermind.Network.P2P.Subprotocols.Eth.V66.ReceiptsMessage(1111, msg63);
+            var msg63 = new ReceiptsMessage(System.Array.Empty<TxReceipt[]>());
+            var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.ReceiptsMessage(1111, msg63);
 
             HandleIncomingStatusMessage();
             ((ISyncPeer)_handler).GetReceipts(new List<Keccak>(new[] {Keccak.Zero}), CancellationToken.None);
