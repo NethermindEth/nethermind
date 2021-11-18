@@ -97,7 +97,7 @@ namespace Nethermind.Init.Steps
 
             if (NetworkDiagTracer.IsEnabled)
             {
-                NetworkDiagTracer.Start();
+                NetworkDiagTracer.Start(_api.LogManager);
             }
 
             Environment.SetEnvironmentVariable("io.netty.allocator.maxOrder", _networkConfig.NettyArenaOrder.ToString());
