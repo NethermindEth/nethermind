@@ -51,13 +51,13 @@ namespace Nethermind.AccountAbstraction.Source
 
         public PaymasterThrottler() : this(true) { }
 
-        public PaymasterThrottler(bool isBundler)
-            : this(isBundler, new Dictionary<Address, uint>(), new Dictionary<Address, uint>()) { }
+        public PaymasterThrottler(bool isMiner)
+            : this(isMiner, new Dictionary<Address, uint>(), new Dictionary<Address, uint>()) { }
 
-        public PaymasterThrottler(bool isBundler,
+        public PaymasterThrottler(bool isMiner,
                 IDictionary<Address, uint> opsSeen, IDictionary<Address, uint> opsIncluded)
         {
-            MinInclusionRateDenominator = isBundler ? (uint)10 : (uint)100;
+            MinInclusionRateDenominator = isMiner ? (uint)10 : (uint)100;
 
             _opsSeen = opsSeen;
             _opsIncluded = opsIncluded;
