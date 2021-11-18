@@ -163,7 +163,7 @@ namespace Nethermind.AccountAbstraction
 
         public Task InitRpcModules()
         {
-            if (Enabled)
+            if (_accountAbstractionConfig.Enabled)
             {
                 (IApiWithNetwork getFromApi, _) = _nethermindApi!.ForRpc;
 
