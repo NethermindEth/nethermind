@@ -29,6 +29,8 @@ mkdir -p $LIN_ARM64_RELEASE/plugins
 cd nethermind/src/Nethermind/
 dotnet build -c Release Nethermind.sln
 
+cd $RELEASE_DIRECTORY
+
 cp $RELEASE_DIRECTORY/$RELEASE_PATH/Nethermind.{HealthChecks,Merge.Plugin,Mev,Consensus}.dll $LIN_RELEASE/plugins
 cp $RELEASE_DIRECTORY/$RELEASE_PATH/Nethermind.{HealthChecks,Merge.Plugin,Mev,Consensus}.dll $OSX_RELEASE/plugins
 cp $RELEASE_DIRECTORY/$RELEASE_PATH/Nethermind.{HealthChecks,Merge.Plugin,Mev,Consensus}.dll $WIN_RELEASE/plugins
