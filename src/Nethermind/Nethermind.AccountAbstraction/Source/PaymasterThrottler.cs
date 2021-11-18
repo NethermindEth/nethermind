@@ -49,7 +49,9 @@ namespace Nethermind.AccountAbstraction.Source
                 )
             );
 
-        public PaymasterThrottler(bool isBundler = true)
+        public PaymasterThrottler() : this(true) { }
+
+        public PaymasterThrottler(bool isBundler)
             : this(isBundler, new Dictionary<Address, uint>(), new Dictionary<Address, uint>()) { }
 
         public PaymasterThrottler(bool isBundler,
