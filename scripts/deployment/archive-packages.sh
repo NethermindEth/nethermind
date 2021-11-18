@@ -6,7 +6,7 @@ OSX=nethermind-darwin-amd64
 OSX_ARM64=nethermind-darwin-arm64
 WIN=nethermind-windows-amd64
 LIN_ARM64=nethermind-linux-arm64
-RELEASE_PATH=src/Nethermind/Nethermind.Runner/bin/Release/net6.0
+RELEASE_PATH=nethermind/src/Nethermind/Nethermind.Runner/bin/Release/net6.0
 
 echo =======================================================
 echo Archiving Nethermind packages
