@@ -55,7 +55,7 @@ namespace Nethermind.AccountAbstraction
                         _nethermindApi.BlockTree!,
                         _entryPointContractAddress, 
                         _logger,
-                        new PaymasterThrottler(),
+                        new PaymasterThrottler(Enabled),
                         _nethermindApi.ReceiptStorage!,
                         _nethermindApi.EngineSigner!,
                         _nethermindApi.StateProvider!,

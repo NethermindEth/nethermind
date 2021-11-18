@@ -31,7 +31,7 @@ namespace Nethermind.AccountAbstraction.Source
 
         public const int TimerSecondsSpan = 0;
 
-        public const uint MinInclusionRateDenominator = 100;
+        public readonly uint MinInclusionRateDenominator;
 
         public const uint ThrottlingSlack = 10;
 
@@ -49,19 +49,14 @@ namespace Nethermind.AccountAbstraction.Source
                 )
             );
 
-        public PaymasterThrottler()
-        {
-            _opsSeen = new Dictionary<Address, uint>();
-            _opsIncluded = new Dictionary<Address, uint>();
+        public PaymasterThrottler(bool isBundler = true)
+            : this(isBundler, new Dictionary<Address, uint>(), new Dictionary<Address, uint>()) { }
 
-            SetupAndStartTimer();
-        }
-
-        public PaymasterThrottler(
-            IDictionary<Address, uint> opsSeen,
-            IDictionary<Address, uint> opsIncluded
-        )
+        public PaymasterThrottler(bool isBundler,
+                IDictionary<Address, uint> opsSeen, IDictionary<Address, uint> opsIncluded)
         {
+            MinInclusionRateDenominator = isBundler ? (uint)10 : (uint)100;
+
             _opsSeen = opsSeen;
             _opsIncluded = opsIncluded;
 
