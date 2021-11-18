@@ -3,6 +3,7 @@
 set -e
 LIN=nethermind-linux-amd64
 OSX=nethermind-darwin-amd64
+OSX_ARM64=nethermind-darwin-arm64
 WIN=nethermind-windows-amd64
 LIN_ARM64=nethermind-linux-arm64
 
@@ -21,6 +22,7 @@ echo =======================================================
 mkdir -p plugins
 mkdir -p $LIN_RELEASE/plugins
 mkdir -p $OSX_RELEASE/plugins
+mkdir -p $OSX_ARM64_RELEASE/plugins
 mkdir -p $WIN_RELEASE/plugins
 mkdir -p $LIN_ARM64_RELEASE/plugins
 
@@ -29,35 +31,29 @@ dotnet build -c Release Nethermind.sln
 cd Nethermind.Baseline
 dotnet build -c Release
 
-cd $RELEASE_DIRECTORY/plugins
-
-cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.Analytics/bin/Release/net6.0/Nethermind.Analytics.dll .
-cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.Baseline/bin/Release/net6.0/Nethermind.Baseline.dll .
-cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.HealthChecks/bin/Release/net6.0/Nethermind.HealthChecks.dll .
-cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.Merge.Plugin/bin/Release/net6.0/Nethermind.Merge.Plugin.dll .
-cp $RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.Mev/bin/Release/net6.0/Nethermind.Mev.dll .
-
-zip -r plugins-$GIT_SHORT_TAG-$GIT_HASH.zip . && cd ..
-
 cp $RELEASE_DIRECTORY/plugins/Nethermind.HealthChecks.dll $LIN_RELEASE/plugins/
 cp $RELEASE_DIRECTORY/plugins/Nethermind.HealthChecks.dll $OSX_RELEASE/plugins/
 cp $RELEASE_DIRECTORY/plugins/Nethermind.HealthChecks.dll $WIN_RELEASE/plugins/
 cp $RELEASE_DIRECTORY/plugins/Nethermind.HealthChecks.dll $LIN_ARM64_RELEASE/plugins/
+cp $RELEASE_DIRECTORY/plugins/Nethermind.HealthChecks.dll $OSX_ARM64_RELEASE/plugins/
 
 cp $RELEASE_DIRECTORY/plugins/Nethermind.Merge.Plugin.dll $LIN_RELEASE/plugins/
 cp $RELEASE_DIRECTORY/plugins/Nethermind.Merge.Plugin.dll $OSX_RELEASE/plugins/
 cp $RELEASE_DIRECTORY/plugins/Nethermind.Merge.Plugin.dll $WIN_RELEASE/plugins/
 cp $RELEASE_DIRECTORY/plugins/Nethermind.Merge.Plugin.dll $LIN_ARM64_RELEASE/plugins/
+cp $RELEASE_DIRECTORY/plugins/Nethermind.Merge.Plugin.dll $OSX_ARM64_RELEASE/plugins/
 
 cp $RELEASE_DIRECTORY/plugins/Nethermind.Mev.dll $LIN_RELEASE/plugins/
 cp $RELEASE_DIRECTORY/plugins/Nethermind.Mev.dll $OSX_RELEASE/plugins/
 cp $RELEASE_DIRECTORY/plugins/Nethermind.Mev.dll $WIN_RELEASE/plugins/
 cp $RELEASE_DIRECTORY/plugins/Nethermind.Mev.dll $LIN_ARM64_RELEASE/plugins/
+cp $RELEASE_DIRECTORY/plugins/Nethermind.Mev.dll $OSX_ARM64_RELEASE/plugins/
 
 cd $LIN_RELEASE && zip -r $LIN-$GIT_SHORT_TAG-$GIT_HASH.zip . && cd ..
 cd $OSX_RELEASE && zip -r $OSX-$GIT_SHORT_TAG-$GIT_HASH.zip . && cd ..
 cd $WIN_RELEASE && zip -r $WIN-$GIT_SHORT_TAG-$GIT_HASH.zip . && cd ..
 cd $LIN_ARM64_RELEASE && zip -r $LIN_ARM64-$GIT_SHORT_TAG-$GIT_HASH.zip . && cd ..
+cd $OSX_ARM64_RELEASE && zip -r $OSX_ARM64-$GIT_SHORT_TAG-$GIT_HASH.zip . && cd ..
 
 echo =======================================================
 echo Archiving Nethermind packages completed

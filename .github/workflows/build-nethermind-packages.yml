@@ -10,10 +10,12 @@ jobs:
       RELEASE_DIRECTORY: /home/runner/work/nethermind/nethermind
       LIN_RELEASE: nethermind-lin-x64
       OSX_RELEASE: nethermind-osx-x64
+      OSX_ARM64_RELEASE: nethermind-osx-arm64
       WIN_RELEASE: nethermind-win-x64
       LIN_ARM64_RELEASE: nethermind-lin-arm64
       LINUX: linux-x64
       OSX: osx-x64
+      OSX_ARM64: osx-arm64
       WIN10: win10-x64
       LINUX_ARM64: linux-arm64
     steps:
@@ -65,6 +67,11 @@ jobs:
       with:
         name: nethermind-darwin-package
         path: ${{ env.RELEASE_DIRECTORY }}/${{ env.OSX_RELEASE }}/nethermind-darwin-amd64-*
+    - uses: actions/upload-artifact@master
+      name: Uploading Nethermind darwin arm64 package
+      with:
+        name: nethermind-darwin-package
+        path: ${{ env.RELEASE_DIRECTORY }}/${{ env.OSX_ARM64_RELEASE }}/nethermind-darwin-arm64-*
     - uses: actions/upload-artifact@master
       name: Uploading Nethermind linux package
       with:

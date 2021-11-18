@@ -18,10 +18,12 @@ jobs:
       OSX_RELEASE: nethermind-osx-x64
       WIN_RELEASE: nethermind-win-x64
       LIN_ARM64_RELEASE: nethermind-lin-arm64
+      OSX_ARM64_RELEASE: nethermind-osx-arm64
       LINUX: linux-x64
       OSX: osx-x64
       WIN10: win10-x64
       LINUX_ARM64: linux-arm64
+      OSX_ARM64: osx-arm64
     steps:
     - name: Checking out Nethermind repository
       uses: actions/checkout@master
@@ -88,10 +90,10 @@ jobs:
         name: nethermind-linux-arm64-package
         path: ${{ env.RELEASE_DIRECTORY }}/${{ env.LIN_ARM64_RELEASE }}/nethermind-linux-arm64-*
     - uses: actions/upload-artifact@master
-      name: Uploading plugins package
+      name: Uploading Nethermind darwin arm64 package
       with:
-        name: plugins
-        path: ${{ env.RELEASE_DIRECTORY }}/plugins/plugins-*
+        name: nethermind-darwin-arm64-package
+        path: ${{ env.RELEASE_DIRECTORY }}/${{ env.OSX_ARM64_RELEASE }}/nethermind-darwin-arm64-*
 
   trigger-publish:
     name: Triggering publish event to different sources
@@ -114,6 +116,7 @@ jobs:
       OSX_RELEASE: nethermind-osx-x64
       WIN_RELEASE: nethermind-win-x64
       LIN_ARM64_RELEASE: nethermind-lin-arm64
+      OSX_ARM64_RELEASE: nethermind-osx-arm64
     steps:
     - name: Checking out Nethermind repository
       uses: actions/checkout@master
@@ -142,10 +145,10 @@ jobs:
         name: nethermind-linux-arm64-package
         path: ${{ env.RELEASE_DIRECTORY }}/${{ env.LIN_ARM64_RELEASE }}/
     - uses: actions/download-artifact@master
-      name: Downloading plugins package
+      name: Downloading Nethermind darwin arm64 package
       with:
-        name: plugins
-        path: ${{ env.RELEASE_DIRECTORY }}/plugins/
+        name: nethermind-darwin-arm64-package
+        path: ${{ env.RELEASE_DIRECTORY }}/${{ env.OSX_ARM64_RELEASE }}/
     - name: Creating Release
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -162,6 +165,7 @@ jobs:
       OSX_RELEASE: nethermind-osx-x64
       WIN_RELEASE: nethermind-win-x64
       LIN_ARM64_RELEASE: nethermind-lin-arm64
+      OSX_ARM64_RELEASE: nethermind-darwin-arm64
     steps:
     - name: Checking out Nethermind repository
       uses: actions/checkout@master
@@ -188,6 +192,11 @@ jobs:
       with:
         name: nethermind-linux-arm64-package
         path: ${{ env.RELEASE_DIRECTORY }}/${{ env.LIN_ARM64_RELEASE }}/
+    - uses: actions/download-artifact@master
+      name: Downloading Nethermind darwin arm64 package
+      with:
+        name: nethermind-darwin-arm64-package
+        path: ${{ env.RELEASE_DIRECTORY }}/${{ env.OSX_ARM64_RELEASE }}/
     - name: Configuring GPG Key
       run: |
         mkdir -p ~/.gnupg/
