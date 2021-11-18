@@ -20,7 +20,6 @@ echo =======================================================
 echo Copying and packing plugins
 echo =======================================================
 
-mkdir -p plugins
 mkdir -p $LIN_RELEASE/plugins
 mkdir -p $OSX_RELEASE/plugins
 mkdir -p $OSX_ARM64_RELEASE/plugins
@@ -30,11 +29,11 @@ mkdir -p $LIN_ARM64_RELEASE/plugins
 cd nethermind/src/Nethermind/
 dotnet build -c Release Nethermind.sln
 
-cp $RELEASE_DIRECTORY/$RELEASE_PATH/Nethermind.{HealthChecks,Merge.Plugin,Mev,Consensus}.dll $LIN_RELEASE/plugins/
-cp $RELEASE_DIRECTORY/$RELEASE_PATH/Nethermind.{HealthChecks,Merge.Plugin,Mev,Consensus}.dll $OSX_RELEASE/plugins/
-cp $RELEASE_DIRECTORY/$RELEASE_PATH/Nethermind.{HealthChecks,Merge.Plugin,Mev,Consensus}.dll $WIN_RELEASE/plugins/
-cp $RELEASE_DIRECTORY/$RELEASE_PATH/Nethermind.{HealthChecks,Merge.Plugin,Mev,Consensus}.dll $LIN_ARM64_RELEASE/plugins/
-cp $RELEASE_DIRECTORY/$RELEASE_PATH/Nethermind.{HealthChecks,Merge.Plugin,Mev,Consensus}.dll $OSX_ARM64_RELEASE/plugins/
+cp $RELEASE_DIRECTORY/$RELEASE_PATH/Nethermind.{HealthChecks,Merge.Plugin,Mev,Consensus}.dll $LIN_RELEASE/plugins
+cp $RELEASE_DIRECTORY/$RELEASE_PATH/Nethermind.{HealthChecks,Merge.Plugin,Mev,Consensus}.dll $OSX_RELEASE/plugins
+cp $RELEASE_DIRECTORY/$RELEASE_PATH/Nethermind.{HealthChecks,Merge.Plugin,Mev,Consensus}.dll $WIN_RELEASE/plugins
+cp $RELEASE_DIRECTORY/$RELEASE_PATH/Nethermind.{HealthChecks,Merge.Plugin,Mev,Consensus}.dll $LIN_ARM64_RELEASE/plugins
+cp $RELEASE_DIRECTORY/$RELEASE_PATH/Nethermind.{HealthChecks,Merge.Plugin,Mev,Consensus}.dll $OSX_ARM64_RELEASE/plugins
 
 cd $LIN_RELEASE && zip -r $LIN-$GIT_SHORT_TAG-$GIT_HASH.zip . && cd ..
 cd $OSX_RELEASE && zip -r $OSX-$GIT_SHORT_TAG-$GIT_HASH.zip . && cd ..
