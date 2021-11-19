@@ -20,6 +20,7 @@ using FluentAssertions;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Consensus.AuRa.Rewards;
 using Nethermind.Core;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using NUnit.Framework;

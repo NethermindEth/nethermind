@@ -160,7 +160,7 @@ namespace Nethermind.Core.Test
         public static IEnumerable<(BaseFeeTestCases, string)> TestCaseSource()
         {
             string testCases = File.ReadAllText("TestFiles/BaseFeeTestCases.json");
-            BaseFeeTestCases[] deserializedTestCases = JsonConvert.DeserializeObject<BaseFeeTestCases[]>(testCases);
+            BaseFeeTestCases[] deserializedTestCases = JsonConvert.DeserializeObject<BaseFeeTestCases[]>(testCases) ?? Array.Empty<BaseFeeTestCases>();
 
             for (int i = 0; i < deserializedTestCases.Length; ++i)
             {

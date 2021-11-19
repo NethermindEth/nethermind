@@ -27,6 +27,7 @@ using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -425,7 +426,7 @@ namespace Nethermind.Mev.Test
         }
 
         [Test]
-        public async Task should_evict_megabundle_when_relay_sends_new_bundle()
+        public void should_evict_megabundle_when_relay_sends_new_bundle()
         {
             var ecdsa = Substitute.For<IEthereumEcdsa>();
             ecdsa.RecoverAddress(Arg.Any<Signature>(), Arg.Any<Keccak>()).Returns(

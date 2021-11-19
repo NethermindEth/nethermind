@@ -82,7 +82,7 @@ namespace Nethermind.Core.Test.Encoding
             RlpStream rlpStream = new(10000);
             _txDecoder.Encode(rlpStream, testCase.Tx);
             rlpStream.Position = 0;
-            Transaction decoded = _txDecoder.Decode(rlpStream);
+            Transaction? decoded = _txDecoder.Decode(rlpStream);
             decoded!.SenderAddress = new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance).RecoverAddress(decoded);
             decoded.Hash = decoded.CalculateHash();
             decoded.Should().BeEquivalentTo(testCase.Tx, testCase.Description);
@@ -97,7 +97,7 @@ namespace Nethermind.Core.Test.Encoding
             Span<byte> spanIncomingTxRlp = rlpStream.Data.AsSpan();
             Rlp.ValueDecoderContext decoderContext = new(spanIncomingTxRlp);
             rlpStream.Position = 0;
-            Transaction decoded = _txDecoder.Decode(ref decoderContext);
+            Transaction? decoded = _txDecoder.Decode(ref decoderContext);
             decoded!.SenderAddress = new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance).RecoverAddress(decoded);
             decoded.Hash = decoded.CalculateHash();
             decoded.Should().BeEquivalentTo(testCase.Tx, testCase.Description);

@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFramework>net5.0</TargetFramework>
+        <TargetFramework>net6.0</TargetFramework>
         <Product>Nethermind Eth2.0 blockchain</Product>
         <Authors>sgryphon</Authors>
         <Copyright>Copyright © 2019 Demerzel Solutions Limited</Copyright>
@@ -14,7 +14,7 @@
     <ItemGroup>
         <PackageReference Include="nunit" Version="3.13.2" />
         <PackageReference Include="NUnit3TestAdapter" Version="3.16.1" />
-        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="16.8.3" />
+        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.0.0" />
         <PackageReference Include="Shouldly" Version="3.0.2" />
     </ItemGroup>
 
