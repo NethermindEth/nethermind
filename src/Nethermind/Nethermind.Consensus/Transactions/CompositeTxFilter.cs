@@ -18,6 +18,7 @@
 using System;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Transactions
 {
@@ -30,18 +31,18 @@ namespace Nethermind.Consensus.Transactions
             _txFilters = txFilters?.Where(f => f != null).ToArray() ?? Array.Empty<ITxFilter>();
         }
         
-        public (bool Allowed, string Reason) IsAllowed(Transaction tx, BlockHeader parentHeader)
+        public (bool Allowed, AddTxResult? Reason) IsAllowed(Transaction tx, BlockHeader parentHeader)
         {
             for (int i = 0; i < _txFilters.Length; i++)
             {
-                (bool, string) result = _txFilters[i].IsAllowed(tx, parentHeader);
+                (bool, AddTxResult?) result = _txFilters[i].IsAllowed(tx, parentHeader);
                 if (!result.Item1)
                 {
                     return result;
                 }
             }
 
-            return (true, string.Empty);
+            return (true, null);
         }
     }
 }

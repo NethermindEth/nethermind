@@ -42,6 +42,7 @@ using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
+using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -216,7 +217,7 @@ namespace Nethermind.AuRa.Test.Transactions
         {
             using TestTxPermissionsBlockchain chain = await chainFactory();
             Block? head = chain.BlockTree.Head;
-            (bool Allowed, string Reason) isAllowed = chain.PermissionBasedTxFilter.IsAllowed(tx, head.Header);
+            (bool Allowed, AddTxResult? Reason) isAllowed = chain.PermissionBasedTxFilter.IsAllowed(tx, head.Header);
             chain.TransactionPermissionContractVersions.Get(head.Header.Hash).Should().Be(version);
             return (isAllowed.Allowed, chain.TxPermissionFilterCache.Permissions.Contains((head.Hash, tx.SenderAddress)));
         }

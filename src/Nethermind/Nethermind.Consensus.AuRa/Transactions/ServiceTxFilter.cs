@@ -19,6 +19,7 @@ using System;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa.Transactions
 {
@@ -31,14 +32,14 @@ namespace Nethermind.Consensus.AuRa.Transactions
             _specProvider = specProvider;
         }
         
-        public (bool Allowed, string Reason) IsAllowed(Transaction tx, BlockHeader parentHeader)
+        public (bool Allowed, AddTxResult? Reason) IsAllowed(Transaction tx, BlockHeader parentHeader)
         {
             if (tx.IsZeroGasPrice(parentHeader, _specProvider))
             {
                 tx.IsServiceTransaction = true;
             }
             
-            return (true, string.Empty);
+            return (true, null);
         }
     }
 }

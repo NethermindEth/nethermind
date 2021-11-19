@@ -18,6 +18,7 @@
 using System;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa.Transactions
 {
@@ -30,14 +31,14 @@ namespace Nethermind.Consensus.AuRa.Transactions
             _signer = signer;
         }
         
-        public (bool Allowed, string Reason) IsAllowed(Transaction tx, BlockHeader parentHeader)
+        public (bool Allowed, AddTxResult? Reason) IsAllowed(Transaction tx, BlockHeader parentHeader)
         {
             if (tx.SenderAddress == _signer.Address)
             {
                 tx.IsServiceTransaction = true;
             }
             
-            return (true, string.Empty);
+            return (true, null);
         }
     }
 }

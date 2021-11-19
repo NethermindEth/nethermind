@@ -31,6 +31,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa
 {
@@ -138,7 +139,7 @@ namespace Nethermind.Consensus.AuRa
         
         private AddingTxEventArgs CheckTxPosdaoRules(AddingTxEventArgs args)
         {
-            (bool Allowed, string Reason)? TryRecoverSenderAddress(Transaction tx, BlockHeader header)
+            (bool Allowed, AddTxResult? Reason)? TryRecoverSenderAddress(Transaction tx, BlockHeader header)
             {
                 if (tx.Signature != null)
                 {
@@ -157,7 +158,7 @@ namespace Nethermind.Consensus.AuRa
             }
 
             BlockHeader parentHeader = GetParentHeader(args.Block);
-            (bool Allowed, string Reason) txFilterResult = _txFilter.IsAllowed(args.Transaction, parentHeader);
+            (bool Allowed, AddTxResult? Reason) txFilterResult = _txFilter.IsAllowed(args.Transaction, parentHeader);
             if (!txFilterResult.Allowed)
             {
                 txFilterResult = TryRecoverSenderAddress(args.Transaction, parentHeader) ?? txFilterResult;
@@ -165,7 +166,7 @@ namespace Nethermind.Consensus.AuRa
 
             if (!txFilterResult.Allowed)
             {
-                args.Set(TxAction.Skip, txFilterResult.Reason);
+                args.Set(TxAction.Skip, txFilterResult.Reason?.ToString() ?? string.Empty);
             }
 
             return args;

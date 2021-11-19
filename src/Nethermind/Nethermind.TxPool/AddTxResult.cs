@@ -47,9 +47,14 @@ namespace Nethermind.TxPool
         FeeTooLowToCompete,
         
         /// <summary>
-        /// This transaction has been filtered out by the transaction pool filter.
+        /// MaxFeePerGas of this transaction is lower than current base fee.
         /// </summary>
-        Filtered,
+        MaxFeePerGasTooLow,
+        
+        /// <summary>
+        /// Effective fee paid as a tip to the miner is not enough to be accepted in the mempool.
+        /// </summary>
+        EffectivePriorityFeePerGasTooLow,
         
         /// <summary>
         /// Transaction gas limit exceeds the block gas limit.
@@ -70,6 +75,11 @@ namespace Nethermind.TxPool
         /// Transaction format is invalid.
         /// </summary>
         Invalid,
+        
+        /// <summary>
+        /// Permission denied for this tx type.
+        /// </summary>
+        PermissionDeniedForThisTxType,
         
         /// <summary>
         /// The nonce is not the next nonce after the last nonce of this sender present in TxPool.

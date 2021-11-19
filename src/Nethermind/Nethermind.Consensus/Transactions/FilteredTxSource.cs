@@ -20,6 +20,7 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Transactions
 {
@@ -42,7 +43,7 @@ namespace Nethermind.Consensus.Transactions
             {
                 if (tx is T)
                 {
-                    (bool allowed, string reason) = _txFilter.IsAllowed(tx, parent);
+                    (bool allowed, AddTxResult? reason) = _txFilter.IsAllowed(tx, parent);
                     if (allowed)
                     {
                         if (_logger.IsTrace) _logger.Trace($"Selected {tx.ToShortString()} to be included in block.");

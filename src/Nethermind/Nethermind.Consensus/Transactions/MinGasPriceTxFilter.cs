@@ -18,6 +18,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
+using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Transactions
 {
@@ -37,12 +38,12 @@ namespace Nethermind.Consensus.Transactions
             _specProvider = specProvider;
         }
 
-        public (bool Allowed, string Reason) IsAllowed(Transaction tx, BlockHeader parentHeader)
+        public (bool Allowed, AddTxResult? Reason) IsAllowed(Transaction tx, BlockHeader parentHeader)
         {
             return IsAllowed(tx, parentHeader, _minGasPrice);
         }
 
-        public (bool Allowed, string Reason) IsAllowed(Transaction tx, BlockHeader? parentHeader, in UInt256 minGasPriceFloor)
+        public (bool Allowed, AddTxResult? Reason) IsAllowed(Transaction tx, BlockHeader? parentHeader, in UInt256 minGasPriceFloor)
         {
             UInt256 premiumPerGas = tx.GasPrice;
             UInt256 baseFeePerGas = UInt256.Zero;
@@ -55,7 +56,7 @@ namespace Nethermind.Consensus.Transactions
             }
 
             bool allowed = premiumPerGas >= minGasPriceFloor;
-            return (allowed, allowed ? string.Empty : $"EffectivePriorityFeePerGas too low {premiumPerGas} < {minGasPriceFloor}, BaseFee: {baseFeePerGas}");
+            return (allowed, allowed ? null : AddTxResult.EffectivePriorityFeePerGasTooLow);
         }
     }
 }

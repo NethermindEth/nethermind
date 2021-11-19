@@ -19,10 +19,11 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Transactions
 {
-    /// <summary>Filtering transactions that have lower FeeCap than BaseFee</summary>
+    /// <summary>Filtering transactions that have lower MaxFeePerGas than BaseFee</summary>
     public class BaseFeeTxFilter : ITxFilter
     {
         private readonly ISpecProvider _specProvider;
@@ -33,7 +34,7 @@ namespace Nethermind.Consensus.Transactions
             _specProvider = specProvider;
         }
 
-        public (bool Allowed, string Reason) IsAllowed(Transaction tx, BlockHeader parentHeader)
+        public (bool Allowed, AddTxResult? Reason) IsAllowed(Transaction tx, BlockHeader parentHeader)
         {
             long blockNumber = parentHeader.Number + 1;
             IReleaseSpec releaseSpec = _specProvider.GetSpec(blockNumber);
@@ -42,10 +43,7 @@ namespace Nethermind.Consensus.Transactions
 
             bool skipCheck = tx.IsServiceTransaction || !isEip1559Enabled;
             bool allowed = skipCheck || tx.MaxFeePerGas >= baseFee;
-            return (allowed,
-                allowed
-                    ? string.Empty
-                    : $"FeeCap too low. FeeCap: {tx.MaxFeePerGas}, BaseFee: {baseFee}, GasPremium:{tx.MaxPriorityFeePerGas}, Block number: {blockNumber}");
+            return (allowed, allowed ? null : AddTxResult.MaxFeePerGasTooLow);
         }
     }
 }
