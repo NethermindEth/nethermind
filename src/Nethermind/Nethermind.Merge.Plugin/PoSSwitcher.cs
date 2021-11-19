@@ -25,6 +25,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Merge.Plugin
 {
@@ -76,29 +77,34 @@ namespace Nethermind.Merge.Plugin
 
         private UInt256? LoadTerminalTotalDifficulty()
         {
-            return _mergeConfig.TerminalTotalDifficulty; 
-            // ToDo we need to implement it to have persistance
-            //    ?? (_db.KeyExists(MetadataDbKeys.TerminalTotalDifficulty) ? Rlp.Decode<UInt256?>(_db.Get(MetadataDbKeys.TerminalTotalDifficulty)) : null);
+            return (_db.KeyExists(MetadataDbKeys.TerminalTotalDifficulty)
+                ? Rlp.Decode<UInt256?>(_db.Get(MetadataDbKeys.TerminalTotalDifficulty))
+                : _mergeConfig.TerminalTotalDifficulty);
         }
-        
+
         private void SetTerminalTotalDifficulty(UInt256? totalDifficulty)
         {
             _terminalTotalDifficulty = totalDifficulty;
-            // ToDo we need to implement it to have persistance
-            // _db.Set(MetadataDbKeys.TerminalTotalDifficulty, Rlp.Encode(_terminalTotalDifficulty).Bytes);
+            _db.Set(MetadataDbKeys.TerminalTotalDifficulty, Rlp.Encode(_terminalTotalDifficulty).Bytes);
         }
 
         public void SetTerminalPoWHash(Keccak blockHash)
         {
             _terminalBlockHash = blockHash;
+            _db.Set(MetadataDbKeys.TerminalPoWHash, Rlp.Encode(_terminalBlockHash).Bytes);
         }
-        
+
         public void ForkchoiceUpdated(BlockHeader header)
         {
             if (_firstPoSBlockHeader == null)
             {
                 if (_logger.IsInfo) _logger.Info($"Received the first forkchoiceUpdated at block {header}");
                 _firstPoSBlockHeader = header;
+                _db.Set(MetadataDbKeys.FirstPoSBlockHash, Rlp.Encode(_firstPoSBlockHeader.Hash).Bytes);
+            }
+            else
+            {
+                _db.Set(MetadataDbKeys.FinalizedBlockHash, Rlp.Encode(header.Hash).Bytes);
             }
         }
 
