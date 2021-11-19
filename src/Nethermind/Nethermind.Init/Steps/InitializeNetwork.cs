@@ -32,7 +32,10 @@ using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Network.Discovery.Serializers;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.Analyzers;
+using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
+using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
@@ -97,7 +100,7 @@ namespace Nethermind.Init.Steps
 
             if (NetworkDiagTracer.IsEnabled)
             {
-                NetworkDiagTracer.Start();
+                NetworkDiagTracer.Start(_api.LogManager);
             }
 
             Environment.SetEnvironmentVariable("io.netty.allocator.maxOrder", _networkConfig.NettyArenaOrder.ToString());
@@ -117,13 +120,6 @@ namespace Nethermind.Init.Steps
                 _api.LogManager);
             
             MultiSyncModeSelector syncModeSelector = CreateMultiSyncModeSelector(syncProgressResolver);
-            if (_api.SyncModeSelector != null)
-            {
-                // this is really bad and is a result of lack of proper dependency management
-                PendingSyncModeSelector pendingOne = (PendingSyncModeSelector) _api.SyncModeSelector;
-                pendingOne.SetActual(syncModeSelector);
-            }
-
             _api.SyncModeSelector = syncModeSelector;
             _api.DisposeStack.Push(syncModeSelector);
 
@@ -396,7 +392,7 @@ namespace Nethermind.Init.Steps
             _api.MessageSerializationService.Register(Assembly.GetAssembly(typeof(HelloMessageSerializer)));
             ReceiptsMessageSerializer receiptsMessageSerializer = new(_api.SpecProvider);
             _api.MessageSerializationService.Register(receiptsMessageSerializer);
-            _api.MessageSerializationService.Register(new Nethermind.Network.P2P.Subprotocols.Eth.V66.ReceiptsMessageSerializer(receiptsMessageSerializer));
+            _api.MessageSerializationService.Register(new Network.P2P.Subprotocols.Eth.V66.Messages.ReceiptsMessageSerializer(receiptsMessageSerializer));
             
             HandshakeService encryptionHandshakeServiceA = new(
                 _api.MessageSerializationService,

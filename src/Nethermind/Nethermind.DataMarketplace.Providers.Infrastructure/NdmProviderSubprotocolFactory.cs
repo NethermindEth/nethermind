@@ -9,6 +9,7 @@ using Nethermind.DataMarketplace.Subprotocols.Factories;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Stats;
 using Nethermind.Wallet;
 

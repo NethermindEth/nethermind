@@ -26,6 +26,7 @@ using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
+using Nethermind.State;
 using Newtonsoft.Json;
 using JsonSerializer = Newtonsoft.Json.JsonSerializer;
 
@@ -181,12 +182,18 @@ namespace Nethermind.JsonRpc
             }
             catch (TargetParameterCountException e)
             {
-                return GetErrorResponse(methodName, ErrorCodes.InvalidParams, e.Message, e.Data, request.Id, returnAction);
+                return GetErrorResponse(methodName, ErrorCodes.InvalidParams, e.Message, e.Data, request.Id,
+                    returnAction);
             }
             catch (Exception e) when (e.InnerException is OperationCanceledException)
             {
                 string errorMessage = $"{methodName} request was canceled due to enabled timeout.";
                 return GetErrorResponse(methodName, ErrorCodes.Timeout, errorMessage, null, request.Id, returnAction);
+            }
+            catch (Exception e) when (e.InnerException is InsufficientBalanceException)
+            {
+                return GetErrorResponse(methodName, ErrorCodes.InvalidInput, e.InnerException.Message, null, request.Id,
+                    returnAction);
             }
             finally
             {

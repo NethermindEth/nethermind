@@ -17,6 +17,7 @@
 
 using Nethermind.Core.Crypto;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66;
+using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using Nethermind.Network.Test.P2P.Subprotocols.Eth.V62;
 using NUnit.Framework;
 
@@ -31,7 +32,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         {
             Keccak[] keys = {new Keccak("0x00000000000000000000000000000000000000000000000000000000deadc0de"), new Keccak("0x00000000000000000000000000000000000000000000000000000000feedbeef")};
 
-            var ethMessage = new Network.P2P.Subprotocols.Eth.V63.GetNodeDataMessage(keys);
+            var ethMessage = new Network.P2P.Subprotocols.Eth.V63.Messages.GetNodeDataMessage(keys);
 
             GetNodeDataMessage message = new GetNodeDataMessage(1111, ethMessage);
 
