@@ -96,7 +96,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             byte[]? payloadId = null;
 
             bool headUpdated = false;
-            bool shouldUpdateHead = _blockTree.Head != newHeadBlock;
+            bool shouldUpdateHead = blocks != null && _blockTree.Head != newHeadBlock;
             if (shouldUpdateHead)
             {
                 _blockTree.UpdateMainChain(blocks!, true, true);
