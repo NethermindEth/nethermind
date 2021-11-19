@@ -82,7 +82,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             bool success = _blockTree.Head == newHeadBlock;
             if (success)
             {
-                _poSSwitcher.ForkchoiceUpdated(newHeadBlock!.Header);
+                _poSSwitcher.ForkchoiceUpdated(newHeadBlock!.Header, finalizedHeader);
                 _stateProvider.ResetStateTo(newHeadBlock.StateRoot!);
                 if (_logger.IsInfo) _logger.Info($"Block {request.HeadBlockHash} was set as head");
             }

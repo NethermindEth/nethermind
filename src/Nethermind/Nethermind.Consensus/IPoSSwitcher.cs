@@ -22,7 +22,7 @@ namespace Nethermind.Consensus
 {
     public interface IPoSSwitcher
     {
-        void ForkchoiceUpdated(BlockHeader header);
+        void ForkchoiceUpdated(BlockHeader newBlockHeader, BlockHeader finalizedHeader);
         
         bool IsPos(BlockHeader header);
 

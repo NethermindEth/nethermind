@@ -113,8 +113,6 @@ namespace Nethermind.Merge.Plugin.Test
         }
         
         [Test]
-        [Ignore("I'm waiting for the spec to be confirmed. For now, we're setting TTD only in config. " +
-                "If a consensus client can override TTD, we need to add persistence of this parameter.")]
         public void Can_load_parameters_after_the_restart()
         {
             using TempPath tempPath = TempPath.GetTempFile(SimpleFilePublicKeyDb.DbFileName);

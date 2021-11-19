@@ -77,9 +77,14 @@ namespace Nethermind.Merge.Plugin
 
         private UInt256? LoadTerminalTotalDifficulty()
         {
-            return (_db.KeyExists(MetadataDbKeys.TerminalTotalDifficulty)
-                ? Rlp.Decode<UInt256?>(_db.Get(MetadataDbKeys.TerminalTotalDifficulty))
-                : _mergeConfig.TerminalTotalDifficulty);
+            if (_db.KeyExists(MetadataDbKeys.TerminalTotalDifficulty))
+            {
+                byte[]? difficultyFromDb = _db.Get(MetadataDbKeys.TerminalTotalDifficulty);
+                RlpStream stream = new RlpStream(difficultyFromDb!);
+                return stream.DecodeUInt256();
+            }
+
+            return _mergeConfig.TerminalTotalDifficulty;
         }
 
         private void SetTerminalTotalDifficulty(UInt256? totalDifficulty)
@@ -94,17 +99,14 @@ namespace Nethermind.Merge.Plugin
             _db.Set(MetadataDbKeys.TerminalPoWHash, Rlp.Encode(_terminalBlockHash).Bytes);
         }
 
-        public void ForkchoiceUpdated(BlockHeader header)
+        public void ForkchoiceUpdated(BlockHeader newBlockHeader, BlockHeader finalizedHeader)
         {
             if (_firstPoSBlockHeader == null)
             {
-                if (_logger.IsInfo) _logger.Info($"Received the first forkchoiceUpdated at block {header}");
-                _firstPoSBlockHeader = header;
+                if (_logger.IsInfo) _logger.Info($"Received the first forkchoiceUpdated at block {newBlockHeader}");
+                _firstPoSBlockHeader = newBlockHeader;
                 _db.Set(MetadataDbKeys.FirstPoSBlockHash, Rlp.Encode(_firstPoSBlockHeader.Hash).Bytes);
-            }
-            else
-            {
-                _db.Set(MetadataDbKeys.FinalizedBlockHash, Rlp.Encode(header.Hash).Bytes);
+                _db.Set(MetadataDbKeys.FinalizedBlockHash, Rlp.Encode(finalizedHeader.Hash).Bytes);
             }
         }
 
