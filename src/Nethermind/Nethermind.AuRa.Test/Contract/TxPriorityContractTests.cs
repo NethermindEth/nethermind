@@ -102,15 +102,15 @@ namespace Nethermind.AuRa.Test.Contract
             using TxPermissionContractBlockchainWithBlocks chain = await TestContractBlockchain.ForTest<TxPermissionContractBlockchainWithBlocks, TxPriorityContractTests>();
             IEnumerable<TxPriorityContract.Destination> priorities = chain.TxPriorityContract.Priorities.GetAllItemsFromBlock(chain.BlockTree.Head.Header);
             IEnumerable<TxPriorityContract.Destination> prioritiesInContract = chain.Priorities.GetItemsFromContractAtBlock(chain.BlockTree.Head.Header);
-            object[] expected =
+            TxPriorityContract.Destination[] expected =
             {
-                new TxPriorityContract.Destination(TestItem.AddressB, FnSignature, 3, TxPriorityContract.DestinationSource.Contract, 2),
-                new TxPriorityContract.Destination(TestItem.AddressA, FnSignature2, 1, TxPriorityContract.DestinationSource.Contract, 1),
-                new TxPriorityContract.Destination(TestItem.AddressB, FnSignature2, 4, TxPriorityContract.DestinationSource.Contract, 1),
+                new(TestItem.AddressB, FnSignature, 3, TxPriorityContract.DestinationSource.Contract, 2),
+                new(TestItem.AddressA, FnSignature2, 1, TxPriorityContract.DestinationSource.Contract, 1),
+                new(TestItem.AddressB, FnSignature2, 4, TxPriorityContract.DestinationSource.Contract, 1),
             };
             
             priorities.Should().BeEquivalentTo(expected, o => o.ComparingByMembers<TxPriorityContract.Destination>()
-                .Excluding(su => su.SelectedMemberPath.EndsWith("BlockNumber")));
+                .Excluding(su => su.BlockNumber));
             prioritiesInContract.Should().BeEquivalentTo(expected, o => o.ComparingByMembers<TxPriorityContract.Destination>());
         }
         
@@ -121,14 +121,14 @@ namespace Nethermind.AuRa.Test.Contract
             using TxPermissionContractBlockchainWithBlocks chain = await TestContractBlockchain.ForTest<TxPermissionContractBlockchainWithBlocks, TxPriorityContractTests>();
             IEnumerable<TxPriorityContract.Destination> minGasPrices = chain.TxPriorityContract.MinGasPrices.GetAllItemsFromBlock(chain.BlockTree.Head.Header);
             IEnumerable<TxPriorityContract.Destination> minGasPricesInContract = chain.MinGasPrices.GetItemsFromContractAtBlock(chain.BlockTree.Head.Header);
-            object[] expected =
+            TxPriorityContract.Destination[] expected =
             {
-                new TxPriorityContract.Destination(TestItem.AddressB, FnSignature2, 4, TxPriorityContract.DestinationSource.Contract, 1),
-                new TxPriorityContract.Destination(TestItem.AddressB, FnSignature, 2, TxPriorityContract.DestinationSource.Contract, 2),
+                new(TestItem.AddressB, FnSignature2, 4, TxPriorityContract.DestinationSource.Contract, 1),
+                new(TestItem.AddressB, FnSignature, 2, TxPriorityContract.DestinationSource.Contract, 2),
             };
 
             minGasPrices.Should().BeEquivalentTo(expected, o => o.ComparingByMembers<TxPriorityContract.Destination>()
-                .Excluding(su => su.SelectedMemberPath.EndsWith("BlockNumber")));
+                .Excluding(su => su.BlockNumber));
             
             minGasPricesInContract.Should().BeEquivalentTo(expected, o => o.ComparingByMembers<TxPriorityContract.Destination>());
         }

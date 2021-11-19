@@ -235,7 +235,7 @@ namespace Nethermind.Cli.Modules
         [CliFunction("eth", "feeHistory")]
         public JsValue FeeHistory(int blockCount, string newestBlock, double[]? rewardPercentiles = null)
         {
-            return NodeManager.PostJint("eth_feeHistory", blockCount, newestBlock, rewardPercentiles).Result;
+            return NodeManager.PostJint("eth_feeHistory", blockCount, newestBlock, rewardPercentiles!).Result;
         }
 
         [CliFunction("eth", "gasPrice")]
