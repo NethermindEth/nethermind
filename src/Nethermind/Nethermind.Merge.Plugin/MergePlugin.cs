@@ -53,10 +53,11 @@ namespace Nethermind.Merge.Plugin
             {
                 if (_api.DbProvider == null) throw new ArgumentException(nameof(_api.DbProvider));
                 if (_api.BlockTree == null) throw new ArgumentException(nameof(_api.BlockTree));
+                if (_api.SpecProvider == null) throw new ArgumentException(nameof(_api.SpecProvider));
                 
 
                 _poSSwitcher = new PoSSwitcher(_api.LogManager, _mergeConfig,
-                    _api.DbProvider.GetDb<IDb>(DbNames.Metadata), _api.BlockTree);
+                    _api.DbProvider.GetDb<IDb>(DbNames.Metadata), _api.BlockTree, _api.SpecProvider);
                 _blockFinalizationManager = new ManualBlockFinalizationManager();
 
                 Address address;

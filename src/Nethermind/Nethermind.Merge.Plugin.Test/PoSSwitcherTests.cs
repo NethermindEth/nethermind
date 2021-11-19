@@ -25,6 +25,7 @@ using Nethermind.Core.Test.IO;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Specs;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -131,7 +132,7 @@ namespace Nethermind.Merge.Plugin.Test
         {
             db ??= new MemDb();
             MergeConfig? mergeConfig = new() {Enabled = true, TerminalTotalDifficulty = terminalTotalDifficulty};
-            return new PoSSwitcher(LimboLogs.Instance, mergeConfig, db, blockTree);
+            return new PoSSwitcher(LimboLogs.Instance, mergeConfig, db, blockTree, MainnetSpecProvider.Instance);
         }
     }
 }

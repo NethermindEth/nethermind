@@ -150,7 +150,7 @@ namespace Nethermind.Merge.Plugin.Test
 
             private IBlockValidator CreateBlockValidator()
             {
-                PoSSwitcher = new PoSSwitcher(LogManager, MergeConfig, new MemDb(), BlockTree);
+                PoSSwitcher = new PoSSwitcher(LogManager, MergeConfig, new MemDb(), BlockTree, SpecProvider);
                 SealEngine = new MergeSealEngine(SealEngine, PoSSwitcher, Signer, LogManager);
                 HeaderValidator = new PostMergeHeaderValidator(PoSSwitcher, BlockTree, SpecProvider, SealEngine, LogManager);
                 

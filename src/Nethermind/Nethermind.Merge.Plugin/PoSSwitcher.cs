@@ -21,6 +21,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Consensus;
+using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
@@ -33,17 +34,19 @@ namespace Nethermind.Merge.Plugin
         private readonly IMergeConfig _mergeConfig;
         private readonly IDb _db;
         private readonly IBlockTree _blockTree;
+        private readonly ISpecProvider _specProvider;
         private readonly ILogger _logger;
         private UInt256? _terminalTotalDifficulty;
         private Keccak? _terminalBlockHash;
         private BlockHeader? _firstPoSBlockHeader;
         private long? _terminalPoWBlockNumber;
 
-        public PoSSwitcher(ILogManager logManager, IMergeConfig mergeConfig, IDb db, IBlockTree blockTree)
+        public PoSSwitcher(ILogManager logManager, IMergeConfig mergeConfig, IDb db, IBlockTree blockTree, ISpecProvider specProvider)
         {
             _mergeConfig = mergeConfig;
             _db = db;
             _blockTree = blockTree;
+            _specProvider = specProvider;
             _terminalTotalDifficulty = LoadTerminalTotalDifficulty();
             _logger = logManager.GetClassLogger();
 
@@ -59,6 +62,7 @@ namespace Nethermind.Merge.Plugin
             {
                 _terminalPoWBlockNumber = e.Block.Number;
                 _blockTree.NewHeadBlock -= CheckIfTerminalPoWBlockReached;
+                _specProvider.UpdateMergeBlockInfo(e.Block.Number + 1);
                 TerminalPoWBlockReached?.Invoke(this, EventArgs.Empty);
                 if (_logger.IsInfo) _logger.Info($"Reached terminal PoW block {e.Block}");
             }
@@ -101,7 +105,7 @@ namespace Nethermind.Merge.Plugin
         public bool IsPos(BlockHeader header)
         {
             return header.IsPostMerge ||
-                   (_firstPoSBlockHeader != null && header.Number >= _firstPoSBlockHeader.Number);
+                   (_firstPoSBlockHeader != null && header.Number >= _firstPoSBlockHeader.Number) || header.Number > _terminalPoWBlockNumber;
         }
 
         public bool HasEverReachedTerminalPoWBlock()

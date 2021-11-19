@@ -25,6 +25,7 @@ namespace Nethermind.Specs.ChainSpecStyle
 {
     public class ChainSpecBasedSpecProvider : ISpecProvider
     {
+        private long _theMergeBlock = long.MaxValue;
         private (long BlockNumber, IReleaseSpec Release)[] _transitions;
 
         private ChainSpec _chainSpec;
@@ -165,6 +166,12 @@ namespace Nethermind.Specs.ChainSpecStyle
             }
         }
 
+        public void UpdateMergeBlockInfo(long blockNumber)
+        {
+            _theMergeBlock = blockNumber;
+        }
+
+        public long MergeBlockNumber => _theMergeBlock;
         public IReleaseSpec GenesisSpec => _transitions.Length == 0 ? null : _transitions[0].Release;
 
         public IReleaseSpec GetSpec(long blockNumber)
