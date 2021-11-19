@@ -70,7 +70,7 @@ jobs:
     - uses: actions/upload-artifact@master
       name: Uploading Nethermind darwin arm64 package
       with:
-        name: nethermind-darwin-package
+        name: nethermind-darwin-arm64-package
         path: ${{ env.RELEASE_DIRECTORY }}/${{ env.OSX_ARM64_RELEASE }}/nethermind-darwin-arm64-*
     - uses: actions/upload-artifact@master
       name: Uploading Nethermind linux package
