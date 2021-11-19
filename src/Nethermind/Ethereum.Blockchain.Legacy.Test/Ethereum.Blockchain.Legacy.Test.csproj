@@ -19,7 +19,7 @@
     </PackageReference>
     <PackageReference Include="NUnit" Version="3.13.2" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.1" />
-    <PackageReference Include="NUnit3TestAdapter" Version="4.0.1" />
+    <PackageReference Include="NUnit3TestAdapter" Version="4.1.0" />
   </ItemGroup>
 
   <ItemGroup>
