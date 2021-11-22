@@ -92,7 +92,8 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             else if (_manualBlockFinalizationManager.LastFinalizedHash != Keccak.Zero)
                 if (_logger.IsWarn) _logger.Warn($"Cannot finalize block. The current finalized block is: {_manualBlockFinalizationManager.LastFinalizedHash}, the requested hash: {forkchoiceState.FinalizedBlockHash}");
             
-            _blockConfirmationManager.Confirm(confirmedHeader!.Hash!);
+            // It is not needed now
+          //  _blockConfirmationManager.Confirm(confirmedHeader!.Hash!);
             byte[]? payloadId = null;
 
             bool headUpdated = false;
@@ -115,7 +116,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 if (_logger.IsWarn) _logger.Warn($"Block {forkchoiceState.FinalizedBlockHash} was not set as head.");
             }
             
-            bool shouldStartPreparingPayload = payloadAttributes != null && (headUpdated || shouldUpdateHead == false);
+            bool shouldStartPreparingPayload = payloadAttributes != null;
             if (shouldStartPreparingPayload)
             {
                 payloadId = _payloadService.StartPreparingPayload(newHeadBlock!.Header, payloadAttributes);
