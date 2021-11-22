@@ -19,9 +19,9 @@ namespace Nethermind.Db
 {
     public static class MetadataDbKeys
     {
-        public static byte[] FinalizedBlockHash = { 1 };
+        public const int FinalizedBlockHash = 1;
         public const int ConfirmedBlockHash = 2;
-        public const long TerminalTotalDifficulty = 3;
+        public const int TerminalTotalDifficulty = 3;
         public const int TerminalPoWHash = 4;
         public const int FirstPoSBlockHash = 5;
     }

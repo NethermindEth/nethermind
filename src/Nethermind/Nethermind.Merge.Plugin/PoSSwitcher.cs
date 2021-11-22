@@ -80,7 +80,7 @@ namespace Nethermind.Merge.Plugin
             if (_db.KeyExists(MetadataDbKeys.TerminalTotalDifficulty))
             {
                 byte[]? difficultyFromDb = _db.Get(MetadataDbKeys.TerminalTotalDifficulty);
-                RlpStream stream = new RlpStream(difficultyFromDb!);
+                RlpStream stream = new (difficultyFromDb!);
                 return stream.DecodeUInt256();
             }
 
@@ -93,10 +93,25 @@ namespace Nethermind.Merge.Plugin
             _db.Set(MetadataDbKeys.TerminalTotalDifficulty, Rlp.Encode(_terminalTotalDifficulty).Bytes);
         }
 
+        public Keccak? LoadTerminalPowHash()
+        {
+            return LoadHashFromDb(MetadataDbKeys.TerminalPoWHash);
+        }
+
         public void SetTerminalPoWHash(Keccak blockHash)
         {
             _terminalBlockHash = blockHash;
             _db.Set(MetadataDbKeys.TerminalPoWHash, Rlp.Encode(_terminalBlockHash).Bytes);
+        }
+
+        public Keccak? LoadFirstPosBlockHash()
+        {
+            return LoadHashFromDb(MetadataDbKeys.FirstPoSBlockHash);
+        }
+
+        public Keccak? LoadFinalizedBlockHash()
+        {
+            return LoadHashFromDb(MetadataDbKeys.FinalizedBlockHash);
         }
 
         public void ForkchoiceUpdated(BlockHeader newBlockHeader, BlockHeader finalizedHeader)
@@ -122,5 +137,16 @@ namespace Nethermind.Merge.Plugin
         }
 
         public event EventHandler? TerminalPoWBlockReached;
+
+        private Keccak? LoadHashFromDb(int key)
+        {
+            if (_db.KeyExists(key))
+            {
+                byte[]? hashFromDb = _db.Get(key);
+                RlpStream stream = new (hashFromDb!);
+                return stream.DecodeKeccak();   
+            }
+            return null;
+        }
     }
 }
