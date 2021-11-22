@@ -132,7 +132,7 @@
     },
     "TheMerge_Kinstugi_TestVectors": {
       "commandName": "Project",
-        "commandLineArgs": "--config themerge_kintsugi_testvectors.cfg --Init.DiagnosticMode MemDb --Merge.TerminalTotalDifficulty 0"
+        "commandLineArgs": "--config themerge_kintsugi_testvectors.cfg --Init.DiagnosticMode MemDb --Merge.TerminalTotalDifficulty 0 --Sync.SynchronizationEnabled false"
     },
     "TheMerge_Kinstugi_M2": {
       "commandName": "Project",

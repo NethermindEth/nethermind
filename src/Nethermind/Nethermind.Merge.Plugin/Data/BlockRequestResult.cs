@@ -37,7 +37,7 @@ namespace Nethermind.Merge.Plugin.Data
         {
         }
 
-        public BlockRequestResult(Block block, Keccak random)
+        public BlockRequestResult(Block block)
         {
             BlockHash = block.Hash!;
             ParentHash = block.ParentHash!;
@@ -48,7 +48,7 @@ namespace Nethermind.Merge.Plugin.Data
             GasUsed = block.GasUsed;
             ReceiptRoot = block.ReceiptsRoot!;
             LogsBloom = block.Bloom!;
-            Random = random;
+            Random = block.MixHash ?? Keccak.Zero;
             SetTransactions(block.Transactions);
             ExtraData = block.ExtraData!;
             Timestamp = block.Timestamp;

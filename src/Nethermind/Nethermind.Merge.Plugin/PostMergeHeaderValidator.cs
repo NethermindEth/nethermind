@@ -71,6 +71,11 @@ namespace Nethermind.Merge.Plugin
                    && validUncles;
         }
         
+        protected override bool ValidateTimestamp(BlockHeader parent, BlockHeader header)
+        {
+            return _poSSwitcher.IsPos(header) || base.ValidateTotalDifficulty(parent, header);
+        }
+        
         protected override bool ValidateTotalDifficulty(BlockHeader parent, BlockHeader header)
         {
              return _poSSwitcher.IsPos(header) || base.ValidateTotalDifficulty(parent, header);

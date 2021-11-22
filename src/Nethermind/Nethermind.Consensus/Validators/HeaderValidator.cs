@@ -105,15 +105,13 @@ namespace Nethermind.Consensus.Validators
             }
 
             bool totalDifficultyCorrect = ValidateTotalDifficulty(parent, header);
-
-            // seal is validated when synchronizing so we can remove it from here - review and test
-            // temporary commented for merge - interop. It shouldn't be merged to master
-            // bool sealParamsCorrect = _sealValidator.ValidateParams(parent, header);
-            // if (!sealParamsCorrect)
-            // {
-            //      if (_logger.IsWarn)
-            //         _logger.Warn($"Invalid block header ({header.Hash}) - seal parameters incorrect"); 
-            // }
+            
+            bool sealParamsCorrect = _sealValidator.ValidateParams(parent, header);
+            if (!sealParamsCorrect)
+            {
+                 if (_logger.IsWarn)
+                    _logger.Warn($"Invalid block header ({header.Hash}) - seal parameters incorrect"); 
+            }
 
             bool gasUsedBelowLimit = header.GasUsed <= header.GasLimit;
             if (!gasUsedBelowLimit)
@@ -125,11 +123,7 @@ namespace Nethermind.Consensus.Validators
 
             // bool gasLimitAboveAbsoluteMinimum = header.GasLimit >= 125000; // described in the YellowPaper but not followed
 
-            bool timestampMoreThanAtParent = header.Timestamp > parent.Timestamp;
-            if (!timestampMoreThanAtParent)
-            {
-                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - timestamp before parent");
-            }
+            bool timestampMoreThanAtParent = ValidateTimestamp(parent, header);
 
             bool numberIsParentPlusOne = header.Number == parent.Number + 1;
             if (!numberIsParentPlusOne)
@@ -160,9 +154,9 @@ namespace Nethermind.Consensus.Validators
                 totalDifficultyCorrect &&
                 gasUsedBelowLimit &&
                 gasLimitInRange &&
-           //     sealParamsCorrect && temporary commented for merge - interop. It shouldn't be merged to master
+                sealParamsCorrect &&
                 // gasLimitAboveAbsoluteMinimum && // described in the YellowPaper but not followed
-                // timestampMoreThanAtParent &&  // temporary commented for merge - interop. It shouldn't be merged to master
+                timestampMoreThanAtParent &&  
                 numberIsParentPlusOne &&
                 hashAsExpected &&
                 extraDataValid &&
@@ -206,6 +200,16 @@ namespace Nethermind.Consensus.Validators
             return gasLimitNotTooHigh && gasLimitNotTooLow;
         }
 
+        protected virtual bool ValidateTimestamp(BlockHeader parent,BlockHeader header)
+        {
+            bool timestampMoreThanAtParent = header.Timestamp > parent.Timestamp;
+            if (!timestampMoreThanAtParent)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - timestamp before parent");
+            }
+            return timestampMoreThanAtParent;
+        }
+        
         protected virtual bool ValidateTotalDifficulty(BlockHeader parent,BlockHeader header)
         {
             bool totalDifficultyCorrect = true;

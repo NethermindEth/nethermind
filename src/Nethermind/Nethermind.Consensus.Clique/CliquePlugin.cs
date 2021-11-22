@@ -74,7 +74,7 @@ namespace Nethermind.Consensus.Clique
             
             // both Clique and the merge provide no block rewards 
             setInApi.RewardCalculatorSource = NoBlockRewards.Instance;
-       //    setInApi.BlockPreprocessor.AddLast(new AuthorRecoveryStep(_snapshotManager!));
+            setInApi.BlockPreprocessor.AddLast(new AuthorRecoveryStep(_snapshotManager!));
 
             return Task.CompletedTask;
         }

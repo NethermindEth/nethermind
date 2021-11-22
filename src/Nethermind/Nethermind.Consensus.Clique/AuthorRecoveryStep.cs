@@ -21,8 +21,6 @@ using Nethermind.Core.Attributes;
 
 namespace Nethermind.Consensus.Clique
 {
-    // TODO: so, this should be SwitchDependent...
-    // TODO: or actually better -> it xhould simply detect whether it is a clique block?
     public class AuthorRecoveryStep : IBlockPreprocessorStep
     {
         private readonly ISnapshotManager _snapshotManager;
@@ -35,7 +33,8 @@ namespace Nethermind.Consensus.Clique
 
         public void RecoverData(Block block)
         {
-            if (block.Header.Author != null) return;
+            // ToDo after refactoring PostMerge SpecProvider, change this condition: block.Header.IsPostMerge
+            if (block.Header.Author != null || block.Header.IsPostMerge) return;
             block.Header.Author = _snapshotManager.GetBlockSealer(block.Header);
         }
     }

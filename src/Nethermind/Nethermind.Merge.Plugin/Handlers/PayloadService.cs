@@ -53,12 +53,11 @@ namespace Nethermind.Merge.Plugin.Handlers
         private readonly ISealer _sealer;
         private readonly ILogger _logger;
         private ulong _cleanupDelay = 12; // in seconds
-        private TaskQueue _taskQueue = new TaskQueue();
 
         private static readonly TimeSpan _timeout = TimeSpan.FromSeconds(12);
 
         // first BlockRequestResult is empty (without txs), second one is the ideal one
-        private readonly ConcurrentDictionary<string, BlockTaskAndRandom> _payloadStorage = new();
+        private readonly ConcurrentDictionary<string, Task<Block?>> _payloadStorage = new();
 
         public PayloadService(
             Eth2BlockProductionContext idealBlockContext,
@@ -101,7 +100,7 @@ namespace Nethermind.Merge.Plugin.Handlers
         private async Task ProduceEmptyBlock(byte[] payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, CancellationTokenSource cts)
         {
             if (_logger.IsTrace) _logger.Trace($"Preparing empty block from payload {payloadId} with parent {parentHeader}");
-            Task<Block?> emptyBlock =
+            Task<Block?> emptyBlockTask =
                 _emptyBlockContext.BlockProductionTrigger
                     .BuildBlock(parentHeader, cts.Token, null, payloadAttributes)
                     .ContinueWith((x) =>
@@ -112,26 +111,23 @@ namespace Nethermind.Merge.Plugin.Handlers
                     })
                     .ContinueWith(LogProductionResult, cts.Token);
             
-            BlockTaskAndRandom emptyBlockTaskTuple = new(emptyBlock, payloadAttributes.Random);
-            bool _ = _payloadStorage.TryAdd(payloadId.ToHexString(), emptyBlockTaskTuple);
-            await emptyBlock;
-            if (_logger.IsTrace) _logger.Trace($"Prepared empty block from payload {payloadId} block result: {emptyBlock.Result}");
+            bool _ = _payloadStorage.TryAdd(payloadId.ToHexString(), emptyBlockTask);
+            await emptyBlockTask;
+            if (_logger.IsTrace) _logger.Trace($"Prepared empty block from payload {payloadId} block result: {emptyBlockTask.Result}");
         }
         
         private async Task ProduceIdealBlock(byte[] payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, CancellationTokenSource cts)
         {
             if (_logger.IsTrace) _logger.Trace($"Preparing ideal block from payload {payloadId} with parent {parentHeader}");
-            Task<Block?> idealBlock =
+            Task<Block?> idealBlockTask =
                 _idealBlockContext.BlockProductionTrigger.BuildBlock(parentHeader, cts.Token, null, payloadAttributes)
                     // ToDo investigate why it is needed, because we should have processing blocks in BlockProducerBase
                     .ContinueWith((x) => Process(x.Result, parentHeader, _idealBlockContext.BlockProducerEnv), cts.Token) 
                     .ContinueWith(LogProductionResult, cts.Token);
             
-            BlockTaskAndRandom idealBlockTaskTuple = new(idealBlock, payloadAttributes.Random);
-            
-            _payloadStorage[payloadId.ToHexString()] = idealBlockTaskTuple;
-            await idealBlock;
-            if (_logger.IsTrace) _logger.Trace($"Prepared ideal block from payload {payloadId} block result: {idealBlock.Result}");
+            _payloadStorage[payloadId.ToHexString()] = idealBlockTask;
+            await idealBlockTask;
+            if (_logger.IsTrace) _logger.Trace($"Prepared ideal block from payload {payloadId} block result: {idealBlockTask.Result}");
         }
         
         private Block? LogProductionResult(Task<Block?> t)
@@ -163,12 +159,12 @@ namespace Nethermind.Merge.Plugin.Handlers
             return t.Result;
         }
 
-        public BlockTaskAndRandom? GetPayload(byte[] payloadId)
+        public Task<Block?>? GetPayload(byte[] payloadId)
         {
             if (_payloadStorage.ContainsKey(payloadId.ToHexString()))
             {
-                _payloadStorage.TryRemove(payloadId.ToHexString(), out BlockTaskAndRandom? payload);
-                return payload;
+                _payloadStorage.TryRemove(payloadId.ToHexString(), out Task<Block?>? payloadProductionTask);
+                return payloadProductionTask;
             }
 
             return null;

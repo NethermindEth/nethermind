@@ -98,7 +98,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 LimboLogs.Instance,
                 BlockchainProcessor.Options.Default);
             BuildBlocksWhenRequested trigger = new();
-            var timestamper = new ManualTimestamper();
+            ManualTimestamper timestamper = new ManualTimestamper();
             DevBlockProducer devBlockProducer = new(
                 EmptyTxSource.Instance,
                 blockchainProcessor,
@@ -112,7 +112,8 @@ namespace Nethermind.Blockchain.Test.Producers
 
             blockchainProcessor.Start();
             devBlockProducer.Start();
-
+            ProducedBlockSuggester suggester = new ProducedBlockSuggester(blockTree, devBlockProducer);
+            
             AutoResetEvent autoResetEvent = new(false);
 
             blockTree.NewHeadBlock += (s, e) => autoResetEvent.Set();

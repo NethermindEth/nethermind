@@ -169,6 +169,7 @@ namespace Nethermind.Merge.Plugin.Test
             {
                 TestBlockchain chain = await base.Build(specProvider, initialValues);
                 await chain.BlockchainProcessor.StopAsync(true);
+                Suggester.Dispose();
                 return chain;
             }
 

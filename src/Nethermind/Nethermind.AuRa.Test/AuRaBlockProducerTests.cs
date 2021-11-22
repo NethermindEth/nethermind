@@ -124,6 +124,8 @@ namespace Nethermind.AuRa.Test
                             gasLimitCalculator,
                             MainnetSpecProvider.Instance,
                             LimboLogs.Instance);
+                        
+                        ProducedBlockSuggester suggester = new(BlockTree, AuRaBlockProducer);
                     }
         }
 

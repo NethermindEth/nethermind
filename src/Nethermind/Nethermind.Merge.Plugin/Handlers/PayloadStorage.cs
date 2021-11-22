@@ -50,7 +50,6 @@ namespace Nethermind.Merge.Plugin.Handlers
         private readonly object _locker = new();
         private uint _currentPayloadId;
         private ulong _cleanupDelay = 12; // in seconds
-        private TaskQueue _taskQueue = new TaskQueue();
 
         private static readonly TimeSpan _timeout = TimeSpan.FromSeconds(12);
 
