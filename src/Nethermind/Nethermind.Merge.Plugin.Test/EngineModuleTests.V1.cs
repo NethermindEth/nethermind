@@ -265,8 +265,6 @@ namespace Nethermind.Merge.Plugin.Test
             {
                 ResultWrapper<ExecutePayloadV1Result> executePayloadResult =
                     await rpc.engine_executePayloadV1(getPayloadResult);
-                await rpc.engine_consensusValidated(new ConsensusValidatedRequest(getPayloadResult.BlockHash,
-                    ConsensusValidationStatus.Valid));
                 executePayloadResult.Data.EnumStatus.Should().Be(VerificationStatus.Valid);
             }
 
@@ -466,8 +464,6 @@ namespace Nethermind.Merge.Plugin.Test
                 CreateParentBlockRequestOnHead(chain.BlockTree),
                 TestItem.AddressD);
             ResultWrapper<ExecutePayloadV1Result> resultWrapper = await rpc.engine_executePayloadV1(blockRequestResult);
-            await rpc.engine_consensusValidated(new ConsensusValidatedRequest(blockRequestResult.BlockHash,
-                ConsensusValidationStatus.Valid));
             resultWrapper.Data.EnumStatus.Should().Be(VerificationStatus.Valid);
             new BlockRequestResult(chain.BlockTree.BestSuggestedBody).Should()
                 .BeEquivalentTo(blockRequestResult);
@@ -669,8 +665,6 @@ namespace Nethermind.Merge.Plugin.Test
                 TryCalculateHash(newBlockRequest, out var hash);
                 newBlockRequest.BlockHash = hash;
                 ResultWrapper<ExecutePayloadV1Result> result = await rpc.engine_executePayloadV1(newBlockRequest);
-                await rpc.engine_consensusValidated(new ConsensusValidatedRequest(newBlockRequest.BlockHash,
-                    ConsensusValidationStatus.Valid));
                 await Task.Delay(10);
 
                 result.Data.EnumStatus.Should().Be(VerificationStatus.Valid);
@@ -726,9 +720,7 @@ namespace Nethermind.Merge.Plugin.Test
                     .Excluding(t => t.Timestamp)
                     .Excluding(t => t.PoolIndex)
                     .Excluding(t => t.GasBottleneck));
-
-            await rpc.engine_consensusValidated(new ConsensusValidatedRequest(assembleBlockResult.BlockHash,
-                ConsensusValidationStatus.Valid));
+            
             ResultWrapper<ExecutePayloadV1Result> executePayloadResult =
                 await rpc.engine_executePayloadV1(assembleBlockResult);
             executePayloadResult.Data.EnumStatus.Should().Be(VerificationStatus.Valid);
@@ -749,12 +741,8 @@ namespace Nethermind.Merge.Plugin.Test
                     parentBlockHash, parentBlockHash, ((ITimestamper)timestamper).UnixTime.Seconds,
                     TestItem.KeccakA, Address.Zero);
                 Keccak? blockHash = getPayloadResult.BlockHash;
-                await rpc.engine_consensusValidated(new ConsensusValidatedRequest(blockHash,
-                    ConsensusValidationStatus.Valid));
                 ExecutePayloadV1Result executePayloadResponse =
                     (await rpc.engine_executePayloadV1(getPayloadResult)).Data;
-                await rpc.engine_consensusValidated(new ConsensusValidatedRequest(getPayloadResult.BlockHash,
-                    ConsensusValidationStatus.Valid));
                 executePayloadResponse.EnumStatus.Should().Be(VerificationStatus.Valid);
                 if (setHead)
                 {
@@ -782,11 +770,7 @@ namespace Nethermind.Merge.Plugin.Test
                 TestItem.AddressD);
             ResultWrapper<ExecutePayloadV1Result> executePayloadResult =
                 await rpc.engine_executePayloadV1(blockRequestResult);
-            ResultWrapper<string> consensusValidatedResult =
-                await rpc.engine_consensusValidated(new ConsensusValidatedRequest(blockRequestResult.BlockHash,
-                    ConsensusValidationStatus.Valid));
             executePayloadResult.Data.EnumStatus.Should().Be(VerificationStatus.Valid);
-            consensusValidatedResult.Data.Should().Be(null);
             return blockRequestResult;
         }
 
