@@ -118,13 +118,7 @@ namespace Nethermind.JsonRpc
             (MethodInfo Info, bool ReadOnly) method, JsonRpcContext context)
         {
             ParameterInfo[] expectedParameters = method.Info.GetParameters();
-            List<string?> providedParameters = request.Params is not null ? request.Params.ToList() : new List<string?>();
-            // whether method contains a param for the id of the json rpc request
-            int pos = expectedParameters.ToList().FindIndex(IsRequestIdParameter);
-            if (pos >= 0 && pos <= providedParameters.Count)
-            {
-                providedParameters.Insert(pos, request.Id.ToString());
-            }
+            string?[] providedParameters = BuildProvidedParams(expectedParameters, request.Params, request.Id.ToString());
             
             if (_logger.IsInfo) _logger.Info($"Executing JSON RPC call {methodName} with params [{string.Join(',', providedParameters)}]");
 
@@ -268,7 +262,6 @@ namespace Nethermind.JsonRpc
                         if (providedParameter == null && IsNullableParameter(expectedParameter))
                         {
                             executionParameters.Add(null);
-                            missingParamsCount -= 1;
                         }
                         else
                         {
@@ -346,8 +339,7 @@ namespace Nethermind.JsonRpc
 
         private bool IsRequestIdParameter(ParameterInfo parameterInfo)
         {
-            Attribute attribute = parameterInfo.GetCustomAttributes()
-                .FirstOrDefault(a => a.TypeId.Equals(typeof(JsonRpcAttribute)));
+            Attribute attribute = parameterInfo.GetCustomAttributes(typeof(JsonRpcAttribute)).FirstOrDefault();
             if (attribute != null)
             {
                 return ((JsonRpcAttribute)attribute).Type == JsonRpcAttributeType.Id;
@@ -414,6 +406,23 @@ namespace Nethermind.JsonRpc
                 ModuleResolution.EndpointDisabled => (ErrorCodes.InvalidRequest, $"{methodName} found for the url '{context.Url?.ToString() ?? string.Empty}' but is disabled for {context.RpcEndpoint}"),
                 _ => (null, null)
             };
+        }
+
+        private string[] BuildProvidedParams(ParameterInfo[] expectedParameters, string[]? requestParameters, string id)
+        {
+            string[] providedParameters = requestParameters ?? Array.Empty<string>();
+            // whether method contains a param for the id of the json rpc request
+            int pos = Array.FindIndex(expectedParameters, IsRequestIdParameter);
+            if (pos >= 0 && pos <= providedParameters.Length)
+            {
+                string[] paramsWithId = new string[providedParameters.Length + 1];
+                Array.Copy(providedParameters, paramsWithId, pos);
+                paramsWithId[pos] = id;
+                Array.Copy(providedParameters, pos + 1, paramsWithId, pos + 1, providedParameters.Length - pos);
+                return paramsWithId;
+            }
+
+            return providedParameters;
         }
     }
 }
