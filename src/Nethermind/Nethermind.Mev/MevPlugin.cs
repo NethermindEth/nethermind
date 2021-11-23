@@ -200,7 +200,7 @@ namespace Nethermind.Mev
                 BlockHeader? parent = _nethermindApi.BlockTree!.GetProducedBlockParent(e.ParentHeader);
                 if (parent is not null)
                 {
-                    IEnumerable<MevBundle> bundles = BundlePool.GetBundles(parent.Number + 1, _nethermindApi.Timestamper);
+                    IEnumerable<MevBundle> bundles = BundlePool.GetBundles(parent, _nethermindApi.Timestamper);
                     return bundles.Count() >= bundleLimit;
                 }
 

@@ -28,7 +28,7 @@ namespace Nethermind.Consensus
 
         public static readonly IDifficultyCalculator One = new ConstantDifficulty(UInt256.One);
 
-        public ConstantDifficultyCalculator(in UInt256 constantDifficulty)
+        public ConstantDifficulty(in UInt256 constantDifficulty)
         {
             _constantDifficulty = constantDifficulty;
         }
