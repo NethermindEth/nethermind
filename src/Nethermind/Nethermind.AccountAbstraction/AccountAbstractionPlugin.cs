@@ -1,5 +1,4 @@
 ﻿using System;
-using System.IO;
 using System.Threading.Tasks;
 using Nethermind.Abi;
 using Nethermind.AccountAbstraction.Contracts;
@@ -7,11 +6,10 @@ using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Executor;
 using Nethermind.AccountAbstraction.Network;
 using Nethermind.AccountAbstraction.Source;
+using Nethermind.AccountAbstraction.Bundler;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain.Contracts.Json;
-using Nethermind.Blockchain.Producers;
-using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
@@ -22,11 +20,10 @@ using Nethermind.Network;
 using Nethermind.Network.P2P;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
-using Newtonsoft.Json.Linq;
 
 namespace Nethermind.AccountAbstraction
 {
-    public class AccountAbstractionPlugin : IConsensusWrapperPlugin
+    public class AccountAbstractionPlugin : INethermindPlugin
     {
         private IAccountAbstractionConfig _accountAbstractionConfig = null!;
         private Address _create2FactoryAddress = null!;
@@ -37,6 +34,7 @@ namespace Nethermind.AccountAbstraction
         private Address _entryPointContractAddress = null!;
         private UserOperationPool? _userOperationPool;
         private UserOperationSimulator? _userOperationSimulator;
+        private ITxBundler? _txBundler;
 
         private UserOperationPool UserOperationPool
         {
@@ -53,9 +51,9 @@ namespace Nethermind.AccountAbstraction
                     _userOperationPool = new UserOperationPool(
                         _accountAbstractionConfig,
                         _nethermindApi.BlockTree!,
-                        _entryPointContractAddress, 
+                        _entryPointContractAddress,
                         _logger,
-                        new PaymasterThrottler(Enabled),
+                        new PaymasterThrottler(),
                         _nethermindApi.ReceiptStorage!,
                         _nethermindApi.EngineSigner!,
                         _nethermindApi.StateProvider!,
@@ -132,15 +130,8 @@ namespace Nethermind.AccountAbstraction
                 }
 
                 _entryPointContractAbi = LoadEntryPointContract();
-            }
 
-            if (Enabled)
-            {
-                if (_logger.IsInfo) _logger.Info("  Account Abstraction Plugin: User Operation Mining Enabled");
-            }
-            else
-            {
-                if (_logger.IsInfo) _logger.Info("  Account Abstraction Plugin: User Operation Mining Disabled");
+                _txBundler = InitTxBundler();
             }
 
             return Task.CompletedTask;
@@ -191,29 +182,24 @@ namespace Nethermind.AccountAbstraction
             return ValueTask.CompletedTask;
         }
 
-        public Task<IBlockProducer> InitBlockProducer(IConsensusPlugin consensusPlugin)
+        public ITxBundler InitTxBundler()
         {
-            if (!Enabled) throw new InvalidOperationException("Account Abstraction plugin is disabled");
-
-            UInt256 minerBalance = _nethermindApi.StateProvider!.GetBalance(_nethermindApi.EngineSigner!.Address);
-            if (minerBalance < 1.Ether())
+            UInt256 bundlerBalance = _nethermindApi.StateProvider!.GetBalance(_nethermindApi.EngineSigner!.Address);
+            if (bundlerBalance < 1.Ether())
                 _logger.Warn(
-                    $"Account Abstraction Plugin: Miner ({_nethermindApi.EngineSigner!.Address}) Ether balance low - {minerBalance / 1.Ether()} Ether < 1 Ether. Increasing balance is recommended");
+                    $"Account Abstraction Plugin: Bundler ({_nethermindApi.EngineSigner!.Address}) Ether balance low - {bundlerBalance / 1.Ether()} Ether < 1 Ether. Increasing balance is recommended");
             else
             {
                 if (_logger.IsInfo)
                     _logger.Info(
-                        $"Account Abstraction Plugin: Miner ({_nethermindApi.EngineSigner!.Address}) Ether balance adequate - {minerBalance / 1.Ether()} Ether");
+                        $"Account Abstraction Plugin: Bundler ({_nethermindApi.EngineSigner!.Address}) Ether balance adequate - {bundlerBalance / 1.Ether()} Ether");
             }
 
-            IManualBlockProductionTrigger trigger = new BuildBlocksWhenRequested();
-            UserOperationTxSource userOperationTxSource =
-                new(UserOperationPool, UserOperationSimulator, _nethermindApi.SpecProvider!, _logger);
-            //ContinuousBundleSender continuousBundleSender = new ContinuousBundleSender(_nethermindApi.BlockTree!, userOperationTxSource, _accountAbstractionConfig, _timerFactory, _nethermindApi.EngineSigner, _logger);
-            return consensusPlugin.InitBlockProducer(trigger, userOperationTxSource);
+            ITxBundlingTrigger trigger = new TxBundleRegularlyTrigger();
+            ITxBundleSource txBundleSource =
+                new UserOperationTxSource(UserOperationPool, UserOperationSimulator, _nethermindApi.SpecProvider!, _logger);
+            return new TxBundler(trigger, txBundleSource);
         }
-
-        public bool Enabled => (_nethermindApi.Config<IInitConfig>().IsMining || _nethermindApi.Config<IMiningConfig>().Enabled) && _accountAbstractionConfig.Enabled;
 
         private AbiDefinition LoadEntryPointContract()
         {

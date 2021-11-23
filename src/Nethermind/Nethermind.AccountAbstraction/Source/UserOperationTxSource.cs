@@ -20,7 +20,6 @@ using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Executor;
-using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -30,7 +29,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.AccountAbstraction.Source
 {
-    public class UserOperationTxSource : ITxSource
+    public class UserOperationTxSource : ITxBundleSource
     {
         private readonly ILogger _logger;
         private readonly ISpecProvider _specProvider;
@@ -49,17 +48,17 @@ namespace Nethermind.AccountAbstraction.Source
             _logger = logger;
         }
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
+        public Transaction? GetTransaction(BlockHeader head, ulong gasLimit)
         {
             IDictionary<Address, HashSet<UInt256>> usedAccessList = new Dictionary<Address, HashSet<UInt256>>();
             IList<UserOperation> userOperationsToInclude = new List<UserOperation>();
             ulong gasUsed = 0;
 
-            IEnumerable<UserOperation> userOperations = 
+            IEnumerable<UserOperation> userOperations =
                 _userOperationPool
                     .GetUserOperations()
-                    .Where(op => op.MaxFeePerGas >= parent.BaseFeePerGas)
-                    .OrderByDescending(op => CalculateUserOperationPremiumGasPrice(op, parent.BaseFeePerGas));
+                    .Where(op => op.MaxFeePerGas >= head.BaseFeePerGas)
+                    .OrderByDescending(op => CalculateUserOperationPremiumGasPrice(op, head.BaseFeePerGas));
             foreach (UserOperation userOperation in userOperations)
             {
                 if (gasUsed >= (ulong)gasLimit) continue;
@@ -68,25 +67,25 @@ namespace Nethermind.AccountAbstraction.Source
                 if (UserOperationAccessList.AccessListOverlaps(usedAccessList, userOperation.AccessList.Data)) continue;
 
                 // simulate again to make sure the op is still valid
-                Task<ResultWrapper<Keccak>> resultTask = _userOperationSimulator.Simulate(userOperation, parent);
+                Task<ResultWrapper<Keccak>> resultTask = _userOperationSimulator.Simulate(userOperation, head);
                 ResultWrapper<Keccak> result = resultTask.Result;
                 if (result.Result != Result.Success)
                 {
                     //if (_logger.IsDebug) commented out for testing
                     {
                         _logger.Debug($"UserOperation {userOperation.Hash} resimulation unsuccessful: {result.Result.Error}");
-                        
+
                         // ToDo: RemoveUserOperation shouldn't be dependent of logger's state, like below. Commented it out for now
                         // _logger.Debug(_userOperationPool.RemoveUserOperation(userOperation.Hash)
                         //     ? $"Removed UserOperation {userOperation.Hash} from Pool"
                         //     : $"Failed to remove UserOperation {userOperation} from Pool");
                     }
-                    
+
                     continue;
                 }
 
                 userOperationsToInclude.Add(userOperation);
-                gasUsed += (ulong)userOperation.CallGas + 
+                gasUsed += (ulong)userOperation.CallGas +
                            (ulong)userOperation.PreVerificationGas +
                            (ulong)userOperation.VerificationGas;
 
@@ -98,14 +97,14 @@ namespace Nethermind.AccountAbstraction.Source
                         usedAccessList[kv.Key] = kv.Value;
             }
 
-            if (userOperationsToInclude.Count == 0) return new List<Transaction>();
+            if (userOperationsToInclude.Count == 0) return null;
 
             Transaction userOperationTransaction =
-                _userOperationSimulator.BuildTransactionFromUserOperations(userOperationsToInclude, parent,
-                    _specProvider.GetSpec(parent.Number + 1));
+                _userOperationSimulator.BuildTransactionFromUserOperations(userOperationsToInclude, head,
+                    _specProvider.GetSpec(head.Number + 1));
             if (_logger.IsDebug)
                 _logger.Debug($"Constructed tx from {userOperationsToInclude.Count} userOperations: {userOperationTransaction.Hash}");
-            return new List<Transaction> {userOperationTransaction};
+            return userOperationTransaction;
         }
 
         private UInt256 CalculateUserOperationPremiumGasPrice(UserOperation op, UInt256 baseFeePerGas)
