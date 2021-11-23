@@ -30,6 +30,18 @@ namespace Nethermind.JsonRpc.Modules.Trace
             AddActionsRecursively(results, txTrace, txTrace.Action);
             return results.ToArray();
         }
+        
+        public static ParityTxTraceFromStore[] FromTxTrace(IReadOnlyCollection<ParityLikeTxTrace> txTrace)
+        {
+            List<ParityTxTraceFromStore> results = new();
+            foreach (ParityLikeTxTrace tx in txTrace)
+            {
+                AddActionsRecursively(results, tx, tx.Action);
+            }
+            
+            return results.ToArray(); 
+            
+        }
 
         private static void AddActionsRecursively(List<ParityTxTraceFromStore> results, ParityLikeTxTrace txTrace, ParityTraceAction txTraceAction)
         {
@@ -43,7 +55,8 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 BlockNumber = txTrace.BlockNumber,
                 TransactionHash = txTrace.TransactionHash,
                 TransactionPosition = txTrace.TransactionPosition,
-                TraceAddress = txTraceAction.TraceAddress
+                TraceAddress = txTraceAction.TraceAddress,
+                Error = txTraceAction.Error
             };
             results.Add(result);
             
@@ -64,6 +77,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         [JsonConverter(typeof(LongConverter), NumberConversion.Raw)] 
         public long BlockNumber { get; set; }
 
+        [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public ParityTraceResult Result { get; set; }
 
         public int Subtraces { get; set; }
@@ -73,8 +87,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         public Keccak TransactionHash { get; set; }
 
         public int? TransactionPosition { get; set; }
-
-        [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public string Type { get; set; }
+        public string? Error { get; set; }
     }
 }

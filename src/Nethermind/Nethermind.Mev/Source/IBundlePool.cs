@@ -29,12 +29,17 @@ namespace Nethermind.Mev.Source
         event EventHandler<BundleEventArgs> NewReceived;
         event EventHandler<BundleEventArgs> NewPending;
         bool AddBundle(MevBundle bundle);
-        IEnumerable<MevBundle> GetBundles(long block, UInt256 timestamp, CancellationToken token = default);
+        bool AddMegabundle(MevMegabundle megabundle);
+        IEnumerable<MevBundle> GetBundles(long block, UInt256 timestamp, CancellationToken token = default); 
+        IEnumerable<MevBundle> GetMegabundles(long block, UInt256 timestamp, CancellationToken token = default);
     }
     
     public static class BundlePoolExtensions
     {
-        public static IEnumerable<MevBundle> GetBundles(this IBundlePool bundleSource, long blockNumber, ITimestamper timestamper, CancellationToken token = default) => 
-            bundleSource.GetBundles(blockNumber, timestamper.UnixTime.Seconds, token);
+        public static IEnumerable<MevBundle> GetBundles(this IBundlePool bundleSource, BlockHeader parent, ITimestamper timestamper, CancellationToken token = default) => 
+            bundleSource.GetBundles(parent.Number + 1, timestamper.UnixTime.Seconds, token);
+        
+        public static IEnumerable<MevBundle> GetMegabundles(this IBundlePool bundleSource, BlockHeader parent, ITimestamper timestamper, CancellationToken token = default) => 
+            bundleSource.GetMegabundles(parent.Number + 1, timestamper.UnixTime.Seconds, token);
     }
 }

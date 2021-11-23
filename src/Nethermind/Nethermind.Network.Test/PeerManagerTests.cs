@@ -31,6 +31,8 @@ using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.Analyzers;
+using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.StaticNodes;
 using Nethermind.Stats;
@@ -398,7 +400,7 @@ namespace Nethermind.Network.Test
             await Task.Delay(_travisDelayLong);
 
             void DisconnectHandler(object o, DisconnectEventArgs e) => disconnections++;
-            ctx.PeerManager.ActivePeers.Select(p => p.Node.Id).Should().BeEquivalentTo(node.NodeId);
+            ctx.PeerManager.ActivePeers.Select(p => p.Node.Id).Should().BeEquivalentTo(new[] { node.NodeId });
 
             ctx.Sessions.ForEach(s => s.Disconnected += DisconnectHandler);
 

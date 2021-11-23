@@ -16,6 +16,7 @@
 
 using System;
 using System.Linq;
+using System.Net.WebSockets;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Primitives;
@@ -62,13 +63,17 @@ namespace Nethermind.Sockets
 
                     if (logger?.IsDebug == true) logger.Info($"Initializing WebSockets for client: '{clientName}'.");
                     var webSocket = await context.WebSockets.AcceptWebSocketAsync();
-                    var socketsClient = module.CreateClient(webSocket, clientName);
+                    var socketsClient = module.CreateClient(webSocket, clientName, context.Connection.LocalPort);
                     id = socketsClient.Id;
                     await socketsClient.ReceiveAsync();
                 }
+                catch (WebSocketException ex)
+                {
+                    logger?.Error($"WebSockets error {ex.WebSocketErrorCode}: {ex.WebSocketErrorCode} {ex.Message}", ex);
+                }
                 catch (Exception ex)
                 {
-                    logger?.Error("WebSockets error.", ex);
+                    logger?.Error($"WebSockets error {ex.Message}", ex);
                 }
                 finally
                 {

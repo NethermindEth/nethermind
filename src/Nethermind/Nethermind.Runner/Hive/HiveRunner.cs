@@ -205,7 +205,7 @@ namespace Nethermind.Runner.Hive
         {
             try
             {
-                if (!_blockValidator.Validate(block.Header))
+                if (!_blockValidator.ValidateSuggestedBlock(block))
                 {
                     if (_logger.IsInfo) _logger.Info($"Invalid block {block}");
                     return;

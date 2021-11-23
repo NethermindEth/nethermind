@@ -80,9 +80,9 @@ namespace Nethermind.Blockchain.Test
                 LimboLogs.Instance, 
                 transactionComparerProvider.GetDefaultComparer());
             BlockhashProvider blockhashProvider = new (_blockTree, LimboLogs.Instance);
-            VirtualMachine virtualMachine = new (
-                specProvider.ChainId,
+            VirtualMachine virtualMachine = new(
                 blockhashProvider,
+                specProvider,
                 LimboLogs.Instance);
             TransactionProcessor transactionProcessor = new (
                 specProvider,
@@ -113,6 +113,7 @@ namespace Nethermind.Blockchain.Test
         }
 
         [Test]
+        [Retry(3)]
         public void Test()
         {
             List<Block> events = new();

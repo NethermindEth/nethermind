@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -33,15 +34,15 @@ namespace Nethermind.JsonRpc.Test
         {
             IJsonRpcService service = BuildRpcService(module);
             JsonRpcRequest request = GetJsonRequest(method, parameters);
-            return service.SendRequestAsync(request, JsonRpcContext.Http).Result;
+            return service.SendRequestAsync(request, new JsonRpcContext(RpcEndpoint.Http)).Result;
         }
         
         public static string TestSerializedRequest<T>(IReadOnlyCollection<JsonConverter> converters, T module, string method, params string[] parameters) where T : class, IRpcModule
         {
-            IJsonRpcService service = BuildRpcService(module);
+            IJsonRpcService service = BuildRpcService(module, converters);
             JsonRpcRequest request = GetJsonRequest(method, parameters);
-            
-            JsonRpcContext context = JsonRpcContext.Http;
+
+            JsonRpcContext context = new JsonRpcContext(RpcEndpoint.Http);
             if (module is IContextAwareRpcModule contextAwareModule
                 && contextAwareModule.Context != null)
             {
@@ -77,10 +78,11 @@ namespace Nethermind.JsonRpc.Test
             return TestSerializedRequest(new JsonConverter[0], module, method, parameters);
         }
         
-        public static IJsonRpcService BuildRpcService<T>(T module) where T : class, IRpcModule
+        public static IJsonRpcService BuildRpcService<T>(T module, IReadOnlyCollection<JsonConverter>? converters = null) where T : class, IRpcModule
         {
             var moduleProvider = new TestRpcModuleProvider<T>(module);
-            moduleProvider.Register(new SingletonModulePool<T>(new SingletonFactory<T>(module), true));
+
+            moduleProvider.Register(new SingletonModulePool<T>(new TestSingletonFactory<T>(module, converters), true));
             IJsonRpcService service = new JsonRpcService(moduleProvider, LimboLogs.Instance);
             return service;
         }
@@ -91,11 +93,25 @@ namespace Nethermind.JsonRpc.Test
             {
                 JsonRpc = "2.0",
                 Method = method,
-                Params = parameters?.ToArray() ?? new string[0],
+                Params = parameters?.ToArray() ?? Array.Empty<string>(),
                 Id = 67
             };
 
             return request;
         }
+        
+        private class TestSingletonFactory<T> : SingletonFactory<T> where T : IRpcModule
+        {
+            private readonly IReadOnlyCollection<JsonConverter>? _converters;
+
+            public TestSingletonFactory(T module, IReadOnlyCollection<JsonConverter>? converters) : base(module)
+            {
+                _converters = converters;
+            }
+
+            public override IReadOnlyCollection<JsonConverter> GetConverters() => _converters ?? base.GetConverters();
+        }
     }
+
+
 }

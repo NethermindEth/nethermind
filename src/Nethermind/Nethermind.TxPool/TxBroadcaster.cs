@@ -93,6 +93,7 @@ namespace Nethermind.TxPool
 
         public void StartBroadcast(Transaction tx)
         {
+            NotifyPeersAboutLocalTx(tx);
             _persistentTxs.TryInsert(tx.Hash, tx);
         }
       
@@ -127,10 +128,10 @@ namespace Nethermind.TxPool
 
                 _txsToSend = Interlocked.Exchange(ref _accumulatedTemporaryTxs, _txsToSend);
             
+                if (_logger.IsDebug) _logger.Debug($"Broadcasting transactions to all peers");
+
                 foreach ((_, ITxPoolPeer peer) in _peers)
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Broadcasting transactions to all peers");
-
                     Notify(peer, GetTxsToSend(peer, persistentTxs, _txsToSend));
                 }
 
@@ -141,11 +142,14 @@ namespace Nethermind.TxPool
             _timer.Enabled = true;
         }
 
-        private static IEnumerable<Transaction> GetTxsToSend(ITxPoolPeer peer, IReadOnlyList<Transaction> persistentTxs, IEnumerable<Transaction> txsToSend)
+        private IEnumerable<Transaction> GetTxsToSend(ITxPoolPeer peer, IReadOnlyList<Transaction> persistentTxs, IEnumerable<Transaction> txsToSend)
         {
             for (int i = 0; i < persistentTxs.Count; i++)
             {
-                yield return persistentTxs[i];
+                if (_txPoolConfig.PeerNotificationThreshold >= Random.Value.Next(1, 100))
+                {
+                    yield return persistentTxs[i];
+                }
             }
 
             foreach (Transaction tx in txsToSend)
@@ -167,6 +171,24 @@ namespace Nethermind.TxPool
             catch (Exception e)
             {
                 if (_logger.IsError) _logger.Error($"Failed to notify {peer} about transactions.", e);
+            }
+        }
+        
+        private void NotifyPeersAboutLocalTx(Transaction tx)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Broadcasting new local transaction {tx.Hash} to all peers");
+
+            foreach ((_, ITxPoolPeer peer) in _peers)
+            {
+                try
+                {
+                    peer.SendNewTransaction(tx);
+                    if (_logger.IsTrace) _logger.Trace($"Notified {peer} about transaction {tx.Hash}.");
+                }
+                catch (Exception e)
+                {
+                    if (_logger.IsError) _logger.Error($"Failed to notify {peer} about transaction {tx.Hash}.", e);
+                }
             }
         }
 

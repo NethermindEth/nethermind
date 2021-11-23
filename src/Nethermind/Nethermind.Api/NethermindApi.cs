@@ -51,6 +51,7 @@ using Nethermind.Monitoring;
 using Nethermind.Network;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
@@ -103,8 +104,7 @@ namespace Nethermind.Api
                 Timestamper,
                 LogFinder,
                 SpecProvider!,
-                miningConfig.Enabled,
-                syncConfig.BeamSync && syncConfig.FastSync
+                miningConfig.Enabled
             );
         }
 

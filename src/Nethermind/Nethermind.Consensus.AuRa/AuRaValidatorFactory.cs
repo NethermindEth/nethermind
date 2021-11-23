@@ -28,6 +28,7 @@ using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.Db.Blooms;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa
@@ -48,6 +49,7 @@ namespace Nethermind.Consensus.AuRa
         private readonly ILogManager _logManager;
         private readonly ISigner _signer;
         private readonly ISpecProvider _specProvider;
+        private readonly IGasPriceOracle _gasPriceOracle;
         private readonly ReportingContractBasedValidator.Cache _reportingValidatorCache;
         private readonly long _posdaoTransition;
         private readonly bool _forSealing;
@@ -66,9 +68,9 @@ namespace Nethermind.Consensus.AuRa
             ILogManager logManager,
             ISigner signer,
             ISpecProvider specProvider,
+            IGasPriceOracle gasPriceOracle,
             ReportingContractBasedValidator.Cache reportingValidatorCache,
-            long posdaoTransition,
-            bool forSealing = false)
+            long posdaoTransition, bool forSealing = false)
         {
             _stateProvider = stateProvider;
             _abiEncoder = abiEncoder;
@@ -85,6 +87,7 @@ namespace Nethermind.Consensus.AuRa
             _signer = signer;
             _reportingValidatorCache = reportingValidatorCache;
             _posdaoTransition = posdaoTransition;
+            _gasPriceOracle = gasPriceOracle;
             _forSealing = forSealing;
             _specProvider = specProvider;
         }
@@ -135,6 +138,7 @@ namespace Nethermind.Consensus.AuRa
                         _stateProvider,
                         _reportingValidatorCache,
                         _specProvider,
+                        _gasPriceOracle,
                         _logManager),
                 
                 AuRaParameters.ValidatorType.Multi => 

@@ -255,20 +255,6 @@ namespace Nethermind.State
             }
         }
 
-        internal void SetNonce(Address address, UInt256 nonce)
-        {
-            _needsStateRootUpdate = true;
-            Account? account = GetThroughCache(address);
-            if (account is null)
-            {
-                throw new InvalidOperationException($"Account {address} is null when incrementing nonce");
-            }
-            
-            Account changedAccount = account.WithChangedNonce(nonce);
-            if (_logger.IsTrace) _logger.Trace($"  Update {address} N {account.Nonce} -> {changedAccount.Nonce}");
-            PushUpdate(address, changedAccount);
-        }
-
         public void IncrementNonce(Address address)
         {
             _needsStateRootUpdate = true;
@@ -354,7 +340,7 @@ namespace Nethermind.State
             PushDelete(address);
         }
 
-        public int TakeSnapshot()
+        int IJournal<int>.TakeSnapshot()
         {
             if (_logger.IsTrace) _logger.Trace($"State snapshot {_currentPosition}");
             return _currentPosition;
@@ -814,5 +800,19 @@ namespace Nethermind.State
         {
             // placeholder for the three level Commit->CommitBlock->CommitBranch
         }
-    }
+
+        // used in EtheereumTests
+        internal void SetNonce(Address address, in UInt256 nonce)
+        {
+            _needsStateRootUpdate = true;
+            Account? account = GetThroughCache(address);
+            if (account is null)
+            {
+                throw new InvalidOperationException($"Account {address} is null when incrementing nonce");
+            }
+            
+            Account changedAccount = account.WithChangedNonce(nonce);
+            if (_logger.IsTrace) _logger.Trace($"  Update {address} N {account.Nonce} -> {changedAccount.Nonce}");
+            PushUpdate(address, changedAccount);
+        }    }
 }

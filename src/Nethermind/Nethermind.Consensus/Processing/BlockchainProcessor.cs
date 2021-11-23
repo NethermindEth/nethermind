@@ -78,11 +78,8 @@ namespace Nethermind.Consensus.Processing
             _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
             _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
             _options = options;
-
-            if (_options.AutoProcess)
-            {
-                _blockTree.NewBestSuggestedBlock += OnNewBestBlock;
-            }
+            
+            _blockTree.NewBestSuggestedBlock += OnNewBestBlock;
             _blockTree.NewHeadBlock += OnNewHeadBlock;
 
             _stats = new ProcessingStats(_logger);
@@ -383,7 +380,8 @@ namespace Nethermind.Consensus.Processing
                     }
                 }
             }
-            
+
+            Keccak? invalidBlockHash = null;
             Block[]? processedBlocks;
             try
             {
@@ -396,20 +394,20 @@ namespace Nethermind.Consensus.Processing
             catch (InvalidBlockException ex)
             {
                 BlockInvalid?.Invoke(this, new BlockProcessedEventArgs(suggestedBlock, Array.Empty<TxReceipt>()));
-                DeleteInvalidBlocks(ex.InvalidBlockHash);
                 
+                invalidBlockHash = ex.InvalidBlockHash;
                 TraceFailingBranch(
                     processingBranch,
                     options,
                     new BlockReceiptsTracer(),
                     DumpOptions.Receipts);
-                
+
                 TraceFailingBranch(
                     processingBranch,
                     options,
                     new ParityLikeBlockTracer(ParityTraceTypes.StateDiff | ParityTraceTypes.Trace),
                     DumpOptions.Parity);
-                
+
                 TraceFailingBranch(
                     processingBranch,
                     options,
@@ -419,8 +417,15 @@ namespace Nethermind.Consensus.Processing
                 processedBlocks = null;
             }
             
+            finally
+            {
+                if (invalidBlockHash is not null)
+                {
+                    DeleteInvalidBlocks(invalidBlockHash);
+                }
+            }
+            
             BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(suggestedBlock, Array.Empty<TxReceipt>()));
-
             return processedBlocks;
         }
 
@@ -479,8 +484,11 @@ namespace Nethermind.Consensus.Processing
                     break;
                 }
 
+                // !!!
                 // for beam sync we do not expect previous blocks to necessarily be there and we
                 // do not need them since we can requests state from outside
+                // TODO: remove this and verify the current usage scenarios - seems wrong
+                // !!!
                 if ((options & ProcessingOptions.IgnoreParentNotOnMainChain) != 0)
                 {
                     break;
@@ -596,11 +604,6 @@ namespace Nethermind.Consensus.Processing
             public static Options Default = new();
 
             public bool StoreReceiptsByDefault { get; set; } = true;
-
-            /// <summary>
-            /// Registers for OnNewHeadBlock events at block tree. 
-            /// </summary>
-            public bool AutoProcess { get; set; } = true;
 
             public DumpOptions DumpOptions { get; set; } = DumpOptions.None;
         }

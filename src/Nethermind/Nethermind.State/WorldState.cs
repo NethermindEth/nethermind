@@ -22,6 +22,18 @@ namespace Nethermind.State
     public class WorldState : IWorldState
     {
         public IStateProvider StateProvider { get; }
+        
+        public Snapshot TakeSnapshot(bool newTransactionStart = false)
+        {
+            return new (StateProvider.TakeSnapshot(), StorageProvider.TakeSnapshot(newTransactionStart));
+        }
+
+        public void Restore(Snapshot snapshot)
+        {
+            StateProvider.Restore(snapshot.StateSnapshot);
+            StorageProvider.Restore(snapshot.StorageSnapshot);
+        }
+
         public IStorageProvider StorageProvider { get; }
 
         public WorldState(IStateProvider stateProvider, IStorageProvider storageProvider)

@@ -206,20 +206,6 @@ namespace Nethermind.Blockchain
 
         private void RecalculateTreeLevels()
         {
-            if (_syncConfig.BeamSyncFixMode)
-            {
-                if (Head is null)
-                {
-                    throw new InvalidOperationException(
-                        $"Head is null when entering {nameof(_syncConfig.BeamSyncFixMode)}");
-                }
-                
-                BestKnownNumber = Head.Number;
-                BestSuggestedBody = Head;
-                BestSuggestedHeader = Head.Header;
-                return;
-            }
-
             LoadLowestInsertedBodyNumber();
             LoadLowestInsertedHeader();
             LoadBestKnown();

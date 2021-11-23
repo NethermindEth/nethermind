@@ -63,7 +63,7 @@ namespace Nethermind.Consensus.AuRa
                 stateProvider,
                 storageProvider,
                 receiptStorage,
-                NullWitnessCollector.Instance, // TODO: we will not support beam sync on AuRa chains for now
+                NullWitnessCollector.Instance,
                 logManager)
         {
             _specProvider = specProvider;

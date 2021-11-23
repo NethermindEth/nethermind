@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Consensus.Processing;
@@ -23,15 +22,12 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Mev.Data;
 using Nethermind.State;
-using Nethermind.State.Proofs;
-using Nethermind.TxPool;
 using Nethermind.TxPool.Comparison;
 using TxAction = Nethermind.Consensus.Processing.BlockProcessor.TxAction;
 
@@ -43,6 +39,7 @@ namespace Nethermind.Mev
     {
         private readonly IStateProvider _stateProvider;
         private readonly IStorageProvider _storageProvider;
+        private readonly IWorldState _worldState;
         
         public MevBlockProductionTransactionsExecutor(
             ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv,
@@ -67,6 +64,7 @@ namespace Nethermind.Mev
         {
             _stateProvider = stateProvider;
             _storageProvider = storageProvider;
+            _worldState = new WorldState(stateProvider, storageProvider);
         }
         
         public override TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec)
@@ -152,8 +150,8 @@ namespace Nethermind.Mev
             BlockReceiptsTracer receiptsTracer,
             ProcessingOptions processingOptions)
         {
-            int stateSnapshot = _stateProvider.TakeSnapshot();
-            int storageSnapshot = _storageProvider.TakeSnapshot();
+            
+            Snapshot snapshot = _worldState.TakeSnapshot();
             int receiptSnapshot = receiptsTracer.TakeSnapshot();
             UInt256 initialBalance = _stateProvider.GetBalance(block.Header.GasBeneficiary!);
             
@@ -194,9 +192,8 @@ namespace Nethermind.Mev
             }
             else
             {
-                _stateProvider.Restore(stateSnapshot);
-                _storageProvider.Restore(storageSnapshot);
-                receiptsTracer.RestoreSnapshot(receiptSnapshot);
+                _worldState.Restore(snapshot);
+                receiptsTracer.Restore(receiptSnapshot);
                 for (int index = 0; index < bundleTransactions.Count; index++)
                 {
                     transactionsInBlock.Remove(bundleTransactions[index]);

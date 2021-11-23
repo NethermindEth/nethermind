@@ -81,7 +81,7 @@ namespace Nethermind.Synchronization.Blocks
 
         public List<Keccak> NonEmptyBlockHashes { get; }
 
-        public IList<Keccak> GetHashesByOffset(int offset, int maxLength)
+        public IReadOnlyList<Keccak> GetHashesByOffset(int offset, int maxLength)
         {
             var hashesToRequest =
                 offset == 0

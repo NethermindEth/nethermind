@@ -31,13 +31,18 @@ namespace Nethermind.Consensus.Processing
         {
             private readonly ITransactionProcessorAdapter _transactionProcessor;
             private readonly IStateProvider _stateProvider;
-        
+
             public BlockValidationTransactionsExecutor(ITransactionProcessor transactionProcessor, IStateProvider stateProvider)
+                : this(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider)
             {
-                _transactionProcessor = new ExecuteTransactionProcessorAdapter(transactionProcessor);
+            }
+
+            protected BlockValidationTransactionsExecutor(ITransactionProcessorAdapter transactionProcessor, IStateProvider stateProvider)
+            {
+                _transactionProcessor = transactionProcessor;
                 _stateProvider = stateProvider;
             }
-        
+
             public event EventHandler<TxProcessedEventArgs>? TransactionProcessed; 
         
             public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec)

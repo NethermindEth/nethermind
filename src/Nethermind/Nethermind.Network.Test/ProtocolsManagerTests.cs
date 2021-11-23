@@ -28,8 +28,11 @@ using Nethermind.Core.Timers;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.Analyzers;
+using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
+using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.Rlpx;
 using Nethermind.Specs;
@@ -264,16 +267,22 @@ namespace Nethermind.Network.Test
                 return this;
             }
             
-            public Context ReceiveHelloWrongEth()
+            public Context ReceiveHelloEth(int protocolVersion)
             {
                 HelloMessage msg = new HelloMessage();
-                msg.Capabilities = new List<Capability> {new Capability("eth", 61)};
+                msg.Capabilities = new List<Capability> {new Capability("eth", protocolVersion)};
                 msg.NodeId = TestItem.PublicKeyB;
                 msg.ClientId = "other client v1";
                 msg.P2PVersion = 5;
                 msg.ListenPort = 30314;
                 _currentSession.ReceiveMessage(new Packet("p2p", P2PMessageCode.Hello, _serializer.Serialize(msg)));
                 return this;
+            }
+
+            
+            public Context ReceiveHelloWrongEth()
+            {
+                return ReceiveHelloEth(61);
             }
 
             public Context ReceiveStatusWrongChain()
@@ -454,7 +463,7 @@ namespace Nethermind.Network.Test
                 .ReceiveHelloWrongEth()
                 .VerifyDisconnected();
         }
-        
+
         [Test]
         public void Disconnects_on_wrong_chain_id()
         {
@@ -481,6 +490,19 @@ namespace Nethermind.Network.Test
                 .ReceiveHello()
                 .ReceiveStatusWrongGenesis()
                 .VerifyDisconnected();
+        }
+        
+        [Test]
+        public void Initialized_with_eth66_only()
+        {
+            When
+                .CreateIncomingSession()
+                .ActivateChannel()
+                .Handshake()
+                .Init()
+                .VerifyInitialized()
+                .ReceiveHelloEth(66)
+                .VerifyInitialized();
         }
     }
 }

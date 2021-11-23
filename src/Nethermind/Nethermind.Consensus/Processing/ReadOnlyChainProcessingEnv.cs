@@ -47,15 +47,19 @@ namespace Nethermind.Consensus.Processing
             IReceiptStorage receiptStorage,
             IReadOnlyDbProvider dbProvider,
             ISpecProvider specProvider,
-            ILogManager logManager)
+            ILogManager logManager,
+            IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor = null)
         {
             _txEnv = txEnv;
 
+            IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = 
+                blockTransactionsExecutor ?? new BlockProcessor.BlockValidationTransactionsExecutor(_txEnv.TransactionProcessor, StateProvider);
+            
             BlockProcessor = new BlockProcessor(
                 specProvider,
                 blockValidator,
                 rewardCalculator,
-                new BlockProcessor.BlockValidationTransactionsExecutor(_txEnv.TransactionProcessor, StateProvider),
+                transactionsExecutor,
                 StateProvider,
                 _txEnv.StorageProvider,
                 receiptStorage,

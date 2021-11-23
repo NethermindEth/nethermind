@@ -114,7 +114,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         public async Task get_latest_block_should_return_head_number()
         {
             Block block = Build.A.Block.TestObject;
-            _blockchainBridge.BeamHead.Returns(block);
+            _blockchainBridge.HeadBlock.Returns(block);
             _blockFinder.FindBlock(block.Hash).Returns(block);
             Block? result = await _ndmBridge.GetLatestBlockAsync();
             result.Should().Be(block);
@@ -126,7 +126,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         {
             UInt256 nonce = 1;
             Address address = TestItem.AddressA;
-            _blockchainBridge.BeamHead.Returns(_anyBlock);
+            _blockchainBridge.HeadBlock.Returns(_anyBlock);
             _stateReader.GetAccount(_anyBlock.StateRoot, address).Returns(Account.TotallyEmpty.WithChangedNonce(nonce));
             UInt256 result = await _ndmBridge.GetNonceAsync(address);
             _stateReader.Received().GetNonce(_anyBlock.StateRoot, address);
@@ -176,7 +176,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             Block head = Build.A.Block.TestObject;
             Transaction transaction = Build.A.Transaction.TestObject;
             byte[] data = new byte[] {0, 1, 2};
-            _blockchainBridge.BeamHead.Returns(head);
+            _blockchainBridge.HeadBlock.Returns(head);
             BlockchainBridge.CallOutput output = new BlockchainBridge.CallOutput(data, 0, null);
             _blockchainBridge.Call(head?.Header, transaction, default).Returns(output);
             byte[] result = await _ndmBridge.CallAsync(transaction);

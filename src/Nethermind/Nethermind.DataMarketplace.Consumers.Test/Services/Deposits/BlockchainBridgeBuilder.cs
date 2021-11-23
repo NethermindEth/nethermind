@@ -79,7 +79,6 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
                 Timestamper.Default,
                 logFinder,
                 specProvider,
-                false,
                 false);
 
             WalletTxSigner txSigner = new WalletTxSigner(wallet, ChainId.Mainnet);

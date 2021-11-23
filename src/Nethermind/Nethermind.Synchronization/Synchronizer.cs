@@ -27,16 +27,13 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
-using Nethermind.Synchronization.BeamSync;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
-using Nethermind.Synchronization.Peers.AllocationStrategies;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.StateSync;
-using Nethermind.Synchronization.Witness;
 
 namespace Nethermind.Synchronization
 {
@@ -116,90 +113,6 @@ namespace Nethermind.Synchronization
                 StartFastSyncComponents();
                 StartStateSyncComponents();
             }
-
-            if (_syncConfig.FastSync && _syncConfig.BeamSync || _syncConfig.BeamSyncFixMode)
-            {
-                StartBeamSyncComponents();
-
-                if (_syncConfig.WitnessProtocolEnabled)
-                {
-                    StartWitnessSyncComponents();
-                }
-            }
-        }
-
-        private void StartWitnessSyncComponents()
-        {
-            BeamSyncDbProvider? beamSyncDbProvider = _dbProvider as BeamSyncDbProvider;
-            
-            if (beamSyncDbProvider == null)
-            {
-                throw new InvalidOperationException("Corrupted types when initializing beam sync components " +
-                                                    $"received {_dbProvider.GetType().FullName}");
-            }
-            
-            WitnessStateSyncFeed witnessStateSyncFeed = new(beamSyncDbProvider.BeamTempDb, _logManager);
-            StateSyncDispatcher witnessStateSyncDispatcher = new(
-                witnessStateSyncFeed!, _syncPeerPool, new WitnessStateSyncAllocationStrategyFactory(), _logManager);
-            
-            WitnessBlockSyncFeed witnessBlockSyncFeed = new(_blockTree, witnessStateSyncFeed, _syncMode, _logManager);
-            WitnessBlockSyncDispatcher blockSyncDispatcher = 
-                new(witnessBlockSyncFeed!, _syncPeerPool, new WitnessBlockSyncAllocationStrategyFactory(), _logManager);
-
-            blockSyncDispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
-            {
-                if (t.IsFaulted)
-                {
-                    if (_logger.IsError) _logger.Error("Witness block sync failed", t.Exception);
-                }
-                else
-                {
-                    if (_logger.IsInfo) _logger.Info("Witness block sync completed.");
-                }
-            });
-            
-            witnessStateSyncDispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
-            {
-                if (t.IsFaulted)
-                {
-                    if (_logger.IsError) _logger.Error("Witness state sync failed", t.Exception);
-                }
-                else
-                {
-                    if (_logger.IsInfo) _logger.Info("Witness state sync completed.");
-                }
-            });
-        }
-
-        private void StartBeamSyncComponents()
-        {
-            // so bad
-            BeamSyncDbProvider? beamSyncDbProvider = _dbProvider as BeamSyncDbProvider;
-            ISyncFeed<StateSyncBatch?>? beamSyncFeed = beamSyncDbProvider?.BeamSyncFeed;
-            if (beamSyncDbProvider == null || beamSyncFeed == null)
-            {
-                throw new InvalidOperationException("Corrupted types when initializing beam sync components " +
-                                                    $"received {_dbProvider.GetType().FullName}");
-            }
-
-            if (_syncConfig.BeamSyncVerifiedMode)
-            {
-                beamSyncDbProvider.EnableVerifiedMode();
-            }
-
-            StateSyncDispatcher dispatcher = new(
-                beamSyncFeed!, _syncPeerPool, new StateSyncAllocationStrategyFactory(), _logManager);
-            dispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
-            {
-                if (t.IsFaulted)
-                {
-                    if (_logger.IsError) _logger.Error("Beam sync failed", t.Exception);
-                }
-                else
-                {
-                    if (_logger.IsInfo) _logger.Info("Beam sync completed.");
-                }
-            });
         }
 
         public Task StopAsync()
@@ -228,7 +141,7 @@ namespace Nethermind.Synchronization
 
         private void StartStateSyncComponents()
         {
-            _stateSyncFeed = new StateSyncFeed(_dbProvider.CodeDb, _dbProvider.StateDb, _dbProvider.BeamTempDb, _syncMode, _blockTree, _logManager);
+            _stateSyncFeed = new StateSyncFeed(_dbProvider.CodeDb, _dbProvider.StateDb, _syncMode, _blockTree, _logManager);
             StateSyncDispatcher stateSyncDispatcher = new(_stateSyncFeed!, _syncPeerPool, new StateSyncAllocationStrategyFactory(), _logManager);
             Task syncDispatcherTask = stateSyncDispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
             {

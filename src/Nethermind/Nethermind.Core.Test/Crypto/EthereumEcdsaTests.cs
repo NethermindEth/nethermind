@@ -51,7 +51,7 @@ namespace Nethermind.Core.Test.Crypto
             PrivateKey key = Build.A.PrivateKey.TestObject;
             Transaction tx = Build.A.Transaction.TestObject;
             ecdsa.Sign(key, tx, eip155);
-            Address address = ecdsa.RecoverAddress(tx);
+            Address? address = ecdsa.RecoverAddress(tx);
             Assert.AreEqual(key.Address, address);
         }
         
@@ -62,7 +62,7 @@ namespace Nethermind.Core.Test.Crypto
             
             Assert.AreEqual(new Keccak("0x5fd225549ed5c587c843e04578bdd4240fc0d7ab61f8e9faa37e84ec8dc8766d"), tx.Hash, "hash");
             EthereumEcdsa ecdsa = new(ChainId.Ropsten, LimboLogs.Instance);
-            Address from = ecdsa.RecoverAddress(tx);
+            Address? from = ecdsa.RecoverAddress(tx);
             Assert.AreEqual(new Address("0x874b54a8bd152966d63f706bae1ffeb0411921e5"), from, "from");
         }
         
@@ -74,7 +74,7 @@ namespace Nethermind.Core.Test.Crypto
             PrivateKey key = Build.A.PrivateKey.TestObject;
             Transaction tx = Build.A.Transaction.TestObject;
             ecdsa.Sign(key, tx, isEip155Enabled);
-            Address address = ecdsa.RecoverAddress(tx);
+            Address? address = ecdsa.RecoverAddress(tx);
             Assert.AreEqual(key.Address, address);
         }
         
@@ -85,7 +85,7 @@ namespace Nethermind.Core.Test.Crypto
             PrivateKey key = Build.A.PrivateKey.TestObject;
             Transaction tx = Build.A.Transaction.TestObject;
             ecdsa.Sign(key, tx, true);
-            Address address = ecdsa.RecoverAddress(tx);
+            Address? address = ecdsa.RecoverAddress(tx);
             Assert.AreEqual(key.Address, address);
         }
         
@@ -98,7 +98,7 @@ namespace Nethermind.Core.Test.Crypto
             singEcdsa.Sign(key, tx, eip155);
             
             EthereumEcdsa recoverEcdsa = new(ChainId.Kovan, LimboLogs.Instance);
-            Address address = recoverEcdsa.RecoverAddress(tx, true);
+            Address? address = recoverEcdsa.RecoverAddress(tx, true);
             Assert.AreEqual(key.Address, address);
         }
     }

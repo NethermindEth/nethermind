@@ -25,10 +25,14 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
+using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
+using GetPooledTransactionsMessage = Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage;
+using PooledTransactionsMessage = Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 {
@@ -142,55 +146,55 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 
         private void Handle(GetBlockHeadersMessage getBlockHeaders)
         {
-            Eth.V62.BlockHeadersMessage ethBlockHeadersMessage =
+            V62.Messages.BlockHeadersMessage ethBlockHeadersMessage =
                 FulfillBlockHeadersRequest(getBlockHeaders.EthMessage);
             Send(new BlockHeadersMessage(getBlockHeaders.RequestId, ethBlockHeadersMessage));
         }
 
         private void Handle(GetBlockBodiesMessage getBlockBodies)
         {
-            Eth.V62.BlockBodiesMessage ethBlockBodiesMessage =
+            V62.Messages.BlockBodiesMessage ethBlockBodiesMessage =
                 FulfillBlockBodiesRequest(getBlockBodies.EthMessage);
             Send(new BlockBodiesMessage(getBlockBodies.RequestId, ethBlockBodiesMessage));
         }
 
         private void Handle(GetPooledTransactionsMessage getPooledTransactions)
         {
-            Eth.V65.PooledTransactionsMessage pooledTransactionsMessage =
+            V65.Messages.PooledTransactionsMessage pooledTransactionsMessage =
                 FulfillPooledTransactionsRequest(getPooledTransactions.EthMessage);
             Send(new PooledTransactionsMessage(getPooledTransactions.RequestId, pooledTransactionsMessage));
         }
 
         private void Handle(GetReceiptsMessage getReceiptsMessage)
         {
-            Eth.V63.ReceiptsMessage receiptsMessage =
+            V63.Messages.ReceiptsMessage receiptsMessage =
                 FulfillReceiptsRequest(getReceiptsMessage.EthMessage);
             Send(new ReceiptsMessage(getReceiptsMessage.RequestId, receiptsMessage));
         }
 
         private void Handle(GetNodeDataMessage getNodeDataMessage)
         {
-            Eth.V63.NodeDataMessage nodeDataMessage =
+            V63.Messages.NodeDataMessage nodeDataMessage =
                 FulfillNodeDataRequest(getNodeDataMessage.EthMessage);
             Send(new NodeDataMessage(getNodeDataMessage.RequestId, nodeDataMessage));
         }
         
-        protected override void Handle(Eth.V62.BlockHeadersMessage message, long size)
+        protected override void Handle(V62.Messages.BlockHeadersMessage message, long size)
         {
             _headersRequests66.Handle(message.BlockHeaders, size);
         }
 
-        protected override void HandleBodies(Eth.V62.BlockBodiesMessage blockBodiesMessage, long size)
+        protected override void HandleBodies(V62.Messages.BlockBodiesMessage blockBodiesMessage, long size)
         {
             _bodiesRequests66.Handle(blockBodiesMessage.Bodies, size);
         }
         
-        protected override void Handle(Eth.V63.NodeDataMessage msg, int size)
+        protected override void Handle(V63.Messages.NodeDataMessage msg, int size)
         {
             _nodeDataRequests66.Handle(msg.Data, size);
         }
         
-        protected override void Handle(Eth.V63.ReceiptsMessage msg, long size)
+        protected override void Handle(V63.Messages.ReceiptsMessage msg, long size)
         {
             _receiptsRequests66.Handle(msg.TxReceipts, size);
         }
@@ -207,7 +211,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                              $"in {stopwatch.Elapsed.TotalMilliseconds}ms");
         }
 
-        protected override async Task<BlockHeader[]> SendRequest(Eth.V62.GetBlockHeadersMessage message, CancellationToken token)
+        protected override async Task<BlockHeader[]> SendRequest(V62.Messages.GetBlockHeadersMessage message, CancellationToken token)
         {
             if (Logger.IsTrace)
             {
@@ -247,7 +251,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             throw new TimeoutException($"{Session} Request timeout in {nameof(GetBlockHeadersMessage)} with {message.MaxHeaders} max headers");
         }
         
-        protected override async Task<BlockBody[]> SendRequest(Eth.V62.GetBlockBodiesMessage message, CancellationToken token)
+        protected override async Task<BlockBody[]> SendRequest(V62.Messages.GetBlockBodiesMessage message, CancellationToken token)
         {
             if (Logger.IsTrace)
             {
@@ -287,7 +291,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             throw new TimeoutException($"{Session} Request timeout in {nameof(GetBlockBodiesMessage)} with {message.BlockHashes.Count} block hashes");
         }
         
-        protected override async Task<byte[][]> SendRequest(Eth.V63.GetNodeDataMessage message, CancellationToken token)
+        protected override async Task<byte[][]> SendRequest(V63.Messages.GetNodeDataMessage message, CancellationToken token)
         {
             if (Logger.IsTrace)
             {
@@ -326,7 +330,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             throw new TimeoutException($"{Session} Request timeout in {nameof(GetNodeDataMessage)}");
         }
         
-        protected override async Task<TxReceipt[][]> SendRequest(Eth.V63.GetReceiptsMessage message, CancellationToken token)
+        protected override async Task<TxReceipt[][]> SendRequest(V63.Messages.GetReceiptsMessage message, CancellationToken token)
         {
             if (Logger.IsTrace)
             {

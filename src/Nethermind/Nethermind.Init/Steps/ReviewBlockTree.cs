@@ -59,7 +59,7 @@ namespace Nethermind.Init.Steps
             
             if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.BlockTree));
 
-            if (!syncConfig.FastSync && !syncConfig.BeamSync)
+            if (!syncConfig.FastSync)
             {
                 DbBlocksLoader loader = new(_api.BlockTree, _logger);
                 await _api.BlockTree.Accept(loader, cancellationToken).ContinueWith(t =>

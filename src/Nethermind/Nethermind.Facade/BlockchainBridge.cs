@@ -54,7 +54,6 @@ namespace Nethermind.Facade
         private readonly IStateReader _stateReader;
         private readonly IEthereumEcdsa _ecdsa;
         private readonly ITimestamper _timestamper;
-        private readonly bool _isBeamSyncing;
         private readonly IFilterManager _filterManager;
         private readonly IStateProvider _stateProvider;
         private readonly IReceiptFinder _receiptFinder;
@@ -62,8 +61,7 @@ namespace Nethermind.Facade
         private readonly ILogFinder _logFinder;
         private readonly ISpecProvider _specProvider;
 
-        public BlockchainBridge(
-            ReadOnlyTxProcessingEnv processingEnv,
+        public BlockchainBridge(ReadOnlyTxProcessingEnv processingEnv,
             ITxPool? txPool,
             IReceiptFinder? receiptStorage,
             IFilterStore? filterStore,
@@ -72,8 +70,7 @@ namespace Nethermind.Facade
             ITimestamper? timestamper,
             ILogFinder? logFinder,
             ISpecProvider specProvider,
-            bool isMining,
-            bool isBeamSyncing)
+            bool isMining)
         {
             _processingEnv = processingEnv ?? throw new ArgumentNullException(nameof(processingEnv));
             _stateReader = processingEnv.StateReader ?? throw new ArgumentNullException(nameof(processingEnv.StateReader));
@@ -88,32 +85,14 @@ namespace Nethermind.Facade
             _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
             _logFinder = logFinder ?? throw new ArgumentNullException(nameof(logFinder));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _isBeamSyncing = isBeamSyncing;
             IsMining = isMining;
         }
         
-        public Block BeamHead
+        public Block? HeadBlock
         {
             get
             {
-                Block result;
-                if (_isBeamSyncing)
-                {
-                    bool headIsGenesis = _blockTree.Head?.IsGenesis ?? false;
-
-                    /*
-                     * when we are in the process of synchronising state in beam sync
-                     * head remains Genesis block
-                     * and we want to allow users to use the API
-                     */
-                    result = headIsGenesis ? _blockTree.BestSuggestedBody : _blockTree.Head;
-                }
-                else
-                {
-                    result = _blockTree.Head;    
-                }
-                
-                return result;
+                return _blockTree.Head;    
             }
         }
 
@@ -242,7 +221,7 @@ namespace Nethermind.Facade
 
         private (bool Success, string Error) TryCallAndRestore(
             BlockHeader blockHeader,
-            UInt256 timestamp,
+            in UInt256 timestamp,
             Transaction transaction,
             bool treatBlockHeaderAsParentBlock,
             ITxTracer tracer)
@@ -260,7 +239,7 @@ namespace Nethermind.Facade
 
         private void CallAndRestore(
             BlockHeader blockHeader,
-            UInt256 timestamp,
+            in UInt256 timestamp,
             Transaction transaction,
             bool treatBlockHeaderAsParentBlock,
             ITxTracer tracer)

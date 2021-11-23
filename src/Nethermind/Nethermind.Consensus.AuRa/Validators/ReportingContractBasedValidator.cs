@@ -28,6 +28,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Int256;
+using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa.Validators
@@ -43,7 +44,6 @@ namespace Nethermind.Consensus.AuRa.Validators
         private readonly Cache _cache;
         private readonly ISpecProvider _specProvider;
         private readonly ITxSender _nonPosdaoTxSender;
-        private readonly ITxSender _nonPosdao1559TxSender;
         private readonly ILogger _logger;
 
         public ReportingContractBasedValidator(
@@ -56,6 +56,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             IReadOnlyStateProvider stateProvider,
             Cache cache,
             ISpecProvider specProvider,
+            IGasPriceOracle gasPriceOracle,
             ILogManager logManager)
         {
             _contractValidator = contractValidator ?? throw new ArgumentNullException(nameof(contractValidator));
@@ -65,8 +66,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _cache = cache ?? throw new ArgumentNullException(nameof(cache));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _nonPosdaoTxSender = new TxGasPriceSender(txSender, txPool, miningConfig);
-            _nonPosdao1559TxSender = new TxGasPrice1559Sender(txSender, txPool, miningConfig);
+            _nonPosdaoTxSender = new TxGasPriceSender(txSender, gasPriceOracle);
             _persistentReports = cache.PersistentReports;
             _logger = logManager?.GetClassLogger<ReportingContractBasedValidator>() ?? throw new ArgumentNullException(nameof(logManager));
         }
@@ -169,8 +169,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         private ITxSender SetSender(long blockNumber)
         {
             bool posdao = IsPosdao(blockNumber);
-            bool isEip1559Enabled = _specProvider.GetSpec(blockNumber).IsEip1559Enabled;
-            return posdao ? _posdaoTxSender : (isEip1559Enabled ? _nonPosdao1559TxSender: _nonPosdaoTxSender);
+            return posdao ? _posdaoTxSender : _nonPosdaoTxSender;
         }
 
         private bool IsPosdao(long blockNumber) => _posdaoTransition <= blockNumber;

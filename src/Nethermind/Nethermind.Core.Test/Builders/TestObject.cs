@@ -93,17 +93,19 @@ namespace Nethermind.Core.Test.Builders
         public static Address AddressB = PublicKeyB.Address;
         public static Address AddressC = PublicKeyC.Address;
         public static Address AddressD = PublicKeyD.Address;
+        public static Address AddressE = PublicKeyE.Address;
+        public static Address AddressF = PublicKeyF.Address;
 
         public static Bloom NonZeroBloom;
         
-        public static Address GetRandomAddress(Random random = null)
+        public static Address GetRandomAddress(Random? random = null)
         {
             byte[] bytes = new byte[20];
             (random ?? _random).NextBytes(bytes);
             return new Address(bytes);
         }
         
-        public static Keccak GetRandomKeccak(Random random = null)
+        public static Keccak GetRandomKeccak(Random? random = null)
         {
             byte[] bytes = new byte[32];
             (random ?? _random).NextBytes(bytes);

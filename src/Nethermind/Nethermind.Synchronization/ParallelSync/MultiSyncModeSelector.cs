@@ -44,7 +44,6 @@ namespace Nethermind.Synchronization.ParallelSync
         protected readonly ILogger _logger;
 
         private long PivotNumber;
-        private bool BeamSyncEnabled => _syncConfig.BeamSync;
         private bool FastSyncEnabled => _syncConfig.FastSync;
         private bool FastBlocksEnabled => _syncConfig.FastSync && _syncConfig.FastBlocks;
         private bool FastBodiesEnabled => FastBlocksEnabled && _syncConfig.DownloadBodiesInFastSync;
@@ -135,7 +134,6 @@ namespace Nethermind.Synchronization.ParallelSync
                         {
                             best.IsInFastSync = ShouldBeInFastSyncMode(best);
                             best.IsInStateSync = ShouldBeInStateNodesMode(best);
-                            best.IsInBeamSync = ShouldBeInBeamSyncMode(best);
                             best.IsInFullSync = ShouldBeInFullSyncMode(best);
                             best.IsInFastHeaders = ShouldBeInFastHeadersMode(best);
                             best.IsInFastBodies = ShouldBeInFastBodiesMode(best);
@@ -143,7 +141,6 @@ namespace Nethermind.Synchronization.ParallelSync
                             best.IsInDisconnected = ShouldBeInDisconnectedMode(best);
                             best.IsInWaitingForBlock = ShouldBeInWaitingForBlockMode(best);
                             newModes = SyncMode.None;
-                            CheckAddFlag(best.IsInBeamSync, SyncMode.Beam, ref newModes);
                             CheckAddFlag(best.IsInFastHeaders, SyncMode.FastHeaders, ref newModes);
                             CheckAddFlag(best.IsInFastBodies, SyncMode.FastBodies, ref newModes);
                             CheckAddFlag(best.IsInFastReceipts, SyncMode.FastReceipts, ref newModes);
@@ -210,7 +207,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
             // Changing is invoked here so we can block until all the subsystems are ready to switch
             // for example when switching to Full sync we need to ensure that we safely transition
-            // the beam sync DB and beam processor
+            // DBS and processors if needed
 
             Preparing?.Invoke(this, args);
             Changing?.Invoke(this, args);
@@ -255,14 +252,12 @@ namespace Nethermind.Synchronization.ParallelSync
             bool noDesiredPeerKnown = !AnyDesiredPeerKnown(best);
             bool postPivotPeerAvailable = AnyPostPivotPeerKnown(best.PeerBlock);
             bool hasFastSyncBeenActive = best.Header >= PivotNumber;
-            bool notInBeamSync = !best.IsInBeamSync;
             bool notInFastSync = !best.IsInFastSync;
             bool notInStateSync = !best.IsInStateSync;
 
             bool result = noDesiredPeerKnown &&
                           postPivotPeerAvailable &&
                           hasFastSyncBeenActive &&
-                          notInBeamSync &&
                           notInFastSync &&
                           notInStateSync;
 
@@ -272,7 +267,6 @@ namespace Nethermind.Synchronization.ParallelSync
                         (nameof(noDesiredPeerKnown), noDesiredPeerKnown),
                         (nameof(postPivotPeerAvailable),postPivotPeerAvailable),
                         (nameof(hasFastSyncBeenActive),hasFastSyncBeenActive),
-                        (nameof(notInBeamSync), notInBeamSync),
                         (nameof(notInFastSync), notInFastSync),
                         (nameof(notInStateSync), notInStateSync));
             }
@@ -325,14 +319,12 @@ namespace Nethermind.Synchronization.ParallelSync
             bool desiredPeerKnown = AnyDesiredPeerKnown(best);
             bool postPivotPeerAvailable = AnyPostPivotPeerKnown(best.PeerBlock);
             bool hasFastSyncBeenActive = best.Header >= PivotNumber;
-            bool notInBeamSync = !best.IsInBeamSync;
             bool notInFastSync = !best.IsInFastSync;
             bool notInStateSync = !best.IsInStateSync;
 
             bool result = desiredPeerKnown &&
                           postPivotPeerAvailable &&
                           hasFastSyncBeenActive &&
-                          notInBeamSync &&
                           notInFastSync &&
                           notInStateSync;
 
@@ -342,7 +334,6 @@ namespace Nethermind.Synchronization.ParallelSync
                     (nameof(desiredPeerKnown), desiredPeerKnown),
                     (nameof(postPivotPeerAvailable), postPivotPeerAvailable),
                     (nameof(hasFastSyncBeenActive), hasFastSyncBeenActive),
-                    (nameof(notInBeamSync), notInBeamSync),
                     (nameof(notInFastSync), notInFastSync),
                     (nameof(notInStateSync), notInStateSync));
             }
@@ -416,8 +407,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private bool ShouldBeInDisconnectedMode(Snapshot best)
         {
-            return !best.IsInBeamSync &&
-                   !best.IsInFastBodies &&
+            return !best.IsInFastBodies &&
                    !best.IsInFastHeaders &&
                    !best.IsInFastReceipts &&
                    !best.IsInFastSync &&
@@ -457,24 +447,6 @@ namespace Nethermind.Synchronization.ParallelSync
                     (nameof(stateNotDownloadedYet), stateNotDownloadedYet),
                     (nameof(notInAStickyFullSync), notInAStickyFullSync),
                     (nameof(notHasJustStartedFullSync), notHasJustStartedFullSync));
-            }
-
-            return result;
-        }
-
-        private bool ShouldBeInBeamSyncMode(Snapshot best)
-        {
-            bool beamSyncEnabled = BeamSyncEnabled;
-            bool isInStateSync = best.IsInStateSync;
-
-            bool result = beamSyncEnabled &&
-                          isInStateSync;
-
-            if (_logger.IsTrace)
-            {
-                LogDetailedSyncModeChecks("BEAM",
-                    (nameof(beamSyncEnabled), beamSyncEnabled),
-                    (nameof(isInStateSync), isInStateSync));
             }
 
             return result;
@@ -531,7 +503,7 @@ namespace Nethermind.Synchronization.ParallelSync
             _timer.Dispose();
         }
 
-        private Snapshot TakeSnapshot(UInt256 peerDifficulty, long peerBlock)
+        private Snapshot TakeSnapshot(in UInt256 peerDifficulty, long peerBlock)
         {
             // need to find them in the reversed order otherwise we may fall behind the processing
             // and think that we have an invalid snapshot
@@ -572,8 +544,6 @@ namespace Nethermind.Synchronization.ParallelSync
             }
         }
 
-        private string GetBoolFlagString(in bool flag) => flag ? string.Empty : "!";
-
         private void LogDetailedSyncModeChecks(string syncType, params (string Name, bool IsSatisfied)[] checks)
         {
             List<string> matched = new();
@@ -602,7 +572,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         protected ref struct Snapshot
         {
-            public Snapshot(long processed, long state, long block, long header, long peerBlock, UInt256 peerDifficulty)
+            public Snapshot(long processed, long state, long block, long header, long peerBlock, in UInt256 peerDifficulty)
             {
                 Processed = processed;
                 State = state;
@@ -611,7 +581,7 @@ namespace Nethermind.Synchronization.ParallelSync
                 PeerBlock = peerBlock;
                 PeerDifficulty = peerDifficulty;
 
-                IsInWaitingForBlock = IsInDisconnected = IsInFastReceipts = IsInFastBodies = IsInFastHeaders = IsInFastSync = IsInBeamSync = IsInFullSync = IsInStateSync = false;
+                IsInWaitingForBlock = IsInDisconnected = IsInFastReceipts = IsInFastBodies = IsInFastHeaders = IsInFastSync = IsInFullSync = IsInStateSync = false;
             }
 
             public bool IsInFastHeaders { get; set; }
@@ -619,7 +589,6 @@ namespace Nethermind.Synchronization.ParallelSync
             public bool IsInFastReceipts { get; set; }
             public bool IsInFastSync { get; set; }
             public bool IsInStateSync { get; set; }
-            public bool IsInBeamSync { get; set; }
             public bool IsInFullSync { get; set; }
             public bool IsInDisconnected { get; set; }
             public bool IsInWaitingForBlock { get; set; }

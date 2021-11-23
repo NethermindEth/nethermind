@@ -48,10 +48,6 @@ namespace Nethermind.Synchronization.ParallelSync
         /// </summary>
         Full = 32,
         /// <summary>
-        /// Beam sync is not implemented yet.
-        /// </summary>
-        Beam = 64,
-        /// <summary>
         /// Loading previously downloaded blocks from the DB
         /// </summary>
         DbLoad = 128,
@@ -68,7 +64,7 @@ namespace Nethermind.Synchronization.ParallelSync
         /// </summary>
         FastReceipts = FastBlocks | 1024,
         
-        All = WaitingForBlock | Disconnected | FastBlocks | FastSync | StateNodes | StateNodes | Full | Beam | DbLoad | FastHeaders | FastBodies | FastReceipts
+        All = WaitingForBlock | Disconnected | FastBlocks | FastSync | StateNodes | StateNodes | Full | DbLoad | FastHeaders | FastBodies | FastReceipts
     }
     
     public static class SyncModeExtensions

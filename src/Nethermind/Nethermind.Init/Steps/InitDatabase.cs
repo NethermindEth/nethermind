@@ -27,7 +27,6 @@ using Nethermind.Db.Rocks.Config;
 using Nethermind.Db.Rpc;
 using Nethermind.JsonRpc.Client;
 using Nethermind.Logging;
-using Nethermind.Synchronization.BeamSync;
 using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Init.Steps
@@ -61,12 +60,6 @@ namespace Nethermind.Init.Steps
                 InitDbApi(initConfig, dbConfig, initConfig.StoreReceipts || syncConfig.DownloadReceiptsInFastSync);
                 StandardDbInitializer dbInitializer = new(_api.DbProvider, _api.RocksDbFactory, _api.MemDbFactory, _api.LogManager);
                 await dbInitializer.InitStandardDbsAsync(useReceiptsDb);
-                if (syncConfig.BeamSync)
-                {
-                    _api.SyncModeSelector = new PendingSyncModeSelector();
-                    BeamSyncDbProvider beamSyncProvider = new(_api.SyncModeSelector, _api.DbProvider, _api.Config<ISyncConfig>(), _api.LogManager);
-                    _api.DbProvider = beamSyncProvider;
-                }
             }
             catch(TypeInitializationException e)
             {

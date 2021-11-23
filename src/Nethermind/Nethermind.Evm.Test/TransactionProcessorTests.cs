@@ -49,7 +49,7 @@ namespace Nethermind.Evm.Test
         private readonly ISpecProvider _specProvider;
         private IEthereumEcdsa _ethereumEcdsa;
         private TransactionProcessor _transactionProcessor;
-        private StateProvider _stateProvider;
+        private IStateProvider _stateProvider;
 
         public TransactionProcessorTests(bool eip155Enabled)
         {
@@ -68,7 +68,7 @@ namespace Nethermind.Evm.Test
             _stateProvider.CommitTree(0);
 
             StorageProvider storageProvider = new(trieStore, _stateProvider, LimboLogs.Instance);
-            VirtualMachine virtualMachine = new(_specProvider.ChainId, TestBlockhashProvider.Instance, LimboLogs.Instance);
+            VirtualMachine virtualMachine = new(TestBlockhashProvider.Instance, _specProvider, LimboLogs.Instance);
             _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, storageProvider, virtualMachine, LimboLogs.Instance);
             _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId, LimboLogs.Instance);
         }

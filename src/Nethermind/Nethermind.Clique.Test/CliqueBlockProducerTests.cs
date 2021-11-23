@@ -135,7 +135,7 @@ namespace Nethermind.Clique.Test
                 _genesis3Validators.Header.Hash = _genesis3Validators.Header.CalculateHash();
                 
                 StorageProvider storageProvider = new StorageProvider(trieStore, stateProvider, nodeLogManager);
-                TransactionProcessor transactionProcessor = new TransactionProcessor(goerliSpecProvider, stateProvider, storageProvider, new VirtualMachine(specProvider.ChainId, blockhashProvider, nodeLogManager), nodeLogManager);
+                TransactionProcessor transactionProcessor = new TransactionProcessor(goerliSpecProvider, stateProvider, storageProvider, new VirtualMachine(blockhashProvider, specProvider, nodeLogManager), nodeLogManager);
                 BlockProcessor blockProcessor = new BlockProcessor(
                     goerliSpecProvider,
                     Always.Valid,
@@ -154,7 +154,7 @@ namespace Nethermind.Clique.Test
               
                 StateProvider minerStateProvider = new StateProvider(minerTrieStore, codeDb, nodeLogManager);
                 StorageProvider minerStorageProvider = new StorageProvider(minerTrieStore, minerStateProvider, nodeLogManager);
-                VirtualMachine minerVirtualMachine = new VirtualMachine(specProvider.ChainId, blockhashProvider, nodeLogManager);
+                VirtualMachine minerVirtualMachine = new VirtualMachine(blockhashProvider, specProvider, nodeLogManager);
                 TransactionProcessor minerTransactionProcessor = new TransactionProcessor(goerliSpecProvider, minerStateProvider, minerStorageProvider, minerVirtualMachine, nodeLogManager);
                 
                 BlockProcessor minerBlockProcessor = new BlockProcessor(

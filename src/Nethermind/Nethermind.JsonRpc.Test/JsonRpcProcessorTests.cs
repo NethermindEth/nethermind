@@ -24,6 +24,7 @@ using FluentAssertions;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
+using Nethermind.JsonRpc.Modules;
 using Newtonsoft.Json;
 using NSubstitute;
 using NUnit.Framework;
@@ -37,6 +38,7 @@ namespace Nethermind.JsonRpc.Test
     {
         private readonly bool _returnErrors;
         private IFileSystem _fileSystem;
+        private JsonRpcContext _context;
 
         private JsonRpcErrorResponse _errorResponse = new();
         
@@ -61,6 +63,7 @@ namespace Nethermind.JsonRpc.Test
             JsonRpcConfig configWithRecorder = new() {RpcRecorderState = RpcRecorderState.All};
 
             _jsonRpcProcessor = new JsonRpcProcessor(service, new EthereumJsonSerializer(), configWithRecorder, _fileSystem, LimboLogs.Instance);
+            _context = new JsonRpcContext(RpcEndpoint.Http);
         }
 
         private JsonRpcProcessor _jsonRpcProcessor;
@@ -73,7 +76,7 @@ namespace Nethermind.JsonRpc.Test
             Assert.AreEqual("840b55c4-18b0-431c-be1d-6d22198b53f2", result[0].Response.Id);
         }
 
-        private Task<List<JsonRpcResult>> ProcessAsync(string request) => _jsonRpcProcessor.ProcessAsync(request, JsonRpcContext.Http).ToListAsync();
+        private Task<List<JsonRpcResult>> ProcessAsync(string request) => _jsonRpcProcessor.ProcessAsync(request, _context).ToListAsync();
 
         [Test]
         public async Task Can_process_non_hex_ids()

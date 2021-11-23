@@ -82,7 +82,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 _logManager);
             
             _subscribeRpcModule = new SubscribeRpcModule(_subscriptionManager);
-            _subscribeRpcModule.Context = new JsonRpcContext(RpcEndpoint.WebSocket, _jsonRpcDuplexClient);
+            _subscribeRpcModule.Context = new JsonRpcContext(RpcEndpoint.Ws, _jsonRpcDuplexClient);
             
             // block numbers matching filters in LogsSubscriptions with null arguments will be 33333-77777
             BlockHeader fromBlock = Build.A.BlockHeader.WithNumber(33333).TestObject;
@@ -146,6 +146,25 @@ namespace Nethermind.JsonRpc.Test.Modules
             manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(100));
 
             subscriptionId = newPendingTransactionsSubscription.Id;
+            return jsonRpcResult;
+        }
+        
+        private JsonRpcResult GetDroppedPendingTransactionsResult(TxEventArgs txEventArgs, out string subscriptionId)
+        {
+            DroppedPendingTransactionsSubscription droppedPendingTransactionsSubscription = new(_jsonRpcDuplexClient, _txPool, _logManager);
+            JsonRpcResult jsonRpcResult = new();
+
+            ManualResetEvent manualResetEvent = new(false);
+            droppedPendingTransactionsSubscription.JsonRpcDuplexClient.SendJsonRpcResult(Arg.Do<JsonRpcResult>(j =>
+            {
+                jsonRpcResult = j;
+                manualResetEvent.Set();
+            }));
+            
+            _txPool.EvictedPending += Raise.EventWith(new object(), txEventArgs);
+            manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(100));
+
+            subscriptionId = droppedPendingTransactionsSubscription.Id;
             return jsonRpcResult;
         }
 
@@ -711,6 +730,54 @@ namespace Nethermind.JsonRpc.Test.Modules
             TxEventArgs txEventArgs = new(transaction);
             
             JsonRpcResult jsonRpcResult = GetNewPendingTransactionsResult(txEventArgs, out var subscriptionId);
+            
+            jsonRpcResult.Response.Should().NotBeNull();
+            string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response);
+            var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\"}}");
+            expectedResult.Should().Be(serialized);
+        }
+        
+        [Test]
+        public void DroppedPendingTransactionsSubscription_creating_result()
+        {
+            string serialized = RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "droppedPendingTransactions");
+            var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", serialized.Substring(serialized.Length - 44,34), "\",\"id\":67}");
+            expectedResult.Should().Be(serialized);
+        }
+        
+        [Test]
+        public void DroppedPendingTransactionsSubscription_on_EvictedPending_event()
+        {
+            Transaction transaction = Build.A.Transaction.TestObject;
+            transaction.Hash = TestItem.KeccakA;
+            TxEventArgs txEventArgs = new(transaction);
+            
+            JsonRpcResult jsonRpcResult = GetDroppedPendingTransactionsResult(txEventArgs, out var subscriptionId);
+            
+            jsonRpcResult.Response.Should().NotBeNull();
+            string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response);
+            var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":\"", TestItem.KeccakA, "\"}}");
+            expectedResult.Should().Be(serialized);
+        }
+
+        [Test]
+        public void DroppedPendingTransactionsSubscription_on_EvictedPending_event_with_null_transaction()
+        {
+            TxEventArgs txEventArgs = new(null);
+            
+            JsonRpcResult jsonRpcResult = GetDroppedPendingTransactionsResult(txEventArgs, out _);
+            
+            jsonRpcResult.Response.Should().BeNull();
+        }
+        
+        [Test]
+        public void DroppedPendingTransactionsSubscription_on_EvictedPending_event_with_null_transactions_hash()
+        {
+            Transaction transaction = Build.A.Transaction.TestObject;
+            transaction.Hash = null;
+            TxEventArgs txEventArgs = new(transaction);
+            
+            JsonRpcResult jsonRpcResult = GetDroppedPendingTransactionsResult(txEventArgs, out var subscriptionId);
             
             jsonRpcResult.Response.Should().NotBeNull();
             string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response);

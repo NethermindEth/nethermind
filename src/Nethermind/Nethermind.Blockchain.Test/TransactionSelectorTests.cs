@@ -203,7 +203,7 @@ namespace Nethermind.Blockchain.Test
                 new(specProvider, blockTree);
             IComparer<Transaction> defaultComparer = transactionComparerProvider.GetDefaultComparer();
             IComparer<Transaction> comparer = CompareTxByNonce.Instance.ThenBy(defaultComparer);
-            Dictionary<Address?, Transaction[]> transactions = testCase.Transactions
+            Dictionary<Address, Transaction[]> transactions = testCase.Transactions
                 .Where(t => t?.SenderAddress != null)
                 .GroupBy(t => t.SenderAddress)
                 .ToDictionary(

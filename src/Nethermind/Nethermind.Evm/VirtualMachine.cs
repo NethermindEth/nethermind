@@ -68,6 +68,7 @@ namespace Nethermind.Evm
         private readonly byte[] _chainId;
 
         private readonly IBlockhashProvider _blockhashProvider;
+        private readonly ISpecProvider _specProvider;
         private static readonly ICache<Keccak, CodeInfo> _codeCache = new LruCache<Keccak, CodeInfo>(MemoryAllowance.CodeCacheSize, MemoryAllowance.CodeCacheSize, "VM bytecodes");
         private readonly ILogger _logger;
         private IWorldState _worldState;
@@ -80,17 +81,18 @@ namespace Nethermind.Evm
         private ITxTracer _txTracer = NullTxTracer.Instance;
 
         public VirtualMachine(
-            ulong chainId,
             IBlockhashProvider? blockhashProvider,
+            ISpecProvider? specProvider,
             ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockhashProvider = blockhashProvider ?? throw new ArgumentNullException(nameof(blockhashProvider));
-            _chainId = ((UInt256)chainId).ToBigEndian();
+            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+            _chainId = ((UInt256)specProvider.ChainId).ToBigEndian();
             InitializePrecompiledContracts();
         }
 
-        public TransactionSubstate Run(EvmState state, IWorldState worldState, IReleaseSpec releaseSpec, ITxTracer txTracer)
+        public TransactionSubstate Run(EvmState state, IWorldState worldState, ITxTracer txTracer)
         {
             _txTracer = txTracer;
 
@@ -98,7 +100,7 @@ namespace Nethermind.Evm
             _storage = worldState.StorageProvider;
             _worldState = worldState;
             
-            IReleaseSpec spec = releaseSpec;
+            IReleaseSpec spec = _specProvider.GetSpec(state.Env.TxExecutionContext.Header.Number);
             EvmState currentState = state;
             byte[] previousCallResult = null;
             ZeroPaddedSpan previousCallOutput = ZeroPaddedSpan.Empty;
@@ -157,8 +159,7 @@ namespace Nethermind.Evm
                         if (callResult.IsException)
                         {
                             if (_txTracer.IsTracingActions) _txTracer.ReportActionError(callResult.ExceptionType);
-                            _state.Restore(currentState.StateSnapshot);
-                            _storage.Restore(currentState.StorageSnapshot);
+                            _worldState.Restore(currentState.Snapshot);
 
                             if (_parityTouchBugAccount != null)
                             {
@@ -229,7 +230,13 @@ namespace Nethermind.Evm
                             }
                         }
 
-                        return new TransactionSubstate(callResult.Output, currentState.Refund, currentState.DestroyList, currentState.Logs, callResult.ShouldRevert, _txTracer != NullTxTracer.Instance);
+                        return new TransactionSubstate(
+                            callResult.Output, 
+                            currentState.Refund, 
+                            (IReadOnlyCollection<Address>)currentState.DestroyList, 
+                            (IReadOnlyCollection<LogEntry>)currentState.Logs, 
+                            callResult.ShouldRevert, 
+                            _txTracer != NullTxTracer.Instance);
                     }
 
                     Address callCodeOwner = currentState.Env.ExecutingAccount;
@@ -267,8 +274,7 @@ namespace Nethermind.Evm
                                 if (spec.FailOnOutOfGasCodeDeposit || invalidCode)
                                 {
                                     currentState.GasAvailable -= gasAvailableForCodeDeposit;
-                                    _state.Restore(previousState.StateSnapshot);
-                                    _storage.Restore(previousState.StorageSnapshot);
+                                    worldState.Restore(previousState.Snapshot);
                                     if (!previousState.IsCreateOnPreExistingAccount)
                                     {
                                         _state.DeleteAccount(callCodeOwner);
@@ -315,8 +321,7 @@ namespace Nethermind.Evm
                     }
                     else
                     {
-                        _state.Restore(previousState.StateSnapshot);
-                        _storage.Restore(previousState.StorageSnapshot);
+                        worldState.Restore(previousState.Snapshot);
                         _returnDataBuffer = callResult.Output;
                         previousCallResult = StatusCode.FailureBytes;
                         previousCallOutput = callResult.Output.AsSpan().SliceWithZeroPadding(0, Math.Min(callResult.Output.Length, (int) previousState.OutputLength));
@@ -335,8 +340,7 @@ namespace Nethermind.Evm
                 {
                     if (_logger.IsTrace) _logger.Trace($"exception ({ex.GetType().Name}) in {currentState.ExecutionType} at depth {currentState.Env.CallDepth} - restoring snapshot");
 
-                    _state.Restore(currentState.StateSnapshot);
-                    _storage.Restore(currentState.StorageSnapshot);
+                    _worldState.Restore(currentState.Snapshot);
 
                     if (_parityTouchBugAccount != null)
                     {
@@ -2322,8 +2326,7 @@ namespace Nethermind.Evm
 
                         _state.IncrementNonce(env.ExecutingAccount);
 
-                        int stateSnapshot = _state.TakeSnapshot();
-                        int storageSnapshot = _storage.TakeSnapshot();
+                        Snapshot snapshot = _worldState.TakeSnapshot();
 
                         bool accountExists = _state.AccountExists(contractAddress);
                         if (accountExists && (GetCachedCodeInfo(_worldState, contractAddress, spec).MachineCode.Length != 0 || _state.GetNonce(contractAddress) != 0))
@@ -2361,8 +2364,7 @@ namespace Nethermind.Evm
                             callEnv,
                             instruction == Instruction.CREATE2 ? ExecutionType.Create2 : ExecutionType.Create,
                             false,
-                            stateSnapshot,
-                            storageSnapshot,
+                            snapshot,
                             0L,
                             0L,
                             vmState.IsStatic,
@@ -2518,8 +2520,7 @@ namespace Nethermind.Evm
 
                         ReadOnlyMemory<byte> callData = vmState.Memory.Load(in dataOffset, dataLength);
 
-                        int stateSnapshot = _state.TakeSnapshot();
-                        int storageSnapshot = _storage.TakeSnapshot();
+                        Snapshot snapshot = _worldState.TakeSnapshot();
                         _state.SubtractFromBalance(caller, transferValue, spec);
 
                         ExecutionEnvironment callEnv = new();
@@ -2547,8 +2548,7 @@ namespace Nethermind.Evm
                             callEnv,
                             executionType,
                             false,
-                            stateSnapshot,
-                            storageSnapshot,
+                            snapshot,
                             (long) outputOffset,
                             (long) outputLength,
                             instruction == Instruction.STATICCALL || vmState.IsStatic,

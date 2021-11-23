@@ -24,9 +24,9 @@ namespace Nethermind.Core
         public static bool IsSystem(this Transaction tx) => 
             tx is SystemTransaction || tx.SenderAddress == Address.SystemUser;
 
-        private static bool IsFree(this Transaction tx) => tx.IsSystem() || tx.IsServiceTransaction;
+        public static bool IsFree(this Transaction tx) => tx.IsSystem() || tx.IsServiceTransaction;
 
-        public static bool TryCalculatePremiumPerGas(this Transaction tx, UInt256 baseFeePerGas, out UInt256 premiumPerGas)
+        public static bool TryCalculatePremiumPerGas(this Transaction tx, in UInt256 baseFeePerGas, out UInt256 premiumPerGas)
         {
             bool freeTransaction = tx.IsFree();
             UInt256 feeCap = tx.IsEip1559 ? tx.MaxFeePerGas : tx.GasPrice;
@@ -40,7 +40,7 @@ namespace Nethermind.Core
             return true;
         }
         
-        public static UInt256 CalculateTransactionPotentialCost(this Transaction tx, bool eip1559Enabled, UInt256 baseFee)
+        public static UInt256 CalculateTransactionPotentialCost(this Transaction tx, bool eip1559Enabled, in UInt256 baseFee)
         {
             if (eip1559Enabled)
             {
@@ -55,7 +55,7 @@ namespace Nethermind.Core
             return tx.GasPrice * (ulong)tx.GasLimit + tx.Value;
         }
         
-        public static UInt256 CalculateEffectiveGasPrice(this Transaction tx, bool eip1559Enabled, UInt256 baseFee)
+        public static UInt256 CalculateEffectiveGasPrice(this Transaction tx, bool eip1559Enabled, in UInt256 baseFee)
         {
             return eip1559Enabled ? UInt256.Min( tx.MaxFeePerGas, tx.MaxPriorityFeePerGas + baseFee) : tx.GasPrice;
         }

@@ -14,10 +14,8 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Reflection;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
-using Nethermind.JsonRpc.Data;
 using Nethermind.Mev.Data;
 
 namespace Nethermind.Mev
@@ -29,6 +27,9 @@ namespace Nethermind.Mev
     {        
         [JsonRpcMethod(Description = "Adds bundle to the tx pool.", IsImplemented = true)]
         ResultWrapper<bool> eth_sendBundle(MevBundleRpc mevBundleRpc);
+        
+        [JsonRpcMethod(Description = "Adds megabundle to the tx pool.", IsImplemented = true)]
+        ResultWrapper<bool> eth_sendMegabundle(MevMegabundleRpc mevMegabundleRpc);
         
         [JsonRpcMethod(Description = "Simulates the bundle behaviour.", IsImplemented = true)]
         ResultWrapper<TxsResults> eth_callBundle(MevCallBundleRpc mevBundleRpc);

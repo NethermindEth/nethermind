@@ -47,7 +47,7 @@ namespace Nethermind.Blockchain.Test.Producers
         {
             Context context = new();
             context.BlockProcessingQueue.IsEmpty.Returns(false);
-            Task<Block?> buildTask = context.MainBlockProductionTrigger.BuildBlock();
+            Task<Block> buildTask = context.MainBlockProductionTrigger.BuildBlock();
             
             await Task.Delay(BuildBlocksOnlyWhenNotProcessing.ChainNotYetProcessedMillisecondsDelay * 2);
             buildTask.IsCanceled.Should().BeFalse();
@@ -64,7 +64,7 @@ namespace Nethermind.Blockchain.Test.Producers
             Context context = new();
             context.BlockProcessingQueue.IsEmpty.Returns(false);
             using CancellationTokenSource cancellationTokenSource = new();
-            Task<Block?> buildTask = context.MainBlockProductionTrigger.BuildBlock(cancellationToken: cancellationTokenSource.Token);
+            Task<Block> buildTask = context.MainBlockProductionTrigger.BuildBlock(cancellationToken: cancellationTokenSource.Token);
             
             await Task.Delay(BuildBlocksOnlyWhenNotProcessing.ChainNotYetProcessedMillisecondsDelay * 2);
             buildTask.IsCanceled.Should().BeFalse();
@@ -90,7 +90,7 @@ namespace Nethermind.Blockchain.Test.Producers
             public Block DefaultBlock { get; }
             public int TriggeredCount { get; private set; }
 
-            private void OnTriggerBlockProduction(object? sender, BlockProductionEventArgs e)
+            private void OnTriggerBlockProduction(object sender, BlockProductionEventArgs e)
             {
                 TriggeredCount++;
                 e.BlockProductionTask = Task.FromResult(DefaultBlock);

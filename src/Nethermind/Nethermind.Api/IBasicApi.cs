@@ -54,7 +54,7 @@ namespace Nethermind.Api
         IReadOnlyList<INethermindPlugin> Plugins { get; }
         string SealEngineType { get; set; }
         ISpecProvider? SpecProvider { get; set; }
-        ISyncModeSelector? SyncModeSelector { get; set; } // here for beam sync DB setup
+        ISyncModeSelector? SyncModeSelector { get; set; }
         ITimestamper Timestamper { get; }
         ITimerFactory TimerFactory { get; }
 

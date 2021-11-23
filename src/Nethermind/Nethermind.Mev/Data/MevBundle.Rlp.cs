@@ -33,7 +33,7 @@ namespace Nethermind.Mev.Data
             (int Content, int Tx) GetContentLength()
             {
                 int txHashes = Rlp.LengthOfKeccakRlp * bundle.Transactions.Count;
-                int content = Rlp.LengthOf(bundle.BlockNumber) + Rlp.GetSequenceRlpLength(txHashes);
+                int content = Rlp.LengthOf(bundle.BlockNumber) + Rlp.LengthOfSequence(txHashes);
                 return (Rlp.LengthOfSequence(content), txHashes);
             }
             

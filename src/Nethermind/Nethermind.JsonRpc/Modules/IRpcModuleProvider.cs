@@ -30,10 +30,10 @@ namespace Nethermind.JsonRpc.Modules
         IReadOnlyCollection<JsonConverter> Converters { get; }
 
         IReadOnlyCollection<string> Enabled { get; }
-        
+
         IReadOnlyCollection<string> All { get; }
 
-        ModuleResolution Check(string methodName, RpcEndpoint rpcEndpoint);
+        ModuleResolution Check(string methodName, JsonRpcContext context);
         
         (MethodInfo MethodInfo, bool ReadOnly) Resolve(string methodName);
         

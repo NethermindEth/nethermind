@@ -160,7 +160,7 @@ namespace Nethermind.Core.Caching
             MemorySize += MemorySizes.Align(value.Length) - MemorySizes.Align(node?.Value.Value.Length ?? 0);
             
             _lruList.RemoveFirst();
-            _cacheMap.Remove(node.Value.Key);
+            _cacheMap.Remove(node!.Value.Key);
 
             node.Value.Value = value;
             node.Value.Key = key;

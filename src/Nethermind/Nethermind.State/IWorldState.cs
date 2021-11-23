@@ -15,16 +15,22 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using Nethermind.Core;
+
 namespace Nethermind.State
 {
     /// <summary>
     /// Represents state that can be anchored at specific state root, snapshot, committed, reverted.
     /// Current format is an intermittent form on the way to a better state management.
     /// </summary>
-    public interface IWorldState
+    public interface IWorldState : IJournal<Snapshot>
     {
-        public IStorageProvider StorageProvider { get; }
+        IStorageProvider StorageProvider { get; }
 
-        public IStateProvider StateProvider { get; }
+        IStateProvider StateProvider { get; }
+
+        Snapshot TakeSnapshot(bool newTransactionStart = false);
+
+        Snapshot IJournal<Snapshot>.TakeSnapshot() => TakeSnapshot();
     }
 }

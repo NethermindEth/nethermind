@@ -165,6 +165,7 @@ namespace Nethermind.TxPool.Test.Collections
             protected override IComparer<WithFinalizer> GetGroupComparer(IComparer<WithFinalizer> comparer) => comparer;
 
             protected override int MapToGroup(WithFinalizer value) => value.Index;
+            protected override int GetKey(WithFinalizer value) => value.Index;
         }
 
         [Test]

@@ -33,10 +33,10 @@ namespace Nethermind.Core
             Keccak parentHash,
             Keccak unclesHash,
             Address beneficiary,
-            UInt256 difficulty,
+            in UInt256 difficulty,
             long number,
             long gasLimit,
-            UInt256 timestamp,
+            in UInt256 timestamp,
             byte[] extraData)
         {
             ParentHash = parentHash;

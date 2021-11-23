@@ -24,7 +24,7 @@ namespace Nethermind.Evm
 {
     public static class ContractAddress
     {
-        public static Address From(Address? deployingAddress, UInt256 nonce)
+        public static Address From(Address? deployingAddress, in UInt256 nonce)
         {
             ValueKeccak contractAddressKeccak =
                 ValueKeccak.Compute(

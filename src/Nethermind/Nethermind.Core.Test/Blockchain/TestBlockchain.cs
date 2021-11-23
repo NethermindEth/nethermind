@@ -45,6 +45,8 @@ using Nethermind.Db.Blooms;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Merge.Plugin;
 using Nethermind.Synchronization.FastSync;
+using Nethermind.Specs.Test;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NUnit.Framework;
@@ -124,7 +126,7 @@ namespace Nethermind.Core.Test.Blockchain
         {
             Timestamper = new ManualTimestamper(new DateTime(2020, 2, 15, 12, 50, 30, DateTimeKind.Utc));
             JsonSerializer = new EthereumJsonSerializer();
-            SpecProvider = specProvider ?? MainnetSpecProvider.Instance;
+            SpecProvider = CreateSpecProvider(specProvider ?? MainnetSpecProvider.Instance);
             EthereumEcdsa = new EthereumEcdsa(ChainId.Mainnet, LogManager);
             DbProvider = await TestMemDbProvider.InitAsync();
             TrieStore = new TrieStore(StateDb.Innermost, LogManager);
@@ -152,11 +154,11 @@ namespace Nethermind.Core.Test.Blockchain
             IDb blockInfoDb = new MemDb();
             BlockTree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), SpecProvider, NullBloomStorage.Instance, LimboLogs.Instance);
             ReadOnlyState = new ChainHeadReadOnlyStateProvider(BlockTree, StateReader);
-            TransactionComparerProvider = new TransactionComparerProvider(specProvider, BlockTree);
+            TransactionComparerProvider = new TransactionComparerProvider(SpecProvider, BlockTree);
             TxPool = CreateTxPool();
 
             ReceiptStorage = new InMemoryReceiptStorage();
-            VirtualMachine virtualMachine = new(SpecProvider.ChainId, new BlockhashProvider(BlockTree, LogManager), LogManager);
+            VirtualMachine virtualMachine = new(new BlockhashProvider(BlockTree, LogManager), SpecProvider, LogManager);
             TxProcessor = new TransactionProcessor(SpecProvider, State, Storage, virtualMachine, LogManager);
             BlockPreprocessorStep = new RecoverSignatures(EthereumEcdsa, TxPool, SpecProvider, LogManager);
             HeaderValidator = new HeaderValidator(BlockTree, Always.Valid, SpecProvider, LogManager);
@@ -202,6 +204,13 @@ namespace Nethermind.Core.Test.Blockchain
             await WaitAsync(_resetEvent, "Failed to process genesis in time.");
             await AddBlocksOnStart();
             return this;
+        }
+
+        private static ISpecProvider CreateSpecProvider(ISpecProvider specProvider)
+        {
+            return specProvider is TestSpecProvider { AllowTestChainOverride: false } 
+                ? specProvider 
+                : new OverridableSpecProvider(specProvider, s => new OverridableReleaseSpec(s) { IsEip3607Enabled = false });
         }
 
         private async Task WaitAsync(SemaphoreSlim semaphore, string error, int timeout = DefaultTimeout)

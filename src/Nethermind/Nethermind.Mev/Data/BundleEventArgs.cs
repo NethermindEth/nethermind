@@ -16,13 +16,14 @@
 // 
 
 using System;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Mev.Data
 {
     public class BundleEventArgs : EventArgs
     {
         public MevBundle MevBundle { get; }
-        
+
         public BundleEventArgs(MevBundle mevBundle)
         {
             MevBundle = mevBundle;

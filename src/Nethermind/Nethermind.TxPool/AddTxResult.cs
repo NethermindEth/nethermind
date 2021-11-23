@@ -85,6 +85,11 @@ namespace Nethermind.TxPool
         /// A transaction with same nonce has been signed locally already and is awaiting in the pool.
         /// (I would like to change this behaviour to allow local replacement)
         /// </summary>
-        OwnNonceAlreadyUsed
+        OwnNonceAlreadyUsed,
+        
+        /// <summary>
+        /// Transaction sender has code hash that is not null.
+        /// </summary>
+        SenderIsContract
     }
 }

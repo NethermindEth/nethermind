@@ -63,7 +63,7 @@ namespace Nethermind.Consensus.AuRa.Rewards
             public long BlockNumber { get; }
             public UInt256 Reward { get; }
 
-            public BlockRewardInfo(long blockNumber, UInt256 reward)
+            public BlockRewardInfo(long blockNumber, in UInt256 reward)
             {
                 BlockNumber = blockNumber;
                 Reward = reward;

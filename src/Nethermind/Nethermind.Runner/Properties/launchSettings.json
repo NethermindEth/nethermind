@@ -141,6 +141,14 @@
     "Kintsugi": {
       "commandName": "Project",
       "commandLineArgs": "--config kintsugi.cfg --Merge.TerminalTotalDifficulty 600000000"
+    },
+    "xDai_testnet": {
+      "commandName": "Project",
+      "commandLineArgs": "--config configs\\xdai_testnet.cfg --Init.DiagnosticMode MemDb"
+    },
+    "Sepolia": {
+      "commandName": "Project",
+      "commandLineArgs": "--config configs\\sepolia.cfg --Init.DiagnosticMode MemDb"
     }
   }
 }
