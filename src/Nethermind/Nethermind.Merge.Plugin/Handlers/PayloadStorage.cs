@@ -92,7 +92,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             if (_logger.IsTrace) _logger.Trace($"Preparing empty block from payload {payloadId} with parent {parentHeader}");
             Task<Block?> emptyBlock =
                 _emptyBlockContext.BlockProductionTrigger
-                    .BuildBlock(parentHeader, cts.Token, null, new PayloadAttributes() { FeeRecipient = blockAuthor, Timestamp = timestamp })
+                    .BuildBlock(parentHeader, cts.Token, null, new PayloadAttributes() { FeeRecipient = blockAuthor, Timestamp = timestamp, Random = random })
                     .ContinueWith((x) =>
                     {
                         x.Result.Header.StateRoot = parentHeader.StateRoot;

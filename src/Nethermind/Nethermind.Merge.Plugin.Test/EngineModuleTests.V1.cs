@@ -148,7 +148,7 @@ namespace Nethermind.Merge.Plugin.Test
             string parameters = payloadId.ToHexString(true);
             string result = RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV1", parameters);
             result.Should()
-                .Be("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":4,\"message\":\"unknown payload\"},\"id\":67}");
+                .Be("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32001,\"message\":\"unknown payload\"},\"id\":67}");
         }
 
         [Test, Retry(3)]
@@ -326,7 +326,6 @@ namespace Nethermind.Merge.Plugin.Test
             ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
                 await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1, null);
             forkchoiceUpdatedResult.Data.Status.Should().Be(EngineStatus.Success);
-            forkchoiceUpdatedResult.Data.PayloadId.Should().Be("0x");
 
             Keccak actualHead = chain.BlockTree.HeadHash;
             actualHead.Should().NotBe(startingHead);
@@ -347,7 +346,6 @@ namespace Nethermind.Merge.Plugin.Test
             ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
                 await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1, null);
             forkchoiceUpdatedResult.Data.Status.Should().Be(EngineStatus.Success);
-            forkchoiceUpdatedResult.Data.PayloadId.Should().Be("0x");
 
             Keccak actualHead = chain.BlockTree.HeadHash;
             actualHead.Should().NotBe(startingHead);
@@ -364,7 +362,7 @@ namespace Nethermind.Merge.Plugin.Test
                 new(TestItem.KeccakF, TestItem.KeccakF, TestItem.KeccakF);
             ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
                 await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1, null);
-            forkchoiceUpdatedResult.ErrorCode.Should().Be(ErrorCodes.InvalidParams);
+            forkchoiceUpdatedResult.ErrorCode.Should().Be(MergeErrorCodes.UnknownHeader);
             AssertExecutionStatusNotChanged(rpc, TestItem.KeccakF, TestItem.KeccakF /*, TestItem.KeccakF*/);
         }
 
@@ -416,7 +414,6 @@ namespace Nethermind.Merge.Plugin.Test
             ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
                 await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1, null);
             forkchoiceUpdatedResult.Data.Status.Should().Be(EngineStatus.Success);
-            forkchoiceUpdatedResult.Data.PayloadId.Should().Be("0x");
             AssertExecutionStatusChanged(rpc, newHeadHash, newHeadHash /*, newHeadHash*/);
         }
 
@@ -434,7 +431,6 @@ namespace Nethermind.Merge.Plugin.Test
             ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
                 await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1, null);
             forkchoiceUpdatedResult.Data.Status.Should().Be(EngineStatus.Success);
-            forkchoiceUpdatedResult.Data.PayloadId.Should().Be("0x");
             AssertExecutionStatusChanged(rpc, newHeadHash, newHeadHash /*, newHeadHash*/);
             Assert.True(chain.PoSSwitcher.HasEverReachedTerminalPoWBlock());
         }
@@ -452,7 +448,6 @@ namespace Nethermind.Merge.Plugin.Test
             ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
                 await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1, null);
             forkchoiceUpdatedResult.Data.Status.Should().Be(EngineStatus.Success);
-            forkchoiceUpdatedResult.Data.PayloadId.Should().Be("0x");
             AssertExecutionStatusChanged(rpc, newHeadHash, newHeadHash /*, newHeadHash*/);
             Assert.True(chain.PoSSwitcher.HasEverReachedTerminalPoWBlock());
         }
@@ -502,7 +497,6 @@ namespace Nethermind.Merge.Plugin.Test
                 ResultWrapper<ForkchoiceUpdatedV1Result> result =
                     await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1, null);
                 result.Data.Status.Should().Be(EngineStatus.Success);
-                result.Data.PayloadId.Should().Be("0x");
                 testChain.BlockTree.HeadHash.Should().Be(block.BlockHash);
                 testChain.BlockTree.Head!.Number.Should().Be(block.BlockNumber);
                 testChain.State.StateRoot.Should().Be(testChain.BlockTree.Head!.StateRoot!);
@@ -763,7 +757,6 @@ namespace Nethermind.Merge.Plugin.Test
                     ResultWrapper<ForkchoiceUpdatedV1Result> setHeadResponse =
                         await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1, null);
                     setHeadResponse.Data.Status.Should().Be(EngineStatus.Success);
-                    setHeadResponse.Data.PayloadId.Should().Be("0x");
                     blockTree.HeadHash.Should().Be(newHead);
                 }
 
