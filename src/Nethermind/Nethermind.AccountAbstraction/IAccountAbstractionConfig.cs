@@ -28,6 +28,11 @@ namespace Nethermind.AccountAbstraction
         bool Enabled { get; set; }
 
         [ConfigItem(
+            Description = "Defines whether bundling of UserOperations is enabled.",
+            DefaultValue = "false")]
+        bool BundlingEnabled { get; set; }
+
+        [ConfigItem(
             Description = "Defines the maximum number of UserOperations that can be kept in memory by clients",
             DefaultValue = "200")]
         int UserOperationPoolSize { get; set; }

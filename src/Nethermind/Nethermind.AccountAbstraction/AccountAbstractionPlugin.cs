@@ -53,7 +53,7 @@ namespace Nethermind.AccountAbstraction
                         _nethermindApi.BlockTree!,
                         _entryPointContractAddress,
                         _logger,
-                        new PaymasterThrottler(),
+                        new PaymasterThrottler(_accountAbstractionConfig.BundlingEnabled),
                         _nethermindApi.ReceiptStorage!,
                         _nethermindApi.EngineSigner!,
                         _nethermindApi.StateProvider!,
@@ -131,7 +131,8 @@ namespace Nethermind.AccountAbstraction
 
                 _entryPointContractAbi = LoadEntryPointContract();
 
-                _txBundler = InitTxBundler();
+                if (_accountAbstractionConfig.BundlingEnabled)
+                    _txBundler = InitTxBundler();
             }
 
             return Task.CompletedTask;
