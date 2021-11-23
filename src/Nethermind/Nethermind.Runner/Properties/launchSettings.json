@@ -140,7 +140,7 @@
     },
     "Kintsugi": {
       "commandName": "Project",
-      "commandLineArgs": "--config kintsugi.cfg --Merge.TerminalTotalDifficulty 600000000"
+      "commandLineArgs": "--config kintsugi.cfg --Merge.TerminalTotalDifficulty 200000000 --Init.DiagnosticMode MemDb --Init.AutoDump All"
     }
   }
 }

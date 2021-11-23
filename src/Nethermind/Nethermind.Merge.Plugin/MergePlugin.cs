@@ -132,6 +132,8 @@ namespace Nethermind.Merge.Plugin
                         _api.BlockchainProcessor,
                         _api.EthSyncingInfo,
                         _api.Config<IInitConfig>(),
+                        _api.SpecProvider,
+                        _api.BlockPreprocessor,
                         _api.LogManager),
                     _transitionProcessHandler,
                     new ForkChoiceUpdatedHandler(_api.BlockTree, _api.StateProvider, _blockFinalizationManager,

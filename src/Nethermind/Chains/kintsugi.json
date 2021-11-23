@@ -1,5 +1,5 @@
 {
-  "name": "Amphora",
+  "name": "mergeDevnet1",
   "engine": {
     "Ethash": {
       "params": {
@@ -21,7 +21,7 @@
     "accountStartNonce": "0x0",
     "maximumExtraDataSize": "0x20",
     "minGasLimit": "0x1388",
-    "networkID": "0x1467d6",
+    "networkID": "0x14683a",
     "eip150Transition": "0x0",
     "eip158Transition": "0x0",
     "eip160Transition": "0x0",
@@ -891,6 +891,8 @@
     }
   },
   "nodes": [
-    "enode://d41ba1659cac0bd475449eff0618ec2bb933fe24e15dcb739e5a5abfa6c843f1b05fa8d67e027e7d2faf2b2dc1880eb4f6f9f252b976b3c0711f4625eb98e4d5@206.189.207.53:30303"
+    "enode://6538a7ac0748d24caec2470879d0fa35cbafa62e5d22532a3634119eb9360b28e615d0e960bacfb8d26e3ef646adb64c5a0689ed378ce69efba3f190fa8f26a6@137.184.108.205:30303",
+    "enode://3a514176466fa815ed481ffad09110a2d344f6c9b78c1d14afc351c3a51be33d8072e77939dc03ba44790779b7a1025baf3003f6732430e20cd9b76d953391b3@137.184.97.41:30303",
+    "enode://118227759c72d000dace5536292a74f9e585818ab8c9e0fcc38d7a5a743e84066bed6e9613c9993c866fb186e3316cc92ad399b2cf4f589a31e7caf73321831c@137.184.79.95:30303"
   ]
 }

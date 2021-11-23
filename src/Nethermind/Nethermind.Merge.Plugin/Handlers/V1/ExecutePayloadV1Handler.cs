@@ -26,6 +26,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc;
@@ -45,6 +46,8 @@ namespace Nethermind.Merge.Plugin.Handlers
         private readonly IHeaderValidator _headerValidator;
         private readonly IBlockTree _blockTree;
         private readonly IBlockchainProcessor _processor;
+        private readonly ISpecProvider _specProvider;
+        private readonly IBlockPreprocessorStep _preprocessor;
         private readonly IEthSyncingInfo _ethSyncingInfo;
         private readonly IInitConfig _initConfig;
         private readonly ILogger _logger;
@@ -58,6 +61,8 @@ namespace Nethermind.Merge.Plugin.Handlers
             IBlockchainProcessor processor,
             IEthSyncingInfo ethSyncingInfo,
             IInitConfig initConfig,
+            ISpecProvider specProvider, 
+            IBlockPreprocessorStep preprocessor,
             ILogManager logManager)
         {
             _headerValidator = headerValidator ?? throw new ArgumentNullException(nameof(headerValidator));
@@ -65,6 +70,8 @@ namespace Nethermind.Merge.Plugin.Handlers
             _processor = processor;
             _ethSyncingInfo = ethSyncingInfo;
             _initConfig = initConfig;
+            _specProvider = specProvider;
+            _preprocessor = preprocessor;
             _logger = logManager.GetClassLogger();
             _blockValidationSemaphore = new SemaphoreSlim(0);
             _processor.BlockProcessed += (s, e) =>

@@ -230,28 +230,6 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         [Test]
-        public async Task should_suggest_block_on_consensusValidated_valid()
-        {
-            using MergeTestBlockchain chain = await CreateBlockChain();
-            IEngineRpcModule rpc = CreateEngineModule(chain);
-            Keccak startingHead = chain.BlockTree.HeadHash;
-            BlockHeader startingBestSuggestedHeader = chain.BlockTree.BestSuggestedHeader!;
-            BlockRequestResult getPayloadResult = await PrepareAndGetPayloadResult(chain, rpc);
-            getPayloadResult.ParentHash.Should().Be(startingHead);
-
-            ResultWrapper<ExecutePayloadResult>
-                executePayloadResult = await rpc.engine_executePayload(getPayloadResult);
-
-            await rpc.engine_consensusValidated(new ConsensusValidatedRequest(getPayloadResult.BlockHash,
-                ConsensusValidationStatus.Valid));
-
-            executePayloadResult.Data.EnumStatus.Should().Be(VerificationStatus.Valid);
-            Keccak bestSuggestedHeaderHash = chain.BlockTree.BestSuggestedHeader!.Hash!;
-            bestSuggestedHeaderHash.Should().Be(getPayloadResult.BlockHash);
-            bestSuggestedHeaderHash.Should().NotBe(startingBestSuggestedHeader!.Hash!);
-        }
-
-        [Test]
         public async Task forkchoiceUpdated_should_work_with_zero_keccak_for_finalization()
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
