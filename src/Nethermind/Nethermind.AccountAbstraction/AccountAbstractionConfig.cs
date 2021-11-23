@@ -22,6 +22,7 @@ namespace Nethermind.AccountAbstraction
     public class AccountAbstractionConfig : IAccountAbstractionConfig
     {
         public bool Enabled { get; set; }
+        public bool BundlingEnabled { get; set; } = false;
         public int UserOperationPoolSize { get; set; } = 200;
         public string EntryPointContractAddress { get; set; } = "";
         public string Create2FactoryAddress { get; set; } = "";
