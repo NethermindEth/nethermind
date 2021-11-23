@@ -203,10 +203,9 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         [Test]
-        [Ignore("ToDo")]
         public async Task getPayloadV1_should_return_error_if_called_after_timeout()
         {
-            const int timeout = 5000;
+            const int timeout = 15000;
 
             using MergeTestBlockchain chain = await CreateBlockChain();
             IEngineRpcModule rpc = CreateEngineModule(chain);
@@ -324,7 +323,7 @@ namespace Nethermind.Merge.Plugin.Test
             ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
                 await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1, null);
             forkchoiceUpdatedResult.Data.Status.Should().Be(EngineStatus.Success);
-            forkchoiceUpdatedResult.Data.PayloadId.Should().Be("0x");
+            forkchoiceUpdatedResult.Data.PayloadId.Should().Be(null);
 
             Keccak actualHead = chain.BlockTree.HeadHash;
             actualHead.Should().NotBe(startingHead);
@@ -345,7 +344,7 @@ namespace Nethermind.Merge.Plugin.Test
             ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
                 await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1, null);
             forkchoiceUpdatedResult.Data.Status.Should().Be(EngineStatus.Success);
-            forkchoiceUpdatedResult.Data.PayloadId.Should().Be("0x");
+            forkchoiceUpdatedResult.Data.PayloadId.Should().Be(null);
 
             Keccak actualHead = chain.BlockTree.HeadHash;
             actualHead.Should().NotBe(startingHead);
@@ -367,7 +366,6 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         [Test]
-        [Ignore("confirmedBlockHash")]
         public async Task forkChoiceUpdatedV1_to_unknown_confirmation_hash_should_fail()
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
@@ -414,7 +412,7 @@ namespace Nethermind.Merge.Plugin.Test
             ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
                 await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1, null);
             forkchoiceUpdatedResult.Data.Status.Should().Be(EngineStatus.Success);
-            forkchoiceUpdatedResult.Data.PayloadId.Should().Be("0x");
+            forkchoiceUpdatedResult.Data.PayloadId.Should().Be(null);
             AssertExecutionStatusChanged(rpc, newHeadHash, newHeadHash /*, newHeadHash*/);
         }
 
@@ -432,7 +430,7 @@ namespace Nethermind.Merge.Plugin.Test
             ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
                 await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1, null);
             forkchoiceUpdatedResult.Data.Status.Should().Be(EngineStatus.Success);
-            forkchoiceUpdatedResult.Data.PayloadId.Should().Be("0x");
+            forkchoiceUpdatedResult.Data.PayloadId.Should().Be(null);
             AssertExecutionStatusChanged(rpc, newHeadHash, newHeadHash /*, newHeadHash*/);
             Assert.True(chain.PoSSwitcher.HasEverReachedTerminalPoWBlock());
         }
@@ -450,7 +448,7 @@ namespace Nethermind.Merge.Plugin.Test
             ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
                 await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1, null);
             forkchoiceUpdatedResult.Data.Status.Should().Be(EngineStatus.Success);
-            forkchoiceUpdatedResult.Data.PayloadId.Should().Be("0x");
+            forkchoiceUpdatedResult.Data.PayloadId.Should().Be(null);
             AssertExecutionStatusChanged(rpc, newHeadHash, newHeadHash /*, newHeadHash*/);
             Assert.True(chain.PoSSwitcher.HasEverReachedTerminalPoWBlock());
         }
@@ -470,7 +468,6 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         [TestCase(30)]
-        [Ignore("InvalidPayload")]
         public async Task can_progress_chain_one_by_one_v1(int count)
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
@@ -485,7 +482,6 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         [Test]
-        [Ignore("InvalidPayload")]
         public async Task forkchoiceUpdatedV1_can_reorganize_to_any_block()
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
@@ -498,7 +494,7 @@ namespace Nethermind.Merge.Plugin.Test
                 ResultWrapper<ForkchoiceUpdatedV1Result> result =
                     await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1, null);
                 result.Data.Status.Should().Be(EngineStatus.Success);
-                result.Data.PayloadId.Should().Be("0x");
+                result.Data.PayloadId.Should().Be(null);
                 testChain.BlockTree.HeadHash.Should().Be(block.BlockHash);
                 testChain.BlockTree.Head!.Number.Should().Be(block.BlockNumber);
                 testChain.State.StateRoot.Should().Be(testChain.BlockTree.Head!.StateRoot!);
@@ -542,7 +538,6 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         [Test]
-        [Ignore("InvalidPayload")]
         public async Task forkchoiceUpdatedV1_can_prepare_payload_on_any_block()
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
@@ -597,7 +592,6 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         [Test]
-        [Ignore("InvalidPayload")]
         public async Task executePayloadV1_processes_passed_transactions([Values(false, true)] bool moveHead)
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
@@ -640,7 +634,6 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         [Test]
-        [Ignore("InvalidPayload")]
         public async Task executePayloadV1_transactions_produce_receipts()
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
@@ -680,7 +673,6 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         [Test]
-        [Ignore("InvalidPayload")]
         public async Task assembleBlock_picks_transactions_from_pool_v1()
         {
             SemaphoreSlim semaphoreSlim = new(0);
@@ -751,7 +743,7 @@ namespace Nethermind.Merge.Plugin.Test
                     ResultWrapper<ForkchoiceUpdatedV1Result> setHeadResponse =
                         await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1, null);
                     setHeadResponse.Data.Status.Should().Be(EngineStatus.Success);
-                    setHeadResponse.Data.PayloadId.Should().Be("0x");
+                    setHeadResponse.Data.PayloadId.Should().Be(null);
                     blockTree.HeadHash.Should().Be(newHead);
                 }
 

@@ -132,7 +132,7 @@
     },
     "TheMerge_Kinstugi_TestVectors": {
       "commandName": "Project",
-        "commandLineArgs": "--config themerge_kintsugi_testvectors.cfg --Init.DiagnosticMode MemDb --Merge.TerminalTotalDifficulty 0 --Sync.SynchronizationEnabled false"
+      "commandLineArgs": "--config themerge_kintsugi_testvectors.cfg --Init.DiagnosticMode MemDb --Merge.TerminalTotalDifficulty 0 --Sync.SynchronizationEnabled false"
     },
     "TheMerge_Kinstugi_M2": {
       "commandName": "Project",
@@ -140,7 +140,7 @@
     },
     "Kintsugi": {
       "commandName": "Project",
-      "commandLineArgs": "--config kintsugi.cfg --Merge.TerminalTotalDifficulty 600000000"
+      "commandLineArgs": "--config kintsugi.cfg --Merge.TerminalTotalDifficulty 200000000 --Init.DiagnosticMode MemDb"
     },
     "xDai_testnet": {
       "commandName": "Project",
