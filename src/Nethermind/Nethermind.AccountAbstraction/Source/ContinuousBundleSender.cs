@@ -63,8 +63,11 @@ namespace Nethermind.AccountAbstraction.Source
             FlashbotsSender flashbotsSender = new(new HttpClient(), _signer, _logger);
 
             // turn ops into txs
+            /* IEnumerable<Transaction> transaction = */
+            /*     _userOperationTxSource.GetTransactions(_blockTree.Head!.Header, _blockTree.Head.GasLimit); */
+            // FIXME: This is only here to prevent compiler errors
             IEnumerable<Transaction> transaction =
-                _userOperationTxSource.GetTransactions(_blockTree.Head!.Header, _blockTree.Head.GasLimit);
+                new List<Transaction> { _userOperationTxSource.GetTransaction(_blockTree.Head!.Header, (ulong)_blockTree.Head.GasLimit)! };
             string[] transactionArray = transaction.Select(pkg => pkg.ToString()).ToArray();
             // turn txs into MevBundle
             FlashbotsSender.MevBundle bundle = new(_blockTree.Head.Header.Number + 1, transactionArray);
