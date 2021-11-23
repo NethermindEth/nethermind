@@ -33,6 +33,7 @@ using NUnit.Framework;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Db;
 using Nethermind.Evm;

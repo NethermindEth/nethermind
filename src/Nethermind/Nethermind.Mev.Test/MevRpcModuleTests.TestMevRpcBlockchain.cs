@@ -133,7 +133,8 @@ namespace Nethermind.Mev.Test
                         BlockHeader? parent = BlockTree.GetProducedBlockParent(e.ParentHeader);
                         if (parent is not null)
                         {
-                            IEnumerable<MevBundle> bundles = BundlePool.GetBundles(parent.Number + 1, Timestamper);
+                            // ToDo resolved conflict parent.Timestamp?
+                            IEnumerable<MevBundle> bundles = BundlePool.GetBundles(parent.Number + 1, parent.Timestamp);
                             return bundles.Count() >= bundleLimit;
                         }
 
