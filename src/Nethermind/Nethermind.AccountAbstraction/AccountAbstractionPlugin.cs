@@ -199,7 +199,8 @@ namespace Nethermind.AccountAbstraction
             ITxBundlingTrigger trigger = new TxBundleRegularlyTrigger();
             ITxBundleSource txBundleSource =
                 new UserOperationTxSource(UserOperationPool, UserOperationSimulator, _nethermindApi.SpecProvider!, _logger);
-            return new TxBundler(trigger, txBundleSource, _nethermindApi);
+            IGasLimitProvider gasLimitProvider = new GasLimitProviderAvg(_nethermindApi);
+            return new TxBundler(trigger, txBundleSource, gasLimitProvider, _nethermindApi);
         }
 
         private AbiDefinition LoadEntryPointContract()
