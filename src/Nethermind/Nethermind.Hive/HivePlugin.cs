@@ -27,8 +27,11 @@ namespace Nethermind.Hive
         }
 
         public string Name => "Hive";
+        
         public string Description => "Plugin used for executing Hive Ethereum Tests";
+        
         public string Author => "Nethermind";
+        
         public Task Init(INethermindApi api)
         {
             _api = api ?? throw new ArgumentNullException(nameof(api));
@@ -91,6 +94,7 @@ namespace Nethermind.Hive
                 if (_logger.IsInfo) _logger.Info("Skipping Hive plugin");
             }
         }
-        public bool Enabled { get; set; }
+
+        private bool Enabled { get; set; }
     }
 }
