@@ -16,7 +16,6 @@ namespace Nethermind.Hive
     {
         private INethermindApi _api = null!;
         private IHiveConfig _hiveConfig = null!;
-        private bool _hiveEnabled;
         private ILogger _logger = null!;
         private readonly CancellationTokenSource _disposeCancellationToken = new();
 
@@ -32,11 +31,11 @@ namespace Nethermind.Hive
         public string Author => "Nethermind";
         public Task Init(INethermindApi api)
         {
-            _api = api;
+            _api = api ?? throw new ArgumentNullException(nameof(api));
             _hiveConfig = _api.ConfigProvider.GetConfig<IHiveConfig>();
             _logger = _api.LogManager.GetClassLogger();
 
-            _hiveEnabled = Environment.GetEnvironmentVariable("NETHERMIND_HIVE_ENABLED")?.ToLowerInvariant() == "true" || _hiveConfig.Enabled;
+            Enabled = Environment.GetEnvironmentVariable("NETHERMIND_HIVE_ENABLED")?.ToLowerInvariant() == "true" || _hiveConfig.Enabled;
 
             return Task.CompletedTask;
         }
@@ -45,7 +44,7 @@ namespace Nethermind.Hive
 
         public async Task InitRpcModules()
         { 
-            if (_hiveEnabled)
+            if (Enabled)
             {
                 if (_api.BlockTree == null) throw new ArgumentNullException(nameof(_api.BlockTree));
                 if (_api.ReceiptStorage == null) throw new ArgumentNullException(nameof(_api.ReceiptStorage));
@@ -92,5 +91,6 @@ namespace Nethermind.Hive
                 if (_logger.IsInfo) _logger.Info("Skipping Hive plugin");
             }
         }
+        public bool Enabled { get; set; }
     }
 }
