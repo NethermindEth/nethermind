@@ -47,7 +47,7 @@ jobs:
         mkdir bin
         cd src/Nethermind
         dotnet build Nethermind.sln -c Release
-        cp -r Nethermind.Runner/bin/Release/net5.0/* /home/runner/work/nethermind/nethermind/nethermind/bin/
+        cp -r Nethermind.Runner/bin/Release/net6.0/* /home/runner/work/nethermind/nethermind/nethermind/bin/
     - name: Setup the Node.js
       uses: actions/setup-node@v1.4.4
       with:
