@@ -22,6 +22,6 @@ namespace Nethermind.Hive
         public string BlocksDir { get; set; } = "/blocks";
         public string KeysDir { get; set; } = "/keys";
         public bool Enabled { get; set; }
-        public string GenesisFile { get; set; } = "/genesis.json";
+        public string GenesisFilePath { get; set; } = "/genesis.json";
     }
 }

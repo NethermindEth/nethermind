@@ -32,5 +32,8 @@ namespace Nethermind.Hive
         
         [ConfigItem(Description = "Enabling hive for debugging purpose", DefaultValue = "false")]
         bool Enabled { get; set; }
+        
+        [ConfigItem(Description = "Path to genesis block.", DefaultValue = "\"/genesis.json\"")]
+        string GenesisFilePath { get; set; }
     }
 }
