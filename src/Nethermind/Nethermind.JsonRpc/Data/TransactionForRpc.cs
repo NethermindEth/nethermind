@@ -59,6 +59,8 @@ namespace Nethermind.JsonRpc.Data
             Signature? signature = transaction.Signature;
             if (signature != null)
             {
+                
+                YParity = (transaction.IsEip1559 || transaction.IsEip2930) ? signature.RecoveryId : null;
                 R = new UInt256(signature.R, true);
                 S = new UInt256(signature.S, true);
                 V = transaction.Type == TxType.Legacy ? (UInt256?)signature.V : (UInt256?)signature.RecoveryId;
@@ -110,6 +112,9 @@ namespace Nethermind.JsonRpc.Data
         public UInt256? S { get; set; }
 
         public UInt256? R { get; set; }
+        
+        [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
+        public UInt256? YParity { get; set; }
 
         public Transaction ToTransactionWithDefaults(ulong? chainId = null) => ToTransactionWithDefaults<Transaction>(chainId);
 
