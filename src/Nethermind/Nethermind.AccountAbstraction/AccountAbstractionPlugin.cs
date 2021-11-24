@@ -132,7 +132,7 @@ namespace Nethermind.AccountAbstraction
                 _entryPointContractAbi = LoadEntryPointContract();
 
                 if (_accountAbstractionConfig.BundlingEnabled)
-                { 
+                {
                     _txBundler = InitTxBundler();
                     _txBundler.Start();
                 }
