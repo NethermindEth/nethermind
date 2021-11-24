@@ -1,9 +1,10 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Api;
 using Nethermind.Core;
 using Nethermind.AccountAbstraction.Source;
+using Nethermind.TxPool;
+using Nethermind.Blockchain;
 
 namespace Nethermind.AccountAbstraction.Bundler
 {
@@ -14,16 +15,22 @@ namespace Nethermind.AccountAbstraction.Bundler
         private ITxBundlingTrigger _trigger;
         private ITxBundleSource _source;
         private IGasLimitProvider _gasLimitProvider;
-        private INethermindApi _api;
+        private ITxSender _txSender;
+        private IBlockTree _blockTree;
 
         private CancellationTokenSource? _bundlerCancellationToken;
 
-        public TxBundler(ITxBundlingTrigger trigger, ITxBundleSource source, IGasLimitProvider gasLimitProvider, INethermindApi api)
+        public TxBundler
+        (
+             ITxBundlingTrigger trigger, ITxBundleSource source,
+             IGasLimitProvider gasLimitProvider, ITxSender txSender,
+             IBlockTree blockTree)
         {
             _trigger = trigger;
             _source = source;
             _gasLimitProvider = gasLimitProvider;
-            _api = api;
+            _txSender = txSender;
+            _blockTree = blockTree;
         }
 
         public void Start()
@@ -44,10 +51,10 @@ namespace Nethermind.AccountAbstraction.Bundler
 
         private void OnTriggerTxBundling(object? sender, EventArgs e)
         {
-            BlockHeader head = _api.BlockTree!.Head!.Header;
+            BlockHeader head = _blockTree!.Head!.Header;
             Transaction? tx = _source.GetTransaction(head, _gasLimitProvider.GetGasLimit());
             if (tx is null) return;
-            _api.TxSender!.SendTransaction(tx, TxPool.TxHandlingOptions.None);
+            _txSender.SendTransaction(tx, TxPool.TxHandlingOptions.None);
         }
     }
 }

@@ -1,19 +1,20 @@
-using Nethermind.Api;
+using Nethermind.Blockchain;
 using System.Linq;
 
 namespace Nethermind.AccountAbstraction.Bundler
 {
     public class GasLimitProviderAvg : IGasLimitProvider
     {
-        INethermindApi _api;
+        IBlockTree _blockTree;
 
-        public GasLimitProviderAvg(INethermindApi api)
+        public GasLimitProviderAvg(IBlockTree blockTree)
         {
-            _api = api;
+            _blockTree = blockTree;
         }
+
         public ulong GetGasLimit()
         {
-            var txs = _api.BlockTree!.Head!.Transactions;
+            var txs = _blockTree.Head!.Transactions;
             return (ulong)(txs.Select(tx => tx.GasLimit).Sum()) / (ulong)txs.Length;
         }
     }
