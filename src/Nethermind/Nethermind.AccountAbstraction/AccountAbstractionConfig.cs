@@ -22,11 +22,12 @@ namespace Nethermind.AccountAbstraction
     public class AccountAbstractionConfig : IAccountAbstractionConfig
     {
         public bool Enabled { get; set; }
-        public bool BundlingEnabled { get; set; } = false;
+        public bool BundlingEnabled { get; set; } = true;
         public int UserOperationPoolSize { get; set; } = 200;
         public string EntryPointContractAddress { get; set; } = "";
         public string Create2FactoryAddress { get; set; } = "";
         public UInt256 MinimumGasPrice { get; set; } = 1;
         public string FlashbotsEndpoint { get; set; } = "https://relay.flashbots.net/";
+        public bool UseFlashbots { get; set; } = true;
     }
 }

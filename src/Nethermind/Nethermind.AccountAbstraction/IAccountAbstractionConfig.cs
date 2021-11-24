@@ -29,7 +29,7 @@ namespace Nethermind.AccountAbstraction
 
         [ConfigItem(
             Description = "Defines whether bundling of UserOperations is enabled.",
-            DefaultValue = "false")]
+            DefaultValue = "true")]
         bool BundlingEnabled { get; set; }
 
         [ConfigItem(
@@ -58,5 +58,10 @@ namespace Nethermind.AccountAbstraction
             Description = "Defines the string URL for the flashbots bundle reception endpoint",
             DefaultValue = "https://relay.flashbots.net/")]
         string FlashbotsEndpoint { get; set; }
+
+        [ConfigItem(
+            Description = "Wheter to use the flashbots relay when broadcasting transactions",
+            DefaultValue = "true")]
+        bool UseFlashbots { get; set; }
     }
 }

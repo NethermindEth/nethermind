@@ -132,7 +132,10 @@ namespace Nethermind.AccountAbstraction
                 _entryPointContractAbi = LoadEntryPointContract();
 
                 if (_accountAbstractionConfig.BundlingEnabled)
+                { 
                     _txBundler = InitTxBundler();
+                    _txBundler.Start();
+                }
             }
 
             return Task.CompletedTask;
@@ -200,7 +203,18 @@ namespace Nethermind.AccountAbstraction
             ITxBundleSource txBundleSource =
                 new UserOperationTxSource(UserOperationPool, UserOperationSimulator, _nethermindApi.SpecProvider!, _logger);
             IGasLimitProvider gasLimitProvider = new GasLimitProviderAvg(_nethermindApi.BlockTree!);
-            return new TxBundler(trigger, txBundleSource, gasLimitProvider, _nethermindApi.TxSender!, _nethermindApi.BlockTree!);
+
+            if (_accountAbstractionConfig.UseFlashbots)
+                return new TxBundlerFlashbots(
+                    trigger, txBundleSource, gasLimitProvider,
+                    _nethermindApi.BlockTree!, _nethermindApi.EngineSigner, _logger,
+                    _accountAbstractionConfig.FlashbotsEndpoint
+                );
+
+            return new TxBundler(
+                trigger, txBundleSource, gasLimitProvider,
+                _nethermindApi.TxSender!, _nethermindApi.BlockTree!
+            );
         }
 
         private AbiDefinition LoadEntryPointContract()
