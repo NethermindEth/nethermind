@@ -109,6 +109,9 @@
   <ItemGroup>
     <GitHash Include="git-hash" />
   </ItemGroup>
+  <ItemGroup>
+    <_ContentIncludedByDefault Remove="Hive\NLog.config" />
+  </ItemGroup>
 
   <Target Name="StoreGitHashBeforeBuild" BeforeTargets="BeforeBuild">
     <Message Text="---&gt; Generating Git Hash file Before Build" Importance="High" />

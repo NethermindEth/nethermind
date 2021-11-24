@@ -21,11 +21,7 @@ using System.IO.Abstractions;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.VisualBasic.CompilerServices;
-using Nethermind.Api;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Processing;
-using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Config;
@@ -33,10 +29,9 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
-using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 
-namespace Nethermind.Runner.Hive
+namespace Nethermind.Hive
 {
     public class HiveRunner
     {
