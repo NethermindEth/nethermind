@@ -88,17 +88,19 @@ namespace Nethermind.AccountAbstraction.Test
             UserOperation op = Build.A.UserOperation.WithSender(Address.SystemUser).SignedAndResolved().TestObject;
             UserOperation op2 = Build.A.UserOperation.WithSender(Address.SystemUser).WithMaxFeePerGas(2).WithMaxPriorityFeePerGas(2).SignedAndResolved().TestObject;
 
+            IEnumerable<UserOperation> expectedOp = new[] { op };
+            IEnumerable<UserOperation> expectedOp2 = new[] { op2 };
 
             _userOperationPool.AddUserOperation(op);
             _simulator.Received().Simulate(op, Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>(), Arg.Any<UInt256>());
             _userOperationPool.GetUserOperations().Count().Should().Be(1);
-            _userOperationPool.GetUserOperations().Should().BeEquivalentTo(op);
+            _userOperationPool.GetUserOperations().Should().BeEquivalentTo(expectedOp);
 
             _userOperationPool.AddUserOperation(op2);
             _simulator.Received()
                 .Simulate(op2, Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>(), Arg.Any<UInt256>());
             _userOperationPool.GetUserOperations().Count().Should().Be(1);
-            _userOperationPool.GetUserOperations().Should().BeEquivalentTo(op2);
+            _userOperationPool.GetUserOperations().Should().BeEquivalentTo(expectedOp2);
         }
         
         [Test]

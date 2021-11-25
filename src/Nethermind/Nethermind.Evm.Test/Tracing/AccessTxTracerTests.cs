@@ -45,9 +45,12 @@ namespace Nethermind.Evm.Test.Tracing
             (AccessTxTracer tracer, _, _) = ExecuteAndTraceAccessCall(SenderRecipientAndMiner.Default, code);
 
             IEnumerable<Address> addressesAccessed = tracer.AccessList.Data.Keys;
-            
+            IEnumerable<Address> expected = new[] {
+                SenderRecipientAndMiner.Default.Sender, SenderRecipientAndMiner.Default.Recipient, TestItem.AddressC
+            };
+
             Assert.IsNotEmpty(addressesAccessed);
-            addressesAccessed.Should().BeEquivalentTo(SenderRecipientAndMiner.Default.Sender, SenderRecipientAndMiner.Default.Recipient, TestItem.AddressC);
+            addressesAccessed.Should().BeEquivalentTo(expected);
         }
         
         [Test]
