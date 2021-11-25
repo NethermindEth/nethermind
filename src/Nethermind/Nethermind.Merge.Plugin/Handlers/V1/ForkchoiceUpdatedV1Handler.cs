@@ -70,6 +70,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
         public ResultWrapper<ForkchoiceUpdatedV1Result> Handle(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes)
         {
+            // ToDo ethSyncingInfo 
             // if (_ethSyncingInfo.IsSyncing())
             // {
             //     return ResultWrapper<ForkchoiceUpdatedV1Result>.Success(new ForkchoiceUpdatedV1Result() { Status = EngineStatus.Syncing});
@@ -77,15 +78,15 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             
             (BlockHeader? finalizedHeader, string? finalizationErrorMsg) = EnsureHeaderForFinalization(forkchoiceState.FinalizedBlockHash);
             if (finalizationErrorMsg != null)
-                return ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(finalizationErrorMsg, MergeErrorCodes.UnknownHeader);
+                return ResultWrapper<ForkchoiceUpdatedV1Result>.Success(new ForkchoiceUpdatedV1Result() { Status = EngineStatus.Syncing});
             
             (BlockHeader? confirmedHeader, string? confirmationErrorMsg) = EnsureHeaderForConfirmation(forkchoiceState.SafeBlockHash);
             if (confirmationErrorMsg != null)
-                return ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(confirmationErrorMsg, MergeErrorCodes.UnknownHeader);
+                return ResultWrapper<ForkchoiceUpdatedV1Result>.Success(new ForkchoiceUpdatedV1Result() { Status = EngineStatus.Syncing});
             
             (Block? newHeadBlock, Block[]? blocks, string? setHeadErrorMsg) = EnsureBlocksForSetHead(forkchoiceState.HeadBlockHash);
             if (setHeadErrorMsg != null)
-                return ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(setHeadErrorMsg, MergeErrorCodes.UnknownHeader);
+                return ResultWrapper<ForkchoiceUpdatedV1Result>.Success(new ForkchoiceUpdatedV1Result() { Status = EngineStatus.Syncing});
  
             if (ShouldFinalize(forkchoiceState.FinalizedBlockHash))
                 _manualBlockFinalizationManager.MarkFinalized(newHeadBlock!.Header, finalizedHeader!);
