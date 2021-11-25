@@ -93,7 +93,13 @@ namespace Nethermind.Merge.Plugin.Handlers
             //     executePayloadResult.EnumStatus = VerificationStatus.Syncing;
             //     return ResultWrapper<ExecutePayloadV1Result>.Success(executePayloadResult);
             // }
-
+            BlockHeader? parentHeader = _blockTree.FindHeader(request.ParentHash, BlockTreeLookupOptions.None);
+            if (parentHeader == null)
+            {
+                executePayloadResult.EnumStatus = VerificationStatus.Syncing;
+                return ResultWrapper<ExecutePayloadV1Result>.Success(executePayloadResult);
+            }
+            
             ValidationResult result = ValidateRequestAndProcess(request, out Block? processedBlock);
             if ((result & ValidationResult.AlreadyKnown) != 0 || result == ValidationResult.Invalid)
             {
