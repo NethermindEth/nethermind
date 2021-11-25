@@ -14,7 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-namespace Nethermind.Runner.Hive
+namespace Nethermind.Hive
 {
     public class HiveConfig : IHiveConfig
     {
@@ -22,6 +22,6 @@ namespace Nethermind.Runner.Hive
         public string BlocksDir { get; set; } = "/blocks";
         public string KeysDir { get; set; } = "/keys";
         public bool Enabled { get; set; }
-        public string GenesisFile { get; set; } = "/genesis.json";
+        public string GenesisFilePath { get; set; } = "/genesis.json";
     }
 }

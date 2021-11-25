@@ -16,7 +16,7 @@
 
 using Nethermind.Config;
 
-namespace Nethermind.Runner.Hive
+namespace Nethermind.Hive
 {
     [ConfigCategory(Description = "These items need only be set when testing with Hive (Ethereum Foundation tool)")]
     public interface IHiveConfig : IConfig
@@ -32,5 +32,8 @@ namespace Nethermind.Runner.Hive
         
         [ConfigItem(Description = "Enabling hive for debugging purpose", DefaultValue = "false")]
         bool Enabled { get; set; }
+        
+        [ConfigItem(Description = "Path to genesis block.", DefaultValue = "\"/genesis.json\"")]
+        string GenesisFilePath { get; set; }
     }
 }
