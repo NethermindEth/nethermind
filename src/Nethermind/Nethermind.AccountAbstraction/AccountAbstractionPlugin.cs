@@ -1,5 +1,5 @@
 ﻿using System;
-using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Abi;
 using Nethermind.AccountAbstraction.Contracts;
@@ -22,7 +22,8 @@ using Nethermind.Network;
 using Nethermind.Network.P2P;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
-using Newtonsoft.Json.Linq;
+using Nethermind.Mev;
+using Nethermind.AccountAbstraction.Bundler;
 
 namespace Nethermind.AccountAbstraction
 {
@@ -37,6 +38,12 @@ namespace Nethermind.AccountAbstraction
         private Address _entryPointContractAddress = null!;
         private UserOperationPool? _userOperationPool;
         private UserOperationSimulator? _userOperationSimulator;
+        private IBundler? _bundler;
+
+        private MevPlugin? MevPlugin => _nethermindApi
+            .GetConsensusWrapperPlugins()
+            .OfType<MevPlugin>()
+            .SingleOrDefault();
 
         private UserOperationPool UserOperationPool
         {
@@ -53,9 +60,9 @@ namespace Nethermind.AccountAbstraction
                     _userOperationPool = new UserOperationPool(
                         _accountAbstractionConfig,
                         _nethermindApi.BlockTree!,
-                        _entryPointContractAddress, 
+                        _entryPointContractAddress,
                         _logger,
-                        new PaymasterThrottler(Enabled),
+                        new PaymasterThrottler(BundleMiningEnabled),
                         _nethermindApi.ReceiptStorage!,
                         _nethermindApi.EngineSigner!,
                         _nethermindApi.StateProvider!,
@@ -132,6 +139,12 @@ namespace Nethermind.AccountAbstraction
                 }
 
                 _entryPointContractAbi = LoadEntryPointContract();
+
+                UserOperationTxSource userOperationTxSource =
+                    new(UserOperationPool, UserOperationSimulator, _nethermindApi.SpecProvider!, _logger);
+
+                if (BundleMiningEnabled && MevPlugin is not null)
+                    _bundler = new PeriodicMevBundler(_nethermindApi.TimerFactory.CreateTimer(TimeSpan.FromSeconds(5)), userOperationTxSource, MevPlugin.BundlePool, _nethermindApi.BlockTree!);
             }
 
             if (Enabled)
@@ -213,7 +226,8 @@ namespace Nethermind.AccountAbstraction
             return consensusPlugin.InitBlockProducer(trigger, userOperationTxSource);
         }
 
-        public bool Enabled => (_nethermindApi.Config<IInitConfig>().IsMining || _nethermindApi.Config<IMiningConfig>().Enabled) && _accountAbstractionConfig.Enabled;
+        public bool BundleMiningEnabled => _accountAbstractionConfig.Enabled && (_nethermindApi.Config<IInitConfig>().IsMining || _nethermindApi.Config<IMiningConfig>().Enabled);
+        public bool Enabled => BundleMiningEnabled && MevPlugin is null; // IConsensusWrapperPlugin.Enabled
 
         private AbiDefinition LoadEntryPointContract()
         {
