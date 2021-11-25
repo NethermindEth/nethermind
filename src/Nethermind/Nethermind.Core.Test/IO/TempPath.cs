@@ -35,7 +35,7 @@ namespace Nethermind.Core.Test.IO
             ? GetTempFile()
             : new TempPath(System.IO.Path.Combine(System.IO.Path.GetTempPath(), subPath));
 
-        public static TempPath GetTempDirectory(string subPath = null) => 
+        public static TempPath GetTempDirectory(string? subPath = null) => 
             new(System.IO.Path.Combine(System.IO.Path.GetTempPath(), subPath ?? Guid.NewGuid().ToString()));
 
         public void Dispose()

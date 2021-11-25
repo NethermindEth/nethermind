@@ -23,6 +23,7 @@ using System.Timers;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.EventArg;
 
 namespace Nethermind.Network
 {

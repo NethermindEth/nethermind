@@ -215,7 +215,7 @@ namespace Nethermind.Mev.Test
                 0,
                 1,
                 1,
-                null);
+                Bytes.Empty);
             Block head = new Block(header);
             ChainLevelInfo info = new(true, new[] {new BlockInfo(Keccak.Zero, 1)});
 

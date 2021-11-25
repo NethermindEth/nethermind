@@ -24,6 +24,7 @@ using DotNetty.Common;
 using DotNetty.Common.Utilities;
 using DotNetty.Transport.Channels;
 using Nethermind.Logging;
+using Nethermind.Network.P2P.Messages;
 
 namespace Nethermind.Network.P2P
 {

@@ -12,6 +12,7 @@ cd $LIN_RELEASE && LIN_FILE="$(basename nethermind-linux-amd64-*)" && cd ..
 cd $OSX_RELEASE && OSX_FILE="$(basename nethermind-darwin-amd64-*)" && cd ..
 cd $WIN_RELEASE && WIN_FILE="$(basename nethermind-windows-amd64-*)" && cd ..
 cd $LIN_ARM64_RELEASE && LIN_ARM64_FILE="$(basename nethermind-linux-arm64-*)" && cd ..
+cd $OSX_ARM64_RELEASE && OSX_ARM64_FILE="$(basename nethermind-darwin-arm64-*)" && cd ..
 
 echo =======================================================
 echo Signing files with gpg
@@ -28,6 +29,9 @@ gpg --batch --detach-sign --passphrase=$PASS --pinentry-mode loopback --armor $O
 cd ..
 cd $LIN_ARM64_RELEASE
 gpg --batch --detach-sign --passphrase=$PASS --pinentry-mode loopback --armor $LIN_ARM64_FILE
+cd ..
+cd $OSX_ARM64_RELEASE
+gpg --batch --detach-sign --passphrase=$PASS --pinentry-mode loopback --armor $OSX_ARM64_FILE
 cd ..
 
 echo =======================================================
@@ -67,6 +71,14 @@ filename_lin_arm64=${LIN_ARM64_FILE::-13}
 mv $LIN_ARM64_FILE $filename_lin_arm64.$extension
 mv $LIN_ARM64_FILE.asc $filename_lin_arm64.$extension.asc
 curl -# -F "files=@${PWD}/${filename_lin_arm64}.${extension}" -F "files=@${PWD}/${filename_lin_arm64}.${extension}.asc" https://downloads.nethermind.io/files?apikey=$DOWNLOADS_PAGE
+cd ..
+
+cd $OSX_ARM64_RELEASE
+filename_osx_arm64=${OSX_ARM64_FILE::-13}
+
+mv $OSX_ARM64_FILE $filename_osx_arm64.$extension
+mv $OSX_ARM64_FILE.asc $filename_osx_arm64.$extension.asc
+curl -# -F "files=@${PWD}/${filename_osx_arm64}.${extension}" -F "files=@${PWD}/${filename_osx_arm64}.${extension}.asc" https://downloads.nethermind.io/files?apikey=$DOWNLOADS_PAGE
 cd ..
 
 echo =======================================================

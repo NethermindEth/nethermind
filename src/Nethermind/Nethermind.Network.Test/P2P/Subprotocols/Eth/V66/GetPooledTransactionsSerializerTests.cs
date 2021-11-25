@@ -17,6 +17,7 @@
 
 using Nethermind.Core.Crypto;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66;
+using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using Nethermind.Network.Test.P2P.Subprotocols.Eth.V62;
 using NUnit.Framework;
 
@@ -32,7 +33,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             Keccak a = new Keccak("0x00000000000000000000000000000000000000000000000000000000deadc0de");
             Keccak b = new Keccak("0x00000000000000000000000000000000000000000000000000000000feedbeef");
             Keccak[] keys = {a, b};
-            var ethMessage = new Network.P2P.Subprotocols.Eth.V65.GetPooledTransactionsMessage(keys);
+            var ethMessage = new Network.P2P.Subprotocols.Eth.V65.Messages.GetPooledTransactionsMessage(keys);
 
             GetPooledTransactionsMessage message = new GetPooledTransactionsMessage(1111, ethMessage);
             

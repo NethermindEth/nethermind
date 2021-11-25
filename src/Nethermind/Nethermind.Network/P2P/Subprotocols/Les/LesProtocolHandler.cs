@@ -26,6 +26,9 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Network.P2P.EventArg;
+using Nethermind.Network.P2P.ProtocolHandlers;
+using Nethermind.Network.P2P.Subprotocols.Les.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
@@ -214,21 +217,21 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
 
         public void Handle(GetBlockHeadersMessage getBlockHeaders)
         {
-            Eth.V62.BlockHeadersMessage ethBlockHeadersMessage = FulfillBlockHeadersRequest(getBlockHeaders.EthMessage);
+            Eth.V62.Messages.BlockHeadersMessage ethBlockHeadersMessage = FulfillBlockHeadersRequest(getBlockHeaders.EthMessage);
             // todo - implement cost tracking
             Send(new BlockHeadersMessage(ethBlockHeadersMessage, getBlockHeaders.RequestId, int.MaxValue));
         }
 
         public void Handle(GetBlockBodiesMessage getBlockBodies)
         {
-            Eth.V62.BlockBodiesMessage ethBlockBodiesMessage = FulfillBlockBodiesRequest(getBlockBodies.EthMessage);
+            Eth.V62.Messages.BlockBodiesMessage ethBlockBodiesMessage = FulfillBlockBodiesRequest(getBlockBodies.EthMessage);
             // todo - implement cost tracking
             Send(new BlockBodiesMessage(ethBlockBodiesMessage, getBlockBodies.RequestId, int.MaxValue));
         }
 
         public void Handle(GetReceiptsMessage getReceipts)
         {
-            Eth.V63.ReceiptsMessage ethReceiptsMessage = FulfillReceiptsRequest(getReceipts.EthMessage);
+            Eth.V63.Messages.ReceiptsMessage ethReceiptsMessage = FulfillReceiptsRequest(getReceipts.EthMessage);
             // todo - implement cost tracking
             Send(new ReceiptsMessage(ethReceiptsMessage, getReceipts.RequestId, int.MaxValue));
         }

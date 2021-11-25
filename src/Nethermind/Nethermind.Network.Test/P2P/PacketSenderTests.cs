@@ -18,6 +18,7 @@ using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.Messages;
 using NSubstitute;
 using NUnit.Framework;
 

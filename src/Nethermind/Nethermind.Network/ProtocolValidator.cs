@@ -22,6 +22,7 @@ using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.EventArg;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 

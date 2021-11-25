@@ -31,6 +31,7 @@ using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Core;
+using Nethermind.Hive;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 using Nethermind.Logging.NLog;
@@ -117,7 +118,7 @@ namespace Nethermind.Runner
             
             string pluginsDirectoryPath = LoadPluginsDirectory(args);
             PluginLoader pluginLoader = new(pluginsDirectoryPath, fileSystem, 
-                typeof(AuRaPlugin), typeof(CliquePlugin), typeof(EthashPlugin), typeof(NethDevPlugin));
+                typeof(AuRaPlugin), typeof(CliquePlugin), typeof(EthashPlugin), typeof(NethDevPlugin), typeof(HivePlugin));
 
             // leaving here as an example of adding Debug plugin
             // IPluginLoader mevLoader = SinglePluginLoader<MevPlugin>.Instance;

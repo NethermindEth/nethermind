@@ -44,7 +44,7 @@ namespace Nethermind.Core.Test
             LogList.Add(text);
         }
 
-        public void Error(string text, Exception ex = null)
+        public void Error(string text, Exception? ex = null)
         {
             LogList.Add(text);
         }

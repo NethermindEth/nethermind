@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.Messages;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P
