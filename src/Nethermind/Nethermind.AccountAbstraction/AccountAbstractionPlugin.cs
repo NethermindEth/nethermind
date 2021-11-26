@@ -144,8 +144,8 @@ namespace Nethermind.AccountAbstraction
                     new(UserOperationPool, UserOperationSimulator, _nethermindApi.SpecProvider!, _logger);
 
                 if (BundleMiningEnabled && MevPlugin is not null)
-                    _bundler = new MevBundler (
-                        new PeriodicBundleTrigger(TimeSpan.FromSeconds(5), _nethermindApi.BlockTree!),
+                    _bundler = new MevBundler(
+                        new OnNewBlockBundleTrigger(_nethermindApi.BlockTree!),
                         userOperationTxSource, MevPlugin.BundlePool
                     );
             }
