@@ -1,10 +1,9 @@
-using System;
 using System.Linq;
 using System.Collections.Generic;
-using Nethermind.Blockchain;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Mev.Data;
 using Nethermind.Mev.Source;
+using Nethermind.Core;
 
 namespace Nethermind.AccountAbstraction.Bundler
 {
@@ -13,23 +12,26 @@ namespace Nethermind.AccountAbstraction.Bundler
         private IBundleTrigger _trigger;
         private ITxSource _txSource;
         private IBundlePool _bundlePool;
-        private IBlockTree _blockTree;
 
-        public MevBundler(IBundleTrigger trigger, ITxSource txSource, IBundlePool bundlePool, IBlockTree blockTree)
+        public MevBundler(IBundleTrigger trigger, ITxSource txSource, IBundlePool bundlePool)
         {
             _trigger = trigger;
             _txSource = txSource;
             _bundlePool = bundlePool;
-            _blockTree = blockTree;
 
-            _trigger.TriggerBundle += (_, _) => Bundle();
+            _trigger.TriggerBundle += OnTriggerBundle;
         }
 
-        public void Bundle()
+        public void OnTriggerBundle(object? sender, BundleEventArgs args)
+        {
+            Bundle(args.Head);
+        }
+
+        public void Bundle(Block head)
         {
             // turn ops into txs
             IEnumerable<BundleTransaction> transactions =
-                _txSource.GetTransactions(_blockTree.Head!.Header, _blockTree.Head.GasLimit)
+                _txSource.GetTransactions(head.Header, head.GasLimit)
                 .Select(tx => new BundleTransaction
                 {
                     GasPrice = tx.GasPrice,
@@ -46,9 +48,9 @@ namespace Nethermind.AccountAbstraction.Bundler
                 });
 
             // turn txs into MevBundle
-            MevBundle bundle = new(_blockTree.Head.Header.Number + 1, transactions.ToArray());
+            MevBundle bundle = new(head.Header.Number + 1, transactions.ToArray());
 
-            // send MevBundle using SendBundle()
+            // add MevBundle to MevPlugin bundle pool
             bool result = _bundlePool.AddBundle(bundle);
         }
     }
