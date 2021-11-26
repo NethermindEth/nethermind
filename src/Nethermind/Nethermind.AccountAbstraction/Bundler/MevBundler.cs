@@ -8,14 +8,14 @@ using Nethermind.Mev.Source;
 
 namespace Nethermind.AccountAbstraction.Bundler
 {
-    public class PeriodicMevBundler : IBundler
+    public class MevBundler : IBundler
     {
         private IBundleTrigger _trigger;
         private ITxSource _txSource;
         private IBundlePool _bundlePool;
         private IBlockTree _blockTree;
 
-        public PeriodicMevBundler(IBundleTrigger trigger, ITxSource txSource, IBundlePool bundlePool, IBlockTree blockTree)
+        public MevBundler(IBundleTrigger trigger, ITxSource txSource, IBundlePool bundlePool, IBlockTree blockTree)
         {
             _trigger = trigger;
             _txSource = txSource;
