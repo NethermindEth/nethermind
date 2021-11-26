@@ -3,7 +3,6 @@ using System.Linq;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Transactions;
-using Nethermind.Core.Timers;
 using Nethermind.Mev.Data;
 using Nethermind.Mev.Source;
 
@@ -11,21 +10,19 @@ namespace Nethermind.AccountAbstraction.Bundler
 {
     public class PeriodicMevBundler : IBundler
     {
-        private ITimer _timer;
+        private IBundleTrigger _trigger;
         private ITxSource _txSource;
         private IBundlePool _bundlePool;
         private IBlockTree _blockTree;
 
-        public PeriodicMevBundler(ITimer timer, ITxSource txSource, IBundlePool bundlePool, IBlockTree blockTree)
+        public PeriodicMevBundler(IBundleTrigger trigger, ITxSource txSource, IBundlePool bundlePool, IBlockTree blockTree)
         {
-            _timer = timer;
+            _trigger = trigger;
             _txSource = txSource;
             _bundlePool = bundlePool;
             _blockTree = blockTree;
 
-            _timer.Elapsed += TimerOnElapsed;
-            _timer.AutoReset = false;
-            _timer.Start();
+            _trigger.TriggerBundle += (_, _) => Bundle();
         }
 
         public void Bundle()
@@ -53,12 +50,6 @@ namespace Nethermind.AccountAbstraction.Bundler
 
             // send MevBundle using SendBundle()
             bool result = _bundlePool.AddBundle(bundle);
-        }
-
-        public void TimerOnElapsed(object? sender, EventArgs e)
-        {
-            Bundle();
-            _timer.Enabled = true;
         }
     }
 }
