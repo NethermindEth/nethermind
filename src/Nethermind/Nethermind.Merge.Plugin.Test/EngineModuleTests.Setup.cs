@@ -96,7 +96,7 @@ namespace Nethermind.Merge.Plugin.Test
 
             protected override IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
             {
-                MiningConfig miningConfig = new() { Enabled = true };
+                MiningConfig miningConfig = new() { Enabled = true, MinGasPrice = 0 };
                 TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator = new(SpecProvider, miningConfig);
                 EthSyncingInfo = new EthSyncingInfo(BlockTree);
                 Eth2BlockProducerFactory? blockProducerFactory = new Eth2BlockProducerFactory(
