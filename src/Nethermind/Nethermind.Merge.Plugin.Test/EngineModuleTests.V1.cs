@@ -133,8 +133,9 @@ namespace Nethermind.Merge.Plugin.Test
             };
             string[] parameters = new[] {JsonConvert.SerializeObject(forkChoiceUpdatedParams)};
             string? result = RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV1", parameters);
+            // ToDo wait for final PostMerge sync
             result.Should()
-                .Be("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":4,\"message\":\"Block 0x0000000000000000000000000000000000000000000000000000000000000000 not found for confirmation.\"},\"id\":67}");
+                .Be("{\"jsonrpc\":\"2.0\",\"result\":{\"status\":\"SYNCING\"},\"id\":67}");
         }
 
         [Test]
@@ -277,7 +278,6 @@ namespace Nethermind.Merge.Plugin.Test
             get
             {
                 yield return GetNewBlockRequestBadDataTestCase(r => r.BlockHash, TestItem.KeccakA);
-                yield return GetNewBlockRequestBadDataTestCase(r => r.ParentHash, TestItem.KeccakD);
                 yield return GetNewBlockRequestBadDataTestCase(r => r.ReceiptRoot, TestItem.KeccakD);
                 yield return GetNewBlockRequestBadDataTestCase(r => r.StateRoot, TestItem.KeccakD);
 
@@ -290,6 +290,25 @@ namespace Nethermind.Merge.Plugin.Test
                 yield return GetNewBlockRequestBadDataTestCase(r => r.Transactions, new byte[][] {new byte[] {1}});
                 yield return GetNewBlockRequestBadDataTestCase(r => r.GasUsed, 1);
             }
+        }
+     
+        // ToDo wait for final PostMerge sync
+        [Test]
+        public async Task executePayloadV1_unknown_parentHash_return_syncing()
+        {
+            using MergeTestBlockchain chain = await CreateBlockChain();
+            IEngineRpcModule rpc = CreateEngineModule(chain);
+            BlockRequestResult getPayloadResult = await BuildAndGetPayloadResult(chain, rpc);
+            Keccak blockHash = getPayloadResult.BlockHash;
+            getPayloadResult.ParentHash = TestItem.KeccakF;
+            if (blockHash == getPayloadResult.BlockHash && TryCalculateHash(getPayloadResult, out Keccak? hash))
+            {
+                getPayloadResult.BlockHash = hash;
+            }
+
+            ResultWrapper<ExecutePayloadV1Result>
+                executePayloadResult = await rpc.engine_executePayloadV1(getPayloadResult);
+            executePayloadResult.Data.EnumStatus.Should().Be(VerificationStatus.Syncing);
         }
 
         [TestCaseSource(nameof(WrongInputTestsV1))]
@@ -673,7 +692,7 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         [Test]
-        public async Task assembleBlock_picks_transactions_from_pool_v1()
+        public async Task getPayloadV1_picks_transactions_from_pool_v1()
         {
             SemaphoreSlim semaphoreSlim = new(0);
             ManualTimestamper timestamper = new(Timestamp);
@@ -682,7 +701,7 @@ namespace Nethermind.Merge.Plugin.Test
             Keccak startingHead = chain.BlockTree.HeadHash;
             uint count = 3;
             int value = 10;
-            Address recipient = TestItem.AddressD;
+            Address recipient = TestItem.AddressF;
             PrivateKey sender = TestItem.PrivateKeyB;
             Transaction[] transactions =
                 BuildTransactions(chain, startingHead, sender, recipient, count, value, out _, out _);
@@ -700,12 +719,12 @@ namespace Nethermind.Merge.Plugin.Test
                     FeeRecipient = Address.Zero
                 }).Result.Data.PayloadId;
             await semaphoreSlim.WaitAsync(-1);
-            BlockRequestResult assembleBlockResult =
+            BlockRequestResult getPayloadResult =
                 (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
 
-            assembleBlockResult.StateRoot.Should().NotBe(chain.BlockTree.Genesis!.StateRoot!);
+            getPayloadResult.StateRoot.Should().NotBe(chain.BlockTree.Genesis!.StateRoot!);
 
-            Transaction[] transactionsInBlock = assembleBlockResult.GetTransactions();
+            Transaction[] transactionsInBlock = getPayloadResult.GetTransactions();
             transactionsInBlock.Should().BeEquivalentTo(transactions,
                 o => o.Excluding(t => t.ChainId)
                     .Excluding(t => t.SenderAddress)
@@ -714,11 +733,11 @@ namespace Nethermind.Merge.Plugin.Test
                     .Excluding(t => t.GasBottleneck));
             
             ResultWrapper<ExecutePayloadV1Result> executePayloadResult =
-                await rpc.engine_executePayloadV1(assembleBlockResult);
+                await rpc.engine_executePayloadV1(getPayloadResult);
             executePayloadResult.Data.EnumStatus.Should().Be(VerificationStatus.Valid);
 
             UInt256 totalValue = ((int)(count * value)).GWei();
-            chain.StateReader.GetBalance(assembleBlockResult.StateRoot, recipient).Should().Be(totalValue);
+            chain.StateReader.GetBalance(getPayloadResult.StateRoot, recipient).Should().Be(totalValue);
         }
 
         private async Task<IReadOnlyList<BlockRequestResult>> ProduceBranchV1(IEngineRpcModule rpc,

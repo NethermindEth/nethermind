@@ -70,7 +70,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
         public ResultWrapper<ForkchoiceUpdatedV1Result> Handle(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes)
         {
-            // ToDo ethSyncingInfo 
+            // ToDo wait for final PostMerge sync
             // if (_ethSyncingInfo.IsSyncing())
             // {
             //     return ResultWrapper<ForkchoiceUpdatedV1Result>.Success(new ForkchoiceUpdatedV1Result() { Status = EngineStatus.Syncing});
@@ -78,15 +78,15 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             
             (BlockHeader? finalizedHeader, string? finalizationErrorMsg) = EnsureHeaderForFinalization(forkchoiceState.FinalizedBlockHash);
             if (finalizationErrorMsg != null)
-                return ResultWrapper<ForkchoiceUpdatedV1Result>.Success(new ForkchoiceUpdatedV1Result() { Status = EngineStatus.Syncing});
+                return ResultWrapper<ForkchoiceUpdatedV1Result>.Success(new ForkchoiceUpdatedV1Result() { Status = EngineStatus.Syncing}); // ToDo wait for final PostMerge sync
             
             (BlockHeader? confirmedHeader, string? confirmationErrorMsg) = EnsureHeaderForConfirmation(forkchoiceState.SafeBlockHash);
             if (confirmationErrorMsg != null)
-                return ResultWrapper<ForkchoiceUpdatedV1Result>.Success(new ForkchoiceUpdatedV1Result() { Status = EngineStatus.Syncing});
+                return ResultWrapper<ForkchoiceUpdatedV1Result>.Success(new ForkchoiceUpdatedV1Result() { Status = EngineStatus.Syncing}); // ToDo wait for final PostMerge sync
             
             (Block? newHeadBlock, Block[]? blocks, string? setHeadErrorMsg) = EnsureBlocksForSetHead(forkchoiceState.HeadBlockHash);
             if (setHeadErrorMsg != null)
-                return ResultWrapper<ForkchoiceUpdatedV1Result>.Success(new ForkchoiceUpdatedV1Result() { Status = EngineStatus.Syncing});
+                return ResultWrapper<ForkchoiceUpdatedV1Result>.Success(new ForkchoiceUpdatedV1Result() { Status = EngineStatus.Syncing}); // ToDo wait for final PostMerge sync
  
             if (ShouldFinalize(forkchoiceState.FinalizedBlockHash))
                 _manualBlockFinalizationManager.MarkFinalized(newHeadBlock!.Header, finalizedHeader!);

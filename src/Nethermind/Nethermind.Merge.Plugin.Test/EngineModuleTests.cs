@@ -64,7 +64,7 @@ namespace Nethermind.Merge.Plugin.Test
 
             BlockRequestResult expected = CreateParentBlockRequestOnHead(chain.BlockTree);
             expected.GasLimit = 4000000L;
-            expected.BlockHash = new Keccak("0x3ee80ba456bac700bfaf5b2827270406134e2392eb03ec50f6c23de28dd08811");
+            expected.BlockHash = new Keccak("0xa904357ed3b8d871d45203be32031799bcaf573d13e36edd223d1f0e58963053");
             expected.LogsBloom = Bloom.Empty;
             expected.Coinbase = chain.SealEngine.Address;
             expected.BlockNumber = 1;
@@ -418,6 +418,7 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         [TestCase(30)]
+        [Ignore("Old pithos test")]
         public async Task can_progress_chain_one_by_one(int count)
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
@@ -486,6 +487,7 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         [Test]
+        [Ignore("Old pithos test")]
         public async Task can_prepare_payload_on_any_block()
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
@@ -625,6 +627,7 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         [Test]
+        [Ignore("Old pithos test")]
         public async Task assembleBlock_picks_transactions_from_pool()
         {
             SemaphoreSlim semaphoreSlim = new(0);
@@ -634,7 +637,7 @@ namespace Nethermind.Merge.Plugin.Test
             Keccak startingHead = chain.BlockTree.HeadHash;
             uint count = 3;
             int value = 10;
-            Address recipient = TestItem.AddressD;
+            Address recipient = TestItem.AddressF;
             PrivateKey sender = TestItem.PrivateKeyB;
             Transaction[] transactions =
                 BuildTransactions(chain, startingHead, sender, recipient, count, value, out _, out _);
