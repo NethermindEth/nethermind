@@ -53,7 +53,10 @@ namespace Nethermind.Blockchain.Spec
                 IReleaseSpec releaseSpec = _headerSpec;
                 if (headerNumber == _lastHeader)
                 {
-                    return releaseSpec!;
+                    if (releaseSpec is not null)
+                    {
+                        return releaseSpec;
+                    }
                 }
             }
 
