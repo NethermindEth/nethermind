@@ -256,6 +256,11 @@ namespace Nethermind.Core.Specs
         bool IsEip3675Enabled { get; }
 
         /// <summary>
+        /// Decrease CallData gas cost to 3, introduce max CallData per block
+        /// </summary>
+        bool IsEip4488Enabled => false;
+
+        /// <summary>
         /// Should transactions be validated against chainId.
         /// </summary>
         /// <remarks>Backward compatibility for early Kovan blocks.</remarks>

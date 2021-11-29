@@ -137,6 +137,8 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
         
         public long? Eip1559BaseFeeMinValueTransition { get; set; }
         
-        public UInt256? Eip1559BaseFeeMinValue  { get; set; }
+        public UInt256? Eip1559BaseFeeMinValue { get; set; }
+
+        public long? Eip4488Transition { get; set; }
     }
 }

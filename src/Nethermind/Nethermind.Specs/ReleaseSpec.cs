@@ -72,6 +72,7 @@ namespace Nethermind.Specs
         public bool IsEip3607Enabled { get; set; }
         public bool IsEip3541Enabled { get; set; }
         public bool IsEip3675Enabled { get; set; }
+        public bool IsEip4488Enabled { get; set; }
         public bool ValidateChainId { get; set; }
         public bool ValidateReceipts { get; set; }
         public long Eip1559TransitionBlock { get; set; }

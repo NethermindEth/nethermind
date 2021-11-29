@@ -114,5 +114,10 @@ namespace Nethermind.Specs.ChainSpecStyle
         /// Optional, minimal value of EIP1559 base fee
         /// </summary>
         public UInt256? Eip1559BaseFeeMinValue { get; set; }
+
+        /// <summary>
+        /// Block from which EIP4488 will decrease CallData gas cost, while introducing CallData block limit
+        /// </summary>
+        public long? Eip4488Transition { get; set; }
     }
 }
