@@ -31,7 +31,9 @@ namespace Nethermind.Merge.Plugin
 
         public static NoPoS Instance { get; } = new();
 
-        public void ForkchoiceUpdated(BlockHeader newBlockHeader, BlockHeader finalizedHeader) { }
+        public void ForkchoiceUpdated(BlockHeader newBlockHeader) { }
+
+        public void SetFinalizedBlockHash(Keccak finalizedBlockHash) { }
 
         public bool IsPos(BlockHeader header) => false;
 

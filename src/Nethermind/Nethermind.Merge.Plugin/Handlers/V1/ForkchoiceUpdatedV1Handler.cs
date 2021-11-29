@@ -87,9 +87,12 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             (Block? newHeadBlock, Block[]? blocks, string? setHeadErrorMsg) = EnsureBlocksForSetHead(forkchoiceState.HeadBlockHash);
             if (setHeadErrorMsg != null)
                 return ResultWrapper<ForkchoiceUpdatedV1Result>.Success(new ForkchoiceUpdatedV1Result() { Status = EngineStatus.Syncing}); // ToDo wait for final PostMerge sync
- 
+
             if (ShouldFinalize(forkchoiceState.FinalizedBlockHash))
+            {
                 _manualBlockFinalizationManager.MarkFinalized(newHeadBlock!.Header, finalizedHeader!);
+                if (forkchoiceState.FinalizedBlockHash != Keccak.Zero) _poSSwitcher.SetFinalizedBlockHash(forkchoiceState.FinalizedBlockHash);
+            }
             else if (_manualBlockFinalizationManager.LastFinalizedHash != Keccak.Zero)
                 if (_logger.IsWarn) _logger.Warn($"Cannot finalize block. The current finalized block is: {_manualBlockFinalizationManager.LastFinalizedHash}, the requested hash: {forkchoiceState.FinalizedBlockHash}");
             
@@ -107,7 +110,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             
             if (headUpdated && shouldUpdateHead)
             {
-                _poSSwitcher.ForkchoiceUpdated(newHeadBlock!.Header, finalizedHeader);
+                _poSSwitcher.ForkchoiceUpdated(newHeadBlock!.Header);
                 _stateProvider.ResetStateTo(newHeadBlock.StateRoot!);
                 if (_logger.IsInfo) _logger.Info($"Block {forkchoiceState.HeadBlockHash} was set as head");
             }

@@ -40,6 +40,7 @@ namespace Nethermind.Merge.Plugin
         private UInt256? _terminalTotalDifficulty;
         private Keccak? _terminalBlockHash;
         private BlockHeader? _firstPoSBlockHeader;
+
         private long? _terminalPoWBlockNumber;
 
         public PoSSwitcher(ILogManager logManager, IMergeConfig mergeConfig, IDb db, IBlockTree blockTree, ISpecProvider specProvider)
@@ -93,15 +94,9 @@ namespace Nethermind.Merge.Plugin
             _db.Set(MetadataDbKeys.TerminalTotalDifficulty, Rlp.Encode(_terminalTotalDifficulty).Bytes);
         }
 
-        public Keccak? LoadTerminalPowHash()
-        {
-            return LoadHashFromDb(MetadataDbKeys.TerminalPoWHash);
-        }
-
         public void SetTerminalPoWHash(Keccak blockHash)
         {
             _terminalBlockHash = blockHash;
-            _db.Set(MetadataDbKeys.TerminalPoWHash, Rlp.Encode(_terminalBlockHash).Bytes);
         }
 
         public Keccak? LoadFirstPosBlockHash()
@@ -114,14 +109,18 @@ namespace Nethermind.Merge.Plugin
             return LoadHashFromDb(MetadataDbKeys.FinalizedBlockHash);
         }
 
-        public void ForkchoiceUpdated(BlockHeader newBlockHeader, BlockHeader finalizedHeader)
+        public void SetFinalizedBlockHash(Keccak finalizedBlockHash)
+        {
+            _db.Set(MetadataDbKeys.FinalizedBlockHash, Rlp.Encode(finalizedBlockHash).Bytes);
+        }
+
+        public void ForkchoiceUpdated(BlockHeader newBlockHeader)
         {
             if (_firstPoSBlockHeader == null)
             {
                 if (_logger.IsInfo) _logger.Info($"Received the first forkchoiceUpdated at block {newBlockHeader}");
                 _firstPoSBlockHeader = newBlockHeader;
                 _db.Set(MetadataDbKeys.FirstPoSBlockHash, Rlp.Encode(_firstPoSBlockHeader.Hash).Bytes);
-                _db.Set(MetadataDbKeys.FinalizedBlockHash, Rlp.Encode(finalizedHeader.Hash).Bytes);
             }
         }
 

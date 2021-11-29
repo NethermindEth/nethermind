@@ -129,13 +129,12 @@ namespace Nethermind.Merge.Plugin.Test
             var blockTree = Substitute.For<IBlockTree>();
             PoSSwitcher poSSwitcher = CreatePosSwitcher(configTerminalTotalDifficulty, blockTree, filePublicKeyDb);
             poSSwitcher.TerminalTotalDifficulty = expectedTotalTerminalDifficulty;
-            poSSwitcher.SetTerminalPoWHash(expectedTerminalPowHash);
-            poSSwitcher.ForkchoiceUpdated(block.Header, finalizedBlock.Header);
+            poSSwitcher.ForkchoiceUpdated(block.Header);
+            poSSwitcher.SetFinalizedBlockHash(finalizedBlock.Hash!);
 
             PoSSwitcher newPoSSwitcher = CreatePosSwitcher(configTerminalTotalDifficulty,blockTree, filePublicKeyDb);
             tempPath.Dispose();
             Assert.AreEqual(expectedTotalTerminalDifficulty, newPoSSwitcher.TerminalTotalDifficulty);
-            Assert.AreEqual(expectedTerminalPowHash, newPoSSwitcher.LoadTerminalPowHash());
             Assert.AreEqual(block.Header.Hash, newPoSSwitcher.LoadFirstPosBlockHash());
             Assert.AreEqual(finalizedBlock.Header.Hash, newPoSSwitcher.LoadFinalizedBlockHash());
         }
