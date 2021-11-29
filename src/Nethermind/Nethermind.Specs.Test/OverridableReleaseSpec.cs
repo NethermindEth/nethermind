@@ -33,6 +33,8 @@ namespace Nethermind.Specs.Test
         {
             _spec = spec;
             IsEip3607Enabled = _spec.IsEip3607Enabled;
+            Eip1559TransitionBlock = spec.Eip1559TransitionBlock;
+            IsEip4488Enabled = spec.IsEip4488Enabled;
         }
 
         public string Name => "OverridableReleaseSpec";
@@ -128,6 +130,7 @@ namespace Nethermind.Specs.Test
         public bool IsEip3541Enabled => _spec.IsEip3541Enabled;
         public bool IsEip3607Enabled { get; set; }
         public bool IsEip3675Enabled => _spec.IsEip3675Enabled;
+        public bool IsEip4488Enabled { get; set; }
 
         public bool IsEip158IgnoredAccount(Address address)
         {
