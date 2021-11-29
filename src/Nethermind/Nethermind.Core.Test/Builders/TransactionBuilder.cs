@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Crypto;
@@ -69,7 +70,10 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.Data = data;
             return this;
         }
-        
+
+        public TransactionBuilder<T> WithData(long length) =>
+            WithData(Enumerable.Range(0, (int)length).Select(i => (byte)(i % byte.MaxValue)).ToArray());
+
         public TransactionBuilder<T> WithCode(byte[] data)
         {
             TestObjectInternal.Data = data;

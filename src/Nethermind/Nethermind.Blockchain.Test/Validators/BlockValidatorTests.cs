@@ -49,16 +49,14 @@ namespace Nethermind.Blockchain.Test.Validators
         [TestCase(true, true, ExpectedResult = false)]
         public bool Validation_fails_when_gas_limit_exceeded(bool isEip4488Enabled, bool shouldBreak448Rule)
         {
-            byte[] GetData(int length) => Enumerable.Range(0, length).Select(i => (byte)(i % byte.MaxValue)).ToArray();
-
             ReleaseSpec releaseSpec = new() { IsEip4488Enabled = isEip4488Enabled };
             ISpecProvider specProvider = new CustomSpecProvider((0, releaseSpec));
 
             BlockValidator blockValidator = new(Always.Valid, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
             
             Block block = Build.A.Block.WithTransactions(
-                Build.A.Transaction.WithData(GetData((int)(Block.BaseMaxCallDataPerBlock + Transaction.CallDataPerTxStipend))).TestObject,
-                Build.A.Transaction.WithData(GetData((int)(Transaction.CallDataPerTxStipend + (shouldBreak448Rule ? 1 : 0)))).TestObject)
+                Build.A.Transaction.WithData(Block.BaseMaxCallDataPerBlock + Transaction.CallDataPerTxStipend).TestObject,
+                Build.A.Transaction.WithData(Transaction.CallDataPerTxStipend + (shouldBreak448Rule ? 1 : 0)).TestObject)
                 .TestObject;
 
             return blockValidator.ValidateSuggestedBlock(block);

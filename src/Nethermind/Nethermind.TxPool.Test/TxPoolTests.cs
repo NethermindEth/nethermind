@@ -243,6 +243,28 @@ namespace Nethermind.TxPool.Test
             
             return txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
         }
+        
+        [TestCase(false, false, ExpectedResult = AddTxResult.Added)]
+        [TestCase(false, true, ExpectedResult = AddTxResult.Added)]
+        [TestCase(true, false, ExpectedResult = AddTxResult.Added)]
+        [TestCase(true, true, ExpectedResult = AddTxResult.CallDataLimitExceeded)]
+        public AddTxResult should_reject_transactions_over_calldata_limit_when_eip4488_enabled(bool eip4488Enabled, bool overLimit)
+        {
+            ISpecProvider specProvider = new OverridableSpecProvider(new TestSpecProvider(London.Instance), r => new OverridableReleaseSpec(r) {IsEip4488Enabled = eip4488Enabled});
+            long gasLimit = Block.BaseMaxCallDataPerBlock * 20;
+            TxPool txPool = CreatePool(new TxPoolConfig() { GasLimit = gasLimit }, specProvider);
+
+            long callDataLength = Block.BaseMaxCallDataPerBlock + Transaction.CallDataPerTxStipend + (overLimit ? 1 : 0);
+            Transaction tx = Build.A.Transaction
+                .WithData(callDataLength)
+                .WithGasLimit(gasLimit)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            
+            EnsureSenderBalance(tx);
+            _stateProvider.UpdateCodeHash(TestItem.AddressA,Keccak.OfAnEmptyString, London.Instance);
+            
+            return txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+        }
 
         [Test]
         public void should_ignore_insufficient_funds_transactions()

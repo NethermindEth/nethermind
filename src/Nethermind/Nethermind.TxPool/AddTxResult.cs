@@ -95,6 +95,6 @@ namespace Nethermind.TxPool
         /// <summary>
         /// Transaction CallData is too large when EIP4488 enabled.
         /// </summary>
-        CallDataTooLarge
+        CallDataLimitExceeded
     }
 }
