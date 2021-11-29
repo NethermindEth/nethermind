@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Linq;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -28,11 +29,10 @@ namespace Nethermind.Blockchain.Test.Validators
     public class BlockValidatorTests
     {
         [Test]
-        public void When_more_uncles_than_allowed_returns_false()
+        public void Validation_fails_when_more_uncles_than_allowed()
         {
             TxValidator txValidator = new(ChainId.Mainnet);
-            ReleaseSpec releaseSpec = new();
-            releaseSpec.MaximumUncleCount = 0;
+            ReleaseSpec releaseSpec = new() { MaximumUncleCount = 0 };
             ISpecProvider specProvider = new CustomSpecProvider((0, releaseSpec));
 
             BlockValidator blockValidator = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
@@ -41,6 +41,27 @@ namespace Nethermind.Blockchain.Test.Validators
             
             bool result = blockValidator.ValidateSuggestedBlock(Build.A.Block.WithUncles(Build.A.BlockHeader.TestObject).TestObject);
             Assert.False(result);
+        }
+
+        [TestCase(false, false, ExpectedResult = true)]
+        [TestCase(false, true, ExpectedResult = true)]
+        [TestCase(true, false, ExpectedResult = true)]
+        [TestCase(true, true, ExpectedResult = false)]
+        public bool Validation_fails_when_gas_limit_exceeded(bool isEip4488Enabled, bool shouldBreak448Rule)
+        {
+            byte[] GetData(int length) => Enumerable.Range(0, length).Select(i => (byte)(i % byte.MaxValue)).ToArray();
+
+            ReleaseSpec releaseSpec = new() { IsEip4488Enabled = isEip4488Enabled };
+            ISpecProvider specProvider = new CustomSpecProvider((0, releaseSpec));
+
+            BlockValidator blockValidator = new(Always.Valid, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
+            
+            Block block = Build.A.Block.WithTransactions(
+                Build.A.Transaction.WithData(GetData((int)(Block.BaseMaxCallDataPerBlock + Transaction.CallDataPerTxStipend))).TestObject,
+                Build.A.Transaction.WithData(GetData((int)(Transaction.CallDataPerTxStipend + (shouldBreak448Rule ? 1 : 0)))).TestObject)
+                .TestObject;
+
+            return blockValidator.ValidateSuggestedBlock(block);
         }
     }
 }
