@@ -28,7 +28,8 @@ namespace Nethermind.Core
     [DebuggerDisplay("{Hash}, Value: {Value}, To: {To}, Gas: {GasLimit}")]
     public class Transaction
     {
-        public const int BaseTxGasCost = 21000;
+        public const long BaseTxGasCost = 21000;
+        public const long CallDataPerTxStipend = 300;
         
         public ulong? ChainId { get; set; }
 

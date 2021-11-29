@@ -65,12 +65,26 @@ namespace Nethermind.Blockchain.Validators
         {
             Transaction[] txs = block.Transactions;
             IReleaseSpec spec = _specProvider.GetSpec(block.Number);
-            
+
+            long callData = 0;
             for (int i = 0; i < txs.Length; i++)
             {
-                if (!_txValidator.IsWellFormed(txs[i], spec))
+                Transaction tx = txs[i];
+                if (!_txValidator.IsWellFormed(tx, spec))
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Invalid block ({block.ToString(Block.Format.FullHashAndNumber)}) - invalid transaction ({txs[i].Hash})");
+                    if (_logger.IsDebug) _logger.Debug($"Invalid block ({block.ToString(Block.Format.FullHashAndNumber)}) - invalid transaction ({tx.Hash})");
+                    return false;
+                }
+                
+                callData += tx.Data?.Length ?? 0;
+            }
+            
+            if (spec.IsEip4488Enabled)
+            {
+                long maxCallDataInBlock = Block.BaseMaxCallDataPerBlock + txs.Length * Transaction.CallDataPerTxStipend;
+                if (callData > maxCallDataInBlock)
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Invalid block ({block.ToString(Block.Format.FullHashAndNumber)}) - call data size ({callData}) exceeds limit ({maxCallDataInBlock})");
                     return false;
                 }
             }

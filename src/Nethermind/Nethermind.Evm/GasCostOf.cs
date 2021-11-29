@@ -51,6 +51,7 @@ namespace Nethermind.Evm
         public const long TxDataZero = 4;
         public const long TxDataNonZero = 68;
         public const long TxDataNonZeroEip2028 = 16;
+        public const long TxDataEip4488 = 3;
         public const long Transaction = 21000;
         public const long Log = 375;
         public const long LogTopic = 375;

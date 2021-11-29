@@ -27,6 +27,8 @@ namespace Nethermind.Core
     [DebuggerDisplay("{Hash} ({Number})")]
     public class Block
     {
+        public const long BaseMaxCallDataPerBlock = 1_048_576;
+
         public Block(BlockHeader blockHeader, BlockBody body)
         {
             Header = blockHeader;
