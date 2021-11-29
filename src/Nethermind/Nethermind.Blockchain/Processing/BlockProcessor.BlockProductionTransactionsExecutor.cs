@@ -16,6 +16,7 @@
 // 
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
@@ -87,7 +88,7 @@ namespace Nethermind.Blockchain.Processing
                 IEnumerable<Transaction> transactions = GetTransactions(block);
 
                 int i = 0;
-                LinkedHashSet<Transaction> transactionsInBlock = new(ByHashTxComparer.Instance);
+                TransactionsInBlock transactionsInBlock = new();
                 foreach (Transaction currentTx in transactions)
                 {
                     TxAction action = ProcessTransaction(block, currentTx, i++, receiptsTracer, processingOptions, transactionsInBlock);
@@ -107,7 +108,7 @@ namespace Nethermind.Blockchain.Processing
                 int index, 
                 BlockReceiptsTracer receiptsTracer,
                 ProcessingOptions processingOptions, 
-                LinkedHashSet<Transaction> transactionsInBlock,
+                TransactionsInBlock transactionsInBlock,
                 bool addToBlock = true)
             {
                 AddingTxEventArgs args = _blockProductionTransactionPicker.CanAddTransaction(block, currentTx, transactionsInBlock, _stateProvider);

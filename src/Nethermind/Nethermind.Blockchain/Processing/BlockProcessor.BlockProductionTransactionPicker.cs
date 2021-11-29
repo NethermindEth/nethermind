@@ -40,7 +40,7 @@ namespace Nethermind.Blockchain.Processing
             
             public event EventHandler<AddingTxEventArgs>? AddingTransaction;
 
-            public AddingTxEventArgs CanAddTransaction(Block block, Transaction currentTx, IReadOnlySet<Transaction> transactionsInBlock, IStateProvider stateProvider)
+            public AddingTxEventArgs CanAddTransaction(Block block, Transaction currentTx, TransactionsInBlock transactionsInBlock, IStateProvider stateProvider)
             {
                 AddingTxEventArgs args = new(transactionsInBlock.Count, currentTx, block, transactionsInBlock);
                 
@@ -69,6 +69,11 @@ namespace Nethermind.Blockchain.Processing
                 }
 
                 IReleaseSpec spec = _specProvider.GetSpec(block.Number);
+                if (!transactionsInBlock.CanAddTx(spec.IsEip4488Enabled, currentTx))
+                {
+                    return args.Set(TxAction.Skip, "Block CallData limit exceeded");
+                }
+
                 if (stateProvider.IsInvalidContractSender(spec, currentTx.SenderAddress))
                 {
                     return args.Set(TxAction.Skip, $"Sender is contract");

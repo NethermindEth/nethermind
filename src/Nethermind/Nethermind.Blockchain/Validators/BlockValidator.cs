@@ -76,7 +76,7 @@ namespace Nethermind.Blockchain.Validators
                     return false;
                 }
                 
-                callData += tx.Data?.Length ?? 0;
+                callData += tx.DataLength;
             }
             
             if (spec.IsEip4488Enabled)

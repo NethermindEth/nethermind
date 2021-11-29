@@ -35,7 +35,7 @@ namespace Nethermind.TxPool.Filters
         public (bool Accepted, AddTxResult? Reason) Accept(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
             return _specProvider.GetSpec().IsEip4488Enabled
-                   && tx.Data?.Length > Block.BaseMaxCallDataPerBlock + Transaction.CallDataPerTxStipend
+                   && tx.DataLength > Block.BaseMaxCallDataPerBlock + Transaction.CallDataPerTxStipend
                 ? (false, AddTxResult.CallDataTooLarge)
                 : (true, null);
         }

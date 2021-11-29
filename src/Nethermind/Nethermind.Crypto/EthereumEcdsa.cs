@@ -53,7 +53,7 @@ namespace Nethermind.Crypto
         {
             if (_logger.IsDebug)
                 _logger.Debug(
-                    $"Signing transaction {tx.SenderAddress} -> {tx.To} ({tx.Value}) with data of length {tx.Data?.Length}");
+                    $"Signing transaction {tx.SenderAddress} -> {tx.To} ({tx.Value}) with data of length {tx.DataLength}");
 
             //Keccak hash = Keccak.Compute(Bytes.Concat((byte)tx.Type, Rlp.Encode(tx, true, isEip155Enabled, _chainIdValue).Bytes));
             

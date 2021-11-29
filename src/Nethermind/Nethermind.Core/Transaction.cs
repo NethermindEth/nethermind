@@ -50,6 +50,7 @@ namespace Nethermind.Core
         public Address? To { get; set; }
         public UInt256 Value { get; set; }
         public byte[]? Data { get; set; }
+        public long DataLength => Data?.LongLength ?? 0L;
         public Address? SenderAddress { get; set; }
         public Signature? Signature { get; set; }
         public bool IsSigned => Signature != null;

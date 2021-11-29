@@ -68,7 +68,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
             public static Destination GetTransactionKey(Transaction tx)
             {
-                byte[] fnSignature = tx.Data?.Length >= 4 ? AbiSignature.GetAddress(tx.Data) : FnSignatureEmpty;
+                byte[] fnSignature = tx.DataLength >= 4 ? AbiSignature.GetAddress(tx.Data!) : FnSignatureEmpty;
                 return new Destination(tx.To, fnSignature,UInt256.Zero);
             }
 
