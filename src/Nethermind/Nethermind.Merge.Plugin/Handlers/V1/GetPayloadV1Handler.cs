@@ -52,7 +52,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             
             if (blockProductionTask == null)
             {
-                if (_logger.IsWarn) _logger.Warn($"No payload with id={payloadId} found");
+                if (_logger.IsWarn) _logger.Warn($"No payload with id={payloadId.ToHexString()} found");
                 return ResultWrapper<BlockRequestResult?>.Fail(
                     "unknown payload",
                     MergeErrorCodes.UnavailablePayloadV1);
@@ -62,7 +62,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
             if (block == null)
             {
-                if (_logger.IsWarn) _logger.Warn($"Block production for payload with id={payloadId} failed");
+                if (_logger.IsWarn) _logger.Warn($"Block production for payload with id={payloadId.ToHexString()} failed");
                 return ResultWrapper<BlockRequestResult?>.Fail(
                     "unknown payload",
                     MergeErrorCodes.UnavailablePayloadV1);

@@ -93,8 +93,8 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             else if (_manualBlockFinalizationManager.LastFinalizedHash != Keccak.Zero)
                 if (_logger.IsWarn) _logger.Warn($"Cannot finalize block. The current finalized block is: {_manualBlockFinalizationManager.LastFinalizedHash}, the requested hash: {forkchoiceState.FinalizedBlockHash}");
             
-            // It is not needed now. In future safeBlockHash will be added to JSON-RPC
-          //  _blockConfirmationManager.Confirm(confirmedHeader!.Hash!);
+            // In future safeBlockHash will be added to JSON-RPC
+             _blockConfirmationManager.Confirm(confirmedHeader!.Hash!);
             byte[]? payloadId = null;
 
             bool headUpdated = false;

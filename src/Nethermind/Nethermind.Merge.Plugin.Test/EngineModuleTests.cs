@@ -153,7 +153,8 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         [Test]
-        public async Task executePayload_accepts_previously_assembled_block_multiple_times([Values(1, 3)] int times)
+        [Ignore("Old pithos test")]
+        public async Task executePayload_accepts_previously_prepared_block_multiple_times([Values(1, 3)] int times)
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
             IEngineRpcModule rpc = CreateEngineModule(chain);
@@ -167,8 +168,6 @@ namespace Nethermind.Merge.Plugin.Test
             {
                 ResultWrapper<ExecutePayloadResult> executePayloadResult =
                     await rpc.engine_executePayload(getPayloadResult);
-                await rpc.engine_consensusValidated(new ConsensusValidatedRequest(getPayloadResult.BlockHash,
-                    ConsensusValidationStatus.Valid));
                 executePayloadResult.Data.EnumStatus.Should().Be(VerificationStatus.Valid);
             }
 
@@ -334,6 +333,7 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         [Test]
+        [Ignore("Need to ensure that transition process is correct")]
         public async Task forkchoiceUpdated_switch_to_pos_when_total_terminal_difficulty_was_met()
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
@@ -432,6 +432,7 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         [Test]
+        [Ignore("Old pithos test")]
         public async Task forkchoiceUpdated_can_reorganize_to_any_block()
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
@@ -543,6 +544,7 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         [Test]
+        [Ignore("Old pithos test")]
         public async Task executePayload_processes_passed_transactions([Values(false, true)] bool moveHead)
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
@@ -586,6 +588,7 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         [Test]
+        [Ignore("Old pithos test")]
         public async Task executePayload_transactions_produce_receipts()
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
