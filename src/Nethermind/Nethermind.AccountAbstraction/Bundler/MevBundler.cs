@@ -22,7 +22,7 @@ namespace Nethermind.AccountAbstraction.Bundler
             _trigger.TriggerBundle += OnTriggerBundle;
         }
 
-        public void OnTriggerBundle(object? sender, BundleEventArgs args)
+        public void OnTriggerBundle(object? sender, BundleUserOpsEventArgs args)
         {
             Bundle(args.Head);
         }

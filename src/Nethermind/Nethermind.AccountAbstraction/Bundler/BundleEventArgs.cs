@@ -3,11 +3,11 @@ using Nethermind.Core;
 
 namespace Nethermind.AccountAbstraction.Bundler
 {
-    public class BundleEventArgs : EventArgs
+    public class BundleUserOpsEventArgs : EventArgs
     {
         public Block Head { get; private set; }
 
-        public BundleEventArgs(Block head)
+        public BundleUserOpsEventArgs(Block head)
         {
             Head = head;
         }

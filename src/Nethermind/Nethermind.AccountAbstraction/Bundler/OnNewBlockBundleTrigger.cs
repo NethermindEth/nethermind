@@ -8,7 +8,7 @@ namespace Nethermind.AccountAbstraction.Bundler
     {
         private readonly IBlockTree _blockTree;
 
-        public event EventHandler<BundleEventArgs>? TriggerBundle;
+        public event EventHandler<BundleUserOpsEventArgs>? TriggerBundle;
 
         public OnNewBlockBundleTrigger(IBlockTree blockTree)
         {
@@ -18,7 +18,7 @@ namespace Nethermind.AccountAbstraction.Bundler
 
         private void BlockTreeOnNewHeadBlock(object? sender, BlockEventArgs e)
         {
-            TriggerBundle?.Invoke(this, new BundleEventArgs(e.Block));
+            TriggerBundle?.Invoke(this, new BundleUserOpsEventArgs(e.Block));
         }
     }
 }

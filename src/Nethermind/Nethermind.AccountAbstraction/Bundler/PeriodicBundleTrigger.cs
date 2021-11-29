@@ -9,7 +9,7 @@ namespace Nethermind.AccountAbstraction.Bundler
         private readonly Timer _timer;
         private readonly IBlockTree _blockTree;
 
-        public event EventHandler<BundleEventArgs>? TriggerBundle;
+        public event EventHandler<BundleUserOpsEventArgs>? TriggerBundle;
 
         public PeriodicBundleTrigger(TimeSpan interval, IBlockTree blockTree)
         {
@@ -23,7 +23,7 @@ namespace Nethermind.AccountAbstraction.Bundler
 
         private void TimerOnElapsed(object sender, ElapsedEventArgs e)
         {
-            TriggerBundle?.Invoke(this, new BundleEventArgs(_blockTree.Head!));
+            TriggerBundle?.Invoke(this, new BundleUserOpsEventArgs(_blockTree.Head!));
             _timer.Enabled = true;
         }
 
