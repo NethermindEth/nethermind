@@ -27,6 +27,7 @@ namespace Nethermind.Blockchain.Spec
         private readonly IBlockFinder _blockFinder;
         private long _lastHeader = -1;
         private IReleaseSpec? _headerSpec = null;
+        private readonly object _lock = new();
 
         public ChainHeadSpecProvider(ISpecProvider specProvider, IBlockFinder blockFinder)
         {
@@ -49,13 +50,18 @@ namespace Nethermind.Blockchain.Spec
             long headerNumber = _blockFinder.FindBestSuggestedHeader()?.Number ?? 0;
             if (headerNumber == _lastHeader)
             {
-                return _headerSpec!;
+                IReleaseSpec releaseSpec = _headerSpec;
+                if (headerNumber == _lastHeader)
+                {
+                    return releaseSpec!;
+                }
             }
-            else
+
+            lock (_lock)
             {
                 _lastHeader = headerNumber;
                 return _headerSpec = GetSpec(headerNumber);
-            }            
+            }
         }
     }
 }

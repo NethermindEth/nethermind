@@ -173,10 +173,13 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         public IReleaseSpec GetSpec(long blockNumber) =>
             _transitions.TryGetSearchedItem(blockNumber,
-                (b, t) => b.CompareTo(t.BlockNumber),
+                CompareTransitionOnBlock,
                 out (long BlockNumber, IReleaseSpec Release) transition)
                 ? transition.Release
                 : null;
+
+        private static int CompareTransitionOnBlock(long blockNumber, (long BlockNumber, IReleaseSpec Release) transition) => 
+            blockNumber.CompareTo(transition.BlockNumber);
 
         public long? DaoBlockNumber => _chainSpec.DaoForkBlockNumber;
 
