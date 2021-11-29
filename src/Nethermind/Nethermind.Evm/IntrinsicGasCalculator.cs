@@ -46,14 +46,23 @@ namespace Nethermind.Evm
 
         private static long DataCost(Transaction transaction, IReleaseSpec releaseSpec)
         {
-            long txDataNonZeroGasCost =
-                releaseSpec.IsEip2028Enabled ? GasCostOf.TxDataNonZeroEip2028 : GasCostOf.TxDataNonZero;
             long dataCost = 0;
             if (transaction.Data != null)
             {
-                for (int i = 0; i < transaction.Data.Length; i++)
+                if (releaseSpec.IsEip4488Enabled)
                 {
-                    dataCost += transaction.Data[i] == 0 ? GasCostOf.TxDataZero : txDataNonZeroGasCost;
+                    dataCost += transaction.Data.Length * GasCostOf.TxDataEip4488;
+                }
+                else
+                {
+                    long txDataNonZeroGasCost = releaseSpec.IsEip2028Enabled 
+                        ? GasCostOf.TxDataNonZeroEip2028 
+                        : GasCostOf.TxDataNonZero;
+            
+                    for (int i = 0; i < transaction.Data.Length; i++)
+                    {
+                        dataCost += transaction.Data[i] == 0 ? GasCostOf.TxDataZero : txDataNonZeroGasCost;
+                    }
                 }
             }
 
