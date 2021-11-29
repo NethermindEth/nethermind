@@ -212,7 +212,7 @@ namespace Nethermind.Merge.Plugin
             {
                 try
                 {
-                    return _forkchoiceUpdatedV1Handler.Handle(forkchoiceState, payloadAttributes);
+                    return await _forkchoiceUpdatedV1Handler.Handle(forkchoiceState, payloadAttributes);
                 }
                 finally
                 {

@@ -88,7 +88,6 @@ namespace Nethermind.Mev.Test
             public ManualGasLimitCalculator GasLimitCalculator = new() {GasLimit = 10_000_000};
             
             public Address MinerAddress => TestItem.PrivateKeyD.Address;
-            private IBlockValidator BlockValidator { get; set; } = null!;
             private ISigner Signer { get; }
 
             public override ILogManager LogManager => NUnitLogManager.Instance;

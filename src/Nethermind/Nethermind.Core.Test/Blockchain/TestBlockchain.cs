@@ -110,8 +110,9 @@ namespace Nethermind.Core.Test.Blockchain
         private IBlockFinder _blockFinder;
 
         public static readonly UInt256 InitialValue = 1000.Ether();
-        private BlockValidator _blockValidator;
         public IHeaderValidator HeaderValidator { get; set; }
+
+        public IBlockValidator BlockValidator { get; set; }
         public BuildBlocksWhenRequested BlockProductionTrigger { get; } = new();
 
         public IReadOnlyTrieStore ReadOnlyTrieStore { get; private set; }
@@ -163,7 +164,7 @@ namespace Nethermind.Core.Test.Blockchain
             BlockPreprocessorStep = new RecoverSignatures(EthereumEcdsa, TxPool, SpecProvider, LogManager);
             HeaderValidator = new HeaderValidator(BlockTree, Always.Valid, SpecProvider, LogManager);
                 
-            _blockValidator = new BlockValidator(
+            BlockValidator = new BlockValidator(
                 new TxValidator(SpecProvider.ChainId),
                 HeaderValidator,
                 Always.Valid,
@@ -241,7 +242,7 @@ namespace Nethermind.Core.Test.Blockchain
                 BlockTree, 
                 ReadOnlyTrieStore, 
                 SpecProvider, 
-                _blockValidator,
+                BlockValidator,
                 NoBlockRewards.Instance,
                 ReceiptStorage,
                 BlockPreprocessorStep,
@@ -301,7 +302,7 @@ namespace Nethermind.Core.Test.Blockchain
         protected virtual BlockProcessor CreateBlockProcessor() =>
             new(
                 SpecProvider,
-                _blockValidator,
+                BlockValidator,
                 NoBlockRewards.Instance,
                 new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
                 State,

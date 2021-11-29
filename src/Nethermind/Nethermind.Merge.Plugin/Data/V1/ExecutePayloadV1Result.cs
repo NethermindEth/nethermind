@@ -19,7 +19,7 @@ using System;
 using Nethermind.Core.Crypto;
 using Newtonsoft.Json;
 
-namespace Nethermind.Merge.Plugin.Data
+namespace Nethermind.Merge.Plugin.Data.V1
 {
     public class ExecutePayloadV1Result
     {

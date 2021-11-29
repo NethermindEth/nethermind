@@ -32,6 +32,7 @@ using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Merge.Plugin.Data.V1;
 
 namespace Nethermind.Merge.Plugin.Handlers
 {
@@ -42,12 +43,9 @@ namespace Nethermind.Merge.Plugin.Handlers
     /// </summary>
     public class ExecutePayloadV1Handler : IHandler<BlockRequestResult, ExecutePayloadV1Result>
     {
-        private const string AndWontBeAcceptedToTheTree = "and wont be accepted to the tree";
-        private readonly IHeaderValidator _headerValidator;
+        private readonly IBlockValidator _blockValidator;
         private readonly IBlockTree _blockTree;
         private readonly IBlockchainProcessor _processor;
-        private readonly ISpecProvider _specProvider;
-        private readonly IBlockPreprocessorStep _preprocessor;
         private readonly IEthSyncingInfo _ethSyncingInfo;
         private readonly IInitConfig _initConfig;
         private readonly ILogger _logger;
@@ -56,22 +54,18 @@ namespace Nethermind.Merge.Plugin.Handlers
         private readonly ConcurrentDictionary<Keccak, Keccak> _lastValidHashes = new ();
 
         public ExecutePayloadV1Handler(
-            IHeaderValidator headerValidator,
+            IBlockValidator blockValidator,
             IBlockTree blockTree,
             IBlockchainProcessor processor,
             IEthSyncingInfo ethSyncingInfo,
             IInitConfig initConfig,
-            ISpecProvider specProvider, 
-            IBlockPreprocessorStep preprocessor,
             ILogManager logManager)
         {
-            _headerValidator = headerValidator ?? throw new ArgumentNullException(nameof(headerValidator));
+            _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
             _blockTree = blockTree;
             _processor = processor;
             _ethSyncingInfo = ethSyncingInfo;
             _initConfig = initConfig;
-            _specProvider = specProvider;
-            _preprocessor = preprocessor;
             _logger = logManager.GetClassLogger();
             _blockValidationSemaphore = new SemaphoreSlim(0);
             _processor.BlockProcessed += (s, e) =>
@@ -102,16 +96,16 @@ namespace Nethermind.Merge.Plugin.Handlers
                 return ResultWrapper<ExecutePayloadV1Result>.Success(executePayloadResult);
             }
             
-            ValidationResult result = ValidateRequestAndProcess(request, out Block? processedBlock);
+            ValidationResult result = ValidateRequestAndProcess(request, out Block? processedBlock, parentHeader);
             if ((result & ValidationResult.AlreadyKnown) != 0 || result == ValidationResult.Invalid)
             {
-                bool isValid = (result & ValidationResult.Valid) != 0;
-                return ResultWrapper<ExecutePayloadV1Result>.Success(BuildExecutePayloadResult(request, isValid));
+                bool isValid = (result & ValidationResult.Valid) !=   0;
+                return ResultWrapper<ExecutePayloadV1Result>.Success(BuildExecutePayloadResult(request, isValid, parentHeader));
             }
 
             if (processedBlock == null)
             {
-                return ResultWrapper<ExecutePayloadV1Result>.Success(BuildExecutePayloadResult(request, false));
+                return ResultWrapper<ExecutePayloadV1Result>.Success(BuildExecutePayloadResult(request, false, parentHeader));
             }
 
             _blockTree.SuggestBlock(processedBlock);
@@ -121,7 +115,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             return ResultWrapper<ExecutePayloadV1Result>.Success(executePayloadResult);
         }
 
-        private ValidationResult ValidateRequestAndProcess(BlockRequestResult request, out Block? processedBlock)
+        private ValidationResult ValidateRequestAndProcess(BlockRequestResult request, out Block? processedBlock, BlockHeader parent)
         {
             processedBlock = null;
 
@@ -130,6 +124,7 @@ namespace Nethermind.Merge.Plugin.Handlers
                 bool isRecentBlock = _latestBlocks.TryGet(request.BlockHash, out bool isValid);
                 if (isRecentBlock)
                 {
+                    if (isValid == false && _logger.IsWarn) _logger.Warn($"Invalid block {block} sent from latestBlock cache");
                     return ValidationResult.AlreadyKnown |
                            (isValid ? ValidationResult.Valid : ValidationResult.Invalid);
                 }
@@ -142,10 +137,7 @@ namespace Nethermind.Merge.Plugin.Handlers
                         return ValidationResult.Valid | ValidationResult.AlreadyKnown;
                     }
 
-                    bool validAndProcessed =
-                        TryGetParent(request.ParentHash, out BlockHeader? parent)
-                        && ValidateAndProcess(block, parent!, out processedBlock);
-
+                    bool validAndProcessed = ValidateAndProcess(block, parent!, out processedBlock);
 
                     _latestBlocks.Set(request.BlockHash, validAndProcessed);
                     return validAndProcessed ? ValidationResult.Valid : ValidationResult.Invalid;
@@ -154,42 +146,42 @@ namespace Nethermind.Merge.Plugin.Handlers
             else
             {
                 if (_logger.IsWarn)
-                    _logger.Warn($"Block {request} could not be parsed as block {AndWontBeAcceptedToTheTree}.");
+                    _logger.Warn($"Block {request} could not be parsed as block and wont be accepted to the tree.");
             }
 
             return ValidationResult.Invalid;
         }
-
-        private bool TryGetParent(Keccak? parentHash, out BlockHeader? parent)
-        {
-            if (parentHash == null)
-            {
-                parent = null;
-                return false;
-            }
-            else
-            {
-                parent = _blockTree.FindHeader(parentHash);
-                return parent != null;
-            }
-        }
-
+        
         private bool ValidateAndProcess(Block block, BlockHeader parent, out Block? processedBlock)
         {
             block.Header.TotalDifficulty = parent.TotalDifficulty + block.Difficulty;
             processedBlock = null;
-            if (_headerValidator.Validate(block.Header) == false)
+            try
             {
-                return false;
-            }
+                if (_blockValidator.ValidateSuggestedBlock(block) == false)
+                {
+                    if (_logger.IsWarn)
+                    {
+                        _logger.Warn(
+                            $"Block validator rejected the block {block.ToString(Block.Format.FullHashAndNumber)}");
+                    }
+                    return false;
+                }
 
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e);
+                throw;
+            }
+            
             processedBlock = _processor.Process(block, GetProcessingOptions(), NullBlockTracer.Instance);
             if (processedBlock == null)
             {
                 if (_logger.IsWarn)
                 {
                     _logger.Warn(
-                        $"Block {block.ToString(Block.Format.FullHashAndNumber)} cannot be processed {AndWontBeAcceptedToTheTree}.");
+                        $"Block {block.ToString(Block.Format.FullHashAndNumber)} cannot be processed and wont be accepted to the tree.");
                 }
 
                 return false;
@@ -209,7 +201,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             return options;
         }
 
-        private ExecutePayloadV1Result BuildExecutePayloadResult(BlockRequestResult request, bool isValid)
+        private ExecutePayloadV1Result BuildExecutePayloadResult(BlockRequestResult request, bool isValid, BlockHeader? parent)
         {
             ExecutePayloadV1Result executePayloadResult = new();
             if (isValid)
@@ -231,7 +223,7 @@ namespace Nethermind.Merge.Plugin.Handlers
                 }
                 else
                 {
-                    if (TryGetParent(request.ParentHash, out _))
+                    if (parent != null)
                     {
                         _lastValidHashes.TryAdd(request.BlockHash, request.ParentHash);
                         executePayloadResult.LatestValidHash = request.ParentHash;

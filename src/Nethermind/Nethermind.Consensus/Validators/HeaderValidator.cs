@@ -210,14 +210,14 @@ namespace Nethermind.Consensus.Validators
             return timestampMoreThanAtParent;
         }
         
-        protected virtual bool ValidateTotalDifficulty(BlockHeader parent,BlockHeader header)
+        protected virtual bool ValidateTotalDifficulty(BlockHeader parent, BlockHeader header)
         {
             bool totalDifficultyCorrect = true;
             if (header.TotalDifficulty != null)
             {
                 if (parent.TotalDifficulty + header.Difficulty != header.TotalDifficulty)
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Invalid total difficulty");
+                    if (_logger.IsDebug) _logger.Debug($"Invalid block header ({header.Hash}) - incorrect total difficulty");
                     totalDifficultyCorrect = false;
                 }
             }

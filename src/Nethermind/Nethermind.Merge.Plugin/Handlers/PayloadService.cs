@@ -58,6 +58,7 @@ namespace Nethermind.Merge.Plugin.Handlers
 
         // first BlockRequestResult is empty (without txs), second one is the ideal one
         private readonly ConcurrentDictionary<string, Task<Block?>> _payloadStorage = new();
+        private TaskQueue _taskQueue = new();
 
         public PayloadService(
             Eth2BlockProductionContext idealBlockContext,
@@ -73,11 +74,14 @@ namespace Nethermind.Merge.Plugin.Handlers
             _logger = logManager.GetClassLogger();
         }
 
-        public byte[] StartPreparingPayload(BlockHeader parentHeader, PayloadAttributes payloadAttributes)
+        public async Task<byte[]> StartPreparingPayload(BlockHeader parentHeader, PayloadAttributes payloadAttributes)
         {
             byte[] payloadId = ComputeNextPayloadId(parentHeader, payloadAttributes);
             payloadAttributes.FeeRecipient = payloadAttributes.FeeRecipient == Address.Zero ? _sealer.Address : payloadAttributes.FeeRecipient;
-            GeneratePayload(payloadId, parentHeader, payloadAttributes);
+            using CancellationTokenSource cts = new(_timeout);
+            
+            await ProduceEmptyBlock(payloadId, parentHeader, payloadAttributes, cts);
+            _taskQueue.Enqueue(() => GeneratePayload(payloadId, parentHeader, payloadAttributes));
             return payloadId;
         }
 
@@ -86,7 +90,6 @@ namespace Nethermind.Merge.Plugin.Handlers
         {
             using CancellationTokenSource cts = new(_timeout);
             
-            await ProduceEmptyBlock(payloadId, parentHeader, payloadAttributes, cts);
             await ProduceIdealBlock(payloadId, parentHeader, payloadAttributes, cts);
             
             await Task.Delay(TimeSpan.FromSeconds(_cleanupDelay), CancellationToken.None)
@@ -112,7 +115,6 @@ namespace Nethermind.Merge.Plugin.Handlers
                     .ContinueWith(LogProductionResult, cts.Token);
             
             bool _ = _payloadStorage.TryAdd(payloadId.ToHexString(), emptyBlockTask);
-            await emptyBlockTask;
             if (_logger.IsTrace) _logger.Trace($"Prepared empty block from payload {payloadId} block result: {emptyBlockTask.Result}");
         }
         

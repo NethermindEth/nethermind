@@ -107,6 +107,7 @@ namespace Nethermind.Merge.Plugin
                 if (_api.HeaderValidator is null) throw new ArgumentNullException(nameof(_api.HeaderValidator));
                 if (_api.EthSyncingInfo is null) throw new ArgumentNullException(nameof(_api.EthSyncingInfo));
                 if (_api.Sealer is null) throw new ArgumentNullException(nameof(_api.Sealer));
+                if (_api.BlockValidator is null) throw new ArgumentNullException(nameof(_api.BlockValidator));
                 
                 IInitConfig? initConfig = _api.Config<IInitConfig>();
 
@@ -127,13 +128,11 @@ namespace Nethermind.Merge.Plugin
                         _api.Config<IInitConfig>(),
                         _api.LogManager),
                     new ExecutePayloadV1Handler(
-                        _api.HeaderValidator,
+                        _api.BlockValidator,
                         _api.BlockTree,
                         _api.BlockchainProcessor,
                         _api.EthSyncingInfo,
                         _api.Config<IInitConfig>(),
-                        _api.SpecProvider,
-                        _api.BlockPreprocessor,
                         _api.LogManager),
                     _transitionProcessHandler,
                     new ForkChoiceUpdatedHandler(_api.BlockTree, _api.StateProvider, _blockFinalizationManager,

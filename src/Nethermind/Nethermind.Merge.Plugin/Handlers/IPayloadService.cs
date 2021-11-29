@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Threading.Tasks;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 
@@ -22,6 +23,6 @@ namespace Nethermind.Merge.Plugin.Handlers
 {
     public interface IPayloadService
     {
-        byte[] StartPreparingPayload(BlockHeader parentHeader, PayloadAttributes? payloadAttributes);
+        Task<byte[]> StartPreparingPayload(BlockHeader parentHeader, PayloadAttributes payloadAttributes);
     }
 }

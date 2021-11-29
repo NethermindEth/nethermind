@@ -17,6 +17,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus;
@@ -68,7 +69,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             _logger = logManager.GetClassLogger();
         }
 
-        public ResultWrapper<ForkchoiceUpdatedV1Result> Handle(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes)
+        public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> Handle(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes)
         {
             // ToDo wait for final PostMerge sync
             // if (_ethSyncingInfo.IsSyncing())
@@ -78,15 +79,15 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             
             (BlockHeader? finalizedHeader, string? finalizationErrorMsg) = EnsureHeaderForFinalization(forkchoiceState.FinalizedBlockHash);
             if (finalizationErrorMsg != null)
-                return ResultWrapper<ForkchoiceUpdatedV1Result>.Success(new ForkchoiceUpdatedV1Result() { Status = EngineStatus.Syncing}); // ToDo wait for final PostMerge sync
-            
+                return ReturnSyncing();
+
             (BlockHeader? confirmedHeader, string? confirmationErrorMsg) = EnsureHeaderForConfirmation(forkchoiceState.SafeBlockHash);
             if (confirmationErrorMsg != null)
-                return ResultWrapper<ForkchoiceUpdatedV1Result>.Success(new ForkchoiceUpdatedV1Result() { Status = EngineStatus.Syncing}); // ToDo wait for final PostMerge sync
+                return ReturnSyncing();
             
             (Block? newHeadBlock, Block[]? blocks, string? setHeadErrorMsg) = EnsureBlocksForSetHead(forkchoiceState.HeadBlockHash);
             if (setHeadErrorMsg != null)
-                return ResultWrapper<ForkchoiceUpdatedV1Result>.Success(new ForkchoiceUpdatedV1Result() { Status = EngineStatus.Syncing}); // ToDo wait for final PostMerge sync
+                return ReturnSyncing();
  
             if (ShouldFinalize(forkchoiceState.FinalizedBlockHash))
                 _manualBlockFinalizationManager.MarkFinalized(newHeadBlock!.Header, finalizedHeader!);
@@ -117,14 +118,20 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 if (_logger.IsWarn) _logger.Warn($"Block {forkchoiceState.FinalizedBlockHash} was not set as head.");
             }
             
-            bool shouldStartPreparingPayload = payloadAttributes != null;
-            if (shouldStartPreparingPayload)
+            if ( payloadAttributes != null)
             {
-                payloadId = _payloadService.StartPreparingPayload(newHeadBlock!.Header, payloadAttributes);
+                payloadId = await _payloadService.StartPreparingPayload(newHeadBlock!.Header, payloadAttributes);
             }
 
 
             return ResultWrapper<ForkchoiceUpdatedV1Result>.Success(new ForkchoiceUpdatedV1Result() { PayloadId = payloadId?.ToHexString(true), Status = EngineStatus.Success});
+        }
+
+        private ResultWrapper<ForkchoiceUpdatedV1Result> ReturnSyncing()
+        {
+            // ToDo wait for final PostMerge sync
+            return ResultWrapper<ForkchoiceUpdatedV1Result>.Success(
+                    new ForkchoiceUpdatedV1Result() {Status = EngineStatus.Syncing});
         }
 
         private (BlockHeader? BlockHeader, string? ErrorMsg) EnsureHeaderForConfirmation(Keccak confirmedBlockHash)
