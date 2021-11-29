@@ -18,6 +18,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
@@ -170,28 +171,12 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         public IReleaseSpec GenesisSpec => _transitions.Length == 0 ? null : _transitions[0].Release;
 
-        public IReleaseSpec GetSpec(long blockNumber)
-        {
-            if (_transitions.Length == 0)
-            {
-                return null;
-            }
-
-            IReleaseSpec spec = _transitions[0].Release;
-            for (int i = 1; i < _transitions.Length; i++)
-            {
-                if (blockNumber >= _transitions[i].BlockNumber)
-                {
-                    spec = _transitions[i].Release;
-                }
-                else
-                {
-                    break;
-                }
-            }
-
-            return spec;
-        }
+        public IReleaseSpec GetSpec(long blockNumber) =>
+            _transitions.TryGetSearchedItem(blockNumber,
+                (b, t) => b.CompareTo(t.BlockNumber),
+                out (long BlockNumber, IReleaseSpec Release) transition)
+                ? transition.Release
+                : null;
 
         public long? DaoBlockNumber => _chainSpec.DaoForkBlockNumber;
 
