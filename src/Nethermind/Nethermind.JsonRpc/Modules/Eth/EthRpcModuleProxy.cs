@@ -83,6 +83,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             throw new NotSupportedException();
         }
+        
+        public ResultWrapper<UInt256?> eth_maxPriorityFeePerGas()
+        {
+            throw new NotSupportedException();
+        }
 
         public ResultWrapper<UInt256?> eth_gasPrice()
         {

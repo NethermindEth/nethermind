@@ -64,19 +64,40 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
             }
 
             LastHeadBlock = headBlock;
-            IEnumerable<UInt256> txGasPrices = GetSortedGasPricesFromRecentBlocks(headBlock.Number);
+            IEnumerable<UInt256> txGasPrices = GetSortedGasPricesFromRecentBlocks(headBlock.Number).Select(tuple => tuple.Item1);
             UInt256 gasPriceEstimate = GetGasPriceAtPercentile(txGasPrices.ToList()) ?? GetMinimumGasPrice(headBlock.BaseFeePerGas);
             gasPriceEstimate = UInt256.Min(gasPriceEstimate!, EthGasPriceConstants.MaxGasPrice);
             LastGasPrice = gasPriceEstimate;
             return gasPriceEstimate!;
         }
+        
+        public Tuple<UInt256, UInt256> GetGasPriceEstimateWithBaseFee()
+        {
+            Block? headBlock = _blockFinder.Head;
+            if (headBlock is null)
+            {
+                return new Tuple<UInt256, UInt256>(FallbackGasPrice(), 0);
+            }
+            
+            if (LastGasPrice is not null && LastHeadBlock!.Hash == headBlock!.Hash)
+            {
+                return new Tuple<UInt256, UInt256>(LastGasPrice.Value, headBlock.BaseFeePerGas);
+            }
+
+            LastHeadBlock = headBlock;
+            IEnumerable<Tuple<UInt256, UInt256>> txGasPrices2 = GetSortedGasPricesFromRecentBlocks(headBlock.Number);
+            Tuple<UInt256, UInt256> gasPriceEstimate = GetGasPriceWithBaseFeeAtPercentile(txGasPrices2.ToList()) ?? new Tuple<UInt256, UInt256>(GetMinimumGasPrice(headBlock.BaseFeePerGas), headBlock.BaseFeePerGas);
+            gasPriceEstimate = new Tuple<UInt256, UInt256>(UInt256.Min(gasPriceEstimate!.Item1, EthGasPriceConstants.MaxGasPrice), gasPriceEstimate.Item2);
+            LastGasPrice = gasPriceEstimate.Item1;
+            return gasPriceEstimate!;
+        }
 
         private UInt256 GetMinimumGasPrice(in UInt256 baseFeePerGas) => (_minGasPrice + baseFeePerGas) * _defaultMinGasPriceMultiplier / 100ul;
 
-        private IEnumerable<UInt256> GetSortedGasPricesFromRecentBlocks(long blockNumber) 
+        private IEnumerable<Tuple<UInt256, UInt256>>GetSortedGasPricesFromRecentBlocks(long blockNumber) 
             => GetGasPricesFromRecentBlocks(blockNumber).OrderBy(gasPrice => gasPrice);
 
-        internal IEnumerable<UInt256> GetGasPricesFromRecentBlocks(long blockNumber)
+        internal IEnumerable<Tuple<UInt256, UInt256>> GetGasPricesFromRecentBlocks(long blockNumber)
         {
             IEnumerable<Block> GetBlocks(long currentBlockNumber)
             {
@@ -90,7 +111,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
             return GetGasPricesFromRecentBlocks(GetBlocks(blockNumber), BlockLimit);
         }
         
-        private IEnumerable<UInt256> GetGasPricesFromRecentBlocks(IEnumerable<Block> blocks, int blocksToGoBack)
+        private IEnumerable<Tuple<UInt256, UInt256>> GetGasPricesFromRecentBlocks(IEnumerable<Block> blocks, int blocksToGoBack)
         {
             int txCount = 0;
             
@@ -108,7 +129,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
 
                 foreach (UInt256 gasPrice in effectiveGasPrices)
                 {
-                    yield return gasPrice;
+                    yield return new Tuple<UInt256, UInt256>(gasPrice, baseFee);
                     txFromCurrentBlock++;
                     txCount++;
 
@@ -120,7 +141,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
 
                 if (txFromCurrentBlock == 0)
                 {
-                    yield return FallbackGasPrice(currentBlock.BaseFeePerGas);
+                    yield return new Tuple<UInt256, UInt256>(FallbackGasPrice(currentBlock.BaseFeePerGas), baseFee);
                 }
 
                 if (txFromCurrentBlock > 1 || txCount + blocksToGoBack >= SoftTxThreshold)
@@ -136,6 +157,15 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
         }
         
         private UInt256? GetGasPriceAtPercentile(List<UInt256> txGasPriceList)
+        {
+            int roundedIndex = GetRoundedIndexAtPercentile(txGasPriceList.Count);
+            
+            return roundedIndex < 0 
+                ? null 
+                : txGasPriceList[roundedIndex];
+        }
+
+        private Tuple<UInt256, UInt256>? GetGasPriceWithBaseFeeAtPercentile(List<Tuple<UInt256, UInt256>> txGasPriceList)
         {
             int roundedIndex = GetRoundedIndexAtPercentile(txGasPriceList.Count);
             
