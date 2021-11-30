@@ -85,7 +85,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
             }
 
             LastHeadBlock = headBlock;
-            IEnumerable<Tuple<UInt256, UInt256>> txGasPrices2 = GetSortedGasPricesFromRecentBlocks(headBlock.Number);
+            IEnumerable<Tuple<UInt256, UInt256>> txGasPrices2 = GetSortedGasPricesWithFeeFromRecentBlocks(headBlock.Number);
             Tuple<UInt256, UInt256> gasPriceEstimate = GetGasPriceWithBaseFeeAtPercentile(txGasPrices2.ToList()) ?? new Tuple<UInt256, UInt256>(GetMinimumGasPrice(headBlock.BaseFeePerGas), headBlock.BaseFeePerGas);
             gasPriceEstimate = new Tuple<UInt256, UInt256>(UInt256.Min(gasPriceEstimate!.Item1, EthGasPriceConstants.MaxGasPrice), gasPriceEstimate.Item2);
             LastGasPrice = gasPriceEstimate.Item1;
@@ -96,6 +96,9 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
 
         private IEnumerable<Tuple<UInt256, UInt256>>GetSortedGasPricesFromRecentBlocks(long blockNumber) 
             => GetGasPricesFromRecentBlocks(blockNumber).OrderBy(gasPrice => gasPrice);
+            
+        private IEnumerable<Tuple<UInt256, UInt256>>GetSortedGasPricesWithFeeFromRecentBlocks(long blockNumber) 
+            => GetGasPricesFromRecentBlocks(blockNumber).OrderBy(gasPrice=> gasPrice.Item1-gasPrice.Item2);
 
         internal IEnumerable<Tuple<UInt256, UInt256>> GetGasPricesFromRecentBlocks(long blockNumber)
         {
