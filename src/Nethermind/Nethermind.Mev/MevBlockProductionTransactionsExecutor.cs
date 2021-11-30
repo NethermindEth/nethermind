@@ -33,6 +33,13 @@ using TxAction = Nethermind.Blockchain.Processing.BlockProcessor.TxAction;
 
 namespace Nethermind.Mev
 {
+    /// <summary>
+    /// Strategy for executing transactions during block production when using MEV.
+    /// </summary>
+    /// <remarks>
+    /// When using MEV some <see cref="Transaction"/>s can be added from <see cref="MevBundle"/>,
+    /// but then when some <see cref="Transaction"/> fails they need to be rolled back if its not one of <see cref="BundleTransaction.CanRevert"/>. 
+    /// </remarks>
     public class MevBlockProductionTransactionsExecutor : BlockProcessor.BlockProductionTransactionsExecutor
     {
         private readonly IStateProvider _stateProvider;

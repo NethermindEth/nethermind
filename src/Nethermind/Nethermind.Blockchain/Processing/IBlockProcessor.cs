@@ -23,6 +23,9 @@ using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Blockchain.Processing
 {
+    /// <summary>
+    /// Processes a group of blocks
+    /// </summary>
     public interface IBlockProcessor
     {
         /// <summary>
@@ -56,9 +59,33 @@ namespace Nethermind.Blockchain.Processing
         /// </summary>
         event EventHandler<TxProcessedEventArgs> TransactionProcessed;
         
+        /// <summary>
+        /// Strategy used to execute transactions when processing blocks.
+        /// </summary>
+        /// <remarks>
+        /// This strategy can differ depending if:
+        /// * block is being processed to be included into canonical chain.
+        /// * block is being produced and transactions are being accumulated.
+        /// * block is being produced with MEV and bundles can be reverted.
+        /// </remarks>
         public interface IBlockTransactionsExecutor
         {
+            /// <summary>
+            /// Processes transactions from a single block.
+            /// </summary>
+            /// <remarks>
+            /// If its a block production strategy it actually accumulates transactions into a block.
+            /// </remarks>
+            /// <param name="block">Block to be processed or accumulated.</param>
+            /// <param name="processingOptions">Options to use for processor and transaction processor.</param>
+            /// <param name="receiptsTracer">Tracer for receipts.</param>
+            /// <param name="spec">Current spec with which the processing is being done.</param>
+            /// <returns>Receipts created by processing <see cref="block"/> transactions.</returns>
             TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec);
+            
+            /// <summary>
+            /// Fired after a transaction has been processed.
+            /// </summary>
             event EventHandler<TxProcessedEventArgs> TransactionProcessed;
         }
     }

@@ -33,12 +33,21 @@ namespace Nethermind.Blockchain.Processing
 {
     public partial class BlockProcessor
     {
+        /// <summary>
+        /// Strategy for executing transactions during block production.
+        /// </summary>
         protected interface IBlockProductionTransactionsExecutor : IBlockProcessor.IBlockTransactionsExecutor
         {
+            /// <summary>
+            /// 
+            /// </summary>
             public event EventHandler<AddingTxEventArgs> AddingTransaction;
         }
 
-        protected class AddingTxEventArgs : TxEventArgs
+        /// <summary>
+        /// Event arguments when transaction is being added to produced block.
+        /// </summary>
+        protected internal class AddingTxEventArgs : TxEventArgs
         {
             public Block Block { get; }
             public IReadOnlyCollection<Transaction> TransactionsInBlock { get; }

@@ -38,6 +38,7 @@ using Nethermind.TxPool.Comparison;
 
 namespace Nethermind.Blockchain.Processing
 {
+    /// <inheritdoc />
     public partial class BlockProcessor : IBlockProcessor
     {
         private readonly ILogger _logger;
@@ -82,8 +83,10 @@ namespace Nethermind.Blockchain.Processing
             _receiptsTracer = new BlockReceiptsTracer();
         }
 
+        /// <inheritdoc />
         public event EventHandler<BlockProcessedEventArgs> BlockProcessed;
 
+        /// <inheritdoc />
         public event EventHandler<TxProcessedEventArgs> TransactionProcessed
         {
             add { _blockTransactionsExecutor.TransactionProcessed += value; }
@@ -91,6 +94,7 @@ namespace Nethermind.Blockchain.Processing
         }
 
         // TODO: move to branch processor
+        /// <inheritdoc />
         public Block[] Process(Keccak newBranchStateRoot, List<Block> suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer)
         {
             if (suggestedBlocks.Count == 0) return Array.Empty<Block>();
@@ -162,6 +166,7 @@ namespace Nethermind.Blockchain.Processing
             }
         }
 
+        /// <inheritdoc />
         public event EventHandler<BlocksProcessingEventArgs>? BlocksProcessing;
 
         // TODO: move to branch processor

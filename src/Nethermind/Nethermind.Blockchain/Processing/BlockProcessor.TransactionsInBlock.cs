@@ -25,6 +25,9 @@ namespace Nethermind.Blockchain.Processing
 {
     public partial class BlockProcessor
     {
+        /// <summary>
+        /// Collection of transactions accumulated in <see cref="Block"/> during its production.
+        /// </summary>
         public class TransactionsInBlock : ICollection<Transaction>, IReadOnlySet<Transaction>
         {
             private readonly LinkedHashSet<Transaction> _innerSet = new(ByHashTxComparer.Instance);
@@ -54,8 +57,17 @@ namespace Nethermind.Blockchain.Processing
                 _innerSet.Clear();
             }
 
+            /// <summary>
+            /// Length of calldata for all block <see cref="Transaction"/>s. For EIP-4488. 
+            /// </summary>
             private long CallDataLength { get; set; }
 
+            /// <summary>
+            /// If transaction can be added to block due to EIP-4488.
+            /// </summary>
+            /// <param name="isEip4488Enabled">Is EIP-4488 enabled.</param>
+            /// <param name="tx">Transaction to be added.</param>
+            /// <returns>'true' if transaction can be added, otherwise 'false'.</returns>
             public bool CanAddTx(bool isEip4488Enabled, Transaction tx) =>
                 !isEip4488Enabled || 
                 CallDataLength + tx.DataLength <= Block.BaseMaxCallDataPerBlock + Count * Transaction.CallDataPerTxStipend + Transaction.CallDataPerTxStipend;

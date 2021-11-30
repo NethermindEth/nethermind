@@ -29,7 +29,10 @@ namespace Nethermind.Blockchain.Processing
 {
     public partial class BlockProcessor
     {
-        protected class BlockProductionTransactionPicker
+        /// <summary>
+        /// Allows to pick which transactions can be added to a block during block production.
+        /// </summary>
+        protected internal class BlockProductionTransactionPicker
         {
             private readonly ISpecProvider _specProvider;
             
@@ -38,8 +41,14 @@ namespace Nethermind.Blockchain.Processing
                 _specProvider = specProvider;
             }
             
-            public event EventHandler<AddingTxEventArgs>? AddingTransaction;
-
+            /// <summary>
+            /// Checks if a transaction can be added to a block.
+            /// </summary>
+            /// <param name="block">Block that is being constructed.</param>
+            /// <param name="currentTx">Transaction that is being checked.</param>
+            /// <param name="transactionsInBlock">Previously accumulated transactions in this block.</param>
+            /// <param name="stateProvider">Access to current state of block that is under construction.</param>
+            /// <returns>Detailed information about state of adding <see cref="currentTx"/> to <see cref="block"/>.</returns>
             public AddingTxEventArgs CanAddTransaction(Block block, Transaction currentTx, TransactionsInBlock transactionsInBlock, IStateProvider stateProvider)
             {
                 AddingTxEventArgs args = new(transactionsInBlock.Count, currentTx, block, transactionsInBlock);
@@ -86,16 +95,16 @@ namespace Nethermind.Blockchain.Processing
                 }
 
                 UInt256 balance = stateProvider.GetBalance(currentTx.SenderAddress);
-                if (!HasEnoughFounds(currentTx, balance, args, block, spec))
-                {
-                    return args;
-                }
-
-                AddingTransaction?.Invoke(this, args);
-                return args;
+                return CheckHasEnoughFounds(currentTx, balance, args, block, spec);
             }
 
-            private bool HasEnoughFounds(Transaction transaction, in UInt256 senderBalance, AddingTxEventArgs e, Block block, IReleaseSpec releaseSpec)
+            /// <summary>
+            /// Checks if <see cref="transaction"/> has enough funds to be added to a block.
+            /// </summary>
+            /// <remarks>
+            /// On POSDAO chains we support <see cref="Transaction.IsServiceTransaction"/> transactions.
+            /// </remarks>
+            private AddingTxEventArgs CheckHasEnoughFounds(Transaction transaction, in UInt256 senderBalance, AddingTxEventArgs e, Block block, IReleaseSpec releaseSpec)
             {
                 bool eip1559Enabled = releaseSpec.IsEip1559Enabled;
                 UInt256 transactionPotentialCost = transaction.CalculateTransactionPotentialCost(eip1559Enabled, block.BaseFeePerGas);
@@ -103,23 +112,34 @@ namespace Nethermind.Blockchain.Processing
                 if (senderBalance < transactionPotentialCost)
                 {
                     e.Set(TxAction.Skip, $"Transaction cost ({transactionPotentialCost}) is higher than sender balance ({senderBalance})");
-                    return false;
                 }
-
-                if (eip1559Enabled && !transaction.IsServiceTransaction && senderBalance < (UInt256)transaction.GasLimit * transaction.MaxFeePerGas + transaction.Value)
+                else if (eip1559Enabled && !transaction.IsServiceTransaction && senderBalance < (UInt256)transaction.GasLimit * transaction.MaxFeePerGas + transaction.Value)
                 {
                     e.Set(TxAction.Skip, $"MaxFeePerGas ({transaction.MaxFeePerGas}) times GasLimit {transaction.GasLimit} is higher than sender balance ({senderBalance})");
-                    return false;
                 }
 
-                return true;
+                return e;
             }
         }
         
+        /// <summary>
+        /// If transaction can be added and accumulated in constructed block.
+        /// </summary>
         public enum TxAction
         {
+            /// <summary>
+            /// Transaction can be added, we can continue adding further transactions.
+            /// </summary>
             Add,
+            
+            /// <summary>
+            /// Transaction can't be added, we can continue adding further transactions.
+            /// </summary>
             Skip,
+            
+            /// <summary>
+            /// Transaction can't be added, we can't continue adding further transactions.
+            /// </summary>
             Stop
         }
     }

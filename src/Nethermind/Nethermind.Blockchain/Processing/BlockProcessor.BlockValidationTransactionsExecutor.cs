@@ -32,6 +32,9 @@ namespace Nethermind.Blockchain.Processing
 {
     public partial class BlockProcessor
     {
+        /// <summary>
+        /// Strategy for executing transactions during canonical chain processing.
+        /// </summary>
         public class BlockValidationTransactionsExecutor : IBlockProcessor.IBlockTransactionsExecutor
         {
             private readonly ITransactionProcessorAdapter _transactionProcessor;

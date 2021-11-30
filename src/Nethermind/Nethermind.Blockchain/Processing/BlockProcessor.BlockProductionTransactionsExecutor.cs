@@ -35,6 +35,7 @@ namespace Nethermind.Blockchain.Processing
 {
     public partial class BlockProcessor
     {
+        /// <inheritdoc />
         public class BlockProductionTransactionsExecutor : IBlockProductionTransactionsExecutor
         {
             private readonly ITransactionProcessorAdapter _transactionProcessor;
@@ -42,6 +43,8 @@ namespace Nethermind.Blockchain.Processing
             private readonly IStorageProvider _storageProvider;
             private readonly BlockProductionTransactionPicker _blockProductionTransactionPicker;
             private readonly ILogger _logger;
+            protected EventHandler<TxProcessedEventArgs>? _transactionProcessed;
+            private EventHandler<AddingTxEventArgs>? _addingTransaction;
 
             public BlockProductionTransactionsExecutor(
                 ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv,
@@ -70,7 +73,6 @@ namespace Nethermind.Blockchain.Processing
                 _logger = logManager.GetClassLogger();
             }
 
-            protected EventHandler<TxProcessedEventArgs>? _transactionProcessed;
             event EventHandler<TxProcessedEventArgs>? IBlockProcessor.IBlockTransactionsExecutor.TransactionProcessed
             {
                 add => _transactionProcessed += value;
@@ -79,8 +81,8 @@ namespace Nethermind.Blockchain.Processing
 
             event EventHandler<AddingTxEventArgs>? IBlockProductionTransactionsExecutor.AddingTransaction
             {
-                add => _blockProductionTransactionPicker.AddingTransaction += value;
-                remove => _blockProductionTransactionPicker.AddingTransaction -= value;
+                add => _addingTransaction += value;
+                remove => _addingTransaction -= value;
             }
 
             public virtual TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec)
@@ -112,6 +114,12 @@ namespace Nethermind.Blockchain.Processing
                 bool addToBlock = true)
             {
                 AddingTxEventArgs args = _blockProductionTransactionPicker.CanAddTransaction(block, currentTx, transactionsInBlock, _stateProvider);
+                
+                if (args.Action == TxAction.Add)
+                {
+                    // action can be overriden from external source
+                    _addingTransaction?.Invoke(this, args);
+                }
 
                 if (args.Action != TxAction.Add)
                 {
