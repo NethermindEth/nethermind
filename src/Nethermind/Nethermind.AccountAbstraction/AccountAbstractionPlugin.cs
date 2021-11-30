@@ -1,5 +1,4 @@
 ﻿using System;
-using System.IO;
 using System.Threading.Tasks;
 using Nethermind.Abi;
 using Nethermind.AccountAbstraction.Contracts;
@@ -22,7 +21,6 @@ using Nethermind.Network;
 using Nethermind.Network.P2P;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
-using Newtonsoft.Json.Linq;
 
 namespace Nethermind.AccountAbstraction
 {
@@ -164,6 +162,7 @@ namespace Nethermind.AccountAbstraction
                 ILogManager logManager = _nethermindApi.LogManager ??
                                          throw new ArgumentNullException(nameof(_nethermindApi.LogManager));
 
+                serializer.Register(new UserOperationsMessageSerializer());
                 protocolsManager.AddProtocol(Protocol.AA,
                     session => new AaProtocolHandler(session, serializer, stats, UserOperationPool, logManager));
                 protocolsManager.AddSupportedCapability(new Capability(Protocol.AA, 0));
