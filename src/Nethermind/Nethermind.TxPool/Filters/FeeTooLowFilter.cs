@@ -45,7 +45,7 @@ namespace Nethermind.TxPool.Filters
 
         public (bool Accepted, AddTxResult? Reason) Accept(Transaction tx, TxHandlingOptions handlingOptions)
         {
-            IReleaseSpec spec = _specProvider.GetSpec();
+            IReleaseSpec spec = _specProvider.GetCurrentHeadSpec();
             Account account = _accounts.GetAccount(tx.SenderAddress!);
             UInt256 balance = account.Balance;
             UInt256 affordableGasPrice = tx.CalculateAffordableGasPrice(spec.IsEip1559Enabled, _headInfo.CurrentBaseFee, balance);

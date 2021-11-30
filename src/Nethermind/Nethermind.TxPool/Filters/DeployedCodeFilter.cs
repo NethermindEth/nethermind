@@ -36,7 +36,7 @@ namespace Nethermind.TxPool.Filters
             _stateProvider = stateProvider;
         }
         public (bool Accepted, AddTxResult? Reason) Accept(Transaction tx, TxHandlingOptions txHandlingOptions) => 
-            _stateProvider.IsInvalidContractSender(_specProvider.GetSpec(), tx.SenderAddress!) 
+            _stateProvider.IsInvalidContractSender(_specProvider.GetCurrentHeadSpec(), tx.SenderAddress!) 
                 ? (false, AddTxResult.SenderIsContract) 
                 : (true, null);
     }
