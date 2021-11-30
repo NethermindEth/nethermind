@@ -230,7 +230,7 @@ namespace Nethermind.AccountAbstraction
         }
 
         public bool BundleMiningEnabled => _accountAbstractionConfig.Enabled && (_nethermindApi.Config<IInitConfig>().IsMining || _nethermindApi.Config<IMiningConfig>().Enabled);
-        public bool Enabled => BundleMiningEnabled && MevPlugin is null; // IConsensusWrapperPlugin.Enabled
+        public bool Enabled => BundleMiningEnabled && !_nethermindApi.Config<IMevConfig>().Enabled; // IConsensusWrapperPlugin.Enabled
 
         private AbiDefinition LoadEntryPointContract()
         {
