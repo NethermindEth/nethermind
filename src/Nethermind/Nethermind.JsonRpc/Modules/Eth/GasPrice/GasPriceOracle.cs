@@ -98,7 +98,8 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
             => GetGasPricesFromRecentBlocks(blockNumber).OrderBy(gasPrice => gasPrice);
             
         private IEnumerable<Tuple<UInt256, UInt256>>GetSortedGasPricesWithFeeFromRecentBlocks(long blockNumber) 
-            => GetGasPricesFromRecentBlocks(blockNumber).OrderBy(gasPrice=> gasPrice.Item1-gasPrice.Item2);
+            => GetGasPricesFromRecentBlocks(blockNumber).Where(gasPrice => gasPrice.Item1 >= gasPrice.Item2)
+                .OrderBy(gasPrice=> gasPrice.Item1-gasPrice.Item2);
 
         internal IEnumerable<Tuple<UInt256, UInt256>> GetGasPricesFromRecentBlocks(long blockNumber)
         {
