@@ -38,12 +38,13 @@ namespace Nethermind.AccountAbstraction
         private Address _entryPointContractAddress = null!;
         private UserOperationPool? _userOperationPool;
         private UserOperationSimulator? _userOperationSimulator;
+        private UserOperationTxSource? _userOperationTxSource;
         private IBundler? _bundler;
 
-        private MevPlugin? MevPlugin => _nethermindApi
+        private MevPlugin MevPlugin => _nethermindApi
             .GetConsensusWrapperPlugins()
             .OfType<MevPlugin>()
-            .SingleOrDefault();
+            .Single();
 
         private UserOperationPool UserOperationPool
         {
@@ -102,6 +103,27 @@ namespace Nethermind.AccountAbstraction
             }
         }
 
+        private UserOperationTxSource UserOperationTxSource
+        {
+            get
+            {
+                if (_userOperationTxSource is null)
+                {
+                    var (getFromApi, _) = _nethermindApi!.ForProducer;
+
+                    _userOperationTxSource = new UserOperationTxSource
+                    (
+                        UserOperationPool,
+                        UserOperationSimulator,
+                        _nethermindApi.SpecProvider!,
+                        _logger
+                    );
+                }
+
+                return _userOperationTxSource;
+            }
+        }
+
         public string Name => "Account Abstraction";
 
         public string Description => "Implements account abstraction via alternative mempool (ERC-4337)";
@@ -139,15 +161,6 @@ namespace Nethermind.AccountAbstraction
                 }
 
                 _entryPointContractAbi = LoadEntryPointContract();
-
-                UserOperationTxSource userOperationTxSource =
-                    new(UserOperationPool, UserOperationSimulator, _nethermindApi.SpecProvider!, _logger);
-
-                if (BundleMiningEnabled && MevPlugin is not null)
-                    _bundler = new MevBundler(
-                        new OnNewBlockBundleTrigger(_nethermindApi.BlockTree!),
-                        userOperationTxSource, MevPlugin.BundlePool
-                    );
             }
 
             if (Enabled)
@@ -186,11 +199,15 @@ namespace Nethermind.AccountAbstraction
                 IJsonRpcConfig rpcConfig = getFromApi.Config<IJsonRpcConfig>();
                 rpcConfig.EnableModules(ModuleType.AccountAbstraction);
 
-                AccountAbstractionModuleFactory accountAbstractionModuleFactory = new(
-                    UserOperationPool);
+                AccountAbstractionModuleFactory accountAbstractionModuleFactory = new(UserOperationPool);
 
-                getFromApi.RpcModuleProvider!.RegisterBoundedByCpuCount(accountAbstractionModuleFactory,
-                    rpcConfig.Timeout);
+                getFromApi.RpcModuleProvider!.RegisterBoundedByCpuCount(accountAbstractionModuleFactory, rpcConfig.Timeout);
+
+                if (BundleMiningEnabled && MevPluginEnabled)
+                    _bundler = new MevBundler(
+                        new OnNewBlockBundleTrigger(_nethermindApi.BlockTree!),
+                        UserOperationTxSource, MevPlugin.BundlePool
+                    );
 
                 if (_logger!.IsInfo) _logger.Info("Account Abstraction RPC plugin enabled");
             }
@@ -223,14 +240,13 @@ namespace Nethermind.AccountAbstraction
             }
 
             IManualBlockProductionTrigger trigger = new BuildBlocksWhenRequested();
-            UserOperationTxSource userOperationTxSource =
-                new(UserOperationPool, UserOperationSimulator, _nethermindApi.SpecProvider!, _logger);
 
-            return consensusPlugin.InitBlockProducer(trigger, userOperationTxSource);
+            return consensusPlugin.InitBlockProducer(trigger, UserOperationTxSource);
         }
 
+        public bool MevPluginEnabled => _nethermindApi.Config<IMevConfig>().Enabled;
         public bool BundleMiningEnabled => _accountAbstractionConfig.Enabled && (_nethermindApi.Config<IInitConfig>().IsMining || _nethermindApi.Config<IMiningConfig>().Enabled);
-        public bool Enabled => BundleMiningEnabled && !_nethermindApi.Config<IMevConfig>().Enabled; // IConsensusWrapperPlugin.Enabled
+        public bool Enabled => BundleMiningEnabled && !MevPluginEnabled; // IConsensusWrapperPlugin.Enabled
 
         private AbiDefinition LoadEntryPointContract()
         {
