@@ -47,7 +47,7 @@ namespace Nethermind.Blockchain.Test.Validators
         [TestCase(false, true, ExpectedResult = true)]
         [TestCase(true, false, ExpectedResult = true)]
         [TestCase(true, true, ExpectedResult = false)]
-        public bool Validation_fails_when_gas_limit_exceeded(bool isEip4488Enabled, bool shouldBreak448Rule)
+        public bool Validation_fails_when_gas_limit_exceeded(bool isEip4488Enabled, bool shouldBreak4488Rule)
         {
             ReleaseSpec releaseSpec = new() { IsEip4488Enabled = isEip4488Enabled };
             ISpecProvider specProvider = new CustomSpecProvider((0, releaseSpec));
@@ -56,7 +56,7 @@ namespace Nethermind.Blockchain.Test.Validators
             
             Block block = Build.A.Block.WithTransactions(
                 Build.A.Transaction.WithData(Block.BaseMaxCallDataPerBlock + Transaction.CallDataPerTxStipend).TestObject,
-                Build.A.Transaction.WithData(Transaction.CallDataPerTxStipend + (shouldBreak448Rule ? 1 : 0)).TestObject)
+                Build.A.Transaction.WithData(Transaction.CallDataPerTxStipend + (shouldBreak4488Rule ? 1 : 0)).TestObject)
                 .TestObject;
 
             return blockValidator.ValidateSuggestedBlock(block);
