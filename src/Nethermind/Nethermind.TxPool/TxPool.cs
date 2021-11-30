@@ -286,7 +286,7 @@ namespace Nethermind.TxPool
         {
             lock (_locker)
             {
-                bool eip1559Enabled = _specProvider.GetSpec().IsEip1559Enabled;
+                bool eip1559Enabled = _specProvider.GetCurrentHeadSpec().IsEip1559Enabled;
 
                 tx.GasBottleneck = tx.CalculateEffectiveGasPrice(eip1559Enabled, _headInfo.CurrentBaseFee);
                 bool inserted = _transactions.TryInsert(tx.Hash, tx, out Transaction? removed);
@@ -363,14 +363,14 @@ namespace Nethermind.TxPool
                 {
                     if (previousTxBottleneck == null)
                     {
-                        previousTxBottleneck = tx.CalculateAffordableGasPrice(_specProvider.GetSpec().IsEip1559Enabled,
+                        previousTxBottleneck = tx.CalculateAffordableGasPrice(_specProvider.GetCurrentHeadSpec().IsEip1559Enabled,
                             _headInfo.CurrentBaseFee, balance);
                     }
 
                     if (tx.Nonce == currentNonce + i)
                     {
                         UInt256 effectiveGasPrice =
-                            tx.CalculateEffectiveGasPrice(_specProvider.GetSpec().IsEip1559Enabled,
+                            tx.CalculateEffectiveGasPrice(_specProvider.GetCurrentHeadSpec().IsEip1559Enabled,
                                 _headInfo.CurrentBaseFee);
                         gasBottleneck = UInt256.Min(effectiveGasPrice, previousTxBottleneck ?? 0);
                     }

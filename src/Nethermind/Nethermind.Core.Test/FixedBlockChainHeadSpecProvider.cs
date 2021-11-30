@@ -43,6 +43,6 @@ namespace Nethermind.Core.Test
 
         public long[] TransitionBlocks => _specProvider.TransitionBlocks;
         
-        public IReleaseSpec GetSpec() => GetSpec(_fixedBlock);
+        public IReleaseSpec GetCurrentHeadSpec() => GetSpec(_fixedBlock);
     }
 }
