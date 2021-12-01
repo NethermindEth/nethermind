@@ -25,14 +25,22 @@ namespace Nethermind.Blockchain.Producers
     public class BuildBlocksInALoop : IBlockProductionTrigger, IAsyncDisposable
     {
         private readonly CancellationTokenSource _loopCancellationTokenSource = new();
-        private readonly Task _loopTask;
+        private Task _loopTask = Task.CompletedTask;
         protected ILogger Logger { get; }
         
         public event EventHandler<BlockProductionEventArgs>? TriggerBlockProduction;
 
-        public BuildBlocksInALoop(ILogManager logManager)
+        public BuildBlocksInALoop(ILogManager logManager, bool autoStart = true)
         {
             Logger = logManager.GetClassLogger();
+            if (autoStart)
+            {
+                StartLoop();
+            }
+        }
+        
+        public void StartLoop()
+        {
             _loopTask = Task.Run(ProducerLoop, _loopCancellationTokenSource.Token).ContinueWith(t =>
             {
                 if (t.IsFaulted)
@@ -49,7 +57,7 @@ namespace Nethermind.Blockchain.Producers
                 }
             });
         }
-        
+
         private async Task ProducerLoop()
         {
             while (!_loopCancellationTokenSource.IsCancellationRequested)
