@@ -48,7 +48,6 @@ namespace Nethermind.Blockchain.Test.Validators
         private Block _block;
         private IBlockTree _blockTree;
         private ISpecProvider _specProvider;
-        private IPoSSwitcher _poSSwitcher;
 
         [SetUp]
         public void Setup()
@@ -59,11 +58,6 @@ namespace Nethermind.Blockchain.Test.Validators
             MemDb blockInfoDb = new();
             _blockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), FrontierSpecProvider.Instance, Substitute.For<IBloomStorage>(), LimboLogs.Instance);
             _specProvider = new SingleReleaseSpecProvider(Byzantium.Instance, 3);
-            
-            PoSSwitcher poSSwitcher = new(NullLogManager.Instance, new MergeConfig(), new MemDb(), _blockTree, _specProvider);
-            poSSwitcher.TerminalTotalDifficulty = 0;
-            poSSwitcher.ForkchoiceUpdated(Build.A.BlockHeader.WithTotalDifficulty(0).TestObject);
-            _poSSwitcher = poSSwitcher;
             
             _validator = new HeaderValidator(_blockTree, _ethash, _specProvider, new OneLoggerLogManager(_testLogger));
             _parentBlock = Build.A.Block.WithDifficulty(1).TestObject;
@@ -276,58 +270,6 @@ namespace Nethermind.Blockchain.Test.Validators
             bool result = _validator.Validate(_block.Header, _parentBlock.Header);
             
             Assert.True(result);
-        }
-
-        [Test]
-        public void When_incorrect_difficulty_after_the_merge()
-        {
-            _validator = new HeaderValidator(_blockTree, _ethash, _specProvider,
-                new OneLoggerLogManager(_testLogger));
-            AssignValidPoSFields(_block);
-            _block.Header.Difficulty = 131072;
-            _block.Header.Hash = _block.CalculateHash();
-
-            bool result = _validator.Validate(_block.Header);
-            Assert.False(result);
-        }
-
-        // needed in previous version of EIP-3675 specification
-        /*[Test]
-        public void When_incorrect_extra_data_after_the_merge()
-        {
-            _validator = new HeaderValidator(_blockTree, _ethash, _specProvider, _poSSwitcher,
-                new OneLoggerLogManager(_testLogger));
-            AssignValidPoSFields(_block);
-            _block.Header.ExtraData = new byte[] {1, 2, 3};
-            _block.Header.Hash = _block.CalculateHash();
-
-            bool result = _validator.Validate(_block.Header);
-            Assert.False(result);
-        }*/
-
-        [Test]
-        public void When_incorrect_nonce_after_the_merge()
-        {
-            _validator = new HeaderValidator(_blockTree, _ethash, _specProvider,
-                new OneLoggerLogManager(_testLogger));
-            AssignValidPoSFields(_block);
-            _block.Header.Nonce = 1000;
-            _block.Header.Hash = _block.CalculateHash();
-
-            bool result = _validator.Validate(_block.Header);
-            Assert.False(result);
-        }
-
-        [Test]
-        public void When_incorrect_uncles_after_the_merge()
-        {
-            _validator = new HeaderValidator(_blockTree, _ethash, _specProvider, new OneLoggerLogManager(_testLogger));
-            AssignValidPoSFields(_block);
-            _block.Header.UnclesHash = Keccak.Compute("unclesHash");
-            _block.Header.Hash = _block.CalculateHash();
-            
-            bool result = _validator.Validate(_block.Header);
-            Assert.False(result);
         }
     }
 }

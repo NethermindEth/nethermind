@@ -294,7 +294,11 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         public static readonly IEnumerable<Capability> DefaultCapabilities = new Capability[]
         {
-            new(Protocol.Eth, 66),
+            new Capability(Protocol.Eth, 62),
+            new Capability(Protocol.Eth, 63),
+            new Capability(Protocol.Eth, 64),
+            new Capability(Protocol.Eth, 65),
+            new Capability(Protocol.Eth, 66),
         };
 
         private readonly List<Capability> SupportedCapabilities = DefaultCapabilities.ToList();
