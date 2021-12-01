@@ -1126,11 +1126,8 @@ namespace Nethermind.Blockchain
 
             
             bool preMergeImprovementRequirementSatisfied = block.TotalDifficulty > (Head?.TotalDifficulty ?? 0);
-            bool postMergeImprovementRequirementSatisfied =
-                block.TotalDifficulty >= (Head?.TotalDifficulty ?? 0)
-                && block.Number > (Head?.Number ?? 0);
-            if (forceUpdateHeadBlock || block.IsGenesis || postMergeImprovementRequirementSatisfied)
-            // if (forceUpdateHeadBlock || block.IsGenesis || block.TotalDifficulty > (Head?.TotalDifficulty ?? 0))
+            bool postMergeImprovementRequirementSatisfied = block.IsPostMerge || block.Number >= _specProvider.MergeBlockNumber;
+            if (forceUpdateHeadBlock || block.IsGenesis || postMergeImprovementRequirementSatisfied || preMergeImprovementRequirementSatisfied)
             {
                 if (block.Number == 0)
                 {

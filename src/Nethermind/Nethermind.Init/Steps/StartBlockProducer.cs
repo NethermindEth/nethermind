@@ -42,7 +42,7 @@ namespace Nethermind.Init.Steps
             if (miningConfig.Enabled)
             {
                 _api.BlockProducer = await BuildProducer();
-                
+
                 if (_api.BlockProducer == null) throw new StepDependencyException(nameof(_api.BlockProducer));
                 if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.BlockTree));
 
@@ -68,10 +68,10 @@ namespace Nethermind.Init.Steps
                 _api.TransactionComparerProvider,
                 _api.Config<IMiningConfig>(),
                 _api.LogManager);
-            
+
             if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
             IConsensusPlugin? consensusPlugin = _api.GetConsensusPlugin();
-            
+
             if (consensusPlugin is not null)
             {
                 // TODO: need to wrap preMerge producer inside theMerge first, then need to wrap all of it with MEV
@@ -86,7 +86,7 @@ namespace Nethermind.Init.Steps
             }
             else
             {
-                throw new NotSupportedException($"Mining in {_api.ChainSpec.SealEngineType} mode is not supported");    
+                throw new NotSupportedException($"Mining in {_api.ChainSpec.SealEngineType} mode is not supported");
             }
         }
     }

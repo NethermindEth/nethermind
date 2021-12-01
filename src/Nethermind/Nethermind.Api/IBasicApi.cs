@@ -21,6 +21,7 @@ using System.Linq;
 using Nethermind.Abi;
 using Nethermind.Api.Extensions;
 using Nethermind.Config;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;
@@ -57,6 +58,8 @@ namespace Nethermind.Api
         ISyncModeSelector? SyncModeSelector { get; set; }
         ITimestamper Timestamper { get; }
         ITimerFactory TimerFactory { get; }
+        
+        IConsensusInfo ConsensusInfo { get; set; }
 
         public IConsensusPlugin? GetConsensusPlugin() =>
             Plugins
