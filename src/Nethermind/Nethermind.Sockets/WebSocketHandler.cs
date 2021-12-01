@@ -47,7 +47,7 @@ namespace Nethermind.Sockets
                         {
                             if (socketException.SocketErrorCode == SocketError.ConnectionReset)
                             {
-                                if (_logger.IsDebug) _logger.Debug($"Client disconnected: {innerException.Message}.");
+                                if (_logger.IsTrace) _logger.Trace($"Client disconnected: {innerException.Message}.");
                             }
                             else
                             {
@@ -58,7 +58,7 @@ namespace Nethermind.Sockets
                         {
                             if (webSocketException.WebSocketErrorCode == WebSocketError.ConnectionClosedPrematurely)
                             {
-                                if (_logger.IsDebug) _logger.Debug($"Client disconnected: {innerException.Message}.");
+                                if (_logger.IsTrace) _logger.Trace($"Client disconnected: {innerException.Message}.");
                             }
                             else
                             {
