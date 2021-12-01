@@ -143,7 +143,10 @@ namespace Nethermind.JsonRpc.Modules.Eth
         public ResultWrapper<UInt256?> eth_maxPriorityFeePerGas()
         {
             Tuple<UInt256, UInt256> gasPriceWithBaseFee = _gasPriceOracle.GetGasPriceEstimateWithBaseFee();
-            return ResultWrapper<UInt256?>.Success(gasPriceWithBaseFee.Item1 - gasPriceWithBaseFee.Item2);
+            UInt256? gas = gasPriceWithBaseFee.Item1 < gasPriceWithBaseFee.Item2
+                ? gasPriceWithBaseFee.Item1 - gasPriceWithBaseFee.Item2
+                : gasPriceWithBaseFee.Item1;
+            return ResultWrapper<UInt256?>.Success(gas);
         }
 
         public ResultWrapper<FeeHistoryResults> eth_feeHistory(int blockCount, BlockParameter newestBlock, double[]? rewardPercentiles = null)
