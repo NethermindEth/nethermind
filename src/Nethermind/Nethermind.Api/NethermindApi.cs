@@ -208,7 +208,6 @@ namespace Nethermind.Api
         public IWallet? Wallet { get; set; }
         public ITransactionComparerProvider TransactionComparerProvider { get; set; }
         public IWebSocketsManager WebSocketsManager { get; set; } = new WebSocketsManager();
-        public IConsensusInfo ConsensusInfo { get; set; }
 
         public ProtectedPrivateKey? NodeKey { get; set; }
 

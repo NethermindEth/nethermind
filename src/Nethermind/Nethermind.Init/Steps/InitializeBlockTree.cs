@@ -61,8 +61,6 @@ namespace Nethermind.Init.Steps
             IChainLevelInfoRepository? chainLevelInfoRepository =
                 _set.ChainLevelInfoRepository = new ChainLevelInfoRepository(_get.DbProvider!.BlockInfosDb);
 
-            IConsensusInfo consensusInfo = _set.ConsensusInfo = new ConsensusInfo(_get.DbProvider!.GetDb<IDb>(DbNames.Metadata));
-
             IBlockTree? blockTree = _set.BlockTree = new BlockTree(
                 _get.DbProvider,
                 chainLevelInfoRepository,

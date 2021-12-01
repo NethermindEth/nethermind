@@ -58,8 +58,6 @@ namespace Nethermind.Api
         ISyncModeSelector? SyncModeSelector { get; set; }
         ITimestamper Timestamper { get; }
         ITimerFactory TimerFactory { get; }
-        
-        IConsensusInfo ConsensusInfo { get; set; }
 
         public IConsensusPlugin? GetConsensusPlugin() =>
             Plugins
