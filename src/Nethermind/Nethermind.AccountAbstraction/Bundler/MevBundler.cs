@@ -4,6 +4,7 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Mev.Data;
 using Nethermind.Mev.Source;
 using Nethermind.Core;
+using Nethermind.Logging;
 
 namespace Nethermind.AccountAbstraction.Bundler
 {
@@ -12,12 +13,14 @@ namespace Nethermind.AccountAbstraction.Bundler
         private IBundleTrigger _trigger;
         private ITxSource _txSource;
         private IBundlePool _bundlePool;
+        private ILogger _logger;
 
-        public MevBundler(IBundleTrigger trigger, ITxSource txSource, IBundlePool bundlePool)
+        public MevBundler(IBundleTrigger trigger, ITxSource txSource, IBundlePool bundlePool, ILogger logger)
         {
             _trigger = trigger;
             _txSource = txSource;
             _bundlePool = bundlePool;
+            _logger = logger;
 
             _trigger.TriggerBundle += OnTriggerBundle;
         }
@@ -50,8 +53,12 @@ namespace Nethermind.AccountAbstraction.Bundler
             // turn txs into MevBundle
             MevBundle bundle = new(head.Header.Number + 1, transactions.ToArray());
 
+            _logger.Info("Trying to add bundle from AA to MEV bundle pool");
             // add MevBundle to MevPlugin bundle pool
             bool result = _bundlePool.AddBundle(bundle);
+
+            if (result) _logger.Info("Bundle from AA successfuly added to MEV bundle pool");
+            else _logger.Info("Bundle from AA failed to be added to MEV bundle pool");
         }
     }
 }

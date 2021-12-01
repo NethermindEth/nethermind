@@ -206,7 +206,8 @@ namespace Nethermind.AccountAbstraction
                 if (BundleMiningEnabled && MevPluginEnabled)
                     _bundler = new MevBundler(
                         new OnNewBlockBundleTrigger(_nethermindApi.BlockTree!),
-                        UserOperationTxSource, MevPlugin.BundlePool
+                        UserOperationTxSource, MevPlugin.BundlePool,
+                        _logger
                     );
 
                 if (_logger!.IsInfo) _logger.Info("Account Abstraction RPC plugin enabled");
