@@ -160,10 +160,12 @@ namespace Nethermind.AccountAbstraction.Network
             UserOperationsMessage msg = new(uopsToSend);
             Send(msg);
             Metrics.UserOperationsMessagesSent++;
+            if (Logger.IsTrace) Logger.Trace($"Sent {uopsToSend.Count} uops to {_session.Node:c}");
         }
 
         public override void DisconnectProtocol(DisconnectReason disconnectReason, string details)
         {
+            if (Logger.IsDebug) Logger.Debug($"AA network protocol disconnected because of {disconnectReason} {details}");
             Dispose();
         }
         

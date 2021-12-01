@@ -315,7 +315,7 @@ namespace Nethermind.AccountAbstraction.Source
             {
                 _broadcaster.BroadcastOnce(peerInfo, _userOperationSortedPool.GetSnapshot());
                 
-                if (_logger.IsTrace) _logger.Trace($"Added a peer to User Operation pool: {peer}");
+                if (_logger.IsTrace) _logger.Trace($"Added a peer to User Operation pool: {peer.Id}");
             }
         }
 
