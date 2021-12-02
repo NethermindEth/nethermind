@@ -153,6 +153,10 @@
     "Sepolia": {
       "commandName": "Project",
       "commandLineArgs": "--config configs\\sepolia.cfg --Init.DiagnosticMode MemDb"
+    },
+    "Kinstugi_devnet": {
+      "commandName": "Project",
+      "commandLineArgs": "--config kintsugi_devnet.cfg --Init.DiagnosticMode MemDb"
     }
   }
 }
