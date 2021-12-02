@@ -15,12 +15,16 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
+
+[assembly: InternalsVisibleTo("Ethereum.Test.Base")]
+[assembly: InternalsVisibleTo("Ethereum.PoW.Test")]
 
 namespace Nethermind.Consensus.Ethash
 {

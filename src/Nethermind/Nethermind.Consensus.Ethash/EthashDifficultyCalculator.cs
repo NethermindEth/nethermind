@@ -15,10 +15,14 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
+
+[assembly: InternalsVisibleTo("Ethereum.Test.Base")]
+[assembly: InternalsVisibleTo("Ethereum.Difficulty.Test")]
 
 namespace Nethermind.Consensus.Ethash
 {
@@ -28,7 +32,7 @@ namespace Nethermind.Consensus.Ethash
         public const int InitialDifficultyBombBlock = 200000;
         private readonly ISpecProvider _specProvider;
 
-        public EthashDifficultyCalculator(ISpecProvider specProvider)
+        internal EthashDifficultyCalculator(ISpecProvider specProvider)
         {
             _specProvider = specProvider;
         }

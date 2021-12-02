@@ -20,7 +20,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Consensus.Ethash
 {
-    internal interface IEthash
+    public interface IEthash
     {
         void HintRange(Guid guid, long start, long end);
         bool Validate(BlockHeader header);

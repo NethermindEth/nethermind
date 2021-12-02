@@ -201,7 +201,7 @@ namespace Ethereum.VM.Test
             WorldState worldState = new WorldState(_stateProvider, _storageProvider);
             IReleaseSpec spec = _specProvider.GetSpec(test.Environment.CurrentNumber);
             
-            TransactionSubstate substate = machine.Run(state, worldState, NullTxTracer.Instance);
+            TransactionSubstate substate = machine.Run(state, worldState, spec, NullTxTracer.Instance);
             if (test.Out == null)
             {
                 Assert.NotNull(substate.Error);
