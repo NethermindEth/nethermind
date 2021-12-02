@@ -52,6 +52,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             _floodController = new TxFloodController(this, Timestamper.Default, Logger);
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _gossipPolicy = gossipPolicy ?? throw new ArgumentNullException(nameof(gossipPolicy));
+
+            EnsureGossipPolicy();
         }
 
         public void DisableTxFiltering()
@@ -128,17 +130,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                     break;
                 case Eth62MessageCode.NewBlockHashes:
                     Metrics.Eth62NewBlockHashesReceived++;
-                    if (ShouldGossip)
+                    if (_gossipPolicy.ShouldDisconnectGossipingNodes)
+                    {
+                        Disconnect(DisconnectReason.BreachOfProtocol,
+                            "NewBlock message received after FIRST_FINALIZED_BLOCK PoS block.");
+                    }
+                    else
                     {
                         NewBlockHashesMessage newBlockHashesMessage =
                             Deserialize<NewBlockHashesMessage>(message.Content);
                         ReportIn(newBlockHashesMessage);
                         Handle(newBlockHashesMessage);
-                    }
-                    else
-                    {
-                        Disconnect(DisconnectReason.BreachOfProtocol,
-                            "NewBlockHashes message received while PoS protocol activated.");
                     }
 
                     break;
@@ -191,18 +193,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             }
         }
 
-        private bool ShouldGossip
-        {
-            get
-            {
-                if (_gossipPolicy.ShouldGossipBlocks)
-                {
-                    SyncServer.StopNotifyingPeersAboutNewBlocks();
-                    return true;
-                }
+        private bool ShouldGossip => EnsureGossipPolicy();
 
+        private bool EnsureGossipPolicy()
+        {
+            if (_gossipPolicy.ShouldGossipBlocks == false)
+            {
+                SyncServer.StopNotifyingPeersAboutNewBlocks();
                 return false;
             }
+
+            return true;
         }
 
         private void Handle(StatusMessage status)

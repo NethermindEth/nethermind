@@ -59,6 +59,7 @@ namespace Nethermind.Synchronization
         private readonly IGossipPolicy _gossipPolicy;
         private readonly CanonicalHashTrie? _cht;
         private readonly object _dummyValue = new();
+        private bool gossipStopped = false;
 
         private readonly ICache<Keccak, object> _recentlySuggested =
             new LruCache<Keccak, object>(128, 128, "recently suggested blocks");
@@ -507,10 +508,15 @@ namespace Nethermind.Synchronization
         
         private void OnNotifyPeerBlock(object? sender, PeerBlockNotificationEventArgs e) => NotifyOfNewBlock(null, e.SyncPeer, e.Block, SendBlockPriority.High);
         
+        
         public void StopNotifyingPeersAboutNewBlocks()
         {
-            _blockTree.NewHeadBlock -= OnNewHeadBlock;
-            _pool.NotifyPeerBlock -= OnNotifyPeerBlock;
+            if (gossipStopped == false)
+            {
+                _blockTree.NewHeadBlock -= OnNewHeadBlock;
+                _pool.NotifyPeerBlock -= OnNotifyPeerBlock;
+                gossipStopped = true;
+            }
         }
 
         public void Dispose()

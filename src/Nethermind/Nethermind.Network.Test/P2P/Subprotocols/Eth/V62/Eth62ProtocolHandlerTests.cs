@@ -29,6 +29,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.Subprotocols;
@@ -73,6 +74,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _syncManager.Genesis.Returns(_genesisBlock.Header);
             ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
             _gossipPolicy = Substitute.For<IGossipPolicy>();
+            _gossipPolicy.ShouldGossipBlocks.Returns(true);
+            _gossipPolicy.ShouldDisconnectGossipingNodes.Returns(false);
             _handler = new Eth62ProtocolHandler(
                 _session,
                 _svc,
@@ -282,12 +285,12 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             newBlockMessage.Block = Build.A.Block.WithParent(_genesisBlock).TestObject;
             newBlockMessage.TotalDifficulty = _genesisBlock.Difficulty + newBlockMessage.Block.Difficulty;
 
-            _gossipPolicy.ShouldGossipBlocks.Returns(false);
+            _gossipPolicy.ShouldDisconnectGossipingNodes.Returns(true);
 
             HandleIncomingStatusMessage();
             HandleZeroMessage(newBlockMessage, Eth62MessageCode.NewBlock);
 
-            _session.Received().InitiateDisconnect(DisconnectReason.BreachOfProtocol, "NewBlock message received while PoS protocol activated.");
+            _session.Received().InitiateDisconnect(DisconnectReason.BreachOfProtocol, "NewBlock message received after FIRST_FINALIZED_BLOCK PoS block.");
         }
 
         [Test]
@@ -321,12 +324,12 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         {
             NewBlockHashesMessage msg = new NewBlockHashesMessage((Keccak.Zero, 1), (Keccak.Zero, 2));
             
-            _gossipPolicy.ShouldGossipBlocks.Returns(false);
+            _gossipPolicy.ShouldDisconnectGossipingNodes.Returns(true);
             
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg, Eth62MessageCode.NewBlockHashes);
             
-            _session.Received().InitiateDisconnect(DisconnectReason.BreachOfProtocol, "NewBlockHashes message received while PoS protocol activated.");
+            _session.Received().InitiateDisconnect(DisconnectReason.BreachOfProtocol, "NewBlock message received after FIRST_FINALIZED_BLOCK PoS block.");
         }
 
         [Test]

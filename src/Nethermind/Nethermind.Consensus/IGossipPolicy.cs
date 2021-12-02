@@ -24,24 +24,24 @@ namespace Nethermind.Consensus
         public bool ShouldDisconnectGossipingNodes { get; }
     }
 
-    internal class ShouldNotGossip : IGossipPolicy
+    public class ShouldNotGossip : IGossipPolicy
     {
         private ShouldNotGossip() { }
 
         public static ShouldNotGossip Instance { get; } = new ();
         
         public bool ShouldGossipBlocks => false;
-        public bool ShouldDisconnectGossipingNodes => false;
+        public bool ShouldDisconnectGossipingNodes => true;
     }
     
-    internal class ShouldGossip : IGossipPolicy
+    public class ShouldGossip : IGossipPolicy
     {
         private ShouldGossip() { }
 
         public static IGossipPolicy Instance { get; } = new ShouldGossip();
         
         public bool ShouldGossipBlocks => true;
-        public bool ShouldDisconnectGossipingNodes => true;
+        public bool ShouldDisconnectGossipingNodes => false;
     }
     
     public static class Policy
