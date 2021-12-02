@@ -560,7 +560,9 @@ namespace Nethermind.Blockchain
                 NewSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
             }
 
-   //         if (header.IsGenesis || header.TotalDifficulty > (BestSuggestedHeader?.TotalDifficulty ?? 0))
+            bool preMergeImprovementRequirementSatisfied = header.TotalDifficulty > (BestSuggestedHeader?.TotalDifficulty ?? 0);
+            bool postMergeImprovementRequirementSatisfied = header.IsPostMerge || header.Number >= _specProvider.MergeBlockNumber;
+            if (header.IsGenesis || preMergeImprovementRequirementSatisfied || postMergeImprovementRequirementSatisfied)
             {
                 if (header.IsGenesis)
                 {
