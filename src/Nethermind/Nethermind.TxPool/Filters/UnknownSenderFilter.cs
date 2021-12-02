@@ -35,7 +35,7 @@ namespace Nethermind.TxPool.Filters
             _logger = logger;
         }
             
-        public (bool Accepted, AddTxResult? Reason) Accept(Transaction tx, TxHandlingOptions handlingOptions)
+        public AcceptTxResult Accept(Transaction tx, TxHandlingOptions handlingOptions)
         {
             /* We have encountered multiple transactions that do not resolve sender address properly.
              * We need to investigate what these txs are and why the sender address is resolved to null.
@@ -47,11 +47,11 @@ namespace Nethermind.TxPool.Filters
                 if (tx.SenderAddress is null)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, no sender.");
-                    return (false, AddTxResult.FailedToResolveSender);
+                    return new AcceptTxResult(AcceptTxResultCodes.FailedToResolveSender);
                 }
             }
 
-            return (true, null);
+            return AcceptTxResult.Accepted;
         }
     }
 }

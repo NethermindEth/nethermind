@@ -43,7 +43,7 @@ namespace Nethermind.TxPool.Filters
             _logger = logger;
         }
 
-        public (bool Accepted, AddTxResult? Reason) Accept(Transaction tx, TxHandlingOptions handlingOptions)
+        public AcceptTxResult Accept(Transaction tx, TxHandlingOptions handlingOptions)
         {
             IReleaseSpec spec = _specProvider.GetCurrentHeadSpec();
             Account account = _accounts.GetAccount(tx.SenderAddress!);
@@ -86,17 +86,17 @@ namespace Nethermind.TxPool.Filters
             {
                 if (_logger.IsTrace)
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, cost overflow.");
-                return (false, AddTxResult.Int256Overflow);
+                return new AcceptTxResult(AcceptTxResultCodes.Int256Overflow);
             }
             
             if (balance < cumulativeCost)
             {
                 if (_logger.IsTrace)
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, insufficient funds.");
-                return (false, AddTxResult.InsufficientFunds);
+                return new AcceptTxResult(AcceptTxResultCodes.InsufficientFunds);
             }
 
-            return (true, null);
+            return AcceptTxResult.Accepted;
         }
     }
 }

@@ -19,12 +19,12 @@ namespace Nethermind.TxPool
     /// <summary>
     /// Describes potential outcomes of adding transaction to the TX pool.
     /// </summary>
-    public enum AddTxResult
+    public enum AcceptTxResultCodes
     {
         /// <summary>
         /// The transaction has been added successfully. This is the only 'success' outcome.
         /// </summary>
-        Added,
+        Accepted,
         
         /// <summary>
         /// A transaction with the same hash has already been added to the pool in the past.
@@ -45,16 +45,6 @@ namespace Nethermind.TxPool
         /// Fee paid by this transaction is not enough to be accepted in the mempool.
         /// </summary>
         FeeTooLowToCompete,
-        
-        /// <summary>
-        /// MaxFeePerGas of this transaction is lower than current base fee.
-        /// </summary>
-        MaxFeePerGasTooLow,
-        
-        /// <summary>
-        /// Effective fee paid as a tip to the miner is not enough to be accepted in the mempool.
-        /// </summary>
-        EffectivePriorityFeePerGasTooLow,
         
         /// <summary>
         /// Transaction gas limit exceeds the block gas limit.
@@ -79,7 +69,7 @@ namespace Nethermind.TxPool
         /// <summary>
         /// Permission denied for this tx type.
         /// </summary>
-        PermissionDeniedForThisTxType,
+        PermissionDenied,
         
         /// <summary>
         /// The nonce is not the next nonce after the last nonce of this sender present in TxPool.

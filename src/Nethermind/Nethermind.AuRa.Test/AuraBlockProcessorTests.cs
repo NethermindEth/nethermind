@@ -35,6 +35,7 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
+using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -64,7 +65,7 @@ namespace Nethermind.AuRa.Test
             ITxFilter txFilter = Substitute.For<ITxFilter>();
             txFilter
                 .IsAllowed(Arg.Any<Transaction>(), Arg.Any<BlockHeader>())
-                .Returns((true, null));
+                .Returns(AcceptTxResult.Accepted);
             AuRaBlockProcessor processor = CreateProcessor(txFilter);
 
             BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).WithNumber(3).TestObject;

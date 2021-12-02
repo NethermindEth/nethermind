@@ -38,12 +38,12 @@ namespace Nethermind.Consensus.Transactions
             _specProvider = specProvider;
         }
 
-        public (bool Allowed, AddTxResult? Reason) IsAllowed(Transaction tx, BlockHeader parentHeader)
+        public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader)
         {
             return IsAllowed(tx, parentHeader, _minGasPrice);
         }
 
-        public (bool Allowed, AddTxResult? Reason) IsAllowed(Transaction tx, BlockHeader? parentHeader, in UInt256 minGasPriceFloor)
+        public AcceptTxResult IsAllowed(Transaction tx, BlockHeader? parentHeader, in UInt256 minGasPriceFloor)
         {
             UInt256 premiumPerGas = tx.GasPrice;
             UInt256 baseFeePerGas = UInt256.Zero;
@@ -56,7 +56,10 @@ namespace Nethermind.Consensus.Transactions
             }
 
             bool allowed = premiumPerGas >= minGasPriceFloor;
-            return (allowed, allowed ? null : AddTxResult.EffectivePriorityFeePerGasTooLow);
+            return allowed
+                ? AcceptTxResult.Accepted
+                : new AcceptTxResult(AcceptTxResultCodes.FeeTooLow,
+                    $"EffectivePriorityFeePerGas too low {premiumPerGas} < {minGasPriceFloor}, BaseFee: {baseFeePerGas}");
         }
     }
 }

@@ -37,17 +37,17 @@ namespace Nethermind.TxPool.Filters
             _logger = logger;
         }
             
-        public (bool Accepted, AddTxResult? Reason) Accept(Transaction tx, TxHandlingOptions txHandlingOptions)
+        public AcceptTxResult Accept(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
             IReleaseSpec spec = _specProvider.GetCurrentHeadSpec();
             if (!_txValidator.IsWellFormed(tx, spec))
             {
                 // It may happen that other nodes send us transactions that were signed for another chain or don't have enough gas.
                 if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, invalid transaction.");
-                return (false, AddTxResult.Invalid);
+                return new AcceptTxResult(AcceptTxResultCodes.Invalid);
             }
 
-            return (true, null);
+            return AcceptTxResult.Accepted;
         }
     }
 }

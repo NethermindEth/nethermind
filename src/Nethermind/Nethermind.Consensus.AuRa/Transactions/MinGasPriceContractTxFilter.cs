@@ -36,10 +36,10 @@ namespace Nethermind.Consensus.AuRa.Transactions
         }
 
 
-        public (bool Allowed, AddTxResult? Reason) IsAllowed(Transaction tx, BlockHeader parentHeader)
+        public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader)
         {
-            (bool Allowed, AddTxResult? Reason) result = _minGasPriceFilter.IsAllowed(tx, parentHeader);
-            if (!result.Allowed)
+            AcceptTxResult result = _minGasPriceFilter.IsAllowed(tx, parentHeader);
+            if (!result.Equals(AcceptTxResult.Accepted))
             {
                 return result;
             }
@@ -48,7 +48,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
                 return _minGasPriceFilter.IsAllowed(tx, parentHeader, @override.Value);
             }
             
-            return (true, null);
+            return AcceptTxResult.Accepted;
         }
     }
 }

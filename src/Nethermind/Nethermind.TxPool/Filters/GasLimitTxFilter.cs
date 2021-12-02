@@ -38,16 +38,16 @@ namespace Nethermind.TxPool.Filters
             _configuredGasLimit = txPoolConfig.GasLimit ?? long.MaxValue;
         }
             
-        public (bool Accepted, AddTxResult? Reason) Accept(Transaction tx, TxHandlingOptions handlingOptions)
+        public AcceptTxResult Accept(Transaction tx, TxHandlingOptions handlingOptions)
         {
             long gasLimit = Math.Min(_chainHeadInfoProvider.BlockGasLimit ?? long.MaxValue, _configuredGasLimit);
             if (tx.GasLimit > gasLimit)
             {
                 if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, gas limit exceeded.");
-                return (false, AddTxResult.GasLimitExceeded);
+                return new AcceptTxResult(AcceptTxResultCodes.GasLimitExceeded);
             }
 
-            return (true, null);
+            return AcceptTxResult.Accepted;
         }
     }
 }

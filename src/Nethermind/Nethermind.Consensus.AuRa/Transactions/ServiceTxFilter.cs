@@ -32,14 +32,14 @@ namespace Nethermind.Consensus.AuRa.Transactions
             _specProvider = specProvider;
         }
         
-        public (bool Allowed, AddTxResult? Reason) IsAllowed(Transaction tx, BlockHeader parentHeader)
+        public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader)
         {
             if (tx.IsZeroGasPrice(parentHeader, _specProvider))
             {
                 tx.IsServiceTransaction = true;
             }
             
-            return (true, null);
+            return AcceptTxResult.Accepted;
         }
     }
 }

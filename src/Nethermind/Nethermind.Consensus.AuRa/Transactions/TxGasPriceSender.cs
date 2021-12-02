@@ -42,7 +42,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
             _percentDelta = percentDelta;
         }
 
-        public ValueTask<(Keccak, AddTxResult?)> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
+        public ValueTask<(Keccak, AcceptTxResult?)> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
             UInt256 gasPriceEstimated = _gasPriceOracle.GetGasPriceEstimate() * _percentDelta / 100;
             tx.DecodedMaxFeePerGas = gasPriceEstimated;

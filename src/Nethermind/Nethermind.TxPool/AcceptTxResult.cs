@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,14 +15,27 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Threading.Tasks;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-
 namespace Nethermind.TxPool
 {
-    public interface ITxSender
+    public readonly struct AcceptTxResult
     {
-        ValueTask<(Keccak? Hash, AcceptTxResult? AddTxResult)> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions);
+        public static readonly AcceptTxResult Accepted = new AcceptTxResult(AcceptTxResultCodes.Accepted);
+        public AcceptTxResultCodes Code { get; }
+        public string? Message { get; }
+
+        public AcceptTxResult(AcceptTxResultCodes code, string? message = null)
+        {
+            Code = code;
+            Message = message;
+        }
+
+        public override string ToString()
+        {
+            if (Message is null)
+            {
+                return $"{Code}";
+            }
+            return $"{Code}, {Message}";
+        }
     }
 }

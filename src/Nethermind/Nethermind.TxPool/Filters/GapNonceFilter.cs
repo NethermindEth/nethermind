@@ -39,7 +39,7 @@ namespace Nethermind.TxPool.Filters
             _logger = logger;
         }
             
-        public (bool Accepted, AddTxResult? Reason) Accept(Transaction tx, TxHandlingOptions handlingOptions)
+        public AcceptTxResult Accept(Transaction tx, TxHandlingOptions handlingOptions)
         {
             int numberOfSenderTxsInPending = _txs.GetBucketCount(tx.SenderAddress);
             bool isTxPoolFull = _txs.IsFull();
@@ -50,10 +50,10 @@ namespace Nethermind.TxPool.Filters
                 Metrics.PendingTransactionsNonceGap++;
                 if (_logger.IsTrace)
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, nonce in future.");
-                return (false, AddTxResult.NonceGap);
+                return new AcceptTxResult(AcceptTxResultCodes.NonceGap);
             }
 
-            return (true, null);
+            return AcceptTxResult.Accepted;
         }
     }
 }

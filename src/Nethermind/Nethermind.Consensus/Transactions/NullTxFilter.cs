@@ -22,7 +22,7 @@ namespace Nethermind.Consensus.Transactions
 {
     public class NullTxFilter : ITxFilter
     {
-        public (bool Allowed, AddTxResult? Reason) IsAllowed(Transaction tx, BlockHeader parentHeader) => (true, null);
+        public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader) => AcceptTxResult.Accepted;
         
         public static readonly NullTxFilter Instance = new(); 
     }

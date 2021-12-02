@@ -37,23 +37,23 @@ namespace Nethermind.Blockchain
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
         }
 
-        public (bool Accepted, AddTxResult? Reason) Accept(Transaction tx, TxHandlingOptions txHandlingOptions)
+        public AcceptTxResult Accept(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
             if (tx is not GeneratedTransaction)
             {
                 BlockHeader parentHeader = _blockTree.Head?.Header;
-                if (parentHeader == null) return (true, null);
+                if (parentHeader == null) return AcceptTxResult.Accepted;
 
-                (bool accepted, AddTxResult? reason) = _txFilter.IsAllowed(tx, parentHeader);
-                if (reason is not null)
+                AcceptTxResult acceptTxResult = _txFilter.IsAllowed(tx, parentHeader);
+                if (acceptTxResult.Message is not null)
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, filtered ({reason}).");
+                    if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, filtered ({acceptTxResult.Message}).");
                 }
                 
-                return (accepted, reason);
+                return acceptTxResult;
             }
 
-            return (true, null);
+            return AcceptTxResult.Accepted;
         }
     }
 }

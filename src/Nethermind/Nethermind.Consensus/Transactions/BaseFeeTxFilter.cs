@@ -34,7 +34,7 @@ namespace Nethermind.Consensus.Transactions
             _specProvider = specProvider;
         }
 
-        public (bool Allowed, AddTxResult? Reason) IsAllowed(Transaction tx, BlockHeader parentHeader)
+        public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader)
         {
             long blockNumber = parentHeader.Number + 1;
             IReleaseSpec releaseSpec = _specProvider.GetSpec(blockNumber);
@@ -43,7 +43,10 @@ namespace Nethermind.Consensus.Transactions
 
             bool skipCheck = tx.IsServiceTransaction || !isEip1559Enabled;
             bool allowed = skipCheck || tx.MaxFeePerGas >= baseFee;
-            return (allowed, allowed ? null : AddTxResult.MaxFeePerGasTooLow);
+            return allowed
+                ? AcceptTxResult.Accepted
+                : new AcceptTxResult(AcceptTxResultCodes.FeeTooLow,
+                    $"MaxFeePerGas too low. FeeCap: {tx.MaxFeePerGas}, BaseFee: {baseFee}, GasPremium:{tx.MaxPriorityFeePerGas}, Block number: {blockNumber}");
         }
     }
 }

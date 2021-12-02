@@ -134,7 +134,7 @@ namespace Nethermind.Blockchain.Test.Producers
                     };
                     
                     var (_, result) = await _testRpcBlockchain.TxSender.SendTransaction(tx, TxHandlingOptions.None);
-                    Assert.AreEqual(AddTxResult.Added, result);
+                    Assert.AreEqual(AcceptTxResult.Accepted, result);
                     return this;
                 }
 

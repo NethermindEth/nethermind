@@ -35,7 +35,7 @@ namespace Nethermind.TxPool.Filters
             _logger = logger;
         }
             
-        public (bool Accepted, AddTxResult? Reason) Accept(Transaction tx, TxHandlingOptions handlingOptions)
+        public AcceptTxResult Accept(Transaction tx, TxHandlingOptions handlingOptions)
         {
             // As we have limited number of transaction that we store in mem pool its fairly easy to fill it up with
             // high-priority garbage transactions. We need to filter them as much as possible to use the tx pool space
@@ -46,10 +46,10 @@ namespace Nethermind.TxPool.Filters
             if (tx.Nonce < currentNonce)
             {
                 if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, nonce already used.");
-                return (false, AddTxResult.OldNonce);
+                return new AcceptTxResult(AcceptTxResultCodes.OldNonce);
             }
 
-            return (true, null);
+            return AcceptTxResult.Accepted;
         }
     }
 }

@@ -31,14 +31,14 @@ namespace Nethermind.Consensus.AuRa.Transactions
             _signer = signer;
         }
         
-        public (bool Allowed, AddTxResult? Reason) IsAllowed(Transaction tx, BlockHeader parentHeader)
+        public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader)
         {
             if (tx.SenderAddress == _signer.Address)
             {
                 tx.IsServiceTransaction = true;
             }
             
-            return (true, null);
+            return AcceptTxResult.Accepted;
         }
     }
 }

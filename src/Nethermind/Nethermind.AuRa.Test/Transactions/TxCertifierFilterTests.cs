@@ -32,6 +32,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Trie.Pruning;
+using Nethermind.TxPool;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
@@ -53,7 +54,7 @@ namespace Nethermind.AuRa.Test.Transactions
             _specProvider = Substitute.For<ISpecProvider>();
             
             _notCertifiedFilter.IsAllowed(Arg.Any<Transaction>(), Arg.Any<BlockHeader>())
-                .Returns((false, null));
+                .Returns(new AcceptTxResult(AcceptTxResultCodes.Invalid));
             
             _certifierContract.Certified(Arg.Any<BlockHeader>(), 
                 Arg.Is<Address>(a => TestItem.Addresses.Take(3).Contains(a)))
@@ -90,7 +91,7 @@ namespace Nethermind.AuRa.Test.Transactions
         public void should_default_to_inner_contract_on_non_zero_transactions(bool expected)
         {
             _notCertifiedFilter.IsAllowed(Arg.Any<Transaction>(), Arg.Any<BlockHeader>())
-                .Returns((expected, null));
+                .Returns(expected ? AcceptTxResult.Accepted : new AcceptTxResult(AcceptTxResultCodes.Invalid));
             
             ShouldAllowAddress(TestItem.Addresses.First(), 1ul, expected);
         }
@@ -99,7 +100,7 @@ namespace Nethermind.AuRa.Test.Transactions
         {
             _filter.IsAllowed(
                 Build.A.Transaction.WithGasPrice(gasPrice).WithSenderAddress(address).TestObject,
-                Build.A.BlockHeader.TestObject).Allowed.Should().Be(expected);
+                Build.A.BlockHeader.TestObject).Should().BeEquivalentTo(expected ? AcceptTxResult.Accepted : new AcceptTxResult(AcceptTxResultCodes.Invalid));
         }
 
         [Test]

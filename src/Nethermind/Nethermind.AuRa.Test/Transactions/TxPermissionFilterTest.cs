@@ -217,9 +217,9 @@ namespace Nethermind.AuRa.Test.Transactions
         {
             using TestTxPermissionsBlockchain chain = await chainFactory();
             Block? head = chain.BlockTree.Head;
-            (bool Allowed, AddTxResult? Reason) isAllowed = chain.PermissionBasedTxFilter.IsAllowed(tx, head.Header);
+            AcceptTxResult isAllowed = chain.PermissionBasedTxFilter.IsAllowed(tx, head.Header);
             chain.TransactionPermissionContractVersions.Get(head.Header.Hash).Should().Be(version);
-            return (isAllowed.Allowed, chain.TxPermissionFilterCache.Permissions.Contains((head.Hash, tx.SenderAddress)));
+            return (isAllowed.Equals(AcceptTxResult.Accepted), chain.TxPermissionFilterCache.Permissions.Contains((head.Hash, tx.SenderAddress)));
         }
 
         private static IEnumerable<TestCaseData> GetTestCases(IEnumerable<Test> tests, string testsName, Func<Test, ITransactionPermissionContract.TxPermissions, TransactionBuilder<Transaction>> transactionBuilder)
@@ -268,7 +268,7 @@ namespace Nethermind.AuRa.Test.Transactions
                 Substitute.For<ISpecProvider>());
             
             PermissionBasedTxFilter filter = new(transactionPermissionContract, new PermissionBasedTxFilter.Cache(), LimboLogs.Instance);
-            return filter.IsAllowed(Build.A.Transaction.WithSenderAddress(TestItem.AddressB).TestObject, Build.A.BlockHeader.WithNumber(blockNumber).TestObject).Allowed;
+            return filter.IsAllowed(Build.A.Transaction.WithSenderAddress(TestItem.AddressB).TestObject, Build.A.BlockHeader.WithNumber(blockNumber).TestObject).Equals(AcceptTxResult.Accepted);
         }
 
         public class TestTxPermissionsBlockchain : TestContractBlockchain

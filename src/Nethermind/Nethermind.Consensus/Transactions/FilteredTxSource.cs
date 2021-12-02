@@ -43,15 +43,15 @@ namespace Nethermind.Consensus.Transactions
             {
                 if (tx is T)
                 {
-                    (bool allowed, AddTxResult? reason) = _txFilter.IsAllowed(tx, parent);
-                    if (allowed)
+                    AcceptTxResult acceptTxResult= _txFilter.IsAllowed(tx, parent);
+                    if (acceptTxResult.Equals(AcceptTxResult.Accepted))
                     {
                         if (_logger.IsTrace) _logger.Trace($"Selected {tx.ToShortString()} to be included in block.");
                         yield return tx;
                     }
                     else
                     {
-                        if (_logger.IsDebug) _logger.Debug($"Rejecting ({reason}) {tx.ToShortString()}");
+                        if (_logger.IsDebug) _logger.Debug($"Rejecting ({acceptTxResult.Code}) {tx.ToShortString()}");
                     }
                 }
                 else

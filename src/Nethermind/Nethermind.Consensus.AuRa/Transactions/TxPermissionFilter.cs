@@ -45,18 +45,18 @@ namespace Nethermind.Consensus.AuRa.Transactions
             _logger = logManager?.GetClassLogger<PermissionBasedTxFilter>() ?? throw new ArgumentNullException(nameof(logManager));
         }
         
-        public (bool Allowed, AddTxResult? Reason) IsAllowed(Transaction tx, BlockHeader parentHeader)
+        public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader)
         {
             if (parentHeader.Number + 1 < _contract.Activation)
             {
-                return (true, null);
+                return AcceptTxResult.Accepted;
             }
 
             var txPermissions = GetPermissions(tx, parentHeader);
             var txType = GetTxType(tx, txPermissions.ContractExists);
             if (_logger.IsTrace) _logger.Trace($"Given transaction: {tx.Hash} sender: {tx.SenderAddress} to: {tx.To} value: {tx.Value}, gas_price: {tx.GasPrice}. " +
                                                $"Permissions required: {txType}, got: {txPermissions}.");
-            return (txPermissions.Permissions & txType) == txType ? (true, null) : (false, AddTxResult.PermissionDeniedForThisTxType);
+            return (txPermissions.Permissions & txType) == txType ? AcceptTxResult.Accepted : new AcceptTxResult(AcceptTxResultCodes.PermissionDenied);
         }
 
         private (ITransactionPermissionContract.TxPermissions Permissions, bool ContractExists) GetPermissions(Transaction tx, BlockHeader parentHeader)
