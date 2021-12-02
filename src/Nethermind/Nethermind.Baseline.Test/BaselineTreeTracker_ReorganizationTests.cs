@@ -90,8 +90,8 @@ namespace Nethermind.Baseline.Test
                 transaction.SenderAddress = key.Address;
                 ecdsa.Sign(key, transaction, true);
                 transaction.Hash = transaction.CalculateHash();
-                AddTxResult result = testRpc.TxPool.SubmitTx(transaction, TxHandlingOptions.None);
-                if (result != AddTxResult.Added)
+                AcceptTxResult result = testRpc.TxPool.SubmitTx(transaction, TxHandlingOptions.None);
+                if (!result.Equals(AcceptTxResult.Accepted))
                 {
                     throw new Exception("failed to add " + result);
                 }
@@ -111,8 +111,8 @@ namespace Nethermind.Baseline.Test
                 transaction.SenderAddress = key.Address;
                 ecdsa.Sign(key, transaction, true);
                 transaction.Hash = transaction.CalculateHash();
-                AddTxResult result = testRpc.TxPool.SubmitTx(transaction, TxHandlingOptions.None);
-                if (result != AddTxResult.Added)
+                AcceptTxResult result = testRpc.TxPool.SubmitTx(transaction, TxHandlingOptions.None);
+                if (!result.Equals(AcceptTxResult.Accepted))
                 {
                     throw new Exception("failed to add " + result);
                 }
