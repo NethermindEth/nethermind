@@ -51,7 +51,7 @@ namespace Nethermind.Merge.Plugin.Data
             Random = block.MixHash ?? Keccak.Zero;
             SetTransactions(block.Transactions);
             ExtraData = block.ExtraData!;
-            Timestamp = block.Timestamp;
+            Timestamp = (ulong)block.Timestamp; // Timestamp will require change to ulong across entire Nethermind code
             BaseFeePerGas = block.BaseFeePerGas;
         }
 
@@ -94,7 +94,7 @@ namespace Nethermind.Merge.Plugin.Data
         public long BlockNumber { get; set; }
         public long GasLimit { get; set; }
         public long GasUsed { get; set; }
-        public UInt256 Timestamp { get; set; }
+        public ulong Timestamp { get; set; }
         public byte[] ExtraData { get; set; } = Array.Empty<byte>();
         public UInt256 BaseFeePerGas { get; set; }
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]

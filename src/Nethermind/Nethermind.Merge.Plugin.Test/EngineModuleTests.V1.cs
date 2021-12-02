@@ -159,7 +159,7 @@ namespace Nethermind.Merge.Plugin.Test
             using MergeTestBlockchain chain = await CreateBlockChain();
             IEngineRpcModule rpc = CreateEngineModule(chain);
             Keccak startingHead = chain.BlockTree.HeadHash;
-            UInt256 timestamp = 30;
+            ulong timestamp = 30;
             Keccak random = Keccak.Zero;
             Address feeRecipient = TestItem.AddressD;
 

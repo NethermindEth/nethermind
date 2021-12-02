@@ -108,6 +108,7 @@ namespace Nethermind.Merge.Plugin.Handlers
                 return ResultWrapper<ExecutePayloadV1Result>.Success(BuildExecutePayloadResult(request, false, parentHeader));
             }
 
+            processedBlock.Header.IsPostMerge = true;
             _blockTree.SuggestBlock(processedBlock);
             executePayloadResult.EnumStatus = VerificationStatus.Valid;
             executePayloadResult.LatestValidHash = request.BlockHash;
