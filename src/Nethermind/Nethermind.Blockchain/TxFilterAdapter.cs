@@ -45,9 +45,9 @@ namespace Nethermind.Blockchain
                 if (parentHeader == null) return AcceptTxResult.Accepted;
 
                 AcceptTxResult acceptTxResult = _txFilter.IsAllowed(tx, parentHeader);
-                if (acceptTxResult.Message is not null)
+                if (!acceptTxResult.Equals(AcceptTxResult.Accepted))
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, filtered ({acceptTxResult.Message}).");
+                    if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, filtered ({acceptTxResult.ToString()}).");
                 }
                 
                 return acceptTxResult;

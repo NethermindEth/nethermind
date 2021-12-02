@@ -51,7 +51,7 @@ namespace Nethermind.Consensus.Transactions
                     }
                     else
                     {
-                        if (_logger.IsDebug) _logger.Debug($"Rejecting ({acceptTxResult.Code}) {tx.ToShortString()}");
+                        if (_logger.IsDebug) _logger.Debug($"Rejecting ({acceptTxResult.ToString()}) {tx.ToShortString()}");
                     }
                 }
                 else

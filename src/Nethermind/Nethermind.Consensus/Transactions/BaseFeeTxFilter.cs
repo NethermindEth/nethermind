@@ -18,7 +18,6 @@
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
-using Nethermind.Logging;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Transactions
@@ -46,7 +45,7 @@ namespace Nethermind.Consensus.Transactions
             return allowed
                 ? AcceptTxResult.Accepted
                 : new AcceptTxResult(AcceptTxResultCodes.FeeTooLow,
-                    $"MaxFeePerGas too low. FeeCap: {tx.MaxFeePerGas}, BaseFee: {baseFee}, GasPremium:{tx.MaxPriorityFeePerGas}, Block number: {blockNumber}");
+                    $"MaxFeePerGas too low. MaxFeePerGas: {tx.MaxFeePerGas}, BaseFee: {baseFee}, MaxPriorityFeePerGas:{tx.MaxPriorityFeePerGas}, Block number: {blockNumber}");
         }
     }
 }

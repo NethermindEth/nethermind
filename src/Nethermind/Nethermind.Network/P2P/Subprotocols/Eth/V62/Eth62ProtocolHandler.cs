@@ -204,7 +204,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 _floodController.Report(acceptTxResult.Equals(AcceptTxResult.Accepted));
 
                 if (Logger.IsTrace) Logger.Trace(
-                    $"{Node:c} sent {tx.Hash} tx and it was {acceptTxResult} (chain ID = {tx.Signature?.ChainId})");
+                    $"{Node:c} sent {tx.Hash} tx and it was {acceptTxResult.ToString()} (chain ID = {tx.Signature?.ChainId})");
             }
         }
 

@@ -19,9 +19,10 @@ namespace Nethermind.TxPool
 {
     public readonly struct AcceptTxResult
     {
-        public static readonly AcceptTxResult Accepted = new AcceptTxResult(AcceptTxResultCodes.Accepted);
+        public static readonly AcceptTxResult Accepted = new(AcceptTxResultCodes.Accepted);
+        
         public AcceptTxResultCodes Code { get; }
-        public string? Message { get; }
+        private string? Message { get; }
 
         public AcceptTxResult(AcceptTxResultCodes code, string? message = null)
         {
@@ -29,13 +30,6 @@ namespace Nethermind.TxPool
             Message = message;
         }
 
-        public override string ToString()
-        {
-            if (Message is null)
-            {
-                return $"{Code}";
-            }
-            return $"{Code}, {Message}";
-        }
+        public override string ToString() => Message is null ? $"{Code}" : $"{Code}, {Message}";
     }
 }
