@@ -138,6 +138,10 @@
       "commandName": "Project",
       "commandLineArgs": "--config themerge_kintsugi_m2.cfg --Init.DiagnosticMode MemDb --Merge.TerminalTotalDifficulty 100"
     },
+    "TheMerge_Kinstugi_Mev": {
+      "commandName": "Project",
+      "commandLineArgs": "--config themerge_kintsugi_mev.cfg --Init.DiagnosticMode MemDb --Merge.TerminalTotalDifficulty 0 --Sync.SynchronizationEnabled false"
+    },
     "Kintsugi": {
       "commandName": "Project",
       "commandLineArgs": "--config kintsugi.cfg --Merge.TerminalTotalDifficulty 200000000 --Init.DiagnosticMode MemDb"
