@@ -12,7 +12,7 @@ cd $LIN_RELEASE && LIN_FILE="$(basename nethermind-linux-amd64-*)" && cd ..
 cd $OSX_RELEASE && OSX_FILE="$(basename nethermind-darwin-amd64-*)" && cd ..
 cd $WIN_RELEASE && WIN_FILE="$(basename nethermind-windows-amd64-*)" && cd ..
 cd $LIN_ARM64_RELEASE && LIN_ARM64_FILE="$(basename nethermind-linux-arm64-*)" && cd ..
-cd $OSX_ARM64_RELEASE && OSX_ARM64_FILE="$(basename nethermind-linux-arm64-*)" && cd ..
+cd $OSX_ARM64_RELEASE && OSX_ARM64_FILE="$(basename nethermind-darwin-arm64-*)" && cd ..
 
 echo =======================================================
 echo Signing files with gpg

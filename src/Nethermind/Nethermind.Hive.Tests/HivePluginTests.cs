@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,10 +15,32 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-namespace Nethermind.Core.Specs
+using System;
+using NUnit.Framework;
+
+namespace Nethermind.Hive.Tests
 {
-    public interface IChainHeadSpecProvider : ISpecProvider
+    public class HivePluginTests
     {
-        IReleaseSpec GetCurrentHeadSpec();
+        [Test]
+        public void Can_create()
+        {
+            _ = new HivePlugin();
+        }
+        
+        [Test]
+        public void Throws_on_null_api_in_init()
+        {
+            HivePlugin plugin = new();
+            Assert.Throws<ArgumentNullException>(() => plugin.Init(null));
+        }
+        
+        [Test]
+        public void Can_initialize()
+        {
+            HivePlugin plugin = new();
+            plugin.Init(Runner.Test.Ethereum.Build.ContextWithMocks());
+            plugin.InitRpcModules();
+        }
     }
 }

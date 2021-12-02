@@ -39,7 +39,7 @@ namespace Nethermind.TxPool.Filters
             
         public (bool Accepted, AddTxResult? Reason) Accept(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
-            IReleaseSpec spec = _specProvider.GetSpec();
+            IReleaseSpec spec = _specProvider.GetCurrentHeadSpec();
             if (!_txValidator.IsWellFormed(tx, spec))
             {
                 // It may happen that other nodes send us transactions that were signed for another chain or don't have enough gas.
