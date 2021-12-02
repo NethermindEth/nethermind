@@ -1,4 +1,4 @@
-name: Build Baseline
+name: Build Solution
 
 on:
   push:
@@ -24,7 +24,12 @@ jobs:
         dotnet-version: 6.0.x
 
     - name: Install dependencies
-      run: dotnet restore Baseline.sln
+      run: |
+        dotnet restore Baseline.sln
+        dotnet restore Cortex.sln
 
     - name: Build
-      run: dotnet build --configuration Release --no-restore Baseline.sln
+      run: |
+        dotnet build --configuration Release --no-restore Baseline.sln
+        dotnet build --configuration Release --no-restore Cortex.sln
+        
