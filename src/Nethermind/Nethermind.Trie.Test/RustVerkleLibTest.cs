@@ -24,29 +24,27 @@ namespace Nethermind.Trie.Test
     public class RustVerkleLibTest
     {
         [Test]
-        public void ValidProof()
+        public void TestInsertGet()
         {
-            UIntPtr size = (UIntPtr) 10;
-            var one = new byte[] {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1};
-            var one_32 = new byte[] {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
+            byte[] one = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1};
+            byte[] one32 = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
 
-            IntPtr trie = RustVerkleLib.verkle_trie_new();
+            IntPtr trie = RustVerkleLib.VerkleTrieNew();
 
-            RustVerkleLib.verkle_trie_insert(trie, one, one);
-            RustVerkleLib.verkle_trie_insert(trie, one_32, one);
-        }
-        
-        [Test]
-        public void InValidProof()
-        {
-            UIntPtr size = (UIntPtr) 10;
-            var one = new byte[] {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1};
-            var one_32 = new byte[] {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
-
-            IntPtr trie = RustVerkleLib.verkle_trie_new();
+            RustVerkleLib.VerkleTrieInsert(trie, one, one32);
+            RustVerkleLib.VerkleTrieInsert(trie, one32, one);
             
-            RustVerkleLib.verkle_trie_insert(trie, one, one);
-            RustVerkleLib.verkle_trie_insert(trie, one_32, one);
+            byte[] array32 = RustVerkleLib.VerkleTrieGet(trie, one32);
+            for (int i = 0; i < 32; i++)
+            {
+                Assert.AreEqual(one[i],array32[i]);
+            }
+            
+            byte[] array = RustVerkleLib.VerkleTrieGet(trie, one);
+            for (int i = 0; i < 32; i++)
+            {
+                Assert.AreEqual(one32[i],array[i]);
+            }
         }
     }
 }
