@@ -9,6 +9,7 @@ using Nethermind.Mev.Data;
 using Nethermind.Mev.Source;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.Logging;
 
 namespace Nethermind.AccountAbstraction.Test
 {
@@ -46,7 +47,7 @@ namespace Nethermind.AccountAbstraction.Test
             var bundles = new List<MevBundle>();
             var bundlePool = GetBundlePool(bundles);
 
-            var bundler = new MevBundler(bundleTrigger, txSource, bundlePool);
+            var bundler = new MevBundler(bundleTrigger, txSource, bundlePool, NullLogger.Instance);
             var bundleEventArgs = new BundleUserOpsEventArgs(Core.Test.Builders.Build.A.Block.TestObject);
 
             bundleTrigger.TriggerBundle += Raise.EventWith(this, bundleEventArgs);
