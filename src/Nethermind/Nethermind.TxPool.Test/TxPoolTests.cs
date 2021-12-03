@@ -104,7 +104,7 @@ namespace Nethermind.TxPool.Test
         public void should_ignore_transactions_with_different_chain_id()
         {
             _txPool = CreatePool();
-            EthereumEcdsa ecdsa = new EthereumEcdsa(ChainId.Mainnet, _logManager);
+            EthereumEcdsa ecdsa = new(ChainId.Mainnet, _logManager);
             Transaction tx = Build.A.Transaction.SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
             AddTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
             _txPool.GetPendingTransactions().Length.Should().Be(0);
@@ -748,9 +748,9 @@ namespace Nethermind.TxPool.Test
 
             Transaction[] transactions = _txPool.GetPendingTransactions();
             Block block = Build.A.Block.WithTransactions(transactions).TestObject;
-            BlockReplacementEventArgs blockReplacementEventArgs = new BlockReplacementEventArgs(block, null);
+            BlockReplacementEventArgs blockReplacementEventArgs = new(block, null);
 
-            ManualResetEvent manualResetEvent = new ManualResetEvent(false);
+            ManualResetEvent manualResetEvent = new(false);
             _txPool.RemoveTransaction(Arg.Do<Keccak>(t => manualResetEvent.Set()));
             _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockReplacementEventArgs);
             manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(200));
@@ -771,9 +771,9 @@ namespace Nethermind.TxPool.Test
 
             Transaction[] transactions = _txPool.GetPendingTransactions();
             Block block = Build.A.Block.WithTransactions(transactions).TestObject;
-            BlockReplacementEventArgs blockReplacementEventArgs = new BlockReplacementEventArgs(block, null);
+            BlockReplacementEventArgs blockReplacementEventArgs = new(block, null);
 
-            ManualResetEvent manualResetEvent = new ManualResetEvent(false);
+            ManualResetEvent manualResetEvent = new(false);
             _txPool.RemoveTransaction(Arg.Do<Keccak>(t => manualResetEvent.Set()));
             _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockReplacementEventArgs);
             manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(200));
@@ -1170,7 +1170,7 @@ namespace Nethermind.TxPool.Test
         
         private async Task RaiseBlockAddedToMainAndWaitForTransactions(int txCount)
         {
-            SemaphoreSlim semaphoreSlim = new SemaphoreSlim(0, txCount);
+            SemaphoreSlim semaphoreSlim = new(0, txCount);
             _txPool.NewPending += (o, e) => semaphoreSlim.Release();
             _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(Build.A.Block.TestObject));
             for (int i = 0; i < txCount; i++)

@@ -33,8 +33,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
     {
         private static void Test(TxReceipt[][] txReceipts)
         {
-            ReceiptsMessage message = new ReceiptsMessage(txReceipts);
-            ReceiptsMessageSerializer serializer = new ReceiptsMessageSerializer(RopstenSpecProvider.Instance);
+            ReceiptsMessage message = new(txReceipts);
+            ReceiptsMessageSerializer serializer = new(RopstenSpecProvider.Instance);
             var serialized = serializer.Serialize(message);
             ReceiptsMessage deserialized = serializer.Deserialize(serialized);
 
@@ -123,7 +123,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         [Test]
         public void Deserialize_empty()
         {
-            ReceiptsMessageSerializer serializer = new ReceiptsMessageSerializer(RopstenSpecProvider.Instance);
+            ReceiptsMessageSerializer serializer = new(RopstenSpecProvider.Instance);
             serializer.Deserialize(new byte[0]).TxReceipts.Should().HaveCount(0);
         }
         
@@ -131,7 +131,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         public void Roundtrip_mainnet_sample()
         {
             byte[] bytes = Bytes.FromHexString("f9012ef9012bf90128a08ccc6709a5df7acef07f97c5681356b6c37cfac15b554aff68e986f57116df2e825208b9010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000c0");
-            ReceiptsMessageSerializer serializer = new ReceiptsMessageSerializer(RopstenSpecProvider.Instance);
+            ReceiptsMessageSerializer serializer = new(RopstenSpecProvider.Instance);
             ReceiptsMessage message = serializer.Deserialize(bytes);
             byte[] serialized = serializer.Serialize(message);
             Assert.AreEqual(bytes,  serialized);

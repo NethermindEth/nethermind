@@ -28,7 +28,7 @@ namespace Nethermind.Network.Test.P2P
         public void Can_do_roundtrip()
         {
             PingMessage msg = PingMessage.Instance;
-            PingMessageSerializer serializer = new PingMessageSerializer();
+            PingMessageSerializer serializer = new();
             byte[] serialized = serializer.Serialize(msg);
             Assert.AreEqual(0xc0, serialized[0]);
             PingMessage deserialized = serializer.Deserialize(serialized);

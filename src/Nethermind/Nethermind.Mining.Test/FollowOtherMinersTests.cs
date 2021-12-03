@@ -38,7 +38,7 @@ namespace Nethermind.Mining.Test
         public void Test(long current, long expected)
         {
             BlockHeader header = Build.A.BlockHeader.WithGasLimit(current).TestObject;
-            FollowOtherMiners followOtherMiners = new FollowOtherMiners(MainnetSpecProvider.Instance);
+            FollowOtherMiners followOtherMiners = new(MainnetSpecProvider.Instance);
             followOtherMiners.GetGasLimit(header).Should().Be(expected);
         }
         
@@ -49,13 +49,13 @@ namespace Nethermind.Mining.Test
         public void FollowOtherMines_on_1559_fork_block(long current, long expected)
         {
             int forkNumber = 5;
-            OverridableReleaseSpec spec = new OverridableReleaseSpec(London.Instance)
+            OverridableReleaseSpec spec = new(London.Instance)
             {
                 Eip1559TransitionBlock = forkNumber
             };
-            TestSpecProvider specProvider = new TestSpecProvider(spec);
+            TestSpecProvider specProvider = new(spec);
             BlockHeader header = Build.A.BlockHeader.WithGasLimit(current).WithNumber(forkNumber - 1).TestObject;
-            FollowOtherMiners followOtherMiners = new FollowOtherMiners(specProvider);
+            FollowOtherMiners followOtherMiners = new(specProvider);
             followOtherMiners.GetGasLimit(header).Should().Be(expected);
         }
     }

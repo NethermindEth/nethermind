@@ -46,7 +46,7 @@ namespace Nethermind.Network.Test.Stats
             manager.ReportSyncEvent(nodes[0], NodeStatsEventType.SyncStarted);
             manager.ReportSyncEvent(nodes[1], NodeStatsEventType.SyncStarted);
             manager.ReportSyncEvent(nodes[2], NodeStatsEventType.SyncStarted);
-            Node removedNode = new Node(TestItem.PublicKeyD, IPEndPoint.Parse("192.168.0.4:30303"));
+            Node removedNode = new(TestItem.PublicKeyD, IPEndPoint.Parse("192.168.0.4:30303"));
             manager.ReportHandshakeEvent(removedNode, ConnectionDirection.In);
             manager.GetCurrentReputation(removedNode).Should().NotBe(0);
 

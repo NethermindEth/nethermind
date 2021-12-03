@@ -27,14 +27,14 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         public void Accepts_nulls_inside()
         {
             byte[][] data = {new byte[] {1, 2, 3}, null};
-            NodeDataMessage message = new NodeDataMessage(data);
+            NodeDataMessage message = new(data);
             Assert.AreSame(data, message.Data);
         }
 
         [Test]
         public void Accepts_nulls_top_level()
         {
-            NodeDataMessage message = new NodeDataMessage(null);
+            NodeDataMessage message = new(null);
             Assert.AreEqual(0, message.Data.Length);
         }
 
@@ -42,14 +42,14 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         public void Sets_values_from_constructor_argument()
         {
             byte[][] data = {new byte[] {1, 2, 3}, new byte[] {4, 5, 6}};
-            NodeDataMessage message = new NodeDataMessage(data);
+            NodeDataMessage message = new(data);
             Assert.AreSame(data, message.Data);
         }
 
         [Test]
         public void To_string()
         {
-            NodeDataMessage statusMessage = new NodeDataMessage(new byte[][] { });
+            NodeDataMessage statusMessage = new(new byte[][] { });
             _ = statusMessage.ToString();
         }
     }

@@ -41,7 +41,7 @@ namespace Nethermind.Network.Test.Rlpx
 
             public byte[] TestDecode(byte[] input)
             {
-                List<object> result = new List<object>();
+                List<object> result = new();
                 Decode(null, new Packet(input), result);
                 return ((Packet) result[0]).Data;
             }
@@ -65,7 +65,7 @@ namespace Nethermind.Network.Test.Rlpx
         [Test]
         public void Can_decompress_go_compressed_file()
         {
-            SnappyDecoderForTest decoder = new SnappyDecoderForTest();
+            SnappyDecoderForTest decoder = new();
             byte[] expectedUncompressed = Bytes.FromHexString(File.ReadAllText(Path.Combine(TestContext.CurrentContext.WorkDirectory, "Rlpx", _uncompressedTestFileName)));
             byte[] compressed = Bytes.FromHexString(File.ReadAllText(Path.Combine(TestContext.CurrentContext.WorkDirectory, "Rlpx", _goCompressedTestFileName)));
             byte[] uncompressedResult = decoder.TestDecode(compressed);
@@ -75,7 +75,7 @@ namespace Nethermind.Network.Test.Rlpx
         [Test]
         public void Can_decompress_python_compressed_file()
         {
-            SnappyDecoderForTest decoder = new SnappyDecoderForTest();
+            SnappyDecoderForTest decoder = new();
             byte[] expectedUncompressed = Bytes.FromHexString(File.ReadAllText(Path.Combine(TestContext.CurrentContext.WorkDirectory, "Rlpx", _uncompressedTestFileName)));
             byte[] compressed = Bytes.FromHexString(File.ReadAllText(Path.Combine(TestContext.CurrentContext.WorkDirectory, "Rlpx", _pythonCompressedTestFileName)));
             byte[] uncompressedResult = decoder.TestDecode(compressed);
@@ -111,7 +111,7 @@ namespace Nethermind.Network.Test.Rlpx
             byte[] bytesGo = Bytes.FromHexString(File.ReadAllText(Path.Combine(TestContext.CurrentContext.WorkDirectory, "Rlpx", _pythonCompressedTestFileName)));
             byte[] bytesUncompressed = Bytes.FromHexString(File.ReadAllText(Path.Combine(TestContext.CurrentContext.WorkDirectory, "Rlpx", _uncompressedTestFileName)));
 
-            ZeroSnappyEncoderForTest encoder = new ZeroSnappyEncoderForTest();
+            ZeroSnappyEncoderForTest encoder = new();
             byte[] compressed = encoder.TestEncode(Bytes.Concat(1, bytesUncompressed));
             bool oneOfTwoMatches = Bytes.AreEqual(bytesGo, compressed) || Bytes.AreEqual(bytesPy, compressed);
             Assert.True(oneOfTwoMatches);
@@ -120,8 +120,8 @@ namespace Nethermind.Network.Test.Rlpx
         [Test]
         public void Roundtrip_zero()
         {
-            SnappyDecoderForTest decoder = new SnappyDecoderForTest();
-            ZeroSnappyEncoderForTest encoder = new ZeroSnappyEncoderForTest();
+            SnappyDecoderForTest decoder = new();
+            ZeroSnappyEncoderForTest encoder = new();
             byte[] expectedUncompressed = Bytes.FromHexString(File.ReadAllText(Path.Combine(TestContext.CurrentContext.WorkDirectory, "Rlpx", _uncompressedTestFileName)));
             byte[] compressed = encoder.TestEncode(Bytes.Concat(1, expectedUncompressed));
             byte[] uncompressedResult = decoder.TestDecode(compressed.Skip(1).ToArray());

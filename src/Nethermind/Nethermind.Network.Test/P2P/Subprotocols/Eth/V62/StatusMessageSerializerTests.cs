@@ -30,29 +30,29 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void Roundtrip()
         {
-            StatusMessage statusMessage = new StatusMessage();
+            StatusMessage statusMessage = new();
             statusMessage.ProtocolVersion = 63;
             statusMessage.BestHash = Keccak.Compute("1");
             statusMessage.GenesisHash = Keccak.Compute("0");
             statusMessage.TotalDifficulty = 131200;
             statusMessage.ChainId = 1;
 
-            StatusMessageSerializer serializer = new StatusMessageSerializer();
+            StatusMessageSerializer serializer = new();
             SerializerTester.TestZero(serializer, statusMessage, "f8483f0183020080a0c89efdaa54c0f20c7adf612882df0950f5a951637e0307cdcb4c672f298b8bc6a0044852b2a670ade5407e78fb2863c51de9fcb96542a07186fe3aeda6bb8a116d");
         }
         
         [Test]
         public void Roundtrip_empty_status()
         {
-            StatusMessage statusMessage = new StatusMessage();
-            StatusMessageSerializer serializer = new StatusMessageSerializer();
+            StatusMessage statusMessage = new();
+            StatusMessageSerializer serializer = new();
             SerializerTester.TestZero(serializer, statusMessage);
         }
 
         [Test]
         public void Roundtrip_with_fork_id_next_is_zero()
         {
-            StatusMessage statusMessage = new StatusMessage();
+            StatusMessage statusMessage = new();
             statusMessage.ProtocolVersion = 63;
             statusMessage.BestHash = Keccak.Compute("1");
             statusMessage.GenesisHash = Keccak.Compute("0");
@@ -60,14 +60,14 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             statusMessage.ChainId = 1;
             statusMessage.ForkId = new ForkId(new byte[] {1, 2, 3, 4, 5, 6, 7, 8}, 0);
 
-            StatusMessageSerializer serializer = new StatusMessageSerializer();
+            StatusMessageSerializer serializer = new();
             SerializerTester.TestZero(serializer, statusMessage);
         }
         
         [Test]
         public void Roundtrip_with_fork_id_next_is_max()
         {
-            StatusMessage statusMessage = new StatusMessage();
+            StatusMessage statusMessage = new();
             statusMessage.ProtocolVersion = 63;
             statusMessage.BestHash = Keccak.Compute("1");
             statusMessage.GenesisHash = Keccak.Compute("0");
@@ -75,7 +75,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             statusMessage.ChainId = 1;
             statusMessage.ForkId = new ForkId(new byte[] {1, 2, 3, 4, 5, 6, 7, 8}, long.MaxValue);
 
-            StatusMessageSerializer serializer = new StatusMessageSerializer();
+            StatusMessageSerializer serializer = new();
             SerializerTester.TestZero(serializer, statusMessage);
         }
 
@@ -85,8 +85,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         public void Can_serialize_fork_id_properly(string forkHash, ulong? next, string expected)
         {
             next ??= BinaryPrimitives.ReadUInt32BigEndian(Bytes.FromHexString("baddcafe"));
-            StatusMessageSerializer serializer = new StatusMessageSerializer();
-            StatusMessage message = new StatusMessage();
+            StatusMessageSerializer serializer = new();
+            StatusMessage message = new();
             message.ForkId = new ForkId(Bytes.FromHexString(forkHash), (long)next.Value);
             serializer.Serialize(message).ToHexString().Should().EndWith(expected);
         }
@@ -104,7 +104,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         public void Can_deserialize_eth_64(string msgHex)
         {
             byte[] bytes = Bytes.FromHexString(msgHex);
-            StatusMessageSerializer serializer = new StatusMessageSerializer();
+            StatusMessageSerializer serializer = new();
             StatusMessage message = serializer.Deserialize(bytes);
             byte[] serialized = serializer.Serialize(message);
             serialized.Should().BeEquivalentTo(bytes);
@@ -125,7 +125,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         public void Can_deserialize_own_eth_64(string msgHex)
         {
             byte[] bytes = Bytes.FromHexString(msgHex.Replace(" ", string.Empty));
-            StatusMessageSerializer serializer = new StatusMessageSerializer();
+            StatusMessageSerializer serializer = new();
             StatusMessage message = serializer.Deserialize(bytes);
             byte[] serialized = serializer.Serialize(message);
             serialized.Should().BeEquivalentTo(bytes);
@@ -136,7 +136,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         public void Can_deserialize_example_from_ethereumJ()
         {
             byte[] bytes = Bytes.FromHexString("f84927808425c60144a0832056d3c93ff2739ace7199952e5365aa29f18805be05634c4db125c5340216a0955f36d073ccb026b78ab3424c15cf966a7563aa270413859f78702b9e8e22cb");
-            StatusMessageSerializer serializer = new StatusMessageSerializer();
+            StatusMessageSerializer serializer = new();
             StatusMessage message = serializer.Deserialize(bytes);
             Assert.AreEqual(39, message.ProtocolVersion, "ProtocolVersion");
 
@@ -151,7 +151,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void To_string()
         {
-            StatusMessage statusMessage = new StatusMessage();
+            StatusMessage statusMessage = new();
             _ = statusMessage.ToString();
         }
     }

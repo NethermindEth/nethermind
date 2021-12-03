@@ -64,13 +64,13 @@ namespace Nethermind.Clique.Test
             private ILogger _logger;
             private static ITimestamper _timestamper = Timestamper.Default;
             private CliqueConfig _cliqueConfig;
-            private EthereumEcdsa _ethereumEcdsa = new EthereumEcdsa(ChainId.Goerli, LimboLogs.Instance);
-            private Dictionary<PrivateKey, ILogManager> _logManagers = new Dictionary<PrivateKey, ILogManager>();
-            private Dictionary<PrivateKey, ISnapshotManager> _snapshotManager = new Dictionary<PrivateKey, ISnapshotManager>();
-            private Dictionary<PrivateKey, BlockTree> _blockTrees = new Dictionary<PrivateKey, BlockTree>();
-            private Dictionary<PrivateKey, AutoResetEvent> _blockEvents = new Dictionary<PrivateKey, AutoResetEvent>();
-            private Dictionary<PrivateKey, CliqueBlockProducer> _producers = new Dictionary<PrivateKey, CliqueBlockProducer>();
-            private Dictionary<PrivateKey, TxPool.TxPool> _pools = new Dictionary<PrivateKey, TxPool.TxPool>();
+            private EthereumEcdsa _ethereumEcdsa = new(ChainId.Goerli, LimboLogs.Instance);
+            private Dictionary<PrivateKey, ILogManager> _logManagers = new();
+            private Dictionary<PrivateKey, ISnapshotManager> _snapshotManager = new();
+            private Dictionary<PrivateKey, BlockTree> _blockTrees = new();
+            private Dictionary<PrivateKey, AutoResetEvent> _blockEvents = new();
+            private Dictionary<PrivateKey, CliqueBlockProducer> _producers = new();
+            private Dictionary<PrivateKey, TxPool.TxPool> _pools = new();
 
             private On()
                 : this(15)
@@ -94,49 +94,49 @@ namespace Nethermind.Clique.Test
 //                _logManagers[privateKey] = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Debug, $"{privateKey.Address} "));
                 var nodeLogManager = _logManagers[privateKey]; 
                 
-                AutoResetEvent newHeadBlockEvent = new AutoResetEvent(false);
+                AutoResetEvent newHeadBlockEvent = new(false);
                 _blockEvents.Add(privateKey, newHeadBlockEvent);
 
-                MemDb blocksDb = new MemDb();
-                MemDb headersDb = new MemDb();
-                MemDb blockInfoDb = new MemDb();
+                MemDb blocksDb = new();
+                MemDb headersDb = new();
+                MemDb blockInfoDb = new();
                 
-                MemDb stateDb = new MemDb();
-                MemDb codeDb = new MemDb();
+                MemDb stateDb = new();
+                MemDb codeDb = new();
 
                 ISpecProvider specProvider = RinkebySpecProvider.Instance;
 
                 var trieStore = new TrieStore(stateDb, nodeLogManager);
-                StateReader stateReader = new StateReader(trieStore, codeDb, nodeLogManager);
-                StateProvider stateProvider = new StateProvider(trieStore, codeDb, nodeLogManager);
+                StateReader stateReader = new(trieStore, codeDb, nodeLogManager);
+                StateProvider stateProvider = new(trieStore, codeDb, nodeLogManager);
                 stateProvider.CreateAccount(TestItem.PrivateKeyD.Address, 100.Ether());
                 GoerliSpecProvider goerliSpecProvider = GoerliSpecProvider.Instance;
                 stateProvider.Commit(goerliSpecProvider.GenesisSpec);
                 stateProvider.CommitTree(0);
 
-                BlockTree blockTree = new BlockTree(blocksDb, headersDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), goerliSpecProvider, NullBloomStorage.Instance,  nodeLogManager);
+                BlockTree blockTree = new(blocksDb, headersDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), goerliSpecProvider, NullBloomStorage.Instance,  nodeLogManager);
                 
                 blockTree.NewHeadBlock += (sender, args) => { _blockEvents[privateKey].Set(); };
                 ITransactionComparerProvider transactionComparerProvider =
                     new TransactionComparerProvider(specProvider, blockTree);
 
-                 TxPool.TxPool txPool = new TxPool.TxPool(_ethereumEcdsa, new ChainHeadInfoProvider(new FixedBlockChainHeadSpecProvider(GoerliSpecProvider.Instance), blockTree, stateProvider), new TxPoolConfig(), new TxValidator(goerliSpecProvider.ChainId), _logManager, transactionComparerProvider.GetDefaultComparer());
+                 TxPool.TxPool txPool = new(_ethereumEcdsa, new ChainHeadInfoProvider(new FixedBlockChainHeadSpecProvider(GoerliSpecProvider.Instance), blockTree, stateProvider), new TxPoolConfig(), new TxValidator(goerliSpecProvider.ChainId), _logManager, transactionComparerProvider.GetDefaultComparer());
                 _pools[privateKey] = txPool;
 
-                BlockhashProvider blockhashProvider = new BlockhashProvider(blockTree, LimboLogs.Instance);
+                BlockhashProvider blockhashProvider = new(blockTree, LimboLogs.Instance);
                 _blockTrees.Add(privateKey, blockTree);
                 
-                SnapshotManager snapshotManager = new SnapshotManager(_cliqueConfig, blocksDb, blockTree, _ethereumEcdsa, nodeLogManager);
+                SnapshotManager snapshotManager = new(_cliqueConfig, blocksDb, blockTree, _ethereumEcdsa, nodeLogManager);
                 _snapshotManager[privateKey] = snapshotManager;
-                CliqueSealer cliqueSealer = new CliqueSealer(new Signer(ChainId.Goerli, privateKey, LimboLogs.Instance), _cliqueConfig, snapshotManager, nodeLogManager);
+                CliqueSealer cliqueSealer = new(new Signer(ChainId.Goerli, privateKey, LimboLogs.Instance), _cliqueConfig, snapshotManager, nodeLogManager);
 
                 _genesis.Header.StateRoot = _genesis3Validators.Header.StateRoot = stateProvider.StateRoot;
                 _genesis.Header.Hash = _genesis.Header.CalculateHash();
                 _genesis3Validators.Header.Hash = _genesis3Validators.Header.CalculateHash();
                 
-                StorageProvider storageProvider = new StorageProvider(trieStore, stateProvider, nodeLogManager);
-                TransactionProcessor transactionProcessor = new TransactionProcessor(goerliSpecProvider, stateProvider, storageProvider, new VirtualMachine(blockhashProvider, specProvider, nodeLogManager), nodeLogManager);
-                BlockProcessor blockProcessor = new BlockProcessor(
+                StorageProvider storageProvider = new(trieStore, stateProvider, nodeLogManager);
+                TransactionProcessor transactionProcessor = new(goerliSpecProvider, stateProvider, storageProvider, new VirtualMachine(blockhashProvider, specProvider, nodeLogManager), nodeLogManager);
+                BlockProcessor blockProcessor = new(
                     goerliSpecProvider,
                     Always.Valid,
                     NoBlockRewards.Instance,
@@ -147,17 +147,17 @@ namespace Nethermind.Clique.Test
                     NullWitnessCollector.Instance,
                     nodeLogManager);
 
-                BlockchainProcessor processor = new BlockchainProcessor(blockTree, blockProcessor, new AuthorRecoveryStep(snapshotManager), nodeLogManager, BlockchainProcessor.Options.NoReceipts);
+                BlockchainProcessor processor = new(blockTree, blockProcessor, new AuthorRecoveryStep(snapshotManager), nodeLogManager, BlockchainProcessor.Options.NoReceipts);
                 processor.Start();
 
                 var minerTrieStore = trieStore.AsReadOnly();
               
-                StateProvider minerStateProvider = new StateProvider(minerTrieStore, codeDb, nodeLogManager);
-                StorageProvider minerStorageProvider = new StorageProvider(minerTrieStore, minerStateProvider, nodeLogManager);
-                VirtualMachine minerVirtualMachine = new VirtualMachine(blockhashProvider, specProvider, nodeLogManager);
-                TransactionProcessor minerTransactionProcessor = new TransactionProcessor(goerliSpecProvider, minerStateProvider, minerStorageProvider, minerVirtualMachine, nodeLogManager);
+                StateProvider minerStateProvider = new(minerTrieStore, codeDb, nodeLogManager);
+                StorageProvider minerStorageProvider = new(minerTrieStore, minerStateProvider, nodeLogManager);
+                VirtualMachine minerVirtualMachine = new(blockhashProvider, specProvider, nodeLogManager);
+                TransactionProcessor minerTransactionProcessor = new(goerliSpecProvider, minerStateProvider, minerStorageProvider, minerVirtualMachine, nodeLogManager);
                 
-                BlockProcessor minerBlockProcessor = new BlockProcessor(
+                BlockProcessor minerBlockProcessor = new(
                     goerliSpecProvider,
                     Always.Valid,
                     NoBlockRewards.Instance,
@@ -168,7 +168,7 @@ namespace Nethermind.Clique.Test
                     NullWitnessCollector.Instance,
                     nodeLogManager);
 
-                BlockchainProcessor minerProcessor = new BlockchainProcessor(blockTree, minerBlockProcessor, new AuthorRecoveryStep(snapshotManager), nodeLogManager, BlockchainProcessor.Options.NoReceipts);
+                BlockchainProcessor minerProcessor = new(blockTree, minerBlockProcessor, new AuthorRecoveryStep(snapshotManager), nodeLogManager, BlockchainProcessor.Options.NoReceipts);
 
                 if (withGenesisAlreadyProcessed)
                 {
@@ -176,8 +176,8 @@ namespace Nethermind.Clique.Test
                 }
                 
                 ITxFilterPipeline txFilterPipeline = TxFilterPipelineBuilder.CreateStandardFilteringPipeline(nodeLogManager, specProvider);
-                TxPoolTxSource txPoolTxSource = new TxPoolTxSource(txPool, specProvider, transactionComparerProvider, nodeLogManager, txFilterPipeline);
-                CliqueBlockProducer blockProducer = new CliqueBlockProducer(
+                TxPoolTxSource txPoolTxSource = new(txPool, specProvider, transactionComparerProvider, nodeLogManager, txFilterPipeline);
+                CliqueBlockProducer blockProducer = new(
                     txPoolTxSource,
                     minerProcessor,
                     minerStateProvider,
@@ -199,9 +199,9 @@ namespace Nethermind.Clique.Test
                 return this;
             }
 
-            public static On Goerli => new On();
+            public static On Goerli => new();
 
-            public static On FastGoerli => new On(1);
+            public static On FastGoerli => new(1);
 
             private Block _genesis3Validators;
 
@@ -212,7 +212,7 @@ namespace Nethermind.Clique.Test
                 Keccak parentHash = Keccak.Zero;
                 Keccak unclesHash = Keccak.OfAnEmptySequenceRlp;
                 Address beneficiary = Address.Zero;
-                UInt256 difficulty = new UInt256(1);
+                UInt256 difficulty = new(1);
                 long number = 0L;
                 int gasLimit = 4700000;
                 UInt256 timestamp = _timestamper.UnixTime.Seconds - _cliqueConfig.BlockPeriod;
@@ -227,8 +227,8 @@ namespace Nethermind.Clique.Test
                 extraDataHex += "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
 
                 byte[] extraData = Bytes.FromHexString(extraDataHex);
-                BlockHeader header = new BlockHeader(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData);
-                Block genesis = new Block(header);
+                BlockHeader header = new(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData);
+                Block genesis = new(header);
                 genesis.Header.Hash = genesis.Header.CalculateHash();
                 genesis.Header.StateRoot = Keccak.EmptyTreeHash;
                 genesis.Header.TxRoot = Keccak.EmptyTreeHash;
@@ -412,8 +412,8 @@ namespace Nethermind.Clique.Test
             private void WaitForNumber(PrivateKey nodeKey, long number)
             {
                 if (_logger.IsInfo) _logger.Info($"WAITING ON {nodeKey.Address} FOR BLOCK {number}");
-                SpinWait spinWait = new SpinWait();
-                Stopwatch stopwatch = new Stopwatch();
+                SpinWait spinWait = new();
+                Stopwatch stopwatch = new();
                 stopwatch.Start();
                 while (stopwatch.ElapsedMilliseconds < _timeout)
                 {
@@ -447,7 +447,7 @@ namespace Nethermind.Clique.Test
 
             public On AddPendingTransaction(PrivateKey nodeKey)
             {
-                Transaction transaction = new Transaction();
+                Transaction transaction = new();
                 transaction.Value = 1;
                 transaction.To = TestItem.AddressC;
                 transaction.GasLimit = 30000;
@@ -464,7 +464,7 @@ namespace Nethermind.Clique.Test
             public On AddAllBadTransactions(PrivateKey nodeKey)
             {
                 // 0 gas price
-                Transaction transaction = new Transaction();
+                Transaction transaction = new();
                 transaction.Value = 1;
                 transaction.To = TestItem.AddressC;
                 transaction.GasLimit = 30000;
@@ -516,7 +516,7 @@ namespace Nethermind.Clique.Test
             
             public On AddTransactionWithGasLimitToHigh(PrivateKey nodeKey)
             {
-                Transaction transaction = new Transaction();
+                Transaction transaction = new();
             
                 // gas limit too high
                 transaction = new Transaction();
@@ -536,7 +536,7 @@ namespace Nethermind.Clique.Test
 
             public On AddQueuedTransaction(PrivateKey nodeKey)
             {
-                Transaction transaction = new Transaction();
+                Transaction transaction = new();
                 transaction.Value = 1;
                 transaction.To = TestItem.AddressC;
                 transaction.GasLimit = 30000;

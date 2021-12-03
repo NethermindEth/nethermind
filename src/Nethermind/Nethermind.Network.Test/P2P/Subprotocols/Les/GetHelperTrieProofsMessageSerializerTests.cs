@@ -33,14 +33,14 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Les
         {
             HelperTrieRequest[] requests = new HelperTrieRequest[]
             {
-                new HelperTrieRequest(HelperTrieType.CHT, 177, TestItem.RandomDataA, 2, 1),
-                new HelperTrieRequest(HelperTrieType.BloomBits, 77, TestItem.RandomDataB, 4, 0),
+                new(HelperTrieType.CHT, 177, TestItem.RandomDataA, 2, 1),
+                new(HelperTrieType.BloomBits, 77, TestItem.RandomDataB, 4, 0),
             };
-            GetHelperTrieProofsMessage message = new GetHelperTrieProofsMessage();
+            GetHelperTrieProofsMessage message = new();
             message.RequestId = 100;
             message.Requests = requests;
 
-            GetHelperTrieProofsMessageSerializer serializer = new GetHelperTrieProofsMessageSerializer();
+            GetHelperTrieProofsMessageSerializer serializer = new();
 
             SerializerTester.TestZero(serializer, message);
         }

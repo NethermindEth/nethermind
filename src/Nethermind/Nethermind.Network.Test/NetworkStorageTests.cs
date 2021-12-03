@@ -37,7 +37,7 @@ namespace Nethermind.Network.Test
         {
             NetworkNodeDecoder.Init();
             ILogManager logManager = LimboLogs.Instance;
-            ConfigProvider configSource = new ConfigProvider();
+            ConfigProvider configSource = new();
             _tempDir = TempPath.GetTempDirectory();
 
             var db = new SimpleFilePublicKeyDb("Test",_tempDir.Path, logManager);

@@ -28,8 +28,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
     {
         private static void Test(Keccak[] keys)
         {
-            GetPooledTransactionsMessage message = new GetPooledTransactionsMessage(keys);
-            GetPooledTransactionsMessageSerializer serializer = new GetPooledTransactionsMessageSerializer();
+            GetPooledTransactionsMessage message = new(keys);
+            GetPooledTransactionsMessageSerializer serializer = new();
             
             SerializerTester.TestZero(serializer, message);
         }
@@ -51,7 +51,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         [Test]
         public void Empty_to_string()
         {
-            GetPooledTransactionsMessage message = new GetPooledTransactionsMessage(new Keccak[] { });
+            GetPooledTransactionsMessage message = new(new Keccak[] { });
             _ = message.ToString();
         }
     }
