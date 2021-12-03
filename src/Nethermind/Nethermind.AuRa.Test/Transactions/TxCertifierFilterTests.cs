@@ -100,7 +100,7 @@ namespace Nethermind.AuRa.Test.Transactions
         {
             _filter.IsAllowed(
                 Build.A.Transaction.WithGasPrice(gasPrice).WithSenderAddress(address).TestObject,
-                Build.A.BlockHeader.TestObject).Should().Be(expected ? AcceptTxResult.Accepted : AcceptTxResult.Invalid);
+                Build.A.BlockHeader.TestObject).Equals(AcceptTxResult.Accepted).Should().Be(expected);
         }
 
         [Test]
