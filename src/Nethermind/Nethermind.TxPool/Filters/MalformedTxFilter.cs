@@ -44,7 +44,7 @@ namespace Nethermind.TxPool.Filters
             {
                 // It may happen that other nodes send us transactions that were signed for another chain or don't have enough gas.
                 if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, invalid transaction.");
-                return new AcceptTxResult(AcceptTxResultCodes.Invalid);
+                return AcceptTxResult.Invalid;
             }
 
             return AcceptTxResult.Accepted;

@@ -57,7 +57,7 @@ namespace Nethermind.TxPool.Filters
                 Metrics.PendingTransactionsTooLowFee++;
                 if (_logger.IsTrace)
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, too low payable gas price.");
-                return new AcceptTxResult(AcceptTxResultCodes.FeeTooLow);
+                return AcceptTxResult.FeeTooLow;
             }
 
             return AcceptTxResult.Accepted;

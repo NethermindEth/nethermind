@@ -50,7 +50,7 @@ namespace Nethermind.TxPool.Filters
             {
                 if (_logger.IsTrace)
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, nonce already used.");
-                return new AcceptTxResult(AcceptTxResultCodes.OwnNonceAlreadyUsed);
+                return AcceptTxResult.OwnNonceAlreadyUsed;
             }
 
             return AcceptTxResult.Accepted;

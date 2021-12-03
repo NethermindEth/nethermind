@@ -309,7 +309,7 @@ namespace Nethermind.TxPool
                 else
                 {
                     Metrics.PendingTransactionsTooLowFee++;
-                    return new AcceptTxResult(AcceptTxResultCodes.FeeTooLowToCompete);
+                    return AcceptTxResult.FeeTooLowToCompete;
                 }
             }
 

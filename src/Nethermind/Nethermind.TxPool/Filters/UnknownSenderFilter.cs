@@ -47,7 +47,7 @@ namespace Nethermind.TxPool.Filters
                 if (tx.SenderAddress is null)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, no sender.");
-                    return new AcceptTxResult(AcceptTxResultCodes.FailedToResolveSender);
+                    return AcceptTxResult.FailedToResolveSender;
                 }
             }
 

@@ -50,7 +50,7 @@ namespace Nethermind.TxPool.Filters
                 Metrics.PendingTransactionsNonceGap++;
                 if (_logger.IsTrace)
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, nonce in future.");
-                return new AcceptTxResult(AcceptTxResultCodes.NonceGap);
+                return AcceptTxResult.NonceGap;
             }
 
             return AcceptTxResult.Accepted;

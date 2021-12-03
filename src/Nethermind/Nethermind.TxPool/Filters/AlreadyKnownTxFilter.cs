@@ -39,7 +39,7 @@ namespace Nethermind.TxPool.Filters
             if (_hashCache.Get(tx.Hash!))
             {
                 Metrics.PendingTransactionsKnown++;
-                return new AcceptTxResult(AcceptTxResultCodes.AlreadyKnown);
+                return AcceptTxResult.AlreadyKnown;
             }
 
             _hashCache.SetForCurrentBlock(tx.Hash!);

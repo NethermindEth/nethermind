@@ -56,7 +56,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
             var txType = GetTxType(tx, txPermissions.ContractExists);
             if (_logger.IsTrace) _logger.Trace($"Given transaction: {tx.Hash} sender: {tx.SenderAddress} to: {tx.To} value: {tx.Value}, gas_price: {tx.GasPrice}. " +
                                                $"Permissions required: {txType}, got: {txPermissions}.");
-            return (txPermissions.Permissions & txType) == txType ? AcceptTxResult.Accepted : new AcceptTxResult(AcceptTxResultCodes.PermissionDenied, $"permission denied for tx type: {txType}, actual permissions: {txPermissions.Permissions}");
+            return (txPermissions.Permissions & txType) == txType ? AcceptTxResult.Accepted : AcceptTxResult.PermissionDenied.WithMessage($"permission denied for tx type: {txType}, actual permissions: {txPermissions.Permissions}");
         }
 
         private (ITransactionPermissionContract.TxPermissions Permissions, bool ContractExists) GetPermissions(Transaction tx, BlockHeader parentHeader)

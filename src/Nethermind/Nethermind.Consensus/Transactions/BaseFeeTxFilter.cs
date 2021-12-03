@@ -44,7 +44,7 @@ namespace Nethermind.Consensus.Transactions
             bool allowed = skipCheck || tx.MaxFeePerGas >= baseFee;
             return allowed
                 ? AcceptTxResult.Accepted
-                : new AcceptTxResult(AcceptTxResultCodes.FeeTooLow,
+                : AcceptTxResult.FeeTooLow.WithMessage(
                     $"MaxFeePerGas too low. MaxFeePerGas: {tx.MaxFeePerGas}, BaseFee: {baseFee}, MaxPriorityFeePerGas:{tx.MaxPriorityFeePerGas}, Block number: {blockNumber}");
         }
     }

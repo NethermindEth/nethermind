@@ -58,7 +58,7 @@ namespace Nethermind.Consensus.Transactions
             bool allowed = premiumPerGas >= minGasPriceFloor;
             return allowed
                 ? AcceptTxResult.Accepted
-                : new AcceptTxResult(AcceptTxResultCodes.FeeTooLow,
+                : AcceptTxResult.FeeTooLow.WithMessage(
                     $"EffectivePriorityFeePerGas too low {premiumPerGas} < {minGasPriceFloor}, BaseFee: {baseFeePerGas}");
         }
     }

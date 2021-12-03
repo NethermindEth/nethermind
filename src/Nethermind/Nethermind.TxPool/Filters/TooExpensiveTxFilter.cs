@@ -86,14 +86,14 @@ namespace Nethermind.TxPool.Filters
             {
                 if (_logger.IsTrace)
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, cost overflow.");
-                return new AcceptTxResult(AcceptTxResultCodes.Int256Overflow);
+                return AcceptTxResult.Int256Overflow;
             }
             
             if (balance < cumulativeCost)
             {
                 if (_logger.IsTrace)
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, insufficient funds.");
-                return new AcceptTxResult(AcceptTxResultCodes.InsufficientFunds);
+                return AcceptTxResult.InsufficientFunds;
             }
 
             return AcceptTxResult.Accepted;

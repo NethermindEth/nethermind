@@ -38,15 +38,15 @@ namespace Nethermind.AuRa.Test.Transactions
         {
             get
             {
-                yield return new TestCaseData(TestItem.AddressA, 2ul).Returns(AcceptTxResultCodes.FeeTooLow).SetName("Filtered by contract.");
-                yield return new TestCaseData(TestItem.AddressB, 0ul).Returns(AcceptTxResultCodes.FeeTooLow).SetName("Filtered by base limit.");
-                yield return new TestCaseData(TestItem.AddressA, 5ul).Returns(AcceptTxResultCodes.Accepted).SetName("Allowed by contract.");
-                yield return new TestCaseData(TestItem.AddressB, 1ul).Returns(AcceptTxResultCodes.Accepted).SetName("Allowed by base limit.");
+                yield return new TestCaseData(TestItem.AddressA, 2ul).Returns(false).SetName("Filtered by contract.");
+                yield return new TestCaseData(TestItem.AddressB, 0ul).Returns(false).SetName("Filtered by base limit.");
+                yield return new TestCaseData(TestItem.AddressA, 5ul).Returns(true).SetName("Allowed by contract.");
+                yield return new TestCaseData(TestItem.AddressB, 1ul).Returns(true).SetName("Allowed by base limit.");
             }
         }
         
         [TestCaseSource(nameof(IsAllowedTestCases))]
-        public AcceptTxResultCodes is_allowed_returns_correct(Address address, ulong gasLimit)
+        public bool is_allowed_returns_correct(Address address, ulong gasLimit)
         {
             IMinGasPriceTxFilter minGasPriceFilter = new MinGasPriceTxFilter(UInt256.One, Substitute.For<ISpecProvider>());
             IDictionaryContractDataStore<TxPriorityContract.Destination> dictionaryContractDataStore = Substitute.For<IDictionaryContractDataStore<TxPriorityContract.Destination>>();
@@ -63,7 +63,7 @@ namespace Nethermind.AuRa.Test.Transactions
             MinGasPriceContractTxFilter txFilter = new(minGasPriceFilter, dictionaryContractDataStore);
             Transaction tx = Build.A.Transaction.WithTo(address).WithGasPrice(gasLimit).WithData(null).TestObject;
 
-            return txFilter.IsAllowed(tx, Build.A.BlockHeader.TestObject).Code;
+            return txFilter.IsAllowed(tx, Build.A.BlockHeader.TestObject).Equals(AcceptTxResult.Accepted);
         }
     }
 }
