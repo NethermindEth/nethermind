@@ -106,9 +106,9 @@ namespace Nethermind.TxPool.Test
             _txPool = CreatePool();
             EthereumEcdsa ecdsa = new EthereumEcdsa(ChainId.Mainnet, _logManager);
             Transaction tx = Build.A.Transaction.SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
-            AcceptTxResult acceptTxResult = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+            AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
             _txPool.GetPendingTransactions().Length.Should().Be(0);
-            acceptTxResult.Should().Be(AcceptTxResult.Invalid);
+            result.Should().Be(AcceptTxResult.Invalid);
         }
         
         [Test]
@@ -127,9 +127,9 @@ namespace Nethermind.TxPool.Test
                 .SignedAndResolved()
                 .TestObject;
 
-            AcceptTxResult acceptTxResult = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+            AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
             _txPool.GetPendingTransactions().Length.Should().Be(0);
-            acceptTxResult.Should().Be(AcceptTxResult.Invalid);;
+            result.Should().Be(AcceptTxResult.Invalid);;
         }
 
         [Test]
@@ -138,9 +138,9 @@ namespace Nethermind.TxPool.Test
             _txPool = CreatePool();
             Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, false).TestObject;
             EnsureSenderBalance(tx);
-            AcceptTxResult acceptTxResult = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+            AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
             _txPool.GetPendingTransactions().Length.Should().Be(1);
-            acceptTxResult.Should().Be(AcceptTxResult.Accepted);
+            result.Should().Be(AcceptTxResult.Accepted);
         }
 
         [Test]
@@ -165,9 +165,9 @@ namespace Nethermind.TxPool.Test
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(tx);
             tx.SenderAddress = null;
-            AcceptTxResult acceptTxResult = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+            AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
             _txPool.GetPendingTransactions().Length.Should().Be(1);
-            acceptTxResult.Should().Be(AcceptTxResult.Accepted);
+            result.Should().Be(AcceptTxResult.Accepted);
         }
         
         [Test]
@@ -179,8 +179,8 @@ namespace Nethermind.TxPool.Test
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(tx);
             _stateProvider.UpdateCodeHash(TestItem.AddressA, TestItem.KeccakA, _specProvider.GetSpec(1));
-            AcceptTxResult resultCodes = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
-            resultCodes.Should().Be(AcceptTxResult.SenderIsContract);
+            AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+            result.Should().Be(AcceptTxResult.SenderIsContract);
         }
         
         
@@ -202,9 +202,9 @@ namespace Nethermind.TxPool.Test
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(tx);
             _blockTree.BlockAddedToMain += Raise.EventWith(_blockTree, new BlockReplacementEventArgs(Build.A.Block.WithGasLimit(10000000).TestObject));
-            AcceptTxResult acceptTxResult = txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+            AcceptTxResult result = txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
             txPool.GetPendingTransactions().Length.Should().Be(eip1559Enabled ? 1 : 0);
-            acceptTxResult.Should().Be(eip1559Enabled ? AcceptTxResult.Accepted : AcceptTxResult.Invalid);
+            result.Should().Be(eip1559Enabled ? AcceptTxResult.Accepted : AcceptTxResult.Invalid);
         }
 
         [Test]
@@ -218,13 +218,13 @@ namespace Nethermind.TxPool.Test
                 .WithChainId(ChainId.Mainnet)
                 .WithValue(5).SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(tx.SenderAddress, tx.Value - 1); // we should have InsufficientFunds only when balance < tx.Value
-            AcceptTxResult acceptTxResult = txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+            AcceptTxResult result = txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
             txPool.GetPendingTransactions().Length.Should().Be(0);
-            acceptTxResult.Should().Be(AcceptTxResult.InsufficientFunds);
+            result.Should().Be(AcceptTxResult.InsufficientFunds);
             EnsureSenderBalance(tx.SenderAddress, tx.Value);
             _blockTree.BlockAddedToMain += Raise.EventWith(_blockTree, new BlockReplacementEventArgs(Build.A.Block.WithGasLimit(10000000).TestObject));
-            acceptTxResult = txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
-            acceptTxResult.Should().Be(AcceptTxResult.Accepted);
+            result = txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+            result.Should().Be(AcceptTxResult.Accepted);
             txPool.GetPendingTransactions().Length.Should().Be(1);
         }
         
@@ -249,9 +249,9 @@ namespace Nethermind.TxPool.Test
         {
             _txPool = CreatePool();
             Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
-            AcceptTxResult acceptTxResult = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+            AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
             _txPool.GetPendingTransactions().Length.Should().Be(0);
-            acceptTxResult.Should().Be(AcceptTxResult.InsufficientFunds);
+            result.Should().Be(AcceptTxResult.InsufficientFunds);
         }
         
         [Test]
@@ -261,9 +261,9 @@ namespace Nethermind.TxPool.Test
             Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(tx);
             _stateProvider.IncrementNonce(tx.SenderAddress);
-            AcceptTxResult acceptTxResult = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+            AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
             _txPool.GetPendingTransactions().Length.Should().Be(0);
-            acceptTxResult.Should().Be(AcceptTxResult.OldNonce);
+            result.Should().Be(AcceptTxResult.OldNonce);
         }
 
         [Test]
@@ -275,9 +275,9 @@ namespace Nethermind.TxPool.Test
                 .WithValue(Transaction.BaseTxGasCost)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(tx);
-            AcceptTxResult acceptTxResult = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+            AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
             _txPool.GetPendingTransactions().Length.Should().Be(0);
-            acceptTxResult.Should().Be(AcceptTxResult.Int256Overflow);
+            result.Should().Be(AcceptTxResult.Int256Overflow);
         }
         
         [Test]
@@ -294,9 +294,9 @@ namespace Nethermind.TxPool.Test
                 .WithType(TxType.EIP1559)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(tx.SenderAddress, UInt256.MaxValue);
-            AcceptTxResult acceptTxResult = txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+            AcceptTxResult result = txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
             txPool.GetPendingTransactions().Length.Should().Be(0);
-            acceptTxResult.Should().Be(AcceptTxResult.Int256Overflow);
+            result.Should().Be(AcceptTxResult.Int256Overflow);
         }
         
         [Test]
@@ -308,9 +308,9 @@ namespace Nethermind.TxPool.Test
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(tx);
             _headInfo.BlockGasLimit = Transaction.BaseTxGasCost * 4;
-            AcceptTxResult acceptTxResult = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+            AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
             _txPool.GetPendingTransactions().Length.Should().Be(0);
-            acceptTxResult.Should().Be(AcceptTxResult.GasLimitExceeded);
+            result.Should().Be(AcceptTxResult.GasLimitExceeded);
         }
         
         [Test]
@@ -321,9 +321,9 @@ namespace Nethermind.TxPool.Test
                 .WithGasLimit(_txGasLimit + 1)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(tx);
-            AcceptTxResult acceptTxResult = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+            AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
             _txPool.GetPendingTransactions().Length.Should().Be(0);
-            acceptTxResult.Should().Be(AcceptTxResult.GasLimitExceeded);
+            result.Should().Be(AcceptTxResult.GasLimitExceeded);
         }
 
         [TestCase(10,0, "FeeTooLow")]
@@ -356,8 +356,8 @@ namespace Nethermind.TxPool.Test
             tx.Value = (UInt256)(value * tx.GasLimit);
             EnsureSenderBalance(tx.SenderAddress, (UInt256)(15 * tx.GasLimit));
             _txPool.GetPendingTransactions().Length.Should().Be(30);
-            AcceptTxResult acceptTxResult = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
-            acceptTxResult.ToString().Should().Be(expected);
+            AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+            result.ToString().Should().Be(expected);
         }
         
         [TestCase(10,0, "FeeTooLow")]
@@ -396,9 +396,9 @@ namespace Nethermind.TxPool.Test
             tx.Value = (UInt256)(value * tx.GasLimit);
             EnsureSenderBalance(tx.SenderAddress, (UInt256)(15 * tx.GasLimit));
             _txPool.GetPendingTransactions().Length.Should().Be(30);
-            AcceptTxResult acceptTxResult = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+            AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
             _txPool.GetPendingTransactions().Length.Should().Be(30);
-            acceptTxResult.ToString().Should().Be(expected);
+            result.ToString().Should().Be(expected);
         }
 
         [TestCase(0)]
@@ -936,9 +936,9 @@ namespace Nethermind.TxPool.Test
                 .WithChainId(ChainId.Mainnet)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(tx);
-            AcceptTxResult acceptTxResult = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+            AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
             _txPool.GetPendingTransactions().Length.Should().Be(eip2930Enabled ? 1 : 0);
-            acceptTxResult.Should().Be(eip2930Enabled ? AcceptTxResult.Accepted : AcceptTxResult.Invalid);
+            result.Should().Be(eip2930Enabled ? AcceptTxResult.Accepted : AcceptTxResult.Invalid);
         }
 
         [Test]
@@ -951,9 +951,9 @@ namespace Nethermind.TxPool.Test
                 .WithType(TxType.EIP1559)
                 .TestObject;
             EnsureSenderBalance(tx);
-            AcceptTxResult acceptTxResult = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+            AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
             _txPool.GetPendingTransactions().Length.Should().Be(0);
-            acceptTxResult.Should().Be(AcceptTxResult.Invalid);
+            result.Should().Be(AcceptTxResult.Invalid);
         }
         
         [Test]
