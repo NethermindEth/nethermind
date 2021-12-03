@@ -108,6 +108,10 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                     Metrics.HellosReceived++;
                     HandleHello(Deserialize<HelloMessage>(msg.Data));
                     
+                    // We need to initialize subprotocols in alphabetical order. Protocols are using AdaptiveId,
+                    // which should be constant for the whole session. Some protocols (like Eth) are sending messages
+                    // on initialization and we need to avoid changing theirs AdaptiveId by initializing protocols,
+                    // which are alphabetically before already initialized ones.
                     foreach (Capability capability in
                         _agreedCapabilities.GroupBy(c => c.ProtocolCode).Select(c => c.OrderBy(v => v.Version).Last()).OrderBy(c => c.ProtocolCode))
                     {
