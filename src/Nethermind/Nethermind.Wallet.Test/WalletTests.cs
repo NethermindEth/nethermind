@@ -68,7 +68,7 @@ namespace Nethermind.Wallet.Test
                         IKeyStoreConfig config = new KeyStoreConfig();
                         config.KeyStoreDirectory = _keyStorePath.Path;
                         ISymmetricEncrypter encrypter = new AesEncrypter(config, LimboLogs.Instance);
-                        var wallet = new ProtectedKeyStoreWallet(
+                        ProtectedKeyStoreWallet wallet = new ProtectedKeyStoreWallet(
                             new FileKeyStore(config, new EthereumJsonSerializer(), encrypter, new CryptoRandom(), LimboLogs.Instance, new PrivateKeyStoreIOSettingsProvider(config)),
                             new ProtectedPrivateKeyFactory(new CryptoRandom(), Timestamper.Default),
                             Timestamper.Default,

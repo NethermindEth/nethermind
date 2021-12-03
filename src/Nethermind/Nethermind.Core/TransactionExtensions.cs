@@ -44,12 +44,11 @@ namespace Nethermind.Core
         {
             if (eip1559Enabled)
             {
-                UInt256 gasPrice = baseFee + tx.MaxPriorityFeePerGas;
-                gasPrice = UInt256.Min(gasPrice, tx.MaxFeePerGas);
+                UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(eip1559Enabled, baseFee);
                 if (tx.IsServiceTransaction)
-                    gasPrice = UInt256.Zero;
+                    effectiveGasPrice = UInt256.Zero;
                 
-                return gasPrice * (ulong)tx.GasLimit + tx.Value;
+                return effectiveGasPrice * (ulong)tx.GasLimit + tx.Value;
             }
 
             return tx.GasPrice * (ulong)tx.GasLimit + tx.Value;
@@ -57,7 +56,18 @@ namespace Nethermind.Core
         
         public static UInt256 CalculateEffectiveGasPrice(this Transaction tx, bool eip1559Enabled, in UInt256 baseFee)
         {
-            return eip1559Enabled ? UInt256.Min( tx.MaxFeePerGas, tx.MaxPriorityFeePerGas + baseFee) : tx.GasPrice;
+            UInt256 effectiveGasPrice = tx.GasPrice;
+            if (eip1559Enabled)
+            {
+                if (UInt256.AddOverflow(tx.MaxPriorityFeePerGas, baseFee, out UInt256 effectiveFee))
+                {
+                    return tx.MaxFeePerGas;
+                }
+                
+                effectiveGasPrice = UInt256.Min(tx.MaxFeePerGas, effectiveFee);
+            }
+
+            return effectiveGasPrice;
         }
     }
 }

@@ -31,7 +31,7 @@ namespace Nethermind.Store.Test
             IStateProvider stateProvider = Substitute.For<IStateProvider>();
             IStorageProvider storageProvider = Substitute.For<IStorageProvider>();
 
-            WorldState worldState = new WorldState(stateProvider, storageProvider);
+            WorldState worldState = new(stateProvider, storageProvider);
             worldState.TakeSnapshot();
 
             stateProvider.Received().TakeSnapshot();
@@ -44,7 +44,7 @@ namespace Nethermind.Store.Test
             IStateProvider stateProvider = Substitute.For<IStateProvider>();
             IStorageProvider storageProvider = Substitute.For<IStorageProvider>();
 
-            WorldState worldState = new WorldState(stateProvider, storageProvider);
+            WorldState worldState = new(stateProvider, storageProvider);
             Snapshot snapshot = worldState.TakeSnapshot();
 
             snapshot.StateSnapshot.Should().Be(0);
@@ -57,7 +57,7 @@ namespace Nethermind.Store.Test
             IStateProvider stateProvider = Substitute.For<IStateProvider>();
             IStorageProvider storageProvider = Substitute.For<IStorageProvider>();
 
-            WorldState worldState = new WorldState(stateProvider, storageProvider);
+            WorldState worldState = new(stateProvider, storageProvider);
 
             stateProvider.TakeSnapshot().Returns(1);
             storageProvider.TakeSnapshot().Returns(2);
@@ -73,7 +73,7 @@ namespace Nethermind.Store.Test
             IStateProvider stateProvider = Substitute.For<IStateProvider>();
             IStorageProvider storageProvider = Substitute.For<IStorageProvider>();
 
-            WorldState worldState = new WorldState(stateProvider, storageProvider);
+            WorldState worldState = new(stateProvider, storageProvider);
             _ = worldState.TakeSnapshot(true);
             storageProvider.Received().TakeSnapshot(true);
         }
@@ -84,7 +84,7 @@ namespace Nethermind.Store.Test
             IStateProvider stateProvider = Substitute.For<IStateProvider>();
             IStorageProvider storageProvider = Substitute.For<IStorageProvider>();
 
-            WorldState worldState = new WorldState(stateProvider, storageProvider);
+            WorldState worldState = new(stateProvider, storageProvider);
             worldState.Restore(new Snapshot(1, 2));
             stateProvider.Received().Restore(1);
             storageProvider.Received().Restore(2);

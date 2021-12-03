@@ -116,9 +116,9 @@ namespace Nethermind.Network.Test
         {
             Test(head, genesisHash, forkHashHex, next, description, specProvider);
 
-            ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());
+            ChainSpecLoader loader = new(new EthereumJsonSerializer());
             ChainSpec spec = loader.Load(File.ReadAllText("../../../../Chains/" + chainSpec));
-            ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(spec);
+            ChainSpecBasedSpecProvider provider = new(spec);
             Test(head, genesisHash, forkHashHex, next, description, provider);
         }
 

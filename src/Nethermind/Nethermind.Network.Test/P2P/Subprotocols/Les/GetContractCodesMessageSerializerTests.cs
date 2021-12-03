@@ -36,13 +36,13 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Les
         {
             CodeRequest[] requests = new CodeRequest[]
             {
-                new CodeRequest(TestItem.KeccakA, TestItem.KeccakB),
-                new CodeRequest(TestItem.KeccakC, TestItem.KeccakD),
+                new(TestItem.KeccakA, TestItem.KeccakB),
+                new(TestItem.KeccakC, TestItem.KeccakD),
             };
 
-            GetContractCodesMessage message = new GetContractCodesMessage(requests, 774);
+            GetContractCodesMessage message = new(requests, 774);
 
-            GetContractCodesMessageSerializer serializer = new GetContractCodesMessageSerializer();
+            GetContractCodesMessageSerializer serializer = new();
 
             SerializerTester.TestZero(serializer, message);
         }

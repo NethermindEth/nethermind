@@ -35,7 +35,7 @@ namespace Nethermind.Network.Test.Rlpx
         [Test]
         public async Task Start_stop()
         {
-            RlpxPeer peer = new RlpxPeer(
+            RlpxPeer peer = new(
                 Substitute.For<IMessageSerializationService>(),
                 TestItem.PublicKeyA, GegAvailableLocalPort(),
                 Substitute.For<IHandshakeService>(),
@@ -48,7 +48,7 @@ namespace Nethermind.Network.Test.Rlpx
 
         private static int GegAvailableLocalPort()
         {
-            TcpListener l = new TcpListener(IPAddress.Loopback, 0);
+            TcpListener l = new(IPAddress.Loopback, 0);
             l.Start();
             try
             {

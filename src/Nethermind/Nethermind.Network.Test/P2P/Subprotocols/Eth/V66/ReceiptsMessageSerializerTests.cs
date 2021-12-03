@@ -37,7 +37,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             string rlp = "f90172820457f9016cf90169f901668001b9010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000f85ff85d940000000000000000000000000000000000000011f842a0000000000000000000000000000000000000000000000000000000000000deada0000000000000000000000000000000000000000000000000000000000000beef830100ff";
             byte[] bytes = Bytes.FromHexString(rlp);
             var serializer63 = new Network.P2P.Subprotocols.Eth.V63.Messages.ReceiptsMessageSerializer(MainnetSpecProvider.Instance);
-            ReceiptsMessageSerializer serializer = new ReceiptsMessageSerializer(serializer63);
+            ReceiptsMessageSerializer serializer = new(serializer63);
             ReceiptsMessage deserializedMessage = serializer.Deserialize(bytes);
             byte[] serialized = serializer.Serialize(deserializedMessage);
             
@@ -60,7 +60,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             txReceipt.Removed.Should().BeFalse();
             txReceipt.Index.Should().Be(0x0);
             
-            ReceiptsMessage message = new ReceiptsMessage(1111, ethMessage);
+            ReceiptsMessage message = new(1111, ethMessage);
 
             SerializerTester.TestZero(serializer, message, rlp);
         }

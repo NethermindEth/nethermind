@@ -30,7 +30,7 @@ namespace Nethermind.TxPool.Test
         public void CalculatePayableGasPrice_returns_expected_results([ValueSource(nameof(TransactionPayableGasPriceCases))]
             TransactionPayableGasPrice test)
         {
-            Transaction tx = new Transaction();
+            Transaction tx = new();
             tx.Type = test.Type;
             tx.GasPrice = test.GasPrice;
             tx.GasLimit = test.GasLimit;

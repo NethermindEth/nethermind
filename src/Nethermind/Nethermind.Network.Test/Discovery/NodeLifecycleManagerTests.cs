@@ -130,7 +130,7 @@ namespace Nethermind.Network.Test.Discovery
             var nodeManager = new NodeLifecycleManager(node, _discoveryManagerMock
             , _nodeTable, new DiscoveryMessageFactory(_timestamper), _evictionManagerMock, _nodeStatsMock, _discoveryConfigMock, _loggerMock);
 
-            PingMessage sentPing = new PingMessage();
+            PingMessage sentPing = new();
             _discoveryManagerMock.SendMessage(Arg.Do<PingMessage>(msg => sentPing = msg));
 
             await nodeManager.SendPingAsync();

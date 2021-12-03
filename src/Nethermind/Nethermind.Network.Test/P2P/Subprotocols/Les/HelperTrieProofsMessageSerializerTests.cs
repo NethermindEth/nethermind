@@ -46,7 +46,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Les
             };
             var message = new HelperTrieProofsMessage(proofs, auxData, 324, 734);
 
-            HelperTrieProofsMessageSerializer serializer = new HelperTrieProofsMessageSerializer();
+            HelperTrieProofsMessageSerializer serializer = new();
 
             SerializerTester.TestZero(serializer, message);
         }

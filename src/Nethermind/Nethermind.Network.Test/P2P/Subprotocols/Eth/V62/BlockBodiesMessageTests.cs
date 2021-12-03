@@ -34,7 +34,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void To_string()
         {
-            BlockBodiesMessage newBlockMessage = new BlockBodiesMessage();
+            BlockBodiesMessage newBlockMessage = new();
             _ = newBlockMessage.ToString();
         }
     }

@@ -32,15 +32,15 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
     {
         private const string TestPrivateKeyHex = "0x3a1076bf45ab87712ad64ccb3b10217737f7faacbf2872e88fdd9a537d8fe266";
 
-        private readonly Random _random = new Random(1);
+        private readonly Random _random = new(1);
 
-        private readonly PrivateKey _privateKey = new PrivateKey(TestPrivateKeyHex);
+        private readonly PrivateKey _privateKey = new(TestPrivateKeyHex);
 
-        private readonly AuthMessageSerializer _serializer = new AuthMessageSerializer();
+        private readonly AuthMessageSerializer _serializer = new();
 
         private void TestEncodeDecode(IEthereumEcdsa ecdsa)
         {
-            AuthMessage authMessage = new AuthMessage();
+            AuthMessage authMessage = new();
             authMessage.EphemeralPublicHash = new Keccak(new byte[AuthMessageSerializer.EphemeralHashLength]);
             authMessage.Nonce = new byte[AuthMessageSerializer.NonceLength];
             authMessage.Signature = ecdsa.Sign(_privateKey, Keccak.Compute("anything"));
@@ -66,7 +66,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         [TestCase(ChainId.EthereumClassicTestnet)]
         public void Encode_decode_before_eip155(int chainId)
         {
-            EthereumEcdsa ecdsa = new EthereumEcdsa(ChainId.Olympic, LimboLogs.Instance);
+            EthereumEcdsa ecdsa = new(ChainId.Olympic, LimboLogs.Instance);
             TestEncodeDecode(ecdsa);
         }
 
@@ -75,7 +75,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         [TestCase(ChainId.Kovan)]
         public void Encode_decode_with_eip155(int chainId)
         {
-            EthereumEcdsa ecdsa = new EthereumEcdsa(ChainId.Olympic, LimboLogs.Instance);
+            EthereumEcdsa ecdsa = new(ChainId.Olympic, LimboLogs.Instance);
             TestEncodeDecode(ecdsa);
         }
     }

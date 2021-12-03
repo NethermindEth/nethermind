@@ -28,8 +28,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
     {
         private static void Test(Keccak[] keys)
         {
-            GetNodeDataMessage message = new GetNodeDataMessage(keys);
-            GetNodeDataMessageSerializer serializer = new GetNodeDataMessageSerializer();
+            GetNodeDataMessage message = new(keys);
+            GetNodeDataMessageSerializer serializer = new();
             
             SerializerTester.TestZero(serializer, message);
         }

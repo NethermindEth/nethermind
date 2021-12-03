@@ -42,14 +42,14 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Wit
         [Test]
         public void Protocol_code_is_wit()
         {
-            Context context = new Context();
+            Context context = new();
             context.WitProtocolHandler.ProtocolCode.Should().Be("wit");
         }
 
         [Test]
         public void Protocol_version_is_zero()
         {
-            Context context = new Context();
+            Context context = new();
             context.WitProtocolHandler.ProtocolVersion.Should().Be(0);
         }
         
@@ -61,28 +61,28 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Wit
                 .Where(f => f.FieldType == typeof(int))
                 .Select(f => (int)f.GetValue(null)!).Max();
             
-            Context context = new Context();
+            Context context = new();
             context.WitProtocolHandler.MessageIdSpaceSize.Should().Be(maxCode + 1);
         }
 
         [Test]
         public void Name_should_be_wit0()
         {
-            Context context = new Context();
+            Context context = new();
             context.WitProtocolHandler.Name.Should().Be("wit0");
         }
 
         [Test]
         public void Init_does_nothing()
         {
-            Context context = new Context();
+            Context context = new();
             context.WitProtocolHandler.Init();
         }
 
         [Test]
         public void Can_disconnect()
         {
-            Context context = new Context();
+            Context context = new();
             context.WitProtocolHandler.DisconnectProtocol(DisconnectReason.Other, "just because");
             context.WitProtocolHandler.Dispose();
         }
@@ -90,7 +90,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Wit
         [Test]
         public void Init_timeout_should_timeout_eth()
         {
-            Context context = new Context();
+            Context context = new();
             bool initialized = false;
             context.WitProtocolHandler.ProtocolInitialized +=
                 (s, e) => initialized = true;
@@ -101,11 +101,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Wit
         [Test]
         public void Can_handle_request_for_an_empty_witness()
         {
-            Context context = new Context();
+            Context context = new();
             context.WitProtocolHandler.Init();
 
-            GetBlockWitnessHashesMessage msg = new GetBlockWitnessHashesMessage(5, Keccak.Zero);
-            GetBlockWitnessHashesMessageSerializer serializer = new GetBlockWitnessHashesMessageSerializer();
+            GetBlockWitnessHashesMessage msg = new(5, Keccak.Zero);
+            GetBlockWitnessHashesMessageSerializer serializer = new();
             var serialized = serializer.Serialize(msg);
 
             context.WitProtocolHandler.HandleMessage(new Packet("wit", WitMessageCode.GetBlockWitnessHashes, serialized));
@@ -115,14 +115,14 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Wit
         [Test]
         public void Can_handle_request_for_a_non_empty_witness()
         {
-            Context context = new Context();
+            Context context = new();
             context.SyncServer.GetBlockWitnessHashes(Keccak.Zero)
                 .Returns(new[] {TestItem.KeccakA, TestItem.KeccakB});
 
             context.WitProtocolHandler.Init();
 
-            GetBlockWitnessHashesMessage msg = new GetBlockWitnessHashesMessage(5, Keccak.Zero);
-            GetBlockWitnessHashesMessageSerializer serializer = new GetBlockWitnessHashesMessageSerializer();
+            GetBlockWitnessHashesMessage msg = new(5, Keccak.Zero);
+            GetBlockWitnessHashesMessageSerializer serializer = new();
             var serialized = serializer.Serialize(msg);
 
             context.WitProtocolHandler.HandleMessage(new Packet("wit", WitMessageCode.GetBlockWitnessHashes, serialized));
@@ -133,9 +133,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Wit
         [Test]
         public async Task Can_request_non_empty_witness()
         {
-            Context context = new Context();
-            BlockWitnessHashesMessage msg = new BlockWitnessHashesMessage(5, new[] {TestItem.KeccakA, TestItem.KeccakB});
-            BlockWitnessHashesMessageSerializer serializer = new BlockWitnessHashesMessageSerializer();
+            Context context = new();
+            BlockWitnessHashesMessage msg = new(5, new[] {TestItem.KeccakA, TestItem.KeccakB});
+            BlockWitnessHashesMessageSerializer serializer = new();
             var serialized = serializer.Serialize(msg);
             
             context.WitProtocolHandler.Init();
@@ -159,7 +159,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Wit
 
             public Context()
             {
-                MessageSerializationService serializationService = new MessageSerializationService();
+                MessageSerializationService serializationService = new();
                 serializationService.Register(typeof(GetBlockWitnessHashesMessage).Assembly);
                 Session = Substitute.For<ISession>();
                 Session.Node.Returns(new Node(TestItem.PublicKeyA, new IPEndPoint(IPAddress.Loopback, 30303)));
