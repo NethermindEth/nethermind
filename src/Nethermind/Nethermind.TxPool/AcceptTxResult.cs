@@ -17,6 +17,9 @@
 
 namespace Nethermind.TxPool
 {
+    /// <summary>
+    /// Describes potential outcomes of adding transaction to the TX pool.
+    /// </summary>
     public readonly struct AcceptTxResult
     {
         /// <summary>
@@ -84,19 +87,13 @@ namespace Nethermind.TxPool
         /// Transaction sender has code hash that is not null.
         /// </summary>
         public static readonly AcceptTxResult SenderIsContract  = new(12, nameof(SenderIsContract));
-        
-        /// <summary>
-        /// Permission denied for this tx type.
-        /// </summary>
-        public static readonly AcceptTxResult PermissionDenied = new(13, nameof(PermissionDenied));
-        
-        
-        
+
+
         private int Id { get; }
         private string Code { get; }
         private string? Message { get; }
 
-        private AcceptTxResult(int id, string code, string? message = null)
+        public AcceptTxResult(int id, string code, string? message = null)
         {
             Id = id;
             Code = code;
