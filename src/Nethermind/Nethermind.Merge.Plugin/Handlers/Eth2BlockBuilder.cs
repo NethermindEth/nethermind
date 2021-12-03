@@ -15,14 +15,28 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Producers;
+using Nethermind.Core;
+using Nethermind.Merge.Plugin.Data;
 
-namespace Nethermind.Api.Extensions
+namespace Nethermind.Merge.Plugin.Handlers;
+
+public class Eth2BlockBuilder : IBlockBuilder
 {
-    public interface IConsensusWrapperPlugin : INethermindPlugin
+    private Eth2BlockProductionContext _blockProductionContext;
+
+    public Eth2BlockBuilder(Eth2BlockProductionContext blockProductionContext)
     {
-        Task<IBlockProducer> InitBlockProducer(IConsensusBlockProducer consensusBlockProducer);
-        bool Enabled { get; }
+        _blockProductionContext = blockProductionContext;
+    }
+
+    public Task<Block?> TryBuildBlock(BlockHeader? parentHeader, CancellationToken cancellationToken = default,
+        PayloadAttributes? payloadAttributes = null)
+    {
+        return _blockProductionContext.BlockProductionTrigger
+            .BuildBlock(parentHeader, cancellationToken, null, payloadAttributes);
     }
 }

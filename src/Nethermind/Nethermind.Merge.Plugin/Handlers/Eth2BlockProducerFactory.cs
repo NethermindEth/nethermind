@@ -54,7 +54,7 @@ namespace Nethermind.Merge.Plugin.Handlers
         public Eth2BlockProducer Create(
             Eth2BlockProductionContext eth2BlockProductionContext,
             ITxSource? txSource = null,
-            IBlockProductionTrigger blockProductionTrigger = null) // ToDo temp hack with passing block production trigger for MEV & ETH2 
+            IBlockProductionTrigger? blockProductionTrigger = null) // ToDo temp hack with passing block production trigger for MEV & ETH2 
         {
             BlockProducerEnv producerEnv = eth2BlockProductionContext.BlockProducerEnv;
                 

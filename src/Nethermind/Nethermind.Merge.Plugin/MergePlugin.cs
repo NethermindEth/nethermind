@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
@@ -27,6 +28,7 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Handlers.V1;
+using Nethermind.Mev;
 
 namespace Nethermind.Merge.Plugin
 {
@@ -111,8 +113,8 @@ namespace Nethermind.Merge.Plugin
                 IInitConfig? initConfig = _api.Config<IInitConfig>();
 
                 PayloadStorage payloadStorage = new(_idealBlockProductionContext, _emptyBlockProductionContext, initConfig, _api.LogManager);
-                PayloadService payloadService = new (_idealBlockProductionContext,
-                    _emptyBlockProductionContext, initConfig, _api.Sealer, _api.LogManager);
+                PayloadService payloadService = new (_idealBlockBuilder,
+                    new Eth2BlockBuilder(_emptyBlockProductionContext), _idealBlockProductionContext, initConfig, _api.Sealer, _api.LogManager);
                 
                 IEngineRpcModule engineRpcModule = new EngineRpcModule(
                     new PreparePayloadHandler(_api.BlockTree, payloadStorage, _manualTimestamper, _api.Sealer,

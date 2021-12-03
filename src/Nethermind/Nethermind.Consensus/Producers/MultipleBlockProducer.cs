@@ -26,7 +26,7 @@ using Nethermind.Logging;
 namespace Nethermind.Consensus.Producers
 {
     // TODO: merge with Mev block producer?
-    public abstract class MultipleBlockProducer<T> : IBlockProducer where T : IBlockProducerInfo
+    public abstract class MultipleBlockProducer<T> : IBlockBuilder, IBlockProducer where T : IBlockProducerInfo
     {
         private readonly IBlockProductionTrigger _blockProductionTrigger;
         private readonly IBestBlockPicker _bestBlockPicker;
@@ -90,19 +90,15 @@ namespace Nethermind.Consensus.Producers
         public ITimestamper Timestamper => _blockProducers[0].BlockProducer.Timestamper;
         
         public event EventHandler<BlockEventArgs>? BlockProduced;
-        
-        private void OnBlockProduction(object? sender, BlockProductionEventArgs e)
-        {
-            e.BlockProductionTask = TryProduceBlock(e.ParentHeader, e.CancellationToken);
-        }
 
-        private async Task<Block?> TryProduceBlock(BlockHeader? parentHeader, CancellationToken cancellationToken = default)
+        public async Task<Block?> TryBuildBlock(BlockHeader? parentHeader, CancellationToken cancellationToken = default,
+            PayloadAttributes? payloadAttributes = null)
         {
             Task<Block?>[] produceTasks = new Task<Block?>[_blockProducers.Length];
             for (int i = 0; i < _blockProducers.Length; i++)
             {
                 T blockProducerInfo = _blockProducers[i];
-                produceTasks[i] = blockProducerInfo.BlockProductionTrigger.BuildBlock(parentHeader, cancellationToken, blockProducerInfo.BlockTracer);
+                produceTasks[i] = blockProducerInfo.BlockProductionTrigger.BuildBlock(parentHeader, cancellationToken, blockProducerInfo.BlockTracer, payloadAttributes);
             }
            
             IEnumerable<(Block? Block, T BlockProducer)> blocksWithProducers;
@@ -121,13 +117,25 @@ namespace Nethermind.Consensus.Producers
             }
 
             Block? bestBlock = _bestBlockPicker.GetBestBlock(blocksWithProducers);
+            if (bestBlock is not null && produceTasks.Count(t => t.IsCompletedSuccessfully && t.Result is not null) > 1)
+            {
+                if (_logger.IsInfo) _logger.Info($"Picked block {bestBlock} to be included to the chain.");
+            }
+
+            return bestBlock;
+        }
+
+        private void OnBlockProduction(object? sender, BlockProductionEventArgs e)
+        {
+            e.BlockProductionTask = TryProduceBlock(e.ParentHeader, e.CancellationToken, e.PayloadAttributes);
+        }
+        
+        private async Task<Block?> TryProduceBlock(BlockHeader? parentHeader, CancellationToken cancellationToken = default, PayloadAttributes? payloadAttributes = null)
+        {
+            
+            Block? bestBlock = await TryBuildBlock(parentHeader, cancellationToken, payloadAttributes);
             if (bestBlock is not null)
             {
-                if (produceTasks.Count(t => t.IsCompletedSuccessfully && t.Result is not null) > 1)
-                {
-                    if (_logger.IsInfo) _logger.Info($"Picked block {bestBlock} to be included to the chain.");
-                }
-
                 BlockProduced?.Invoke(this, new BlockEventArgs(bestBlock));
             }
 

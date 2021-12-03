@@ -16,7 +16,6 @@
 // 
 
 using System.Collections.Generic;
-using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Evm.Tracing;

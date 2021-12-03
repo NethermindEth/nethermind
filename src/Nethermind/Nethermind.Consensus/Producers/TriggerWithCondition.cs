@@ -39,6 +39,8 @@ namespace Nethermind.Consensus.Producers
             if (_checkCondition.Invoke(e))
             {
                 TriggerBlockProduction?.Invoke(this, e);
+                
+                
             }
         }
 

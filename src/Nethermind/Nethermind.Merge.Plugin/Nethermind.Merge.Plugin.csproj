@@ -9,6 +9,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />
     <ProjectReference Include="..\Nethermind.Consensus.AuRa\Nethermind.Consensus.AuRa.csproj" />
+    <ProjectReference Include="..\Nethermind.Mev\Nethermind.Mev.csproj" />
   </ItemGroup>
 
 </Project>

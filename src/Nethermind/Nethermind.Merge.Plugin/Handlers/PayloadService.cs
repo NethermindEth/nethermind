@@ -41,8 +41,9 @@ namespace Nethermind.Merge.Plugin.Handlers
     /// </summary>
     public class PayloadService : IPayloadService
     {
-        private readonly Eth2BlockProductionContext _idealBlockContext;
-        private readonly Eth2BlockProductionContext _emptyBlockContext;
+        private readonly IBlockBuilder _idealBlockBuilder;
+        private readonly IBlockBuilder _emptyBlockBuilder;
+        private readonly Eth2BlockProductionContext _idealBlockProductionContext;
         private readonly IInitConfig _initConfig;
         private readonly ISealer _sealer;
         private readonly ILogger _logger;
@@ -55,14 +56,16 @@ namespace Nethermind.Merge.Plugin.Handlers
         private TaskQueue _taskQueue = new();
 
         public PayloadService(
-            Eth2BlockProductionContext idealBlockContext,
-            Eth2BlockProductionContext emptyBlockContext,
+            IBlockBuilder idealBlockBuilder,
+            IBlockBuilder emptyBlockBuilder,
+            Eth2BlockProductionContext idealBlockProductionContext,
             IInitConfig initConfig,
             ISealer sealer,
             ILogManager logManager)
         {
-            _idealBlockContext = idealBlockContext;
-            _emptyBlockContext = emptyBlockContext;
+            _idealBlockBuilder = idealBlockBuilder;
+            _emptyBlockBuilder = emptyBlockBuilder;
+            _idealBlockProductionContext = idealBlockProductionContext;
             _initConfig = initConfig;
             _sealer = sealer;
             _logger = logManager.GetClassLogger();
@@ -104,9 +107,9 @@ namespace Nethermind.Merge.Plugin.Handlers
         {
             if (_logger.IsTrace) _logger.Trace($"Preparing ideal block from payload {payloadId} with parent {parentHeader}");
             Task<Block?> idealBlockTask =
-                _idealBlockContext.BlockProductionTrigger.BuildBlock(parentHeader, cts.Token, null, payloadAttributes)
+                _idealBlockBuilder.TryBuildBlock(parentHeader, cts.Token, payloadAttributes)
                     // ToDo investigate why it is needed, because we should have processing blocks in BlockProducerBase
-                    .ContinueWith((x) => Process(x.Result, parentHeader, _idealBlockContext.BlockProducerEnv), cts.Token) 
+                    .ContinueWith((x) => Process(x.Result, parentHeader, _idealBlockProductionContext.BlockProducerEnv), cts.Token) 
                     .ContinueWith(LogProductionResult, cts.Token);
             
             _payloadStorage[payloadId.ToHexString()] = new IdealBlockContext(emptyBlock, idealBlockTask, cts);

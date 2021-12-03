@@ -154,15 +154,20 @@ namespace Nethermind.Mev
             
         }
 
-        public async Task<IBlockProducer> InitBlockProducer(IConsensusPlugin consensusPlugin)
+        public async Task<IBlockProducer> InitBlockProducer(IConsensusBlockProducer consensusPlugin)
         {
             if (!Enabled)
             {
                 throw new InvalidOperationException("Plugin is disabled");
             }
 
-            _nethermindApi.BlockProducerEnvFactory.TransactionsExecutorFactory = new MevBlockProducerTransactionsExecutorFactory(_nethermindApi.SpecProvider!, _nethermindApi.LogManager);
+            return await CreateMevBlockProducer(consensusPlugin);
+        }
 
+        public async Task<MevBlockProducer> CreateMevBlockProducer(IConsensusBlockProducer consensusPlugin)
+        {
+            _nethermindApi.BlockProducerEnvFactory.TransactionsExecutorFactory = new MevBlockProducerTransactionsExecutorFactory(_nethermindApi.SpecProvider!, _nethermindApi.LogManager);
+            
             int megabundleProducerCount = _mevConfig.GetTrustedRelayAddresses().Any() ? 1 : 0;
             List<MevBlockProducer.MevBlockProducerInfo> blockProducers =
                 new(_mevConfig.MaxMergedBundles + megabundleProducerCount + 1);
@@ -190,7 +195,7 @@ namespace Nethermind.Mev
         }
 
         private async Task<MevBlockProducer.MevBlockProducerInfo> CreateProducer(
-            IConsensusPlugin consensusPlugin,
+            IConsensusBlockProducer consensusPlugin,
             int bundleLimit = 0,
             ITxSource? additionalTxSource = null)
         {

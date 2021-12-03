@@ -15,14 +15,15 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Consensus;
+using Nethermind.Consensus.Producers;
+using Nethermind.Core;
 
-namespace Nethermind.Api.Extensions
+namespace Nethermind.Consensus;
+
+public interface IBlockBuilder
 {
-    public interface IConsensusWrapperPlugin : INethermindPlugin
-    {
-        Task<IBlockProducer> InitBlockProducer(IConsensusBlockProducer consensusBlockProducer);
-        bool Enabled { get; }
-    }
+    Task<Block?> TryBuildBlock(BlockHeader? parentHeader, CancellationToken cancellationToken = default,
+        PayloadAttributes? payloadAttributes = null);
 }

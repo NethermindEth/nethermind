@@ -33,7 +33,7 @@ namespace Nethermind.Consensus.Clique
 
         public void RecoverData(Block block)
         {
-            // ToDo after refactoring PostMerge SpecProvider, change this condition: block.Header.IsPostMerge
+            // ToDo after refactoring PostMerge SpecProvider, change this condition: isPos(block)
             if (block.Header.Author != null || block.Header.IsPostMerge) return;
             block.Header.Author = _snapshotManager.GetBlockSealer(block.Header);
         }

@@ -16,34 +16,38 @@
 // 
 
 using System;
+using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Api.Extensions;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Mev;
 
 namespace Nethermind.Merge.Plugin
 {
     public partial class MergePlugin
     {
         private IMiningConfig _miningConfig = null!;
+        private IMevConfig _mevConfig = null!;
         private IBlockProducer _blockProducer = null!;
         private IBlockProducer _emptyBlockProducer = null!;
+        private IBlockBuilder _idealBlockBuilder = null!;
         private readonly Eth2BlockProductionContext _emptyBlockProductionContext = new();
         private readonly Eth2BlockProductionContext _idealBlockProductionContext = new();
         private ManualTimestamper? _manualTimestamper;
+        private MevPlugin _mevPlugin = null!;
 
-        public async Task<IBlockProducer> InitBlockProducer(IConsensusPlugin consensusPlugin)
+        public async Task<IBlockProducer> InitBlockProducer(IConsensusBlockProducer consensusPlugin)
         {
             if (_mergeConfig.Enabled)
             {
-                IBlockProducer blockProducer = await consensusPlugin.InitBlockProducer();
                 _miningConfig = _api.Config<IMiningConfig>();
+                _mevConfig = _api.Config<IMevConfig>();
                 if (_api.EngineSigner == null) throw new ArgumentNullException(nameof(_api.EngineSigner));
                 if (_api.ChainSpec == null) throw new ArgumentNullException(nameof(_api.ChainSpec));
                 if (_api.BlockTree == null) throw new ArgumentNullException(nameof(_api.BlockTree));
@@ -70,10 +74,29 @@ namespace Nethermind.Merge.Plugin
                 _emptyBlockProductionContext.Init(_api.BlockProducerEnvFactory);
                 
                 Eth2BlockProducerFactory blockProducerFactory = new(_api.SpecProvider, _api.SealEngine, _manualTimestamper, _miningConfig, _api.LogManager);
-                Eth2BlockProducer idealBlockProducer = blockProducerFactory.Create(_idealBlockProductionContext);
+
+                IBlockProducer idealBlockProducer;
+                IBlockProducer blockProducer;
+                if (_mevConfig.Enabled)
+                {
+                    _mevPlugin = _api.GetConsensusWrapperPlugins()
+                        .OfType<MevPlugin>()
+                        .Single();
+                    Eth2BlockProducerWrapper idealBlockProducerWrapper =
+                        new (blockProducerFactory, _idealBlockProductionContext);
+                    MevBlockProducer mevBlockProducer = await _mevPlugin.CreateMevBlockProducer(idealBlockProducerWrapper);
+                    _idealBlockBuilder = mevBlockProducer;
+                    idealBlockProducer = mevBlockProducer;
+                    blockProducer = await _mevPlugin.InitBlockProducer(consensusPlugin);
+                }
+                else
+                {
+                    _idealBlockBuilder = new Eth2BlockBuilder(_idealBlockProductionContext);
+                    idealBlockProducer = blockProducerFactory.Create(_idealBlockProductionContext);
+                    blockProducer = await consensusPlugin.InitBlockProducer();
+                }
 
                 _idealBlockProductionContext.BlockProducer = idealBlockProducer;
-                
                 _api.BlockProducer = _blockProducer
                     = new MergeBlockProducer(blockProducer, idealBlockProducer, _poSSwitcher);
                 
