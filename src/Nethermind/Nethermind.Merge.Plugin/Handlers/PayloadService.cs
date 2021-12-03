@@ -77,7 +77,7 @@ namespace Nethermind.Merge.Plugin.Handlers
         public async Task<byte[]> StartPreparingPayload(BlockHeader parentHeader, PayloadAttributes payloadAttributes)
         {
             byte[] payloadId = ComputeNextPayloadId(parentHeader, payloadAttributes);
-            payloadAttributes.FeeRecipient = payloadAttributes.FeeRecipient == Address.Zero ? _sealer.Address : payloadAttributes.FeeRecipient;
+            payloadAttributes.SuggestedFeeRecipient = payloadAttributes.SuggestedFeeRecipient == Address.Zero ? _sealer.Address : payloadAttributes.SuggestedFeeRecipient;
             using CancellationTokenSource cts = new(_timeout);
             
             await ProduceEmptyBlock(payloadId, parentHeader, payloadAttributes, cts);
@@ -179,7 +179,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             parentHeader.Hash!.Bytes.CopyTo(inputSpan.Slice(0, 32));
             payloadAttributes.Timestamp.ToBigEndian(inputSpan.Slice(32, 32));
             payloadAttributes.Random.Bytes.CopyTo(inputSpan.Slice(64, 32));
-            payloadAttributes.FeeRecipient.Bytes.CopyTo(inputSpan.Slice(96, 20));
+            payloadAttributes.SuggestedFeeRecipient.Bytes.CopyTo(inputSpan.Slice(96, 20));
             Keccak inputHash = Keccak.Compute(input);
             return inputHash.Bytes.Slice(0, 8);
         }

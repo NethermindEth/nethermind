@@ -92,7 +92,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             if (_logger.IsTrace) _logger.Trace($"Preparing empty block from payload {payloadId} with parent {parentHeader}");
             Task<Block?> emptyBlock =
                 _emptyBlockContext.BlockProductionTrigger
-                    .BuildBlock(parentHeader, cts.Token, null, new PayloadAttributes() { FeeRecipient = blockAuthor, Timestamp = timestamp })
+                    .BuildBlock(parentHeader, cts.Token, null, new PayloadAttributes() { SuggestedFeeRecipient = blockAuthor, Timestamp = timestamp })
                     .ContinueWith((x) =>
                     {
                         x.Result.Header.StateRoot = parentHeader.StateRoot;
@@ -112,7 +112,7 @@ namespace Nethermind.Merge.Plugin.Handlers
         {
             if (_logger.IsTrace) _logger.Trace($"Preparing ideal block from payload {payloadId} with parent {parentHeader}");
             Task<Block?> idealBlock =
-                _idealBlockContext.BlockProductionTrigger.BuildBlock(parentHeader, cts.Token, null, new PayloadAttributes() { FeeRecipient = blockAuthor, Timestamp = timestamp })
+                _idealBlockContext.BlockProductionTrigger.BuildBlock(parentHeader, cts.Token, null, new PayloadAttributes() { SuggestedFeeRecipient = blockAuthor, Timestamp = timestamp })
                     // ToDo investigate why it is needed, because we should have processing blocks in BlockProducerBase
                     .ContinueWith((x) => Process(x.Result, parentHeader, _idealBlockContext.BlockProducerEnv), cts.Token) 
                     .ContinueWith(LogProductionResult, cts.Token);

@@ -170,7 +170,7 @@ namespace Nethermind.Merge.Plugin.Test
             expected.GasLimit = 4000000L;
             expected.BlockHash = new Keccak("0x3ee80ba456bac700bfaf5b2827270406134e2392eb03ec50f6c23de28dd08811");
             expected.LogsBloom = Bloom.Empty;
-            expected.Coinbase = feeRecipient;
+            expected.FeeRecipient = feeRecipient;
             expected.BlockNumber = 1;
             expected.Random = random;
             expected.ParentHash = startingHead;
@@ -195,7 +195,7 @@ namespace Nethermind.Merge.Plugin.Test
             Keccak random = Keccak.Zero;
             Address feeRecipient = Address.Zero;
             string _ = rpc.engine_forkchoiceUpdatedV1(new(startingHead, Keccak.Zero, startingHead),
-                new() {Timestamp = timestamp, FeeRecipient = feeRecipient, Random = random}).Result.Data.PayloadId;
+                new() {Timestamp = timestamp, SuggestedFeeRecipient = feeRecipient, Random = random}).Result.Data.PayloadId;
 
             byte[] requestedPayloadId = Bytes.FromHexString("0x45bd36a8143d860d");
             ResultWrapper<BlockRequestResult?> response = await rpc.engine_getPayloadV1(requestedPayloadId);
@@ -216,7 +216,7 @@ namespace Nethermind.Merge.Plugin.Test
             Address feeRecipient = Address.Zero;
 
             string payloadId = rpc.engine_forkchoiceUpdatedV1(new(startingHead, Keccak.Zero, startingHead),
-                new() {Timestamp = timestamp, FeeRecipient = feeRecipient, Random = random}).Result.Data.PayloadId;
+                new() {Timestamp = timestamp, SuggestedFeeRecipient = feeRecipient, Random = random}).Result.Data.PayloadId;
 
             Thread.Sleep(timeout);
 
@@ -238,7 +238,7 @@ namespace Nethermind.Merge.Plugin.Test
 
             ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedV1Response = await rpc.engine_forkchoiceUpdatedV1(
                 new(notExistingHash, Keccak.Zero, notExistingHash),
-                new() {Timestamp = timestamp, FeeRecipient = feeRecipient, Random = random});
+                new() {Timestamp = timestamp, SuggestedFeeRecipient = feeRecipient, Random = random});
 
             forkchoiceUpdatedV1Response.Data.Status.Should().Be("SYNCING"); // ToDo wait for final PostMerge sync
             byte[] payloadId = Bytes.FromHexString("0x5d071947bfcc3e65");
@@ -312,7 +312,7 @@ namespace Nethermind.Merge.Plugin.Test
         {
             PayloadAttributes? payloadAttributes = new PayloadAttributes()
             {
-                Random = random, FeeRecipient = feeRecipient, Timestamp = timestamp
+                Random = random, SuggestedFeeRecipient = feeRecipient, Timestamp = timestamp
             };
             ForkchoiceStateV1? forkchoiceStateV1 = new ForkchoiceStateV1(currentHead, currentHead, currentHead);
             ResultWrapper<ForkchoiceUpdatedV1Result>? forkchoiceUpdatedResult = await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1, payloadAttributes);
@@ -326,7 +326,7 @@ namespace Nethermind.Merge.Plugin.Test
             get
             {
                 yield return GetNewBlockRequestBadDataTestCase(r => r.BlockHash, TestItem.KeccakA);
-                yield return GetNewBlockRequestBadDataTestCase(r => r.ReceiptRoot, TestItem.KeccakD);
+                yield return GetNewBlockRequestBadDataTestCase(r => r.ReceiptsRoot, TestItem.KeccakD);
                 yield return GetNewBlockRequestBadDataTestCase(r => r.StateRoot, TestItem.KeccakD);
 
                 Bloom bloom = new();
@@ -680,7 +680,7 @@ namespace Nethermind.Merge.Plugin.Test
                 newBlockRequest.GasUsed = GasCostOf.Transaction * count;
                 newBlockRequest.StateRoot =
                     new Keccak("0x3d2e3ced6da0d1e94e65894dc091190480f045647610ef614e1cab4241ca66e0");
-                newBlockRequest.ReceiptRoot =
+                newBlockRequest.ReceiptsRoot =
                     new Keccak("0xc538d36ed1acf6c28187110a2de3e5df707d6d38982f436eb0db7a623f9dc2cd");
                 TryCalculateHash(newBlockRequest, out Keccak? hash);
                 newBlockRequest.BlockHash = hash;
@@ -722,7 +722,7 @@ namespace Nethermind.Merge.Plugin.Test
                 newBlockRequest.GasUsed = GasCostOf.Transaction * count;
                 newBlockRequest.StateRoot =
                     new Keccak("0x3d2e3ced6da0d1e94e65894dc091190480f045647610ef614e1cab4241ca66e0");
-                newBlockRequest.ReceiptRoot =
+                newBlockRequest.ReceiptsRoot =
                     new Keccak("0xc538d36ed1acf6c28187110a2de3e5df707d6d38982f436eb0db7a623f9dc2cd");
                 TryCalculateHash(newBlockRequest, out var hash);
                 newBlockRequest.BlockHash = hash;
@@ -766,7 +766,7 @@ namespace Nethermind.Merge.Plugin.Test
                 {
                     Timestamp = ((ITimestamper)timestamper).UnixTime.Seconds,
                     Random = TestItem.KeccakA,
-                    FeeRecipient = Address.Zero
+                    SuggestedFeeRecipient = Address.Zero
                 }).Result.Data.PayloadId;
             await semaphoreSlim.WaitAsync(-1);
             BlockRequestResult getPayloadResult =
@@ -841,7 +841,7 @@ namespace Nethermind.Merge.Plugin.Test
         {
             ForkchoiceStateV1 forkchoiceState = new(headBlockHash, finalizedBlockHash, safeBlockHash);
             PayloadAttributes payloadAttributes =
-                new() {Timestamp = timestamp, Random = random, FeeRecipient = feeRecipient};
+                new() {Timestamp = timestamp, Random = random, SuggestedFeeRecipient = feeRecipient};
             string payloadId = rpc.engine_forkchoiceUpdatedV1(forkchoiceState, payloadAttributes).Result.Data.PayloadId;
             ResultWrapper<BlockRequestResult?> getPayloadResult =
                 await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));

@@ -26,6 +26,8 @@ namespace Nethermind.Merge.Plugin.Data.V1
         public string? Status => Enum.GetName(typeof(VerificationStatus), EnumStatus)?.ToUpper();
         
         public Keccak? LatestValidHash { get; set; }
+        
+        public string? ValidationError { get; set; }
 
         [JsonIgnore]
         public VerificationStatus EnumStatus { get; set; }

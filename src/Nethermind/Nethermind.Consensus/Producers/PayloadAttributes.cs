@@ -27,6 +27,6 @@ namespace Nethermind.Consensus.Producers
         
         public Keccak? Random { get; set; }
         
-        public Address FeeRecipient { get; set; }
+        public Address SuggestedFeeRecipient { get; set; }
     }
 }
