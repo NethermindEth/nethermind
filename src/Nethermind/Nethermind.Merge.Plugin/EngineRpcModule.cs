@@ -173,13 +173,13 @@ namespace Nethermind.Merge.Plugin
             return _executionStatusHandler.Handle();
         }
         
-        public async Task<ResultWrapper<BlockRequestResult?>> engine_getPayloadV1(byte[] payloadId, int? id = null)
+        public async Task<ResultWrapper<BlockRequestResult?>> engine_getPayloadV1(byte[] payloadId)
         {
             return await (_getPayloadHandlerV1.HandleAsync(payloadId));
         }
         
                 
-        public async Task<ResultWrapper<ExecutePayloadV1Result>> engine_executePayloadV1(BlockRequestResult executionPayload, int? id = null)
+        public async Task<ResultWrapper<ExecutePayloadV1Result>> engine_executePayloadV1(BlockRequestResult executionPayload)
         {
             if (await _locker.WaitAsync(Timeout))
             {
@@ -201,13 +201,13 @@ namespace Nethermind.Merge.Plugin
         
         
 
-        public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV1(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null, int? id = null)
+        public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV1(int id, ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null)
         {
             if (await _locker.WaitAsync(Timeout))
             {
                 try
                 {
-                    return await _forkchoiceUpdatedV1Handler.Handle(forkchoiceState, payloadAttributes);
+                    return await _forkchoiceUpdatedV1Handler.Handle(id, forkchoiceState, payloadAttributes);
                 }
                 finally
                 {

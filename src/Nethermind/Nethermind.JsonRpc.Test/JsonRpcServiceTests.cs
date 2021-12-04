@@ -63,7 +63,7 @@ namespace Nethermind.JsonRpc.Test
             moduleProvider.Register(new SingletonModulePool<T>(new SingletonFactory<T>(module), true));
             _jsonRpcService = new JsonRpcService(moduleProvider, _logManager);
             JsonRpcRequest request = RpcTest.GetJsonRequest(method, 67, parameters);
-            JsonRpcResponse response = _jsonRpcService.SendRequestAsync(request, JsonRpcContext.Http).Result;
+            JsonRpcResponse response = _jsonRpcService.SendRequestAsync(request, _context).Result;
             Assert.AreEqual(request.Id, response.Id);
             return response;
         }

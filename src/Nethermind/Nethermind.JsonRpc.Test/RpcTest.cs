@@ -35,7 +35,7 @@ namespace Nethermind.JsonRpc.Test
         {
             IJsonRpcService service = BuildRpcService(module);
             JsonRpcRequest request = GetJsonRequest(method, parameters: parameters);
-            return service.SendRequestAsync(request, JsonRpcContext.Http).Result;
+            return service.SendRequestAsync(request, new JsonRpcContext(RpcEndpoint.Http)).Result;
         }
 
         public static string TestSerializedRequest<T>(IReadOnlyCollection<JsonConverter> converters, T module,
@@ -81,7 +81,7 @@ namespace Nethermind.JsonRpc.Test
         {
             IJsonRpcService service = BuildRpcService(module);
 
-            JsonRpcContext context = JsonRpcContext.Http;
+            JsonRpcContext context = new JsonRpcContext(RpcEndpoint.Http);
             if (module is IContextAwareRpcModule contextAwareModule
                 && contextAwareModule.Context != null)
             {

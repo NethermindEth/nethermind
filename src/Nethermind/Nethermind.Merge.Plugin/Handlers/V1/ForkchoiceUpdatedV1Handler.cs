@@ -40,6 +40,9 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
     /// </summary>
     public class ForkchoiceUpdatedV1Handler : IForkchoiceUpdatedV1Handler
     {
+        private const int MessageOrderResetId = 0;
+        private int _lastRequestId;
+
         private readonly IBlockTree _blockTree;
         private readonly IStateProvider _stateProvider;
         private readonly IManualBlockFinalizationManager _manualBlockFinalizationManager;
@@ -67,16 +70,21 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             _blockConfirmationManager = blockConfirmationManager ?? throw new ArgumentNullException(nameof(blockConfirmationManager));
             _payloadService = payloadService;
             _logger = logManager.GetClassLogger();
+            _lastRequestId = MessageOrderResetId;
         }
 
-        public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> Handle(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes)
+        public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> Handle(int id, ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes)
         {
+            if (id != MessageOrderResetId && id <= _lastRequestId)
+            {
+                return ResultWrapper<ForkchoiceUpdatedV1Result>.Fail($"invalid request id: {id}.", ErrorCodes.InvalidRequest);
+            }
             // ToDo wait for final PostMerge sync
             // if (_ethSyncingInfo.IsSyncing())
             // {
             //     return ResultWrapper<ForkchoiceUpdatedV1Result>.Success(new ForkchoiceUpdatedV1Result() { Status = EngineStatus.Syncing});
             // }
-            
+
             (BlockHeader? finalizedHeader, string? finalizationErrorMsg) = EnsureHeaderForFinalization(forkchoiceState.FinalizedBlockHash);
             if (finalizationErrorMsg != null)
                 return ReturnSyncing();
@@ -123,7 +131,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 payloadId = await _payloadService.StartPreparingPayload(newHeadBlock!.Header, payloadAttributes);
             }
 
-
+            _lastRequestId = id;
             return ResultWrapper<ForkchoiceUpdatedV1Result>.Success(new ForkchoiceUpdatedV1Result() { PayloadId = payloadId?.ToHexString(true), Status = EngineStatus.Success});
         }
 

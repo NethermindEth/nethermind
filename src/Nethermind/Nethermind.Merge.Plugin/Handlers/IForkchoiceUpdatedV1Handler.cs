@@ -24,6 +24,6 @@ namespace Nethermind.Merge.Plugin.Handlers
 {
     public interface IForkchoiceUpdatedV1Handler
     {
-        Task<ResultWrapper<ForkchoiceUpdatedV1Result>> Handle(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes);
+        Task<ResultWrapper<ForkchoiceUpdatedV1Result>> Handle(int id, ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes);
     }
 }
