@@ -39,7 +39,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
         public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader)
         {
             AcceptTxResult result = _minGasPriceFilter.IsAllowed(tx, parentHeader);
-            if (!result.Equals(AcceptTxResult.Accepted))
+            if (!result)
             {
                 return result;
             }
