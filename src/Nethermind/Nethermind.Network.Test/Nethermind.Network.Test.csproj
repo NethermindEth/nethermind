@@ -60,6 +60,5 @@
   </ItemGroup>
   <ItemGroup>
     <Folder Include="P2P\Subprotocols\Eth\V64" />
-    <Folder Include="Specs" />
   </ItemGroup>
 </Project>

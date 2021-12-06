@@ -64,7 +64,9 @@ namespace Nethermind.Network.Test
         public void Fork_id_and_hash_as_expected_with_merge_fork_id(long head, string forkHashHex, long next, string description)
         {
             ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());
-            ChainSpec spec = loader.Load(File.ReadAllText(Path.Combine("Specs", "merge_fork_id_test.json")));
+            ChainSpec spec = loader.Load(File.ReadAllText(Path.Combine("../../../../Chains", "foundation.json")));
+            spec.Parameters.MergeForkIdTransition = 15_000_000L;
+            spec.MergeForkIdBlockNumber = 15_000_000L;
             ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(spec);
             Test(head, KnownHashes.MainnetGenesis, forkHashHex, next, description, provider);
         }
