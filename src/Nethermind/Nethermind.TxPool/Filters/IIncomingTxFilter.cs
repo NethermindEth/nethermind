@@ -25,6 +25,6 @@ namespace Nethermind.TxPool.Filters
     /// </summary>
     public interface IIncomingTxFilter
     {
-        (bool Accepted, AddTxResult? Reason) Accept(Transaction tx, TxHandlingOptions txHandlingOptions);
+        AcceptTxResult Accept(Transaction tx, TxHandlingOptions txHandlingOptions);
     }
 }

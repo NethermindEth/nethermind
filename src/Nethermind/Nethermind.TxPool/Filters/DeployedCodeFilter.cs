@@ -15,9 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 
 namespace Nethermind.TxPool.Filters
@@ -35,9 +33,9 @@ namespace Nethermind.TxPool.Filters
             _specProvider = specProvider;
             _stateProvider = stateProvider;
         }
-        public (bool Accepted, AddTxResult? Reason) Accept(Transaction tx, TxHandlingOptions txHandlingOptions) => 
+        public AcceptTxResult Accept(Transaction tx, TxHandlingOptions txHandlingOptions) => 
             _stateProvider.IsInvalidContractSender(_specProvider.GetCurrentHeadSpec(), tx.SenderAddress!) 
-                ? (false, AddTxResult.SenderIsContract) 
-                : (true, null);
+                ? AcceptTxResult.SenderIsContract
+                : AcceptTxResult.Accepted;
     }
 }

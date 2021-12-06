@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,14 +15,15 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Threading.Tasks;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
+using Nethermind.TxPool;
 
-namespace Nethermind.TxPool
+namespace Nethermind.Consensus.AuRa.Transactions
 {
-    public interface ITxSender
+    public readonly struct AcceptTxResultAuRa
     {
-        ValueTask<(Keccak? Hash, AcceptTxResult? AddTxResult)> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions);
+        /// <summary>
+        /// Permission denied for this tx type.
+        /// </summary>
+        public static readonly AcceptTxResult PermissionDenied = new(100, nameof(PermissionDenied));
     }
 }

@@ -250,7 +250,7 @@ namespace Nethermind.TxPool
             }
         }
 
-        public AddTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions)
+        public AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions)
         {
             Metrics.PendingTransactionsReceived++;
 
@@ -271,18 +271,18 @@ namespace Nethermind.TxPool
             for (int i = 0; i < _filterPipeline.Count; i++)
             {
                 IIncomingTxFilter incomingTxFilter = _filterPipeline[i];
-                (bool accepted, AddTxResult? filteringResult) = incomingTxFilter.Accept(tx, handlingOptions);
+                AcceptTxResult accepted = incomingTxFilter.Accept(tx, handlingOptions);
                 if (!accepted)
                 {
                     Metrics.PendingTransactionsDiscarded++;
-                    return filteringResult.Value;
+                    return accepted;
                 }
             }
 
             return AddCore(tx, startBroadcast);
         }
 
-        private AddTxResult AddCore(Transaction tx, bool isPersistentBroadcast)
+        private AcceptTxResult AddCore(Transaction tx, bool isPersistentBroadcast)
         {
             lock (_locker)
             {
@@ -309,7 +309,7 @@ namespace Nethermind.TxPool
                 else
                 {
                     Metrics.PendingTransactionsTooLowFee++;
-                    return AddTxResult.FeeTooLowToCompete;
+                    return AcceptTxResult.FeeTooLowToCompete;
                 }
             }
 
@@ -325,7 +325,7 @@ namespace Nethermind.TxPool
             _hashCache.SetLongTerm(tx.Hash!);
             NewPending?.Invoke(this, new TxEventArgs(tx));
             Metrics.TransactionCount = _transactions.Count;
-            return AddTxResult.Added;
+            return AcceptTxResult.Accepted;
         }
 
         private IEnumerable<(Transaction Tx, Action<Transaction>? Change)> UpdateBucketWithAddedTransaction(

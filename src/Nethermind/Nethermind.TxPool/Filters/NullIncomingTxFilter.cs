@@ -25,9 +25,9 @@ namespace Nethermind.TxPool.Filters
 
         public static IIncomingTxFilter Instance { get; } = new NullIncomingTxFilter();
 
-        public (bool Accepted, AddTxResult? Reason) Accept(Transaction tx, TxHandlingOptions txHandlingOptions)
+        public AcceptTxResult Accept(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
-            return (true, null);
+            return AcceptTxResult.Accepted;
         }
     }
 }
