@@ -52,7 +52,7 @@ namespace Nethermind.Consensus.Transactions
                 AcceptTxResult result = filter.IsAllowed(tx, parentHeader);
                 if (!result)
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Rejected tx ({result.ToString()}) {tx.ToShortString()}");
+                    if (_logger.IsDebug) _logger.Debug($"Rejected tx ({result}) {tx.ToShortString()}");
                     return false;
                 }
             }
