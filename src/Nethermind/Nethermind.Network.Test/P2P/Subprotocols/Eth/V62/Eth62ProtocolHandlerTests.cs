@@ -62,7 +62,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             NetworkDiagTracer.IsEnabled = true;
 
             _session = Substitute.For<ISession>();
-            Node node = new Node(TestItem.PublicKeyA, new IPEndPoint(IPAddress.Broadcast, 30303));
+            Node node = new(TestItem.PublicKeyA, new IPEndPoint(IPAddress.Broadcast, 30303));
             _session.Node.Returns(node);
             _syncManager = Substitute.For<ISyncServer>();
             _transactionPool = Substitute.For<ITxPool>();
@@ -227,7 +227,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void Can_handle_new_block_message()
         {
-            NewBlockMessage newBlockMessage = new NewBlockMessage();
+            NewBlockMessage newBlockMessage = new();
             newBlockMessage.Block = Build.A.Block.WithParent(_genesisBlock).TestObject;
             newBlockMessage.TotalDifficulty = _genesisBlock.Difficulty + newBlockMessage.Block.Difficulty;
 
@@ -242,7 +242,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void Throws_if_adding_new_block_fails()
         {
-            NewBlockMessage newBlockMessage = new NewBlockMessage();
+            NewBlockMessage newBlockMessage = new();
             newBlockMessage.Block = Build.A.Block.WithParent(_genesisBlock).TestObject;
             newBlockMessage.TotalDifficulty = _genesisBlock.Difficulty + newBlockMessage.Block.Difficulty;
 
@@ -260,7 +260,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void Can_handle_new_block_hashes()
         {
-            NewBlockHashesMessage msg = new NewBlockHashesMessage((Keccak.Zero, 1), (Keccak.Zero, 2));
+            NewBlockHashesMessage msg = new((Keccak.Zero, 1), (Keccak.Zero, 2));
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg, Eth62MessageCode.NewBlockHashes);
         }
@@ -268,7 +268,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void Can_handle_get_block_bodies()
         {
-            GetBlockBodiesMessage msg = new GetBlockBodiesMessage(new[] {Keccak.Zero, TestItem.KeccakA});
+            GetBlockBodiesMessage msg = new(new[] {Keccak.Zero, TestItem.KeccakA});
 
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg, Eth62MessageCode.GetBlockBodies);
@@ -277,7 +277,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void Can_handle_transactions()
         {
-            TransactionsMessage msg = new TransactionsMessage(new List<Transaction>(Build.A.Transaction.SignedAndResolved().TestObjectNTimes(3)));
+            TransactionsMessage msg = new(new List<Transaction>(Build.A.Transaction.SignedAndResolved().TestObjectNTimes(3)));
 
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg, Eth62MessageCode.Transactions);
@@ -286,7 +286,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void Can_handle_transactions_without_filtering()
         {
-            TransactionsMessage msg = new TransactionsMessage(new List<Transaction>(Build.A.Transaction.SignedAndResolved().TestObjectNTimes(3)));
+            TransactionsMessage msg = new(new List<Transaction>(Build.A.Transaction.SignedAndResolved().TestObjectNTimes(3)));
 
             _handler.DisableTxFiltering();
             HandleIncomingStatusMessage();
@@ -296,7 +296,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void Can_handle_block_bodies()
         {
-            BlockBodiesMessage msg = new BlockBodiesMessage(Build.A.Block.TestObjectNTimes(3));
+            BlockBodiesMessage msg = new(Build.A.Block.TestObjectNTimes(3));
 
             HandleIncomingStatusMessage();
             ((ISyncPeer) _handler).GetBlockBodies(new List<Keccak>(new[] {Keccak.Zero}), CancellationToken.None);
@@ -315,7 +315,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void Throws_when_receiving_a_bodies_message_that_has_not_been_requested()
         {
-            BlockBodiesMessage msg = new BlockBodiesMessage(Build.A.Block.TestObjectNTimes(3));
+            BlockBodiesMessage msg = new(Build.A.Block.TestObjectNTimes(3));
 
             HandleIncomingStatusMessage();
             Assert.Throws<SubprotocolException>(() => HandleZeroMessage(msg, Eth62MessageCode.BlockBodies));
@@ -324,7 +324,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void Can_handle_headers()
         {
-            BlockHeadersMessage msg = new BlockHeadersMessage(Build.A.BlockHeader.TestObjectNTimes(3));
+            BlockHeadersMessage msg = new(Build.A.BlockHeader.TestObjectNTimes(3));
 
             ((ISyncPeer) _handler).GetBlockHeaders(1, 1, 1, CancellationToken.None);
             HandleIncomingStatusMessage();
@@ -334,7 +334,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void Throws_when_receiving_a_headers_message_that_has_not_been_requested()
         {
-            BlockHeadersMessage msg = new BlockHeadersMessage(Build.A.BlockHeader.TestObjectNTimes(3));
+            BlockHeadersMessage msg = new(Build.A.BlockHeader.TestObjectNTimes(3));
 
             HandleIncomingStatusMessage();
             Assert.Throws<SubprotocolException>(() => HandleZeroMessage(msg, Eth62MessageCode.BlockHeaders));
@@ -396,7 +396,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void Throws_if_new_block_message_received_before_status()
         {
-            NewBlockMessage newBlockMessage = new NewBlockMessage();
+            NewBlockMessage newBlockMessage = new();
             newBlockMessage.Block = Build.A.Block.WithParent(_genesisBlock).TestObject;
             newBlockMessage.TotalDifficulty = _genesisBlock.Difficulty + newBlockMessage.Block.Difficulty;
 

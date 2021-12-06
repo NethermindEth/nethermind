@@ -54,6 +54,29 @@ namespace Nethermind.Core.Test
         }
         
         [Test]
+        public void CalculateEffectiveGasPrice_can_handle_overflow_scenario_with_max_priority()
+        {
+            Transaction transaction = new();
+            transaction.DecodedMaxFeePerGas = UInt256.MaxValue;
+            transaction.GasPrice = UInt256.MaxValue;
+            transaction.Type = TxType.EIP1559;
+            UInt256 effectiveGasPrice = transaction.CalculateEffectiveGasPrice(true, 100);
+            Assert.AreEqual(UInt256.MaxValue, effectiveGasPrice);
+        }
+        
+        [Test]
+        public void CalculateEffectiveGasPrice_can_handle_overflow_scenario_with_max_baseFee()
+        {
+            UInt256 expectedValue = UInt256.MaxValue - 10;
+            Transaction transaction = new();
+            transaction.DecodedMaxFeePerGas = expectedValue;
+            transaction.GasPrice = 100;
+            transaction.Type = TxType.EIP1559;
+            UInt256 effectiveGasPrice = transaction.CalculateEffectiveGasPrice(true, UInt256.MaxValue);
+            Assert.AreEqual(expectedValue, effectiveGasPrice);
+        }
+        
+        [Test]
         public void TryCalculatePremiumPerGas_should_fails_when_base_fee_is_greater_than_fee()
         {
             Transaction transaction = new();

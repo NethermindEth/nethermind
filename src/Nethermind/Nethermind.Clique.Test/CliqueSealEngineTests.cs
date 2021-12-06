@@ -50,7 +50,7 @@ namespace Nethermind.Clique.Test
         private const string Block4Rlp = "f9025bf90256a01ef022156ff2d5730931028d3fddaccf9ccda8818ba7f79dbeea78302550824ca01dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347940000000000000000000000000000000000000000a053580584816f617295ea26c0e17641e0120cab2f0a8ffb53a866fd53aa8e8c2da056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421b901000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002048347e7c4808458ee4608b861d783010600846765746887676f312e372e33856c696e7578000000000000000095ed0b3d04835d9ccbf11f79fdf75cf01a4a79fcb4b417b00acf461306e565616ed1903b307407143f2393af49d892399e8b09e01728d419f900ae99e13437f000a00000000000000000000000000000000000000000000000000000000000000000880000000000000000c0c0";
         private const string Block5Rlp = "f9025bf90256a017d9b71cd90b4381da41265491792f5f78d36f80b14c3c7073af470d7e9b882aa01dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347940000000000000000000000000000000000000000a053580584816f617295ea26c0e17641e0120cab2f0a8ffb53a866fd53aa8e8c2da056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421b901000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002058347e7c4808458ee4617b861d783010600846765746887676f312e372e33856c696e75780000000000000000840db225f54032162d91245cc2f6c1b80b2e1d2b0657c3707e9c1f46add7b7525e0ba267addc476724e1eb70f7f76a5fd8c95df3d82dfb7a3d8c334c2fcb5ad201a00000000000000000000000000000000000000000000000000000000000000000880000000000000000c0c0";
 
-        private readonly List<PrivateKey> _signers = new List<PrivateKey>
+        private readonly List<PrivateKey> _signers = new()
         {
             new PrivateKey("06E84833EAC809859F46F84311CB152E2D2A505FE6B5FBC4CD2CABD37B678F1C"),
             new PrivateKey("C7B39D4F871ACA337E3CC3AB956F1A916B5EF23AF9F5571566DDB8D3C99F66AC"),
@@ -115,7 +115,7 @@ namespace Nethermind.Clique.Test
         private CliqueSealer BuildSealer(int currentBlock, IDb db)
         {
             IEthereumEcdsa ecdsa = new EthereumEcdsa(ChainId.Rinkeby, LimboLogs.Instance);
-            CliqueConfig config = new CliqueConfig();
+            CliqueConfig config = new();
             int currentSignerIndex = (currentBlock % _signers.Count);
             _currentSigner = _signers[currentSignerIndex];
             _snapshotManager = new SnapshotManager(config, db, _blockTree, ecdsa, LimboLogs.Instance);
@@ -141,14 +141,14 @@ namespace Nethermind.Clique.Test
             Keccak parentHash = Keccak.Zero;
             Keccak unclesHash = Keccak.OfAnEmptySequenceRlp;
             Address beneficiary = Address.Zero;
-            UInt256 difficulty = new UInt256(1);
+            UInt256 difficulty = new(1);
             long number = 0L;
             int gasLimit = 4700000;
-            UInt256 timestamp = new UInt256(1492009146);
+            UInt256 timestamp = new(1492009146);
             byte[] extraData = Bytes.FromHexString(GetGenesisExtraData());
-            BlockHeader header = new BlockHeader(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData);
+            BlockHeader header = new(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData);
             header.Bloom = Bloom.Empty;
-            Block genesis = new Block(header);            
+            Block genesis = new(header);            
             genesis.Header.Bloom = Bloom.Empty;
             genesis.Header.Hash = genesis.CalculateHash();
 
@@ -161,7 +161,7 @@ namespace Nethermind.Clique.Test
 
         private string GetGenesisExtraData()
         {
-            StringBuilder extraDataString = new StringBuilder();
+            StringBuilder extraDataString = new();
             extraDataString.Append("52657370656374206d7920617574686f7269746168207e452e436172746d616e");
             for (int i = 0; i < _signers.Count; i++)
             {
@@ -187,9 +187,9 @@ namespace Nethermind.Clique.Test
             int gasLimit = 4700000;
             UInt256 timestamp = (UInt256)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             byte[] extraData = Bytes.FromHexString("d883010812846765746888676f312e31312e31856c696e75780000000000000028eb026ab5355b45499053382886754f1db544618d45edc979de1864d83a626b77513bd34d7f21059e79e303c3ab210e1424e71bcb8347835cbd378a785a06f800");
-            BlockHeader header = new BlockHeader(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData);
+            BlockHeader header = new(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData);
             header.MixHash = Keccak.Zero;
-            Block block = new Block(header);
+            Block block = new(header);
             block.Header.Bloom = Bloom.Empty;
             block.Header.Hash = block.CalculateHash();
             return block;
@@ -200,7 +200,7 @@ namespace Nethermind.Clique.Test
         {
             BlockHeader header = BuildCliqueBlock();
 
-            Address expectedBlockSealer = new Address("0xb279182d99e65703f0076e4812653aab85fca0f0");
+            Address expectedBlockSealer = new("0xb279182d99e65703f0076e4812653aab85fca0f0");
             Address blockSealer = _snapshotManager.GetBlockSealer(header);
             Assert.AreEqual(expectedBlockSealer, blockSealer);
         }

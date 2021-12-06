@@ -43,9 +43,9 @@ namespace Nethermind.TxPool.Filters
             _logger = logger;
         }
 
-        public (bool Accepted, AddTxResult? Reason) Accept(Transaction tx, TxHandlingOptions handlingOptions)
+        public AcceptTxResult Accept(Transaction tx, TxHandlingOptions handlingOptions)
         {
-            IReleaseSpec spec = _specProvider.GetSpec();
+            IReleaseSpec spec = _specProvider.GetCurrentHeadSpec();
             Account account = _accounts.GetAccount(tx.SenderAddress!);
             UInt256 balance = account.Balance;
             UInt256 affordableGasPrice = tx.CalculateAffordableGasPrice(spec.IsEip1559Enabled, _headInfo.CurrentBaseFee, balance);
@@ -57,10 +57,10 @@ namespace Nethermind.TxPool.Filters
                 Metrics.PendingTransactionsTooLowFee++;
                 if (_logger.IsTrace)
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, too low payable gas price.");
-                return (false, AddTxResult.FeeTooLow);
+                return AcceptTxResult.FeeTooLow.WithMessage($"FeePerGas needs to be higher than {lastTx.GasBottleneck.Value} to be added to the TxPool. Affordable FeePerGas of rejected tx: {affordableGasPrice}.");
             }
 
-            return (true, null);
+            return AcceptTxResult.Accepted;
         }
     }
 }

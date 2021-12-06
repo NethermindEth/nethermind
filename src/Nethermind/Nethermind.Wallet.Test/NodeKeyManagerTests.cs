@@ -36,7 +36,7 @@ namespace Nethermind.Wallet.Test
         [Test]
         public void LoadNodeKey_loads_TestNodeKey()
         {
-            var test = CreateTest();
+            NodeKeyManagerTest test = CreateTest();
             test.KeyStoreConfig.TestNodeKey = TestItem.PrivateKeyA.ToString();
             test.NodeKeyManager.LoadNodeKey().Unprotect().Should().Be(TestItem.PrivateKeyA);
         }
@@ -44,7 +44,7 @@ namespace Nethermind.Wallet.Test
         [Test]
         public void LoadNodeKey_loads_key_for_EnodeAccount()
         {
-            var test = CreateTest();
+            NodeKeyManagerTest test = CreateTest();
             test.KeyStoreConfig.EnodeAccount = TestItem.AddressA.ToString();
             test.PasswordProvider.GetPassword(TestItem.AddressA).Returns("p1".Secure());
             test.KeyStore.GetProtectedKey(TestItem.AddressA, Arg.Any<SecureString>()).Returns(
@@ -58,7 +58,7 @@ namespace Nethermind.Wallet.Test
         [TestCase("testFile")]
         public void LoadNodeKey_creates_file(string filePath)
         {
-            var test = CreateTest();
+            NodeKeyManagerTest test = CreateTest();
             test.KeyStoreConfig.EnodeKeyFile = filePath;
             test.CryptoRandom.GenerateRandomBytes(32).Returns(TestItem.PrivateKeyA.KeyBytes);
             filePath ??= NodeKeyManager.UnsecuredNodeKeyFilePath;
@@ -73,7 +73,7 @@ namespace Nethermind.Wallet.Test
         [TestCase("testFile")]
         public void LoadNodeKey_loads_file(string filePath)
         {
-            var test = CreateTest();
+            NodeKeyManagerTest test = CreateTest();
             test.KeyStoreConfig.EnodeKeyFile = filePath;
             filePath ??= NodeKeyManager.UnsecuredNodeKeyFilePath;
             filePath = filePath.GetApplicationResourcePath(test.KeyStoreConfig.KeyStoreDirectory);
@@ -87,7 +87,7 @@ namespace Nethermind.Wallet.Test
         [Test]
         public void LoadSignerKey_defaults_to_LoadNodeKey()
         {
-            var test = CreateTest();
+            NodeKeyManagerTest test = CreateTest();
             test.KeyStoreConfig.TestNodeKey = TestItem.PrivateKeyA.ToString();
             test.NodeKeyManager.LoadSignerKey().Unprotect().Should().Be(TestItem.PrivateKeyA);
         }
@@ -95,7 +95,7 @@ namespace Nethermind.Wallet.Test
         [Test]
         public void LoadSignerKey_loads_key_for_BlockAuthorAccount()
         {
-            var test = CreateTest();
+            NodeKeyManagerTest test = CreateTest();
             test.KeyStoreConfig.BlockAuthorAccount = TestItem.AddressA.ToString();
             test.PasswordProvider.GetPassword(TestItem.AddressA).Returns("p1".Secure());
             test.KeyStore.GetProtectedKey(TestItem.AddressA, Arg.Any<SecureString>()).Returns(

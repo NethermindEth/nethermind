@@ -37,7 +37,7 @@ namespace Nethermind.Network.Test.Rlpx.TestWrappers
 
         public ZeroPacket Decode(IByteBuffer input)
         {
-            List<object> result = new List<object>();
+            List<object> result = new();
             while (input.IsReadable())
             {
                 base.Decode(_context, input, result);

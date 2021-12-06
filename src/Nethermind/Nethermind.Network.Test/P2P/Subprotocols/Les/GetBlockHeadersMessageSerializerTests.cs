@@ -37,7 +37,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Les
 
             var message = new GetBlockHeadersMessage(ethMessage, 2);
 
-            GetBlockHeadersMessageSerializer serializer = new GetBlockHeadersMessageSerializer();
+            GetBlockHeadersMessageSerializer serializer = new();
 
             SerializerTester.TestZero(serializer, message, "e602e4a0c89efdaa54c0f20c7adf612882df0950f5a951637e0307cdcb4c672f298b8bc60a0280");
         }
@@ -53,7 +53,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Les
 
             var message = new GetBlockHeadersMessage(ethMessage, 2);
 
-            GetBlockHeadersMessageSerializer serializer = new GetBlockHeadersMessageSerializer();
+            GetBlockHeadersMessageSerializer serializer = new();
 
             SerializerTester.TestZero(serializer, message, "c602c4010a0280");
         }

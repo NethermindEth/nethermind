@@ -39,16 +39,16 @@ namespace Nethermind.Mining.Test
         {
             ulong validNonce = 971086423715460064;
 
-            BlockHeader header = new BlockHeader(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, 27, 1, 21000, 1, new byte[] {1, 2, 3});
+            BlockHeader header = new(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, 27, 1, 21000, 1, new byte[] {1, 2, 3});
             header.TxRoot = Keccak.Zero;
             header.ReceiptsRoot = Keccak.Zero;
             header.UnclesHash = Keccak.Zero;
             header.StateRoot = Keccak.Zero;
             header.Bloom = Bloom.Empty;
 
-            Block block = new Block(header);
-            EthashSealer ethashSealer = new EthashSealer(new Ethash(LimboLogs.Instance), NullSigner.Instance, LimboLogs.Instance);
-            using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource(TimeSpan.FromSeconds(600));
+            Block block = new(header);
+            EthashSealer ethashSealer = new(new Ethash(LimboLogs.Instance), NullSigner.Instance, LimboLogs.Instance);
+            using CancellationTokenSource cancellationTokenSource = new(TimeSpan.FromSeconds(600));
             await ethashSealer.MineAsync(cancellationTokenSource.Token, block, validNonce - 3);
 
             Assert.AreEqual(validNonce, block.Header.Nonce);
@@ -60,16 +60,16 @@ namespace Nethermind.Mining.Test
         {
             ulong badNonce = 971086423715459953; // change if valid
 
-            BlockHeader header = new BlockHeader(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, (UInt256)BigInteger.Pow(2, 32), 1, 21000, 1, new byte[] {1, 2, 3});
+            BlockHeader header = new(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, (UInt256)BigInteger.Pow(2, 32), 1, 21000, 1, new byte[] {1, 2, 3});
             header.TxRoot = Keccak.Zero;
             header.ReceiptsRoot = Keccak.Zero;
             header.UnclesHash = Keccak.Zero;
             header.StateRoot = Keccak.Zero;
             header.Bloom = Bloom.Empty;
 
-            Block block = new Block(header);
-            EthashSealer ethashSealer = new EthashSealer(new Ethash(LimboLogs.Instance), NullSigner.Instance, LimboLogs.Instance);
-            using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource(TimeSpan.FromMilliseconds(2000));
+            Block block = new(header);
+            EthashSealer ethashSealer = new(new Ethash(LimboLogs.Instance), NullSigner.Instance, LimboLogs.Instance);
+            using CancellationTokenSource cancellationTokenSource = new(TimeSpan.FromMilliseconds(2000));
             await ethashSealer.MineAsync(cancellationTokenSource.Token, block, badNonce).ContinueWith(t =>
             {
                 Assert.True(t.IsCanceled);
@@ -80,17 +80,17 @@ namespace Nethermind.Mining.Test
         [Explicit("use just for finding nonces for other tests")]
         public async Task Find_nonce()
         {
-            BlockHeader parentHeader = new BlockHeader(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, 131072, 0, 21000, 0, new byte[] { });
+            BlockHeader parentHeader = new(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, 131072, 0, 21000, 0, new byte[] { });
             parentHeader.Hash = parentHeader.CalculateHash();
 
-            BlockHeader blockHeader = new BlockHeader(parentHeader.Hash, Keccak.OfAnEmptySequenceRlp, Address.Zero, 131136, 1, 21000, 1, new byte[] { });
+            BlockHeader blockHeader = new(parentHeader.Hash, Keccak.OfAnEmptySequenceRlp, Address.Zero, 131136, 1, 21000, 1, new byte[] { });
             blockHeader.Nonce = 7217048144105167954;
             blockHeader.MixHash = new Keccak("0x37d9fb46a55e9dbbffc428f3a1be6f191b3f8eaf52f2b6f53c4b9bae62937105");
             blockHeader.Hash = blockHeader.CalculateHash();
-            Block block = new Block(blockHeader);
+            Block block = new(blockHeader);
 
             IEthash ethash = new Ethash(LimboLogs.Instance);
-            EthashSealer ethashSealer = new EthashSealer(ethash, NullSigner.Instance, LimboLogs.Instance);
+            EthashSealer ethashSealer = new(ethash, NullSigner.Instance, LimboLogs.Instance);
             await ethashSealer.MineAsync(CancellationToken.None, block, 7217048144105167954);
 
             Assert.True(ethash.Validate(block.Header));

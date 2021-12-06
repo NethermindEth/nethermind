@@ -343,12 +343,12 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             try
             {
-                (Keccak txHash, AddTxResult? addTxResult) =
+                (Keccak txHash, AcceptTxResult? acceptTxResult) =
                     await _txSender.SendTransaction(tx, txHandlingOptions | TxHandlingOptions.PersistentBroadcast);
 
-                return addTxResult == AddTxResult.Added
+                return acceptTxResult.Equals(AcceptTxResult.Accepted)
                     ? ResultWrapper<Keccak>.Success(txHash)
-                    : ResultWrapper<Keccak>.Fail(addTxResult?.ToString() ?? string.Empty, ErrorCodes.TransactionRejected);
+                    : ResultWrapper<Keccak>.Fail(acceptTxResult?.ToString() ?? string.Empty, ErrorCodes.TransactionRejected);
             }
             catch (SecurityException e)
             {

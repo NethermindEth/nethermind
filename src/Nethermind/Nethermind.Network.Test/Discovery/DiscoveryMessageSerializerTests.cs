@@ -35,7 +35,7 @@ namespace Nethermind.Network.Test.Discovery
     public class DiscoveryMessageSerializerTests
     {
         private readonly PrivateKey _privateKey =
-            new PrivateKey("49a7b37aa6f6645917e7b807e9d1c00d4fa71f18343b0d4122a4d2df64dd6fee");
+            new("49a7b37aa6f6645917e7b807e9d1c00d4fa71f18343b0d4122a4d2df64dd6fee");
 
         //private readonly PrivateKey _farPrivateKey = new PrivateKey("3a1076bf45ab87712ad64ccb3b10217737f7faacbf2872e88fdd9a537d8fe266");
         private IPEndPoint _farAddress;

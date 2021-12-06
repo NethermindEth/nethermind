@@ -34,17 +34,17 @@ namespace Nethermind.TxPool.Filters
             _hashCache = hashCache;
         }
 
-        public (bool Accepted, AddTxResult? Reason) Accept(Transaction tx, TxHandlingOptions handlingOptions)
+        public AcceptTxResult Accept(Transaction tx, TxHandlingOptions handlingOptions)
         {
             if (_hashCache.Get(tx.Hash!))
             {
                 Metrics.PendingTransactionsKnown++;
-                return (false, AddTxResult.AlreadyKnown);
+                return AcceptTxResult.AlreadyKnown;
             }
 
             _hashCache.SetForCurrentBlock(tx.Hash!);
 
-            return (true, null);
+            return AcceptTxResult.Accepted;
         }
     }
 }

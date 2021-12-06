@@ -131,7 +131,6 @@ namespace Nethermind.JsonRpc.Benchmark
                 Timestamper.Default,
                 logFinder,
                 specProvider,
-                false,
                 false);
 
             GasPriceOracle gasPriceOracle = new(blockTree, specProvider);

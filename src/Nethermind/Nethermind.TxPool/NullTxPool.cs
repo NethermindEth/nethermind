@@ -40,7 +40,7 @@ namespace Nethermind.TxPool
 
         public void RemovePeer(PublicKey nodeId) { }
         
-        public AddTxResult SubmitTx(Transaction tx, TxHandlingOptions txHandlingOptions) => AddTxResult.Added;
+        public AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions txHandlingOptions) => AcceptTxResult.Accepted;
 
         public bool RemoveTransaction(Keccak? hash) => false;
         

@@ -44,15 +44,15 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         [Test]
         public async Task Can_request_and_handle_receipts()
         {
-            Context ctx = new Context();
-            StatusMessageSerializer statusMessageSerializer = new StatusMessageSerializer();
+            Context ctx = new();
+            StatusMessageSerializer statusMessageSerializer = new();
             ReceiptsMessageSerializer receiptMessageSerializer
-                = new ReceiptsMessageSerializer(MainnetSpecProvider.Instance);
-            MessageSerializationService serializationService = new MessageSerializationService();
+                = new(MainnetSpecProvider.Instance);
+            MessageSerializationService serializationService = new();
             serializationService.Register(statusMessageSerializer);
             serializationService.Register(receiptMessageSerializer);
 
-            Eth63ProtocolHandler protocolHandler = new Eth63ProtocolHandler(
+            Eth63ProtocolHandler protocolHandler = new(
                 ctx.Session,
                 serializationService,
                 Substitute.For<INodeStatsManager>(),
@@ -64,13 +64,13 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
                 Enumerable.Repeat(Build.A.Receipt.WithAllFieldsFilled.TestObject, 100).ToArray(),
                 1000).ToArray(); // TxReceipt[1000][100]
 
-            StatusMessage statusMessage = new StatusMessage();
+            StatusMessage statusMessage = new();
             Packet statusPacket =
-                new Packet("eth", Eth62MessageCode.Status, statusMessageSerializer.Serialize(statusMessage));
+                new("eth", Eth62MessageCode.Status, statusMessageSerializer.Serialize(statusMessage));
 
-            ReceiptsMessage receiptsMsg = new ReceiptsMessage(receipts);
+            ReceiptsMessage receiptsMsg = new(receipts);
             Packet receiptsPacket =
-                new Packet("eth", Eth63MessageCode.Receipts, receiptMessageSerializer.Serialize(receiptsMsg));
+                new("eth", Eth63MessageCode.Receipts, receiptMessageSerializer.Serialize(receiptsMsg));
 
             protocolHandler.HandleMessage(statusPacket);
             Task<TxReceipt[][]> task = protocolHandler.GetReceipts(
@@ -86,19 +86,19 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         [Test]
         public void Will_not_serve_receipts_requests_above_512()
         {
-            Context ctx = new Context();
-            StatusMessageSerializer statusMessageSerializer = new StatusMessageSerializer();
+            Context ctx = new();
+            StatusMessageSerializer statusMessageSerializer = new();
             ReceiptsMessageSerializer receiptMessageSerializer
-                = new ReceiptsMessageSerializer(MainnetSpecProvider.Instance);
+                = new(MainnetSpecProvider.Instance);
             GetReceiptsMessageSerializer getReceiptMessageSerializer
-                = new GetReceiptsMessageSerializer();
-            MessageSerializationService serializationService = new MessageSerializationService();
+                = new();
+            MessageSerializationService serializationService = new();
             serializationService.Register(statusMessageSerializer);
             serializationService.Register(receiptMessageSerializer);
             serializationService.Register(getReceiptMessageSerializer);
             
             ISyncServer syncServer = Substitute.For<ISyncServer>();
-            Eth63ProtocolHandler protocolHandler = new Eth63ProtocolHandler(
+            Eth63ProtocolHandler protocolHandler = new(
                 ctx.Session,
                 serializationService,
                 Substitute.For<INodeStatsManager>(),
@@ -106,14 +106,14 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
                 Substitute.For<ITxPool>(),
                 LimboLogs.Instance);
 
-            StatusMessage statusMessage = new StatusMessage();
+            StatusMessage statusMessage = new();
             Packet statusPacket =
-                new Packet("eth", Eth62MessageCode.Status, statusMessageSerializer.Serialize(statusMessage));
+                new("eth", Eth62MessageCode.Status, statusMessageSerializer.Serialize(statusMessage));
 
-            GetReceiptsMessage getReceiptsMessage = new GetReceiptsMessage(
+            GetReceiptsMessage getReceiptsMessage = new(
                 Enumerable.Repeat(Keccak.Zero, 513).ToArray());
             Packet getReceiptsPacket =
-                new Packet("eth", Eth63MessageCode.GetReceipts, getReceiptMessageSerializer.Serialize(getReceiptsMessage));
+                new("eth", Eth63MessageCode.GetReceipts, getReceiptMessageSerializer.Serialize(getReceiptsMessage));
 
             protocolHandler.HandleMessage(statusPacket);
             Assert.Throws<EthSyncException>(() =>protocolHandler.HandleMessage(getReceiptsPacket));
@@ -122,19 +122,19 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         [Test]
         public void Will_not_send_messages_larger_than_2MB()
         {
-            Context ctx = new Context();
-            StatusMessageSerializer statusMessageSerializer = new StatusMessageSerializer();
+            Context ctx = new();
+            StatusMessageSerializer statusMessageSerializer = new();
             ReceiptsMessageSerializer receiptMessageSerializer
-                = new ReceiptsMessageSerializer(MainnetSpecProvider.Instance);
+                = new(MainnetSpecProvider.Instance);
             GetReceiptsMessageSerializer getReceiptMessageSerializer
-                = new GetReceiptsMessageSerializer();
-            MessageSerializationService serializationService = new MessageSerializationService();
+                = new();
+            MessageSerializationService serializationService = new();
             serializationService.Register(statusMessageSerializer);
             serializationService.Register(receiptMessageSerializer);
             serializationService.Register(getReceiptMessageSerializer);
             
             ISyncServer syncServer = Substitute.For<ISyncServer>();
-            Eth63ProtocolHandler protocolHandler = new Eth63ProtocolHandler(
+            Eth63ProtocolHandler protocolHandler = new(
                 ctx.Session,
                 serializationService,
                 Substitute.For<INodeStatsManager>(),
@@ -145,14 +145,14 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
             syncServer.GetReceipts(Arg.Any<Keccak>()).Returns(
                 Enumerable.Repeat(Build.A.Receipt.WithAllFieldsFilled.TestObject, 512).ToArray());
 
-            StatusMessage statusMessage = new StatusMessage();
+            StatusMessage statusMessage = new();
             Packet statusPacket =
-                new Packet("eth", Eth62MessageCode.Status, statusMessageSerializer.Serialize(statusMessage));
+                new("eth", Eth62MessageCode.Status, statusMessageSerializer.Serialize(statusMessage));
 
-            GetReceiptsMessage getReceiptsMessage = new GetReceiptsMessage(
+            GetReceiptsMessage getReceiptsMessage = new(
                 Enumerable.Repeat(Keccak.Zero, 512).ToArray());
             Packet getReceiptsPacket =
-                new Packet("eth", Eth63MessageCode.GetReceipts, getReceiptMessageSerializer.Serialize(getReceiptsMessage));
+                new("eth", Eth63MessageCode.GetReceipts, getReceiptMessageSerializer.Serialize(getReceiptsMessage));
 
             protocolHandler.HandleMessage(statusPacket);
             protocolHandler.HandleMessage(getReceiptsPacket);

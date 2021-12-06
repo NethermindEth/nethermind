@@ -28,7 +28,7 @@ namespace Nethermind.Network.Test
 
         private readonly Func<int, byte[]> _nextRandomBytesFunc;
 
-        private readonly Queue<byte[]> _nextRandomBytesQueue = new Queue<byte[]>();
+        private readonly Queue<byte[]> _nextRandomBytesQueue = new();
 
         public TestRandom()
             : this(i => i / 2, (Func<int, byte[]>)null)

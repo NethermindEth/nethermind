@@ -28,7 +28,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void When_setting_values_stores_them_in_the_cache()
         {
-            Context ctx = new Context(2);
+            Context ctx = new(2);
             ctx.Database[Key1] = Value1;
             _ = ctx.Database[Key1];
             _ = ctx.Wrapped.DidNotReceive()[Arg.Any<byte[]>()];
@@ -37,7 +37,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void When_reading_values_stores_them_in_the_cache()
         {
-            Context ctx = new Context(2);
+            Context ctx = new(2);
             ctx.Wrapped[Arg.Any<byte[]>()].Returns(Value1);
             _ = ctx.Database[Key1];
             _ = ctx.Database[Key1];
@@ -47,7 +47,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void Uses_lru_strategy_when_caching_on_reads()
         {
-            Context ctx = new Context(2);
+            Context ctx = new(2);
             ctx.Wrapped[Arg.Any<byte[]>()].Returns(Value1);
             _ = ctx.Database[Key1];
             _ = ctx.Database[Key2];
@@ -63,7 +63,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void Uses_lru_strategy_when_caching_on_writes()
         {
-            Context ctx = new Context(2);
+            Context ctx = new(2);
             ctx.Wrapped[Arg.Any<byte[]>()].Returns(Value1);
             ctx.Database[Key1] = Value1;
             ctx.Database[Key2] = Value1;

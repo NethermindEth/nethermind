@@ -100,7 +100,7 @@ namespace Nethermind.AuRa.Test
                     
                     public void InitProducer(IAuraConfig auraConfig)
                     {
-                        IBlockProductionTrigger onAuRaSteps = new BuildBlocksOnAuRaSteps(LimboLogs.Instance, AuRaStepCalculator);
+                        IBlockProductionTrigger onAuRaSteps = new BuildBlocksOnAuRaSteps(AuRaStepCalculator, LimboLogs.Instance);
                         IBlockProductionTrigger onlyWhenNotProcessing = new BuildBlocksOnlyWhenNotProcessing(
                             onAuRaSteps, 
                             BlockProcessingQueue, 

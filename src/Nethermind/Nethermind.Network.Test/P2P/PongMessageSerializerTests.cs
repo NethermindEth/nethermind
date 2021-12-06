@@ -28,7 +28,7 @@ namespace Nethermind.Network.Test.P2P
         public void Can_do_roundtrip()
         {
             PongMessage msg = PongMessage.Instance;
-            PongMessageSerializer serializer = new PongMessageSerializer();
+            PongMessageSerializer serializer = new();
             byte[] serialized = serializer.Serialize(msg);
             Assert.AreEqual(0xc0, serialized[0]);
             PongMessage deserialized = serializer.Deserialize(serialized);

@@ -742,7 +742,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             using Context ctx = await Context.Create();
             ITxSender txSender = Substitute.For<ITxSender>();
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-            txSender.SendTransaction(Arg.Any<Transaction>(), TxHandlingOptions.PersistentBroadcast).Returns((TestItem.KeccakA, AddTxResult.Added));
+            txSender.SendTransaction(Arg.Any<Transaction>(), TxHandlingOptions.PersistentBroadcast).Returns((TestItem.KeccakA, AcceptTxResult.Accepted));
 
             ctx._test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).WithTxSender(txSender).Build();
             Transaction tx = Build.A.Transaction.Signed(new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance), TestItem.PrivateKeyA).TestObject;
@@ -758,7 +758,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             using Context ctx = await Context.Create();
             ITxSender txSender = Substitute.For<ITxSender>();
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-            txSender.SendTransaction(Arg.Any<Transaction>(), TxHandlingOptions.PersistentBroadcast).Returns((TestItem.KeccakA, AddTxResult.Added));
+            txSender.SendTransaction(Arg.Any<Transaction>(), TxHandlingOptions.PersistentBroadcast).Returns((TestItem.KeccakA, AcceptTxResult.Accepted));
 
             ctx._test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).WithTxSender(txSender).Build();
             string serialized = ctx._test.TestEthRpc("eth_sendRawTransaction", rawTransaction);
@@ -774,7 +774,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             ITxSender txSender = Substitute.For<ITxSender>();
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
             txSender.SendTransaction(Arg.Any<Transaction>(), TxHandlingOptions.PersistentBroadcast)
-                .Returns((TestItem.KeccakA, AddTxResult.Added));
+                .Returns((TestItem.KeccakA, AcceptTxResult.Accepted));
 
             ctx._test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
                 .WithBlockchainBridge(bridge).WithTxSender(txSender).Build();
@@ -794,7 +794,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             ITxSender txSender = Substitute.For<ITxSender>();
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
             txSender.SendTransaction(Arg.Any<Transaction>(), TxHandlingOptions.PersistentBroadcast | TxHandlingOptions.ManagedNonce)
-                .Returns((TestItem.KeccakA, AddTxResult.Added));
+                .Returns((TestItem.KeccakA, AcceptTxResult.Accepted));
 
             ctx._test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
                 .WithBlockchainBridge(bridge).WithTxSender(txSender).Build();
@@ -816,7 +816,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             
             string serialized = ctx._test.TestEthRpc("eth_sendTransaction", new EthereumJsonSerializer().Serialize(txForRpc));
 
-            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32010,\"message\":\"InsufficientFunds\"},\"id\":67}", serialized);
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32010,\"message\":\"InsufficientFunds, Account balance: 0, cumulative cost: 31000\"},\"id\":67}", serialized);
         }
 
         public enum AccessListProvided
