@@ -44,13 +44,13 @@ namespace Nethermind.Blockchain
                 BlockHeader parentHeader = _blockTree.Head?.Header;
                 if (parentHeader == null) return AcceptTxResult.Accepted;
 
-                AcceptTxResult acceptTxResult = _txFilter.IsAllowed(tx, parentHeader);
-                if (!acceptTxResult)
+                AcceptTxResult isAllowed = _txFilter.IsAllowed(tx, parentHeader);
+                if (!isAllowed)
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, filtered ({acceptTxResult}).");
+                    if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, filtered ({isAllowed}).");
                 }
                 
-                return acceptTxResult;
+                return isAllowed;
             }
 
             return AcceptTxResult.Accepted;

@@ -15,12 +15,14 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
+
 namespace Nethermind.TxPool
 {
     /// <summary>
     /// Describes potential outcomes of adding transaction to the TX pool.
     /// </summary>
-    public readonly struct AcceptTxResult
+    public readonly struct AcceptTxResult : IEquatable<AcceptTxResult>
     {
         /// <summary>
         /// The transaction has been accepted. This is the only 'success' outcome.
@@ -100,7 +102,7 @@ namespace Nethermind.TxPool
             Message = message;
         }
 
-        public static implicit operator bool(AcceptTxResult result) => result.Id == 0;
+        public static implicit operator bool(AcceptTxResult result) => result.Id == Accepted.Id;
         public AcceptTxResult WithMessage(string message) => new(Id, Code, message);
         public static bool operator ==(AcceptTxResult a, AcceptTxResult b) => a.Equals(b);
         public static bool operator !=(AcceptTxResult a, AcceptTxResult b) => !(a == b);

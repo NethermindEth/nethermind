@@ -200,11 +200,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 Transaction tx = transactions[i];
                 tx.DeliveredBy = Node.Id;
                 tx.Timestamp = _timestamper.UnixTime.Seconds;
-                AcceptTxResult acceptTxResult = _txPool.SubmitTx(tx, TxHandlingOptions.None);
-                _floodController.Report(acceptTxResult);
+                AcceptTxResult accepted = _txPool.SubmitTx(tx, TxHandlingOptions.None);
+                _floodController.Report(accepted);
 
                 if (Logger.IsTrace) Logger.Trace(
-                    $"{Node:c} sent {tx.Hash} tx and it was {acceptTxResult} (chain ID = {tx.Signature?.ChainId})");
+                    $"{Node:c} sent {tx.Hash} tx and it was {accepted} (chain ID = {tx.Signature?.ChainId})");
             }
         }
 

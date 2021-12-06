@@ -158,15 +158,15 @@ namespace Nethermind.Consensus.AuRa
             }
 
             BlockHeader parentHeader = GetParentHeader(args.Block);
-            AcceptTxResult txFilterResult = _txFilter.IsAllowed(args.Transaction, parentHeader);
-            if (!txFilterResult)
+            AcceptTxResult isAllowed = _txFilter.IsAllowed(args.Transaction, parentHeader);
+            if (!isAllowed)
             {
-                txFilterResult = TryRecoverSenderAddress(args.Transaction, parentHeader) ?? txFilterResult;
+                isAllowed = TryRecoverSenderAddress(args.Transaction, parentHeader) ?? isAllowed;
             }
 
-            if (!txFilterResult)
+            if (!isAllowed)
             {
-                args.Set(TxAction.Skip, txFilterResult.ToString());
+                args.Set(TxAction.Skip, isAllowed.ToString());
             }
 
             return args;

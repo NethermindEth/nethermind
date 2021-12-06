@@ -271,11 +271,11 @@ namespace Nethermind.TxPool
             for (int i = 0; i < _filterPipeline.Count; i++)
             {
                 IIncomingTxFilter incomingTxFilter = _filterPipeline[i];
-                AcceptTxResult acceptTxResult = incomingTxFilter.Accept(tx, handlingOptions);
-                if (!acceptTxResult)
+                AcceptTxResult accepted = incomingTxFilter.Accept(tx, handlingOptions);
+                if (!accepted)
                 {
                     Metrics.PendingTransactionsDiscarded++;
-                    return acceptTxResult;
+                    return accepted;
                 }
             }
 
