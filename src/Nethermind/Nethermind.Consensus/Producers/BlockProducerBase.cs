@@ -282,11 +282,11 @@ namespace Nethermind.Consensus.Producers
         protected virtual Block PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
         {
             UInt256 timestamp = UInt256.Max(parent.Timestamp + 1, Timestamper.UnixTime.Seconds);
-            Address blockAuthor = payloadAttributes?.FeeRecipient ?? Sealer.Address;
+            Address blockAuthor = payloadAttributes?.SuggestedFeeRecipient ?? Sealer.Address;
             BlockHeader header = new(
                 parent.Hash!,
                 Keccak.OfAnEmptySequenceRlp,
-                payloadAttributes?.FeeRecipient ?? Sealer.Address,
+                payloadAttributes?.SuggestedFeeRecipient ?? Sealer.Address,
                 UInt256.Zero, 
                 parent.Number + 1,
                 _gasLimitCalculator.GetGasLimit(parent),

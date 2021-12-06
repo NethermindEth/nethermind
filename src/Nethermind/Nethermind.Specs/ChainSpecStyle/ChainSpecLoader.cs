@@ -158,6 +158,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                 Eip1559FeeCollectorTransition = chainSpecJson.Params.Eip1559FeeCollectorTransition,
                 Eip1559BaseFeeMinValueTransition = chainSpecJson.Params.Eip1559BaseFeeMinValueTransition,
                 Eip1559BaseFeeMinValue = chainSpecJson.Params.Eip1559BaseFeeMinValue,
+                MergeForkIdTransition = chainSpecJson.Params.MergeForkIdTransition,
             };
 
             chainSpec.Parameters.Eip152Transition ??= GetTransitionForExpectedPricing("blake2_f", "price.blake2_f.gas_per_round", 1);
@@ -216,6 +217,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             chainSpec.ArrowGlacierBlockNumber = chainSpec.Ethash?.DifficultyBombDelays.Count > 4 ?
                 chainSpec.Ethash?.DifficultyBombDelays.Keys.ToArray()[4]
                 : null;
+            chainSpec.MergeForkIdBlockNumber = chainSpec.Parameters.MergeForkIdTransition;
         }
 
         private static void LoadEngine(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
