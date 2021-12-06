@@ -44,13 +44,14 @@ namespace Nethermind.TxPool.Filters
             int numberOfSenderTxsInPending = _txs.GetBucketCount(tx.SenderAddress);
             bool isTxPoolFull = _txs.IsFull();
             UInt256 currentNonce = _accounts.GetAccount(tx.SenderAddress!).Nonce;
-            bool isTxNonceNextInOrder = tx.Nonce <= (long)currentNonce + numberOfSenderTxsInPending;
+            long nextNonceInOrder = (long)currentNonce + numberOfSenderTxsInPending;
+            bool isTxNonceNextInOrder = tx.Nonce <= nextNonceInOrder;
             if (isTxPoolFull && !isTxNonceNextInOrder)
             {
                 Metrics.PendingTransactionsNonceGap++;
                 if (_logger.IsTrace)
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, nonce in future.");
-                return AcceptTxResult.NonceGap;
+                return AcceptTxResult.NonceGap.WithMessage($"Future nonce. Expected nonce: {nextNonceInOrder}");
             }
 
             return AcceptTxResult.Accepted;

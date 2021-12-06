@@ -93,7 +93,7 @@ namespace Nethermind.TxPool.Filters
             {
                 if (_logger.IsTrace)
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, insufficient funds.");
-                return AcceptTxResult.InsufficientFunds;
+                return AcceptTxResult.InsufficientFunds.WithMessage($"Account balance: {balance}, cumulative cost: {cumulativeCost}");
             }
 
             return AcceptTxResult.Accepted;

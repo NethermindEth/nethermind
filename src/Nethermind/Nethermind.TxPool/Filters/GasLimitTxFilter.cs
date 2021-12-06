@@ -44,7 +44,7 @@ namespace Nethermind.TxPool.Filters
             if (tx.GasLimit > gasLimit)
             {
                 if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, gas limit exceeded.");
-                return AcceptTxResult.GasLimitExceeded;
+                return AcceptTxResult.GasLimitExceeded.WithMessage($"Gas limit: {gasLimit}, gas limit of rejected tx: {tx.GasLimit}");
             }
 
             return AcceptTxResult.Accepted;

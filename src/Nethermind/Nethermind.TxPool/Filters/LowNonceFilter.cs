@@ -46,7 +46,7 @@ namespace Nethermind.TxPool.Filters
             if (tx.Nonce < currentNonce)
             {
                 if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, nonce already used.");
-                return AcceptTxResult.OldNonce;
+                return AcceptTxResult.OldNonce.WithMessage($"Current nonce: {currentNonce}, nonce of rejected tx: {tx.Nonce}");
             }
 
             return AcceptTxResult.Accepted;
