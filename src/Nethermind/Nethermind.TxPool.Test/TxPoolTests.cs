@@ -357,7 +357,7 @@ namespace Nethermind.TxPool.Test
             EnsureSenderBalance(tx.SenderAddress, (UInt256)(15 * tx.GasLimit));
             _txPool.GetPendingTransactions().Length.Should().Be(30);
             AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
-            result.ToString().Should().Be(expected);
+            result.ToString().Should().Contain(expected);
         }
         
         [TestCase(10,0, nameof(AcceptTxResult.FeeTooLow))]
@@ -398,7 +398,7 @@ namespace Nethermind.TxPool.Test
             _txPool.GetPendingTransactions().Length.Should().Be(30);
             AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
             _txPool.GetPendingTransactions().Length.Should().Be(30);
-            result.ToString().Should().Be(expected);
+            result.ToString().Should().Contain(expected);
         }
 
         [TestCase(0)]
