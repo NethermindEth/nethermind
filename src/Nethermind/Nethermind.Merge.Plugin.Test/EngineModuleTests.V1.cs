@@ -66,7 +66,7 @@ namespace Nethermind.Merge.Plugin.Test
             {
                 timestamp = timestamp.ToHexString(true),
                 random = random.ToString(),
-                feeRecipient = feeRecipient.ToString(),
+                suggestedFeeRecipient = feeRecipient.ToString(),
             };
             string?[] parameters =
             {
@@ -83,9 +83,9 @@ namespace Nethermind.Merge.Plugin.Test
             var expectedPayload = new
             {
                 parentHash = startingHead.ToString(),
-                coinbase = feeRecipient.ToString(),
+                feeRecipient = feeRecipient.ToString(),
                 stateRoot = chain.BlockTree.Head!.StateRoot!.ToString(),
-                receiptRoot = chain.BlockTree.Head!.ReceiptsRoot!.ToString(),
+                receiptsRoot = chain.BlockTree.Head!.ReceiptsRoot!.ToString(),
                 logsBloom = Bloom.Empty.Bytes.ToHexString(true),
                 random = random.ToString(),
                 blockNumber = "0x1",

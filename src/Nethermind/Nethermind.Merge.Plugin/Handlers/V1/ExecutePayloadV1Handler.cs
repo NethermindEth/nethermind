@@ -21,6 +21,7 @@ using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -48,6 +49,7 @@ namespace Nethermind.Merge.Plugin.Handlers
         private readonly IBlockchainProcessor _processor;
         private readonly IEthSyncingInfo _ethSyncingInfo;
         private readonly IInitConfig _initConfig;
+        private readonly IMergeConfig _mergeConfig;
         private readonly ILogger _logger;
         private SemaphoreSlim _blockValidationSemaphore;
         private readonly LruCache<Keccak, bool> _latestBlocks = new(50, "LatestBlocks");
@@ -59,6 +61,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             IBlockchainProcessor processor,
             IEthSyncingInfo ethSyncingInfo,
             IInitConfig initConfig,
+            IMergeConfig mergeConfig,
             ILogManager logManager)
         {
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
@@ -66,6 +69,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             _processor = processor;
             _ethSyncingInfo = ethSyncingInfo;
             _initConfig = initConfig;
+            _mergeConfig = mergeConfig;
             _logger = logManager.GetClassLogger();
             _blockValidationSemaphore = new SemaphoreSlim(0);
             _processor.BlockProcessed += (s, e) =>
@@ -95,6 +99,11 @@ namespace Nethermind.Merge.Plugin.Handlers
                 executePayloadResult.EnumStatus = VerificationStatus.Syncing;
                 return ResultWrapper<ExecutePayloadV1Result>.Success(executePayloadResult);
             }
+
+            // if (parentHeader.TotalDifficulty < _mergeConfig.TerminalTotalDifficulty)
+            // {
+            //     ResultWrapper<ExecutePayloadV1Result>.Success(new ExecutePayloadV1Result(request, isValid, parentHeader));
+            // }
             
             ValidationResult result = ValidateRequestAndProcess(request, out Block? processedBlock, parentHeader);
             if ((result & ValidationResult.AlreadyKnown) != 0 || result == ValidationResult.Invalid)
