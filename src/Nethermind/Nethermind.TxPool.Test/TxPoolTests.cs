@@ -228,10 +228,10 @@ namespace Nethermind.TxPool.Test
             txPool.GetPendingTransactions().Length.Should().Be(1);
         }
         
-        [TestCase(false, false, ExpectedResult = "Accepted")]
-        [TestCase(false, true, ExpectedResult = "Accepted")]
-        [TestCase(true, false, ExpectedResult = "Accepted")]
-        [TestCase(true, true, ExpectedResult = "SenderIsContract")]
+        [TestCase(false, false, ExpectedResult = nameof(AcceptTxResult.Accepted))]
+        [TestCase(false, true, ExpectedResult = nameof(AcceptTxResult.Accepted))]
+        [TestCase(true, false, ExpectedResult = nameof(AcceptTxResult.Accepted))]
+        [TestCase(true, true, ExpectedResult = nameof(AcceptTxResult.SenderIsContract))]
         public string should_reject_transactions_with_deployed_code_when_eip3607_enabled(bool eip3607Enabled, bool hasCode)
         {
             ISpecProvider specProvider = new OverridableSpecProvider(new TestSpecProvider(London.Instance), r => new OverridableReleaseSpec(r) {IsEip3607Enabled = eip3607Enabled});
@@ -326,14 +326,14 @@ namespace Nethermind.TxPool.Test
             result.Should().Be(AcceptTxResult.GasLimitExceeded);
         }
 
-        [TestCase(10,0, "FeeTooLow")]
-        [TestCase(10,5, "FeeTooLow")]
-        [TestCase(10,6, "InsufficientFunds")]
-        [TestCase(11,0, "Accepted")]
-        [TestCase(11,4, "Accepted")]
-        [TestCase(11,5, "InsufficientFunds")]
-        [TestCase(15,0, "Accepted")]
-        [TestCase(16,0, "InsufficientFunds")]
+        [TestCase(10,0, nameof(AcceptTxResult.FeeTooLow))]
+        [TestCase(10,5, nameof(AcceptTxResult.FeeTooLow))]
+        [TestCase(10,6, nameof(AcceptTxResult.InsufficientFunds))]
+        [TestCase(11,0, nameof(AcceptTxResult.Accepted))]
+        [TestCase(11,4, nameof(AcceptTxResult.Accepted))]
+        [TestCase(11,5, nameof(AcceptTxResult.InsufficientFunds))]
+        [TestCase(15,0, nameof(AcceptTxResult.Accepted))]
+        [TestCase(16,0, nameof(AcceptTxResult.InsufficientFunds))]
         public void should_handle_adding_tx_to_full_txPool_properly(int gasPrice, int value, string expected)
         {
             _txPool = CreatePool(new TxPoolConfig() {Size = 30});
@@ -360,15 +360,15 @@ namespace Nethermind.TxPool.Test
             result.ToString().Should().Be(expected);
         }
         
-        [TestCase(10,0, "FeeTooLow")]
-        [TestCase(11,0, "Accepted")]
-        [TestCase(11,4, "Accepted")]
-        [TestCase(11,5, "FeeTooLow")]
-        [TestCase(11,15, "FeeTooLow")]
-        [TestCase(11,16, "InsufficientFunds")]
-        [TestCase(50,0, "Invalid")]
-        [TestCase(50,15, "Invalid")]
-        [TestCase(50,16, "Invalid")]
+        [TestCase(10,0, nameof(AcceptTxResult.FeeTooLow))]
+        [TestCase(11,0, nameof(AcceptTxResult.Accepted))]
+        [TestCase(11,4, nameof(AcceptTxResult.Accepted))]
+        [TestCase(11,5, nameof(AcceptTxResult.FeeTooLow))]
+        [TestCase(11,15, nameof(AcceptTxResult.FeeTooLow))]
+        [TestCase(11,16, nameof(AcceptTxResult.InsufficientFunds))]
+        [TestCase(50,0, nameof(AcceptTxResult.Invalid))]
+        [TestCase(50,15, nameof(AcceptTxResult.Invalid))]
+        [TestCase(50,16, nameof(AcceptTxResult.Invalid))]
         public void should_handle_adding_1559_tx_to_full_txPool_properly(int gasPremium, int value, string expected)
         {
             var specProvider = Substitute.For<ISpecProvider>();
