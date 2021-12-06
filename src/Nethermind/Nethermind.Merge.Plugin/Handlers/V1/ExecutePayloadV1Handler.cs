@@ -100,10 +100,10 @@ namespace Nethermind.Merge.Plugin.Handlers
                 return ResultWrapper<ExecutePayloadV1Result>.Success(executePayloadResult);
             }
 
-            // if (parentHeader.TotalDifficulty < _mergeConfig.TerminalTotalDifficulty)
-            // {
-            //     ResultWrapper<ExecutePayloadV1Result>.Success(new ExecutePayloadV1Result(request, isValid, parentHeader));
-            // }
+            if (parentHeader.TotalDifficulty < _mergeConfig.TerminalTotalDifficulty)
+            {
+                ResultWrapper<ExecutePayloadV1Result>.Fail($"Invalid total difficulty: {parentHeader.TotalDifficulty} for block header: {parentHeader}", MergeErrorCodes.InvalidTerminalBlock);
+            }
             
             ValidationResult result = ValidateRequestAndProcess(request, out Block? processedBlock, parentHeader);
             if ((result & ValidationResult.AlreadyKnown) != 0 || result == ValidationResult.Invalid)

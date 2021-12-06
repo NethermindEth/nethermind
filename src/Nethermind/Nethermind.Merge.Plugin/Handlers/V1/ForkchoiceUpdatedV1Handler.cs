@@ -47,6 +47,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         private readonly IEthSyncingInfo _ethSyncingInfo;
         private readonly IBlockConfirmationManager _blockConfirmationManager;
         private readonly IPayloadService _payloadService;
+        private readonly IMergeConfig _mergeConfig;
         private readonly ILogger _logger;
 
         public ForkchoiceUpdatedV1Handler(
@@ -57,6 +58,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             IEthSyncingInfo ethSyncingInfo,
             IBlockConfirmationManager blockConfirmationManager,
             IPayloadService payloadService,
+            IMergeConfig mergeConfig,
             ILogManager logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -66,6 +68,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             _ethSyncingInfo = ethSyncingInfo ?? throw new ArgumentNullException(nameof(ethSyncingInfo));
             _blockConfirmationManager = blockConfirmationManager ?? throw new ArgumentNullException(nameof(blockConfirmationManager));
             _payloadService = payloadService;
+            _mergeConfig = mergeConfig;
             _logger = logManager.GetClassLogger();
         }
 
@@ -77,6 +80,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             //     return ResultWrapper<ForkchoiceUpdatedV1Result>.Success(new ForkchoiceUpdatedV1Result() { Status = EngineStatus.Syncing});
             // }
             
+
             (BlockHeader? finalizedHeader, string? finalizationErrorMsg) = EnsureHeaderForFinalization(forkchoiceState.FinalizedBlockHash);
             if (finalizationErrorMsg != null)
                 return ReturnSyncing();
@@ -89,6 +93,11 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             if (setHeadErrorMsg != null)
                 return ReturnSyncing();
  
+            if (newHeadBlock!.Header.TotalDifficulty < _mergeConfig.TerminalTotalDifficulty)
+            {
+                ResultWrapper<ExecutePayloadV1Result>.Fail($"Invalid total difficulty: {newHeadBlock.Header.TotalDifficulty} for block header: {newHeadBlock!.Header}", MergeErrorCodes.InvalidTerminalBlock);
+            }
+
             if (ShouldFinalize(forkchoiceState.FinalizedBlockHash))
                 _manualBlockFinalizationManager.MarkFinalized(newHeadBlock!.Header, finalizedHeader!);
             else if (_manualBlockFinalizationManager.LastFinalizedHash != Keccak.Zero)
