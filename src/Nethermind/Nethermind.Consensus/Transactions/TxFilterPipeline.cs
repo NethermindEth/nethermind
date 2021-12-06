@@ -50,7 +50,7 @@ namespace Nethermind.Consensus.Transactions
             foreach (ITxFilter filter in _filters)
             {
                 AcceptTxResult result = filter.IsAllowed(tx, parentHeader);
-                if (!result.Equals(AcceptTxResult.Accepted))
+                if (!result)
                 {
                     if (_logger.IsDebug) _logger.Debug($"Rejected tx ({result.ToString()}) {tx.ToShortString()}");
                     return false;

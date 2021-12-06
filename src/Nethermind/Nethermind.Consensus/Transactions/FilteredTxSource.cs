@@ -44,7 +44,7 @@ namespace Nethermind.Consensus.Transactions
                 if (tx is T)
                 {
                     AcceptTxResult acceptTxResult= _txFilter.IsAllowed(tx, parent);
-                    if (acceptTxResult.Equals(AcceptTxResult.Accepted))
+                    if (acceptTxResult)
                     {
                         if (_logger.IsTrace) _logger.Trace($"Selected {tx.ToShortString()} to be included in block.");
                         yield return tx;

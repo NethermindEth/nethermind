@@ -159,12 +159,12 @@ namespace Nethermind.Consensus.AuRa
 
             BlockHeader parentHeader = GetParentHeader(args.Block);
             AcceptTxResult txFilterResult = _txFilter.IsAllowed(args.Transaction, parentHeader);
-            if (!txFilterResult.Equals(AcceptTxResult.Accepted))
+            if (!txFilterResult)
             {
                 txFilterResult = TryRecoverSenderAddress(args.Transaction, parentHeader) ?? txFilterResult;
             }
 
-            if (!txFilterResult.Equals(AcceptTxResult.Accepted))
+            if (!txFilterResult)
             {
                 args.Set(TxAction.Skip, txFilterResult.ToString());
             }

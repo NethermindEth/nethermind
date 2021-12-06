@@ -100,6 +100,7 @@ namespace Nethermind.TxPool
             Message = message;
         }
 
+        public static implicit operator bool(AcceptTxResult result) => result.Id == 0;
         public AcceptTxResult WithMessage(string message) => new(Id, Code, message);
         public override bool Equals(object? obj) => Equals(obj is AcceptTxResult ? (AcceptTxResult)obj : default);
         public bool Equals(AcceptTxResult acceptTxResult) => Id.Equals(acceptTxResult.Id);

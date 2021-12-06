@@ -36,7 +36,7 @@ namespace Nethermind.Consensus.Transactions
             for (int i = 0; i < _txFilters.Length; i++)
             {
                 AcceptTxResult result = _txFilters[i].IsAllowed(tx, parentHeader);
-                if (!result.Equals(AcceptTxResult.Accepted))
+                if (!result)
                 {
                     return result;
                 }

@@ -272,7 +272,7 @@ namespace Nethermind.TxPool
             {
                 IIncomingTxFilter incomingTxFilter = _filterPipeline[i];
                 AcceptTxResult acceptTxResult = incomingTxFilter.Accept(tx, handlingOptions);
-                if (!acceptTxResult.Equals(AcceptTxResult.Accepted))
+                if (!acceptTxResult)
                 {
                     Metrics.PendingTransactionsDiscarded++;
                     return acceptTxResult;
