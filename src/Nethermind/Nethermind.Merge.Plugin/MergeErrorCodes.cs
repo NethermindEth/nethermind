@@ -29,5 +29,7 @@ namespace Nethermind.Merge.Plugin
         public const int UnavailablePayload = 5;
 
         public const int UnavailablePayloadV1 = -32001;
+
+        public const int InvalidTerminalBlock = -32002;
     }
 }
