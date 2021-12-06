@@ -114,5 +114,7 @@ namespace Nethermind.Specs.ChainSpecStyle
         /// Optional, minimal value of EIP1559 base fee
         /// </summary>
         public UInt256? Eip1559BaseFeeMinValue { get; set; }
+        
+        public long? MergeForkIdTransition { get; set; }
     }
 }
