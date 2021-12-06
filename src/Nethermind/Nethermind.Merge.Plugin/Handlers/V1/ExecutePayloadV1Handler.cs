@@ -105,16 +105,16 @@ namespace Nethermind.Merge.Plugin.Handlers
                 ResultWrapper<ExecutePayloadV1Result>.Fail($"Invalid total difficulty: {parentHeader.TotalDifficulty} for block header: {parentHeader}", MergeErrorCodes.InvalidTerminalBlock);
             }
             
-            ValidationResult result = ValidateRequestAndProcess(request, out Block? processedBlock, parentHeader);
-            if ((result & ValidationResult.AlreadyKnown) != 0 || result == ValidationResult.Invalid)
+            (ValidationResult ValidationResult, string? Message) result = ValidateRequestAndProcess(request, out Block? processedBlock, parentHeader);
+            if ((result.ValidationResult & ValidationResult.AlreadyKnown) != 0 || result.ValidationResult == ValidationResult.Invalid)
             {
-                bool isValid = (result & ValidationResult.Valid) !=   0;
-                return ResultWrapper<ExecutePayloadV1Result>.Success(BuildExecutePayloadResult(request, isValid, parentHeader));
+                bool isValid = (result.ValidationResult & ValidationResult.Valid) !=   0;
+                return ResultWrapper<ExecutePayloadV1Result>.Success(BuildExecutePayloadResult(request, isValid, parentHeader, result.Message));
             }
 
             if (processedBlock == null)
             {
-                return ResultWrapper<ExecutePayloadV1Result>.Success(BuildExecutePayloadResult(request, false, parentHeader));
+                return ResultWrapper<ExecutePayloadV1Result>.Success(BuildExecutePayloadResult(request, false, parentHeader, $"Processed block is null, request {request}"));
             }
 
             processedBlock.Header.IsPostMerge = true;
@@ -125,8 +125,9 @@ namespace Nethermind.Merge.Plugin.Handlers
             return ResultWrapper<ExecutePayloadV1Result>.Success(executePayloadResult);
         }
 
-        private ValidationResult ValidateRequestAndProcess(BlockRequestResult request, out Block? processedBlock, BlockHeader parent)
+        private (ValidationResult ValidationResult, string? Message) ValidateRequestAndProcess(BlockRequestResult request, out Block? processedBlock, BlockHeader parent)
         {
+            string? validationMessage = null;
             processedBlock = null;
 
             if (request.TryGetBlock(out Block? block) && block != null)
@@ -134,9 +135,14 @@ namespace Nethermind.Merge.Plugin.Handlers
                 bool isRecentBlock = _latestBlocks.TryGet(request.BlockHash, out bool isValid);
                 if (isRecentBlock)
                 {
-                    if (isValid == false && _logger.IsWarn) _logger.Warn($"Invalid block {block} sent from latestBlock cache");
-                    return ValidationResult.AlreadyKnown |
-                           (isValid ? ValidationResult.Valid : ValidationResult.Invalid);
+                    if (isValid == false && _logger.IsWarn)
+                    {
+                        validationMessage = $"Invalid block {block} sent from latestBlock cache";
+                        _logger.Warn(validationMessage);
+                    }
+                    
+                    return (ValidationResult.AlreadyKnown |
+                           (isValid ? ValidationResult.Valid : ValidationResult.Invalid), validationMessage);
                 }
                 else
                 {
@@ -144,13 +150,13 @@ namespace Nethermind.Merge.Plugin.Handlers
 
                     if (processedBlock != null)
                     {
-                        return ValidationResult.Valid | ValidationResult.AlreadyKnown;
+                        return (ValidationResult.Valid | ValidationResult.AlreadyKnown, validationMessage);
                     }
 
                     bool validAndProcessed = ValidateAndProcess(block, parent!, out processedBlock);
 
                     _latestBlocks.Set(request.BlockHash, validAndProcessed);
-                    return validAndProcessed ? ValidationResult.Valid : ValidationResult.Invalid;
+                    return (validAndProcessed ? ValidationResult.Valid : ValidationResult.Invalid, validationMessage);
                 }
             }
             else
@@ -159,7 +165,7 @@ namespace Nethermind.Merge.Plugin.Handlers
                     _logger.Warn($"Block {request} could not be parsed as block and wont be accepted to the tree.");
             }
 
-            return ValidationResult.Invalid;
+            return (ValidationResult.Invalid, validationMessage);
         }
         
         private bool ValidateAndProcess(Block block, BlockHeader parent, out Block? processedBlock)
@@ -211,7 +217,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             return options;
         }
 
-        private ExecutePayloadV1Result BuildExecutePayloadResult(BlockRequestResult request, bool isValid, BlockHeader? parent)
+        private ExecutePayloadV1Result BuildExecutePayloadResult(BlockRequestResult request, bool isValid, BlockHeader? parent, string? validationMessage)
         {
             ExecutePayloadV1Result executePayloadResult = new();
             if (isValid)
@@ -221,6 +227,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             }
             else
             {
+                executePayloadResult.ValidationError = validationMessage;
                 executePayloadResult.EnumStatus = VerificationStatus.Invalid;
                 if (_lastValidHashes.ContainsKey(request.ParentHash))
                 {
