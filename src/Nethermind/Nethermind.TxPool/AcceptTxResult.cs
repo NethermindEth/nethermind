@@ -102,10 +102,10 @@ namespace Nethermind.TxPool
 
         public static implicit operator bool(AcceptTxResult result) => result.Id == 0;
         public AcceptTxResult WithMessage(string message) => new(Id, Code, message);
-        public static bool operator ==(AcceptTxResult obj1, AcceptTxResult obj2) => obj1.Id == obj2.Id;
-        public static bool operator !=(AcceptTxResult obj1, AcceptTxResult obj2) => !(obj1 == obj2);
-        public override bool Equals(object? obj) => obj is AcceptTxResult && Equals(obj);
-        public bool Equals(AcceptTxResult acceptTxResult) => Id.Equals(acceptTxResult.Id);
+        public static bool operator ==(AcceptTxResult a, AcceptTxResult b) => a.Equals(b);
+        public static bool operator !=(AcceptTxResult a, AcceptTxResult b) => !(a == b);
+        public override bool Equals(object? obj) => Equals((AcceptTxResult)obj);
+        public bool Equals(AcceptTxResult result) => Id == result.Id;
         public override int GetHashCode() => Id.GetHashCode();
         public override string ToString() => Message is null ? $"{Code}" : $"{Code}, {Message}";
     }
