@@ -112,7 +112,7 @@ namespace Nethermind.Baseline.Test
                 ecdsa.Sign(key, transaction, true);
                 transaction.Hash = transaction.CalculateHash();
                 AcceptTxResult result = testRpc.TxPool.SubmitTx(transaction, TxHandlingOptions.None);
-                if (!result.Equals(AcceptTxResult.Accepted))
+                if (!result)
                 {
                     throw new Exception("failed to add " + result);
                 }
