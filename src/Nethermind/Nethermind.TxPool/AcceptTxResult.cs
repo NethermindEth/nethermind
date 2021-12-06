@@ -101,7 +101,9 @@ namespace Nethermind.TxPool
         }
 
         public AcceptTxResult WithMessage(string message) => new(Id, Code, message);
+        public override bool Equals(object? obj) => Equals(obj is AcceptTxResult ? (AcceptTxResult)obj : default);
         public bool Equals(AcceptTxResult acceptTxResult) => Id.Equals(acceptTxResult.Id);
+        public override int GetHashCode() => Id.GetHashCode();
         public override string ToString() => Message is null ? $"{Code}" : $"{Code}, {Message}";
     }
 }
