@@ -47,7 +47,7 @@ namespace Nethermind.TxPool
                 
                 result = _txPool.SubmitTx(tx, txHandlingOptions);
 
-                if (!result.Equals(AcceptTxResult.OwnNonceAlreadyUsed) && !result.Equals(AcceptTxResult.AlreadyKnown)
+                if (result != AcceptTxResult.OwnNonceAlreadyUsed && result != AcceptTxResult.AlreadyKnown
                     || (txHandlingOptions & TxHandlingOptions.ManagedNonce) != TxHandlingOptions.ManagedNonce)
                 {
                     break;
