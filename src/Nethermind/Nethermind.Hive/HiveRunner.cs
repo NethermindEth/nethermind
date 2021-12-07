@@ -227,7 +227,8 @@ namespace Nethermind.Hive
                     return;
                 }
 
-                await WaitAsync(_resetEvent, 30);
+                const int timeoutInSeconds = 30;
+                await WaitAsync(_resetEvent, timeoutInSeconds);
                 if (_logger.IsInfo)
                     _logger.Info(
                         $"HIVE suggested {block.ToString(Block.Format.Short)}, now best suggested header {_blockTree.BestSuggestedHeader}, head {_blockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}");
