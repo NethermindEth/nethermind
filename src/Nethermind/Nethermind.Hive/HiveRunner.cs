@@ -66,21 +66,21 @@ namespace Nethermind.Hive
         public async Task Start(CancellationToken cancellationToken)
         {
             if (_logger.IsInfo) _logger.Info("HIVE initialization started");
-            _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
+            _blockTree.BlockAddedToMain += BlockTreeOnBlockAddedToMain;
             IHiveConfig hiveConfig = _configurationProvider.GetConfig<IHiveConfig>();
 
             ListEnvironmentVariables();
             await InitializeBlocks(hiveConfig.BlocksDir, cancellationToken);
             await InitializeChain(hiveConfig.ChainFile);
 
-            _blockTree.NewHeadBlock -= BlockTreeOnNewHeadBlock;
+            _blockTree.BlockAddedToMain -= BlockTreeOnBlockAddedToMain;
 
             if (_logger.IsInfo) _logger.Info("HIVE initialization completed");
         }
 
-        private void BlockTreeOnNewHeadBlock(object? sender, BlockEventArgs e)
+        private void BlockTreeOnBlockAddedToMain(object? sender, BlockEventArgs e)
         {
-            _logger.Info($"HIVE new head block {e.Block.ToString(Block.Format.Short)}");
+            _logger.Info($"HIVE new added block {e.Block.ToString(Block.Format.Short)}");
             _resetEvent.Release(1);
         }
 
