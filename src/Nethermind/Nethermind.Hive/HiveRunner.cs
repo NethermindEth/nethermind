@@ -193,7 +193,7 @@ namespace Nethermind.Hive
 
         private async Task WaitForBlockProcessing(SemaphoreSlim semaphore)
         {
-            const int timeoutInSeconds = 10;
+            const int timeoutInSeconds = 1;
 
             if (!await semaphore.WaitAsync(TimeSpan.FromSeconds(timeoutInSeconds)))
             {
