@@ -193,7 +193,7 @@ namespace Nethermind.Hive
 
         private async Task WaitAsync(SemaphoreSlim semaphore, int timeoutInSeconds)
         {
-            if (!await semaphore.WaitAsync(TimeSpan.FromSeconds(30)))
+            if (!await semaphore.WaitAsync(TimeSpan.FromSeconds(timeoutInSeconds)))
             {
                 throw new TimeoutException($"Waited {timeoutInSeconds}s for adding suggested block to main, without success.");
             }
