@@ -191,11 +191,13 @@ namespace Nethermind.Hive
             return Rlp.Decode<Block>(blockRlp);
         }
 
-        private async Task WaitAsync(SemaphoreSlim semaphore, int timeoutInSeconds)
+        private async Task WaitForBlockProcessing(SemaphoreSlim semaphore)
         {
+            const int timeoutInSeconds = 10;
+
             if (!await semaphore.WaitAsync(TimeSpan.FromSeconds(timeoutInSeconds)))
             {
-                throw new TimeoutException($"Waited {timeoutInSeconds}s for adding suggested block to main, without success.");
+                if(_logger.IsInfo) _logger.Info($"Waited {timeoutInSeconds}s for adding suggested block to main, without success. Skipping.");
             }
         }
 
@@ -226,16 +228,16 @@ namespace Nethermind.Hive
                     if (_logger.IsError) _logger.Error($"Failed to process block {block}", ex);
                     return;
                 }
-
-                const int timeoutInSeconds = 30;
-                await WaitAsync(_resetEvent, timeoutInSeconds);
+                
                 if (_logger.IsInfo)
                     _logger.Info(
                         $"HIVE suggested {block.ToString(Block.Format.Short)}, now best suggested header {_blockTree.BestSuggestedHeader}, head {_blockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}");
+                
+                await WaitForBlockProcessing(_resetEvent);
             }
             catch (Exception e)
             {
-                _logger.Error($"HIVE Invalid block: {block.Hash}, ignoring", e);
+                _logger.Error($"HIVE Invalid block: {block.Hash}, ignoring. ", e);
                 _resetEvent.Release(1);
             }
         }
