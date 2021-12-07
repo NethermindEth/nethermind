@@ -170,7 +170,7 @@ namespace Nethermind.Merge.Plugin.Test
             expected.GasLimit = 4000000L;
             expected.BlockHash = new Keccak("0x3ee80ba456bac700bfaf5b2827270406134e2392eb03ec50f6c23de28dd08811");
             expected.LogsBloom = Bloom.Empty;
-            expected.FeeRecipient = feeRecipient;
+            expected.Coinbase = feeRecipient;
             expected.BlockNumber = 1;
             expected.Random = random;
             expected.ParentHash = startingHead;
@@ -326,7 +326,7 @@ namespace Nethermind.Merge.Plugin.Test
             get
             {
                 yield return GetNewBlockRequestBadDataTestCase(r => r.BlockHash, TestItem.KeccakA);
-                yield return GetNewBlockRequestBadDataTestCase(r => r.ReceiptsRoot, TestItem.KeccakD);
+                yield return GetNewBlockRequestBadDataTestCase(r => r.ReceiptRoot, TestItem.KeccakD);
                 yield return GetNewBlockRequestBadDataTestCase(r => r.StateRoot, TestItem.KeccakD);
 
                 Bloom bloom = new();
@@ -680,7 +680,7 @@ namespace Nethermind.Merge.Plugin.Test
                 newBlockRequest.GasUsed = GasCostOf.Transaction * count;
                 newBlockRequest.StateRoot =
                     new Keccak("0x3d2e3ced6da0d1e94e65894dc091190480f045647610ef614e1cab4241ca66e0");
-                newBlockRequest.ReceiptsRoot =
+                newBlockRequest.ReceiptRoot =
                     new Keccak("0xc538d36ed1acf6c28187110a2de3e5df707d6d38982f436eb0db7a623f9dc2cd");
                 TryCalculateHash(newBlockRequest, out Keccak? hash);
                 newBlockRequest.BlockHash = hash;
@@ -722,7 +722,7 @@ namespace Nethermind.Merge.Plugin.Test
                 newBlockRequest.GasUsed = GasCostOf.Transaction * count;
                 newBlockRequest.StateRoot =
                     new Keccak("0x3d2e3ced6da0d1e94e65894dc091190480f045647610ef614e1cab4241ca66e0");
-                newBlockRequest.ReceiptsRoot =
+                newBlockRequest.ReceiptRoot =
                     new Keccak("0xc538d36ed1acf6c28187110a2de3e5df707d6d38982f436eb0db7a623f9dc2cd");
                 TryCalculateHash(newBlockRequest, out var hash);
                 newBlockRequest.BlockHash = hash;

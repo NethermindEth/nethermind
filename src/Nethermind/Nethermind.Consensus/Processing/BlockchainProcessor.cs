@@ -467,6 +467,9 @@ namespace Nethermind.Consensus.Processing
 
             bool notFoundTheBranchingPointYet;
             bool notReachedTheReorgBoundary;
+            
+            // ToDo 
+            bool ethereumMerge = (options & ProcessingOptions.EthereumMerge) != 0;
             Block toBeProcessed = suggestedBlock;
             do
             {
@@ -494,6 +497,9 @@ namespace Nethermind.Consensus.Processing
                     break;
                 }
 
+                if (toBeProcessed.IsPostMerge)
+                    break;
+
                 bool headIsGenesis = _blockTree.Head?.IsGenesis ?? false;
                 bool toBeProcessedIsNotBlockOne = toBeProcessed.Number > 1;
                 bool isFastSyncTransition = headIsGenesis && toBeProcessedIsNotBlockOne;
@@ -513,6 +519,8 @@ namespace Nethermind.Consensus.Processing
                 {
                     break;
                 }
+
+
                 // TODO: there is no test for the second condition
                 // generally if we finish fast sync at block, e.g. 8 and then have 6 blocks processed and close Neth
                 // then on restart we would find 14 as the branch head (since 14 is on the main chain)
@@ -520,7 +528,7 @@ namespace Nethermind.Consensus.Processing
                 // otherwise some nodes would be missing
                 notFoundTheBranchingPointYet = !_blockTree.IsMainChain(branchingPoint.Hash);
                 notReachedTheReorgBoundary = branchingPoint.Number > (_blockTree.Head?.Header.Number ?? 0);
-            } while (notFoundTheBranchingPointYet || notReachedTheReorgBoundary);
+            } while (!ethereumMerge && (notFoundTheBranchingPointYet || notReachedTheReorgBoundary));
 
             if (branchingPoint != null && branchingPoint.Hash != _blockTree.Head?.Hash)
             {

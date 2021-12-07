@@ -41,12 +41,12 @@ namespace Nethermind.Merge.Plugin.Data
         {
             BlockHash = block.Hash!;
             ParentHash = block.ParentHash!;
-            FeeRecipient = block.Beneficiary;
+            Coinbase = block.Beneficiary;
             StateRoot = block.StateRoot!;
             BlockNumber = block.Number;
             GasLimit = block.GasLimit;
             GasUsed = block.GasUsed;
-            ReceiptsRoot = block.ReceiptsRoot!;
+            ReceiptRoot = block.ReceiptsRoot!;
             LogsBloom = block.Bloom!;
             Random = block.MixHash ?? Keccak.Zero;
             SetTransactions(block.Transactions);
@@ -59,10 +59,10 @@ namespace Nethermind.Merge.Plugin.Data
         {
             try
             {
-                BlockHeader header = new(ParentHash, Keccak.OfAnEmptySequenceRlp, FeeRecipient, UInt256.Zero, BlockNumber, GasLimit, Timestamp, ExtraData)
+                BlockHeader header = new(ParentHash, Keccak.OfAnEmptySequenceRlp, Coinbase, UInt256.Zero, BlockNumber, GasLimit, Timestamp, ExtraData)
                 {
                     Hash = BlockHash,
-                    ReceiptsRoot = ReceiptsRoot,
+                    ReceiptsRoot = ReceiptRoot,
                     StateRoot = StateRoot,
                     Bloom = LogsBloom,
                     GasUsed = GasUsed,
@@ -84,9 +84,9 @@ namespace Nethermind.Merge.Plugin.Data
         }
         
         public Keccak ParentHash { get; set; } = null!;
-        public Address? FeeRecipient { get; set; }
+        public Address? Coinbase { get; set; }
         public Keccak StateRoot { get; set; } = null!;
-        public Keccak ReceiptsRoot { get; set; } = null!;
+        public Keccak ReceiptRoot { get; set; } = null!;
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public Bloom LogsBloom { get; set; } = Bloom.Empty;
         public Keccak Random { get; set; } = Keccak.Zero;
