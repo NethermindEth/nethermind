@@ -133,34 +133,21 @@ namespace Nethermind.Hive
             if (_logger.IsInfo) _logger.Info($"HIVE Loading blocks from {blocksDir}");
 
             string[] files = Directory.GetFiles(blocksDir).OrderBy(x => x).ToArray();
-            _logger.Info($"qwerty123: loaded {files.Length} files");
-            
-            var blocks = files.Select(x => new {File = x, Block = DecodeBlock(x)})
-                .OrderBy(x => x.File)
-                .ThenBy(x => x.Block.Header.Number)
-                .ToArray();
+            if (_logger.IsInfo) _logger.Info($"Loaded {files.Length} files with blocks to process.");
 
-            _logger.Info($"qwerty123: there is {blocks.Length} blocks to be processed");
-
-
-
-            foreach (var block in blocks)
-            {
-                _logger.Info($"qwerty123: order of blocks. file: {block.File}, blockNumber: {block.Block.Number}, blockHash: {block.Block.Hash}");
-            }            
-            
-            
-            foreach (var block in blocks)
+            foreach (var file in files)
             {
                 if (cancellationToken.IsCancellationRequested)
                 {
                     break;
                 }
 
+                Block block = DecodeBlock(file);
+
                 if (_logger.IsInfo)
                     _logger.Info(
-                        $"HIVE Processing block file: {block.File} - {block.Block.ToString(Block.Format.Short)}");
-                await ProcessBlock(block.Block);
+                        $"HIVE Processing block file: {file} - {block.ToString(Block.Format.Short)}");
+                await ProcessBlock(block);
             }
         }
 
@@ -204,11 +191,11 @@ namespace Nethermind.Hive
             return Rlp.Decode<Block>(blockRlp);
         }
 
-        private async Task WaitAsync(SemaphoreSlim semaphore, string error)
+        private async Task WaitAsync(SemaphoreSlim semaphore, int timeoutInSeconds)
         {
             if (!await semaphore.WaitAsync(TimeSpan.FromSeconds(30)))
             {
-                throw new InvalidOperationException(error);
+                throw new TimeoutException($"Waited {timeoutInSeconds}s for adding suggested block to main, without success.");
             }
         }
 
@@ -240,7 +227,7 @@ namespace Nethermind.Hive
                     return;
                 }
 
-                await WaitAsync(_resetEvent, "timeout: waiting 30s for adding suggested block to main");
+                await WaitAsync(_resetEvent, 30);
                 if (_logger.IsInfo)
                     _logger.Info(
                         $"HIVE suggested {block.ToString(Block.Format.Short)}, now best suggested header {_blockTree.BestSuggestedHeader}, head {_blockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}");
