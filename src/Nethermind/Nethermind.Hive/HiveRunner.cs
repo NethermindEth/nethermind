@@ -135,9 +135,7 @@ namespace Nethermind.Hive
             string[] files = Directory.GetFiles(blocksDir).OrderBy(x => x).ToArray();
             _logger.Info($"qwerty123: loaded {files.Length} files");
             
-            var blocks = files.Select(x => new {File = x, Block = DecodeBlock(x)})
-                .OrderBy(x => x.File)
-                .ThenBy(x => x.Block.Header.Number)
+            var blocks = files.Select(x => new {File = x, Block = DecodeBlock(x)}).OrderBy(x => x.Block.Header.Number)
                 .ToArray();
 
             _logger.Info($"qwerty123: there is {blocks.Length} blocks to be processed");
