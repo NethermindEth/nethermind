@@ -66,7 +66,7 @@ namespace Nethermind.Merge.Plugin.Test
             expected.GasLimit = 4000000L;
             expected.BlockHash = new Keccak("0xa904357ed3b8d871d45203be32031799bcaf573d13e36edd223d1f0e58963053");
             expected.LogsBloom = Bloom.Empty;
-            expected.FeeRecipient = chain.SealEngine.Address;
+            expected.Coinbase = chain.SealEngine.Address;
             expected.BlockNumber = 1;
             expected.Random = random;
             expected.ParentHash = startingHead;
@@ -182,7 +182,7 @@ namespace Nethermind.Merge.Plugin.Test
             {
                 yield return GetNewBlockRequestBadDataTestCase(r => r.BlockHash, TestItem.KeccakA);
                 yield return GetNewBlockRequestBadDataTestCase(r => r.ParentHash, TestItem.KeccakD);
-                yield return GetNewBlockRequestBadDataTestCase(r => r.ReceiptsRoot, TestItem.KeccakD);
+                yield return GetNewBlockRequestBadDataTestCase(r => r.ReceiptRoot, TestItem.KeccakD);
                 yield return GetNewBlockRequestBadDataTestCase(r => r.StateRoot, TestItem.KeccakD);
 
                 Bloom bloom = new();
@@ -565,7 +565,7 @@ namespace Nethermind.Merge.Plugin.Test
                 newBlockRequest.GasUsed = GasCostOf.Transaction * count;
                 newBlockRequest.StateRoot =
                     new Keccak("0x3d2e3ced6da0d1e94e65894dc091190480f045647610ef614e1cab4241ca66e0");
-                newBlockRequest.ReceiptsRoot =
+                newBlockRequest.ReceiptRoot =
                     new Keccak("0xc538d36ed1acf6c28187110a2de3e5df707d6d38982f436eb0db7a623f9dc2cd");
                 TryCalculateHash(newBlockRequest, out Keccak? hash);
                 newBlockRequest.BlockHash = hash;
@@ -609,7 +609,7 @@ namespace Nethermind.Merge.Plugin.Test
                 newBlockRequest.GasUsed = GasCostOf.Transaction * count;
                 newBlockRequest.StateRoot =
                     new Keccak("0x3d2e3ced6da0d1e94e65894dc091190480f045647610ef614e1cab4241ca66e0");
-                newBlockRequest.ReceiptsRoot =
+                newBlockRequest.ReceiptRoot =
                     new Keccak("0xc538d36ed1acf6c28187110a2de3e5df707d6d38982f436eb0db7a623f9dc2cd");
                 TryCalculateHash(newBlockRequest, out var hash);
                 newBlockRequest.BlockHash = hash;
@@ -741,7 +741,7 @@ namespace Nethermind.Merge.Plugin.Test
             if (head == null) throw new NotSupportedException();
             return new BlockRequestResult()
             {
-                BlockNumber = 0, BlockHash = head.Hash!, StateRoot = head.StateRoot!, ReceiptsRoot = head.ReceiptsRoot!, GasLimit = head.GasLimit
+                BlockNumber = 0, BlockHash = head.Hash!, StateRoot = head.StateRoot!, ReceiptRoot = head.ReceiptsRoot!, GasLimit = head.GasLimit
             };
         }
 
@@ -750,12 +750,12 @@ namespace Nethermind.Merge.Plugin.Test
             BlockRequestResult blockRequest = new()
             {
                 ParentHash = parent.BlockHash,
-                FeeRecipient = miner,
+                Coinbase = miner,
                 StateRoot = parent.StateRoot,
                 BlockNumber = parent.BlockNumber + 1,
                 GasLimit = parent.GasLimit,
                 GasUsed = 0,
-                ReceiptsRoot = Keccak.EmptyTreeHash,
+                ReceiptRoot = Keccak.EmptyTreeHash,
                 LogsBloom = Bloom.Empty
             };
 
