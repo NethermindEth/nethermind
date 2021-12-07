@@ -154,7 +154,7 @@ namespace Nethermind.Blockchain
                 }
                 else
                 {
-                    result = header.TotalDifficulty >= (Head?.TotalDifficulty ?? 0)
+                    result = header.TotalDifficulty > (Head?.TotalDifficulty ?? 0)
                              // so above is better and more correct but creates an impression of the node staying behind on stats page
                              // so we are okay to process slightly more
                              // and below is less correct but potentially reporting well

@@ -204,7 +204,7 @@ namespace Nethermind.Hive
 
         private async Task WaitAsync(SemaphoreSlim semaphore, string error)
         {
-            if (!await semaphore.WaitAsync(-1))
+            if (!await semaphore.WaitAsync(TimeSpan.FromSeconds(30)))
             {
                 throw new InvalidOperationException(error);
             }
@@ -238,7 +238,7 @@ namespace Nethermind.Hive
                     return;
                 }
 
-                await WaitAsync(_resetEvent, string.Empty);
+                await WaitAsync(_resetEvent, "timeout: waiting 30s for adding suggested block to main");
                 if (_logger.IsInfo)
                     _logger.Info(
                         $"HIVE suggested {block.ToString(Block.Format.Short)}, now best suggested header {_blockTree.BestSuggestedHeader}, head {_blockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}");
