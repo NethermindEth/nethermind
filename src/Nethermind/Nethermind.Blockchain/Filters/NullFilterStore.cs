@@ -33,7 +33,7 @@ namespace Nethermind.Blockchain.Filters
             return false;
         }
 
-        public T[] GetFilters<T>() where T : FilterBase
+        public IEnumerable<T> GetFilters<T>() where T : FilterBase
         {
             return Array.Empty<T>();
         }
@@ -48,7 +48,7 @@ namespace Nethermind.Blockchain.Filters
             throw new InvalidOperationException($"{nameof(NullFilterStore)} does not support filter creation");
         }
 
-        public LogFilter CreateLogFilter(BlockParameter fromBlock, BlockParameter toBlock, object address = null, IEnumerable<object> topics = null, bool setId = true)
+        public LogFilter CreateLogFilter(BlockParameter fromBlock, BlockParameter toBlock, object? address = null, IEnumerable<object>? topics = null, bool setId = true)
         {
             throw new InvalidOperationException($"{nameof(NullFilterStore)} does not support filter creation");
         }
