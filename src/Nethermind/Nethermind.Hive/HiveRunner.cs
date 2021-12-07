@@ -133,9 +133,21 @@ namespace Nethermind.Hive
             if (_logger.IsInfo) _logger.Info($"HIVE Loading blocks from {blocksDir}");
 
             string[] files = Directory.GetFiles(blocksDir).OrderBy(x => x).ToArray();
+            _logger.Info($"qwerty123: loaded {files.Length} files");
+            
             var blocks = files.Select(x => new {File = x, Block = DecodeBlock(x)}).OrderBy(x => x.Block.Header.Number)
                 .ToArray();
 
+            _logger.Info($"qwerty123: there is {blocks.Length} blocks to be processed");
+
+
+
+            foreach (var block in blocks)
+            {
+                _logger.Info($"qwerty123: order of blocks. file: {block.File}, blockNumber: {block.Block.Number}, blockHash: {block.Block.Hash}");
+            }            
+            
+            
             foreach (var block in blocks)
             {
                 if (cancellationToken.IsCancellationRequested)
