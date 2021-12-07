@@ -146,7 +146,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             UInt256? gas = gasPriceWithBaseFee.Item1 < gasPriceWithBaseFee.Item2
                 ? gasPriceWithBaseFee.Item1 - gasPriceWithBaseFee.Item2
                 : gasPriceWithBaseFee.Item1;
-            return ResultWrapper<UInt256?>.Success(gasPriceWithBaseFee.Item1 - gasPriceWithBaseFee.Item2);
+            return ResultWrapper<UInt256?>.Success(gas);
         }
 
         public ResultWrapper<FeeHistoryResults> eth_feeHistory(int blockCount, BlockParameter newestBlock, double[]? rewardPercentiles = null)
