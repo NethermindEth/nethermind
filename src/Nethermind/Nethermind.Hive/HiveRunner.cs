@@ -71,6 +71,7 @@ namespace Nethermind.Hive
         public async Task Start(CancellationToken cancellationToken)
         {
             if (_logger.IsInfo) _logger.Info("HIVE initialization started");
+            _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
             _blockProcessingQueue.ProcessingQueueEmpty += OnBlockProcessed;
             IHiveConfig hiveConfig = _configurationProvider.GetConfig<IHiveConfig>();
 
@@ -78,9 +79,16 @@ namespace Nethermind.Hive
             await InitializeBlocks(hiveConfig.BlocksDir, cancellationToken);
             await InitializeChain(hiveConfig.ChainFile);
 
+            _blockTree.NewHeadBlock -= BlockTreeOnNewHeadBlock;
             _blockProcessingQueue.ProcessingQueueEmpty -= OnBlockProcessed;
 
             if (_logger.IsInfo) _logger.Info("HIVE initialization completed");
+        }
+
+        private void BlockTreeOnNewHeadBlock(object? sender, BlockEventArgs e)
+        {
+            _logger.Info($"HIVE new head block {e.Block.ToString(Block.Format.Short)}");
+            _resetEvent.Release(1);
         }
 
         private void OnBlockProcessed(object? sender, EventArgs e)
@@ -200,7 +208,8 @@ namespace Nethermind.Hive
         {
             if (!await semaphore.WaitAsync(-1))
             {
-                throw new InvalidOperationException("block processed event didn't happen");            }
+                throw new InvalidOperationException("block processed event didn't happen");
+            }
         }
 
         private async Task ProcessBlock(Block block)
