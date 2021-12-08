@@ -76,8 +76,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Merkleization", 
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Ssz.Benchmark", "Nethermind.Ssz.Benchmark\Nethermind.Ssz.Benchmark.csproj", "{CF819EE6-60D9-43FA-84A1-77D41FD20541}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Core2.Cryptography.Benchmark", "Nethermind.Core2.Cryptography.Benchmark\Nethermind.Core2.Cryptography.Benchmark.csproj", "{88DCDFAA-62D7-4E7D-9F02-D3F1F0328585}"
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -247,6 +245,5 @@ Global
 		{359CB477-96DF-4A84-83D6-1A6B8E82410F} = {4FFCC84D-DC26-4429-84D4-8809DD52B851}
 		{D013F1F4-1C24-4ED0-83A5-86E338746104} = {4FFCC84D-DC26-4429-84D4-8809DD52B851}
 		{5792C470-A4E7-447B-87DD-D7269723EB13} = {4FFCC84D-DC26-4429-84D4-8809DD52B851}
-		{88DCDFAA-62D7-4E7D-9F02-D3F1F0328585} = {86A6990C-81A6-4D2A-B2D5-269F0905EB6C}
 	EndGlobalSection
 EndGlobal
