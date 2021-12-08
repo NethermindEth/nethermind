@@ -145,7 +145,7 @@ namespace Nethermind.Core.Test.Blockchain
             IDb blockInfoDb = new MemDb();
             BlockTree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), SpecProvider, NullBloomStorage.Instance, LimboLogs.Instance);
             ReadOnlyState = new ChainHeadReadOnlyStateProvider(BlockTree, StateReader);
-            TransactionComparerProvider = new TransactionComparerProvider(specProvider, BlockTree);
+            TransactionComparerProvider = new TransactionComparerProvider(SpecProvider, BlockTree);
             TxPool = CreateTxPool();
 
             ReceiptStorage = new InMemoryReceiptStorage();
@@ -325,10 +325,10 @@ namespace Nethermind.Core.Test.Blockchain
             _oneAtATime.Set();
         }
 
-        private async Task<AddTxResult[]> AddBlockInternal(params Transaction[] transactions)
+        private async Task<AcceptTxResult[]> AddBlockInternal(params Transaction[] transactions)
         {
             await WaitAsync(_oneAtATime, "Multiple block produced at once.");
-            AddTxResult[] txResults = transactions.Select(t => TxPool.SubmitTx(t, TxHandlingOptions.None)).ToArray();
+            AcceptTxResult[] txResults = transactions.Select(t => TxPool.SubmitTx(t, TxHandlingOptions.None)).ToArray();
             Timestamper.Add(TimeSpan.FromSeconds(1));
             await BlockProductionTrigger.BuildBlock();
             return txResults;

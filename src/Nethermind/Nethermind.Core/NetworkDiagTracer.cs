@@ -22,6 +22,7 @@ using System.Net;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Timers;
+using Nethermind.Logging;
 
 namespace Nethermind.Core
 {
@@ -35,9 +36,11 @@ namespace Nethermind.Core
         public static bool IsEnabled { get; set; }
 
         private static readonly ConcurrentDictionary<string, ConcurrentQueue<string>> _events = new();
+        private static ILogger _logger;
 
-        public static void Start()
+        public static void Start(ILogManager logManager)
         {
+            _logger = logManager.GetClassLogger();
             Timer timer = new();
             timer.Interval = 60000;
             timer.Elapsed += (_, _) => DumpEvents(); 
@@ -56,8 +59,10 @@ namespace Nethermind.Core
                     stringBuilder.AppendLine("  " + s);    
                 }
             }
-            
-            File.WriteAllText(NetworkDiagTracerPath, stringBuilder.ToString());
+
+            string contents = stringBuilder.ToString();
+            File.WriteAllText(NetworkDiagTracerPath, contents);
+            _logger.Info(contents);
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]

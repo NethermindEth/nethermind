@@ -23,6 +23,8 @@ using Nethermind.DataMarketplace.Initializers;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.EventArg;
+using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Stats.Model;
 using NSubstitute;
 using NUnit.Framework;

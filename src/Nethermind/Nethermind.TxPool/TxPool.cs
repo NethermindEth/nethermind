@@ -250,7 +250,7 @@ namespace Nethermind.TxPool
             }
         }
 
-        public AddTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions)
+        public AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions)
         {
             Metrics.PendingTransactionsReceived++;
 
@@ -271,22 +271,22 @@ namespace Nethermind.TxPool
             for (int i = 0; i < _filterPipeline.Count; i++)
             {
                 IIncomingTxFilter incomingTxFilter = _filterPipeline[i];
-                (bool accepted, AddTxResult? filteringResult) = incomingTxFilter.Accept(tx, handlingOptions);
+                AcceptTxResult accepted = incomingTxFilter.Accept(tx, handlingOptions);
                 if (!accepted)
                 {
                     Metrics.PendingTransactionsDiscarded++;
-                    return filteringResult.Value;
+                    return accepted;
                 }
             }
 
             return AddCore(tx, startBroadcast);
         }
 
-        private AddTxResult AddCore(Transaction tx, bool isPersistentBroadcast)
+        private AcceptTxResult AddCore(Transaction tx, bool isPersistentBroadcast)
         {
             lock (_locker)
             {
-                bool eip1559Enabled = _specProvider.GetSpec().IsEip1559Enabled;
+                bool eip1559Enabled = _specProvider.GetCurrentHeadSpec().IsEip1559Enabled;
 
                 tx.GasBottleneck = tx.CalculateEffectiveGasPrice(eip1559Enabled, _headInfo.CurrentBaseFee);
                 bool inserted = _transactions.TryInsert(tx.Hash, tx, out Transaction? removed);
@@ -309,7 +309,7 @@ namespace Nethermind.TxPool
                 else
                 {
                     Metrics.PendingTransactionsTooLowFee++;
-                    return AddTxResult.FeeTooLowToCompete;
+                    return AcceptTxResult.FeeTooLowToCompete;
                 }
             }
 
@@ -325,7 +325,7 @@ namespace Nethermind.TxPool
             _hashCache.SetLongTerm(tx.Hash!);
             NewPending?.Invoke(this, new TxEventArgs(tx));
             Metrics.TransactionCount = _transactions.Count;
-            return AddTxResult.Added;
+            return AcceptTxResult.Accepted;
         }
 
         private IEnumerable<(Transaction Tx, Action<Transaction>? Change)> UpdateBucketWithAddedTransaction(
@@ -363,14 +363,14 @@ namespace Nethermind.TxPool
                 {
                     if (previousTxBottleneck == null)
                     {
-                        previousTxBottleneck = tx.CalculateAffordableGasPrice(_specProvider.GetSpec().IsEip1559Enabled,
+                        previousTxBottleneck = tx.CalculateAffordableGasPrice(_specProvider.GetCurrentHeadSpec().IsEip1559Enabled,
                             _headInfo.CurrentBaseFee, balance);
                     }
 
                     if (tx.Nonce == currentNonce + i)
                     {
                         UInt256 effectiveGasPrice =
-                            tx.CalculateEffectiveGasPrice(_specProvider.GetSpec().IsEip1559Enabled,
+                            tx.CalculateEffectiveGasPrice(_specProvider.GetCurrentHeadSpec().IsEip1559Enabled,
                                 _headInfo.CurrentBaseFee);
                         gasBottleneck = UInt256.Min(effectiveGasPrice, previousTxBottleneck ?? 0);
                     }

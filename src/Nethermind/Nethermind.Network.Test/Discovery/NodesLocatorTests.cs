@@ -46,30 +46,30 @@ namespace Nethermind.Network.Test.Discovery
         [SetUp]
         public void Setup()
         {
-            NetworkConfig networkConfig = new NetworkConfig();
+            NetworkConfig networkConfig = new();
             networkConfig.ExternalIp = IPAddress.Broadcast.ToString();
             
             _masterNode = new Node(TestItem.PublicKeyA, IPAddress.Broadcast.ToString(), 30000, false);
-            DiscoveryConfig config = new DiscoveryConfig() {DiscoveryNewCycleWaitTime = 1};
-            NodeDistanceCalculator distanceCalculator = new NodeDistanceCalculator(config);
+            DiscoveryConfig config = new() {DiscoveryNewCycleWaitTime = 1};
+            NodeDistanceCalculator distanceCalculator = new(config);
             _nodeTable = new NodeTable(
                 distanceCalculator,
                 config,
                 networkConfig,
                 LimboLogs.Instance);
-            DiscoveryMessageFactory messageFactory = new DiscoveryMessageFactory(Timestamper.Default);
-            EvictionManager evictionManager = new EvictionManager(_nodeTable, LimboLogs.Instance);
+            DiscoveryMessageFactory messageFactory = new(Timestamper.Default);
+            EvictionManager evictionManager = new(_nodeTable, LimboLogs.Instance);
             ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
-            NodeStatsManager nodeStatsManager = new NodeStatsManager(timerFactory, LimboLogs.Instance);
+            NodeStatsManager nodeStatsManager = new(timerFactory, LimboLogs.Instance);
             NodeLifecycleManagerFactory managerFactory =
-                new NodeLifecycleManagerFactory(
+                new(
                     _nodeTable,
                     messageFactory,
                     evictionManager,
                     nodeStatsManager,
                     config,
                     LimboLogs.Instance);
-            DiscoveryManager manager = new DiscoveryManager(
+            DiscoveryManager manager = new(
                 managerFactory,
                 _nodeTable,
                 new NetworkStorage(new MemDb(), LimboLogs.Instance),
@@ -97,7 +97,7 @@ namespace Nethermind.Network.Test.Discovery
 
             for (int i = 0; i < nodesCount; i++)
             {
-                Node node = new Node(TestItem.PublicKeyA, IPAddress.Broadcast.ToString(), 30000 + i);
+                Node node = new(TestItem.PublicKeyA, IPAddress.Broadcast.ToString(), 30000 + i);
                 _nodeTable.AddNode(node);
             }
             

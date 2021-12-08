@@ -144,7 +144,7 @@ namespace Nethermind.EthStats.Integrations
             timer.Start();
         }
 
-        private void TimerOnElapsed(object sender, ElapsedEventArgs e)
+        private void TimerOnElapsed(object? sender, ElapsedEventArgs e)
         {
             if (!_connected)
             {

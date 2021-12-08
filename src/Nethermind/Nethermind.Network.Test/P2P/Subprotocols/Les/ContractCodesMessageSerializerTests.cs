@@ -21,6 +21,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols.Les;
+using Nethermind.Network.P2P.Subprotocols.Les.Messages;
 using Nethermind.Network.Test.P2P.Subprotocols.Eth.V62;
 using Nethermind.Specs;
 using NUnit.Framework;
@@ -34,9 +35,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Les
         public void RoundTrip()
         {
             byte[][] data = {TestItem.KeccakA.Bytes, TestItem.KeccakB.Bytes, TestItem.KeccakC.Bytes};
-            ContractCodesMessage message = new ContractCodesMessage(data, 13452, 134);
+            ContractCodesMessage message = new(data, 13452, 134);
 
-            ContractCodesMessageSerializer serializer = new ContractCodesMessageSerializer();
+            ContractCodesMessageSerializer serializer = new();
 
             SerializerTester.TestZero(serializer, message);
         }

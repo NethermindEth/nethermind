@@ -36,7 +36,7 @@ namespace Nethermind.Store.Test.Witnesses
         [Test]
         public void Collects_on_reads()
         {
-            Context context = new Context();
+            Context context = new();
             context.Wrapped[Key1].Returns(Value1);
             _ = context.Database[Key1];
             context.WitnessCollector.Collected.Should().HaveCount(1);
@@ -45,7 +45,7 @@ namespace Nethermind.Store.Test.Witnesses
         [Test]
         public void Collects_on_reads_when_cached_underneath()
         {
-            Context context = new Context(2);
+            Context context = new(2);
             context.Wrapped[Key1].Returns(Value1);
             context.Wrapped[Key2].Returns(Value2);
             context.Wrapped[Key3].Returns(Value3);
@@ -63,7 +63,7 @@ namespace Nethermind.Store.Test.Witnesses
         [Test]
         public void Collects_on_reads_when_cached_underneath_and_previously_populated()
         {
-            Context context = new Context(3);
+            Context context = new(3);
             context.Database[Key1] = Value1;
             context.Database[Key2] = Value1;
             context.Database[Key3] = Value1;
@@ -77,7 +77,7 @@ namespace Nethermind.Store.Test.Witnesses
         [Test]
         public void Does_not_collect_on_writes()
         {
-            Context context = new Context();
+            Context context = new();
             context.Database[Key1] = Value1;
             context.WitnessCollector.Collected.Should().HaveCount(0);
         }
@@ -88,7 +88,7 @@ namespace Nethermind.Store.Test.Witnesses
         [TestCase(33)]
         public void Only_works_with_32_bytes_keys(int keyLength)
         {
-            Context context = new Context();
+            Context context = new();
             context.Wrapped[null].ReturnsForAnyArgs(Bytes.Empty);
             Assert.Throws<NotSupportedException>(
                 () => _ = context.Database[new byte[keyLength]]);

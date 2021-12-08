@@ -54,7 +54,7 @@ It syncs fully on:
 
 ## Prerequisites :construction:
 
-**.NET 5.0** SDK
+**.NET 6.0** SDK
 
 ### Windows
 

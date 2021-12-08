@@ -43,7 +43,7 @@ namespace Nethermind.Mining.Test
         [Test]
         public void Without_hint_return_null()
         {
-            HintBasedCache hintBasedCache = new HintBasedCache(e => new NullDataSet(), LimboLogs.Instance);
+            HintBasedCache hintBasedCache = new(e => new NullDataSet(), LimboLogs.Instance);
             for (uint i = 0; i < 1000; i++)
             {
                 Assert.Null(hintBasedCache.Get(i));
@@ -57,7 +57,7 @@ namespace Nethermind.Mining.Test
         [Test]
         public async Task With_hint_returns_value()
         {
-            HintBasedCache hintBasedCache = new HintBasedCache(e => new NullDataSet(), LimboLogs.Instance);
+            HintBasedCache hintBasedCache = new(e => new NullDataSet(), LimboLogs.Instance);
             hintBasedCache.Hint(_guidA, 0, 200000);
             await WaitFor(() => hintBasedCache.CachedEpochsCount == 7);
             
@@ -70,7 +70,7 @@ namespace Nethermind.Mining.Test
         [Test]
         public void Sync_hint_and_get()
         {
-            HintBasedCache hintBasedCache = new HintBasedCache(e => new NullDataSet(), LimboLogs.Instance);
+            HintBasedCache hintBasedCache = new(e => new NullDataSet(), LimboLogs.Instance);
             hintBasedCache.Hint(_guidA, 200000, 200000);
             Assert.NotNull(hintBasedCache.Get((uint)(200000 / Ethash.EpochLength)));
         }
@@ -79,7 +79,7 @@ namespace Nethermind.Mining.Test
         public async Task Many_threads()
         {
             int range = 10000000;
-            HintBasedCache hintBasedCache = new HintBasedCache(e => new NullDataSet(), LimboLogs.Instance);
+            HintBasedCache hintBasedCache = new(e => new NullDataSet(), LimboLogs.Instance);
             void KeepHinting(Guid guid, int start)
             {
                 for (int i = start; i <= range; i++)
@@ -88,9 +88,9 @@ namespace Nethermind.Mining.Test
                 }
             };
             
-            Task a = new Task(() => KeepHinting(_guidA, 100000));
-            Task b = new Task(() => KeepHinting(_guidB, 0));
-            Task c = new Task(() => KeepHinting(_guidC, 500000));
+            Task a = new(() => KeepHinting(_guidA, 100000));
+            Task b = new(() => KeepHinting(_guidB, 0));
+            Task c = new(() => KeepHinting(_guidC, 500000));
             
             a.Start();
             b.Start();
@@ -108,7 +108,7 @@ namespace Nethermind.Mining.Test
         [Test]
         public async Task Different_users_reuse_cached_epochs()
         {
-            HintBasedCache hintBasedCache = new HintBasedCache(e => new NullDataSet(), LimboLogs.Instance);
+            HintBasedCache hintBasedCache = new(e => new NullDataSet(), LimboLogs.Instance);
             hintBasedCache.Hint(_guidA, 0, 200000);
             hintBasedCache.Hint(_guidB, 0, 200000);
             await WaitFor(() => hintBasedCache.CachedEpochsCount == 7);
@@ -121,7 +121,7 @@ namespace Nethermind.Mining.Test
         [Test]
         public async Task Different_users_can_use_cache()
         {
-            HintBasedCache hintBasedCache = new HintBasedCache(e => new NullDataSet(), LimboLogs.Instance);
+            HintBasedCache hintBasedCache = new(e => new NullDataSet(), LimboLogs.Instance);
             hintBasedCache.Hint(_guidA, 0, 29999);
             hintBasedCache.Hint(_guidB, 30000, 59999);
             await WaitFor(() => hintBasedCache.CachedEpochsCount == 2);
@@ -134,7 +134,7 @@ namespace Nethermind.Mining.Test
         [Test]
         public async Task Different_users_can_use_disconnected_epochs()
         {
-            HintBasedCache hintBasedCache = new HintBasedCache(e => new NullDataSet(), LimboLogs.Instance);
+            HintBasedCache hintBasedCache = new(e => new NullDataSet(), LimboLogs.Instance);
             hintBasedCache.Hint(_guidA, 0, 29999);
             hintBasedCache.Hint(_guidB, 120000, 149999);
             await WaitFor(() => hintBasedCache.CachedEpochsCount == 2);
@@ -148,7 +148,7 @@ namespace Nethermind.Mining.Test
         [Test]
         public async Task Moving_range_evicts_cached_epochs()
         {
-            HintBasedCache hintBasedCache = new HintBasedCache(e => new NullDataSet(), LimboLogs.Instance);
+            HintBasedCache hintBasedCache = new(e => new NullDataSet(), LimboLogs.Instance);
             hintBasedCache.Hint(_guidA, 0, 209999);
             hintBasedCache.Hint(_guidA, 30000, 239999);
             await WaitFor(() => hintBasedCache.CachedEpochsCount == 7);
@@ -163,7 +163,7 @@ namespace Nethermind.Mining.Test
         [Test]
         public async Task Can_hint_far()
         {
-            HintBasedCache hintBasedCache = new HintBasedCache(e => new NullDataSet(), LimboLogs.Instance);
+            HintBasedCache hintBasedCache = new(e => new NullDataSet(), LimboLogs.Instance);
             hintBasedCache.Hint(_guidA, 1000000000, 1000000000);
             await WaitFor(() => hintBasedCache.CachedEpochsCount == 1);
             
@@ -173,7 +173,7 @@ namespace Nethermind.Mining.Test
         [Test]
         public void Throws_on_wide_hint()
         {
-            HintBasedCache hintBasedCache = new HintBasedCache(e => new NullDataSet(), LimboLogs.Instance);
+            HintBasedCache hintBasedCache = new(e => new NullDataSet(), LimboLogs.Instance);
             Assert.Throws<InvalidOperationException>(() => hintBasedCache.Hint(_guidA, 0, 1000000000));
         }
         

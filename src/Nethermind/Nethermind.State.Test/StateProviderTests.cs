@@ -39,7 +39,7 @@ namespace Nethermind.Store.Test
     {
         private static readonly Keccak Hash1 = Keccak.Compute("1");
         private static readonly Keccak Hash2 = Keccak.Compute("2");
-        private readonly Address _address1 = new Address(Hash1);
+        private readonly Address _address1 = new(Hash1);
         private static readonly ILogManager Logger = LimboLogs.Instance;
         private IDb _codeDb;
         
@@ -53,12 +53,12 @@ namespace Nethermind.Store.Test
         public void Eip_158_zero_value_transfer_deletes()
         {
             var trieStore = new TrieStore(new MemDb(), Logger);
-            StateProvider frontierProvider = new StateProvider(trieStore, _codeDb, Logger);
+            StateProvider frontierProvider = new(trieStore, _codeDb, Logger);
             frontierProvider.CreateAccount(_address1, 0);
             frontierProvider.Commit(Frontier.Instance);
             frontierProvider.CommitTree(0);
             
-            StateProvider provider = new StateProvider(trieStore, _codeDb, Logger);
+            StateProvider provider = new(trieStore, _codeDb, Logger);
             provider.StateRoot = frontierProvider.StateRoot;
             
             provider.AddToBalance(_address1, 0, SpuriousDragon.Instance);
@@ -71,8 +71,8 @@ namespace Nethermind.Store.Test
         [Test]
         public void Eip_158_touch_zero_value_system_account_is_not_deleted()
         {
-            TrieStore trieStore = new TrieStore(new MemDb(), Logger);
-            StateProvider provider = new StateProvider(trieStore, _codeDb, Logger);
+            TrieStore trieStore = new(new MemDb(), Logger);
+            StateProvider provider = new(trieStore, _codeDb, Logger);
             var systemUser = Address.SystemUser;
             
             provider.CreateAccount(systemUser, 0);
@@ -88,7 +88,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void Can_dump_state()
         {
-            StateProvider provider = new StateProvider(new TrieStore(new MemDb(), Logger), _codeDb, Logger);
+            StateProvider provider = new(new TrieStore(new MemDb(), Logger), _codeDb, Logger);
             provider.CreateAccount(TestItem.AddressA, 1.Ether());
             provider.Commit(MuirGlacier.Instance);
             provider.CommitTree(0);
@@ -100,7 +100,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void Can_collect_stats()
         {
-            StateProvider provider = new StateProvider(new TrieStore(new MemDb(), Logger), _codeDb, Logger);
+            StateProvider provider = new(new TrieStore(new MemDb(), Logger), _codeDb, Logger);
             provider.CreateAccount(TestItem.AddressA, 1.Ether());
             provider.Commit(MuirGlacier.Instance);
             provider.CommitTree(0);
@@ -112,19 +112,19 @@ namespace Nethermind.Store.Test
         [Test]
         public void Can_accepts_visitors()
         {
-            StateProvider provider = new StateProvider(new TrieStore(new MemDb(), Logger), Substitute.For<IDb>(), Logger);
+            StateProvider provider = new(new TrieStore(new MemDb(), Logger), Substitute.For<IDb>(), Logger);
             provider.CreateAccount(TestItem.AddressA, 1.Ether());
             provider.Commit(MuirGlacier.Instance);
             provider.CommitTree(0);
 
-            TrieStatsCollector visitor = new TrieStatsCollector(new MemDb(), LimboLogs.Instance);
+            TrieStatsCollector visitor = new(new MemDb(), LimboLogs.Instance);
             provider.Accept(visitor, provider.StateRoot);
         }
 
         [Test]
         public void Empty_commit_restore()
         {
-            StateProvider provider = new StateProvider(new TrieStore(new MemDb(), Logger), _codeDb, Logger);
+            StateProvider provider = new(new TrieStore(new MemDb(), Logger), _codeDb, Logger);
             provider.Commit(Frontier.Instance);
             provider.Restore(-1);
         }
@@ -132,14 +132,14 @@ namespace Nethermind.Store.Test
         [Test]
         public void Update_balance_on_non_existing_account_throws()
         {
-            StateProvider provider = new StateProvider(new TrieStore(new MemDb(), Logger), _codeDb, Logger);
+            StateProvider provider = new(new TrieStore(new MemDb(), Logger), _codeDb, Logger);
             Assert.Throws<InvalidOperationException>(() => provider.AddToBalance(TestItem.AddressA, 1.Ether(), Olympic.Instance));
         }
         
         [Test]
         public void Is_empty_account()
         {
-            StateProvider provider = new StateProvider(new TrieStore(new MemDb(), Logger), _codeDb, Logger);
+            StateProvider provider = new(new TrieStore(new MemDb(), Logger), _codeDb, Logger);
             provider.CreateAccount(_address1, 0);
             provider.Commit(Frontier.Instance);
             Assert.True(provider.IsEmptyAccount(_address1));
@@ -148,7 +148,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void Returns_empty_byte_code_for_non_existing_accounts()
         {
-            StateProvider provider = new StateProvider(new TrieStore(new MemDb(), Logger), _codeDb, Logger);
+            StateProvider provider = new(new TrieStore(new MemDb(), Logger), _codeDb, Logger);
             byte[] code = provider.GetCode(TestItem.AddressA);
             code.Should().BeEmpty();
         }
@@ -156,7 +156,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void Restore_update_restore()
         {
-            StateProvider provider = new StateProvider(new TrieStore(new MemDb(), Logger), _codeDb, Logger);
+            StateProvider provider = new(new TrieStore(new MemDb(), Logger), _codeDb, Logger);
             provider.CreateAccount(_address1, 0);
             provider.AddToBalance(_address1, 1, Frontier.Instance);
             provider.AddToBalance(_address1, 1, Frontier.Instance);
@@ -182,7 +182,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void Keep_in_cache()
         {
-            StateProvider provider = new StateProvider(new TrieStore(new MemDb(), Logger), _codeDb, Logger);
+            StateProvider provider = new(new TrieStore(new MemDb(), Logger), _codeDb, Logger);
             provider.CreateAccount(_address1, 0);
             provider.Commit(Frontier.Instance);
             provider.GetBalance(_address1);
@@ -200,7 +200,7 @@ namespace Nethermind.Store.Test
         {
             byte[] code = new byte[] {1};
 
-            StateProvider provider = new StateProvider(new TrieStore(new MemDb(), Logger), _codeDb, Logger);
+            StateProvider provider = new(new TrieStore(new MemDb(), Logger), _codeDb, Logger);
             provider.CreateAccount(_address1, 1);
             provider.AddToBalance(_address1, 1, Frontier.Instance);
             provider.IncrementNonce(_address1);
@@ -238,9 +238,9 @@ namespace Nethermind.Store.Test
         [Test(Description = "It was failing before as touch was marking the accounts as committed but not adding to trace list")]
         public void Touch_empty_trace_does_not_throw()
         {
-            ParityLikeTxTracer tracer = new ParityLikeTxTracer(Build.A.Block.TestObject, null, ParityTraceTypes.StateDiff);
+            ParityLikeTxTracer tracer = new(Build.A.Block.TestObject, null, ParityTraceTypes.StateDiff);
             
-            StateProvider provider = new StateProvider(new TrieStore(new MemDb(), Logger), _codeDb, Logger);
+            StateProvider provider = new(new TrieStore(new MemDb(), Logger), _codeDb, Logger);
             provider.CreateAccount(_address1, 0);
             Account account = provider.GetAccount(_address1);
             Assert.True(account.IsEmpty);
@@ -257,7 +257,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void Does_not_require_recalculation_after_reset()
         {
-            StateProvider provider = new StateProvider(new TrieStore(new MemDb(), Logger), _codeDb, Logger);
+            StateProvider provider = new(new TrieStore(new MemDb(), Logger), _codeDb, Logger);
             provider.CreateAccount(TestItem.AddressA, 5);
             
             Action action = () => { _ = provider.StateRoot; };

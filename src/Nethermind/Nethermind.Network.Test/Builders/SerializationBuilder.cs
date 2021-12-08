@@ -14,23 +14,22 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Network.Config;
-using Nethermind.Network.Discovery;
 using Nethermind.Network.Discovery.Messages;
-using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Network.Discovery.Serializers;
-using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
+using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
+using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
+using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Specs;
-using Nethermind.Stats;
+using GetNodeDataMessageSerializer = Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.GetNodeDataMessageSerializer;
+using GetReceiptsMessageSerializer = Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.GetReceiptsMessageSerializer;
+using NodeDataMessageSerializer = Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.NodeDataMessageSerializer;
 
 namespace Nethermind.Network.Test.Builders
 {
@@ -66,10 +65,10 @@ namespace Nethermind.Network.Test.Builders
 
         public SerializationBuilder WithP2P()
         {
-            return With(new Network.P2P.PingMessageSerializer())
-                .With(new Network.P2P.PongMessageSerializer())
-                .With(new Network.P2P.HelloMessageSerializer())
-                .With(new Network.P2P.DisconnectMessageSerializer());
+            return With(new Nethermind.Network.P2P.Messages.PingMessageSerializer())
+                .With(new Nethermind.Network.P2P.Messages.PongMessageSerializer())
+                .With(new Nethermind.Network.P2P.Messages.HelloMessageSerializer())
+                .With(new Nethermind.Network.P2P.Messages.DisconnectMessageSerializer());
         }
 
         public SerializationBuilder WithEth()
@@ -95,27 +94,27 @@ namespace Nethermind.Network.Test.Builders
         public SerializationBuilder WithEth66()
         {
             return WithEth65()
-                .With(new Network.P2P.Subprotocols.Eth.V66.GetBlockHeadersMessageSerializer())
-                .With(new Network.P2P.Subprotocols.Eth.V66.BlockHeadersMessageSerializer())
-                .With(new Network.P2P.Subprotocols.Eth.V66.GetBlockBodiesMessageSerializer())
-                .With(new Network.P2P.Subprotocols.Eth.V66.BlockBodiesMessageSerializer())
-                .With(new Network.P2P.Subprotocols.Eth.V66.GetPooledTransactionsMessageSerializer())
-                .With(new Network.P2P.Subprotocols.Eth.V66.PooledTransactionsMessageSerializer())
-                .With(new Network.P2P.Subprotocols.Eth.V66.GetNodeDataMessageSerializer())
-                .With(new Network.P2P.Subprotocols.Eth.V66.NodeDataMessageSerializer())
-                .With(new Network.P2P.Subprotocols.Eth.V66.GetReceiptsMessageSerializer())
-                .With(new Network.P2P.Subprotocols.Eth.V66.ReceiptsMessageSerializer(new ReceiptsMessageSerializer(MainnetSpecProvider.Instance)));
+                .With(new Network.P2P.Subprotocols.Eth.V66.Messages.GetBlockHeadersMessageSerializer())
+                .With(new Network.P2P.Subprotocols.Eth.V66.Messages.BlockHeadersMessageSerializer())
+                .With(new Network.P2P.Subprotocols.Eth.V66.Messages.GetBlockBodiesMessageSerializer())
+                .With(new Network.P2P.Subprotocols.Eth.V66.Messages.BlockBodiesMessageSerializer())
+                .With(new Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessageSerializer())
+                .With(new Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessageSerializer())
+                .With(new GetNodeDataMessageSerializer())
+                .With(new NodeDataMessageSerializer())
+                .With(new GetReceiptsMessageSerializer())
+                .With(new Network.P2P.Subprotocols.Eth.V66.Messages.ReceiptsMessageSerializer(new ReceiptsMessageSerializer(MainnetSpecProvider.Instance)));
         }
 
         public SerializationBuilder WithDiscovery(PrivateKey privateKey)
         {
-            Ecdsa ecdsa = new Ecdsa();
-            SameKeyGenerator privateKeyProvider = new SameKeyGenerator(privateKey);
+            Ecdsa ecdsa = new();
+            SameKeyGenerator privateKeyProvider = new(privateKey);
 
-            PingMessageSerializer pingSerializer = new PingMessageSerializer(ecdsa, privateKeyProvider, new DiscoveryMessageFactory(_timestamper), new NodeIdResolver(ecdsa));
-            PongMessageSerializer pongSerializer = new PongMessageSerializer(ecdsa, privateKeyProvider, new DiscoveryMessageFactory(_timestamper), new NodeIdResolver(ecdsa));
-            FindNodeMessageSerializer findNodeSerializer = new FindNodeMessageSerializer(ecdsa, privateKeyProvider, new DiscoveryMessageFactory(_timestamper), new NodeIdResolver(ecdsa));
-            NeighborsMessageSerializer neighborsSerializer = new NeighborsMessageSerializer(ecdsa, privateKeyProvider, new DiscoveryMessageFactory(_timestamper), new NodeIdResolver(ecdsa));
+            PingMessageSerializer pingSerializer = new(ecdsa, privateKeyProvider, new DiscoveryMessageFactory(_timestamper), new NodeIdResolver(ecdsa));
+            PongMessageSerializer pongSerializer = new(ecdsa, privateKeyProvider, new DiscoveryMessageFactory(_timestamper), new NodeIdResolver(ecdsa));
+            FindNodeMessageSerializer findNodeSerializer = new(ecdsa, privateKeyProvider, new DiscoveryMessageFactory(_timestamper), new NodeIdResolver(ecdsa));
+            NeighborsMessageSerializer neighborsSerializer = new(ecdsa, privateKeyProvider, new DiscoveryMessageFactory(_timestamper), new NodeIdResolver(ecdsa));
 
             return With(pingSerializer)
                 .With(pongSerializer)

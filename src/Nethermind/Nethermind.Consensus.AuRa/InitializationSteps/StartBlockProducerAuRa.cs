@@ -45,7 +45,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
 {
     public class StartBlockProducerAuRa
     {
-        private new readonly AuRaNethermindApi _api;
+        private readonly AuRaNethermindApi _api;
         
         private BlockProducerEnv? _blockProducerContext;
         private INethermindApi NethermindApi => _api;
@@ -73,7 +73,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
 
         public IBlockProductionTrigger CreateTrigger()
         {
-            BuildBlocksOnAuRaSteps onAuRaSteps = new(_api.LogManager, StepCalculator);
+            BuildBlocksOnAuRaSteps onAuRaSteps = new(StepCalculator, _api.LogManager);
             BuildBlocksOnlyWhenNotProcessing onlyWhenNotProcessing = new(
                 onAuRaSteps, 
                 _api.BlockProcessingQueue, 

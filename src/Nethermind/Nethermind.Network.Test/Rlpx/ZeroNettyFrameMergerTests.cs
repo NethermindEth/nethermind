@@ -20,6 +20,7 @@ using DotNetty.Transport.Channels;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Rlpx.TestWrappers;
 using NSubstitute;
@@ -49,7 +50,7 @@ namespace Nethermind.Network.Test.Rlpx
             IByteBuffer input = null;
             try
             {
-                TestFrameHelper frameBuilder = new TestFrameHelper();
+                TestFrameHelper frameBuilder = new();
                 int totalLength = (count - 1) * Frame.DefaultMaxFrameSize + 1;
                 input = PooledByteBufferAllocator.Default.Buffer(1 + totalLength);
                 input.WriteByte(2);
@@ -72,7 +73,7 @@ namespace Nethermind.Network.Test.Rlpx
             ZeroPacket output = null;
             try
             {
-                ZeroFrameMergerTestWrapper zeroFrameMergerTestWrapper = new ZeroFrameMergerTestWrapper();
+                ZeroFrameMergerTestWrapper zeroFrameMergerTestWrapper = new();
                 output = zeroFrameMergerTestWrapper.Decode(input);
 
                 Assert.NotNull(output);
@@ -91,7 +92,7 @@ namespace Nethermind.Network.Test.Rlpx
             ZeroPacket output = null;
             try
             {
-                ZeroFrameMergerTestWrapper zeroFrameMergerTestWrapper = new ZeroFrameMergerTestWrapper();
+                ZeroFrameMergerTestWrapper zeroFrameMergerTestWrapper = new();
                 output = zeroFrameMergerTestWrapper.Decode(input);
                 Assert.NotNull(output);
             }
@@ -109,7 +110,7 @@ namespace Nethermind.Network.Test.Rlpx
             ZeroPacket output = null;
             try
             {
-                ZeroFrameMergerTestWrapper zeroFrameMergerTestWrapper = new ZeroFrameMergerTestWrapper();
+                ZeroFrameMergerTestWrapper zeroFrameMergerTestWrapper = new();
                 output = zeroFrameMergerTestWrapper.Decode(input);
                 Assert.NotNull(output);
                 Assert.AreEqual(1, output.Content.ReadableBytes);
@@ -128,7 +129,7 @@ namespace Nethermind.Network.Test.Rlpx
             ZeroPacket output = null;
             try
             {
-                ZeroFrameMergerTestWrapper zeroFrameMergerTestWrapper = new ZeroFrameMergerTestWrapper();
+                ZeroFrameMergerTestWrapper zeroFrameMergerTestWrapper = new();
                 output = zeroFrameMergerTestWrapper.Decode(input);
                 Assert.NotNull(output);
                 Assert.AreEqual(2049, output.Content.ReadableBytes);
@@ -147,7 +148,7 @@ namespace Nethermind.Network.Test.Rlpx
             ZeroPacket output = null;
             try
             {
-                ZeroFrameMergerTestWrapper zeroFrameMergerTestWrapper = new ZeroFrameMergerTestWrapper();
+                ZeroFrameMergerTestWrapper zeroFrameMergerTestWrapper = new();
                 output = zeroFrameMergerTestWrapper.Decode(input);
                 Assert.NotNull(output);
                 Assert.AreEqual((byte) 2, output.PacketType);
@@ -169,14 +170,14 @@ namespace Nethermind.Network.Test.Rlpx
             {
                 input.WriteBytes(frame);
 
-                ZeroFrameMergerTestWrapper zeroFrameMergerTestWrapper = new ZeroFrameMergerTestWrapper();
+                ZeroFrameMergerTestWrapper zeroFrameMergerTestWrapper = new();
                 output = zeroFrameMergerTestWrapper.Decode(input);
                 Assert.NotNull(output);
 
                 Assert.AreEqual(0, output.PacketType);
 
                 byte[] outputBytes = output.Content.ReadAllBytes();
-                HelloMessageSerializer serializer = new HelloMessageSerializer();
+                HelloMessageSerializer serializer = new();
                 HelloMessage helloMessage = serializer.Deserialize(outputBytes);
 
                 Assert.AreEqual("Nethermind/v1.0.0-rc28dev-c9d5542a/X64-Microsoft Windows 10.0.17134 /Core4.6.27617.05", helloMessage.ClientId);
@@ -200,7 +201,7 @@ namespace Nethermind.Network.Test.Rlpx
                 input.EnsureWritable(frame.Length);
                 input.WriteBytes(frame);
 
-                ZeroFrameMergerTestWrapper zeroFrameMergerTestWrapper = new ZeroFrameMergerTestWrapper();
+                ZeroFrameMergerTestWrapper zeroFrameMergerTestWrapper = new();
                 output = zeroFrameMergerTestWrapper.Decode(input);
                 Assert.NotNull(output);
 

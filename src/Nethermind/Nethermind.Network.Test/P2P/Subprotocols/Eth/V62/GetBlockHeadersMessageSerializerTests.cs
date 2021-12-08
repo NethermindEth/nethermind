@@ -17,6 +17,7 @@
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
+using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
@@ -27,12 +28,12 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void Roundtrip_hash()
         {
-            GetBlockHeadersMessage message = new GetBlockHeadersMessage();
+            GetBlockHeadersMessage message = new();
             message.MaxHeaders = 1;
             message.Skip = 2;
             message.Reverse = 1;
             message.StartBlockHash = Keccak.OfAnEmptyString;
-            GetBlockHeadersMessageSerializer serializer = new GetBlockHeadersMessageSerializer();
+            GetBlockHeadersMessageSerializer serializer = new();
             byte[] bytes = serializer.Serialize(message);
             byte[] expectedBytes = Bytes.FromHexString("e4a0c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470010201");
 
@@ -50,12 +51,12 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void Roundtrip_number()
         {
-            GetBlockHeadersMessage message = new GetBlockHeadersMessage();
+            GetBlockHeadersMessage message = new();
             message.MaxHeaders = 1;
             message.Skip = 2;
             message.Reverse = 1;
             message.StartBlockNumber = 100;
-            GetBlockHeadersMessageSerializer serializer = new GetBlockHeadersMessageSerializer();
+            GetBlockHeadersMessageSerializer serializer = new();
             byte[] bytes = serializer.Serialize(message);
             byte[] expectedBytes = Bytes.FromHexString("c464010201");
 
@@ -73,12 +74,12 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void Roundtrip_zero()
         {
-            GetBlockHeadersMessage message = new GetBlockHeadersMessage();
+            GetBlockHeadersMessage message = new();
             message.MaxHeaders = 1;
             message.Skip = 2;
             message.Reverse = 0;
             message.StartBlockNumber = 100;
-            GetBlockHeadersMessageSerializer serializer = new GetBlockHeadersMessageSerializer();
+            GetBlockHeadersMessageSerializer serializer = new();
             
             byte[] bytes = serializer.Serialize(message);
             byte[] expectedBytes = Bytes.FromHexString("c464010280");
@@ -97,7 +98,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void To_string()
         {
-            GetBlockHeadersMessage newBlockMessage = new GetBlockHeadersMessage();
+            GetBlockHeadersMessage newBlockMessage = new();
             _ = newBlockMessage.ToString();
         }
     }

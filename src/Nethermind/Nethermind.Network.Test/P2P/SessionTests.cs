@@ -23,6 +23,9 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.Analyzers;
+using Nethermind.Network.P2P.Messages;
+using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats.Model;
@@ -56,7 +59,7 @@ namespace Nethermind.Network.Test.P2P
         [Test]
         public void Constructor_sets_the_values()
         {
-            Session session = new Session(30312, new Node(TestItem.PublicKeyB, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            Session session = new(30312, new Node(TestItem.PublicKeyB, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             Assert.AreEqual(TestItem.PublicKeyB, session.RemoteNodeId);
             Assert.AreEqual(30312, session.LocalPort);
             Assert.AreEqual(ConnectionDirection.Out, session.Direction);
@@ -66,7 +69,7 @@ namespace Nethermind.Network.Test.P2P
         [Test]
         public void Can_set_remaining_properties()
         {
-            Session session = new Session(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            Session session = new(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             session.PingSender = Substitute.For<IPingSender>();
             Assert.NotNull(session.PingSender);
             session.ObsoleteRemoteNodeId = TestItem.PublicKeyC;
@@ -76,7 +79,7 @@ namespace Nethermind.Network.Test.P2P
         [Test]
         public void Node_can_be_retrieved_only_after_remote_known()
         {
-            Session session = new Session(30312, _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            Session session = new(30312, _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             Assert.Throws<InvalidOperationException>(() =>
             {
                 var node = session.Node;
@@ -91,7 +94,7 @@ namespace Nethermind.Network.Test.P2P
         [Test]
         public void Throws_when_init_called_before_the_handshake()
         {
-            Session session = new Session(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            Session session = new(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             Assert.Throws<InvalidOperationException>(() => session.Init(5, _channelHandlerContext, _packetSender));
         }
 
@@ -99,7 +102,7 @@ namespace Nethermind.Network.Test.P2P
         public void Raises_event_on_init()
         {
             bool wasCalled = false;
-            Session session = new Session(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            Session session = new(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             session.Initialized += (s, e) => wasCalled = true;
 
             session.Handshake(TestItem.PublicKeyA);
@@ -111,7 +114,7 @@ namespace Nethermind.Network.Test.P2P
         [Test]
         public void Sets_p2p_version_on_init()
         {
-            Session session = new Session(30312, _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            Session session = new(30312, _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             session.Handshake(TestItem.PublicKeyB);
             session.Init(4, _channelHandlerContext, _packetSender);
             Assert.AreEqual(4, session.P2PVersion);
@@ -122,7 +125,7 @@ namespace Nethermind.Network.Test.P2P
         public void Raises_event_on_handshake()
         {
             bool wasCalled = false;
-            Session session = new Session(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            Session session = new(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             session.HandshakeComplete += (s, e) => wasCalled = true;
 
             session.Handshake(TestItem.PublicKeyA);
@@ -132,7 +135,7 @@ namespace Nethermind.Network.Test.P2P
         [Test]
         public void Cannot_handshake_twice()
         {
-            Session session = new Session(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            Session session = new(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             session.Handshake(TestItem.PublicKeyA);
             Assert.Throws<InvalidOperationException>(() => session.Handshake(TestItem.PublicKeyA));
         }
@@ -140,7 +143,7 @@ namespace Nethermind.Network.Test.P2P
         [Test]
         public void Cannot_handshake_after_init()
         {
-            Session session = new Session(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            Session session = new(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             session.Handshake(TestItem.PublicKeyA);
             session.Init(5, _channelHandlerContext, _packetSender);
             Assert.Throws<InvalidOperationException>(() => session.Handshake(TestItem.PublicKeyA));
@@ -149,7 +152,7 @@ namespace Nethermind.Network.Test.P2P
         [Test]
         public void Cannot_enable_snappy_before_init()
         {
-            Session session = new Session(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            Session session = new(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             Assert.Throws<InvalidOperationException>(() => session.EnableSnappy());
             session.Handshake(TestItem.PublicKeyA);
             Assert.Throws<InvalidOperationException>(() => session.EnableSnappy());
@@ -159,8 +162,8 @@ namespace Nethermind.Network.Test.P2P
         [Test]
         public void Can_enable_snappy()
         {
-            Session session = new Session(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
-            ZeroNettyP2PHandler handler = new ZeroNettyP2PHandler(session, LimboLogs.Instance);
+            Session session = new(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            ZeroNettyP2PHandler handler = new(session, LimboLogs.Instance);
             _pipeline.Get<ZeroNettyP2PHandler>().Returns(handler);
             Assert.False(handler.SnappyEnabled);
             session.Handshake(TestItem.PublicKeyA);
@@ -174,7 +177,7 @@ namespace Nethermind.Network.Test.P2P
         [Test]
         public void Enabling_snappy_on_disconnected_will_not_cause_trouble()
         {
-            Session session = new Session(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            Session session = new(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             session.Handshake(TestItem.PublicKeyA);
             session.Init(5, _channelHandlerContext, _packetSender);
             session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Remote, "test");
@@ -186,7 +189,7 @@ namespace Nethermind.Network.Test.P2P
         {
             bool shouldStop = false;
             int i = 0;
-            Session session = new Session(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            Session session = new(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             Action addProtocol = () =>
             {
                 IProtocolHandler required = Substitute.For<IProtocolHandler>();
@@ -205,7 +208,7 @@ namespace Nethermind.Network.Test.P2P
 
             session.Handshake(TestItem.PublicKeyA);
             session.Init(5, _channelHandlerContext, _packetSender);
-            Task task = new Task(addProtocol);
+            Task task = new(addProtocol);
             task.Start();
 
             await Task.Delay(20);
@@ -217,14 +220,14 @@ namespace Nethermind.Network.Test.P2P
         [Test]
         public void Cannot_init_before_the_handshake()
         {
-            Session session = new Session(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            Session session = new(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             Assert.Throws<InvalidOperationException>(() => session.Init(5, _channelHandlerContext, _packetSender));
         }
 
         [Test]
         public void Is_closing_is_false_when_not_closing()
         {
-            Session session = new Session(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            Session session = new(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             Assert.False(session.IsClosing);
             session.Handshake(TestItem.PublicKeyA);
             Assert.False(session.IsClosing);
@@ -235,7 +238,7 @@ namespace Nethermind.Network.Test.P2P
         [Test]
         public void Best_state_reached_is_correct()
         {
-            Session session = new Session(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            Session session = new(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             Assert.AreEqual(SessionState.New, session.BestStateReached);
             session.Handshake(TestItem.PublicKeyA);
             Assert.AreEqual(SessionState.HandshakeComplete, session.BestStateReached);
@@ -246,7 +249,7 @@ namespace Nethermind.Network.Test.P2P
         [Test]
         public void Cannot_dispose_unless_disconnected()
         {
-            Session session = new Session(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            Session session = new(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             session.Handshake(TestItem.PublicKeyA);
             Assert.Throws<InvalidOperationException>(() => session.Dispose());
             session.Init(5, _channelHandlerContext, _packetSender);
@@ -277,7 +280,7 @@ namespace Nethermind.Network.Test.P2P
         public void Raises_event_on_disconnecting()
         {
             bool wasCalled = false;
-            Session session = new Session(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            Session session = new(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             session.Disconnecting += (s, e) => wasCalled = true;
 
             session.Handshake(TestItem.PublicKeyA);
@@ -290,7 +293,7 @@ namespace Nethermind.Network.Test.P2P
         public void Raises_event_on_disconnected()
         {
             bool wasCalled = false;
-            Session session = new Session(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            Session session = new(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             session.Disconnected += (s, e) => wasCalled = true;
 
             session.Handshake(TestItem.PublicKeyA);
@@ -303,7 +306,7 @@ namespace Nethermind.Network.Test.P2P
         public void Disconnects_after_initiating_disconnect()
         {
             bool wasCalled = false;
-            Session session = new Session(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            Session session = new(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             session.Disconnecting += (s, e) => wasCalled = true;
 
             session.Handshake(TestItem.PublicKeyA);
@@ -316,7 +319,7 @@ namespace Nethermind.Network.Test.P2P
         public void Error_on_channel_when_disconnecting_channels_does_not_prevent_the_event()
         {
             bool wasCalled = false;
-            Session session = new Session(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            Session session = new(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             _channel.DisconnectAsync().Returns(Task.FromException<Exception>(new Exception()));
             session.Disconnected += (s, e) => wasCalled = true;
             session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Local, "test");
@@ -327,7 +330,7 @@ namespace Nethermind.Network.Test.P2P
         public void Error_on_context_when_disconnecting_channels_does_not_prevent_the_event()
         {
             bool wasCalled = false;
-            Session session = new Session(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            Session session = new(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             _channelHandlerContext.DisconnectAsync().Returns(Task.FromException<Exception>(new Exception()));
             session.Disconnected += (s, e) => wasCalled = true;
             session.Handshake(TestItem.PublicKeyA);
@@ -340,7 +343,7 @@ namespace Nethermind.Network.Test.P2P
         public void Can_disconnect_many_times()
         {
             int wasCalledTimes = 0;
-            Session session = new Session(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            Session session = new(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             session.Disconnecting += (s, e) => wasCalledTimes++;
 
             session.Handshake(TestItem.PublicKeyA);
@@ -356,7 +359,7 @@ namespace Nethermind.Network.Test.P2P
         public void Can_disconnect_before_init()
         {
             int wasCalledTimes = 0;
-            Session session = new Session(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            Session session = new(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             session.Disconnecting += (s, e) => wasCalledTimes++;
             session.Handshake(TestItem.PublicKeyA);
             session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Remote, "test");
@@ -367,7 +370,7 @@ namespace Nethermind.Network.Test.P2P
         [Test]
         public void On_incoming_sessions_can_fill_remote_id_on_handshake()
         {
-            Session session = new Session(30312, _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            Session session = new(30312, _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             session.Handshake(TestItem.PublicKeyB);
             Assert.AreEqual(TestItem.PublicKeyB, session.RemoteNodeId);
         }
@@ -375,7 +378,7 @@ namespace Nethermind.Network.Test.P2P
         [Test]
         public void Checks_init_arguments()
         {
-            Session session = new Session(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            Session session = new(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             session.Handshake(TestItem.PublicKeyA);
             Assert.Throws<ArgumentNullException>(() => session.Init(5, null, _packetSender), "context");
             Assert.Throws<ArgumentNullException>(() => session.Init(5, _channelHandlerContext, null), "packageSender");
@@ -384,7 +387,7 @@ namespace Nethermind.Network.Test.P2P
         [Test]
         public void Can_add_and_disconnect_many_handlers()
         {
-            Session session = new Session(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            Session session = new(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             session.Handshake(TestItem.PublicKeyA);
             session.Init(5, _channelHandlerContext, _packetSender);
             IProtocolHandler p2p = BuildHandler("p2p", 10);
@@ -404,7 +407,7 @@ namespace Nethermind.Network.Test.P2P
         [Test]
         public void Cannot_add_handlers_before_p2p()
         {
-            Session session = new Session(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            Session session = new(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             session.Handshake(TestItem.PublicKeyA);
             session.Init(5, _channelHandlerContext, _packetSender);
             IProtocolHandler aaa = BuildHandler("aaa", 10);
@@ -414,7 +417,7 @@ namespace Nethermind.Network.Test.P2P
         [Test]
         public void Cannot_add_handler_twice()
         {
-            Session session = new Session(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            Session session = new(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             session.Handshake(TestItem.PublicKeyA);
             session.Init(5, _channelHandlerContext, _packetSender);
             IProtocolHandler p2p = BuildHandler("p2p", 10);
@@ -436,7 +439,7 @@ namespace Nethermind.Network.Test.P2P
         {
             Metrics.P2PBytesSent = 0;
             
-            Session session = new Session(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            Session session = new(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             session.Handshake(TestItem.PublicKeyA);
             session.Init(5, _channelHandlerContext, _packetSender);
             IProtocolHandler p2p = BuildHandler("p2p", 10);
@@ -458,7 +461,7 @@ namespace Nethermind.Network.Test.P2P
         [Test]
         public void Cannot_deliver_before_initialized()
         {
-            Session session = new Session(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            Session session = new(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             Assert.Throws<InvalidOperationException>(() => session.DeliverMessage(PingMessage.Instance));
             session.Handshake(TestItem.PublicKeyA);
             Assert.Throws<InvalidOperationException>(() => session.DeliverMessage(PingMessage.Instance));
@@ -470,7 +473,7 @@ namespace Nethermind.Network.Test.P2P
         [Test]
         public void Cannot_receive_before_initialized()
         {
-            Session session = new Session(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            Session session = new(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             Assert.Throws<InvalidOperationException>(() => session.ReceiveMessage(new Packet("p2p", 1, Array.Empty<byte>())));
             session.Handshake(TestItem.PublicKeyA);
             Assert.Throws<InvalidOperationException>(() => session.ReceiveMessage(new Packet("p2p", 1, Array.Empty<byte>())));
@@ -482,7 +485,7 @@ namespace Nethermind.Network.Test.P2P
         [Test]
         public void Stops_delivering_messages_after_disconnect()
         {
-            Session session = new Session(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            Session session = new(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             session.Handshake(TestItem.PublicKeyA);
             session.Init(5, _channelHandlerContext, _packetSender);
             IProtocolHandler p2p = BuildHandler("p2p", 10);
@@ -497,7 +500,7 @@ namespace Nethermind.Network.Test.P2P
         [Test]
         public void Stops_receiving_messages_after_disconnect()
         {
-            Session session = new Session(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            Session session = new(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             session.Handshake(TestItem.PublicKeyA);
             session.Init(5, _channelHandlerContext, _packetSender);
             IProtocolHandler p2p = BuildHandler("p2p", 10);
@@ -514,7 +517,7 @@ namespace Nethermind.Network.Test.P2P
         {
             Metrics.P2PBytesReceived = 0;
             
-            Session session = new Session(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            Session session = new(30312, new Node("127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             session.Handshake(TestItem.PublicKeyA);
             session.Init(5, _channelHandlerContext, _packetSender);
             IProtocolHandler p2p = BuildHandler("p2p", 10);
@@ -547,7 +550,7 @@ namespace Nethermind.Network.Test.P2P
         [Test]
         public void Updates_local_and_remote_metrics_on_disconnects()
         {
-            Session session = new Session(30312, new Node("127.0.0.1", 8545), _channel, new MetricsDisconnectsAnalyzer(), LimboLogs.Instance);
+            Session session = new(30312, new Node("127.0.0.1", 8545), _channel, new MetricsDisconnectsAnalyzer(), LimboLogs.Instance);
             session.Handshake(TestItem.PublicKeyA);
             session.Init(5, _channelHandlerContext, _packetSender);
             IProtocolHandler p2p = BuildHandler("p2p", 10);

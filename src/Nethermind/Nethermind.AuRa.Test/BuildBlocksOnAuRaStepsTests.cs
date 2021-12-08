@@ -38,7 +38,7 @@ namespace Nethermind.AuRa.Test
         public async Task should_cancel_block_production_trigger_on_next_step_if_not_finished_yet()
         {
             List<BlockProductionEventArgs> args = new();
-            await using (BuildBlocksOnAuRaSteps buildBlocksOnAuRaSteps = new(LimboLogs.Instance, new TestAuRaStepCalculator()))
+            await using (BuildBlocksOnAuRaSteps buildBlocksOnAuRaSteps = new(new TestAuRaStepCalculator(), LimboLogs.Instance))
             {
                 buildBlocksOnAuRaSteps.TriggerBlockProduction += (o, e) =>
                 {
@@ -63,7 +63,7 @@ namespace Nethermind.AuRa.Test
         {
             List<BlockProductionEventArgs> args = new();
 
-            await using (BuildBlocksOnAuRaSteps buildBlocksOnAuRaSteps = new(LimboLogs.Instance, new TestAuRaStepCalculator()))
+            await using (BuildBlocksOnAuRaSteps buildBlocksOnAuRaSteps = new(new TestAuRaStepCalculator(), LimboLogs.Instance))
             {
                 buildBlocksOnAuRaSteps.TriggerBlockProduction += (o, e) =>
                 {

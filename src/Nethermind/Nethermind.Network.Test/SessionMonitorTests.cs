@@ -22,6 +22,7 @@ using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Stats.Model;
 using NSubstitute;
 using NUnit.Framework;
@@ -50,7 +51,7 @@ namespace Nethermind.Network.Test
         public void Will_unregister_on_disconnect()
         {
             ISession session = CreateSession();
-            SessionMonitor sessionMonitor = new SessionMonitor(new NetworkConfig(), LimboLogs.Instance);
+            SessionMonitor sessionMonitor = new(new NetworkConfig(), LimboLogs.Instance);
             sessionMonitor.AddSession(session);
             session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Remote, "test");
         }
@@ -62,9 +63,9 @@ namespace Nethermind.Network.Test
             ISession session1 = CreateSession();
             ISession session2 = CreateUnresponsiveSession();
 
-            NetworkConfig networkConfig = new NetworkConfig();
+            NetworkConfig networkConfig = new();
             networkConfig.P2PPingInterval = 50;
-            SessionMonitor sessionMonitor = new SessionMonitor(networkConfig, LimboLogs.Instance);
+            SessionMonitor sessionMonitor = new(networkConfig, LimboLogs.Instance);
             sessionMonitor.AddSession(session1);
             sessionMonitor.AddSession(session2);
             sessionMonitor.Start();

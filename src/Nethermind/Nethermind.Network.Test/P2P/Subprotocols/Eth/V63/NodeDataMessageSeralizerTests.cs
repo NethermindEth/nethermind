@@ -18,6 +18,7 @@ using System;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
+using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.Test.P2P.Subprotocols.Eth.V62;
 using NUnit.Framework;
 
@@ -28,9 +29,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
     {
         private static void Test(byte[][] data)
         {
-            NodeDataMessage message = new NodeDataMessage(data);
+            NodeDataMessage message = new(data);
             
-            NodeDataMessageSerializer serializer = new NodeDataMessageSerializer();
+            NodeDataMessageSerializer serializer = new();
             SerializerTester.TestZero(serializer, message);
         }
 

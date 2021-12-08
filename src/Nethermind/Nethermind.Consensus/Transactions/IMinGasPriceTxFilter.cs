@@ -17,6 +17,7 @@
 
 using Nethermind.Core;
 using Nethermind.Int256;
+using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Transactions
 {
@@ -27,6 +28,6 @@ namespace Nethermind.Consensus.Transactions
          * The additional method allows us to specify a custom min gas price floor.
          */
 
-        (bool Allowed, string Reason) IsAllowed(Transaction tx, BlockHeader parentHeader, in UInt256 minGasPriceFloor);
+        AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader, in UInt256 minGasPriceFloor);
     }
 }

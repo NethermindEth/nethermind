@@ -17,6 +17,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using FluentAssertions;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Filters.Topics;
@@ -98,8 +99,8 @@ namespace Nethermind.Blockchain.Test.Filters
             LogFilter filter2 = store.CreateLogFilter(new BlockParameter(1), new BlockParameter(2));
             store.SaveFilter(filter2);
 
-            LogFilter[] logFilters = store.GetFilters<LogFilter>();
-            BlockFilter[] blockFilters = store.GetFilters<BlockFilter>();
+            LogFilter[] logFilters = store.GetFilters<LogFilter>().ToArray();
+            BlockFilter[] blockFilters = store.GetFilters<BlockFilter>().ToArray();
             
             Assert.AreEqual(1, logFilters.Length, "log filters length");
             Assert.AreEqual(1, logFilters[0].Id, "log filters ids");

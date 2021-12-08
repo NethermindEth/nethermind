@@ -21,6 +21,7 @@ using Nethermind.DataMarketplace.Subprotocols;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.ProtocolHandlers;
 
 namespace Nethermind.DataMarketplace.Initializers
 {

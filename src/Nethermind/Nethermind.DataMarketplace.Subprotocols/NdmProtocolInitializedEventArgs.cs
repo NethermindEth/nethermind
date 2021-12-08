@@ -16,6 +16,8 @@
 
 using Nethermind.Core;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.EventArg;
+using Nethermind.Network.P2P.ProtocolHandlers;
 
 namespace Nethermind.DataMarketplace.Subprotocols
 {
