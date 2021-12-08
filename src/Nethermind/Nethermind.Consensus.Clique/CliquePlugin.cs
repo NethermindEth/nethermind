@@ -44,6 +44,7 @@ namespace Nethermind.Consensus.Clique
         public Task Init(INethermindApi nethermindApi)
         {
             _nethermindApi = nethermindApi;
+            
             if (_nethermindApi!.SealEngineType != Core.SealEngineType.Clique)
             {
                 return Task.CompletedTask;
@@ -74,7 +75,7 @@ namespace Nethermind.Consensus.Clique
             
             // both Clique and the merge provide no block rewards 
             setInApi.RewardCalculatorSource = NoBlockRewards.Instance;
-            setInApi.BlockPreprocessor.AddLast(new AuthorRecoveryStep(_snapshotManager!));
+            setInApi.BlockPreprocessor.AddLast(new AuthorRecoveryStep(_snapshotManager!, getFromApi.SpecProvider!));
 
             return Task.CompletedTask;
         }

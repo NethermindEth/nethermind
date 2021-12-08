@@ -18,23 +18,26 @@ using System;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Consensus.Clique
 {
     public class AuthorRecoveryStep : IBlockPreprocessorStep
     {
         private readonly ISnapshotManager _snapshotManager;
+        private readonly ISpecProvider _specProvider;
 
         [Todo(Improve.Refactor, "Strong coupling here")]
-        public AuthorRecoveryStep(ISnapshotManager snapshotManager)
+        public AuthorRecoveryStep(ISnapshotManager snapshotManager, ISpecProvider specProvider)
         {
             _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
+            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         }
 
         public void RecoverData(Block block)
         {
             // ToDo after refactoring PostMerge SpecProvider, change this condition: isPos(block)
-            if (block.Header.Author != null || block.Header.IsPostMerge) return;
+            if (block.Header.Author != null || block.Header.IsPostMerge || block.Number >= _specProvider.MergeBlockNumber) return;
             block.Header.Author = _snapshotManager.GetBlockSealer(block.Header);
         }
     }
