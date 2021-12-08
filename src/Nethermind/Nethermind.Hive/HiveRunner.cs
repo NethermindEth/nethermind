@@ -22,6 +22,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Config;
@@ -36,6 +37,7 @@ namespace Nethermind.Hive
     public class HiveRunner
     {
         private readonly IBlockTree _blockTree;
+        private readonly IBlockProcessingQueue _blockProcessingQueue;
         private readonly ILogger _logger;
         private readonly IConfigProvider _configurationProvider;
         private readonly IFileSystem _fileSystem;
@@ -45,6 +47,7 @@ namespace Nethermind.Hive
 
         public HiveRunner(
             IBlockTree blockTree,
+            IBlockProcessingQueue blockProcessingQueue,
             IConfigProvider configurationProvider,
             ILogger logger,
             IFileSystem fileSystem,
@@ -53,6 +56,8 @@ namespace Nethermind.Hive
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _blockProcessingQueue =
+                blockProcessingQueue ?? throw new ArgumentNullException(nameof(blockProcessingQueue));
             _configurationProvider =
                 configurationProvider ?? throw new ArgumentNullException(nameof(configurationProvider));
             _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
@@ -66,21 +71,21 @@ namespace Nethermind.Hive
         public async Task Start(CancellationToken cancellationToken)
         {
             if (_logger.IsInfo) _logger.Info("HIVE initialization started");
-            _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
+            _blockProcessingQueue.ProcessingQueueEmpty += OnBlockProcessed;
             IHiveConfig hiveConfig = _configurationProvider.GetConfig<IHiveConfig>();
 
             ListEnvironmentVariables();
             await InitializeBlocks(hiveConfig.BlocksDir, cancellationToken);
             await InitializeChain(hiveConfig.ChainFile);
 
-            _blockTree.NewHeadBlock -= BlockTreeOnNewHeadBlock;
+            _blockProcessingQueue.ProcessingQueueEmpty -= OnBlockProcessed;
 
             if (_logger.IsInfo) _logger.Info("HIVE initialization completed");
         }
 
-        private void BlockTreeOnNewHeadBlock(object? sender, BlockEventArgs e)
+        private void OnBlockProcessed(object? sender, EventArgs e)
         {
-            _logger.Info($"HIVE new head block {e.Block.ToString(Block.Format.Short)}");
+            _logger.Info($"HIVE block processing finished.");
             _resetEvent.Release(1);
         }
 
@@ -193,7 +198,7 @@ namespace Nethermind.Hive
 
         private async Task WaitForBlockProcessing(SemaphoreSlim semaphore)
         {
-            const int timeoutInSeconds = 1;
+            const int timeoutInSeconds = -1;
 
             if (!await semaphore.WaitAsync(TimeSpan.FromSeconds(timeoutInSeconds)))
             {
