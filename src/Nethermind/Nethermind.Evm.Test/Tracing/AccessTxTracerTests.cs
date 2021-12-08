@@ -47,7 +47,7 @@ namespace Nethermind.Evm.Test.Tracing
             IEnumerable<Address> addressesAccessed = tracer.AccessList.Data.Keys;
             
             Assert.IsNotEmpty(addressesAccessed);
-            addressesAccessed.Should().BeEquivalentTo(SenderRecipientAndMiner.Default.Sender, SenderRecipientAndMiner.Default.Recipient, TestItem.AddressC);
+            addressesAccessed.Should().BeEquivalentTo(new Address[] { SenderRecipientAndMiner.Default.Sender, SenderRecipientAndMiner.Default.Recipient, TestItem.AddressC });
         }
         
         [Test]
