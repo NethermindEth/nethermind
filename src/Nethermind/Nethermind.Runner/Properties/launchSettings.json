@@ -157,6 +157,10 @@
     "Kinstugi_devnet": {
       "commandName": "Project",
       "commandLineArgs": "--config kintsugi_devnet.cfg  --Init.DiagnosticMode MemDb"
+    },
+    "xDai_themerge": {
+      "commandName": "Project",
+      "commandLineArgs": "--config xdai_themerge.cfg  --Init.DiagnosticMode MemDb"
     }
   }
 }
