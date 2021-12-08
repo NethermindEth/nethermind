@@ -198,12 +198,9 @@ namespace Nethermind.Hive
 
         private async Task WaitForBlockProcessing(SemaphoreSlim semaphore)
         {
-            const int timeoutInSeconds = -1;
-
-            if (!await semaphore.WaitAsync(TimeSpan.FromSeconds(timeoutInSeconds)))
+            if (!await semaphore.WaitAsync(-1))
             {
-                if(_logger.IsInfo) _logger.Info($"Waited {timeoutInSeconds}s for adding suggested block to main, without success. Skipping.");
-            }
+                throw new InvalidOperationException("block processed event didn't happen");            }
         }
 
         private async Task ProcessBlock(Block block)
