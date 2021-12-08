@@ -1,5 +1,5 @@
 {
-  "name": "mergeDevnet2",
+  "name": "mergeDevnet3",
   "engine": {
     "Ethash": {
       "params": {
@@ -21,7 +21,8 @@
     "accountStartNonce": "0x0",
     "maximumExtraDataSize": "0x20",
     "minGasLimit": "0x1388",
-    "networkID": "0x14689e",
+    "networkID": "0x146902",
+    "MergeForkIdTransition": "0x64",
     "eip150Transition": "0x0",
     "eip158Transition": "0x0",
     "eip160Transition": "0x0",
@@ -871,26 +872,29 @@
         "0x0000000000000000000000000000000000000000000000000000000000000040": "0x985e929f70af28d0bdd1a90a808f977f597c7c778c489e98d3bd8910d31ac0f7"
       }
     },
-    "0x858627c231d8962B4120915c9ef1FEE73102D8F6": {
+    "0x0917493ee5d733b20E86838486a7747126CA1bBb": {
       "balance": "10000000000000000000000000"
     },
-    "0x67F9Ca0Fc8D749D6CeBfcf81c48b80859EB6A8E9": {
+    "0x9aDDDa0caa0681A7Ba602dc37A522fE47e383dD9": {
       "balance": "10000000000000000000000000"
     },
-    "0x2C0BCcC6AF8aFB51C686760d942F825d3B8ae866": {
+    "0x8d99dfAa514868804d9e627FD37E8A2ffd823eb1": {
       "balance": "10000000000000000000000000"
     },
-    "0x13FeB917EEc0f3B75765Df3785DDf8345D0B77cd": {
+    "0xf6c3584882dDAf92334C376Cf94944284bA29794": {
       "balance": "10000000000000000000000000"
     },
-    "0x94c80f2DA5148E72aFa0d0Ac9282f3c1393e41ae": {
+    "0xb7Bb9BeA19ECbE938f79c4919ebacaaC6f5E70b8": {
       "balance": "10000000000000000000000000"
     },
-    "0x4Cd2FCD054D6C2B3Ebd9BDc547e8F52761D1f9AD": {
+    "0xBa8d8Eb9f0cee321DaD61584b6B4f805CDD518a3": {
       "balance": "10000000000000000000000000"
     }
   },
   "nodes": [
-    "enode://d2da684e8dd9746a520d4e37eb43a94c18756b3b17c251b0fa172ad253a07b26d6bf4b0ec09025ea2d4f6e607df7a2e7f96b57d03bed3dcca38198eb53981a0e@137.184.104.103:30303"
+    "enode://6b457d42e6301acfae11dc785b43346e195ad0974b394922b842adea5aeb4c55b02410607ba21e4a03ba53e7656091e2f990034ce3f8bad4d0cca1c6398bdbb8@137.184.55.117:30303",
+"enode://588ef56694223ce3212d7c56e5b6f3e8ba46a9c29522fdc6fef15657f505a7314b9bd32f2d53c4564bc6b9259c3d5c79fc96257eff9cd489004c4d9cbb3c0707@137.184.203.157:30303",
+"enode://46b2ecd18c24463413b7328e9a59c72d955874ad5ddb9cd9659d322bedd2758a6cefb8378e2309a028bd3cdf2beca0b18c3457f03e772f35d0cd06c37ce75eee@137.184.213.208:30303"
+
   ]
 }
