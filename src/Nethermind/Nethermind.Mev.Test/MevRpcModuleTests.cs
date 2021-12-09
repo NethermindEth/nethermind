@@ -30,7 +30,6 @@ using Nethermind.Crypto;
 using Nethermind.JsonRpc;
 using NUnit.Framework;
 using FluentAssertions;
-using Nethermind.Core.Eip2930;
 using Nethermind.Evm;
 using Nethermind.Mev.Data;
 using Nethermind.Specs.Forks;
@@ -39,7 +38,6 @@ namespace Nethermind.Mev.Test
 
 {
     [TestFixture]
-    [Ignore("ToDo - it is failing after the merge changes on total difficulty checks in BlockTree and IBlockTree")]
     public partial class MevRpcModuleTests
     {
         public static IEnumerable<Keccak?> GetHashes(IEnumerable<Transaction> bundle2Txs) => bundle2Txs.Select(t => t.Hash);

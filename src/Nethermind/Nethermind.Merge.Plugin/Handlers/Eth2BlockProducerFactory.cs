@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
@@ -54,7 +53,8 @@ namespace Nethermind.Merge.Plugin.Handlers
         public Eth2BlockProducer Create(
             Eth2BlockProductionContext eth2BlockProductionContext,
             ITxSource? txSource = null,
-            IBlockProductionTrigger? blockProductionTrigger = null) // ToDo temp hack with passing block production trigger for MEV & ETH2 
+            IBlockProductionTrigger? blockProductionTrigger = null,
+            IDifficultyCalculator? difficultyCalculator = null) // ToDo temp hack with passing block production trigger for MEV & ETH2 
         {
             BlockProducerEnv producerEnv = eth2BlockProductionContext.BlockProducerEnv;
                 
@@ -68,7 +68,8 @@ namespace Nethermind.Merge.Plugin.Handlers
                 _sealEngine,
                 _timestamper,
                 _specProvider,
-                _logManager);
+                _logManager,
+                difficultyCalculator ?? ConstantDifficulty.Zero);
         }
     }
 }

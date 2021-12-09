@@ -103,7 +103,8 @@ namespace Nethermind.Merge.Plugin.Handlers
             ISealEngine sealEngine,
             ITimestamper timestamper,
             ISpecProvider specProvider,
-            ILogManager logManager) 
+            ILogManager logManager,
+            IDifficultyCalculator difficultyCalculator) 
             : base(
                 txSource, 
                 processor, 
@@ -115,7 +116,7 @@ namespace Nethermind.Merge.Plugin.Handlers
                 timestamper, 
                 specProvider, 
                 logManager,
-                ConstantDifficulty.Zero)
+                difficultyCalculator)
         {
         }
         

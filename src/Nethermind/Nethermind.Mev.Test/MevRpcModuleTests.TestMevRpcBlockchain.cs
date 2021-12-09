@@ -119,8 +119,8 @@ namespace Nethermind.Mev.Test
                     Eth2BlockProductionContext? blockProductionContext = new Eth2BlockProductionContext();
                     blockProductionContext.Init(blockProducerEnvFactory, txSource);
                     return new Eth2BlockProducerFactory(SpecProvider, SealEngine, Timestamper, miningConfig,
-                        LogManager).Create(
-                        blockProductionContext, null, blockProductionTrigger);
+                        LogManager, GasLimitCalculator).Create(
+                        blockProductionContext, null, blockProductionTrigger, ConstantDifficulty.One);
                 }
 
                 MevBlockProducer.MevBlockProducerInfo CreateProducer(int bundleLimit = 0, ITxSource? additionalTxSource = null)
