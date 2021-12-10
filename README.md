@@ -21,7 +21,7 @@
 [Linux x64/arm64](http://downloads.nethermind.io)<br/>
 [MacOS](http://downloads.nethermind.io)<br/>
 
-It syncs fully on: 
+It syncs fully on:
 * `Mainnet`
 * `Goerli`
 * `Rinkeby`
@@ -103,6 +103,8 @@ sudo yum install -y glibc-devel snappy libzstd
 # Link libraries
 sudo ln -s `find /usr/lib64/ -type f -name "libbz2.so.1*"` /usr/lib64/libbz2.so.1.0 && \
 sudo ln -s `find /usr/lib64/ -type f -name "libsnappy.so.1*"` /usr/lib64/libsnappy.so
+# also required for Fedora 35
+sudo ln -s `find /usr/lib64/ -type f -name "libdl.so.2*"` /usr/lib64/libdl.so
 ```
 *Tested on Fedora 32*
 
@@ -166,4 +168,3 @@ Nethermind client can be used in your projects, when setting up private Ethereum
 
 # License
 [![GitHub](https://img.shields.io/github/license/nethermindeth/nethermind.svg)](https://github.com/NethermindEth/nethermind/blob/master/LICENSE)
-
