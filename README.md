@@ -68,8 +68,11 @@ It syncs fully on:
 * Install dependencies
 ```sh
 sudo apt-get install libsnappy-dev libc6-dev libc6
+
+# Link libraries (only for Ubuntu 21.10)
+sudo ln -s /usr/lib/x86_64-linux-gnu/libdl.so.2 /usr/lib/x86_64-linux-gnu/libdl.so
 ```
-*Tested on Ubuntu 21.04, 20.04 and 18.04 LTS*
+*Tested on Ubuntu 21.04, 20.04 and 18.04 LTS and 21.10*
 
 #### Debian
 * [Install .NET](https://docs.microsoft.com/en-gb/dotnet/core/install/linux-debian)
