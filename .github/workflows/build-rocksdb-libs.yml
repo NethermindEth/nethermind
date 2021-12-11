@@ -31,7 +31,8 @@ jobs:
       if: matrix.os == 'ubuntu-latest'
       run: |
         cd rocksdb-sharp/build-native
-        sh build-rocksdb.sh
+        chmod +x build-rocksdb.sh
+        ./build-rocksdb.sh
     - uses: actions/upload-artifact@v1
       name: Uploading Linux artifact
       if: matrix.os == 'ubuntu-latest'
@@ -42,7 +43,8 @@ jobs:
       if: matrix.os == 'macOS-latest'
       run: |
         cd rocksdb-sharp/build-native
-        sh build-rocksdb.sh
+        chmod +x build-rocksdb.sh
+        ./build-rocksdb.sh
     - uses: actions/upload-artifact@v1
       name: Uploading Darwin artifact
       if: matrix.os == 'macOS-latest'
