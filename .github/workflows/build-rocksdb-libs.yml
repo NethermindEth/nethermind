@@ -30,7 +30,7 @@ jobs:
     - name: Building rocksDB for Linux
       if: matrix.os == 'ubuntu-latest'
       run: |
-        cd rocksdb-sharp/build-native
+        cd rocksdb-sharp-1/build-native
         chmod +x build-rocksdb.sh
         ./build-rocksdb.sh
     - uses: actions/upload-artifact@v1
@@ -42,7 +42,7 @@ jobs:
     - name: Building rocksDB for OSX
       if: matrix.os == 'macOS-latest'
       run: |
-        cd rocksdb-sharp/build-native
+        cd rocksdb-sharp-1/build-native
         chmod +x build-rocksdb.sh
         ./build-rocksdb.sh
     - uses: actions/upload-artifact@v1
