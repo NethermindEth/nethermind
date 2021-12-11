@@ -18,7 +18,7 @@ jobs:
       if: matrix.os == 'windows-latest'
       run: |
         call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
-        call "C:\Program Files (x86)\Git\bin\bash.exe /d/a/nethermind/nethermind/rocksdb-sharp/build-native/"
+        call "C:\Program Files (x86)\Git\bin\bash.exe /d/a/nethermind/nethermind/rocksdb-sharp/build-native/build-rocksdb.sh"
       shell: cmd
     - uses: actions/upload-artifact@v1
       name: Uploading Windows artifact
