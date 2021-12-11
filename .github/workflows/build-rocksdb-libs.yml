@@ -19,7 +19,7 @@ jobs:
       run: |
         call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
         call "C:\Program Files\Git\bin\bash.exe"
-        (cd /d/a/nethermind/nethermind/rocksdb-sharp/build-native/ && sh build-rocksdb.sh)
+        (cd ~/rocksdb-sharp/build-native/; sh build-rocksdb.sh)
       shell: cmd
     - uses: actions/upload-artifact@v1
       name: Uploading Windows artifact
