@@ -38,7 +38,7 @@ jobs:
       if: matrix.os == 'ubuntu-latest'
       with:
         name: linux_artifact_rocksdb
-        path: rocksdb-sharp-1/build-native/runtimes/lin-x64/native/librocksdb.so
+        path: rocksdb-sharp-1/build-native/runtimes/linux-x64/native/librocksdb.so
     - name: Building rocksDB for OSX
       if: matrix.os == 'macOS-latest'
       run: |
