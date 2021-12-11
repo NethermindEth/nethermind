@@ -26,7 +26,7 @@ jobs:
       if: matrix.os == 'windows-latest'
       with:
         name: windows_artifact_rocksdb
-        path: build-native/runtimes/win-x64/native/rocksdb.dll
+        path: rocksdb-sharp-1/build-native/runtimes/win-x64/native/rocksdb.dll
     - name: Building rocksDB for Linux
       if: matrix.os == 'ubuntu-latest'
       run: |
@@ -38,7 +38,7 @@ jobs:
       if: matrix.os == 'ubuntu-latest'
       with:
         name: linux_artifact_rocksdb
-        path: build-native/runtimes/lin-x64/native/librocksdb.so
+        path: rocksdb-sharp-1/build-native/runtimes/lin-x64/native/librocksdb.so
     - name: Building rocksDB for OSX
       if: matrix.os == 'macOS-latest'
       run: |
@@ -50,4 +50,4 @@ jobs:
       if: matrix.os == 'macOS-latest'
       with:
         name: darwin_artifact_rocksdb
-        path: build-native/runtimes/osx-x64/native/librocksdb.dylib
+        path: rocksdb-sharp-1/build-native/runtimes/osx-x64/native/librocksdb.dylib
