@@ -40,7 +40,7 @@ It syncs fully on:
 1. To execute the launcher
 ``nethermind``
 1. To execute the runner
-``nethermind --config mainnet``
+``nethermind --config mainnet_pruned``
 
 **Homebrew**
 1. `brew tap nethermindeth/nethermind`
@@ -48,7 +48,7 @@ It syncs fully on:
 1. To execute the launcher
 ``nethermind-launcher``
 1. To execute the runner
-``nethermind --config mainnet``
+``nethermind --config mainnet_pruned``
 
 # Build from Source
 
@@ -123,7 +123,7 @@ git clone https://github.com/NethermindEth/nethermind --recursive
 cd nethermind/src/Nethermind
 dotnet build Nethermind.sln -c Release
 cd Nethermind.Runner
-dotnet run -c Release --no-build -- --config mainnet
+dotnet run -c Release --no-build -- --config mainnet_pruned
 ```
 
 ## Docker Image
