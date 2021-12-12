@@ -41,7 +41,12 @@ namespace Nethermind.Merge.Plugin
         private BlockHeader? _firstPoSBlockHeader;
         private long? _terminalPoWBlockNumber;
 
-        public PoSSwitcher(ILogManager logManager, IMergeConfig mergeConfig, IDb db, IBlockTree blockTree, ISpecProvider specProvider)
+        public PoSSwitcher(
+            IMergeConfig mergeConfig,
+            IDb db,
+            IBlockTree blockTree, 
+            ISpecProvider specProvider,
+            ILogManager logManager)
         {
             _mergeConfig = mergeConfig;
             _db = db;
@@ -62,7 +67,7 @@ namespace Nethermind.Merge.Plugin
             {
                 _terminalPoWBlockNumber = e.Block.Number;
                 _blockTree.NewHeadBlock -= CheckIfTerminalPoWBlockReached;
-                _specProvider.UpdateMergeBlockInfo(e.Block.Number + 1);
+                _specProvider.UpdateMergeTransitionInfo(e.Block.Number + 1);
                 TerminalPoWBlockReached?.Invoke(this, EventArgs.Empty);
                 if (_logger.IsInfo) _logger.Info($"Reached terminal PoW block {e.Block}");
             }

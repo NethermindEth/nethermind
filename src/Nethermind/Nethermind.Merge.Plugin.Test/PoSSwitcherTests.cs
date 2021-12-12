@@ -136,7 +136,7 @@ namespace Nethermind.Merge.Plugin.Test
         {
             db ??= new MemDb();
             MergeConfig? mergeConfig = new() {Enabled = true, TerminalTotalDifficulty = terminalTotalDifficulty};
-            return new PoSSwitcher(LimboLogs.Instance, mergeConfig, db, blockTree, MainnetSpecProvider.Instance);
+            return new PoSSwitcher(mergeConfig, db, blockTree, MainnetSpecProvider.Instance, LimboLogs.Instance);
         }
     }
 }

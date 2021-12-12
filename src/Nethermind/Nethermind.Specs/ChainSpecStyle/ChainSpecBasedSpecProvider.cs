@@ -169,7 +169,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             }
         }
 
-        public void UpdateMergeBlockInfo(long blockNumber)
+        public void UpdateMergeTransitionInfo(long blockNumber)
         {
             _theMergeBlock = blockNumber;
         }

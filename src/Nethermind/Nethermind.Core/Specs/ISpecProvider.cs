@@ -21,7 +21,7 @@ namespace Nethermind.Core.Specs
     /// </summary>
     public interface ISpecProvider
     {
-        public void UpdateMergeBlockInfo(long blockNumber) { }
+        public void UpdateMergeTransitionInfo(long blockNumber) { }
 
         public long MergeBlockNumber => long.MaxValue;
 
