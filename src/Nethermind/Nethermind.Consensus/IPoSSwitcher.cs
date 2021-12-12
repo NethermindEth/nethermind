@@ -17,12 +17,15 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Consensus
 {
     public interface IPoSSwitcher
     {
-        void ForkchoiceUpdated(BlockHeader header);
+        void ForkchoiceUpdated(BlockHeader newBlockHeader);
+
+        void SetFinalizedBlockHash(Keccak finalizedBlockHash);
         
         bool IsPos(BlockHeader header);
 

@@ -20,6 +20,7 @@ using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Merge.Plugin.Data.V1;
 using Nethermind.Merge.Plugin.Handlers;
 
 namespace Nethermind.Merge.Plugin
@@ -30,7 +31,9 @@ namespace Nethermind.Merge.Plugin
 
         public static NoPoS Instance { get; } = new();
 
-        public void ForkchoiceUpdated(BlockHeader header) { }
+        public void ForkchoiceUpdated(BlockHeader newBlockHeader) { }
+
+        public void SetFinalizedBlockHash(Keccak finalizedBlockHash) { }
 
         public bool IsPos(BlockHeader header) => false;
 

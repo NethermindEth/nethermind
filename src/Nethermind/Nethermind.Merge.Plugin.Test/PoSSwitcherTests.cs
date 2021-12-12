@@ -113,23 +113,30 @@ namespace Nethermind.Merge.Plugin.Test
         }
         
         [Test]
-        [Ignore("I'm waiting for the spec to be confirmed. For now, we're setting TTD only in config. " +
-                "If a consensus client can override TTD, we need to add persistence of this parameter.")]
         public void Can_load_parameters_after_the_restart()
         {
             using TempPath tempPath = TempPath.GetTempFile(SimpleFilePublicKeyDb.DbFileName);
 
             SimpleFilePublicKeyDb filePublicKeyDb = new("PoSSwitcherTests", Path.GetTempPath(), LimboLogs.Instance);
+            
             UInt256 configTerminalTotalDifficulty = 10L;
             UInt256 expectedTotalTerminalDifficulty = 200L;
+            Keccak expectedTerminalPowHash = Keccak.Compute("test1");
+            
+            Block block = Build.A.Block.WithNumber(2).TestObject;
+            Block finalizedBlock = Build.A.Block.WithNumber(3).TestObject;
+            
             var blockTree = Substitute.For<IBlockTree>();
             PoSSwitcher poSSwitcher = CreatePosSwitcher(configTerminalTotalDifficulty, blockTree, filePublicKeyDb);
             poSSwitcher.TerminalTotalDifficulty = expectedTotalTerminalDifficulty;
+            poSSwitcher.ForkchoiceUpdated(block.Header);
+            poSSwitcher.SetFinalizedBlockHash(finalizedBlock.Hash!);
 
             PoSSwitcher newPoSSwitcher = CreatePosSwitcher(configTerminalTotalDifficulty,blockTree, filePublicKeyDb);
-            
             tempPath.Dispose();
             Assert.AreEqual(expectedTotalTerminalDifficulty, newPoSSwitcher.TerminalTotalDifficulty);
+            Assert.AreEqual(block.Header.Hash, newPoSSwitcher.LoadFirstPosBlockHash());
+            Assert.AreEqual(finalizedBlock.Header.Hash, newPoSSwitcher.LoadFinalizedBlockHash());
         }
 
         private static PoSSwitcher CreatePosSwitcher(UInt256 terminalTotalDifficulty, IBlockTree blockTree, IDb? db = null)
