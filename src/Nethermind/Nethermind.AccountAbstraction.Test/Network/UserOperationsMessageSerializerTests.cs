@@ -124,7 +124,7 @@ namespace Nethermind.AccountAbstraction.Test.Network
                 serializer.Serialize(buffer, message);
                 UserOperationsMessage deserialized = serializer.Deserialize(buffer);
                 // Abi is similar in deserialized and message, but for assertion there is some difference and an error. Line below excludes Abi from assertion
-                deserialized.Should().BeEquivalentTo(message, options => options.Excluding(o => o.SelectedMemberPath.EndsWith("Abi")));
+                deserialized.Should().BeEquivalentTo(message, options => options.Excluding(o => o.Path.EndsWith("Abi")));
 
                 Assert.AreEqual(0, buffer.ReadableBytes, "readable bytes");
 
