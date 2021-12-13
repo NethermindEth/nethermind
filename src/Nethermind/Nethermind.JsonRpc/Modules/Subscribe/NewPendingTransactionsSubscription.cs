@@ -17,6 +17,8 @@
 
 using System;
 using System.Threading.Tasks;
+using Nethermind.JsonRpc.Data;
+using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using Nethermind.TxPool;
 
@@ -25,12 +27,14 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
     public class NewPendingTransactionsSubscription : Subscription
     {
         private readonly ITxPool _txPool;
+        private readonly bool _includeTransactions;
 
-        public NewPendingTransactionsSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, ITxPool? txPool, ILogManager? logManager) 
+        public NewPendingTransactionsSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, ITxPool? txPool, ILogManager? logManager, Filter? filter = null) 
             : base(jsonRpcDuplexClient)
         {
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _includeTransactions = filter?.IncludeTransactions ?? false;
             
             _txPool.NewPending += OnNewPending;
             if(_logger.IsTrace) _logger.Trace($"NewPendingTransactions subscription {Id} will track NewPendingTransactions");
@@ -40,7 +44,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         {
             ScheduleAction(() =>
             {
-                JsonRpcResult result = CreateSubscriptionMessage(e.Transaction.Hash);
+                JsonRpcResult result = CreateSubscriptionMessage(_includeTransactions ? new TransactionForRpc(e.Transaction) : e.Transaction.Hash);
                 JsonRpcDuplexClient.SendJsonRpcResult(result);
                 if(_logger.IsTrace) _logger.Trace($"NewPendingTransactions subscription {Id} printed hash of NewPendingTransaction.");
             });
