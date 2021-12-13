@@ -150,6 +150,7 @@ namespace Nethermind.Merge.Plugin
                 RlpStream stream = new (hashFromDb!);
                 return stream.DecodeKeccak();   
             }
+            
             return null;
         }
     }

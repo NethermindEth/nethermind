@@ -570,6 +570,9 @@ namespace Nethermind.Blockchain
                 }
 
                 BestSuggestedHeader = header;
+                if (postMergeImprovementRequirementSatisfied)
+                    BestSuggestedBody = block;
+                
                 if (block is not null && shouldProcess)
                 {
                     BestSuggestedBody = block;

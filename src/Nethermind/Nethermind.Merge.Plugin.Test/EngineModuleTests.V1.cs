@@ -671,32 +671,32 @@ namespace Nethermind.Merge.Plugin.Test
             foreach (BlockRequestResult block in branch)
             {
                 uint count = 10;
-                BlockRequestResult newBlockRequest = CreateBlockRequest(block, TestItem.AddressA);
+                BlockRequestResult executePayloadRequest = CreateBlockRequest(block, TestItem.AddressA);
                 PrivateKey from = TestItem.PrivateKeyB;
                 Address to = TestItem.AddressD;
-                (_, UInt256 toBalanceAfter) = AddTransactions(chain, newBlockRequest, from, to, count, 1,
+                (_, UInt256 toBalanceAfter) = AddTransactions(chain, executePayloadRequest, from, to, count, 1,
                     out BlockHeader? parentHeader);
 
-                newBlockRequest.GasUsed = GasCostOf.Transaction * count;
-                newBlockRequest.StateRoot =
+                executePayloadRequest.GasUsed = GasCostOf.Transaction * count;
+                executePayloadRequest.StateRoot =
                     new Keccak("0x3d2e3ced6da0d1e94e65894dc091190480f045647610ef614e1cab4241ca66e0");
-                newBlockRequest.ReceiptsRoot =
+                executePayloadRequest.ReceiptsRoot =
                     new Keccak("0xc538d36ed1acf6c28187110a2de3e5df707d6d38982f436eb0db7a623f9dc2cd");
-                TryCalculateHash(newBlockRequest, out Keccak? hash);
-                newBlockRequest.BlockHash = hash;
-                ResultWrapper<ExecutePayloadV1Result> result = await rpc.engine_executePayloadV1(newBlockRequest);
+                TryCalculateHash(executePayloadRequest, out Keccak? hash);
+                executePayloadRequest.BlockHash = hash;
+                ResultWrapper<ExecutePayloadV1Result> result = await rpc.engine_executePayloadV1(executePayloadRequest);
                 result.Data.EnumStatus.Should().Be(VerificationStatus.Valid);
                 RootCheckVisitor rootCheckVisitor = new();
-                chain.StateReader.RunTreeVisitor(rootCheckVisitor, newBlockRequest.StateRoot);
+                chain.StateReader.RunTreeVisitor(rootCheckVisitor, executePayloadRequest.StateRoot);
                 rootCheckVisitor.HasRoot.Should().BeTrue();
                 // Chain.StateReader.GetBalance(newBlockRequest.StateRoot, from.Address).Should().Be(fromBalanceAfter);
-                chain.StateReader.GetBalance(newBlockRequest.StateRoot, to).Should().Be(toBalanceAfter);
+                chain.StateReader.GetBalance(executePayloadRequest.StateRoot, to).Should().Be(toBalanceAfter);
                 if (moveHead)
                 {
-                    ForkchoiceStateV1 forkChoiceUpdatedRequest = new(newBlockRequest.BlockHash,
-                        newBlockRequest.BlockHash, newBlockRequest.BlockHash);
+                    ForkchoiceStateV1 forkChoiceUpdatedRequest = new(executePayloadRequest.BlockHash,
+                        executePayloadRequest.BlockHash, executePayloadRequest.BlockHash);
                     await rpc.engine_forkchoiceUpdatedV1(forkChoiceUpdatedRequest, null);
-                    chain.State.StateRoot.Should().Be(newBlockRequest.StateRoot);
+                    chain.State.StateRoot.Should().Be(executePayloadRequest.StateRoot);
                     chain.State.StateRoot.Should().NotBe(parentHeader.StateRoot!);
                 }
             }
