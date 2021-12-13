@@ -764,7 +764,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
         
         [Test]
-        public void NewPendingTransactionsSubscription_on_NewPending_test()
+        public void NewPendingTransactionsSubscription_on_NewPending_with_includeTransactions_param()
         {
             Transaction transaction = Build.A.Transaction.TestObject;
             transaction.Hash = null;
