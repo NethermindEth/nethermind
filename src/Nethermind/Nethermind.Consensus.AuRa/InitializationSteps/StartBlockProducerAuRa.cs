@@ -51,6 +51,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
         private INethermindApi NethermindApi => _api;
         
         private readonly IAuraConfig _auraConfig;
+        private IAuRaBlockFinalizationManager _finalizationManager;
         private IAuRaValidator? _validator;
         private DictionaryContractDataStore<TxPriorityContract.Destination>? _minGasPricesContractDataStore;
         private TxPriorityContract? _txPriorityContract;
@@ -133,7 +134,29 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                 constantContractTxProcessingEnv,
                 _api.SpecProvider, 
                 new LocalTxFilter(_api.EngineSigner));
-
+            
+            AuRaBlockProcessor processor = new (
+                _api.SpecProvider,
+                _api.BlockValidator,
+                _api.RewardCalculatorSource.Get(changeableTxProcessingEnv.TransactionProcessor),
+                _api.BlockProducerEnvFactory.TransactionsExecutorFactory.Create(changeableTxProcessingEnv),
+                changeableTxProcessingEnv.StateProvider,
+                changeableTxProcessingEnv.StorageProvider,
+                _api.ReceiptStorage,
+                _api.LogManager,
+                changeableTxProcessingEnv.BlockTree,
+                auRaTxFilter,
+                CreateGasLimitCalculator(constantContractTxProcessingEnv) as AuRaContractGasLimitOverride);
+            
+            _finalizationManager = _api.FinalizationManager ?? new AuRaBlockFinalizationManager(
+                _api.BlockTree, 
+                _api.ChainLevelInfoRepository, 
+                processor, 
+                _api.ValidatorStore, 
+                new ValidSealerStrategy(), 
+                _api.LogManager, 
+                chainSpecAuRa.TwoThirdsMajorityTransition);
+            
             _validator = new AuRaValidatorFactory(_api.AbiEncoder,
                     changeableTxProcessingEnv.StateProvider,
                     changeableTxProcessingEnv.TransactionProcessor,
@@ -141,7 +164,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                     constantContractTxProcessingEnv,
                     _api.ReceiptStorage,
                     _api.ValidatorStore,
-                    _api.FinalizationManager,
+                    _finalizationManager,
                     NullTxSender.Instance,
                     NullTxPool.Instance,
                     NethermindApi.Config<IMiningConfig>(),
@@ -157,21 +180,8 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                 _api.DisposeStack.Push(disposableValidator);
             }
 
-            return new AuRaBlockProcessor(
-                _api.SpecProvider,
-                _api.BlockValidator,
-                _api.RewardCalculatorSource.Get(changeableTxProcessingEnv.TransactionProcessor),
-                _api.BlockProducerEnvFactory.TransactionsExecutorFactory.Create(changeableTxProcessingEnv),
-                changeableTxProcessingEnv.StateProvider,
-                changeableTxProcessingEnv.StorageProvider, 
-                _api.ReceiptStorage,
-                _api.LogManager,
-                changeableTxProcessingEnv.BlockTree,
-                auRaTxFilter,
-                CreateGasLimitCalculator(constantContractTxProcessingEnv) as AuRaContractGasLimitOverride)
-            {
-                AuRaValidator = _validator
-            };
+            processor.AuRaValidator = _validator;
+            return processor;
         }
 
         private TxPoolTxSource CreateTxPoolTxSource(ReadOnlyTxProcessingEnv processingEnv, IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
