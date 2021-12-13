@@ -85,7 +85,7 @@ namespace Nethermind.Hive
 
         private void OnProcessingQueueEmpty(object? sender, EventArgs e)
         {
-            _logger.Info($"HIVE block processing finished.");
+            _logger.Info($"HIVE blocks processing finished.");
             _resetEvent.Release(1);
         }
 
@@ -204,18 +204,18 @@ namespace Nethermind.Hive
         {
             if (!await semaphore.WaitAsync(-1))
             {
-                throw new InvalidOperationException("block processed event didn't happen");
+                throw new InvalidOperationException();
             }
         }
 
-        private async Task ProcessBlock(Block block)
+        private Task ProcessBlock(Block block)
         {
             try
             {
                 if (!_blockValidator.ValidateSuggestedBlock(block))
                 {
                     if (_logger.IsInfo) _logger.Info($"Invalid block {block}");
-                    return;
+                    return Task.CompletedTask;
                 }
 
                 AddBlockResult result = _blockTree.SuggestBlock(block);
@@ -223,7 +223,7 @@ namespace Nethermind.Hive
                 {
                     if (_logger.IsError)
                         _logger.Error($"Cannot add block {block} to the blockTree, add result {result}");
-                    return;
+                    return Task.CompletedTask;
                 }
 
                 try
@@ -233,7 +233,7 @@ namespace Nethermind.Hive
                 catch (Exception ex)
                 {
                     if (_logger.IsError) _logger.Error($"Failed to process block {block}", ex);
-                    return;
+                    return Task.CompletedTask;
                 }
                 
                 if (_logger.IsInfo)
@@ -243,8 +243,8 @@ namespace Nethermind.Hive
             catch (Exception e)
             {
                 _logger.Error($"HIVE Invalid block: {block.Hash}, ignoring. ", e);
-                _resetEvent.Release(1);
             }
+            return Task.CompletedTask;
         }
     }
 }
