@@ -61,11 +61,11 @@ namespace Nethermind.AccountAbstraction.Source
                 try
                 {
                     peer.SendNewUserOperation(op);
-                    if (_logger.IsTrace) _logger.Trace($"Notified {peer} about user operation {op.Hash}.");
+                    if (_logger.IsTrace) _logger.Trace($"Notified {peer.Id} about user operation {op.Hash}.");
                 }
                 catch (Exception e)
                 {
-                    if (_logger.IsError) _logger.Error($"Failed to notify {peer} about user operation {op.Hash}.", e);
+                    if (_logger.IsError) _logger.Error($"Failed to notify {peer.Id} about user operation {op.Hash}.", e);
                 }
             }
         }
@@ -75,11 +75,11 @@ namespace Nethermind.AccountAbstraction.Source
             try
             {
                 peer.SendNewUserOperations(ops);
-                if (_logger.IsTrace) _logger.Trace($"Notified {peer} about user operations.");
+                if (_logger.IsTrace) _logger.Trace($"Notified {peer.Id} about user operations.");
             }
             catch (Exception e)
             {
-                if (_logger.IsError) _logger.Error($"Failed to notify {peer} about user operations.", e);
+                if (_logger.IsError) _logger.Error($"Failed to notify {peer.Id} about user operations.", e);
             }
         }
 
