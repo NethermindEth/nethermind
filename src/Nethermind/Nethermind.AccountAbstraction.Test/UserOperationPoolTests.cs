@@ -92,13 +92,13 @@ namespace Nethermind.AccountAbstraction.Test
             _userOperationPool.AddUserOperation(op);
             _simulator.Received().Simulate(op, Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>(), Arg.Any<UInt256>());
             _userOperationPool.GetUserOperations().Count().Should().Be(1);
-            _userOperationPool.GetUserOperations().Should().BeEquivalentTo(op);
+            _userOperationPool.GetUserOperations().Should().BeEquivalentTo(new List<UserOperation>(){op});
 
             _userOperationPool.AddUserOperation(op2);
             _simulator.Received()
                 .Simulate(op2, Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>(), Arg.Any<UInt256>());
             _userOperationPool.GetUserOperations().Count().Should().Be(1);
-            _userOperationPool.GetUserOperations().Should().BeEquivalentTo(op2);
+            _userOperationPool.GetUserOperations().Should().BeEquivalentTo(new List<UserOperation>(){op2});
         }
         
         [Test]
