@@ -33,25 +33,34 @@ namespace Nethermind.AccountAbstraction.Bundler
         public void Bundle(Block head)
         {
             // turn ops into txs
-            IEnumerable<BundleTransaction> transactions =
+            var transactions =
                 _txSource.GetTransactions(head.Header, head.GasLimit)
                 .Select(tx => new BundleTransaction
                 {
+                    ChainId = tx.ChainId,
+                    Type = tx.Type,
+
+                    Nonce = tx.Nonce,
                     GasPrice = tx.GasPrice,
+                    GasBottleneck = tx.GasBottleneck,
+                    DecodedMaxFeePerGas = tx.DecodedMaxFeePerGas,
                     GasLimit = tx.GasLimit,
                     To = tx.To,
-                    ChainId = tx.ChainId,
-                    Nonce = tx.Nonce,
                     Value = tx.Value,
                     Data = tx.Data,
-                    Type = tx.Type,
-                    DecodedMaxFeePerGas = tx.DecodedMaxFeePerGas,
                     SenderAddress = tx.SenderAddress,
+                    Signature = tx.Signature,
                     Hash = tx.Hash,
-                });
+                    DeliveredBy = tx.DeliveredBy,
+                    Timestamp = tx.Timestamp,
+                    AccessList = tx.AccessList,
+                })
+                .ToArray();
+
+            if (transactions.Length == 0) return;
 
             // turn txs into MevBundle
-            MevBundle bundle = new(head.Header.Number + 1, transactions.ToArray());
+            MevBundle bundle = new(head.Header.Number + 1, transactions);
 
             _logger.Info("Trying to add bundle from AA to MEV bundle pool");
             // add MevBundle to MevPlugin bundle pool
