@@ -71,7 +71,6 @@ namespace Nethermind.Hive
         public async Task Start(CancellationToken cancellationToken)
         {
             if (_logger.IsInfo) _logger.Info("HIVE initialization started");
-            _blockTree.BlockAddedToMain += BlockTreeOnBlockAddedToMain;
             _blockProcessingQueue.ProcessingQueueEmpty += OnProcessingQueueEmpty;
             IHiveConfig hiveConfig = _configurationProvider.GetConfig<IHiveConfig>();
 
@@ -79,16 +78,9 @@ namespace Nethermind.Hive
             await InitializeBlocks(hiveConfig.BlocksDir, cancellationToken);
             await InitializeChain(hiveConfig.ChainFile);
 
-            _blockTree.BlockAddedToMain -= BlockTreeOnBlockAddedToMain;
-            _blockProcessingQueue.ProcessingQueueEmpty += OnProcessingQueueEmpty;
+            _blockProcessingQueue.ProcessingQueueEmpty -= OnProcessingQueueEmpty;
 
             if (_logger.IsInfo) _logger.Info("HIVE initialization completed");
-        }
-
-        private void BlockTreeOnBlockAddedToMain(object? sender, BlockEventArgs e)
-        {
-            _logger.Info($"HIVE block ADDED to main: {e.Block.ToString(Block.Format.Short)}");
-            _resetEvent.Release(1);
         }
 
         private void OnProcessingQueueEmpty(object? sender, EventArgs e)
@@ -229,7 +221,7 @@ namespace Nethermind.Hive
                         _logger.Error($"Cannot add block {block} to the blockTree, add result {result}");
                     return;
                 }
-
+                
                 try
                 {
                     _tracer.Trace(block, NullBlockTracer.Instance);
@@ -243,7 +235,7 @@ namespace Nethermind.Hive
                 if (_logger.IsInfo)
                     _logger.Info(
                         $"HIVE suggested {block.ToString(Block.Format.Short)}, now best suggested header {_blockTree.BestSuggestedHeader}, head {_blockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}");
-                
+
                 await WaitForBlockProcessing(_resetEvent);
             }
             catch (Exception e)
