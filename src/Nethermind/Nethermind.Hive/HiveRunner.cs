@@ -71,19 +71,27 @@ namespace Nethermind.Hive
         public async Task Start(CancellationToken cancellationToken)
         {
             if (_logger.IsInfo) _logger.Info("HIVE initialization started");
-            _blockProcessingQueue.ProcessingQueueEmpty += OnProcessingQueueEmpty;
+            _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
+            _blockProcessingQueue.ProcessingQueueEmpty += OnBlockProcessed;
             IHiveConfig hiveConfig = _configurationProvider.GetConfig<IHiveConfig>();
 
             ListEnvironmentVariables();
             await InitializeBlocks(hiveConfig.BlocksDir, cancellationToken);
             await InitializeChain(hiveConfig.ChainFile);
 
-            _blockProcessingQueue.ProcessingQueueEmpty -= OnProcessingQueueEmpty;
+            _blockTree.NewHeadBlock -= BlockTreeOnNewHeadBlock;
+            _blockProcessingQueue.ProcessingQueueEmpty -= OnBlockProcessed;
 
             if (_logger.IsInfo) _logger.Info("HIVE initialization completed");
         }
 
-        private void OnProcessingQueueEmpty(object? sender, EventArgs e)
+        private void BlockTreeOnNewHeadBlock(object? sender, BlockEventArgs e)
+        {
+            _logger.Info($"HIVE new head block {e.Block.ToString(Block.Format.Short)}");
+            _resetEvent.Release(1);
+        }
+
+        private void OnBlockProcessed(object? sender, EventArgs e)
         {
             _logger.Info($"HIVE blocks processing finished.");
             _resetEvent.Release(1);
@@ -154,8 +162,6 @@ namespace Nethermind.Hive
                         $"HIVE Processing block file: {file} - {block.ToString(Block.Format.Short)}");
                 await ProcessBlock(block);
             }
-            
-            await WaitForBlockProcessing(_resetEvent);
         }
 
         private async Task InitializeChain(string chainFile)
@@ -187,8 +193,6 @@ namespace Nethermind.Hive
                     _logger.Info($"HIVE Processing a chain.rlp block {block.ToString(Block.Format.Short)}");
                 await ProcessBlock(block);
             }
-            
-            await WaitForBlockProcessing(_resetEvent);
         }
 
         private Block DecodeBlock(string file)
@@ -239,6 +243,8 @@ namespace Nethermind.Hive
                 if (_logger.IsInfo)
                     _logger.Info(
                         $"HIVE suggested {block.ToString(Block.Format.Short)}, now best suggested header {_blockTree.BestSuggestedHeader}, head {_blockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}");
+                
+                await WaitForBlockProcessing(_resetEvent);
             }
             catch (Exception e)
             {
