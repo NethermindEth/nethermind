@@ -37,7 +37,6 @@ namespace Nethermind.Hive
     public class HiveRunner
     {
         private readonly IBlockTree _blockTree;
-        private readonly IBlockProcessingQueue _blockProcessingQueue;
         private readonly ILogger _logger;
         private readonly IConfigProvider _configurationProvider;
         private readonly IFileSystem _fileSystem;
@@ -47,7 +46,6 @@ namespace Nethermind.Hive
 
         public HiveRunner(
             IBlockTree blockTree,
-            IBlockProcessingQueue blockProcessingQueue,
             IConfigProvider configurationProvider,
             ILogger logger,
             IFileSystem fileSystem,
@@ -56,8 +54,6 @@ namespace Nethermind.Hive
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _blockProcessingQueue =
-                blockProcessingQueue ?? throw new ArgumentNullException(nameof(blockProcessingQueue));
             _configurationProvider =
                 configurationProvider ?? throw new ArgumentNullException(nameof(configurationProvider));
             _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
@@ -71,21 +67,21 @@ namespace Nethermind.Hive
         public async Task Start(CancellationToken cancellationToken)
         {
             if (_logger.IsInfo) _logger.Info("HIVE initialization started");
-            _blockProcessingQueue.ProcessingQueueEmpty += OnProcessingQueueEmpty;
+            _blockTree.BlockAddedToMain += BlockTreeOnBlockAddedToMain;
             IHiveConfig hiveConfig = _configurationProvider.GetConfig<IHiveConfig>();
 
             ListEnvironmentVariables();
             await InitializeBlocks(hiveConfig.BlocksDir, cancellationToken);
             await InitializeChain(hiveConfig.ChainFile);
 
-            _blockProcessingQueue.ProcessingQueueEmpty -= OnProcessingQueueEmpty;
+            _blockTree.BlockAddedToMain -= BlockTreeOnBlockAddedToMain;
 
             if (_logger.IsInfo) _logger.Info("HIVE initialization completed");
         }
 
-        private void OnProcessingQueueEmpty(object? sender, EventArgs e)
+        private void BlockTreeOnBlockAddedToMain(object? sender, BlockEventArgs e)
         {
-            _logger.Info($"HIVE block processing queue empty");
+            _logger.Info($"HIVE block added to main: {e.Block.ToString(Block.Format.Short)}");
             _resetEvent.Release(1);
         }
 
@@ -221,10 +217,13 @@ namespace Nethermind.Hive
                         _logger.Error($"Cannot add block {block} to the blockTree, add result {result}");
                     return;
                 }
-                
+
                 try
                 {
-                    _tracer.Trace(block, NullBlockTracer.Instance);
+                    if (_tracer.Trace(block, NullBlockTracer.Instance) is null)
+                    {
+                        return;
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -235,7 +234,7 @@ namespace Nethermind.Hive
                 if (_logger.IsInfo)
                     _logger.Info(
                         $"HIVE suggested {block.ToString(Block.Format.Short)}, now best suggested header {_blockTree.BestSuggestedHeader}, head {_blockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}");
-
+                
                 await WaitForBlockProcessing(_resetEvent);
             }
             catch (Exception e)
