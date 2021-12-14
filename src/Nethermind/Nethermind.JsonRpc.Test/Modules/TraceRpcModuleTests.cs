@@ -695,6 +695,42 @@ namespace Nethermind.JsonRpc.Test.Modules
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":[{\"output\":\"0x\",\"stateDiff\":null,\"trace\":[{\"action\":{\"callType\":\"call\",\"from\":\"0xfe35e70599578efef562e1f1cdc9ef693b865e9d\",\"gas\":\"0x5f58ef8\",\"input\":\"0x\",\"to\":\"0x8cf85548ae57a91f8132d0831634c0fcef06e505\",\"value\":\"0x0\"},\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":0,\"traceAddress\":[],\"type\":\"call\"}],\"vmTrace\":null},{\"output\":\"0x\",\"stateDiff\":null,\"trace\":[{\"action\":{\"callType\":\"call\",\"from\":\"0x2a6ae6f33729384a00b4ffbd25e3f1bf1b9f5b8d\",\"gas\":\"0x5f58ef8\",\"input\":\"0x\",\"to\":\"0xab736519b5433974059da38da74b8db5376942cd\",\"value\":\"0x0\"},\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":0,\"traceAddress\":[],\"type\":\"call\"}],\"vmTrace\":null}],\"id\":67}", serialized_without_blockParameter_param, serialized_without_blockParameter_param.Replace("\"", "\\\""));
 
         }
+        
+        [Test]
+        public async Task Trace_replayBlockTransactions_transactions_deploying_contract()
+        {
+            Context context = new();
+            await context.Build();
+            TestRpcBlockchain blockchain = context.Blockchain;
+            UInt256 currentNonceAddressA = blockchain.State.GetAccount(TestItem.AddressA).Nonce;
+            await blockchain.AddFunds(TestItem.AddressA, 10000.Ether());
+            Address? contractAddress = ContractAddress.From(TestItem.AddressA, currentNonceAddressA);
+            
+            byte[] code = Prepare.EvmCode
+                .Call(contractAddress, 50000)
+                .Done;
+            
+            Transaction transaction1 = Build.A.Transaction.WithNonce(currentNonceAddressA++)
+                .WithSenderAddress(TestItem.AddressA)
+                .WithData(code)
+                .WithTo(null)
+                .WithGasLimit(93548).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
 
+            Transaction transaction2 = Build.A.Transaction.WithNonce(currentNonceAddressA++)
+                .WithSenderAddress(TestItem.AddressA)
+                .WithData(code).SignedAndResolved(TestItem.PrivateKeyA)
+                .WithTo(null)
+                .WithGasLimit(93548).TestObject;
+
+            string[] traceTypes = { "trace" };
+            
+            await blockchain.AddBlock(transaction1, transaction2);
+            
+            ResultWrapper<ParityTxTraceFromReplay[]> traces = context.TraceRpcModule.trace_replayBlockTransactions(new BlockParameter(blockchain.BlockFinder.FindLatestBlock().Number), traceTypes);
+            Assert.AreEqual(2, traces.Data.Length);
+            Assert.AreEqual(traces.Data[0].Action.From, traces.Data[1].Action.From);
+            string serialized = new EthereumJsonSerializer().Serialize(traces.Data);
+            Assert.AreEqual("[{\"output\":\"0x\",\"transactionHash\":\"0x8513c9083ec27fa8e3ca7e3ffa732d61562e2d17e2e1af6e773bc810dc4c3452\",\"action\":{\"traceAddress\":[],\"callType\":\"create\",\"includeInTrace\":true,\"isPrecompiled\":false,\"type\":\"create\",\"creationMethod\":\"create\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"0x0ffd3e46594919c04bcfd4e146203c8255670828\",\"gas\":\"0x9c70\",\"value\":\"0x1\",\"input\":\"0x60006000600060006000730ffd3e46594919c04bcfd4e146203c825567082861c350f1\",\"result\":{\"gasUsed\":\"0x79\",\"output\":\"0x\",\"address\":\"0x0ffd3e46594919c04bcfd4e146203c8255670828\",\"code\":\"0x\"},\"subtraces\":[{\"traceAddress\":[0],\"callType\":\"call\",\"includeInTrace\":true,\"isPrecompiled\":false,\"type\":\"call\",\"from\":\"0x0ffd3e46594919c04bcfd4e146203c8255670828\",\"to\":\"0x0ffd3e46594919c04bcfd4e146203c8255670828\",\"gas\":\"0x9988\",\"value\":\"0x0\",\"input\":\"0x\",\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":[]}]}},{\"output\":\"0x\",\"transactionHash\":\"0xa6a56c7927deae778a749bcdab7bbf409c0d8a5d2420021a3ba328240ae832d8\",\"action\":{\"traceAddress\":[],\"callType\":\"create\",\"includeInTrace\":true,\"isPrecompiled\":false,\"type\":\"create\",\"creationMethod\":\"create\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"0x6b5887043de753ecfa6269f947129068263ffbe2\",\"gas\":\"0x9c70\",\"value\":\"0x1\",\"input\":\"0x60006000600060006000730ffd3e46594919c04bcfd4e146203c825567082861c350f1\",\"result\":{\"gasUsed\":\"0xa3d\",\"output\":\"0x\",\"address\":\"0x6b5887043de753ecfa6269f947129068263ffbe2\",\"code\":\"0x\"},\"subtraces\":[{\"traceAddress\":[0],\"callType\":\"call\",\"includeInTrace\":true,\"isPrecompiled\":false,\"type\":\"call\",\"from\":\"0x6b5887043de753ecfa6269f947129068263ffbe2\",\"to\":\"0x0ffd3e46594919c04bcfd4e146203c8255670828\",\"gas\":\"0x8feb\",\"value\":\"0x0\",\"input\":\"0x\",\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":[]}]}}]",serialized);
+        }
     }
 }
