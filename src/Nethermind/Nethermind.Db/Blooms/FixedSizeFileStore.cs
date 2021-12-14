@@ -32,10 +32,8 @@ namespace Nethermind.Db.Blooms
         {
             _path = path;
             _elementSize = elementSize;
-            _fileWrite = new FileStream(path, FileMode.OpenOrCreate, FileAccess.Write, FileShare.Read,
-                4096, FileOptions.WriteThrough | FileOptions.RandomAccess);
-            _fileRead = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 
-                4096, FileOptions.SequentialScan);
+            _fileWrite = File.Open(path, FileMode.OpenOrCreate, FileAccess.Write, FileShare.Read);
+            _fileRead = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
         }
 
         public void Write(long index, ReadOnlySpan<byte> element)
@@ -55,6 +53,8 @@ namespace Nethermind.Db.Blooms
 
         public int Read(long index, Span<byte> element)
         {
+            EnsureFlushed();
+            
             lock (_fileRead)
             {
                 SeekIndex(_fileRead, index);
@@ -64,7 +64,19 @@ namespace Nethermind.Db.Blooms
 
         public IFileReader CreateFileReader()
         {
+            EnsureFlushed();
             return new FileReader(_path, _elementSize);
+        }
+
+        private void EnsureFlushed()
+        {
+            if (Interlocked.CompareExchange(ref _needsFlush, 0, 1) == 1)
+            {
+                lock (_fileWrite)
+                {
+                    _fileWrite.Flush();
+                }
+            }
         }
 
         private void SeekIndex(Stream file, long index)
