@@ -19,7 +19,7 @@ namespace Nethermind.AccountAbstraction.Bundler
 
             _timer = new Timer(interval.TotalMilliseconds);
             _timer.Elapsed += TimerOnElapsed;
-            _timer.AutoReset = false;
+            _timer.AutoReset = true;
             _timer.Start();
 
             _logger.Info("Trigger initialized");
