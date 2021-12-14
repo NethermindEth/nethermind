@@ -18,111 +18,131 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.InteropServices;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
+using Nethermind.Core.Resettables;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using System.Runtime.CompilerServices;
+using Metrics = Nethermind.Db.Metrics;
+
+
+[assembly: InternalsVisibleTo("Ethereum.Test.Base")]
+[assembly: InternalsVisibleTo("Ethereum.Blockchain.Test")]
+[assembly: InternalsVisibleTo("Nethermind.State.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Benchmark")]
+[assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Synchronization.Test")]
 
 namespace Nethermind.State
 {
     public class VerkleStateProvider
     {
-        private const int VersionLeafKey = 0;
-        private const int BalanceLeafKey = 1;
-        private const int NonceLeafKey = 2;
-        private const int CodeKeccakLeafKey = 3;
-        private const int CodeSizeLeafKey = 4;
-        
-        private readonly UInt256 HeaderStorageOffset = 64;
-        private readonly UInt256 CodeOffset = 128;
-        private readonly UInt256 VerkleNodeWidth = 256;
-        
-        private readonly UInt256 MainStorageOffsetBase = 256;
-        private const int MainStorageOffsetExponent = 31;
-        private readonly UInt256 MainStorageOffset;
-        
+        private const int StartCapacity = Resettable.StartCapacity;
+        private readonly ResettableDictionary<Address, Stack<int>> _intraBlockCache = new();
+        private readonly ResettableHashSet<Address> _committedThisRound = new();
+
+        private readonly List<Change> _keptInCache = new();
         private readonly ILogger _logger;
+        private readonly VerkleStateTree _tree;
+        
+        private int _capacity = StartCapacity;
+        private Change?[] _changes = new Change?[StartCapacity];
+        private int _currentPosition = Resettable.EmptyPosition;
+        
+        private readonly HashSet<Address> _readsForTracing = new();
+        private bool _needsStateRootUpdate;
+        
+        
         
         public VerkleStateProvider(ILogManager? logManager)
         {
+            _tree = new VerkleStateTree(logManager);
             _logger = logManager?.GetClassLogger<StateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
             // TODO: move this calculation out of here
-            MainStorageOffsetBase.LeftShift(MainStorageOffsetExponent, out MainStorageOffset);
+            
         }
         
-        public byte[] GetTreeKey(Address address, UInt256 treeIndex , byte subIndexBytes)
-        {   
-            // is it guaranteed that the its a 12 length byte array initialized with zeros?
-            byte[] addressPadding = new byte[12] ;
-            IEnumerable<byte> treeKeyPrecursor = addressPadding.Concat(address.Bytes);
-            treeKeyPrecursor = treeKeyPrecursor.Concat(treeIndex.ToBigEndian());
+        private Account? GetState(Address address)
+        {
+            Metrics.StateTreeReads++;
+            Account? account = _tree.Get(address);
+            return account;
+        }
 
-            byte[] treeKey = new byte[32];
-            Buffer.BlockCopy(Sha2.Compute(treeKeyPrecursor.ToArray()), 0, treeKey, 0, 31);
-            treeKey[31] = subIndexBytes;
-            return treeKey;
+        private void SetState(Address address, Account? account)
+        {
+            _needsStateRootUpdate = true;
+            Metrics.StateTreeWrites++;
+            _tree.Set(address, account);
+        }
+
+        private void PushNew(Address address, Account account)
+        {
+            SetupCache(address);
+            IncrementChangePosition();
+            _intraBlockCache[address].Push(_currentPosition);
+            _changes[_currentPosition] = new Change(ChangeType.New, address, account);
         }
         
-        public byte[] GetTreeKeyForAccountLeaf(Address address, byte leaf)
+        private void IncrementChangePosition()
         {
-            return GetTreeKey(address, UInt256.Zero, leaf);
-        }
-
-        public byte[] GetTreeKeyForVersion(Address address)
-        {
-            return GetTreeKey(address, UInt256.Zero, VersionLeafKey);
-        }
-
-        public byte[] GetTreeKeyForBalance(Address address)
-        {
-            return GetTreeKey(address, UInt256.Zero, BalanceLeafKey);
-        }
-
-        public byte[] GetTreeKeyForNonce(Address address)
-        {
-            return GetTreeKey(address, UInt256.Zero, NonceLeafKey);
-        }
-
-        public byte[] GetTreeKeyForCodeKeccak(Address address)
-        {
-            return GetTreeKey(address, UInt256.Zero, CodeKeccakLeafKey);
-        }
-
-        public byte[] GetTreeKeyForCodeSize(Address address)
-        {
-            return GetTreeKey(address, UInt256.Zero, CodeSizeLeafKey);
+            Resettable<Change>.IncrementPosition(ref _changes, ref _capacity, ref _currentPosition);
         }
         
-        public byte[] GetTreeKeyForCodeChunk(Address address, UInt256 chunk)
+        private void SetupCache(Address address)
         {
-            UInt256 chunkOffset = CodeOffset + chunk;
-            
-            UInt256 treeIndex = chunkOffset / VerkleNodeWidth;
-            
-            UInt256.Mod(chunkOffset, VerkleNodeWidth, out UInt256 subIndex);
-            return GetTreeKey(address, treeIndex, subIndex.ToBigEndian()[0]);
-        }
-
-        public byte[] GetTreeKeyForStorageSlot(Address address, UInt256 storageKey)
-        {
-            UInt256 pos;
-            
-            if (storageKey < CodeOffset - HeaderStorageOffset)
+            if (!_intraBlockCache.ContainsKey(address))
             {
-                pos = HeaderStorageOffset + storageKey;
-            } 
-            else
+                _intraBlockCache[address] = new Stack<int>();
+            }
+        }
+        
+        
+        
+        
+        private enum ChangeType
+        {
+            JustCache,
+            Touch,
+            Update,
+            New,
+            Delete
+        }
+        private class Change
+        {
+            public Change(ChangeType type, Address address, Account? account)
             {
-                pos = MainStorageOffset + storageKey;
+                ChangeType = type;
+                Address = address;
+                Account = account;
             }
 
-            UInt256 treeIndex = pos / VerkleNodeWidth;
-            
-            UInt256.Mod(pos, VerkleNodeWidth, out UInt256 subIndex);
-            return GetTreeKey(address, treeIndex, subIndex.ToBigEndian()[0]);
+            public ChangeType ChangeType { get; }
+            public Address Address { get; }
+            public Account? Account { get; }
         }
+        
+        public void Reset()
+        {
+            if (_logger.IsTrace) _logger.Trace("Clearing state provider caches");
+            _intraBlockCache.Reset();
+            _committedThisRound.Reset();
+            _readsForTracing.Clear();
+            _currentPosition = Resettable.EmptyPosition;
+            Array.Clear(_changes, 0, _changes.Length);
+            _needsStateRootUpdate = false;
+        }
+
+        // public void CommitTree(long blockNumber)
+        // {
+        //     if (_needsStateRootUpdate)
+        //     {
+        //         RecalculateStateRoot();
+        //     }
+        //
+        //     _tree.Commit(blockNumber);
+        // }
         
     }
     
