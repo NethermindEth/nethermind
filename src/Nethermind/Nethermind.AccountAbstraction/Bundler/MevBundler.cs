@@ -32,6 +32,7 @@ namespace Nethermind.AccountAbstraction.Bundler
 
         public void Bundle(Block head)
         {
+            _logger.Info("Trigger Works");
             // turn ops into txs
             var transactions =
                 _txSource.GetTransactions(head.Header, head.GasLimit)
