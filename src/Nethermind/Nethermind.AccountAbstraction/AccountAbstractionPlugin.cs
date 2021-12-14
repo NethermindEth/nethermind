@@ -197,7 +197,7 @@ namespace Nethermind.AccountAbstraction
                 protocolsManager.AddProtocol(Protocol.AA,
                     session => new AaProtocolHandler(session, serializer, stats, UserOperationPool, logManager));
                 protocolsManager.AddSupportedCapability(new Capability(Protocol.AA, 0));
-                
+
                 if (_logger.IsInfo) _logger.Info("Initialized Account Abstraction network protocol");
             }
             else
@@ -226,12 +226,12 @@ namespace Nethermind.AccountAbstraction
                 {
                     _logger.Info("Both AA and MEV Enabled!!");
                     _bundler = new MevBundler(
-                        new PeriodicBundleTrigger(TimeSpan.FromSeconds(5), _nethermindApi.BlockTree!),
+                        new PeriodicBundleTrigger(TimeSpan.FromSeconds(5), _nethermindApi.BlockTree!, _logger),
                         UserOperationTxSource, MevPlugin.BundlePool,
                         _logger
                     );
                 }
-                    
+
 
                 if (_logger!.IsInfo) _logger.Info("Account Abstraction RPC plugin enabled");
             }

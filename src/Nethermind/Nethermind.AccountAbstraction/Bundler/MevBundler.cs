@@ -29,6 +29,7 @@ namespace Nethermind.AccountAbstraction.Bundler
 
         public void OnTriggerBundle(object? sender, BundleUserOpsEventArgs args)
         {
+            _logger.Info("Trigger maybe Works");
             Bundle(args.Head);
         }
 
