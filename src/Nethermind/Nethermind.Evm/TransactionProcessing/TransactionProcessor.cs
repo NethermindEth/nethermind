@@ -231,7 +231,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 else
                 {
                     TraceLogInvalidTx(transaction, $"SENDER_ACCOUNT_DOES_NOT_EXIST {caller}");
-                    if (!commit || restore || effectiveGasPrice == UInt256.Zero)
+                    if (!commit || noValidation || effectiveGasPrice == UInt256.Zero)
                     {
                         deleteCallerAccount = !commit || restore;
                         _stateProvider.CreateAccount(caller, UInt256.Zero);
