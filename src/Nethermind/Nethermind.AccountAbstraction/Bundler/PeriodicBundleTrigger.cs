@@ -29,7 +29,15 @@ namespace Nethermind.AccountAbstraction.Bundler
         private void TimerOnElapsed(object? sender, ElapsedEventArgs e)
         {
             _logger.Info("Trigger Called");
-            TriggerBundle?.Invoke(this, new BundleUserOpsEventArgs(_blockTree.Head!));
+            try
+            {
+                TriggerBundle?.Invoke(this, new BundleUserOpsEventArgs(_blockTree.Head!));
+            }
+            catch (System.Exception ex)
+            {
+                _logger.Error(ex.Message);
+                return;
+            }
             _timer.Enabled = true;
         }
 
