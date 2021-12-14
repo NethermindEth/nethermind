@@ -21,7 +21,7 @@ namespace Nethermind.AccountAbstraction.Bundler
             _txSource = txSource;
             _bundlePool = bundlePool;
             _logger = logger;
-            
+
             _logger.Info("AA: Starting Mev Bundler...");
 
             _trigger.TriggerBundle += OnTriggerBundle;

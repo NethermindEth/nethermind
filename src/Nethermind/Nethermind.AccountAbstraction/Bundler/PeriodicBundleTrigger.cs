@@ -13,9 +13,10 @@ namespace Nethermind.AccountAbstraction.Bundler
 
         public event EventHandler<BundleUserOpsEventArgs>? TriggerBundle;
 
-        public PeriodicBundleTrigger(TimeSpan interval, IBlockTree blockTree, ILogger _logger)
+        public PeriodicBundleTrigger(TimeSpan interval, IBlockTree blockTree, ILogger logger)
         {
             _blockTree = blockTree;
+            _logger = logger;
 
             _timer = new Timer(interval.TotalMilliseconds);
             _timer.Elapsed += TimerOnElapsed;
