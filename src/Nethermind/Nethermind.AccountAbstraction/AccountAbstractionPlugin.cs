@@ -223,7 +223,7 @@ namespace Nethermind.AccountAbstraction
 
                 if (BundleMiningEnabled && MevPluginEnabled)
                     _bundler = new MevBundler(
-                        new OnNewBlockBundleTrigger(_nethermindApi.BlockTree!),
+                        new PeriodicBundleTrigger(TimeSpan.FromSeconds(5), _nethermindApi.BlockTree!),
                         UserOperationTxSource, MevPlugin.BundlePool,
                         _logger
                     );
