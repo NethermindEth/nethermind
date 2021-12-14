@@ -96,41 +96,42 @@ namespace Nethermind.State
         public Account? Get(Address address, Keccak? rootHash = null)
         {
             // byte[]? bytes = _get(ValueKeccak.Compute(address.Bytes).BytesAsSpan, rootHash);
-            byte[]? bytes = _get(ValueKeccak.Compute(address.Bytes).BytesAsSpan);
-            if (bytes is null)
-            {
-                return null;
-            }
+            byte[][] TreeKeys = GetTreeKeysForAccount(address);
+            
+            // byte[]? bytes = _get(ValueKeccak.Compute(address.Bytes).BytesAsSpan);
+            // if (bytes is null)
+            // {
+            //     return null;
+            // }
+            byte[] version = _get(TreeKeys[0]);
+            byte[] balance = _get(TreeKeys[1]);
+            byte[] nonce = _get(TreeKeys[2]);
+            byte[] codeKeccak = _get(TreeKeys[3]);
+            byte[] codeSize = _get(TreeKeys[4]);
+            Account account = new Account(
+                
+                new UInt256(balance.AsSpan(), true),
+                new UInt256(nonce.AsSpan(), true),
+                new Keccak(codeKeccak)
+                );
 
-            return _decoder.Decode(bytes.AsRlpStream());
+            return account;
         }
         
-        [DebuggerStepThrough]
-        internal Account? Get(Keccak keccak) // for testing
-        {
-            byte[]? bytes = _get(keccak.Bytes);
-            if (bytes is null)
-            {
-                return null;
-            }
-
-            return _decoder.Decode(bytes.AsRlpStream());
-        }
 
         private static readonly Rlp EmptyAccountRlp = Rlp.Encode(Account.TotallyEmpty);
 
         public void Set(Address address, Account? account)
         {
-            ValueKeccak keccak = ValueKeccak.Compute(address.Bytes);
-            _set(keccak.BytesAsSpan, account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : Rlp.Encode(account));
+            byte[][] TreeKeys = GetTreeKeysForAccount(address);
+            if (account is null)
+            {
+                account = Account.TotallyEmpty;
+            }
+            _set(TreeKeys[1], account.Balance.ToBigEndian());
+            _set(TreeKeys[2], account.Nonce.ToBigEndian());
+            _set(TreeKeys[3], account.CodeHash.Bytes);
         }
-        
-        [DebuggerStepThrough]
-        internal void Set(Keccak keccak, Account? account) // for testing
-        {
-            _set(keccak.Bytes, account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : Rlp.Encode(account));
-        }
-
 
         [DebuggerStepThrough]
         // TODO: add functionality to start with a given root hash (traverse from a starting node)
@@ -150,56 +151,87 @@ namespace Nethermind.State
             // TODO; error handling here? or at least a way to check if the operation was successful
             RustVerkleLib.VerkleTrieInsert(_verkleTrieObj, rawKey.ToArray(), value);
         }
-        
-        public void _set(Span<byte> rawKey, Rlp? value)
-        {
-            _set(rawKey, value is null ? Array.Empty<byte>() : value.Bytes);
-        }
-        
-         public byte[] GetTreeKey(Address address, UInt256 treeIndex , byte subIndexBytes)
-        {   
-            // is it guaranteed that the its a 12 length byte array initialized with zeros?
-            byte[] addressPadding = new byte[12] ;
-            IEnumerable<byte> treeKeyPrecursor = addressPadding.Concat(address.Bytes);
-            treeKeyPrecursor = treeKeyPrecursor.Concat(treeIndex.ToBigEndian());
 
-            byte[] treeKey = new byte[32];
-            Buffer.BlockCopy(Sha2.Compute(treeKeyPrecursor.ToArray()), 0, treeKey, 0, 31);
-            treeKey[31] = subIndexBytes;
-            return treeKey;
+        private byte[] GetTreeKeyPrefix(Address address, UInt256 treeIndex)
+        {
+             // is it guaranteed that the its a 12 length byte array initialized with zeros?
+             byte[] addressPadding = new byte[12] ;
+             IEnumerable<byte> treeKeyPrecursor = addressPadding.Concat(address.Bytes);
+             treeKeyPrecursor = treeKeyPrecursor.Concat(treeIndex.ToBigEndian());
+             return Sha2.Compute(treeKeyPrecursor.ToArray());
         }
         
-        public byte[] GetTreeKeyForAccountLeaf(Address address, byte leaf)
-        {
-            return GetTreeKey(address, UInt256.Zero, leaf);
-        }
+         private byte[] GetTreeKey(Address address, UInt256 treeIndex , byte subIndexBytes)
+         {
+            
+             byte[] treeKeyPrefix = GetTreeKeyPrefix(address, treeIndex);
 
-        public byte[] GetTreeKeyForVersion(Address address)
+             byte[] treeKey = new byte[32];
+             Buffer.BlockCopy(treeKeyPrefix, 0, treeKey, 0, 31);
+             treeKey[31] = subIndexBytes;
+             return treeKey;
+         }
+
+         private byte[][] GetTreeKeysForAccount(Address address)
+         {
+             byte[] treeKeyPrefix = GetTreeKeyPrefix(address, 0);
+             
+             byte[] treeKeyVersion = new byte[32];
+             Buffer.BlockCopy(treeKeyPrefix, 0, treeKeyVersion, 0, 31);
+             treeKeyVersion[31] = VersionLeafKey;
+             
+             byte[] treeKeyBalance = new byte[32];
+             Buffer.BlockCopy(treeKeyPrefix, 0, treeKeyBalance, 0, 31);
+             treeKeyVersion[31] = BalanceLeafKey;
+             
+             byte[] treeKeyNounce = new byte[32];
+             Buffer.BlockCopy(treeKeyPrefix, 0, treeKeyNounce, 0, 31);
+             treeKeyVersion[31] = NonceLeafKey;
+             
+             byte[] treeKeyCodeKeccak = new byte[32];
+             Buffer.BlockCopy(treeKeyPrefix, 0, treeKeyCodeKeccak, 0, 31);
+             treeKeyVersion[31] = CodeKeccakLeafKey;
+             
+             byte[] treeKeyCodeSize = new byte[32];
+             Buffer.BlockCopy(treeKeyPrefix, 0, treeKeyCodeSize, 0, 31);
+             treeKeyVersion[31] = CodeSizeLeafKey;
+            
+             return new [] {treeKeyVersion, treeKeyBalance, treeKeyNounce, treeKeyCodeKeccak, treeKeyCodeSize};
+         }
+         
+         
+        
+        // private byte[] GetTreeKeyForAccountLeaf(Address address, byte leaf)
+        // {
+        //     return GetTreeKey(address, UInt256.Zero, leaf);
+        // }
+
+        private byte[] GetTreeKeyForVersion(Address address)
         {
             return GetTreeKey(address, UInt256.Zero, VersionLeafKey);
         }
 
-        public byte[] GetTreeKeyForBalance(Address address)
+        private byte[] GetTreeKeyForBalance(Address address)
         {
             return GetTreeKey(address, UInt256.Zero, BalanceLeafKey);
         }
 
-        public byte[] GetTreeKeyForNonce(Address address)
+        private byte[] GetTreeKeyForNonce(Address address)
         {
             return GetTreeKey(address, UInt256.Zero, NonceLeafKey);
         }
 
-        public byte[] GetTreeKeyForCodeKeccak(Address address)
+        private byte[] GetTreeKeyForCodeKeccak(Address address)
         {
             return GetTreeKey(address, UInt256.Zero, CodeKeccakLeafKey);
         }
 
-        public byte[] GetTreeKeyForCodeSize(Address address)
+        private byte[] GetTreeKeyForCodeSize(Address address)
         {
             return GetTreeKey(address, UInt256.Zero, CodeSizeLeafKey);
         }
         
-        public byte[] GetTreeKeyForCodeChunk(Address address, UInt256 chunk)
+        private byte[] GetTreeKeyForCodeChunk(Address address, UInt256 chunk)
         {
             UInt256 chunkOffset = CodeOffset + chunk;
             
@@ -209,7 +241,7 @@ namespace Nethermind.State
             return GetTreeKey(address, treeIndex, subIndex.ToBigEndian()[0]);
         }
 
-        public byte[] GetTreeKeyForStorageSlot(Address address, UInt256 storageKey)
+        private byte[] GetTreeKeyForStorageSlot(Address address, UInt256 storageKey)
         {
             UInt256 pos;
             
