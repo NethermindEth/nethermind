@@ -221,12 +221,17 @@ namespace Nethermind.AccountAbstraction
 
                 getFromApi.RpcModuleProvider!.RegisterBoundedByCpuCount(accountAbstractionModuleFactory, rpcConfig.Timeout);
 
+                _logger.Info("Checking whether AA AND MEV are enabled");
                 if (BundleMiningEnabled && MevPluginEnabled)
+                {
+                    _logger.Info("Both AA and MEV Enabled!!");
                     _bundler = new MevBundler(
                         new PeriodicBundleTrigger(TimeSpan.FromSeconds(5), _nethermindApi.BlockTree!),
                         UserOperationTxSource, MevPlugin.BundlePool,
                         _logger
                     );
+                }
+                    
 
                 if (_logger!.IsInfo) _logger.Info("Account Abstraction RPC plugin enabled");
             }
