@@ -71,29 +71,29 @@ namespace Nethermind.Hive
         public async Task Start(CancellationToken cancellationToken)
         {
             if (_logger.IsInfo) _logger.Info("HIVE initialization started");
-            _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
-            _blockProcessingQueue.ProcessingQueueEmpty += OnBlockProcessed;
+            _blockTree.BlockAddedToMain += BlockTreeOnBlockAddedToMain;
+            _blockProcessingQueue.ProcessingQueueEmpty += OnProcessingQueueEmpty;
             IHiveConfig hiveConfig = _configurationProvider.GetConfig<IHiveConfig>();
 
             ListEnvironmentVariables();
             await InitializeBlocks(hiveConfig.BlocksDir, cancellationToken);
             await InitializeChain(hiveConfig.ChainFile);
 
-            _blockTree.NewHeadBlock -= BlockTreeOnNewHeadBlock;
-            _blockProcessingQueue.ProcessingQueueEmpty -= OnBlockProcessed;
+            _blockTree.BlockAddedToMain -= BlockTreeOnBlockAddedToMain;
+            _blockProcessingQueue.ProcessingQueueEmpty += OnProcessingQueueEmpty;
 
             if (_logger.IsInfo) _logger.Info("HIVE initialization completed");
         }
 
-        private void BlockTreeOnNewHeadBlock(object? sender, BlockEventArgs e)
+        private void BlockTreeOnBlockAddedToMain(object? sender, BlockEventArgs e)
         {
-            _logger.Info($"HIVE new head block {e.Block.ToString(Block.Format.Short)}");
+            _logger.Info($"HIVE block ADDED to main: {e.Block.ToString(Block.Format.Short)}");
             _resetEvent.Release(1);
         }
 
-        private void OnBlockProcessed(object? sender, EventArgs e)
+        private void OnProcessingQueueEmpty(object? sender, EventArgs e)
         {
-            _logger.Info($"HIVE blocks processing finished.");
+            _logger.Info($"HIVE block processing queue empty");
             _resetEvent.Release(1);
         }
 
@@ -212,14 +212,14 @@ namespace Nethermind.Hive
             }
         }
 
-        private Task ProcessBlock(Block block)
+        private async Task ProcessBlock(Block block)
         {
             try
             {
                 if (!_blockValidator.ValidateSuggestedBlock(block))
                 {
                     if (_logger.IsInfo) _logger.Info($"Invalid block {block}");
-                    return Task.CompletedTask;
+                    return;
                 }
 
                 AddBlockResult result = _blockTree.SuggestBlock(block);
@@ -227,7 +227,7 @@ namespace Nethermind.Hive
                 {
                     if (_logger.IsError)
                         _logger.Error($"Cannot add block {block} to the blockTree, add result {result}");
-                    return Task.CompletedTask;
+                    return;
                 }
 
                 try
@@ -237,7 +237,7 @@ namespace Nethermind.Hive
                 catch (Exception ex)
                 {
                     if (_logger.IsError) _logger.Error($"Failed to process block {block}", ex);
-                    return Task.CompletedTask;
+                    return;
                 }
                 
                 if (_logger.IsInfo)
@@ -250,7 +250,6 @@ namespace Nethermind.Hive
             {
                 _logger.Error($"HIVE Invalid block: {block.Hash}, ignoring. ", e);
             }
-            return Task.CompletedTask;
         }
     }
 }
