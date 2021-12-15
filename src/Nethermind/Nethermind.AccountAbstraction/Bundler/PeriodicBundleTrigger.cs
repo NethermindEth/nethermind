@@ -35,7 +35,7 @@ namespace Nethermind.AccountAbstraction.Bundler
             }
             catch (System.Exception ex)
             {
-                _logger.Error(ex.Message);
+                _logger.Error(ex.ToString());
                 return;
             }
             _timer.Enabled = true;
