@@ -23,10 +23,8 @@ namespace Nethermind.Consensus
 {
     public interface IPoSSwitcher
     {
-        void ForkchoiceUpdated(BlockHeader newBlockHeader);
+        void ForkchoiceUpdated(BlockHeader newHeadHash, Keccak finalizedHash);
 
-        void SetFinalizedBlockHash(Keccak finalizedBlockHash);
-        
         bool IsPos(BlockHeader header);
 
         bool HasEverReachedTerminalPoWBlock();

@@ -38,7 +38,7 @@ namespace Nethermind.Merge.Plugin.Test
             Block block2 = Build.A.Block.WithNumber(4).WithUncles(uncle, uncle2).WithTotalDifficulty(2L).WithDifficulty(0).TestObject;
 
             PoSSwitcher poSSwitcher = CreatePosSwitcher();
-            poSSwitcher.ForkchoiceUpdated(block2.Header);
+            poSSwitcher.ForkchoiceUpdated(block2.Header, block2.Hash!);
             MergeRewardCalculator calculator = new(new RewardCalculator(RopstenSpecProvider.Instance), poSSwitcher);
             BlockReward[] rewards = calculator.CalculateRewards(block);
             
@@ -60,7 +60,7 @@ namespace Nethermind.Merge.Plugin.Test
             Block block2 = Build.A.Block.WithNumber(4).WithUncles(uncle).WithTotalDifficulty(3L).WithDifficulty(0).TestObject;
 
             PoSSwitcher poSSwitcher = CreatePosSwitcher();
-            poSSwitcher.ForkchoiceUpdated(block2.Header);
+            poSSwitcher.ForkchoiceUpdated(block2.Header, block2.Hash!);
 
             MergeRewardCalculator calculator = new(new RewardCalculator(RopstenSpecProvider.Instance), poSSwitcher);
             BlockReward[] rewards = calculator.CalculateRewards(block);
@@ -80,7 +80,7 @@ namespace Nethermind.Merge.Plugin.Test
             Block block2 = Build.A.Block.WithNumber(3).WithTotalDifficulty(3L).WithDifficulty(0).TestObject;
             
             PoSSwitcher poSSwitcher = CreatePosSwitcher();
-            poSSwitcher.ForkchoiceUpdated(block2.Header);
+            poSSwitcher.ForkchoiceUpdated(block2.Header, block2.Hash!);
 
             MergeRewardCalculator calculator = new(new RewardCalculator(RopstenSpecProvider.Instance), poSSwitcher);
             BlockReward[] rewards = calculator.CalculateRewards(block);
@@ -103,7 +103,7 @@ namespace Nethermind.Merge.Plugin.Test
             Block block2 = Build.A.Block.WithNumber(blockNumber + 1).WithUncles(uncle, uncle2).WithTotalDifficulty(3L).WithDifficulty(0).TestObject;
             
             PoSSwitcher poSSwitcher = CreatePosSwitcher();
-            poSSwitcher.ForkchoiceUpdated(block2.Header);
+            poSSwitcher.ForkchoiceUpdated(block2.Header, block2.Hash!);
             
             MergeRewardCalculator calculator = new(new RewardCalculator(RopstenSpecProvider.Instance), poSSwitcher);
             BlockReward[] rewards = calculator.CalculateRewards(block);
@@ -129,7 +129,7 @@ namespace Nethermind.Merge.Plugin.Test
 
             
             PoSSwitcher poSSwitcher = CreatePosSwitcher();
-            poSSwitcher.ForkchoiceUpdated(block2.Header);
+            poSSwitcher.ForkchoiceUpdated(block2.Header, block2.Hash!);
 
             MergeRewardCalculator calculator = new(new RewardCalculator(RopstenSpecProvider.Instance), poSSwitcher);
             BlockReward[] rewards = calculator.CalculateRewards(block);
@@ -150,7 +150,7 @@ namespace Nethermind.Merge.Plugin.Test
             Block block2 = Build.A.Block.WithTotalDifficulty(3L).WithDifficulty(0).TestObject;
 
             PoSSwitcher poSSwitcher = CreatePosSwitcher();
-            poSSwitcher.ForkchoiceUpdated(block.Header);
+            poSSwitcher.ForkchoiceUpdated(block.Header, block2.Hash!);
             MergeRewardCalculator calculator = new(NoBlockRewards.Instance, poSSwitcher);
             
             BlockReward[] rewards = calculator.CalculateRewards(block);

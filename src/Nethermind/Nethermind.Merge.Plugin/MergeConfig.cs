@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
 namespace Nethermind.Merge.Plugin
@@ -26,5 +27,11 @@ namespace Nethermind.Merge.Plugin
         public string BlockAuthorAccount { get; set; } = string.Empty;
 
         public UInt256 TerminalTotalDifficulty { get; set; } = 0;
+        
+        public Keccak TerminalBlockHash { get; set; } = Keccak.Zero;
+        
+        public long? TerminalBlockNumber { get; set; }
+        
+        public long? ForkNextValue { get; set; }
     }
 }

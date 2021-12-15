@@ -491,8 +491,7 @@ namespace Nethermind.Merge.Plugin.Test
             IEngineRpcModule rpc = CreateEngineModule(chain);
             BlockRequestResult blockRequestResult = await SendNewBlockV1(rpc, chain);
             Assert.False(chain.PoSSwitcher.HasEverReachedTerminalPoWBlock());
-
-            rpc.engine_terminalTotalDifficultyUpdated((UInt256)1000000);
+            
             Keccak newHeadHash = blockRequestResult.BlockHash;
             ForkchoiceStateV1 forkchoiceStateV1 = new(newHeadHash, newHeadHash, newHeadHash);
             ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
@@ -510,8 +509,7 @@ namespace Nethermind.Merge.Plugin.Test
             using MergeTestBlockchain chain = await CreateBlockChain();
             IEngineRpcModule rpc = CreateEngineModule(chain);
             BlockRequestResult blockRequestResult = await SendNewBlockV1(rpc, chain);
-
-            rpc.engine_terminalPoWBlockOverride(chain.BlockTree.HeadHash);
+            
             Keccak newHeadHash = blockRequestResult.BlockHash;
             ForkchoiceStateV1 forkchoiceStateV1 = new(newHeadHash, newHeadHash, newHeadHash);
             ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =

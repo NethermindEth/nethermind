@@ -63,18 +63,6 @@ namespace Nethermind.Merge.Plugin
             IsSharable = true,
             IsImplemented = true)]
         Task<ResultWrapper<string>> engine_forkchoiceUpdated(ForkChoiceUpdatedRequest forkChoiceUpdatedRequest);
-
-        [JsonRpcMethod(
-            Description = "Propagates an override of the TERMINAL_TOTAL_DIFFICULTY to the execution client.",
-            IsSharable = true,
-            IsImplemented = true)]
-        ResultWrapper<string> engine_terminalTotalDifficultyUpdated(UInt256 terminalTotalDifficulty);
-        
-        [JsonRpcMethod(
-            Description = "Propagates the hash of the terminal PoW block.",
-            IsSharable = true,
-            IsImplemented = true)]
-        ResultWrapper<string> engine_terminalPoWBlockOverride(Keccak blockHash);
         
         [JsonRpcMethod(
             Description = "Given the hash returns the information of the PoW block.",

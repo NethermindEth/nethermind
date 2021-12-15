@@ -24,13 +24,30 @@ using Nethermind.Consensus;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Merge.Plugin
 {
-    // ToDo maybe we should persist data (_terminalTotalDifficulty, _terminalBlockHash, _firstPoSBlockHeader, _terminalPoWBlockNumber)
-    public class PoSSwitcher : IPoSSwitcher, ITransitionProcessHandler
+
+    /*
+      The class is responsible for all logic required to switch to PoS consensus.
+      More details: https://eips.ethereum.org/EIPS/eip-3675
+      
+      We divided our transition process into three steps:
+      1) We reached TTD with PoWs blocks
+      2) We received the first forkchoiceUpdated
+      3) We finalized the first PoS block
+      
+      The important parameters for the transition process: 
+      TERMINAL_TOTAL_DIFFICULTY, FORK_NEXT_VALUE, TERMINAL_BLOCK_HASH, TERMINAL_BLOCK_NUMBER.
+      
+      We have different sources of these parameters. The above list starts from the highest priority:
+      1) MergeConfig - we should be able to override every parameter with CLI arguments
+      2) SpecProvider - we can specify our parameters during the release. Moreover, it allows us to migrate to geth chainspec in future
+      3) Memory/Database - needed for the dynamic process of transition. We won't know a terminal block number before the merge
+     */
+    
+    public class PoSSwitcher : IPoSSwitcher
     {
         private readonly IMergeConfig _mergeConfig;
         private readonly IDb _db;
@@ -42,6 +59,9 @@ namespace Nethermind.Merge.Plugin
         private BlockHeader? _firstPoSBlockHeader;
 
         private long? _terminalPoWBlockNumber;
+        private long? _firstPoSBlockNumber;
+        private bool _hasEverReachedTerminalDifficulty;
+        private Keccak _finalizedBlockHash = Keccak.Zero;
 
         public PoSSwitcher(
             IMergeConfig mergeConfig,
@@ -54,78 +74,91 @@ namespace Nethermind.Merge.Plugin
             _db = db;
             _blockTree = blockTree;
             _specProvider = specProvider;
-            _terminalTotalDifficulty = LoadTerminalTotalDifficulty();
             _logger = logManager.GetClassLogger();
-
-            if (_terminalPoWBlockNumber == null)
-            {
-                _blockTree.NewHeadBlock += CheckIfTerminalPoWBlockReached;
-            }
+            
+            Initialize();
         }
 
+        private void Initialize()
+        {
+            LoadTerminalTotalDifficulty();
+            LoadTerminalPoWBlock();
+            LoadFinalizedBlockHash();
+            
+            if (_terminalPoWBlockNumber != null)
+                _hasEverReachedTerminalDifficulty = true;
+            if (_firstPoSBlockNumber != null && _specProvider.MergeBlockNumber != _firstPoSBlockNumber)
+                _specProvider.UpdateMergeTransitionInfo(_firstPoSBlockNumber.Value);
+            
+            if (_terminalPoWBlockNumber == null)
+                _blockTree.NewHeadBlock += CheckIfTerminalPoWBlockReached;
+
+            if (_terminalPoWBlockNumber != null && _finalizedBlockHash != Keccak.Zero)
+                _blockTree.NewHeadBlock -= CheckIfTerminalPoWBlockReached;
+        }
+        
         private void CheckIfTerminalPoWBlockReached(object? sender, BlockEventArgs e)
         {
-            if (_terminalBlockHash == e.Block.Hash || e.Block.TotalDifficulty >= _terminalTotalDifficulty)
+            if (_terminalBlockHash == e.Block.Hash || (e.Block.TotalDifficulty >= _terminalTotalDifficulty))
             {
-                _terminalPoWBlockNumber = e.Block.Number;
+                if (e.Block.Difficulty != 0) // PostMerge blocks have Difficulty == 0. We are interested here in Terminal PoW block
+                {
+                    _terminalPoWBlockNumber = e.Block.Number;
+                    _terminalBlockHash = e.Block.Hash;
+                    _db.Set(MetadataDbKeys.TerminalPoWNumber, Rlp.Encode(_terminalPoWBlockNumber.Value).Bytes);
+                    _db.Set(MetadataDbKeys.TerminalPoWHash, Rlp.Encode(_terminalBlockHash).Bytes);
+                    _firstPoSBlockNumber = e.Block.Number + 1;
+                    _specProvider.UpdateMergeTransitionInfo(_firstPoSBlockNumber.Value);
+                }
+
+                if (_hasEverReachedTerminalDifficulty == false)
+                {
+                    TerminalPoWBlockReached?.Invoke(this, EventArgs.Empty);
+                    _hasEverReachedTerminalDifficulty = true;
+                }
+                
+                // ToDo
                 _blockTree.NewHeadBlock -= CheckIfTerminalPoWBlockReached;
-                _specProvider.UpdateMergeTransitionInfo(e.Block.Number + 1);
-                TerminalPoWBlockReached?.Invoke(this, EventArgs.Empty);
+
                 if (_logger.IsInfo) _logger.Info($"Reached terminal PoW block {e.Block}");
             }
         }
 
-        public UInt256? TerminalTotalDifficulty
+        private void LoadTerminalTotalDifficulty()
         {
-            get => _terminalTotalDifficulty;
-            set => SetTerminalTotalDifficulty(value);
+            _terminalTotalDifficulty = _mergeConfig.TerminalTotalDifficulty;
         }
 
-        private UInt256? LoadTerminalTotalDifficulty()
+        private void LoadFinalizedBlockHash()
         {
-            if (_db.KeyExists(MetadataDbKeys.TerminalTotalDifficulty))
+            _finalizedBlockHash = LoadHashFromDb(MetadataDbKeys.FinalizedBlockHash) ?? Keccak.Zero;
+        }
+
+        public void ForkchoiceUpdated(BlockHeader newHeadHash, Keccak finalizedHash)
+        {
+            if (finalizedHash != Keccak.Zero && _finalizedBlockHash == Keccak.Zero)
             {
-                byte[]? difficultyFromDb = _db.Get(MetadataDbKeys.TerminalTotalDifficulty);
-                RlpStream stream = new (difficultyFromDb!);
-                return stream.DecodeUInt256();
+                _blockTree.NewHeadBlock -= CheckIfTerminalPoWBlockReached;
+            }
+            
+            if (finalizedHash != Keccak.Zero)
+            {
+                if (_finalizedBlockHash == Keccak.Zero)
+                {
+                    if (_logger.IsInfo) _logger.Info($"Reached the first finalized PoS block FinalizedHash: {finalizedHash}, NewHeadHash: {newHeadHash}");
+                    _blockTree.NewHeadBlock -= CheckIfTerminalPoWBlockReached;
+                }
+
+                _finalizedBlockHash = finalizedHash;
+                // ToDo need to discuss with Sarah, this method should be moved to BlockTree or FinalizationManager
+                _db.Set(MetadataDbKeys.FinalizedBlockHash, Rlp.Encode(_finalizedBlockHash).Bytes);
             }
 
-            return _mergeConfig.TerminalTotalDifficulty;
-        }
-
-        private void SetTerminalTotalDifficulty(UInt256? totalDifficulty)
-        {
-            _terminalTotalDifficulty = totalDifficulty;
-            _db.Set(MetadataDbKeys.TerminalTotalDifficulty, Rlp.Encode(_terminalTotalDifficulty).Bytes);
-        }
-
-        public void SetTerminalPoWHash(Keccak blockHash)
-        {
-            _terminalBlockHash = blockHash;
-        }
-
-        public Keccak? LoadFirstPosBlockHash()
-        {
-            return LoadHashFromDb(MetadataDbKeys.FirstPoSBlockHash);
-        }
-
-        public Keccak? LoadFinalizedBlockHash()
-        {
-            return LoadHashFromDb(MetadataDbKeys.FinalizedBlockHash);
-        }
-
-        public void SetFinalizedBlockHash(Keccak finalizedBlockHash)
-        {
-            _db.Set(MetadataDbKeys.FinalizedBlockHash, Rlp.Encode(finalizedBlockHash).Bytes);
-        }
-
-        public void ForkchoiceUpdated(BlockHeader newBlockHeader)
-        {
             if (_firstPoSBlockHeader == null)
             {
-                if (_logger.IsInfo) _logger.Info($"Received the first forkchoiceUpdated at block {newBlockHeader}");
-                _firstPoSBlockHeader = newBlockHeader;
-                _db.Set(MetadataDbKeys.FirstPoSBlockHash, Rlp.Encode(_firstPoSBlockHeader.Hash).Bytes);
+                if (_logger.IsInfo) _logger.Info($"Received the first forkchoiceUpdated at block {newHeadHash}");
+                _firstPoSBlockHeader = newHeadHash;
+                _db.Set(MetadataDbKeys.FirstPoSHash, Rlp.Encode(_firstPoSBlockHeader.Hash).Bytes);
             }
         }
 
@@ -135,12 +168,34 @@ namespace Nethermind.Merge.Plugin
                    (_firstPoSBlockHeader != null && header.Number >= _firstPoSBlockHeader.Number) || header.Number > _terminalPoWBlockNumber;
         }
 
-        public bool HasEverReachedTerminalPoWBlock()
-        {
-            return _terminalPoWBlockNumber != null;
-        }
+        public bool HasEverReachedTerminalPoWBlock() => _hasEverReachedTerminalDifficulty;
 
         public event EventHandler? TerminalPoWBlockReached;
+
+        private void LoadTerminalPoWBlock()
+        {
+            _terminalPoWBlockNumber = _mergeConfig.TerminalBlockNumber ??
+                                      LoadPoWBlockNumberFromDb();
+            
+            _terminalBlockHash = _mergeConfig.TerminalBlockHash != Keccak.Zero 
+                                    ? _mergeConfig.TerminalBlockHash 
+                                    : LoadHashFromDb(MetadataDbKeys.TerminalPoWHash);
+
+            if (_terminalPoWBlockNumber != null)
+                _firstPoSBlockNumber = _terminalPoWBlockNumber + 1;
+        }
+        
+        private long? LoadPoWBlockNumberFromDb()
+        {
+            if (_db.KeyExists(MetadataDbKeys.TerminalPoWNumber))
+            {
+                byte[]? hashFromDb = _db.Get(MetadataDbKeys.TerminalPoWNumber);
+                RlpStream stream = new (hashFromDb!);
+                return stream.DecodeLong();   
+            }
+            
+            return null;
+        }
 
         private Keccak? LoadHashFromDb(int key)
         {

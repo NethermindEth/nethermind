@@ -25,13 +25,13 @@ using Nethermind.Merge.Plugin.Handlers;
 
 namespace Nethermind.Merge.Plugin
 {
-    public class NoPoS : IPoSSwitcher, ITransitionProcessHandler
+    public class NoPoS : IPoSSwitcher
     {
         private NoPoS() { }
 
         public static NoPoS Instance { get; } = new();
 
-        public void ForkchoiceUpdated(BlockHeader newBlockHeader) { }
+        public void ForkchoiceUpdated(BlockHeader newHeadHash, Keccak finalizedBlockHash) { }
 
         public void SetFinalizedBlockHash(Keccak finalizedBlockHash) { }
 
@@ -40,23 +40,5 @@ namespace Nethermind.Merge.Plugin
         public bool HasEverReachedTerminalPoWBlock() => false;
 
         public event EventHandler? TerminalPoWBlockReached;
-
-        public UInt256? TerminalTotalDifficulty
-        {
-            get
-            {
-                return UInt256.MaxValue;
-            }
-
-            set
-            {
-                throw new NotSupportedException();
-            }
-        }
-
-        public void SetTerminalPoWHash(Keccak blockHash)
-        {
-            throw new NotSupportedException();
-        }
     }
 }

@@ -16,6 +16,7 @@
 // 
 
 using Nethermind.Config;
+using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
 namespace Nethermind.Merge.Plugin
@@ -32,5 +33,14 @@ namespace Nethermind.Merge.Plugin
         
         [ConfigItem(Description = "Terminal total difficulty used for transition process.", DefaultValue = "0")]
         public UInt256 TerminalTotalDifficulty { get; set; }
+        
+        [ConfigItem(Description = "Terminal PoW block hash used for transition process.", DefaultValue = "0x0000000000000000000000000000000000000000000000000000000000000000")]
+        public Keccak TerminalBlockHash { get; set; }
+        
+        [ConfigItem(Description = "Terminal PoW block number used for transition process.")]
+        public long? TerminalBlockNumber { get; set; }
+        
+        [ConfigItem(Description = "A block number for next fork id value.")]
+        public long? ForkNextValue { get; set; }
     }
 }

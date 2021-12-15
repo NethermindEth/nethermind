@@ -42,7 +42,6 @@ namespace Nethermind.Merge.Plugin
         private readonly IHandler<ForkChoiceUpdatedRequest, string> _forkChoiceUpdateHandler;
         private readonly IForkchoiceUpdatedV1Handler _forkchoiceUpdatedV1Handler;
         private readonly IHandler<ExecutionStatusResult> _executionStatusHandler;
-        private readonly ITransitionProcessHandler _transitionProcessHandler;
         private readonly SemaphoreSlim _locker = new(1, 1);
         private readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
         private readonly ILogger _logger;
@@ -54,7 +53,6 @@ namespace Nethermind.Merge.Plugin
             IAsyncHandler<byte[], BlockRequestResult?> getPayloadHandlerV1,
             IHandler<BlockRequestResult, ExecutePayloadResult> executePayloadHandler,
             IHandler<BlockRequestResult, ExecutePayloadV1Result> executePayloadV1Handler,
-            ITransitionProcessHandler transitionProcessHandler,
             IHandler<ForkChoiceUpdatedRequest, string> forkChoiceUpdateHandler,
             IForkchoiceUpdatedV1Handler forkchoiceUpdatedV1Handler,
             IHandler<ExecutionStatusResult> executionStatusHandler,
@@ -66,7 +64,6 @@ namespace Nethermind.Merge.Plugin
             _getPayloadHandlerV1 = getPayloadHandlerV1;
             _executePayloadHandler = executePayloadHandler;
             _executePayloadV1Handler = executePayloadV1Handler;
-            _transitionProcessHandler = transitionProcessHandler;
             _forkChoiceUpdateHandler = forkChoiceUpdateHandler;
             _forkchoiceUpdatedV1Handler = forkchoiceUpdatedV1Handler;
             _executionStatusHandler = executionStatusHandler;
@@ -135,19 +132,6 @@ namespace Nethermind.Merge.Plugin
                 return ResultWrapper<string>.Fail($"{nameof(engine_forkchoiceUpdated)} timeout.", ErrorCodes.Timeout);
             }
         }
-
-        public ResultWrapper<string> engine_terminalTotalDifficultyUpdated(UInt256 terminalTotalDifficulty)
-        {
-            _transitionProcessHandler.TerminalTotalDifficulty = terminalTotalDifficulty;
-            return ResultWrapper<string>.Success(null);
-        }
-
-        public ResultWrapper<string> engine_terminalPoWBlockOverride(Keccak blockHash)
-        {
-            _transitionProcessHandler.SetTerminalPoWHash(blockHash);
-            return ResultWrapper<string>.Success(null);
-        }
-
         public Task<ResultWrapper<Block?>> engine_getPowBlock(Keccak blockHash)
         {
             // probably this method won't be needed

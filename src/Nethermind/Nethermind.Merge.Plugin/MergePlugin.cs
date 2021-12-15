@@ -36,7 +36,6 @@ namespace Nethermind.Merge.Plugin
         private ILogger _logger = null!;
         private IMergeConfig _mergeConfig = null!;
         private IPoSSwitcher _poSSwitcher = NoPoS.Instance;
-        private ITransitionProcessHandler _transitionProcessHandler => (ITransitionProcessHandler)_poSSwitcher;
         private ManualBlockFinalizationManager _blockFinalizationManager = null!;
 
         public string Name => "Merge";
@@ -135,7 +134,6 @@ namespace Nethermind.Merge.Plugin
                         _api.Config<IInitConfig>(),
                         _mergeConfig,
                         _api.LogManager),
-                    _transitionProcessHandler,
                     new ForkChoiceUpdatedHandler(_api.BlockTree, _api.StateProvider, _blockFinalizationManager,
                         _poSSwitcher, _api.BlockConfirmationManager, _api.LogManager),
                     new ForkchoiceUpdatedV1Handler(_api.BlockTree, _api.StateProvider, _blockFinalizationManager,
