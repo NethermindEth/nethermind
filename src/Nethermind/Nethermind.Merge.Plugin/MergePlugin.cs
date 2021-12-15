@@ -90,7 +90,7 @@ namespace Nethermind.Merge.Plugin
                 _api.HealthHintService =
                     new MergeHealthHintService(_api.HealthHintService, _poSSwitcher);
 
-                _api.FinalizationManager = _blockFinalizationManager;
+                _api.FinalizationManager = new MergeFinalizationManager(_blockFinalizationManager, _api.FinalizationManager, _poSSwitcher);
             }
 
             return Task.CompletedTask;

@@ -38,7 +38,6 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa.InitializationSteps
@@ -51,7 +50,6 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
         private INethermindApi NethermindApi => _api;
         
         private readonly IAuraConfig _auraConfig;
-        private IAuRaBlockFinalizationManager _finalizationManager;
         private IAuRaValidator? _validator;
         private DictionaryContractDataStore<TxPriorityContract.Destination>? _minGasPricesContractDataStore;
         private TxPriorityContract? _txPriorityContract;
@@ -147,16 +145,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                 changeableTxProcessingEnv.BlockTree,
                 auRaTxFilter,
                 CreateGasLimitCalculator(constantContractTxProcessingEnv) as AuRaContractGasLimitOverride);
-            
-            _finalizationManager = _api.FinalizationManager ?? new AuRaBlockFinalizationManager(
-                _api.BlockTree, 
-                _api.ChainLevelInfoRepository, 
-                processor, 
-                _api.ValidatorStore, 
-                new ValidSealerStrategy(), 
-                _api.LogManager, 
-                chainSpecAuRa.TwoThirdsMajorityTransition);
-            
+
             _validator = new AuRaValidatorFactory(_api.AbiEncoder,
                     changeableTxProcessingEnv.StateProvider,
                     changeableTxProcessingEnv.TransactionProcessor,
@@ -164,7 +153,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                     constantContractTxProcessingEnv,
                     _api.ReceiptStorage,
                     _api.ValidatorStore,
-                    _finalizationManager,
+                    _api.FinalizationManager,
                     NullTxSender.Instance,
                     NullTxPool.Instance,
                     NethermindApi.Config<IMiningConfig>(),
