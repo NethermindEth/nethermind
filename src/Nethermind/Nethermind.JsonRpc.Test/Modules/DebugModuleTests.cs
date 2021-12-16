@@ -16,6 +16,7 @@
 
 using System.Collections.Generic;
 using System.Threading;
+using FluentAssertions;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -250,20 +251,36 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig);
             ResultWrapper<GethLikeTxTrace> debugTraceCall = rpcModule.debug_traceCall(txForRpc, null, gtOptions);
+            GethLikeTxTrace expected = new GethLikeTxTrace()
+            {
+                Failed = false,
+                Entries = new List<GethTxTraceEntry>(){
+                    new GethTxTraceEntry()
+                    {
+                        Gas = 22000,
+                        GasCost = 1,
+                        Depth = 1,
+                        Memory = new List<string>()
+                        {
+                            "0000000000000000000000000000000000000000000000000000000000000005",
+                            "0000000000000000000000000000000000000000000000000000000000000006"
+                        },
+                        Operation = "STOP",
+                        Pc = 0,
+                        Stack = {},
+                        Storage = new Dictionary<string, string>()
+                        {
+                            {"0000000000000000000000000000000000000000000000000000000000000001", "0000000000000000000000000000000000000000000000000000000000000002"},
+                            {"0000000000000000000000000000000000000000000000000000000000000003", "0000000000000000000000000000000000000000000000000000000000000004"},
+                        }
+                    }
+                },
+                Gas = 0,
+                ReturnValue = new byte[] {162}
+            };
             
             Assert.AreEqual(debugTraceCall.Result.Error, null);
-            Assert.AreEqual(debugTraceCall.Data.Failed, false);
-            Assert.AreEqual(debugTraceCall.Data.Entries[0].Gas, 22000);
-            Assert.AreEqual(debugTraceCall.Data.Entries[0].GasCost, 1);
-            Assert.AreEqual(debugTraceCall.Data.Entries[0].Depth, 1);
-            
-            Assert.AreEqual(debugTraceCall.Data.Entries[0].GasCost, 1);
-            
-            List<string>? memory = debugTraceCall.Data.Entries[0].Memory;
-            if (memory != null) Assert.AreEqual(memory.Count, 2);
-            
-            Dictionary<string, string>? sortedStorage = debugTraceCall.Data.Entries[0].SortedStorage;
-            if (sortedStorage != null) Assert.AreEqual(sortedStorage.Count, 2);
+            debugTraceCall.Data.Should().BeEquivalentTo(expected);
         }
 
         [Test]
