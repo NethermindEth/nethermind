@@ -103,8 +103,8 @@
     <None Remove="keystore\**" />
   </ItemGroup>
   <ItemGroup>
-    <PluginsForBuild Include="$(OutputPath)\Nethermind.Merge.Plugin.*;&#xD;&#xA;$(OutputPath)\Nethermind.Mev.*;&#xD;&#xA;$(OutputPath)\Nethermind.HealthChecks.*" />
-    <PluginsForPublish Include="$(OutputPath)\Nethermind.Merge.Plugin.dll;&#xD;&#xA;$(OutputPath)\Nethermind.Mev.dll;&#xD;&#xA;$(OutputPath)\Nethermind.HealthChecks.dll" />
+    <PluginsForBuild Include="$(OutputPath)\Nethermind.Merge.Plugin.*;&#xD;&#xA;$(OutputPath)\Nethermind.Mev.*;&#xD;&#xA;$(OutputPath)\Nethermind.HealthChecks.*;&#xD;&#xA;$(OutputPath)\Nethermind.Api.*" />
+    <PluginsForPublish Include="$(OutputPath)\Nethermind.Merge.Plugin.dll;&#xD;&#xA;$(OutputPath)\Nethermind.Mev.dll;&#xD;&#xA;$(OutputPath)\Nethermind.HealthChecks.dll;&#xD;&#xA;$(OutputPath)\Nethermind.Api.dll" />
   </ItemGroup>
   <ItemGroup>
     <GitHash Include="git-hash" />
