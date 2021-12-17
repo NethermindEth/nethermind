@@ -133,7 +133,7 @@ namespace Nethermind.Api
         public IFilterManager? FilterManager { get; set; }
         public IGrpcServer? GrpcServer { get; set; }
         public IHeaderValidator? HeaderValidator { get; set; }
-        public IManualBlockProductionTrigger ManualBlockProductionTrigger { get; set; } =
+        public IManualBlockProductionTrigger ManualBlockProductionTrigger { get; } =
             new BuildBlocksWhenRequested();
         public IIPResolver? IpResolver { get; set; }
         public IJsonSerializer EthereumJsonSerializer { get; set; }
