@@ -139,7 +139,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             if (headUpdated && shouldUpdateHead)
             {
                 _poSSwitcher.ForkchoiceUpdated(newHeadBlock!.Header, forkchoiceState.FinalizedBlockHash);
-                _stateProvider.ResetStateTo(newHeadBlock.StateRoot!);
+              //  _stateProvider.ResetStateTo(newHeadBlock.StateRoot!);
                 if (_logger.IsInfo) _logger.Info($"Block {forkchoiceState.HeadBlockHash} was set as head");
             }
             else if (headUpdated == false && shouldUpdateHead)
