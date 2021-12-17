@@ -73,34 +73,34 @@ namespace Nethermind.Merge.Plugin.Handlers
             byte[] payloadId = ComputeNextPayloadId(parentHeader, payloadAttributes);
             payloadAttributes.SuggestedFeeRecipient = payloadAttributes.SuggestedFeeRecipient == Address.Zero ? _sealer.Address : payloadAttributes.SuggestedFeeRecipient;
             using CancellationTokenSource cts = new(_timeout);
-            
-            _taskQueue.Enqueue(() => PreparePayload(payloadId, parentHeader, payloadAttributes));
+            var blockProductionTask = PreparePayload(payloadId, parentHeader, payloadAttributes);
+            _taskQueue.Enqueue(() => blockProductionTask);
             return payloadId;
         }
 
-        private async Task PreparePayload(byte[] payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes)
+        private Task PreparePayload(byte[] payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes)
         {
             if (_logger.IsTrace) _logger.Trace($"Preparing empty block from payload {payloadId} with parent {parentHeader}");
             Block emptyBlock = _idealBlockContext.BlockProducer.PrepareEmptyBlock(parentHeader, payloadAttributes);
             if (_logger.IsTrace) _logger.Trace($"Prepared empty block from payload {payloadId} block: {emptyBlock}");
-            await GeneratePayload(payloadId, parentHeader, payloadAttributes, emptyBlock);
+            return GeneratePayload(payloadId, parentHeader, payloadAttributes, emptyBlock);
         }
         
-        private async Task GeneratePayload(byte[] payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block emptyBlock)
+        private Task GeneratePayload(byte[] payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block emptyBlock)
         {
             using CancellationTokenSource cts = new(_timeout);
             
-            await ProduceIdealBlock(payloadId, parentHeader, payloadAttributes, emptyBlock, cts);
+            return ProduceIdealBlock(payloadId, parentHeader, payloadAttributes, emptyBlock, cts);
             
-            await Task.Delay(TimeSpan.FromSeconds(_cleanupDelay), CancellationToken.None)
-                .ContinueWith(_ =>
-                {
-                    if (_logger.IsDebug) _logger.Debug($"Cleaning up payload {payloadId}");
-                });
-            await CleanupOldPayloadWithDelay(payloadId, TimeSpan.FromSeconds(_cleanupDelay));
+            // await Task.Delay(TimeSpan.FromSeconds(_cleanupDelay), CancellationToken.None)
+            //     .ContinueWith(_ =>
+            //     {
+            //         if (_logger.IsDebug) _logger.Debug($"Cleaning up payload {payloadId}");
+            //     });
+            // await CleanupOldPayloadWithDelay(payloadId, TimeSpan.FromSeconds(_cleanupDelay));
         }
         
-        private async Task ProduceIdealBlock(byte[] payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block emptyBlock, CancellationTokenSource cts)
+        private Task ProduceIdealBlock(byte[] payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block emptyBlock, CancellationTokenSource cts)
         {
             if (_logger.IsTrace) _logger.Trace($"Preparing ideal block from payload {payloadId} with parent {parentHeader}");
             Task<Block?> idealBlockTask =
@@ -110,8 +110,8 @@ namespace Nethermind.Merge.Plugin.Handlers
                     .ContinueWith(LogProductionResult, cts.Token);
             
             _payloadStorage[payloadId.ToHexString()] = new IdealBlockContext(emptyBlock, idealBlockTask, cts);
-            await idealBlockTask;
             if (_logger.IsTrace) _logger.Trace($"Prepared ideal block from payload {payloadId} block result: {idealBlockTask.Result}");
+            return idealBlockTask;
         }
         
         private Block? LogProductionResult(Task<Block?> t)
@@ -219,7 +219,7 @@ namespace Nethermind.Merge.Plugin.Handlers
         {
             if (idealBlockContext is not null && !idealBlockContext.Task.IsCompleted)
             {
-                idealBlockContext.CancellationTokenSource.Cancel();
+//                idealBlockContext.CancellationTokenSource.Cancel();
             }
         }
 

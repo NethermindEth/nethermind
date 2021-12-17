@@ -711,29 +711,31 @@ namespace Nethermind.Merge.Plugin.Test
             foreach (BlockRequestResult block in branch)
             {
                 uint count = 10;
-                BlockRequestResult newBlockRequest = CreateBlockRequest(block, TestItem.AddressA);
+                BlockRequestResult executionPayload = CreateBlockRequest(block, TestItem.AddressA);
                 PrivateKey from = TestItem.PrivateKeyB;
                 Address to = TestItem.AddressD;
                 (_, UInt256 toBalanceAfter) =
-                    AddTransactions(chain, newBlockRequest, from, to, count, 1, out var parentHeader);
+                    AddTransactions(chain, executionPayload, from, to, count, 1, out var parentHeader);
 
-                newBlockRequest.GasUsed = GasCostOf.Transaction * count;
-                newBlockRequest.StateRoot =
+                executionPayload.GasUsed = GasCostOf.Transaction * count;
+                executionPayload.StateRoot =
                     new Keccak("0x3d2e3ced6da0d1e94e65894dc091190480f045647610ef614e1cab4241ca66e0");
-                newBlockRequest.ReceiptsRoot =
+                executionPayload.ReceiptsRoot =
                     new Keccak("0xc538d36ed1acf6c28187110a2de3e5df707d6d38982f436eb0db7a623f9dc2cd");
-                TryCalculateHash(newBlockRequest, out var hash);
-                newBlockRequest.BlockHash = hash;
-                ResultWrapper<ExecutePayloadV1Result> result = await rpc.engine_executePayloadV1(newBlockRequest);
+                TryCalculateHash(executionPayload, out var hash);
+                executionPayload.BlockHash = hash;
+                ResultWrapper<ExecutePayloadV1Result> result = await rpc.engine_executePayloadV1(executionPayload);
+                // ToDo we need better way than Task.Delay
                 await Task.Delay(10);
 
                 result.Data.EnumStatus.Should().Be(VerificationStatus.Valid);
                 RootCheckVisitor rootCheckVisitor = new();
-                chain.StateReader.RunTreeVisitor(rootCheckVisitor, newBlockRequest.StateRoot);
+                chain.StateReader.RunTreeVisitor(rootCheckVisitor, executionPayload.StateRoot);
                 rootCheckVisitor.HasRoot.Should().BeTrue();
+                // ToDo it should be uncommented
                 // Chain.StateReader.GetBalance(newBlockRequest.StateRoot, from.Address).Should().Be(fromBalanceAfter);
-                chain.StateReader.GetBalance(newBlockRequest.StateRoot, to).Should().Be(toBalanceAfter);
-                Block findBlock = chain.BlockTree.FindBlock(newBlockRequest.BlockHash, BlockTreeLookupOptions.None)!;
+                chain.StateReader.GetBalance(executionPayload.StateRoot, to).Should().Be(toBalanceAfter);
+                Block findBlock = chain.BlockTree.FindBlock(executionPayload.BlockHash, BlockTreeLookupOptions.None)!;
                 TxReceipt[]? receipts = chain.ReceiptStorage.Get(findBlock);
                 findBlock.Transactions.Select(t => t.Hash).Should().BeEquivalentTo(receipts.Select(r => r.TxHash));
             }
