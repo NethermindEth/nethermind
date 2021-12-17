@@ -55,11 +55,11 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             switch (subscriptionType)
             {
                 case SubscriptionType.NewHeads: 
-                    return new NewHeadSubscription(jsonRpcDuplexClient, _blockTree, _logManager);
+                    return new NewHeadSubscription(jsonRpcDuplexClient, _blockTree, _logManager, filter);
                 case SubscriptionType.Logs:
                     return new LogsSubscription(jsonRpcDuplexClient, _receiptStorage, _filterStore, _blockTree, _logManager, filter);
                 case SubscriptionType.NewPendingTransactions:
-                    return new NewPendingTransactionsSubscription(jsonRpcDuplexClient, _txPool, _logManager);
+                    return new NewPendingTransactionsSubscription(jsonRpcDuplexClient, _txPool, _logManager, filter);
                 case SubscriptionType.DroppedPendingTransactions:
                     return new DroppedPendingTransactionsSubscription(jsonRpcDuplexClient, _txPool, _logManager);
                 case SubscriptionType.Syncing:

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,27 +13,23 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing;
-using Nethermind.Trie;
 
-namespace Nethermind.Blockchain.Tracing
+namespace Nethermind.Evm.TransactionProcessing
 {
-    /// <summary>
-    /// A simple and flexible bridge for any tracing operations on blocks and transactions.
-    /// </summary>
-    public interface ITracer
+    public class TraceTransactionProcessorAdapter : ITransactionProcessorAdapter
     {
-        /// <summary>
-        /// Allows to trace an arbitrarily constructed block.
-        /// </summary>
-        /// <param name="block">Block to trace.</param>
-        /// <param name="tracer">Trace to act on block processing events.</param>
-        /// <returns>Processed block</returns>
-        Block? Trace(Block block, IBlockTracer tracer);
-        
-        void Accept(ITreeVisitor visitor, Keccak stateRoot);
+        private readonly ITransactionProcessor _transactionProcessor;
+
+        public TraceTransactionProcessorAdapter(ITransactionProcessor transactionProcessor)
+        {
+            _transactionProcessor = transactionProcessor;
+        }
+
+        public void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer) =>
+            _transactionProcessor.Trace(transaction, block, txTracer);
     }
 }
