@@ -144,7 +144,7 @@
     },
     "Kintsugi": {
       "commandName": "Project",
-      "commandLineArgs": "--config kintsugi.cfg --Merge.TerminalTotalDifficulty 200000000 --Init.DiagnosticMode MemDb"
+      "commandLineArgs": "--config kintsugi.cfg --Init.DiagnosticMode None"
     },
     "xDai_testnet": {
       "commandName": "Project",

@@ -21,16 +21,19 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Db;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Data.V1;
 using Nethermind.State;
+using Nethermind.Synchronization;
 
 namespace Nethermind.Merge.Plugin.Handlers.V1
 {
@@ -48,7 +51,11 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         private readonly IBlockConfirmationManager _blockConfirmationManager;
         private readonly IPayloadService _payloadService;
         private readonly IMergeConfig _mergeConfig;
+        private readonly IBlockchainProcessor _blockchainProcessor;
+        private readonly ISynchronizer _synchronizer;
+        private readonly IDb _stateDb;
         private readonly ILogger _logger;
+        private bool synced = false;
 
         public ForkchoiceUpdatedV1Handler(
             IBlockTree blockTree,
@@ -59,6 +66,9 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             IBlockConfirmationManager blockConfirmationManager,
             IPayloadService payloadService,
             IMergeConfig mergeConfig,
+            IBlockchainProcessor blockchainProcessor,
+            ISynchronizer synchronizer,
+            IDb stateDb,
             ILogManager logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -69,17 +79,17 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             _blockConfirmationManager = blockConfirmationManager ?? throw new ArgumentNullException(nameof(blockConfirmationManager));
             _payloadService = payloadService;
             _mergeConfig = mergeConfig;
+            _blockchainProcessor = blockchainProcessor;
+            _synchronizer = synchronizer;
+            _stateDb = stateDb;
             _logger = logManager.GetClassLogger();
         }
 
         public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> Handle(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes)
         {
-            // ToDo wait for final PostMerge sync
-            // if (_ethSyncingInfo.IsSyncing())
-            // {
+            // if (_stateDb.KeyExists(forkchoiceState.HeadBlockHash) == false)
             //     return ResultWrapper<ForkchoiceUpdatedV1Result>.Success(new ForkchoiceUpdatedV1Result() { Status = EngineStatus.Syncing});
-            // }
-            
+
 
             (BlockHeader? finalizedHeader, string? finalizationErrorMsg) = EnsureHeaderForFinalization(forkchoiceState.FinalizedBlockHash);
             if (finalizationErrorMsg != null)
@@ -93,6 +103,15 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             if (setHeadErrorMsg != null)
                 return ReturnSyncing();
  
+            if (_ethSyncingInfo.IsSyncing() && synced == false)
+            {
+                return ResultWrapper<ForkchoiceUpdatedV1Result>.Success(new ForkchoiceUpdatedV1Result() { Status = EngineStatus.Syncing});
+            }
+            else if (synced == false)
+            {
+                await  _synchronizer.StopAsync();
+                synced = true;
+            }
             if (newHeadBlock!.Header.TotalDifficulty < _mergeConfig.TerminalTotalDifficulty)
             {
                 ResultWrapper<ExecutePayloadV1Result>.Fail($"Invalid total difficulty: {newHeadBlock.Header.TotalDifficulty} for block header: {newHeadBlock!.Header}", MergeErrorCodes.InvalidTerminalBlock);

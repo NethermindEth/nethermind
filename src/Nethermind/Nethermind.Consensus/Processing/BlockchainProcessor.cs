@@ -469,7 +469,8 @@ namespace Nethermind.Consensus.Processing
             bool notReachedTheReorgBoundary;
             
             // ToDo temp hack - don't merge it to master
-            bool ethereumMerge = true;
+            // bool ethereumMerge = (options & ProcessingOptions.EthereumMerge) != 0;
+            bool ethereumMerge = false;
             Block toBeProcessed = suggestedBlock;
             do
             {

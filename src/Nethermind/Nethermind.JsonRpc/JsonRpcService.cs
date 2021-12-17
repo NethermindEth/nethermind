@@ -119,7 +119,13 @@ namespace Nethermind.JsonRpc
         {
             ParameterInfo[] expectedParameters = method.Info.GetParameters();
             string?[] providedParameters = request.Params ?? Array.Empty<string>();
-            if (_logger.IsInfo) _logger.Info($"Executing JSON RPC call {methodName} with params [{string.Join(',', providedParameters)}]");
+            if (_logger.IsInfo)
+            {
+                var paramStr = string.Join(',', providedParameters);
+                const int maxParamsLength = 2000; // ToDo move it to JSON RPC config as max logged request size?
+                var paramStrAdjusted = paramStr.Substring(0, Math.Min(paramStr.Length, maxParamsLength));
+                _logger.Info($"Executing JSON RPC call {methodName} with params [{paramStrAdjusted}]");
+            }
 
             int missingParamsCount = expectedParameters.Length - providedParameters.Length + (providedParameters.Count(string.IsNullOrWhiteSpace));
             int explicitNullableParamsCount = 0;

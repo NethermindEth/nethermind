@@ -38,7 +38,7 @@ namespace Nethermind.Merge.Plugin
         private readonly IAsyncHandler<ulong, BlockRequestResult?> _getPayloadHandler;
         private readonly IAsyncHandler<byte[], BlockRequestResult?> _getPayloadHandlerV1;
         private readonly IHandler<BlockRequestResult, ExecutePayloadResult> _executePayloadHandler;
-        private readonly IHandler<BlockRequestResult, ExecutePayloadV1Result> _executePayloadV1Handler;
+        private readonly IAsyncHandler<BlockRequestResult, ExecutePayloadV1Result> _executePayloadV1Handler;
         private readonly IHandler<ForkChoiceUpdatedRequest, string> _forkChoiceUpdateHandler;
         private readonly IForkchoiceUpdatedV1Handler _forkchoiceUpdatedV1Handler;
         private readonly IHandler<ExecutionStatusResult> _executionStatusHandler;
@@ -52,7 +52,7 @@ namespace Nethermind.Merge.Plugin
             IAsyncHandler<ulong, BlockRequestResult?> getPayloadHandler,
             IAsyncHandler<byte[], BlockRequestResult?> getPayloadHandlerV1,
             IHandler<BlockRequestResult, ExecutePayloadResult> executePayloadHandler,
-            IHandler<BlockRequestResult, ExecutePayloadV1Result> executePayloadV1Handler,
+            IAsyncHandler<BlockRequestResult, ExecutePayloadV1Result> executePayloadV1Handler,
             IHandler<ForkChoiceUpdatedRequest, string> forkChoiceUpdateHandler,
             IForkchoiceUpdatedV1Handler forkchoiceUpdatedV1Handler,
             IHandler<ExecutionStatusResult> executionStatusHandler,
@@ -174,7 +174,7 @@ namespace Nethermind.Merge.Plugin
             {
                 try
                 {
-                    return _executePayloadV1Handler.Handle(executionPayload);
+                    return await _executePayloadV1Handler.HandleAsync(executionPayload);
                 }
                 finally
                 {

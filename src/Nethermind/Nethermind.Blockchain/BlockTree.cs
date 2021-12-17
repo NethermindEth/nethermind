@@ -561,7 +561,7 @@ namespace Nethermind.Blockchain
             }
 
             bool preMergeImprovementRequirementSatisfied = header.TotalDifficulty > (BestSuggestedHeader?.TotalDifficulty ?? 0);
-            bool postMergeImprovementRequirementSatisfied = header.IsPostMerge || header.Number >= _specProvider.MergeBlockNumber;
+            bool postMergeImprovementRequirementSatisfied = header.IsPostMerge || header.Number >= _specProvider.MergeBlockNumber || header.Difficulty == 0; // ToDo hack
             if (header.IsGenesis || preMergeImprovementRequirementSatisfied || postMergeImprovementRequirementSatisfied)
             {
                 if (header.IsGenesis)
@@ -1131,7 +1131,7 @@ namespace Nethermind.Blockchain
 
             
             bool preMergeImprovementRequirementSatisfied = block.TotalDifficulty > (Head?.TotalDifficulty ?? 0);
-            bool postMergeImprovementRequirementSatisfied = block.IsPostMerge || block.Number >= _specProvider.MergeBlockNumber;
+            bool postMergeImprovementRequirementSatisfied = block.IsPostMerge || block.Number >= _specProvider.MergeBlockNumber || block.Difficulty == 0; // hack
             if (forceUpdateHeadBlock || block.IsGenesis || postMergeImprovementRequirementSatisfied || preMergeImprovementRequirementSatisfied)
             {
                 if (block.Number == 0)

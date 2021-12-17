@@ -19,6 +19,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
@@ -28,12 +29,14 @@ using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Db;
 using Nethermind.Evm.Tracing;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Data.V1;
+using Nethermind.Synchronization;
 
 namespace Nethermind.Merge.Plugin.Handlers
 {
@@ -42,7 +45,7 @@ namespace Nethermind.Merge.Plugin.Handlers
     /// Verifies the payload according to the execution environment rule set (EIP-3675)
     /// and returns the status of the verification and the hash of the last valid block
     /// </summary>
-    public class ExecutePayloadV1Handler : IHandler<BlockRequestResult, ExecutePayloadV1Result>
+    public class ExecutePayloadV1Handler : IAsyncHandler<BlockRequestResult, ExecutePayloadV1Result>
     {
         private readonly IBlockValidator _blockValidator;
         private readonly IBlockTree _blockTree;
@@ -50,10 +53,13 @@ namespace Nethermind.Merge.Plugin.Handlers
         private readonly IEthSyncingInfo _ethSyncingInfo;
         private readonly IInitConfig _initConfig;
         private readonly IMergeConfig _mergeConfig;
+        private readonly ISynchronizer _synchronizer;
+        private readonly IDb _db;
         private readonly ILogger _logger;
         private SemaphoreSlim _blockValidationSemaphore;
         private readonly LruCache<Keccak, bool> _latestBlocks = new(50, "LatestBlocks");
         private readonly ConcurrentDictionary<Keccak, Keccak> _lastValidHashes = new ();
+        private bool synced = false;
 
         public ExecutePayloadV1Handler(
             IBlockValidator blockValidator,
@@ -62,6 +68,8 @@ namespace Nethermind.Merge.Plugin.Handlers
             IEthSyncingInfo ethSyncingInfo,
             IInitConfig initConfig,
             IMergeConfig mergeConfig,
+            ISynchronizer synchronizer,
+            IDb db,
             ILogManager logManager)
         {
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
@@ -70,6 +78,8 @@ namespace Nethermind.Merge.Plugin.Handlers
             _ethSyncingInfo = ethSyncingInfo;
             _initConfig = initConfig;
             _mergeConfig = mergeConfig;
+            _synchronizer = synchronizer;
+            _db = db;
             _logger = logManager.GetClassLogger();
             _blockValidationSemaphore = new SemaphoreSlim(0);
             _processor.BlockProcessed += (s, e) =>
@@ -82,16 +92,17 @@ namespace Nethermind.Merge.Plugin.Handlers
             };
         }
 
-        public ResultWrapper<ExecutePayloadV1Result> Handle(BlockRequestResult request)
+        public async Task<ResultWrapper<ExecutePayloadV1Result>> HandleAsync(BlockRequestResult request)
         {
             ExecutePayloadV1Result executePayloadResult = new();
 
             // ToDo wait for final PostMerge sync
-            // if (_ethSyncingInfo.IsSyncing())
+            // if (_db.KeyExists(request.ParentHash) == false)
             // {
             //     executePayloadResult.EnumStatus = VerificationStatus.Syncing;
             //     return ResultWrapper<ExecutePayloadV1Result>.Success(executePayloadResult);
             // }
+
             BlockHeader? parentHeader = _blockTree.FindHeader(request.ParentHash, BlockTreeLookupOptions.None);
             if (parentHeader == null)
             {
@@ -99,6 +110,17 @@ namespace Nethermind.Merge.Plugin.Handlers
                 executePayloadResult.EnumStatus = VerificationStatus.Syncing;
                 return ResultWrapper<ExecutePayloadV1Result>.Success(executePayloadResult);
             }
+            if (_ethSyncingInfo.IsSyncing() && synced == false)
+            {
+                executePayloadResult.EnumStatus = VerificationStatus.Syncing;
+                return ResultWrapper<ExecutePayloadV1Result>.Success(executePayloadResult);
+            }
+            else if (synced == false)
+            {
+                await _synchronizer.StopAsync();
+                synced = true;
+            }
+
 
             if (parentHeader.TotalDifficulty < _mergeConfig.TerminalTotalDifficulty)
             {
@@ -118,7 +140,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             }
 
             processedBlock.Header.IsPostMerge = true;
-            _blockTree.SuggestBlock(processedBlock, false);
+            _blockTree.SuggestBlock(processedBlock);
             executePayloadResult.EnumStatus = VerificationStatus.Valid;
             executePayloadResult.LatestValidHash = request.BlockHash;
             _blockValidationSemaphore.Wait();
