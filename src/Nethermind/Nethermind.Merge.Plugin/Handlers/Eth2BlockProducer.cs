@@ -123,6 +123,9 @@ namespace Nethermind.Merge.Plugin.Handlers
         {
             BlockHeader blockHeader = PrepareBlockHeader(parent, payloadAttributes);
             blockHeader.StateRoot = parent.StateRoot;
+            blockHeader.ReceiptsRoot = parent.ReceiptsRoot;
+            blockHeader.TxRoot = parent.TxRoot;
+            blockHeader.Bloom = parent.Bloom;
             Block block = new (blockHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>());
             block.Header.Hash = block.CalculateHash();
             return block;
