@@ -2295,6 +2295,15 @@ namespace Nethermind.Evm
                             stack.PushZero();
                             break;
                         }
+                        
+                        UInt256 accountNonce = _state.GetNonce(env.ExecutingAccount);
+                        UInt256 maxNonce = ulong.MaxValue;
+                        if (accountNonce >= maxNonce)
+                        {
+                            _returnDataBuffer = Array.Empty<byte>();
+                            stack.PushZero();
+                            break;
+                        }
 
                         EndInstructionTrace();
                         // todo: === below is a new call - refactor / move
