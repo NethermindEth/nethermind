@@ -251,36 +251,44 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig);
             ResultWrapper<GethLikeTxTrace> debugTraceCall = rpcModule.debug_traceCall(txForRpc, null, gtOptions);
-            GethLikeTxTrace expected = new GethLikeTxTrace()
-            {
-                Failed = false,
-                Entries = new List<GethTxTraceEntry>(){
-                    new GethTxTraceEntry()
+            ResultWrapper<GethLikeTxTrace> expected = ResultWrapper<GethLikeTxTrace>.Success(
+                new GethLikeTxTrace()
+                {
+                    Failed = false,
+                    Entries = new List<GethTxTraceEntry>()
                     {
-                        Gas = 22000,
-                        GasCost = 1,
-                        Depth = 1,
-                        Memory = new List<string>()
+                        new GethTxTraceEntry()
                         {
-                            "0000000000000000000000000000000000000000000000000000000000000005",
-                            "0000000000000000000000000000000000000000000000000000000000000006"
-                        },
-                        Operation = "STOP",
-                        Pc = 0,
-                        Stack = {},
-                        Storage = new Dictionary<string, string>()
-                        {
-                            {"0000000000000000000000000000000000000000000000000000000000000001", "0000000000000000000000000000000000000000000000000000000000000002"},
-                            {"0000000000000000000000000000000000000000000000000000000000000003", "0000000000000000000000000000000000000000000000000000000000000004"},
+                            Gas = 22000,
+                            GasCost = 1,
+                            Depth = 1,
+                            Memory = new List<string>()
+                            {
+                                "0000000000000000000000000000000000000000000000000000000000000005",
+                                "0000000000000000000000000000000000000000000000000000000000000006"
+                            },
+                            Operation = "STOP",
+                            Pc = 0,
+                            Stack = { },
+                            Storage = new Dictionary<string, string>()
+                            {
+                                {
+                                    "0000000000000000000000000000000000000000000000000000000000000001",
+                                    "0000000000000000000000000000000000000000000000000000000000000002"
+                                },
+                                {
+                                    "0000000000000000000000000000000000000000000000000000000000000003",
+                                    "0000000000000000000000000000000000000000000000000000000000000004"
+                                },
+                            }
                         }
-                    }
-                },
-                Gas = 0,
-                ReturnValue = new byte[] {162}
-            };
-            
-            Assert.AreEqual(debugTraceCall.Result.Error, null);
-            debugTraceCall.Data.Should().BeEquivalentTo(expected);
+                    },
+                    Gas = 0,
+                    ReturnValue = new byte[] { 162 }
+                }
+            );
+
+            debugTraceCall.Should().BeEquivalentTo(expected);
         }
 
         [Test]
