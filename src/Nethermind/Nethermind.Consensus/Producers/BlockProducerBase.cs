@@ -279,7 +279,8 @@ namespace Nethermind.Consensus.Producers
             return _txSource.GetTransactions(parent, gasLimit);
         }
 
-        protected virtual Block PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
+        protected virtual BlockHeader PrepareBlockHeader(BlockHeader parent,
+            PayloadAttributes? payloadAttributes = null)
         {
             UInt256 timestamp = UInt256.Max(parent.Timestamp + 1, Timestamper.UnixTime.Seconds);
             Address blockAuthor = payloadAttributes?.SuggestedFeeRecipient ?? Sealer.Address;
@@ -300,9 +301,15 @@ namespace Nethermind.Consensus.Producers
             UInt256 difficulty = _difficultyCalculator.Calculate(header, parent);
             header.Difficulty = difficulty;
             header.TotalDifficulty = parent.TotalDifficulty + difficulty;
-
+            
             if (Logger.IsDebug) Logger.Debug($"Setting total difficulty to {parent.TotalDifficulty} + {difficulty}.");
             header.BaseFeePerGas = BaseFeeCalculator.Calculate(parent, _specProvider.GetSpec(header.Number));
+            return header;
+        }
+
+        protected virtual Block PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
+        {
+            BlockHeader header = PrepareBlockHeader(parent, payloadAttributes);
 
             IEnumerable<Transaction> transactions = GetTransactions(parent);
             return new BlockToProduce(header, transactions, Array.Empty<BlockHeader>());

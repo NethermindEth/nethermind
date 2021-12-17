@@ -70,7 +70,9 @@ namespace Nethermind.Merge.Plugin
                 _emptyBlockProductionContext.Init(_api.BlockProducerEnvFactory);
                 
                 Eth2BlockProducerFactory blockProducerFactory = new(_api.SpecProvider, _api.SealEngine, _manualTimestamper, _miningConfig, _api.LogManager);
-                IBlockProducer idealBlockProducer = blockProducerFactory.Create(_idealBlockProductionContext);
+                Eth2BlockProducer idealBlockProducer = blockProducerFactory.Create(_idealBlockProductionContext);
+
+                _idealBlockProductionContext.BlockProducer = idealBlockProducer;
                 
                 _api.BlockProducer = _blockProducer
                     = new MergeBlockProducer(blockProducer, idealBlockProducer, _poSSwitcher);

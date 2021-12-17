@@ -48,17 +48,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
         public async Task<ResultWrapper<BlockRequestResult?>> HandleAsync(byte[] payloadId)
         {
-            Task<Block?>? blockProductionTask = _payloadService.GetPayload(payloadId);
-            
-            if (blockProductionTask == null)
-            {
-                if (_logger.IsWarn) _logger.Warn($"No payload with id={payloadId.ToHexString()} found");
-                return ResultWrapper<BlockRequestResult?>.Fail(
-                    "unknown payload",
-                    MergeErrorCodes.UnavailablePayloadV1);
-            }
-            
-            Block? block = await blockProductionTask;
+            Block? block = _payloadService.GetPayload(payloadId);
 
             if (block == null)
             {

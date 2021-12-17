@@ -18,6 +18,7 @@
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Merge.Plugin.Handlers;
 
 namespace Nethermind.Merge.Plugin.Data
 {
@@ -32,5 +33,7 @@ namespace Nethermind.Merge.Plugin.Data
         public IManualBlockProductionTrigger BlockProductionTrigger { get; set; }
         
         public BlockProducerEnv BlockProducerEnv { get; set; }
+        
+        public Eth2BlockProducer BlockProducer { get; set; }
     }
 }

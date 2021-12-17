@@ -25,7 +25,9 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Int256;
+using Nethermind.JsonRpc.Modules.Parity;
 using Nethermind.Logging;
 using Nethermind.State;
 
@@ -116,7 +118,16 @@ namespace Nethermind.Merge.Plugin.Handlers
                 ConstantDifficulty.Zero)
         {
         }
-
+        
+        public Block PrepareEmptyBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
+        {
+            BlockHeader blockHeader = PrepareBlockHeader(parent, payloadAttributes);
+            blockHeader.StateRoot = parent.StateRoot;
+            Block block = new (blockHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>());
+            block.Header.Hash = block.CalculateHash();
+            return block;
+        }
+        
         protected override Block PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
         {
             Block block = base.PrepareBlock(parent, payloadAttributes);
@@ -125,6 +136,14 @@ namespace Nethermind.Merge.Plugin.Handlers
             block.Header.ExtraData = Array.Empty<byte>();
             block.Header.IsPostMerge = true;
             return block;
+        }
+
+        protected override BlockHeader PrepareBlockHeader(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
+        {
+            BlockHeader blockHeader = base.PrepareBlockHeader(parent, payloadAttributes);
+            blockHeader.ExtraData = Array.Empty<byte>();
+            blockHeader.IsPostMerge = true;
+            return blockHeader;
         }
     }
 }

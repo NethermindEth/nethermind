@@ -18,7 +18,6 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
@@ -28,14 +27,9 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
-using Nethermind.Merge.Plugin.Data.V1;
-using Nethermind.State;
-using Result = Nethermind.Core.Result;
 
 namespace Nethermind.Merge.Plugin.Handlers
 {
@@ -57,7 +51,7 @@ namespace Nethermind.Merge.Plugin.Handlers
         private static readonly TimeSpan _timeout = TimeSpan.FromSeconds(12);
 
         // first BlockRequestResult is empty (without txs), second one is the ideal one
-        private readonly ConcurrentDictionary<string, Task<Block?>> _payloadStorage = new();
+        private readonly ConcurrentDictionary<string, IdealBlockContext> _payloadStorage = new();
         private TaskQueue _taskQueue = new();
 
         public PayloadService(
@@ -79,17 +73,24 @@ namespace Nethermind.Merge.Plugin.Handlers
             byte[] payloadId = ComputeNextPayloadId(parentHeader, payloadAttributes);
             payloadAttributes.SuggestedFeeRecipient = payloadAttributes.SuggestedFeeRecipient == Address.Zero ? _sealer.Address : payloadAttributes.SuggestedFeeRecipient;
             using CancellationTokenSource cts = new(_timeout);
-            await ProduceEmptyBlock(payloadId, parentHeader, payloadAttributes, cts);
-            _taskQueue.Enqueue(() => GeneratePayload(payloadId, parentHeader, payloadAttributes));
+            
+            _taskQueue.Enqueue(() => PreparePayload(payloadId, parentHeader, payloadAttributes));
             return payloadId;
         }
 
-
-        private async Task GeneratePayload(byte[] payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes)
+        private async Task PreparePayload(byte[] payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Preparing empty block from payload {payloadId} with parent {parentHeader}");
+            Block emptyBlock = _idealBlockContext.BlockProducer.PrepareEmptyBlock(parentHeader, payloadAttributes);
+            if (_logger.IsTrace) _logger.Trace($"Prepared empty block from payload {payloadId} block: {emptyBlock}");
+            await GeneratePayload(payloadId, parentHeader, payloadAttributes, emptyBlock);
+        }
+        
+        private async Task GeneratePayload(byte[] payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block emptyBlock)
         {
             using CancellationTokenSource cts = new(_timeout);
             
-            await ProduceIdealBlock(payloadId, parentHeader, payloadAttributes, cts);
+            await ProduceIdealBlock(payloadId, parentHeader, payloadAttributes, emptyBlock, cts);
             
             await Task.Delay(TimeSpan.FromSeconds(_cleanupDelay), CancellationToken.None)
                 .ContinueWith(_ =>
@@ -98,26 +99,8 @@ namespace Nethermind.Merge.Plugin.Handlers
                 });
             await CleanupOldPayloadWithDelay(payloadId, TimeSpan.FromSeconds(_cleanupDelay));
         }
-
-        private async Task ProduceEmptyBlock(byte[] payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, CancellationTokenSource cts)
-        {
-            if (_logger.IsTrace) _logger.Trace($"Preparing empty block from payload {payloadId} with parent {parentHeader}");
-            Task<Block?> emptyBlockTask =
-                _emptyBlockContext.BlockProductionTrigger
-                    .BuildBlock(parentHeader, cts.Token, null, payloadAttributes)
-                    .ContinueWith((x) =>
-                    {
-                        x.Result.Header.StateRoot = parentHeader.StateRoot;
-                        x.Result.Header.Hash = x.Result.CalculateHash();
-                        return x.Result;
-                    })
-                    .ContinueWith(LogProductionResult, cts.Token);
-            
-            bool _ = _payloadStorage.TryAdd(payloadId.ToHexString(), emptyBlockTask);
-            if (_logger.IsTrace) _logger.Trace($"Prepared empty block from payload {payloadId} block result: {emptyBlockTask.Result}");
-        }
-
-        private async Task ProduceIdealBlock(byte[] payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, CancellationTokenSource cts)
+        
+        private async Task ProduceIdealBlock(byte[] payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block emptyBlock, CancellationTokenSource cts)
         {
             if (_logger.IsTrace) _logger.Trace($"Preparing ideal block from payload {payloadId} with parent {parentHeader}");
             Task<Block?> idealBlockTask =
@@ -126,7 +109,7 @@ namespace Nethermind.Merge.Plugin.Handlers
                     .ContinueWith((x) => Process(x.Result, parentHeader, _idealBlockContext.BlockProducerEnv), cts.Token) 
                     .ContinueWith(LogProductionResult, cts.Token);
             
-            _payloadStorage[payloadId.ToHexString()] = idealBlockTask;
+            _payloadStorage[payloadId.ToHexString()] = new IdealBlockContext(emptyBlock, idealBlockTask, cts);
             await idealBlockTask;
             if (_logger.IsTrace) _logger.Trace($"Prepared ideal block from payload {payloadId} block result: {idealBlockTask.Result}");
         }
@@ -160,12 +143,13 @@ namespace Nethermind.Merge.Plugin.Handlers
             return t.Result;
         }
 
-        public Task<Block?>? GetPayload(byte[] payloadId)
+        public Block? GetPayload(byte[] payloadId)
         {
             if (_payloadStorage.ContainsKey(payloadId.ToHexString()))
             {
-                _payloadStorage.TryRemove(payloadId.ToHexString(), out Task<Block?>? payloadProductionTask);
-                return payloadProductionTask;
+                _payloadStorage.TryRemove(payloadId.ToHexString(), out IdealBlockContext? blockContext);
+                StopBlockProduction(blockContext);
+                return blockContext.CurrentBestBlock;
             }
 
             return null;
@@ -229,6 +213,45 @@ namespace Nethermind.Merge.Plugin.Handlers
             }
 
             return options;
+        }
+
+        private void StopBlockProduction(IdealBlockContext? idealBlockContext)
+        {
+            if (idealBlockContext is not null && !idealBlockContext.Task.IsCompleted)
+            {
+                idealBlockContext.CancellationTokenSource.Cancel();
+            }
+        }
+
+        protected class IdealBlockContext : IDisposable
+        {
+            public IdealBlockContext(Block currentBestBlock, Task<Block?> task, CancellationTokenSource cancellationTokenSource)
+            {
+                Task = task.ContinueWith(SetCurrentBestBlock, cancellationTokenSource.Token);
+                CancellationTokenSource = cancellationTokenSource;
+                CurrentBestBlock = currentBestBlock;
+            }
+
+            public Block CurrentBestBlock { get; set; }
+            public CancellationTokenSource CancellationTokenSource { get; }
+            public Task<Block?> Task { get; }
+
+            public void Dispose()
+            {
+                CancellationTokenSource.Dispose();
+            }
+            
+            private Block? SetCurrentBestBlock(Task<Block?> t)
+            {
+                if (t.IsCompletedSuccessfully)
+                {
+                    if (t.Result != null)
+                    {
+                        CurrentBestBlock = t.Result;
+                    }
+                }
+                return t.Result;
+            }
         }
     }
 }
