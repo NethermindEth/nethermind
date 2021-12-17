@@ -16,15 +16,19 @@
 
 using System.Collections.Generic;
 using System.Threading;
+using FluentAssertions;
+using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing.GethStyle;
+using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Newtonsoft.Json;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -209,6 +213,82 @@ namespace Nethermind.JsonRpc.Test.Modules
             string response = RpcTest.TestSerializedRequest<IDebugRpcModule>(DebugModuleFactory.Converters, rpcModule, "debug_traceTransaction", TestItem.KeccakA.ToString(true), "{disableStack : true}");
 
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":{\"gas\":\"0x0\",\"failed\":false,\"returnValue\":\"0xa2\",\"structLogs\":[{\"pc\":0,\"op\":\"STOP\",\"gas\":22000,\"gasCost\":1,\"depth\":1,\"error\":null,\"stack\":[],\"memory\":[\"0000000000000000000000000000000000000000000000000000000000000005\",\"0000000000000000000000000000000000000000000000000000000000000006\"],\"storage\":{\"0000000000000000000000000000000000000000000000000000000000000001\":\"0000000000000000000000000000000000000000000000000000000000000002\",\"0000000000000000000000000000000000000000000000000000000000000003\":\"0000000000000000000000000000000000000000000000000000000000000004\"}}]},\"id\":67}", response);
+        }
+
+        [Test]
+        public void Debug_traceCall_test()
+        {
+            GethTxTraceEntry entry = new();
+            
+            entry.Storage = new Dictionary<string, string>
+            {
+                {"1".PadLeft(64, '0'), "2".PadLeft(64, '0')},
+                {"3".PadLeft(64, '0'), "4".PadLeft(64, '0')},
+            };
+
+            entry.Memory = new List<string>
+            {
+                "5".PadLeft(64, '0'),
+                "6".PadLeft(64, '0')
+            };
+
+            entry.Stack = new List<string> { };
+            entry.Operation = "STOP";
+            entry.Gas = 22000;
+            entry.GasCost = 1;
+            entry.Depth = 1;
+
+            var trace = new GethLikeTxTrace();
+            trace.ReturnValue = Bytes.FromHexString("a2");
+            trace.Entries.Add(entry);
+
+            GethTraceOptions gtOptions = new();
+
+            Transaction transaction = Build.A.Transaction.WithTo(TestItem.AddressA).WithHash(TestItem.KeccakA).TestObject;
+            TransactionForRpc txForRpc = new(transaction);
+
+            debugBridge.GetTransactionTrace(Arg.Any<Transaction>(), Arg.Any<BlockParameter>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>()).Returns(trace);
+
+            DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig);
+            ResultWrapper<GethLikeTxTrace> debugTraceCall = rpcModule.debug_traceCall(txForRpc, null, gtOptions);
+            ResultWrapper<GethLikeTxTrace> expected = ResultWrapper<GethLikeTxTrace>.Success(
+                new GethLikeTxTrace()
+                {
+                    Failed = false,
+                    Entries = new List<GethTxTraceEntry>()
+                    {
+                        new GethTxTraceEntry()
+                        {
+                            Gas = 22000,
+                            GasCost = 1,
+                            Depth = 1,
+                            Memory = new List<string>()
+                            {
+                                "0000000000000000000000000000000000000000000000000000000000000005",
+                                "0000000000000000000000000000000000000000000000000000000000000006"
+                            },
+                            Operation = "STOP",
+                            Pc = 0,
+                            Stack = { },
+                            Storage = new Dictionary<string, string>()
+                            {
+                                {
+                                    "0000000000000000000000000000000000000000000000000000000000000001",
+                                    "0000000000000000000000000000000000000000000000000000000000000002"
+                                },
+                                {
+                                    "0000000000000000000000000000000000000000000000000000000000000003",
+                                    "0000000000000000000000000000000000000000000000000000000000000004"
+                                },
+                            }
+                        }
+                    },
+                    Gas = 0,
+                    ReturnValue = new byte[] { 162 }
+                }
+            );
+
+            debugTraceCall.Should().BeEquivalentTo(expected);
         }
 
         [Test]
