@@ -126,8 +126,10 @@ namespace Nethermind.Merge.Plugin.Test
                 
                 EmptyBlockProducer.Start();
                 IdealBlockProductionContext.Init(blockProducerEnvFactory);
-                return blockProducerFactory.Create(
+                Eth2BlockProducer? blockProducer = blockProducerFactory.Create(
                     IdealBlockProductionContext);
+                IdealBlockProductionContext.BlockProducer = blockProducer;
+                return blockProducer;
             }
             
             protected override BlockProcessor CreateBlockProcessor()
