@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,27 +13,35 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
+using System.Data;
+using System.Net;
 using Nethermind.Serialization.Rlp;
 
-namespace Nethermind.Crypto
+namespace Nethermind.Network.Enr;
+
+public class IpEntry : EnrContentEntry<IPAddress>
 {
-    public static class BlockHeaderExtensions
+    public IpEntry(IPAddress ipAddress) : base(ipAddress) { }
+
+    public override string Key => EnrContentKey.Ip;
+    
+    protected override int GetRlpLengthOfValue()
     {
-        private static HeaderDecoder _headerDecoder = new();
+        return 5;
+    }
 
-        public static Keccak CalculateHash(this BlockHeader header, RlpBehaviors behaviors = RlpBehaviors.None)
-        {
-            KeccakRlpStream stream = new();
-            _headerDecoder.Encode(stream, header, behaviors);
-            return new Keccak(stream.GetHash());
-        }
+    protected override void EncodeValue(RlpStream rlpStream)
+    {
+        Span<byte> bytes = stackalloc byte[4];
+        Value.MapToIPv4().TryWriteBytes(bytes, out int bytesWritten);
 
-        public static Keccak CalculateHash(this Block block, RlpBehaviors behaviors = RlpBehaviors.None)
+        if (bytesWritten != 4)
         {
-            return CalculateHash(block.Header, behaviors);
+            throw new DataException($"Invalid ENR record - bytes written {bytesWritten} when encoding IP");
         }
+        
+        rlpStream.Encode(bytes);
     }
 }

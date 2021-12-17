@@ -6,4 +6,8 @@
         <Nullable>enable</Nullable>
     </PropertyGroup>
 
+    <ItemGroup>
+      <ProjectReference Include="..\Nethermind.Crypto\Nethermind.Crypto.csproj" />
+    </ItemGroup>
+
 </Project>
