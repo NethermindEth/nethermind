@@ -102,7 +102,7 @@ namespace Nethermind.Network.Discovery.Test
             await SleepWhileWaiting();
             _discoveryManagersMocks[0].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(x => x.MsgType == MsgType.Ping));
             
-            AssertMetrics(260);
+            AssertMetrics(258);
         }
 
         [Test]
