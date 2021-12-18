@@ -36,9 +36,9 @@ public abstract class DiscoveryMsg : MessageBase
         ExpirationTime = expirationTime;
     }
     
-    protected DiscoveryMsg(PublicKey farPublicKey, long expirationTime)
+    protected DiscoveryMsg(PublicKey? farPublicKey, long expirationTime)
     {
-        FarPublicKey = farPublicKey ?? throw new ArgumentNullException(nameof(farPublicKey));
+        FarPublicKey = farPublicKey; // if it is null then it suggests that the signature is not correct
         ExpirationTime = expirationTime;
     }
     
