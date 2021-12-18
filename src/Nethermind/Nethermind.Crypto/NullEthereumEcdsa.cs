@@ -38,6 +38,11 @@ namespace Nethermind.Crypto
             throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
         }
 
+        public CompressedPublicKey RecoverCompressedPublicKey(Signature signature, Keccak message)
+        {
+            throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
+        }
+
         public void Sign(PrivateKey privateKey, Transaction tx, bool _)
         {
             throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
