@@ -26,9 +26,9 @@ namespace Nethermind.Crypto
     {
         private readonly KeccakHash _keccakHash;
 
-        public byte[] GetHash()
+        public Keccak GetHash()
         {
-            return _keccakHash.Hash;
+            return new Keccak(_keccakHash.Hash);
         }
         
         public KeccakRlpStream()
@@ -58,7 +58,7 @@ namespace Nethermind.Crypto
             throw new NotSupportedException("Cannot read form Keccak");
         }
 
-        protected override Span<byte> Read(int length)
+        public override Span<byte> Read(int length)
         {
             throw new NotSupportedException("Cannot read form Keccak");
         }

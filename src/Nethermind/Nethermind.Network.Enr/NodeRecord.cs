@@ -16,6 +16,8 @@
 // 
 
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Enr;
@@ -25,9 +27,13 @@ public class NodeRecord
     private int _sequence;
     
     private string? _enrString;
+    
+    private Keccak? _contentHash;
 
     private SortedDictionary<string, EnrContentEntry> Entries { get; } = new();
 
+    public byte[]? OriginalContentRlp { get; set; }
+    
     public int Sequence
     {
         get => _sequence;
@@ -36,6 +42,8 @@ public class NodeRecord
             if (_sequence != value)
             {
                 _sequence = value;
+                _enrString = null;
+                _contentHash = null;
                 Signature = null;
             }
         }
@@ -47,6 +55,21 @@ public class NodeRecord
         {
             return _enrString ??= CreateEnrString();
         }
+    }
+    
+    public Keccak ContentHash
+    {
+        get
+        {
+            return _contentHash ??= CalculateContentHash();
+        }
+    }
+
+    private Keccak CalculateContentHash()
+    {
+        KeccakRlpStream rlpStream = new();
+        EncodeContent(rlpStream);
+        return rlpStream.GetHash();
     }
 
     public Signature? Signature { get; private set; }
@@ -116,7 +139,7 @@ public class NodeRecord
             GetContentLengthWithSignature());
     }
 
-    public void EncodeContent(RlpStream rlpStream)
+    private void EncodeContent(RlpStream rlpStream)
     {
         int contentLength = GetContentLengthWithoutSignature();
         rlpStream.StartSequence(contentLength);
@@ -127,6 +150,15 @@ public class NodeRecord
         }
     }
     
+    public string GetHex()
+    {
+        int contentLength = GetContentLengthWithSignature();
+        int totalLength = Rlp.LengthOfSequence(contentLength);
+        RlpStream rlpStream = new(totalLength);
+        Encode(rlpStream);
+        return rlpStream.Data!.ToHexString();
+    }
+    
     private void Encode(RlpStream rlpStream)
     {
         RequireSignature();
@@ -134,7 +166,7 @@ public class NodeRecord
         int contentLength = GetContentLengthWithSignature();
         rlpStream.StartSequence(contentLength);
         rlpStream.Encode(Signature!.Bytes);
-        rlpStream.Encode(Sequence);
+        rlpStream.Encode(Sequence); // a different sequence here (not RLP sequence)
         foreach ((_, EnrContentEntry contentEntry) in Entries.OrderBy(e => e.Key))
         {
             contentEntry.Encode(rlpStream);

@@ -61,7 +61,7 @@ namespace Nethermind.Network.P2P
             return _buffer.ReadByte();
         }
 
-        protected override Span<byte> Read(int length)
+        public override Span<byte> Read(int length)
         {
             Span<byte> span = _buffer.Array.AsSpan(_buffer.ArrayOffset + _buffer.ReaderIndex, length);
             _buffer.SkipBytes(span.Length);

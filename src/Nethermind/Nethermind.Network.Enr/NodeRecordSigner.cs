@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Net;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
@@ -27,7 +28,7 @@ namespace Nethermind.Network.Enr;
 public class NodeRecordSigner
 {
     private readonly IEcdsa _ecdsa;
-    
+
     private readonly PrivateKey _privateKey;
 
     public NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey)
@@ -38,24 +39,112 @@ public class NodeRecordSigner
 
     public void Sign(NodeRecord nodeRecord)
     {
-        KeccakRlpStream rlpStream = new();
-        nodeRecord.EncodeContent(rlpStream);
-        Signature signature = _ecdsa.Sign(_privateKey, new Keccak(rlpStream.GetHash()));
+        Signature signature = _ecdsa.Sign(_privateKey, nodeRecord.ContentHash);
         nodeRecord.Seal(signature);
     }
-    
-    public CompressedPublicKey Verify(NodeRecord nodeRecord)
+
+    public NodeRecord Deserialize(RlpStream rlpStream)
+    {
+        int startPosition = rlpStream.Position;
+        int recordRlpLength = rlpStream.ReadSequenceLength();
+
+        NodeRecord nodeRecord = new();
+
+        // TODO: may want to move this deserialization logic to something reusable
+        ReadOnlySpan<byte> sigBytes = rlpStream.DecodeByteArraySpan();
+        Signature signature = new(sigBytes, 0);
+
+        bool canVerify = true;
+        int enrSequence = rlpStream.DecodeInt();
+        while (rlpStream.Position < startPosition + recordRlpLength)
+        {
+            string key = rlpStream.DecodeString();
+            switch (key)
+            {
+                case EnrContentKey.Eth:
+                    _ = rlpStream.ReadSequenceLength();
+                    _ = rlpStream.ReadSequenceLength();
+                    byte[] forkHash = rlpStream.DecodeByteArray();
+                    int nextBlock = rlpStream.DecodeInt();
+                    nodeRecord.SetEntry(new EthEntry(forkHash, nextBlock));
+                    break;
+                case EnrContentKey.Id:
+                    rlpStream.SkipItem();
+                    nodeRecord.SetEntry(IdEntry.Instance);
+                    break;
+                case EnrContentKey.Ip:
+                    ReadOnlySpan<byte> ipBytes = rlpStream.DecodeByteArraySpan();
+                    IPAddress address = new(ipBytes);
+                    nodeRecord.SetEntry(new IpEntry(address));
+                    break;
+                case EnrContentKey.Tcp:
+                    int tcpPort = rlpStream.DecodeInt();
+                    nodeRecord.SetEntry(new TcpEntry(tcpPort));
+                    break;
+                case EnrContentKey.Udp:
+                    int udpPort = rlpStream.DecodeInt();
+                    nodeRecord.SetEntry(new UdpEntry(udpPort));
+                    break;
+                case EnrContentKey.Secp256K1:
+                    ReadOnlySpan<byte> keyBytes = rlpStream.DecodeByteArraySpan();
+                    CompressedPublicKey? reportedKey = new(keyBytes);
+                    nodeRecord.SetEntry(new Secp256K1Entry(reportedKey));
+                    break;
+                // snap
+                default:
+                    canVerify = false;
+                    rlpStream.SkipItem();
+                    break;
+            }
+        }
+
+        if (!canVerify)
+        {
+            rlpStream.Position = startPosition;
+            rlpStream.ReadSequenceLength();
+            rlpStream.SkipItem(); // signature
+            int noSigContentLength = rlpStream.Length - rlpStream.Position;
+            int noSigSequenceLength = Rlp.LengthOfSequence(noSigContentLength);
+            byte[] originalContent = new byte[noSigSequenceLength];
+            RlpStream originalContentStream = new (originalContent);
+            originalContentStream.StartSequence(noSigContentLength);
+            originalContentStream.Write(rlpStream.Read(noSigContentLength));
+            rlpStream.Position = startPosition;
+            nodeRecord.OriginalContentRlp = originalContentStream.Data!;
+        }
+
+        nodeRecord.Sequence = enrSequence;
+        nodeRecord.Seal(signature);
+
+        return nodeRecord;
+    }
+
+    public bool Verify(NodeRecord nodeRecord)
     {
         if (nodeRecord.Signature is null)
         {
             throw new Exception("Cannot verify an ENR with an empty signature.");
         }
+
+        Keccak contentHash;
+        if (nodeRecord.OriginalContentRlp is not null)
+        {
+            contentHash = Keccak.Compute(nodeRecord.OriginalContentRlp);
+        }
+        else
+        {
+            contentHash = nodeRecord.ContentHash;
+        }
+
+        CompressedPublicKey publicKeyA =
+            _ecdsa.RecoverCompressedPublicKey(nodeRecord.Signature!, contentHash);
+        Signature sigB = new (nodeRecord.Signature!.Bytes, 1);
+        CompressedPublicKey publicKeyB =
+            _ecdsa.RecoverCompressedPublicKey(sigB, contentHash);
         
-        KeccakRlpStream rlpStream = new();
-        nodeRecord.EncodeContent(rlpStream);
+        CompressedPublicKey? reportedKey =
+            nodeRecord.GetObj<CompressedPublicKey>(EnrContentKey.Secp256K1);
         
-        // change after merging with changes from 868
-        CompressedPublicKey publicKey = _ecdsa.RecoverCompressedPublicKey(nodeRecord.Signature!, new Keccak(rlpStream.GetHash()));
-        return publicKey;
+        return publicKeyA.Equals(reportedKey) || publicKeyB.Equals(reportedKey);
     }
 }

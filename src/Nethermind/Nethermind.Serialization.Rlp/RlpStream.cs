@@ -649,7 +649,7 @@ namespace Nethermind.Serialization.Rlp
             Position += length;
         }
 
-        protected virtual Span<byte> Read(int length)
+        public virtual Span<byte> Read(int length)
         {
             Span<byte> data = Data.AsSpan(Position, length);
             Position += length;

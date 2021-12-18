@@ -26,7 +26,7 @@ namespace Nethermind.Network.Discovery.Serializers;
 public abstract class DiscoveryMsgSerializerBase
 {
     private readonly PrivateKey _privateKey;
-    private readonly IEcdsa _ecdsa;
+    protected readonly IEcdsa _ecdsa;
 
     private readonly INodeIdResolver _nodeIdResolver;
 

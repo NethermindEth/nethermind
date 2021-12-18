@@ -30,9 +30,9 @@ public class EthEntry : EnrContentEntry<ForkId>
 
     protected override int GetRlpLengthOfValue()
     {
-        return Rlp.LengthOf(
-            Rlp.LengthOfSequence(
-                Rlp.LengthOfSequence(5 + Rlp.LengthOf(Value.NextBlock))));
+        return Rlp.LengthOfSequence(
+                Rlp.LengthOfSequence(
+                    5 + Rlp.LengthOf(Value.NextBlock)));
     }
 
     protected override void EncodeValue(RlpStream rlpStream)
