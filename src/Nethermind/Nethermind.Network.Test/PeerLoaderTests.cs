@@ -72,6 +72,7 @@ namespace Nethermind.Network.Test
         public void Can_load_bootnodes()
         {
             _discoveryConfig.Bootnodes = enodesString;
+            _networkConfig.Bootnodes = _discoveryConfig.Bootnodes;
             List<Peer> peers = _loader.LoadPeers();
             Assert.AreEqual(2, peers.Count);
             foreach (Peer peer in peers)
