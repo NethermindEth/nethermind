@@ -22,15 +22,46 @@ namespace Nethermind.Network.Enr;
 
 public class NodeRecord
 {
+    private int _sequence;
+    
+    private string? _enrString;
+
     private SortedDictionary<string, EnrContentEntry> Entries { get; } = new();
 
-    public int Sequence { get; set; } = 1;
+    public int Sequence
+    {
+        get => _sequence;
+        set
+        {
+            if (_sequence != value)
+            {
+                _sequence = value;
+                Signature = null;
+            }
+        }
+    }
+
+    public string EnrString
+    {
+        get
+        {
+            return _enrString ??= CreateEnrString();
+        }
+    }
+
+    public Signature? Signature { get; private set; }
 
     public NodeRecord()
     {
         SetEntry(IdEntry.Instance);
     }
     
+    public void Seal(Signature signature)
+    {
+        // verify here?
+        Signature = signature;
+    }
+
     public void SetEntry(EnrContentEntry entry)
     {
         if (Entries.ContainsKey(entry.Key))
@@ -79,13 +110,13 @@ public class NodeRecord
         return GetContentLengthWithoutSignature() + 64 + 2;
     }
     
-    public int GetRlpLengthWithSignature()
+    private int GetRlpLengthWithSignature()
     {
         return Rlp.LengthOfSequence(
             GetContentLengthWithSignature());
     }
 
-    public void Encode(RlpStream rlpStream)
+    public void EncodeContent(RlpStream rlpStream)
     {
         int contentLength = GetContentLengthWithoutSignature();
         rlpStream.StartSequence(contentLength);
@@ -96,15 +127,41 @@ public class NodeRecord
         }
     }
     
-    public void Encode(RlpStream rlpStream, Signature signature)
+    private void Encode(RlpStream rlpStream)
     {
+        RequireSignature();
+        
         int contentLength = GetContentLengthWithSignature();
         rlpStream.StartSequence(contentLength);
-        rlpStream.Encode(signature.Bytes);
+        rlpStream.Encode(Signature!.Bytes);
         rlpStream.Encode(Sequence);
         foreach ((_, EnrContentEntry contentEntry) in Entries.OrderBy(e => e.Key))
         {
             contentEntry.Encode(rlpStream);
+        }
+    }
+    
+    private string CreateEnrString()
+    {
+        RequireSignature();
+        
+        int rlpLength = GetRlpLengthWithSignature();
+        RlpStream rlpStream = new(rlpLength);
+        Encode(rlpStream);
+        byte[] rlpData = rlpStream.Data!;
+        // Console.WriteLine("actual: " + rlpData.ToHexString());
+        // https://tools.ietf.org/html/rfc4648#section-5
+        
+        // Base64Url must be used, hence Replace calls (not sure if allocating internally)
+        return string.Concat("enr:",
+            Convert.ToBase64String(rlpData).Replace("+", "-").Replace("/", "_").Replace("=", ""));
+    }
+
+    private void RequireSignature()
+    {
+        if (Signature is null)
+        {
+            throw new Exception("Cannot encode a node record with an empty signature.");
         }
     }
 }

@@ -36,25 +36,26 @@ public class NodeRecordSigner
         _privateKey = privateKey ?? throw new ArgumentNullException(nameof(privateKey));
     }
 
-    private Signature Sign(NodeRecord nodeRecord)
+    public void Sign(NodeRecord nodeRecord)
     {
         KeccakRlpStream rlpStream = new();
-        nodeRecord.Encode(rlpStream);
-        return _ecdsa.Sign(_privateKey, new Keccak(rlpStream.GetHash()));
+        nodeRecord.EncodeContent(rlpStream);
+        Signature signature = _ecdsa.Sign(_privateKey, new Keccak(rlpStream.GetHash()));
+        nodeRecord.Seal(signature);
     }
     
-    public string GetEnrString(NodeRecord nodeRecord)
+    public CompressedPublicKey Verify(NodeRecord nodeRecord)
     {
-        Signature signature = Sign(nodeRecord);
-        int rlpLength = nodeRecord.GetRlpLengthWithSignature();
-        RlpStream rlpStream = new(rlpLength);
-        nodeRecord.Encode(rlpStream, signature);
-        byte[] rlpData = rlpStream.Data!;
-        // Console.WriteLine("actual: " + rlpData.ToHexString());
-        // https://tools.ietf.org/html/rfc4648#section-5
+        if (nodeRecord.Signature is null)
+        {
+            throw new Exception("Cannot verify an ENR with an empty signature.");
+        }
         
-        // Base64Url must be used, hence Replace calls (not sure if allocating internally)
-        return string.Concat("enr:",
-            Convert.ToBase64String(rlpData).Replace("+", "-").Replace("/", "_").Replace("=", ""));
+        KeccakRlpStream rlpStream = new();
+        nodeRecord.EncodeContent(rlpStream);
+        
+        // change after merging with changes from 868
+        CompressedPublicKey publicKey = _ecdsa.RecoverCompressedPublicKey(nodeRecord.Signature!, new Keccak(rlpStream.GetHash()));
+        return publicKey;
     }
 }
