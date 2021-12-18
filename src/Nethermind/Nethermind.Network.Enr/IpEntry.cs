@@ -35,13 +35,7 @@ public class IpEntry : EnrContentEntry<IPAddress>
     protected override void EncodeValue(RlpStream rlpStream)
     {
         Span<byte> bytes = stackalloc byte[4];
-        Value.MapToIPv4().TryWriteBytes(bytes, out int bytesWritten);
-
-        if (bytesWritten != 4)
-        {
-            throw new DataException($"Invalid ENR record - bytes written {bytesWritten} when encoding IP");
-        }
-        
+        Value.MapToIPv4().TryWriteBytes(bytes, out int _);
         rlpStream.Encode(bytes);
     }
 }

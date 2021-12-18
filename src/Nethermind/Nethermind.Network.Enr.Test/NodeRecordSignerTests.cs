@@ -6,6 +6,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
+using NUnit.Framework.Internal.Commands;
 
 namespace Nethermind.Network.Enr.Test;
 
@@ -107,5 +108,15 @@ public class NodeRecordSignerTests
         Console.WriteLine(testCase);
         Console.WriteLine(hex);
         Assert.IsTrue(signer.Verify(nodeRecord));
+    }
+    
+    
+    [Test]
+    public void Cannot_verify_when_signature_missing()
+    {
+        PrivateKey privateKey = new("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291");
+        NodeRecordSigner signer = new (new Ecdsa(), privateKey);
+        NodeRecord nodeRecord = new ();
+        Assert.Throws<Exception>(() => _ = signer.Verify(nodeRecord));
     }
 }
