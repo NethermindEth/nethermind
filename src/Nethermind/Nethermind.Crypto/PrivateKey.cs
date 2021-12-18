@@ -31,7 +31,8 @@ namespace Nethermind.Crypto
         public byte[] KeyBytes { get; }
 
         private const int PrivateKeyLengthInBytes = 32;
-        private PublicKey _publicKey;
+        private PublicKey? _publicKey;
+        private CompressedPublicKey? _compressedPublicKey;
 
         public PrivateKey(string hexString)
             : this(Bytes.FromHexString(hexString))
@@ -60,7 +61,11 @@ namespace Nethermind.Crypto
             keyBytes.AsSpan().CopyTo(KeyBytes);
         }
 
-        public PublicKey PublicKey => _publicKey == null ? LazyInitializer.EnsureInitialized(ref _publicKey, ComputePublicKey) : _publicKey;
+        public PublicKey PublicKey =>
+            _publicKey ?? LazyInitializer.EnsureInitialized(ref _publicKey, ComputePublicKey);
+        
+        public CompressedPublicKey CompressedPublicKey =>
+            _compressedPublicKey ?? LazyInitializer.EnsureInitialized(ref _compressedPublicKey, ComputeCompressedPublicKey);
 
         public Address Address => PublicKey.Address;
 
@@ -97,6 +102,11 @@ namespace Nethermind.Crypto
         private PublicKey ComputePublicKey()
         {
             return new(Proxy.GetPublicKey(KeyBytes, false));
+        }
+        
+        private CompressedPublicKey ComputeCompressedPublicKey()
+        {
+            return new(Proxy.GetPublicKey(KeyBytes, true));
         }
 
         public override string ToString()

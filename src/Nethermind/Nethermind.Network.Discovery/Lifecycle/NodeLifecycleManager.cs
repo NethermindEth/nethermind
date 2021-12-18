@@ -33,6 +33,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
     private readonly IDiscoveryConfig _discoveryConfig;
     private readonly ITimestamper _timestamper;
     private readonly IEvictionManager _evictionManager;
+    private readonly NodeRecord _nodeRecord;
 
     /// <summary>
     /// This is the value set by other clients based on real network tests.
@@ -52,6 +53,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
         INodeTable nodeTable,
         IEvictionManager evictionManager,
         INodeStats nodeStats,
+        NodeRecord nodeRecord,
         IDiscoveryConfig discoveryConfig,
         ITimestamper timestamper,
         ILogger logger)
@@ -62,6 +64,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
         _discoveryConfig = discoveryConfig ?? throw new ArgumentNullException(nameof(discoveryConfig));
         _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
         _evictionManager = evictionManager ?? throw new ArgumentNullException(nameof(evictionManager));
+        _nodeRecord = nodeRecord ?? throw new ArgumentNullException(nameof(nodeRecord));
         NodeStats = nodeStats ?? throw new ArgumentNullException(nameof(nodeStats));
         ManagedNode = node;
         UpdateState(NodeLifecycleState.New);
@@ -96,6 +99,11 @@ public class NodeLifecycleManager : INodeLifecycleManager
 
     public void ProcessEnrResponseMsg(EnrResponseMsg enrResponseMsg)
     {
+        if (!IsBonded)
+        {
+            return;
+        }
+        
         // TODO: 5) tests for the whole req resp flow
         // TODO: 6) use the fork ID knowledge to mark each node with info on the forkhash
         
@@ -105,10 +113,11 @@ public class NodeLifecycleManager : INodeLifecycleManager
         //     _logger.Warn($"Discovered new node with forkId {forkId.Value.ForkHash.ToHexString()}");
         // }
         
+        OnStateChanged?.Invoke(this, NodeLifecycleState.ActiveWithEnr);
         NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryEnrResponseIn);
     }
     
-    public void ProcessEnrRequestMsg(EnrRequestMsg enrResponseMsg)
+    public void ProcessEnrRequestMsg(EnrRequestMsg enrRequestMessage)
     {
         if (!IsBonded)
         {
@@ -116,7 +125,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
             return;
         }
 
-        EnrResponseMsg msg = new(ManagedNode.Address, new NodeRecord());
+        EnrResponseMsg msg = new(ManagedNode.Address, _nodeRecord);
         _discoveryManager.SendMessage(msg);
         NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryEnrRequestIn);
         NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryEnrResponseOut);
@@ -317,6 +326,8 @@ public class NodeLifecycleManager : INodeLifecycleManager
             }
             else
             {
+                // TODO: this is very strange...?
+                // seems like we quickly send two state updates here since we do not return after invocation?
                 OnStateChanged?.Invoke(this, NodeLifecycleState.Active);
             }
         }

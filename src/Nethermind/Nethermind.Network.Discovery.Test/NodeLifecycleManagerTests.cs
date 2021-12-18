@@ -29,6 +29,7 @@ using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Discovery.RoutingTable;
+using Nethermind.Network.Enr;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using NSubstitute;
@@ -86,7 +87,7 @@ namespace Nethermind.Network.Discovery.Test
             _evictionManagerMock = Substitute.For<IEvictionManager>();
             ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
             NodeLifecycleManagerFactory lifecycleFactory = new(_nodeTable, evictionManager, 
-                new NodeStatsManager(timerFactory, logManager), discoveryConfig, Timestamper.Default, logManager);
+                new NodeStatsManager(timerFactory, logManager), new NodeRecord(), discoveryConfig, Timestamper.Default, logManager);
 
             IMsgSender udpClient = Substitute.For<IMsgSender>();
 
@@ -102,7 +103,7 @@ namespace Nethermind.Network.Discovery.Test
         {
             Node node = new(_host, _port);
             NodeLifecycleManager nodeManager = new(node, _discoveryManagerMock
-            , _nodeTable, _evictionManagerMock, _nodeStatsMock, _discoveryConfigMock, Timestamper.Default, _loggerMock);
+            , _nodeTable, _evictionManagerMock, _nodeStatsMock, new NodeRecord(), _discoveryConfigMock, Timestamper.Default, _loggerMock);
 
             byte[] mdc = new byte[32];
             PingMsg? sentPing = null;
@@ -123,7 +124,7 @@ namespace Nethermind.Network.Discovery.Test
         {
             Node node = new(_host, _port);
             NodeLifecycleManager nodeManager = new(node, _discoveryManagerMock
-            , _nodeTable, _evictionManagerMock, _nodeStatsMock, _discoveryConfigMock, Timestamper.Default, _loggerMock);
+            , _nodeTable, _evictionManagerMock, _nodeStatsMock, new NodeRecord(), _discoveryConfigMock, Timestamper.Default, _loggerMock);
 
             await nodeManager.SendPingAsync();
             nodeManager.ProcessPongMsg(new PongMsg(TestItem.PublicKeyA, GetExpirationTime(), new byte[] {1,1,1}));

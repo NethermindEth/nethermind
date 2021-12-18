@@ -274,21 +274,13 @@ namespace Nethermind.Init.Steps
 
             SameKeyGenerator privateKeyProvider = new(_api.NodeKey.Unprotect());
             NodeIdResolver nodeIdResolver = new(_api.EthereumEcdsa);
-
-            NodeRecord nodeRecord = new();
-            nodeRecord.SetEntry(IdEntry.Instance);
-            nodeRecord.SetEntry(new IpEntry( _api.IpResolver!.ExternalIp));
-            nodeRecord.SetEntry(new TcpEntry(_networkConfig.P2PPort));
-            nodeRecord.SetEntry(new UdpEntry(_networkConfig.DiscoveryPort));
-            // TODO: compressed key here
-            //nodeRecord.SetEntry(new Secp256K1Entry(_api.Enode.PublicKey));
-            
+            NodeRecord selfNodeRecord = PrepareNodeRecord(privateKeyProvider);
             IDiscoveryMsgSerializersProvider msgSerializersProvider = new DiscoveryMsgSerializersProvider(
                 _api.MessageSerializationService,
                 _api.EthereumEcdsa,
                 privateKeyProvider,
                 nodeIdResolver,
-                nodeRecord);
+                selfNodeRecord);
 
             msgSerializersProvider.RegisterDiscoverySerializers();
 
@@ -301,6 +293,7 @@ namespace Nethermind.Init.Steps
                 nodeTable,
                 evictionManager,
                 _api.NodeStatsManager,
+                selfNodeRecord,
                 discoveryConfig,
                 _api.Timestamper,
                 _api.LogManager);
@@ -342,6 +335,25 @@ namespace Nethermind.Init.Steps
                 _api.LogManager);
 
             _api.DiscoveryApp.Initialize(_api.NodeKey.PublicKey);
+        }
+
+        private NodeRecord PrepareNodeRecord(SameKeyGenerator privateKeyProvider)
+        {
+            NodeRecord selfNodeRecord = new();
+            selfNodeRecord.SetEntry(IdEntry.Instance);
+            selfNodeRecord.SetEntry(new IpEntry(_api.IpResolver!.ExternalIp));
+            selfNodeRecord.SetEntry(new TcpEntry(_networkConfig.P2PPort));
+            selfNodeRecord.SetEntry(new UdpEntry(_networkConfig.DiscoveryPort));
+            selfNodeRecord.SetEntry(new Secp256K1Entry(_api.NodeKey!.CompressedPublicKey));
+            selfNodeRecord.Sequence = 1;
+            NodeRecordSigner enrSigner = new(_api.EthereumEcdsa, privateKeyProvider.Generate());
+            enrSigner.Sign(selfNodeRecord);
+            if (!enrSigner.Verify(selfNodeRecord))
+            {
+                throw new NetworkingException("Self ENR initialization failed", NetworkExceptionType.Discovery);
+            }
+
+            return selfNodeRecord;
         }
 
         private Task StartSync()

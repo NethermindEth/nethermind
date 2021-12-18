@@ -14,7 +14,6 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Net;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
@@ -47,19 +46,20 @@ public class EnrResponseMsgSerializer : DiscoveryMsgSerializerBase, IMessageSeri
 
     public EnrResponseMsg Deserialize(byte[] msgBytes)
     {
-        (PublicKey FarPublicKey, byte[] Mdc, byte[] Data) results = PrepareForDeserialization(msgBytes);
-        RlpStream rlpStream = results.Data.AsRlpStream();
+        (PublicKey? farPublicKey, _, byte[]? data) = PrepareForDeserialization(msgBytes);
+        RlpStream rlpStream = data.AsRlpStream();
         rlpStream.ReadSequenceLength();
         rlpStream.DecodeKeccak(); // skip (not sure if needed to verify)
-        
-        string resHex = results.Data.Slice(rlpStream.Position).ToHexString();
+
+        int positionForHex = rlpStream.Position;
         NodeRecord nodeRecord = _nodeRecordSigner.Deserialize(rlpStream);
         if (!_nodeRecordSigner.Verify(nodeRecord))
         {
-            throw new NetworkingException("Invalid ENR signature", NetworkExceptionType.Discovery);
+            string resHex = data.Slice(positionForHex).ToHexString();
+            throw new NetworkingException($"Invalid ENR signature: {resHex}", NetworkExceptionType.Discovery);
         }
         
-        EnrResponseMsg msg = new(results.FarPublicKey, nodeRecord);
+        EnrResponseMsg msg = new(farPublicKey, nodeRecord);
         return msg;
     }
 }

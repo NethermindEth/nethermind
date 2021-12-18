@@ -20,6 +20,7 @@ public enum NodeLifecycleState
 {
     New,
     Active,
+    ActiveWithEnr,
     EvictCandidate,
     Unreachable,
     //Active, but not included in NodeTable

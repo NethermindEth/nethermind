@@ -44,8 +44,8 @@ public class PingMsgSerializer : DiscoveryMsgSerializerBase, IMessageSerializer<
             source,
             destination,
             //verify if encoding is correct
-            Rlp.Encode(msg.ExpirationTime)
-            // Rlp.Encode(_self.Sequence) TODO: advertising ENR sequence - needs to be tested between our two nodes
+            Rlp.Encode(msg.ExpirationTime),
+            Rlp.Encode(_self.Sequence)
         ).Bytes;
 
         byte[] serializedMsg = Serialize(typeByte, data);

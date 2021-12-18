@@ -29,7 +29,7 @@ public interface INodeLifecycleManager
     void ProcessPongMsg(PongMsg pongMsg);
     void ProcessNeighborsMsg(NeighborsMsg msg);
     void ProcessFindNodeMsg(FindNodeMsg msg);
-    void ProcessEnrRequestMsg(EnrRequestMsg msg);
+    void ProcessEnrRequestMsg(EnrRequestMsg enrRequestMessage);
     void ProcessEnrResponseMsg(EnrResponseMsg msg);
     void SendFindNode(byte[] searchedNodeId);
     Task SendPingAsync();

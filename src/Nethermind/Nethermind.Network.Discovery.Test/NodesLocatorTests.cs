@@ -27,6 +27,7 @@ using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.RoutingTable;
+using Nethermind.Network.Enr;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using NSubstitute;
@@ -59,6 +60,7 @@ namespace Nethermind.Network.Discovery.Test
                     _nodeTable,
                     evictionManager,
                     nodeStatsManager,
+                    new NodeRecord(),
                     config,
                     Timestamper.Default, 
                     LimboLogs.Instance);
