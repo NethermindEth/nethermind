@@ -77,16 +77,18 @@ public class PingMsgSerializer : DiscoveryMsgSerializerBase, IMessageSerializer<
         rlp.DecodeInt(); // UDP port
 
         long expireTime = rlp.DecodeLong();
-        int? enrSequence = null;
-        if (!rlp.HasBeenRead)
-        {
-            enrSequence = rlp.DecodeInt();
-        }
-
         PingMsg msg = new(results.FarPublicKey, expireTime, source, destination, results.Mdc);
-        msg.EnrSequence = enrSequence;
+        
         msg.Version = version;
-        if (version != 4)
+        if (version == 4)
+        {
+            if (!rlp.HasBeenRead)
+            {
+                int enrSequence = rlp.DecodeInt();
+                msg.EnrSequence = enrSequence;
+            }
+        }
+        else
         {
             // what do we do when receive version 5?
         }
