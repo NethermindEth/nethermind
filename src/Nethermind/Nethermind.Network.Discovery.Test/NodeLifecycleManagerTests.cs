@@ -122,6 +122,60 @@ namespace Nethermind.Network.Discovery.Test
             _discoveryManagerMock.DidNotReceive()
                 .SendMessage(Arg.Is<DiscoveryMsg>(d => d.MsgType == MsgType.EnrRequest));
         }
+        
+        [Test]
+        public async Task Receiving_enr_request_when_bonded()
+        {
+            EnrRequestMsg requestMsg = new(TestItem.PublicKeyA, NoExpiration());
+            NodeLifecycleManager nodeManager = BuildALifecycleManager();
+            await BondIt(nodeManager);
+
+            nodeManager.ProcessEnrRequestMsg(requestMsg);
+            _discoveryManagerMock.Received()
+                .SendMessage(Arg.Is<DiscoveryMsg>(d => d.MsgType == MsgType.EnrResponse));
+        }
+        
+        [Test]
+        public async Task Receiving_enr_request_when_not_bonded()
+        {
+            EnrRequestMsg requestMsg = new(TestItem.PublicKeyA, NoExpiration());
+            NodeLifecycleManager nodeManager = BuildALifecycleManager();
+
+            nodeManager.ProcessEnrRequestMsg(requestMsg);
+            _discoveryManagerMock.DidNotReceive()
+                .SendMessage(Arg.Is<DiscoveryMsg>(d => d.MsgType == MsgType.EnrResponse));
+        }
+        
+        [Test]
+        public async Task Receiving_enr_response_when_bonded()
+        {
+            EnrResponseMsg msg = new(TestItem.PublicKeyA, new NodeRecord(), TestItem.KeccakA);
+            NodeLifecycleManager nodeManager = BuildALifecycleManager();
+            await BondIt(nodeManager);
+
+            nodeManager.ProcessEnrResponseMsg(msg);
+            _nodeStatsMock.Received().AddNodeStatsEvent(NodeStatsEventType.DiscoveryEnrResponseIn);
+        }
+        
+        [Test]
+        public async Task Receiving_enr_response_when_not_bonded()
+        {
+            EnrResponseMsg msg = new(TestItem.PublicKeyA, new NodeRecord(), TestItem.KeccakA);
+            NodeLifecycleManager nodeManager = BuildALifecycleManager();
+
+            nodeManager.ProcessEnrResponseMsg(msg);
+            _nodeStatsMock.DidNotReceive().AddNodeStatsEvent(NodeStatsEventType.DiscoveryEnrResponseIn);
+        }
+
+        private async Task BondIt(NodeLifecycleManager nodeManager)
+        {
+            byte[] mdc = new byte[32];
+            _discoveryManagerMock.SendMessage(Arg.Do<PingMsg>(msg => { msg.Mdc = mdc; }));
+
+            await nodeManager.SendPingAsync();
+            PongMsg pongMsg = new(nodeManager.ManagedNode.Address, NoExpiration(), mdc);
+            nodeManager.ProcessPongMsg(pongMsg);
+        }
 
         private NodeLifecycleManager BuildALifecycleManager()
         {
@@ -142,21 +196,11 @@ namespace Nethermind.Network.Discovery.Test
         [Test]
         public async Task sending_ping_receiving_proper_pong_sets_bounded()
         {
-            Node node = new(_host, _port);
-            NodeLifecycleManager nodeManager = new(node, _discoveryManagerMock
-                , _nodeTable, _evictionManagerMock, _nodeStatsMock, new NodeRecord(), _discoveryConfigMock,
-                Timestamper.Default, _loggerMock);
-
-            byte[] mdc = new byte[32];
-            PingMsg? sentPing = null;
-            _discoveryManagerMock.SendMessage(Arg.Do<PingMsg>(msg =>
-            {
-                msg.Mdc = mdc;
-                sentPing = msg;
-            }));
+            NodeLifecycleManager nodeManager = BuildALifecycleManager();
+            await BondIt(nodeManager);
 
             await nodeManager.SendPingAsync();
-            nodeManager.ProcessPongMsg(new PongMsg(node.Address, NoExpiration(), sentPing!.Mdc!));
+            nodeManager.ProcessPongMsg(new PongMsg(nodeManager.ManagedNode.Address, NoExpiration(), new byte[32]));
 
             Assert.IsTrue(nodeManager.IsBonded);
         }

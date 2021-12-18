@@ -21,7 +21,6 @@ using Nethermind.Logging;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Network.Enr;
-using Nethermind.Network.P2P;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -107,7 +106,6 @@ public class NodeLifecycleManager : INodeLifecycleManager
             return;
         }
         
-        // TODO: 5) tests for the whole req resp flow
         // TODO: 6) use the fork ID knowledge to mark each node with info on the forkhash
         
         // Enr.ForkId? forkId = enrResponseMsg.NodeRecord.GetValue<Enr.ForkId>(EnrContentKey.Eth);
