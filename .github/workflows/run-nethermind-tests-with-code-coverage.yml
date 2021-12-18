@@ -118,6 +118,9 @@ jobs:
     - name: Nethermind.Network.Discovery.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Network.Discovery.Test
+    - name: Nethermind.Network.Dns.Test
+      run: |
+        dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Network.Dns.Test
     - name: Nethermind.Network.Enr.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Network.Enr.Test
