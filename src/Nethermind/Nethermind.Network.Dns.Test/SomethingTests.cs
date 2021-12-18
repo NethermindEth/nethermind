@@ -2,7 +2,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Network.Dns.Test;
 
-public class Tests
+public class SomethingTests
 {
     [SetUp]
     public void Setup()
@@ -12,6 +12,6 @@ public class Tests
     [Test]
     public void Test1()
     {
-        Assert.Pass();
+        Something something = new();
     }
 }

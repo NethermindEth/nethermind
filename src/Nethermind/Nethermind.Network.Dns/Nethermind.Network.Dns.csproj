@@ -10,4 +10,8 @@
       <ProjectReference Include="..\Nethermind.Network.Enr\Nethermind.Network.Enr.csproj" />
     </ItemGroup>
 
+    <ItemGroup>
+      <PackageReference Include="DnsClient" Version="1.5.0" />
+    </ItemGroup>
+
 </Project>
