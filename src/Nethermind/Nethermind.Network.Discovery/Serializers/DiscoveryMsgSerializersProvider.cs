@@ -33,11 +33,10 @@ public class DiscoveryMsgSerializersProvider : IDiscoveryMsgSerializersProvider
     public DiscoveryMsgSerializersProvider(IMessageSerializationService msgSerializationService,
         IEcdsa ecdsa,
         IPrivateKeyGenerator privateKeyGenerator,
-        INodeIdResolver nodeIdResolver,
-        NodeRecord self)
+        INodeIdResolver nodeIdResolver)
     {
         _msgSerializationService = msgSerializationService;
-        _pingMsgSerializer = new PingMsgSerializer(ecdsa, privateKeyGenerator, nodeIdResolver, self);
+        _pingMsgSerializer = new PingMsgSerializer(ecdsa, privateKeyGenerator, nodeIdResolver);
         _pongMsgSerializer = new PongMsgSerializer(ecdsa, privateKeyGenerator, nodeIdResolver);
         _findNodeMsgSerializer = new FindNodeMsgSerializer(ecdsa, privateKeyGenerator, nodeIdResolver);
         _neighborsMsgSerializer = new NeighborsMsgSerializer(ecdsa, privateKeyGenerator, nodeIdResolver);

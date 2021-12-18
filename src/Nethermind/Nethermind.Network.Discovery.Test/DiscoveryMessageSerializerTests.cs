@@ -21,6 +21,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Messages;
+using Nethermind.Network.Enr;
 using Nethermind.Network.Test.Builders;
 using Nethermind.Stats.Model;
 using NUnit.Framework;
@@ -39,13 +40,13 @@ namespace Nethermind.Network.Discovery.Test
         private readonly IPEndPoint _nearAddress;
         private readonly IMessageSerializationService _messageSerializationService;
         private readonly ITimestamper _timestamper;
-        
+
         public DiscoveryMessageSerializerTests()
         {
             INetworkConfig networkConfig = new NetworkConfig();
             networkConfig.ExternalIp = "99.10.10.66";
             networkConfig.LocalIp = "10.0.0.5";
-            
+
             _farAddress = new IPEndPoint(IPAddress.Parse("192.168.1.2"), 1);
             _nearAddress = new IPEndPoint(IPAddress.Parse(networkConfig.LocalIp), networkConfig.DiscoveryPort);
             _messageSerializationService = Build.A.SerializationService().WithDiscovery(_privateKey).TestObject;
@@ -55,10 +56,9 @@ namespace Nethermind.Network.Discovery.Test
         [Test]
         public void PingMessageTest()
         {
-            PingMsg message = new(_privateKey.PublicKey, 60 + _timestamper.UnixTime.MillisecondsLong, _farAddress, _nearAddress, new byte[32])
-            {
-                FarAddress = _farAddress
-            };
+            PingMsg message =
+                new(_privateKey.PublicKey, 60 + _timestamper.UnixTime.MillisecondsLong, _farAddress, _nearAddress,
+                    new byte[32]) { FarAddress = _farAddress };
 
             byte[] data = _messageSerializationService.Serialize(message);
             PingMsg deserializedMessage = _messageSerializationService.Deserialize<PingMsg>(data);
@@ -71,18 +71,20 @@ namespace Nethermind.Network.Discovery.Test
             Assert.AreEqual(message.DestinationAddress, deserializedMessage.DestinationAddress);
             Assert.AreEqual(message.SourceAddress, deserializedMessage.SourceAddress);
             Assert.AreEqual(message.Version, deserializedMessage.Version);
-            
-            byte[] expectedPingMdc = Bytes.FromHexString("0xf8c61953f3b94a91aefe611e61dd74fe26aa5c969d9f29b7e063e6169171a772"); 
+
+            byte[] expectedPingMdc =
+                Bytes.FromHexString("0xf8c61953f3b94a91aefe611e61dd74fe26aa5c969d9f29b7e063e6169171a772");
             Assert.IsNotNull(expectedPingMdc);
         }
 
         [Test]
         public void PongMessageTest()
         {
-            PongMsg message = new(_privateKey.PublicKey, 60 + _timestamper.UnixTime.MillisecondsLong, new byte[] {1, 2, 3})
-            {
-                FarAddress = _farAddress
-            };
+            PongMsg message =
+                new(_privateKey.PublicKey, 60 + _timestamper.UnixTime.MillisecondsLong, new byte[] { 1, 2, 3 })
+                {
+                    FarAddress = _farAddress
+                };
 
             byte[] data = _messageSerializationService.Serialize(message);
             PongMsg deserializedMessage = _messageSerializationService.Deserialize<PongMsg>(data);
@@ -92,6 +94,43 @@ namespace Nethermind.Network.Discovery.Test
             Assert.AreEqual(message.ExpirationTime, deserializedMessage.ExpirationTime);
 
             Assert.AreEqual(message.PingMdc, deserializedMessage.PingMdc);
+        }
+
+        [Test]
+        public void Ping_with_enr_there_and_back()
+        {
+            PingMsg pingMsg = new (TestItem.PublicKeyA, long.MaxValue, TestItem.IPEndPointA, TestItem.IPEndPointB, new byte[32]);
+            pingMsg.EnrSequence = 3;
+            byte[] serialized = _messageSerializationService.Serialize(pingMsg);
+            pingMsg = _messageSerializationService.Deserialize<PingMsg>(serialized);
+            Assert.AreEqual(3, pingMsg.EnrSequence);
+        }
+        
+        [Test]
+        public void Enr_request_there_and_back()
+        {
+            EnrRequestMsg msg = new(TestItem.PublicKeyA, long.MaxValue);
+            byte[] serialized = _messageSerializationService.Serialize(msg);
+            EnrRequestMsg deserialized = _messageSerializationService.Deserialize<EnrRequestMsg>(serialized);
+            Assert.AreEqual(msg.ExpirationTime, deserialized.ExpirationTime);
+            Assert.AreEqual(deserialized.FarPublicKey, _privateKey.PublicKey);
+        }
+        
+        [Test]
+        public void Enr_response_there_and_back()
+        {
+            NodeRecord nodeRecord = new ();
+            nodeRecord.SetEntry(new Secp256K1Entry(_privateKey.CompressedPublicKey));
+            nodeRecord.Sequence = 5;
+            NodeRecordSigner signer = new (new Ecdsa(), _privateKey);
+            signer.Sign(nodeRecord);
+            EnrResponseMsg msg = new(TestItem.PublicKeyA, nodeRecord, TestItem.KeccakA);
+
+            byte[] serialized = _messageSerializationService.Serialize(msg);
+            EnrResponseMsg deserialized = _messageSerializationService.Deserialize<EnrResponseMsg>(serialized);
+            Assert.AreEqual(msg.NodeRecord.Sequence, deserialized.NodeRecord.Sequence);
+            Assert.AreEqual(msg.RequestKeccak, deserialized.RequestKeccak);
+            Assert.AreEqual(msg.NodeRecord.Signature, deserialized.NodeRecord.Signature);
         }
 
         [Test]
@@ -108,7 +147,8 @@ namespace Nethermind.Network.Discovery.Test
         [Ignore("Is it some v5 message?")]
         public void Can_deserialize_the_strange_message()
         {
-            string message = "46261b14e3783640a24a652205a6fb7afdb94855c07bb9559777d98e54e51562442219fd8673b1a6aef0f4eaa3b1ed39695839775ed634e9b58d56bde116cd1c63e88d9e953bf05b24e9871de8ea630d98f812bdf176b712b7f9ba2c4db242170102f6c3808080cb845adc681b827668827668a070dfc96ee3da9864524f1f0214a35d46b56093f020ee588a05fafe1323335ce7845cc60fd7";
+            string message =
+                "46261b14e3783640a24a652205a6fb7afdb94855c07bb9559777d98e54e51562442219fd8673b1a6aef0f4eaa3b1ed39695839775ed634e9b58d56bde116cd1c63e88d9e953bf05b24e9871de8ea630d98f812bdf176b712b7f9ba2c4db242170102f6c3808080cb845adc681b827668827668a070dfc96ee3da9864524f1f0214a35d46b56093f020ee588a05fafe1323335ce7845cc60fd7";
             PongMsg deserializedMessage =
                 _messageSerializationService.Deserialize<PongMsg>(Bytes.FromHexString(message));
             Assert.IsNotNull(deserializedMessage);
@@ -117,10 +157,11 @@ namespace Nethermind.Network.Discovery.Test
         [Test]
         public void FindNodeMessageTest()
         {
-            FindNodeMsg message = new(_privateKey.PublicKey, 60 + _timestamper.UnixTime.MillisecondsLong, new byte[] {1, 2, 3})
-            {
-                FarAddress = _farAddress
-            };
+            FindNodeMsg message =
+                new(_privateKey.PublicKey, 60 + _timestamper.UnixTime.MillisecondsLong, new byte[] { 1, 2, 3 })
+                {
+                    FarAddress = _farAddress
+                };
 
             byte[] data = _messageSerializationService.Serialize(message);
             FindNodeMsg deserializedMessage = _messageSerializationService.Deserialize<FindNodeMsg>(data);
@@ -135,15 +176,12 @@ namespace Nethermind.Network.Discovery.Test
         [Test]
         public void NeighborsMessageTest()
         {
-            NeighborsMsg message = new(_privateKey.PublicKey, 60 + _timestamper.UnixTime.MillisecondsLong, new[]
-            {
-                new Node("192.168.1.2", 1),
-                new Node("192.168.1.3", 2),
-                new Node("192.168.1.4", 3)
-            })
-            {
-                FarAddress = _farAddress
-            };
+            NeighborsMsg message =
+                new(_privateKey.PublicKey, 60 + _timestamper.UnixTime.MillisecondsLong,
+                    new[] { new Node("192.168.1.2", 1), new Node("192.168.1.3", 2), new Node("192.168.1.4", 3) })
+                {
+                    FarAddress = _farAddress
+                };
 
             byte[] data = _messageSerializationService.Serialize(message);
             NeighborsMsg deserializedMessage = _messageSerializationService.Deserialize<NeighborsMsg>(data);

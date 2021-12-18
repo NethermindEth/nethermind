@@ -133,7 +133,7 @@ public class NodeRecord
         return GetContentLengthWithoutSignature() + 64 + 2;
     }
     
-    private int GetRlpLengthWithSignature()
+    public int GetRlpLengthWithSignature()
     {
         return Rlp.LengthOfSequence(
             GetContentLengthWithSignature());
@@ -149,7 +149,7 @@ public class NodeRecord
             contentEntry.Encode(rlpStream);
         }
     }
-    
+
     public string GetHex()
     {
         int contentLength = GetContentLengthWithSignature();
@@ -159,7 +159,7 @@ public class NodeRecord
         return rlpStream.Data!.ToHexString();
     }
     
-    private void Encode(RlpStream rlpStream)
+    public void Encode(RlpStream rlpStream)
     {
         RequireSignature();
         

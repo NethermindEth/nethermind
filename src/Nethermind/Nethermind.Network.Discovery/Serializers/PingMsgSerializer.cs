@@ -20,18 +20,16 @@ using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Enr;
+using Nethermind.Network.P2P;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Serializers;
 
 public class PingMsgSerializer : DiscoveryMsgSerializerBase, IMessageSerializer<PingMsg>
 {
-    private readonly NodeRecord _self;
-
-    public PingMsgSerializer(IEcdsa ecdsa, IPrivateKeyGenerator nodeKey, INodeIdResolver nodeIdResolver, NodeRecord self)
+    public PingMsgSerializer(IEcdsa ecdsa, IPrivateKeyGenerator nodeKey, INodeIdResolver nodeIdResolver)
         : base(ecdsa, nodeKey, nodeIdResolver)
     {
-        _self = self ?? throw new ArgumentNullException(nameof(self));
     }
 
     public byte[] Serialize(PingMsg msg)
@@ -39,14 +37,27 @@ public class PingMsgSerializer : DiscoveryMsgSerializerBase, IMessageSerializer<
         byte typeByte = (byte)msg.MsgType;
         Rlp source = Encode(msg.SourceAddress);
         Rlp destination = Encode(msg.DestinationAddress);
-        byte[] data = Rlp.Encode(
-            Rlp.Encode(msg.Version),
-            source,
-            destination,
-            //verify if encoding is correct
-            Rlp.Encode(msg.ExpirationTime),
-            Rlp.Encode(_self.Sequence)
-        ).Bytes;
+
+        byte[] data;
+        if (msg.EnrSequence.HasValue)
+        {
+            data = Rlp.Encode(
+                Rlp.Encode(msg.Version),
+                source,
+                destination,
+                //verify if encoding is correct
+                Rlp.Encode(msg.ExpirationTime),
+                Rlp.Encode(msg.EnrSequence.Value)).Bytes;
+        }
+        else
+        {
+            data = Rlp.Encode(
+                Rlp.Encode(msg.Version),
+                source,
+                destination,
+                //verify if encoding is correct
+                Rlp.Encode(msg.ExpirationTime)).Bytes;
+        }
 
         byte[] serializedMsg = Serialize(typeByte, data);
         msg.Mdc = serializedMsg.Slice(0, 32);

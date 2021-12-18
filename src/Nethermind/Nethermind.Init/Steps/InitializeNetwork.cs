@@ -279,8 +279,7 @@ namespace Nethermind.Init.Steps
                 _api.MessageSerializationService,
                 _api.EthereumEcdsa,
                 privateKeyProvider,
-                nodeIdResolver,
-                selfNodeRecord);
+                nodeIdResolver);
 
             msgSerializersProvider.RegisterDiscoverySerializers();
 

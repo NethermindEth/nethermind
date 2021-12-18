@@ -106,15 +106,19 @@ namespace Nethermind.Network.Test.Builders
             Ecdsa ecdsa = new();
             SameKeyGenerator privateKeyProvider = new(privateKey);
 
-            PingMsgSerializer pingSerializer = new(ecdsa, privateKeyProvider, new NodeIdResolver(ecdsa), new NodeRecord());
+            PingMsgSerializer pingSerializer = new(ecdsa, privateKeyProvider, new NodeIdResolver(ecdsa));
             PongMsgSerializer pongSerializer = new(ecdsa, privateKeyProvider, new NodeIdResolver(ecdsa));
             FindNodeMsgSerializer findNodeSerializer = new(ecdsa, privateKeyProvider, new NodeIdResolver(ecdsa));
             NeighborsMsgSerializer neighborsSerializer = new(ecdsa, privateKeyProvider, new NodeIdResolver(ecdsa));
+            EnrRequestMsgSerializer enrRequestSerializer = new(ecdsa, privateKeyProvider, new NodeIdResolver(ecdsa));
+            EnrResponseMsgSerializer enrResponseSerializer = new(ecdsa, privateKeyProvider, new NodeIdResolver(ecdsa));
 
             return With(pingSerializer)
                 .With(pongSerializer)
                 .With(findNodeSerializer)
-                .With(neighborsSerializer);
+                .With(neighborsSerializer)
+                .With(enrRequestSerializer)
+                .With(enrResponseSerializer);
         }
     }
 }

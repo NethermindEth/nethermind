@@ -15,11 +15,14 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Network.Enr;
+using Nethermind.Network.P2P;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 
@@ -125,7 +128,9 @@ public class NodeLifecycleManager : INodeLifecycleManager
             return;
         }
 
-        EnrResponseMsg msg = new(ManagedNode.Address, _nodeRecord);
+        Rlp requestRlp = Rlp.Encode(
+            Rlp.Encode(enrRequestMessage.ExpirationTime));
+        EnrResponseMsg msg = new(ManagedNode.Address, _nodeRecord, Keccak.Compute(requestRlp.Bytes));
         _discoveryManager.SendMessage(msg);
         NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryEnrRequestIn);
         NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryEnrResponseOut);
@@ -352,6 +357,8 @@ public class NodeLifecycleManager : INodeLifecycleManager
         }
 
         PingMsg msg = new(ManagedNode.Address, CalculateExpirationTime(), _nodeTable.MasterNode.Address);
+        msg.EnrSequence = _nodeRecord.Sequence;
+
         try
         {
             _lastSentPing = msg;

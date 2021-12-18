@@ -35,12 +35,16 @@ public class EnrResponseMsgSerializer : DiscoveryMsgSerializerBase, IMessageSeri
 
     public byte[] Serialize(EnrResponseMsg msg)
     {
-        // TODO: optimize
-        byte[] data = Rlp.Encode(
-            Rlp.Encode(msg.ExpirationTime)
-        ).Bytes;
+        int contentLength = Rlp.LengthOfKeccakRlp;
+        contentLength += msg.NodeRecord.GetRlpLengthWithSignature();
+        int totalLength = Rlp.LengthOfSequence(contentLength);
 
-        byte[] serializedMsg = Serialize((byte)msg.MsgType, data);
+        RlpStream rlpStream = new (totalLength);
+        rlpStream.StartSequence(contentLength);
+        rlpStream.Encode(msg.RequestKeccak);
+        msg.NodeRecord.Encode(rlpStream);
+
+        byte[] serializedMsg = Serialize((byte)msg.MsgType, rlpStream.Data);
         return serializedMsg;
     }
 
@@ -49,7 +53,7 @@ public class EnrResponseMsgSerializer : DiscoveryMsgSerializerBase, IMessageSeri
         (PublicKey? farPublicKey, _, byte[]? data) = PrepareForDeserialization(msgBytes);
         RlpStream rlpStream = data.AsRlpStream();
         rlpStream.ReadSequenceLength();
-        rlpStream.DecodeKeccak(); // skip (not sure if needed to verify)
+        Keccak? requestKeccak = rlpStream.DecodeKeccak(); // skip (not sure if needed to verify)
 
         int positionForHex = rlpStream.Position;
         NodeRecord nodeRecord = _nodeRecordSigner.Deserialize(rlpStream);
@@ -59,7 +63,7 @@ public class EnrResponseMsgSerializer : DiscoveryMsgSerializerBase, IMessageSeri
             throw new NetworkingException($"Invalid ENR signature: {resHex}", NetworkExceptionType.Discovery);
         }
         
-        EnrResponseMsg msg = new(farPublicKey, nodeRecord);
+        EnrResponseMsg msg = new(farPublicKey, nodeRecord, requestKeccak!);
         return msg;
     }
 }

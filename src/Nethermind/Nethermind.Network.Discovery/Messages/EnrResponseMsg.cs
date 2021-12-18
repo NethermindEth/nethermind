@@ -33,15 +33,19 @@ public class EnrResponseMsg : DiscoveryMsg
 
     public NodeRecord NodeRecord { get; }
 
-    public EnrResponseMsg(IPEndPoint farAddress, NodeRecord nodeRecord)
+    public Keccak RequestKeccak { get; set; }
+
+    public EnrResponseMsg(IPEndPoint farAddress, NodeRecord nodeRecord, Keccak requestKeccak)
         : base(farAddress, MaxTime)
     {
         NodeRecord = nodeRecord;
+        RequestKeccak = requestKeccak;
     }
     
-    public EnrResponseMsg(PublicKey farPublicKey, NodeRecord nodeRecord)
+    public EnrResponseMsg(PublicKey farPublicKey, NodeRecord nodeRecord, Keccak requestKeccak)
         : base(farPublicKey, MaxTime)
     {
         NodeRecord = nodeRecord;
+        RequestKeccak = requestKeccak;
     }
 }
