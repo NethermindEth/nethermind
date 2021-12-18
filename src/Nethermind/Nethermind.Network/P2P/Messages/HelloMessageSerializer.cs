@@ -24,22 +24,22 @@ namespace Nethermind.Network.P2P.Messages
 {
     public class HelloMessageSerializer : IMessageSerializer<HelloMessage>
     {
-        public byte[] Serialize(HelloMessage message)
+        public byte[] Serialize(HelloMessage msg)
         {
             return Rlp.Encode(
-                Rlp.Encode(message.P2PVersion),
-                Rlp.Encode(message.ClientId),
-                Rlp.Encode(message.Capabilities.Select(c => Rlp.Encode(
+                Rlp.Encode(msg.P2PVersion),
+                Rlp.Encode(msg.ClientId),
+                Rlp.Encode(msg.Capabilities.Select(c => Rlp.Encode(
                     Rlp.Encode(c.ProtocolCode.ToLowerInvariant()),
                     Rlp.Encode(c.Version))).ToArray()),
-                Rlp.Encode(message.ListenPort),
-                Rlp.Encode(message.NodeId.Bytes)
+                Rlp.Encode(msg.ListenPort),
+                Rlp.Encode(msg.NodeId.Bytes)
             ).Bytes;
         }
 
-        public HelloMessage Deserialize(byte[] bytes)
+        public HelloMessage Deserialize(byte[] msgBytes)
         {
-            RlpStream rlpStream = bytes.AsRlpStream();
+            RlpStream rlpStream = msgBytes.AsRlpStream();
             rlpStream.ReadSequenceLength();
 
             HelloMessage helloMessage = new HelloMessage();

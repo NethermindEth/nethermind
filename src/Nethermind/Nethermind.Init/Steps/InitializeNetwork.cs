@@ -271,15 +271,12 @@ namespace Nethermind.Init.Steps
             IDiscoveryConfig discoveryConfig = _api.Config<IDiscoveryConfig>();
 
             SameKeyGenerator privateKeyProvider = new(_api.NodeKey.Unprotect());
-            DiscoveryMessageFactory discoveryMessageFactory = new(_api.Timestamper);
             NodeIdResolver nodeIdResolver = new(_api.EthereumEcdsa);
-            IPResolver ipResolver = new(_networkConfig, _api.LogManager);
 
             IDiscoveryMsgSerializersProvider msgSerializersProvider = new DiscoveryMsgSerializersProvider(
                 _api.MessageSerializationService,
                 _api.EthereumEcdsa,
                 privateKeyProvider,
-                discoveryMessageFactory,
                 nodeIdResolver);
 
             msgSerializersProvider.RegisterDiscoverySerializers();
@@ -291,10 +288,10 @@ namespace Nethermind.Init.Steps
 
             NodeLifecycleManagerFactory nodeLifeCycleFactory = new(
                 nodeTable,
-                discoveryMessageFactory,
                 evictionManager,
                 _api.NodeStatsManager,
                 discoveryConfig,
+                _api.Timestamper,
                 _api.LogManager);
 
             // ToDo: DiscoveryDB is registered outside dbProvider - bad
@@ -312,8 +309,7 @@ namespace Nethermind.Init.Steps
                 nodeTable,
                 discoveryStorage,
                 discoveryConfig,
-                _api.LogManager,
-                ipResolver
+                _api.LogManager
             );
 
             NodesLocator nodesLocator = new(

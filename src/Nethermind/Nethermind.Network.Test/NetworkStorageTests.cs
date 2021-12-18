@@ -14,8 +14,6 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
-using System.IO;
 using System.Linq;
 using Nethermind.Config;
 using Nethermind.Core.Test.IO;

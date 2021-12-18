@@ -17,7 +17,6 @@
 using FluentAssertions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Stats.Model;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.Stats

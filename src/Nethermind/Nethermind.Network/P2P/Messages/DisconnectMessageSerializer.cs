@@ -23,34 +23,34 @@ namespace Nethermind.Network.P2P.Messages
 {
     public class DisconnectMessageSerializer : IMessageSerializer<DisconnectMessage>
     {
-        public byte[] Serialize(DisconnectMessage message)
+        public byte[] Serialize(DisconnectMessage msg)
         {
             return Rlp.Encode(
-                Rlp.Encode((byte)message.Reason) // sic!, as a list of 1 element
+                Rlp.Encode((byte)msg.Reason) // sic!, as a list of 1 element
             ).Bytes;
         }
 
         private byte[] breach1 = Bytes.FromHexString("0204c104");
         private byte[] breach2 = Bytes.FromHexString("0204c180");
         
-        public DisconnectMessage Deserialize(byte[] bytes)
+        public DisconnectMessage Deserialize(byte[] msgBytes)
         {
-            if (bytes.Length == 1)
+            if (msgBytes.Length == 1)
             {
-                return new DisconnectMessage((DisconnectReason)bytes[0]);
+                return new DisconnectMessage((DisconnectReason)msgBytes[0]);
             }
 
-            if (bytes.SequenceEqual(breach1))
+            if (msgBytes.SequenceEqual(breach1))
             {
                 return new DisconnectMessage(DisconnectReason.Breach1);
             }
             
-            if (bytes.SequenceEqual(breach2))
+            if (msgBytes.SequenceEqual(breach2))
             {
                 return new DisconnectMessage(DisconnectReason.Breach2);
             }
             
-            RlpStream rlpStream = bytes.AsRlpStream();
+            RlpStream rlpStream = msgBytes.AsRlpStream();
             rlpStream.ReadSequenceLength();
             int reason = rlpStream.DecodeInt();
             DisconnectMessage disconnectMessage = new DisconnectMessage(reason);

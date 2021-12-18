@@ -16,9 +16,9 @@
 
 using System.Collections.Generic;
 using Nethermind.Config;
-using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
+using Nethermind.Network.Discovery;
 using Nethermind.Stats;
 using NSubstitute;
 using NUnit.Framework;

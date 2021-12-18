@@ -15,14 +15,11 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using DotNetty.Buffers;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Rlpx.TestWrappers;
 using NUnit.Framework;
-using Org.BouncyCastle.Crypto.Digests;
 
 namespace Nethermind.Network.Test.Rlpx
 {

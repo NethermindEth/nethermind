@@ -14,11 +14,9 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Transport.Channels;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.P2P;

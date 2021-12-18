@@ -17,7 +17,6 @@
 using DotNetty.Buffers;
 using FluentAssertions;
 using Nethermind.Core.Extensions;
-using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Messages;
 using NUnit.Framework;
 

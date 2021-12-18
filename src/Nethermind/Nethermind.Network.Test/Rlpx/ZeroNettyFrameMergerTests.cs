@@ -14,12 +14,10 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
 using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
-using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Rlpx.TestWrappers;
