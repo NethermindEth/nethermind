@@ -158,7 +158,7 @@ public class DiscoveryApp : IDiscoveryApp
                 .Handler(new ActionChannelInitializer<IDatagramChannel>(InitializeChannel));
         }
 
-        _bindingTask = bootstrap.BindAsync(IPAddress.Parse(_networkConfig.LocalIp), _networkConfig.DiscoveryPort)
+        _bindingTask = bootstrap.BindAsync(IPAddress.Parse(_networkConfig.LocalIp!), _networkConfig.DiscoveryPort)
             .ContinueWith(
                 t
                     =>

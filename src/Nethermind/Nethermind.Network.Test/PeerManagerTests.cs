@@ -54,8 +54,6 @@ namespace Nethermind.Network.Test
             await ctx.PeerManager.StopAsync();
         }
 
-        private const string enodesString = enode1String + "," + enode2String;
-
         private const string enode1String =
             "enode://22222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222@51.141.78.53:30303";
 
@@ -111,20 +109,20 @@ namespace Nethermind.Network.Test
         }
 
         [Test]
-        public async Task Will_return_exception_in_port()
+        public void Will_return_exception_in_port()
         {
             Assert.Throws<ArgumentException>(delegate
             {
-                Enode enode = new(enode3String);
+                Enode unused = new(enode3String);
             });
         }
 
         [Test]
-        public async Task Will_return_exception_in_dns()
+        public void Will_return_exception_in_dns()
         {
             Assert.Throws<ArgumentException>(delegate
             {
-                Enode enode = new(enode4String);
+                Enode unused = new(enode4String);
             });
         }
 
@@ -613,7 +611,7 @@ namespace Nethermind.Network.Test
             }
 
             public PublicKey LocalNodeId { get; } = TestItem.PublicKeyA;
-            public int LocalPort { get; }
+            public int LocalPort => 0;
             public event EventHandler<SessionEventArgs> SessionCreated;
 
             public void CreateIncoming(params Session[] sessions)
@@ -636,7 +634,7 @@ namespace Nethermind.Network.Test
                 }
             }
 
-            private bool _isFailing = false;
+            private bool _isFailing;
 
             public void MakeItFail()
             {
@@ -646,7 +644,7 @@ namespace Nethermind.Network.Test
 
         private class InMemoryStorage : INetworkStorage
         {
-            private ConcurrentDictionary<PublicKey, NetworkNode> _nodes =
+            private readonly ConcurrentDictionary<PublicKey, NetworkNode> _nodes =
                 new();
 
             public NetworkNode[] GetPersistedNodes()

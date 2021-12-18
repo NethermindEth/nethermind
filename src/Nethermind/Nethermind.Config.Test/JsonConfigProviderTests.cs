@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using Nethermind.JsonRpc;
@@ -29,15 +30,16 @@ namespace Nethermind.Config.Test
     [TestFixture]
     public class JsonConfigProviderTests
     {
-        private JsonConfigProvider _configProvider;
+        private JsonConfigProvider _configProvider = null!;
 
         [SetUp]
+        [SuppressMessage("ReSharper", "UnusedVariable")]
         public void Initialize()
         {
-            KeyStoreConfig? keystoreConfig = new();
-            NetworkConfig? networkConfig = new();
-            JsonRpcConfig? jsonRpcConfig = new();
-            StatsParameters? statsConfig = StatsParameters.Instance;
+            KeyStoreConfig keystoreConfig = new();
+            NetworkConfig networkConfig = new();
+            JsonRpcConfig jsonRpcConfig = new();
+            StatsParameters statsConfig = StatsParameters.Instance;
 
             _configProvider = new JsonConfigProvider("SampleJson/SampleJsonConfig.cfg");
         }
@@ -59,10 +61,13 @@ namespace Nethermind.Config.Test
             Assert.AreEqual("test", keystoreConfig.Cipher);
           
             Assert.AreEqual(2, jsonRpcConfig.EnabledModules.Count());
-            new[] { ModuleType.Eth, ModuleType.Debug }.ToList().ForEach(x =>
+
+            void CheckIfEnabled(string x)
             {
-                Assert.IsTrue(jsonRpcConfig.EnabledModules.Contains(x.ToString()));
-            });
+                Assert.IsTrue(jsonRpcConfig.EnabledModules.Contains(x));
+            }
+
+            new[] { ModuleType.Eth, ModuleType.Debug }.ToList().ForEach(CheckIfEnabled);
 
             Assert.AreEqual(4, networkConfig.Concurrency);
         }
