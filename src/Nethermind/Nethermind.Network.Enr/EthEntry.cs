@@ -20,7 +20,7 @@ using Nethermind.Serialization.Rlp;
 namespace Nethermind.Network.Enr;
 
 /// <summary>
-/// I am just guessing it is a forkId
+/// https://github.com/ethereum/devp2p/blob/master/enr-entries/eth.md
 /// </summary>
 public class EthEntry : EnrContentEntry<ForkId>
 {
